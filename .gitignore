@@ -1,0 +1,12 @@
+**/__pycache__
+*.cflags
+*.config
+*.creator*
+*.cxxflags
+*.files
+*.includes
+.qtc_clangd
+build
+.cache/
+.vscode/
+shoopdaloop.egg-info

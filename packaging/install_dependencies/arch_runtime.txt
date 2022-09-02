@@ -1,0 +1,3 @@
+boost-libs
+jack
+python

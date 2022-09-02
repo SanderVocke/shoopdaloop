@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<typesystem package="shoopdaloopcppobjects">
+    <primitive-type name="std::string"/>
+    <load-typesystem name="typesystem_widgets.xml" generate="no"/>
+    <load-typesystem name="typesystem_quickwidgets.xml" generate="no"/>
+    <object-type name="RenderAudioWaveform">
+        <add-function signature="test() const" return-type="const char*">
+            <inject-code class="target" position="beginning">
+            const char* %0 = "hello";
+            %PYARG_0 = %CONVERTTOPYTHON[const char*](%0);
+            </inject-code>
+        </add-function>
+    </object-type>
+</typesystem>

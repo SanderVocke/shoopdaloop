@@ -1,0 +1,53 @@
+kind: pipeline
+type: docker
+name: arch-tests
+# This pipeline builds the project and runs all the tests on Arch.
+trigger:
+  event: [ push, pull_request ]
+workspace:
+  path: /drone/src
+steps:
+- name: build
+  image: archlinux
+  commands:
+    - pacman --noconfirm -Syy
+    - echo "a"
+    # Install PGKBUILD generation/execution dependencies
+    - pacman --noconfirm -S python fakeroot git binutils
+    # Generate PKGBUILD
+    - setpriv --reuid=1000 --regid=1000 --clear-groups mkdir /tmp/pkgbuild
+    - cd /drone/src/packaging && ./generate_package_script.py /drone/src/packaging/arch/PKGBUILD_SOURCE.template 
+      VERSION=0.0.1 RELEASE=1 ARCH=x86_64 BUILDTYPE=Debug ARCH=x86_64
+      SOURCE=git+file:///tmp/src/shoopdaloop-0.0.1 > /tmp/pkgbuild/PKGBUILD
+    # Install build dependencies
+    - pacman --noconfirm -S cmake jack2 boost base-devel
+    # Build
+    - mkdir -p /tmp/src
+    - cp -r /drone/src /tmp/src/shoopdaloop-0.0.1
+    - rm -rf /tmp/src/shoopdaloop-0.0.1/.git
+    - cd /tmp/src/shoopdaloop-0.0.1 && git init && git add --all && git commit -m "test"
+    - cd /tmp/pkgbuild && setpriv --reuid=1000 --regid=1000 --clear-groups makepkg --skipinteg
+
+
+# ---
+# kind: pipeline
+# type: kubernetes
+# name: dockerhub
+# # This pipeline builds the docker container and publishes it
+# # to DockerHub. The promotion target is "dockerhub".
+# trigger:
+#   event: [ promote ]
+# steps:
+# - name: prepare
+#   image: alpine/git
+#   commands:
+#     - "echo \"dev-$(git rev-parse HEAD),latest\" > .tags"
+# - name: publish
+#   image: plugins/docker
+#   settings:
+#     repo: sandervocke/mudbase
+#     username:
+#       from_secret: docker_username
+#     password:
+#       from_secret: docker_password
+#     dockerfile: deploy/Dockerfile

@@ -1,0 +1,4 @@
+boost
+jack2
+python
+base-devel

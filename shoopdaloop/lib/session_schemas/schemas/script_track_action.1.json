@@ -1,0 +1,22 @@
+{
+    "type": "object",
+    "properties": {
+        "schema":       { "const": "script_track_action.1" },
+        "target_ids":   {
+            "type": "array",
+            "items": { "type": "string" }
+        },
+        "action": {
+            "enum": [
+                "stopAll",
+                "mute",
+                "unmute",
+                "mutePassthrough",
+                "unmutePassthrough"
+            ]
+        },
+        "delay_cycles": { "type": "integer" },
+        "args":         { "type": "object" }
+    },
+    "required": ["schema", "action", "delay_cycles"]
+}

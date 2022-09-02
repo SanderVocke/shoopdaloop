@@ -1,0 +1,18 @@
+{
+    "type": "object",
+    "properties": {
+        "schema":       { "const": "script_scene_action.1" },
+        "target_ids":   {
+            "type": "array",
+            "items": { "type": "string" }
+        },
+        "action": {
+            "enum": [
+                "play"
+            ]
+        },
+        "delay_cycles": { "type": "integer" },
+        "args":         { "type": "object" }
+    },
+    "required": ["schema", "action", "delay_cycles"]
+}

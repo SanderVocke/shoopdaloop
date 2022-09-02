@@ -1,0 +1,2 @@
+Sourced from the KXStudio description page of the LV2 External UI extension
+(https://kx.studio/ns/lv2ext/external-ui)
