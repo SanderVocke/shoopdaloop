@@ -1,5 +1,6 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
+import LoopState 1.0
 
 ApplicationWindow {
     visible: true
@@ -15,19 +16,23 @@ ApplicationWindow {
     }
 
     Column {
-        LoopProgressIndicator {
-            length: loop_manager.length
-            pos: loop_manager.pos
-        }
-        LoopProgressIndicator {
-            length: 100.0
-            pos: 89.0
-        }
+        Repeater {
+            model: 4
+            id: loops
 
-        Text {
-            text: "Hello World"
-            font.pixelSize: 24
+            Item {
+
+                LoopState {
+                    sl_loop_index : index
+                    id : self
+                    Connections {
+                        target: osc_link
+                        function onReceivedLoopParam(idx, ctl, val) {
+                            self.onLoopParameterChanged()
+                        }
+                    }
+                }
+            }
         }
     }
-
 }

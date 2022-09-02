@@ -13,7 +13,7 @@ import re
 class SooperLooperOSCLink(QObject):
     # List is e.g. ['/some/path/stuff', 0, 1, 'textarg']. For any received message.
     received = pyqtSignal(list)
-    received_loop_param = pyqtSignal(int, str, str)
+    receivedLoopParam = pyqtSignal(int, str, str)
     sent = pyqtSignal(list)
 
     # TODO for loop parameter specifically
@@ -39,7 +39,7 @@ class SooperLooperOSCLink(QObject):
                 self.received.emit(msg)
                 maybe_loop_param = re.match(r'/sl/([0-9]+)/get', msg[0])
                 if maybe_loop_param and len(msg) == 4:
-                    self.received_loop_param.emit(int(msg[1]), msg[2], str(msg[3]))
+                    self.receivedLoopParam.emit(int(msg[1]), msg[2], str(msg[3]))
             except e:
                 print('Failed to receive message: {}'.format(str(e)))
 
@@ -65,5 +65,11 @@ class SooperLooperOSCLink(QObject):
     # Use to get a loop parameter from SooperLooper.
     def request_loop_parameter(self, loop_idx, parameter):
         self.send_expect_response(['/sl/{}/get'.format(loop_idx), '{}'.format(parameter)], '/sl/{}/get'.format(loop_idx))
+    
+    # Use to get loops' parameters from SooperLooper.
+    def request_loops_parameters(self, loop_idxs, parameters):
+        for loop_idx in loop_idxs:
+            for parameter in parameters:
+                self.send_expect_response(['/sl/{}/get'.format(loop_idx), '{}'.format(parameter)], '/sl/{}/get'.format(loop_idx))
     
 

@@ -2,7 +2,7 @@ import sys
 import time
 
 from PyQt6.QtGui import QGuiApplication
-from PyQt6.QtQml import QQmlApplicationEngine
+from PyQt6.QtQml import QQmlApplicationEngine, qmlRegisterType
 from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, QTimer
 
 from q_objects.LoopState import LoopState
@@ -17,19 +17,18 @@ import pprint
 app = QGuiApplication(sys.argv)
 
 link = SooperLooperOSCLink(None, '0.0.0.0', 9951, '0.0.0.0', 9952)
-link.received_loop_param.connect(lambda idx, control, val: print("Loop {}: {} = {}".format(idx, control, val)))
+link.receivedLoopParam.connect(lambda idx, control, val: print("Loop {}: {} = {}".format(idx, control, val)))
 
-while True:
-    input()
-    link.request_loop_parameter(0, 'loop_pos')
+qmlRegisterType(LoopState, 'LoopState', 1, 0, 'LoopState')
 
 engine = QQmlApplicationEngine()
+engine.rootContext().setContextProperty("osc_link", link)
 #loop_mgr = LoopManager()
 #loop_mgr.length = 10.0
 #engine.rootContext().setContextProperty("loop_manager", loop_mgr)
-#timer = QTimer(interval=100)
-#timer.timeout.connect(lambda: update_loop(loop_mgr))
-#timer.start()
+timer = QTimer(interval=100)
+timer.timeout.connect(lambda: link.request_loops_parameters([0], ['loop_pos', 'loop_len']))
+timer.start()
 engine.quit.connect(app.quit)
 engine.load('main.qml')
 
