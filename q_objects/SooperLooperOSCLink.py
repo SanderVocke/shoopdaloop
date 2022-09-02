@@ -5,7 +5,7 @@ from pythonosc.udp_client import SimpleUDPClient
 from pythonosc.osc_server import BlockingOSCUDPServer
 from pythonosc.dispatcher import Dispatcher
 
-from PyQt6.QtCore import QObject, QThread, pyqtSignal
+from PyQt6.QtCore import QObject, QThread, pyqtSignal, pyqtSlot
 
 import pprint
 import re
@@ -13,7 +13,6 @@ import re
 class SooperLooperOSCLink(QObject):
     # List is e.g. ['/some/path/stuff', 0, 1, 'textarg']. For any received message.
     received = pyqtSignal(list)
-    receivedLoopParam = pyqtSignal(int, str, str)
     sent = pyqtSignal(list)
 
     # TODO for loop parameter specifically
@@ -27,6 +26,7 @@ class SooperLooperOSCLink(QObject):
             while True:
                 msg = self._snd_queue.get()
                 self._client.send_message(msg[0], msg[1:])
+                print('S: {}'.format(pprint.pformat(msg)))
                 self.sent.emit(msg)
                 self._snd_queue.task_done()
         self._client_thread = threading.Thread(target=sender, daemon=True)
@@ -36,10 +36,8 @@ class SooperLooperOSCLink(QObject):
         def rcv(addr, *args):
             try:
                 msg = [addr, *args]
+                print('R: {}'.format(pprint.pformat(msg)))
                 self.received.emit(msg)
-                maybe_loop_param = re.match(r'/sl/([0-9]+)/get', msg[0])
-                if maybe_loop_param and len(msg) == 4:
-                    self.receivedLoopParam.emit(int(msg[1]), msg[2], str(msg[3]))
             except e:
                 print('Failed to receive message: {}'.format(str(e)))
 
@@ -55,21 +53,11 @@ class SooperLooperOSCLink(QObject):
     
     # Use for messages that don't expect a response.
     # msg is e.g. ['/some/path/stuff', 0, 1, 'textarg']
+    @pyqtSlot(list)
     def send(self, msg):
         self._snd_queue.put(msg)
     
     # Use for messages that expect a response from SooperLooper.
+    @pyqtSlot(list, str)
     def send_expect_response(self, msg, return_path):
         self.send(msg + ['osc.udp://{}:{}/'.format(self._rcv_ip, self._rcv_port), return_path])
-
-    # Use to get a loop parameter from SooperLooper.
-    def request_loop_parameter(self, loop_idx, parameter):
-        self.send_expect_response(['/sl/{}/get'.format(loop_idx), '{}'.format(parameter)], '/sl/{}/get'.format(loop_idx))
-    
-    # Use to get loops' parameters from SooperLooper.
-    def request_loops_parameters(self, loop_idxs, parameters):
-        for loop_idx in loop_idxs:
-            for parameter in parameters:
-                self.send_expect_response(['/sl/{}/get'.format(loop_idx), '{}'.format(parameter)], '/sl/{}/get'.format(loop_idx))
-    
-
