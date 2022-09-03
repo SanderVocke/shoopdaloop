@@ -12,6 +12,7 @@ class SLLooperManager(QObject):
 
     # Signal used to send OSC messages to SooperLooper
     sendOscExpectResponse = pyqtSignal(list, str)
+    sendOsc = pyqtSignal(list)
 
     def __init__(self, parent=None, sl_looper_index=0):
         super(SLLooperManager, self).__init__(parent)
@@ -91,3 +92,7 @@ class SLLooperManager(QObject):
                     self.lengthChanged.emit(float(value))
         elif msg[0] == '/hostinfo' and len(msg) == 4:
             self.sl_looper_count = int(msg[3])
+    
+    @pyqtSlot()
+    def doTrigger(self):
+        self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'trigger'])
