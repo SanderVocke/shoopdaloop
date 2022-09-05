@@ -368,6 +368,7 @@ ApplicationWindow {
 
         width: childrenRect.width
         height: childrenRect.height
+        y: 0
 
         Rectangle {
             property int x_spacing: 16
@@ -401,6 +402,56 @@ ApplicationWindow {
         }
     }
 
+    Component {
+        id: scene_delegate
+
+        Rectangle {
+            width: childrenRect.width
+            height: childrenRect.height
+            Text {
+                text: name
+            }
+        }
+    }
+
+    component ScenesView: ListView {
+        delegate: scene_delegate
+    }
+
+    component ScenesWidget: Item {
+        Rectangle {
+            property int x_spacing: 8
+            property int y_spacing: 4
+
+            width: parent.width
+            height: parent.height
+            color: "#555555"
+
+            Item {
+                width: childrenRect.width
+                height: childrenRect.height
+                x: parent.x_spacing/2
+                y: parent.y_spacing/2
+
+                ScenesView {
+                    width: childrenRect.width
+                    height: childrenRect.height
+
+                    model: ListModel {
+                        id: model_item
+
+                        ListElement {
+                            name: 'A'
+                        }
+                        ListElement {
+                            name: 'B'
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     Column {
         Image {
             x: 40
@@ -410,9 +461,17 @@ ApplicationWindow {
             smooth: true
         }
 
-        TracksWidget {
-            num_tracks: 8
-            loops_per_track: 8
+        Row {
+            spacing: 5
+
+            TracksWidget {
+                num_tracks: 8
+                loops_per_track: 8
+            }
+            ScenesWidget {
+                width: 200
+                height: 400
+            }
         }
     }
 }
