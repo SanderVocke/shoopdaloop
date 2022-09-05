@@ -205,7 +205,6 @@ ApplicationWindow {
             width: childrenRect.width + x_spacing
             height: childrenRect.height + y_spacing
             color: Material.background
-            border.width: 2
 
             Item {
                 width: childrenRect.width
