@@ -1,13 +1,15 @@
-from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty
+from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot
 
 from ..LoopState import LoopState
+
+import pprint
 
 class SLLooperState(QObject):
     def __init__(self, parent=None):
         super(SLLooperState, self).__init__(parent)
         self._length = 1.0
         self._pos = 0.0
-        self._active = False
+        self._connected = False
         self._state = LoopState.Unknown.value
     
     # length: loop length in seconds
@@ -32,20 +34,20 @@ class SLLooperState(QObject):
             self._pos = p
             self.posChanged.emit(p)
     
-    # active (meaning: loop exists in SL)
-    activeChanged = pyqtSignal(bool)
-    @pyqtProperty(bool, notify=activeChanged)
-    def active(self):
-        return self._active
-    @active.setter
-    def active(self, p):
-        if self._active != p:
-            self._active = p
-            self.activeChanged.emit(p)
+    # connected (meaning: loop exists in SL)
+    connectedChanged = pyqtSignal(bool)
+    @pyqtProperty(bool, notify=connectedChanged)
+    def connected(self):
+        return self._connected
+    @connected.setter
+    def connected(self, p):
+        if self._connected != p:
+            self._connected = p
+            self.connectedChanged.emit(p)
 
     # state: see SL OSC documentation for possible state values
     stateChanged = pyqtSignal(int)
-    @pyqtProperty(str, notify=stateChanged)
+    @pyqtProperty(int, notify=stateChanged)
     def state(self):
         return self._state
     @state.setter
@@ -53,3 +55,10 @@ class SLLooperState(QObject):
         if self._state != s:
             self._state = s
             self.stateChanged.emit(s)
+
+    @pyqtSlot(QObject)
+    def connect_manager(self, manager):
+        manager.lengthChanged.connect(lambda l : self.length(l))
+        manager.posChanged.connect(lambda p : self.pos(p))
+        manager.connectedChanged.connect(lambda c : self.connected(c))
+        manager.stateChanged.connect(lambda s : self.state(s))

@@ -42,29 +42,38 @@ ApplicationWindow {
     }
 
     component LoopStateIcon : MaterialDesignIcon {
-        property string state
+        property int state
+        property bool connected
         name: 'help-circle'
         color: 'red'
 
         function getName() {
+            if(!connected) {
+                return 'cancel'
+            }
+
             switch(state) {
             case LoopState.LoopState.Playing:
                 return 'play'
             case LoopState.LoopState.Recording:
-                return 'record'
+                return 'record-rec'
             default:
                 return 'help-circle'
             }
         }
 
         function getColor() {
+            if(!connected) {
+                return 'grey'
+            }
+
             switch(state) {
             case LoopState.LoopState.Playing:
                 return 'green'
             case LoopState.LoopState.Recording:
                 return 'red'
             default:
-                return 'red'
+                return 'grey'
             }
         }
 
@@ -78,6 +87,10 @@ ApplicationWindow {
     component LoopWidget : Item {
         property int loop_idx
         property var osc_link_obj
+        property bool is_selected
+        signal selected()
+
+        id : widget
 
         width: childrenRect.width
         height: childrenRect.height
@@ -90,56 +103,70 @@ ApplicationWindow {
             id: looper_mgr
             sl_looper_index: loop_idx
         }
-        Connections {
-            target: osc_link_obj
-            function onReceived(msg) { looper_mgr.onOscReceived(msg) }
-        }
-        Connections {
-            target: looper_mgr
-            function onLengthChanged(len) { looper_state.length = len }
-            function onPosChanged(pos) { looper_state.pos = pos }
-            function onActiveChanged(active) { looper_state.active = active }
-            function onSendOscExpectResponse(msg, ret) { osc_link_obj.send_expect_response(msg, ret) }
-            function onSendOsc(msg) { osc_link_obj.send(msg) }
-        }
 
         // Initialization
         Component.onCompleted: {
-            looper_mgr.setup_sync()
+            looper_state.connect_manager(looper_mgr)
+            looper_mgr.connect_osc_link(osc_link)
+            looper_mgr.start_sync()
         }
 
         // UI
-        //LoopProgressIndicator {
-        //    id: progress
-        //    length: looper_state.length
-        //    pos: looper_state.pos
-        //    active: looper_state.active
-        //}
         Rectangle {
             property int x_spacing: 16
             property int y_spacing: 10
 
-            width: childrenRect.width + x_spacing
-            height: childrenRect.height + y_spacing
-            color: Material.background
+            width: loop.width + x_spacing
+            height: loop.height + y_spacing
+            color: widget.is_selected ? Material.accent : Material.background
             border.color: Material.foreground
             border.width: 2
 
+            MouseArea {
+                x: 0
+                y: 0
+                width: loop.width + parent.x_spacing
+                height: loop.height + parent.y_spacing
+                onClicked: widget.selected()
+            }
+
             Item {
+                id : loop
                 width: childrenRect.width
                 height: childrenRect.height
                 x: parent.x_spacing/2
                 y: parent.y_spacing/2
 
                 Row {
+                    spacing: 5
                     LoopStateIcon {
-                        size: 32
+                        state: looper_state.state
+                        connected: looper_state.connected
+                        size: 24
+                        y: (loop.height - height)/2
                     }
                     TextField {
-                        width: 80
+                        placeholderText: "loop"
+                        width: 60
+                        y: (loop.height - height)/2
                     }
                 }
             }
+        }
+    }
+
+    // The track control widget displays control buttons to control the
+    // (loops within a) track.
+    component TrackControlWidget : Item {
+        width: childrenRect.width
+        height: childrenRect.height
+
+        Slider {
+            orientation: Qt.Vertical
+            height: 120
+            from: 0.0
+            to: 1.0
+            value: 1.0
         }
     }
 
@@ -150,6 +177,7 @@ ApplicationWindow {
         property int num_loops
         property int first_index
         property int track_index
+        property int selected_loop
 
         width: childrenRect.width
         height: childrenRect.height
@@ -173,16 +201,26 @@ ApplicationWindow {
 
                     TextField {
                         placeholderText: qsTr("Track " + track.track_index.toString())
+                        width: 90
                     }
 
                     Repeater {
                         model: track.num_loops
                         id: loops
+                        width: childrenRect.width
+                        height: childrenRect.height
 
                         LoopWidget {
                             loop_idx: track.first_index + index
                             osc_link_obj: osc_link
+                            is_selected: track.selected_loop == index
+
+                            onSelected: track.selected_loop = index
                         }
+                    }
+
+                    TrackControlWidget {
+
                     }
                 }
             }
@@ -230,8 +268,18 @@ ApplicationWindow {
         }
     }
 
-    TracksWidget {
-        num_tracks: 8
-        loops_per_track: 8
+    Column {
+        Image {
+            x: 40
+            height: 100
+            width: height / sourceSize.height * sourceSize.width
+            source: 'resources/shoopdawhoop.png'
+            smooth: true
+        }
+
+        TracksWidget {
+            num_tracks: 8
+            loops_per_track: 8
+        }
     }
 }
