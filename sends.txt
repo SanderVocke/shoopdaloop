@@ -1,0 +1,17 @@
+Using 2 2-channel loops:
+
+RECORD:
+- dry loop is in RECORD
+- wet loop is in RECORD, in gain @ 100%
+
+MOD FX:
+- dry loop is in PLAYBACK, out gain @ 100%
+- wet loop is in RECORD, in gain @ 100%
+
+PLAYBACK:
+- dry loop is in PAUSE
+- wet loop is in PLAYBACK
+
+OVERDUB:
+- dry loop is in OVERDUB
+- wet loop is in RECORD

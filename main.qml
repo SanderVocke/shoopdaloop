@@ -113,14 +113,14 @@ ApplicationWindow {
 
         // UI
         Rectangle {
-            property int x_spacing: 16
-            property int y_spacing: 10
+            property int x_spacing: 8
+            property int y_spacing: 0
 
             width: loop.width + x_spacing
             height: loop.height + y_spacing
             color: widget.is_selected ? Material.accent : Material.background
             border.color: Material.foreground
-            border.width: 2
+            border.width: 1
 
             MouseArea {
                 x: 0
@@ -146,8 +146,9 @@ ApplicationWindow {
                         y: (loop.height - height)/2
                     }
                     TextField {
-                        placeholderText: "loop"
                         width: 60
+                        height: 40
+                        font.pixelSize: 15
                         y: (loop.height - height)/2
                     }
                 }
@@ -161,12 +162,144 @@ ApplicationWindow {
         width: childrenRect.width
         height: childrenRect.height
 
-        Slider {
-            orientation: Qt.Vertical
-            height: 120
-            from: 0.0
-            to: 1.0
-            value: 1.0
+        Column {
+            spacing: 0
+            width: 100
+
+            Slider {
+                id: volume
+                x: 0
+                y: 0
+
+                orientation: Qt.Horizontal
+                width: parent.width
+                height: 20
+                from: 0.0
+                to: 1.0
+                value: 1.0
+            }
+            Slider {
+                id: pan
+                x: 0
+                y: 0
+
+                orientation: Qt.Horizontal
+                width: parent.width
+                height: 20
+                from: -1.0
+                to: 1.0
+                value: 0.0
+            }
+
+            Column {
+                width: childrenRect.width
+                height: childrenRect.height
+                x: (parent.width - width) / 2
+
+                spacing: 2
+
+                Row {
+                    spacing: 2
+
+                    Button {
+                        id : record
+                        width: 30
+                        height: 30
+                        MaterialDesignIcon {
+                            size: parent.width - 10
+                            anchors.centerIn: parent
+                            name: 'record'
+                            color: 'red'
+                        }
+                    }
+                    Button {
+                        id : pause
+                        property bool paused: true
+                        width: 30
+                        height: 30
+                        MaterialDesignIcon {
+                            size: parent.width - 10
+                            anchors.centerIn: parent
+                            name: pause.paused ? 'play' : 'pause'
+                            color: Material.foreground
+                        }
+                    }
+                    Button {
+                        id : mute
+                        property bool muted: false
+                        width: 30
+                        height: 30
+                        MaterialDesignIcon {
+                            size: parent.width - 10
+                            anchors.centerIn: parent
+                            name: mute.muted ? 'volume-mute' : 'volume-high'
+                            color: mute.muted ? 'grey' : Material.foreground
+                        }
+                    }
+                }
+
+                Rectangle {
+                    width: childrenRect.width
+                    height: childrenRect.height
+                    color: 'grey'
+
+                    Column {
+                        width: childrenRect.width
+                        height: childrenRect.height
+                        spacing: 0
+
+                        Text {
+                            text: "fx proc"
+                            color: Material.foreground
+                            width: 50
+                            topPadding: 2
+                            leftPadding: 5
+                            bottomPadding: 0
+                            font.pixelSize: 15
+                        }
+
+                        Row {
+                            width: childrenRect.width
+                            height: childrenRect.height
+                            spacing: 2
+
+                            Button {
+                                id : fx_off
+                                width: 30
+                                height: 30
+                                MaterialDesignIcon {
+                                    size: parent.width - 10
+                                    anchors.centerIn: parent
+                                    name: 'close'
+                                    color: Material.foreground
+                                }
+                            }
+                            Button {
+                                id : fx_live
+                                width: 30
+                                height: 30
+                                MaterialDesignIcon {
+                                    size: parent.width - 10
+                                    anchors.centerIn: parent
+                                    name: 'record'
+                                    color: Material.foreground
+                                }
+                            }
+                            Button {
+                                id : fx_cached
+                                width: 30
+                                height: 30
+                                MaterialDesignIcon {
+                                    size: parent.width - 10
+                                    anchors.centerIn: parent
+                                    name: 'sd'
+                                    color: Material.foreground
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -183,8 +316,8 @@ ApplicationWindow {
         height: childrenRect.height
 
         Rectangle {
-            property int x_spacing: 16
-            property int y_spacing: 10
+            property int x_spacing: 8
+            property int y_spacing: 4
 
             width: childrenRect.width + x_spacing
             height: childrenRect.height + y_spacing
@@ -197,7 +330,7 @@ ApplicationWindow {
                 y: parent.y_spacing/2
 
                 Column {
-                    spacing: 5
+                    spacing: 2
 
                     TextField {
                         placeholderText: qsTr("Track " + track.track_index.toString())
@@ -251,7 +384,7 @@ ApplicationWindow {
                 y: parent.y_spacing/2
 
                 Row {
-                    spacing: 5
+                    spacing: 3
 
                     Repeater {
                         model: tracks.num_tracks
@@ -271,7 +404,7 @@ ApplicationWindow {
     Column {
         Image {
             x: 40
-            height: 100
+            height: 60
             width: height / sourceSize.height * sourceSize.width
             source: 'resources/shoopdawhoop.png'
             smooth: true
