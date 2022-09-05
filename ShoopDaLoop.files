@@ -3,6 +3,7 @@ ShoopDaLoop.cxxflags
 lib/LoopState.js
 lib/LoopState.py
 lib/__init__.py
+lib/q_objects/SLGlobalManager.py
 lib/q_objects/SLLooperManager.py
 lib/q_objects/SLLooperState.py
 lib/q_objects/SooperLooperOSCLink.py

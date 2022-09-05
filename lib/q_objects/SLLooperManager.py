@@ -9,7 +9,7 @@ class SLLooperManager(QObject):
     slLooperIndexChanged = pyqtSignal(int)
     slLooperCountChanged = pyqtSignal(int)
     connectedChanged = pyqtSignal(bool)
-    stateChanged = pyqtSignal(str)
+    stateChanged = pyqtSignal(int)
 
     # Signal used to send OSC messages to SooperLooper
     sendOscExpectResponse = pyqtSignal(list, str)
@@ -26,11 +26,11 @@ class SLLooperManager(QObject):
     @pyqtSlot()
     def start_sync(self):
         # Register for repeated updates on "continuous" signals
-        for ctl in ['loop_len', 'loop_pos']:
+        for ctl in ['loop_len', 'loop_pos', 'state', 'is_soloed']:
             self.sendOscExpectResponse.emit(['/sl/{}/register_auto_update'.format(self._sl_looper_index), ctl, 100], '/sl/{}/get'.format(self._sl_looper_index))
         
         # Register for change updates
-        for ctl in ['state', 'is_soloed']:
+        for ctl in []: # ['state', 'is_soloed']:
             self.sendOscExpectResponse.emit(['/sl/{}/register_update'.format(self._sl_looper_index), ctl], '/sl/{}/get'.format(self._sl_looper_index))
         # Also for loop count, url, version
         self.sendOscExpectResponse.emit(['/register'], '/hostinfo')
@@ -92,7 +92,7 @@ class SLLooperManager(QObject):
                 elif control == 'loop_len':
                     self.lengthChanged.emit(float(value))
                 elif control == 'state':
-                    self.stateChanged.emit(value)
+                    self.stateChanged.emit(round(float(value)))
         elif msg[0] == '/hostinfo' and len(msg) == 4:
             self.sl_looper_count = int(msg[3])
     
@@ -100,17 +100,24 @@ class SLLooperManager(QObject):
     def doTrigger(self):
         self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'trigger'])
 
-        # msg is e.g. ['/some/path/stuff', 0, 1, 'textarg']
-        @pyqtSlot(list)
-        def send(self, msg):
-            self._snd_queue.put(msg)
+    @pyqtSlot()
+    def doPlayPause(self):
+        self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'pause'])
 
-        # Use for messages that expect a response from SooperLooper.
-        @pyqtSlot(list, str)
-        def send_expect_response(self, msg, return_path):
-            self.send(msg + ['osc.udp://{}:{}/'.format(self._rcv_ip, self._rcv_port), return_path])
+    @pyqtSlot()
+    def doRecord(self):
+        self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'record'])
+
+    @pyqtSlot()
+    def doMute(self):
+        self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'mute'])
+
+    @pyqtSlot()
+    def doUnmute(self):
+        self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'unmute'])
 
     @pyqtSlot(QObject)
     def connect_osc_link(self, link):
+        link.received.connect(self.onOscReceived)
         self.sendOscExpectResponse.connect(link.send_expect_response)
         self.sendOsc.connect(link.send)

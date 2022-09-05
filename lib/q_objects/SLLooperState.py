@@ -2,6 +2,8 @@ from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot
 
 from ..LoopState import LoopState
 
+from functools import partial
+
 import pprint
 
 class SLLooperState(QObject):
@@ -58,7 +60,7 @@ class SLLooperState(QObject):
 
     @pyqtSlot(QObject)
     def connect_manager(self, manager):
-        manager.lengthChanged.connect(lambda l : self.length(l))
-        manager.posChanged.connect(lambda p : self.pos(p))
-        manager.connectedChanged.connect(lambda c : self.connected(c))
-        manager.stateChanged.connect(lambda s : self.state(s))
+        manager.lengthChanged.connect(partial(SLLooperState.length.fset, self))
+        manager.posChanged.connect(partial(SLLooperState.pos.fset, self))
+        manager.connectedChanged.connect(partial(SLLooperState.connected.fset, self))
+        manager.stateChanged.connect(partial(SLLooperState.state.fset, self))

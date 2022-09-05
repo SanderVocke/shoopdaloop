@@ -11,7 +11,7 @@ import SLLooperManager 1.0
 ApplicationWindow {
     visible: true
     width: 1200
-    height: 800
+    height: 700
     title: "ShoopDaLoop"
 
     Material.theme: Material.Dark
@@ -57,6 +57,8 @@ ApplicationWindow {
                 return 'play'
             case LoopState.LoopState.Recording:
                 return 'record-rec'
+            case LoopState.LoopState.Paused:
+                return 'pause'
             default:
                 return 'help-circle'
             }
@@ -72,6 +74,8 @@ ApplicationWindow {
                 return 'green'
             case LoopState.LoopState.Recording:
                 return 'red'
+            case LoopState.LoopState.Paused:
+                return 'black'
             default:
                 return 'grey'
             }
@@ -88,6 +92,8 @@ ApplicationWindow {
         property int loop_idx
         property var osc_link_obj
         property bool is_selected
+        property var manager: looper_mgr
+        property var state_mgr: looper_state
         signal selected()
 
         id : widget
@@ -159,8 +165,18 @@ ApplicationWindow {
     // The track control widget displays control buttons to control the
     // (loops within a) track.
     component TrackControlWidget : Item {
+        id: trackctl
         width: childrenRect.width
         height: childrenRect.height
+
+        signal pause()
+        signal unpause()
+        signal mute()
+        signal unmute()
+        signal record()
+
+        property bool paused
+        property bool muted
 
         Column {
             spacing: 0
@@ -211,30 +227,31 @@ ApplicationWindow {
                             name: 'record'
                             color: 'red'
                         }
+                        onClicked: { trackctl.record() }
                     }
                     Button {
                         id : pause
-                        property bool paused: true
                         width: 30
                         height: 30
                         MaterialDesignIcon {
                             size: parent.width - 10
                             anchors.centerIn: parent
-                            name: pause.paused ? 'play' : 'pause'
+                            name: trackctl.paused ? 'play' : 'pause'
                             color: Material.foreground
                         }
+                        onClicked: { if(pause.paused) {trackctl.unpause()} else {trackctl.pause()} }
                     }
                     Button {
                         id : mute
-                        property bool muted: false
                         width: 30
                         height: 30
                         MaterialDesignIcon {
                             size: parent.width - 10
                             anchors.centerIn: parent
-                            name: mute.muted ? 'volume-mute' : 'volume-high'
-                            color: mute.muted ? 'grey' : Material.foreground
+                            name: trackctl.muted ? 'volume-mute' : 'volume-high'
+                            color: trackctl.muted ? 'grey' : Material.foreground
                         }
+                        onClicked: { if(mute.muted) {trackctl.unmute()} else {trackctl.mute()} }
                     }
                 }
 
@@ -346,14 +363,25 @@ ApplicationWindow {
                         LoopWidget {
                             loop_idx: track.first_index + index
                             osc_link_obj: osc_link
-                            is_selected: track.selected_loop == index
+                            is_selected: track.selected_loop === index
 
                             onSelected: track.selected_loop = index
                         }
                     }
 
                     TrackControlWidget {
+                        id: trackctlwidget
+                        paused: loops.itemAt(track.selected_loop).state_mgr.state === LoopState.LoopState.Paused
+                        muted: loops.itemAt(track.selected_loop).state_mgr.state === LoopState.LoopState.Muted
+                    }
 
+                    Connections {
+                        target: trackctlwidget
+                        function onRecord() { loops.itemAt(track.selected_loop).manager.doRecord() }
+                        function onPause() { loops.itemAt(track.selected_loop).manager.doPlayPause() }
+                        function onUnpause() { loops.itemAt(track.selected_loop).manager.doPlayPause() }
+                        function onMute() { loops.itemAt(track.selected_loop).manager.doMute() }
+                        function doUnmute() { loops.itemAt(track.selected_loop).manager.doUnmute() }
                     }
                 }
             }
@@ -453,6 +481,8 @@ ApplicationWindow {
 
                     ScrollView {
                         anchors.fill: parent
+                        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                        ScrollBar.vertical.policy: ScrollBar.AsNeeded
 
                         Column {
                             spacing: 1
@@ -465,7 +495,7 @@ ApplicationWindow {
                                     width: parent.width
                                     height: 20
                                     name: sceneswidget.items[index].name
-                                    selected: index == sceneswidget.selected
+                                    selected: index === sceneswidget.selected
                                 }
                             }
                         }
