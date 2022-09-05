@@ -402,49 +402,72 @@ ApplicationWindow {
         }
     }
 
-    Component {
-        id: scene_delegate
+    component SceneWidget : Rectangle {
+        property bool selected
+        property string name
 
-        Rectangle {
-            width: childrenRect.width
-            height: childrenRect.height
-            Text {
-                text: name
-            }
+        color: selected ? Material.foreground : Material.background
+        border.color: Material.foreground
+        border.width: 1
+        radius: 5
+
+        Text {
+            text: name
+            color: selected ? Material.background : Material.foreground
+            anchors.centerIn: parent
         }
     }
 
-    component ScenesView: ListView {
-        delegate: scene_delegate
-    }
-
     component ScenesWidget: Item {
+        id: sceneswidget
+
+        width: 100
+        height: 100
+
+        property int selected: 0
+        property var items: [
+            { name: "Awesome" },
+            { name: "Bawesome" }
+        ]
+
         Rectangle {
+            width: parent.width
+            height: parent.height
             property int x_spacing: 8
             property int y_spacing: 4
 
-            width: parent.width
-            height: parent.height
             color: "#555555"
 
             Item {
-                width: childrenRect.width
-                height: childrenRect.height
+                width: parent.width - parent.x_spacing
+                height: parent.height - parent.y_spacing
                 x: parent.x_spacing/2
                 y: parent.y_spacing/2
 
-                ScenesView {
-                    width: childrenRect.width
-                    height: childrenRect.height
+                Rectangle {
+                    width: parent.width
+                    height: 300
+                    border.color: Material.foreground
+                    border.width: 3
+                    color: 'transparent'
 
-                    model: ListModel {
-                        id: model_item
+                    ScrollView {
+                        anchors.fill: parent
 
-                        ListElement {
-                            name: 'A'
-                        }
-                        ListElement {
-                            name: 'B'
+                        Column {
+                            spacing: 1
+                            anchors.fill: parent
+
+                            Repeater {
+                                model: sceneswidget.items.length
+
+                                SceneWidget {
+                                    width: parent.width
+                                    height: 20
+                                    name: sceneswidget.items[index].name
+                                    selected: index == sceneswidget.selected
+                                }
+                            }
                         }
                     }
                 }
