@@ -1,15 +1,11 @@
 import sys
-import time
 
 from PyQt6.QtGui import QGuiApplication
 from PyQt6.QtQml import QQmlApplicationEngine, qmlRegisterType
-from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, QTimer
 
-from q_objects.SLLooperState import SLLooperState
-from q_objects.SLLooperManager import SLLooperManager
-from q_objects.SooperLooperOSCLink import SooperLooperOSCLink
-
-import pprint
+from lib.q_objects.SLLooperState import SLLooperState
+from lib.q_objects.SLLooperManager import SLLooperManager
+from lib.q_objects.SooperLooperOSCLink import SooperLooperOSCLink
 
 app = QGuiApplication(sys.argv)
 

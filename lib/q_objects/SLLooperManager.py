@@ -9,6 +9,7 @@ class SLLooperManager(QObject):
     slLooperIndexChanged = pyqtSignal(int)
     slLooperCountChanged = pyqtSignal(int)
     activeChanged = pyqtSignal(bool)
+    stateChanged = pyqtSignal(str)
 
     # Signal used to send OSC messages to SooperLooper
     sendOscExpectResponse = pyqtSignal(list, str)
@@ -90,6 +91,8 @@ class SLLooperManager(QObject):
                     self.posChanged.emit(float(value))
                 elif control == 'loop_len':
                     self.lengthChanged.emit(float(value))
+                elif control == 'state':
+                    self.stateChanged.emit(value)
         elif msg[0] == '/hostinfo' and len(msg) == 4:
             self.sl_looper_count = int(msg[3])
     
