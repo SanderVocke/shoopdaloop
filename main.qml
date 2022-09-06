@@ -126,6 +126,7 @@ ApplicationWindow {
                 sections: shared.sections
                 selected_section: shared.selected_section
                 scene_names: shared.scene_names
+                track_names: shared.track_names
 
                 Connections {
                     function onRequest_change_section_scene(section, scene) { shared.change_section_scene(section, scene) }

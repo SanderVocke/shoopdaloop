@@ -175,7 +175,15 @@ Item {
                         color: Material.foreground
                         anchors.centerIn: parent
                     }
-                    onClicked: remove_selected_scene()
+                    onClicked: () => {
+                                   if(sceneswidget.selected_scene >= 0) {
+                                       // Remove the currently selected scene
+                                       request_remove_scene(sceneswidget.selected_scene)
+                                   } else if (sceneswidget.scenes.length > 0) {
+                                       // Remove the last scene in the list
+                                       request_remove_scene(sceneswidget.scenes.length - 1)
+                                   }
+                               }
                 }
             }
         }

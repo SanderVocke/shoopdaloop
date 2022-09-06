@@ -31,8 +31,8 @@ Item {
 
     // SEQUENCING STATE
     property var sections: [
-        { name: 'Section 1', scene_idx: -1 },
-        { name: 'Section 2', scene_idx: -1 }
+        { name: 'Section 1', scene_idx: -1, actions: []},
+        { name: 'Section 2', scene_idx: -1, actions: []}
     ]
     property int selected_section: -1
 

@@ -9,46 +9,13 @@ Rectangle {
     property var sections : []
     property int selected_section: -1
     property var scene_names: []
+    property var track_names: []
 
     signal request_change_section_scene(int section_idx, int scene_idx)
     signal request_rename_section(int section_idx, string name)
     signal request_select_section(int section_idx)
-
-//    function onSelectedSceneChanged(name) {
-//        if (items[selected_section].scene_name !== name) {
-//            selected_section = -1
-//            selected_sectionChanged()
-//        }
-//    }
-
-//    function onSceneRenamed(old_name, new_name) {
-//        var idx
-//        var items_changed = false
-//        for (idx in items) {
-//            if (items[idx].scene_name === old_name) {
-//                items[idx].scene_name = new_name
-//                items_changed = true
-//            }
-//        }
-//        var available_changed = false
-//        for (idx in available_scene_names) {
-//            if(available_scene_names[idx] === old_name) {
-//                available_scene_names[idx] = new_name
-//                available_changed = true
-//            }
-//        }
-//        if (items_changed) { itemsChanged() }
-//        if (available_changed) { available_scene_namesChanged() }
-//    }
-
-//    function onSelected_sectionChanged() {
-//        if (selected_section === -1) {
-//            console.log('select', '')
-//        } else {
-//            select_scene(items[selected_section].scene_name)
-//            console.log('select', items[selected_section].scene_name)
-//        }
-//    }
+    signal request_add_action(int section_idx, string type, int track_idx)
+    signal request_remove_action(int section_idx, string type, int track_idx)
 
     Item {
         anchors.fill: parent
@@ -119,6 +86,8 @@ Rectangle {
                             name: widget.sections[index].name
                             available_scene_names: widget.scene_names
                             selected_scene: widget.sections[index].scene_idx
+                            track_names: widget.track_names
+                            actions: widget.sections[index].actions
 
                             anchors {
                                 top: parent.top
@@ -137,6 +106,8 @@ Rectangle {
                                     }
                                 }
                                 function onRequest_select_scene(idx) { widget.request_change_section_scene(index, idx) }
+                                function onRequest_add_action(type, track_idx) { widget.request_add_action(index, type, track_idx) }
+                                function onRequest_remove_action(type, track_idx) { widget.request_remove_action(index, type, track_idx) }
                             }
                         }
                     }
@@ -145,17 +116,85 @@ Rectangle {
         }
     }
 
+    // Represent one action visually.
+    component ActionIcon : MaterialDesignIcon {
+        property var action
+
+        name: action.type === 'record' ? 'record' :
+              action.type === 'fx_live'? 'effect' : ''
+
+        color: action.type === 'record' ? 'red' :
+               action.type === 'fx_live' ? 'blue' : ''
+    }
+
+    // Represent the set of actions to be taken for a given section in the timeline.
+    component ActionsWidget : Item {
+        id: act_widget
+        property var actions: []
+        property int icon_size: 32
+
+        signal clicked()
+
+        Button {
+            anchors {
+                fill: parent
+            }
+
+            onClicked: act_widget.clicked()
+
+            Text {
+                id: btlabel
+                text: 'Act'
+                color: Material.foreground
+                font.pixelSize: 12
+                anchors {
+                    left: parent.left
+                    top: parent.top
+                    bottom: parent.bottom
+                    leftMargin: act_widget.actions.length === 0 ? 30 : 10
+                }
+                verticalAlignment: Text.AlignVCenter
+                width: 40
+            }
+
+            Repeater {
+                model: actions.length
+                anchors {
+                    left: btlabel.right
+                    right: parent.right
+                    top: parent.top
+                    bottom: parent.bottom
+                }
+
+                ActionIcon {
+                    action: actions[index]
+                    size: act_widget.icon_size
+                    anchors {
+                        left: btlabel.right
+                        leftMargin: index * 10
+                        verticalCenter: parent.verticalCenter
+                    }
+                }
+            }
+        }
+    }
+
+    // A widget to represent a single section item on the sequencing timeline.
     component ScriptItemWidget : Rectangle {
         id: scriptitem
 
         property bool is_selected
         property string name
         property var available_scene_names
+        property var track_names
+        property var actions
         property int selected_scene: -1
 
         signal clicked()
         signal request_rename(string name)
         signal request_select_scene(int scene)
+        signal request_add_action(string type, int track)
+        signal request_remove_action(string type, int track)
 
         color: is_selected ? 'grey' : Material.background
         border.color: is_selected ? 'red' : 'grey'
@@ -199,10 +238,68 @@ Rectangle {
             font.pixelSize: 12
             currentIndex: selected_scene + 1
 
-            model : ['(none)'].concat(available_scene_names)
+            model : ['(scene)'].concat(available_scene_names)
             onModelChanged: () => { selected_sceneChanged() }
             onActivated: (idx) => {
                 scriptitem.request_select_scene(idx - 1)
+            }
+        }
+
+        ActionsWidget {
+            anchors {
+                top: combo.bottom
+                left: parent.left
+                right: parent.right
+                bottom: parent.bottom
+                leftMargin: 3
+                rightMargin: 3
+            }
+
+            id: actionswidget
+
+            actions: [['record', 1], ['record', 2]]
+            icon_size: 25
+
+            onClicked: () => { console.log(scriptitem.track_names); contextmenu.popup() }
+
+            Menu {
+                id: contextmenu
+                Menu {
+                    title: 'Record'
+                    Repeater {
+                        model: scriptitem.track_names ? scriptitem.track_names.length : 0
+
+                        MenuItem {
+                            text: scriptitem.track_names[index]
+
+                            function is_recorded() {
+                                var idx
+                                for (idx in actionswidget.actions) {
+                                    if (actionswidget.actions[idx][0] === 'record' &&
+                                        actionswidget.actions[idx][1] === index) {
+                                        return true
+                                    }
+                                }
+                                return false
+                            }
+
+                            MaterialDesignIcon {
+                                name: 'record'
+                                color: 'red'
+                                visible: is_recorded()
+
+                                anchors {
+                                    verticalCenter: parent.verticalCenter
+                                    right: parent.right
+                                    rightMargin: 20
+                                }
+                            }
+
+                            //checkable: true
+                        }
+                    }
+                }
+                MenuItem { text: "FX" }
             }
         }
     }
