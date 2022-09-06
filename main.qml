@@ -62,6 +62,19 @@ ApplicationWindow {
                 }
 
                 id: scenes
+
+                Connections {
+                    function onScene_renamed(o, n) { scripting.onSceneRenamed(o, n) }
+                    function onItemsChanged() {
+                        var idx
+                        var names = []
+                        for (idx in scenes.items) {
+                            names.push(scenes.items[idx].name)
+                        }
+                        scripting.available_scene_names = names
+                        scripting.available_scene_namesChanged()
+                    }
+                }
             }
         }
 
@@ -99,12 +112,17 @@ ApplicationWindow {
             }
 
             ScriptingWidget {
+                id: scripting
                 anchors {
                     top: parent.top
                     bottom: parent.bottom
                     left: logo.right
                     leftMargin: 10
                     right: parent.right
+                }
+
+                Connections {
+                    function onSelect_scene(name) { scenes.select_scene_by_name(name); }
                 }
             }
         }

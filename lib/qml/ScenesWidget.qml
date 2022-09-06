@@ -65,6 +65,22 @@ Item {
             itemsChanged()
         }
     }
+    function select_scene_by_name(name) {
+        if (name === '') {
+            selected_scene = -1;
+            selected_sceneChanged()
+        } else {
+            var idx
+            for(idx in items) {
+                if (items[idx].name === name) {
+                    selected_scene = idx;
+                    selected_sceneChanged()
+                }
+            }
+        }
+    }
+
+    signal scene_renamed(string old_name, string new_name)
 
     // Arrays of [track, loop]
     property var referenced_loops_selected_scene: get_referenced_loops_for_selected_scene()
@@ -143,10 +159,25 @@ Item {
                                 is_selected: index === sceneswidget.selected_scene
 
                                 Connections {
-                                    function onClicked() { sceneswidget.selected_scene = index }
-                                    function onHoverEntered() { sceneswidget.hovered_scene = index }
-                                    function onHoverExited() { if (sceneswidget.hovered_scene === index) { sceneswidget.hovered_scene = -1; } }
-                                    function onNameEntered(name) { sceneswidget.items[index].name = name; sceneswidget.itemsChanged() }
+                                    function onClicked() {
+                                        if (sceneswidget.selected_scene === index) {
+                                            sceneswidget.selected_scene = -1
+                                            sceneswidget.selected_sceneChanged()
+                                        } else {
+                                            sceneswidget.selected_scene = index
+                                            sceneswidget.selected_sceneChanged()
+                                        }
+                                    }
+                                    function onHoverEntered() { sceneswidget.hovered_scene = index; sceneswidget.hovered_sceneChanged() }
+                                    function onHoverExited() { if (sceneswidget.hovered_scene === index) { sceneswidget.hovered_scene = -1; sceneswidget.hovered_sceneChanged()} }
+                                    function onNameEntered(name) {
+                                        var old_name = sceneswidget.items[index].name;
+                                        if (name !== old_name) {
+                                            sceneswidget.items[index].name = name;
+                                            sceneswidget.scene_renamed(old_name, name);
+                                            sceneswidget.itemsChanged()
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -201,8 +232,11 @@ Item {
         signal hoverExited()
         signal nameEntered(string name)
 
-        color: is_selected ? Material.foreground : Material.background
-        border.color: marea.containsMouse ? 'blue' : is_selected ? 'red' : 'grey'
+        color: is_selected ? 'grey' : Material.background
+        border.color: marea.containsMouse && is_selected ? 'red' :
+                      marea.containsMouse ? 'blue' :
+                      is_selected ? 'red' :
+                      'grey'
         border.width: 2
 
         MouseArea {
@@ -215,9 +249,9 @@ Item {
         }
 
         TextField {
-            width: parent.width - 30
+            width: parent.width - 40
             anchors.horizontalCenter: parent.horizontalCenter
-            anchors.horizontalCenterOffset: 8
+            anchors.horizontalCenterOffset: 18
 
             text: name
             color: is_selected ? Material.background : Material.foreground

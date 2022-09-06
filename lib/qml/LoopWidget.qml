@@ -51,7 +51,8 @@ Item {
         width: loop.width + x_spacing
         height: loop.height + y_spacing
         color: widget.is_selected ? Material.accent : Material.background
-        border.color: widget.is_in_hovered_scene ? 'blue' :
+        border.color: widget.is_in_hovered_scene && widget.is_in_selected_scene ? 'red' :
+                      widget.is_in_hovered_scene ? 'blue' :
                       widget.is_in_selected_scene ? 'red' :
                       widget.is_selected ? Material.foreground :
                       'grey'
