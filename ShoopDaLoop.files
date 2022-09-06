@@ -13,7 +13,13 @@ lib/q_objects/__pycache__/SLLooperManager.cpython-310.pyc
 lib/q_objects/__pycache__/SLLooperState.cpython-310.pyc
 lib/q_objects/__pycache__/SooperLooperOSCLink.cpython-310.pyc
 lib/q_objects/__pycache__/__init__.cpython-310.pyc
+lib/qml/LoopWidget.qml
 lib/qml/MaterialDesignIcon.qml
+lib/qml/ScenesWidget.qml
+lib/qml/ScriptingWidget.qml
+lib/qml/TrackControlWidget.qml
+lib/qml/TrackWidget.qml
+lib/qml/TracksWidget.qml
 main.py
 main.qml
 q_objects/SLLooperManager.py
