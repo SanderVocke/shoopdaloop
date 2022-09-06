@@ -8,15 +8,16 @@ Item {
     width: childrenRect.width
     height: childrenRect.height
 
-    property int num_tracks
+    property var track_names: []
     property int loops_per_track
-    property var master_loop: [0, 0] // track index, loop index in track
+    property var master_loop: [0, 0] // track index, loop index in track TODO move to shared state
 
     //Arrays of [track, loop]
     property var loops_of_selected_scene: []
     property var loops_of_hovered_scene: []
 
-    signal set_loop_in_scene(int track, int loop)
+    signal request_bind_loop_to_scene(int track, int loop)
+    signal request_rename(int track, string name)
 
     Rectangle {
         property int x_spacing: 0
@@ -37,10 +38,11 @@ Item {
                 spacing: 3
 
                 Repeater {
-                    model: tracks.num_tracks
+                    model: tracks.track_names ? tracks.track_names.length : 0
                     id: tracks_repeater
 
                     TrackWidget {
+                        name: tracks.track_names[index]
                         num_loops: tracks.loops_per_track
                         first_index: index * tracks.loops_per_track
                         track_index: index + 1
@@ -56,7 +58,8 @@ Item {
                         loops_of_selected_scene: unpack(tracks.loops_of_selected_scene)
                         loops_of_hovered_scene: unpack(tracks.loops_of_hovered_scene)
 
-                        onSet_loop_in_scene: (l) => tracks.set_loop_in_scene(index, l)
+                        onSet_loop_in_scene: (l) => tracks.request_bind_loop_to_scene(index, l)
+                        onRenamed: (name) => tracks.request_rename(index, name)
                     }
                 }
             }

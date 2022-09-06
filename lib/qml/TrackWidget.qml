@@ -13,6 +13,7 @@ Item {
     property int track_index
     property int selected_loop
     property int maybe_master_loop: -1 //-1 is none
+    property string name: ''
 
     // Array of loop idxs
     property var loops_of_selected_scene: []
@@ -22,6 +23,7 @@ Item {
     height: childrenRect.height
 
     signal set_loop_in_scene(int idx)
+    signal renamed(string name)
 
     Rectangle {
         property int x_spacing: 8
@@ -41,11 +43,14 @@ Item {
                 spacing: 2
 
                 TextField {
-                    placeholderText: qsTr("Track " + track.track_index.toString())
+                    text: track.name
                     width: 90
                     font.pixelSize: 15
 
-                    onEditingFinished: background_focus.forceActiveFocus()
+                    onEditingFinished: () => {
+                                           background_focus.forceActiveFocus()
+                                           track.renamed(text)
+                                       }
                 }
 
                 Repeater {

@@ -25,11 +25,12 @@ ApplicationWindow {
         onClicked: () => { forceActiveFocus() }
     }
 
-    Item {
+    ApplicationSharedState {
         anchors {
             fill: parent
             margins: 6
         }
+        id: shared
 
         Item {
             id: tracks_scenes_row
@@ -44,12 +45,15 @@ ApplicationWindow {
                 id: tracks_widget
                 anchors.top: parent.top
 
-                num_tracks: 8
+                track_names: shared.track_names
                 loops_per_track: 8
-                loops_of_selected_scene: scenes.referenced_loops_selected_scene
-                loops_of_hovered_scene: scenes.referenced_loops_hovered_scene
+                loops_of_selected_scene: shared.loops_of_selected_scene
+                loops_of_hovered_scene: shared.loops_of_hovered_scene
 
-                onSet_loop_in_scene: (track, loop) => { scenes.set_loop_in_current_scene(track, loop) }
+                Connections {
+                    function onRequest_bind_loop_to_scene(track, loop) { shared.bind_loop_to_current_scene(track, loop) }
+                    function onRequest_rename(track, name) { shared.rename_track(track, name) }
+                }
             }
 
             ScenesWidget {
@@ -62,18 +66,16 @@ ApplicationWindow {
                 }
 
                 id: scenes
+                scenes: shared.scenes
+                selected_scene: shared.selected_scene
+                hovered_scene: shared.hovered_scene
 
                 Connections {
-                    function onScene_renamed(o, n) { scripting.onSceneRenamed(o, n) }
-                    function onItemsChanged() {
-                        var idx
-                        var names = []
-                        for (idx in scenes.items) {
-                            names.push(scenes.items[idx].name)
-                        }
-                        scripting.available_scene_names = names
-                        scripting.available_scene_namesChanged()
-                    }
+                    function onRequest_rename_scene(idx, name) { shared.rename_scene(idx, name) }
+                    function onRequest_add_scene() { shared.add_scene() }
+                    function onRequest_remove_scene(idx) { shared.remove_scene(idx) }
+                    function onRequest_select_scene(idx) { shared.select_scene(idx) }
+                    function onRequest_hover_scene(idx) { shared.hover_scene(idx) }
                 }
             }
         }
@@ -121,8 +123,14 @@ ApplicationWindow {
                     right: parent.right
                 }
 
+                sections: shared.sections
+                selected_section: shared.selected_section
+                scene_names: shared.scene_names
+
                 Connections {
-                    function onSelect_scene(name) { scenes.select_scene_by_name(name); }
+                    function onRequest_change_section_scene(section, scene) { shared.change_section_scene(section, scene) }
+                    function onRequest_rename_section(idx, name) { shared.rename_section(idx, name) }
+                    function onRequest_select_section(idx) { shared.select_section(idx) }
                 }
             }
         }
