@@ -120,11 +120,11 @@ Rectangle {
     component ActionIcon : MaterialDesignIcon {
         property var action
 
-        name: action.type === 'record' ? 'record' :
-              action.type === 'fx_live'? 'effect' : ''
+        name: action[0] === 'record' ? 'record' :
+              action[0] === 'fx_live'? 'effect' : ''
 
-        color: action.type === 'record' ? 'red' :
-               action.type === 'fx_live' ? 'blue' : ''
+        color: action[0] === 'record' ? 'red' :
+               action[0] === 'fx_live' ? 'blue' : ''
     }
 
     // Represent the set of actions to be taken for a given section in the timeline.
@@ -257,10 +257,10 @@ Rectangle {
 
             id: actionswidget
 
-            actions: [['record', 1], ['record', 2]]
+            actions: scriptitem.actions
             icon_size: 25
 
-            onClicked: () => { console.log(scriptitem.track_names); contextmenu.popup() }
+            onClicked: () => { contextmenu.popup() }
 
             Menu {
                 id: contextmenu
@@ -273,14 +273,10 @@ Rectangle {
                             text: scriptitem.track_names[index]
 
                             function is_recorded() {
-                                var idx
-                                for (idx in actionswidget.actions) {
-                                    if (actionswidget.actions[idx][0] === 'record' &&
-                                        actionswidget.actions[idx][1] === index) {
-                                        return true
-                                    }
-                                }
-                                return false
+                                var set = new Set(actionswidget.actions)
+                                console.log('act', actionswidget.actions)
+                                console.log('ref', ['record', index])
+                                return set.has(['record', index])
                             }
 
                             MaterialDesignIcon {
@@ -295,11 +291,15 @@ Rectangle {
                                 }
                             }
 
-                            //checkable: true
+                            Connections {
+                                function onClicked() {
+                                    if(is_recorded()) { scriptitem.request_remove_action('record', index) }
+                                    else { scriptitem.request_add_action('record', index) }
+                                }
+                            }
                         }
                     }
                 }
-                MenuItem { text: "FX" }
             }
         }
     }

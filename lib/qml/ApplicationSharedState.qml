@@ -119,6 +119,26 @@ Item {
         track_namesChanged()
     }
 
+    function add_action(section, type, track) {
+        if (section >= 0 && section < sections.length) {
+            var set = new Set(sections[section].actions)
+            set.add([type, track])
+            sections[section].actions = Array.from(set)
+            sectionsChanged()
+        }
+    }
+
+    function remove_action(section, type, track) {
+        if (section >= 0 && section < sections.length) {
+            var set = new Set(sections[section].actions)
+            if (set.has([type, track])) {
+                set.delete([type, track])
+                sections[section].actions = Array.from(set)
+                sectionsChanged()
+            }
+        }
+    }
+
     function update_scene_names() {
         var names = []
         var idx

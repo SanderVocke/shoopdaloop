@@ -45,7 +45,7 @@ Item {
                 TextField {
                     text: track.name
                     width: 90
-                    font.pixelSize: 15
+                    font.pixelSize: 13
 
                     onEditingFinished: () => {
                                            background_focus.forceActiveFocus()

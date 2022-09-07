@@ -132,6 +132,8 @@ ApplicationWindow {
                     function onRequest_change_section_scene(section, scene) { shared.change_section_scene(section, scene) }
                     function onRequest_rename_section(idx, name) { shared.rename_section(idx, name) }
                     function onRequest_select_section(idx) { shared.select_section(idx) }
+                    function onRequest_add_action(section, type, track) { shared.add_action(section, type, track) }
+                    function onRequest_remove_action(section, type, track) { shared.remove_action(section, type, track) }
                 }
             }
         }
