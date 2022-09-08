@@ -81,11 +81,10 @@ Item {
     }
 
     function select_loop(track_idx, loop_idx) {
-        // If we are playing another loop, tell SL to switch
-        if(loop_idx >= 0 &&
-           [LoopState.LoopState.Muted, LoopState.LoopState.Off].includes(loop_managers[track_idx][loop_idx].state)) {
-            actions_on_loop_mgrs_in_track(track_idx, loop_idx, (mgr) => { mgr.doUnmute() }, (mgr) => { mgr.doMute() })
-        }
+        actions_on_loop_mgrs_in_track(track_idx, loop_idx,
+                                      (mgr) => { mgr.doUnmute() },
+                                      (mgr) => { mgr.doMute() }
+                                      )
 
         // Update everything else
         selected_loops[track_idx] = loop_idx
@@ -129,7 +128,6 @@ Item {
     }
 
     function select_scene(idx) {
-        console.log('select ' + idx.toString())
         selected_scene = idx
         selected_sceneChanged()
     }
@@ -140,9 +138,19 @@ Item {
     }
 
     function activate_scene(idx) {
+        var tracks_covered = []
+        // Activate all loops listed in the scene
         for (var lidx in scenes[idx].loops) {
             var lp = scenes[idx].loops[lidx]
             select_loop(lp[0], lp[1])
+            tracks_covered.push(parseInt(lp[0]))
+        }
+        // Deselect loops in any track that has no
+        // loop in this scene
+        for (var tidx in track_names) {
+            if (!tracks_covered.includes(parseInt(tidx))) {
+                select_loop(tidx, -1)
+            }
         }
     }
 

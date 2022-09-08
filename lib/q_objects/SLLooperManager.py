@@ -215,7 +215,7 @@ class SLLooperManager(QObject):
             # - scheduling a stop record command somewhere during the Nth cycle.
             self.sendOsc.emit(['/sl/{}/set'.format(self._sl_looper_index), 'round', 1])
             self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'record'])
-            master_manager.schedule_at_loop_pos(master_manager.length * (n - 0.1), 1, lambda: self.doStopRecord())
+            master_manager.schedule_at_loop_pos(master_manager.length * (n - 0.3), 1, lambda: self.doStopRecord())
 
     @pyqtSlot()
     def doStopRecord(self):

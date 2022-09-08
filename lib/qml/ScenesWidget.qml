@@ -182,10 +182,10 @@ Item {
             acceptedButtons: Qt.LeftButton | Qt.MiddleButton
             anchors.fill: parent
             onClicked: (event) => {
-                if (event.buttons | Qt.LeftButton) {
+                if (event.button === Qt.LeftButton) {
                     scenewidget.leftClicked()
                 }
-                if (event.buttons | Qt.MiddleButton) {
+                if (event.button === Qt.MiddleButton) {
                     scenewidget.middleClicked()
                 }
             }

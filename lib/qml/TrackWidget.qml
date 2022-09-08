@@ -118,7 +118,6 @@ Item {
                     target: trackctlwidget
                     function onRecord() {
                         track.update_active_loop_state()
-                        console.log(track.active_loop_state)
                         if (track.active_loop_state === LoopState.LoopState.Recording ||
                             track.active_loop_state === LoopState.LoopState.Inserting) {
                             track.loop_managers[track.selected_loop].doStopRecord()
