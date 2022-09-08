@@ -12,7 +12,8 @@ Item {
     property int first_index
     property int track_index
     property int selected_loop
-    property int maybe_master_loop: -1 //-1 is none
+    property int maybe_master_loop_idx: -1 //-1 is none
+    property var master_loop_manager
     property string name: ''
 
     // Array of loop idxs
@@ -23,6 +24,7 @@ Item {
     height: childrenRect.height
 
     signal set_loop_in_scene(int idx)
+    signal master_loop_created(variant manager)
     signal renamed(string name)
 
     function get_loop_state(loop_idx) {
@@ -98,16 +100,20 @@ Item {
                     height: childrenRect.height
 
                     LoopWidget {
+                        id: lwidget
+
                         loop_idx: track.first_index + index
                         osc_link_obj: osc_link
                         is_selected: track.selected_loop === index
-                        is_master: track.maybe_master_loop === index
+                        is_master: track.maybe_master_loop_idx === index
                         is_in_selected_scene: track.loops_of_selected_scene.includes(index)
                         is_in_hovered_scene: track.loops_of_hovered_scene.includes(index)
 
                         onSelected: () => { track.do_select_loop(index) }
                         onAdd_to_scene: () => { track.set_loop_in_scene(index) }
                         onState_changed: () => { track.update_active_loop_state() }
+
+                        Component.onCompleted: if (is_master) { track.master_loop_created(lwidget.manager) }
                     }
                 }
 
@@ -123,9 +129,17 @@ Item {
                 Connections {
                     target: trackctlwidget
                     function onRecord() {
-//                        var lp = loops.itemAt(track.selected_loop)
-//                        lp.manager.doRecord()
-                        track.actions_on_loops(track.selected_loop, (lp) => { lp.manager.doRecord() }, (lp) => { lp.manager.doMute() })
+                        track.update_active_loop_state()
+                        console.log(track.active_loop_state)
+                        if (track.active_loop_state === LoopState.LoopState.Recording) {
+                            loops.itemAt(track.selected_loop).manager.doStopRecord()
+                        } else if (track.maybe_master_loop_idx === track.selected_loop) {
+                            loops.itemAt(track.selected_loop).manager.doRecord()
+                        } else {
+                            track.actions_on_loops(track.selected_loop,
+                                                   (lp) => { lp.manager.doRecordOneCycle(track.master_loop_manager) },
+                                                   (lp) => { lp.manager.doMute() })
+                        }
                     }
                     function onPause() {
                         var lp = loops.itemAt(track.selected_loop)

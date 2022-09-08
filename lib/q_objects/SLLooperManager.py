@@ -1,5 +1,6 @@
-from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot
+from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot, QTimer
 import re
+import time
 
 from ..LoopState import LoopState
 
@@ -25,6 +26,7 @@ class SLLooperManager(QObject):
         self._sl_looper_count = 0
         self._connected = False
         self._state = LoopState.Unknown.value
+        self._last_received_pos_t = None
 
     ######################
     # PROPERTIES
@@ -59,6 +61,7 @@ class SLLooperManager(QObject):
         return self._pos
     @pos.setter
     def pos(self, p):
+        self._last_received_pos_t = time.monotonic()
         if self._pos != p:
             self._pos = p
             self.posChanged.emit(p)
@@ -106,6 +109,26 @@ class SLLooperManager(QObject):
         if self._connected != a:
             self._connected = a
             self.connectedChanged.emit(a)
+
+    ##################
+    # INTERNAL
+    ##################
+    def schedule_at_loop_pos(self, pos, n_cycles_ahead, action_fn):
+        if self.state in [LoopState.Off.value, LoopState.Unknown.value, LoopState.Paused.value]:
+            # must be running
+            return
+
+        if self._last_received_pos_t == None:
+            # no pos gotten yet
+            return
+
+        estimated_pos = time.monotonic() - self._last_received_pos_t + self.pos
+        if self.pos > estimated_pos and n_cycles_ahead == 0:
+            # passed that point already
+            return
+
+        milliseconds_ahead = int((pos - estimated_pos + self.length * n_cycles_ahead) * 1000.0)
+        QTimer.singleShot(milliseconds_ahead, action_fn)
 
     ##################
     # SLOTS
@@ -177,7 +200,22 @@ class SLLooperManager(QObject):
 
     @pyqtSlot()
     def doRecord(self):
-        self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'record'])
+        print('record')
+        if self.state != LoopState.Recording.value:
+            self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'record'])
+
+    @pyqtSlot(QObject)
+    def doRecordOneCycle(self, master_manager):
+        print('recordonecycle')
+        if self.state != LoopState.Recording.value:
+            self.doRecord()
+            master_manager.schedule_at_loop_pos(master_manager.length - 0.1, 1, lambda: self.doStopRecord())
+
+    @pyqtSlot()
+    def doStopRecord(self):
+        print('stoprecord')
+        if self.state == LoopState.Recording.value:
+            self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'record'])
 
     @pyqtSlot()
     def doMute(self):
