@@ -21,6 +21,7 @@ Item {
         'Track 7',
         'Track 8',
     ]
+    property int loops_per_track: 6
 
     // SCENES STATE
     property var scenes: [
@@ -41,6 +42,7 @@ Item {
     property var loops_of_selected_scene: []
     property var loops_of_hovered_scene: []
 
+    // FUNCTIONS
     function rename_scene(idx, name) {
         scenes[idx].name = name
         scenesChanged()

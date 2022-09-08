@@ -32,6 +32,12 @@ ApplicationWindow {
         }
         id: shared
 
+        // Tell the global manager what the desired loop count is, so SooperLooper will be set up for it.
+        Component.onCompleted: () => {
+                                   var num_loops = track_names.length * loops_per_track
+                                   sl_global_manager.set_desired_looper_count(num_loops)
+                               }
+
         Item {
             id: tracks_scenes_row
 
@@ -46,7 +52,7 @@ ApplicationWindow {
                 anchors.top: parent.top
 
                 track_names: shared.track_names
-                loops_per_track: 6
+                loops_per_track: shared.loops_per_track
                 loops_of_selected_scene: shared.loops_of_selected_scene
                 loops_of_hovered_scene: shared.loops_of_hovered_scene
 

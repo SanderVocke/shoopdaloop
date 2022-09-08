@@ -3,7 +3,7 @@ import re
 
 class SLLooperManager(QObject):
 
-    # State change notifications to the looper
+    # State change notifications
     lengthChanged = pyqtSignal(float)
     posChanged = pyqtSignal(float)
     slLooperIndexChanged = pyqtSignal(int)
@@ -41,6 +41,12 @@ class SLLooperManager(QObject):
         # Also for loop count, url, version
         self.sendOscExpectResponse.emit(['/ping'], '/hostinfo')
 
+        # Some settings for the loop
+        self.sendOsc.emit(['/sl/{}/set'.format(self._sl_looper_index), 'quantize', 1]) # Quantize to cycle
+        self.sendOsc.emit(['/sl/{}/set'.format(self._sl_looper_index), 'sync', 1])
+        self.sendOsc.emit(['/sl/{}/set'.format(self._sl_looper_index), 'relative_sync', 1])
+        self.sendOsc.emit(['/sl/{}/set'.format(self._sl_looper_index), 'mute_quantized', 1])
+
     @pyqtProperty(int, notify=slLooperIndexChanged)
     def sl_looper_index(self):
         return self._sl_looper_index
@@ -76,7 +82,10 @@ class SLLooperManager(QObject):
 
     @pyqtSlot()
     def updateConnected(self):
-        self.connected = bool(self._sl_looper_count > self._sl_looper_index)
+        connected = bool(self._sl_looper_count > self._sl_looper_index)
+        if connected != self.connected:
+            self.connected = connected
+            self.start_sync()
     
     @pyqtSlot(list)
     def onOscReceived(self, msg):
@@ -95,6 +104,7 @@ class SLLooperManager(QObject):
                     self.stateChanged.emit(round(float(value)))
         elif msg[0] == '/hostinfo' and len(msg) == 4:
             self.sl_looper_count = int(msg[3])
+            self.updateConnected()
     
     @pyqtSlot()
     def doTrigger(self):
@@ -115,6 +125,14 @@ class SLLooperManager(QObject):
     @pyqtSlot()
     def doUnmute(self):
         self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'unmute'])
+
+    @pyqtSlot()
+    def doInsert(self):
+        self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'insert'])
+
+    @pyqtSlot()
+    def doReplace(self):
+        self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'replace'])
 
     @pyqtSlot(QObject)
     def connect_osc_link(self, link):

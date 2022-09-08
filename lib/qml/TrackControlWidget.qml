@@ -79,7 +79,7 @@ Item {
                         name: trackctl.paused ? 'play' : 'pause'
                         color: Material.foreground
                     }
-                    onClicked: { if(pause.paused) {trackctl.unpause()} else {trackctl.pause()} }
+                    onClicked: { if(trackctl.paused) {trackctl.unpause()} else {trackctl.pause()} }
                 }
                 Button {
                     id : mute

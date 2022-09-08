@@ -20,6 +20,7 @@ Item {
 
     signal selected() //directly selected by the user to be activated.
     signal add_to_scene() //selected by the user to be added to the current scene.
+    signal state_changed()
 
     id : widget
 
@@ -30,6 +31,7 @@ Item {
     // State and OSC management
     SLLooperState {
         id: looper_state
+        onStateChanged: () => widget.state_changed()
     }
     SLLooperManager {
         id: looper_mgr
@@ -50,13 +52,35 @@ Item {
 
         width: loop.width + x_spacing
         height: loop.height + y_spacing
-        color: widget.is_selected ? Material.accent : Material.background
+        color: widget.is_selected ? '#000044' : Material.background
         border.color: widget.is_in_hovered_scene && widget.is_in_selected_scene ? 'red' :
                       widget.is_in_hovered_scene ? 'blue' :
                       widget.is_in_selected_scene ? 'red' :
                       widget.is_selected ? Material.foreground :
                       'grey'
         border.width: 2
+
+        // This rectangle shows the playback progress for running loops.
+        Item {
+            anchors.fill: parent
+            anchors.margins: 2
+
+            Rectangle {
+                function getRightMargin() {
+                    var st = widget.state_mgr
+                    if(st.length && st.length > 0) {
+                        return (1.0 - (st.pos / st.length)) * parent.width
+                    }
+                    return parent.width
+                }
+
+                anchors {
+                    fill: parent
+                    rightMargin: getRightMargin()
+                }
+                color: widget.is_selected ? '#550055' : '#444444'
+            }
+        }
 
         MouseArea {
             x: 0
@@ -131,6 +155,8 @@ Item {
                 return 'record-rec'
             case LoopState.LoopState.Paused:
                 return 'pause'
+            case LoopState.LoopState.Muted:
+                return 'volume-mute'
             default:
                 return 'help-circle'
             }
@@ -147,7 +173,7 @@ Item {
             case LoopState.LoopState.Recording:
                 return 'red'
             case LoopState.LoopState.Paused:
-                return 'black'
+            case LoopState.LoopState.Muted:
             default:
                 return 'grey'
             }

@@ -25,6 +25,36 @@ Item {
     signal set_loop_in_scene(int idx)
     signal renamed(string name)
 
+    function get_loop_state(loop_idx) {
+        if (loops && loops.model > 0 && loops.itemAt(loop_idx) !== null) {
+            return loops.itemAt(loop_idx).state_mgr.state
+        } else {
+            return LoopState.LoopState.Unknown
+        }
+    }
+    function update_active_loop_state() {
+        active_loop_state = get_loop_state(selected_loop)
+        active_loop_stateChanged()
+    }
+    onSelected_loopChanged: { update_active_loop_state() }
+    property var active_loop_state: get_loop_state(selected_loop)
+
+    function do_select_loop(index) {
+        // If we are playing another loop, tell SL to switch
+        if(index >= 0 &&
+           track.selected_loop !== index &&
+           track.active_loop_state === LoopState.LoopState.Playing) {
+            for(var idx = 0; idx < track.num_loops; idx++) {
+                var lp = loops.itemAt(idx)
+                if (idx === track.selected_loop) { lp.manager.doUnmute(); }
+                else { lp.manager.doMute(); }
+            }
+        }
+
+        // Update everything else
+        selected_loop = index
+    }
+
     Rectangle {
         property int x_spacing: 8
         property int y_spacing: 4
@@ -67,30 +97,26 @@ Item {
                         is_in_selected_scene: track.loops_of_selected_scene.includes(index)
                         is_in_hovered_scene: track.loops_of_hovered_scene.includes(index)
 
-                        onSelected: track.selected_loop = index
+                        onSelected: () => { track.do_select_loop(index) }
                         onAdd_to_scene: () => { track.set_loop_in_scene(index) }
+                        onState_changed: () => { track.update_active_loop_state() }
                     }
                 }
 
                 TrackControlWidget {
                     id: trackctlwidget
 
-                    function active_loop_state_equals(s) {
-                        if (loops.length > 0) {
-                            return loops.itemAt(track.selected_loop).state_mgr.state === s
-                        }
-                        return false
-                    }
-
-                    paused: active_loop_state_equals(LoopState.LoopState.Paused)
-                    muted: active_loop_state_equals(LoopState.LoopState.Muted)
+                    paused: track.active_loop_state === LoopState.LoopState.Paused ||
+                            track.active_loop_state === LoopState.LoopState.Unknown ||
+                            track.active_loop_state === LoopState.LoopState.Off
+                    muted: track.active_loop_state === LoopState.LoopState.Muted
                 }
 
                 Connections {
                     target: trackctlwidget
                     function onRecord() { loops.itemAt(track.selected_loop).manager.doRecord() }
                     function onPause() { loops.itemAt(track.selected_loop).manager.doPlayPause() }
-                    function onUnpause() { loops.itemAt(track.selected_loop).manager.doPlayPause() }
+                    function onUnpause() { loops.itemAt(track.selected_loop).manager.doTrigger() }
                     function onMute() { loops.itemAt(track.selected_loop).manager.doMute() }
                     function doUnmute() { loops.itemAt(track.selected_loop).manager.doUnmute() }
                 }
