@@ -27,7 +27,7 @@ Item {
 
     function get_loop_state(loop_idx) {
         if (loops && loops.model > 0 && loops.itemAt(loop_idx) !== null) {
-            return loops.itemAt(loop_idx).state_mgr.state
+            return loops.itemAt(loop_idx).manager.state
         } else {
             return LoopState.LoopState.Unknown
         }
@@ -39,16 +39,24 @@ Item {
     onSelected_loopChanged: { update_active_loop_state() }
     property var active_loop_state: get_loop_state(selected_loop)
 
+    function actions_on_loops(idx, on_idx_loop_fn, on_other_loop_fn) {
+        for(var i = 0; i < track.num_loops; i++) {
+            var lp = loops.itemAt(i)
+            if (idx === i) {
+                on_idx_loop_fn(lp)
+            }
+            else {
+                on_other_loop_fn(lp)
+            }
+        }
+    }
+
     function do_select_loop(index) {
         // If we are playing another loop, tell SL to switch
         if(index >= 0 &&
            track.selected_loop !== index &&
-           track.active_loop_state === LoopState.LoopState.Playing) {
-            for(var idx = 0; idx < track.num_loops; idx++) {
-                var lp = loops.itemAt(idx)
-                if (idx === track.selected_loop) { lp.manager.doUnmute(); }
-                else { lp.manager.doMute(); }
-            }
+           loops.itemAt(index).manager.state === LoopState.LoopState.Muted) {
+            actions_on_loops(index, (lp) => { lp.manager.doUnmute() }, (lp) => { lp.manager.doMute() })
         }
 
         // Update everything else
@@ -114,11 +122,28 @@ Item {
 
                 Connections {
                     target: trackctlwidget
-                    function onRecord() { loops.itemAt(track.selected_loop).manager.doRecord() }
-                    function onPause() { loops.itemAt(track.selected_loop).manager.doPlayPause() }
-                    function onUnpause() { loops.itemAt(track.selected_loop).manager.doTrigger() }
-                    function onMute() { loops.itemAt(track.selected_loop).manager.doMute() }
-                    function doUnmute() { loops.itemAt(track.selected_loop).manager.doUnmute() }
+                    function onRecord() {
+//                        var lp = loops.itemAt(track.selected_loop)
+//                        lp.manager.doRecord()
+                        track.actions_on_loops(track.selected_loop, (lp) => { lp.manager.doRecord() }, (lp) => { lp.manager.doMute() })
+                    }
+                    function onPause() {
+                        var lp = loops.itemAt(track.selected_loop)
+                        lp.manager.doPlayPause()
+                    }
+                    function onUnpause() {
+                        var lp = loops.itemAt(track.selected_loop)
+                        lp.manager.doTrigger()
+                    }
+                    function onMute() {
+                        for(var idx = 0; idx < track.num_loops; idx++) {
+                            loops.itemAt(idx).manager.doMute()
+                        }
+                    }
+                    function doUnmute() {
+                        var lp = loops.itemAt(track.selected_loop)
+                        lp.manager.doUnmute()
+                    }
                 }
             }
         }

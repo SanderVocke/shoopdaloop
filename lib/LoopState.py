@@ -5,6 +5,7 @@ class LoopState(Enum):
     Off = 0
     WaitStart = 1
     Recording = 2
+    WaitStop = 3
     Playing = 4
     Overdubbing = 5
     Multiplying = 6

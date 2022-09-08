@@ -1,6 +1,8 @@
 from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot
 import re
 
+from ..LoopState import LoopState
+
 class SLLooperManager(QObject):
 
     # State change notifications
@@ -22,6 +24,92 @@ class SLLooperManager(QObject):
         self._sl_looper_index = sl_looper_index
         self._sl_looper_count = 0
         self._connected = False
+        self._state = LoopState.Unknown.value
+
+    ######################
+    # PROPERTIES
+    ######################
+
+    # state: see SL OSC documentation for possible state values
+    stateChanged = pyqtSignal(int)
+    @pyqtProperty(int, notify=stateChanged)
+    def state(self):
+        return self._state
+    @state.setter
+    def state(self, s):
+        if self._state != s:
+            self._state = s
+            self.stateChanged.emit(s)
+
+    # length: loop length in seconds
+    lengthChanged = pyqtSignal(float)
+    @pyqtProperty(float, notify=lengthChanged)
+    def length(self):
+        return self._length
+    @length.setter
+    def length(self, l):
+        if self._length != l:
+            self._length = l
+            self.lengthChanged.emit(l)
+
+    # pos: loop playback position in seconds
+    posChanged = pyqtSignal(float)
+    @pyqtProperty(float, notify=posChanged)
+    def pos(self):
+        return self._pos
+    @pos.setter
+    def pos(self, p):
+        if self._pos != p:
+            self._pos = p
+            self.posChanged.emit(p)
+
+    # connected (meaning: loop exists in SL)
+    connectedChanged = pyqtSignal(bool)
+    @pyqtProperty(bool, notify=connectedChanged)
+    def connected(self):
+        return self._connected
+    @connected.setter
+    def connected(self, p):
+        if self._connected != p:
+            self._connected = p
+            self.connectedChanged.emit(p)
+
+    @pyqtProperty(int, notify=slLooperIndexChanged)
+    def sl_looper_index(self):
+        return self._sl_looper_index
+
+    @sl_looper_index.setter
+    def sl_looper_index(self, i):
+        if self._sl_looper_index != i:
+            self._sl_looper_index = i
+            self.slLooperIndexChanged.emit(i)
+            self.updateConnected()
+            self.start_sync()
+
+    @pyqtProperty(int, notify=slLooperCountChanged)
+    def sl_looper_count(self):
+        return self._sl_looper_count
+
+    @sl_looper_count.setter
+    def sl_looper_count(self, c):
+        if self._sl_looper_count != c:
+            self._sl_looper_count = c
+            self.slLooperCountChanged.emit(c)
+            self.updateConnected()
+
+    @pyqtProperty(bool, notify=connectedChanged)
+    def connected(self):
+        return self._connected
+
+    @connected.setter
+    def connected(self, a):
+        if self._connected != a:
+            self._connected = a
+            self.connectedChanged.emit(a)
+
+    ##################
+    # SLOTS
+    ##################
 
     @pyqtSlot()
     def start_sync(self):
@@ -44,41 +132,8 @@ class SLLooperManager(QObject):
         # Some settings for the loop
         self.sendOsc.emit(['/sl/{}/set'.format(self._sl_looper_index), 'quantize', 1]) # Quantize to cycle
         self.sendOsc.emit(['/sl/{}/set'.format(self._sl_looper_index), 'sync', 1])
-        self.sendOsc.emit(['/sl/{}/set'.format(self._sl_looper_index), 'relative_sync', 1])
+        self.sendOsc.emit(['/sl/{}/set'.format(self._sl_looper_index), 'relative_sync', 0])
         self.sendOsc.emit(['/sl/{}/set'.format(self._sl_looper_index), 'mute_quantized', 1])
-
-    @pyqtProperty(int, notify=slLooperIndexChanged)
-    def sl_looper_index(self):
-        return self._sl_looper_index
-
-    @sl_looper_index.setter
-    def sl_looper_index(self, i):
-        if self._sl_looper_index != i:
-            self._sl_looper_index = i
-            self.slLooperIndexChanged.emit(i)
-            self.updateConnected()
-            self.start_sync()
-
-    @pyqtProperty(int, notify=slLooperCountChanged)
-    def sl_looper_count(self):
-        return self._sl_looper_count
-    
-    @sl_looper_count.setter
-    def sl_looper_count(self, c):
-        if self._sl_looper_count != c:
-            self._sl_looper_count = c
-            self.slLooperCountChanged.emit(c)
-            self.updateConnected()
-    
-    @pyqtProperty(bool, notify=connectedChanged)
-    def connected(self):
-        return self._connected
-    
-    @connected.setter
-    def connected(self, a):
-        if self._connected != a:
-            self._connected = a
-            self.connectedChanged.emit(a)
 
     @pyqtSlot()
     def updateConnected(self):
@@ -97,11 +152,11 @@ class SLLooperManager(QObject):
             value = str(msg[3])
             if loop_idx == self._sl_looper_index:
                 if control == 'loop_pos':
-                    self.posChanged.emit(float(value))
+                    self.pos = float(value)
                 elif control == 'loop_len':
-                    self.lengthChanged.emit(float(value))
+                    self.length = float(value)
                 elif control == 'state':
-                    self.stateChanged.emit(round(float(value)))
+                    self.state = round(float(value))
         elif msg[0] == '/hostinfo' and len(msg) == 4:
             self.sl_looper_count = int(msg[3])
             self.updateConnected()
@@ -111,8 +166,14 @@ class SLLooperManager(QObject):
         self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'trigger'])
 
     @pyqtSlot()
-    def doPlayPause(self):
-        self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'pause'])
+    def doPlay(self):
+        if self.state == LoopState.Paused.value:
+            self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'pause'])
+
+    @pyqtSlot()
+    def doPause(self):
+        if self.state != LoopState.Paused.value:
+            self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'pause'])
 
     @pyqtSlot()
     def doRecord(self):
@@ -120,11 +181,11 @@ class SLLooperManager(QObject):
 
     @pyqtSlot()
     def doMute(self):
-        self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'mute'])
+        self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'mute_on'])
 
     @pyqtSlot()
     def doUnmute(self):
-        self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'unmute'])
+        self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'mute_off'])
 
     @pyqtSlot()
     def doInsert(self):

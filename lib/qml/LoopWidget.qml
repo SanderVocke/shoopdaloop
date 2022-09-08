@@ -4,7 +4,6 @@ import QtQuick.Controls.Material 2.15
 
 import '../LoopState.js' as LoopState
 
-import SLLooperState 1.0
 import SLLooperManager 1.0
 
 // The loop widget displays the state of a single loop within a track.
@@ -16,7 +15,6 @@ Item {
     property bool is_in_selected_scene: false
     property bool is_in_hovered_scene: false
     property var manager: looper_mgr
-    property var state_mgr: looper_state
 
     signal selected() //directly selected by the user to be activated.
     signal add_to_scene() //selected by the user to be added to the current scene.
@@ -29,10 +27,6 @@ Item {
     clip: true
 
     // State and OSC management
-    SLLooperState {
-        id: looper_state
-        onStateChanged: () => widget.state_changed()
-    }
     SLLooperManager {
         id: looper_mgr
         sl_looper_index: loop_idx
@@ -40,9 +34,8 @@ Item {
 
     // Initialization
     Component.onCompleted: {
-        looper_state.connect_manager(looper_mgr)
-        looper_mgr.connect_osc_link(osc_link)
-        looper_mgr.start_sync()
+        manager.connect_osc_link(osc_link)
+        manager.start_sync()
     }
 
     // UI
@@ -67,7 +60,7 @@ Item {
 
             Rectangle {
                 function getRightMargin() {
-                    var st = widget.state_mgr
+                    var st = widget.manager
                     if(st.length && st.length > 0) {
                         return (1.0 - (st.pos / st.length)) * parent.width
                     }
@@ -120,8 +113,8 @@ Item {
                 spacing: 5
                 LoopStateIcon {
                     id: loopstateicon
-                    state: looper_state.state
-                    connected: looper_state.connected
+                    state: looper_mgr.state
+                    connected: looper_mgr.connected
                     size: 24
                     y: (loop.height - height)/2
                 }
@@ -137,51 +130,70 @@ Item {
         }
     }
 
-    component LoopStateIcon : MaterialDesignIcon {
+    component LoopStateIcon : Item {
+        id: lsicon
         property int state
         property bool connected
-        name: 'help-circle'
-        color: 'red'
+        property int size
+        property string description: LoopState.LoopStateDesc[state] ? LoopState.LoopStateDesc[state] : "Invalid"
 
-        function getName() {
-            if(!connected) {
-                return 'cancel'
+        width: size
+        height: size
+
+        MaterialDesignIcon {
+            id: main_icon
+            anchors.fill: parent
+
+            name: {
+                if(!lsicon.connected) {
+                    return 'cancel'
+                }
+
+                switch(lsicon.state) {
+                case LoopState.LoopState.Playing:
+                    return 'play'
+                case LoopState.LoopState.Recording:
+                    return 'record-rec'
+                case LoopState.LoopState.Paused:
+                    return 'pause'
+                case LoopState.LoopState.Muted:
+                    return 'volume-mute'
+                case LoopState.LoopState.WaitStart:
+                case LoopState.LoopState.WaitStop:
+                    return 'timer-sand'
+                default:
+                    return 'help-circle'
+                }
             }
 
-            switch(state) {
-            case LoopState.LoopState.Playing:
-                return 'play'
-            case LoopState.LoopState.Recording:
-                return 'record-rec'
-            case LoopState.LoopState.Paused:
-                return 'pause'
-            case LoopState.LoopState.Muted:
-                return 'volume-mute'
-            default:
-                return 'help-circle'
+            color: {
+                if(!lsicon.connected) {
+                    return 'grey'
+                }
+                switch(lsicon.state) {
+                case LoopState.LoopState.Playing:
+                    return 'green'
+                case LoopState.LoopState.Recording:
+                    return 'red'
+                default:
+                    return 'grey'
+                }
             }
+
+            size: parent.size
         }
 
-        function getColor() {
-            if(!connected) {
-                return 'grey'
-            }
-
-            switch(state) {
-            case LoopState.LoopState.Playing:
-                return 'green'
-            case LoopState.LoopState.Recording:
-                return 'red'
-            case LoopState.LoopState.Paused:
-            case LoopState.LoopState.Muted:
-            default:
-                return 'grey'
-            }
+        MouseArea {
+            anchors.fill: parent
+            hoverEnabled: true
+            propagateComposedEvents: true
+            id: ma
         }
 
-        Component.onCompleted: {
-            name = Qt.binding(getName);
-            color = Qt.binding(getColor);
+        ToolTip {
+            delay: 1000
+            visible: ma.containsMouse
+            text: description
         }
     }
 }
