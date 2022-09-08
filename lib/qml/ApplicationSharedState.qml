@@ -120,22 +120,34 @@ Item {
     }
 
     function add_action(section, type, track) {
-        if (section >= 0 && section < sections.length) {
-            var set = new Set(sections[section].actions)
-            set.add([type, track])
-            sections[section].actions = Array.from(set)
+        var idx
+        var found = false
+        for (idx in sections[section].actions) {
+            var act = sections[section].actions[idx]
+            if (act[0] === type && act[1] === track) {
+                found = true
+                break
+            }
+        }
+        if (!found) {
+            sections[section].actions.push([type, track])
             sectionsChanged()
         }
     }
 
     function remove_action(section, type, track) {
-        if (section >= 0 && section < sections.length) {
-            var set = new Set(sections[section].actions)
-            if (set.has([type, track])) {
-                set.delete([type, track])
-                sections[section].actions = Array.from(set)
-                sectionsChanged()
+        var idx
+        var found_idx = -1
+        for (idx in sections[section].actions) {
+            var act = sections[section].actions[idx]
+            if (act[0] === type && act[1] === track) {
+                found_idx = idx
+                break
             }
+        }
+        if (found_idx >= 0) {
+            sections[section].actions.splice(found_idx, 1)
+            sectionsChanged()
         }
     }
 

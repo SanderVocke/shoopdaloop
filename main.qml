@@ -8,7 +8,7 @@ import 'lib/LoopState.js' as LoopState
 ApplicationWindow {
     visible: true
     width: 1050
-    height: 600
+    height: 550
     maximumWidth: width
     maximumHeight: height
     minimumWidth: width
@@ -46,7 +46,7 @@ ApplicationWindow {
                 anchors.top: parent.top
 
                 track_names: shared.track_names
-                loops_per_track: 8
+                loops_per_track: 6
                 loops_of_selected_scene: shared.loops_of_selected_scene
                 loops_of_hovered_scene: shared.loops_of_hovered_scene
 

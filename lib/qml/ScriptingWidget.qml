@@ -131,9 +131,12 @@ Rectangle {
     component ActionsWidget : Item {
         id: act_widget
         property var actions: []
+        property var track_names: []
         property int icon_size: 32
 
         signal clicked()
+        signal request_add_action(string type, int track)
+        signal request_remove_action(string type, int track)
 
         Button {
             anchors {
@@ -177,6 +180,52 @@ Rectangle {
                 }
             }
         }
+
+        Menu {
+            id: contextmenu
+            Menu {
+                title: 'Record'
+                Repeater {
+                    model: act_widget.track_names ? act_widget.track_names.length : 0
+
+                    MenuItem {
+                        text: act_widget.track_names[index]
+
+                        function is_recorded() {
+                            var idx
+                            for (idx in act_widget.actions) {
+                                var act = act_widget.actions[idx]
+                                if (act[0] === 'record' && act[1] === index) {
+                                    return true
+                                }
+                            }
+                            return false
+                        }
+
+                        MaterialDesignIcon {
+                            name: 'record'
+                            color: 'red'
+                            visible: is_recorded()
+
+                            anchors {
+                                verticalCenter: parent.verticalCenter
+                                right: parent.right
+                                rightMargin: 20
+                            }
+                        }
+
+                        Connections {
+                            function onClicked() {
+                                if(is_recorded()) { act_widget.request_remove_action('record', index) }
+                                else { act_widget.request_add_action('record', index) }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        onClicked: () => { contextmenu.popup() }
     }
 
     // A widget to represent a single section item on the sequencing timeline.
@@ -250,56 +299,20 @@ Rectangle {
                 top: combo.bottom
                 left: parent.left
                 right: parent.right
-                bottom: parent.bottom
                 leftMargin: 3
                 rightMargin: 3
             }
+            height: 30
 
             id: actionswidget
 
             actions: scriptitem.actions
+            track_names: scriptitem.track_names
             icon_size: 25
 
-            onClicked: () => { contextmenu.popup() }
-
-            Menu {
-                id: contextmenu
-                Menu {
-                    title: 'Record'
-                    Repeater {
-                        model: scriptitem.track_names ? scriptitem.track_names.length : 0
-
-                        MenuItem {
-                            text: scriptitem.track_names[index]
-
-                            function is_recorded() {
-                                var set = new Set(actionswidget.actions)
-                                console.log('act', actionswidget.actions)
-                                console.log('ref', ['record', index])
-                                return set.has(['record', index])
-                            }
-
-                            MaterialDesignIcon {
-                                name: 'record'
-                                color: 'red'
-                                visible: is_recorded()
-
-                                anchors {
-                                    verticalCenter: parent.verticalCenter
-                                    right: parent.right
-                                    rightMargin: 20
-                                }
-                            }
-
-                            Connections {
-                                function onClicked() {
-                                    if(is_recorded()) { scriptitem.request_remove_action('record', index) }
-                                    else { scriptitem.request_add_action('record', index) }
-                                }
-                            }
-                        }
-                    }
-                }
+            Connections {
+                function onRequest_add_action(type, track) { scriptitem.request_add_action(type, track) }
+                function onRequest_remove_action(type, track) { scriptitem.request_remove_action(type, track) }
             }
         }
     }

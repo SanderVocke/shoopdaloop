@@ -9,44 +9,6 @@ Item {
     property int selected_scene: -1
     property int hovered_scene: -1
 
-//    function get_referenced_loops_for_selected_scene() {
-//        if (selected_scene >= 0) {
-//            return items[selected_scene].loops
-//        }
-//        return []
-//    }
-//    function get_referenced_loops_for_hovered_scene() {
-//        if (hovered_scene >= 0) {
-//            return items[hovered_scene].loops
-//        }
-//        return []
-//    }
-//    function set_loop_in_current_scene(track, loop) {
-//        if (selected_scene >= 0) {
-//            // remove any previous setting for this track
-//            var modified = items[selected_scene].loops
-//            modified = modified.filter(l => l[0] !== track)
-//            // add the new setting
-//            modified.push([track, loop])
-//            items[selected_scene].loops = modified
-//            itemsChanged()
-//        }
-//    }
-//    function select_scene_by_name(name) {
-//        if (name === '') {
-//            selected_scene = -1;
-//            selected_sceneChanged()
-//        } else {
-//            var idx
-//            for(idx in items) {
-//                if (items[idx].name === name) {
-//                    selected_scene = idx;
-//                    selected_sceneChanged()
-//                }
-//            }
-//        }
-//    }
-
     signal request_rename_scene(int idx, string new_name)
     signal request_add_scene()
     signal request_remove_scene(int idx)
@@ -93,7 +55,7 @@ Item {
                     left: parent.left
                     right: parent.right
                 }
-                height: 360
+                height: 300
                 border.color: 'grey'
                 border.width: 1
                 color: 'transparent'
