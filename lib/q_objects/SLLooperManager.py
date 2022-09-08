@@ -157,6 +157,7 @@ class SLLooperManager(QObject):
         self.sendOsc.emit(['/sl/{}/set'.format(self._sl_looper_index), 'sync', 1])
         self.sendOsc.emit(['/sl/{}/set'.format(self._sl_looper_index), 'relative_sync', 0])
         self.sendOsc.emit(['/sl/{}/set'.format(self._sl_looper_index), 'mute_quantized', 1])
+        self.sendOsc.emit(['/sl/{}/set'.format(self._sl_looper_index), 'round', 0])
 
     @pyqtSlot()
     def updateConnected(self):
@@ -202,28 +203,37 @@ class SLLooperManager(QObject):
     def doRecord(self):
         print('record')
         if self.state != LoopState.Recording.value:
+            # Default recording behavior is to round
+            self.sendOsc.emit(['/sl/{}/set'.format(self._sl_looper_index), 'round', 1])
             self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'record'])
 
-    @pyqtSlot(QObject)
-    def doRecordOneCycle(self, master_manager):
+    @pyqtSlot(int, QObject)
+    def doRecordNCycles(self, n, master_manager):
         print('recordonecycle')
         if self.state != LoopState.Recording.value:
-            self.doRecord()
-            master_manager.schedule_at_loop_pos(master_manager.length - 0.1, 1, lambda: self.doStopRecord())
+            # Recording N cycles is achieved by:
+            # - setting round mode (after stop record, will keep recording until synced)
+            # - starting to record
+            # - scheduling a stop record command somewhere during the Nth cycle.
+            self.sendOsc.emit(['/sl/{}/set'.format(self._sl_looper_index), 'round', 1])
+            self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'record'])
+            master_manager.schedule_at_loop_pos(master_manager.length * (n - 0.1), 1, lambda: self.doStopRecord())
 
     @pyqtSlot()
     def doStopRecord(self):
         print('stoprecord')
-        if self.state == LoopState.Recording.value:
+        if self.state in [LoopState.Recording.value, LoopState.Inserting.value]:
             self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'record'])
 
     @pyqtSlot()
     def doMute(self):
-        self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'mute_on'])
+        if self.state != LoopState.Off.value:
+            self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'mute_on'])
 
     @pyqtSlot()
     def doUnmute(self):
-        self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'mute_off'])
+        if self.state != LoopState.Off.value:
+            self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'mute_off'])
 
     @pyqtSlot()
     def doInsert(self):

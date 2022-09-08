@@ -2,6 +2,9 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
 
+import SLLooperManager 1.0
+import '../LoopState.js' as LoopState
+
 Item {
     anchors {
         fill: parent
@@ -22,6 +25,28 @@ Item {
         'Track 8',
     ]
     property int loops_per_track: 6
+    property var loop_managers: {
+        var outer, inner
+        var managers = []
+        for(outer = 0; outer < track_names.length; outer++) {
+            var i_managers = []
+            for(inner = 0; inner < loops_per_track; inner++) {
+                var mgr = Qt.createQmlObject('import QtQuick 2.0; import SLLooperManager 1.0; SLLooperManager {sl_looper_index: ' + (outer * loops_per_track + inner).toString() + '}',
+                                                   shared,
+                                                   "dynamicSnippet1");
+                mgr.connect_osc_link(osc_link)
+                mgr.start_sync()
+                i_managers.push(mgr)
+            }
+            managers.push(i_managers)
+        }
+        return managers
+    }
+    property var master_loop_idx: [0, 0]
+    property var master_loop_manager: {
+        return loop_managers[master_loop_idx[0]][master_loop_idx[1]]
+    }
+    property var selected_loops: [0, 0, 0, 0, 0, 0, 0, 0]
 
     // SCENES STATE
     property var scenes: [
@@ -43,6 +68,31 @@ Item {
     property var loops_of_hovered_scene: []
 
     // FUNCTIONS
+    function actions_on_loop_mgrs_in_track(track_idx, loop_idx, on_idx_loop_fn, on_other_loop_fn) {
+        for(var i = 0; i < loops_per_track; i++) {
+            var mgr = loop_managers[track_idx][i]
+            if (loop_idx === i) {
+                on_idx_loop_fn(mgr)
+            }
+            else {
+                on_other_loop_fn(mgr)
+            }
+        }
+    }
+
+    function select_loop(track_idx, loop_idx) {
+        console.log('select ' + track_idx.toString() + ' ' + loop_idx.toString())
+        // If we are playing another loop, tell SL to switch
+        if(loop_idx >= 0 &&
+           //track.selected_loop !== index &&
+           [LoopState.LoopState.Muted, LoopState.LoopState.Off].includes(loop_managers[track_idx][loop_idx].state)) {
+            actions_on_loop_mgrs_in_track(track_idx, loop_idx, (mgr) => { console.log('um') ;mgr.doUnmute() }, (mgr) => { console.log('m'); mgr.doMute() })
+        }
+
+        // Update everything else
+        selected_loops[track_idx] = loop_idx
+    }
+
     function rename_scene(idx, name) {
         scenes[idx].name = name
         scenesChanged()
@@ -87,6 +137,13 @@ Item {
     function hover_scene(idx) {
         hovered_scene = idx
         hovered_sceneChanged()
+    }
+
+    function activate_scene(idx) {
+        for (var lidx in scenes[idx].loops) {
+            var lp = scenes[idx].loops[lidx]
+            select_loop(lp[0], lp[1])
+        }
     }
 
     function select_section(idx) {

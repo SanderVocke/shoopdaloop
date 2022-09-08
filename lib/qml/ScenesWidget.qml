@@ -12,7 +12,7 @@ Item {
     signal request_rename_scene(int idx, string new_name)
     signal request_add_scene()
     signal request_remove_scene(int idx)
-    signal request_select_scene(int idx)
+    signal request_select_scene(int idx, bool activate)
     signal request_hover_scene(int idx)
 
     Rectangle {
@@ -88,12 +88,15 @@ Item {
                                 is_selected: index === sceneswidget.selected_scene
 
                                 Connections {
-                                    function onClicked() {
+                                    function onLeftClicked() {
+                                        sceneswidget.request_select_scene(index, true)
+                                    }
+                                    function onMiddleClicked() {
                                         if (sceneswidget.selected_scene === index) {
                                             // deselect
-                                            sceneswidget.request_select_scene(-1)
+                                            sceneswidget.request_select_scene(-1, false)
                                         } else {
-                                            sceneswidget.request_select_scene(index)
+                                            sceneswidget.request_select_scene(index, false)
                                         }
                                     }
                                     function onHoverEntered() { sceneswidget.request_hover_scene(index) }
@@ -160,7 +163,8 @@ Item {
         //Array of [track, loop]
         property var referenced_loops: []
 
-        signal clicked()
+        signal leftClicked()
+        signal middleClicked()
         signal hoverEntered()
         signal hoverExited()
         signal nameEntered(string name)
@@ -175,8 +179,16 @@ Item {
         MouseArea {
             id: marea
             hoverEnabled: true
+            acceptedButtons: Qt.LeftButton | Qt.MiddleButton
             anchors.fill: parent
-            onClicked: scenewidget.clicked()
+            onClicked: (event) => {
+                if (event.buttons | Qt.LeftButton) {
+                    scenewidget.leftClicked()
+                }
+                if (event.buttons | Qt.MiddleButton) {
+                    scenewidget.middleClicked()
+                }
+            }
             onEntered: hoverEntered()
             onExited: hoverExited()
         }

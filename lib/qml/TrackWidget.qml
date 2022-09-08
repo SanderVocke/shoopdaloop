@@ -14,6 +14,7 @@ Item {
     property int selected_loop
     property int maybe_master_loop_idx: -1 //-1 is none
     property var master_loop_manager
+    property var loop_managers
     property string name: ''
 
     // Array of loop idxs
@@ -24,8 +25,8 @@ Item {
     height: childrenRect.height
 
     signal set_loop_in_scene(int idx)
-    signal master_loop_created(variant manager)
     signal renamed(string name)
+    signal request_select_loop(int idx)
 
     function get_loop_state(loop_idx) {
         if (loops && loops.model > 0 && loops.itemAt(loop_idx) !== null) {
@@ -41,28 +42,16 @@ Item {
     onSelected_loopChanged: { update_active_loop_state() }
     property var active_loop_state: get_loop_state(selected_loop)
 
-    function actions_on_loops(idx, on_idx_loop_fn, on_other_loop_fn) {
+    function actions_on_loop_mgrs(idx, on_idx_loop_fn, on_other_loop_fn) {
         for(var i = 0; i < track.num_loops; i++) {
-            var lp = loops.itemAt(i)
+            var mgr = loop_managers[i]
             if (idx === i) {
-                on_idx_loop_fn(lp)
+                on_idx_loop_fn(mgr)
             }
             else {
-                on_other_loop_fn(lp)
+                on_other_loop_fn(mgr)
             }
         }
-    }
-
-    function do_select_loop(index) {
-        // If we are playing another loop, tell SL to switch
-        if(index >= 0 &&
-           track.selected_loop !== index &&
-           loops.itemAt(index).manager.state === LoopState.LoopState.Muted) {
-            actions_on_loops(index, (lp) => { lp.manager.doUnmute() }, (lp) => { lp.manager.doMute() })
-        }
-
-        // Update everything else
-        selected_loop = index
     }
 
     Rectangle {
@@ -108,12 +97,11 @@ Item {
                         is_master: track.maybe_master_loop_idx === index
                         is_in_selected_scene: track.loops_of_selected_scene.includes(index)
                         is_in_hovered_scene: track.loops_of_hovered_scene.includes(index)
+                        manager: track.loop_managers[index]
 
-                        onSelected: () => { track.do_select_loop(index) }
+                        onSelected: () => { track.request_select_loop(index) }
                         onAdd_to_scene: () => { track.set_loop_in_scene(index) }
                         onState_changed: () => { track.update_active_loop_state() }
-
-                        Component.onCompleted: if (is_master) { track.master_loop_created(lwidget.manager) }
                     }
                 }
 
@@ -131,32 +119,30 @@ Item {
                     function onRecord() {
                         track.update_active_loop_state()
                         console.log(track.active_loop_state)
-                        if (track.active_loop_state === LoopState.LoopState.Recording) {
-                            loops.itemAt(track.selected_loop).manager.doStopRecord()
+                        if (track.active_loop_state === LoopState.LoopState.Recording ||
+                            track.active_loop_state === LoopState.LoopState.Inserting) {
+                            track.loop_managers[track.selected_loop].doStopRecord()
                         } else if (track.maybe_master_loop_idx === track.selected_loop) {
-                            loops.itemAt(track.selected_loop).manager.doRecord()
+                            track.loop_managers[track.selected_loop].doRecord()
                         } else {
-                            track.actions_on_loops(track.selected_loop,
-                                                   (lp) => { lp.manager.doRecordOneCycle(track.master_loop_manager) },
-                                                   (lp) => { lp.manager.doMute() })
+                            track.actions_on_loop_mgrs(track.selected_loop,
+                                                   (mgr) => { mgr.doRecordNCycles(1, track.master_loop_manager) },
+                                                   (mgr) => { mgr.doMute() })
                         }
                     }
                     function onPause() {
-                        var lp = loops.itemAt(track.selected_loop)
-                        lp.manager.doPlayPause()
+                        track.loop_managers[track.selected_loop].doPause()
                     }
                     function onUnpause() {
-                        var lp = loops.itemAt(track.selected_loop)
-                        lp.manager.doTrigger()
+                        track.loop_managers[track.selected_loop].doTrigger()
                     }
                     function onMute() {
                         for(var idx = 0; idx < track.num_loops; idx++) {
-                            loops.itemAt(idx).manager.doMute()
+                            track.loop_managers[idx].doMute()
                         }
                     }
                     function doUnmute() {
-                        var lp = loops.itemAt(track.selected_loop)
-                        lp.manager.doUnmute()
+                        track.loop_managers[track.selected_loop].doUnmute()
                     }
                 }
             }

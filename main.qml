@@ -52,13 +52,18 @@ ApplicationWindow {
                 anchors.top: parent.top
 
                 track_names: shared.track_names
+                loop_managers: shared.loop_managers
+                master_loop_manager: shared.master_loop_manager
+                master_loop_idx: shared.master_loop_idx
                 loops_per_track: shared.loops_per_track
                 loops_of_selected_scene: shared.loops_of_selected_scene
                 loops_of_hovered_scene: shared.loops_of_hovered_scene
+                selected_loops: shared.selected_loops
 
                 Connections {
                     function onRequest_bind_loop_to_scene(track, loop) { shared.bind_loop_to_current_scene(track, loop) }
                     function onRequest_rename(track, name) { shared.rename_track(track, name) }
+                    function onRequest_select_loop(track, loop) { shared.select_loop(track, loop) }
                 }
             }
 
@@ -80,7 +85,12 @@ ApplicationWindow {
                     function onRequest_rename_scene(idx, name) { shared.rename_scene(idx, name) }
                     function onRequest_add_scene() { shared.add_scene() }
                     function onRequest_remove_scene(idx) { shared.remove_scene(idx) }
-                    function onRequest_select_scene(idx) { shared.select_scene(idx) }
+                    function onRequest_select_scene(idx, activate) {
+                        shared.select_scene(idx)
+                        if (activate) {
+                            shared.activate_scene(idx)
+                        }
+                    }
                     function onRequest_hover_scene(idx) { shared.hover_scene(idx) }
                 }
             }

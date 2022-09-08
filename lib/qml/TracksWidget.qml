@@ -10,8 +10,10 @@ Item {
 
     property var track_names: []
     property int loops_per_track
-    property var master_loop_idx: [0, 0] // track index, loop index in track TODO move to shared state
-    property var maybe_master_loop_manager // to be set from children
+    property var loop_managers //2D array
+    property var master_loop_manager
+    property var master_loop_idx //[track][loop]
+    property var selected_loops
 
     //Arrays of [track, loop]
     property var loops_of_selected_scene: []
@@ -19,6 +21,7 @@ Item {
 
     signal request_bind_loop_to_scene(int track, int loop)
     signal request_rename(int track, string name)
+    signal request_select_loop(int track, int loop)
 
     Rectangle {
         property int x_spacing: 0
@@ -48,7 +51,9 @@ Item {
                         first_index: index * tracks.loops_per_track
                         track_index: index + 1
                         maybe_master_loop_idx: tracks.master_loop_idx[0] === index ? tracks.master_loop_idx[1] : -1
-                        master_loop_manager: tracks.maybe_master_loop_manager
+                        master_loop_manager: tracks.master_loop_manager
+                        loop_managers: tracks.loop_managers[index]
+                        selected_loop: tracks.selected_loops[index]
 
                         function unpack(loops) {
                             var r = []
@@ -62,7 +67,7 @@ Item {
 
                         onSet_loop_in_scene: (l) => tracks.request_bind_loop_to_scene(index, l)
                         onRenamed: (name) => tracks.request_rename(index, name)
-                        onMaster_loop_created: (m) => tracks.maybe_master_loop_manager = m
+                        onRequest_select_loop: (idx) => tracks.request_select_loop(index, idx)
                     }
                 }
             }

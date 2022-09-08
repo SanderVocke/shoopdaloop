@@ -4,8 +4,6 @@ import QtQuick.Controls.Material 2.15
 
 import '../LoopState.js' as LoopState
 
-import SLLooperManager 1.0
-
 // The loop widget displays the state of a single loop within a track.
 Item {
     property int loop_idx
@@ -14,7 +12,7 @@ Item {
     property bool is_master   // Master loop which everything syncs to in SL
     property bool is_in_selected_scene: false
     property bool is_in_hovered_scene: false
-    property var manager: looper_mgr
+    property var manager
 
     signal selected() //directly selected by the user to be activated.
     signal add_to_scene() //selected by the user to be added to the current scene.
@@ -25,18 +23,6 @@ Item {
     width: childrenRect.width
     height: childrenRect.height
     clip: true
-
-    // State and OSC management
-    SLLooperManager {
-        id: looper_mgr
-        sl_looper_index: loop_idx
-    }
-
-    // Initialization
-    Component.onCompleted: {
-        manager.connect_osc_link(osc_link)
-        manager.start_sync()
-    }
 
     // UI
     Rectangle {
@@ -113,8 +99,8 @@ Item {
                 spacing: 5
                 LoopStateIcon {
                     id: loopstateicon
-                    state: looper_mgr.state
-                    connected: looper_mgr.connected
+                    state: widget.manager.state
+                    connected: widget.manager.connected
                     size: 24
                     y: (loop.height - height)/2
                 }
@@ -153,6 +139,7 @@ Item {
                 case LoopState.LoopState.Playing:
                     return 'play'
                 case LoopState.LoopState.Recording:
+                case LoopState.LoopState.Inserting:
                     return 'record-rec'
                 case LoopState.LoopState.Paused:
                     return 'pause'
@@ -161,6 +148,8 @@ Item {
                 case LoopState.LoopState.WaitStart:
                 case LoopState.LoopState.WaitStop:
                     return 'timer-sand'
+                case LoopState.LoopState.Off:
+                    return 'stop'
                 default:
                     return 'help-circle'
                 }
@@ -174,6 +163,7 @@ Item {
                 case LoopState.LoopState.Playing:
                     return 'green'
                 case LoopState.LoopState.Recording:
+                case LoopState.LoopState.Inserting:
                     return 'red'
                 default:
                     return 'grey'
