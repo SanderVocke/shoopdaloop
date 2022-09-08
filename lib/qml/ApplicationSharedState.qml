@@ -81,16 +81,15 @@ Item {
     }
 
     function select_loop(track_idx, loop_idx) {
-        console.log('select ' + track_idx.toString() + ' ' + loop_idx.toString())
         // If we are playing another loop, tell SL to switch
         if(loop_idx >= 0 &&
-           //track.selected_loop !== index &&
            [LoopState.LoopState.Muted, LoopState.LoopState.Off].includes(loop_managers[track_idx][loop_idx].state)) {
-            actions_on_loop_mgrs_in_track(track_idx, loop_idx, (mgr) => { console.log('um') ;mgr.doUnmute() }, (mgr) => { console.log('m'); mgr.doMute() })
+            actions_on_loop_mgrs_in_track(track_idx, loop_idx, (mgr) => { mgr.doUnmute() }, (mgr) => { mgr.doMute() })
         }
 
         // Update everything else
         selected_loops[track_idx] = loop_idx
+        selected_loopsChanged()
     }
 
     function rename_scene(idx, name) {
@@ -130,6 +129,7 @@ Item {
     }
 
     function select_scene(idx) {
+        console.log('select ' + idx.toString())
         selected_scene = idx
         selected_sceneChanged()
     }

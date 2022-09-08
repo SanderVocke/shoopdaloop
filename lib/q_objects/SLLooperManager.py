@@ -201,7 +201,6 @@ class SLLooperManager(QObject):
 
     @pyqtSlot()
     def doRecord(self):
-        print('record')
         if self.state != LoopState.Recording.value:
             # Default recording behavior is to round
             self.sendOsc.emit(['/sl/{}/set'.format(self._sl_looper_index), 'round', 1])
@@ -209,7 +208,6 @@ class SLLooperManager(QObject):
 
     @pyqtSlot(int, QObject)
     def doRecordNCycles(self, n, master_manager):
-        print('recordonecycle')
         if self.state != LoopState.Recording.value:
             # Recording N cycles is achieved by:
             # - setting round mode (after stop record, will keep recording until synced)
@@ -221,7 +219,6 @@ class SLLooperManager(QObject):
 
     @pyqtSlot()
     def doStopRecord(self):
-        print('stoprecord')
         if self.state in [LoopState.Recording.value, LoopState.Inserting.value]:
             self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'record'])
 
