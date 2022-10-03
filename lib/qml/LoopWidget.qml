@@ -61,15 +61,20 @@ Item {
             }
         }
 
+        ContextMenu {
+            id: contextmenu
+        }
+
         MouseArea {
             x: 0
             y: 0
             width: loop.width + parent.x_spacing
             height: loop.height + parent.y_spacing
-            acceptedButtons: Qt.LeftButton | Qt.MiddleButton
+            acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
             onClicked: (event) => {
                            if (event.button === Qt.LeftButton) { widget.selected() }
-                           else if (event.button === Qt.MiddleButton) {widget.add_to_scene() }
+                           else if (event.button === Qt.MiddleButton) { widget.add_to_scene() }
+                           else if (event.button === Qt.RightButton) { contextmenu.popup() }
                        }
         }
 
@@ -184,6 +189,26 @@ Item {
             delay: 1000
             visible: ma.containsMouse
             text: description
+        }
+    }
+
+    component ContextMenu: Item {
+        ClickTrackDialog {
+            id: clicktrackdialog
+            onAcceptedClickTrack: () => { console.log("accepted") }
+        }
+
+        Menu {
+            id: menu
+            title: 'Record'
+            MenuItem {
+                text: "Generate click loop..."
+                onClicked: () => clicktrackdialog.open()
+            }
+        }
+
+        function popup () {
+            menu.popup()
         }
     }
 }
