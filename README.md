@@ -21,3 +21,7 @@ Note however that it is in early development. It has not been used for on-stage 
 - **Scripted looping**: ShoopDaLoop will have a scripting approach suitable for (semi-)automated scripted looping. The "script" consists of a sequence of actions (e.g.: change scene, mute a loop, start/stop recording on a loop). The sets of actions are executed sequentially, either in a fully automatic or manually triggered way. This way the song structure can be laid out ahead of time.
 - **MIDI bindings**: There are none yet. You could experiment with connecting straight to the underlying SooperLooper instance, but this may give some unexpected results since not all possible SooperLooper states are supported by ShoopDaLoop.
 - **JACK encapsulation**: To make the connectivity in Jack less confusing, I plan to try to encapsulate the SooperLooper instance and provide JACK ports that match the ShoopDaLoop naming.
+
+# Getting started
+
+There are no packages yet. You will need to first install SooperLooper and Qt6, run SooperLooper first, then run ShoopDaLoop using `python main.py`.
