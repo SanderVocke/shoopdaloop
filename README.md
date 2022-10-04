@@ -14,6 +14,7 @@ ShoopDaLoop is a live looping application for Linux. Under the hood it is "just"
 
 ShoopDaLoop works, but not all of its intended functionality is finished yet (see below). GUI elements relating to these features may already be there but not working yet.
 Note however that it is in early development. It has not been used for on-stage performing and probably shouldn't until after doing some serious testing.
+I am not a performing musician, so for me this kind of testing does not have priority.
 
 # Future improvements
 
