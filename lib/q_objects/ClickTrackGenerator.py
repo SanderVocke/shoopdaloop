@@ -8,9 +8,12 @@ class ClickTrackGenerator(QObject):
     script_dir = os.path.dirname(os.path.abspath(__file__))
     clicks = {
         'click_high': script_dir + '/../../resources/click_high.wav',
-        'click_low': script_dir + '/../../resources/click_low.wav'
+        'click_low': script_dir + '/../../resources/click_low.wav',
+        'shaker_primary': script_dir + '/../../resources/shaker_primary.wav',
+        'shaker_secondary': script_dir + '/../../resources/shaker_secondary.wav'
     }
 
+    @pyqtSlot(result=list)
     def get_possible_clicks(self):
         return list(self.clicks.keys())
 

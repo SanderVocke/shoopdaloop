@@ -240,6 +240,11 @@ class SLLooperManager(QObject):
     def doReplace(self):
         self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'replace'])
 
+    @pyqtSlot(str)
+    def doLoadWav(self, wav_file):
+        # TODO: handle the errors
+        self.sendOscExpectResponse.emit(['/sl/{}/load_loop'.format(self._sl_looper_index), wav_file], '/load_loop_error')
+
     @pyqtSlot(QObject)
     def connect_osc_link(self, link):
         link.received.connect(self.onOscReceived)

@@ -251,6 +251,11 @@ Item {
         loops_of_hovered_sceneChanged()
     }
 
+    function load_loop_wav(track_idx, loop_idx, wav_file) {
+        var mgr = loop_managers[track_idx][loop_idx];
+        mgr.doLoadWav(wav_file);
+    }
+
     Connections {
         function onScenesChanged() { update_scene_names(); update_loops_of_selected_scene(); update_loops_of_hovered_scene() }
         function onSelected_sectionChanged() { update_selected_scene_from_section() }

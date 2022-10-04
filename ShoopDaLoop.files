@@ -1,8 +1,10 @@
 ShoopDaLoop.cflags
 ShoopDaLoop.cxxflags
+lib/GenClickTrack.py
 lib/LoopState.js
 lib/LoopState.py
 lib/__init__.py
+lib/q_objects/ClickTrackGenerator.py
 lib/q_objects/SLGlobalManager.py
 lib/q_objects/SLLooperManager.py
 lib/q_objects/SooperLooperOSCLink.py
@@ -13,6 +15,7 @@ lib/q_objects/__pycache__/SLLooperState.cpython-310.pyc
 lib/q_objects/__pycache__/SooperLooperOSCLink.cpython-310.pyc
 lib/q_objects/__pycache__/__init__.cpython-310.pyc
 lib/qml/ApplicationSharedState.qml
+lib/qml/ClickTrackDialog.qml
 lib/qml/LoopWidget.qml
 lib/qml/MaterialDesignIcon.qml
 lib/qml/ScenesWidget.qml

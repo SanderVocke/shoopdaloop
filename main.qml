@@ -64,6 +64,7 @@ ApplicationWindow {
                     function onRequest_bind_loop_to_scene(track, loop) { shared.bind_loop_to_current_scene(track, loop) }
                     function onRequest_rename(track, name) { shared.rename_track(track, name) }
                     function onRequest_select_loop(track, loop) { shared.select_loop(track, loop) }
+                    function onRequest_load_wav(track, loop, wav_file) { shared.load_loop_wav(track, loop, wav_file) }
                 }
             }
 

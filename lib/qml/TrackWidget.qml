@@ -27,6 +27,7 @@ Item {
     signal set_loop_in_scene(int idx)
     signal renamed(string name)
     signal request_select_loop(int idx)
+    signal request_load_wav(int idx, string wav_file)
 
     function get_loop_state(loop_idx) {
         if (loops && loops.model > 0 && loops.itemAt(loop_idx) !== null) {
@@ -102,6 +103,7 @@ Item {
                         onSelected: () => { track.request_select_loop(index) }
                         onAdd_to_scene: () => { track.set_loop_in_scene(index) }
                         onState_changed: () => { track.update_active_loop_state() }
+                        onRequest_load_wav: (wav_file) => { track.request_load_wav(index, wav_file) }
                     }
                 }
 

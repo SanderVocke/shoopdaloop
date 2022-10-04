@@ -17,7 +17,7 @@ Item {
     signal selected() //directly selected by the user to be activated.
     signal add_to_scene() //selected by the user to be added to the current scene.
     signal state_changed()
-    signal chose_wav_file(string filename) //indicates a wav file is to be loaded for this loop
+    signal request_load_wav(string wav_file) //request to load a wav into this loop
 
     id : widget
 
@@ -197,7 +197,7 @@ Item {
         ClickTrackDialog {
             id: clicktrackdialog
             onAcceptedClickTrack: (wav_file) => {
-                                      console.log("accepted")
+                                      widget.request_load_wav(wav_file)
                                   }
         }
 
