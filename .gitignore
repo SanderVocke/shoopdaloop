@@ -1,7 +1,7 @@
 **/__pycache__
 *.cflags
 *.config
-*.creator ShoopDaLoop.creator.user ShoopDaLoop.creator.user.c279b9f
+*.creator*
 *.cxxflags
 *.files
 *.includes
