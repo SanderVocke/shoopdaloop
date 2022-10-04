@@ -1,6 +1,7 @@
 from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot, QTimer
 import re
 import time
+import os
 
 from ..LoopState import LoopState
 
@@ -244,6 +245,16 @@ class SLLooperManager(QObject):
     def doLoadWav(self, wav_file):
         # TODO: handle the errors
         self.sendOscExpectResponse.emit(['/sl/{}/load_loop'.format(self._sl_looper_index), wav_file], '/load_loop_error')
+
+    @pyqtSlot(str)
+    def doSaveWav(self, wav_file):
+        # TODO: handle the errors
+        self.sendOscExpectResponse.emit(['/sl/{}/save_loop'.format(self._sl_looper_index), wav_file, 'dummy_format', 'dummy_endian'], '/save_loop_error')
+        start_t = time.monotonic()
+        while time.monotonic() - start_t < 2.0 and not os.path.isfile(wav_file):
+            time.sleep(0.1)
+        if not os.path.isfile(wav_file):
+            raise Exception("Failed to save wav file for loop.")
 
     @pyqtSlot(QObject)
     def connect_osc_link(self, link):

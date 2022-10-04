@@ -326,13 +326,18 @@ Item {
         mgr.doLoadWav(wav_file);
     }
 
-    function save_session(filename) {
+    function save_loop_wav(track_idx, loop_idx, wav_file) {
+        var mgr = loop_managers[track_idx][loop_idx];
+        mgr.doSaveWav(wav_file);
+    }
+
+    function save_session(filename, store_audio) {
         var my_state = serialize_state()
-        sl_global_manager.save_session(my_state, filename)
+        sl_global_manager.save_session(my_state, [].concat(...loop_managers), store_audio, filename)
     }
 
     function load_session(filename) {
-        var my_state = sl_global_manager.load_session(filename)
+        var my_state = sl_global_manager.load_session([].concat(...loop_managers), osc_link, filename)
         deserialize_state(my_state)
     }
 

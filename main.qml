@@ -67,6 +67,7 @@ ApplicationWindow {
                     function onRequest_rename(track, name) { shared.rename_track(track, name) }
                     function onRequest_select_loop(track, loop) { shared.select_loop(track, loop) }
                     function onRequest_load_wav(track, loop, wav_file) { shared.load_loop_wav(track, loop, wav_file) }
+                    function onRequest_save_wav(track, loop, wav_file) { shared.save_loop_wav(track, loop, wav_file) }
                     function onRequest_rename_loop(track, loop, name) { shared.rename_loop(track, loop, name) }
                 }
             }
@@ -147,16 +148,21 @@ ApplicationWindow {
                 Menu {
                     id: mainmenu
                     MenuItem {
-                        text: "Save session"
-                        onClicked: savesessiondialog.open()
+                        text: "Save session (with audio)..."
+                        onClicked: { savesessiondialog.save_audio = true; savesessiondialog.open() }
                     }
                     MenuItem {
-                        text: "Load session"
+                        text: "Save session (no audio)..."
+                        onClicked: { savesessiondialog.save_audio = false; savesessiondialog.open() }
+                    }
+                    MenuItem {
+                        text: "Load session..."
                         onClicked: loadsessiondialog.open()
                     }
                 }
 
                 FileDialog {
+                    property bool save_audio: false
                     id: savesessiondialog
                     fileMode: FileDialog.SaveFile
                     acceptLabel: 'Save'
@@ -164,7 +170,7 @@ ApplicationWindow {
                     defaultSuffix: 'shl'
                     onAccepted: {
                         var filename = selectedFile.toString().replace('file://', '');
-                        shared.save_session(filename)
+                        shared.save_session(filename, save_audio)
                     }
                 }
 

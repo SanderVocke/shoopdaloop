@@ -1,6 +1,7 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
+import QtQuick.Dialogs
 
 import '../LoopState.js' as LoopState
 
@@ -19,6 +20,7 @@ Item {
     signal add_to_scene() //selected by the user to be added to the current scene.
     signal state_changed()
     signal request_load_wav(string wav_file) //request to load a wav into this loop
+    signal request_save_wav(string wav_file)
     signal request_rename(string name)
 
     id : widget
@@ -215,6 +217,38 @@ Item {
                 text: "Generate click loop..."
                 onClicked: () => clicktrackdialog.open()
             }
+            MenuItem {
+                text: "Save WAV..."
+                onClicked: () => savedialog.open()
+            }
+            MenuItem {
+                text: "Load WAV..."
+                onClicked: () => loaddialog.open()
+            }
+        }
+
+        FileDialog {
+            id: savedialog
+            fileMode: FileDialog.SaveFile
+            acceptLabel: 'Save'
+            nameFilters: ["WAV files (*.wav)"]
+            defaultSuffix: 'wav'
+            onAccepted: {
+                var filename = selectedFile.toString().replace('file://', '');
+                widget.request_save_wav(filename)
+            }
+        }
+
+        FileDialog {
+            id: loaddialog
+            fileMode: FileDialog.OpenFile
+            acceptLabel: 'Load'
+            nameFilters: ["WAV files (*.wav)"]
+            onAccepted: {
+                var filename = selectedFile.toString().replace('file://', '');
+                widget.request_load_wav(filename)
+            }
+
         }
 
         function popup () {

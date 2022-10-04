@@ -4,6 +4,7 @@ import os
 import time
 import tarfile
 import shutil
+import wave
 
 # TODO make settable
 loop_channels = 2
@@ -87,8 +88,8 @@ class SLGlobalManager(QObject):
 
     # Save the SooperLooper session, combined with a string
     # representing ShoopDaLoop session data, into a file.
-    @pyqtSlot(str, str)
-    def save_session(self, shoopdaloop_state_serialized, filename):
+    @pyqtSlot(str, list, bool, str)
+    def save_session(self, shoopdaloop_state_serialized, loop_managers, store_audio, filename):
         folder = tempfile.mkdtemp()
         sl_session_filename = folder + '/sooperlooper_session'
         shoop_session_filename = folder + '/shoopdaloop_session'
@@ -103,23 +104,46 @@ class SLGlobalManager(QObject):
         with open(shoop_session_filename, 'w') as file:
             file.write(shoopdaloop_state_serialized)
 
+        include_wavs = []
+        if store_audio:
+            for idx,manager in enumerate(loop_managers):
+                if manager.length > 0.0:
+                    wav_filename = folder + '/' + str(idx) + '.wav'
+                    manager.doSaveWav(wav_filename)
+                    include_wavs.append(wav_filename)
+
         # Now combine into a tarball
         with tarfile.open(tar_filename, 'w') as file:
-            file.add(sl_session_filename, 'sooperlooper_session')
-            file.add(shoop_session_filename, 'shoopdaloop_session')
+            file.add(sl_session_filename, os.path.basename(sl_session_filename))
+            file.add(shoop_session_filename, os.path.basename(shoop_session_filename))
+            for wav in include_wavs:
+                file.add(wav, os.path.basename(wav))
 
         # Save as a session file
         shutil.move(tar_filename, filename)
 
     # Load the SooperLooper session from a .shl file, returning the
     # ShoopDaLoop-specific state data.
-    @pyqtSlot(str, result=str)
-    def load_session(self, filename):
+    @pyqtSlot(list, QObject, str, result=str)
+    def load_session(self, loop_managers, osc_link, filename):
         folder = tempfile.mkdtemp()
         session_data = None
         with tarfile.open(filename, 'r') as file:
             file.extractall(folder)
         self.sendOscExpectResponse.emit(['/load_session', folder + '/sooperlooper_session'], '/load_session_error')
+
+        # We want to wait until session loading is finished before we start loading any loops.
+        # During session load, SooperLooper will delete all loops (until loop count is 0) and then
+        # set the loop count to the new amount. We can detect this sequence.
+        # TODO: implement the above instead of a "dumb" wait.
+        time.sleep(5.0)
+
+        # For each loop, either load #.wav or default.wav if absent
+        for idx,manager in enumerate(loop_managers):
+            wav_filename = folder + '/' + str(idx) + ".wav"
+            if os.path.isfile(wav_filename):
+                manager.doLoadWav(wav_filename)
+
         with open(folder + '/shoopdaloop_session', 'r') as file:
             session_data = file.read()
         return session_data

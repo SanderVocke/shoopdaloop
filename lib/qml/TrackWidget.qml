@@ -29,6 +29,7 @@ Item {
     signal renamed(string name)
     signal request_select_loop(int idx)
     signal request_load_wav(int idx, string wav_file)
+    signal request_save_wav(int idx, string wav_file)
     signal request_rename_loop(int idx, string name)
 
     function get_loop_state(loop_idx) {
@@ -107,6 +108,7 @@ Item {
                         onAdd_to_scene: () => { track.set_loop_in_scene(index) }
                         onState_changed: () => { track.update_active_loop_state() }
                         onRequest_load_wav: (wav_file) => { track.request_load_wav(index, wav_file) }
+                        onRequest_save_wav: (wav_file) => { track.request_save_wav(index, wav_file) }
                         onRequest_rename: (name) => { track.request_rename_loop(index, name) }
                     }
                 }

@@ -35,7 +35,7 @@ class SooperLooperOSCLink(QObject):
         def rcv(addr, *args):
             try:
                 msg = [addr, *args]
-                #print('R: {}'.format(pprint.pformat(msg)))
+                print('R: {}'.format(pprint.pformat(msg)))
                 self.received.emit(msg)
             except Exception as e:
                 print('Failed to receive message: {}'.format(str(e)))

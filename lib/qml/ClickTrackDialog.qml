@@ -24,7 +24,12 @@ Dialog {
         }
         return []
     }
-    property var possible_secondary_clicks: ['None'].concat(click_track_generator.get_possible_clicks())
+    property var possible_secondary_clicks: {
+        if(click_track_generator) {
+            return ['None'].concat(click_track_generator.get_possible_clicks());
+        }
+        return []
+    }
 
     function generate() {
         var clicks = [primary_click]
