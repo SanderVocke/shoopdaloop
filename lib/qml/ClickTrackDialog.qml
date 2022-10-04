@@ -10,7 +10,7 @@ Dialog {
     standardButtons: Dialog.Ok | Dialog.Cancel
 
     width: 400
-    height: 400
+    height: 450
 
     property alias primary_click: primary_click_combo.currentText
     property alias secondary_click: secondary_click_combo.currentText
@@ -34,71 +34,76 @@ Dialog {
 
     signal acceptedClickTrack(filename: string)
 
-    Column {
-        Row {
-            Text {
-                text: "Primary click:"
-            }
-            ComboBox {
-                id: primary_click_combo
-                model: dialog.possible_primary_clicks
-                currentIndex: 0
-            }
+    Grid {
+        columns: 2
+        spacing: 5
+        verticalItemAlignment: Grid.AlignVCenter
+        horizontalItemAlignment: Grid.AlignRight
+
+        Text {
+            text: "Primary click:"
+            color: Material.foreground
+            verticalAlignment: Text.AlignVCenter
+        }
+        ComboBox {
+            id: primary_click_combo
+            model: dialog.possible_primary_clicks
+            currentIndex: 0
         }
 
-        Row {
-            Text {
-                text: "Clicks per minute:"
-            }
-            TextField {
-                id: bpm_field
-                text: "100"
-                validator: IntValidator { bottom: 1 }
-            }
+        Text {
+            text: "Clicks per minute:"
+            color: Material.foreground
+            verticalAlignment: Text.AlignVCenter
+        }
+        TextField {
+            id: bpm_field
+            text: "100"
+            validator: IntValidator { bottom: 1 }
         }
 
-        Row {
-            Text {
-                text: "Number of clicks:"
-            }
-            TextField {
-                id: n_beats_field
-                text: "4"
-                validator: IntValidator { bottom: 1 }
-            }
+        Text {
+            text: "Number of clicks:"
+            color: Material.foreground
+            verticalAlignment: Text.AlignVCenter
+        }
+        TextField {
+            id: n_beats_field
+            text: "4"
+            validator: IntValidator { bottom: 1 }
         }
 
-        Row {
-            Text {
-                text: "Delay odd clicks by (%):"
-            }
-            TextField {
-                id: alternate_delay_percent_field
-                text: "0"
-                validator: IntValidator { bottom: 0; top: 100 }
-            }
+        Text {
+            text: "Delay odd clicks by (%):"
+            color: Material.foreground
+            verticalAlignment: Text.AlignVCenter
+        }
+        TextField {
+            id: alternate_delay_percent_field
+            text: "0"
+            validator: IntValidator { bottom: 0; top: 100 }
         }
 
-        Row {
-            Text {
-                text: "Secondary click:"
-            }
-            ComboBox {
-                id: secondary_click_combo
-                model: dialog.possible_secondary_clicks
-                currentIndex: 0
-            }
+        Text {
+            text: "Secondary click:"
+            color: Material.foreground
+            verticalAlignment: Text.AlignVCenter
+        }
+        ComboBox {
+            id: secondary_click_combo
+            model: dialog.possible_secondary_clicks
+            currentIndex: 0
         }
 
-        Row {
-            Text {
-                text: "Secondary clicks per primary:"
-            }
-            TextField {
-                id: secondary_clicks_per_primary_field
-                text: "3"
-                validator: IntValidator { bottom: 0 }
-            }
+        Text {
+            text: "Secondary clicks per primary:"
+            color: Material.foreground
+            verticalAlignment: Text.AlignVCenter
+        }
+        TextField {
+            id: secondary_clicks_per_primary_field
+            text: "3"
+            validator: IntValidator { bottom: 0 }
         }
 
         Button {
