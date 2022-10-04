@@ -13,11 +13,13 @@ Item {
     property bool is_in_selected_scene: false
     property bool is_in_hovered_scene: false
     property var manager
+    property alias name: name_field.text
 
     signal selected() //directly selected by the user to be activated.
     signal add_to_scene() //selected by the user to be added to the current scene.
     signal state_changed()
     signal request_load_wav(string wav_file) //request to load a wav into this loop
+    signal request_rename(string name)
 
     id : widget
 
@@ -111,12 +113,17 @@ Item {
                     y: (loop.height - height)/2
                 }
                 TextField {
+                    id: name_field
                     width: 60
                     height: 35
                     font.pixelSize: 12
                     y: (loop.height - height)/2
 
-                    onEditingFinished: background_focus.forceActiveFocus()
+                    onEditingFinished: {
+                        console.log("Finished: " + text)
+                        widget.request_rename(text)
+                        //background_focus.forceActiveFocus();
+                    }
                 }
             }
         }

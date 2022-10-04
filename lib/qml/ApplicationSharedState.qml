@@ -13,17 +13,7 @@ Item {
 
     id: shared
 
-    // TRACKS STATE
-    property var track_names: [
-        'Track 1',
-        'Track 2',
-        'Track 3',
-        'Track 4',
-        'Track 5',
-        'Track 6',
-        'Track 7',
-        'Track 8',
-    ]
+    // STATIC
     property int loops_per_track: 6
     property var loop_managers: {
         var outer, inner
@@ -46,7 +36,31 @@ Item {
     property var master_loop_manager: {
         return loop_managers[master_loop_idx[0]][master_loop_idx[1]]
     }
+
+    // TRACKS STATE
+    property var track_names: [
+        'Track 1',
+        'Track 2',
+        'Track 3',
+        'Track 4',
+        'Track 5',
+        'Track 6',
+        'Track 7',
+        'Track 8',
+    ]
     property var selected_loops: [0, 0, 0, 0, 0, 0, 0, 0]
+    property var loop_names: {
+        var outer, inner
+        var names = []
+        for (outer = 0; outer < track_names.length; outer++) {
+            var track_loop_names = []
+            for (inner = 0; inner < loops_per_track; inner++) {
+                track_loop_names.push('')
+            }
+            names.push(track_loop_names)
+        }
+        return names
+    }
 
     // SCENES STATE
     property var scenes: [
@@ -61,6 +75,57 @@ Item {
         { name: 'Section 2', scene_idx: -1, actions: []}
     ]
     property int selected_section: -1
+
+    // (DE-)SERIALIZATION
+    function state_to_dict() {
+        return {
+            'track_names': track_names,
+            'selected_loops': selected_loops,
+            'scenes': scenes,
+            'selected_scene': selected_scene,
+            'hovered_scene': hovered_scene,
+            'sections': sections,
+            'selected_section': selected_section,
+            'loop_names': loop_names
+        }
+    }
+    function set_state_from_dict(state_dict) {
+        // RESET SELECTIONS
+        selected_loops = [0, 0, 0, 0, 0, 0, 0, 0]
+        selected_scene = -1
+        hovered_scene = -1
+        selected_section = -1
+
+        selected_loopsChanged()
+        selected_sceneChanged()
+        hovered_sceneChanged()
+        selected_sectionChanged()
+
+        // LOAD
+        track_names = state_dict.track_names
+        scenes = state_dict.scenes
+        sections = state_dict.sections
+        loop_names = state_dict.loop_names
+        selected_loops = state_dict.selected_loops
+        selected_scene = state_dict.selected_scene
+        hovered_scene = state_dict.hovered_scene
+        selected_section = state_dict.selected_section
+
+        track_namesChanged()
+        loop_namesChanged()
+        scenesChanged()
+        sectionsChanged()
+        selected_loopsChanged()
+        selected_sceneChanged()
+        hovered_sceneChanged()
+        selected_sectionChanged()
+    }
+    function serialize_state() {
+        return JSON.stringify(state_to_dict())
+    }
+    function deserialize_state(data) {
+        set_state_from_dict(JSON.parse(data))
+    }
 
     // DERIVED STATE
     property var scene_names: []
@@ -186,6 +251,11 @@ Item {
         track_namesChanged()
     }
 
+    function rename_loop(track_idx, loop_idx, name) {
+        loop_names[track_idx][loop_idx] = name
+        loop_namesChanged()
+    }
+
     function add_action(section, type, track) {
         var idx
         var found = false
@@ -254,6 +324,16 @@ Item {
     function load_loop_wav(track_idx, loop_idx, wav_file) {
         var mgr = loop_managers[track_idx][loop_idx];
         mgr.doLoadWav(wav_file);
+    }
+
+    function save_session(filename) {
+        var my_state = serialize_state()
+        sl_global_manager.save_session(my_state, filename)
+    }
+
+    function load_session(filename) {
+        var my_state = sl_global_manager.load_session(filename)
+        deserialize_state(my_state)
     }
 
     Connections {

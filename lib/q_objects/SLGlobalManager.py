@@ -1,4 +1,9 @@
 from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot
+import tempfile
+import os
+import time
+import tarfile
+import shutil
 
 # TODO make settable
 loop_channels = 2
@@ -79,3 +84,43 @@ class SLGlobalManager(QObject):
         self.sendOscExpectResponse.connect(link.send_expect_response)
         self.sendOsc.connect(link.send)
         self.start_sync()
+
+    # Save the SooperLooper session, combined with a string
+    # representing ShoopDaLoop session data, into a file.
+    @pyqtSlot(str, str)
+    def save_session(self, shoopdaloop_state_serialized, filename):
+        folder = tempfile.mkdtemp()
+        sl_session_filename = folder + '/sooperlooper_session'
+        shoop_session_filename = folder + '/shoopdaloop_session'
+        tar_filename = folder + '/session.tar'
+        self.sendOscExpectResponse.emit(['/save_session', sl_session_filename], '/save_session_error')
+        start_t = time.monotonic()
+        while time.monotonic() - start_t < 5.0 and not os.path.isfile(sl_session_filename):
+            time.sleep(0.05)
+        if not os.path.isfile(sl_session_filename):
+            raise Exception('SooperLooper did not save its session.')
+
+        with open(shoop_session_filename, 'w') as file:
+            file.write(shoopdaloop_state_serialized)
+
+        # Now combine into a tarball
+        with tarfile.open(tar_filename, 'w') as file:
+            file.add(sl_session_filename, 'sooperlooper_session')
+            file.add(shoop_session_filename, 'shoopdaloop_session')
+
+        # Save as a session file
+        shutil.move(tar_filename, filename)
+
+    # Load the SooperLooper session from a .shl file, returning the
+    # ShoopDaLoop-specific state data.
+    @pyqtSlot(str, result=str)
+    def load_session(self, filename):
+        folder = tempfile.mkdtemp()
+        session_data = None
+        with tarfile.open(filename, 'r') as file:
+            file.extractall(folder)
+        self.sendOscExpectResponse.emit(['/load_session', folder + '/sooperlooper_session'], '/load_session_error')
+        with open(folder + '/shoopdaloop_session', 'r') as file:
+            session_data = file.read()
+        return session_data
+

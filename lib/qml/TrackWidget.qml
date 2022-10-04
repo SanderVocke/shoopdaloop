@@ -15,6 +15,7 @@ Item {
     property int maybe_master_loop_idx: -1 //-1 is none
     property var master_loop_manager
     property var loop_managers
+    property var loop_names
     property string name: ''
 
     // Array of loop idxs
@@ -28,6 +29,7 @@ Item {
     signal renamed(string name)
     signal request_select_loop(int idx)
     signal request_load_wav(int idx, string wav_file)
+    signal request_rename_loop(int idx, string name)
 
     function get_loop_state(loop_idx) {
         if (loops && loops.model > 0 && loops.itemAt(loop_idx) !== null) {
@@ -99,11 +101,13 @@ Item {
                         is_in_selected_scene: track.loops_of_selected_scene.includes(index)
                         is_in_hovered_scene: track.loops_of_hovered_scene.includes(index)
                         manager: track.loop_managers[index]
+                        name: track.loop_names[index]
 
                         onSelected: () => { track.request_select_loop(index) }
                         onAdd_to_scene: () => { track.set_loop_in_scene(index) }
                         onState_changed: () => { track.update_active_loop_state() }
                         onRequest_load_wav: (wav_file) => { track.request_load_wav(index, wav_file) }
+                        onRequest_rename: (name) => { track.request_rename_loop(index, name) }
                     }
                 }
 

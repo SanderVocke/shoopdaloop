@@ -1,6 +1,7 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
+import QtQuick.Dialogs
 
 import 'lib/qml'
 import 'lib/LoopState.js' as LoopState
@@ -52,6 +53,7 @@ ApplicationWindow {
                 anchors.top: parent.top
 
                 track_names: shared.track_names
+                loop_names: shared.loop_names
                 loop_managers: shared.loop_managers
                 master_loop_manager: shared.master_loop_manager
                 master_loop_idx: shared.master_loop_idx
@@ -65,6 +67,7 @@ ApplicationWindow {
                     function onRequest_rename(track, name) { shared.rename_track(track, name) }
                     function onRequest_select_loop(track, loop) { shared.select_loop(track, loop) }
                     function onRequest_load_wav(track, loop, wav_file) { shared.load_loop_wav(track, loop, wav_file) }
+                    function onRequest_rename_loop(track, loop, name) { shared.rename_loop(track, loop, name) }
                 }
             }
 
@@ -120,6 +123,7 @@ ApplicationWindow {
             }
 
             Text {
+                id: versiontext
                 anchors {
                     top: logo.bottom
                     left: logo.left
@@ -128,6 +132,53 @@ ApplicationWindow {
                 text: 'ShoopDaLoop v0.1' // TODO
                 color: Material.foreground
                 font.pixelSize: 12
+            }
+
+            Button {
+                anchors {
+                    top: versiontext.bottom
+                    left: logo.left
+                    right: logo.right
+                }
+                text: 'Menu'
+                height: 35
+                onClicked: mainmenu.popup()
+
+                Menu {
+                    id: mainmenu
+                    MenuItem {
+                        text: "Save session"
+                        onClicked: savesessiondialog.open()
+                    }
+                    MenuItem {
+                        text: "Load session"
+                        onClicked: loadsessiondialog.open()
+                    }
+                }
+
+                FileDialog {
+                    id: savesessiondialog
+                    fileMode: FileDialog.SaveFile
+                    acceptLabel: 'Save'
+                    nameFilters: ["ShoopDaLoop session files (*.shl)"]
+                    defaultSuffix: 'shl'
+                    onAccepted: {
+                        var filename = selectedFile.toString().replace('file://', '');
+                        shared.save_session(filename)
+                    }
+                }
+
+                FileDialog {
+                    id: loadsessiondialog
+                    fileMode: FileDialog.OpenFile
+                    acceptLabel: 'Load'
+                    nameFilters: ["ShoopDaLoop session files (*.shl)"]
+                    onAccepted: {
+                        var filename = selectedFile.toString().replace('file://', '');
+                        shared.load_session(filename)
+                    }
+
+                }
             }
 
             ScriptingWidget {

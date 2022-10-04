@@ -9,6 +9,7 @@ Item {
     height: childrenRect.height
 
     property var track_names: []
+    property var loop_names: []
     property int loops_per_track
     property var loop_managers //2D array
     property var master_loop_manager
@@ -23,6 +24,7 @@ Item {
     signal request_rename(int track, string name)
     signal request_select_loop(int track, int loop)
     signal request_load_wav(int track, int loop, string wav_file)
+    signal request_rename_loop(int track, int loop, string name)
 
     Rectangle {
         property int x_spacing: 0
@@ -48,6 +50,7 @@ Item {
 
                     TrackWidget {
                         name: tracks.track_names[index]
+                        loop_names: tracks.loop_names[index]
                         num_loops: tracks.loops_per_track
                         first_index: index * tracks.loops_per_track
                         track_index: index + 1
@@ -70,6 +73,7 @@ Item {
                         onRenamed: (name) => tracks.request_rename(index, name)
                         onRequest_select_loop: (idx) => tracks.request_select_loop(index, idx)
                         onRequest_load_wav: (idx, wav_file) => tracks.request_load_wav(index, idx, wav_file)
+                        onRequest_rename_loop: (idx, name) => tracks.request_rename_loop(index, idx, name)
                     }
                 }
             }
