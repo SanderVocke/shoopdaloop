@@ -5,7 +5,7 @@ from pythonosc.udp_client import SimpleUDPClient
 from pythonosc.osc_server import BlockingOSCUDPServer
 from pythonosc.dispatcher import Dispatcher
 
-from PyQt6.QtCore import QObject, QThread, pyqtSignal, pyqtSlot
+from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot
 
 import pprint
 
@@ -35,7 +35,7 @@ class SooperLooperOSCLink(QObject):
         def rcv(addr, *args):
             try:
                 msg = [addr, *args]
-                print('R: {}'.format(pprint.pformat(msg)))
+                #print('R: {}'.format(pprint.pformat(msg)))
                 self.received.emit(msg)
             except Exception as e:
                 print('Failed to receive message: {}'.format(str(e)))

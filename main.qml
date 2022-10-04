@@ -69,6 +69,7 @@ ApplicationWindow {
                     function onRequest_load_wav(track, loop, wav_file) { shared.load_loop_wav(track, loop, wav_file) }
                     function onRequest_save_wav(track, loop, wav_file) { shared.save_loop_wav(track, loop, wav_file) }
                     function onRequest_rename_loop(track, loop, name) { shared.rename_loop(track, loop, name) }
+                    function onRequest_clear_loop(track, loop) { shared.clear_loop(track, loop) }
                 }
             }
 

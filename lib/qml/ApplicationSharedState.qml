@@ -331,6 +331,11 @@ Item {
         mgr.doSaveWav(wav_file);
     }
 
+    function clear_loop(track_idx, loop_idx) {
+        var mgr = loop_managers[track_idx][loop_idx];
+        mgr.doClear();
+    }
+
     function save_session(filename, store_audio) {
         var my_state = serialize_state()
         sl_global_manager.save_session(my_state, [].concat(...loop_managers), store_audio, filename)

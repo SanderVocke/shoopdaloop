@@ -2,6 +2,8 @@ from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot, QTimer
 import re
 import time
 import os
+import wave
+import tempfile
 
 from ..LoopState import LoopState
 
@@ -245,6 +247,17 @@ class SLLooperManager(QObject):
     def doLoadWav(self, wav_file):
         # TODO: handle the errors
         self.sendOscExpectResponse.emit(['/sl/{}/load_loop'.format(self._sl_looper_index), wav_file], '/load_loop_error')
+
+    @pyqtSlot()
+    def doClear(self):
+        # Clearing is possible by loading an empty wav.
+        filename = tempfile.mkstemp()[1]
+        with wave.open(filename, 'w') as file:
+            file.setframerate(48000)
+            file.setsampwidth(4)
+            file.setnchannels(2)
+            file.setnframes(0)
+        self.doLoadWav(filename)
 
     @pyqtSlot(str)
     def doSaveWav(self, wav_file):

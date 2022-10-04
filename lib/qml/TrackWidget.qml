@@ -31,6 +31,7 @@ Item {
     signal request_load_wav(int idx, string wav_file)
     signal request_save_wav(int idx, string wav_file)
     signal request_rename_loop(int idx, string name)
+    signal request_clear_loop(int idx)
 
     function get_loop_state(loop_idx) {
         if (loops && loops.model > 0 && loops.itemAt(loop_idx) !== null) {
@@ -110,6 +111,7 @@ Item {
                         onRequest_load_wav: (wav_file) => { track.request_load_wav(index, wav_file) }
                         onRequest_save_wav: (wav_file) => { track.request_save_wav(index, wav_file) }
                         onRequest_rename: (name) => { track.request_rename_loop(index, name) }
+                        onRequest_clear: () => { track.request_clear_loop(index) }
                     }
                 }
 

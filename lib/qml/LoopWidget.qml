@@ -22,6 +22,7 @@ Item {
     signal request_load_wav(string wav_file) //request to load a wav into this loop
     signal request_save_wav(string wav_file)
     signal request_rename(string name)
+    signal request_clear()
 
     id : widget
 
@@ -224,6 +225,12 @@ Item {
             MenuItem {
                 text: "Load WAV..."
                 onClicked: () => loaddialog.open()
+            }
+            MenuItem {
+                text: "Clear"
+                onClicked: () => {
+                               widget.request_clear()
+                           }
             }
         }
 
