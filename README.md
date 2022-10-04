@@ -24,4 +24,4 @@ Note however that it is in early development. It has not been used for on-stage 
 
 # Getting started
 
-There are no packages yet. You will need to first install SooperLooper and Qt6, run SooperLooper first, then run ShoopDaLoop using `python main.py`.
+There are no packages yet. You will need to first install SooperLooper and (Py-)Qt6, run SooperLooper first, then run ShoopDaLoop using `python main.py`.
