@@ -122,7 +122,7 @@ Item {
                     onEditingFinished: {
                         console.log("Finished: " + text)
                         widget.request_rename(text)
-                        //background_focus.forceActiveFocus();
+                        background_focus.forceActiveFocus();
                     }
                 }
             }
