@@ -247,6 +247,7 @@ class SLLooperManager(QObject):
 
     @pyqtSlot(QObject)
     def connect_osc_link(self, link):
-        link.received.connect(self.onOscReceived)
-        self.sendOscExpectResponse.connect(link.send_expect_response)
-        self.sendOsc.connect(link.send)
+        if link is not None:
+            link.received.connect(self.onOscReceived)
+            self.sendOscExpectResponse.connect(link.send_expect_response)
+            self.sendOsc.connect(link.send)

@@ -18,7 +18,12 @@ Dialog {
     property alias n_beats_text: n_beats_field.text
     property alias num_secondary_per_primary_text: secondary_clicks_per_primary_field.text
     property alias alternate_delay_percent_text: alternate_delay_percent_field.text
-    property var possible_primary_clicks: click_track_generator.get_possible_clicks()
+    property var possible_primary_clicks: {
+        if(click_track_generator) {
+            return click_track_generator.get_possible_clicks()
+        }
+        return []
+    }
     property var possible_secondary_clicks: ['None'].concat(click_track_generator.get_possible_clicks())
 
     function generate() {
