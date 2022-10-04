@@ -91,7 +91,7 @@ Item {
                         name: trackctl.muted ? 'volume-mute' : 'volume-high'
                         color: trackctl.muted ? 'grey' : Material.foreground
                     }
-                    onClicked: { if(mute.muted) {trackctl.unmute()} else {trackctl.mute()} }
+                    onClicked: { if(trackctl.muted) {trackctl.unmute()} else {trackctl.mute()} }
                 }
             }
 

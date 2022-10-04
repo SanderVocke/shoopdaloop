@@ -21,6 +21,7 @@ Item {
     // Array of loop idxs
     property var loops_of_selected_scene: []
     property var loops_of_hovered_scene: []
+    property var active_loop_state: selected_loop >= 0 ? loop_managers[selected_loop].state : LoopState.LoopState.Unknown
 
     width: childrenRect.width
     height: childrenRect.height
@@ -32,20 +33,6 @@ Item {
     signal request_save_wav(int idx, string wav_file)
     signal request_rename_loop(int idx, string name)
     signal request_clear_loop(int idx)
-
-    function get_loop_state(loop_idx) {
-        if (loops && loops.model > 0 && loops.itemAt(loop_idx) !== null) {
-            return loops.itemAt(loop_idx).manager.state
-        } else {
-            return LoopState.LoopState.Unknown
-        }
-    }
-    function update_active_loop_state() {
-        active_loop_state = get_loop_state(selected_loop)
-        active_loop_stateChanged()
-    }
-    onSelected_loopChanged: { update_active_loop_state() }
-    property var active_loop_state: get_loop_state(selected_loop)
 
     function actions_on_loop_mgrs(idx, on_idx_loop_fn, on_other_loop_fn) {
         for(var i = 0; i < track.num_loops; i++) {
@@ -107,7 +94,6 @@ Item {
 
                         onSelected: () => { track.request_select_loop(index) }
                         onAdd_to_scene: () => { track.set_loop_in_scene(index) }
-                        onState_changed: () => { track.update_active_loop_state() }
                         onRequest_load_wav: (wav_file) => { track.request_load_wav(index, wav_file) }
                         onRequest_save_wav: (wav_file) => { track.request_save_wav(index, wav_file) }
                         onRequest_rename: (name) => { track.request_rename_loop(index, name) }
@@ -127,7 +113,6 @@ Item {
                 Connections {
                     target: trackctlwidget
                     function onRecord() {
-                        track.update_active_loop_state()
                         if (track.active_loop_state === LoopState.LoopState.Recording ||
                             track.active_loop_state === LoopState.LoopState.Inserting) {
                             track.loop_managers[track.selected_loop].doStopRecord()
@@ -150,7 +135,7 @@ Item {
                             track.loop_managers[idx].doMute()
                         }
                     }
-                    function doUnmute() {
+                    function onUnmute() {
                         track.loop_managers[track.selected_loop].doUnmute()
                     }
                 }

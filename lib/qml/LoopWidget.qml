@@ -18,7 +18,6 @@ Item {
 
     signal selected() //directly selected by the user to be activated.
     signal add_to_scene() //selected by the user to be added to the current scene.
-    signal state_changed()
     signal request_load_wav(string wav_file) //request to load a wav into this loop
     signal request_save_wav(string wav_file)
     signal request_rename(string name)
