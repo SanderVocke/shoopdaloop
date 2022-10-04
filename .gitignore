@@ -5,3 +5,4 @@
 *.cxxflags
 *.files
 *.includes
+.qtc_clangd
