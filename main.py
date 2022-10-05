@@ -8,8 +8,9 @@ from lib.q_objects.SLGlobalManager import SLGlobalManager
 from lib.q_objects.SooperLooperOSCLink import SooperLooperOSCLink
 from lib.q_objects.ClickTrackGenerator import ClickTrackGenerator
 
-import third_party.pyjacklib.jacklib as jacklib
-import subprocess
+from lib.JackProxySession import JackProxySession
+
+from third_party.pyjacklib import jacklib
 
 app = QGuiApplication(sys.argv)
 
@@ -30,10 +31,10 @@ engine.rootContext().setContextProperty("click_track_generator", click_track_gen
 engine.quit.connect(app.quit)
 engine.load('main.qml')
 
-# Testing the jack connection
-jacklib.load_libjack('build/jack2/client/libjack.so.0')
-status = jacklib.jack_status_t()
-client = jacklib.client_open("test_client", jacklib.JackNoStartServer | jacklib.JackServerName, status, "testserver")
-print(status)
+jack_server_name = 'testserver'
+with JackProxySession(jack_server_name, 2, 2) as jack:
+    status = jacklib.jack_status_t()
+    client = jack.jack_client_open("test_client", jacklib.JackNoStartServer | jacklib.JackServerName, status, jack_server_name)
+    print(status)
 
 sys.exit(app.exec())
