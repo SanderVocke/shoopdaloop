@@ -1,3 +1,9 @@
 [submodule "third_party/QtMaterialDesignIcons"]
 	path = third_party/QtMaterialDesignIcons
 	url = https://github.com/sthlm58/QtMaterialDesignIcons.git
+[submodule "third_party/jack2"]
+	path = third_party/jack2
+	url = git@github.com:SanderVocke/jack2.git
+[submodule "third_party/pyjacklib"]
+	path = third_party/pyjacklib
+	url = git@github.com:SanderVocke/pyjacklib.git
