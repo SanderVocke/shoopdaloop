@@ -6,3 +6,4 @@
 *.files
 *.includes
 .qtc_clangd
+build
