@@ -2,6 +2,7 @@ import sys
 
 from PyQt6.QtGui import QGuiApplication
 from PyQt6.QtQml import QQmlApplicationEngine, qmlRegisterType
+from PyQt6.QtCore import QTimer
 
 from lib.q_objects.SLLooperManager import SLLooperManager
 from lib.q_objects.SLGlobalManager import SLGlobalManager
@@ -11,6 +12,27 @@ from lib.q_objects.ClickTrackGenerator import ClickTrackGenerator
 from lib.JackProxySession import JackProxySession
 
 from third_party.pyjacklib import jacklib
+
+import signal
+import psutil
+import os
+import time
+
+# Ensure that we forward any terminating signals to our child
+# processes
+def exit_handler(sig, frame):
+    print('Got signal {}.'.format(sig))
+    current_process = psutil.Process()
+    children = current_process.children(recursive=False)
+    for child in children:
+        print('Send signal {} => {}'.format(sig, child.pid))
+        os.kill(child.pid, sig)
+    print('Exiting.')
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, exit_handler)
+signal.signal(signal.SIGQUIT, exit_handler)
+signal.signal(signal.SIGTERM, exit_handler)
 
 app = QGuiApplication(sys.argv)
 
@@ -38,6 +60,12 @@ with JackProxySession(jack_server_name, 2, 2) as jack:
     status = jacklib.jack_status_t()
     client = jacklib.client_open("test_client", jacklib.JackNoStartServer | jacklib.JackServerName, status, jack_server_name)
     print(status)
+
+    # This hacky solution ensures that the Python interpreter has a chance
+    # to run every 100ms, which e.g. allows the signal handlers to work.
+    timer = QTimer()
+    timer.start(100)
+    timer.timeout.connect(lambda: None)
 
     exitcode = app.exec()
 
