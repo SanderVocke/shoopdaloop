@@ -1,6 +1,8 @@
 import subprocess
 import os
 import time
+import signal
+import threading
 
 import sys
 sys.path.append('..')
@@ -20,22 +22,31 @@ class JackProxySession:
         env["JACK_DRIVER_DIR"] = jack_so_path
         env["LD_LIBRARY_PATH"] = jack_so_path
         
-        cmd = '{} -n {} -d proxy -C {} -P {}'.format(jackd_path, server_name, n_capture, n_playback)
+        cmd = '{} -d proxy -C {} -P {}'.format(jackd_path, n_capture, n_playback)
+        if self.server_name:
+            cmd = '{} -n {} -d proxy -C {} -P {}'.format(jackd_path, server_name, n_capture, n_playback)
         print("Running jackd proxy.\n  Command: {}\n".format(cmd))
         self.proc = subprocess.Popen(cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             shell=True,
             env=env)
+        def print_lines():
+            for line in self.proc.stdout:
+                if line:
+                    print('jackd: ' + line.decode('utf8'), end='')
+        self.print_thread = threading.Thread(target=print_lines)
+        self.print_thread.start()
 
-        self.jacklib = jacklib.load_libjack(jack_client_lib_path)
+        print("previous: {}".format(jacklib.jlib))
+        jacklib.jlib = jacklib.load_libjack(jack_client_lib_path)
+        print("loaded: {}".format(jacklib.jlib))
         
         # Give it time to become available
         time.sleep(3.0)
     
     def __enter__(self):
-        # Return a jacklib instance which can be used for executing commands in the session.
-        return self.jacklib
+        return self
 
     def __exit__(self, type, value, traceback):
         print('jackd exiting.')
@@ -48,6 +59,8 @@ class JackProxySession:
             except subprocess.TimeoutExpired:
                 self.proc.kill()
         self.wait(0.5)
+        self.print_thread.join()
+
         
     def wait(self, timeout = None):
         try:

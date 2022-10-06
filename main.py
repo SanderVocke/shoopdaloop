@@ -31,10 +31,14 @@ engine.rootContext().setContextProperty("click_track_generator", click_track_gen
 engine.quit.connect(app.quit)
 engine.load('main.qml')
 
-jack_server_name = 'testserver'
+jack_server_name = None
+exitcode = 0
 with JackProxySession(jack_server_name, 2, 2) as jack:
+    print("check: {}".format(jacklib.jlib))
     status = jacklib.jack_status_t()
-    client = jack.jack_client_open("test_client", jacklib.JackNoStartServer | jacklib.JackServerName, status, jack_server_name)
+    client = jacklib.client_open("test_client", jacklib.JackNoStartServer | jacklib.JackServerName, status, jack_server_name)
     print(status)
 
-sys.exit(app.exec())
+    exitcode = app.exec()
+
+sys.exit(exitcode)
