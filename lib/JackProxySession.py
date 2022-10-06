@@ -10,8 +10,9 @@ sys.path.append('..')
 from third_party.pyjacklib import jacklib
 
 class JackProxySession:
-    def __init__(self, server_name, n_capture, n_playback):
+    def __init__(self, server_name, n_capture, n_playback, client_name):
         self.server_name = server_name
+        self.client_name = client_name
 
         script_pwd = os.path.dirname(__file__)
         jackd_path = script_pwd + '/../build/jack2/jackd'
@@ -38,15 +39,22 @@ class JackProxySession:
         self.print_thread = threading.Thread(target=print_lines)
         self.print_thread.start()
 
-        print("previous: {}".format(jacklib.jlib))
         jacklib.jlib = jacklib.load_libjack(jack_client_lib_path)
-        print("loaded: {}".format(jacklib.jlib))
-        
-        # Give it time to become available
-        time.sleep(3.0)
     
     def __enter__(self):
-        return self
+        # Try to create a client repeatedly for a specified amount of time.
+        status = jacklib.jack_status_t()
+        start_t = time.monotonic()
+        while time.monotonic() - start_t < 5.0:
+            if self.server_name:
+                self.jack_client = jacklib.client_open(self.client_name, jacklib.JackNoStartServer | jacklib.JackServerName, status, self.server_name)
+            else:
+                self.jack_client = jacklib.client_open(self.client_name, jacklib.JackNoStartServer, status)
+            if status.value == 0:
+                break
+        if status.value != 0:
+            raise Exception("Failed to start client in jack proxy session: status {}".format(status.value))
+        return self.jack_client
 
     def __exit__(self, type, value, traceback):
         print('jackd exiting.')
