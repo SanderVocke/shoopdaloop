@@ -18,6 +18,8 @@ import signal
 import psutil
 import os
 import time
+import random
+import string
 
 # Ensure that we forward any terminating signals to our child
 # processes
@@ -38,7 +40,7 @@ signal.signal(signal.SIGTERM, exit_handler)
 script_pwd = os.path.dirname(__file__)
 jack_client_so_path = script_pwd + '/build/jack2/client'
 
-jack_server_name = None
+jack_server_name = 'shoopdaloop-' + ''.join(random.choices(string.ascii_lowercase, k=5))
 with JackProxySession(jack_server_name, 2, 2, 'ShoopDaLoop') as jack_client:
     with SooperLooperSession(48, 2, 9951, jack_server_name, 'shoopdaloop-sooperlooper', jack_client_so_path):
         app = QGuiApplication(sys.argv)

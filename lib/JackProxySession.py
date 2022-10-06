@@ -8,25 +8,31 @@ import sys
 sys.path.append('..')
 
 from third_party.pyjacklib import jacklib
+from lib.Colorcodes import Colorcodes
 
 class JackProxySession:
     def __init__(self, server_name, n_capture, n_playback, client_name):
         self.server_name = server_name
         self.client_name = client_name
+        self.server_ready = False
+        self.colorchar = Colorcodes().blue.decode('utf8')
+        self.resetchar = Colorcodes().reset.decode('utf8')
 
         script_pwd = os.path.dirname(__file__)
         jackd_path = script_pwd + '/../build/jack2/jackd'
         jack_so_path = script_pwd + '/../build/jack2'
         jack_client_lib_path = script_pwd + '/../build/jack2/client/libjack.so.0'
 
+        # Note: hacky to do this via the process environment, couldn't get it to
+        # work in any other way
+        os.environ['JACK_DEFAULT_SERVER'] = self.server_name
+
         env = os.environ.copy()
         env["JACK_DRIVER_DIR"] = jack_so_path
         env["LD_LIBRARY_PATH"] = jack_so_path
         
         cmd = '{} -d proxy -C {} -P {}'.format(jackd_path, n_capture, n_playback)
-        if self.server_name:
-            cmd = '{} -n {} -d proxy -C {} -P {}'.format(jackd_path, server_name, n_capture, n_playback)
-        print("Running jackd proxy.\n  Command: {}\n".format(cmd))
+        print("Running jackd proxy.\n  Command: {}. JACK_DEFAULT_SERVER: {}. LD_LIBRARY_PATH: {}.".format(cmd, env['JACK_DEFAULT_SERVER'], env['LD_LIBRARY_PATH']))
         self.proc = subprocess.Popen(cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -35,25 +41,32 @@ class JackProxySession:
         def print_lines():
             for line in self.proc.stdout:
                 if line:
-                    print('jackd: ' + line.decode('utf8'), end='')
+                    print(self.colorchar + 'jackd: ' + line.decode('utf8') + self.resetchar, end='')
+                    if 'JackProxyDriver connected to ' in line.decode('utf8'):
+                        self.server_ready = True
         self.print_thread = threading.Thread(target=print_lines)
         self.print_thread.start()
+        self.jlib = jacklib.JacklibInstance(jack_client_lib_path)
 
-        jacklib.jlib = jacklib.load_libjack(jack_client_lib_path)
-    
+        start_t = time.monotonic()
+        while time.monotonic() - start_t < 5.0 and not self.server_ready:
+            time.sleep(0.1)
+        if not self.server_ready:
+            raise Exception("Jackd did not come online.")
+
     def __enter__(self):
         # Try to create a client repeatedly for a specified amount of time.
         status = jacklib.jack_status_t()
         start_t = time.monotonic()
         while time.monotonic() - start_t < 5.0:
-            if self.server_name:
-                self.jack_client = jacklib.client_open(self.client_name, jacklib.JackNoStartServer | jacklib.JackServerName, status, self.server_name)
-            else:
-                self.jack_client = jacklib.client_open(self.client_name, jacklib.JackNoStartServer, status)
-            if status.value == 0:
+            time.sleep(0.2)
+            self.jack_client = self.jlib.client_open(self.client_name, jacklib.JackNoStartServer | jacklib.JackServerName, status, self.server_name)
+            #self.jack_client = jacklib.client_open(self.client_name, jacklib.JackNoStartServer, status)
+            if self.jack_client and status.value == 0:
                 break
-        if status.value != 0:
+        if not self.jack_client or status.value != 0:
             raise Exception("Failed to start client in jack proxy session: status {}".format(status.value))
+        
         return self.jack_client
 
     def __exit__(self, type, value, traceback):

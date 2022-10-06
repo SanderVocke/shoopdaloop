@@ -8,13 +8,18 @@ import sys
 sys.path.append('..')
 
 from third_party.pyjacklib import jacklib
+from lib.Colorcodes import Colorcodes
 
 class SooperLooperSession:
     def __init__(self, n_loops, n_channels, port, jack_server_name, client_name, ld_library_path):
+        self.colorchar = Colorcodes().green.decode('utf8')
+        self.resetchar = Colorcodes().reset.decode('utf8')
+
         env = os.environ.copy()
         env["LD_LIBRARY_PATH"] = ld_library_path
+        env['JACK_DEFAULT_SERVER'] = jack_server_name
 
-        cmd = 'sooperlooper -l {} -c {} -p {} -j {} -S {}'.format(n_loops, n_channels, port, client_name, jack_server_name if jack_server_name else 'default')
+        cmd = 'sooperlooper -l {} -c {} -p {} -S {}'.format(n_loops, n_channels, port, client_name)
         print("Running sooperlooper.\n  Command: {}\n  LD_LIBRARY_PATH: {}\n".format(cmd, ld_library_path))
         self.proc = subprocess.Popen(cmd,
             stdout=subprocess.PIPE,
@@ -24,7 +29,7 @@ class SooperLooperSession:
         def print_lines():
             for line in self.proc.stdout:
                 if line:
-                    print('sooperlooper: ' + line.decode('utf8'), end='')
+                    print(self.colorchar + 'sooperlooper: ' + line.decode('utf8') + self.resetchar, end='')
         self.print_thread = threading.Thread(target=print_lines)
         self.print_thread.start()
         
