@@ -41,7 +41,7 @@ script_pwd = os.path.dirname(__file__)
 jack_client_so_path = script_pwd + '/build/jack2/client'
 
 jack_server_name = 'shoopdaloop-' + ''.join(random.choices(string.ascii_lowercase, k=5))
-with JackProxySession(jack_server_name, 2, 2, 'ShoopDaLoop') as jack_client:
+with JackProxySession(jack_server_name, 'a,b,c', 'd,e', 'ShoopDaLoop') as jack_client:
     with SooperLooperSession(48, 2, 9951, jack_server_name, 'shoopdaloop-sooperlooper', jack_client_so_path):
         app = QGuiApplication(sys.argv)
 

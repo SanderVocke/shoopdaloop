@@ -11,7 +11,7 @@ from third_party.pyjacklib import jacklib
 from lib.Colorcodes import Colorcodes
 
 class JackProxySession:
-    def __init__(self, server_name, n_capture, n_playback, client_name):
+    def __init__(self, server_name, capture_port_names, playback_port_names, client_name):
         self.server_name = server_name
         self.client_name = client_name
         self.server_ready = False
@@ -30,8 +30,11 @@ class JackProxySession:
         env = os.environ.copy()
         env["JACK_DRIVER_DIR"] = jack_so_path
         env["LD_LIBRARY_PATH"] = jack_so_path
+
+        captureports = ','.join(capture_port_names)
+        playbackports = ','.join(playback_port_names)
         
-        cmd = '{} -d proxy -C {} -P {}'.format(jackd_path, n_capture, n_playback)
+        cmd = '{} -d proxy -C {} -P {}'.format(jackd_path, captureports, playbackports)
         print("Running jackd proxy.\n  Command: {}. JACK_DEFAULT_SERVER: {}. LD_LIBRARY_PATH: {}.".format(cmd, env['JACK_DEFAULT_SERVER'], env['LD_LIBRARY_PATH']))
         self.proc = subprocess.Popen(cmd,
             stdout=subprocess.PIPE,
