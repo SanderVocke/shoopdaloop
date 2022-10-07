@@ -19,7 +19,7 @@ class SooperLooperSession:
         env["LD_LIBRARY_PATH"] = ld_library_path
         env['JACK_DEFAULT_SERVER'] = jack_server_name
 
-        cmd = 'sooperlooper -l {} -c {} -p {} -S {}'.format(n_loops, n_channels, port, client_name)
+        cmd = 'sooperlooper -l {} -c {} -p {} -j {}'.format(n_loops, n_channels, port, client_name)
         print("Running sooperlooper.\n  Command: {}\n  LD_LIBRARY_PATH: {}\n".format(cmd, ld_library_path))
         self.proc = subprocess.Popen(cmd,
             stdout=subprocess.PIPE,

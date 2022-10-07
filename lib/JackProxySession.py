@@ -33,8 +33,12 @@ class JackProxySession:
 
         captureports = ','.join(capture_port_names)
         playbackports = ','.join(playback_port_names)
+        n_captureports = len(capture_port_names)
+        n_playbackports = len(playback_port_names)
+        env['JACK_PROXY_PLAYBACK_CHANNEL_NAMES'] = playbackports
+        env['JACK_PROXY_CAPTURE_CHANNEL_NAMES'] = captureports
         
-        cmd = '{} -d proxy -C {} -P {}'.format(jackd_path, captureports, playbackports)
+        cmd = '{} -d proxy -C {} -P {} -n {}'.format(jackd_path, n_captureports, n_playbackports, client_name)
         print("Running jackd proxy.\n  Command: {}. JACK_DEFAULT_SERVER: {}. LD_LIBRARY_PATH: {}.".format(cmd, env['JACK_DEFAULT_SERVER'], env['LD_LIBRARY_PATH']))
         self.proc = subprocess.Popen(cmd,
             stdout=subprocess.PIPE,
@@ -70,7 +74,7 @@ class JackProxySession:
         if not self.jack_client or status.value != 0:
             raise Exception("Failed to start client in jack proxy session: status {}".format(status.value))
         
-        return self.jack_client
+        return [self.jlib, self.jack_client]
 
     def __exit__(self, type, value, traceback):
         print('jackd exiting.')
