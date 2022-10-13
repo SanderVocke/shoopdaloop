@@ -6,16 +6,13 @@ import wave
 import tempfile
 
 from ..LoopState import LoopState
+from .LooperManager import LooperManager
 
-class SLLooperManager(QObject):
+class SLLooperManager(LooperManager):
 
     # State change notifications
-    lengthChanged = pyqtSignal(float)
-    posChanged = pyqtSignal(float)
     slLooperIndexChanged = pyqtSignal(int)
     slLooperCountChanged = pyqtSignal(int)
-    connectedChanged = pyqtSignal(bool)
-    stateChanged = pyqtSignal(int)
 
     # Signal used to send OSC messages to SooperLooper
     sendOscExpectResponse = pyqtSignal(list, str)
@@ -23,62 +20,12 @@ class SLLooperManager(QObject):
 
     def __init__(self, parent=None, sl_looper_index=0):
         super(SLLooperManager, self).__init__(parent)
-        self._length = 1.0
-        self._pos = 0.0
         self._sl_looper_index = sl_looper_index
         self._sl_looper_count = 0
-        self._connected = False
-        self._state = LoopState.Unknown.value
-        self._last_received_pos_t = None
 
     ######################
     # PROPERTIES
     ######################
-
-    # state: see SL OSC documentation for possible state values
-    stateChanged = pyqtSignal(int)
-    @pyqtProperty(int, notify=stateChanged)
-    def state(self):
-        return self._state
-    @state.setter
-    def state(self, s):
-        if self._state != s:
-            self._state = s
-            self.stateChanged.emit(s)
-
-    # length: loop length in seconds
-    lengthChanged = pyqtSignal(float)
-    @pyqtProperty(float, notify=lengthChanged)
-    def length(self):
-        return self._length
-    @length.setter
-    def length(self, l):
-        if self._length != l:
-            self._length = l
-            self.lengthChanged.emit(l)
-
-    # pos: loop playback position in seconds
-    posChanged = pyqtSignal(float)
-    @pyqtProperty(float, notify=posChanged)
-    def pos(self):
-        return self._pos
-    @pos.setter
-    def pos(self, p):
-        self._last_received_pos_t = time.monotonic()
-        if self._pos != p:
-            self._pos = p
-            self.posChanged.emit(p)
-
-    # connected (meaning: loop exists in SL)
-    connectedChanged = pyqtSignal(bool)
-    @pyqtProperty(bool, notify=connectedChanged)
-    def connected(self):
-        return self._connected
-    @connected.setter
-    def connected(self, p):
-        if self._connected != p:
-            self._connected = p
-            self.connectedChanged.emit(p)
 
     @pyqtProperty(int, notify=slLooperIndexChanged)
     def sl_looper_index(self):
@@ -102,36 +49,6 @@ class SLLooperManager(QObject):
             self._sl_looper_count = c
             self.slLooperCountChanged.emit(c)
             self.updateConnected()
-
-    @pyqtProperty(bool, notify=connectedChanged)
-    def connected(self):
-        return self._connected
-
-    @connected.setter
-    def connected(self, a):
-        if self._connected != a:
-            self._connected = a
-            self.connectedChanged.emit(a)
-
-    ##################
-    # INTERNAL
-    ##################
-    def schedule_at_loop_pos(self, pos, n_cycles_ahead, action_fn):
-        if self.state in [LoopState.Off.value, LoopState.Unknown.value, LoopState.Paused.value]:
-            # must be running
-            return
-
-        if self._last_received_pos_t == None:
-            # no pos gotten yet
-            return
-
-        estimated_pos = time.monotonic() - self._last_received_pos_t + self.pos
-        if self.pos > estimated_pos and n_cycles_ahead == 0:
-            # passed that point already
-            return
-
-        milliseconds_ahead = int((pos - estimated_pos + self.length * n_cycles_ahead) * 1000.0)
-        QTimer.singleShot(milliseconds_ahead, action_fn)
 
     ##################
     # SLOTS

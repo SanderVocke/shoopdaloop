@@ -39,7 +39,7 @@ class JackProxySession:
         env['JACK_PROXY_CAPTURE_CHANNEL_NAMES'] = captureports
         
         cmd = '{} -d proxy -C {} -P {} -n {}'.format(jackd_path, n_captureports, n_playbackports, client_name)
-        print("Running jackd proxy.\n  Command: {}. JACK_DEFAULT_SERVER: {}. LD_LIBRARY_PATH: {}.".format(cmd, env['JACK_DEFAULT_SERVER'], env['LD_LIBRARY_PATH']))
+        print("Running jackd proxy.\n  Command: JACK_DEFAULT_SERVER={} LD_LIBRARY_PATH={} {}".format(env['JACK_DEFAULT_SERVER'], env['LD_LIBRARY_PATH'], cmd))
         self.proc = subprocess.Popen(cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
