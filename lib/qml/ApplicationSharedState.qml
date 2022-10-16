@@ -15,15 +15,22 @@ Item {
 
     // STATIC
     property int loops_per_track: 6
+    property int tracks: 8
     property var loop_managers: {
         var outer, inner
         var managers = []
-        for(outer = 0; outer < track_names.length; outer++) {
+        for(outer = 0; outer < tracks; outer++) {
             var i_managers = []
             for(inner = 0; inner < loops_per_track; inner++) {
-                var mgr = Qt.createQmlObject('import QtQuick 2.0; import SLLooperManager 1.0; SLLooperManager {sl_looper_index: ' + (outer * loops_per_track + inner).toString() + '}',
-                                                   shared,
-                                                   "dynamicSnippet1");
+                // single loop version
+                //var snip = 'import QtQuick 2.0; import SLLooperManager 1.0; SLLooperManager {sl_looper_index: ' + (outer * loops_per_track + inner).toString() + '}'
+
+                // double loop version
+                var snip = 'import QtQuick 2.0; import SLFXLooperPairManager 1.0; SLFXLooperPairManager {\n  sl_dry_looper_idx: ' + (outer * loops_per_track + inner).toString() + '\n  sl_wet_looper_idx: ' + (outer*loops_per_track+inner+loops_per_track*tracks).toString() + '\n}'
+
+                var mgr = Qt.createQmlObject(snip,
+                                             shared,
+                                             "dynamicSnippet1");
                 mgr.connect_osc_link(osc_link)
                 mgr.start_sync()
                 i_managers.push(mgr)
@@ -38,21 +45,18 @@ Item {
     }
 
     // TRACKS STATE
-    property var track_names: [
-        'Track 1',
-        'Track 2',
-        'Track 3',
-        'Track 4',
-        'Track 5',
-        'Track 6',
-        'Track 7',
-        'Track 8',
-    ]
-    property var selected_loops: [0, 0, 0, 0, 0, 0, 0, 0]
+    property var track_names: {
+        var r = []
+        for (var i = 0; i < tracks; i++) {
+            r.push('Track ' + (i+1).toString())
+        }
+        return r
+    }
+    property var selected_loops: Array(tracks).fill(0)
     property var loop_names: {
         var outer, inner
         var names = []
-        for (outer = 0; outer < track_names.length; outer++) {
+        for (outer = 0; outer < tracks; outer++) {
             var track_loop_names = []
             for (inner = 0; inner < loops_per_track; inner++) {
                 track_loop_names.push('')

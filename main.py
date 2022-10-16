@@ -5,6 +5,7 @@ from PyQt6.QtQml import QQmlApplicationEngine, qmlRegisterType
 from PyQt6.QtCore import QTimer
 
 from lib.q_objects.SLLooperManager import SLLooperManager
+from lib.q_objects.SLFXLooperPairManager import SLFXLooperPairManager
 from lib.q_objects.SLGlobalManager import SLGlobalManager
 from lib.q_objects.SooperLooperOSCLink import SooperLooperOSCLink
 from lib.q_objects.ClickTrackGenerator import ClickTrackGenerator
@@ -51,7 +52,7 @@ jack_server_name = 'shoopdaloop-' + ''.join(random.choices(string.ascii_lowercas
 with JackProxySession(jack_server_name, input_port_names, output_port_names, 'ShoopDaLoop') as proxy_session:
     jack = proxy_session[0]
     jack_client = proxy_session[1]
-    with SooperLooperSession(48, 2, 9951, jack_server_name, 'shoopdaloop-sooperlooper', jack_client_so_path):
+    with SooperLooperSession(48*2, 2, 9951, jack_server_name, 'shoopdaloop-sooperlooper', jack_client_so_path):
         with SLProxyPlumber(None, jack_client, jack, 'shoopdaloop-sooperlooper', 6):
             app = QGuiApplication(sys.argv)
 
@@ -61,6 +62,7 @@ with JackProxySession(jack_server_name, input_port_names, output_port_names, 'Sh
             global_mgr.connect_osc_link(link)
 
             qmlRegisterType(SLLooperManager, 'SLLooperManager', 1, 0, 'SLLooperManager')
+            qmlRegisterType(SLFXLooperPairManager, 'SLFXLooperPairManager', 1, 0, 'SLFXLooperPairManager')
             qmlRegisterType(SLGlobalManager, 'SLGlobalManager', 1, 0, 'SLGlobalManager')
             qmlRegisterType(SooperLooperOSCLink, 'SooperLooperOSCLink', 1, 0, 'SooperLooperOSCLink')
             qmlRegisterType(ClickTrackGenerator, 'ClickTrackGenerator', 1, 0, 'ClickTrackGenerator')

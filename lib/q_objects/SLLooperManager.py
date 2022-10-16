@@ -8,6 +8,7 @@ import tempfile
 from ..LoopState import LoopState
 from .LooperManager import LooperManager
 
+# Looper manager for a single loop in Sooperlooper.
 class SLLooperManager(LooperManager):
 
     # State change notifications
