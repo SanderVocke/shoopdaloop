@@ -9,6 +9,8 @@ ShoopDaLoop is a live looping application for Linux. Under the hood it is "just"
 - **Scenes**: Again similarly to [Luppp](http://openavproductions.com/luppp/), there are so-called "Scenes" which select a subset of all loops to be played together. Changing from one scene to another can be used to achieve an impactful musical transition. However, unlike [Luppp](http://openavproductions.com/luppp/)'s scenes, ShoopDaLoop's scenes are not bound to any particular row in the grid. A scene consists of an arbitrary selection of one loop (or none) per track, giving more flexibility.
 - **Synchronization**: ShoopDaLoop's loops are all synchronized to the master loop. For example, hitting record on any loop will engage only when the master loop restarts, and recording lenghts are always forced to be an exact multiple of the master loop length.
 - **Click tracks**: ShoopDaLoop has a built-in click track generator. Rather than being an "external" metronome, the click track is inserted into one of the loops (usually the master loop).
+- **Live effect chains**: ShoopDaLoop records both the dry (before send) and wet (after return) signals. During performance, each track can then be set to output either the dry, the recorded wet, or a live-processed wet version. In addition, there is a mode in which the wet is re-recorded by playing the already recorded dry signal live through the send/return. This give full flexibility to alter effects after initial recording, while not needing to have the effects live all the time, hogging the CPU.
+- **JACK encapsulation**: SooperLooper is run in an isolated nested JACK sandbox so that ShoopDaLoop can present its ports in a renamed and sensible way.
 
 # Status
 
@@ -18,10 +20,9 @@ I am not a performing musician, so for me this kind of testing does not have pri
 
 # Future improvements
 
-- **Live effect chains**: ShoopDaLoop will record both the dry (before send/return) and wet (after processing) signals. During performance, each track can then be set to output either the dry, the recorded wet, or a live-processed wet version. In addition, there will be a mode in which the wet is re-recorded by playing the already recorded dry signal live through the send/return. This way there is lower CPU usage while using the recorded wet, while there is still the possibility to adjust effect settings during playback and re-record the wet version without interruption.
 - **Scripted looping**: ShoopDaLoop will have a scripting approach suitable for (semi-)automated scripted looping. The "script" consists of a sequence of actions (e.g.: change scene, mute a loop, start/stop recording on a loop). The sets of actions are executed sequentially, either in a fully automatic or manually triggered way. This way the song structure can be laid out ahead of time.
 - **MIDI bindings**: There are none yet. You could experiment with connecting straight to the underlying SooperLooper instance, but this may give some unexpected results since not all possible SooperLooper states are supported by ShoopDaLoop.
-- **JACK encapsulation**: To make the connectivity in Jack less confusing, I plan to try to encapsulate the SooperLooper instance and provide JACK ports that match the ShoopDaLoop naming.
+- **MIDI input**: If possible, I plan to modify SooperLooper to support MIDI events in loops. That way, the dry loop in ShoopDaLoop could also be a MIDI signal, getting "upgraded" to audio in the send-return path.
 
 # Getting started
 
