@@ -23,10 +23,10 @@ Item {
             var i_managers = []
             for(inner = 0; inner < loops_per_track; inner++) {
                 // single loop version
-                //var snip = 'import QtQuick 2.0; import SLLooperManager 1.0; SLLooperManager {sl_looper_index: ' + (outer * loops_per_track + inner).toString() + '}'
+                //var snip = 'import QtQuick 2.0; import SLLooperManager 1.0; SLLooperManager {sl_looper_index: ' + (outer * loops_per_track + inner).toString() + '\nsync: ' + (outer != 0 || inner != 0).toString() + '}'
 
                 // double loop version
-                var snip = 'import QtQuick 2.0; import SLFXLooperPairManager 1.0; SLFXLooperPairManager {\n  sl_dry_looper_idx: ' + (outer * loops_per_track + inner).toString() + '\n  sl_wet_looper_idx: ' + (outer*loops_per_track+inner+loops_per_track*tracks).toString() + '\n}'
+                var snip = 'import QtQuick 2.0; import SLFXLooperPairManager 1.0; SLFXLooperPairManager {\n  sl_dry_looper_idx: ' + ((outer * loops_per_track + inner)*2).toString() + '\n  sl_wet_looper_idx: ' + ((outer * loops_per_track + inner)*2+1).toString() + '\nsync: ' + (outer != 0 || inner != 0).toString() + '\n}'
 
                 var mgr = Qt.createQmlObject(snip,
                                              shared,

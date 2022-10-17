@@ -5,6 +5,7 @@ from PyQt6.QtQml import QQmlApplicationEngine, qmlRegisterType
 from PyQt6.QtCore import QTimer
 
 from lib.q_objects.SLLooperManager import SLLooperManager
+from lib.q_objects.LooperManager import LooperManager
 from lib.q_objects.SLFXLooperPairManager import SLFXLooperPairManager
 from lib.q_objects.SLGlobalManager import SLGlobalManager
 from lib.q_objects.SooperLooperOSCLink import SooperLooperOSCLink
@@ -45,15 +46,21 @@ jack_client_so_path = script_pwd + '/build/jack2/client'
 # Port names: an input port per track and common outputs
 def flatten(l):
     return [i for sublist in l for i in sublist]
-input_port_names = flatten([['track_{}_in_l'.format(i+1), 'track_{}_in_r'.format(i+1)] for i in range(8)])
-output_port_names = ['common_out_l', 'common_out_r']
+track_input_port_names = flatten([['track_{}_in_l'.format(i+1), 'track_{}_in_r'.format(i+1)] for i in range(8)])
+track_send_port_names = flatten([['track_{}_send_l'.format(i+1), 'track_{}_send_r'.format(i+1)] for i in range(8)])
+track_return_port_names = flatten([['track_{}_return_l'.format(i+1), 'track_{}_return_r'.format(i+1)] for i in range(8)])
+
+input_port_names = track_input_port_names + track_return_port_names
+output_port_names = ['common_out_l', 'common_out_r'] + track_send_port_names
 
 jack_server_name = 'shoopdaloop-' + ''.join(random.choices(string.ascii_lowercase, k=5))
 with JackProxySession(jack_server_name, input_port_names, output_port_names, 'ShoopDaLoop') as proxy_session:
     jack = proxy_session[0]
     jack_client = proxy_session[1]
-    with SooperLooperSession(48*2, 2, 9951, jack_server_name, 'shoopdaloop-sooperlooper', jack_client_so_path):
-        with SLProxyPlumber(None, jack_client, jack, 'shoopdaloop-sooperlooper', 6):
+    #with SooperLooperSession(48*2, 2, 9951, jack_server_name, 'shoopdaloop-sooperlooper', jack_client_so_path, jack, jack_client):
+    with SooperLooperSession(1*2, 2, 9951, jack_server_name, 'shoopdaloop-sooperlooper', jack_client_so_path, jack, jack_client):
+        #with SLProxyPlumber(None, jack_client, jack, 'shoopdaloop-sooperlooper', 6, 8):
+        with SLProxyPlumber(None, jack_client, jack, 'shoopdaloop-sooperlooper', 1, 1):
             app = QGuiApplication(sys.argv)
 
             link = SooperLooperOSCLink(None, '0.0.0.0', 9951, '0.0.0.0', 9952)
@@ -64,6 +71,7 @@ with JackProxySession(jack_server_name, input_port_names, output_port_names, 'Sh
             qmlRegisterType(SLLooperManager, 'SLLooperManager', 1, 0, 'SLLooperManager')
             qmlRegisterType(SLFXLooperPairManager, 'SLFXLooperPairManager', 1, 0, 'SLFXLooperPairManager')
             qmlRegisterType(SLGlobalManager, 'SLGlobalManager', 1, 0, 'SLGlobalManager')
+            qmlRegisterType(LooperManager, 'LooperManager', 1, 0, 'LooperManager')
             qmlRegisterType(SooperLooperOSCLink, 'SooperLooperOSCLink', 1, 0, 'SooperLooperOSCLink')
             qmlRegisterType(ClickTrackGenerator, 'ClickTrackGenerator', 1, 0, 'ClickTrackGenerator')
 

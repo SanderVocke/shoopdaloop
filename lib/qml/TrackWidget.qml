@@ -104,9 +104,6 @@ Item {
                 TrackControlWidget {
                     id: trackctlwidget
 
-                    paused: track.active_loop_state === LoopState.LoopState.Paused ||
-                            track.active_loop_state === LoopState.LoopState.Unknown ||
-                            track.active_loop_state === LoopState.LoopState.Off
                     muted: track.active_loop_state === LoopState.LoopState.Muted
                 }
 
@@ -114,20 +111,29 @@ Item {
                     target: trackctlwidget
                     function onRecord() {
                         if (track.active_loop_state === LoopState.LoopState.Recording ||
-                            track.active_loop_state === LoopState.LoopState.Inserting) {
+                            track.active_loop_state === LoopState.LoopState.Inserting ||
+                            track.active_loop_state === LoopState.LoopState.RecordingWet) {
                             track.loop_managers[track.selected_loop].doStopRecord()
-                        } else if (track.maybe_master_loop_idx === track.selected_loop) {
-                            track.loop_managers[track.selected_loop].doRecord()
                         } else {
+                            // Record on the selected loop and mute the others
                             track.actions_on_loop_mgrs(track.selected_loop,
-                                                   (mgr) => { mgr.doRecordNCycles(1, track.master_loop_manager) },
+                                                   (mgr) => { mgr.doRecord() },
                                                    (mgr) => { mgr.doMute() })
                         }
+                    }
+                    function onRecordFx() {
+                        // Nothing yet
+                    }
+                    function onPlayLiveFx() {
+                        // Play with live FX on the selected loop and mute the others
+                        track.actions_on_loop_mgrs(track.selected_loop,
+                                                (mgr) => { mgr.doPlayLiveFx() },
+                                                (mgr) => { mgr.doMute() })
                     }
                     function onPause() {
                         track.loop_managers[track.selected_loop].doPause()
                     }
-                    function onUnpause() {
+                    function onPlay() {
                         track.loop_managers[track.selected_loop].doTrigger()
                     }
                     function onMute() {

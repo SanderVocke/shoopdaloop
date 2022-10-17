@@ -17,3 +17,6 @@ class LoopState(Enum):
     OneShot = 12
     Substitute = 13
     Paused = 14
+    # Extended states for FX loops
+    RecordingWet = 15
+    PlayingDryLiveWet = 16

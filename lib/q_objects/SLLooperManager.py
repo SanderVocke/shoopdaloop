@@ -23,6 +23,7 @@ class SLLooperManager(LooperManager):
         super(SLLooperManager, self).__init__(parent)
         self._sl_looper_index = sl_looper_index
         self._sl_looper_count = 0
+        self.syncChanged.connect(self.update_sl_sync)
 
     ######################
     # PROPERTIES
@@ -75,10 +76,14 @@ class SLLooperManager(LooperManager):
 
         # Some settings for the loop
         self.sendOsc.emit(['/sl/{}/set'.format(self._sl_looper_index), 'quantize', 1]) # Quantize to cycle
-        self.sendOsc.emit(['/sl/{}/set'.format(self._sl_looper_index), 'sync', 1])
         self.sendOsc.emit(['/sl/{}/set'.format(self._sl_looper_index), 'relative_sync', 0])
         self.sendOsc.emit(['/sl/{}/set'.format(self._sl_looper_index), 'mute_quantized', 1])
         self.sendOsc.emit(['/sl/{}/set'.format(self._sl_looper_index), 'round', 0])
+        self.update_sl_sync()
+    
+    @pyqtSlot()
+    def update_sl_sync(self):
+        self.sendOsc.emit(['/sl/{}/set'.format(self._sl_looper_index), 'sync', (1 if self.sync else 0)])
 
     @pyqtSlot()
     def updateConnected(self):

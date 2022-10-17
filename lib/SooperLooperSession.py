@@ -11,7 +11,7 @@ from third_party.pyjacklib import jacklib
 from lib.Colorcodes import Colorcodes
 
 class SooperLooperSession:
-    def __init__(self, n_loops, n_channels, port, jack_server_name, client_name, ld_library_path):
+    def __init__(self, n_loops, n_channels, port, jack_server_name, client_name, ld_library_path, jack, jack_client):
         self.colorchar = Colorcodes().green.decode('utf8')
         self.resetchar = Colorcodes().reset.decode('utf8')
 
@@ -32,9 +32,22 @@ class SooperLooperSession:
                     print(self.colorchar + 'sooperlooper: ' + line.decode('utf8') + self.resetchar, end='')
         self.print_thread = threading.Thread(target=print_lines)
         self.print_thread.start()
+
+        # Wait for the last loop to become available.
+        print("Waiting for SooperLooper to be ready...")
+        start_t = time.monotonic()
+        ready = False
+        while time.monotonic() - start_t < 15.0 and not ready:
+            time.sleep(0.1)
+            all_ports = jack.c_char_p_p_to_list(jack.get_ports(jack_client))
+            ready = '{}:loop{}_out_2'.format(client_name, n_loops-1) in all_ports
+            if ready:
+                break
+
+        if not ready:
+            raise Exception("SooperLooper did not become ready.")
         
-        # Give it time to become available
-        time.sleep(3.0)
+        print("...SooperLooper is ready.")
     
     def __enter__(self):
         return self

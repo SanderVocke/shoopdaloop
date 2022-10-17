@@ -41,7 +41,7 @@ class SLGlobalManager(QObject):
     def add_needed_loops(self):
         if self._desired_looper_count != None and \
            self._sl_looper_count != None:
-            amount_needed = self._desired_looper_count - self._sl_looper_count
+            amount_needed = (self._desired_looper_count*2) - self._sl_looper_count
             if self._last_requested_loop_count != self._desired_looper_count:
                 for idx in range(amount_needed):
                     self.sendOsc.emit(['/loop_add', loop_channels, loop_min_len])

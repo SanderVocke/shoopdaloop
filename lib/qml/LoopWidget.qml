@@ -13,6 +13,7 @@ Item {
     property bool is_master   // Master loop which everything syncs to in SL
     property bool is_in_selected_scene: false
     property bool is_in_hovered_scene: false
+    property bool debug: false // Will show individual loops managed by pair manager
     property var manager
     property alias name: name_field.text
 
@@ -22,6 +23,18 @@ Item {
     signal request_save_wav(string wav_file)
     signal request_rename(string name)
     signal request_clear()
+
+    // Internal
+    // For debugging: construct a list of managers to show the state icons
+    // and progress bars for. Normally this is only the main manager, but
+    // for debugging the underlying two SL loop managers can be exposed.
+    property var show_state_for_managers: {
+        if (debug) {
+            return [manager, manager.sl_dry_looper, manager.sl_wet_looper]
+        } else {
+            return [manager]
+        }
+    }
 
     id : widget
 
@@ -44,25 +57,26 @@ Item {
                       'grey'
         border.width: 2
 
-        // This rectangle shows the playback progress for running loops.
+        // Show the progress rect(s).
+        // Normally this is just a single rectangle for the main loop.
+        // In debug mode we may show the underlying loops separately.
         Item {
             anchors.fill: parent
             anchors.margins: 2
+            
+            Repeater {
+                id: repeater
+                model: widget.show_state_for_managers.length
+                anchors.fill: parent
 
-            Rectangle {
-                function getRightMargin() {
-                    var st = widget.manager
-                    if(st.length && st.length > 0) {
-                        return (1.0 - (st.pos / st.length)) * parent.width
-                    }
-                    return parent.width
+                LoopProgressRect {
+                    height: parent.height / repeater.model
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    y: height * index
+                    manager: widget.show_state_for_managers[index]
+                    is_selected: widget.is_selected
                 }
-
-                anchors {
-                    fill: parent
-                    rightMargin: getRightMargin()
-                }
-                color: widget.is_selected ? '#550055' : '#444444'
             }
         }
 
@@ -107,12 +121,29 @@ Item {
 
             Row {
                 spacing: 5
-                LoopStateIcon {
-                    id: loopstateicon
-                    state: widget.manager.state
-                    connected: widget.manager.connected
-                    size: 24
-                    y: (loop.height - height)/2
+                // Show the state icon(s).
+                // Normally this is just a single icon for the main loop.
+                // In debug mode we may show the underlying loops separately.
+                Item {
+                    id: iconitem
+                    width: 28
+                    height: 28
+                    y: 3
+
+                    Repeater {
+                        model: widget.show_state_for_managers.length
+                        anchors.fill: parent
+                        id: iconrepeater
+
+                        LoopStateIcon {
+                            id: loopstateicon
+                            state: widget.show_state_for_managers[index].state
+                            connected: widget.show_state_for_managers[index].connected
+                            size: iconitem.height / iconrepeater.model
+                            y: index * iconitem.height / iconrepeater.model
+                            anchors.horizontalCenter: iconitem.horizontalCenter
+                        }
+                    }
                 }
                 TextField {
                     id: name_field
@@ -131,6 +162,28 @@ Item {
         }
     }
 
+    component LoopProgressRect : Item {
+        id: loopprogressrect
+        property var manager
+        property bool is_selected
+
+        Rectangle {
+            function getRightMargin() {
+                var st = loopprogressrect.manager
+                if(st && st.length && st.length > 0) {
+                    return (1.0 - (st.pos / st.length)) * parent.width
+                }
+                return parent.width
+            }
+
+            anchors {
+                fill: parent
+                rightMargin: getRightMargin()
+            }
+            color: is_selected ? '#550055' : '#444444'
+        }
+    }
+
     component LoopStateIcon : Item {
         id: lsicon
         property int state
@@ -141,7 +194,7 @@ Item {
         width: size
         height: size
 
-        MaterialDesignIcon {
+        IconWithText {
             id: main_icon
             anchors.fill: parent
 
@@ -152,9 +205,11 @@ Item {
 
                 switch(lsicon.state) {
                 case LoopState.LoopState.Playing:
+                case LoopState.LoopState.PlayingDryLiveWet:
                     return 'play'
                 case LoopState.LoopState.Recording:
                 case LoopState.LoopState.Inserting:
+                case LoopState.LoopState.RecordingWet:
                     return 'record-rec'
                 case LoopState.LoopState.Paused:
                     return 'pause'
@@ -180,8 +235,22 @@ Item {
                 case LoopState.LoopState.Recording:
                 case LoopState.LoopState.Inserting:
                     return 'red'
+                case LoopState.LoopState.RecordingWet:
+                case LoopState.LoopState.PlayingDryLiveWet:
+                    return 'orange'
                 default:
                     return 'grey'
+                }
+            }
+
+            text_color: Material.foreground
+            text: {
+                switch(lsicon.state) {
+                case LoopState.LoopState.PlayingDryLiveWet:
+                case LoopState.LoopState.RecordingWet:
+                    return 'FX'
+                default:
+                    return ''
                 }
             }
 

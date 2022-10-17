@@ -10,12 +10,14 @@ Item {
     height: childrenRect.height
 
     signal pause()
-    signal unpause()
     signal mute()
     signal unmute()
     signal record()
+    signal recordFx()
+    signal recordNCycles(int n)
+    signal play()
+    signal playLiveFx()
 
-    property bool paused
     property bool muted
 
     Column {
@@ -47,114 +49,104 @@ Item {
             value: 0.0
         }
 
-        Column {
+        Grid {
             width: childrenRect.width
             height: childrenRect.height
             x: (parent.width - width) / 2
 
             spacing: 2
+            columns: 3
 
-            Row {
-                spacing: 2
-
-                Button {
-                    id : record
-                    width: 30
-                    height: 30
-                    MaterialDesignIcon {
-                        size: parent.width - 10
-                        anchors.centerIn: parent
-                        name: 'record'
-                        color: 'red'
-                    }
-                    onClicked: { trackctl.record() }
+            Button {
+                id : record
+                width: 30
+                height: 30
+                MaterialDesignIcon {
+                    size: parent.width - 10
+                    anchors.centerIn: parent
+                    name: 'record'
+                    color: 'red'
                 }
-                Button {
-                    id : pause
-                    width: 30
-                    height: 30
-                    MaterialDesignIcon {
-                        size: parent.width - 10
-                        anchors.centerIn: parent
-                        name: trackctl.paused ? 'play' : 'pause'
-                        color: Material.foreground
-                    }
-                    onClicked: { if(trackctl.paused) {trackctl.unpause()} else {trackctl.pause()} }
-                }
-                Button {
-                    id : mute
-                    width: 30
-                    height: 30
-                    MaterialDesignIcon {
-                        size: parent.width - 10
-                        anchors.centerIn: parent
-                        name: trackctl.muted ? 'volume-mute' : 'volume-high'
-                        color: trackctl.muted ? 'grey' : Material.foreground
-                    }
-                    onClicked: { if(trackctl.muted) {trackctl.unmute()} else {trackctl.mute()} }
-                }
+                onClicked: { trackctl.record() }
             }
-
-            Rectangle {
-                width: childrenRect.width
-                height: childrenRect.height
-                color: 'grey'
-
-                Column {
-                    width: childrenRect.width
-                    height: childrenRect.height
-                    spacing: 0
-
-                    Text {
-                        text: "fx proc"
-                        color: Material.foreground
-                        width: 50
-                        topPadding: 2
-                        leftPadding: 5
-                        bottomPadding: 0
-                        font.pixelSize: 15
-                    }
-
-                    Row {
-                        width: childrenRect.width
-                        height: childrenRect.height
-                        spacing: 2
-
-                        Button {
-                            id : fx_off
-                            width: 30
-                            height: 30
-                            MaterialDesignIcon {
-                                size: parent.width - 10
-                                anchors.centerIn: parent
-                                name: 'close'
-                                color: Material.foreground
-                            }
-                        }
-                        Button {
-                            id : fx_live
-                            width: 30
-                            height: 30
-                            MaterialDesignIcon {
-                                size: parent.width - 10
-                                anchors.centerIn: parent
-                                name: 'record'
-                                color: Material.foreground
-                            }
-                        }
-                        Button {
-                            id : fx_cached
-                            width: 30
-                            height: 30
-                            MaterialDesignIcon {
-                                size: parent.width - 10
-                                anchors.centerIn: parent
-                                name: 'sd'
-                                color: Material.foreground
-                            }
-                        }
-                    }
+            Button {
+                id : recordN
+                width: 30
+                height: 30
+                IconWithText {
+                    size: parent.width - 10
+                    anchors.centerIn: parent
+                    name: 'record'
+                    color: 'red'
+                    text_color: Material.foreground
+                    text: "1"
+                    font.pixelSize: size / 2.0
                 }
+                onClicked: { trackctl.recordNCycles(1) }
+            }
+            Button {
+                id : recordfx
+                width: 30
+                height: 30
+                IconWithText {
+                    size: parent.width - 10
+                    anchors.centerIn: parent
+                    name: 'record'
+                    color: 'orange'
+                    text_color: Material.foreground
+                    text: "FX"
+                }
+                onClicked: { trackctl.recordFx() }
+            }
+            Button {
+                id : pause
+                width: 30
+                height: 30
+                MaterialDesignIcon {
+                    size: parent.width - 10
+                    anchors.centerIn: parent
+                    name: 'pause'
+                    color: Material.foreground
+                }
+                onClicked: { trackctl.playLiveFx() }
+            }
+            Button {
+                id : play
+                width: 30
+                height: 30
+                MaterialDesignIcon {
+                    size: parent.width - 10
+                    anchors.centerIn: parent
+                    name: 'play'
+                    color: 'green'
+                }
+                onClicked: { trackctl.play() }
+            }
+            Button {
+                id : playlivefx
+                width: 30
+                height: 30
+                IconWithText {
+                    size: parent.width - 10
+                    anchors.centerIn: parent
+                    name: 'play'
+                    color: 'orange'
+                    text_color: Material.foreground
+                    text: "FX"
+                }
+                onClicked: { trackctl.playLiveFx() }
+            }
+            Button {
+                id : mute
+                width: 30
+                height: 30
+                MaterialDesignIcon {
+                    size: parent.width - 10
+                    anchors.centerIn: parent
+                    name: trackctl.muted ? 'volume-mute' : 'volume-high'
+                    color: trackctl.muted ? 'grey' : Material.foreground
+                }
+                onClicked: { if(trackctl.muted) {trackctl.unmute()} else {trackctl.mute()} }
             }
         }
     }

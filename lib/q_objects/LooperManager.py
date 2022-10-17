@@ -15,6 +15,7 @@ class LooperManager(QObject):
     posChanged = pyqtSignal(float)
     connectedChanged = pyqtSignal(bool)
     stateChanged = pyqtSignal(int)
+    syncChanged = pyqtSignal(bool)
 
     def __init__(self, parent=None):
         super(LooperManager, self).__init__(parent)
@@ -23,6 +24,7 @@ class LooperManager(QObject):
         self._connected = False
         self._state = LoopState.Unknown.value
         self._last_received_pos_t = None
+        self._sync = False
 
     ######################
     # PROPERTIES
@@ -72,6 +74,17 @@ class LooperManager(QObject):
         if self._connected != p:
             self._connected = p
             self.connectedChanged.emit(p)
+    
+    # sync (whether this loop is to be synced to the main loop or not)
+    @pyqtProperty(bool, notify=syncChanged)
+    def sync(self):
+        return self._sync
+
+    @sync.setter
+    def sync(self, c):
+        if self._sync != c:
+            self._sync = c
+            self.syncChanged.emit(c)
 
     ##################
     # SLOTS / METHODS
@@ -100,6 +113,10 @@ class LooperManager(QObject):
 
     @pyqtSlot()
     def doPlay(self):
+        raise NotImplementedError()
+    
+    @pyqtSlot()
+    def doPlayLiveFx(self):
         raise NotImplementedError()
 
     @pyqtSlot()
