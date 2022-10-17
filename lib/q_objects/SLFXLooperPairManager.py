@@ -5,6 +5,7 @@ import os
 import wave
 import tempfile
 from enum import Enum
+import math
 
 from ..LoopState import LoopState
 from .SLLooperManager import SLLooperManager
@@ -130,12 +131,14 @@ class SLFXLooperPairManager(LooperManager):
     @pyqtSlot()
     def doPlay(self):
         # Mute the dry, because we want to hear
-        # the wet only.
+        # the wet only and not process the FX.
         self._sl_dry_looper.doMute()
         self._sl_wet_looper.doPlay()
     
     @pyqtSlot()
     def doPlayLiveFx(self):
+        # Mute the wet, play the dry.
+        # TODO: wet should still have passthrough
         self._sl_dry_looper.doPlay()
         self._sl_wet_looper.doMute()
 
@@ -148,6 +151,28 @@ class SLFXLooperPairManager(LooperManager):
     def doRecord(self):
         self._sl_dry_looper.doRecord()
         self._sl_wet_looper.doRecord()
+    
+    @pyqtSlot(QObject)
+    def doRecordFx(self, master_manager):
+        n_cycles = round(self.length / master_manager.length)
+        current_cycle = math.floor(self.pos / master_manager.length)
+        wait_cycles_before_start = n_cycles - current_cycle - 1
+        def toExecuteJustBeforeRestart():
+            self._sl_dry_looper.doPlay()
+            self._sl_wet_looper.doRecordNCycles(n_cycles, master_manager)
+            # When the FX recording is finished, also mute the
+            # dry channel again
+            master_manager.schedule_at_loop_pos(
+                master_manager.length * 0.7,
+                n_cycles, lambda: self._sl_dry_looper.doMute())
+        
+        if wait_cycles_before_start <= 0:
+            toExecuteJustBeforeRestart()
+        else:
+            master_manager.schedule_at_loop_pos(master_manager.length * 0.7,
+                                                     wait_cycles_before_start,
+                                                     toExecuteJustBeforeRestart)
+        
 
     @pyqtSlot(int, QObject)
     def doRecordNCycles(self, n, master_manager):
@@ -158,6 +183,7 @@ class SLFXLooperPairManager(LooperManager):
     def doStopRecord(self):
         self._sl_dry_looper.doStopRecord()
         self._sl_wet_looper.doStopRecord()
+        self._sl_dry_looper.doMute()
 
     @pyqtSlot()
     def doMute(self):

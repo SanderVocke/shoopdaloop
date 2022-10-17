@@ -122,7 +122,28 @@ Item {
                         }
                     }
                     function onRecordFx() {
-                        // Nothing yet
+                        if (track.active_loop_state === LoopState.LoopState.Recording ||
+                            track.active_loop_state === LoopState.LoopState.Inserting ||
+                            track.active_loop_state === LoopState.LoopState.RecordingWet) {
+                            track.loop_managers[track.selected_loop].doStopRecord()
+                        } else {
+                            // Record FX on the selected loop and mute the others
+                            track.actions_on_loop_mgrs(track.selected_loop,
+                                                   (mgr) => { mgr.doRecordFx(track.master_loop_manager) },
+                                                   (mgr) => { mgr.doMute() })
+                        }
+                    }
+                    function onRecordNCycles(n) {
+                        if (track.active_loop_state === LoopState.LoopState.Recording ||
+                            track.active_loop_state === LoopState.LoopState.Inserting ||
+                            track.active_loop_state === LoopState.LoopState.RecordingWet) {
+                            track.loop_managers[track.selected_loop].doStopRecord()
+                        } else {
+                            // Record on the selected loop and mute the others
+                            track.actions_on_loop_mgrs(track.selected_loop,
+                                                   (mgr) => { mgr.doRecordNCycles(n, track.master_loop_manager) },
+                                                   (mgr) => { mgr.doMute() })
+                        }
                     }
                     function onPlayLiveFx() {
                         // Play with live FX on the selected loop and mute the others
@@ -134,7 +155,7 @@ Item {
                         track.loop_managers[track.selected_loop].doPause()
                     }
                     function onPlay() {
-                        track.loop_managers[track.selected_loop].doTrigger()
+                        track.loop_managers[track.selected_loop].doPlay()
                     }
                     function onMute() {
                         for(var idx = 0; idx < track.num_loops; idx++) {

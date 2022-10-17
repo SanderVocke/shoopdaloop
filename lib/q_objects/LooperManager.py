@@ -126,6 +126,10 @@ class LooperManager(QObject):
     @pyqtSlot()
     def doRecord(self):
         raise NotImplementedError()
+    
+    @pyqtSlot()
+    def doRecordFx(self, master_manager):
+        raise NotImplementedError()
 
     @pyqtSlot(int, QObject)
     def doRecordNCycles(self, n, master_manager):
