@@ -57,8 +57,8 @@ jack_server_name = 'shoopdaloop-' + ''.join(random.choices(string.ascii_lowercas
 with JackProxySession(jack_server_name, input_port_names, output_port_names, 'ShoopDaLoop') as proxy_session:
     jack = proxy_session[0]
     jack_client = proxy_session[1]
-    #with SooperLooperSession(48*2, 2, 9951, jack_server_name, 'shoopdaloop-sooperlooper', jack_client_so_path, jack, jack_client):
-    with SooperLooperSession(1*2, 2, 9951, jack_server_name, 'shoopdaloop-sooperlooper', jack_client_so_path, jack, jack_client):
+    with SooperLooperSession(48*2, 2, 9951, jack_server_name, 'shoopdaloop-sooperlooper', jack_client_so_path, jack, jack_client):
+    #with SooperLooperSession(1*2, 2, 9951, jack_server_name, 'shoopdaloop-sooperlooper', jack_client_so_path, jack, jack_client):
         #with SLProxyPlumber(None, jack_client, jack, 'shoopdaloop-sooperlooper', 6, 8):
         with SLProxyPlumber(None, jack_client, jack, 'shoopdaloop-sooperlooper', 1, 1):
             app = QGuiApplication(sys.argv)

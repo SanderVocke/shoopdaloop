@@ -66,7 +66,8 @@ class SLGlobalManager(QObject):
         if self._desired_looper_count != c:
             self._desired_looper_count = c
             self.desiredLooperCountChanged.emit(c)
-            self.add_needed_loops()
+            # TODO: not adding loops (for debugging)
+            # self.add_needed_loops()
 
     # TODO: don't know why I need this, setter doesn't work directly from QML
     @pyqtSlot(int)
@@ -77,7 +78,8 @@ class SLGlobalManager(QObject):
     def onOscReceived(self, msg):
         if msg[0] == '/hostinfo' and len(msg) == 4:
             self._sl_looper_count = int(msg[3])
-            self.add_needed_loops()
+            # TODO: not adding loops (for debugging)
+            # self.add_needed_loops()
 
     @pyqtSlot(QObject)
     def connect_osc_link(self, link):
