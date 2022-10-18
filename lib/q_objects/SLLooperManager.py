@@ -24,6 +24,7 @@ class SLLooperManager(LooperManager):
         self._sl_looper_index = sl_looper_index
         self._sl_looper_count = 0
         self.syncChanged.connect(self.update_sl_sync)
+        self.passthroughChanged.connect(self.update_sl_passthrough)
 
     ######################
     # PROPERTIES
@@ -80,10 +81,15 @@ class SLLooperManager(LooperManager):
         self.sendOsc.emit(['/sl/{}/set'.format(self._sl_looper_index), 'mute_quantized', 1])
         self.sendOsc.emit(['/sl/{}/set'.format(self._sl_looper_index), 'round', 0])
         self.update_sl_sync()
+        self.update_sl_passthrough()
     
     @pyqtSlot()
     def update_sl_sync(self):
         self.sendOsc.emit(['/sl/{}/set'.format(self._sl_looper_index), 'sync', (1 if self.sync else 0)])
+    
+    @pyqtSlot()
+    def update_sl_passthrough(self):
+        self.sendOsc.emit(['/sl/{}/set'.format(self._sl_looper_index), 'dry', self.passthrough])
 
     @pyqtSlot()
     def updateConnected(self):

@@ -13,7 +13,7 @@ Item {
     property bool is_master   // Master loop which everything syncs to in SL
     property bool is_in_selected_scene: false
     property bool is_in_hovered_scene: false
-    property bool debug: false // Will show individual loops managed by pair manager
+    property bool debug: true // Will show individual loops managed by pair manager
     property var manager
     property alias name: name_field.text
 

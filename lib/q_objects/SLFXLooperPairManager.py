@@ -127,6 +127,11 @@ class SLFXLooperPairManager(LooperManager):
     def doTrigger(self):
         self._sl_dry_looper.doTrigger()
         self._sl_wet_looper.doTrigger()
+    
+    @pyqtSlot(float, float)
+    def setPassthroughs(self, dry, wet):
+        self._sl_dry_looper.passthrough = dry
+        self._sl_wet_looper.passthrough = wet
 
     @pyqtSlot()
     def doPlay(self):
@@ -134,6 +139,7 @@ class SLFXLooperPairManager(LooperManager):
         # the wet only and not process the FX.
         self._sl_dry_looper.doMute()
         self._sl_wet_looper.doPlay()
+        self.setPassthroughs(1.0, 1.0)
     
     @pyqtSlot()
     def doPlayLiveFx(self):
@@ -141,6 +147,7 @@ class SLFXLooperPairManager(LooperManager):
         # TODO: wet should still have passthrough
         self._sl_dry_looper.doPlay()
         self._sl_wet_looper.doMute()
+        self.setPassthroughs(1.0, 1.0)
 
     @pyqtSlot()
     def doPause(self):
@@ -151,6 +158,7 @@ class SLFXLooperPairManager(LooperManager):
     def doRecord(self):
         self._sl_dry_looper.doRecord()
         self._sl_wet_looper.doRecord()
+        self.setPassthroughs(1.0, 1.0)
     
     @pyqtSlot(QObject)
     def doRecordFx(self, master_manager):
@@ -165,6 +173,7 @@ class SLFXLooperPairManager(LooperManager):
             master_manager.schedule_at_loop_pos(
                 master_manager.length * 0.7,
                 n_cycles, lambda: self._sl_dry_looper.doMute())
+            self.setPassthroughs(0.0, 1.0)
         
         if wait_cycles_before_start <= 0:
             toExecuteJustBeforeRestart()
@@ -178,6 +187,7 @@ class SLFXLooperPairManager(LooperManager):
     def doRecordNCycles(self, n, master_manager):
         self._sl_dry_looper.doRecordNCycles(n, master_manager)
         self._sl_wet_looper.doRecordNCycles(n, master_manager)
+        self.setPassthroughs(1.0, 1.0)
 
     @pyqtSlot()
     def doStopRecord(self):
@@ -197,7 +207,10 @@ class SLFXLooperPairManager(LooperManager):
 
     @pyqtSlot(str)
     def doLoadWav(self, wav_file):
-        raise NotImplementedError()
+        # Load the wav into both dry and wet loops.
+        # The user can always adjust later.
+        self._sl_dry_looper.doLoadWav(wav_file)
+        self._sl_wet_looper.doLoadWav(wav_file)
 
     @pyqtSlot()
     def doClear(self):
