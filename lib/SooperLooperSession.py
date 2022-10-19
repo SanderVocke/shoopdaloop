@@ -11,16 +11,14 @@ from third_party.pyjacklib import jacklib
 from lib.Colorcodes import Colorcodes
 
 class SooperLooperSession:
-    def __init__(self, n_loops, n_channels, port, jack_server_name, client_name, ld_library_path, jack, jack_client):
+    def __init__(self, n_loops, n_channels, port, client_name, jack, jack_client):
         self.colorchar = Colorcodes().green.decode('utf8')
         self.resetchar = Colorcodes().reset.decode('utf8')
 
+        script_pwd = os.path.dirname(__file__)
         env = os.environ.copy()
-        env["LD_LIBRARY_PATH"] = ld_library_path
-        env['JACK_DEFAULT_SERVER'] = jack_server_name
-
-        cmd = 'sooperlooper -l {} -c {} -p {} -j {}'.format(n_loops, n_channels, port, client_name)
-        print("Running sooperlooper.\n  Command: LD_LIBRARY_PATH={} {}\n".format(ld_library_path, cmd))
+        cmd = script_pwd + '/../build/sooperlooper -l {} -c {} -p {} -j {}'.format(n_loops, n_channels, port, client_name)
+        print("Running sooperlooper.\n  Command: {}\n".format(cmd))
         self.proc = subprocess.Popen(cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
