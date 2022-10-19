@@ -11,7 +11,7 @@ from third_party.pyjacklib import jacklib
 from lib.Colorcodes import Colorcodes
 
 class SooperLooperSession:
-    def __init__(self, n_loops, n_channels, port, client_name, jack, jack_client):
+    def __init__(self, n_loops, loops_per_track, n_channels, port, client_name, jack, jack_client):
         self.colorchar = Colorcodes().green.decode('utf8')
         self.resetchar = Colorcodes().reset.decode('utf8')
 
@@ -38,7 +38,7 @@ class SooperLooperSession:
         while time.monotonic() - start_t < 15.0 and not ready:
             time.sleep(0.1)
             all_ports = jack.c_char_p_p_to_list(jack.get_ports(jack_client))
-            ready = '{}:loop{}_out_2'.format(client_name, n_loops-1) in all_ports
+            ready = '{}:track_{}_out_2'.format(client_name, int(n_loops/loops_per_track/2)) in all_ports
             if ready:
                 break
 

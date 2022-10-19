@@ -44,8 +44,7 @@ script_pwd = os.path.dirname(__file__)
 with JackSession('ShoopDaLoop-monitor') as jack_session:
     jack = jack_session[0]
     jack_client = jack_session[1]
-    with SooperLooperSession(48*2, 2, 9951, 'ShoopDaLoop', jack, jack_client):
-    #with SooperLooperSession(1*2, 2, 9951, jack_server_name, 'shoopdaloop-sooperlooper', jack_client_so_path, jack, jack_client):
+    with SooperLooperSession(48*2, 6, 2, 9951, 'ShoopDaLoop', jack, jack_client):
         app = QGuiApplication(sys.argv)
 
         link = SooperLooperOSCLink(None, '0.0.0.0', 9951, '0.0.0.0', 9952)
