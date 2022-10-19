@@ -30,22 +30,6 @@ class SooperLooperSession:
                     print(self.colorchar + 'sooperlooper: ' + line.decode('utf8') + self.resetchar, end='')
         self.print_thread = threading.Thread(target=print_lines)
         self.print_thread.start()
-
-        # Wait for the last loop to become available.
-        print("Waiting for SooperLooper to be ready...")
-        start_t = time.monotonic()
-        ready = False
-        while time.monotonic() - start_t < 15.0 and not ready:
-            time.sleep(0.1)
-            all_ports = jack.c_char_p_p_to_list(jack.get_ports(jack_client))
-            ready = '{}:track_{}_out_2'.format(client_name, int(n_loops/loops_per_track/2)) in all_ports
-            if ready:
-                break
-
-        if not ready:
-            raise Exception("SooperLooper did not become ready.")
-        
-        print("...SooperLooper is ready.")
     
     def __enter__(self):
         return self
