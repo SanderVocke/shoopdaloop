@@ -48,7 +48,7 @@ class SLLooperManager(LooperManager):
         if self._registered:
             return
 
-        print("Registering loop {}".format(self._sl_looper_index))
+        # print("Registering loop {}".format(self._sl_looper_index))
         
         # Register for repeated updates on "continuous" signals
         for ctl in ['loop_len', 'loop_pos', 'state', 'is_soloed']:
@@ -80,6 +80,7 @@ class SLLooperManager(LooperManager):
     def update_sl_sync(self):
         self.sendOsc.emit(['/set', 'sync_source', 1]) # Sync to loop 1. TODO: shouldn't need to repeat this
         self.sendOsc.emit(['/sl/{}/set'.format(self._sl_looper_index), 'sync', (1 if self.sync else 0)])
+        self.sendOsc.emit(['/sl/{}/set'.format(self._sl_looper_index), 'playback_sync', (1 if self.sync else 0)])
     
     @pyqtSlot()
     def update_sl_passthrough(self):
@@ -113,6 +114,8 @@ class SLLooperManager(LooperManager):
 
     @pyqtSlot()
     def doPause(self):
+        # TODO: if in muted state, it will go to play in the next cycle instead of
+        # pause. Not sure what to do about it.
         if self.state != LoopState.Paused.value:
             self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'pause'])
 

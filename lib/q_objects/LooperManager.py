@@ -154,6 +154,10 @@ class LooperManager(QObject):
     @pyqtSlot()
     def doReplace(self):
         raise NotImplementedError()
+    
+    @pyqtSlot()
+    def doPlayDry(self):
+        raise NotImplementedError()
 
     @pyqtSlot(str)
     def doLoadWav(self, wav_file):

@@ -20,3 +20,4 @@ class LoopState(Enum):
     # Extended states for FX loops
     RecordingWet = 15
     PlayingDryLiveWet = 16
+    PlayingDry = 17

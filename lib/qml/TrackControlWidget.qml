@@ -16,6 +16,7 @@ Item {
     signal recordFx()
     signal recordNCycles(int n)
     signal play()
+    signal playDry()
     signal playLiveFx()
 
     property bool muted
@@ -68,9 +69,16 @@ Item {
                     color: 'red'
                 }
                 onClicked: { trackctl.record() }
+
+                hoverEnabled: true
+                ToolTip.delay: 1000
+                ToolTip.timeout: 5000
+                ToolTip.visible: hovered
+                ToolTip.text: "Trigger/stop recording. For master loop, starts immediately. For others, start/stop synced to next master loop cycle."
             }
             Button {
                 id : recordN
+                property int n: 1
                 width: 30
                 height: 30
                 IconWithText {
@@ -79,11 +87,45 @@ Item {
                     name: 'record'
                     color: 'red'
                     text_color: Material.foreground
-                    text: "1"
+                    text: recordN.n.toString()
                     font.pixelSize: size / 2.0
                 }
-                onClicked: { trackctl.recordNCycles(1) }
+                onClicked: { trackctl.recordNCycles(n) }
+                onPressAndHold: { menu.popup() }
+
+                hoverEnabled: true
+                ToolTip.delay: 1000
+                ToolTip.timeout: 5000
+                ToolTip.visible: hovered
+                ToolTip.text: "Trigger fixed-length recording. Length (number shown) is the amount of master loop cycles to record. Press and hold this button to change this number."
+
+                // TODO: editable text box instead of fixed options
+                Menu {
+                    id: menu
+                    title: 'Select # of cycles'
+                    MenuItem {
+                        text: "1"
+                        onClicked: () => { recordN.n = 1 }
+                    }
+                    MenuItem {
+                        text: "2"
+                        onClicked: () => { recordN.n = 2 }
+                    }
+                    MenuItem {
+                        text: "4"
+                        onClicked: () => { recordN.n = 4 }
+                    }
+                    MenuItem {
+                        text: "8"
+                        onClicked: () => { recordN.n = 8 }
+                    }
+                    MenuItem {
+                        text: "16"
+                        onClicked: () => { recordN.n = 16 }
+                    }
+                }
             }
+            
             Button {
                 id : recordfx
                 width: 30
@@ -97,18 +139,12 @@ Item {
                     text: "FX"
                 }
                 onClicked: { trackctl.recordFx() }
-            }
-            Button {
-                id : pause
-                width: 30
-                height: 30
-                MaterialDesignIcon {
-                    size: parent.width - 10
-                    anchors.centerIn: parent
-                    name: 'pause'
-                    color: Material.foreground
-                }
-                onClicked: { trackctl.playLiveFx() }
+
+                hoverEnabled: true
+                ToolTip.delay: 1000
+                ToolTip.timeout: 5000
+                ToolTip.visible: hovered
+                ToolTip.text: "Trigger FX re-record. This will play the full dry loop once with live FX, recording the result for wet playback."
             }
             Button {
                 id : play
@@ -121,6 +157,30 @@ Item {
                     color: 'green'
                 }
                 onClicked: { trackctl.play() }
+
+                hoverEnabled: true
+                ToolTip.delay: 1000
+                ToolTip.timeout: 5000
+                ToolTip.visible: hovered
+                ToolTip.text: "Play wet recording."
+            }
+            Button {
+                id : pause
+                width: 30
+                height: 30
+                MaterialDesignIcon {
+                    size: parent.width - 10
+                    anchors.centerIn: parent
+                    name: 'pause'
+                    color: Material.foreground
+                }
+                onClicked: { trackctl.pause() }
+
+                hoverEnabled: true
+                ToolTip.delay: 1000
+                ToolTip.timeout: 5000
+                ToolTip.visible: hovered
+                ToolTip.text: "(Un)pause."
             }
             Button {
                 id : playlivefx
@@ -135,6 +195,12 @@ Item {
                     text: "FX"
                 }
                 onClicked: { trackctl.playLiveFx() }
+
+                hoverEnabled: true
+                ToolTip.delay: 1000
+                ToolTip.timeout: 5000
+                ToolTip.visible: hovered
+                ToolTip.text: "Play dry recording through live effects. Allows hearing FX changes on-the-fly."
             }
             Button {
                 id : mute
@@ -147,6 +213,12 @@ Item {
                     color: trackctl.muted ? 'grey' : Material.foreground
                 }
                 onClicked: { if(trackctl.muted) {trackctl.unmute()} else {trackctl.mute()} }
+
+                hoverEnabled: true
+                ToolTip.delay: 1000
+                ToolTip.timeout: 5000
+                ToolTip.visible: hovered
+                ToolTip.text: "(Un-)mute."
             }
         }
     }

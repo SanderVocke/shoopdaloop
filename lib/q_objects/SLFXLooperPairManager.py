@@ -114,6 +114,8 @@ class SLFXLooperPairManager(LooperManager):
     
     @pyqtSlot()
     def updatePos(self):
+        # TODO: better pos combine algo which takes into account the states
+        # of the sub-loops
         p = min((self.dry().pos + self.wet().pos)/2.0, self.length)
         if p != self.pos:
             self.pos = p
@@ -212,6 +214,12 @@ class SLFXLooperPairManager(LooperManager):
     def doMute(self):
         self.dry().doMute()
         self.wet().doMute()
+
+    @pyqtSlot()
+    def doPlayDry(self):
+        self.dry().doPlay()
+        self.wet().doMute()
+        self.setPassthroughs(1.0, 1.0)
 
     @pyqtSlot()
     def doUnmute(self):

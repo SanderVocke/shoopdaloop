@@ -158,6 +158,9 @@ Item {
                     function onPlay() {
                         track.loop_managers[track.selected_loop].doPlay()
                     }
+                    function onPlayDry() {
+                        track.loop_managers[track.selected_loop].doPlayDry()
+                    }
                     function onMute() {
                         for(var idx = 0; idx < track.num_loops; idx++) {
                             track.loop_managers[idx].doMute()

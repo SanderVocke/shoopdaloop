@@ -206,6 +206,7 @@ Item {
                 switch(lsicon.state) {
                 case LoopState.LoopState.Playing:
                 case LoopState.LoopState.PlayingDryLiveWet:
+                case LoopState.LoopState.PlayingDry:
                     return 'play'
                 case LoopState.LoopState.Recording:
                 case LoopState.LoopState.Inserting:
@@ -238,6 +239,8 @@ Item {
                 case LoopState.LoopState.RecordingWet:
                 case LoopState.LoopState.PlayingDryLiveWet:
                     return 'orange'
+                case LoopState.LoopState.PlayingDry:
+                    return 'grey'
                 default:
                     return 'grey'
                 }
