@@ -13,7 +13,6 @@ class LooperManager(QObject):
     # State change notifications
     lengthChanged = pyqtSignal(float)
     posChanged = pyqtSignal(float)
-    connectedChanged = pyqtSignal(bool)
     stateChanged = pyqtSignal(int)
     syncChanged = pyqtSignal(bool)
     passthroughChanged = pyqtSignal(float)
@@ -22,7 +21,6 @@ class LooperManager(QObject):
         super(LooperManager, self).__init__(parent)
         self._length = 1.0
         self._pos = 0.0
-        self._connected = False
         self._state = LoopState.Unknown.value
         self._last_received_pos_t = None
         self._sync = False
@@ -65,17 +63,6 @@ class LooperManager(QObject):
         if self._pos != p:
             self._pos = p
             self.posChanged.emit(p)
-
-    # connected (meaning: loop(s) exist(s))
-    connectedChanged = pyqtSignal(bool)
-    @pyqtProperty(bool, notify=connectedChanged)
-    def connected(self):
-        return self._connected
-    @connected.setter
-    def connected(self, p):
-        if self._connected != p:
-            self._connected = p
-            self.connectedChanged.emit(p)
     
     # sync (whether this loop is to be synced to the main loop or not)
     @pyqtProperty(bool, notify=syncChanged)

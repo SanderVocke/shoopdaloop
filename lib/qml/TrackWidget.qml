@@ -10,13 +10,13 @@ Item {
     id: track
     property int num_loops
     property int first_index
-    property int track_index
     property int selected_loop
     property int maybe_master_loop_idx: -1 //-1 is none
     property var master_loop_manager
     property var loop_managers
     property var loop_names
     property string name: ''
+    property bool name_editable: true
 
     // Array of loop idxs
     property var loops_of_selected_scene: []
@@ -67,6 +67,7 @@ Item {
                     text: track.name
                     width: 90
                     font.pixelSize: 13
+                    readOnly: !track.name_editable
 
                     onEditingFinished: () => {
                                            background_focus.forceActiveFocus()

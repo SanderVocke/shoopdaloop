@@ -55,7 +55,7 @@ Item {
                     left: parent.left
                     right: parent.right
                 }
-                height: 300
+                height: 230
                 border.color: 'grey'
                 border.width: 1
                 color: 'transparent'

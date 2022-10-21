@@ -13,7 +13,6 @@ class SLLooperManager(LooperManager):
 
     # State change notifications
     slLooperIndexChanged = pyqtSignal(int)
-    slLooperCountChanged = pyqtSignal(int)
 
     # Signal used to send OSC messages to SooperLooper
     sendOscExpectResponse = pyqtSignal(list, str)
@@ -22,9 +21,9 @@ class SLLooperManager(LooperManager):
     def __init__(self, parent=None, sl_looper_index=0):
         super(SLLooperManager, self).__init__(parent)
         self._sl_looper_index = sl_looper_index
-        self._sl_looper_count = 0
         self.syncChanged.connect(self.update_sl_sync)
         self.passthroughChanged.connect(self.update_sl_passthrough)
+        self._registered = False
 
     ######################
     # PROPERTIES
@@ -39,19 +38,6 @@ class SLLooperManager(LooperManager):
         if self._sl_looper_index != i:
             self._sl_looper_index = i
             self.slLooperIndexChanged.emit(i)
-            self.updateConnected()
-            self.start_sync()
-
-    @pyqtProperty(int, notify=slLooperCountChanged)
-    def sl_looper_count(self):
-        return self._sl_looper_count
-
-    @sl_looper_count.setter
-    def sl_looper_count(self, c):
-        if self._sl_looper_count != c:
-            self._sl_looper_count = c
-            self.slLooperCountChanged.emit(c)
-            self.updateConnected()
 
     ##################
     # SLOTS
@@ -59,6 +45,11 @@ class SLLooperManager(LooperManager):
 
     @pyqtSlot()
     def start_sync(self):
+        if self._registered:
+            return
+
+        print("Registering loop {}".format(self._sl_looper_index))
+        
         # Register for repeated updates on "continuous" signals
         for ctl in ['loop_len', 'loop_pos', 'state', 'is_soloed']:
             self.sendOscExpectResponse.emit(['/sl/{}/register_auto_update'.format(self._sl_looper_index), ctl, 100], '/sl/{}/get'.format(self._sl_looper_index))
@@ -82,21 +73,17 @@ class SLLooperManager(LooperManager):
         self.sendOsc.emit(['/sl/{}/set'.format(self._sl_looper_index), 'round', 0])
         self.update_sl_sync()
         self.update_sl_passthrough()
+
+        self._registered = True
     
     @pyqtSlot()
     def update_sl_sync(self):
+        self.sendOsc.emit(['/set', 'sync_source', 1]) # Sync to loop 1. TODO: shouldn't need to repeat this
         self.sendOsc.emit(['/sl/{}/set'.format(self._sl_looper_index), 'sync', (1 if self.sync else 0)])
     
     @pyqtSlot()
     def update_sl_passthrough(self):
         self.sendOsc.emit(['/sl/{}/set'.format(self._sl_looper_index), 'dry', self.passthrough])
-
-    @pyqtSlot()
-    def updateConnected(self):
-        connected = bool(self._sl_looper_count > self._sl_looper_index)
-        if connected != self.connected:
-            self.connected = connected
-            self.start_sync()
     
     @pyqtSlot(list)
     def onOscReceived(self, msg):
@@ -113,9 +100,6 @@ class SLLooperManager(LooperManager):
                     self.length = float(value)
                 elif control == 'state':
                     self.state = round(float(value))
-        elif msg[0] == '/hostinfo' and len(msg) == 4:
-            self.sl_looper_count = int(msg[3])
-            self.updateConnected()
     
     @pyqtSlot()
     def doTrigger(self):

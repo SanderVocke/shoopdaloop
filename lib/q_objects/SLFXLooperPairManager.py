@@ -19,34 +19,16 @@ class SLFXLooperPairManager(LooperManager):
     # State change notifications
     slDryLooperIdxChanged = pyqtSignal(int)
     slWetLooperIdxChanged = pyqtSignal(int)
-    slDryLooperChanged = pyqtSignal(LooperManager)
-    slWetLooperChanged = pyqtSignal(LooperManager)
+    slWetLooperChanged = pyqtSignal(QObject)
+    slDryLooperChanged = pyqtSignal(QObject)
 
-    def __init__(self, parent=None, sl_dry_looper_idx=None, sl_wet_looper_idx=None):
+    def __init__(self, parent=None):
         super(SLFXLooperPairManager, self).__init__(parent)
-
         self._parent = parent
-
-        self._sl_dry_looper = SLLooperManager(self._parent, sl_dry_looper_idx if sl_dry_looper_idx != None else 999)
-        self._sl_wet_looper = SLLooperManager(self._parent, sl_wet_looper_idx if sl_wet_looper_idx != None else 999)
-        self._sl_dry_looper.sync = self.sync
-        self._sl_wet_looper.sync = self.sync
-
-        # Connections
-        self._sl_dry_looper.lengthChanged.connect(self.updateLength)
-        self._sl_dry_looper.posChanged.connect(self.updatePos)
-        self._sl_dry_looper.connectedChanged.connect(self.updateConnected)
-        self._sl_dry_looper.stateChanged.connect(self.updateState)
-
-        self._sl_wet_looper.lengthChanged.connect(self.updateLength)
-        self._sl_wet_looper.posChanged.connect(self.updatePos)
-        self._sl_wet_looper.connectedChanged.connect(self.updateConnected)
-        self._sl_wet_looper.stateChanged.connect(self.updateState)
-
-        self._sl_dry_looper.slLooperIndexChanged.connect(self.slDryLooperIdxChanged)
-        self._sl_wet_looper.slLooperIndexChanged.connect(self.slWetLooperIdxChanged)
-        self.syncChanged.connect(lambda s: setattr(self._sl_dry_looper, 'sync', s))
-        self.syncChanged.connect(lambda s: setattr(self._sl_wet_looper, 'sync', s))
+        self._sl_wet_looper_idx = None
+        self._sl_dry_looper_idx = None
+        self._sl_wet_looper = None
+        self._sl_dry_looper = None
     
     ######################
     # PROPERTIES
@@ -54,19 +36,27 @@ class SLFXLooperPairManager(LooperManager):
 
     @pyqtProperty(int, notify=slDryLooperIdxChanged)
     def sl_dry_looper_idx(self):
-        return self._sl_dry_looper.sl_looper_index
+        return self._sl_dry_looper_idx
 
     @sl_dry_looper_idx.setter
     def sl_dry_looper_idx(self, i):
-        self._sl_dry_looper.sl_looper_index = i
+        if i != self._sl_dry_looper_idx:
+            if self._sl_dry_looper:
+                raise Exception("Changing SL loop idx of already existing looper.")
+            self._sl_dry_looper_idx = i
+            self.slDryLooperIdxChanged.emit(i)
     
     @pyqtProperty(int, notify=slWetLooperIdxChanged)
     def sl_wet_looper_idx(self):
-        return self._sl_wet_looper.sl_looper_index
+        return self._sl_wet_looper_idx
 
     @sl_wet_looper_idx.setter
     def sl_wet_looper_idx(self, i):
-        self._sl_wet_looper.sl_looper_index = i
+        if i != self._sl_wet_looper_idx:
+            if self._sl_wet_looper:
+                raise Exception("Changing SL loop idx of already existing looper.")
+            self._sl_wet_looper_idx = i
+            self.slWetLooperIdxChanged.emit(i)
     
     @pyqtProperty(QObject, notify=slDryLooperChanged)
     def sl_dry_looper(self):
@@ -75,48 +65,71 @@ class SLFXLooperPairManager(LooperManager):
     @pyqtProperty(QObject, notify=slWetLooperChanged)
     def sl_wet_looper(self):
         return self._sl_wet_looper
-
+    
     ##################
     # SLOTS / METHODS
     ##################
 
+    def wet(self):
+        if self._sl_wet_looper == None:
+            if self._sl_wet_looper_idx == None:
+                raise Exception("Trying to create SL looper before its index is known")
+            self._sl_wet_looper = SLLooperManager(self._parent, self._sl_wet_looper_idx)
+            self._sl_wet_looper.sync = self.sync
+            # Connections
+            self._sl_wet_looper.lengthChanged.connect(self.updateLength)
+            self._sl_wet_looper.posChanged.connect(self.updatePos)
+            self._sl_wet_looper.stateChanged.connect(self.updateState)
+            self.slWetLooperIdxChanged.connect(lambda s: setattr(self._sl_wet_looper, 'sl_looper_index', s))
+            self.syncChanged.connect(lambda s: setattr(self._sl_wet_looper, 'sync', s))
+            
+        return self._sl_wet_looper
+    
+    def dry(self):
+        if self._sl_dry_looper == None:
+            if self._sl_dry_looper_idx == None:
+                raise Exception("Trying to create SL looper before its index is known")
+            self._sl_dry_looper = SLLooperManager(self._parent, self._sl_dry_looper_idx)
+            self._sl_dry_looper.sync = self.sync
+            # Connections
+            self._sl_dry_looper.lengthChanged.connect(self.updateLength)
+            self._sl_dry_looper.posChanged.connect(self.updatePos)
+            self._sl_dry_looper.stateChanged.connect(self.updateState)
+            self.slDryLooperIdxChanged.connect(lambda s: setattr(self._sl_dry_looper, 'sl_looper_index', s))
+            self.syncChanged.connect(lambda s: setattr(self._sl_dry_looper, 'sync', s))
+            
+        return self._sl_dry_looper
+
     @pyqtSlot()
     def start_sync(self):
-        self._sl_dry_looper.start_sync()
-        self._sl_wet_looper.start_sync()
+        self.dry().start_sync()
+        self.wet().start_sync()
 
     @pyqtSlot()
     def updateLength(self):
-        l = max(self._sl_wet_looper.length, self._sl_dry_looper.length)
+        l = max(self.wet().length, self.dry().length)
         if l != self.length:
             self.length = l
             self.lengthChanged.emit(l)
     
     @pyqtSlot()
     def updatePos(self):
-        p = min((self._sl_dry_looper.pos + self._sl_wet_looper.pos)/2.0, self.length)
+        p = min((self.dry().pos + self.wet().pos)/2.0, self.length)
         if p != self.pos:
             self.pos = p
             self.posChanged.emit(p)
     
     @pyqtSlot()
-    def updateConnected(self):
-        c = self._sl_dry_looper.connected and self._sl_wet_looper.connected
-        if c != self.connected:
-            self.connected = c
-            self.connectedChanged.emit(c)
-    
-    @pyqtSlot()
     def updateState(self):
         # In most cases, our overall state matches that of the wet loop.
-        new_state = self._sl_wet_looper.state
+        new_state = self.wet().state
 
-        if self._sl_wet_looper.state == LoopState.Recording.value and \
-           self._sl_dry_looper.state == LoopState.Playing.value:
+        if self.wet().state == LoopState.Recording.value and \
+           self.dry().state == LoopState.Playing.value:
            new_state = LoopState.RecordingWet.value
         
-        if self._sl_wet_looper.state == LoopState.Muted.value and \
-           self._sl_dry_looper.state == LoopState.Playing.value:
+        if self.wet().state == LoopState.Muted.value and \
+           self.dry().state == LoopState.Playing.value:
            new_state = LoopState.PlayingDryLiveWet.value
         
         if new_state != self.state:
@@ -125,39 +138,39 @@ class SLFXLooperPairManager(LooperManager):
     
     @pyqtSlot()
     def doTrigger(self):
-        self._sl_dry_looper.doTrigger()
-        self._sl_wet_looper.doTrigger()
+        self.dry().doTrigger()
+        self.wet().doTrigger()
     
     @pyqtSlot(float, float)
     def setPassthroughs(self, dry, wet):
-        self._sl_dry_looper.passthrough = dry
-        self._sl_wet_looper.passthrough = wet
+        self.dry().passthrough = dry
+        self.wet().passthrough = wet
 
     @pyqtSlot()
     def doPlay(self):
         # Mute the dry, because we want to hear
         # the wet only and not process the FX.
-        self._sl_dry_looper.doMute()
-        self._sl_wet_looper.doPlay()
+        self.dry().doMute()
+        self.wet().doPlay()
         self.setPassthroughs(1.0, 1.0)
     
     @pyqtSlot()
     def doPlayLiveFx(self):
         # Mute the wet, play the dry.
         # TODO: wet should still have passthrough
-        self._sl_dry_looper.doPlay()
-        self._sl_wet_looper.doMute()
+        self.dry().doPlay()
+        self.wet().doMute()
         self.setPassthroughs(1.0, 1.0)
 
     @pyqtSlot()
     def doPause(self):
-        self._sl_dry_looper.doPause()
-        self._sl_wet_looper.doPause()
+        self.dry().doPause()
+        self.wet().doPause()
 
     @pyqtSlot()
     def doRecord(self):
-        self._sl_dry_looper.doRecord()
-        self._sl_wet_looper.doRecord()
+        self.dry().doRecord()
+        self.wet().doRecord()
         self.setPassthroughs(1.0, 1.0)
     
     @pyqtSlot(QObject)
@@ -166,13 +179,13 @@ class SLFXLooperPairManager(LooperManager):
         current_cycle = math.floor(self.pos / master_manager.length)
         wait_cycles_before_start = n_cycles - current_cycle - 1
         def toExecuteJustBeforeRestart():
-            self._sl_dry_looper.doPlay()
-            self._sl_wet_looper.doRecordNCycles(n_cycles, master_manager)
+            self.dry().doPlay()
+            self.wet().doRecordNCycles(n_cycles, master_manager)
             # When the FX recording is finished, also mute the
             # dry channel again
             master_manager.schedule_at_loop_pos(
                 master_manager.length * 0.7,
-                n_cycles, lambda: self._sl_dry_looper.doMute())
+                n_cycles, lambda: self.dry().doMute())
             self.setPassthroughs(0.0, 1.0)
         
         if wait_cycles_before_start <= 0:
@@ -185,37 +198,37 @@ class SLFXLooperPairManager(LooperManager):
 
     @pyqtSlot(int, QObject)
     def doRecordNCycles(self, n, master_manager):
-        self._sl_dry_looper.doRecordNCycles(n, master_manager)
-        self._sl_wet_looper.doRecordNCycles(n, master_manager)
+        self.dry().doRecordNCycles(n, master_manager)
+        self.wet().doRecordNCycles(n, master_manager)
         self.setPassthroughs(1.0, 1.0)
 
     @pyqtSlot()
     def doStopRecord(self):
-        self._sl_dry_looper.doStopRecord()
-        self._sl_wet_looper.doStopRecord()
-        self._sl_dry_looper.doMute()
+        self.dry().doStopRecord()
+        self.wet().doStopRecord()
+        self.dry().doMute()
 
     @pyqtSlot()
     def doMute(self):
-        self._sl_dry_looper.doMute()
-        self._sl_wet_looper.doMute()
+        self.dry().doMute()
+        self.wet().doMute()
 
     @pyqtSlot()
     def doUnmute(self):
-        self._sl_dry_looper.doUnmute()
-        self._sl_wet_looper.doUnmute()
+        self.dry().doUnmute()
+        self.wet().doUnmute()
 
     @pyqtSlot(str)
     def doLoadWav(self, wav_file):
         # Load the wav into both dry and wet loops.
         # The user can always adjust later.
-        self._sl_dry_looper.doLoadWav(wav_file)
-        self._sl_wet_looper.doLoadWav(wav_file)
+        self.dry().doLoadWav(wav_file)
+        self.wet().doLoadWav(wav_file)
 
     @pyqtSlot()
     def doClear(self):
-        self._sl_dry_looper.doUnMute()
-        self._sl_wet_looper.doUnMute()
+        self.dry().doUnMute()
+        self.wet().doUnMute()
 
     @pyqtSlot(str)
     def doSaveWav(self, wav_file):
@@ -223,5 +236,5 @@ class SLFXLooperPairManager(LooperManager):
 
     @pyqtSlot(QObject)
     def connect_osc_link(self, link):
-        self._sl_dry_looper.connect_osc_link(link)
-        self._sl_wet_looper.connect_osc_link(link)
+        self.dry().connect_osc_link(link)
+        self.wet().connect_osc_link(link)

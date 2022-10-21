@@ -25,7 +25,7 @@ class SooperLooperOSCLink(QObject):
             while True:
                 msg = self._snd_queue.get()
                 self._client.send_message(msg[0], msg[1:])
-                #print('S: {}'.format(pprint.pformat(msg)))
+                # print('S: {}'.format(pprint.pformat(msg)))
                 self.sent.emit(msg)
                 self._snd_queue.task_done()
         self._client_thread = threading.Thread(target=sender, daemon=True)
@@ -35,7 +35,7 @@ class SooperLooperOSCLink(QObject):
         def rcv(addr, *args):
             try:
                 msg = [addr, *args]
-                #print('R: {}'.format(pprint.pformat(msg)))
+                # print('R: {}'.format(pprint.pformat(msg)))
                 self.received.emit(msg)
             except Exception as e:
                 print('Failed to receive message: {}'.format(str(e)))

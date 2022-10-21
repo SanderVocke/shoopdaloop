@@ -11,6 +11,7 @@ Item {
     property var track_names: []
     property var loop_names: []
     property int loops_per_track
+    property int first_loop_index: 0
     property var loop_managers //2D array
     property var master_loop_manager
     property var master_loop_idx //[track][loop]
@@ -54,9 +55,8 @@ Item {
                         name: tracks.track_names[index]
                         loop_names: tracks.loop_names[index]
                         num_loops: tracks.loops_per_track
-                        first_index: index * tracks.loops_per_track
-                        track_index: index + 1
-                        maybe_master_loop_idx: tracks.master_loop_idx[0] === index ? tracks.master_loop_idx[1] : -1
+                        first_index: index * tracks.loops_per_track + tracks.first_loop_index
+                        maybe_master_loop_idx: -1
                         master_loop_manager: tracks.master_loop_manager
                         loop_managers: tracks.loop_managers[index]
                         selected_loop: tracks.selected_loops[index]

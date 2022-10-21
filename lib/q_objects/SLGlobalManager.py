@@ -14,6 +14,7 @@ class SLGlobalManager(QObject):
     # State change notifications
     slLooperCountChanged = pyqtSignal(int)
     desiredLooperCountChanged = pyqtSignal(int)
+    allLoopsReadyChanged = pyqtSignal(bool)
 
     # Signal used to send OSC messages to SooperLooper
     sendOscExpectResponse = pyqtSignal(list, str)
@@ -24,6 +25,7 @@ class SLGlobalManager(QObject):
         self._desired_looper_count = None
         self._sl_looper_count = None
         self._last_requested_loop_count = None
+        self._all_loops_ready = False
 
     @pyqtSlot()
     def start_sync(self):
@@ -38,10 +40,11 @@ class SLGlobalManager(QObject):
         self.sendOsc.emit(['/set', 'sync_source', 1]) # Sync to loop 1
 
     @pyqtSlot()
-    def add_needed_loops(self):
+    def add_needed_loops(self):        
         if self._desired_looper_count != None and \
            self._sl_looper_count != None:
-            amount_needed = (self._desired_looper_count*2) - self._sl_looper_count
+            current_amount = self._last_requested_loop_count if self._last_requested_loop_count else self.sl_looper_count
+            amount_needed = self._desired_looper_count - current_amount
             if self._last_requested_loop_count != self._desired_looper_count:
                 for idx in range(amount_needed):
                     self.sendOsc.emit(['/loop_add', loop_channels, loop_min_len])
@@ -67,6 +70,18 @@ class SLGlobalManager(QObject):
             self._desired_looper_count = c
             self.desiredLooperCountChanged.emit(c)
             self.add_needed_loops()
+    
+    @pyqtProperty(bool, notify=allLoopsReadyChanged)
+    def all_loops_ready(self):
+        return self._all_loops_ready
+    
+    @all_loops_ready.setter
+    def all_loops_ready(self, c):
+        if self._all_loops_ready != c:
+            self._all_loops_ready = c
+            self.allLoopsReadyChanged.emit(c)
+            if c:
+                print("All {} SooperLooper loops are ready.".format(self.desired_looper_count))
 
     # TODO: don't know why I need this, setter doesn't work directly from QML
     @pyqtSlot(int)
@@ -77,6 +92,8 @@ class SLGlobalManager(QObject):
     def onOscReceived(self, msg):
         if msg[0] == '/hostinfo' and len(msg) == 4:
             self._sl_looper_count = int(msg[3])
+            self.all_loops_ready = (self.desired_looper_count != None) and \
+                (self.desired_looper_count > 0 and self.sl_looper_count >= self.desired_looper_count)
             self.add_needed_loops()
 
     @pyqtSlot(QObject)

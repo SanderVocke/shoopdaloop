@@ -17,45 +17,54 @@ Item {
     property int loops_per_track: 6
     property int tracks: 8
     property var loop_managers: {
+        // Nested array of loop mgrs per track. Master loop is regarded as the first track.
+
+        function mgr_snippet (dry_sl_looper_idx, wet_sl_looper_idx, sync) {
+            // single loop version
+            //return 'import QtQuick 2.0; import SLLooperManager 1.0; SLLooperManager {sl_looper_index: ' + (outer * loops_per_track + inner).toString() + '\nsync: ' + (outer != 0 || inner != 0).toString() + '}'
+
+            // double loop version
+            return 'import QtQuick 2.0; import SLFXLooperPairManager 1.0; SLFXLooperPairManager {\n  sl_dry_looper_idx: ' + dry_sl_looper_idx.toString() + '\n  sl_wet_looper_idx: ' + wet_sl_looper_idx.toString() + '\nsync: ' + sync.toString() + '\n}'
+        }
+
         var outer, inner
         var managers = []
+        var master_mgr = Qt.createQmlObject(mgr_snippet(0, 1, false),
+                            shared,
+                            "dynamicSnippet1");
+        master_mgr.connect_osc_link(osc_link)
+        managers.push([master_mgr])
         for(outer = 0; outer < tracks; outer++) {
             var i_managers = []
             for(inner = 0; inner < loops_per_track; inner++) {
-                // single loop version
-                //var snip = 'import QtQuick 2.0; import SLLooperManager 1.0; SLLooperManager {sl_looper_index: ' + (outer * loops_per_track + inner).toString() + '\nsync: ' + (outer != 0 || inner != 0).toString() + '}'
-
-                // double loop version
-                var snip = 'import QtQuick 2.0; import SLFXLooperPairManager 1.0; SLFXLooperPairManager {\n  sl_dry_looper_idx: ' + ((outer * loops_per_track + inner)*2).toString() + '\n  sl_wet_looper_idx: ' + ((outer * loops_per_track + inner)*2+1).toString() + '\nsync: ' + (outer != 0 || inner != 0).toString() + '\n}'
-
-                var mgr = Qt.createQmlObject(snip,
+                var mgr = Qt.createQmlObject(mgr_snippet((outer * loops_per_track + inner)*2 + 2, (outer * loops_per_track + inner)*2 + 3, true),
                                              shared,
                                              "dynamicSnippet1");
                 mgr.connect_osc_link(osc_link)
-                mgr.start_sync()
                 i_managers.push(mgr)
             }
             managers.push(i_managers)
         }
         return managers
     }
-    property var master_loop_idx: [0, 0]
     property var master_loop_manager: {
-        return loop_managers[master_loop_idx[0]][master_loop_idx[1]]
+        return loop_managers[0][0];
     }
 
     // TRACKS STATE
     property var track_names: {
         var r = []
+        r.push('Master')
         for (var i = 0; i < tracks; i++) {
             r.push('Track ' + (i+1).toString())
         }
         return r
     }
-    property var selected_loops: Array(tracks).fill(0)
+    property var selected_loops: Array(tracks+1).fill(0)
     property var loop_names: {
         var outer, inner
         var names = []
+        names.push(['Master'])
         for (outer = 0; outer < tracks; outer++) {
             var track_loop_names = []
             for (inner = 0; inner < loops_per_track; inner++) {
@@ -95,7 +104,7 @@ Item {
     }
     function set_state_from_dict(state_dict) {
         // RESET SELECTIONS
-        selected_loops = [0, 0, 0, 0, 0, 0, 0, 0]
+        selected_loops = [0, 0, 0, 0, 0, 0, 0, 0, 0]
         selected_scene = -1
         hovered_scene = -1
         selected_section = -1
@@ -135,6 +144,7 @@ Item {
     property var scene_names: []
     property var loops_of_selected_scene: []
     property var loops_of_hovered_scene: []
+    property bool ready_to_register_loops: sl_global_manager.all_loops_ready
 
     // FUNCTIONS
     function actions_on_loop_mgrs_in_track(track_idx, loop_idx, on_idx_loop_fn, on_other_loop_fn) {
@@ -355,5 +365,14 @@ Item {
         function onSelected_sectionChanged() { update_selected_scene_from_section() }
         function onSelected_sceneChanged() { update_loops_of_selected_scene() }
         function onHovered_sceneChanged() { update_loops_of_hovered_scene() }
+        function onReady_to_register_loopsChanged() {
+            if (ready_to_register_loops) {
+                for(var outer = 0; outer < loop_managers.length; outer++) {
+                    for(var inner = 0; inner < loop_managers[outer].length; inner++) {
+                        loop_managers[outer][inner].start_sync();
+                    }
+                }
+            }
+        }
     }
 }

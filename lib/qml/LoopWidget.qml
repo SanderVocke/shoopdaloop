@@ -137,8 +137,8 @@ Item {
 
                         LoopStateIcon {
                             id: loopstateicon
-                            state: widget.show_state_for_managers[index].state
-                            connected: widget.show_state_for_managers[index].connected
+                            state: widget.show_state_for_managers[index] ? widget.show_state_for_managers[index].state : LoopState.LoopState.Unknown
+                            connected: sl_global_manager ? sl_global_manager.all_loops_ready : false
                             size: iconitem.height / iconrepeater.model
                             y: index * iconitem.height / iconrepeater.model
                             anchors.horizontalCenter: iconitem.horizontalCenter
