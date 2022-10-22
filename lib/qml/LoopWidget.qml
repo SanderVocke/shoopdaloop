@@ -153,7 +153,6 @@ Item {
                     y: (loop.height - height)/2
 
                     onEditingFinished: {
-                        console.log("Finished: " + text)
                         widget.request_rename(text)
                         background_focus.forceActiveFocus();
                     }

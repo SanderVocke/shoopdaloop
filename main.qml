@@ -49,15 +49,19 @@ ApplicationWindow {
                 right: parent.right
             }
 
+            function map_loop_pos(loop_pos) {
+                return [loop_pos[0]-1, loop_pos[1]];
+            }
+
             track_names: shared.track_names.slice(1)
             loop_names: shared.loop_names.slice(1)
             loop_managers: shared.loop_managers.slice(1)
             first_loop_index: 2
             master_loop_manager: shared.master_loop_manager
             loops_per_track: shared.loops_per_track
-            loops_of_selected_scene: shared.loops_of_selected_scene
-            loops_of_hovered_scene: shared.loops_of_hovered_scene
-            selected_loops: shared.selected_loops
+            loops_of_selected_scene: shared.loops_of_selected_scene.map(map_loop_pos)
+            loops_of_hovered_scene: shared.loops_of_hovered_scene.map(map_loop_pos)
+            selected_loops: shared.selected_loops.slice(1)
 
             Connections {
                 function onRequest_bind_loop_to_scene(track, loop) { shared.bind_loop_to_current_scene(track+1, loop) }
