@@ -8,3 +8,4 @@ FORCE:
 
 clean:
 	rm -r build || true
+	cd third_party/sooperlooper && make clean || true
