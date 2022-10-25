@@ -33,6 +33,8 @@ Item {
     signal request_save_wav(int idx, string wav_file)
     signal request_rename_loop(int idx, string name)
     signal request_clear_loop(int idx)
+    signal volume_slider_changed(real volume)
+    signal pan_slider_changed(real pan)
 
     function actions_on_loop_mgrs(idx, on_idx_loop_fn, on_other_loop_fn) {
         for(var i = 0; i < track.num_loops; i++) {
@@ -168,6 +170,12 @@ Item {
                     }
                     function onUnmute() {
                         track.loop_managers[track.selected_loop].doUnmute()
+                    }
+                    function onVolumeChanged(vol) {
+                        track.volume_slider_changed(vol)
+                    }
+                    function onPanChanged(pan) {
+                        track.pan_slider_changed(pan)
                     }
                 }
             }

@@ -23,6 +23,9 @@ class SLLooperManager(LooperManager):
         self._sl_looper_index = sl_looper_index
         self.syncChanged.connect(self.update_sl_sync)
         self.passthroughChanged.connect(self.update_sl_passthrough)
+        self.volumeChanged.connect(self.update_sl_volume)
+        self.panLChanged.connect(self.update_sl_pan_l)
+        self.panRChanged.connect(self.update_sl_pan_r)
         self._registered = False
 
     ######################
@@ -85,6 +88,18 @@ class SLLooperManager(LooperManager):
     @pyqtSlot()
     def update_sl_passthrough(self):
         self.sendOsc.emit(['/sl/{}/set'.format(self._sl_looper_index), 'dry', self.passthrough])
+    
+    @pyqtSlot()
+    def update_sl_volume(self):
+        self.sendOsc.emit(['/sl/{}/set'.format(self._sl_looper_index), 'wet', self.volume])
+    
+    @pyqtSlot()
+    def update_sl_pan_l(self):
+        self.sendOsc.emit(['/sl/{}/set'.format(self._sl_looper_index), 'pan_1', self.panL])
+    
+    @pyqtSlot()
+    def update_sl_pan_r(self):
+        self.sendOsc.emit(['/sl/{}/set'.format(self._sl_looper_index), 'pan_2', self.panR])
     
     @pyqtSlot(list)
     def onOscReceived(self, msg):

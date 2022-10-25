@@ -20,6 +20,8 @@ Item {
     signal playLiveFx()
 
     property bool muted
+    property alias volume: volume.value
+    property alias pan: pan.value
 
     Column {
         spacing: 0
@@ -56,14 +58,14 @@ Item {
             x: (parent.width - width) / 2
 
             spacing: 2
-            columns: 3
+            columns: 4
 
             Button {
                 id : record
-                width: 30
+                width: 23
                 height: 30
                 MaterialDesignIcon {
-                    size: parent.width - 10
+                    size: parent.width - 3
                     anchors.centerIn: parent
                     name: 'record'
                     color: 'red'
@@ -79,10 +81,10 @@ Item {
             Button {
                 id : recordN
                 property int n: 1
-                width: 30
+                width: 23
                 height: 30
                 IconWithText {
-                    size: parent.width - 10
+                    size: parent.width - 3
                     anchors.centerIn: parent
                     name: 'record'
                     color: 'red'
@@ -128,10 +130,10 @@ Item {
             
             Button {
                 id : recordfx
-                width: 30
+                width: 23
                 height: 30
                 IconWithText {
-                    size: parent.width - 10
+                    size: parent.width - 3
                     anchors.centerIn: parent
                     name: 'record'
                     color: 'orange'
@@ -147,47 +149,11 @@ Item {
                 ToolTip.text: "Trigger FX re-record. This will play the full dry loop once with live FX, recording the result for wet playback."
             }
             Button {
-                id : play
-                width: 30
-                height: 30
-                MaterialDesignIcon {
-                    size: parent.width - 10
-                    anchors.centerIn: parent
-                    name: 'play'
-                    color: 'green'
-                }
-                onClicked: { trackctl.play() }
-
-                hoverEnabled: true
-                ToolTip.delay: 1000
-                ToolTip.timeout: 5000
-                ToolTip.visible: hovered
-                ToolTip.text: "Play wet recording."
-            }
-            Button {
-                id : pause
-                width: 30
-                height: 30
-                MaterialDesignIcon {
-                    size: parent.width - 10
-                    anchors.centerIn: parent
-                    name: 'pause'
-                    color: Material.foreground
-                }
-                onClicked: { trackctl.pause() }
-
-                hoverEnabled: true
-                ToolTip.delay: 1000
-                ToolTip.timeout: 5000
-                ToolTip.visible: hovered
-                ToolTip.text: "(Un)pause."
-            }
-            Button {
                 id : playlivefx
-                width: 30
+                width: 23
                 height: 30
                 IconWithText {
-                    size: parent.width - 10
+                    size: parent.width - 3
                     anchors.centerIn: parent
                     name: 'play'
                     color: 'orange'
@@ -203,11 +169,47 @@ Item {
                 ToolTip.text: "Play dry recording through live effects. Allows hearing FX changes on-the-fly."
             }
             Button {
-                id : mute
-                width: 30
+                id : play
+                width: 23
                 height: 30
                 MaterialDesignIcon {
-                    size: parent.width - 10
+                    size: parent.width - 3
+                    anchors.centerIn: parent
+                    name: 'play'
+                    color: 'green'
+                }
+                onClicked: { trackctl.play() }
+
+                hoverEnabled: true
+                ToolTip.delay: 1000
+                ToolTip.timeout: 5000
+                ToolTip.visible: hovered
+                ToolTip.text: "Play wet recording."
+            }
+            Button {
+                id : pause
+                width: 23
+                height: 30
+                MaterialDesignIcon {
+                    size: parent.width - 3
+                    anchors.centerIn: parent
+                    name: 'pause'
+                    color: Material.foreground
+                }
+                onClicked: { trackctl.pause() }
+
+                hoverEnabled: true
+                ToolTip.delay: 1000
+                ToolTip.timeout: 5000
+                ToolTip.visible: hovered
+                ToolTip.text: "(Un)pause."
+            }
+            Button {
+                id : mute
+                width: 23
+                height: 30
+                MaterialDesignIcon {
+                    size: parent.width - 3
                     anchors.centerIn: parent
                     name: trackctl.muted ? 'volume-mute' : 'volume-high'
                     color: trackctl.muted ? 'grey' : Material.foreground

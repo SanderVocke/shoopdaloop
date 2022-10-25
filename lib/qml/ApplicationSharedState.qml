@@ -161,8 +161,14 @@ Item {
 
     function select_loop(track_idx, loop_idx) {
         actions_on_loop_mgrs_in_track(track_idx, loop_idx,
-                                      (mgr) => { mgr.doUnmute() },
-                                      (mgr) => { mgr.doMute() }
+                                      (mgr) => {
+                                        mgr.doUnmute()
+                                        mgr.passthrough = 1.0
+                                      },
+                                      (mgr) => {
+                                        mgr.doMute()
+                                        mgr.passthrough = 0.0
+                                      }
                                       )
 
         // Update everything else
