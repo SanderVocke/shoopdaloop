@@ -15,6 +15,7 @@ build/sooperlooper: third_party/sooperlooper/src/sooperlooper
 	mkdir -p build
 	cp third_party/sooperlooper/src/sooperlooper build/
 
+.PHONY: clean
 clean:
 	rm -r build || true
 	cd third_party/sooperlooper && make clean || true
