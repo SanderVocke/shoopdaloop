@@ -235,8 +235,8 @@ class SLFXLooperPairManager(LooperManager):
 
     @pyqtSlot()
     def doClear(self):
-        self.dry().doUnMute()
-        self.wet().doUnMute()
+        self.dry().doClear()
+        self.wet().doClear()
 
     @pyqtSlot(str)
     def doSaveWav(self, wav_file):
