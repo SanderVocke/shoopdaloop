@@ -101,7 +101,7 @@ class LooperManager(QObject):
     def volume(self, p):
         if self._volume != p:
             self._volume = p
-            self._volumeChanged.emit(p)
+            self.volumeChanged.emit(p)
     
     # Pan properties: panning of each channel in 0.0-1.0
     @pyqtProperty(float, notify=panLChanged)
@@ -112,7 +112,7 @@ class LooperManager(QObject):
     def panL(self, p):
         if self._panL != p:
             self._panL = p
-            self._panLChanged.emit(p)
+            self.panLChanged.emit(p)
 
     @pyqtProperty(float, notify=panRChanged)
     def panR(self):
@@ -122,7 +122,7 @@ class LooperManager(QObject):
     def panR(self, p):
         if self._panR != p:
             self._panR = p
-            self._panRChanged.emit(p)
+            self.panRChanged.emit(p)
 
     ##################
     # SLOTS / METHODS
@@ -211,4 +211,8 @@ class LooperManager(QObject):
 
     @pyqtSlot(QObject)
     def connect_osc_link(self, link):
+        raise NotImplementedError()
+    
+    @pyqtSlot(result=str)
+    def looper_type(self):
         raise NotImplementedError()

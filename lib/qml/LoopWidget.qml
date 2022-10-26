@@ -13,8 +13,9 @@ Item {
     property bool is_in_selected_scene: false
     property bool is_in_hovered_scene: false
     property var manager
-    property alias name: name_field.text
-
+    property alias name: statusrect.name
+    property string internal_name
+    
     signal selected() //directly selected by the user to be activated.
     signal add_to_scene() //selected by the user to be added to the current scene.
     signal request_load_wav(string wav_file) //request to load a wav into this loop
@@ -30,9 +31,42 @@ Item {
     clip: true
 
     // UI
-    Rectangle {
+    StatusRect {
+        id: statusrect
+        manager: widget.manager
+
+        DetailsWindow {
+            id: detailswindow
+            manager: statusrect.manager
+        }
+
+        ContextMenu {
+            id: contextmenu
+        }
+
+        MouseArea {
+            x: 0
+            y: 0
+            z: statusrect.z - 1
+            anchors {
+                fill: parent
+            }
+            acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
+            onClicked: (event) => {
+                           if (event.button === Qt.LeftButton) { widget.selected() }
+                           else if (event.button === Qt.MiddleButton) { widget.add_to_scene() }
+                           else if (event.button === Qt.RightButton) { contextmenu.popup() }
+                       }
+        }
+    }
+
+    component StatusRect : Rectangle {
+        id: statusrect
+        property var manager
         property int x_spacing: 8
         property int y_spacing: 0
+
+        property alias name: name_field.text
 
         width: loop.width + x_spacing
         height: loop.height + y_spacing
@@ -44,9 +78,6 @@ Item {
                       'grey'
         border.width: 2
 
-        // Show the progress rect(s).
-        // Normally this is just a single rectangle for the main loop.
-        // In debug mode we may show the underlying loops separately.
         Item {
             anchors.fill: parent
             anchors.margins: 2
@@ -55,27 +86,10 @@ Item {
                 height: parent.height
                 anchors.left: parent.left
                 anchors.right: parent.right
-                y: height * index
-                manager: widget.manager
+                y: 0
+                manager: statusrect.manager
                 is_selected: widget.is_selected
             }
-        }
-
-        ContextMenu {
-            id: contextmenu
-        }
-
-        MouseArea {
-            x: 0
-            y: 0
-            width: loop.width + parent.x_spacing
-            height: loop.height + parent.y_spacing
-            acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
-            onClicked: (event) => {
-                           if (event.button === Qt.LeftButton) { widget.selected() }
-                           else if (event.button === Qt.MiddleButton) { widget.add_to_scene() }
-                           else if (event.button === Qt.RightButton) { contextmenu.popup() }
-                       }
         }
 
         MaterialDesignIcon {
@@ -102,9 +116,6 @@ Item {
 
             Row {
                 spacing: 5
-                // Show the state icon(s).
-                // Normally this is just a single icon for the main loop.
-                // In debug mode we may show the underlying loops separately.
                 Item {
                     id: iconitem
                     width: 28
@@ -113,7 +124,7 @@ Item {
 
                     LoopStateIcon {
                         id: loopstateicon
-                        state: widget.manager ? widget.manager.state : LoopState.LoopState.Unknown
+                        state: statusrect.manager ? statusrect.manager.state : LoopState.LoopState.Unknown
                         connected: sl_global_manager ? sl_global_manager.all_loops_ready : false
                         size: iconitem.height
                         y: 0
@@ -126,6 +137,7 @@ Item {
                     height: 35
                     font.pixelSize: 12
                     y: (loop.height - height)/2
+                    z: statusrect.z + 1
 
                     onEditingFinished: {
                         widget.request_rename(text)
@@ -133,10 +145,6 @@ Item {
                     }
                 }
             }
-        }
-
-        DetailsWindow {
-            id: detailswindow
         }
     }
 
@@ -316,10 +324,89 @@ Item {
         }
     }
 
+    component LooperManagerDetails : Item {
+        id: looper_details
+        property var manager
+        property string title
+
+        width: childrenRect.width
+        height: childrenRect.height
+
+        default property alias content: children_placeholder.children
+
+        GroupBox {
+            Column {
+                spacing: 5
+
+                Text { text: looper_details.title; color: Material.foreground }
+                Row {
+                    spacing: 5
+                    StatusRect {
+                        manager: looper_details.manager
+                    }
+                    Grid {
+                        columns: 4
+                        spacing: 3
+                        horizontalItemAlignment: Grid.AlignRight
+                        Text { text: 'vol:'; color: Material.foreground }
+                        Text { text:  looper_details.manager.volume.toFixed(2); color: Material.foreground }
+                        Text { text: 'mon:'; color: Material.foreground }
+                        Text { text:  looper_details.manager.passthrough.toFixed(2); color: Material.foreground }
+                        Text { text: 'panL:'; color: Material.foreground }
+                        Text { text:  looper_details.manager.panL.toFixed(2); color: Material.foreground }
+                        Text { text: 'panR:'; color: Material.foreground }
+                        Text { text:  looper_details.manager.panR.toFixed(2); color: Material.foreground }
+                    }
+                    Item {
+                        id: children_placeholder
+                        width: childrenRect.width
+                        height: childrenRect.height
+                    }
+                }
+            }
+        }
+    }
+
+    component SLLooperManagerDetails : LooperManagerDetails {
+    }
+        
+
+    component SLFXLooperPairManagerDetails : LooperManagerDetails {
+
+    }
+
     component DetailsWindow : ApplicationWindow {
-        width: 400
-        height: 400
+        property var manager
+        id: window
+        title: widget.internal_name + ' details'
+
+        width: 260
+        height: 300
+        minimumWidth: width
+        maximumWidth: width
+        minimumHeight: height
+        maximumHeight: height
+        
         Material.theme: Material.Dark
-        title: 'Loop details'
+
+        Column {
+            anchors.margins: 5
+            anchors.centerIn: parent
+            spacing: 5
+            anchors.fill: parent
+
+            SLFXLooperPairManagerDetails {
+                title: "Overall loop"
+                manager: window.manager
+            }
+            SLLooperManagerDetails {
+                title: "Pre-FX loop"
+                manager: window.manager.sl_dry_looper
+            }
+            SLLooperManagerDetails {
+                title: "Post-FX loop"
+                manager: window.manager.sl_wet_looper
+            }
+        }
     }
 }

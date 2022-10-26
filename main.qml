@@ -71,6 +71,9 @@ ApplicationWindow {
                 function onRequest_save_wav(track, loop, wav_file) { shared.save_loop_wav(track+1, loop, wav_file) }
                 function onRequest_rename_loop(track, loop, name) { shared.rename_loop(track+1, loop, name) }
                 function onRequest_clear_loop(track, loop) { shared.clear_loop(track+1, loop) }
+                function onTrack_volume_changed(track, vol) { shared.set_track_volume(track+1, vol) }
+                function onTrack_pan_changed(track, pan) { shared.set_track_pan(track+1, pan) }
+                function onTrack_passthrough_changed(track, level) { shared.set_track_passthrough(track+1, level) }
             }
         }
 
@@ -98,6 +101,9 @@ ApplicationWindow {
             onRequest_save_wav: (idx, wav_file) => shared.save_loop_wav(0, idx, wav_file)
             onRequest_rename_loop: (idx, name) => shared.rename_loop(0, idx, name)
             onRequest_clear_loop: (idx) => shared.clear_loop(0, idx)
+            onVolume_changed: (vol) => { shared.set_track_volume(0, vol) }
+            onPan_changed: (pan) => { shared.set_track_pan(0, pan) }
+            onPassthrough_changed: (level) => { shared.set_track_passthrough(0, level) }
         }
 
         ScenesWidget {

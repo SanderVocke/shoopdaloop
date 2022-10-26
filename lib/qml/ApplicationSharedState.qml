@@ -148,7 +148,7 @@ Item {
 
     // FUNCTIONS
     function actions_on_loop_mgrs_in_track(track_idx, loop_idx, on_idx_loop_fn, on_other_loop_fn) {
-        for(var i = 0; i < loops_per_track; i++) {
+        for(var i = 0; i < loop_managers[track_idx].length; i++) {
             var mgr = loop_managers[track_idx][i]
             if (loop_idx === i) {
                 on_idx_loop_fn(mgr)
@@ -159,11 +159,39 @@ Item {
         }
     }
 
+    function set_track_pan(track_idx, pan) {
+        for(var i = 0; i < loop_managers[track_idx].length; i++) {
+            loop_managers[track_idx][i].panL = Math.max(pan, 0.0)
+            loop_managers[track_idx][i].panR = Math.min(pan, 0.0) + 1.0
+        }
+    }
+
+    function set_track_volume(track_idx, vol) {
+        for(var i = 0; i < loop_managers[track_idx].length; i++) {
+            loop_managers[track_idx][i].volume = vol
+        }
+    }
+
+    function set_track_passthrough(track_idx, level) {
+        var loop_idx = Math.max(selected_loops[track_idx], 0)
+        actions_on_loop_mgrs_in_track(track_idx, loop_idx,
+                                      (mgr) => {
+                                        mgr.passthrough = level
+                                      },
+                                      (mgr) => {
+                                        mgr.doMute()
+                                        mgr.passthrough = 0.0
+                                      }
+                                      )
+    }
+
     function select_loop(track_idx, loop_idx) {
+        if (selected_loops[track_idx] == loop_idx) { return; }
+        var passthrough = loop_managers[track_idx][selected_loops[track_idx]].passthrough
         actions_on_loop_mgrs_in_track(track_idx, loop_idx,
                                       (mgr) => {
                                         mgr.doUnmute()
-                                        mgr.passthrough = 1.0
+                                        mgr.passthrough = passthrough
                                       },
                                       (mgr) => {
                                         mgr.doMute()

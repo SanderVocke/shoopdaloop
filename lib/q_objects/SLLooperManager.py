@@ -207,3 +207,7 @@ class SLLooperManager(LooperManager):
             link.received.connect(self.onOscReceived)
             self.sendOscExpectResponse.connect(link.send_expect_response)
             self.sendOsc.connect(link.send)
+    
+    @pyqtSlot(result=str)
+    def looper_type(self):
+        return "SLLooperManager"

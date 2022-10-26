@@ -90,7 +90,7 @@ class SLFXLooperPairManager(LooperManager):
     @force_wet_passthrough.setter
     def force_wet_passthrough(self, i):
         if i != self._force_wet_passthrough:
-            self.force_wet_passthrough = i
+            self._force_wet_passthrough = i
             self.forceWetPassthroughChanged.emit(i)
     
     @pyqtProperty(bool, notify=forceDryPassthroughChanged)
@@ -196,9 +196,9 @@ class SLFXLooperPairManager(LooperManager):
     @pyqtSlot()
     def updatePans(self):
         self.dry().panL = self.panL
-        self.wet().panL = self.panL
         self.dry().panR = self.panR
-        self.wet().panR = self.panR
+        self.wet().panL = 0.0
+        self.wet().panR = 1.0
 
     @pyqtSlot()
     def doPlay(self):
@@ -306,3 +306,7 @@ class SLFXLooperPairManager(LooperManager):
     def connect_osc_link(self, link):
         self.dry().connect_osc_link(link)
         self.wet().connect_osc_link(link)
+    
+    @pyqtSlot(result=str)
+    def looper_type(self):
+        return "SLFXLooperPairManager"
