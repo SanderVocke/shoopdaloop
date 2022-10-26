@@ -54,7 +54,7 @@ class SLLooperManager(LooperManager):
         # print("Registering loop {}".format(self._sl_looper_index))
         
         # Register for repeated updates on "continuous" signals
-        for ctl in ['loop_len', 'loop_pos', 'state', 'is_soloed']:
+        for ctl in ['loop_len', 'loop_pos', 'state', 'is_soloed', 'dry', 'wet', 'pan_1', 'pan_2']:
             self.sendOscExpectResponse.emit(['/sl/{}/register_auto_update'.format(self._sl_looper_index), ctl, 100], '/sl/{}/get'.format(self._sl_looper_index))
         
         # Register for change updates
@@ -64,7 +64,7 @@ class SLLooperManager(LooperManager):
         self.sendOscExpectResponse.emit(['/register'], '/hostinfo')
 
         # Request the most recent state once to have a good starting point
-        for ctl in ['loop_len', 'loop_pos', 'state', 'is_soloed']:
+        for ctl in ['loop_len', 'loop_pos', 'state', 'is_soloed', 'dry', 'wet', 'pan_1', 'pan_2']:
             self.sendOscExpectResponse.emit(['/sl/{}/get'.format(self._sl_looper_index), ctl], '/sl/{}/get'.format(self._sl_looper_index))
         # Also for loop count, url, version
         self.sendOscExpectResponse.emit(['/ping'], '/hostinfo')

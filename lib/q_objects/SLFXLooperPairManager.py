@@ -191,7 +191,8 @@ class SLFXLooperPairManager(LooperManager):
     
     @pyqtSlot()
     def updateVolumes(self):
-        self.dry().volume = self.volume
+        self.wet().volume = self.volume
+        self.dry().volume = 1.0
     
     @pyqtSlot()
     def updatePans(self):

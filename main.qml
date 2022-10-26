@@ -169,7 +169,7 @@ ApplicationWindow {
                 right: parent.right
             }
 
-            width: 120
+            width: 160
 
             Item {
                 width: childrenRect.width
@@ -200,9 +200,11 @@ ApplicationWindow {
                         horizontalCenter: logo.horizontalCenter
                         topMargin: 6
                     }
-                    text: 'ShoopDaLoop v0.1' // TODO
+                    text: 'ShoopDaLoop v0.1<br>Powered by <a href="http://sonosaurus.com/sooperlooper/">SooperLooper</a>' // TODO
+                    onLinkActivated: Qt.openUrlExternally(link)
                     color: Material.foreground
                     font.pixelSize: 12
+                    linkColor: 'red'
                 }
 
             }
@@ -256,7 +258,7 @@ ApplicationWindow {
                     id: savesessiondialog
                     fileMode: FileDialog.SaveFile
                     acceptLabel: 'Save'
-                    nameFilters: ["ShoopDaLoop session files (*.shl)"]
+                    nameFilters: ["ShoopDaLoop session files (*.shl)(*.shl)"]
                     defaultSuffix: 'shl'
                     onAccepted: {
                         var filename = selectedFile.toString().replace('file://', '');
@@ -268,7 +270,7 @@ ApplicationWindow {
                     id: loadsessiondialog
                     fileMode: FileDialog.OpenFile
                     acceptLabel: 'Load'
-                    nameFilters: ["ShoopDaLoop session files (*.shl)"]
+                    nameFilters: ["ShoopDaLoop session files (*.shl)(*.shl)"]
                     onAccepted: {
                         var filename = selectedFile.toString().replace('file://', '');
                         shared.load_session(filename)
