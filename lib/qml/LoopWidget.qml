@@ -7,13 +7,11 @@ import '../LoopState.js' as LoopState
 
 // The loop widget displays the state of a single loop within a track.
 Item {
-    property int loop_idx
     property var osc_link_obj
     property bool is_selected // Selected by user
     property bool is_master   // Master loop which everything syncs to in SL
     property bool is_in_selected_scene: false
     property bool is_in_hovered_scene: false
-    property bool debug: true // Will show individual loops managed by pair manager
     property var manager
     property alias name: name_field.text
 
@@ -25,17 +23,6 @@ Item {
     signal request_clear()
 
     // Internal
-    // For debugging: construct a list of managers to show the state icons
-    // and progress bars for. Normally this is only the main manager, but
-    // for debugging the underlying two SL loop managers can be exposed.
-    property var show_state_for_managers: {
-        if (debug) {
-            return [manager, manager.sl_dry_looper, manager.sl_wet_looper]
-        } else {
-            return [manager]
-        }
-    }
-
     id : widget
 
     width: childrenRect.width
@@ -63,20 +50,14 @@ Item {
         Item {
             anchors.fill: parent
             anchors.margins: 2
-            
-            Repeater {
-                id: repeater
-                model: widget.show_state_for_managers.length
-                anchors.fill: parent
 
-                LoopProgressRect {
-                    height: parent.height / repeater.model
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    y: height * index
-                    manager: widget.show_state_for_managers[index]
-                    is_selected: widget.is_selected
-                }
+            LoopProgressRect {
+                height: parent.height
+                anchors.left: parent.left
+                anchors.right: parent.right
+                y: height * index
+                manager: widget.manager
+                is_selected: widget.is_selected
             }
         }
 
@@ -130,19 +111,13 @@ Item {
                     height: 28
                     y: 3
 
-                    Repeater {
-                        model: widget.show_state_for_managers.length
-                        anchors.fill: parent
-                        id: iconrepeater
-
-                        LoopStateIcon {
-                            id: loopstateicon
-                            state: widget.show_state_for_managers[index] ? widget.show_state_for_managers[index].state : LoopState.LoopState.Unknown
-                            connected: sl_global_manager ? sl_global_manager.all_loops_ready : false
-                            size: iconitem.height / iconrepeater.model
-                            y: index * iconitem.height / iconrepeater.model
-                            anchors.horizontalCenter: iconitem.horizontalCenter
-                        }
+                    LoopStateIcon {
+                        id: loopstateicon
+                        state: widget.manager ? widget.manager.state : LoopState.LoopState.Unknown
+                        connected: sl_global_manager ? sl_global_manager.all_loops_ready : false
+                        size: iconitem.height
+                        y: 0
+                        anchors.horizontalCenter: iconitem.horizontalCenter
                     }
                 }
                 TextField {
@@ -158,6 +133,10 @@ Item {
                     }
                 }
             }
+        }
+
+        DetailsWindow {
+            id: detailswindow
         }
     }
 
@@ -302,6 +281,10 @@ Item {
                                widget.request_clear()
                            }
             }
+            MenuItem {
+                text: "Loop details window"
+                onClicked: () => { detailswindow.visible = true }
+            }
         }
 
         FileDialog {
@@ -331,5 +314,12 @@ Item {
         function popup () {
             menu.popup()
         }
+    }
+
+    component DetailsWindow : ApplicationWindow {
+        width: 400
+        height: 400
+        Material.theme: Material.Dark
+        title: 'Loop details'
     }
 }

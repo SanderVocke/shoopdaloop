@@ -86,7 +86,6 @@ Item {
                     LoopWidget {
                         id: lwidget
 
-                        loop_idx: track.first_index + index
                         osc_link_obj: osc_link
                         is_selected: track.selected_loop === index
                         is_master: track.maybe_master_loop_idx === index
