@@ -124,15 +124,16 @@ class SLLooperManager(LooperManager):
     @pyqtSlot()
     def doPlay(self):
         if self.state == LoopState.Paused.value:
-            self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'pause'])
-        self.doUnmute()
+            self.doTrigger()
+        elif self.state == LoopState.Muted.value:
+            self.doUnmute()
 
     @pyqtSlot()
     def doPause(self):
         # TODO: if in muted state, it will go to play in the next cycle instead of
         # pause. Not sure what to do about it.
         if self.state != LoopState.Paused.value:
-            self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'pause'])
+            self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'pause_on'])
 
     @pyqtSlot()
     def doRecord(self):

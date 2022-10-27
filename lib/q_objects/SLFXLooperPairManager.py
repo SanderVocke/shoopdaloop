@@ -280,10 +280,10 @@ class SLFXLooperPairManager(LooperManager):
 
     @pyqtSlot()
     def doUnmute(self):
-        self.dry().doUnmute()
-        self.wet().doUnmute()
-        self.force_dry_passthrough = False
-        self.force_wet_passthrough = False
+        if self.state == LoopState.Muted.value:
+            self.wet().doUnmute()
+            self.force_dry_passthrough = False
+            self.force_wet_passthrough = False
 
     @pyqtSlot(str)
     def doLoadWav(self, wav_file):
