@@ -25,7 +25,7 @@ class SooperLooperOSCLink(QObject):
             while True:
                 msg = self._snd_queue.get()
                 self._client.send_message(msg[0], msg[1:])
-                print('S: {}'.format(pprint.pformat(msg)))
+                # print('S: {}'.format(pprint.pformat(msg)))
                 self.sent.emit(msg)
                 self._snd_queue.task_done()
         self._client_thread = threading.Thread(target=sender, daemon=True)
