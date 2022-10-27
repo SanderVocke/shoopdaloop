@@ -29,7 +29,7 @@ Item {
 
         var outer, inner
         var managers = []
-        var master_mgr = Qt.createQmlObject(mgr_snippet(0, 1, false),
+        var master_mgr = Qt.createQmlObject(mgr_snippet(0, 1, true),
                             shared,
                             "dynamicSnippet1");
         master_mgr.connect_osc_link(osc_link)

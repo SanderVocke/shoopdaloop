@@ -112,7 +112,7 @@ class SLFXLooperPairManager(LooperManager):
             if self._sl_wet_looper_idx == None:
                 raise Exception("Trying to create SL looper before its index is known")
             self._sl_wet_looper = SLLooperManager(self._parent, self._sl_wet_looper_idx)
-            self._sl_wet_looper.sync = self.sync
+            self._sl_wet_looper.sync = False if self._sl_wet_looper_idx == 0 else self.sync
             # Connections
             self._sl_wet_looper.lengthChanged.connect(self.updateLength)
             self._sl_wet_looper.posChanged.connect(self.updatePos)
@@ -127,7 +127,7 @@ class SLFXLooperPairManager(LooperManager):
             if self._sl_dry_looper_idx == None:
                 raise Exception("Trying to create SL looper before its index is known")
             self._sl_dry_looper = SLLooperManager(self._parent, self._sl_dry_looper_idx)
-            self._sl_dry_looper.sync = self.sync
+            self._sl_dry_looper.sync = False if self._sl_dry_looper_idx == 0 else self.sync
             # Connections
             self._sl_dry_looper.lengthChanged.connect(self.updateLength)
             self._sl_dry_looper.posChanged.connect(self.updatePos)
@@ -177,8 +177,8 @@ class SLFXLooperPairManager(LooperManager):
     
     @pyqtSlot()
     def doTrigger(self):
-        self.dry().doTrigger()
         self.wet().doTrigger()
+        self.dry().doTrigger()
         self.force_dry_passthrough = False
         self.force_wet_passthrough = False
 
@@ -205,8 +205,8 @@ class SLFXLooperPairManager(LooperManager):
     def doPlay(self):
         # Mute the dry, because we want to hear
         # the wet only and not process the FX.
-        self.dry().doMute()
         self.wet().doPlay()
+        self.dry().doMute()
         self.force_dry_passthrough = False
         self.force_wet_passthrough = False
     
@@ -214,22 +214,22 @@ class SLFXLooperPairManager(LooperManager):
     def doPlayLiveFx(self):
         # Mute the wet, play the dry.
         # TODO: wet should still have passthrough
-        self.dry().doPlay()
         self.wet().doMute()
+        self.dry().doPlay()
         self.force_dry_passthrough = False
         self.force_wet_passthrough = True
 
     @pyqtSlot()
     def doPause(self):
-        self.dry().doPause()
         self.wet().doPause()
+        self.dry().doPause()
         self.force_dry_passthrough = False
         self.force_wet_passthrough = False
 
     @pyqtSlot()
     def doRecord(self):
-        self.dry().doRecord()
         self.wet().doRecord()
+        self.dry().doRecord()
         self.force_dry_passthrough = True
         self.force_wet_passthrough = False
     
@@ -239,14 +239,15 @@ class SLFXLooperPairManager(LooperManager):
         current_cycle = math.floor(self.pos / master_manager.length)
         wait_cycles_before_start = n_cycles - current_cycle - 1
         def toExecuteJustBeforeRestart():
-            self.dry().doPlay()
             self.wet().doRecordNCycles(n_cycles, master_manager)
+            self.dry().doPlay()
             # When the FX recording is finished, also mute the
             # dry channel again
             master_manager.schedule_at_loop_pos(
                 master_manager.length * 0.7,
                 n_cycles, lambda: self.dry().doMute())
-            self.setPassthroughs(0.0, 1.0)
+            self.force_dry_passthrough = False
+            self.force_wet_passthrough = False
         
         if wait_cycles_before_start <= 0:
             toExecuteJustBeforeRestart()
@@ -258,23 +259,23 @@ class SLFXLooperPairManager(LooperManager):
 
     @pyqtSlot(int, QObject)
     def doRecordNCycles(self, n, master_manager):
-        self.dry().doRecordNCycles(n, master_manager)
         self.wet().doRecordNCycles(n, master_manager)
+        self.dry().doRecordNCycles(n, master_manager)
         self.force_dry_passthrough = True
         self.force_wet_passthrough = False
 
     @pyqtSlot()
     def doStopRecord(self):
-        self.dry().doStopRecord()
         self.wet().doStopRecord()
+        self.dry().doStopRecord()
         self.dry().doMute()
         self.force_dry_passthrough = False
         self.force_wet_passthrough = False
 
     @pyqtSlot()
     def doMute(self):
-        self.dry().doMute()
         self.wet().doMute()
+        self.dry().doMute()
         self.force_dry_passthrough = False
         self.force_wet_passthrough = False
 
