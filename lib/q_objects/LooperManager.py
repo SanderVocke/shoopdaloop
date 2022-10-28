@@ -16,6 +16,9 @@ class LooperManager(QObject):
     stateChanged = pyqtSignal(int)
     syncChanged = pyqtSignal(bool)
     passthroughChanged = pyqtSignal(float)
+    volumeChanged = pyqtSignal(float)
+    panRChanged = pyqtSignal(float)
+    panLChanged = pyqtSignal(float)
 
     def __init__(self, parent=None):
         super(LooperManager, self).__init__(parent)
@@ -25,6 +28,9 @@ class LooperManager(QObject):
         self._last_received_pos_t = None
         self._sync = False
         self._passthrough = 1.0
+        self._volume = 1.0
+        self._panL = 0.0
+        self._panR = 1.0
 
     ######################
     # PROPERTIES
@@ -85,6 +91,38 @@ class LooperManager(QObject):
         if self._passthrough != p:
             self._passthrough = p
             self.passthroughChanged.emit(p)
+    
+    # Volume: volume of playback in 0.0-1.0
+    @pyqtProperty(float, notify=volumeChanged)
+    def volume(self):
+        return self._volume
+    
+    @volume.setter
+    def volume(self, p):
+        if self._volume != p:
+            self._volume = p
+            self.volumeChanged.emit(p)
+    
+    # Pan properties: panning of each channel in 0.0-1.0
+    @pyqtProperty(float, notify=panLChanged)
+    def panL(self):
+        return self._panL
+    
+    @panL.setter
+    def panL(self, p):
+        if self._panL != p:
+            self._panL = p
+            self.panLChanged.emit(p)
+
+    @pyqtProperty(float, notify=panRChanged)
+    def panR(self):
+        return self._panR
+    
+    @panR.setter
+    def panR(self, p):
+        if self._panR != p:
+            self._panR = p
+            self.panRChanged.emit(p)
 
     ##################
     # SLOTS / METHODS
@@ -173,4 +211,8 @@ class LooperManager(QObject):
 
     @pyqtSlot(QObject)
     def connect_osc_link(self, link):
+        raise NotImplementedError()
+    
+    @pyqtSlot(result=str)
+    def looper_type(self):
         raise NotImplementedError()

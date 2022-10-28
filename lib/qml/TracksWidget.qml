@@ -28,6 +28,9 @@ Item {
     signal request_save_wav(int track, int loop, string wav_file)
     signal request_rename_loop(int track, int loop, string name)
     signal request_clear_loop(int track, int loop)
+    signal track_volume_changed(int track, real volume)
+    signal track_pan_changed(int track, real pan)
+    signal track_passthrough_changed(int track, real passthrough)
 
     Rectangle {
         property int x_spacing: 0
@@ -78,6 +81,9 @@ Item {
                         onRequest_save_wav: (idx, wav_file) => tracks.request_save_wav(index, idx, wav_file)
                         onRequest_rename_loop: (idx, name) => tracks.request_rename_loop(index, idx, name)
                         onRequest_clear_loop: (idx) => tracks.request_clear_loop(index, idx)
+                        onVolume_changed: (vol) => tracks.track_volume_changed(index, vol)
+                        onPan_changed: (pan) => tracks.track_pan_changed(index, pan)
+                        onPassthrough_changed: (passthrough) => tracks.track_passthrough_changed(index, passthrough)
                     }
                 }
             }

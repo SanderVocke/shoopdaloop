@@ -21,6 +21,9 @@ class SLFXLooperPairManager(LooperManager):
     slWetLooperIdxChanged = pyqtSignal(int)
     slWetLooperChanged = pyqtSignal(QObject)
     slDryLooperChanged = pyqtSignal(QObject)
+    
+    forceWetPassthroughChanged = pyqtSignal(bool)
+    forceDryPassthroughChanged = pyqtSignal(bool)
 
     def __init__(self, parent=None):
         super(SLFXLooperPairManager, self).__init__(parent)
@@ -29,6 +32,16 @@ class SLFXLooperPairManager(LooperManager):
         self._sl_dry_looper_idx = None
         self._sl_wet_looper = None
         self._sl_dry_looper = None
+        self._force_wet_passthrough = False
+        self._force_dry_passthrough = False
+
+        self.passthroughChanged.connect(self.updatePassthroughs)
+        self.forceWetPassthroughChanged.connect(self.updatePassthroughs)
+        self.forceDryPassthroughChanged.connect(self.updatePassthroughs)
+
+        self.volumeChanged.connect(self.updateVolumes)
+        self.panLChanged.connect(self.updatePans)
+        self.panRChanged.connect(self.updatePans)
     
     ######################
     # PROPERTIES
@@ -66,6 +79,30 @@ class SLFXLooperPairManager(LooperManager):
     def sl_wet_looper(self):
         return self._sl_wet_looper
     
+    # internal properties used to relate the loop's overall
+    # passthrough setting with the settings that should be
+    # passed to the sub-loops. For certain recording states
+    # the overall passthrough setting should be overridden
+    @pyqtProperty(bool, notify=forceWetPassthroughChanged)
+    def force_wet_passthrough(self):
+        return self._force_wet_passthrough
+
+    @force_wet_passthrough.setter
+    def force_wet_passthrough(self, i):
+        if i != self._force_wet_passthrough:
+            self._force_wet_passthrough = i
+            self.forceWetPassthroughChanged.emit(i)
+    
+    @pyqtProperty(bool, notify=forceDryPassthroughChanged)
+    def force_dry_passthrough(self):
+        return self._force_dry_passthrough
+    
+    @force_dry_passthrough.setter
+    def force_dry_passthrough(self, i):
+        if i != self._force_dry_passthrough:
+            self._force_dry_passthrough = i
+            self.forceDryPassthroughChanged.emit(i)
+    
     ##################
     # SLOTS / METHODS
     ##################
@@ -75,7 +112,7 @@ class SLFXLooperPairManager(LooperManager):
             if self._sl_wet_looper_idx == None:
                 raise Exception("Trying to create SL looper before its index is known")
             self._sl_wet_looper = SLLooperManager(self._parent, self._sl_wet_looper_idx)
-            self._sl_wet_looper.sync = self.sync
+            self._sl_wet_looper.sync = False if self._sl_wet_looper_idx == 0 else self.sync
             # Connections
             self._sl_wet_looper.lengthChanged.connect(self.updateLength)
             self._sl_wet_looper.posChanged.connect(self.updatePos)
@@ -90,7 +127,7 @@ class SLFXLooperPairManager(LooperManager):
             if self._sl_dry_looper_idx == None:
                 raise Exception("Trying to create SL looper before its index is known")
             self._sl_dry_looper = SLLooperManager(self._parent, self._sl_dry_looper_idx)
-            self._sl_dry_looper.sync = self.sync
+            self._sl_dry_looper.sync = False if self._sl_dry_looper_idx == 0 else self.sync
             # Connections
             self._sl_dry_looper.lengthChanged.connect(self.updateLength)
             self._sl_dry_looper.posChanged.connect(self.updatePos)
@@ -140,40 +177,61 @@ class SLFXLooperPairManager(LooperManager):
     
     @pyqtSlot()
     def doTrigger(self):
-        self.dry().doTrigger()
         self.wet().doTrigger()
+        self.dry().doTrigger()
+        self.force_dry_passthrough = False
+        self.force_wet_passthrough = False
+
+    @pyqtSlot()
+    def updatePassthroughs(self):
+        # If a force flag is enabled, that means the passthrough should be active to
+        # facilitate a certain mode (e.g. recording).
+        self.dry().passthrough = 1.0 if self._force_dry_passthrough or self.passthrough > 0.0 else 0.0
+        self.wet().passthrough = self.volume if self._force_wet_passthrough else self.passthrough
     
-    @pyqtSlot(float, float)
-    def setPassthroughs(self, dry, wet):
-        self.dry().passthrough = dry
-        self.wet().passthrough = wet
+    @pyqtSlot()
+    def updateVolumes(self):
+        self.wet().volume = self.volume
+        self.dry().volume = 1.0
+    
+    @pyqtSlot()
+    def updatePans(self):
+        self.dry().panL = self.panL
+        self.dry().panR = self.panR
+        self.wet().panL = 0.0
+        self.wet().panR = 1.0
 
     @pyqtSlot()
     def doPlay(self):
         # Mute the dry, because we want to hear
         # the wet only and not process the FX.
-        self.dry().doMute()
         self.wet().doPlay()
-        self.setPassthroughs(1.0, 1.0)
+        self.dry().doMute()
+        self.force_dry_passthrough = False
+        self.force_wet_passthrough = False
     
     @pyqtSlot()
     def doPlayLiveFx(self):
         # Mute the wet, play the dry.
         # TODO: wet should still have passthrough
-        self.dry().doPlay()
         self.wet().doMute()
-        self.setPassthroughs(1.0, 1.0)
+        self.dry().doPlay()
+        self.force_dry_passthrough = False
+        self.force_wet_passthrough = True
 
     @pyqtSlot()
     def doPause(self):
-        self.dry().doPause()
         self.wet().doPause()
+        self.dry().doPause()
+        self.force_dry_passthrough = False
+        self.force_wet_passthrough = False
 
     @pyqtSlot()
     def doRecord(self):
-        self.dry().doRecord()
         self.wet().doRecord()
-        self.setPassthroughs(1.0, 1.0)
+        self.dry().doRecord()
+        self.force_dry_passthrough = True
+        self.force_wet_passthrough = False
     
     @pyqtSlot(QObject)
     def doRecordFx(self, master_manager):
@@ -181,14 +239,15 @@ class SLFXLooperPairManager(LooperManager):
         current_cycle = math.floor(self.pos / master_manager.length)
         wait_cycles_before_start = n_cycles - current_cycle - 1
         def toExecuteJustBeforeRestart():
-            self.dry().doPlay()
             self.wet().doRecordNCycles(n_cycles, master_manager)
+            self.dry().doPlay()
             # When the FX recording is finished, also mute the
             # dry channel again
             master_manager.schedule_at_loop_pos(
                 master_manager.length * 0.7,
                 n_cycles, lambda: self.dry().doMute())
-            self.setPassthroughs(0.0, 1.0)
+            self.force_dry_passthrough = False
+            self.force_wet_passthrough = False
         
         if wait_cycles_before_start <= 0:
             toExecuteJustBeforeRestart()
@@ -200,31 +259,32 @@ class SLFXLooperPairManager(LooperManager):
 
     @pyqtSlot(int, QObject)
     def doRecordNCycles(self, n, master_manager):
-        self.dry().doRecordNCycles(n, master_manager)
         self.wet().doRecordNCycles(n, master_manager)
-        self.setPassthroughs(1.0, 1.0)
+        self.dry().doRecordNCycles(n, master_manager)
+        self.force_dry_passthrough = True
+        self.force_wet_passthrough = False
 
     @pyqtSlot()
     def doStopRecord(self):
-        self.dry().doStopRecord()
         self.wet().doStopRecord()
+        self.dry().doStopRecord()
         self.dry().doMute()
+        self.force_dry_passthrough = False
+        self.force_wet_passthrough = False
 
     @pyqtSlot()
     def doMute(self):
+        self.wet().doMute()
         self.dry().doMute()
-        self.wet().doMute()
-
-    @pyqtSlot()
-    def doPlayDry(self):
-        self.dry().doPlay()
-        self.wet().doMute()
-        self.setPassthroughs(1.0, 1.0)
+        self.force_dry_passthrough = False
+        self.force_wet_passthrough = False
 
     @pyqtSlot()
     def doUnmute(self):
-        self.dry().doUnmute()
-        self.wet().doUnmute()
+        if self.state == LoopState.Muted.value:
+            self.wet().doUnmute()
+            self.force_dry_passthrough = False
+            self.force_wet_passthrough = False
 
     @pyqtSlot(str)
     def doLoadWav(self, wav_file):
@@ -237,6 +297,8 @@ class SLFXLooperPairManager(LooperManager):
     def doClear(self):
         self.dry().doClear()
         self.wet().doClear()
+        self.force_dry_passthrough = False
+        self.force_wet_passthrough = False
 
     @pyqtSlot(str)
     def doSaveWav(self, wav_file):
@@ -246,3 +308,7 @@ class SLFXLooperPairManager(LooperManager):
     def connect_osc_link(self, link):
         self.dry().connect_osc_link(link)
         self.wet().connect_osc_link(link)
+    
+    @pyqtSlot(result=str)
+    def looper_type(self):
+        return "SLFXLooperPairManager"

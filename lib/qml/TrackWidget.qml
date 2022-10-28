@@ -33,6 +33,9 @@ Item {
     signal request_save_wav(int idx, string wav_file)
     signal request_rename_loop(int idx, string name)
     signal request_clear_loop(int idx)
+    signal volume_changed(real volume)
+    signal pan_changed(real pan)
+    signal passthrough_changed(real passthrough)
 
     function actions_on_loop_mgrs(idx, on_idx_loop_fn, on_other_loop_fn) {
         for(var i = 0; i < track.num_loops; i++) {
@@ -84,7 +87,6 @@ Item {
                     LoopWidget {
                         id: lwidget
 
-                        loop_idx: track.first_index + index
                         osc_link_obj: osc_link
                         is_selected: track.selected_loop === index
                         is_master: track.maybe_master_loop_idx === index
@@ -92,6 +94,7 @@ Item {
                         is_in_hovered_scene: track.loops_of_hovered_scene.includes(index)
                         manager: track.loop_managers[index]
                         name: track.loop_names[index]
+                        internal_name: track.name + ' loop ' + (index+1).toString()
 
                         onSelected: () => { track.request_select_loop(index) }
                         onAdd_to_scene: () => { track.set_loop_in_scene(index) }
@@ -168,6 +171,15 @@ Item {
                     }
                     function onUnmute() {
                         track.loop_managers[track.selected_loop].doUnmute()
+                    }
+                    function onVolumeChanged() {
+                        track.volume_changed(trackctlwidget.volume)
+                    }
+                    function onPanChanged() {
+                        track.pan_changed(trackctlwidget.pan)
+                    }
+                    function onPassthroughChanged() {
+                        track.passthrough_changed(trackctlwidget.passthrough)
                     }
                 }
             }

@@ -23,6 +23,9 @@ class SLLooperManager(LooperManager):
         self._sl_looper_index = sl_looper_index
         self.syncChanged.connect(self.update_sl_sync)
         self.passthroughChanged.connect(self.update_sl_passthrough)
+        self.volumeChanged.connect(self.update_sl_volume)
+        self.panLChanged.connect(self.update_sl_pan_l)
+        self.panRChanged.connect(self.update_sl_pan_r)
         self._registered = False
 
     ######################
@@ -51,7 +54,7 @@ class SLLooperManager(LooperManager):
         # print("Registering loop {}".format(self._sl_looper_index))
         
         # Register for repeated updates on "continuous" signals
-        for ctl in ['loop_len', 'loop_pos', 'state', 'is_soloed']:
+        for ctl in ['loop_len', 'loop_pos', 'state', 'is_soloed', 'dry', 'wet', 'pan_1', 'pan_2']:
             self.sendOscExpectResponse.emit(['/sl/{}/register_auto_update'.format(self._sl_looper_index), ctl, 100], '/sl/{}/get'.format(self._sl_looper_index))
         
         # Register for change updates
@@ -61,7 +64,7 @@ class SLLooperManager(LooperManager):
         self.sendOscExpectResponse.emit(['/register'], '/hostinfo')
 
         # Request the most recent state once to have a good starting point
-        for ctl in ['loop_len', 'loop_pos', 'state', 'is_soloed']:
+        for ctl in ['loop_len', 'loop_pos', 'state', 'is_soloed', 'dry', 'wet', 'pan_1', 'pan_2']:
             self.sendOscExpectResponse.emit(['/sl/{}/get'.format(self._sl_looper_index), ctl], '/sl/{}/get'.format(self._sl_looper_index))
         # Also for loop count, url, version
         self.sendOscExpectResponse.emit(['/ping'], '/hostinfo')
@@ -86,6 +89,18 @@ class SLLooperManager(LooperManager):
     def update_sl_passthrough(self):
         self.sendOsc.emit(['/sl/{}/set'.format(self._sl_looper_index), 'dry', self.passthrough])
     
+    @pyqtSlot()
+    def update_sl_volume(self):
+        self.sendOsc.emit(['/sl/{}/set'.format(self._sl_looper_index), 'wet', self.volume])
+    
+    @pyqtSlot()
+    def update_sl_pan_l(self):
+        self.sendOsc.emit(['/sl/{}/set'.format(self._sl_looper_index), 'pan_1', self.panL])
+    
+    @pyqtSlot()
+    def update_sl_pan_r(self):
+        self.sendOsc.emit(['/sl/{}/set'.format(self._sl_looper_index), 'pan_2', self.panR])
+    
     @pyqtSlot(list)
     def onOscReceived(self, msg):
         # Check if it is a changed loop parameter.
@@ -109,15 +124,16 @@ class SLLooperManager(LooperManager):
     @pyqtSlot()
     def doPlay(self):
         if self.state == LoopState.Paused.value:
-            self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'pause'])
-        self.doUnmute()
+            self.doTrigger()
+        elif self.state == LoopState.Muted.value:
+            self.doUnmute()
 
     @pyqtSlot()
     def doPause(self):
         # TODO: if in muted state, it will go to play in the next cycle instead of
         # pause. Not sure what to do about it.
         if self.state != LoopState.Paused.value:
-            self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'pause'])
+            self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'pause_on'])
 
     @pyqtSlot()
     def doRecord(self):
@@ -192,3 +208,7 @@ class SLLooperManager(LooperManager):
             link.received.connect(self.onOscReceived)
             self.sendOscExpectResponse.connect(link.send_expect_response)
             self.sendOsc.connect(link.send)
+    
+    @pyqtSlot(result=str)
+    def looper_type(self):
+        return "SLLooperManager"
