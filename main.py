@@ -11,6 +11,7 @@ from lib.q_objects.SLGlobalManager import SLGlobalManager
 from lib.q_objects.SooperLooperOSCLink import SooperLooperOSCLink
 from lib.q_objects.ClickTrackGenerator import ClickTrackGenerator
 from lib.q_objects.ControlOutputManager import ControlOutputManager
+from lib.q_objects.MIDIControlLink import MIDIControlLink
 
 from lib.JackSession import JackSession
 from lib.SooperLooperSession import SooperLooperSession
@@ -53,7 +54,8 @@ with JackSession('ShoopDaLoop-control') as jack_session:
         global_mgr = SLGlobalManager(None)
         global_mgr.connect_osc_link(link)
         control_output_mgr = ControlOutputManager()
-        control_output_mgr.sendMidi.connect(lambda b: print('{}'.format(b)))
+        midi_control_link = MIDIControlLink(None, 'ctl_out', 'ctl_in', jack_client, jack)
+        control_output_mgr.sendMidi.connect(midi_control_link.send)
 
         qmlRegisterType(SLLooperManager, 'SLLooperManager', 1, 0, 'SLLooperManager')
         qmlRegisterType(SLFXLooperPairManager, 'SLFXLooperPairManager', 1, 0, 'SLFXLooperPairManager')

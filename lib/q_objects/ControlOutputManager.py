@@ -16,6 +16,8 @@ class ControlOutputManager(QObject):
         self._scripting_section_cache = None # last transmitted section
         self._active_scene_cache = None # last transmitted active scene
 
+        self._loop_state_default_formula = 'noteOn(1, track*8+loop, 127)'
+
     sendMidi = pyqtSignal(list) # list of byte values
 
     def process_messages(self, messages):
