@@ -10,6 +10,7 @@ from lib.q_objects.SLFXLooperPairManager import SLFXLooperPairManager
 from lib.q_objects.SLGlobalManager import SLGlobalManager
 from lib.q_objects.SooperLooperOSCLink import SooperLooperOSCLink
 from lib.q_objects.ClickTrackGenerator import ClickTrackGenerator
+from lib.q_objects.ControlOutputManager import ControlOutputManager
 
 from lib.JackSession import JackSession
 from lib.SooperLooperSession import SooperLooperSession
@@ -41,7 +42,7 @@ signal.signal(signal.SIGTERM, exit_handler)
 
 script_pwd = os.path.dirname(__file__)
 
-with JackSession('ShoopDaLoop-monitor') as jack_session:
+with JackSession('ShoopDaLoop-control') as jack_session:
     jack = jack_session[0]
     jack_client = jack_session[1]
     with SooperLooperSession(1, 6, 2, 9951, 'ShoopDaLoop', jack, jack_client):
@@ -51,6 +52,8 @@ with JackSession('ShoopDaLoop-monitor') as jack_session:
         click_track_generator = ClickTrackGenerator()
         global_mgr = SLGlobalManager(None)
         global_mgr.connect_osc_link(link)
+        control_output_mgr = ControlOutputManager()
+        control_output_mgr.sendMidi.connect(lambda b: print('{}'.format(b)))
 
         qmlRegisterType(SLLooperManager, 'SLLooperManager', 1, 0, 'SLLooperManager')
         qmlRegisterType(SLFXLooperPairManager, 'SLFXLooperPairManager', 1, 0, 'SLFXLooperPairManager')
@@ -58,11 +61,13 @@ with JackSession('ShoopDaLoop-monitor') as jack_session:
         qmlRegisterType(LooperManager, 'LooperManager', 1, 0, 'LooperManager')
         qmlRegisterType(SooperLooperOSCLink, 'SooperLooperOSCLink', 1, 0, 'SooperLooperOSCLink')
         qmlRegisterType(ClickTrackGenerator, 'ClickTrackGenerator', 1, 0, 'ClickTrackGenerator')
+        qmlRegisterType(ControlOutputManager, 'ControlOutputManager', 1, 0, 'ControlOutputManager')
 
         engine = QQmlApplicationEngine()
         engine.rootContext().setContextProperty("osc_link", link)
         engine.rootContext().setContextProperty("sl_global_manager", global_mgr)
         engine.rootContext().setContextProperty("click_track_generator", click_track_generator)
+        engine.rootContext().setContextProperty("control_output_manager", control_output_mgr)
         engine.quit.connect(app.quit)
         engine.load('main.qml')
 

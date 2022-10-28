@@ -33,6 +33,7 @@ Item {
                             shared,
                             "dynamicSnippet1");
         master_mgr.connect_osc_link(osc_link)
+        master_mgr.connect_control_output_manager(control_output_manager, 0, 0)
         managers.push([master_mgr])
         for(outer = 0; outer < tracks; outer++) {
             var i_managers = []
@@ -41,6 +42,7 @@ Item {
                                              shared,
                                              "dynamicSnippet1");
                 mgr.connect_osc_link(osc_link)
+                mgr.connect_control_output_manager(control_output_manager, outer + 1, inner)
                 i_managers.push(mgr)
             }
             managers.push(i_managers)
@@ -396,8 +398,14 @@ Item {
 
     Connections {
         function onScenesChanged() { update_scene_names(); update_loops_of_selected_scene(); update_loops_of_hovered_scene() }
-        function onSelected_sectionChanged() { update_selected_scene_from_section() }
-        function onSelected_sceneChanged() { update_loops_of_selected_scene() }
+        function onSelected_sectionChanged() {
+            update_selected_scene_from_section()
+            control_output_manager.active_scripting_section_changed(selected_section)
+        }
+        function onSelected_sceneChanged() {
+            update_loops_of_selected_scene()
+            control_output_manager.active_scene_changed(selected_scene)
+        }
         function onHovered_sceneChanged() { update_loops_of_hovered_scene() }
         function onReady_to_register_loopsChanged() {
             if (ready_to_register_loops) {

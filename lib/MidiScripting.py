@@ -3,25 +3,33 @@ from typing import Callable, Type, Union
 import ast
 import operator
 
-class ControlOutput:
+class MIDIMessage:
     def __init__(self):
         pass
 
-class MIDINoteMessage(ControlOutput):
-    def __init__(self, channel : int, note : int, on : bool):
-        ControlOutput.__init__(self)
+    def bytes(self):
+        return []
+
+class MIDINoteMessage(MIDIMessage):
+    def __init__(self, channel : int, note : int, on : bool, velocity: int):
+        MIDIMessage.__init__(self)
         self._channel = channel
         self._note = note
         self._on = on
+        self._velocity = velocity
     
     def __eq__(self, other):
         return self._channel == other._channel and \
                self._note == other._note and \
-               self._on == other._on
+               self._on == other._on and \
+               self._velocity == other._velocity
+    
+    def bytes(self):
+        return [(0x90 if self._on else 0x80) + self._channel, self._note, self._velocity]
 
-class MIDICCMessage(ControlOutput):
+class MIDICCMessage(MIDIMessage):
     def __init__(self, channel : int, controller : int, value : int):
-        ControlOutput.__init__(self)
+        MIDIMessage.__init__(self)
         self._channel = channel
         self._controller = controller
         self._value = value
@@ -30,6 +38,9 @@ class MIDICCMessage(ControlOutput):
         return self._channel == other._channel and \
                self._controller == other._controller and \
                self._value == other._value
+    
+    def bytes(self):
+        return [0xB0 + self._channel, self._controller, self._value]
 
 class ParseError(Exception):
     pass
@@ -63,11 +74,14 @@ loop_action_names = {
 
 class Callbacks:
     def __init__(self,
-                 loop_action_cb : Callable[[int, int, Type[LoopAction], list], None] # track, index, action, action args
+                 loop_action_cb : Union[None, Callable[[int, int, Type[LoopAction], list], None]], # track, index, action, action args
+                 next_scripting_section : Union[None, Callable],
+                 prev_scripting_section : Union[None, Callable],
+                 set_scripting_section : Union[None, Callable[[int], None]], # section idx
                 ):
         self.loop_action_cb = loop_action_cb
 
-def eval_formula(formula: str, substitutions: dict[str, str], callbacks: Union[Type[Callbacks], None] = None) -> list[ControlOutput]:
+def eval_formula(formula: str, substitutions: dict[str, str], callbacks: Union[Type[Callbacks], None] = None) -> list[MIDIMessage]:
 
     def flatten(val):
         if type(val) is list:
@@ -78,32 +92,38 @@ def eval_formula(formula: str, substitutions: dict[str, str], callbacks: Union[T
         return [val]
 
     def eval_noteOn(arg_nodes : list[ast.Expr]):
-        if len(arg_nodes) != 2:
-            raise ParseError('noteOn takes 2 arguments (' + str(len(arg_nodes)) + ' given)')
+        if len(arg_nodes) != 3:
+            raise ParseError('noteOn takes 3 arguments (' + str(len(arg_nodes)) + ' given)')
         
         channel = eval_expr(arg_nodes[0])
         note = eval_expr(arg_nodes[1])
+        velocity = eval_expr(arg_nodes[2])
 
         if type(channel) is not int and type(channel) is not float:
             raise ParseError('Could not evaluate noteOn channel value of type ' + str(type(channel)))
         if type(note) is not int and type(note) is not float:
             raise ParseError('Could not evaluate noteOn note value of type ' + str(type(note)))
+        if type(velocity) is not int and type(velocity) is not float:
+            raise ParseError('Could not evaluate noteOn velocity value of type ' + str(type(note)))
         
-        return [ MIDINoteMessage(int(channel), int(note), True) ]
+        return [ MIDINoteMessage(int(channel), int(note), True, int(velocity)) ]
     
     def eval_noteOff(arg_nodes : list[ast.Expr]):
-        if len(arg_nodes) != 2:
-            raise ParseError('noteOff takes 2 arguments (' + str(len(arg_nodes)) + ' given)')
+        if len(arg_nodes) != 3:
+            raise ParseError('noteOff takes 3 arguments (' + str(len(arg_nodes)) + ' given)')
         
         channel = eval_expr(arg_nodes[0])
         note = eval_expr(arg_nodes[1])
+        velocity = eval_expr(arg_nodes[2])
 
         if type(channel) is not int and type(channel) is not float:
             raise ParseError('Could not evaluate noteOff channel value of type ' + str(type(channel)))
         if type(note) is not int and type(note) is not float:
             raise ParseError('Could not evaluate noteOff note value of type ' + str(type(note)))
+        if type(velocity) is not int and type(velocity) is not float:
+            raise ParseError('Could not evaluate noteOff velocity value of type ' + str(type(note)))
         
-        return [ MIDINoteMessage(int(channel), int(note), False) ]
+        return [ MIDINoteMessage(int(channel), int(note), False, int(velocity)) ]
     
     def eval_cc(arg_nodes : list[ast.Expr]):
         if len(arg_nodes) != 3:
