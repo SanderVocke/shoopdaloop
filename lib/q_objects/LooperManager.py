@@ -218,6 +218,6 @@ class LooperManager(QObject):
         raise NotImplementedError()
     
     @pyqtSlot(QObject, int, int)
-    def connect_control_output_manager(self, manager, track_idx, loop_idx):
+    def connect_midi_control_manager(self, manager, track_idx, loop_idx):
         self.stateChanged.connect(lambda state: manager.loop_state_changed(track_idx, loop_idx, state))
         self.stateChanged.emit(self.state)

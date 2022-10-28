@@ -10,7 +10,7 @@ from lib.q_objects.SLFXLooperPairManager import SLFXLooperPairManager
 from lib.q_objects.SLGlobalManager import SLGlobalManager
 from lib.q_objects.SooperLooperOSCLink import SooperLooperOSCLink
 from lib.q_objects.ClickTrackGenerator import ClickTrackGenerator
-from lib.q_objects.ControlOutputManager import ControlOutputManager
+from lib.q_objects.MIDIControlManager import MIDIControlManager
 from lib.q_objects.MIDIControlLink import MIDIControlLink
 
 from lib.JackSession import JackSession
@@ -53,9 +53,9 @@ with JackSession('ShoopDaLoop-control') as jack_session:
         click_track_generator = ClickTrackGenerator()
         global_mgr = SLGlobalManager(None)
         global_mgr.connect_osc_link(link)
-        control_output_mgr = ControlOutputManager()
+        midi_control_mgr = MIDIControlManager()
         midi_control_link = MIDIControlLink(None, 'ctl_out', 'ctl_in', jack_client, jack)
-        control_output_mgr.sendMidi.connect(midi_control_link.send)
+        midi_control_mgr.sendMidi.connect(midi_control_link.send)
 
         qmlRegisterType(SLLooperManager, 'SLLooperManager', 1, 0, 'SLLooperManager')
         qmlRegisterType(SLFXLooperPairManager, 'SLFXLooperPairManager', 1, 0, 'SLFXLooperPairManager')
@@ -63,13 +63,13 @@ with JackSession('ShoopDaLoop-control') as jack_session:
         qmlRegisterType(LooperManager, 'LooperManager', 1, 0, 'LooperManager')
         qmlRegisterType(SooperLooperOSCLink, 'SooperLooperOSCLink', 1, 0, 'SooperLooperOSCLink')
         qmlRegisterType(ClickTrackGenerator, 'ClickTrackGenerator', 1, 0, 'ClickTrackGenerator')
-        qmlRegisterType(ControlOutputManager, 'ControlOutputManager', 1, 0, 'ControlOutputManager')
+        qmlRegisterType(MIDIControlManager, 'MIDIControlManager', 1, 0, 'MIDIControlManager')
 
         engine = QQmlApplicationEngine()
         engine.rootContext().setContextProperty("osc_link", link)
         engine.rootContext().setContextProperty("sl_global_manager", global_mgr)
         engine.rootContext().setContextProperty("click_track_generator", click_track_generator)
-        engine.rootContext().setContextProperty("control_output_manager", control_output_mgr)
+        engine.rootContext().setContextProperty("midi_control_manager", midi_control_mgr)
         engine.quit.connect(app.quit)
         engine.load('main.qml')
 

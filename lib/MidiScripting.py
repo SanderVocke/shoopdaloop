@@ -249,6 +249,7 @@ def eval_formula(formula: str, substitutions: dict[str, str], callbacks: Union[T
             ast.Name: eval_name,
             ast.BoolOp: eval_bool_op,
             ast.Compare: eval_compare,
+            ast.IfExp: eval_if_expr,
         }
 
         for ast_type, evaluator in evaluators.items():
@@ -256,6 +257,13 @@ def eval_formula(formula: str, substitutions: dict[str, str], callbacks: Union[T
                 return evaluator(node)
 
         raise ParseError('Invalid expression syntax', node)
+    
+    def eval_if_expr(node):
+        test_result = eval_expr(node.test)
+        if test_result:
+            return eval_expr(node.body)
+        elif node.orelse:
+            return eval_expr(node.orelse)
     
     def eval_if_stmt(node):
         test_result = eval_expr(node.test)
