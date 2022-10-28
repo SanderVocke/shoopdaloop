@@ -16,7 +16,12 @@ class ControlOutputManager(QObject):
         self._scripting_section_cache = None # last transmitted section
         self._active_scene_cache = None # last transmitted active scene
 
-        self._loop_state_default_formula = 'noteOn(1, track*8+loop, 127)'
+        # TODO: hard-coded APC Mini profile for now
+        self._loop_state_default_formula = 'noteOn(0, 56, 0) if (track == 0 and loop == 0) else noteOn(0, (48+track-1-loop*8), 0)'
+        self._loop_state_formulas[LoopState.Recording.value] = 'noteOn(0, 56, 3) if (track == 0 and loop == 0) else noteOn(0, (48+track-1-loop*8), 3)'
+        self._loop_state_formulas[LoopState.Playing.value] = 'noteOn(0, 56, 1) if (track == 0 and loop == 0) else noteOn(0, (48+track-1-loop*8), 1)'
+        self._loop_state_formulas[LoopState.WaitStart.value] = 'noteOn(0, 56, 5) if (track == 0 and loop == 0) else noteOn(0, (48+track-1-loop*8), 5)'
+        self._loop_state_formulas[LoopState.WaitStop.value] = self._loop_state_formulas[LoopState.WaitStart.value]
 
     sendMidi = pyqtSignal(list) # list of byte values
 

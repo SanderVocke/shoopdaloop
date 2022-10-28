@@ -1,5 +1,6 @@
 from enum import Enum
 from typing import Callable, Type, Union
+import functools
 import ast
 import operator
 
@@ -198,6 +199,23 @@ def eval_formula(formula: str, substitutions: dict[str, str], callbacks: Union[T
             return eval_expr(m.value)
         
         raise ParseError('Unknown identifier: "{}"'.format(node.id))
+    
+    def eval_bool_op(node):
+        if isinstance(node.op, ast.And):
+            return functools.reduce(lambda a, b: eval_expr(a) and eval_expr(b), node.values)
+        elif isinstance(node.op, ast.Or):
+            return functools.reduce(lambda a, b: eval_expr(a) or eval_expr(b), node.values)
+            
+        raise ParseError(node.op)
+    
+    def eval_compare(node):
+        if len(node.ops) == 0:
+            return eval_expr(node.left)
+
+        if isinstance(node.ops[0], ast.Eq):
+            return eval_expr(node.left) == eval_compare(ast.Compare(node.comparators[0], node.ops[1:], node.comparators[1:]))
+            
+        raise ParseError(node.ops[0])
 
     def eval_binop(node):
         ops = {
@@ -205,6 +223,7 @@ def eval_formula(formula: str, substitutions: dict[str, str], callbacks: Union[T
             ast.Sub: operator.sub,
             ast.Mult: operator.mul,
             ast.Div: operator.truediv,
+            ast.NotEq: lambda a, b: not operator.eq(a,b)
         }
 
         left_value = eval_expr(node.left)
@@ -215,6 +234,7 @@ def eval_formula(formula: str, substitutions: dict[str, str], callbacks: Union[T
     def eval_unaryop(node):
         ops = {
             ast.USub: operator.neg,
+            ast.Not: operator.not_,
         }
 
         operand_value = eval_expr(node.operand)
@@ -227,6 +247,8 @@ def eval_formula(formula: str, substitutions: dict[str, str], callbacks: Union[T
             ast.UnaryOp: eval_unaryop,
             ast.Constant: eval_constant,
             ast.Name: eval_name,
+            ast.BoolOp: eval_bool_op,
+            ast.Compare: eval_compare,
         }
 
         for ast_type, evaluator in evaluators.items():
@@ -235,18 +257,27 @@ def eval_formula(formula: str, substitutions: dict[str, str], callbacks: Union[T
 
         raise ParseError('Invalid expression syntax', node)
     
+    def eval_if_stmt(node):
+        test_result = eval_expr(node.test)
+        if test_result:
+            return eval_stmt(node.body)
+        elif node.orelse:
+            return eval_stmt(node.orelse)
+    
     def eval_stmt(node):
         def eval_stmts(nodes):
             return [eval_stmt(n) for n in nodes]
 
         def eval_stmt_expr(node):
-            if not isinstance(node.value, ast.Call):
-                raise ParseError('Invalid statement syntax', node)
-            return eval_stmt_call(node.value)
+            if isinstance(node.value, ast.Call):
+                return eval_stmt_call(node.value)
+            elif isinstance(node.value, ast.IfExp):
+                return eval_if_stmt(node.value)
 
         evaluators = {
             ast.Call: eval_stmt_call,
             ast.Expr: eval_stmt_expr,
+            ast.IfExp: eval_if_stmt,
             list: eval_stmts,
         }
 
@@ -270,12 +301,14 @@ def test():
             if list(args) != match_args:
                 print('mismatched args: {} vs. {}'.format(list(args), match_args))
             assert list(args) == match_args
-        eval_formula(formula, substitutions, Callbacks(cb))
+        eval_formula(formula, substitutions, Callbacks(cb, None, None, None))
 
-    assert eval_formula('noteOn(1,2)', {}) == [ MIDINoteMessage(1, 2, True) ]
-    assert eval_formula('noteOff(1,2)', {}) == [ MIDINoteMessage(1, 2, False) ]
+    assert eval_formula('noteOn(1,2,100)', {}) == [ MIDINoteMessage(1, 2, True, 100) ]
+    assert eval_formula('noteOff(1,2,100)', {}) == [ MIDINoteMessage(1, 2, False, 100) ]
     assert eval_formula('cc(1,2,5)', {}) == [ MIDICCMessage(1, 2, 5) ]
-    assert eval_formula('noteOn(a,b)', {'a': 1, 'b': 2}) == [ MIDINoteMessage(1, 2, True)]
+    assert eval_formula('noteOn(a,b,100)', {'a': 1, 'b': 2}) == [ MIDINoteMessage(1, 2, True, 100)]
+    assert eval_formula('noteOn(1, 2, 3) if 1 else noteOn(3, 2, 1)', {}) == [ MIDINoteMessage(1, 2, True, 3)]
+    assert eval_formula('noteOn(1, 2, 3) if 0 else noteOn(3, 2, 1)', {}) == [ MIDINoteMessage(3, 2, True, 1)]
 
     check_called_back_with_args('loopAction(1, 2, play)', {}, [1, 2, LoopAction.Play.value, []])
     check_called_back_with_args('loopAction(1, 2, recordN, 10)', {}, [1, 2, LoopAction.RecordNCycles.value, [10]])
