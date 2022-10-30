@@ -56,6 +56,7 @@ with JackSession('ShoopDaLoop-control') as jack_session:
         midi_control_mgr = MIDIControlManager()
         midi_control_link = MIDIControlLink(None, 'ctl_out', 'ctl_in', jack_client, jack)
         midi_control_mgr.sendMidi.connect(midi_control_link.send)
+        midi_control_link.received.connect(midi_control_mgr.receiveMidi)
 
         qmlRegisterType(SLLooperManager, 'SLLooperManager', 1, 0, 'SLLooperManager')
         qmlRegisterType(SLFXLooperPairManager, 'SLFXLooperPairManager', 1, 0, 'SLFXLooperPairManager')

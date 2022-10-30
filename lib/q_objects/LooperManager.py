@@ -5,7 +5,7 @@ import os
 import wave
 import tempfile
 
-from ..LoopState import LoopState
+from ..LoopState import LoopState, LoopActionType
 
 # Base class for loopers to be used by ShoopDaLoop.
 class LooperManager(QObject):

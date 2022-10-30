@@ -417,4 +417,48 @@ Item {
             }
         }
     }
+
+    Connections {
+        target: midi_control_manager
+        function onLoopAction(track, loop, action, args) {
+            if (track < 0 || track >= loop_managers.length) {
+                console.log("Ignoring MIDI control for out-of-bounds track: " + track.toString())
+                return
+            }
+            if (loop < 0 || loop >= loop_managers[track].length) {
+                console.log("Ignoring MIDI control for out-of-bounds loop: (" + track.toString() + ", " + loop.toString() + ")")
+                return
+            }
+            mgr = loop_managers[track][loop]
+            switch(action) {
+                case LoopState.LoopActionType.Activate:
+                    select_loop(track, loop)
+                    break
+                case LoopState.LoopActionType.Play:
+                    break
+                case LoopState.LoopActionType.Pause:
+                    break
+                case LoopState.LoopActionType.Mute:
+                    break
+                case LoopState.LoopActionType.Unmute:
+                    break
+                case LoopState.LoopActionType.Record:
+                    break
+                case LoopState.LoopActionType.RecordNCycles:
+                    break
+                case LoopState.LoopActionType.RecordFX:
+                    break
+                case LoopState.LoopActionType.PlayLiveFX:
+                    break
+                case LoopState.LoopActionType.SetVolume:
+                    break
+                case LoopState.LoopActionType.SetPan:
+                    break
+                case LoopState.LoopActionType.Play_Pause:
+                    break
+                case LoopState.LoopActionType.Mute_Unmute:
+                    break
+            }
+        }
+    }
 }

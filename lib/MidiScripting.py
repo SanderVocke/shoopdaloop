@@ -3,6 +3,10 @@ from typing import Callable, Type, Union
 import functools
 import ast
 import operator
+from pprint import pformat
+
+from .LoopState import LoopActionType
+from .flatten import flatten
 
 class MIDIMessage:
     def __init__(self):
@@ -46,52 +50,20 @@ class MIDICCMessage(MIDIMessage):
 class ParseError(Exception):
     pass
 
-class LoopAction(Enum):
-    Activate = 0
-    Play = 1
-    Pause = 2
-    Mute = 3
-    Unmute = 4
-    Record = 5
-    RecordNCycles = 6 # Requires arg n_cycles
-    RecordFX = 7
-    PlayLiveFX = 8
-    SetVolume = 9 # Requires arg  value (0.0 .. 1.0)
-    SetPan = 10 # Requires arg value (-1.0 .. 1.0)
+class LoopAction:
+    def __init__(self, action_type, track_idx, loop_idx, args):
+        self.action_type = action_type
+        self.track_idx = track_idx
+        self.loop_idx = loop_idx
+        self.args = args
 
-loop_action_names = {
-    'activate' : LoopAction.Activate.value,
-    'play' : LoopAction.Play.value,
-    'pause' : LoopAction.Pause.value,
-    'mute' : LoopAction.Mute.value,
-    'unmute' : LoopAction.Unmute.value,
-    'record' : LoopAction.Record.value,
-    'recordN' : LoopAction.RecordNCycles.value,
-    'recordFX' : LoopAction.RecordFX.value,
-    'playFX' : LoopAction.PlayLiveFX.value,
-    'setVolume' : LoopAction.SetVolume.value,
-    'setPan' : LoopAction.SetPan.value,
-}
+    def __eq__(self, other):
+        return self.action_type == other.action_type and \
+               self.track_idx == other.track_idx and \
+               self.loop_idx == other.loop_idx and \
+               self.args == other.args
 
-class Callbacks:
-    def __init__(self,
-                 loop_action_cb : Union[None, Callable[[int, int, Type[LoopAction], list], None]], # track, index, action, action args
-                 next_scripting_section : Union[None, Callable],
-                 prev_scripting_section : Union[None, Callable],
-                 set_scripting_section : Union[None, Callable[[int], None]], # section idx
-                ):
-        self.loop_action_cb = loop_action_cb
-
-def eval_formula(formula: str, substitutions: dict[str, str], callbacks: Union[Type[Callbacks], None] = None) -> list[MIDIMessage]:
-
-    def flatten(val):
-        if type(val) is list:
-            r = []
-            for elem in val:
-                r = r + flatten(elem)
-            return r
-        return [val]
-
+def eval_formula(formula: str, substitutions: dict[str, str] = {}) -> list[MIDIMessage]:
     def eval_noteOn(arg_nodes : list[ast.Expr]):
         if len(arg_nodes) != 3:
             raise ParseError('noteOn takes 3 arguments (' + str(len(arg_nodes)) + ' given)')
@@ -157,7 +129,7 @@ def eval_formula(formula: str, substitutions: dict[str, str], callbacks: Union[T
         if action_name not in loop_action_names:
             raise ParseError('Unknown loop action: {}'.format(action_name))
         
-        action = loop_action_names[action_name]
+        action_type = loop_action_names[action_name]
 
         args = []
         for n in arg_nodes[3:]:
@@ -168,8 +140,7 @@ def eval_formula(formula: str, substitutions: dict[str, str], callbacks: Union[T
         if type(loop_idx) is not int and type(loop_idx) is not float:
             raise ParseError('Could not evaluate loop idx of loopAction (type {})'.format(str(type(loop_idx))))
         
-        if callbacks and callbacks.loop_action_cb:
-            callbacks.loop_action_cb(int(track_idx), int(loop_idx), action, args)
+        return [ LoopAction(action_type, int(track_idx), int(loop_idx), args) ]
 
     def eval_stmt_call(node : ast.Call):
         if not isinstance(node.func, ast.Name):
@@ -303,20 +274,14 @@ def eval_formula(formula: str, substitutions: dict[str, str], callbacks: Union[T
     return flatten(eval_stmt(node.body))
 
 def test():
-    def check_called_back_with_args(formula, substitutions, match_args):
-        got_args = None
-        def cb(*args):
-            if list(args) != match_args:
-                print('mismatched args: {} vs. {}'.format(list(args), match_args))
-            assert list(args) == match_args
-        eval_formula(formula, substitutions, Callbacks(cb, None, None, None))
-
-    assert eval_formula('noteOn(1,2,100)', {}) == [ MIDINoteMessage(1, 2, True, 100) ]
-    assert eval_formula('noteOff(1,2,100)', {}) == [ MIDINoteMessage(1, 2, False, 100) ]
-    assert eval_formula('cc(1,2,5)', {}) == [ MIDICCMessage(1, 2, 5) ]
-    assert eval_formula('noteOn(a,b,100)', {'a': 1, 'b': 2}) == [ MIDINoteMessage(1, 2, True, 100)]
-    assert eval_formula('noteOn(1, 2, 3) if 1 else noteOn(3, 2, 1)', {}) == [ MIDINoteMessage(1, 2, True, 3)]
-    assert eval_formula('noteOn(1, 2, 3) if 0 else noteOn(3, 2, 1)', {}) == [ MIDINoteMessage(3, 2, True, 1)]
-
-    check_called_back_with_args('loopAction(1, 2, play)', {}, [1, 2, LoopAction.Play.value, []])
-    check_called_back_with_args('loopAction(1, 2, recordN, 10)', {}, [1, 2, LoopAction.RecordNCycles.value, [10]])
+    def check_eq(a, b):
+        if (a != b):
+            raise Exception("{} != {}".format(pformat(a), pformat(b)))
+    check_eq(eval_formula('noteOn(1,2,100)', {}), [ MIDINoteMessage(1, 2, True, 100) ])
+    check_eq(eval_formula('noteOff(1,2,100)', {}), [ MIDINoteMessage(1, 2, False, 100) ])
+    check_eq(eval_formula('cc(1,2,5)', {}), [ MIDICCMessage(1, 2, 5) ])
+    check_eq(eval_formula('noteOn(a,b,100)', {'a': 1, 'b': 2}), [ MIDINoteMessage(1, 2, True, 100)])
+    check_eq(eval_formula('noteOn(1, 2, 3) if 1 else noteOn(3, 2, 1)', {}), [ MIDINoteMessage(1, 2, True, 3)])
+    check_eq(eval_formula('noteOn(1, 2, 3) if 0 else noteOn(3, 2, 1)', {}), [ MIDINoteMessage(3, 2, True, 1)])
+    check_eq(eval_formula('loopAction(1, 2, play)', {}), [ LoopAction(LoopActionType.Play.value, 1, 2, []) ])
+    check_eq(eval_formula('loopAction(1, 2, recordN, 10)', {}), [ LoopAction(LoopActionType.RecordNCycles.value, 1, 2, [10]) ])
