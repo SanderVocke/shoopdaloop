@@ -420,6 +420,21 @@ Item {
 
     Connections {
         target: midi_control_manager
+        function onSetPan(track, value) {
+            if (track < 0 || track >= loop_managers.length) {
+                console.log("Ignoring MIDI control for out-of-bounds track: " + track.toString())
+                return
+            }
+            set_track_pan(track, value)
+        }
+        function onSetVolume(track, value) {
+            console.log(track, value, 'yeah')
+            if (track < 0 || track >= loop_managers.length) {
+                console.log("Ignoring MIDI control for out-of-bounds track: " + track.toString())
+                return
+            }
+            set_track_volume(track, value)
+        }
         function onLoopAction(track, loop, action, args) {
             if (track < 0 || track >= loop_managers.length) {
                 console.log("Ignoring MIDI control for out-of-bounds track: " + track.toString())
@@ -429,7 +444,7 @@ Item {
                 console.log("Ignoring MIDI control for out-of-bounds loop: (" + track.toString() + ", " + loop.toString() + ")")
                 return
             }
-            mgr = loop_managers[track][loop]
+            var mgr = loop_managers[track][loop]
             switch(action) {
                 case LoopState.LoopActionType.Activate:
                     select_loop(track, loop)

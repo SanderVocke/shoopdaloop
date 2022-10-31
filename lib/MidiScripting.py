@@ -4,8 +4,9 @@ import functools
 import ast
 import operator
 from pprint import pformat
+from dataclasses import dataclass
 
-from .LoopState import LoopActionType
+from .LoopState import *
 from .flatten import flatten
 
 class MIDIMessage:
@@ -63,7 +64,17 @@ class LoopAction:
                self.loop_idx == other.loop_idx and \
                self.args == other.args
 
-def eval_formula(formula: str, substitutions: dict[str, str] = {}) -> list[MIDIMessage]:
+@dataclass
+class SetPan:
+    track_idx: int
+    value: float
+
+@dataclass
+class SetVolume:
+    track_idx: int
+    value: float
+
+def eval_formula(formula: str, is_stmt: bool, substitutions: dict[str, str] = {}) -> list[MIDIMessage]:
     def eval_noteOn(arg_nodes : list[ast.Expr]):
         if len(arg_nodes) != 3:
             raise ParseError('noteOn takes 3 arguments (' + str(len(arg_nodes)) + ' given)')
@@ -141,6 +152,34 @@ def eval_formula(formula: str, substitutions: dict[str, str] = {}) -> list[MIDIM
             raise ParseError('Could not evaluate loop idx of loopAction (type {})'.format(str(type(loop_idx))))
         
         return [ LoopAction(action_type, int(track_idx), int(loop_idx), args) ]
+    
+    def eval_setPan(arg_nodes : list[ast.Expr]):
+        if len(arg_nodes) != 2:
+            raise ParseError('setPan takes 2 arguments ({} given}'.format(len(arg_nodes)))
+        
+        track_idx = eval_expr(arg_nodes[0])
+        value = eval_expr(arg_nodes[1])
+
+        if type(track_idx) is not int and type(track_idx) is not float:
+            raise ParseError('Could not evaluate track idx of setPan (type {})'.format(str(type(track_idx))))
+        if type(value) is not int and type(value) is not float:
+            raise ParseError('Could not evaluate value of setPan (type {})'.format(str(type(value))))
+                    
+        return [ SetPan(int(track_idx), float(value)) ]
+    
+    def eval_setVolume(arg_nodes : list[ast.Expr]):
+        if len(arg_nodes) != 2:
+            raise ParseError('setVolume takes 2 arguments ({} given}'.format(len(arg_nodes)))
+        
+        track_idx = eval_expr(arg_nodes[0])
+        value = eval_expr(arg_nodes[1])
+
+        if type(track_idx) is not int and type(track_idx) is not float:
+            raise ParseError('Could not evaluate track idx of setVolume (type {})'.format(str(type(track_idx))))
+        if type(value) is not int and type(value) is not float:
+            raise ParseError('Could not evaluate value of setVolume (type {})'.format(str(type(value))))
+                    
+        return [ SetVolume(int(track_idx), float(value)) ]
 
     def eval_stmt_call(node : ast.Call):
         if not isinstance(node.func, ast.Name):
@@ -151,6 +190,8 @@ def eval_formula(formula: str, substitutions: dict[str, str] = {}) -> list[MIDIM
             'noteOff': eval_noteOff,
             'cc': eval_cc,
             'loopAction': eval_loopAction,
+            'setPan': eval_setPan,
+            'setVolume': eval_setVolume,
         }
 
         for name, fn in calls.items():
@@ -185,7 +226,17 @@ def eval_formula(formula: str, substitutions: dict[str, str] = {}) -> list[MIDIM
 
         if isinstance(node.ops[0], ast.Eq):
             return eval_expr(node.left) == eval_compare(ast.Compare(node.comparators[0], node.ops[1:], node.comparators[1:]))
-            
+        elif isinstance(node.ops[0], ast.NotEq):
+            return eval_expr(node.left) != eval_compare(ast.Compare(node.comparators[0], node.ops[1:], node.comparators[1:]))
+        elif isinstance(node.ops[0], ast.Lt):
+            return eval_expr(node.left) < eval_compare(ast.Compare(node.comparators[0], node.ops[1:], node.comparators[1:]))
+        elif isinstance(node.ops[0], ast.Gt):
+            return eval_expr(node.left) > eval_compare(ast.Compare(node.comparators[0], node.ops[1:], node.comparators[1:]))
+        elif isinstance(node.ops[0], ast.LtE):
+            return eval_expr(node.left) <= eval_compare(ast.Compare(node.comparators[0], node.ops[1:], node.comparators[1:]))
+        elif isinstance(node.ops[0], ast.GtE):
+            return eval_expr(node.left) >= eval_compare(ast.Compare(node.comparators[0], node.ops[1:], node.comparators[1:]))
+
         raise ParseError(node.ops[0])
 
     def eval_binop(node):
@@ -194,7 +245,9 @@ def eval_formula(formula: str, substitutions: dict[str, str] = {}) -> list[MIDIM
             ast.Sub: operator.sub,
             ast.Mult: operator.mul,
             ast.Div: operator.truediv,
-            ast.NotEq: lambda a, b: not operator.eq(a,b)
+            ast.NotEq: lambda a, b: not operator.eq(a,b),
+            ast.Mod: operator.mod,
+            ast.FloorDiv: operator.floordiv,
         }
 
         left_value = eval_expr(node.left)
@@ -227,6 +280,7 @@ def eval_formula(formula: str, substitutions: dict[str, str] = {}) -> list[MIDIM
             if isinstance(node, ast_type):
                 return evaluator(node)
 
+        print(ast.dump(node))
         raise ParseError('Invalid expression syntax', node)
     
     def eval_if_expr(node):
@@ -266,22 +320,29 @@ def eval_formula(formula: str, substitutions: dict[str, str] = {}) -> list[MIDIM
 
         raise ParseError('Invalid statement syntax', node)
 
-    node = ast.parse(formula)
-
-    if not isinstance(node, ast.Module):
-        raise ParseError('Failed to parse')
+    try:
+        node = ast.parse(formula)
+        if not isinstance(node, ast.Module):
+            raise ParseError('Failed to parse')
     
-    return flatten(eval_stmt(node.body))
+        if is_stmt:
+            return flatten(eval_stmt(node.body))
+        else:
+            return eval_expr(node.body[0].value)
+
+    except Exception as e:
+        print("Failed to parse formula '{}': {}".format(formula, str(e)))
+        return []
 
 def test():
     def check_eq(a, b):
         if (a != b):
             raise Exception("{} != {}".format(pformat(a), pformat(b)))
-    check_eq(eval_formula('noteOn(1,2,100)', {}), [ MIDINoteMessage(1, 2, True, 100) ])
-    check_eq(eval_formula('noteOff(1,2,100)', {}), [ MIDINoteMessage(1, 2, False, 100) ])
-    check_eq(eval_formula('cc(1,2,5)', {}), [ MIDICCMessage(1, 2, 5) ])
-    check_eq(eval_formula('noteOn(a,b,100)', {'a': 1, 'b': 2}), [ MIDINoteMessage(1, 2, True, 100)])
-    check_eq(eval_formula('noteOn(1, 2, 3) if 1 else noteOn(3, 2, 1)', {}), [ MIDINoteMessage(1, 2, True, 3)])
-    check_eq(eval_formula('noteOn(1, 2, 3) if 0 else noteOn(3, 2, 1)', {}), [ MIDINoteMessage(3, 2, True, 1)])
-    check_eq(eval_formula('loopAction(1, 2, play)', {}), [ LoopAction(LoopActionType.Play.value, 1, 2, []) ])
-    check_eq(eval_formula('loopAction(1, 2, recordN, 10)', {}), [ LoopAction(LoopActionType.RecordNCycles.value, 1, 2, [10]) ])
+    check_eq(eval_formula('noteOn(1,2,100)', True, {}), [ MIDINoteMessage(1, 2, True, 100) ])
+    check_eq(eval_formula('noteOff(1,2,100)', True, {}), [ MIDINoteMessage(1, 2, False, 100) ])
+    check_eq(eval_formula('cc(1,2,5)', {}), True, [ MIDICCMessage(1, 2, 5) ])
+    check_eq(eval_formula('noteOn(a,b,100)', True, {'a': 1, 'b': 2}), [ MIDINoteMessage(1, 2, True, 100)])
+    check_eq(eval_formula('noteOn(1, 2, 3) if 1 else noteOn(3, 2, 1)', True, {}), [ MIDINoteMessage(1, 2, True, 3)])
+    check_eq(eval_formula('noteOn(1, 2, 3) if 0 else noteOn(3, 2, 1)', True, {}), [ MIDINoteMessage(3, 2, True, 1)])
+    check_eq(eval_formula('loopAction(1, 2, play)', {}), True, [ LoopAction(LoopActionType.Play.value, 1, 2, []) ])
+    check_eq(eval_formula('loopAction(1, 2, recordN, 10)', True, {}), [ LoopAction(LoopActionType.RecordNCycles.value, 1, 2, [10]) ])
