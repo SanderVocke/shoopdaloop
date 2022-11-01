@@ -91,6 +91,26 @@ def eval_formula(formula: str, is_stmt: bool, substitutions: dict[str, str] = {}
             raise ParseError('Could not evaluate noteOn velocity value of type ' + str(type(note)))
         
         return [ MIDINoteMessage(int(channel), int(note), True, int(velocity)) ]
+
+    def eval_notesOn(arg_nodes : list[ast.Expr]):
+        if len(arg_nodes) != 4:
+            raise ParseError('notesOn takes 4 arguments (' + str(len(arg_nodes)) + ' given)')
+        
+        channel = eval_expr(arg_nodes[0])
+        firstNote = eval_expr(arg_nodes[1])
+        lastNote = eval_expr(arg_nodes[2])
+        velocity = eval_expr(arg_nodes[3])
+
+        if type(channel) is not int and type(channel) is not float:
+            raise ParseError('Could not evaluate notesOn channel value of type ' + str(type(channel)))
+        if type(firstNote) is not int and type(note) is not float:
+            raise ParseError('Could not evaluate notesOn first note value of type ' + str(type(note)))
+        if type(lastNote) is not int and type(note) is not float:
+            raise ParseError('Could not evaluate notesOn last note value of type ' + str(type(note)))
+        if type(velocity) is not int and type(velocity) is not float:
+            raise ParseError('Could not evaluate notesOn velocity value of type ' + str(type(note)))
+        
+        return [ eval_noteOn([ast.Constant(channel), ast.Constant(n), ast.Constant(velocity)]) for n in range(firstNote, lastNote+1) ]
     
     def eval_noteOff(arg_nodes : list[ast.Expr]):
         if len(arg_nodes) != 3:

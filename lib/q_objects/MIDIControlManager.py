@@ -37,6 +37,7 @@ class InputRule:
         self.filters = filters
         self.condition_formulas = condition_formulas
         self.formula = formula
+
         # internal
         self._lastOn = {}
         self._lastOff = {}
@@ -165,10 +166,15 @@ class MIDIControlDialect:
     # Rules for handling MIDI input messages.
     input_rules: list[Type[InputRule]]
     # Formulas to be executed when loops change to a particular state.
+    # After a connection of a controller, first the reset formula will be
+    # executed and then the loop state formulas for all loops.
     loop_state_output_formulas: dict[Type[LoopState], str]
     # Formulas to be executed when loops change to a state not covered
     # by loop_state_output_formulas.
     loop_state_default_output_formula: Union[str, None]
+    # Formula to be executed to reset a MIDI device (e.g. when connected,
+    # when exiting the program)
+    reset_output_formula: Union[str, None]
 
 builtin_dialects = {
     'AKAI APC Mini': MIDIControlDialect(
@@ -195,20 +201,19 @@ builtin_dialects = {
             LoopState.Off.value: 'noteOn(0, loop_note, 0)',
         },
         # Any unmapped state maps to yellow
-        'noteOn(0, loop_note, 5)'
+        'noteOn(0, loop_note, 5)',
+        # On reset, turn everything off
+        'notesOn(0, 0, 98, 0)',
         )
 }
 
 # A MIDI Controller object executes the MIDI communication
 # for a given dialect.
 class MIDIController(QObject):
-    def __init__(self, dialect, parent=None):
+    def __init__(self, dialect, control_manager, parent=None):
         super(MIDIController, self).__init__(parent)
         self._dialect = dialect
-
-        self._loop_states_cache = {} # tuple of (track, loop) => last transmitted state
-        self._scripting_section_cache = None # last transmitted section
-        self._active_scene_cache = None # last transmitted active scene
+        self._manager = control_manager
     
     sendMidi = pyqtSignal(list) # list of byte values
     loopAction = pyqtSignal(int, int, int, list) # track idx, loop idx, LoopActionType value, args
@@ -252,31 +257,24 @@ class MIDIController(QObject):
         self.trigger_actions(actions)
     
     @pyqtSlot(int, int, int)
-    def loop_state_changed(self, track, index, state):
-        if (track, index) in self._loop_states_cache and self._loop_states_cache[(track, index)] == state:
-            return # already sent this
-        
+    def loop_state_changed(self, track, index, state):        
         if state in self._dialect.loop_state_output_formulas:
             self.send_midi_messages(eval_formula(self._dialect.loop_state_output_formulas[state], True, {**{'track': track, 'loop': index, 'state': state}, **self._dialect.substitutions}))
-            self._loop_states_cache[(track, index)] = state
         elif self._dialect.loop_state_default_output_formula:
             self.send_midi_messages(eval_formula(self._dialect.loop_state_default_output_formula, True, {**{'track': track, 'loop': index, 'state': state}, **self._dialect.substitutions}))
-            self._loop_states_cache[(track, index)] = state
 
     @pyqtSlot(int)
     def active_sripting_section_changed(self, idx):
-        if self._scripting_section_cache == idx:
-            return # already sent this
-
         raise NotImplementedError()
     
     @pyqtSlot(int)
-    def active_scene_changed(self, idx):
-        if self._active_scene_cache == idx:
-            return # already sent this
-        
+    def active_scene_changed(self, idx):        
         raise NotImplementedError()
-        
+    
+    @pyqtSlot()
+    def reset(self):
+        if self._dialect.reset_output_formula:
+            self.send_midi_messages(eval_formula(self._dialect.reset_output_formula, True, self._dialect.substitutions))
 
 # For communicating with MIDI control/input devices.
 class MIDIControlManager(QObject):
@@ -294,6 +292,10 @@ class MIDIControlManager(QObject):
                 False
             ): builtin_dialects['AKAI APC Mini']
         }
+
+        self._loop_states_cache = {} # tuple of (track, loop) => last transmitted state
+        self._scripting_section_cache = None # last transmitted section
+        self._active_scene_cache = None # last transmitted active scene
 
         self._link_manager = MIDIControlLinkManager(
             None,
@@ -317,13 +319,23 @@ class MIDIControlManager(QObject):
 
     @pyqtSlot(AutoconnectRule, MIDIControlLink)
     def new_link(self, rule, link):
-        controller = MIDIController(self._autoconnect_rules[rule])
+        controller = MIDIController(self._autoconnect_rules[rule], self)
         self._controllers[rule] = controller
         controller.loopAction.connect(self.loopAction)
         controller.setPan.connect(self.setPan)
         controller.setVolume.connect(self.setVolume)
         link.received.connect(controller.receiveMidi)
         controller.sendMidi.connect(link.send)
+
+        # Send reset sequence
+        controller.reset()
+        # Send cached states
+        if self._active_scene_cache:
+            controller.active_scene_changed(self._active_scene_cache)
+        if self._scripting_section_cache:
+            controller.active_sripting_section_changed(self._scripting_section_cache)
+        for ((track, loop), state) in self._loop_states_cache.items():
+            controller.loop_state_changed(track, loop, state)
 
     @pyqtSlot()
     def update_link_mgr(self):
@@ -332,15 +344,30 @@ class MIDIControlManager(QObject):
     
     @pyqtSlot(int, int, int)
     def loop_state_changed(self, track, index, state):
+        if (track,index) in self._loop_states_cache and self._loop_states_cache[(track_index)] == state:
+            # Already sent this
+            return
+        
         for c in self._controllers.values():
             c.loop_state_changed(track, index, state)
+        self._loop_states_cache[(track, index)] = state
 
     @pyqtSlot(int)
     def active_sripting_section_changed(self, idx):
+        if self._active_scene_cache == idx:
+            # Already sent this
+            return
+        
         for c in self._controllers.values():
             c.active_sripting_section_changed(track, index, state)
+        self._active_scene_cache = idx
     
     @pyqtSlot(int)
     def active_scene_changed(self, idx):
+        if self._scripting_section_cache == idx:
+            # Already sent this
+            return
+        
         for c in self._controllers.values():
             c.active_scene_changed(track, index, state)
+        self._scripting_section_cache = idx

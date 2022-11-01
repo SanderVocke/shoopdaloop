@@ -32,8 +32,6 @@ class LoopActionType(Enum):
     RecordNCycles = 6 # Requires arg n_cycles
     RecordFX = 7
     PlayLiveFX = 8
-    SetVolume = 9 # Requires arg  value (0.0 .. 1.0)
-    SetPan = 10 # Requires arg value (-1.0 .. 1.0)
     Play_Pause = 11
     Mute_Unmute = 12
 
@@ -47,8 +45,6 @@ loop_action_names = {
     'recordN' : LoopActionType.RecordNCycles.value,
     'recordFX' : LoopActionType.RecordFX.value,
     'playFX' : LoopActionType.PlayLiveFX.value,
-    'setVolume' : LoopActionType.SetVolume.value,
-    'setPan' : LoopActionType.SetPan.value,
     'playPause' : LoopActionType.Play_Pause.value,
     'muteUnmute' : LoopActionType.Mute_Unmute.value,
 }
