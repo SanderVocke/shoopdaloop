@@ -1,0 +1,1 @@
+enum loop_state_t { Paused, Playing, Recording };
