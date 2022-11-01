@@ -27,6 +27,7 @@ class MessageFilterType(Enum):
 
 class InputRule:
     press_period = 0.5
+    doublepress_period = 1.0
 
     def __init__(self,
                  filters : dict[Type[MessageFilterType], Union[None, int]],
@@ -50,6 +51,9 @@ class InputRule:
         controller_or_note = None
         value_or_velocity = None
         filters = deepcopy(self.filters)
+        press = False
+        doublePress = False
+        time = time.monotonic()
 
         if len(msg_bytes) >= 2:
             controller_or_note = msg_bytes[1]
@@ -72,6 +76,15 @@ class InputRule:
         
         if type_byte == 0x80:
             print('noteOff {} {}'.format(controller_or_note, value_or_velocity))
+
+            if controller_or_note in self._lastOn and \
+               (controller_or_note not in self._lastOff or self._lastOff[controller_or_note] < self._lastOn) and \
+               time - self._lastOn[controller_or_note] < self.press_period:
+               print('press')
+               press = True
+            
+            self._lastOff[controller_or_note] = time
+
             if MessageFilterType.IsCCKind.value in filters or \
                 MessageFilterType.IsNoteOn.value in filters or \
                 (MessageFilterType.NoteId.value in filters and filters[MessageFilterType.NoteId.value] != controller_or_note) or \
@@ -80,6 +93,9 @@ class InputRule:
                
         elif type_byte == 0x90:
             print('noteOn {}'.format(controller_or_note, value_or_velocity))
+
+            self._lastOn[controller_or_note] = time
+
             if MessageFilterType.IsCCKind.value in filters or \
                 MessageFilterType.IsNoteOff.value in filters or \
                 (MessageFilterType.NoteId.value in filters and filters[MessageFilterType.NoteId.value] != controller_or_note) or \
@@ -93,7 +109,19 @@ class InputRule:
                 (MessageFilterType.CCValue.value in filters and filters[MessageFilterType.CCValue.value] != value_or_velocity):
                 return False
         
-        # TODO: presses and double-presses    
+        if press:
+            if controller_or_note in self._lastPress and \
+               time - self._lastPress[controller_or_note] < self.doublepress_period:
+               print('double-press')
+               doublePress = True
+            self._lastPress[controller_or_note] = time
+        
+        if MessageFilterType.IsNoteDoublePress in filters and not doublePress:
+            return False
+        
+        if MessageFilterType.IsNoteShortPress in filters and not press:
+            return False
+        
         return True
 
 def get_builtin_substitutions(msg_bytes):

@@ -450,28 +450,34 @@ Item {
                     select_loop(track, loop)
                     break
                 case LoopState.LoopActionType.Play:
+                    mgr.doPlay()
                     break
                 case LoopState.LoopActionType.Pause:
+                    mgr.doPause()
                     break
                 case LoopState.LoopActionType.Mute:
+                    mgr.doMute()
                     break
                 case LoopState.LoopActionType.Unmute:
+                    mgr.doUnmute()
                     break
                 case LoopState.LoopActionType.Record:
+                    mgr.doRecord()
                     break
                 case LoopState.LoopActionType.RecordNCycles:
+                    mgr.doRecordNCycles(args[0])
                     break
                 case LoopState.LoopActionType.RecordFX:
+                    mgr.doRecordFx(loop_managers[0][0])
                     break
                 case LoopState.LoopActionType.PlayLiveFX:
-                    break
-                case LoopState.LoopActionType.SetVolume:
-                    break
-                case LoopState.LoopActionType.SetPan:
+                    mgr.doPlayLiveFx()
                     break
                 case LoopState.LoopActionType.Play_Pause:
+                    mgr.doPlayPause()
                     break
                 case LoopState.LoopActionType.Mute_Unmute:
+                    mgr.doMuteUnmute()
                     break
             }
         }
