@@ -1,3 +1,4 @@
+#include <HalideRuntime.h>
 extern "C" {
 #include <jack/jack.h>
 }
@@ -7,11 +8,13 @@ extern "C" {
 #include "shoopdaloop_loops.h"
 #include "types.hpp"
 #include <chrono>
+#include <cstdlib>
 
 #include <iostream>
 #include <string>
 #include <vector>
 #include <unistd.h>
+#include <functional>
 
 using namespace Halide::Runtime;
 using namespace std;
@@ -21,6 +24,7 @@ const char* client_name = "shoopdaloop_test";
 Buffer<int8_t, 1> states;
 Buffer<int32_t, 1> positions;
 Buffer<int32_t, 1> lengths;
+std::vector<float> samples_in_raw, samples_out_raw; //Use vectors here so we know the layout
 Buffer<float, 2> samples_in, samples_out;
 Buffer<float, 2> storage;
 
@@ -29,6 +33,7 @@ std::vector<jack_port_t*> output_ports;
 
 size_t n_loops;
 size_t loop_len;
+size_t buf_size;
 
 void usage(char **argv) {
     std::cout << "Usage: " << argv[0] << " n_loops loop_len" << std::endl;
@@ -47,9 +52,7 @@ int process (jack_nframes_t nframes, void *arg) {
         if(input_ports[i]) {
             buf = (jack_default_audio_sample_t*) jack_port_get_buffer(input_ports[i], nframes);
             if (buf) {
-                for(size_t s=0; s<nframes; s++) {
-                    samples_in(i, s) = buf[s];
-                }
+                memcpy((void*)(&samples_in_raw[buf_size*i]), (void*)buf, sizeof(float) * nframes);
             }
         }
     }
@@ -77,9 +80,7 @@ int process (jack_nframes_t nframes, void *arg) {
         if(output_ports[i]) {
             buf = (jack_default_audio_sample_t*) jack_port_get_buffer(output_ports[i], nframes);
             if (buf) {
-                for(size_t s=0; s<nframes; s++) {
-                    buf[s] = samples_out(i, s);
-                }
+                memcpy((void*)buf, (void*)(&samples_out_raw[buf_size*i]), sizeof(float) * nframes);
             }
         }
     }
@@ -90,7 +91,7 @@ int process (jack_nframes_t nframes, void *arg) {
     proc_time += std::chrono::duration_cast<std::chrono::microseconds>(did_process - did_input).count();
     out_time += std::chrono::duration_cast<std::chrono::microseconds>(did_output - did_process).count();
     n_measurements++;
-    
+
     if (std::chrono::duration_cast<std::chrono::milliseconds>(did_output - last_measurement).count() > 1000.0) {
         std::cout << in_time/(float)n_measurements 
                   << " " << proc_time/(float)n_measurements
@@ -121,15 +122,26 @@ int main(int argc, char **argv) {
         exit(1);
     }
 
-    size_t buf_size = jack_port_type_get_buffer_size(client, JACK_DEFAULT_AUDIO_TYPE);
+    buf_size = jack_port_type_get_buffer_size(client, JACK_DEFAULT_AUDIO_TYPE);
     std::cout << "JACK buffer size: " << buf_size << std::endl;
 
     states = Buffer<int8_t, 1>(n_loops);
     positions = Buffer<int32_t, 1>(n_loops);
     lengths = Buffer<int32_t, 1>(n_loops);
-    samples_in = Buffer<float, 2>(n_loops, buf_size);
-    samples_out = Buffer<float, 2>(n_loops, buf_size);
-    storage= Buffer<float, 2>(n_loops, loop_len);
+    samples_in_raw.resize(n_loops*buf_size); //Buffer<float, 2>(n_loops, buf_size);
+    samples_out_raw.resize(n_loops*buf_size); //Buffer<float, 2>(n_loops, buf_size);
+    storage = Buffer<float, 2>(loop_len, n_loops);
+
+    samples_in = Buffer<float, 2>(
+        halide_type_t {halide_type_float, 32, 1},
+        (void*)samples_in_raw.data(),
+        buf_size, n_loops
+    );
+    samples_out = Buffer<float, 2>(
+        halide_type_t {halide_type_float, 32, 1},
+        (void*)samples_out_raw.data(),
+        buf_size, n_loops
+    );
 
     jack_set_process_callback(client, process, 0);
 

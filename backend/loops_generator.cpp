@@ -37,14 +37,14 @@ public:
             positions_in(loop), 0);
 
         Func storage_in("storage_in");
-        storage_in(loop, x) = select(loop >= loop_storage_in.dim(0).min() && loop <= loop_storage_in.dim(0).max(),
+        storage_in(x, loop) = select(loop >= loop_storage_in.dim(0).min() && loop <= loop_storage_in.dim(0).max(),
             select(x >= loop_storage_in.dim(1).min() && x <= loop_storage_in.dim(1).max(),
-                loop_storage_in(loop, x), 0), 0);
+                loop_storage_in(x, loop), 0), 0);
 
         Func _samples_in("_samples_in");
-        _samples_in(loop, x) = select(loop >= samples_in.dim(0).min() && loop <= samples_in.dim(0).max(),
+        _samples_in(x, loop) = select(loop >= samples_in.dim(0).min() && loop <= samples_in.dim(0).max(),
             select(x >= samples_in.dim(1).min() && x <= samples_in.dim(1).max(),
-                samples_in(loop, x), 0), 0);
+                samples_in(x, loop), 0), 0);
 
         // Compute new loop lengths due to recording
         Func len("len");
@@ -56,18 +56,18 @@ public:
         // Compute new positions due to playback/recording
         // 1. pure definition (unchanged)
         Func pos("pos");
-        pos(loop, x) = pos_in(loop);
+        pos(x, loop) = pos_in(loop);
         // 2. update chronologically
         RDom r(1, n_samples);
-        Expr next_pos = (pos(loop, r-1) + 1) % len(loop);
-        pos(loop, r) = select(
+        Expr next_pos = (pos(r-1, loop) + 1) % len(loop);
+        pos(r, loop) = select(
                 state(loop) == Playing || state(loop) == Recording,
                 next_pos,
-                pos(loop, r-1)
+                pos(r-1, loop)
         );
 
         Func pos_base("pos_base");
-        pos_base(loop, x) = select(
+        pos_base(x, loop) = select(
             state(loop) == Playing || state(loop) == Recording,
             x,
             0
@@ -82,11 +82,11 @@ public:
             );
         Func storage_out("storage_out");
         {
-            loop_storage_out(loop, x) = Halide::undef<float>();
+            loop_storage_out(x, loop) = Halide::undef<float>();
             Expr sample_index = rr;
-            loop_storage_out(loop, rr_storage_index) = select(
+            loop_storage_out(rr_storage_index, loop) = select(
                 state(loop) == Recording,
-                _samples_in(loop, sample_index),
+                _samples_in(sample_index, loop),
                 Halide::undef<float>() // storage_in(rr.x, rr_storage_index)
             );
         }
@@ -94,44 +94,26 @@ public:
         // Compute output samples
         {
             Expr storage_index = clamp(
-                pos_base(loop, rr) + positions_in(loop),
+                pos_base(rr, loop) + positions_in(loop),
                 loop_storage_in.dim(1).min(),
                 loop_storage_in.dim(1).max()
             );
-            samples_out(loop, x) = Halide::undef<float>();
-            samples_out(loop, clamp(
+            samples_out(x, loop) = Halide::undef<float>();
+            samples_out(clamp(
                 rr,
                 samples_out.dim(0).min(),
-                samples_out.dim(0).max())
-            ) = storage_in(loop, storage_index);
+                samples_out.dim(0).max()
+            ), loop) = storage_in(storage_index, loop);
         }
 
         // Compute output states
         states_out(loop) = state(loop);
 
         // Compute output positions
-        positions_out(loop) = pos_base(loop, n_samples-1);
+        positions_out(loop) = pos_base(n_samples-1, loop);
 
         // Compute output lengths
         loop_lengths_out(loop) = len(loop);
-
-        // loop_storage_out
-        //     .compute_at(samples_out, x);
-        //     ;
-        // loop_storage_out.update()
-        //     .reorder(rr.x, rr.y)
-        //     .vectorize(rr.x, 8)
-        //     ;
-        
-        // samples_out.reorder(loop, x)
-        //     .reorder(loop, x)
-        //     .vectorize(loop, 8)
-        //     ;
-
-        loop_storage_out
-            //.compute_root()
-            //.compute_at(samples_out, loop);
-            ;
         
         loop_storage_out
             .update()
@@ -139,11 +121,6 @@ public:
             .allow_race_conditions()
             .vectorize(rr, 8)
             .compute_with(samples_out.update(), rr);
-            //.allow_race_conditions()
-            //.reorder(rr.x, rr.y)
-            //.vectorize(rr.x, 8)
-            //.vectorize(rr.y, 8)
-            //.unroll(rr.y, 64)
             ;
 
         samples_out
@@ -151,11 +128,7 @@ public:
             .reorder(rr, loop)
             .allow_race_conditions()
             .vectorize(rr, 8)
-            //.vectorize(loop, 8)
-                  //.reorder(loop, x)
-                  //.vectorize(x, 8)
-                  //.vectorize(loop, 8)
-                   ;
+            ;
         Pipeline({samples_out, loop_storage_out}).print_loop_nest();
     }
 };
