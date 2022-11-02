@@ -61,6 +61,8 @@ jack_client_t* g_jack_client;
 UpdateCallback g_update_callback;
 AbortCallback g_abort_callback;
 
+std::thread g_reporting_thread;
+
 // A structure of atomic scalars is used to communicate the latest
 // state back from the Jack processing thread to the main thread.
 struct atomic_state {
@@ -217,12 +219,12 @@ int initialize(
     );
 
     // Allocate atomic state
-    g_atomic_state.states.resize(n_loops);
-    g_atomic_state.lengths.resize(n_loops);
-    g_atomic_state.loop_volumes.resize(n_loops);
-    g_atomic_state.port_volumes.resize(n_ports);
-    g_atomic_state.passthroughs.resize(n_ports);
-    g_atomic_state.positions.resize(n_loops);
+    g_atomic_state.states = std::vector<std::atomic<loop_state_t>>(n_loops);
+    g_atomic_state.lengths = std::vector<std::atomic<int32_t>>(n_loops);
+    g_atomic_state.loop_volumes = std::vector<std::atomic<float>>(n_loops);
+    g_atomic_state.port_volumes = std::vector<std::atomic<float>>(n_ports);
+    g_atomic_state.passthroughs = std::vector<std::atomic<float>>(n_ports);
+    g_atomic_state.positions = std::vector<std::atomic<int32_t>>(n_loops);
 
     // Set the JACK process callback
     jack_set_process_callback(g_jack_client, jack_process, 0);
@@ -260,7 +262,7 @@ int initialize(
     }
 
     // Start the reporting thread
-    std::thread reporting_thread([update_period_ms, update_cb]() {
+    g_reporting_thread = std::thread([update_period_ms, update_cb]() {
         std::vector<loop_state_t> states(g_n_loops);
         std::vector<int32_t> positions(g_n_loops), lengths(g_n_loops);
         std::vector<float> passthroughs(g_n_ports), loop_volumes(g_n_loops), port_volumes(g_n_ports);

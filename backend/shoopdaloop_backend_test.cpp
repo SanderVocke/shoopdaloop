@@ -20,12 +20,12 @@ int update_cb(
     unsigned n_loops,
     unsigned n_ports,
     loop_state_t *loop_states,
-    unsigned *loop_lengths,
-    unsigned *loop_positions,
+    int *loop_lengths,
+    int *loop_positions,
     float *loop_volumes,
     float *port_volumes,
     float *port_passthrough_levels
-) { return 0; }
+) { std::cout << "Update!" << std::endl; return 0; }
 
 }
 
