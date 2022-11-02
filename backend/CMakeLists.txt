@@ -15,7 +15,10 @@ find_package(Jack REQUIRED)
 add_halide_generator(shoopdaloop_loops.generator SOURCES loops_generator.cpp)
 
 # Filters
-add_halide_library(shoopdaloop_loops FROM shoopdaloop_loops.generator)
+add_halide_library(shoopdaloop_loops 
+    FROM shoopdaloop_loops.generator
+    TARGETS host-profile
+    )
 
 # Main executable
 add_executable(shoopdaloop_loops_test test.cpp)
@@ -35,6 +38,16 @@ target_link_libraries(shoopdaloop_jack
                       $<TARGET_NAME_IF_EXISTS:OpenMP::OpenMP_CXX>
                       ${JACK_LIBRARIES})
 target_include_directories(shoopdaloop_jack
+                        PRIVATE
+                        ${JACK_INCLUDE_DIRS}
+                        )
+
+add_executable(simple_client simple_client.c)
+target_compile_options(simple_client PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-O2>)
+target_link_libraries(simple_client
+                      PRIVATE
+                      ${JACK_LIBRARIES})
+target_include_directories(simple_client
                         PRIVATE
                         ${JACK_INCLUDE_DIRS}
                         )

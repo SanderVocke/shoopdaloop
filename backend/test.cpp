@@ -17,18 +17,21 @@ using namespace Halide::Tools;
 #include "types.hpp"
 
 int main(int argc, char **argv) {
-    Buffer<uint8_t, 1> states_a(104), states_b(104);
-    Buffer<uint16_t, 1> positions_a(104), positions_b(104);
-    Buffer<uint16_t, 1> lengths_a(104), lengths_b(104);
-    Buffer<float, 2> samples_in(104, 256), samples_out(104, 256), storage_in(104, 1024), storage_out(104, 1024);
+    const size_t storage_size = 48000*60;
+    const size_t buf_size = 4096;
+    const size_t n_loops = 96;
+    Buffer<int8_t, 1> states_a(n_loops), states_b(n_loops);
+    Buffer<int32_t, 1> positions_a(n_loops), positions_b(n_loops);
+    Buffer<int32_t, 1> lengths_a(n_loops), lengths_b(n_loops);
+    Buffer<float, 2> samples_in(n_loops, buf_size), samples_out(n_loops, buf_size), storage_in(n_loops, storage_size), storage_out(n_loops, storage_size);
 
-    for(size_t i=0; i<104; i++) {
-        states_a(i) = Playing;
+    for(size_t i=0; i<n_loops; i++) {
+        states_a(i) = Recording;
         positions_a(i) = i;
     }
 
     auto t = benchmark(10, 1, [&]() {
-        shoopdaloop_loops(samples_in, states_a, positions_a, lengths_a, storage_in, 256, 1024, samples_out, states_b, positions_b, lengths_b, storage_out);
+        shoopdaloop_loops(samples_in, states_a, positions_a, lengths_a, storage_in, buf_size, storage_size, samples_out, states_b, positions_b, lengths_b, storage_out);
     });
 
     printf("time: %f\n", t);
