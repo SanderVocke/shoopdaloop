@@ -1,4 +1,6 @@
 #include <HalideRuntime.h>
+#include <cmath>
+#include <jack/types.h>
 extern "C" {
 #include <jack/jack.h>
 }
@@ -6,6 +8,7 @@ extern "C" {
 #include "HalideBuffer.h"
 
 #include "shoopdaloop_loops.h"
+#include "sine.h"
 #include "types.hpp"
 #include <chrono>
 #include <cstdlib>
@@ -25,8 +28,10 @@ Buffer<int8_t, 1> states;
 Buffer<int32_t, 1> positions;
 Buffer<int32_t, 1> lengths;
 std::vector<float> samples_in_raw, samples_out_raw; //Use vectors here so we know the layout
-Buffer<float, 2> samples_in, samples_out;
+Buffer<float, 2> samples_in, samples_out, samples_out_per_loop;
 Buffer<float, 2> storage;
+Buffer<int32_t, 1> input_buffers_map;
+Buffer<float, 1> passthroughs;
 
 std::vector<jack_port_t*> input_ports;
 std::vector<jack_port_t*> output_ports;
@@ -34,9 +39,10 @@ std::vector<jack_port_t*> output_ports;
 size_t n_loops;
 size_t loop_len;
 size_t buf_size;
+size_t loops_per_port;
 
 void usage(char **argv) {
-    std::cout << "Usage: " << argv[0] << " n_loops loop_len" << std::endl;
+    std::cout << "Usage: " << argv[0] << " n_loops loop_len loops_per_port" << std::endl;
 }
 
 int process (jack_nframes_t nframes, void *arg) {
@@ -65,9 +71,12 @@ int process (jack_nframes_t nframes, void *arg) {
         positions,
         lengths,
         storage,
+        input_buffers_map,
+        passthroughs,
         nframes,
         loop_len,
         samples_out,
+        samples_out_per_loop,
         states,
         positions,
         lengths,
@@ -106,13 +115,16 @@ int process (jack_nframes_t nframes, void *arg) {
 }
 
 int main(int argc, char **argv) {
-    if (argc != 3) {
+    if (argc != 4) {
         usage(argv);
         exit(1);
     }
 
     n_loops = stoi(std::string(argv[1]));
     loop_len = stoi(std::string(argv[2]));
+    loops_per_port = stoi(std::string(argv[3]));
+
+    size_t n_ports = (size_t) ceil((float) n_loops / (float) loops_per_port);
 
     jack_status_t status;
     jack_client_t* client = jack_client_open(client_name, JackNullOption, &status, nullptr);
@@ -122,34 +134,44 @@ int main(int argc, char **argv) {
         exit(1);
     }
 
-    buf_size = jack_port_type_get_buffer_size(client, JACK_DEFAULT_AUDIO_TYPE);
-    std::cout << "JACK buffer size: " << buf_size << std::endl;
+    buf_size = 
+        jack_port_type_get_buffer_size(client, JACK_DEFAULT_AUDIO_TYPE) / sizeof(jack_default_audio_sample_t);
+    std::cout << "JACK buffer size: " << buf_size << " samples" << std::endl;
 
     states = Buffer<int8_t, 1>(n_loops);
     positions = Buffer<int32_t, 1>(n_loops);
     lengths = Buffer<int32_t, 1>(n_loops);
-    samples_in_raw.resize(n_loops*buf_size); //Buffer<float, 2>(n_loops, buf_size);
-    samples_out_raw.resize(n_loops*buf_size); //Buffer<float, 2>(n_loops, buf_size);
+    samples_in_raw.resize(n_ports*buf_size); //Buffer<float, 2>(n_loops, buf_size);
+    samples_out_raw.resize(n_ports*buf_size); //Buffer<float, 2>(n_loops, buf_size);
+    samples_out_per_loop = Buffer<float, 2>(buf_size, n_loops);
     storage = Buffer<float, 2>(loop_len, n_loops);
+    input_buffers_map = Buffer<int32_t, 1>(n_loops);
+    passthroughs = Buffer<float, 1>(n_ports);
 
     samples_in = Buffer<float, 2>(
         halide_type_t {halide_type_float, 32, 1},
         (void*)samples_in_raw.data(),
-        buf_size, n_loops
+        buf_size, n_ports
     );
     samples_out = Buffer<float, 2>(
         halide_type_t {halide_type_float, 32, 1},
         (void*)samples_out_raw.data(),
-        buf_size, n_loops
+        buf_size, n_ports
     );
+
+    // Generate 400Hz sine waves into storage
+    sine(48000, 400.0f, storage);
 
     jack_set_process_callback(client, process, 0);
 
     for(size_t i=0; i<n_loops; i++) {
-        states(i) = Recording;
+        states(i) = Playing;
         positions(i) = 0;
-        lengths(i) = 0;
+        lengths(i) = loop_len;
+        input_buffers_map(i) = i / loops_per_port;
+    }
 
+    for(size_t i=0; i<n_ports; i++) {
         input_ports.push_back(jack_port_register(client, "in", JACK_DEFAULT_AUDIO_TYPE, JackPortIsInput, 0));
         output_ports.push_back(jack_port_register(client, "out", JACK_DEFAULT_AUDIO_TYPE, JackPortIsOutput, 0));
 
@@ -161,6 +183,8 @@ int main(int argc, char **argv) {
             std::cerr << "Got null port" << std::endl;
             exit(1);
         }
+
+        passthroughs(i) = 1.0;
     }
 
     if(jack_activate(client)) {

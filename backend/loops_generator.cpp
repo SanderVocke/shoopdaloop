@@ -5,19 +5,47 @@ namespace {
 
 class Loops : public Halide::Generator<Loops> {
 public:
+    // Quantities:
+    // Ns = samples per process loop
+    // Np = number of input/output ports
+    // Nl = number of loopers (they may share ports)
+    // Ll = number of samples stored in a loop
+
+    // Live input samples. Ns samples by Np ports
     Input<Buffer<float, 2>> samples_in{"samples_in"};
+
+    // Nl states, positions, lengths (one for each looper)
     Input<Buffer<int8_t, 1>> states_in{"states_in"};
     Input<Buffer<int32_t, 1>> positions_in{"positions_in"};
     Input<Buffer<int32_t, 1>> loop_lengths_in{"loop_lengths_in"};
+
+    // Nl x Ll samples for loop storage
     Input<Buffer<float, 2>> loop_storage_in{"loop_storage_in"};
 
+    // Nl indices which indicate to which port each looper is mapped
+    Input<Buffer<int32_t, 1>> ports_map{"ports_map"};
+
+    // Np levels to indicate how much passthrough we want on the ports
+    Input<Buffer<float, 1>> port_passthrough_levels{"port_passthrough_levels"};
+
+    // Ns
     Input<int32_t> n_samples{"n_samples"};
+
+    // Ll
     Input<int32_t> max_loop_length{"max_loop_length"};
 
+    // Ns x Np
     Output<Buffer<float, 2>> samples_out{"samples_out"};
+
+    // Ns x Nl, intermediate result before output mixing
+    Output<Buffer<float, 2>> samples_out_per_loop{"samples_out_per_loop"};
+
+    // Nl
     Output<Buffer<int8_t, 1>> states_out{"states_out"};
     Output<Buffer<int32_t, 1>> positions_out{"positions_out"};
     Output<Buffer<int32_t, 1>> loop_lengths_out{"loop_lengths_out"};
+
+    // Nl x Ll
     Output<Buffer<float, 2>> loop_storage_out{"loop_storage_out"};
 
     void generate() {
@@ -37,41 +65,23 @@ public:
             positions_in(loop), 0);
 
         Func storage_in("storage_in");
-        storage_in(x, loop) = select(loop >= loop_storage_in.dim(0).min() && loop <= loop_storage_in.dim(0).max(),
-            select(x >= loop_storage_in.dim(1).min() && x <= loop_storage_in.dim(1).max(),
+        storage_in(x, loop) = select(loop >= loop_storage_in.dim(1).min() && loop <= loop_storage_in.dim(1).max(),
+            select(x >= loop_storage_in.dim(0).min() && x <= loop_storage_in.dim(0).max(),
                 loop_storage_in(x, loop), 0), 0);
 
+        // Map input samples per port to input samples for each loop
         Func _samples_in("_samples_in");
-        _samples_in(x, loop) = select(loop >= samples_in.dim(0).min() && loop <= samples_in.dim(0).max(),
-            select(x >= samples_in.dim(1).min() && x <= samples_in.dim(1).max(),
-                samples_in(x, loop), 0), 0);
+        Expr buf = clamp(ports_map(loop), samples_in.dim(1).min(), samples_in.dim(1).max());
+        _samples_in(x, loop) = select(buf >= samples_in.dim(0).min() && buf <= samples_in.dim(0).max(),
+            select(x >= samples_in.dim(0).min() && x <= samples_in.dim(0).max(),
+                samples_in(x, buf), 0), 0);
 
         // Compute new loop lengths due to recording
         Func len("len");
         len(loop) = Halide::select(
             state(loop) == Recording,
-            max(len_in + 1, max_loop_length),
+            max(len_in + n_samples, max_loop_length),
             len_in);
-
-        // Compute new positions due to playback/recording
-        // 1. pure definition (unchanged)
-        Func pos("pos");
-        pos(x, loop) = pos_in(loop);
-        // 2. update chronologically
-        RDom r(1, n_samples);
-        Expr next_pos = (pos(r-1, loop) + 1) % len(loop);
-        pos(r, loop) = select(
-                state(loop) == Playing || state(loop) == Recording,
-                next_pos,
-                pos(r-1, loop)
-        );
-
-        Func pos_base("pos_base");
-        pos_base(x, loop) = select(
-            state(loop) == Playing || state(loop) == Recording,
-            x,
-            0
-        );
 
         // Store loop data
         RDom rr(0, n_samples);
@@ -87,49 +97,75 @@ public:
             loop_storage_out(rr_storage_index, loop) = select(
                 state(loop) == Recording,
                 _samples_in(sample_index, loop),
-                Halide::undef<float>() // storage_in(rr.x, rr_storage_index)
+                storage_in(rr.x, rr_storage_index)
             );
         }
 
-        // Compute output samples
+        // Compute output samples for each loop
         {
             Expr storage_index = clamp(
-                pos_base(rr, loop) + positions_in(loop),
-                loop_storage_in.dim(1).min(),
-                loop_storage_in.dim(1).max()
+                pos_in(loop) + rr,
+                loop_storage_in.dim(0).min(),
+                loop_storage_in.dim(0).max()
             );
-            samples_out(x, loop) = Halide::undef<float>();
-            samples_out(clamp(
+            samples_out_per_loop(x, loop) = Halide::undef<float>();
+            samples_out_per_loop(clamp(
                 rr,
-                samples_out.dim(0).min(),
-                samples_out.dim(0).max()
-            ), loop) = storage_in(storage_index, loop);
+                samples_out_per_loop.dim(0).min(),
+                samples_out_per_loop.dim(0).max()
+            ), loop) = 
+                select(
+                    states_in(loop) == Playing,
+                    storage_in(storage_index, loop),
+                    0.0f
+                );
         }
+
+        // Compute output samples mixed into ports
+        samples_out(x, loop) = 0.0f;
+        RDom ports(ports_map.dim(0).min(), ports_map.dim(0).extent());
+        samples_out(x, clamp(
+            ports_map(ports),
+            samples_out.dim(1).min(),
+            samples_out.dim(1).max()
+        )) += samples_out_per_loop(x, ports);
 
         // Compute output states
         states_out(loop) = state(loop);
 
         // Compute output positions
-        positions_out(loop) = pos_base(n_samples-1, loop);
+        positions_out(loop) = select(
+            states_in(loop) == Playing || states_in(loop) == Recording,
+            (positions_in(loop) + n_samples) % loop_lengths_in(loop),
+            positions_in(loop)
+        );
 
         // Compute output lengths
         loop_lengths_out(loop) = len(loop);
-        
+
+        // Schedule        
         loop_storage_out
             .update()
             .reorder(rr, loop)
             .allow_race_conditions()
             .vectorize(rr, 8)
-            .compute_with(samples_out.update(), rr);
+            .compute_with(samples_out_per_loop.update(), rr)
+            //.trace_stores()
             ;
 
-        samples_out
+        samples_out_per_loop.compute_root();
+        samples_out_per_loop
             .update()
             .reorder(rr, loop)
             .allow_race_conditions()
             .vectorize(rr, 8)
+            //.trace_stores()
             ;
-        Pipeline({samples_out, loop_storage_out}).print_loop_nest();
+        
+        //samples_out.trace_stores();
+        //positions_out.trace_stores();
+        
+        Pipeline({samples_out, loop_storage_out, states_out, positions_out, loop_lengths_out}).print_loop_nest();
     }
 };
 
