@@ -25,8 +25,12 @@ public:
     // Nl indices which indicate to which port each looper is mapped
     Input<Buffer<int32_t, 1>> ports_map{"ports_map"};
 
-    // Np levels to indicate how much passthrough we want on the ports
+    // Np levels to indicate how much passthrough and volume we want on the ports
     Input<Buffer<float, 1>> port_passthrough_levels{"port_passthrough_levels"};
+    Input<Buffer<float, 1>> port_volumes{"port_volumes"};
+
+    // Nl levels to indicate how much playback volume we want on the loops
+    Input<Buffer<float, 1>> loop_playback_volumes{"loop_playback_volumes"};
 
     // Ns
     Input<int32_t> n_samples{"n_samples"};
@@ -49,7 +53,7 @@ public:
     Output<Buffer<float, 2>> loop_storage_out{"loop_storage_out"};
 
     void generate() {
-        Var loop("loop"), x("x");
+        Var loop("loop"), port("port"), x("x");
 
         // State never changes during processing
         Func state("state");
@@ -116,19 +120,20 @@ public:
             ), loop) = 
                 select(
                     states_in(loop) == Playing,
-                    storage_in(storage_index, loop),
+                    storage_in(storage_index, loop) * loop_playback_volumes(loop),
                     0.0f
                 );
         }
 
         // Compute output samples mixed into ports
-        samples_out(x, loop) = 0.0f;
+        samples_out(x, port) = _samples_in(x, port) * port_passthrough_levels(port);
         RDom ports(ports_map.dim(0).min(), ports_map.dim(0).extent());
         samples_out(x, clamp(
             ports_map(ports),
             samples_out.dim(1).min(),
             samples_out.dim(1).max()
         )) += samples_out_per_loop(x, ports);
+        samples_out(x, port) = samples_out(x, port) * port_volumes(port);
 
         // Compute output states
         states_out(loop) = state(loop);

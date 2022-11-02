@@ -22,25 +22,21 @@ add_halide_library(shoopdaloop_loops
     )
 add_halide_library(sine FROM sine.generator)
 
-# Main executable
-add_executable(shoopdaloop_loops_test test.cpp)
-target_compile_options(shoopdaloop_loops_test PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-O2>)
-target_link_libraries(shoopdaloop_loops_test
-                      PRIVATE
+# Backend lib
+add_library(shoopdaloop_backend SHARED shoopdaloop_backend.cpp)
+target_link_libraries(shoopdaloop_backend PRIVATE
                       Halide::Tools
+                      Halide
                       shoopdaloop_loops
-                      $<TARGET_NAME_IF_EXISTS:OpenMP::OpenMP_CXX>)
-
-add_executable(shoopdaloop_jack jack.cpp)
-target_compile_options(shoopdaloop_jack PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-O2>)
-target_link_libraries(shoopdaloop_jack
-                      PRIVATE
-                      Halide::Tools
-                      shoopdaloop_loops
-                      sine
-                      $<TARGET_NAME_IF_EXISTS:OpenMP::OpenMP_CXX>
                       ${JACK_LIBRARIES})
-target_include_directories(shoopdaloop_jack
+target_include_directories(shoopdaloop_backend
                         PRIVATE
                         ${JACK_INCLUDE_DIRS}
+                        ${CMAKE_CURRENT_BINARY_DIR}
                         )
+
+add_executable(shoopdaloop_backend_test shoopdaloop_backend_test.cpp)
+target_compile_options(shoopdaloop_backend_test PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-O2>)
+target_link_libraries(shoopdaloop_backend_test
+                      PRIVATE
+                      shoopdaloop_backend)
