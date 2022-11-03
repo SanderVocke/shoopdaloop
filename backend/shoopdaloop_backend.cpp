@@ -1,11 +1,9 @@
 #include <HalideBuffer.h>
 #include <cmath>
 #include <jack/types.h>
-extern "C" {
 #include <jack/jack.h>
-}
 
-#include "shoopdaloop_backend.hpp"
+#include "shoopdaloop_backend.h"
 #include "shoopdaloop_loops.h"
 #include <chrono>
 #include <cstdlib>
@@ -17,6 +15,8 @@ extern "C" {
 #include <functional>
 #include <atomic>
 #include <thread>
+#include <boost/lockfree/spsc_queue.hpp>
+#include <memory>
 
 using namespace Halide::Runtime;
 using namespace std;
@@ -74,17 +74,35 @@ atomic_state g_atomic_state;
 
 bool finished = false;
 
+// A lock-free queue is used to pass commands to the audio
+// processing thread in the form of functors.
+constexpr unsigned command_queue_len = 1024;
+boost::lockfree::spsc_queue<std::function<void()>> g_cmd_queue(command_queue_len);
+void push_command(std::function<void()> cmd) {
+    while (!g_cmd_queue.push(cmd)) { 
+        std::this_thread::sleep_for(std::chrono::microseconds(100));
+    }
+}
+
 extern "C" {
 
 // The processing callback to be called by Jack.
 int jack_process (jack_nframes_t nframes, void *arg) {
     static auto last_measurement = std::chrono::high_resolution_clock::now();
     static size_t n_measurements = 0;
-    static float in_time = 0.0, proc_time = 0.0, out_time = 0.0;
+    static float cmd_time = 0.0, in_time = 0.0, proc_time = 0.0, out_time = 0.0;
 
     jack_default_audio_sample_t *buf;
 
     auto start = std::chrono::high_resolution_clock::now();
+
+    // Process commands
+    std::function<void()> cmd;
+    while(g_cmd_queue.pop(cmd)) {
+        cmd();
+    }
+
+    auto did_cmds = std::chrono::high_resolution_clock::now();
 
     // Get input port buffers and copy samples into the combined input buffer.
     for(int i=0; i<g_input_ports.size(); i++) {
@@ -146,13 +164,15 @@ int jack_process (jack_nframes_t nframes, void *arg) {
     auto did_output = std::chrono::high_resolution_clock::now();
 
     // Benchmarking
-    in_time += std::chrono::duration_cast<std::chrono::microseconds>(did_input - start).count();
+    cmd_time += std::chrono::duration_cast<std::chrono::microseconds>(did_cmds - start).count();
+    in_time += std::chrono::duration_cast<std::chrono::microseconds>(did_input - did_cmds).count();
     proc_time += std::chrono::duration_cast<std::chrono::microseconds>(did_process - did_input).count();
     out_time += std::chrono::duration_cast<std::chrono::microseconds>(did_output - did_process).count();
     n_measurements++;
 
     if (std::chrono::duration_cast<std::chrono::milliseconds>(did_output - last_measurement).count() > 1000.0) {
-        std::cout << in_time/(float)n_measurements 
+        std::cout << cmd_time/(float)n_measurements
+                  << " " << in_time/(float)n_measurements 
                   << " " << proc_time/(float)n_measurements
                   << " " << out_time/(float)n_measurements
                   << std::endl;
@@ -279,7 +299,7 @@ int initialize(
                 port_volumes[i] = g_atomic_state.port_volumes[i];
             }
             
-            update_cb(
+            int r = update_cb(
                 g_n_loops,
                 g_n_ports,
                 states.data(),
@@ -292,6 +312,37 @@ int initialize(
         }
     });
 
+    return 0;
+}
+
+int do_loop_action(
+    unsigned loop_idx,
+    loop_action_t action
+) {
+    std::function<void()> cmd = nullptr;
+    switch(action) {
+        case DoRecord:
+            cmd = [loop_idx]() {
+                g_states(loop_idx) = Recording;
+                g_positions(loop_idx) = 0;
+                g_lengths(loop_idx) = 0;
+            };
+            break;
+        case DoPlay:
+            cmd = [loop_idx]() {
+                g_states(loop_idx) = Playing;
+            };
+            break;
+        case DoPause:
+            cmd = [loop_idx]() {
+                g_states(loop_idx) = Paused;
+            };
+            break;
+        default:
+        break;
+    }
+
+    if(cmd) { push_command(cmd); }
     return 0;
 }
 

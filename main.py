@@ -15,6 +15,7 @@ from lib.q_objects.MIDIControlLink import MIDIControlLink
 
 from lib.JackSession import JackSession
 from lib.SooperLooperSession import SooperLooperSession
+from lib.BackendSession import BackendSession
 
 from third_party.pyjacklib import jacklib
 
@@ -47,38 +48,39 @@ with JackSession('ShoopDaLoop-control') as jack_session:
     jack = jack_session[0]
     jack_client = jack_session[1]
     with SooperLooperSession(1, 6, 2, 9951, 'ShoopDaLoop', jack, jack_client):
-        app = QGuiApplication(sys.argv)
+        with BackendSession(1, 1, 2, 'ShoopDaLoop-loops'):
+            app = QGuiApplication(sys.argv)
 
-        link = SooperLooperOSCLink(None, '0.0.0.0', 9951, '0.0.0.0', 9952)
-        click_track_generator = ClickTrackGenerator()
-        global_mgr = SLGlobalManager(None)
-        global_mgr.connect_osc_link(link)
-        midi_control_mgr = MIDIControlManager(None, jack_client, jack)
+            link = SooperLooperOSCLink(None, '0.0.0.0', 9951, '0.0.0.0', 9952)
+            click_track_generator = ClickTrackGenerator()
+            global_mgr = SLGlobalManager(None)
+            global_mgr.connect_osc_link(link)
+            midi_control_mgr = MIDIControlManager(None, jack_client, jack)
 
-        qmlRegisterType(SLLooperManager, 'SLLooperManager', 1, 0, 'SLLooperManager')
-        qmlRegisterType(SLFXLooperPairManager, 'SLFXLooperPairManager', 1, 0, 'SLFXLooperPairManager')
-        qmlRegisterType(SLGlobalManager, 'SLGlobalManager', 1, 0, 'SLGlobalManager')
-        qmlRegisterType(LooperManager, 'LooperManager', 1, 0, 'LooperManager')
-        qmlRegisterType(SooperLooperOSCLink, 'SooperLooperOSCLink', 1, 0, 'SooperLooperOSCLink')
-        qmlRegisterType(ClickTrackGenerator, 'ClickTrackGenerator', 1, 0, 'ClickTrackGenerator')
-        qmlRegisterType(MIDIControlManager, 'MIDIControlManager', 1, 0, 'MIDIControlManager')
+            qmlRegisterType(SLLooperManager, 'SLLooperManager', 1, 0, 'SLLooperManager')
+            qmlRegisterType(SLFXLooperPairManager, 'SLFXLooperPairManager', 1, 0, 'SLFXLooperPairManager')
+            qmlRegisterType(SLGlobalManager, 'SLGlobalManager', 1, 0, 'SLGlobalManager')
+            qmlRegisterType(LooperManager, 'LooperManager', 1, 0, 'LooperManager')
+            qmlRegisterType(SooperLooperOSCLink, 'SooperLooperOSCLink', 1, 0, 'SooperLooperOSCLink')
+            qmlRegisterType(ClickTrackGenerator, 'ClickTrackGenerator', 1, 0, 'ClickTrackGenerator')
+            qmlRegisterType(MIDIControlManager, 'MIDIControlManager', 1, 0, 'MIDIControlManager')
 
-        engine = QQmlApplicationEngine()
-        engine.rootContext().setContextProperty("osc_link", link)
-        engine.rootContext().setContextProperty("sl_global_manager", global_mgr)
-        engine.rootContext().setContextProperty("click_track_generator", click_track_generator)
-        engine.rootContext().setContextProperty("midi_control_manager", midi_control_mgr)
-        engine.quit.connect(app.quit)
-        engine.load('main.qml')
+            engine = QQmlApplicationEngine()
+            engine.rootContext().setContextProperty("osc_link", link)
+            engine.rootContext().setContextProperty("sl_global_manager", global_mgr)
+            engine.rootContext().setContextProperty("click_track_generator", click_track_generator)
+            engine.rootContext().setContextProperty("midi_control_manager", midi_control_mgr)
+            engine.quit.connect(app.quit)
+            engine.load('main.qml')
 
-        exitcode = 0
+            exitcode = 0
 
-        # This hacky solution ensures that the Python interpreter has a chance
-        # to run every 100ms, which e.g. allows the signal handlers to work.
-        timer = QTimer()
-        timer.start(100)
-        timer.timeout.connect(lambda: None)
+            # This hacky solution ensures that the Python interpreter has a chance
+            # to run every 100ms, which e.g. allows the signal handlers to work.
+            timer = QTimer()
+            timer.start(100)
+            timer.timeout.connect(lambda: None)
 
-        exitcode = app.exec()
+            exitcode = app.exec()
 
 sys.exit(exitcode)

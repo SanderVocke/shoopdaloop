@@ -1,4 +1,4 @@
-#include "shoopdaloop_backend.hpp"
+#include "shoopdaloop_backend.h"
 
 #include <iostream>
 #include <math.h>

@@ -1,9 +1,11 @@
+#ifdef __cplusplus
 extern "C" {
+#endif
 
-enum loop_state_t { Paused, Playing, Recording };
-enum loop_action_t { DoRecord,
-                     DoPlay,
-                     DoPause };
+typedef enum { Paused, Playing, Recording } loop_state_t;
+typedef enum  { DoRecord,
+                DoPlay,
+                DoPause } loop_action_t;
 
 typedef int(*UpdateCallback) (
     unsigned n_loops,
@@ -36,4 +38,6 @@ int do_loop_action(
     loop_action_t action
 );
 
+#ifdef __cplusplus
 }
+#endif
