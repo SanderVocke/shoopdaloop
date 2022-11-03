@@ -54,7 +54,7 @@ class InputRule:
         filters = deepcopy(self.filters)
         press = False
         doublePress = False
-        time = time.monotonic()
+        _time = time.monotonic()
 
         if len(msg_bytes) >= 2:
             controller_or_note = msg_bytes[1]
@@ -79,12 +79,12 @@ class InputRule:
             print('noteOff {} {}'.format(controller_or_note, value_or_velocity))
 
             if controller_or_note in self._lastOn and \
-               (controller_or_note not in self._lastOff or self._lastOff[controller_or_note] < self._lastOn) and \
-               time - self._lastOn[controller_or_note] < self.press_period:
+               (controller_or_note not in self._lastOff or self._lastOff[controller_or_note] < self._lastOn[controller_or_note]) and \
+               _time - self._lastOn[controller_or_note] < self.press_period:
                print('press')
                press = True
             
-            self._lastOff[controller_or_note] = time
+            self._lastOff[controller_or_note] = _time
 
             if MessageFilterType.IsCCKind.value in filters or \
                 MessageFilterType.IsNoteOn.value in filters or \
@@ -95,7 +95,7 @@ class InputRule:
         elif type_byte == 0x90:
             print('noteOn {}'.format(controller_or_note, value_or_velocity))
 
-            self._lastOn[controller_or_note] = time
+            self._lastOn[controller_or_note] = _time
 
             if MessageFilterType.IsCCKind.value in filters or \
                 MessageFilterType.IsNoteOff.value in filters or \
@@ -112,10 +112,10 @@ class InputRule:
         
         if press:
             if controller_or_note in self._lastPress and \
-               time - self._lastPress[controller_or_note] < self.doublepress_period:
+               _time - self._lastPress[controller_or_note] < self.doublepress_period:
                print('double-press')
                doublePress = True
-            self._lastPress[controller_or_note] = time
+            self._lastPress[controller_or_note] = _time
         
         if MessageFilterType.IsNoteDoublePress in filters and not doublePress:
             return False
@@ -344,7 +344,7 @@ class MIDIControlManager(QObject):
     
     @pyqtSlot(int, int, int)
     def loop_state_changed(self, track, index, state):
-        if (track,index) in self._loop_states_cache and self._loop_states_cache[(track_index)] == state:
+        if (track,index) in self._loop_states_cache and self._loop_states_cache[(track,index)] == state:
             # Already sent this
             return
         
