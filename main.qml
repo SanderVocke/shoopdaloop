@@ -4,7 +4,7 @@ import QtQuick.Controls.Material 2.15
 import QtQuick.Dialogs
 
 import 'lib/qml'
-import 'lib/LoopState.js' as LoopState
+import 'build/LoopState.js' as LoopState
 
 ApplicationWindow {
     visible: true
@@ -34,11 +34,6 @@ ApplicationWindow {
         id: shared
 
         // Tell the global manager what the desired loop count is, so SooperLooper will be set up for it.
-        Component.onCompleted: () => {
-                                   var num_loops = 2* ((track_names.length - 1) * loops_per_track + 1)
-                                   sl_global_manager.set_desired_looper_count(num_loops)
-                               }
-        
         TracksWidget {
             // Note the offset of 1 in all the track indexing. This is because we skip
             // the master track, which is the first track in the shared state. It has

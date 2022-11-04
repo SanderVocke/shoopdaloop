@@ -1,50 +1,38 @@
 from enum import Enum
+import sys
+sys.path.append('..')
+import build.backend.shoopdaloop_backend as backend
 
 class LoopState(Enum):
+    Stopped = backend.Stopped
+    Playing = backend.Playing
+    Recording = backend.Recording
+    # Extended states for front-end
     Unknown = -1
-    Off = 0
-    WaitStart = 1
-    Recording = 2
-    WaitStop = 3
-    Playing = 4
-    Overdubbing = 5
-    Multiplying = 6
-    Inserting = 7
-    Replacing = 8
-    Delay = 9
-    Muted = 10
-    Scratching = 11
-    OneShot = 12
-    Substitute = 13
-    Paused = 14
-    # Extended states for FX loops
-    RecordingWet = 15
-    PlayingDryLiveWet = 16
-    PlayingDry = 17
+    RecordingFX = -2
+    PlayingLiveFX = -3
+
+    names = {
+        Stopped: 'Stopped',
+        Playing: 'Playing',
+        Recording: 'Recording',
+        Unknown: 'Unknown',
+        RecordingFX: 'Re-recording FX',
+        PlayingLiveFX: 'Playing with live FX',
+    }
 
 class LoopActionType(Enum):
-    Activate = 0
-    Play = 1
-    Pause = 2
-    Mute = 3
-    Unmute = 4
-    Record = 5
-    RecordNCycles = 6 # Requires arg n_cycles
-    RecordFX = 7
-    PlayLiveFX = 8
-    Play_Pause = 11
-    Mute_Unmute = 12
+    DoPlay = backend.DoPlay
+    DoStop = backend.DoStop
+    DoRecord = backend.DoRecord
+    # Extended actions for front-end
+    DoPlayLiveFX = -1
+    DoRecordFX = -2
 
-loop_action_names = {
-    'activate' : LoopActionType.Activate.value,
-    'play' : LoopActionType.Play.value,
-    'pause' : LoopActionType.Pause.value,
-    'mute' : LoopActionType.Mute.value,
-    'unmute' : LoopActionType.Unmute.value,
-    'record' : LoopActionType.Record.value,
-    'recordN' : LoopActionType.RecordNCycles.value,
-    'recordFX' : LoopActionType.RecordFX.value,
-    'playFX' : LoopActionType.PlayLiveFX.value,
-    'playPause' : LoopActionType.Play_Pause.value,
-    'muteUnmute' : LoopActionType.Mute_Unmute.value,
-}
+    names = {
+        DoPlay: 'play',
+        DoStop: 'stop',
+        DoRecord: 'record',
+        DoRecordFX: 'recordFX',
+        DoPlayLiveFX: 'playLiveFX'
+    }

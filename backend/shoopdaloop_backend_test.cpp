@@ -60,13 +60,11 @@ int main(int argc, char **argv) {
     initialize(
         n_loops,
         n_ports,
-        480000, // 10 sec @ 48000 sample rate
-        2,
+        10.0f,
         loops_to_ports.data(),
         _input_port_names.data(),
         _output_port_names.data(),
         "ShoopDaLoop_backend_test",
-        50,
         update_cb,
         backend_abort_cb
     );

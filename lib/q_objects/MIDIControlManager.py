@@ -196,9 +196,9 @@ builtin_dialects = {
             # Loop states to button colors
             LoopState.Recording.value: 'noteOn(0, loop_note, 3)',
             LoopState.Playing.value: 'noteOn(0, loop_note, 1)',
-            LoopState.WaitStart.value: 'noteOn(0, loop_note, 4)',
-            LoopState.WaitStop.value: 'noteOn(0, loop_note, 4)',
-            LoopState.Off.value: 'noteOn(0, loop_note, 0)',
+            # LoopState.WaitStart.value: 'noteOn(0, loop_note, 4)',
+            # LoopState.WaitStop.value: 'noteOn(0, loop_note, 4)',
+            # LoopState.Off.value: 'noteOn(0, loop_note, 0)',
         },
         # Any unmapped state maps to yellow
         'noteOn(0, loop_note, 5)',

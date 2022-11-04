@@ -3,11 +3,10 @@ import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
 import QtQuick.Dialogs
 
-import '../LoopState.js' as LoopState
+import '../../build/LoopState.js' as LoopState
 
 // The loop widget displays the state of a single loop within a track.
 Item {
-    property var osc_link_obj
     property bool is_selected // Selected by user
     property bool is_master   // Master loop which everything syncs to in SL
     property bool is_in_selected_scene: false
@@ -125,7 +124,7 @@ Item {
                     LoopStateIcon {
                         id: loopstateicon
                         state: statusrect.manager ? statusrect.manager.state : LoopState.LoopState.Unknown
-                        connected: sl_global_manager ? sl_global_manager.all_loops_ready : false
+                        connected: true
                         size: iconitem.height
                         y: 0
                         anchors.horizontalCenter: iconitem.horizontalCenter
@@ -175,7 +174,7 @@ Item {
         property int state
         property bool connected
         property int size
-        property string description: LoopState.LoopStateDesc[state] ? LoopState.LoopStateDesc[state] : "Invalid"
+        property string description: LoopState.LoopState_names[state] ? LoopState.LoopState_names[state] : "Invalid"
 
         width: size
         height: size
@@ -191,21 +190,12 @@ Item {
 
                 switch(lsicon.state) {
                 case LoopState.LoopState.Playing:
-                case LoopState.LoopState.PlayingDryLiveWet:
-                case LoopState.LoopState.PlayingDry:
+                case LoopState.LoopState.PlayingLiveFX:
                     return 'play'
                 case LoopState.LoopState.Recording:
-                case LoopState.LoopState.Inserting:
-                case LoopState.LoopState.RecordingWet:
+                case LoopState.LoopState.RecordingFX:
                     return 'record-rec'
-                case LoopState.LoopState.Paused:
-                    return 'pause'
-                case LoopState.LoopState.Muted:
-                    return 'volume-mute'
-                case LoopState.LoopState.WaitStart:
-                case LoopState.LoopState.WaitStop:
-                    return 'timer-sand'
-                case LoopState.LoopState.Off:
+                case LoopState.LoopState.Stopped:
                     return 'stop'
                 default:
                     return 'help-circle'
@@ -220,13 +210,10 @@ Item {
                 case LoopState.LoopState.Playing:
                     return 'green'
                 case LoopState.LoopState.Recording:
-                case LoopState.LoopState.Inserting:
                     return 'red'
-                case LoopState.LoopState.RecordingWet:
-                case LoopState.LoopState.PlayingDryLiveWet:
+                case LoopState.LoopState.RecordingFX:
+                case LoopState.LoopState.PlayingLiveFX:
                     return 'orange'
-                case LoopState.LoopState.PlayingDry:
-                    return 'grey'
                 default:
                     return 'grey'
                 }
@@ -235,8 +222,8 @@ Item {
             text_color: Material.foreground
             text: {
                 switch(lsicon.state) {
-                case LoopState.LoopState.PlayingDryLiveWet:
-                case LoopState.LoopState.RecordingWet:
+                case LoopState.LoopState.PlayingLiveFX:
+                case LoopState.LoopState.RecordingFX:
                     return 'FX'
                 default:
                     return ''
@@ -367,11 +354,11 @@ Item {
         }
     }
 
-    component SLLooperManagerDetails : LooperManagerDetails {
+    component BackendLooperManagerDetails : LooperManagerDetails {
     }
         
 
-    component SLFXLooperPairManagerDetails : LooperManagerDetails {
+    component LooperFXPairManagerDetails : LooperManagerDetails {
 
     }
 
@@ -395,18 +382,18 @@ Item {
             spacing: 5
             anchors.fill: parent
 
-            SLFXLooperPairManagerDetails {
+            BackendLooperManagerDetails {
                 title: "Overall loop"
                 manager: window.manager
             }
-            SLLooperManagerDetails {
-                title: "Pre-FX loop"
-                manager: window.manager.sl_dry_looper
-            }
-            SLLooperManagerDetails {
-                title: "Post-FX loop"
-                manager: window.manager.sl_wet_looper
-            }
+            //BackendLooperManagerDetails {
+            //    title: "Pre-FX loop"
+            //    manager: window.manager.sl_dry_looper
+            //}
+            //BackendLooperManagerDetails {
+            //    title: "Post-FX loop"
+            //    manager: window.manager.sl_wet_looper
+            //}
         }
     }
 }

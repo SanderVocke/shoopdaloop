@@ -55,6 +55,7 @@ size_t g_n_loops;
 size_t g_n_ports;
 size_t g_loop_len;
 size_t g_buf_size;
+size_t g_sample_rate;
 
 jack_client_t* g_jack_client;
 
@@ -71,6 +72,8 @@ struct atomic_state {
     std::vector<std::atomic<float>> passthroughs, loop_volumes, port_volumes;
 };
 atomic_state g_atomic_state;
+
+UpdateCallback g_update_cb;
 
 bool finished = false;
 
@@ -187,19 +190,16 @@ int jack_process (jack_nframes_t nframes, void *arg) {
 int initialize(
     unsigned n_loops,
     unsigned n_ports,
-    unsigned loop_len_samples,
-    unsigned loop_channels,
+    float loop_len_seconds,
     unsigned *loops_to_ports_mapping,
     const char **input_port_names,
     const char **output_port_names,
     const char *client_name,
-    unsigned update_period_ms,
     UpdateCallback update_cb,
     AbortCallback abort_cb
 ) {
     g_n_loops = n_loops;
     g_n_ports = n_ports;
-    g_loop_len = loop_len_samples;
 
     // Create a JACK client
     jack_status_t status;
@@ -209,10 +209,14 @@ int initialize(
         return 1;
     }
 
-    // Get JACK buffer size
+    // Get JACK buffer size and sample rate
     g_buf_size = 
         jack_port_type_get_buffer_size(g_jack_client, JACK_DEFAULT_AUDIO_TYPE) / sizeof(jack_default_audio_sample_t);
-    std::cout << "Backend: JACK buffer size: " << g_buf_size << " samples" << std::endl;
+    g_sample_rate =
+        (size_t) jack_get_sample_rate(g_jack_client);
+    std::cout << "Backend: JACK: buf size " << g_buf_size << " @ " << g_sample_rate << "samples/s" << std::endl;
+
+    g_loop_len = (size_t)((float) g_sample_rate * loop_len_seconds);
 
     // Allocate buffers
     g_states = Buffer<int8_t, 1>(n_loops);
@@ -251,7 +255,7 @@ int initialize(
 
     // Initialize loops
     for(size_t i=0; i<g_n_loops; i++) {
-        g_states(i) = Paused;
+        g_states(i) = Stopped;
         g_positions(i) = 0;
         g_lengths(i) = 0;
         g_loops_to_ports(i) = loops_to_ports_mapping[i];
@@ -281,36 +285,7 @@ int initialize(
         return 1;
     }
 
-    // Start the reporting thread
-    g_reporting_thread = std::thread([update_period_ms, update_cb]() {
-        std::vector<loop_state_t> states(g_n_loops);
-        std::vector<int32_t> positions(g_n_loops), lengths(g_n_loops);
-        std::vector<float> passthroughs(g_n_ports), loop_volumes(g_n_loops), port_volumes(g_n_ports);
-        while(!finished) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(update_period_ms));
-            for(int i=0; i<g_n_loops; i++) {
-                states[i] = g_atomic_state.states[i];
-                positions[i] = g_atomic_state.states[i];
-                lengths[i] = g_atomic_state.lengths[i];
-                loop_volumes[i] = g_atomic_state.loop_volumes[i];
-            }
-            for(int i=0; i<g_n_ports; i++) {
-                passthroughs[i] = g_atomic_state.passthroughs[i];
-                port_volumes[i] = g_atomic_state.port_volumes[i];
-            }
-            
-            int r = update_cb(
-                g_n_loops,
-                g_n_ports,
-                states.data(),
-                lengths.data(),
-                positions.data(),
-                loop_volumes.data(),
-                port_volumes.data(),
-                passthroughs.data()
-            );
-        }
-    });
+    g_update_cb = update_cb;
 
     return 0;
 }
@@ -333,9 +308,10 @@ int do_loop_action(
                 g_states(loop_idx) = Playing;
             };
             break;
-        case DoPause:
+        case DoStop:
             cmd = [loop_idx]() {
-                g_states(loop_idx) = Paused;
+                g_states(loop_idx) = Stopped;
+                g_positions(loop_idx) = 0;
             };
             break;
         default:
@@ -344,6 +320,38 @@ int do_loop_action(
 
     if(cmd) { push_command(cmd); }
     return 0;
+}
+
+void request_update() {
+    // Allocate memory for a copy of the relevant state
+    std::vector<loop_state_t> states(g_n_loops);
+    std::vector<int32_t> positions(g_n_loops), lengths(g_n_loops);
+    std::vector<float> passthroughs(g_n_ports), loop_volumes(g_n_loops), port_volumes(g_n_ports);
+
+    // Copy the state
+    for(int i=0; i<g_n_loops; i++) {
+        states[i] = g_atomic_state.states[i];
+        positions[i] = g_atomic_state.states[i];
+        lengths[i] = g_atomic_state.lengths[i];
+        loop_volumes[i] = g_atomic_state.loop_volumes[i];
+    }
+    for(int i=0; i<g_n_ports; i++) {
+        passthroughs[i] = g_atomic_state.passthroughs[i];
+        port_volumes[i] = g_atomic_state.port_volumes[i];
+    }
+    
+    if (g_update_cb) {
+        int r = g_update_cb(
+            g_n_loops,
+            g_n_ports,
+            states.data(),
+            lengths.data(),
+            positions.data(),
+            loop_volumes.data(),
+            port_volumes.data(),
+            passthroughs.data()
+        );
+    }
 }
 
 } //extern "C"

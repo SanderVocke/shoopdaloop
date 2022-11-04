@@ -2,8 +2,8 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
 
-import SLLooperManager 1.0
-import '../LoopState.js' as LoopState
+import BackendLooperManager 1.0
+import '../../build/LoopState.js' as LoopState
 
 Item {
     anchors {
@@ -19,30 +19,38 @@ Item {
     property var loop_managers: {
         // Nested array of loop mgrs per track. Master loop is regarded as the first track.
 
-        function mgr_snippet (dry_sl_looper_idx, wet_sl_looper_idx, sync) {
+        function mgr_snippet (loop_idx, sync) {
             // single loop version
             //return 'import QtQuick 2.0; import SLLooperManager 1.0; SLLooperManager {sl_looper_index: ' + (outer * loops_per_track + inner).toString() + '\nsync: ' + (outer != 0 || inner != 0).toString() + '}'
+            return 'import QtQuick 2.0\n' +
+            'import BackendLooperManager 1.0\n' +
+            'BackendLooperManager { loop_idx: ' +
+                loop_idx.toString() +
+                ' }';
 
             // double loop version
-            return 'import QtQuick 2.0; import SLFXLooperPairManager 1.0; SLFXLooperPairManager {\n  sl_dry_looper_idx: ' + dry_sl_looper_idx.toString() + '\n  sl_wet_looper_idx: ' + wet_sl_looper_idx.toString() + '\nsync: ' + sync.toString() + '\n}'
+            // return 'import QtQuick 2.0; import SLFXLooperPairManager 1.0; SLFXLooperPairManager {\n  sl_dry_looper_idx: ' + dry_sl_looper_idx.toString() + '\n  sl_wet_looper_idx: ' + wet_sl_looper_idx.toString() + '\nsync: ' + sync.toString() + '\n}'
         }
 
         var outer, inner
         var managers = []
-        var master_mgr = Qt.createQmlObject(mgr_snippet(0, 1, true),
+        var master_mgr = Qt.createQmlObject(mgr_snippet(0, true),
                             shared,
                             "dynamicSnippet1");
-        master_mgr.connect_osc_link(osc_link)
         master_mgr.connect_midi_control_manager(midi_control_manager, 0, 0)
+        master_mgr.connect_backend_manager(backend_manager)
         managers.push([master_mgr])
         for(outer = 0; outer < tracks; outer++) {
             var i_managers = []
             for(inner = 0; inner < loops_per_track; inner++) {
-                var mgr = Qt.createQmlObject(mgr_snippet((outer * loops_per_track + inner)*2 + 2, (outer * loops_per_track + inner)*2 + 3, true),
-                                             shared,
-                                             "dynamicSnippet1");
-                mgr.connect_osc_link(osc_link)
+                var mgr = Qt.createQmlObject(mgr_snippet(
+                    (outer * loops_per_track + inner)*2 + 2,
+                    //(outer * loops_per_track + inner)*2 + 3,
+                    true),
+                    shared,
+                    "dynamicSnippet1");
                 mgr.connect_midi_control_manager(midi_control_manager, outer + 1, inner)
+                mgr.connect_backend_manager(backend_manager)
                 i_managers.push(mgr)
             }
             managers.push(i_managers)
@@ -146,7 +154,6 @@ Item {
     property var scene_names: []
     property var loops_of_selected_scene: []
     property var loops_of_hovered_scene: []
-    property bool ready_to_register_loops: sl_global_manager.all_loops_ready
 
     // FUNCTIONS
     function actions_on_loop_mgrs_in_track(track_idx, loop_idx, on_idx_loop_fn, on_other_loop_fn) {
@@ -169,37 +176,19 @@ Item {
     }
 
     function set_track_volume(track_idx, vol) {
-        for(var i = 0; i < loop_managers[track_idx].length; i++) {
-            loop_managers[track_idx][i].volume = vol
-        }
+        // TODO implement
     }
 
     function set_track_passthrough(track_idx, level) {
-        var loop_idx = Math.max(selected_loops[track_idx], 0)
-        actions_on_loop_mgrs_in_track(track_idx, loop_idx,
-                                      (mgr) => {
-                                        mgr.passthrough = level
-                                      },
-                                      (mgr) => {
-                                        mgr.doMute()
-                                        mgr.passthrough = 0.0
-                                      }
-                                      )
+        // TODO implement
     }
 
     function select_loop(track_idx, loop_idx) {
         if (selected_loops[track_idx] == loop_idx) { return; }
-        var passthrough = loop_managers[track_idx][selected_loops[track_idx]].passthrough
-        actions_on_loop_mgrs_in_track(track_idx, loop_idx,
-                                      (mgr) => {
-                                        mgr.doUnmute()
-                                        mgr.passthrough = passthrough
-                                      },
-                                      (mgr) => {
-                                        mgr.doMute()
-                                        mgr.passthrough = 0.0
-                                      }
-                                      )
+        
+
+        // TODO make any state changes to loops
+        
 
         // Update everything else
         selected_loops[track_idx] = loop_idx
@@ -373,26 +362,26 @@ Item {
 
     function load_loop_wav(track_idx, loop_idx, wav_file) {
         var mgr = loop_managers[track_idx][loop_idx];
-        mgr.doLoadWav(wav_file);
+        // TODO implement: mgr.doLoadWav(wav_file);
     }
 
     function save_loop_wav(track_idx, loop_idx, wav_file) {
         var mgr = loop_managers[track_idx][loop_idx];
-        mgr.doSaveWav(wav_file);
+        // TODO implement: mgr.doSaveWav(wav_file);
     }
 
     function clear_loop(track_idx, loop_idx) {
         var mgr = loop_managers[track_idx][loop_idx];
-        mgr.doClear();
+        // TODO: implement mgr.doClear();
     }
 
     function save_session(filename, store_audio) {
         var my_state = serialize_state()
-        sl_global_manager.save_session(my_state, [].concat(...loop_managers), store_audio, filename)
+        // sl_global_manager.save_session(my_state, [].concat(...loop_managers), store_audio, filename)
     }
 
     function load_session(filename) {
-        var my_state = sl_global_manager.load_session([].concat(...loop_managers), osc_link, filename)
+        // var my_state = sl_global_manager.load_session([].concat(...loop_managers), osc_link, filename)
         deserialize_state(my_state)
     }
 
@@ -407,15 +396,6 @@ Item {
             midi_control_manager.active_scene_changed(selected_scene)
         }
         function onHovered_sceneChanged() { update_loops_of_hovered_scene() }
-        function onReady_to_register_loopsChanged() {
-            if (ready_to_register_loops) {
-                for(var outer = 0; outer < loop_managers.length; outer++) {
-                    for(var inner = 0; inner < loop_managers[outer].length; inner++) {
-                        loop_managers[outer][inner].start_sync();
-                    }
-                }
-            }
-        }
     }
 
     Connections {
@@ -436,50 +416,11 @@ Item {
             set_track_volume(track, value)
         }
         function onLoopAction(track, loop, action, args) {
-            if (track < 0 || track >= loop_managers.length) {
-                console.log("Ignoring MIDI control for out-of-bounds track: " + track.toString())
-                return
-            }
-            if (loop < 0 || loop >= loop_managers[track].length) {
-                console.log("Ignoring MIDI control for out-of-bounds loop: (" + track.toString() + ", " + loop.toString() + ")")
-                return
-            }
-            var mgr = loop_managers[track][loop]
-            switch(action) {
-                case LoopState.LoopActionType.Activate:
-                    select_loop(track, loop)
-                    break
-                case LoopState.LoopActionType.Play:
-                    mgr.doPlay()
-                    break
-                case LoopState.LoopActionType.Pause:
-                    mgr.doPause()
-                    break
-                case LoopState.LoopActionType.Mute:
-                    mgr.doMute()
-                    break
-                case LoopState.LoopActionType.Unmute:
-                    mgr.doUnmute()
-                    break
-                case LoopState.LoopActionType.Record:
-                    mgr.doRecord()
-                    break
-                case LoopState.LoopActionType.RecordNCycles:
-                    mgr.doRecordNCycles(args[0])
-                    break
-                case LoopState.LoopActionType.RecordFX:
-                    mgr.doRecordFx(loop_managers[0][0])
-                    break
-                case LoopState.LoopActionType.PlayLiveFX:
-                    mgr.doPlayLiveFx()
-                    break
-                case LoopState.LoopActionType.Play_Pause:
-                    mgr.doPlayPause()
-                    break
-                case LoopState.LoopActionType.Mute_Unmute:
-                    mgr.doMuteUnmute()
-                    break
-            }
+            loop_idx =
+                track == 0 ?
+                    loop :
+                    (track-1)*loops_per_track + loop_managers[0].length + loop;
+            backend_manager.do_loop_action(loop_idx, action, args);
         }
     }
 }

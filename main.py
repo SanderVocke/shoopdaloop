@@ -4,20 +4,19 @@ from PyQt6.QtGui import QGuiApplication
 from PyQt6.QtQml import QQmlApplicationEngine, qmlRegisterType
 from PyQt6.QtCore import QTimer
 
-from lib.q_objects.SLLooperManager import SLLooperManager
 from lib.q_objects.LooperManager import LooperManager
-from lib.q_objects.SLFXLooperPairManager import SLFXLooperPairManager
-from lib.q_objects.SLGlobalManager import SLGlobalManager
-from lib.q_objects.SooperLooperOSCLink import SooperLooperOSCLink
+from lib.q_objects.BackendLooperManager import BackendLooperManager
+from lib.q_objects.BackendManager import BackendManager
 from lib.q_objects.ClickTrackGenerator import ClickTrackGenerator
 from lib.q_objects.MIDIControlManager import MIDIControlManager
 from lib.q_objects.MIDIControlLink import MIDIControlLink
+from lib.q_objects.BackendManager import BackendManager
 
 from lib.JackSession import JackSession
 from lib.SooperLooperSession import SooperLooperSession
-from lib.BackendSession import BackendSession
-
 from third_party.pyjacklib import jacklib
+
+from collections import OrderedDict
 
 import signal
 import psutil
@@ -47,40 +46,58 @@ script_pwd = os.path.dirname(__file__)
 with JackSession('ShoopDaLoop-control') as jack_session:
     jack = jack_session[0]
     jack_client = jack_session[1]
-    with SooperLooperSession(1, 6, 2, 9951, 'ShoopDaLoop', jack, jack_client):
-        with BackendSession(1, 1, 2, 'ShoopDaLoop-loops'):
-            app = QGuiApplication(sys.argv)
 
-            link = SooperLooperOSCLink(None, '0.0.0.0', 9951, '0.0.0.0', 9952)
-            click_track_generator = ClickTrackGenerator()
-            global_mgr = SLGlobalManager(None)
-            global_mgr.connect_osc_link(link)
-            midi_control_mgr = MIDIControlManager(None, jack_client, jack)
+    app = QGuiApplication(sys.argv)
 
-            qmlRegisterType(SLLooperManager, 'SLLooperManager', 1, 0, 'SLLooperManager')
-            qmlRegisterType(SLFXLooperPairManager, 'SLFXLooperPairManager', 1, 0, 'SLFXLooperPairManager')
-            qmlRegisterType(SLGlobalManager, 'SLGlobalManager', 1, 0, 'SLGlobalManager')
-            qmlRegisterType(LooperManager, 'LooperManager', 1, 0, 'LooperManager')
-            qmlRegisterType(SooperLooperOSCLink, 'SooperLooperOSCLink', 1, 0, 'SooperLooperOSCLink')
-            qmlRegisterType(ClickTrackGenerator, 'ClickTrackGenerator', 1, 0, 'ClickTrackGenerator')
-            qmlRegisterType(MIDIControlManager, 'MIDIControlManager', 1, 0, 'MIDIControlManager')
+    click_track_generator = ClickTrackGenerator()
+    midi_control_mgr = MIDIControlManager(None, jack_client, jack)
 
-            engine = QQmlApplicationEngine()
-            engine.rootContext().setContextProperty("osc_link", link)
-            engine.rootContext().setContextProperty("sl_global_manager", global_mgr)
-            engine.rootContext().setContextProperty("click_track_generator", click_track_generator)
-            engine.rootContext().setContextProperty("midi_control_manager", midi_control_mgr)
-            engine.quit.connect(app.quit)
-            engine.load('main.qml')
+    # Set up port name mappings
+    port_names_to_loop_amounts = OrderedDict()
+    port_names_to_loop_amounts[('master_loop_in_l', 'master_loop_out_l')] = 1
+    port_names_to_loop_amounts[('master_loop_in_r', 'master_loop_out_r')] = 1
+    n_tracks = 8
+    loops_per_track = 6
+    for track_idx in range(n_tracks):
+        port_names_to_loop_amounts[(
+            'loop_{}_in_l'.format(track_idx + 1),
+            'loop_{}_out_l'.format(track_idx + 1),
+        )] = loops_per_track
+        port_names_to_loop_amounts[(
+            'loop_{}_in_r'.format(track_idx + 1),
+            'loop_{}_out_r'.format(track_idx + 1),
+        )] = loops_per_track
+    
+    # Start the back-end
+    backend_mgr = BackendManager(
+        port_names_to_loop_amounts,
+        2,
+        60.0,
+        'ShoopDaLoop-backend',
+        0.1
+    )
 
-            exitcode = 0
+    qmlRegisterType(BackendLooperManager, 'BackendLooperManager', 1, 0, 'BackendLooperManager')
+    qmlRegisterType(BackendManager, 'BackendManager', 1, 0, 'BackendManager')
+    qmlRegisterType(LooperManager, 'LooperManager', 1, 0, 'LooperManager')
+    qmlRegisterType(ClickTrackGenerator, 'ClickTrackGenerator', 1, 0, 'ClickTrackGenerator')
+    qmlRegisterType(MIDIControlManager, 'MIDIControlManager', 1, 0, 'MIDIControlManager')
 
-            # This hacky solution ensures that the Python interpreter has a chance
-            # to run every 100ms, which e.g. allows the signal handlers to work.
-            timer = QTimer()
-            timer.start(100)
-            timer.timeout.connect(lambda: None)
+    engine = QQmlApplicationEngine()
+    engine.rootContext().setContextProperty("backend_manager", backend_mgr)
+    engine.rootContext().setContextProperty("click_track_generator", click_track_generator)
+    engine.rootContext().setContextProperty("midi_control_manager", midi_control_mgr)
+    engine.quit.connect(app.quit)
+    engine.load('main.qml')
 
-            exitcode = app.exec()
+    exitcode = 0
+
+    # This hacky solution ensures that the Python interpreter has a chance
+    # to run every 100ms, which e.g. allows the signal handlers to work.
+    timer = QTimer()
+    timer.start(100)
+    timer.timeout.connect(lambda: None)
+
+    exitcode = app.exec()
 
 sys.exit(exitcode)

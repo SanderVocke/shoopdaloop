@@ -70,7 +70,7 @@ class LooperManager(QObject):
             self._pos = p
             self.posChanged.emit(p)
     
-    # sync (whether this loop is to be synced to the main loop or not)
+    # sync (whether this loop is synced to the main loop or not)
     @pyqtProperty(bool, notify=syncChanged)
     def sync(self):
         return self._sync
@@ -145,72 +145,8 @@ class LooperManager(QObject):
         milliseconds_ahead = int((pos - estimated_pos + self.length * n_cycles_ahead) * 1000.0)
         QTimer.singleShot(milliseconds_ahead, action_fn)
     
-    @pyqtSlot()
-    def doTrigger(self):
-        raise NotImplementedError()
-
-    @pyqtSlot()
-    def doPlay(self):
-        raise NotImplementedError()
-    
-    @pyqtSlot()
-    def doPlayLiveFx(self):
-        raise NotImplementedError()
-
-    @pyqtSlot()
-    def doPause(self):
-        raise NotImplementedError()
-
-    @pyqtSlot()
-    def doRecord(self):
-        raise NotImplementedError()
-    
-    @pyqtSlot()
-    def doRecordFx(self, master_manager):
-        raise NotImplementedError()
-
-    @pyqtSlot(int, QObject)
-    def doRecordNCycles(self, n, master_manager):
-        raise NotImplementedError()
-
-    @pyqtSlot()
-    def doStopRecord(self):
-        raise NotImplementedError()
-
-    @pyqtSlot()
-    def doMute(self):
-        raise NotImplementedError()
-
-    @pyqtSlot()
-    def doUnmute(self):
-        raise NotImplementedError()
-
-    @pyqtSlot()
-    def doInsert(self):
-        raise NotImplementedError()
-
-    @pyqtSlot()
-    def doReplace(self):
-        raise NotImplementedError()
-    
-    @pyqtSlot()
-    def doPlayDry(self):
-        raise NotImplementedError()
-
-    @pyqtSlot(str)
-    def doLoadWav(self, wav_file):
-        raise NotImplementedError()
-
-    @pyqtSlot()
-    def doClear(self):
-        raise NotImplementedError()
-
-    @pyqtSlot(str)
-    def doSaveWav(self, wav_file):
-        raise NotImplementedError()
-
-    @pyqtSlot(QObject)
-    def connect_osc_link(self, link):
+    @pyqtSlot(int, list)
+    def doLoopAction(self, action_id, args):
         raise NotImplementedError()
     
     @pyqtSlot(result=str)
@@ -221,3 +157,8 @@ class LooperManager(QObject):
     def connect_midi_control_manager(self, manager, track_idx, loop_idx):
         self.stateChanged.connect(lambda state: manager.loop_state_changed(track_idx, loop_idx, state))
         self.stateChanged.emit(self.state)
+    
+    @pyqtSlot(QObject)
+    def connect_backend_manager(self, manager):
+        raise NotImplementedError()
+

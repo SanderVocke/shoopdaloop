@@ -3,9 +3,17 @@ project(shoopdaloop_backend)
 
 add_subdirectory(backend)
 
+# Generate a python module file for generated .py files.
 add_custom_target(
     build_module
     ALL
     touch __init__.py
     BYPRODUCTS __init__.py
+)
+
+# Generate javascript copy of enums
+add_custom_target(
+    LoopState.js
+    ALL
+    python ${CMAKE_CURRENT_SOURCE_DIR}/lib/codegen/gen_js_enums.py LoopState.js
 )
