@@ -24,6 +24,9 @@ using namespace std;
 // State for each loop
 Buffer<int8_t, 1> g_states;
 
+// Planned state for each loop
+Buffer<int8_t, 1> g_next_states;
+
 // Position for each loop
 Buffer<int32_t, 1> g_positions;
 
@@ -42,6 +45,10 @@ Buffer<float, 2> g_storage;
 
 // Map of loop idx to port idx
 Buffer<int32_t, 1> g_loops_to_ports;
+
+// Sync mappings
+Buffer<int32_t, 1> g_loops_hard_sync_mapping;
+Buffer<int32_t, 1> g_loops_soft_sync_mapping;
 
 // Levels
 Buffer<float, 1> g_passthroughs; // Per port
@@ -67,7 +74,7 @@ std::thread g_reporting_thread;
 // A structure of atomic scalars is used to communicate the latest
 // state back from the Jack processing thread to the main thread.
 struct atomic_state {
-    std::vector<std::atomic<loop_state_t>> states;
+    std::vector<std::atomic<loop_state_t>> states, next_states;
     std::vector<std::atomic<int32_t>> positions, lengths;
     std::vector<std::atomic<float>> passthroughs, loop_volumes, port_volumes;
 };
@@ -135,10 +142,13 @@ int jack_process (jack_nframes_t nframes, void *arg) {
     shoopdaloop_loops(
         g_samples_in,
         g_states,
+        g_next_states,
         g_positions,
         g_lengths,
         g_storage,
         g_loops_to_ports,
+        g_loops_hard_sync_mapping,
+        g_loops_soft_sync_mapping,
         g_passthroughs,
         g_port_volumes,
         g_loop_volumes,
@@ -167,6 +177,7 @@ int jack_process (jack_nframes_t nframes, void *arg) {
     // Copy states to atomic for read-out
     for(int i=0; i<g_n_loops; i++) {
         g_atomic_state.states[i] = (loop_state_t) g_states(i);
+        g_atomic_state.next_states[i] = (loop_state_t) g_next_states(i);
         g_atomic_state.lengths[i] = g_lengths(i);
         g_atomic_state.loop_volumes[i] = g_loop_volumes(i);
         g_atomic_state.positions[i] = g_positions(i);
@@ -207,6 +218,8 @@ int initialize(
     unsigned n_ports,
     float loop_len_seconds,
     unsigned *loops_to_ports_mapping,
+    int *loops_hard_sync_mapping,
+    int *loops_soft_sync_mapping,
     const char **input_port_names,
     const char **output_port_names,
     const char *client_name,
@@ -236,6 +249,7 @@ int initialize(
 
     // Allocate buffers
     g_states = Buffer<int8_t, 1>(n_loops);
+    g_next_states = Buffer<int8_t, 1>(n_loops);
     g_positions = Buffer<int32_t, 1>(n_loops);
     g_lengths = Buffer<int32_t, 1>(n_loops);
     g_samples_in_raw.resize(n_ports*g_buf_size);
@@ -243,6 +257,8 @@ int initialize(
     g_samples_out_per_loop = Buffer<float, 2>(g_buf_size, n_loops);
     g_storage = Buffer<float, 2>(g_loop_len, n_loops);
     g_loops_to_ports = Buffer<int32_t, 1>(n_loops);
+    g_loops_hard_sync_mapping = Buffer<int32_t, 1>(n_loops);
+    g_loops_soft_sync_mapping = Buffer<int32_t, 1>(n_loops);
     g_passthroughs = Buffer<float, 1>(n_ports);
     g_port_volumes = Buffer<float, 1>(n_ports);
     g_loop_volumes = Buffer<float, 1>(n_loops);
@@ -260,6 +276,7 @@ int initialize(
 
     // Allocate atomic state
     g_atomic_state.states = std::vector<std::atomic<loop_state_t>>(n_loops);
+    g_atomic_state.next_states = std::vector<std::atomic<loop_state_t>>(n_loops);
     g_atomic_state.lengths = std::vector<std::atomic<int32_t>>(n_loops);
     g_atomic_state.loop_volumes = std::vector<std::atomic<float>>(n_loops);
     g_atomic_state.port_volumes = std::vector<std::atomic<float>>(n_ports);
@@ -272,9 +289,14 @@ int initialize(
     // Initialize loops
     for(size_t i=0; i<g_n_loops; i++) {
         g_states(i) = Stopped;
+        g_next_states(i) = Stopped;
         g_positions(i) = 0;
         g_lengths(i) = 0;
         g_loops_to_ports(i) = loops_to_ports_mapping[i];
+        g_loops_hard_sync_mapping(i) = loops_hard_sync_mapping[i] < 0 ?
+            i : loops_hard_sync_mapping[i];
+        g_loops_soft_sync_mapping(i) = loops_soft_sync_mapping[i] < 0 ?
+            i : loops_soft_sync_mapping[i];
         g_loop_volumes(i) = 1.0f;
     }
 
@@ -332,28 +354,36 @@ int do_loop_action(
     loop_action_t action
 ) {
     std::function<void()> cmd = nullptr;
+    auto apply_state = [](size_t loop, loop_state_t state) {
+        std::cout << loop << " vs " << g_loops_soft_sync_mapping(loop) << std::endl;
+        if (g_loops_soft_sync_mapping(loop) == loop) {
+            g_states(loop) = g_next_states(loop) = state;
+        } else {
+            g_next_states(loop) = state;
+        }
+    };
     switch(action) {
         case DoRecord:
-            cmd = [loop_idx]() {
-                g_states(loop_idx) = Recording;
+            cmd = [loop_idx, apply_state]() {
+                apply_state(loop_idx, Recording);
                 g_positions(loop_idx) = 0;
                 g_lengths(loop_idx) = 0;
             };
             break;
         case DoPlay:
-            cmd = [loop_idx]() {
-                g_states(loop_idx) = Playing;
+            cmd = [loop_idx, apply_state]() {
+                apply_state(loop_idx, Playing);
             };
             break;
         case DoStop:
-            cmd = [loop_idx]() {
-                g_states(loop_idx) = Stopped;
+            cmd = [loop_idx, apply_state]() {
+                apply_state(loop_idx, Stopped);
                 g_positions(loop_idx) = 0;
             };
             break;
         case DoClear:
-            cmd = [loop_idx]() {
-                g_states(loop_idx) = Stopped;
+            cmd = [loop_idx, apply_state]() {
+                apply_state(loop_idx, Stopped);
                 g_positions(loop_idx) = 0;
                 g_lengths(loop_idx) = 0;
             };
@@ -371,13 +401,14 @@ int do_loop_action(
 
 void request_update() {
     // Allocate memory for a copy of the relevant state
-    std::vector<loop_state_t> states(g_n_loops);
+    std::vector<loop_state_t> states(g_n_loops), next_states(g_n_loops);
     std::vector<int32_t> positions(g_n_loops), lengths(g_n_loops);
     std::vector<float> passthroughs(g_n_ports), loop_volumes(g_n_loops), port_volumes(g_n_ports);
 
     // Copy the state
     for(int i=0; i<g_n_loops; i++) {
         states[i] = g_atomic_state.states[i];
+        next_states[i] = g_atomic_state.next_states[i];
         positions[i] = g_atomic_state.positions[i];
         lengths[i] = g_atomic_state.lengths[i];
         loop_volumes[i] = g_atomic_state.loop_volumes[i];
@@ -392,6 +423,7 @@ void request_update() {
             g_n_loops,
             g_n_ports,
             states.data(),
+            next_states.data(),
             lengths.data(),
             positions.data(),
             loop_volumes.data(),

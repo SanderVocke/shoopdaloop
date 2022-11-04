@@ -14,7 +14,6 @@ from lib.q_objects.MIDIControlLink import MIDIControlLink
 from lib.q_objects.BackendManager import BackendManager
 
 from lib.JackSession import JackSession
-from lib.SooperLooperSession import SooperLooperSession
 from third_party.pyjacklib import jacklib
 
 from collections import OrderedDict
@@ -53,26 +52,28 @@ with JackSession('ShoopDaLoop-control') as jack_session:
     click_track_generator = ClickTrackGenerator()
     midi_control_mgr = MIDIControlManager(None, jack_client, jack)
 
-    # Set up port name mappings
+    # Set up port name mappings.
+    # Note that one actual logical loop consists of 4 loops: 2 for 2 channels and for dry/wet.
     port_names_to_loop_amounts = OrderedDict()
-    port_names_to_loop_amounts[('master_loop_in_l', 'master_loop_out_l')] = 1
-    port_names_to_loop_amounts[('master_loop_in_r', 'master_loop_out_r')] = 1
     n_tracks = 8
     loops_per_track = 6
+    port_names_to_loop_amounts[('master_loop_in_l', 'master_loop_out_l')] = 2
+    port_names_to_loop_amounts[('master_loop_in_r', 'master_loop_out_r')] = 2
     for track_idx in range(n_tracks):
         port_names_to_loop_amounts[(
-            'loop_{}_in_l'.format(track_idx + 1),
-            'loop_{}_out_l'.format(track_idx + 1),
-        )] = loops_per_track
+            'track_{}_in_l'.format(track_idx + 1),
+            'track_{}_out_l'.format(track_idx + 1),
+        )] = loops_per_track * 2
         port_names_to_loop_amounts[(
-            'loop_{}_in_r'.format(track_idx + 1),
-            'loop_{}_out_r'.format(track_idx + 1),
-        )] = loops_per_track
+            'track_{}_in_r'.format(track_idx + 1),
+            'track_{}_out_r'.format(track_idx + 1),
+        )] = loops_per_track * 2
     
     # Start the back-end
     backend_mgr = BackendManager(
         port_names_to_loop_amounts,
         2,
+        0,
         60.0,
         'ShoopDaLoop-backend',
         0.03 # About 30Hz updates

@@ -16,6 +16,7 @@ public:
 
     // Nl states, positions, lengths (one for each looper)
     Input<Buffer<int8_t, 1>> states_in{"states_in"};
+    Input<Buffer<int8_t, 1>> next_states_in{"next_states_in"};
     Input<Buffer<int32_t, 1>> positions_in{"positions_in"};
     Input<Buffer<int32_t, 1>> loop_lengths_in{"loop_lengths_in"};
 
@@ -24,6 +25,10 @@ public:
 
     // Nl indices which indicate to which port each looper is mapped
     Input<Buffer<int32_t, 1>> ports_map{"ports_map"};
+
+    // Nl indices which indicate soft and hard sync
+    Input<Buffer<int32_t, 1>> hard_sync_map{"hard_sync_map"};
+    Input<Buffer<int32_t, 1>> soft_sync_map{"soft_sync_map"};
 
     // Np levels to indicate how much passthrough and volume we want on the ports
     Input<Buffer<float, 1>> port_passthrough_levels{"port_passthrough_levels"};
@@ -59,6 +64,12 @@ public:
         Func state("state");
         state(loop) = select(loop >= states_in.dim(0).min() && loop <= states_in.dim(0).max(),
             states_in(loop), 0);
+        
+        Func soft_sync("soft_sync"), hard_sync("hard_sync");
+        soft_sync(loop) = select(loop >= soft_sync_map.dim(0).min() && loop <= soft_sync_map.dim(0).max(),
+            soft_sync_map(loop), 0);
+        hard_sync(loop) = select(loop >= hard_sync_map.dim(0).min() && loop <= hard_sync_map.dim(0).max(),
+            hard_sync_map(loop), 0);
 
         // Boundary conditions help to vectorize
         Expr len_in = select(loop >= loop_lengths_in.dim(0).min() && loop <= loop_lengths_in.dim(0).max(),
@@ -166,9 +177,6 @@ public:
             .vectorize(rr, 8)
             //.trace_stores()
             ;
-        
-        //samples_out.trace_stores();
-        //positions_out.trace_stores();
         
         Pipeline({samples_out, loop_storage_out, states_out, positions_out, loop_lengths_out}).print_loop_nest();
     }

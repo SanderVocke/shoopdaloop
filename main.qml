@@ -33,7 +33,6 @@ ApplicationWindow {
         }
         id: shared
 
-        // Tell the global manager what the desired loop count is, so SooperLooper will be set up for it.
         TracksWidget {
             // Note the offset of 1 in all the track indexing. This is because we skip
             // the master track, which is the first track in the shared state. It has
@@ -195,7 +194,7 @@ ApplicationWindow {
                         horizontalCenter: logo.horizontalCenter
                         topMargin: 6
                     }
-                    text: 'ShoopDaLoop v0.1<br>Powered by <a href="http://sonosaurus.com/sooperlooper/">SooperLooper</a>' // TODO
+                    text: 'ShoopDaLoop v0.1' // TODO
                     onLinkActivated: Qt.openUrlExternally(link)
                     color: Material.foreground
                     font.pixelSize: 12

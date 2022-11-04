@@ -8,7 +8,7 @@ import tempfile
 from ..LoopState import LoopState
 from .LooperManager import LooperManager
 
-# Looper manager for a single loop in Sooperlooper.
+# Looper manager for a single loop in the back-end.
 class BackendLooperManager(LooperManager):
     signalLoopAction = pyqtSignal(int, list) # action_id, args
     loopIdxChanged = pyqtSignal(int)
@@ -51,12 +51,14 @@ class BackendLooperManager(LooperManager):
         list,
         list,
         list,
+        list,
         list)
     def update(
         self,
         n_loops,
         n_ports,
         states,
+        next_states,
         lengths,
         positions,
         loop_volumes,

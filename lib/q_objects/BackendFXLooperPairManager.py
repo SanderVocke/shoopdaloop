@@ -203,7 +203,7 @@ class BackendFXLooperPairManager(LooperManager):
                 # TODO: N cycles
                 wet_action = LoopActionType.DoRecord.value
                 dry_action = LoopActionType.DoPlay.value
-            case LoopActionType.doRecordNCycles.value:
+            case LoopActionType.DoRecordNCycles.value:
                 force_dry_passthrough = True
         
         self.wet().doLoopAction(wet_action, wet_args)
