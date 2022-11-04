@@ -1,6 +1,9 @@
 import os, sys
 pwd = os.path.dirname(__file__)
 sys.path.append(pwd + '/..')
+sys.path.append(pwd + '/../..')
+sys.path.append(pwd + '/../../build')
+
 from LoopState import *
 from pprint import *
 

@@ -1,7 +1,10 @@
 from enum import Enum
-import sys
-sys.path.append('..')
-import build.backend.shoopdaloop_backend as backend
+import sys, os
+pwd = os.path.dirname(__file__)
+sys.path.append(pwd + '/..')
+sys.path.append(pwd + '/../build')
+
+from backend import shoopdaloop_backend as backend
 
 class LoopState(Enum):
     Stopped = backend.Stopped
@@ -11,6 +14,7 @@ class LoopState(Enum):
     Unknown = -1
     RecordingFX = -2
     PlayingLiveFX = -3
+    Empty = -4
 
     names = {
         Stopped: 'Stopped',
@@ -19,12 +23,15 @@ class LoopState(Enum):
         Unknown: 'Unknown',
         RecordingFX: 'Re-recording FX',
         PlayingLiveFX: 'Playing with live FX',
+        Empty: 'Empty',
     }
 
 class LoopActionType(Enum):
     DoPlay = backend.DoPlay
     DoStop = backend.DoStop
     DoRecord = backend.DoRecord
+    DoRecordNCycles = backend.DoRecordNCycles
+    DoClear = backend.DoClear
     # Extended actions for front-end
     DoPlayLiveFX = -1
     DoRecordFX = -2

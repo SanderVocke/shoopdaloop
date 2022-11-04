@@ -11,8 +11,10 @@ typedef enum {
 
 typedef enum  {
     DoRecord,
+    DoRecordNCycles,
     DoPlay,
     DoStop,
+    DoClear,
     LOOP_ACTION_MAX
 } loop_action_t;
 

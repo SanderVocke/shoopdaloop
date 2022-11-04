@@ -197,6 +197,8 @@ Item {
                     return 'record-rec'
                 case LoopState.LoopState.Stopped:
                     return 'stop'
+                case LoopState.LoopState.Empty:
+                    return 'border-none-variant'
                 default:
                     return 'help-circle'
                 }
@@ -354,11 +356,11 @@ Item {
         }
     }
 
-    component BackendLooperManagerDetails : LooperManagerDetails {
+    component BackendFXLooperPairManagerDetails : LooperManagerDetails {
     }
         
 
-    component LooperFXPairManagerDetails : LooperManagerDetails {
+    component BackendLooperManagerDetails : LooperManagerDetails {
 
     }
 
@@ -382,18 +384,18 @@ Item {
             spacing: 5
             anchors.fill: parent
 
-            BackendLooperManagerDetails {
+            BackendFXLooperPairManagerDetails {
                 title: "Overall loop"
                 manager: window.manager
             }
-            //BackendLooperManagerDetails {
-            //    title: "Pre-FX loop"
-            //    manager: window.manager.sl_dry_looper
-            //}
-            //BackendLooperManagerDetails {
-            //    title: "Post-FX loop"
-            //    manager: window.manager.sl_wet_looper
-            //}
+            BackendLooperManagerDetails {
+                title: "Pre-FX loop"
+                manager: window.manager.dry_looper
+            }
+            BackendLooperManagerDetails {
+                title: "Post-FX loop"
+                manager: window.manager.wet_looper
+            }
         }
     }
 }

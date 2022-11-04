@@ -9,12 +9,13 @@ add_custom_target(
     ALL
     touch __init__.py
     BYPRODUCTS __init__.py
-)
+    )
 
 # Generate javascript copy of enums
 add_custom_target(
     LoopState.js
     ALL
-    python ${CMAKE_CURRENT_SOURCE_DIR}/lib/codegen/gen_js_enums.py LoopState.js
-    DEPENDS shoopdaloop_backend.py
+    python ${CMAKE_CURRENT_SOURCE_DIR}/lib/codegen/gen_js_enums.py ${CMAKE_CURRENT_BINARY_DIR}/LoopState.js
+    DEPENDS shoopdaloop_backend.py build_module
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )

@@ -69,7 +69,7 @@ class BackendFXLooperPairManager(LooperManager):
     def wet_looper_idx(self, i):
         if i != self._wet_looper_idx:
             if self._wet_looper:
-                raise Exception("Changing SL loop idx of already existing looper.")
+                raise Exception("Changing loop idx of already existing looper.")
             self._wet_looper_idx = i
             self.wetLooperIdxChanged.emit(i)
     
@@ -172,20 +172,6 @@ class BackendFXLooperPairManager(LooperManager):
             self.stateChanged.emit(new_state)
     
     @pyqtSlot()
-    def doTrigger(self):
-        self.wet().doTrigger()
-        self.dry().doTrigger()
-        self.force_dry_passthrough = False
-        self.force_wet_passthrough = False
-
-    @pyqtSlot()
-    def updatePassthroughs(self):
-        # If a force flag is enabled, that means the passthrough should be active to
-        # facilitate a certain mode (e.g. recording).
-        self.dry().passthrough = 1.0 if self._force_dry_passthrough or self.passthrough > 0.0 else 0.0
-        self.wet().passthrough = self.volume if self._force_wet_passthrough else self.passthrough
-    
-    @pyqtSlot()
     def updateVolumes(self):
         self.wet().volume = self.volume
         self.dry().volume = 1.0
@@ -196,91 +182,39 @@ class BackendFXLooperPairManager(LooperManager):
         self.dry().panR = self.panR
         self.wet().panL = 0.0
         self.wet().panR = 1.0
-
-    @pyqtSlot()
-    def doPlay(self):
-        # Mute the dry, because we want to hear
-        # the wet only and not process the FX.
-        self.wet().doPlay()
-        self.dry().doMute()
-        self.force_dry_passthrough = False
-        self.force_wet_passthrough = False
     
-    @pyqtSlot()
-    def doPlayLiveFx(self):
-        # Mute the wet, play the dry.
-        # TODO: wet should still have passthrough
-        self.wet().doMute()
-        self.dry().doPlay()
-        self.force_dry_passthrough = False
-        self.force_wet_passthrough = True
+    @pyqtSlot(int, list)
+    def doLoopAction(self, action_id, args):
+        wet_action = action_id
+        dry_action = action_id
+        wet_args = args
+        dry_args = args
+        force_dry_passthrough = False
+        force_wet_passthrough = False
 
-    @pyqtSlot()
-    def doPause(self):
-        self.wet().doPause()
-        self.dry().doPause()
-        self.force_dry_passthrough = False
-        self.force_wet_passthrough = False
-
-    @pyqtSlot()
-    def doRecord(self):
-        self.wet().doRecord()
-        self.dry().doRecord()
-        self.force_dry_passthrough = True
-        self.force_wet_passthrough = False
-    
-    @pyqtSlot(QObject)
-    def doRecordFx(self, master_manager):
-        n_cycles = round(self.length / master_manager.length)
-        current_cycle = math.floor(self.pos / master_manager.length)
-        wait_cycles_before_start = n_cycles - current_cycle - 1
-        def toExecuteJustBeforeRestart():
-            self.wet().doRecordNCycles(n_cycles, master_manager)
-            self.dry().doPlay()
-            # When the FX recording is finished, also mute the
-            # dry channel again
-            master_manager.schedule_at_loop_pos(
-                master_manager.length * 0.7,
-                n_cycles, lambda: self.dry().doMute())
-            self.force_dry_passthrough = False
-            self.force_wet_passthrough = False
+        match action_id:
+            case LoopActionType.DoPlay.value:
+                wet_action = LoopActionType.DoPlay.value
+                dry_action = LoopActionType.DoStop.value
+            case LoopActionType.DoPlayLiveFX.value:
+                wet_action = LoopActionType.DoStop.value
+                dry_action = LoopActionType.DoPlay.value
+                force_wet_passthrough = True
+            case LoopActionType.DoRecord.value:
+                force_dry_passthrough = True
+            case LoopActionType.DoRecordFX.value:
+                # TODO: N cycles
+                wet_action = LoopActionType.DoRecord.value
+                dry_action = LoopActionType.DoPlay.value
+            case LoopActionType.doRecordNCycles.value:
+                force_dry_passthrough = True
         
-        if wait_cycles_before_start <= 0:
-            toExecuteJustBeforeRestart()
-        else:
-            master_manager.schedule_at_loop_pos(master_manager.length * 0.7,
-                                                     wait_cycles_before_start,
-                                                     toExecuteJustBeforeRestart)
-        
-
-    @pyqtSlot(int, QObject)
-    def doRecordNCycles(self, n, master_manager):
-        self.wet().doRecordNCycles(n, master_manager)
-        self.dry().doRecordNCycles(n, master_manager)
-        self.force_dry_passthrough = True
-        self.force_wet_passthrough = False
-
-    @pyqtSlot()
-    def doStopRecord(self):
-        self.wet().doStopRecord()
-        self.dry().doStopRecord()
-        self.dry().doMute()
-        self.force_dry_passthrough = False
-        self.force_wet_passthrough = False
-
-    @pyqtSlot()
-    def doMute(self):
-        self.wet().doMute()
-        self.dry().doMute()
-        self.force_dry_passthrough = False
-        self.force_wet_passthrough = False
-
-    @pyqtSlot()
-    def doUnmute(self):
-        if self.state == LoopState.Muted.value:
-            self.wet().doUnmute()
-            self.force_dry_passthrough = False
-            self.force_wet_passthrough = False
+        self.wet().doLoopAction(wet_action, wet_args)
+        self.dry().doLoopAction(dry_action, dry_args)
+        if force_dry_passthrough != None:
+            self.force_dry_passthrough = force_dry_passthrough
+        if force_wet_passthrough != None:
+            self.force_wet_passthrough = force_wet_passthrough
 
     @pyqtSlot(str)
     def doLoadWav(self, wav_file):
@@ -289,22 +223,10 @@ class BackendFXLooperPairManager(LooperManager):
         self.dry().doLoadWav(wav_file)
         self.wet().doLoadWav(wav_file)
 
-    @pyqtSlot()
-    def doClear(self):
-        self.dry().doClear()
-        self.wet().doClear()
-        self.force_dry_passthrough = False
-        self.force_wet_passthrough = False
-
     @pyqtSlot(str)
     def doSaveWav(self, wav_file):
         raise NotImplementedError()
-
-    @pyqtSlot(QObject)
-    def connect_osc_link(self, link):
-        self.dry().connect_osc_link(link)
-        self.wet().connect_osc_link(link)
     
     @pyqtSlot(result=str)
     def looper_type(self):
-        return "SLFXLooperPairManager"
+        return "BackendFXLooperPairManager"

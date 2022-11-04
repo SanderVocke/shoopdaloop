@@ -351,6 +351,16 @@ int do_loop_action(
                 g_positions(loop_idx) = 0;
             };
             break;
+        case DoClear:
+            cmd = [loop_idx]() {
+                g_states(loop_idx) = Stopped;
+                g_positions(loop_idx) = 0;
+                g_lengths(loop_idx) = 0;
+            };
+            break;
+        case DoRecordNCycles:
+            std::cerr << "Backend: DoRecordNCycles not yet implemented" << std::endl;
+            break;
         default:
         break;
     }

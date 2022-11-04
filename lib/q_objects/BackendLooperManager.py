@@ -71,6 +71,10 @@ class BackendLooperManager(LooperManager):
         self.length = lengths[i]
         self.pos = positions[i]
         self.volume = loop_volumes[i]
+
+        # Front-end state extensions
+        if self.length == 0:
+            self.state = LoopState.Empty.value
     
     @pyqtSlot(int, list)
     def doLoopAction(self, action_id, args):
@@ -86,91 +90,6 @@ class BackendLooperManager(LooperManager):
             )
         )
         manager.update.connect(self.update)
-
-    # @pyqtSlot()
-    # def doTrigger(self):
-    #     self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'trigger'])
-
-    # @pyqtSlot()
-    # def doPlay(self):
-    #     if self.state == LoopState.Paused.value:
-    #         self.doTrigger()
-    #     elif self.state == LoopState.Muted.value:
-    #         self.doUnmute()
-
-    # @pyqtSlot()
-    # def doPause(self):
-    #     # TODO: if in muted state, it will go to play in the next cycle instead of
-    #     # pause. Not sure what to do about it.
-    #     if self.state != LoopState.Paused.value:
-    #         self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'pause_on'])
-
-    # @pyqtSlot()
-    # def doRecord(self):
-    #     if self.state != LoopState.Recording.value:
-    #         # Default recording behavior is to round
-    #         self.sendOsc.emit(['/sl/{}/set'.format(self._sl_looper_index), 'round', 1])
-    #         self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'record'])
-
-    # @pyqtSlot(int, QObject)
-    # def doRecordNCycles(self, n, master_manager):
-    #     if self.state != LoopState.Recording.value:
-    #         # Recording N cycles is achieved by:
-    #         # - setting round mode (after stop record, will keep recording until synced)
-    #         # - starting to record
-    #         # - scheduling a stop record command somewhere during the Nth cycle.
-    #         self.sendOsc.emit(['/sl/{}/set'.format(self._sl_looper_index), 'round', 1])
-    #         self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'record'])
-    #         master_manager.schedule_at_loop_pos(master_manager.length * 0.7, n, lambda: self.doStopRecord())
-
-    # @pyqtSlot()
-    # def doStopRecord(self):
-    #     if self.state in [LoopState.Recording.value, LoopState.Inserting.value]:
-    #         self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'record'])
-
-    # @pyqtSlot()
-    # def doMute(self):
-    #     if self.state != LoopState.Off.value:
-    #         self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'mute_on'])
-
-    # @pyqtSlot()
-    # def doUnmute(self):
-    #     if self.state != LoopState.Off.value:
-    #         self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'mute_off'])
-
-    # @pyqtSlot()
-    # def doInsert(self):
-    #     self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'insert'])
-
-    # @pyqtSlot()
-    # def doReplace(self):
-    #     self.sendOsc.emit(['/sl/{}/hit'.format(self._sl_looper_index), 'replace'])
-
-    # @pyqtSlot(str)
-    # def doLoadWav(self, wav_file):
-    #     # TODO: handle the errors
-    #     self.sendOscExpectResponse.emit(['/sl/{}/load_loop'.format(self._sl_looper_index), wav_file], '/load_loop_error')
-
-    # @pyqtSlot()
-    # def doClear(self):
-    #     # Clearing is possible by loading an empty wav.
-    #     filename = tempfile.mkstemp()[1]
-    #     with wave.open(filename, 'w') as file:
-    #         file.setframerate(48000)
-    #         file.setsampwidth(4)
-    #         file.setnchannels(2)
-    #         file.setnframes(0)
-    #     self.doLoadWav(filename)
-
-    # @pyqtSlot(str)
-    # def doSaveWav(self, wav_file):
-    #     # TODO: handle the errors
-    #     self.sendOscExpectResponse.emit(['/sl/{}/save_loop'.format(self._sl_looper_index), wav_file, 'dummy_format', 'dummy_endian'], '/save_loop_error')
-    #     start_t = time.monotonic()
-    #     while time.monotonic() - start_t < 2.0 and not os.path.isfile(wav_file):
-    #         time.sleep(0.1)
-    #     if not os.path.isfile(wav_file):
-    #         raise Exception("Failed to save wav file for loop.")
     
     @pyqtSlot(result=str)
     def looper_type(self):
