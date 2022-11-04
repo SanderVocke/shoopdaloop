@@ -87,13 +87,25 @@ void push_command(std::function<void()> cmd) {
     }
 }
 
+// Another lock-free queue is used to pass benchmarking information
+// from the processing thread to an optional reporter.
+constexpr unsigned benchmark_queue_len = 10;
+struct benchmark_info {
+    float command_processing_us;
+    float input_copy_us;
+    float processing_us;
+    float output_copy_us;
+    float total_us;
+};
+boost::lockfree::spsc_queue<benchmark_info> g_benchmark_queue(benchmark_queue_len);
+
 extern "C" {
 
 // The processing callback to be called by Jack.
 int jack_process (jack_nframes_t nframes, void *arg) {
     static auto last_measurement = std::chrono::high_resolution_clock::now();
     static size_t n_measurements = 0;
-    static float cmd_time = 0.0, in_time = 0.0, proc_time = 0.0, out_time = 0.0;
+    static float cmd_time = 0.0, in_time = 0.0, proc_time = 0.0, out_time = 0.0, total_time = 0.0;
 
     jack_default_audio_sample_t *buf;
 
@@ -171,15 +183,18 @@ int jack_process (jack_nframes_t nframes, void *arg) {
     in_time += std::chrono::duration_cast<std::chrono::microseconds>(did_input - did_cmds).count();
     proc_time += std::chrono::duration_cast<std::chrono::microseconds>(did_process - did_input).count();
     out_time += std::chrono::duration_cast<std::chrono::microseconds>(did_output - did_process).count();
+    total_time += std::chrono::duration_cast<std::chrono::microseconds>(did_output - start).count();
     n_measurements++;
 
     if (std::chrono::duration_cast<std::chrono::milliseconds>(did_output - last_measurement).count() > 1000.0) {
-        std::cout << cmd_time/(float)n_measurements
-                  << " " << in_time/(float)n_measurements 
-                  << " " << proc_time/(float)n_measurements
-                  << " " << out_time/(float)n_measurements
-                  << std::endl;
-        in_time = out_time = proc_time = 0.0f;
+        g_benchmark_queue.push(benchmark_info {
+            .command_processing_us = cmd_time,
+            .input_copy_us = in_time,
+            .processing_us = proc_time,
+            .output_copy_us = out_time,
+            .total_us = total_time
+        });
+        in_time = out_time = proc_time = total_time = cmd_time = 0.0f;
         n_measurements = 0;
         last_measurement = did_output;
     }
@@ -195,6 +210,7 @@ int initialize(
     const char **input_port_names,
     const char **output_port_names,
     const char *client_name,
+    unsigned print_benchmark_info,
     UpdateCallback update_cb,
     AbortCallback abort_cb
 ) {
@@ -287,6 +303,27 @@ int initialize(
 
     g_update_cb = update_cb;
 
+    if(print_benchmark_info) {
+        g_reporting_thread = std::thread([]() {
+            while(true) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                size_t popped = 0;
+                benchmark_info info;
+                while(g_benchmark_queue.pop(info)) { popped++; };
+                if (popped > 0) {
+                    std::cout
+                        << "Backend: total, cmd, in, proc, out (us)" << std::endl
+                        << "         "
+                        << info.total_us << " "
+                        << info.command_processing_us << " "
+                        << info.input_copy_us << " "
+                        << info.processing_us << " "
+                        << info.output_copy_us << std::endl;
+                }
+            }
+        });
+    }
+
     return 0;
 }
 
@@ -331,7 +368,7 @@ void request_update() {
     // Copy the state
     for(int i=0; i<g_n_loops; i++) {
         states[i] = g_atomic_state.states[i];
-        positions[i] = g_atomic_state.states[i];
+        positions[i] = g_atomic_state.positions[i];
         lengths[i] = g_atomic_state.lengths[i];
         loop_volumes[i] = g_atomic_state.loop_volumes[i];
     }

@@ -65,6 +65,7 @@ int main(int argc, char **argv) {
         _input_port_names.data(),
         _output_port_names.data(),
         "ShoopDaLoop_backend_test",
+        1,
         update_cb,
         backend_abort_cb
     );

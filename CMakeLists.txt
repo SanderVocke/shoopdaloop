@@ -16,4 +16,5 @@ add_custom_target(
     LoopState.js
     ALL
     python ${CMAKE_CURRENT_SOURCE_DIR}/lib/codegen/gen_js_enums.py LoopState.js
+    DEPENDS shoopdaloop_backend.py
 )

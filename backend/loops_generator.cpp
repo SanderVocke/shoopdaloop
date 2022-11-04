@@ -84,7 +84,7 @@ public:
         Func len("len");
         len(loop) = Halide::select(
             state(loop) == Recording,
-            max(len_in + n_samples, max_loop_length),
+            min(len_in + n_samples, max_loop_length),
             len_in);
 
         // Store loop data

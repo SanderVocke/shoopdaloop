@@ -22,9 +22,9 @@ class BackendLooperManager(LooperManager):
         # self.panLChanged.connect(self.update_sl_pan_l)
         # self.panRChanged.connect(self.update_sl_pan_r)
 
-        self.stateChanged.connect(lambda s: print("State -> {}".format(s)))
-        self.lengthChanged.connect(lambda s: print("Length -> {}".format(s)))
-        self.posChanged.connect(lambda s: print("Position -> {}".format(s)))
+        # self.stateChanged.connect(lambda s: print("State -> {}".format(s)))
+        # self.lengthChanged.connect(lambda s: print("Length -> {}".format(s)))
+        # self.posChanged.connect(lambda s: print("Position -> {}".format(s)))
 
     ######################
     # PROPERTIES

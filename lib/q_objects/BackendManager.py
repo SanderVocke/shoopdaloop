@@ -91,6 +91,7 @@ class BackendManager(QObject):
             input_port_names,
             output_port_names,
             self.client_name.encode('ascii'),
+            1,
             self.update_cb,
             self.abort_cb
         )

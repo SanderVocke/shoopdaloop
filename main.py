@@ -74,7 +74,7 @@ with JackSession('ShoopDaLoop-control') as jack_session:
         2,
         60.0,
         'ShoopDaLoop-backend',
-        0.1
+        0.03 # About 30Hz updates
     )
 
     qmlRegisterType(BackendLooperManager, 'BackendLooperManager', 1, 0, 'BackendLooperManager')
