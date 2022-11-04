@@ -6,6 +6,7 @@ from PyQt6.QtCore import QTimer
 
 from lib.q_objects.LooperManager import LooperManager
 from lib.q_objects.BackendLooperManager import BackendLooperManager
+from lib.q_objects.BackendFXLooperPairManager import BackendFXLooperPairManager
 from lib.q_objects.BackendManager import BackendManager
 from lib.q_objects.ClickTrackGenerator import ClickTrackGenerator
 from lib.q_objects.MIDIControlManager import MIDIControlManager
@@ -78,6 +79,7 @@ with JackSession('ShoopDaLoop-control') as jack_session:
     )
 
     qmlRegisterType(BackendLooperManager, 'BackendLooperManager', 1, 0, 'BackendLooperManager')
+    qmlRegisterType(BackendFXLooperPairManager, 'BackendFXLooperPairManager', 1, 0, 'BackendFXLooperPairManager')
     qmlRegisterType(BackendManager, 'BackendManager', 1, 0, 'BackendManager')
     qmlRegisterType(LooperManager, 'LooperManager', 1, 0, 'LooperManager')
     qmlRegisterType(ClickTrackGenerator, 'ClickTrackGenerator', 1, 0, 'ClickTrackGenerator')

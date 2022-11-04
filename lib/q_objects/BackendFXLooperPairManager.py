@@ -7,7 +7,7 @@ import tempfile
 from enum import Enum
 import math
 
-from ..LoopState import LoopState
+from ..LoopState import *
 from .BackendLooperManager import BackendLooperManager
 from .LooperManager import LooperManager
 
@@ -37,9 +37,6 @@ class BackendFXLooperPairManager(LooperManager):
         self._dry_looper = None
         self._force_wet_passthrough = False
         self._force_dry_passthrough = False
-
-        self.forceWetPassthroughChanged.connect(self.updatePassthroughs)
-        self.forceDryPassthroughChanged.connect(self.updatePassthroughs)
 
         self.volumeChanged.connect(self.updateVolumes)
         self.panLChanged.connect(self.updatePans)
@@ -226,6 +223,11 @@ class BackendFXLooperPairManager(LooperManager):
     @pyqtSlot(str)
     def doSaveWav(self, wav_file):
         raise NotImplementedError()
+    
+    @pyqtSlot(QObject)
+    def connect_backend_manager(self, manager):
+        self.wet().connect_backend_manager(manager)
+        self.dry().connect_backend_manager(manager)
     
     @pyqtSlot(result=str)
     def looper_type(self):

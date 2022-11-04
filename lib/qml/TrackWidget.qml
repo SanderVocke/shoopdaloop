@@ -148,7 +148,7 @@ Item {
                     function onPlayLiveFx() {
                         // Play with live FX on the selected loop and mute the others
                         track.actions_on_loop_mgrs(track.selected_loop,
-                                                (mgr) => { /* mgr.doPlayLiveFx() */ },
+                                                (mgr) => { mgr.doLoopAction(LoopState.LoopActionType.DoPlayLiveFX, []) },
                                                 (mgr) => { mgr.doLoopAction(LoopState.LoopActionType.DoStop, []) })
                     }
                     function onPause() {

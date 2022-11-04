@@ -339,8 +339,6 @@ Item {
                         horizontalItemAlignment: Grid.AlignRight
                         Text { text: 'vol:'; color: Material.foreground }
                         Text { text:  looper_details.manager.volume.toFixed(2); color: Material.foreground }
-                        Text { text: 'mon:'; color: Material.foreground }
-                        Text { text:  looper_details.manager.passthrough.toFixed(2); color: Material.foreground }
                         Text { text: 'panL:'; color: Material.foreground }
                         Text { text:  looper_details.manager.panL.toFixed(2); color: Material.foreground }
                         Text { text: 'panR:'; color: Material.foreground }

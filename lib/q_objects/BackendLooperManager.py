@@ -67,7 +67,6 @@ class BackendLooperManager(LooperManager):
             raise ValueError("BackendLooperManager with out-of-range loop idx")
 
         i = self._loop_idx
-        self.state = states[i]
         self.length = lengths[i]
         self.pos = positions[i]
         self.volume = loop_volumes[i]
@@ -75,6 +74,8 @@ class BackendLooperManager(LooperManager):
         # Front-end state extensions
         if self.length == 0:
             self.state = LoopState.Empty.value
+        else:
+            self.state = states[i]
     
     @pyqtSlot(int, list)
     def doLoopAction(self, action_id, args):

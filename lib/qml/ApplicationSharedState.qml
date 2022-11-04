@@ -19,22 +19,18 @@ Item {
     property var loop_managers: {
         // Nested array of loop mgrs per track. Master loop is regarded as the first track.
 
-        function mgr_snippet (loop_idx, sync) {
-            // single loop version
-            //return 'import QtQuick 2.0; import SLLooperManager 1.0; SLLooperManager {sl_looper_index: ' + (outer * loops_per_track + inner).toString() + '\nsync: ' + (outer != 0 || inner != 0).toString() + '}'
+        function mgr_snippet (dry_loop_idx, wet_loop_idx, sync) {
             return 'import QtQuick 2.0\n' +
-            'import BackendLooperManager 1.0\n' +
-            'BackendLooperManager { loop_idx: ' +
-                loop_idx.toString() +
+            'import BackendFXLooperPairManager 1.0\n' +
+            'BackendFXLooperPairManager { \n' +
+                'dry_looper_idx: ' + dry_loop_idx.toString() + '\n' +
+                'wet_looper_idx: ' + wet_loop_idx.toString() + '\n' +
                 ' }';
-
-            // double loop version
-            // return 'import QtQuick 2.0; import SLFXLooperPairManager 1.0; SLFXLooperPairManager {\n  sl_dry_looper_idx: ' + dry_sl_looper_idx.toString() + '\n  sl_wet_looper_idx: ' + wet_sl_looper_idx.toString() + '\nsync: ' + sync.toString() + '\n}'
         }
 
         var outer, inner
         var managers = []
-        var master_mgr = Qt.createQmlObject(mgr_snippet(0, true),
+        var master_mgr = Qt.createQmlObject(mgr_snippet(0, 1, true),
                             shared,
                             "dynamicSnippet1");
         master_mgr.connect_midi_control_manager(midi_control_manager, 0, 0)
@@ -45,7 +41,7 @@ Item {
             for(inner = 0; inner < loops_per_track; inner++) {
                 var mgr = Qt.createQmlObject(mgr_snippet(
                     (outer * loops_per_track + inner)*2 + 2,
-                    //(outer * loops_per_track + inner)*2 + 3,
+                    (outer * loops_per_track + inner)*2 + 3,
                     true),
                     shared,
                     "dynamicSnippet1");
