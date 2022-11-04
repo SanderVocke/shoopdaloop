@@ -15,7 +15,6 @@ class LooperManager(QObject):
     posChanged = pyqtSignal(float)
     stateChanged = pyqtSignal(int)
     syncChanged = pyqtSignal(bool)
-    passthroughChanged = pyqtSignal(float)
     volumeChanged = pyqtSignal(float)
     panRChanged = pyqtSignal(float)
     panLChanged = pyqtSignal(float)
@@ -27,7 +26,6 @@ class LooperManager(QObject):
         self._state = LoopState.Unknown.value
         self._last_received_pos_t = None
         self._sync = False
-        self._passthrough = 1.0
         self._volume = 1.0
         self._panL = 0.0
         self._panR = 1.0
@@ -80,17 +78,6 @@ class LooperManager(QObject):
         if self._sync != c:
             self._sync = c
             self.syncChanged.emit(c)
-    
-    # Passthrough: gain of input passthrough in 0.0-1.0
-    @pyqtProperty(float, notify=passthroughChanged)
-    def passthrough(self):
-        return self._passthrough
-    
-    @passthrough.setter
-    def passthrough(self, p):
-        if self._passthrough != p:
-            self._passthrough = p
-            self.passthroughChanged.emit(p)
     
     # Volume: volume of playback in 0.0-1.0
     @pyqtProperty(float, notify=volumeChanged)
