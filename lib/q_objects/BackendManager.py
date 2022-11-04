@@ -25,36 +25,27 @@ class BackendManager(QObject):
     )
 
     def __init__(self,
-                 port_names_to_loop_amounts,
-                 channels_per_loop,
-                 soft_sync_master_loop,
+                 port_name_pairs,
+                 loops_to_ports_map,
+                 loops_hard_sync_map,
+                 loops_soft_sync_map,
                  max_loop_length_seconds,
                  client_name,
                  update_period_seconds,
                  parent=None):
-        '''
-        Initialize the backend manager.
-
-        Parameters:
-            port_names_to_loop_amounts (dict):
-                An OrderedDict of (input_name,output_name) tuples to the amount of loops to assign to that port pair.
-            channels_per_loop (int):
-                Amount of channels to assign to each loop
-            client_name (str):
-                Name of the JACK client to instantiate
-        '''
         super(BackendManager, self).__init__(parent)
 
         self.update_cb = backend.UpdateCallback(self.update_cb)
         self.abort_cb = backend.AbortCallback(self.abort_cb)
 
-        self.n_loops = sum(port_names_to_loop_amounts.values()) * channels_per_loop
-        self.n_ports = len(port_names_to_loop_amounts.items())
-        self.n_channels = channels_per_loop
+        self.n_loops = len(loops_to_ports_map)
+        self.n_ports = len(port_name_pairs)
         self.client_name = client_name
-        self.port_names_to_loop_amounts = port_names_to_loop_amounts
-        self.soft_sync_master_loop = soft_sync_master_loop
         self.max_loop_length_seconds = max_loop_length_seconds
+        self.port_name_pairs = port_name_pairs
+        self.loops_to_ports = loops_to_ports_map
+        self.loops_soft_sync_map = loops_soft_sync_map
+        self.loops_hard_sync_map = loops_hard_sync_map
 
         self.initialize_backend()
 
@@ -71,29 +62,15 @@ class BackendManager(QObject):
         input_port_names = (POINTER(c_char) * self.n_ports)()
         output_port_names = (POINTER(c_char) * self.n_ports)()
 
-        # Construct the port names and loop mappings
-        loop_idx = 0
-        port_idx = 0
-        for i in range(self.n_loops):
-            loops_hard_sync_map[i] = i
-            loops_soft_sync_map[i] = self.soft_sync_master_loop
+        # Construct the port names and loop mappings        
+        for port_idx, item in enumerate(self.port_name_pairs):
+            input_port_names[port_idx] = create_string_buffer(item[0].encode('ascii'))
+            output_port_names[port_idx] = create_string_buffer(item[1].encode('ascii'))
         
-        for item in self.port_names_to_loop_amounts.items():
-            input_port_name = item[0][0]
-            output_port_name = item[0][1]
-            N = item[1]
-
-            input_port_names[port_idx] = create_string_buffer(input_port_name.encode('ascii'))
-            output_port_names[port_idx] = create_string_buffer(output_port_name.encode('ascii'))
-
-            for i in range(self.n_channels):
-                loops_to_ports[loop_idx] = port_idx
-                if i > 0:
-                    # Should be hard-synced to the first channel
-                    loops_hard_sync_map[loop_idx] = loop_idx - i
-                loop_idx += 1
-
-            port_idx += 1
+        for i in range(self.n_loops):
+            loops_to_ports[i] = self.loops_to_ports[i]
+            loops_hard_sync_map[i] = self.loops_hard_sync_map[i]
+            loops_soft_sync_map[i] = self.loops_soft_sync_map[i]
         
         backend.initialize(
             self.n_loops,

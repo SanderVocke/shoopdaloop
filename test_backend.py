@@ -1,16 +1,5 @@
 import sys
 
-from PyQt6.QtGui import QGuiApplication
-from PyQt6.QtQml import QQmlApplicationEngine, qmlRegisterType
-from PyQt6.QtCore import QTimer
-
-from lib.q_objects.LooperManager import LooperManager
-from lib.q_objects.BackendLooperManager import BackendLooperManager
-from lib.q_objects.BackendFXLooperPairManager import BackendFXLooperPairManager
-from lib.q_objects.BackendManager import BackendManager
-from lib.q_objects.ClickTrackGenerator import ClickTrackGenerator
-from lib.q_objects.MIDIControlManager import MIDIControlManager
-from lib.q_objects.MIDIControlLink import MIDIControlLink
 from lib.q_objects.BackendManager import BackendManager
 
 from lib.JackSession import JackSession
@@ -43,14 +32,9 @@ signal.signal(signal.SIGTERM, exit_handler)
 
 script_pwd = os.path.dirname(__file__)
 
-with JackSession('ShoopDaLoop-control') as jack_session:
+with JackSession('test-sdl-backend') as jack_session:
     jack = jack_session[0]
     jack_client = jack_session[1]
-
-    app = QGuiApplication(sys.argv)
-
-    click_track_generator = ClickTrackGenerator()
-    midi_control_mgr = MIDIControlManager(None, jack_client, jack)
 
     # Set up port loop mappings.
     # 4 ports per track: L dry, R dry, L wet, R wet
@@ -99,32 +83,9 @@ with JackSession('ShoopDaLoop-control') as jack_session:
         loops_hard_sync,
         loops_soft_sync,
         60.0,
-        'ShoopDaLoop-backend',
+        'test-sdl-backend',
         0.03 # About 30Hz updates
     )
 
-    qmlRegisterType(BackendLooperManager, 'BackendLooperManager', 1, 0, 'BackendLooperManager')
-    qmlRegisterType(BackendFXLooperPairManager, 'BackendFXLooperPairManager', 1, 0, 'BackendFXLooperPairManager')
-    qmlRegisterType(BackendManager, 'BackendManager', 1, 0, 'BackendManager')
-    qmlRegisterType(LooperManager, 'LooperManager', 1, 0, 'LooperManager')
-    qmlRegisterType(ClickTrackGenerator, 'ClickTrackGenerator', 1, 0, 'ClickTrackGenerator')
-    qmlRegisterType(MIDIControlManager, 'MIDIControlManager', 1, 0, 'MIDIControlManager')
-
-    engine = QQmlApplicationEngine()
-    engine.rootContext().setContextProperty("backend_manager", backend_mgr)
-    engine.rootContext().setContextProperty("click_track_generator", click_track_generator)
-    engine.rootContext().setContextProperty("midi_control_manager", midi_control_mgr)
-    engine.quit.connect(app.quit)
-    engine.load('main.qml')
-
-    exitcode = 0
-
-    # This hacky solution ensures that the Python interpreter has a chance
-    # to run every 100ms, which e.g. allows the signal handlers to work.
-    timer = QTimer()
-    timer.start(100)
-    timer.timeout.connect(lambda: None)
-
-    exitcode = app.exec()
-
-sys.exit(exitcode)
+    while(True):
+        pass

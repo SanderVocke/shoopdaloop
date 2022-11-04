@@ -1,5 +1,5 @@
 #include "Halide.h"
-#include "types.hpp"
+#include "shoopdaloop_backend.h"
 
 namespace {
 
@@ -99,39 +99,39 @@ public:
             len_in);
 
         // Store loop data
-        RDom rr(0, n_samples);
+        RDom rr(0, n_samples, 0, states_in.dim(0).extent());
+        rr.where(state(rr.y) != Stopped);
         Expr rr_storage_index = clamp(
-                pos_in(loop) + rr,
-                loop_storage_in.dim(1).min(),
-                loop_storage_in.dim(1).max()
+                pos_in(rr.y) + rr.x,
+                loop_storage_in.dim(0).min(),
+                loop_storage_in.dim(0).max()
             );
         Func storage_out("storage_out");
         {
             loop_storage_out(x, loop) = Halide::undef<float>();
-            Expr sample_index = rr;
-            loop_storage_out(rr_storage_index, loop) = select(
-                state(loop) == Recording,
-                _samples_in(sample_index, loop),
-                storage_in(rr.x, rr_storage_index)
+            loop_storage_out(rr_storage_index, rr.y) = select(
+                state(rr.y) == Recording,
+                _samples_in(rr.x, rr.y),
+                storage_in(rr_storage_index, rr.y)
             );
         }
 
         // Compute output samples for each loop
         {
             Expr storage_index = clamp(
-                pos_in(loop) + rr,
+                pos_in(rr.y) + rr.x,
                 loop_storage_in.dim(0).min(),
                 loop_storage_in.dim(0).max()
             );
-            samples_out_per_loop(x, loop) = Halide::undef<float>();
+            samples_out_per_loop(x, loop) = 0.0f; // Halide::undef<float>
             samples_out_per_loop(clamp(
-                rr,
+                rr.x,
                 samples_out_per_loop.dim(0).min(),
                 samples_out_per_loop.dim(0).max()
-            ), loop) = 
+            ), rr.y) = 
                 select(
-                    states_in(loop) == Playing,
-                    storage_in(storage_index, loop) * loop_playback_volumes(loop),
+                    states_in(rr.y) == Playing,
+                    storage_in(storage_index, rr.y) * loop_playback_volumes(rr.y),
                     0.0f
                 );
         }
@@ -162,19 +162,19 @@ public:
         // Schedule        
         loop_storage_out
             .update()
-            .reorder(rr, loop)
+            .reorder(rr.x, rr.y)
             .allow_race_conditions()
-            .vectorize(rr, 8)
-            .compute_with(samples_out_per_loop.update(), rr)
+            .vectorize(rr.x, 8)
+            .compute_with(samples_out_per_loop.update(), rr.x)
             //.trace_stores()
             ;
 
         samples_out_per_loop.compute_root();
         samples_out_per_loop
             .update()
-            .reorder(rr, loop)
+            .reorder(rr.x, rr.y)
             .allow_race_conditions()
-            .vectorize(rr, 8)
+            .vectorize(rr.x, 8)
             //.trace_stores()
             ;
         

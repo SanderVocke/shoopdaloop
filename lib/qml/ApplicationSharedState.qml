@@ -30,7 +30,7 @@ Item {
 
         var outer, inner
         var managers = []
-        var master_mgr = Qt.createQmlObject(mgr_snippet(0, 1, true),
+        var master_mgr = Qt.createQmlObject(mgr_snippet(0, 2, true),
                             shared,
                             "dynamicSnippet1");
         master_mgr.connect_midi_control_manager(midi_control_manager, 0, 0)
@@ -40,8 +40,8 @@ Item {
             var i_managers = []
             for(inner = 0; inner < loops_per_track; inner++) {
                 var mgr = Qt.createQmlObject(mgr_snippet(
-                    (outer * loops_per_track + inner)*2 + 2,
-                    (outer * loops_per_track + inner)*2 + 3,
+                    (outer * loops_per_track + inner)*4 + 4,
+                    (outer * loops_per_track + inner)*4 + 6,
                     true),
                     shared,
                     "dynamicSnippet1");
