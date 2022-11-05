@@ -177,6 +177,18 @@ public:
             .vectorize(rr.x, 8)
             //.trace_stores()
             ;
+
+        samples_out
+            .vectorize(x, 8)
+            ;
+        samples_out
+            .update(0)
+            .vectorize(x, 8)
+            ;
+        samples_out
+            .update(1)
+            .vectorize(x, 8)
+            ;
         
         Pipeline({samples_out, loop_storage_out, states_out, positions_out, loop_lengths_out}).print_loop_nest();
     }
