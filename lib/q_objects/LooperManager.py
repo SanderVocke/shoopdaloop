@@ -142,8 +142,9 @@ class LooperManager(QObject):
     
     @pyqtSlot(QObject, int, int)
     def connect_midi_control_manager(self, manager, track_idx, loop_idx):
-        self.stateChanged.connect(lambda state: manager.loop_state_changed(track_idx, loop_idx, state))
-        self.stateChanged.emit(self.state)
+        if manager:
+            self.stateChanged.connect(lambda state: manager.loop_state_changed(track_idx, loop_idx, state))
+            self.stateChanged.emit(self.state)
     
     @pyqtSlot(QObject)
     def connect_backend_manager(self, manager):

@@ -47,13 +47,18 @@ class BackendManager(QObject):
         self.loops_soft_sync_map = loops_soft_sync_map
         self.loops_hard_sync_map = loops_hard_sync_map
 
-        self.initialize_backend()
-
         self.update_timer = QTimer()
         self.update_timer.setSingleShot(False)
         self.update_timer.setInterval(int(1000.0 * update_period_seconds))
         self.update_timer.timeout.connect(lambda: backend.request_update())
         self.update_timer.start()
+    
+    def __enter__(self):
+        self.initialize_backend()
+        return self
+
+    def __exit__(self, type, value, traceback):
+        backend.terminate()
     
     def initialize_backend(self):
         loops_to_ports = (c_uint * self.n_loops)()

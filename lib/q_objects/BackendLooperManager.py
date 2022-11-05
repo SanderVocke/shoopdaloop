@@ -92,7 +92,7 @@ class BackendLooperManager(LooperManager):
     def connect_backend_manager(self, manager):
         self.signalLoopAction.connect(
             lambda act, args: manager.do_loop_action(
-                self.loop_idx,
+                self.loop_idxs[0],
                 act,
                 args
             )

@@ -17,6 +17,7 @@
 #include <thread>
 #include <boost/lockfree/spsc_queue.hpp>
 #include <memory>
+#include <condition_variable>
 
 using namespace Halide::Runtime;
 using namespace std;
@@ -79,6 +80,9 @@ struct atomic_state {
     std::vector<std::atomic<float>> passthroughs, loop_volumes, port_volumes;
 };
 atomic_state g_atomic_state;
+
+std::condition_variable g_terminate_cv;
+std::mutex g_terminate_cv_m;
 
 UpdateCallback g_update_cb;
 
@@ -328,11 +332,18 @@ int initialize(
     if(print_benchmark_info) {
         g_reporting_thread = std::thread([]() {
             while(true) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                std::unique_lock<std::mutex> lock(g_terminate_cv_m);
+                if(g_terminate_cv.wait_for(lock, std::chrono::milliseconds(500)) == std::cv_status::no_timeout) {
+                    // Terminated.
+                    return;
+                }
+
                 size_t popped = 0;
                 benchmark_info info;
                 while(g_benchmark_queue.pop(info)) { popped++; };
                 if (popped > 0) {
+                    int period = (int)(1.0f / (float)g_sample_rate * (float)g_buf_size * 1000000.0f);
+                    float percent_of_period = (float) info.total_us / (float) period * 100.0f;
                     std::cout
                         << "Backend: total, cmd, in, proc, out (us)" << std::endl
                         << "         "
@@ -340,7 +351,9 @@ int initialize(
                         << info.command_processing_us << " "
                         << info.input_copy_us << " "
                         << info.processing_us << " "
-                        << info.output_copy_us << std::endl;
+                        << info.output_copy_us << std::endl
+                        << "         period: " << period
+                        << " (" << percent_of_period << "%)\n";
                 }
             }
         });
@@ -446,6 +459,14 @@ int load_loop_data(
     }
 
     return 0;
+}
+
+void terminate() {
+    jack_client_close(g_jack_client);
+    g_terminate_cv.notify_all();
+    if (g_reporting_thread.joinable()) {
+        g_reporting_thread.join();
+    }
 }
 
 } //extern "C"

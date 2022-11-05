@@ -19,18 +19,18 @@ Item {
     property var loop_managers: {
         // Nested array of loop mgrs per track. Master loop is regarded as the first track.
 
-        function mgr_snippet (dry_loop_idx, wet_loop_idx, sync) {
+        function mgr_snippet (dry_loop_idxs, wet_loop_idxs, sync) {
             return 'import QtQuick 2.0\n' +
             'import BackendFXLooperPairManager 1.0\n' +
             'BackendFXLooperPairManager { \n' +
-                'dry_looper_idx: ' + dry_loop_idx.toString() + '\n' +
-                'wet_looper_idx: ' + wet_loop_idx.toString() + '\n' +
+                'dry_looper_idxs: [' + dry_loop_idxs.toString() + ']\n' +
+                'wet_looper_idxs: [' + wet_loop_idxs.toString() + ']\n' +
                 ' }';
         }
 
         var outer, inner
         var managers = []
-        var master_mgr = Qt.createQmlObject(mgr_snippet(0, 2, true),
+        var master_mgr = Qt.createQmlObject(mgr_snippet([0,1], [2,3], true),
                             shared,
                             "dynamicSnippet1");
         master_mgr.connect_midi_control_manager(midi_control_manager, 0, 0)
@@ -39,9 +39,10 @@ Item {
         for(outer = 0; outer < tracks; outer++) {
             var i_managers = []
             for(inner = 0; inner < loops_per_track; inner++) {
+                var base = (outer * loops_per_track + inner)*4 + 4;
                 var mgr = Qt.createQmlObject(mgr_snippet(
-                    (outer * loops_per_track + inner)*4 + 4,
-                    (outer * loops_per_track + inner)*4 + 6,
+                    [base, base+1],
+                    [base+2, base+3],
                     true),
                     shared,
                     "dynamicSnippet1");

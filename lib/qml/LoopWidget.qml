@@ -338,11 +338,11 @@ Item {
                         spacing: 3
                         horizontalItemAlignment: Grid.AlignRight
                         Text { text: 'vol:'; color: Material.foreground }
-                        Text { text:  looper_details.manager.volume.toFixed(2); color: Material.foreground }
+                        Text { text:  manager ? looper_details.manager.volume.toFixed(2) : ""; color: Material.foreground }
                         Text { text: 'panL:'; color: Material.foreground }
-                        Text { text:  looper_details.manager.panL.toFixed(2); color: Material.foreground }
+                        Text { text:  manager ? looper_details.manager.panL.toFixed(2) : ""; color: Material.foreground }
                         Text { text: 'panR:'; color: Material.foreground }
-                        Text { text:  looper_details.manager.panR.toFixed(2); color: Material.foreground }
+                        Text { text:  manager ? looper_details.manager.panR.toFixed(2) : ""; color: Material.foreground }
                     }
                     Item {
                         id: children_placeholder

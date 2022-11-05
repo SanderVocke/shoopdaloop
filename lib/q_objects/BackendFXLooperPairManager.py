@@ -17,8 +17,8 @@ from .LooperManager import LooperManager
 class BackendFXLooperPairManager(LooperManager):
 
     # State change notifications
-    dryLooperIdxChanged = pyqtSignal(int)
-    wetLooperIdxChanged = pyqtSignal(int)
+    dryLooperIdxsChanged = pyqtSignal(list)
+    wetLooperIdxsChanged = pyqtSignal(list)
     wetLooperChanged = pyqtSignal(QObject)
     dryLooperChanged = pyqtSignal(QObject)
 
@@ -31,8 +31,8 @@ class BackendFXLooperPairManager(LooperManager):
     def __init__(self, parent=None):
         super(BackendFXLooperPairManager, self).__init__(parent)
         self._parent = parent
-        self._wet_looper_idx = None
-        self._dry_looper_idx = None
+        self._wet_looper_idxs = []
+        self._dry_looper_idxs = []
         self._wet_looper = None
         self._dry_looper = None
         self._force_wet_passthrough = False
@@ -46,29 +46,29 @@ class BackendFXLooperPairManager(LooperManager):
     # PROPERTIES
     ######################
 
-    @pyqtProperty(int, notify=dryLooperIdxChanged)
-    def dry_looper_idx(self):
-        return self._dry_looper_idx
+    @pyqtProperty(list, notify=dryLooperIdxsChanged)
+    def dry_looper_idxs(self):
+        return self._dry_looper_idxs
 
-    @dry_looper_idx.setter
-    def dry_looper_idx(self, i):
-        if i != self._dry_looper_idx:
+    @dry_looper_idxs.setter
+    def dry_looper_idxs(self, i):
+        if i != self._dry_looper_idxs:
             if self._dry_looper:
-                raise Exception("Changing loop idx of already existing looper.")
-            self._dry_looper_idx = i
-            self.dryLooperIdxChanged.emit(i)
+                raise Exception("Changing loop idxs of already existing looper.")
+            self._dry_looper_idxs = i
+            self.dryLooperIdxsChanged.emit(i)
     
-    @pyqtProperty(int, notify=wetLooperIdxChanged)
-    def wet_looper_idx(self):
-        return self._wet_looper_idx
+    @pyqtProperty(list, notify=wetLooperIdxsChanged)
+    def wet_looper_idxs(self):
+        return self._wet_looper_idxs
 
-    @wet_looper_idx.setter
-    def wet_looper_idx(self, i):
-        if i != self._wet_looper_idx:
+    @wet_looper_idxs.setter
+    def wet_looper_idxs(self, i):
+        if i != self._wet_looper_idxs:
             if self._wet_looper:
-                raise Exception("Changing loop idx of already existing looper.")
-            self._wet_looper_idx = i
-            self.wetLooperIdxChanged.emit(i)
+                raise Exception("Changing loop idx sof already existing looper.")
+            self._wet_looper_idxs = i
+            self.wetLooperIdxsChanged.emit(i)
     
     @pyqtProperty(QObject, notify=dryLooperChanged)
     def dry_looper(self):
@@ -108,30 +108,30 @@ class BackendFXLooperPairManager(LooperManager):
 
     def wet(self):
         if self._wet_looper == None:
-            if self._wet_looper_idx == None:
+            if self._wet_looper_idxs == []:
                 raise Exception("Trying to create looper before its index is known")
-            self._wet_looper = BackendLooperManager(self._parent, self._wet_looper_idx)
-            self._wet_looper.sync = False if self._wet_looper_idx == 0 else self.sync
+            self._wet_looper = BackendLooperManager(self._parent, self._wet_looper_idxs)
+            self._wet_looper.sync = False if self._wet_looper_idxs[0] == 0 else self.sync
             # Connections
             self._wet_looper.lengthChanged.connect(self.updateLength)
             self._wet_looper.posChanged.connect(self.updatePos)
             self._wet_looper.stateChanged.connect(self.updateState)
-            self.wetLooperIdxChanged.connect(lambda s: setattr(self._wet_looper, 'loop_idx', s))
+            self.wetLooperIdxsChanged.connect(lambda s: setattr(self._wet_looper, 'loop_idxs', s))
             self.syncChanged.connect(lambda s: setattr(self._wet_looper, 'sync', s))
             
         return self._wet_looper
     
     def dry(self):
         if self._dry_looper == None:
-            if self._dry_looper_idx == None:
+            if self._dry_looper_idxs == []:
                 raise Exception("Trying to create looper before its index is known")
-            self._dry_looper = BackendLooperManager(self._parent, self._dry_looper_idx)
-            self._dry_looper.sync = False if self._dry_looper_idx == 0 else self.sync
+            self._dry_looper = BackendLooperManager(self._parent, self._dry_looper_idxs)
+            self._dry_looper.sync = False if self._dry_looper_idxs[0] == 0 else self.sync
             # Connections
             self._dry_looper.lengthChanged.connect(self.updateLength)
             self._dry_looper.posChanged.connect(self.updatePos)
             self._dry_looper.stateChanged.connect(self.updateState)
-            self.dryLooperIdxChanged.connect(lambda s: setattr(self._dry_looper, 'loop_idx', s))
+            self.dryLooperIdxsChanged.connect(lambda s: setattr(self._dry_looper, 'loop_idxs', s))
             self.syncChanged.connect(lambda s: setattr(self._dry_looper, 'sync', s))
             
         return self._dry_looper
@@ -226,8 +226,9 @@ class BackendFXLooperPairManager(LooperManager):
     
     @pyqtSlot(QObject)
     def connect_backend_manager(self, manager):
-        self.wet().connect_backend_manager(manager)
-        self.dry().connect_backend_manager(manager)
+        if manager:
+            self.wet().connect_backend_manager(manager)
+            self.dry().connect_backend_manager(manager)
     
     @pyqtSlot(result=str)
     def looper_type(self):

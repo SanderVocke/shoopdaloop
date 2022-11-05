@@ -87,6 +87,9 @@ int load_loop_data(
     float *data
 );
 
+// Terminate the back-end.
+void terminate();
+
 #ifdef __cplusplus
 }
 #endif
