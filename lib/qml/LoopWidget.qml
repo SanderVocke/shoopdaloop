@@ -120,7 +120,6 @@ Item {
                     width: 28
                     height: 28
                     y: 3
-
                     LoopStateIcon {
                         id: loopstateicon
                         state: statusrect.manager ? statusrect.manager.state : LoopState.LoopState.Unknown
@@ -128,6 +127,27 @@ Item {
                         size: iconitem.height
                         y: 0
                         anchors.horizontalCenter: iconitem.horizontalCenter
+                    }
+                    LoopStateIcon {
+                        id: loopnextstateicon
+                        state: statusrect.manager ? statusrect.manager.next_state : LoopState.LoopState.Unknown
+                        connected: true
+                        size: iconitem.height * 0.8
+                        y: 0
+                        anchors.right : loopstateicon.right
+                        anchors.bottom : loopstateicon.bottom
+                        visible: false
+                        
+                        Timer {
+                            interval: 300
+                            running: true
+                            repeat: true
+                            onTriggered: {
+                                loopnextstateicon.visible =
+                                    loopstateicon.state == loopnextstateicon.state ?
+                                    false : !loopnextstateicon.visible;
+                            }
+                        }
                     }
                 }
                 TextField {

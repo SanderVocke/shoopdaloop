@@ -27,7 +27,7 @@ import time
 import random
 import string
 
-app = None
+engine = None
 
 # Ensure that we forward any terminating signals to our child
 # processes
@@ -39,8 +39,8 @@ def exit_handler(sig, frame):
         print('Send signal {} => {}'.format(sig, child.pid))
         os.kill(child.pid, sig)
     print('Exiting.')
-    if app:
-        QMetaObject.invokeMethod(app, 'quit')
+    if engine:
+        QMetaObject.invokeMethod(engine, 'quit')
 
 signal.signal(signal.SIGINT, exit_handler)
 signal.signal(signal.SIGQUIT, exit_handler)
@@ -85,12 +85,14 @@ for t in range(n_tracks):
     for l in range(loops_per_track):
         base = 4 + t*4
         loops_to_ports += [base, base + 1, base + 2, base + 3]
-        loops_soft_sync += [0, 0, 0, 0]
+        loops_soft_sync += [2, 2, 2, 2]
         loops_hard_sync += [base, base, base + 1, base + 1]
 
 with JackSession('ShoopDaLoop-control') as jack_session:
     jack = jack_session[0]
     jack_client = jack_session[1]
+
+    app = QGuiApplication(sys.argv)
 
     with BackendManager(
         port_name_pairs,
@@ -99,13 +101,11 @@ with JackSession('ShoopDaLoop-control') as jack_session:
         loops_soft_sync,
         60.0,
         'ShoopDaLoop-backend',
-        0.03 # About 30Hz updates
+        0.03, # About 30Hz updates
+        app
     ) as backend_mgr:
-
-        app = QGuiApplication(sys.argv)
-
         click_track_generator = ClickTrackGenerator()
-        midi_control_mgr = MIDIControlManager(None, jack_client, jack)
+        midi_control_mgr = MIDIControlManager(app, jack_client, jack)
 
         qmlRegisterType(BackendLooperManager, 'BackendLooperManager', 1, 0, 'BackendLooperManager')
         qmlRegisterType(BackendFXLooperPairManager, 'BackendFXLooperPairManager', 1, 0, 'BackendFXLooperPairManager')
@@ -126,7 +126,7 @@ with JackSession('ShoopDaLoop-control') as jack_session:
         # This hacky solution ensures that the Python interpreter has a chance
         # to run every 100ms, which e.g. allows the signal handlers to work.
         timer = QTimer()
-        timer.start(100)
+        # timer.start(100)
         timer.timeout.connect(lambda: None)
 
         exitcode = app.exec()

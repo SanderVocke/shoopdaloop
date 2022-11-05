@@ -405,7 +405,6 @@ Item {
             set_track_pan(track, value)
         }
         function onSetVolume(track, value) {
-            console.log(track, value, 'yeah')
             if (track < 0 || track >= loop_managers.length) {
                 console.log("Ignoring MIDI control for out-of-bounds track: " + track.toString())
                 return

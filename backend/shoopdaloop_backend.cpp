@@ -31,6 +31,9 @@ Buffer<int8_t, 1> g_next_states;
 // Position for each loop
 Buffer<int32_t, 1> g_positions;
 
+// And a temporary positions buffer to make comparisons
+Buffer<int32_t, 1> g_positions_tmp;
+
 // Length for each loop
 Buffer<int32_t, 1> g_lengths;
 
@@ -161,10 +164,38 @@ int jack_process (jack_nframes_t nframes, void *arg) {
         g_samples_out,
         g_samples_out_per_loop,
         g_states,
-        g_positions,
+        g_positions_tmp,
         g_lengths,
         g_storage
     );
+
+    // Process sync triggers
+    for(int i=0; i<g_positions.extent(0); i++) {
+        auto master = g_loops_soft_sync_mapping(i);
+        auto next_state = g_next_states(i);
+        if (master >= 0 && master != i &&
+            g_next_states(i) != g_states(i) &&
+            g_positions_tmp(master) < g_positions(master)) {
+            // Master (re-)started, trigger next state
+            g_states(i) = next_state;
+            switch(next_state) {
+            case Playing:
+                g_positions_tmp(i) = g_positions_tmp(master);
+                break;
+            case Recording:
+                g_positions_tmp(i) = g_positions_tmp(master);
+                g_lengths(i) = 0;
+                break;
+            case Stopped:
+                g_positions_tmp(i) = 0;
+                break;
+            default:
+                break;
+            };
+        }
+    }
+    // Store positions for next round
+    g_positions.copy_from(g_positions_tmp);
 
     auto did_process = std::chrono::high_resolution_clock::now();
 
@@ -255,6 +286,7 @@ int initialize(
     g_states = Buffer<int8_t, 1>(n_loops);
     g_next_states = Buffer<int8_t, 1>(n_loops);
     g_positions = Buffer<int32_t, 1>(n_loops);
+    g_positions_tmp = Buffer<int32_t, 1>(n_loops);
     g_lengths = Buffer<int32_t, 1>(n_loops);
     g_samples_in_raw.resize(n_ports*g_buf_size);
     g_samples_out_raw.resize(n_ports*g_buf_size);
@@ -295,6 +327,7 @@ int initialize(
         g_states(i) = Stopped;
         g_next_states(i) = Stopped;
         g_positions(i) = 0;
+        g_positions_tmp(i) = 0;
         g_lengths(i) = 0;
         g_loops_to_ports(i) = loops_to_ports_mapping[i];
         g_loops_hard_sync_mapping(i) = loops_hard_sync_mapping[i] < 0 ?
@@ -368,7 +401,6 @@ int do_loop_action(
 ) {
     std::function<void()> cmd = nullptr;
     auto apply_state = [](size_t loop, loop_state_t state) {
-        std::cout << loop << " vs " << g_loops_soft_sync_mapping(loop) << std::endl;
         if (g_loops_soft_sync_mapping(loop) == loop) {
             g_states(loop) = g_next_states(loop) = state;
         } else {
@@ -379,8 +411,6 @@ int do_loop_action(
         case DoRecord:
             cmd = [loop_idx, apply_state]() {
                 apply_state(loop_idx, Recording);
-                g_positions(loop_idx) = 0;
-                g_lengths(loop_idx) = 0;
             };
             break;
         case DoPlay:
@@ -391,7 +421,6 @@ int do_loop_action(
         case DoStop:
             cmd = [loop_idx, apply_state]() {
                 apply_state(loop_idx, Stopped);
-                g_positions(loop_idx) = 0;
             };
             break;
         case DoClear:

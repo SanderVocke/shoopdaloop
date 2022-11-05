@@ -50,12 +50,12 @@ class LooperManager(QObject):
     # next state
     nextStateChanged = pyqtSignal(int)
     @pyqtProperty(int, notify=nextStateChanged)
-    def nextState(self):
-        return self._nextState
-    @nextState.setter
-    def nextState(self, s):
-        if self._nextState != s:
-            self._nextState = s
+    def next_state(self):
+        return self._next_state
+    @next_state.setter
+    def next_state(self, s):
+        if self._next_state != s:
+            self._next_state = s
             self.nextStateChanged.emit(s)
 
     # length: loop length in seconds

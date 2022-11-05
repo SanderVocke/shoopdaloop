@@ -83,7 +83,12 @@ class BackendLooperManager(LooperManager):
             self.state = LoopState.Empty.value
         else:
             self.state = states[i]
-        if self.length == 0:
+        if self.state == LoopState.Empty.value and \
+           next_states[i] in [
+            LoopState.Playing.value,
+            LoopState.Stopped.value,
+            LoopState.Unknown.value
+           ]:
             self.next_state = LoopState.Empty.value
         else:
             self.next_state = next_states[i]
@@ -94,14 +99,15 @@ class BackendLooperManager(LooperManager):
 
     @pyqtSlot(QObject)
     def connect_backend_manager(self, manager):
-        self.signalLoopAction.connect(
-            lambda act, args: manager.do_loop_action(
-                self.loop_idxs[0],
-                act,
-                args
+        if manager:
+            self.signalLoopAction.connect(
+                lambda act, args: manager.do_loop_action(
+                    self.loop_idxs[0],
+                    act,
+                    args
+                )
             )
-        )
-        manager.update.connect(self.update)
+            manager.update.connect(self.update)
     
     @pyqtSlot(result=str)
     def looper_type(self):
