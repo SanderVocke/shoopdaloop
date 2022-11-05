@@ -352,8 +352,8 @@ int initialize(
                         << info.input_copy_us << " "
                         << info.processing_us << " "
                         << info.output_copy_us << std::endl
-                        << "         period: " << period
-                        << " (" << percent_of_period << "%)\n";
+                        << "         period: " << g_buf_size << " @ " << g_sample_rate << " -> " << period << " us"
+                        << " (using " << percent_of_period << "%)\n";
                 }
             }
         });
