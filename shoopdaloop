@@ -40,8 +40,7 @@ def exit_handler(sig, frame):
         os.kill(child.pid, sig)
     print('Exiting.')
     if app:
-        app.exit()
-    exit(0)
+        QMetaObject.invokeMethod(app, 'quit')
 
 signal.signal(signal.SIGINT, exit_handler)
 signal.signal(signal.SIGQUIT, exit_handler)
