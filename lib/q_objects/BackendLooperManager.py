@@ -8,14 +8,17 @@ import tempfile
 from ..LoopState import LoopState
 from .LooperManager import LooperManager
 
-# Looper manager for a single loop in the back-end.
+# Looper manager for a back-end loop.
+# Can be used to manage multiple back-end loops as well, in which case
+# they should be hard-linked in the back-end. The manager will regard
+# them as channels.
 class BackendLooperManager(LooperManager):
     signalLoopAction = pyqtSignal(int, list) # action_id, args
-    loopIdxChanged = pyqtSignal(int)
+    loopIdxsChanged = pyqtSignal(list)
 
-    def __init__(self, parent=None, loop_idx=0):
+    def __init__(self, parent=None, loop_idxs=[]):
         super(BackendLooperManager, self).__init__(parent)
-        self._loop_idx = loop_idx
+        self._loop_idxs = loop_idxs
         # self.syncChanged.connect(self.update_sl_sync)
         # self.passthroughChanged.connect(self.update_sl_passthrough)
         # self.volumeChanged.connect(self.update_sl_volume)
@@ -30,14 +33,14 @@ class BackendLooperManager(LooperManager):
     # PROPERTIES
     ######################
 
-    @pyqtProperty(int, notify=loopIdxChanged)
-    def loop_idx(self):
-        return self._loop_idx
-    @loop_idx.setter
-    def loop_idx(self, l):
-        if self._loop_idx != l:
-            self._loop_idx = l
-            self.loopIdxChanged.emit(l)
+    @pyqtProperty(list, notify=loopIdxsChanged)
+    def loop_idxs(self):
+        return self._loop_idxs
+    @loop_idxs.setter
+    def loop_idxs(self, l):
+        if self._loop_idxs != l:
+            self._loop_idxs = l
+            self.loopIdxsChanged.emit(l)
 
     ##################
     # SLOTS
@@ -65,10 +68,12 @@ class BackendLooperManager(LooperManager):
         port_volumes,
         port_passthroughs
     ):
-        if self._loop_idx >= n_loops:
+        # We just use updates of our first managed loop because
+        # all loops should be hard-synced anyway.
+        if self._loop_idxs[0] >= n_loops:
             raise ValueError("BackendLooperManager with out-of-range loop idx")
 
-        i = self._loop_idx
+        i = self._loop_idxs[0]
         self.length = lengths[i]
         self.pos = positions[i]
         self.volume = loop_volumes[i]

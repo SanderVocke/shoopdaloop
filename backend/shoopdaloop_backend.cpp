@@ -199,11 +199,11 @@ int jack_process (jack_nframes_t nframes, void *arg) {
 
     if (std::chrono::duration_cast<std::chrono::milliseconds>(did_output - last_measurement).count() > 1000.0) {
         g_benchmark_queue.push(benchmark_info {
-            .command_processing_us = cmd_time,
-            .input_copy_us = in_time,
-            .processing_us = proc_time,
-            .output_copy_us = out_time,
-            .total_us = total_time
+            .command_processing_us = cmd_time / (float)n_measurements,
+            .input_copy_us = in_time / (float)n_measurements,
+            .processing_us = proc_time / (float)n_measurements,
+            .output_copy_us = out_time / (float)n_measurements,
+            .total_us = total_time / (float)n_measurements
         });
         in_time = out_time = proc_time = total_time = cmd_time = 0.0f;
         n_measurements = 0;
@@ -431,6 +431,21 @@ void request_update() {
             passthroughs.data()
         );
     }
+}
+
+int load_loop_data(
+    unsigned loop_idx,
+    unsigned len,
+    float *data
+) {
+    g_next_states(loop_idx) = Stopped;
+    g_states(loop_idx) = Stopped;
+
+    for(size_t idx = 0; idx < len; idx++) {
+        g_storage(idx, loop_idx) = data[idx];
+    }
+
+    return 0;
 }
 
 } //extern "C"

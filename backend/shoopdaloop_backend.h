@@ -78,6 +78,15 @@ int do_loop_action(
 // Request an update. The update callback will be immediately called.
 void request_update();
 
+// Load data into loop storage.
+// Will set the loop state to Stopped and ignore any data longer
+// than the maximum loop storage.
+int load_loop_data(
+    unsigned loop_idx,
+    unsigned len,
+    float *data
+);
+
 #ifdef __cplusplus
 }
 #endif
