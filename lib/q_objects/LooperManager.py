@@ -14,6 +14,7 @@ class LooperManager(QObject):
     lengthChanged = pyqtSignal(float)
     posChanged = pyqtSignal(float)
     stateChanged = pyqtSignal(int)
+    nextStateChanged = pyqtSignal(int)
     syncChanged = pyqtSignal(bool)
     volumeChanged = pyqtSignal(float)
     panRChanged = pyqtSignal(float)
@@ -24,6 +25,7 @@ class LooperManager(QObject):
         self._length = 1.0
         self._pos = 0.0
         self._state = LoopState.Unknown.value
+        self._next_state = LoopState.Unknown.value
         self._last_received_pos_t = None
         self._sync = False
         self._volume = 1.0
@@ -44,6 +46,17 @@ class LooperManager(QObject):
         if self._state != s:
             self._state = s
             self.stateChanged.emit(s)
+    
+    # next state
+    nextStateChanged = pyqtSignal(int)
+    @pyqtProperty(int, notify=nextStateChanged)
+    def nextState(self):
+        return self._nextState
+    @nextState.setter
+    def nextState(self, s):
+        if self._nextState != s:
+            self._nextState = s
+            self.nextStateChanged.emit(s)
 
     # length: loop length in seconds
     lengthChanged = pyqtSignal(float)

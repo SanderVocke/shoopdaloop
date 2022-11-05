@@ -116,6 +116,7 @@ class BackendFXLooperPairManager(LooperManager):
             self._wet_looper.lengthChanged.connect(self.updateLength)
             self._wet_looper.posChanged.connect(self.updatePos)
             self._wet_looper.stateChanged.connect(self.updateState)
+            self._wet_looper.nextStateChanged.connect(self.updateNextState)
             self.wetLooperIdxsChanged.connect(lambda s: setattr(self._wet_looper, 'loop_idxs', s))
             self.syncChanged.connect(lambda s: setattr(self._wet_looper, 'sync', s))
             
@@ -131,6 +132,7 @@ class BackendFXLooperPairManager(LooperManager):
             self._dry_looper.lengthChanged.connect(self.updateLength)
             self._dry_looper.posChanged.connect(self.updatePos)
             self._dry_looper.stateChanged.connect(self.updateState)
+            self._dry_looper.nextStateChanged.connect(self.updateNextState)
             self.dryLooperIdxsChanged.connect(lambda s: setattr(self._dry_looper, 'loop_idxs', s))
             self.syncChanged.connect(lambda s: setattr(self._dry_looper, 'sync', s))
             
@@ -167,6 +169,23 @@ class BackendFXLooperPairManager(LooperManager):
         if new_state != self.state:
             self.state = new_state
             self.stateChanged.emit(new_state)
+    
+    @pyqtSlot()
+    def updateNextState(self):
+        # In most cases, our overall state matches that of the wet loop.
+        new_next_state = self.wet().next_state
+
+        if self.wet().next_state == LoopState.Recording.value and \
+           self.dry().next_state == LoopState.Playing.value:
+           new_next_state = LoopState.RecordingFX.value
+        
+        if self.wet().next_state == LoopState.Stopped.value and \
+           self.dry().next_state == LoopState.Playing.value:
+           new_next_state = LoopState.PlayingLiveFX.value
+        
+        if new_next_state != self.next_state:
+            self.next_state = new_next_state
+            self.nextStateChanged.emit(new_next_state)
     
     @pyqtSlot()
     def updateVolumes(self):

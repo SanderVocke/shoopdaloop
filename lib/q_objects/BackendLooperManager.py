@@ -83,6 +83,10 @@ class BackendLooperManager(LooperManager):
             self.state = LoopState.Empty.value
         else:
             self.state = states[i]
+        if self.length == 0:
+            self.next_state = LoopState.Empty.value
+        else:
+            self.next_state = next_states[i]
     
     @pyqtSlot(int, list)
     def doLoopAction(self, action_id, args):
