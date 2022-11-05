@@ -104,7 +104,7 @@ with JackSession('ShoopDaLoop-control') as jack_session:
         0.03, # About 30Hz updates
         app
     ) as backend_mgr:
-        click_track_generator = ClickTrackGenerator()
+        click_track_generator = ClickTrackGenerator(app)
         midi_control_mgr = MIDIControlManager(app, jack_client, jack)
 
         qmlRegisterType(BackendLooperManager, 'BackendLooperManager', 1, 0, 'BackendLooperManager')

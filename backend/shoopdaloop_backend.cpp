@@ -166,34 +166,6 @@ int jack_process (jack_nframes_t nframes, void *arg) {
         g_storage
     );
 
-    // // Process sync triggers
-    // for(int i=0; i<g_positions.extent(0); i++) {
-    //     auto master = g_loops_soft_sync_mapping(i);
-    //     auto next_state = g_next_states(i);
-    //     if (master >= 0 && master != i &&
-    //         g_next_states(i) != g_states(i) &&
-    //         g_positions_tmp(master) < g_positions(master)) {
-    //         // Master (re-)started, trigger next state
-    //         g_states(i) = next_state;
-    //         switch(next_state) {
-    //         case Playing:
-    //             g_positions_tmp(i) = g_positions_tmp(master);
-    //             break;
-    //         case Recording:
-    //             g_positions_tmp(i) = g_positions_tmp(master);
-    //             g_lengths(i) = 0;
-    //             break;
-    //         case Stopped:
-    //             g_positions_tmp(i) = 0;
-    //             break;
-    //         default:
-    //             break;
-    //         };
-    //     }
-    // }
-    // // Store positions for next round
-    // g_positions.copy_from(g_positions_tmp);
-
     auto did_process = std::chrono::high_resolution_clock::now();
 
     // Get output port buffers and copy samples into them.
@@ -491,6 +463,10 @@ void terminate() {
     if (g_reporting_thread.joinable()) {
         g_reporting_thread.join();
     }
+
+    // TODO: can be removed if we solve segfault
+    static void *const user_context = nullptr;
+    halide_profiler_report(user_context);
 }
 
 } //extern "C"

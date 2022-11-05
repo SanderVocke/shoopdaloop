@@ -60,55 +60,130 @@ public:
     void generate() {
         Var loop("loop"), port("port"), x("x");
 
+        Expr first_loop = 0;
+        Expr last_loop = states_in.dim(0).max();
+        Expr first_port = 0;
+        Expr last_port = samples_in.dim(1).max();
+        Expr first_sample = 0;
+        Expr last_sample = n_samples-1;
+
         // State never changes during processing
-        Func state_in("state_in"), new_state("new_state");
-        state_in(loop) = select(loop >= states_in.dim(0).min() && loop <= states_in.dim(0).max(),
-            states_in(loop), 0);
+        Func state_in("state_in"), next_state_in("next_state_in"), new_state("new_state");
+        state_in(loop) = select(loop >= first_loop && loop <= last_loop,
+            states_in(clamp(loop, first_loop, last_loop)), 0);
+        next_state_in(loop) = select(loop >= first_loop && loop <= last_loop,
+            next_states_in(loop), 0);
         
         Func soft_sync("soft_sync"), hard_sync("hard_sync");
-        soft_sync(loop) = select(loop >= soft_sync_map.dim(0).min() && loop <= soft_sync_map.dim(0).max(),
+        soft_sync(loop) = select(loop >= first_loop && loop <= last_loop,
             soft_sync_map(loop), 0);
-        hard_sync(loop) = select(loop >= hard_sync_map.dim(0).min() && loop <= hard_sync_map.dim(0).max(),
+        hard_sync(loop) = select(loop >= first_loop && loop <= last_loop,
             hard_sync_map(loop), 0);
 
         // Boundary conditions help to vectorize
-        Expr len_in = select(loop >= loop_lengths_in.dim(0).min() && loop <= loop_lengths_in.dim(0).max(),
-            loop_lengths_in(loop), 0);
+        // TODO: use pre-baked ones
+        Func len_in("len_in");
+        len_in(loop) = select(loop >= first_loop && loop <= last_loop,
+            loop_lengths_in(clamp(loop, first_loop, last_loop)), 0);
         
         Func pos_in("pos_in");
-        pos_in(loop) = select(loop >= positions_in.dim(0).min() && loop <= positions_in.dim(0).max(),
-            positions_in(loop), 0);
+        pos_in(loop) = select(loop >= first_loop && loop <= last_loop,
+            positions_in(clamp(loop, first_loop, last_loop)), 0);
 
         Func storage_in("storage_in");
-        storage_in(x, loop) = select(loop >= loop_storage_in.dim(1).min() && loop <= loop_storage_in.dim(1).max(),
-            select(x >= loop_storage_in.dim(0).min() && x <= loop_storage_in.dim(0).max(),
+        storage_in(x, loop) = select(loop >= first_loop && loop <= last_loop,
+            select(x >= first_sample && x <= last_sample,
                 loop_storage_in(x, loop), 0), 0);
 
         // Map input samples per port to input samples for each loop
         Func _samples_in("_samples_in");
-        Expr buf = clamp(ports_map(loop), samples_in.dim(1).min(), samples_in.dim(1).max());
-        _samples_in(x, loop) = select(buf >= samples_in.dim(0).min() && buf <= samples_in.dim(0).max(),
-            select(x >= samples_in.dim(0).min() && x <= samples_in.dim(0).max(),
+        Expr buf = clamp(ports_map(loop), first_port, last_port);
+        _samples_in(x, loop) = select(buf >= first_port && buf <= last_port,
+            select(x >= first_sample && x <= last_sample,
                 samples_in(x, buf), 0), 0);
         
         // State transitions due to sync connections
-        Func generated_trigger("generated_trigger");
-        generated_trigger(loop) =
-            (state_in(loop) == Playing && pos_in(loop) == 0) ||
-            // LOOP CHECK
+        
+        // Tells at which sample the loop will generate a soft sync.
+        // For loops which will not generate a soft sync trigger, this
+        // is set to -1.
+        Func generates_soft_sync_at("generates_soft_sync_at");
+        Expr is_playing = state_in(loop) == Playing;
+        Expr is_starting = is_playing && pos_in(loop) == 0;
+        Expr will_wrap = is_playing && (len_in(loop) - pos_in(loop)) < n_samples;
+        generates_soft_sync_at(loop) = 
+            select(
+                is_starting,
+                0,
+                select(
+                    will_wrap,
+                    len_in(loop) - pos_in(loop),
+                    -1
+                )
+            );
+        
+        // Update the state based on whether each loop will receive any
+        // sync trigger this iteration.
+        Expr is_soft_synced = 0 <= soft_sync(loop) <= states_in.dim(0).max();
+        Expr my_master_loop = clamp(soft_sync(loop), first_loop, last_loop);
+        Expr will_receive_soft_sync = is_soft_synced && 
+            generates_soft_sync_at(my_master_loop) != -1;
+        new_state(loop) = select(
+            will_receive_soft_sync || !is_soft_synced, // non-soft-synced loops always move to next state immediately
+            next_state_in(loop),
+            state_in(loop)
+        );
+        
+        // Tells at which sample, if any, each loop will start running.
+        // This applies to both playback and recording.
+        // -1 means the loop will not run at all this iteration.
+        Func will_run_from("will_run_from");
+        auto is_running_state = [](Expr state) { return state == Playing || state == Recording; };
+        Expr was_already_running = is_running_state(state_in(loop));
+        Expr will_start_running_due_to_soft_sync = 
+            !is_running_state(state_in(loop)) && will_receive_soft_sync;
+        Expr soft_sync_received_at = generates_soft_sync_at(my_master_loop);
+        will_run_from(loop) =
+            select(
+                was_already_running,
+                0,
+                select(
+                    will_start_running_due_to_soft_sync,
+                    soft_sync_received_at,
+                    -1
+                )
+            );
+        
+        // Calculate position in buffer (not loop storage) @ each sample index
+        // TODO: also handle stopping on soft sync
+        Func buf_pos_unbounded("buf_pos_unbounded"); // WIll not wrap around or be clamped
+        Func buf_pos("buf_pos");
+        Func storage_pos("storage_pos");
+        Expr will_run = will_run_from(loop) != -1;
+        buf_pos(x, loop) = select(
+            will_run,
+            max(0, x - will_run_from(loop)),
+            0
+        );
+        storage_pos(x, loop) = select(
+            new_state(loop) == Playing,
+            (buf_pos(x, loop) + pos_in(loop)) % len_in(loop),
+            select(
+                new_state(loop) == Recording,
+                min(buf_pos(x, loop) + pos_in(loop), max_loop_length),
+                pos_in(loop)
+            )
+        );
 
         // Compute new loop lengths due to recording
         Func len("len");
-        len(loop) = Halide::select(
-            state(loop) == Recording,
-            min(len_in + n_samples, max_loop_length),
-            len_in);
+        len(loop) = max(storage_pos(n_samples-1, loop), len_in(loop));
 
         // Store loop data
         RDom rr(0, n_samples, 0, states_in.dim(0).extent());
-        rr.where(state(rr.y) != Stopped);
+        //rr.where(new_state(rr.y) != Stopped); // TODO: handle stops in middle of iteration
         Expr rr_storage_index = clamp(
-                pos_in(rr.y) + rr.x,
+                storage_pos(rr.x, rr.y),
                 loop_storage_in.dim(0).min(),
                 loop_storage_in.dim(0).max()
             );
@@ -116,7 +191,7 @@ public:
         {
             loop_storage_out(x, loop) = Halide::undef<float>();
             loop_storage_out(rr_storage_index, rr.y) = select(
-                state(rr.y) == Recording,
+                new_state(rr.y) == Recording,
                 _samples_in(rr.x, rr.y),
                 storage_in(rr_storage_index, rr.y)
             );
@@ -124,21 +199,16 @@ public:
 
         // Compute output samples for each loop
         {
-            Expr storage_index = clamp(
-                pos_in(rr.y) + rr.x,
-                loop_storage_in.dim(0).min(),
-                loop_storage_in.dim(0).max()
-            );
-            samples_out_per_loop(x, loop) = 0.0f; // Halide::undef<float>
+            samples_out_per_loop(x, loop) = 0.0f;
             samples_out_per_loop(clamp(
-                rr.x,
+                buf_pos(rr.x, rr.y),
                 samples_out_per_loop.dim(0).min(),
                 samples_out_per_loop.dim(0).max()
             ), rr.y) = 
                 select(
-                    states_in(rr.y) == Playing,
-                    storage_in(storage_index, rr.y) * loop_playback_volumes(rr.y),
-                    0.0f
+                    new_state(rr.y) == Playing,
+                    storage_in(rr_storage_index, rr.y) * loop_playback_volumes(rr.y),
+                    0.0f // TODO: can be undef?
                 );
         }
 
@@ -153,19 +223,23 @@ public:
         samples_out(x, port) = samples_out(x, port) * port_volumes(port);
 
         // Compute output states
-        states_out(loop) = state(loop);
+        states_out(loop) = new_state(loop);
 
         // Compute output positions
-        positions_out(loop) = select(
-            states_in(loop) == Playing || states_in(loop) == Recording,
-            (positions_in(loop) + n_samples) % loop_lengths_in(loop),
-            positions_in(loop)
-        );
+        positions_out(loop) = storage_pos(n_samples-1, loop);
 
         // Compute output lengths
         loop_lengths_out(loop) = len(loop);
 
-        // Schedule        
+        // Schedule
+        storage_pos.compute_root();
+        buf_pos.compute_root();
+        new_state.compute_root();
+        will_run_from.compute_root();
+        pos_in.compute_root();
+        len_in.compute_root();
+        generates_soft_sync_at.compute_root();
+        
         loop_storage_out
             .update()
             .reorder(rr.x, rr.y)
