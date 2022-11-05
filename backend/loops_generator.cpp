@@ -61,8 +61,8 @@ public:
         Var loop("loop"), port("port"), x("x");
 
         // State never changes during processing
-        Func state("state");
-        state(loop) = select(loop >= states_in.dim(0).min() && loop <= states_in.dim(0).max(),
+        Func state_in("state_in"), new_state("new_state");
+        state_in(loop) = select(loop >= states_in.dim(0).min() && loop <= states_in.dim(0).max(),
             states_in(loop), 0);
         
         Func soft_sync("soft_sync"), hard_sync("hard_sync");
@@ -90,6 +90,12 @@ public:
         _samples_in(x, loop) = select(buf >= samples_in.dim(0).min() && buf <= samples_in.dim(0).max(),
             select(x >= samples_in.dim(0).min() && x <= samples_in.dim(0).max(),
                 samples_in(x, buf), 0), 0);
+        
+        // State transitions due to sync connections
+        Func generated_trigger("generated_trigger");
+        generated_trigger(loop) =
+            (state_in(loop) == Playing && pos_in(loop) == 0) ||
+            // LOOP CHECK
 
         // Compute new loop lengths due to recording
         Func len("len");
