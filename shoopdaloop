@@ -16,6 +16,7 @@ from lib.q_objects.MIDIControlLink import MIDIControlLink
 from lib.q_objects.BackendManager import BackendManager
 
 from lib.JackSession import JackSession
+from lib.port_loop_mappings import get_port_loop_mappings
 from third_party.pyjacklib import jacklib
 
 from collections import OrderedDict
@@ -48,45 +49,11 @@ signal.signal(signal.SIGTERM, exit_handler)
 
 script_pwd = os.path.dirname(__file__)
 
-# Set up port loop mappings.
-# 4 ports per track: L dry, R dry, L wet, R wet
-n_tracks = 8
-loops_per_track = 6    
-port_name_pairs = [
-    ('master_loop_in_l', 'master_loop_send_l'),
-    ('master_loop_in_r', 'master_loop_send_r'),
-    ('master_loop_return_l', 'master_loop_out_l'),
-    ('master_loop_return_r', 'master_loop_out_r'),
-]
-for track_idx in range(n_tracks):
-    port_name_pairs.append(
-        ('track_{}_in_l'.format(track_idx + 1),
-        'track_{}_send_l'.format(track_idx + 1))
+mappings = get_port_loop_mappings(
+        8,
+        6,
+        ['l', 'r']
     )
-    port_name_pairs.append(
-        ('track_{}_in_r'.format(track_idx + 1),
-        'track_{}_send_r'.format(track_idx + 1))
-    )
-    port_name_pairs.append(
-        ('track_{}_return_l'.format(track_idx + 1),
-        'track_{}_out_l'.format(track_idx + 1))
-    )
-    port_name_pairs.append(
-        ('track_{}_return_r'.format(track_idx + 1),
-        'track_{}_out_r'.format(track_idx + 1))
-    )
-
-# loop ordering: 4 loops per "logical loop".
-# L dry, R dry, L wet, R wet
-loops_to_ports = [0, 1, 2, 3]
-loops_soft_sync = [0, 1, 2, 3] # Master loop is not synced (TODO)
-loops_hard_sync = [0, 0, 1, 1] # Hard-link channels together
-for t in range(n_tracks):
-    for l in range(loops_per_track):
-        base = 4 + t*4
-        loops_to_ports += [base, base + 1, base + 2, base + 3]
-        loops_soft_sync += [2, 2, 2, 2]
-        loops_hard_sync += [base, base, base + 1, base + 1]
 
 with JackSession('ShoopDaLoop-control') as jack_session:
     jack = jack_session[0]
@@ -95,10 +62,10 @@ with JackSession('ShoopDaLoop-control') as jack_session:
     app = QGuiApplication(sys.argv)
 
     with BackendManager(
-        port_name_pairs,
-        loops_to_ports,
-        loops_hard_sync,
-        loops_soft_sync,
+        mappings['port_name_pairs'],
+        mappings['loops_to_ports'],
+        mappings['loops_hard_sync'],
+        mappings['loops_soft_sync'],
         60.0,
         'ShoopDaLoop-backend',
         0.03, # About 30Hz updates
