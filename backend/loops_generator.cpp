@@ -181,7 +181,8 @@ public:
 
         // Store loop data
         RDom rr(0, n_samples, 0, states_in.dim(0).extent());
-        //rr.where(new_state(rr.y) != Stopped); // TODO: handle stops in middle of iteration
+        rr.where(new_state(rr.y) != Stopped); // TODO: handle stops in middle of iteration
+        rr.where(rr.x >= will_run_from(rr.y));
 
         Expr rr_storage_index = clamp(
             pos_in(rr.y) + rr.x - will_run_from(rr.y),
@@ -252,31 +253,33 @@ public:
         loop_lengths_out(loop) = len(loop);
 
         // Schedule
-        storage_pos.compute_root();
-        buf_pos.compute_root();
+        // storage_pos.compute_root();
+        // buf_pos.compute_root();
         new_state.compute_root();
         will_run_from.compute_root();
         pos_in.compute_root();
         len_in.compute_root();
         generates_soft_sync_at.compute_root();
         
-        loop_storage_out
-            .update()
-            .reorder(rr.x, rr.y)
-            .allow_race_conditions()
-            //.vectorize(rr.x, 8)
-            //.compute_with(samples_out_per_loop.update(), rr.x)
-            //.trace_stores()
-            ;
+        if(true) { //x inside schedule
+            loop_storage_out
+                .update()
+                .reorder(rr.x, rr.y)
+                .allow_race_conditions()
+                .vectorize(rr.x, 8)
+                .compute_with(samples_out_per_loop.update(), rr.x)
+                //.trace_stores()
+                ;
 
-        samples_out_per_loop.compute_root();
-        samples_out_per_loop
-            .update()
-            .reorder(rr.x, rr.y)
-            .allow_race_conditions()
-            //.vectorize(rr.x, 8)
-            //.trace_stores()
-            ;
+            samples_out_per_loop.compute_root();
+            samples_out_per_loop
+                .update()
+                .reorder(rr.x, rr.y)
+                .allow_race_conditions()
+                .vectorize(rr.x, 8)
+                //.trace_stores()
+                ;
+        }
 
         samples_out
             .vectorize(x, 8)
