@@ -77,7 +77,7 @@ with JackSession('test-sdl-backend') as jack_session:
             loops_hard_sync += [base, base, base + 1, base + 1]
     
     # Start the back-end
-    backend_mgr = BackendManager(
+    with BackendManager(
         port_name_pairs,
         loops_to_ports,
         loops_hard_sync,
@@ -85,7 +85,7 @@ with JackSession('test-sdl-backend') as jack_session:
         60.0,
         'test-sdl-backend',
         0.03 # About 30Hz updates
-    )
+    ) as backend:
 
-    while(True):
-        pass
+        while(True):
+            pass

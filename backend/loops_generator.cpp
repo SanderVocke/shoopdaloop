@@ -182,35 +182,55 @@ public:
         // Store loop data
         RDom rr(0, n_samples, 0, states_in.dim(0).extent());
         //rr.where(new_state(rr.y) != Stopped); // TODO: handle stops in middle of iteration
+
         Expr rr_storage_index = clamp(
-                storage_pos(rr.x, rr.y),
-                loop_storage_in.dim(0).min(),
-                loop_storage_in.dim(0).max()
-            );
+            pos_in(rr.y) + rr.x - will_run_from(rr.y),
+            loop_storage_in.dim(0).min(),
+            loop_storage_in.dim(0).max()
+        );
+        Expr rr_buf_index = clamp(
+            rr.x - will_run_from(rr.y),
+            first_sample,
+            last_sample
+        );
         Func storage_out("storage_out");
         {
             loop_storage_out(x, loop) = Halide::undef<float>();
             loop_storage_out(rr_storage_index, rr.y) = select(
-                new_state(rr.y) == Recording,
-                _samples_in(rr.x, rr.y),
+                new_state(rr.y) == Recording && // Recording?
+                    will_run_from(rr.y) != -1,// && // Will run?
+                    //rr.x >= will_run_from(rr.y),// ...And past the starting point?
+                _samples_in(rr_buf_index, rr.y),
                 storage_in(rr_storage_index, rr.y)
             );
         }
+        // Expr rr_storage_index = clamp(
+        //         pos_in(rr.y) + rr.x - will_run_from(rr.y),
+        //         loop_storage_in.dim(0).min(),
+        //         loop_storage_in.dim(0).max()
+        //     );
+        // Func storage_out("storage_out");
+        // {
+        //     loop_storage_out(x, loop) = Halide::undef<float>();
+        //     loop_storage_out(rr_storage_index, rr.y) = select(
+        //         will_run_from(rr.y) != -1 && // Will run?
+        //             rr.x >= will_run_from(rr.y) && // ...And past the starting point?
+        //             new_state(rr.y) == Recording, // ...And recording?
+        //         _samples_in(rr.x, rr.y), // Store a sample
+        //         Halide::undef<float>() // Don't store
+        //     );
+        // }
 
         // Compute output samples for each loop
-        {
-            samples_out_per_loop(x, loop) = 0.0f;
-            samples_out_per_loop(clamp(
-                buf_pos(rr.x, rr.y),
-                samples_out_per_loop.dim(0).min(),
-                samples_out_per_loop.dim(0).max()
-            ), rr.y) = 
-                select(
-                    new_state(rr.y) == Playing,
-                    storage_in(rr_storage_index, rr.y) * loop_playback_volumes(rr.y),
-                    0.0f // TODO: can be undef?
-                );
-        }
+        samples_out_per_loop(x, loop) = 0.0f;
+        samples_out_per_loop(rr_buf_index, rr.y) = 
+            select(
+                //will_run_from(rr.y) != -1 && // Will run?
+                //rr.x >= will_run_from(rr.y) && // ...And past the starting point?
+                new_state(rr.y) == Playing, // ...And playing?
+                storage_in(rr_storage_index, rr.y) * loop_playback_volumes(rr.y), // Playback a sample
+                Halide::undef<float>() // Don't playback
+            );
 
         // Compute output samples mixed into ports
         samples_out(x, port) = _samples_in(x, port) * port_passthrough_levels(port);
@@ -244,8 +264,8 @@ public:
             .update()
             .reorder(rr.x, rr.y)
             .allow_race_conditions()
-            .vectorize(rr.x, 8)
-            .compute_with(samples_out_per_loop.update(), rr.x)
+            //.vectorize(rr.x, 8)
+            //.compute_with(samples_out_per_loop.update(), rr.x)
             //.trace_stores()
             ;
 
@@ -254,7 +274,7 @@ public:
             .update()
             .reorder(rr.x, rr.y)
             .allow_race_conditions()
-            .vectorize(rr.x, 8)
+            //.vectorize(rr.x, 8)
             //.trace_stores()
             ;
 
