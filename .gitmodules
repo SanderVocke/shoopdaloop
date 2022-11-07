@@ -4,6 +4,3 @@
 [submodule "third_party/pyjacklib"]
 	path = third_party/pyjacklib
 	url = git@github.com:SanderVocke/pyjacklib.git
-[submodule "third_party/sooperlooper"]
-	path = third_party/sooperlooper
-	url = git@github.com:SanderVocke/sooperlooper.git
