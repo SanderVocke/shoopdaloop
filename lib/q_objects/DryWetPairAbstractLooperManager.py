@@ -2,10 +2,12 @@ from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot, QTimer
 import re
 import time
 import os
-import wave
 import tempfile
 from enum import Enum
 import math
+import soundfile as sf
+import numpy as np
+import scipy as sp
 
 from ..LoopState import *
 from .NChannelAbstractLooperManager import NChannelAbstractLooperManager
@@ -229,15 +231,22 @@ class DryWetPairAbstractLooperManager(BasicLooperManager):
             self.force_wet_passthrough = force_wet_passthrough
 
     @pyqtSlot(str)
-    def doLoadWav(self, wav_file):
-        # Load the wav into both dry and wet loops.
-        # The user can always adjust later.
-        self.dry().doLoadWav(wav_file)
-        self.wet().doLoadWav(wav_file)
-
-    @pyqtSlot(str)
-    def doSaveWav(self, wav_file):
-        raise NotImplementedError()
+    def doLoadSoundFile(self, filename):
+        try:
+            np_data, samplerate = sf.read(filename, dtype='float32')
+            # np_data is N_Samples elements of N_Channels numbers, swap that to
+            # get per-channel arrays
+            np_data = np.swapaxes(np_data, 0, 1)
+            target_samplerate = 48000 # TODO get from back-end
+            n_samples = len(np_data[0])
+            target_n_samples = n_samples / float(samplerate) * target_samplerate
+            resampled = [
+                sp.signal.resample(d, int(target_n_samples)) for d in np_data
+            ]
+            self.wet().load_loops_data(resampled)
+            self.dry().load_loops_data(resampled)
+        except Exception as e:
+            print("Failed to load sound file: {}".format(format(e)))
     
     @pyqtSlot(QObject)
     def connect_backend_manager(self, manager):

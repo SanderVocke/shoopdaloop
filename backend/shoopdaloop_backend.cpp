@@ -459,12 +459,22 @@ int load_loop_data(
     unsigned len,
     float *data
 ) {
-    g_next_states(loop_idx) = Stopped;
-    g_states(loop_idx) = Stopped;
+    std::atomic<bool> finished = false;
+    push_command([loop_idx, &finished]() {
+        g_next_states(loop_idx) = Stopped;
+        g_states(loop_idx) = Stopped;
+        g_positions(loop_idx) = 0;
+        finished = true;
+    });
+
 
     for(size_t idx = 0; idx < len; idx++) {
         g_storage(idx, loop_idx) = data[idx];
     }
+
+    push_command([len, loop_idx]() {
+        g_lengths(loop_idx) = len;
+    });
 
     return 0;
 }

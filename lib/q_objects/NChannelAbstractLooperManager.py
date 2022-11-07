@@ -2,10 +2,10 @@ from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot, QTimer, Qt
 import re
 import time
 import os
-import wave
 import tempfile
+import soundfile as sf
 
-from ..LoopState import LoopState
+from ..LoopState import *
 from .BasicLooperManager import BasicLooperManager
 
 # This looper manager manages a combination of multiple back-end loops
@@ -14,6 +14,7 @@ from .BasicLooperManager import BasicLooperManager
 class NChannelAbstractLooperManager(BasicLooperManager):
     signalLoopAction = pyqtSignal(int, list) # action_id, args
     loopIdxsChanged = pyqtSignal(list)
+    loadLoopData = pyqtSignal(int, list) # loop idx, samples
 
     def __init__(self, parent=None, loop_idxs=[]):
         super(NChannelAbstractLooperManager, self).__init__(parent)
@@ -35,54 +36,6 @@ class NChannelAbstractLooperManager(BasicLooperManager):
     ##################
     # SLOTS
     ##################
-
-    @pyqtSlot(
-        int,
-        int,
-        list,
-        list,
-        list,
-        list,
-        list,
-        list,
-        list)
-    def update(
-        self,
-        n_loops,
-        n_ports,
-        states,
-        next_states,
-        lengths,
-        positions,
-        loop_volumes,
-        port_volumes,
-        port_passthroughs
-    ):
-        # We just use updates of our first managed loop because
-        # all loops should be hard-synced anyway.
-        if self._loop_idxs[0] >= n_loops:
-            raise ValueError("NChannelAbstractLooperManager with out-of-range loop idx")
-
-        i = self._loop_idxs[0]
-        self.length = lengths[i]
-        self.pos = positions[i]
-        self.volume = loop_volumes[i]
-
-        # Front-end state extensions
-        if self.length == 0:
-            self.state = LoopState.Empty.value
-        else:
-            self.state = states[i]
-        if self.state == LoopState.Empty.value and \
-           next_states[i] in [
-            LoopState.Playing.value,
-            LoopState.PlayingMuted.value,
-            LoopState.Stopped.value,
-            LoopState.Unknown.value
-           ]:
-            self.next_state = LoopState.Empty.value
-        else:
-            self.next_state = next_states[i]
     
     @pyqtSlot(int, list)
     def doLoopAction(self, action_id, args):
@@ -98,6 +51,7 @@ class NChannelAbstractLooperManager(BasicLooperManager):
                     args
                 )
             )
+            self.loadLoopData.connect(manager.load_loop_data)
             manager.looper_mgrs[self.loop_idxs[0]].posChanged.connect(lambda v: NChannelAbstractLooperManager.pos.fset(self, v))
             manager.looper_mgrs[self.loop_idxs[0]].lengthChanged.connect(lambda v: NChannelAbstractLooperManager.length.fset(self, v))
             manager.looper_mgrs[self.loop_idxs[0]].stateChanged.connect(lambda v: NChannelAbstractLooperManager.state.fset(self, v))
@@ -107,3 +61,28 @@ class NChannelAbstractLooperManager(BasicLooperManager):
     @pyqtSlot(result=str)
     def looper_type(self):
         return "NChannelAbstractLooperManager"
+    
+    # Load one array of samples into one channel
+    @pyqtSlot(int, list)
+    def load_loop_data(self, channel, data):
+        self.loadLoopData.emit(self._loop_idxs[channel], data)
+    
+    @pyqtSlot(list)
+    def load_loops_data(self, data):
+        self.doLoopAction(LoopActionType.DoClear.value, [])
+        for i in range(len(self._loop_idxs)):
+            if i < len(data):
+                # we got data for this channel
+                self.load_loop_data(i, data[i])
+            else:
+                # we didn't get data for this channel
+                print("Loaded sound data covers channels {}..{}, re-using first channel for channel {}".format(
+                    1, len(data), i
+                ))
+                self.load_loop_data(i, data[0])
+        if len(data) > len(self._loop_idxs):
+            print("Discarding {} of loaded sound data's {} channels (have {} loop channels)".format(
+                len(data) - len(self._loop_idxs),
+                len(data),
+                len(self._loop_idxs)
+            ))

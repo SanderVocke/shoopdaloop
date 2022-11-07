@@ -2,7 +2,6 @@ from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot, QTimer
 import re
 import time
 import os
-import wave
 import tempfile
 
 from ..LoopState import LoopState, LoopActionType

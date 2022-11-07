@@ -17,8 +17,8 @@ Item {
     
     signal selected() //directly selected by the user to be activated.
     signal add_to_scene() //selected by the user to be added to the current scene.
-    signal request_load_wav(string wav_file) //request to load a wav into this loop
-    signal request_save_wav(string wav_file)
+    signal request_load_sound_file(string filename) //request to load a file into this loop
+    signal request_save_sound_file(string filename)
     signal request_rename(string name)
     signal request_clear()
 
@@ -272,8 +272,8 @@ Item {
     component ContextMenu: Item {
         ClickTrackDialog {
             id: clicktrackdialog
-            onAcceptedClickTrack: (wav_file) => {
-                                      widget.request_load_wav(wav_file)
+            onAcceptedClickTrack: (filename) => {
+                                      widget.request_load_sound_file(filename)
                                   }
         }
 
@@ -285,11 +285,11 @@ Item {
                 onClicked: () => clicktrackdialog.open()
             }
             MenuItem {
-                text: "Save WAV..."
+                text: "Save to file..."
                 onClicked: () => savedialog.open()
             }
             MenuItem {
-                text: "Load WAV..."
+                text: "Load from file..."
                 onClicked: () => loaddialog.open()
             }
             MenuItem {
@@ -323,7 +323,7 @@ Item {
             nameFilters: ["WAV files (*.wav)"]
             onAccepted: {
                 var filename = selectedFile.toString().replace('file://', '');
-                widget.request_load_wav(filename)
+                widget.request_load_sound_file(filename)
             }
 
         }

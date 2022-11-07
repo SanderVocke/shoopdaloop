@@ -132,3 +132,8 @@ class BackendManager(QObject):
             1,
             backend.loop_action_t(action_id)
         )
+    
+    @pyqtSlot(int, list)
+    def load_loop_data(self, loop_idx, data):
+        c_data = (c_float * len(data))(*data)
+        backend.load_loop_data(loop_idx, len(data), c_data)

@@ -61,8 +61,8 @@ ApplicationWindow {
                 function onRequest_bind_loop_to_scene(track, loop) { shared.bind_loop_to_current_scene(track+1, loop) }
                 function onRequest_rename(track, name) { shared.rename_track(track+1, name) }
                 function onRequest_select_loop(track, loop) { shared.select_loop(track+1, loop) }
-                function onRequest_load_wav(track, loop, wav_file) { shared.load_loop_wav(track+1, loop, wav_file) }
-                function onRequest_save_wav(track, loop, wav_file) { shared.save_loop_wav(track+1, loop, wav_file) }
+                function onRequest_load_sound_file(track, loop, filename) { shared.load_loop_sound_file(track+1, loop, filename) }
+                function onRequest_save_sound_file(track, loop, filename) { shared.save_loop_sound_file(track+1, loop, filename) }
                 function onRequest_rename_loop(track, loop, name) { shared.rename_loop(track+1, loop, name) }
                 function onRequest_clear_loop(track, loop) { shared.clear_loop(track+1, loop) }
                 function onTrack_volume_changed(track, vol) { shared.set_track_volume(track+1, vol) }
@@ -91,8 +91,8 @@ ApplicationWindow {
             loops_of_selected_scene: []
             loops_of_hovered_scene: []
             onRenamed: (name) => shared.rename_track(0, name)
-            onRequest_load_wav: (idx, wav_file) => shared.load_loop_wav(0, idx, wav_file)
-            onRequest_save_wav: (idx, wav_file) => shared.save_loop_wav(0, idx, wav_file)
+            onRequest_load_sound_file: (idx, filename) => shared.load_loop_sound_file(0, idx, filename)
+            onRequest_save_sound_file: (idx, filename) => shared.save_loop_sound_file(0, idx, filename)
             onRequest_rename_loop: (idx, name) => shared.rename_loop(0, idx, name)
             onRequest_clear_loop: (idx) => shared.clear_loop(0, idx)
             onVolume_changed: (vol) => { shared.set_track_volume(0, vol) }
