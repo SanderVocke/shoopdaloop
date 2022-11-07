@@ -123,6 +123,7 @@ Item {
                     LoopStateIcon {
                         id: loopstateicon
                         state: statusrect.manager ? statusrect.manager.state : LoopState.LoopState.Unknown
+                        show_timer_instead: statusrect.manager ? statusrect.manager.state != statusrect.manager.next_state : false
                         connected: true
                         size: iconitem.height
                         y: 0
@@ -131,23 +132,13 @@ Item {
                     LoopStateIcon {
                         id: loopnextstateicon
                         state: statusrect.manager ? statusrect.manager.next_state : LoopState.LoopState.Unknown
+                        show_timer_instead: false
                         connected: true
-                        size: iconitem.height * 0.8
+                        size: iconitem.height * 0.65
                         y: 0
                         anchors.right : loopstateicon.right
                         anchors.bottom : loopstateicon.bottom
-                        visible: false
-                        
-                        Timer {
-                            interval: 300
-                            running: true
-                            repeat: true
-                            onTriggered: {
-                                loopnextstateicon.visible =
-                                    loopstateicon.state == loopnextstateicon.state ?
-                                    false : !loopnextstateicon.visible;
-                            }
-                        }
+                        visible: statusrect.manager ? statusrect.manager.state != statusrect.manager.next_state : false
                     }
                 }
                 TextField {
@@ -193,6 +184,7 @@ Item {
         id: lsicon
         property int state
         property bool connected
+        property bool show_timer_instead
         property int size
         property string description: LoopState.LoopState_names[state] ? LoopState.LoopState_names[state] : "Invalid"
 
@@ -207,11 +199,16 @@ Item {
                 if(!lsicon.connected) {
                     return 'cancel'
                 }
+                if(lsicon.show_timer_instead) {
+                    return 'timer-sand'
+                }
 
                 switch(lsicon.state) {
                 case LoopState.LoopState.Playing:
                 case LoopState.LoopState.PlayingLiveFX:
                     return 'play'
+                case LoopState.LoopState.PlayingMuted:
+                    return 'volume-mute'
                 case LoopState.LoopState.Recording:
                 case LoopState.LoopState.RecordingFX:
                     return 'record-rec'
@@ -243,6 +240,9 @@ Item {
 
             text_color: Material.foreground
             text: {
+                if(lsicon.show_timer_instead) {
+                    return ''
+                }
                 switch(lsicon.state) {
                 case LoopState.LoopState.PlayingLiveFX:
                 case LoopState.LoopState.RecordingFX:
@@ -359,10 +359,6 @@ Item {
                         horizontalItemAlignment: Grid.AlignRight
                         Text { text: 'vol:'; color: Material.foreground }
                         Text { text:  manager ? looper_details.manager.volume.toFixed(2) : ""; color: Material.foreground }
-                        Text { text: 'panL:'; color: Material.foreground }
-                        Text { text:  manager ? looper_details.manager.panL.toFixed(2) : ""; color: Material.foreground }
-                        Text { text: 'panR:'; color: Material.foreground }
-                        Text { text:  manager ? looper_details.manager.panR.toFixed(2) : ""; color: Material.foreground }
                     }
                     Item {
                         id: children_placeholder
@@ -374,7 +370,7 @@ Item {
         }
     }
 
-    component BackendFXLooperPairManagerDetails : LooperManagerDetails {
+    component DryWetPairAbstractLooperManagerDetails : LooperManagerDetails {
     }
         
 
@@ -402,7 +398,7 @@ Item {
             spacing: 5
             anchors.fill: parent
 
-            BackendFXLooperPairManagerDetails {
+            DryWetPairAbstractLooperManagerDetails {
                 title: "Overall loop"
                 manager: window.manager
             }

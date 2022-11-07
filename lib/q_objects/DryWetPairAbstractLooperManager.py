@@ -8,13 +8,13 @@ from enum import Enum
 import math
 
 from ..LoopState import *
-from .BackendLooperManager import BackendLooperManager
-from .LooperManager import LooperManager
+from .NChannelAbstractLooperManager import NChannelAbstractLooperManager
+from .BasicLooperManager import BasicLooperManager
 
 # Combines two loops into a single looper interface which
 # offers an FX send/return by using one loop for the dry and one for the
 # wet signal.
-class BackendFXLooperPairManager(LooperManager):
+class DryWetPairAbstractLooperManager(BasicLooperManager):
 
     # State change notifications
     dryLooperIdxsChanged = pyqtSignal(list)
@@ -29,7 +29,7 @@ class BackendFXLooperPairManager(LooperManager):
     forceDryPassthroughChanged = pyqtSignal(bool)
 
     def __init__(self, parent=None):
-        super(BackendFXLooperPairManager, self).__init__(parent)
+        super(DryWetPairAbstractLooperManager, self).__init__(parent)
         self._parent = parent
         self._wet_looper_idxs = []
         self._dry_looper_idxs = []
@@ -39,8 +39,8 @@ class BackendFXLooperPairManager(LooperManager):
         self._force_dry_passthrough = False
 
         self.volumeChanged.connect(self.updateVolumes)
-        self.panLChanged.connect(self.updatePans)
-        self.panRChanged.connect(self.updatePans)
+        # self.panLChanged.connect(self.updatePans)
+        # self.panRChanged.connect(self.updatePans)
     
     ######################
     # PROPERTIES
@@ -110,15 +110,13 @@ class BackendFXLooperPairManager(LooperManager):
         if self._wet_looper == None:
             if self._wet_looper_idxs == []:
                 raise Exception("Trying to create looper before its index is known")
-            self._wet_looper = BackendLooperManager(self._parent, self._wet_looper_idxs)
-            self._wet_looper.sync = False if self._wet_looper_idxs[0] == 0 else self.sync
+            self._wet_looper = NChannelAbstractLooperManager(self._parent, self._wet_looper_idxs)
             # Connections
             self._wet_looper.lengthChanged.connect(self.updateLength)
             self._wet_looper.posChanged.connect(self.updatePos)
             self._wet_looper.stateChanged.connect(self.updateState)
             self._wet_looper.nextStateChanged.connect(self.updateNextState)
             self.wetLooperIdxsChanged.connect(lambda s: setattr(self._wet_looper, 'loop_idxs', s))
-            self.syncChanged.connect(lambda s: setattr(self._wet_looper, 'sync', s))
             
         return self._wet_looper
     
@@ -126,15 +124,13 @@ class BackendFXLooperPairManager(LooperManager):
         if self._dry_looper == None:
             if self._dry_looper_idxs == []:
                 raise Exception("Trying to create looper before its index is known")
-            self._dry_looper = BackendLooperManager(self._parent, self._dry_looper_idxs)
-            self._dry_looper.sync = False if self._dry_looper_idxs[0] == 0 else self.sync
+            self._dry_looper = NChannelAbstractLooperManager(self._parent, self._dry_looper_idxs)
             # Connections
             self._dry_looper.lengthChanged.connect(self.updateLength)
             self._dry_looper.posChanged.connect(self.updatePos)
             self._dry_looper.stateChanged.connect(self.updateState)
             self._dry_looper.nextStateChanged.connect(self.updateNextState)
             self.dryLooperIdxsChanged.connect(lambda s: setattr(self._dry_looper, 'loop_idxs', s))
-            self.syncChanged.connect(lambda s: setattr(self._dry_looper, 'sync', s))
             
         return self._dry_looper
 
@@ -147,7 +143,7 @@ class BackendFXLooperPairManager(LooperManager):
         # In most cases, we want to show the position of the wet
         # loop.        
         if self.wet().state == LoopState.Stopped.value and \
-            self.dry().state == LoopState.Playing.value:
+            self.dry().state == LoopState.PlayingMuted.value:
             # Playing with live FX. show the pos of the dry loop in this case
             self.pos = self.dry().pos
         else:
@@ -159,10 +155,10 @@ class BackendFXLooperPairManager(LooperManager):
         new_state = self.wet().state
 
         if self.wet().state == LoopState.Recording.value and \
-           self.dry().state == LoopState.Playing.value:
+           self.dry().state == LoopState.PlayingMuted.value:
            new_state = LoopState.RecordingFX.value
         
-        if self.wet().state == LoopState.Stopped.value and \
+        if self.wet().state == LoopState.PlayingMuted.value and \
            self.dry().state == LoopState.Playing.value:
            new_state = LoopState.PlayingLiveFX.value
         
@@ -176,10 +172,10 @@ class BackendFXLooperPairManager(LooperManager):
         new_next_state = self.wet().next_state
 
         if self.wet().next_state == LoopState.Recording.value and \
-           self.dry().next_state == LoopState.Playing.value:
+           self.dry().next_state == LoopState.PlayingMuted.value:
            new_next_state = LoopState.RecordingFX.value
         
-        if self.wet().next_state == LoopState.Stopped.value and \
+        if self.wet().next_state == LoopState.PlayingMuted.value and \
            self.dry().next_state == LoopState.Playing.value:
            new_next_state = LoopState.PlayingLiveFX.value
         
@@ -211,9 +207,9 @@ class BackendFXLooperPairManager(LooperManager):
         match action_id:
             case LoopActionType.DoPlay.value:
                 wet_action = LoopActionType.DoPlay.value
-                dry_action = LoopActionType.DoStop.value
+                dry_action = LoopActionType.DoPlayMuted.value
             case LoopActionType.DoPlayLiveFX.value:
-                wet_action = LoopActionType.DoStop.value
+                wet_action = LoopActionType.DoPlayMuted.value
                 dry_action = LoopActionType.DoPlay.value
                 force_wet_passthrough = True
             case LoopActionType.DoRecord.value:
@@ -249,6 +245,10 @@ class BackendFXLooperPairManager(LooperManager):
             self.wet().connect_backend_manager(manager)
             self.dry().connect_backend_manager(manager)
     
+    @pyqtSlot(QObject, int, int)
+    def connect_midi_control_manager(self, manager, track_idx, loop_idx):
+        pass
+    
     @pyqtSlot(result=str)
     def looper_type(self):
-        return "BackendFXLooperPairManager"
+        return "DryWetPairAbstractLooperManager"

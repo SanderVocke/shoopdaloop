@@ -2,7 +2,7 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
 
-import BackendLooperManager 1.0
+import NChannelAbstractLooperManager 1.0
 import '../../build/LoopState.js' as LoopState
 
 Item {
@@ -21,8 +21,8 @@ Item {
 
         function mgr_snippet (dry_loop_idxs, wet_loop_idxs, sync) {
             return 'import QtQuick 2.0\n' +
-            'import BackendFXLooperPairManager 1.0\n' +
-            'BackendFXLooperPairManager { \n' +
+            'import DryWetPairAbstractLooperManager 1.0\n' +
+            'DryWetPairAbstractLooperManager { \n' +
                 'dry_looper_idxs: [' + dry_loop_idxs.toString() + ']\n' +
                 'wet_looper_idxs: [' + wet_loop_idxs.toString() + ']\n' +
                 ' }';

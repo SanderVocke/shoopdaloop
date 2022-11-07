@@ -1,4 +1,4 @@
-from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot, QTimer
+from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot, QTimer, Qt
 import re
 import time
 import os
@@ -6,28 +6,18 @@ import wave
 import tempfile
 
 from ..LoopState import LoopState
-from .LooperManager import LooperManager
+from .BasicLooperManager import BasicLooperManager
 
-# Looper manager for a back-end loop.
-# Can be used to manage multiple back-end loops as well, in which case
-# they should be hard-linked in the back-end. The manager will regard
-# them as channels.
-class BackendLooperManager(LooperManager):
+# This looper manager manages a combination of multiple back-end loops
+# which are hard-linked and represent audio channels on an abstract
+# looper.
+class NChannelAbstractLooperManager(BasicLooperManager):
     signalLoopAction = pyqtSignal(int, list) # action_id, args
     loopIdxsChanged = pyqtSignal(list)
 
     def __init__(self, parent=None, loop_idxs=[]):
-        super(BackendLooperManager, self).__init__(parent)
+        super(NChannelAbstractLooperManager, self).__init__(parent)
         self._loop_idxs = loop_idxs
-        # self.syncChanged.connect(self.update_sl_sync)
-        # self.passthroughChanged.connect(self.update_sl_passthrough)
-        # self.volumeChanged.connect(self.update_sl_volume)
-        # self.panLChanged.connect(self.update_sl_pan_l)
-        # self.panRChanged.connect(self.update_sl_pan_r)
-
-        # self.stateChanged.connect(lambda s: print("State -> {}".format(s)))
-        # self.lengthChanged.connect(lambda s: print("Length -> {}".format(s)))
-        # self.posChanged.connect(lambda s: print("Position -> {}".format(s)))
 
     ######################
     # PROPERTIES
@@ -71,7 +61,7 @@ class BackendLooperManager(LooperManager):
         # We just use updates of our first managed loop because
         # all loops should be hard-synced anyway.
         if self._loop_idxs[0] >= n_loops:
-            raise ValueError("BackendLooperManager with out-of-range loop idx")
+            raise ValueError("NChannelAbstractLooperManager with out-of-range loop idx")
 
         i = self._loop_idxs[0]
         self.length = lengths[i]
@@ -86,6 +76,7 @@ class BackendLooperManager(LooperManager):
         if self.state == LoopState.Empty.value and \
            next_states[i] in [
             LoopState.Playing.value,
+            LoopState.PlayingMuted.value,
             LoopState.Stopped.value,
             LoopState.Unknown.value
            ]:
@@ -107,8 +98,12 @@ class BackendLooperManager(LooperManager):
                     args
                 )
             )
-            manager.update.connect(self.update)
-    
+            manager.looper_mgrs[self.loop_idxs[0]].posChanged.connect(lambda v: NChannelAbstractLooperManager.pos.fset(self, v))
+            manager.looper_mgrs[self.loop_idxs[0]].lengthChanged.connect(lambda v: NChannelAbstractLooperManager.length.fset(self, v))
+            manager.looper_mgrs[self.loop_idxs[0]].stateChanged.connect(lambda v: NChannelAbstractLooperManager.state.fset(self, v))
+            manager.looper_mgrs[self.loop_idxs[0]].nextStateChanged.connect(lambda v: NChannelAbstractLooperManager.next_state.fset(self, v))
+            manager.looper_mgrs[self.loop_idxs[0]].volumeChanged.connect(lambda v: NChannelAbstractLooperManager.volume.fset(self, v))
+
     @pyqtSlot(result=str)
     def looper_type(self):
-        return "BackendLooperManager"
+        return "NChannelAbstractLooperManager"

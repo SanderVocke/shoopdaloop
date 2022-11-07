@@ -9,6 +9,7 @@ from backend import shoopdaloop_backend as backend
 class LoopState(Enum):
     Stopped = backend.Stopped
     Playing = backend.Playing
+    PlayingMuted = backend.PlayingMuted
     Recording = backend.Recording
     # Extended states for front-end
     Unknown = -1
@@ -19,6 +20,7 @@ class LoopState(Enum):
     names = {
         Stopped: 'Stopped',
         Playing: 'Playing',
+        PlayingMuted: 'PlayingMuted',
         Recording: 'Recording',
         Unknown: 'Unknown',
         RecordingFX: 'Re-recording FX',
@@ -28,6 +30,7 @@ class LoopState(Enum):
 
 class LoopActionType(Enum):
     DoPlay = backend.DoPlay
+    DoPlayMuted = backend.DoPlayMuted
     DoStop = backend.DoStop
     DoRecord = backend.DoRecord
     DoRecordNCycles = backend.DoRecordNCycles
@@ -38,6 +41,7 @@ class LoopActionType(Enum):
 
     names = {
         DoPlay: 'play',
+        DoPlayMuted: 'playMuted',
         DoStop: 'stop',
         DoRecord: 'record',
         DoRecordFX: 'recordFX',

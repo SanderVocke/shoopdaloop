@@ -379,11 +379,20 @@ int do_loop_action(
         case DoRecord:
             cmd = [idxs, apply_state]() {
                 apply_state(idxs, Recording);
+                for(auto const& idx: idxs) {
+                    g_positions(idx) = 0;
+                    g_lengths(idx) = 0;
+                }
             };
             break;
         case DoPlay:
             cmd = [idxs, apply_state]() {
                 apply_state(idxs, Playing);
+            };
+            break;
+        case DoPlayMuted:
+            cmd = [idxs, apply_state]() {
+                apply_state(idxs, PlayingMuted);
             };
             break;
         case DoStop:

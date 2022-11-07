@@ -5,6 +5,7 @@ extern "C" {
 typedef enum {
     Stopped,
     Playing,
+    PlayingMuted, // Useful for generating sync while not outputting any sound
     Recording,
     LOOP_STATE_MAX
 } loop_state_t;
@@ -13,6 +14,7 @@ typedef enum  {
     DoRecord,
     DoRecordNCycles,
     DoPlay,
+    DoPlayMuted,
     DoStop,
     DoClear,
     LOOP_ACTION_MAX

@@ -2,6 +2,8 @@ from ctypes import *
 
 from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot, QTimer
 
+from .NChannelAbstractLooperManager import NChannelAbstractLooperManager
+
 import sys
 sys.path.append('../..')
 
@@ -9,21 +11,12 @@ import build.backend.shoopdaloop_backend as backend
 from lib.LoopState import *
 from collections import OrderedDict
 
+import time
+import cProfile
+
 from pprint import *
 
 class BackendManager(QObject):
-    update = pyqtSignal(
-        int,  # n loops
-        int,  # n ports
-        list, # states
-        list, # next_states
-        list, # lengths
-        list, # positions
-        list, # loop volumes
-        list, # port volumes
-        list  # port passthrough levels
-    )
-
     def __init__(self,
                  port_name_pairs,
                  loops_to_ports_map,
@@ -52,6 +45,10 @@ class BackendManager(QObject):
         self.update_timer.setInterval(int(1000.0 * update_period_seconds))
         self.update_timer.timeout.connect(lambda: backend.request_update())
         self.update_timer.start()
+
+        self.looper_mgrs = [
+            NChannelAbstractLooperManager(self) for i in range(self.n_loops)
+        ]
     
     def __enter__(self):
         self.initialize_backend()
@@ -103,18 +100,18 @@ class BackendManager(QObject):
                 loop_volumes,
                 port_volumes,
                 port_passthrough_levels):
-        self.update.emit(
-            int(n_loops),
-            int(n_ports),
-            [int(loop_states[i]) for i in range(n_loops)],
-            [int(loop_next_states[i]) for i in range(n_loops)],
-            [int(loop_lengths[i]) for i in range(n_loops)],
-            [int(loop_positions[i]) for i in range(n_loops)],
-            [float(loop_volumes[i]) for i in range(n_loops)],
-            [float(port_volumes[i]) for i in range(n_ports)],
-            [float(port_passthrough_levels[i]) for i in range(n_ports)],
-        )
-
+        # pr = cProfile.Profile()
+        # pr.enable()
+        for i in range(n_loops):
+            m = self.looper_mgrs[i]
+            m.state = loop_states[i]
+            m.next_state = loop_next_states[i]
+            m.length = loop_lengths[i]
+            m.pos = loop_positions[i]
+            m.volume = loop_volumes[i]
+        # # TODO port changes
+        # pr.disable()
+        # pr.print_stats()
         return 0
 
     def abort_cb(self):
