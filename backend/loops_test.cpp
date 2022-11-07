@@ -4,6 +4,7 @@
 #include <HalideBuffer.h>
 
 #include <cstdlib>
+#include <limits>
 
 using namespace boost::ut;
 using namespace Halide::Runtime;
@@ -67,10 +68,10 @@ loops_buffers setup_buffers(
         r.loops_to_ports(i) = 0;
 
         for (size_t s = 0; s < max_loop_length; s++) {
-            r.storage_in(s, i) = r.storage_out(s, i) = rand();
+            r.storage_in(s, i) = r.storage_out(s, i) = (float)-s;
         }
         for (size_t s = 0; s < process_samples; s++) {
-            r.samples_out_per_loop(s, i) = rand();
+            r.samples_out_per_loop(s, i) = std::numeric_limits<float>::min();
         }
     }
 
@@ -79,8 +80,8 @@ loops_buffers setup_buffers(
         r.port_volumes(i) = 1.0f;
 
         for (size_t s = 0; s < process_samples; s++) {
-            r.samples_in(s, i) = rand();
-            r.samples_out(s, i) = rand();
+            r.samples_in(s, i) = (float)s;
+            r.samples_out(s, i) = std::numeric_limits<float>::max();
         }
     }
 
@@ -166,11 +167,11 @@ suite loops_tests = []() {
         loops_buffers bufs = setup_buffers(1, 1, 16, 8, 32);
         bufs.states(0) = bufs.next_states(0) = Recording;
         bufs.positions(0) = 2;
-        bufs.lengths(0) = 11;
+        bufs.lengths(0) = 3;
         run_loops(bufs);
         expect(eq(((int)bufs.states(0)), Recording));
         expect(bufs.positions(0) == 10_i);
-        expect(bufs.lengths(0) == 19_i);
+        expect(bufs.lengths(0) == 11_i);
 
         for(size_t i=0; i<bufs.max_loop_length; i++) {
             if (i >= 2 && i <= 10) {
@@ -181,6 +182,11 @@ suite loops_tests = []() {
             }
         }
     };
+
+    // Test ideas:
+    // - non multiple of 8 buffers
+    // - different sync kinds @ start and stop
+    // - recording while pos != length
 };
 
 int main() {}

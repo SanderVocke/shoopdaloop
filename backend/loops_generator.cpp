@@ -254,7 +254,7 @@ public:
                 .update()
                 .reorder(rr.x, rr.y)
                 .allow_race_conditions()
-                .vectorize(rr.x, 8)
+                //.vectorize(rr.x, 8)
                 .compute_with(samples_out_per_loop.update(), rr.x)
                 //.trace_stores()
                 ;
@@ -264,21 +264,21 @@ public:
                 .update()
                 .reorder(rr.x, rr.y)
                 .allow_race_conditions()
-                .vectorize(rr.x, 8)
+                //.vectorize(rr.x, 8)
                 //.trace_stores()
                 ;
         }
 
         samples_out
-            .vectorize(x, 8)
+            //.vectorize(x, 8)
             ;
         samples_out
             .update(0)
-            .vectorize(x, 8)
+            //.vectorize(x, 8)
             ;
         samples_out
             .update(1)
-            .vectorize(x, 8)
+            //.vectorize(x, 8)
             ;
         
         Pipeline({samples_out, loop_storage_out, states_out, positions_out, loop_lengths_out}).print_loop_nest();
