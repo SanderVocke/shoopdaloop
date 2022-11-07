@@ -124,7 +124,7 @@ public:
         
         // Update the state based on whether each loop will receive any
         // sync trigger this iteration.
-        Expr is_soft_synced = 0 <= soft_sync(loop) <= states_in.dim(0).max();
+        Expr is_soft_synced = 0 <= soft_sync(loop) && soft_sync(loop) <= states_in.dim(0).max();
         Expr my_master_loop = clamp(soft_sync(loop), first_loop, last_loop);
         Expr will_receive_soft_sync = is_soft_synced && 
             generates_soft_sync_at(my_master_loop) != -1;

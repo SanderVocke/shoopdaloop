@@ -45,7 +45,7 @@ typedef void (*AbortCallback) ();
 //                          "hard-synced". A hard-synced loop will always mirror its master's state, length and position.
 //                          Typical use-case is for making a multi-channel loop, using a looper for each channel.
 //                          Using a negative number or the loop's own index disables hard sync for that loop.
-// loops_soft_sync_mapping: Should contain n_loops indices, which indicate to which other loop the loop sholud be
+// loops_soft_sync_mapping: Should contain n_loops indices, which indicate to which other loop the loop should be
 //                          "soft-synced". A soft-synced loop will only change state when its master (re-)starts playing.
 //                          Using a negative number or the loop's own index disables soft sync for that loop.
 // input_port_names: n_ports strings which give the names of the inputs for the ports.
@@ -70,8 +70,11 @@ int initialize(
 
 
 // Perform an action on the given loop.
+// Passing multiple loops guarantees that state change on them
+// happens simultaneously.
 int do_loop_action(
-    unsigned loop_idx,
+    unsigned *loop_idxs,
+    unsigned n_loop_idxs,
     loop_action_t action
 );
 

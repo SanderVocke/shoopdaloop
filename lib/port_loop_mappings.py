@@ -23,11 +23,12 @@ def get_port_loop_mappings(n_tracks, loops_per_track, loop_channel_names):
     def add_loop(track_idx):
         base_loop = len(r['loops_to_ports'])
         base_port = track_idx*chans*2
+        # Below procudes [0, 1, 2, 3] offset by base port.
         r['loops_to_ports'] += [base_port+i for i in range(chans * 2)]
-        # Below produces [0, 1, 0, 3, 0, 5, ...] offset by base loop.
+        # Below produces [0, -1, 0, -1, 0, -1, ...]
         # so that each first channel is soft-synced to master and rest of channels
         # are not soft-synced
-        r['loops_soft_sync'] += flatten([[0, base_loop+i*2+1] for i in range(chans)])
+        r['loops_soft_sync'] += flatten([[0, -1] for i in range(chans)])
         # Below produces [0, 0, 1, 1, 2, 2, ...] offset by base loop
         # so that channels are hard-linked together
         r['loops_hard_sync'] += flatten([[i+base_loop, i+base_loop] for i in range(chans)])
@@ -36,6 +37,11 @@ def get_port_loop_mappings(n_tracks, loops_per_track, loop_channel_names):
 
     add_ports_for_track('master_loop')
     add_loop(0)
+    # For master loop, modify so that it is not soft-synced at all.
+    # TODO: how to guarantee synchronization between the master dry
+    # and wet loops?
+    r['loops_soft_sync'][0] = -1
+    r['loops_soft_sync'][2] = -1
     
     for track_idx in range(n_tracks):
         add_ports_for_track('track_{}'.format(track_idx+1))

@@ -299,8 +299,7 @@ int initialize(
         g_loops_to_ports(i) = loops_to_ports_mapping[i];
         g_loops_hard_sync_mapping(i) = loops_hard_sync_mapping[i] < 0 ?
             i : loops_hard_sync_mapping[i];
-        g_loops_soft_sync_mapping(i) = loops_soft_sync_mapping[i] < 0 ?
-            i : loops_soft_sync_mapping[i];
+        g_loops_soft_sync_mapping(i) = loops_soft_sync_mapping[i];
         g_loop_volumes(i) = 1.0f;
     }
 
@@ -363,38 +362,42 @@ int initialize(
 }
 
 int do_loop_action(
-    unsigned loop_idx,
+    unsigned *loop_idxs,
+    unsigned n_loop_idxs,
     loop_action_t action
 ) {
     std::function<void()> cmd = nullptr;
-    auto apply_state = [](size_t loop, loop_state_t state) {
-        if (g_loops_soft_sync_mapping(loop) == loop) {
-            g_states(loop) = g_next_states(loop) = state;
-        } else {
+    std::vector<unsigned> idxs(n_loop_idxs);
+    memcpy((void*)idxs.data(), (void*)loop_idxs, n_loop_idxs*sizeof(unsigned));
+
+    auto apply_state = [](std::vector<unsigned> loops, loop_state_t state) {
+        for(auto const& loop: loops) {
             g_next_states(loop) = state;
         }
     };
     switch(action) {
         case DoRecord:
-            cmd = [loop_idx, apply_state]() {
-                apply_state(loop_idx, Recording);
+            cmd = [idxs, apply_state]() {
+                apply_state(idxs, Recording);
             };
             break;
         case DoPlay:
-            cmd = [loop_idx, apply_state]() {
-                apply_state(loop_idx, Playing);
+            cmd = [idxs, apply_state]() {
+                apply_state(idxs, Playing);
             };
             break;
         case DoStop:
-            cmd = [loop_idx, apply_state]() {
-                apply_state(loop_idx, Stopped);
+            cmd = [idxs, apply_state]() {
+                apply_state(idxs, Stopped);
             };
             break;
         case DoClear:
-            cmd = [loop_idx, apply_state]() {
-                apply_state(loop_idx, Stopped);
-                g_positions(loop_idx) = 0;
-                g_lengths(loop_idx) = 0;
+            cmd = [idxs, apply_state]() {
+                apply_state(idxs, Stopped);
+                for(auto const& idx: idxs) {
+                    g_positions(idx) = 0;
+                    g_lengths(idx) = 0;
+                }
             };
             break;
         case DoRecordNCycles:

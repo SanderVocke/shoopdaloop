@@ -131,6 +131,7 @@ class BackendManager(QObject):
            raise ValueError("Backend: loop action {} is not implemented in back-end".format(action_id))
         
         backend.do_loop_action(
-            c_uint(loop_idx),
+            byref(c_uint(loop_idx)),
+            1,
             backend.loop_action_t(action_id)
         )
