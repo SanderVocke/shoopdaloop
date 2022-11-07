@@ -4,3 +4,6 @@
 [submodule "third_party/pyjacklib"]
 	path = third_party/pyjacklib
 	url = git@github.com:SanderVocke/pyjacklib.git
+[submodule "third_party/ut"]
+	path = third_party/ut
+	url = https://github.com/boost-ext/ut.git

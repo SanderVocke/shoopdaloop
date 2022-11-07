@@ -1,5 +1,5 @@
 # Set up language settings
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 set(CMAKE_CXX_EXTENSIONS NO)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}")
@@ -31,6 +31,22 @@ target_include_directories(shoopdaloop_backend
                         ${JACK_INCLUDE_DIRS}
                         ${CMAKE_CURRENT_BINARY_DIR}
                         ${BOOST_INCLUDE_DIRS}
+                        )
+
+# Tests
+add_executable(loops_test loops_test.cpp)
+target_link_libraries(loops_test PRIVATE
+                      Halide::Tools
+                      Halide
+                      shoopdaloop_loops
+                      ${BOOST_LIBRARIES}
+                      ${JACK_LIBRARIES})
+target_include_directories(loops_test
+                        PRIVATE
+                        ${JACK_INCLUDE_DIRS}
+                        ${CMAKE_CURRENT_BINARY_DIR}
+                        ${BOOST_INCLUDE_DIRS}
+                        ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/ut/include
                         )
 
 # Autogen Python bindings
