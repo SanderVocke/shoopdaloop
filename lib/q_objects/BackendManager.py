@@ -86,7 +86,8 @@ class BackendManager(QObject):
             self.client_name.encode('ascii'),
             1,
             self.update_cb,
-            self.abort_cb
+            self.abort_cb,
+            backend.backend_features_t(backend.Default)
         )
 
     def update_cb(

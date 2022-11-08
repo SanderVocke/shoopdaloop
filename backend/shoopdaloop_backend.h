@@ -20,6 +20,12 @@ typedef enum  {
     LOOP_ACTION_MAX
 } loop_action_t;
 
+typedef enum {
+    Default,
+    Profiling,
+    Tracing
+} backend_features_t;
+
 // The update callback provides the current looper state.
 // The callee should not free any pointers.
 typedef int(*UpdateCallback) (
@@ -67,7 +73,8 @@ int initialize(
     const char *client_name,
     unsigned print_benchmark_info,
     UpdateCallback update_cb,
-    AbortCallback abort_cb
+    AbortCallback abort_cb,
+    backend_features_t features
 );
 
 

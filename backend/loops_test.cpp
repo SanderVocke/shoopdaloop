@@ -13,13 +13,7 @@
 using namespace boost::ut;
 using namespace Halide::Runtime;
 
-enum backend_to_use {
-    Default,
-    Profiling,
-    Tracing
-};
-
-backend_to_use g_backend = Default;
+backend_features_t g_backend = Default;
 
 struct loops_buffers {
     size_t process_samples;
@@ -141,7 +135,7 @@ void run_loops(
 suite loops_tests = []() {
     srand(1235930); // Seed random generator
 
-    "stop"_test = []() {
+    "1_stop"_test = []() {
         loops_buffers bufs = setup_buffers(1, 1, 16, 8, 16);
         bufs.states_in(0) = bufs.next_states(0) = Stopped;
         bufs.positions_in(0) = 2;
@@ -164,7 +158,7 @@ suite loops_tests = []() {
         }
     };
 
-    "play"_test = []() {
+    "2_play"_test = []() {
         loops_buffers bufs = setup_buffers(1, 1, 16, 8, 16);
         bufs.states_in(0) = bufs.next_states(0) = Playing;
         bufs.positions_in(0) = 2;
@@ -190,7 +184,7 @@ suite loops_tests = []() {
         }
     };
 
-    "play_muted"_test = []() {
+    "3_play_muted"_test = []() {
         loops_buffers bufs = setup_buffers(1, 1, 16, 8, 16);
         bufs.states_in(0) = bufs.next_states(0) = PlayingMuted;
         bufs.positions_in(0) = 2;
@@ -213,7 +207,7 @@ suite loops_tests = []() {
         }
     };
 
-    "record"_test = []() {
+    "4_record"_test = []() {
         loops_buffers bufs = setup_buffers(1, 1, 16, 8, 32);
         bufs.states_in(0) = bufs.next_states(0) = Recording;
         bufs.positions_in(0) = 2;
@@ -243,7 +237,7 @@ suite loops_tests = []() {
         }
     };
 
-    "passthrough"_test = []() {
+    "5_passthrough"_test = []() {
         loops_buffers bufs = setup_buffers(1, 1, 16, 8, 16);
         bufs.states_in(0) = bufs.next_states(0) = Stopped;
         bufs.positions_in(0) = 2;
@@ -267,7 +261,7 @@ suite loops_tests = []() {
         }
     };
 
-    "loop_volume"_test = []() {
+    "6_loop_volume"_test = []() {
         loops_buffers bufs = setup_buffers(1, 1, 16, 8, 16);
         bufs.states_in(0) = bufs.next_states(0) = Playing;
         bufs.positions_in(0) = 2;
@@ -291,7 +285,7 @@ suite loops_tests = []() {
         }
     };
 
-    "soft_sync_stop_self"_test = []() {
+    "7_soft_sync_play_to_stop_self"_test = []() {
         loops_buffers bufs = setup_buffers(1, 1, 16, 8, 16);
         bufs.states_in(0) = Playing;
         bufs.next_states(0) = Stopped;
@@ -323,7 +317,7 @@ suite loops_tests = []() {
         }
     };
 
-    "soft_sync_record_self"_test = []() {
+    "8_soft_sync_play_to_record_self"_test = []() {
         loops_buffers bufs = setup_buffers(1, 1, 16, 8, 16);
         bufs.states_in(0) = Playing;
         bufs.next_states(0) = Recording;
@@ -362,6 +356,66 @@ suite loops_tests = []() {
         }
     };
 
+    "9_soft_sync_stop_to_record_self"_test = []() {
+        loops_buffers bufs = setup_buffers(1, 1, 16, 8, 16);
+        bufs.states_in(0) = Stopped;
+        bufs.next_states(0) = Recording;
+        bufs.positions_in(0) = 0;
+        bufs.lengths_in(0) = 0;
+        bufs.loops_soft_sync_mapping(0) = 0;
+        bufs.passthroughs(0) = 0.0f;
+        run_loops(bufs);
+        expect(eq(((int)bufs.states_out(0)), Recording));
+        expect(bufs.positions_out(0) == 8_i);
+        expect(bufs.lengths_out(0) == 8_i);
+
+        for(size_t i=0; i<bufs.max_loop_length; i++) {
+            float storage_in = bufs.storage_in(i,0);
+            float storage_out = bufs.storage_out(i,0);
+            if (i < 8) {
+                // Recording starts from 0, two samples recorded
+                float sample_in = bufs.samples_in(i, 0);
+                expect(eq(storage_out, sample_in)) << " at index " << i;
+            } else {
+                // Rest was untouched
+                expect(eq(storage_out, storage_in)) << " at index " << i;
+            }
+        }
+        for(size_t i=0; i<bufs.process_samples; i++) {
+            float sample_out = bufs.samples_out(i,0);
+            // Recording, just passthrough
+            expect(eq(sample_out, 0.0_f)) << " at index " << i;
+        }
+    };
+
+    "10_soft_sync_record_to_play_self"_test = []() {
+        loops_buffers bufs = setup_buffers(1, 1, 16, 8, 16);
+        bufs.states_in(0) = Recording;
+        bufs.next_states(0) = Playing;
+        bufs.positions_in(0) = 5;
+        bufs.lengths_in(0) = 5;
+        bufs.loops_soft_sync_mapping(0) = 0;
+        bufs.passthroughs(0) = 0.0f;
+        run_loops(bufs);
+        expect(eq(((int)bufs.states_out(0)), Playing));
+        expect(bufs.positions_out(0) == 3_i);
+        expect(bufs.lengths_out(0) == 5_i);
+
+        for(size_t i=0; i<bufs.max_loop_length; i++) {
+            float storage_in = bufs.storage_in(i,0);
+            float storage_out = bufs.storage_out(i,0);
+            // Recording should have stopped immediately
+            expect(eq(storage_out, storage_in)) << " at index " << i;
+        }
+        for(size_t i=0; i<bufs.process_samples; i++) {
+            // Playback should have started immediately
+            float sample_out = bufs.samples_out(i,0);
+            float storage = bufs.storage_in(i+5, 0);
+            // Recording, just passthrough
+            expect(eq(sample_out, storage)) << " at index " << i;
+        }
+    };
+
     // Test ideas:
     // - non multiple of 8 buffers
     // - different sync kinds @ start and stop
@@ -385,7 +439,8 @@ int main(int argc, const char *argv[]) {
         } else if (arg.substr(0, filter_arg.size()) == filter_arg) {
             static auto filter = arg.substr(filter_arg.size());
             std::cout << "Filtering on: \"" << filter << "\"" << std::endl;
-            cfg<override> = {  .filter = filter };
+            
+            cfg<override> = {.filter = filter};
         } else {
             g_backend = Default;
         }

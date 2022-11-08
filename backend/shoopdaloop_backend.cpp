@@ -22,6 +22,10 @@
 using namespace Halide::Runtime;
 using namespace std;
 
+backend_features_t g_features;
+typedef decltype(&shoopdaloop_loops) loops_fn;
+loops_fn g_loops_fn = shoopdaloop_loops;
+
 // State for each loop
 Buffer<int8_t, 1> g_states;
 
@@ -143,28 +147,30 @@ int jack_process (jack_nframes_t nframes, void *arg) {
     auto did_input = std::chrono::high_resolution_clock::now();
 
     // Execute the loop engine.
-    shoopdaloop_loops(
-        g_samples_in,
-        g_states,
-        g_next_states,
-        g_positions,
-        g_lengths,
-        g_storage,
-        g_loops_to_ports,
-        g_loops_hard_sync_mapping,
-        g_loops_soft_sync_mapping,
-        g_passthroughs,
-        g_port_volumes,
-        g_loop_volumes,
-        nframes,
-        g_loop_len,
-        g_samples_out,
-        g_samples_out_per_loop,
-        g_states,
-        g_positions,
-        g_lengths,
-        g_storage
-    );
+    if(g_features == Default) {
+        g_loops_fn(
+            g_samples_in,
+            g_states,
+            g_next_states,
+            g_positions,
+            g_lengths,
+            g_storage,
+            g_loops_to_ports,
+            g_loops_hard_sync_mapping,
+            g_loops_soft_sync_mapping,
+            g_passthroughs,
+            g_port_volumes,
+            g_loop_volumes,
+            nframes,
+            g_loop_len,
+            g_samples_out,
+            g_samples_out_per_loop,
+            g_states,
+            g_positions,
+            g_lengths,
+            g_storage
+        );
+    }
 
     auto did_process = std::chrono::high_resolution_clock::now();
 
@@ -229,10 +235,12 @@ int initialize(
     const char *client_name,
     unsigned print_benchmark_info,
     UpdateCallback update_cb,
-    AbortCallback abort_cb
+    AbortCallback abort_cb,
+    backend_features_t features
 ) {
     g_n_loops = n_loops;
     g_n_ports = n_ports;
+    g_features = features;
 
     // Create a JACK client
     jack_status_t status;
