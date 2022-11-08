@@ -416,6 +416,40 @@ suite loops_tests = []() {
         }
     };
 
+    "11_soft_sync_play_to_record_self"_test = []() {
+        loops_buffers bufs = setup_buffers(1, 1, 16, 8, 16);
+        bufs.states_in(0) = Playing;
+        bufs.next_states(0) = Recording;
+        bufs.positions_in(0) = 5;
+        bufs.lengths_in(0) = 10;
+        bufs.loops_soft_sync_mapping(0) = 0;
+        bufs.passthroughs(0) = 0.0f;
+        run_loops(bufs);
+        expect(eq(((int)bufs.states_out(0)), Recording));
+        expect(bufs.positions_out(0) == 3_i);
+        expect(bufs.lengths_out(0) == 3_i);
+
+        for(size_t i=0; i<bufs.max_loop_length; i++) {
+            float storage_in = bufs.storage_in(i,0);
+            float storage_out = bufs.storage_out(i,0);
+            if(i<3) {
+                float sample_in = bufs.samples_in(i+5,0);
+                expect(eq(storage_out, sample_in)) << " at index " << i;
+            } else {
+                expect(eq(storage_out, storage_in)) << " at index " << i;
+            }
+        }
+        for(size_t i=0; i<bufs.process_samples; i++) {
+            float sample_out = bufs.samples_out(i,0);
+            if(i<5) {
+                float storage = bufs.storage_in(i+5, 0);
+                expect(eq(sample_out, storage)) << " at index " << i;
+            } else {
+                expect(eq(sample_out, 0.0_f)) << " at index " << i;
+            }            
+        }
+    };
+
     // Test ideas:
     // - non multiple of 8 buffers
     // - different sync kinds @ start and stop

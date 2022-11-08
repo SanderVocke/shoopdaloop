@@ -299,7 +299,7 @@ public:
         Expr n_played_samples = max(0, playing_range(loop)[1] - playing_range(loop)[0]);
         positions_out(loop) = select(
             will_start_recording,
-            (_positions_in(loop) + n_played_samples) % loop_storage_in.dim(0).extent() + n_recorded_samples, // Wrap then record
+            (_positions_in(loop) + n_played_samples) % loop_lengths_in(loop) + n_recorded_samples, // Wrap then record
             (_positions_in(loop) + n_recorded_samples + n_played_samples) % loop_lengths_out(loop)           // Record then wrap
         );
 
