@@ -15,7 +15,19 @@ add_halide_generator(shoopdaloop_loops.generator SOURCES loops_generator.cpp)
 # Filters
 add_halide_library(shoopdaloop_loops 
     FROM shoopdaloop_loops.generator
+    TARGETS host
+    )
+add_halide_library(shoopdaloop_loops_profile
+    GENERATOR shoopdaloop_loops
+    FUNCTION_NAME shoopdaloop_loops_profile
+    FROM shoopdaloop_loops.generator
     TARGETS host-profile
+    )
+add_halide_library(shoopdaloop_loops_trace
+    GENERATOR shoopdaloop_loops
+    FUNCTION_NAME shoopdaloop_loops_trace
+    FROM shoopdaloop_loops.generator
+    TARGETS host-trace_stores
     )
 
 # Backend lib
@@ -24,6 +36,7 @@ target_link_libraries(shoopdaloop_backend PRIVATE
                       Halide::Tools
                       Halide
                       shoopdaloop_loops
+                      shoopdaloop_loops_profile
                       ${BOOST_LIBRARIES}
                       ${JACK_LIBRARIES})
 target_include_directories(shoopdaloop_backend
@@ -39,6 +52,8 @@ target_link_libraries(loops_test PRIVATE
                       Halide::Tools
                       Halide
                       shoopdaloop_loops
+                      shoopdaloop_loops_profile
+                      shoopdaloop_loops_trace
                       ${BOOST_LIBRARIES}
                       ${JACK_LIBRARIES})
 target_include_directories(loops_test

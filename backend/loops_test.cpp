@@ -1,13 +1,25 @@
 #include <boost/ut.hpp>
 #include "shoopdaloop_loops.h"
+#include "shoopdaloop_loops_trace.h"
+#include "shoopdaloop_loops_profile.h"
 #include "shoopdaloop_backend.h"
 #include <HalideBuffer.h>
 
 #include <cstdlib>
+#include <iostream>
 #include <limits>
+#include <string>
 
 using namespace boost::ut;
 using namespace Halide::Runtime;
+
+enum backend_to_use {
+    Default,
+    Profiling,
+    Tracing
+};
+
+backend_to_use g_backend = Default;
 
 struct loops_buffers {
     size_t process_samples;
@@ -68,7 +80,7 @@ loops_buffers setup_buffers(
         r.loops_to_ports(i) = 0;
 
         for (size_t s = 0; s < max_loop_length; s++) {
-            r.storage_in(s, i) = r.storage_out(s, i) = (float)-s;
+            r.storage_in(s, i) = r.storage_out(s, i) = -((float)s);
         }
         for (size_t s = 0; s < process_samples; s++) {
             r.samples_out_per_loop(s, i) = std::numeric_limits<float>::min();
@@ -91,7 +103,15 @@ loops_buffers setup_buffers(
 void run_loops(
     loops_buffers &bufs
 ) {
-    shoopdaloop_loops(
+    auto call_backend = [](auto ...args) {
+        switch (g_backend) {
+            case Default: return shoopdaloop_loops(args...);
+            case Tracing: return shoopdaloop_loops_trace(args...);
+            case Profiling: return shoopdaloop_loops_profile(args...);
+            default: throw std::runtime_error("Unsupported back-end");
+        }
+    };
+    call_backend(
         bufs.samples_in,
         bufs.states,
         bufs.next_states,
@@ -129,7 +149,15 @@ suite loops_tests = []() {
         expect(bufs.lengths(0) == 11_i);
 
         for(size_t i=0; i<bufs.max_loop_length; i++) {
-            expect(eq(((float)bufs.storage_in(i, 0)), ((float)bufs.storage_out(i, 0)))) << " at index " << i;
+            float storage_in = bufs.storage_in(i,0);
+            float storage_out = bufs.storage_out(i,0);
+            expect(eq(storage_out, storage_in)) << " at index " << i;
+        }
+        for(size_t i=0; i<bufs.process_samples; i++) {
+            float sample_in = bufs.samples_in(i,0);
+            float sample_out = bufs.samples_out(i,0);
+            float storage = bufs.storage_in(i+2, 0);
+            expect(eq(sample_out, sample_in)) << " at index " << i;
         }
     };
 
@@ -144,7 +172,15 @@ suite loops_tests = []() {
         expect(bufs.lengths(0) == 11_i);
 
         for(size_t i=0; i<bufs.max_loop_length; i++) {
-            expect(eq(((float)bufs.storage_in(i, 0)), ((float)bufs.storage_out(i, 0)))) << " at index " << i;
+            float storage_in = bufs.storage_in(i,0);
+            float storage_out = bufs.storage_out(i,0);
+            expect(eq(storage_out, storage_in)) << " at index " << i;
+        }
+        for(size_t i=0; i<bufs.process_samples; i++) {
+            float sample_in = bufs.samples_in(i,0);
+            float sample_out = bufs.samples_out(i,0);
+            float storage = bufs.storage_in(i+2, 0);
+            expect(eq(sample_out, sample_in + storage)) << " at index " << i;
         }
     };
 
@@ -159,7 +195,15 @@ suite loops_tests = []() {
         expect(bufs.lengths(0) == 11_i);
 
         for(size_t i=0; i<bufs.max_loop_length; i++) {
-            expect(eq(((float)bufs.storage_in(i, 0)), ((float)bufs.storage_out(i, 0)))) << " at index " << i;
+            float storage_in = bufs.storage_in(i,0);
+            float storage_out = bufs.storage_out(i,0);
+            expect(eq(storage_out, storage_in)) << " at index " << i;
+        }
+        for(size_t i=0; i<bufs.process_samples; i++) {
+            float sample_in = bufs.samples_in(i,0);
+            float sample_out = bufs.samples_out(i,0);
+            float storage = bufs.storage_in(i+2, 0);
+            expect(eq(sample_out, sample_in)) << " at index " << i;
         }
     };
 
@@ -173,15 +217,139 @@ suite loops_tests = []() {
         expect(bufs.positions(0) == 10_i);
         expect(bufs.lengths(0) == 11_i);
 
+
         for(size_t i=0; i<bufs.max_loop_length; i++) {
-            if (i >= 2 && i <= 10) {
+            float storage_in = bufs.storage_in(i,0);
+            float storage_out = bufs.storage_out(i,0);
+            if (i >= 2 && i < 10) {
                 // Recorded
-                expect(eq(((float)bufs.storage_in(i, 0)), ((float)bufs.samples_in(i-2, 0)))) << " at index " << i;
+                float sample_in = bufs.samples_in(i-2, 0);
+                expect(eq(storage_out, sample_in)) << " at index " << i;
             } else {
-                expect(eq(((float)bufs.storage_in(i, 0)), ((float)bufs.storage_out(i, 0)))) << " at index " << i;
+                expect(eq(storage_out, storage_in)) << " at index " << i;
             }
         }
+        for(size_t i=0; i<bufs.process_samples; i++) {
+            float sample_in = bufs.samples_in(i,0);
+            float sample_out = bufs.samples_out(i,0);
+            float storage = bufs.storage_in(i+2, 0);
+            expect(eq(sample_out, sample_in)) << " at index " << i;
+        }
     };
+
+    "passthrough"_test = []() {
+        loops_buffers bufs = setup_buffers(1, 1, 16, 8, 16);
+        bufs.states(0) = bufs.next_states(0) = Stopped;
+        bufs.positions(0) = 2;
+        bufs.lengths(0) = 11;
+        bufs.passthroughs(0) = 0.5f;
+        run_loops(bufs);
+        expect(bufs.states(0) == Stopped);
+        expect(bufs.positions(0) == 2_i);
+        expect(bufs.lengths(0) == 11_i);
+
+        for(size_t i=0; i<bufs.max_loop_length; i++) {
+            float storage_in = bufs.storage_in(i,0);
+            float storage_out = bufs.storage_out(i,0);
+            expect(eq(storage_out, storage_in)) << " at index " << i;
+        }
+        for(size_t i=0; i<bufs.process_samples; i++) {
+            float sample_in = bufs.samples_in(i,0);
+            float sample_out = bufs.samples_out(i,0);
+            float storage = bufs.storage_in(i+2, 0);
+            expect(eq(sample_out, sample_in*0.5f)) << " at index " << i;
+        }
+    };
+
+    "loop_volume"_test = []() {
+        loops_buffers bufs = setup_buffers(1, 1, 16, 8, 16);
+        bufs.states(0) = bufs.next_states(0) = Playing;
+        bufs.positions(0) = 2;
+        bufs.lengths(0) = 11;
+        bufs.loop_volumes(0) = 0.5f;
+        run_loops(bufs);
+        expect(eq(((int)bufs.states(0)), Playing));
+        expect(bufs.positions(0) == 10_i);
+        expect(bufs.lengths(0) == 11_i);
+
+        for(size_t i=0; i<bufs.max_loop_length; i++) {
+            float storage_in = bufs.storage_in(i,0);
+            float storage_out = bufs.storage_out(i,0);
+            expect(eq(storage_out, storage_in)) << " at index " << i;
+        }
+        for(size_t i=0; i<bufs.process_samples; i++) {
+            float sample_in = bufs.samples_in(i,0);
+            float sample_out = bufs.samples_out(i,0);
+            float storage = bufs.storage_in(i+2, 0);
+            expect(eq(sample_out, sample_in + storage * 0.5f)) << " at index " << i;
+        }
+    };
+
+    // "soft_sync_stop_self"_test = []() {
+    //     loops_buffers bufs = setup_buffers(1, 1, 16, 8, 16);
+    //     bufs.states(0) = Playing;
+    //     bufs.next_states(0) = Stopped;
+    //     bufs.positions(0) = 10;
+    //     bufs.lengths(0) = 16;
+    //     run_loops(bufs);
+    //     expect(eq(((int)bufs.states(0)), Stopped));
+    //     expect(bufs.positions(0) == 0_i);
+    //     expect(bufs.lengths(0) == 16);
+
+    //     for(size_t i=0; i<bufs.max_loop_length; i++) {
+    //         float storage_in = bufs.storage_in(i,0);
+    //         float storage_out = bufs.storage_out(i,0);
+    //         expect(eq(storage_out, storage_in)) << " at index " << i;
+    //     }
+    //     for(size_t i=0; i<bufs.process_samples; i++) {
+    //         float sample_in = bufs.samples_in(i,0);
+    //         float sample_out = bufs.samples_out(i,0);
+    //         if(i < 6) {
+    //             // Still playing back
+    //             expect(eq(sample_out, sample_in)) << " at index " << i;
+    //         } else {
+    //             // Went to stopped
+    //             expect(sample_out == 0_i) << " at index " << i;
+    //         }
+    //     }
+    // };
+
+    // "soft_sync_record_self"_test = []() {
+    //     loops_buffers bufs = setup_buffers(1, 1, 16, 8, 16);
+    //     bufs.states(0) = Playing;
+    //     bufs.next_states(0) = Recording;
+    //     bufs.positions(0) = 10;
+    //     bufs.lengths(0) = 16;
+    //     run_loops(bufs);
+    //     expect(eq(((int)bufs.states(0)), Recording));
+    //     expect(bufs.positions(0) == 2_i);
+    //     expect(bufs.lengths(0) == 16);
+
+    //     for(size_t i=0; i<bufs.max_loop_length; i++) {
+    //         float storage_in = bufs.storage_in(i,0);
+    //         float storage_out = bufs.storage_out(i,0);
+    //         if (i < 6) {
+    //             // Still playing back
+    //             expect(eq(storage_out, storage_in)) << " at index " << i;
+    //         } else {
+    //             // Recording
+    //             float sample_in = bufs.samples_in(i-10, 0);
+    //             expect(eq(storage_out, sample_in)) << " at index " << i;
+    //         }
+    //     }
+    //     for(size_t i=0; i<bufs.process_samples; i++) {
+    //         float sample_in = bufs.samples_in(i,0);
+    //         float sample_out = bufs.samples_out(i,0);
+    //         if (i < 6) {
+    //             // Still playing back
+    //             float storage = bufs.storage_in(i+10, 0);
+    //             expect(eq(sample_out, storage + sample_in)) << " at index " << i;
+    //         } else {
+    //             // Recording, just passthrough
+    //             expect(eq(sample_out, sample_in)) << " at index " << i;
+    //         }
+    //     }
+    // };
 
     // Test ideas:
     // - non multiple of 8 buffers
@@ -189,4 +357,26 @@ suite loops_tests = []() {
     // - recording while pos != length
 };
 
-int main() {}
+void usage(std::string name) {
+    std::cout << "Usage: " << name << " [trace] [profile] [filter=FILTER]" << std::endl;
+}
+
+int main(int argc, const char *argv[]) {
+    std::string name(argv[0]);
+
+    for(size_t i = 1; i<(size_t) argc; i++) {
+        std::string arg(argv[i]);
+        auto filter_arg = std::string("filter=");
+        if(arg == "trace") {
+            g_backend = Tracing;
+        } else if (arg == "profile") {
+            g_backend = Profiling;
+        } else if (arg.substr(0, filter_arg.size()) == filter_arg) {
+            static auto filter = arg.substr(filter_arg.size());
+            std::cout << "Filtering on: \"" << filter << "\"" << std::endl;
+            cfg<override> = {  .filter = filter };
+        } else {
+            g_backend = Default;
+        }
+    }
+}

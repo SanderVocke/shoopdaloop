@@ -3,6 +3,9 @@
 
 namespace {
 
+using namespace Halide;
+using namespace Halide::BoundaryConditions;
+
 class Loops : public Halide::Generator<Loops> {
 public:
     // Quantities:
@@ -82,25 +85,10 @@ public:
 
         // Boundary conditions help to vectorize
         // TODO: use pre-baked ones
-        Func len_in("len_in");
-        len_in(loop) = select(loop >= first_loop && loop <= last_loop,
-            loop_lengths_in(clamp(loop, first_loop, last_loop)), 0);
-        
-        Func pos_in("pos_in");
-        pos_in(loop) = select(loop >= first_loop && loop <= last_loop,
-            positions_in(clamp(loop, first_loop, last_loop)), 0);
-
-        Func storage_in("storage_in");
-        storage_in(x, loop) = select(loop >= first_loop && loop <= last_loop,
-            select(x >= first_sample && x <= last_sample,
-                loop_storage_in(x, loop), 0), 0);
-
-        // Map input samples per port to input samples for each loop
-        Func _samples_in("_samples_in");
-        Expr buf = clamp(ports_map(loop), first_port, last_port);
-        _samples_in(x, loop) = select(buf >= first_port && buf <= last_port,
-            select(x >= first_sample && x <= last_sample,
-                samples_in(x, buf), 0), 0);
+        Func len_in = repeat_edge(loop_lengths_in);
+        Func pos_in = repeat_edge(positions_in);
+        Func storage_in = repeat_edge(loop_storage_in);
+        Func _samples_in = repeat_edge(samples_in);
         
         // Some definitions
         auto is_running_state = [](Expr state) { return state == Playing || state == PlayingMuted || state == Recording; };
