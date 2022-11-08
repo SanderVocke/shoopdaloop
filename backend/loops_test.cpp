@@ -24,10 +24,10 @@ backend_to_use g_backend = Default;
 struct loops_buffers {
     size_t process_samples;
     size_t max_loop_length;
-    Buffer<int8_t, 1> states;
+    Buffer<int8_t, 1> states_in, states_out;
     Buffer<int8_t, 1> next_states;
-    Buffer<int32_t, 1> positions;
-    Buffer<int32_t, 1> lengths;
+    Buffer<int32_t, 1> positions_in, positions_out;
+    Buffer<int32_t, 1> lengths_in, lengths_out;
     Buffer<float, 2> samples_in, samples_out;
     Buffer<float, 2> samples_out_per_loop;
     Buffer<float, 2> storage_in, storage_out;
@@ -51,10 +51,13 @@ loops_buffers setup_buffers(
     r.process_samples = process_samples;
     r.max_loop_length = max_loop_length;
 
-    r.states = decltype(r.states)(n_loops);
+    r.states_in = decltype(r.states_in)(n_loops);
+    r.states_out = decltype(r.states_out)(n_loops);
     r.next_states = decltype(r.next_states)(n_loops);
-    r.positions = decltype(r.lengths)(n_loops);
-    r.lengths = decltype(r.lengths)(n_loops);
+    r.positions_in = decltype(r.positions_in)(n_loops);
+    r.positions_out = decltype(r.positions_out)(n_loops);
+    r.lengths_in = decltype(r.lengths_in)(n_loops);
+    r.lengths_out = decltype(r.lengths_out)(n_loops);
     r.loop_volumes = decltype(r.loop_volumes)(n_loops);
     r.loops_hard_sync_mapping = decltype(r.loops_hard_sync_mapping)(n_loops);
     r.loops_soft_sync_mapping = decltype(r.loops_soft_sync_mapping)(n_loops);
@@ -72,10 +75,10 @@ loops_buffers setup_buffers(
     for(size_t i=0; i<n_loops; i++) {
         r.loops_hard_sync_mapping(i) = -1;
         r.loops_soft_sync_mapping(i) = -1;
-        r.states(i) = Stopped;
+        r.states_in(i) = Stopped;
         r.next_states(i) = Stopped;
-        r.positions(i) = 0;
-        r.lengths(i) = 0;
+        r.positions_in(i) = 0;
+        r.lengths_in(i) = 0;
         r.loop_volumes(i) = 1.0f;
         r.loops_to_ports(i) = 0;
 
@@ -113,10 +116,10 @@ void run_loops(
     };
     call_backend(
         bufs.samples_in,
-        bufs.states,
+        bufs.states_in,
         bufs.next_states,
-        bufs.positions,
-        bufs.lengths,
+        bufs.positions_in,
+        bufs.lengths_in,
         bufs.storage_in,
         bufs.loops_to_ports,
         bufs.loops_hard_sync_mapping,
@@ -128,9 +131,9 @@ void run_loops(
         bufs.max_loop_length,
         bufs.samples_out,
         bufs.samples_out_per_loop,
-        bufs.states,
-        bufs.positions,
-        bufs.lengths,
+        bufs.states_out,
+        bufs.positions_out,
+        bufs.lengths_out,
         bufs.storage_out
     );
 }
@@ -140,13 +143,13 @@ suite loops_tests = []() {
 
     "stop"_test = []() {
         loops_buffers bufs = setup_buffers(1, 1, 16, 8, 16);
-        bufs.states(0) = bufs.next_states(0) = Stopped;
-        bufs.positions(0) = 2;
-        bufs.lengths(0) = 11;
+        bufs.states_in(0) = bufs.next_states(0) = Stopped;
+        bufs.positions_in(0) = 2;
+        bufs.lengths_in(0) = 11;
         run_loops(bufs);
-        expect(bufs.states(0) == Stopped);
-        expect(bufs.positions(0) == 2_i);
-        expect(bufs.lengths(0) == 11_i);
+        expect(bufs.states_out(0) == Stopped);
+        expect(bufs.positions_out(0) == 2_i);
+        expect(bufs.lengths_out(0) == 11_i);
 
         for(size_t i=0; i<bufs.max_loop_length; i++) {
             float storage_in = bufs.storage_in(i,0);
@@ -163,13 +166,16 @@ suite loops_tests = []() {
 
     "play"_test = []() {
         loops_buffers bufs = setup_buffers(1, 1, 16, 8, 16);
-        bufs.states(0) = bufs.next_states(0) = Playing;
-        bufs.positions(0) = 2;
-        bufs.lengths(0) = 11;
+        bufs.states_in(0) = bufs.next_states(0) = Playing;
+        bufs.positions_in(0) = 2;
+        bufs.lengths_in(0) = 11;
+        for(size_t i=0; i<bufs.process_samples; i++) {
+            bufs.samples_in(i, 0) = 0.0f;
+        };
         run_loops(bufs);
-        expect(eq(((int)bufs.states(0)), Playing));
-        expect(bufs.positions(0) == 10_i);
-        expect(bufs.lengths(0) == 11_i);
+        expect(eq(((int)bufs.states_out(0)), Playing));
+        expect(bufs.positions_out(0) == 10_i);
+        expect(bufs.lengths_out(0) == 11_i);
 
         for(size_t i=0; i<bufs.max_loop_length; i++) {
             float storage_in = bufs.storage_in(i,0);
@@ -180,19 +186,19 @@ suite loops_tests = []() {
             float sample_in = bufs.samples_in(i,0);
             float sample_out = bufs.samples_out(i,0);
             float storage = bufs.storage_in(i+2, 0);
-            expect(eq(sample_out, sample_in + storage)) << " at index " << i;
+            expect(eq(sample_out, storage)) << " at index " << i;
         }
     };
 
     "play_muted"_test = []() {
         loops_buffers bufs = setup_buffers(1, 1, 16, 8, 16);
-        bufs.states(0) = bufs.next_states(0) = PlayingMuted;
-        bufs.positions(0) = 2;
-        bufs.lengths(0) = 11;
+        bufs.states_in(0) = bufs.next_states(0) = PlayingMuted;
+        bufs.positions_in(0) = 2;
+        bufs.lengths_in(0) = 11;
         run_loops(bufs);
-        expect(eq(((int)bufs.states(0)), PlayingMuted));
-        expect(bufs.positions(0) == 10_i);
-        expect(bufs.lengths(0) == 11_i);
+        expect(eq(((int)bufs.states_out(0)), PlayingMuted));
+        expect(bufs.positions_out(0) == 10_i);
+        expect(bufs.lengths_out(0) == 11_i);
 
         for(size_t i=0; i<bufs.max_loop_length; i++) {
             float storage_in = bufs.storage_in(i,0);
@@ -209,13 +215,13 @@ suite loops_tests = []() {
 
     "record"_test = []() {
         loops_buffers bufs = setup_buffers(1, 1, 16, 8, 32);
-        bufs.states(0) = bufs.next_states(0) = Recording;
-        bufs.positions(0) = 2;
-        bufs.lengths(0) = 3;
+        bufs.states_in(0) = bufs.next_states(0) = Recording;
+        bufs.positions_in(0) = 2;
+        bufs.lengths_in(0) = 3;
         run_loops(bufs);
-        expect(eq(((int)bufs.states(0)), Recording));
-        expect(bufs.positions(0) == 10_i);
-        expect(bufs.lengths(0) == 11_i);
+        expect(eq(((int)bufs.states_out(0)), Recording));
+        expect(bufs.positions_out(0) == 10_i);
+        expect(bufs.lengths_out(0) == 11_i);
 
 
         for(size_t i=0; i<bufs.max_loop_length; i++) {
@@ -239,14 +245,14 @@ suite loops_tests = []() {
 
     "passthrough"_test = []() {
         loops_buffers bufs = setup_buffers(1, 1, 16, 8, 16);
-        bufs.states(0) = bufs.next_states(0) = Stopped;
-        bufs.positions(0) = 2;
-        bufs.lengths(0) = 11;
+        bufs.states_in(0) = bufs.next_states(0) = Stopped;
+        bufs.positions_in(0) = 2;
+        bufs.lengths_in(0) = 11;
         bufs.passthroughs(0) = 0.5f;
         run_loops(bufs);
-        expect(bufs.states(0) == Stopped);
-        expect(bufs.positions(0) == 2_i);
-        expect(bufs.lengths(0) == 11_i);
+        expect(bufs.states_out(0) == Stopped);
+        expect(bufs.positions_out(0) == 2_i);
+        expect(bufs.lengths_out(0) == 11_i);
 
         for(size_t i=0; i<bufs.max_loop_length; i++) {
             float storage_in = bufs.storage_in(i,0);
@@ -263,14 +269,14 @@ suite loops_tests = []() {
 
     "loop_volume"_test = []() {
         loops_buffers bufs = setup_buffers(1, 1, 16, 8, 16);
-        bufs.states(0) = bufs.next_states(0) = Playing;
-        bufs.positions(0) = 2;
-        bufs.lengths(0) = 11;
+        bufs.states_in(0) = bufs.next_states(0) = Playing;
+        bufs.positions_in(0) = 2;
+        bufs.lengths_in(0) = 11;
         bufs.loop_volumes(0) = 0.5f;
         run_loops(bufs);
-        expect(eq(((int)bufs.states(0)), Playing));
-        expect(bufs.positions(0) == 10_i);
-        expect(bufs.lengths(0) == 11_i);
+        expect(eq(((int)bufs.states_out(0)), Playing));
+        expect(bufs.positions_out(0) == 10_i);
+        expect(bufs.lengths_out(0) == 11_i);
 
         for(size_t i=0; i<bufs.max_loop_length; i++) {
             float storage_in = bufs.storage_in(i,0);
@@ -285,71 +291,76 @@ suite loops_tests = []() {
         }
     };
 
-    // "soft_sync_stop_self"_test = []() {
-    //     loops_buffers bufs = setup_buffers(1, 1, 16, 8, 16);
-    //     bufs.states(0) = Playing;
-    //     bufs.next_states(0) = Stopped;
-    //     bufs.positions(0) = 10;
-    //     bufs.lengths(0) = 16;
-    //     run_loops(bufs);
-    //     expect(eq(((int)bufs.states(0)), Stopped));
-    //     expect(bufs.positions(0) == 0_i);
-    //     expect(bufs.lengths(0) == 16);
+    "soft_sync_stop_self"_test = []() {
+        loops_buffers bufs = setup_buffers(1, 1, 16, 8, 16);
+        bufs.states_in(0) = Playing;
+        bufs.next_states(0) = Stopped;
+        bufs.positions_in(0) = 10;
+        bufs.lengths_in(0) = 16;
+        bufs.loops_soft_sync_mapping(0) = 0;
+        bufs.passthroughs(0) = 0.0f;
+        run_loops(bufs);
+        expect(eq(((int)bufs.states_out(0)), Stopped));
+        expect(bufs.positions_out(0) == 0_i);
+        expect(bufs.lengths_out(0) == 16);
 
-    //     for(size_t i=0; i<bufs.max_loop_length; i++) {
-    //         float storage_in = bufs.storage_in(i,0);
-    //         float storage_out = bufs.storage_out(i,0);
-    //         expect(eq(storage_out, storage_in)) << " at index " << i;
-    //     }
-    //     for(size_t i=0; i<bufs.process_samples; i++) {
-    //         float sample_in = bufs.samples_in(i,0);
-    //         float sample_out = bufs.samples_out(i,0);
-    //         if(i < 6) {
-    //             // Still playing back
-    //             expect(eq(sample_out, sample_in)) << " at index " << i;
-    //         } else {
-    //             // Went to stopped
-    //             expect(sample_out == 0_i) << " at index " << i;
-    //         }
-    //     }
-    // };
+        for(size_t i=0; i<bufs.max_loop_length; i++) {
+            float storage_in = bufs.storage_in(i,0);
+            float storage_out = bufs.storage_out(i,0);
+            expect(eq(storage_out, storage_in)) << " at index " << i;
+        }
+        for(size_t i=0; i<bufs.process_samples; i++) {
+            float sample_in = bufs.samples_in(i,0);
+            float sample_out = bufs.samples_out(i,0);
+            if(i < 6) {
+                float storage = bufs.storage_in(i+10, 0);
+                // Still playing back
+                expect(eq(sample_out, storage)) << " at index " << i;
+            } else {
+                // Went to stopped
+                expect(sample_out == 0.0_f) << " at index " << i;
+            }
+        }
+    };
 
-    // "soft_sync_record_self"_test = []() {
-    //     loops_buffers bufs = setup_buffers(1, 1, 16, 8, 16);
-    //     bufs.states(0) = Playing;
-    //     bufs.next_states(0) = Recording;
-    //     bufs.positions(0) = 10;
-    //     bufs.lengths(0) = 16;
-    //     run_loops(bufs);
-    //     expect(eq(((int)bufs.states(0)), Recording));
-    //     expect(bufs.positions(0) == 2_i);
-    //     expect(bufs.lengths(0) == 16);
+    "soft_sync_record_self"_test = []() {
+        loops_buffers bufs = setup_buffers(1, 1, 16, 8, 16);
+        bufs.states_in(0) = Playing;
+        bufs.next_states(0) = Recording;
+        bufs.positions_in(0) = 10;
+        bufs.lengths_in(0) = 16;
+        bufs.loops_soft_sync_mapping(0) = 0;
+        bufs.passthroughs(0) = 0.0f;
+        run_loops(bufs);
+        expect(eq(((int)bufs.states_out(0)), Recording));
+        expect(bufs.positions_out(0) == 2_i);
+        expect(bufs.lengths_out(0) == 2_i);
 
-    //     for(size_t i=0; i<bufs.max_loop_length; i++) {
-    //         float storage_in = bufs.storage_in(i,0);
-    //         float storage_out = bufs.storage_out(i,0);
-    //         if (i < 6) {
-    //             // Still playing back
-    //             expect(eq(storage_out, storage_in)) << " at index " << i;
-    //         } else {
-    //             // Recording
-    //             float sample_in = bufs.samples_in(i-10, 0);
-    //             expect(eq(storage_out, sample_in)) << " at index " << i;
-    //         }
-    //     }
-    //     for(size_t i=0; i<bufs.process_samples; i++) {
-    //         float sample_in = bufs.samples_in(i,0);
-    //         float sample_out = bufs.samples_out(i,0);
-    //         if (i < 6) {
-    //             // Still playing back
-    //             float storage = bufs.storage_in(i+10, 0);
-    //             expect(eq(sample_out, storage + sample_in)) << " at index " << i;
-    //         } else {
-    //             // Recording, just passthrough
-    //             expect(eq(sample_out, sample_in)) << " at index " << i;
-    //         }
-    //     }
-    // };
+        for(size_t i=0; i<bufs.max_loop_length; i++) {
+            float storage_in = bufs.storage_in(i,0);
+            float storage_out = bufs.storage_out(i,0);
+            if (i < 2) {
+                // Recording starts from 0, two samples recorded
+                float sample_in = bufs.samples_in(i+6, 0);
+                expect(eq(storage_out, sample_in)) << " at index " << i;
+            } else {
+                // Rest was untouched during playback
+                expect(eq(storage_out, storage_in)) << " at index " << i;
+            }
+        }
+        for(size_t i=0; i<bufs.process_samples; i++) {
+            float sample_in = bufs.samples_in(i,0);
+            float sample_out = bufs.samples_out(i,0);
+            if (i < 6) {
+                // Still playing back
+                float storage = bufs.storage_in(i+10, 0);
+                expect(eq(sample_out, storage)) << " at index " << i;
+            } else {
+                // Recording, just passthrough
+                expect(eq(sample_out, 0.0_f)) << " at index " << i;
+            }
+        }
+    };
 
     // Test ideas:
     // - non multiple of 8 buffers
