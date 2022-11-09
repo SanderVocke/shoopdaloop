@@ -64,6 +64,15 @@ target_include_directories(loops_test
                         ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/ut/include
                         )
 
+# HTML for inspection
+add_custom_target(
+    shoopdaloop_loops.stmt.html
+    ALL
+    shoopdaloop_loops.generator target=host-no_asserts-no_bounds_query -g shoopdaloop_loops -e stmt_html -o .
+    BYPRODUCTS shoopdaloop_loops.stmt.html
+    DEPENDS shoopdaloop_loops.generator
+    )
+
 # Autogen Python bindings
 add_custom_target(
     __init__.py

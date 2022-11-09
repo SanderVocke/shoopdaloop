@@ -5,6 +5,7 @@
 
 #include "shoopdaloop_backend.h"
 #include "shoopdaloop_loops.h"
+#include "shoopdaloop_loops_profile.h"
 #include <chrono>
 #include <cstdlib>
 
@@ -152,30 +153,28 @@ int jack_process (jack_nframes_t nframes, void *arg) {
     auto did_input = std::chrono::high_resolution_clock::now();
 
     // Execute the loop engine.
-    if(g_features == Default) {
-        g_loops_fn(
-            g_samples_in,
-            g_states[tick],
-            g_next_states,
-            g_positions[tick],
-            g_lengths[tick],
-            g_storage,
-            g_loops_to_ports,
-            g_loops_hard_sync_mapping,
-            g_loops_soft_sync_mapping,
-            g_passthroughs,
-            g_port_volumes,
-            g_loop_volumes,
-            nframes,
-            g_loop_len,
-            g_samples_out,
-            g_samples_out_per_loop,
-            g_states[tock],
-            g_positions[tock],
-            g_lengths[tock],
-            g_storage
-        );
-    }
+    g_loops_fn(
+        g_samples_in,
+        g_states[tick],
+        g_next_states,
+        g_positions[tick],
+        g_lengths[tick],
+        g_storage,
+        g_loops_to_ports,
+        g_loops_hard_sync_mapping,
+        g_loops_soft_sync_mapping,
+        g_passthroughs,
+        g_port_volumes,
+        g_loop_volumes,
+        nframes,
+        g_loop_len,
+        g_samples_out,
+        g_samples_out_per_loop,
+        g_states[tock],
+        g_positions[tock],
+        g_lengths[tock],
+        g_storage
+    );
     g_last_written_output_buffer_tick_tock = tock;
     tock = (tock + 1) % 2;
     tick = (tick + 1) % 2;
@@ -241,7 +240,6 @@ int initialize(
     const char **input_port_names,
     const char **output_port_names,
     const char *client_name,
-    unsigned print_benchmark_info,
     UpdateCallback update_cb,
     AbortCallback abort_cb,
     backend_features_t features
@@ -249,6 +247,14 @@ int initialize(
     g_n_loops = n_loops;
     g_n_ports = n_ports;
     g_features = features;
+
+    switch(g_features) {
+        case Profiling:
+            g_loops_fn = shoopdaloop_loops_profile;
+            break;
+        default:
+        break;
+    }
 
     // Create a JACK client
     jack_status_t status;
@@ -347,7 +353,7 @@ int initialize(
 
     g_update_cb = update_cb;
 
-    if(print_benchmark_info) {
+    if(features == Profiling) {
         g_reporting_thread = std::thread([]() {
             while(true) {
                 std::unique_lock<std::mutex> lock(g_terminate_cv_m);

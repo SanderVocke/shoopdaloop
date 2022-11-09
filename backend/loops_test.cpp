@@ -182,7 +182,7 @@ suite loops_tests = []() {
         }
     };
 
-    "21_play_long"_test = []() {
+    "2_1_play_long"_test = []() {
         loops_buffers bufs = setup_buffers(1, 1, 2048, 256);
         bufs.states_in(0) = bufs.next_states(0) = Playing;
         bufs.positions_in(0) = 0;
@@ -266,14 +266,14 @@ suite loops_tests = []() {
         }
     };
 
-    "41_record_from_0"_test = []() {
+    "4_1_record_from_0"_test = []() {
         loops_buffers bufs = setup_buffers(1, 1, 16, 8);
         bufs.states_in(0) = bufs.next_states(0) = Recording;
         bufs.positions_in(0) = 0;
         bufs.lengths_in(0) = 0;
         run_loops(bufs);
         expect(eq(((int)bufs.states_out(0)), Recording));
-        expect(bufs.positions_out(0) == 7_i);
+        expect(bufs.positions_out(0) == 0_i);
         expect(bufs.lengths_out(0) == 8_i);
 
 
@@ -531,6 +531,33 @@ suite loops_tests = []() {
             float sample_out = bufs.samples_out(i,0);
             float storage = bufs.storage_in(i+2, 0);
             expect(eq(sample_out, storage)) << " at index " << i;          
+        }
+    };
+
+    "13_hard_sync_stop"_test = []() {
+        loops_buffers bufs = setup_buffers(2, 1, 16, 8);
+        bufs.states_in(0) = bufs.next_states(0) = Stopped;
+        bufs.states_in(0) = bufs.next_states(1) = Playing;
+        bufs.positions_in(0) = 2;
+        bufs.positions_in(1) = 5;
+        bufs.lengths_in(0) = 11;
+        bufs.lengths_in(1) = 16;
+        bufs.loops_hard_sync_mapping(1) = 0;
+        bufs.passthroughs(0) = 1.0f;
+        run_loops(bufs);
+        expect(bufs.states_out(1) == Stopped);
+        expect(bufs.positions_out(1) == 2_i);
+        expect(bufs.lengths_out(1) == 11_i);
+
+        for(size_t i=0; i<bufs.storage_in.dim(0).extent(); i++) {
+            float storage_in = bufs.storage_in(i,1);
+            float storage_out = bufs.storage_out(i,1);
+            expect(eq(storage_out, storage_in)) << " at index " << i;
+        }
+        for(size_t i=0; i<bufs.process_samples; i++) {
+            float sample_in = bufs.samples_in(i,0);
+            float sample_out = bufs.samples_out(i,0);
+            expect(eq(sample_out, sample_in)) << " at index " << i;
         }
     };
 };

@@ -61,23 +61,64 @@ public:
     Output<Buffer<float, 2>> loop_storage_out{"loop_storage_out"};
 
     void generate() {
-        Var loop("loop"), port("port"), x("x");
+        // Tell Halide what it can assume about all input buffer sizes
+        {
+            Expr lf = states_in.dim(0).min();
+            Expr le = states_in.dim(0).extent();
+            Expr bf = samples_in.dim(0).min();
+            Expr be = samples_in.dim(0).extent();
+            Expr sf = loop_storage_in.dim(0).min();
+            Expr se = loop_storage_in.dim(0).extent();
+            Expr pf = port_passthrough_levels.dim(0).min();
+            Expr pe = port_passthrough_levels.dim(0).extent();
+
+            // 1D buffers per loop
+            next_states_in.dim(0).set_bounds(lf, le);
+            positions_in.dim(0).set_bounds(lf, le);
+            loop_lengths_in.dim(0).set_bounds(lf, le);
+            hard_sync_map.dim(0).set_bounds(lf, le);
+            soft_sync_map.dim(0).set_bounds(lf, le);
+            ports_map.dim(0).set_bounds(lf, le);
+            loop_playback_volumes.dim(0).set_bounds(lf, le);
+
+            // loop axis of 2D buffers
+            loop_storage_in.dim(1).set_bounds(lf, le);
+
+            // port axis of 2D buffers
+            samples_in.dim(1).set_bounds(pf, pe);
+
+            // port axis of 1D buffers
+            port_volumes.dim(0).set_bounds(pf, pe);
+        }
+
+        Var loop("loop");
+        Var port("port");
+        Var x("x");
 
         // Boundary conditions help to vectorize
-        Func _loop_lengths_in = repeat_edge(loop_lengths_in);
-        Func _positions_in = repeat_edge(positions_in);
+        Func _loop_lengths_in_b = repeat_edge(loop_lengths_in);
+        Func _positions_in_b = repeat_edge(positions_in);
         Func _loop_storage_in = repeat_edge(loop_storage_in);
         Func _samples_in = repeat_edge(samples_in);
-        Func _soft_sync_map = repeat_edge(soft_sync_map);
+        Func _soft_sync_map_b = repeat_edge(soft_sync_map);
         Func _hard_sync_map = repeat_edge(hard_sync_map);
-        Func _states_in = repeat_edge(states_in);
-        Func _next_states_in = repeat_edge(next_states_in);
+        Func _states_in_b = repeat_edge(states_in);
+        Func _next_states_in_b = repeat_edge(next_states_in);
+
+        // For hard-linked loops, sneakily get the state data from the master loop
+        Func _loop_lengths_in, _positions_in, _soft_sync_map, _states_in, _next_states_in;
+        Expr mapped_loop = select(_hard_sync_map(loop) >= 0, _hard_sync_map(loop), loop);
+        _loop_lengths_in(loop) = _loop_lengths_in_b(mapped_loop);
+        _positions_in(loop) = _positions_in_b(mapped_loop);
+        _soft_sync_map(loop) = _soft_sync_map_b(mapped_loop);
+        _states_in(loop) = _states_in_b(mapped_loop);
+        _next_states_in(loop) = _next_states_in_b(mapped_loop);
         
         // Some definitions
         auto is_running_state = [](Expr state) { return state == Playing || state == PlayingMuted || state == Recording; };
         auto is_playing_state = [](Expr state) { return state == Playing || state == PlayingMuted; };
         auto clamp_to_storage = [&](Expr var) { return clamp(var, loop_storage_in.dim(0).min(), loop_storage_in.dim(0).max()); };
-        
+
         // State transitions due to sync connections
         
         // Tells at which sample the loop will generate a soft sync.
@@ -120,7 +161,6 @@ public:
         Expr my_master_loop = _soft_sync_map(loop);
         Expr will_receive_soft_sync = is_soft_synced && 
             _generates_soft_sync_at(my_master_loop) != -1;
-        Expr will_receive_soft_sync_at = _generates_soft_sync_at(my_master_loop);
         Expr move_to_next_state = will_receive_soft_sync || !is_soft_synced; // non-soft-synced loops always move to next state immediately
         // Right-hand side
         Expr _new_state = select(
@@ -233,25 +273,27 @@ public:
         // For recording, keep in mind:
         // - When we were already recording, continue at the position we were at
         // - When transitioning from another state to recording, we need to restart from 0
-        Expr rr_record_start_index = select(
-            to_rr(will_start_recording),
+        Func rr_record_start_index("rr_record_start_index");
+        rr_record_start_index(loop) = select(
+            will_start_recording,
             0,
-            _positions_in(rr.x)
+            _positions_in(loop)
         );
         Expr rr_record_index = clamp_to_storage(
-            rr_record_start_index + rr.x - recording_range(rr.y)[0]
+            rr_record_start_index(rr.y) + rr.x - recording_range(rr.y)[0]
         );
-        Expr rr_record_stop_index = rr_record_start_index + (recording_range(rr.y)[1] - recording_range(rr.y)[0]); // Not including last sample
+        Expr rr_record_stop_index = rr_record_start_index(loop) + (recording_range(loop)[1] - recording_range(loop)[0]); // Not including last sample
         // For playing back from storage, keep in mind:
         // - If transitioning from recording, start from the recording end position
         // - Otherwise, just continue at the position we were at
-        Expr rr_playback_start_index = select(
-            to_rr(will_start_playing) && to_rr(will_stop_recording),
+        Func rr_playback_start_index("rr_playback_start_index");
+        rr_playback_start_index(loop) = select(
+            will_start_playing && will_stop_recording,
             rr_record_stop_index,
-            _positions_in(rr.x)
+            _positions_in(loop)
         );
         Expr rr_playback_index = clamp_to_storage(
-            (rr_playback_start_index + rr.x) % loop_storage_in.dim(0).extent() // Wrap around
+            (rr_playback_start_index(rr.y) + rr.x) % loop_storage_in.dim(0).extent() // Wrap around
         );
 
         // Compute stored recorded samples for each loop
@@ -276,12 +318,14 @@ public:
 
         // Compute output samples mixed into ports
         samples_out(x, port) = _samples_in(x, port) * port_passthrough_levels(port);
-        RDom ports(ports_map.dim(0).min(), ports_map.dim(0).extent());
-        samples_out(x, clamp(
-            ports_map(ports),
+        RDom l2p(0, n_samples, ports_map.dim(0).min(), ports_map.dim(0).extent());
+        // No need to mix in looper samples for non-playing loopers
+        l2p.where(is_playing_state(_states_in(l2p.y)) || is_playing_state(new_state(l2p.y)));
+        samples_out(l2p.x, clamp(
+            ports_map(l2p.y),
             samples_out.dim(1).min(),
             samples_out.dim(1).max()
-        )) += samples_out_per_loop(x, ports);
+        )) += samples_out_per_loop(l2p.x, l2p.y);
         samples_out(x, port) = samples_out(x, port) * port_volumes(port);
 
         // Compute output states
@@ -312,12 +356,19 @@ public:
         playing_range.compute_root();
         recording_range.compute_root();
         generates_soft_sync_at.compute_root();
+        rr_playback_start_index.compute_root();
+        rr_record_start_index.compute_root();
+        // _loop_lengths_in.compute_root();
+        // _positions_in.compute_root();
+        // _soft_sync_map.compute_root();
+        // _states_in.compute_root();
+        // _next_states_in.compute_root();
         
         if(true) { //x inside schedule
             loop_storage_out
                 .update()
                 .reorder(rr.x, rr.y)
-                .allow_race_conditions()
+                //.allow_race_conditions()
                 //.vectorize(rr.x, 8)
                 //.compute_with(samples_out_per_loop.update(), rr.x)
                 //.trace_stores()
@@ -327,7 +378,7 @@ public:
             samples_out_per_loop
                 .update()
                 .reorder(rr.x, rr.y)
-                .allow_race_conditions()
+                //.allow_race_conditions()
                 //.vectorize(rr.x, 8)
                 //.trace_stores()
                 ;

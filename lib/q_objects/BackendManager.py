@@ -74,6 +74,9 @@ class BackendManager(QObject):
             loops_hard_sync_map[i] = self.loops_hard_sync_map[i]
             loops_soft_sync_map[i] = self.loops_soft_sync_map[i]
         
+        do_profiling = os.getenv('SHOOPDALOOP_PROFILING') != None
+        features = backend.backend_features_t(backend.Profiling) if do_profiling else backend.backend_features_t(backend.Default)
+        
         backend.initialize(
             self.n_loops,
             self.n_ports,
@@ -84,10 +87,9 @@ class BackendManager(QObject):
             input_port_names,
             output_port_names,
             self.client_name.encode('ascii'),
-            1,
             self.update_cb,
             self.abort_cb,
-            backend.backend_features_t(backend.Default)
+            features
         )
 
     def update_cb(

@@ -71,7 +71,6 @@ int initialize(
     const char **input_port_names,
     const char **output_port_names,
     const char *client_name,
-    unsigned print_benchmark_info,
     UpdateCallback update_cb,
     AbortCallback abort_cb,
     backend_features_t features
