@@ -37,13 +37,11 @@ loops_buffers setup_buffers(
     size_t n_loops,
     size_t n_ports,
     size_t storage_samples,
-    size_t process_samples,
-    size_t max_loop_length
+    size_t process_samples
 ) {
     loops_buffers r;
 
     r.process_samples = process_samples;
-    r.max_loop_length = max_loop_length;
 
     r.states_in = decltype(r.states_in)(n_loops);
     r.states_out = decltype(r.states_out)(n_loops);
@@ -60,8 +58,8 @@ loops_buffers setup_buffers(
     r.samples_in = decltype(r.samples_in)(process_samples, n_ports);
     r.samples_out = decltype(r.samples_in)(process_samples, n_ports);
     r.samples_out_per_loop = decltype(r.samples_out_per_loop)(process_samples, n_loops);
-    r.storage_in = decltype(r.storage_in)(max_loop_length, n_loops);
-    r.storage_out = decltype(r.storage_out)(max_loop_length, n_loops);
+    r.storage_in = decltype(r.storage_in)(storage_samples, n_loops);
+    r.storage_out = decltype(r.storage_out)(storage_samples, n_loops);
 
     r.passthroughs = decltype(r.passthroughs)(n_ports);
     r.port_volumes = decltype(r.port_volumes)(n_ports);
@@ -76,7 +74,7 @@ loops_buffers setup_buffers(
         r.loop_volumes(i) = 1.0f;
         r.loops_to_ports(i) = 0;
 
-        for (size_t s = 0; s < max_loop_length; s++) {
+        for (size_t s = 0; s < r.storage_in.dim(0).extent(); s++) {
             r.storage_in(s, i) = r.storage_out(s, i) = -((float)s);
         }
         for (size_t s = 0; s < process_samples; s++) {
@@ -122,7 +120,7 @@ void run_loops(
         bufs.port_volumes,
         bufs.loop_volumes,
         bufs.process_samples,
-        bufs.max_loop_length,
+        bufs.storage_in.dim(0).extent(),
         bufs.samples_out,
         bufs.samples_out_per_loop,
         bufs.states_out,
@@ -136,7 +134,7 @@ suite loops_tests = []() {
     srand(1235930); // Seed random generator
 
     "1_stop"_test = []() {
-        loops_buffers bufs = setup_buffers(1, 1, 16, 8, 16);
+        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
         bufs.states_in(0) = bufs.next_states(0) = Stopped;
         bufs.positions_in(0) = 2;
         bufs.lengths_in(0) = 11;
@@ -145,7 +143,7 @@ suite loops_tests = []() {
         expect(bufs.positions_out(0) == 2_i);
         expect(bufs.lengths_out(0) == 11_i);
 
-        for(size_t i=0; i<bufs.max_loop_length; i++) {
+        for(size_t i=0; i<bufs.storage_in.dim(0).extent(); i++) {
             float storage_in = bufs.storage_in(i,0);
             float storage_out = bufs.storage_out(i,0);
             expect(eq(storage_out, storage_in)) << " at index " << i;
@@ -159,7 +157,7 @@ suite loops_tests = []() {
     };
 
     "2_play"_test = []() {
-        loops_buffers bufs = setup_buffers(1, 1, 16, 8, 16);
+        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
         bufs.states_in(0) = bufs.next_states(0) = Playing;
         bufs.positions_in(0) = 2;
         bufs.lengths_in(0) = 11;
@@ -171,7 +169,7 @@ suite loops_tests = []() {
         expect(bufs.positions_out(0) == 10_i);
         expect(bufs.lengths_out(0) == 11_i);
 
-        for(size_t i=0; i<bufs.max_loop_length; i++) {
+        for(size_t i=0; i<bufs.storage_in.dim(0).extent(); i++) {
             float storage_in = bufs.storage_in(i,0);
             float storage_out = bufs.storage_out(i,0);
             expect(eq(storage_out, storage_in)) << " at index " << i;
@@ -184,8 +182,38 @@ suite loops_tests = []() {
         }
     };
 
+    "21_play_long"_test = []() {
+        loops_buffers bufs = setup_buffers(1, 1, 2048, 256);
+        bufs.states_in(0) = bufs.next_states(0) = Playing;
+        bufs.positions_in(0) = 0;
+        bufs.lengths_in(0) = 2048;
+        for(size_t i=0; i<bufs.process_samples; i++) {
+            bufs.samples_in(i, 0) = 0.0f;
+        };
+
+        for(size_t i=0; i<8; i++) {
+            run_loops(bufs);
+            expect(eq(((int)bufs.states_out(0)), Playing));
+            expect(eq(bufs.positions_out(0), 256*(i+1)));
+            expect(bufs.lengths_out(0) == 2048_i);
+
+            
+            for(size_t j=0; j<bufs.process_samples; j++) {
+                float sample_out = bufs.samples_out(j,0);
+                float storage = bufs.storage_in(j+256*(i+1), 0);
+                expect(eq(sample_out, storage)) << " at index " << j + i*256;
+            }
+        }
+
+        for(size_t i=0; i<bufs.storage_in.dim(0).extent(); i++) {
+            float storage_in = bufs.storage_in(i,0);
+            float storage_out = bufs.storage_out(i,0);
+            expect(eq(storage_out, storage_in)) << " at index " << i;
+        }
+    };
+
     "3_play_muted"_test = []() {
-        loops_buffers bufs = setup_buffers(1, 1, 16, 8, 16);
+        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
         bufs.states_in(0) = bufs.next_states(0) = PlayingMuted;
         bufs.positions_in(0) = 2;
         bufs.lengths_in(0) = 11;
@@ -194,7 +222,7 @@ suite loops_tests = []() {
         expect(bufs.positions_out(0) == 10_i);
         expect(bufs.lengths_out(0) == 11_i);
 
-        for(size_t i=0; i<bufs.max_loop_length; i++) {
+        for(size_t i=0; i<bufs.storage_in.dim(0).extent(); i++) {
             float storage_in = bufs.storage_in(i,0);
             float storage_out = bufs.storage_out(i,0);
             expect(eq(storage_out, storage_in)) << " at index " << i;
@@ -208,7 +236,7 @@ suite loops_tests = []() {
     };
 
     "4_record"_test = []() {
-        loops_buffers bufs = setup_buffers(1, 1, 16, 8, 32);
+        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
         bufs.states_in(0) = bufs.next_states(0) = Recording;
         bufs.positions_in(0) = 2;
         bufs.lengths_in(0) = 3;
@@ -218,7 +246,7 @@ suite loops_tests = []() {
         expect(bufs.lengths_out(0) == 11_i);
 
 
-        for(size_t i=0; i<bufs.max_loop_length; i++) {
+        for(size_t i=0; i<bufs.storage_in.dim(0).extent(); i++) {
             float storage_in = bufs.storage_in(i,0);
             float storage_out = bufs.storage_out(i,0);
             if (i >= 2 && i < 10) {
@@ -238,7 +266,7 @@ suite loops_tests = []() {
     };
 
     "41_record_from_0"_test = []() {
-        loops_buffers bufs = setup_buffers(1, 1, 16, 8, 32);
+        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
         bufs.states_in(0) = bufs.next_states(0) = Recording;
         bufs.positions_in(0) = 0;
         bufs.lengths_in(0) = 0;
@@ -248,7 +276,7 @@ suite loops_tests = []() {
         expect(bufs.lengths_out(0) == 8_i);
 
 
-        for(size_t i=0; i<bufs.max_loop_length; i++) {
+        for(size_t i=0; i<bufs.storage_in.dim(0).extent(); i++) {
             float storage_in = bufs.storage_in(i,0);
             float storage_out = bufs.storage_out(i,0);
             if (i < 8) {
@@ -268,7 +296,7 @@ suite loops_tests = []() {
     };
 
     "5_passthrough"_test = []() {
-        loops_buffers bufs = setup_buffers(1, 1, 16, 8, 16);
+        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
         bufs.states_in(0) = bufs.next_states(0) = Stopped;
         bufs.positions_in(0) = 2;
         bufs.lengths_in(0) = 11;
@@ -278,7 +306,7 @@ suite loops_tests = []() {
         expect(bufs.positions_out(0) == 2_i);
         expect(bufs.lengths_out(0) == 11_i);
 
-        for(size_t i=0; i<bufs.max_loop_length; i++) {
+        for(size_t i=0; i<bufs.storage_in.dim(0).extent(); i++) {
             float storage_in = bufs.storage_in(i,0);
             float storage_out = bufs.storage_out(i,0);
             expect(eq(storage_out, storage_in)) << " at index " << i;
@@ -292,7 +320,7 @@ suite loops_tests = []() {
     };
 
     "6_loop_volume"_test = []() {
-        loops_buffers bufs = setup_buffers(1, 1, 16, 8, 16);
+        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
         bufs.states_in(0) = bufs.next_states(0) = Playing;
         bufs.positions_in(0) = 2;
         bufs.lengths_in(0) = 11;
@@ -302,7 +330,7 @@ suite loops_tests = []() {
         expect(bufs.positions_out(0) == 10_i);
         expect(bufs.lengths_out(0) == 11_i);
 
-        for(size_t i=0; i<bufs.max_loop_length; i++) {
+        for(size_t i=0; i<bufs.storage_in.dim(0).extent(); i++) {
             float storage_in = bufs.storage_in(i,0);
             float storage_out = bufs.storage_out(i,0);
             expect(eq(storage_out, storage_in)) << " at index " << i;
@@ -316,7 +344,7 @@ suite loops_tests = []() {
     };
 
     "7_soft_sync_play_to_stop_self"_test = []() {
-        loops_buffers bufs = setup_buffers(1, 1, 16, 8, 16);
+        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
         bufs.states_in(0) = Playing;
         bufs.next_states(0) = Stopped;
         bufs.positions_in(0) = 10;
@@ -328,7 +356,7 @@ suite loops_tests = []() {
         expect(bufs.positions_out(0) == 0_i);
         expect(bufs.lengths_out(0) == 16);
 
-        for(size_t i=0; i<bufs.max_loop_length; i++) {
+        for(size_t i=0; i<bufs.storage_in.dim(0).extent(); i++) {
             float storage_in = bufs.storage_in(i,0);
             float storage_out = bufs.storage_out(i,0);
             expect(eq(storage_out, storage_in)) << " at index " << i;
@@ -348,7 +376,7 @@ suite loops_tests = []() {
     };
 
     "8_soft_sync_play_to_record_self"_test = []() {
-        loops_buffers bufs = setup_buffers(1, 1, 16, 8, 16);
+        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
         bufs.states_in(0) = Playing;
         bufs.next_states(0) = Recording;
         bufs.positions_in(0) = 10;
@@ -360,7 +388,7 @@ suite loops_tests = []() {
         expect(bufs.positions_out(0) == 2_i);
         expect(bufs.lengths_out(0) == 2_i);
 
-        for(size_t i=0; i<bufs.max_loop_length; i++) {
+        for(size_t i=0; i<bufs.storage_in.dim(0).extent(); i++) {
             float storage_in = bufs.storage_in(i,0);
             float storage_out = bufs.storage_out(i,0);
             if (i < 2) {
@@ -387,7 +415,7 @@ suite loops_tests = []() {
     };
 
     "9_soft_sync_stop_to_record_self"_test = []() {
-        loops_buffers bufs = setup_buffers(1, 1, 16, 8, 16);
+        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
         bufs.states_in(0) = Stopped;
         bufs.next_states(0) = Recording;
         bufs.positions_in(0) = 0;
@@ -399,7 +427,7 @@ suite loops_tests = []() {
         expect(bufs.positions_out(0) == 8_i);
         expect(bufs.lengths_out(0) == 8_i);
 
-        for(size_t i=0; i<bufs.max_loop_length; i++) {
+        for(size_t i=0; i<bufs.storage_in.dim(0).extent(); i++) {
             float storage_in = bufs.storage_in(i,0);
             float storage_out = bufs.storage_out(i,0);
             if (i < 8) {
@@ -419,7 +447,7 @@ suite loops_tests = []() {
     };
 
     "10_soft_sync_record_to_play_self"_test = []() {
-        loops_buffers bufs = setup_buffers(1, 1, 16, 8, 16);
+        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
         bufs.states_in(0) = Recording;
         bufs.next_states(0) = Playing;
         bufs.positions_in(0) = 5;
@@ -431,7 +459,7 @@ suite loops_tests = []() {
         expect(bufs.positions_out(0) == 3_i);
         expect(bufs.lengths_out(0) == 5_i);
 
-        for(size_t i=0; i<bufs.max_loop_length; i++) {
+        for(size_t i=0; i<bufs.storage_in.dim(0).extent(); i++) {
             float storage_in = bufs.storage_in(i,0);
             float storage_out = bufs.storage_out(i,0);
             // Recording should have stopped immediately
@@ -447,7 +475,7 @@ suite loops_tests = []() {
     };
 
     "11_soft_sync_play_to_record_self"_test = []() {
-        loops_buffers bufs = setup_buffers(1, 1, 16, 8, 16);
+        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
         bufs.states_in(0) = Playing;
         bufs.next_states(0) = Recording;
         bufs.positions_in(0) = 5;
@@ -459,7 +487,7 @@ suite loops_tests = []() {
         expect(bufs.positions_out(0) == 3_i);
         expect(bufs.lengths_out(0) == 3_i);
 
-        for(size_t i=0; i<bufs.max_loop_length; i++) {
+        for(size_t i=0; i<bufs.storage_in.dim(0).extent(); i++) {
             float storage_in = bufs.storage_in(i,0);
             float storage_out = bufs.storage_out(i,0);
             if(i<3) {
@@ -481,7 +509,7 @@ suite loops_tests = []() {
     };
 
     "12_no_soft_sync_play_to_record_self"_test = []() {
-        loops_buffers bufs = setup_buffers(1, 1, 16, 8, 16);
+        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
         bufs.states_in(0) = Playing;
         bufs.next_states(0) = Recording;
         bufs.positions_in(0) = 2;
@@ -493,7 +521,7 @@ suite loops_tests = []() {
         expect(bufs.positions_out(0) == 10_i);
         expect(bufs.lengths_out(0) == 12_i);
 
-        for(size_t i=0; i<bufs.max_loop_length; i++) {
+        for(size_t i=0; i<bufs.storage_in.dim(0).extent(); i++) {
             float storage_in = bufs.storage_in(i,0);
             float storage_out = bufs.storage_out(i,0);
             expect(eq(storage_out, storage_in)) << " at index " << i;
