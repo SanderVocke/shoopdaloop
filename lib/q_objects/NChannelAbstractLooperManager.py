@@ -12,7 +12,7 @@ from .BasicLooperManager import BasicLooperManager
 # which are hard-linked and represent audio channels on an abstract
 # looper.
 class NChannelAbstractLooperManager(BasicLooperManager):
-    signalLoopAction = pyqtSignal(int, list) # action_id, args
+    signalLoopAction = pyqtSignal(list, int, list) # loop idxs, action_id, args
     loopIdxsChanged = pyqtSignal(list)
     loadLoopData = pyqtSignal(int, list) # loop idx, samples
 
@@ -39,18 +39,12 @@ class NChannelAbstractLooperManager(BasicLooperManager):
     
     @pyqtSlot(int, list)
     def doLoopAction(self, action_id, args):
-        self.signalLoopAction.emit(action_id, args)
+        self.signalLoopAction.emit(self._loop_idxs, action_id, args)
 
     @pyqtSlot(QObject)
     def connect_backend_manager(self, manager):
         if manager:
-            self.signalLoopAction.connect(
-                lambda act, args: manager.do_loop_action(
-                    self.loop_idxs[0],
-                    act,
-                    args
-                )
-            )
+            self.signalLoopAction.connect(manager.do_loops_action)
             self.loadLoopData.connect(manager.load_loop_data)
             manager.looper_mgrs[self.loop_idxs[0]].posChanged.connect(lambda v: NChannelAbstractLooperManager.pos.fset(self, v))
             manager.looper_mgrs[self.loop_idxs[0]].lengthChanged.connect(lambda v: NChannelAbstractLooperManager.length.fset(self, v))

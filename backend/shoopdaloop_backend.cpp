@@ -26,17 +26,20 @@ backend_features_t g_features;
 typedef decltype(&shoopdaloop_loops) loops_fn;
 loops_fn g_loops_fn = shoopdaloop_loops;
 
+// Last written output index in in/out pairs (goes tick tock)
+uint8_t g_last_written_output_buffer_tick_tock;
+
 // State for each loop
-Buffer<int8_t, 1> g_states;
+Buffer<int8_t, 1> g_states[2];
 
 // Planned state for each loop
 Buffer<int8_t, 1> g_next_states;
 
 // Position for each loop
-Buffer<int32_t, 1> g_positions;
+Buffer<int32_t, 1> g_positions[2];
 
 // Length for each loop
-Buffer<int32_t, 1> g_lengths;
+Buffer<int32_t, 1> g_lengths[2];
 
 // Sample input and output buffers
 std::vector<float> g_samples_in_raw, g_samples_out_raw; //Use vectors here so we control the layout
@@ -121,6 +124,8 @@ int jack_process (jack_nframes_t nframes, void *arg) {
     static auto last_measurement = std::chrono::high_resolution_clock::now();
     static size_t n_measurements = 0;
     static float cmd_time = 0.0, in_time = 0.0, proc_time = 0.0, out_time = 0.0, total_time = 0.0;
+    static uint8_t tick = 0;
+    static uint8_t tock = 1;
 
     jack_default_audio_sample_t *buf;
 
@@ -150,10 +155,10 @@ int jack_process (jack_nframes_t nframes, void *arg) {
     if(g_features == Default) {
         g_loops_fn(
             g_samples_in,
-            g_states,
+            g_states[tick],
             g_next_states,
-            g_positions,
-            g_lengths,
+            g_positions[tick],
+            g_lengths[tick],
             g_storage,
             g_loops_to_ports,
             g_loops_hard_sync_mapping,
@@ -165,12 +170,15 @@ int jack_process (jack_nframes_t nframes, void *arg) {
             g_loop_len,
             g_samples_out,
             g_samples_out_per_loop,
-            g_states,
-            g_positions,
-            g_lengths,
+            g_states[tock],
+            g_positions[tock],
+            g_lengths[tock],
             g_storage
         );
     }
+    g_last_written_output_buffer_tick_tock = tock;
+    tock = (tock + 1) % 2;
+    tick = (tick + 1) % 2;
 
     auto did_process = std::chrono::high_resolution_clock::now();
 
@@ -186,11 +194,11 @@ int jack_process (jack_nframes_t nframes, void *arg) {
 
     // Copy states to atomic for read-out
     for(int i=0; i<g_n_loops; i++) {
-        g_atomic_state.states[i] = (loop_state_t) g_states(i);
+        g_atomic_state.states[i] = (loop_state_t) g_states[g_last_written_output_buffer_tick_tock](i);
         g_atomic_state.next_states[i] = (loop_state_t) g_next_states(i);
-        g_atomic_state.lengths[i] = g_lengths(i);
+        g_atomic_state.lengths[i] = g_lengths[g_last_written_output_buffer_tick_tock](i);
         g_atomic_state.loop_volumes[i] = g_loop_volumes(i);
-        g_atomic_state.positions[i] = g_positions(i);
+        g_atomic_state.positions[i] = g_positions[g_last_written_output_buffer_tick_tock](i);
     }
     for(int i=0; i<g_n_ports; i++) {
         g_atomic_state.passthroughs[i] = g_passthroughs(i);
@@ -260,10 +268,13 @@ int initialize(
     g_loop_len = (size_t)((float) g_sample_rate * loop_len_seconds);
 
     // Allocate buffers
-    g_states = Buffer<int8_t, 1>(n_loops);
+    g_states[0] = Buffer<int8_t, 1>(n_loops);
+    g_states[1] = Buffer<int8_t, 1>(n_loops);
     g_next_states = Buffer<int8_t, 1>(n_loops);
-    g_positions = Buffer<int32_t, 1>(n_loops);
-    g_lengths = Buffer<int32_t, 1>(n_loops);
+    g_positions[0] = Buffer<int32_t, 1>(n_loops);
+    g_positions[1] = Buffer<int32_t, 1>(n_loops);
+    g_lengths[0] = Buffer<int32_t, 1>(n_loops);
+    g_lengths[1] = Buffer<int32_t, 1>(n_loops);
     g_samples_in_raw.resize(n_ports*g_buf_size);
     g_samples_out_raw.resize(n_ports*g_buf_size);
     g_samples_out_per_loop = Buffer<float, 2>(g_buf_size, n_loops);
@@ -300,10 +311,10 @@ int initialize(
 
     // Initialize loops
     for(size_t i=0; i<g_n_loops; i++) {
-        g_states(i) = Stopped;
+        g_states[0](i) = g_states[1](i) = Stopped;
         g_next_states(i) = Stopped;
-        g_positions(i) = 0;
-        g_lengths(i) = 0;
+        g_positions[0](i) = g_positions[1](i) = 0;
+        g_lengths[0](i) = g_lengths[1](i) = 0;
         g_loops_to_ports(i) = loops_to_ports_mapping[i];
         g_loops_hard_sync_mapping(i) = loops_hard_sync_mapping[i] < 0 ?
             i : loops_hard_sync_mapping[i];
@@ -388,8 +399,8 @@ int do_loop_action(
             cmd = [idxs, apply_state]() {
                 apply_state(idxs, Recording);
                 for(auto const& idx: idxs) {
-                    g_positions(idx) = 0;
-                    g_lengths(idx) = 0;
+                    g_positions[0](idx) = g_positions[1](idx) = 0;
+                    g_lengths[0](idx) = g_lengths[1](idx) = 0;
                 }
             };
             break;
@@ -412,8 +423,8 @@ int do_loop_action(
             cmd = [idxs, apply_state]() {
                 apply_state(idxs, Stopped);
                 for(auto const& idx: idxs) {
-                    g_positions(idx) = 0;
-                    g_lengths(idx) = 0;
+                    g_positions[0](idx) = g_positions[1](idx) = 0;
+                    g_lengths[0](idx) = g_lengths[1](idx) = 0;
                 }
             };
             break;
@@ -470,8 +481,8 @@ int load_loop_data(
     std::atomic<bool> finished = false;
     push_command([loop_idx, &finished]() {
         g_next_states(loop_idx) = Stopped;
-        g_states(loop_idx) = Stopped;
-        g_positions(loop_idx) = 0;
+        g_states[0](loop_idx) = g_states[1](loop_idx) = Stopped;
+        g_positions[0](loop_idx) = g_positions[1](loop_idx) = 0;
         finished = true;
     });
 
@@ -481,7 +492,7 @@ int load_loop_data(
     }
 
     push_command([len, loop_idx]() {
-        g_lengths(loop_idx) = len;
+        g_lengths[0](loop_idx) = g_lengths[1](loop_idx) = len;
     });
 
     return 0;
