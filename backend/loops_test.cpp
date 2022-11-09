@@ -194,15 +194,16 @@ suite loops_tests = []() {
         for(size_t i=0; i<8; i++) {
             run_loops(bufs);
             expect(eq(((int)bufs.states_out(0)), Playing));
-            expect(eq(bufs.positions_out(0), 256*(i+1)));
+            expect(eq(bufs.positions_out(0), (256*(i+1)) % 2048));
             expect(bufs.lengths_out(0) == 2048_i);
-
             
             for(size_t j=0; j<bufs.process_samples; j++) {
                 float sample_out = bufs.samples_out(j,0);
-                float storage = bufs.storage_in(j+256*(i+1), 0);
+                float storage = bufs.storage_in(j+256*i, 0);
                 expect(eq(sample_out, storage)) << " at index " << j + i*256;
             }
+
+            bufs.positions_in(0) = bufs.positions_out(0);
         }
 
         for(size_t i=0; i<bufs.storage_in.dim(0).extent(); i++) {
