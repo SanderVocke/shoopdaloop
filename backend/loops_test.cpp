@@ -560,6 +560,46 @@ suite loops_tests = []() {
             expect(eq(sample_out, sample_in)) << " at index " << i;
         }
     };
+
+    "13_1_hard_sync_soft_sync_play_to_record_self"_test = []() {
+        loops_buffers bufs = setup_buffers(2, 1, 16, 8);
+        bufs.states_in(0) = Playing;
+        bufs.next_states(0) = Recording;
+        bufs.states_in(1) = Stopped; bufs.next_states(1) = Stopped;
+        bufs.positions_in(0) = 5;
+        bufs.lengths_in(0) = 10;
+        bufs.positions_in(2) = 2;
+        bufs.lengths_in(2) = 2;
+        bufs.loops_soft_sync_mapping(0) = 0;
+        bufs.loops_hard_sync_mapping(1) = 0;
+        bufs.passthroughs(0) = 0.0f;
+        bufs.loop_volumes(0) = 0.0f;
+        bufs.loop_volumes(1) = 0.5f;
+        run_loops(bufs);
+        expect(eq(((int)bufs.states_out(1)), Recording));
+        expect(bufs.positions_out(1) == 3_i);
+        expect(bufs.lengths_out(1) == 3_i);
+
+        for(size_t i=0; i<bufs.storage_in.dim(0).extent(); i++) {
+            float storage_in = bufs.storage_in(i,1);
+            float storage_out = bufs.storage_out(i,1);
+            if(i<3) {
+                float sample_in = bufs.samples_in(i+5,0);
+                expect(eq(storage_out, sample_in)) << " at index " << i;
+            } else {
+                expect(eq(storage_out, storage_in)) << " at index " << i;
+            }
+        }
+        for(size_t i=0; i<bufs.process_samples; i++) {
+            float sample_out = bufs.samples_out(i,0);
+            if(i<5) {
+                float storage = bufs.storage_in(i+5, 1);
+                expect(eq(sample_out, storage * 0.5f)) << " at index " << i;
+            } else {
+                expect(eq(sample_out, 0.0_f)) << " at index " << i;
+            }            
+        }
+    };
 };
 
 void usage(std::string name) {
