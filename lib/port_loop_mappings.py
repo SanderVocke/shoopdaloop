@@ -12,10 +12,13 @@ def get_port_loop_mappings(n_tracks, loops_per_track, loop_channel_names):
     }
 
     def add_ports_for_track(track_name):
+        # add in + send for each channel,
+        # then return + out for each channel
         for n in loop_channel_names:
             r['port_name_pairs'].append(
                 ('{}_in_{}'.format(track_name, n), '{}_send_{}'.format(track_name, n))
             )
+        for n in loop_channel_names:
             r['port_name_pairs'].append(
                 ('{}_return_{}'.format(track_name, n), '{}_out_{}'.format(track_name, n))
             )
