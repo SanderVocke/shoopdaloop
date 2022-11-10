@@ -33,6 +33,10 @@ public:
     Input<Buffer<int32_t, 1>> hard_sync_map{"hard_sync_map"};
     Input<Buffer<int32_t, 1>> soft_sync_map{"soft_sync_map"};
 
+    // Np indices which allow port inputs to get their samples from another
+    // port instead of their own
+    Input<Buffer<int32_t, 1>> port_input_override_map{"port_input_override_map"};
+
     // Np levels to indicate how much passthrough and volume we want on the ports
     Input<Buffer<float, 1>> port_passthrough_levels{"port_passthrough_levels"};
     Input<Buffer<float, 1>> port_volumes{"port_volumes"};
@@ -89,6 +93,7 @@ public:
 
             // port axis of 1D buffers
             port_volumes.dim(0).set_bounds(pf, pe);
+            port_input_override_map.dim(0).set_bounds(pf, pe);
         }
 
         Var loop("loop");
@@ -99,11 +104,16 @@ public:
         Func _loop_lengths_in_b = repeat_edge(loop_lengths_in);
         Func _positions_in_b = repeat_edge(positions_in);
         Func _loop_storage_in = repeat_edge(loop_storage_in);
-        Func _samples_in = repeat_edge(samples_in);
+        Func _orig_samples_in = repeat_edge(samples_in);
         Func _soft_sync_map_b = repeat_edge(soft_sync_map);
         Func _hard_sync_map = repeat_edge(hard_sync_map);
+        Func _port_input_override_map = repeat_edge(port_input_override_map);
         Func _states_in_b = repeat_edge(states_in);
         Func _next_states_in_b = repeat_edge(next_states_in);
+
+        // Do the port input overrides
+        Func _samples_in("_samples_in");
+        _samples_in(x, port) = _orig_samples_in(x, _port_input_override_map(port));
 
         // For hard-linked loops, sneakily get the state data from the master loop
         Func _loop_lengths_in, _positions_in, _soft_sync_map, _states_in, _next_states_in;

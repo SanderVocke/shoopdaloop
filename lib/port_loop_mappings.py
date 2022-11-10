@@ -32,9 +32,9 @@ def get_port_loop_mappings(n_tracks, loops_per_track, loop_channel_names):
         # so that each first channel is soft-synced to master and rest of channels
         # are not soft-synced
         r['loops_soft_sync'] += flatten([[0, -1] for i in range(chans)])
-        # Below produces [0, 0, 1, 1, 2, 2, ...] offset by base loop
+        # Below produces [0, 0, 2, 2, 4, 4, ...] offset by base loop
         # so that channels are hard-linked together
-        r['loops_hard_sync'] += flatten([[i+base_loop, i+base_loop] for i in range(chans)])
+        r['loops_hard_sync'] += flatten([[i*2+base_loop, i*2+base_loop] for i in range(chans)])
     
     print(r['loops_soft_sync'])
 

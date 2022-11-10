@@ -1,3 +1,5 @@
+#include <jack/types.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -44,7 +46,8 @@ typedef void (*AbortCallback) ();
 
 // Initialize the back-end.
 // n_loops: Amount of loops to instantiate. Note that each loop is a mono channel only.
-// n_ports: Amount of JACK ports to instantiate.
+// n_ports: Amount of ports to instantiate. A "port" here actually means a pair of
+//          associated input and output ports.
 // loop_len_seconds: Maximum amount of seconds a loop can store.
 // loops_to_ports_mapping: Should contain n_loops indices, which indicate to which port the loop should be connected.
 //                         Multiple loops can be connected to the same port.
@@ -61,7 +64,7 @@ typedef void (*AbortCallback) ();
 // client_name: Name of the JACK client to register
 // update_cb: this callback will be called when a state update is requested.
 // abort_cb: this callback will be called if the back-end aborts operation for any reason.
-int initialize(
+jack_client_t* initialize(
     unsigned n_loops,
     unsigned n_ports,
     float loop_len_seconds,
@@ -97,6 +100,22 @@ int load_loop_data(
     unsigned len,
     float *data
 );
+
+// Get access to the JACK port structures of a port pair.
+jack_port_t* get_port_output_handle(unsigned port_idx);
+jack_port_t* get_port_input_handle(unsigned port_idx);
+
+// Override a port input connection. By default, each "port"
+// refers to a pair of input and output that are associated with
+// each other.
+// If a port input is overridden, its input samples are taken from
+// another port pair's JACK input instead, which affects e.g.
+// loop recording and port passthrough.
+void remap_port_input(unsigned port, unsigned input_source);
+
+// Reset a port's input override. It will take samples from its own
+// JACK input again.
+void reset_port_input_remapping(unsigned port);
 
 // Terminate the back-end.
 void terminate();

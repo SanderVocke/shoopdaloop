@@ -28,6 +28,7 @@ struct loops_buffers {
     Buffer<int32_t, 1> loops_to_ports;
     Buffer<int32_t, 1> loops_hard_sync_mapping;
     Buffer<int32_t, 1> loops_soft_sync_mapping;
+    Buffer<int32_t, 1> port_input_override_map;
     Buffer<float, 1> passthroughs;
     Buffer<float, 1> loop_volumes;
     Buffer<float, 1> port_volumes;
@@ -53,6 +54,7 @@ loops_buffers setup_buffers(
     r.loop_volumes = decltype(r.loop_volumes)(n_loops);
     r.loops_hard_sync_mapping = decltype(r.loops_hard_sync_mapping)(n_loops);
     r.loops_soft_sync_mapping = decltype(r.loops_soft_sync_mapping)(n_loops);
+    r.port_input_override_map = decltype(r.port_input_override_map)(n_ports);
     r.loops_to_ports = decltype(r.loops_to_ports)(n_loops);
 
     r.samples_in = decltype(r.samples_in)(process_samples, n_ports);
@@ -85,6 +87,7 @@ loops_buffers setup_buffers(
     for(size_t i=0; i<n_ports; i++) {
         r.passthroughs(i) = 1.0f;
         r.port_volumes(i) = 1.0f;
+        r.port_input_override_map(i) = i;
 
         for (size_t s = 0; s < process_samples; s++) {
             r.samples_in(s, i) = (float)s;
@@ -116,6 +119,7 @@ void run_loops(
         bufs.loops_to_ports,
         bufs.loops_hard_sync_mapping,
         bufs.loops_soft_sync_mapping,
+        bufs.port_input_override_map,
         bufs.passthroughs,
         bufs.port_volumes,
         bufs.loop_volumes,
@@ -317,6 +321,37 @@ suite loops_tests = []() {
             float sample_out = bufs.samples_out(i,0);
             float storage = bufs.storage_in(i+2, 0);
             expect(eq(sample_out, sample_in*0.5f)) << " at index " << i;
+        }
+    };
+
+    "5_1_passthrough_remapped"_test = []() {
+        loops_buffers bufs = setup_buffers(1, 2, 16, 8);
+        bufs.states_in(0) = bufs.next_states(0) = Stopped;
+        bufs.positions_in(0) = 2;
+        bufs.lengths_in(0) = 11;
+        bufs.port_input_override_map(1) = 0;
+        bufs.passthroughs(0) = 0.5f;
+        bufs.passthroughs(1) = 2.0f;
+        for(size_t i=0; i<8; i++) {
+            bufs.samples_in(i, 0) = 100.0f + (float)i;
+        }
+        run_loops(bufs);
+        expect(bufs.states_out(0) == Stopped);
+        expect(bufs.positions_out(0) == 2_i);
+        expect(bufs.lengths_out(0) == 11_i);
+
+        for(size_t i=0; i<bufs.storage_in.dim(0).extent(); i++) {
+            float storage_in = bufs.storage_in(i,0);
+            float storage_out = bufs.storage_out(i,0);
+            expect(eq(storage_out, storage_in)) << " at index " << i;
+        }
+        for(size_t i=0; i<bufs.process_samples; i++) {
+            float sample_in = bufs.samples_in(i,0);
+            float sample_out_0 = bufs.samples_out(i,0);
+            float sample_out_1 = bufs.samples_out(i,1);
+            float storage = bufs.storage_in(i+2, 0);
+            expect(eq(sample_out_0, sample_in*0.5f)) << " at index " << i;
+            expect(eq(sample_out_1, sample_in*2.0f)) << " at index " << i;
         }
     };
 

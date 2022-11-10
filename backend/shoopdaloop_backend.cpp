@@ -59,6 +59,9 @@ Buffer<int32_t, 1> g_loops_to_ports;
 Buffer<int32_t, 1> g_loops_hard_sync_mapping;
 Buffer<int32_t, 1> g_loops_soft_sync_mapping;
 
+// Port input mappings
+Buffer<int32_t, 1> g_port_input_mappings;
+
 // Levels
 Buffer<float, 1> g_passthroughs; // Per port
 Buffer<float, 1> g_loop_volumes; // Per loop
@@ -72,6 +75,8 @@ size_t g_n_ports;
 size_t g_loop_len;
 size_t g_buf_size;
 size_t g_sample_rate;
+
+std::vector<jack_default_audio_sample_t*> g_input_bufs, g_output_bufs;
 
 jack_client_t* g_jack_client;
 
@@ -132,6 +137,17 @@ int jack_process (jack_nframes_t nframes, void *arg) {
 
     auto start = std::chrono::high_resolution_clock::now();
 
+    // Get buffers
+    for(int i=0; i<g_input_ports.size(); i++) {
+            g_input_bufs[i] =
+                g_input_ports[i] ?
+                (jack_default_audio_sample_t*) jack_port_get_buffer(g_input_ports[i], nframes) :
+                nullptr;
+            g_output_bufs[i] =
+                g_output_ports[i] ?
+                (jack_default_audio_sample_t*) jack_port_get_buffer(g_output_ports[i], nframes) :
+                nullptr;
+    }
     // Process commands
     std::function<void()> cmd;
     while(g_cmd_queue.pop(cmd)) {
@@ -140,13 +156,10 @@ int jack_process (jack_nframes_t nframes, void *arg) {
 
     auto did_cmds = std::chrono::high_resolution_clock::now();
 
-    // Get input port buffers and copy samples into the combined input buffer.
+    // Copy samples into the combined input buffer.
     for(int i=0; i<g_input_ports.size(); i++) {
-        if(g_input_ports[i]) {
-            buf = (jack_default_audio_sample_t*) jack_port_get_buffer(g_input_ports[i], nframes);
-            if (buf) {
-                memcpy((void*)(&g_samples_in_raw[g_buf_size*i]), (void*)buf, sizeof(float) * nframes);
-            }
+        if(g_input_bufs[i]) {
+            memcpy((void*)(&g_samples_in_raw[g_buf_size*i]), (void*)g_input_bufs[i], sizeof(float) * nframes);
         }
     }
 
@@ -163,6 +176,7 @@ int jack_process (jack_nframes_t nframes, void *arg) {
         g_loops_to_ports,
         g_loops_hard_sync_mapping,
         g_loops_soft_sync_mapping,
+        g_port_input_mappings,
         g_passthroughs,
         g_port_volumes,
         g_loop_volumes,
@@ -176,6 +190,19 @@ int jack_process (jack_nframes_t nframes, void *arg) {
         g_storage
     );
     g_last_written_output_buffer_tick_tock = tock;
+
+    // Debugging
+    if (false) {
+        for(int i=0; i<g_states[0].dim(0).extent(); i++) {
+            if(g_states[tock](i) != g_states[tick](i)) {
+                std::cout << "Loop " << i << ": " << (int)g_states[tick](i) << " -> "
+                        << (int)g_states[tock](i) 
+                        << " (-> " << (int)g_next_states(i) << ")"
+                        << std::endl;
+            }
+        }
+    }
+
     tock = (tock + 1) % 2;
     tick = (tick + 1) % 2;
 
@@ -183,11 +210,8 @@ int jack_process (jack_nframes_t nframes, void *arg) {
 
     // Get output port buffers and copy samples into them.
     for(int i=0; i<g_output_ports.size(); i++) {
-        if(g_output_ports[i]) {
-            buf = (jack_default_audio_sample_t*) jack_port_get_buffer(g_output_ports[i], nframes);
-            if (buf) {
-                memcpy((void*)buf, (void*)(&g_samples_out_raw[g_buf_size*i]), sizeof(float) * nframes);
-            }
+        if(g_output_bufs[i]) {
+            memcpy((void*)g_output_bufs[i], (void*)(&g_samples_out_raw[g_buf_size*i]), sizeof(float) * nframes);
         }
     }
 
@@ -230,7 +254,7 @@ int jack_process (jack_nframes_t nframes, void *arg) {
     return 0;
 }
 
-int initialize(
+jack_client_t* initialize(
     unsigned n_loops,
     unsigned n_ports,
     float loop_len_seconds,
@@ -261,7 +285,7 @@ int initialize(
     g_jack_client = jack_client_open(client_name, JackNullOption, &status, nullptr);
     if(g_jack_client == nullptr) {
         std::cerr << "Backend: given a null client." << std::endl;
-        return 1;
+        return nullptr;
     }
 
     // Get JACK buffer size and sample rate
@@ -291,6 +315,7 @@ int initialize(
     g_passthroughs = Buffer<float, 1>(n_ports);
     g_port_volumes = Buffer<float, 1>(n_ports);
     g_loop_volumes = Buffer<float, 1>(n_loops);
+    g_port_input_mappings = Buffer<int32_t, 1>(n_ports);
 
     g_samples_in = Buffer<float, 2>(
         halide_type_t {halide_type_float, 32, 1},
@@ -329,17 +354,20 @@ int initialize(
     }
 
     // Initialize ports
+    g_input_bufs = std::vector<jack_default_audio_sample_t*>(n_ports);
+    g_output_bufs = std::vector<jack_default_audio_sample_t*>(n_ports);
     for(size_t i=0; i<n_ports; i++) {
+        g_port_input_mappings(i) = i;
         g_input_ports.push_back(jack_port_register(g_jack_client, input_port_names[i], JACK_DEFAULT_AUDIO_TYPE, JackPortIsInput, 0));
         g_output_ports.push_back(jack_port_register(g_jack_client, output_port_names[i], JACK_DEFAULT_AUDIO_TYPE, JackPortIsOutput, 0));
 
         if(g_input_ports[i] == nullptr) {
             std::cerr << "Backend: Got null port" << std::endl;
-            return 1;
+            return nullptr;
         }
         if(g_output_ports[i] == nullptr) {
             std::cerr << "Backend: Got null port" << std::endl;
-            return 1;
+            return nullptr;
         }
 
         g_passthroughs(i) = 1.0f;
@@ -348,7 +376,7 @@ int initialize(
 
     if(jack_activate(g_jack_client)) {
         std::cerr << "Backend: Failed to activate client" << std::endl;
-        return 1;
+        return nullptr;
     }
 
     g_update_cb = update_cb;
@@ -359,7 +387,7 @@ int initialize(
                 std::unique_lock<std::mutex> lock(g_terminate_cv_m);
                 if(g_terminate_cv.wait_for(lock, std::chrono::milliseconds(500)) == std::cv_status::no_timeout) {
                     // Terminated.
-                    return;
+                    return nullptr;
                 }
 
                 size_t popped = 0;
@@ -383,7 +411,7 @@ int initialize(
         });
     }
 
-    return 0;
+    return g_jack_client;
 }
 
 int do_loop_action(
@@ -514,6 +542,22 @@ void terminate() {
     // TODO: can be removed if we solve segfault
     static void *const user_context = nullptr;
     halide_profiler_report(user_context);
+}
+
+jack_port_t* get_port_output_handle(unsigned port_idx) {
+    return g_output_ports[port_idx];
+}
+
+jack_port_t* get_port_input_handle(unsigned port_idx) {
+    return g_input_ports[port_idx];
+}
+
+void remap_port_input(unsigned port, unsigned input_source) {
+    g_port_input_mappings(port) = input_source;
+}
+
+void reset_port_input_remapping(unsigned port) {
+    g_port_input_mappings(port) = port;
 }
 
 } //extern "C"
