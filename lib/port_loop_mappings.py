@@ -8,7 +8,13 @@ def get_port_loop_mappings(n_tracks, loops_per_track, loop_channel_names):
         'port_name_pairs': [],
         'loops_to_ports': [],
         'loops_soft_sync': [],
-        'loops_hard_sync': []
+        'loops_hard_sync': [],
+        # The following key is a list of tuples.
+        # The first element is a port for which we should keep an eye on whether
+        # its input is connected to anything or not. If not, its input should be
+        # taken from another port's input instead (the 2nd tuple element indicates
+        # this port).
+        'port_input_remaps_if_disconnected': []
     }
 
     def add_ports_for_track(track_name):
@@ -35,6 +41,9 @@ def get_port_loop_mappings(n_tracks, loops_per_track, loop_channel_names):
         # Below produces [0, 0, 2, 2, 4, 4, ...] offset by base loop
         # so that channels are hard-linked together
         r['loops_hard_sync'] += flatten([[i*2+base_loop, i*2+base_loop] for i in range(chans)])
+        # Add the return-out pair to the input remappings (if nothing connected to the return,
+        # take samples from in).
+        r['port_input_remaps_if_disconnected'] += [[base_port+2, base_port+0], [base_port+3, base_port+1]]
     
     print(r['loops_soft_sync'])
 

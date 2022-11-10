@@ -17,6 +17,7 @@ from lib.q_objects.BackendManager import BackendManager
 
 from lib.JackSession import JackSession
 from lib.port_loop_mappings import get_port_loop_mappings
+from lib.port_input_remap_monitor import start_port_input_remapping_monitor
 from third_party.pyjacklib import jacklib
 
 from collections import OrderedDict
@@ -72,6 +73,14 @@ with JackSession('ShoopDaLoop-control') as jack_client:
     ) as backend_mgr:
         click_track_generator = ClickTrackGenerator(app)
         midi_control_mgr = MIDIControlManager(app, jack_client)
+
+        start_port_input_remapping_monitor(
+            jack_client,
+            [backend_mgr.get_jack_input_port(i) for i in range(len(mappings['port_name_pairs']))],
+            mappings['port_input_remaps_if_disconnected'],
+            backend_mgr.remap_port_input,
+            backend_mgr.reset_port_input_remap
+        )
 
         qmlRegisterType(NChannelAbstractLooperManager, 'NChannelAbstractLooperManager', 1, 0, 'NChannelAbstractLooperManager')
         qmlRegisterType(DryWetPairAbstractLooperManager, 'DryWetPairAbstractLooperManager', 1, 0, 'DryWetPairAbstractLooperManager')

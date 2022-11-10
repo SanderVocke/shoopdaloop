@@ -10,6 +10,7 @@ sys.path.append('../..')
 import build.backend.shoopdaloop_backend as backend
 from lib.LoopState import *
 from collections import OrderedDict
+from third_party.pyjacklib import jacklib
 
 import time
 import cProfile
@@ -77,7 +78,7 @@ class BackendManager(QObject):
         do_profiling = os.getenv('SHOOPDALOOP_PROFILING') != None
         features = backend.backend_features_t(backend.Profiling) if do_profiling else backend.backend_features_t(backend.Default)
         
-        backend.initialize(
+        self.jack_client = backend.initialize(
             self.n_loops,
             self.n_ports,
             self.max_loop_length_seconds,
@@ -91,6 +92,15 @@ class BackendManager(QObject):
             self.abort_cb,
             features
         )
+    
+    def get_jack_input_port(self, idx):
+        return cast(backend.get_port_input_handle(idx), POINTER(jacklib.jack_port_t))
+    
+    def remap_port_input(self, port, remapped):
+        backend.remap_port_input(port, remapped)
+
+    def reset_port_input_remap(self, port):
+        backend.reset_port_input_remapping(port)
 
     def update_cb(
                 self,
