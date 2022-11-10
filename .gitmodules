@@ -3,7 +3,7 @@
 	url = https://github.com/sthlm58/QtMaterialDesignIcons.git
 [submodule "third_party/pyjacklib"]
 	path = third_party/pyjacklib
-	url = git@github.com:SanderVocke/pyjacklib.git
+	url = https://github.com/jackaudio/pyjacklib.git
 [submodule "third_party/ut"]
 	path = third_party/ut
 	url = https://github.com/boost-ext/ut.git

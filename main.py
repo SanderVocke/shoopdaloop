@@ -57,10 +57,7 @@ mappings = get_port_loop_mappings(
         ['l', 'r']
     )
 
-with JackSession('ShoopDaLoop-control') as jack_session:
-    jack = jack_session[0]
-    jack_client = jack_session[1]
-
+with JackSession('ShoopDaLoop-control') as jack_client:
     app = QGuiApplication(sys.argv)
 
     with BackendManager(
@@ -74,7 +71,7 @@ with JackSession('ShoopDaLoop-control') as jack_session:
         app
     ) as backend_mgr:
         click_track_generator = ClickTrackGenerator(app)
-        midi_control_mgr = MIDIControlManager(app, jack_client, jack)
+        midi_control_mgr = MIDIControlManager(app, jack_client)
 
         qmlRegisterType(NChannelAbstractLooperManager, 'NChannelAbstractLooperManager', 1, 0, 'NChannelAbstractLooperManager')
         qmlRegisterType(DryWetPairAbstractLooperManager, 'DryWetPairAbstractLooperManager', 1, 0, 'DryWetPairAbstractLooperManager')

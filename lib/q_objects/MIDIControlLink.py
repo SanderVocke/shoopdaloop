@@ -10,6 +10,7 @@ from pprint import pprint
 import sys
 sys.path.append('../..')
 from third_party.pyjacklib import jacklib
+from third_party.pyjacklib.jacklib import helpers
 
 # Implements a MIDI control link by instantiating a pair of Jack ports
 # and providing signals and slots for MIDI communication over that
@@ -17,17 +18,16 @@ from third_party.pyjacklib import jacklib
 class MIDIControlLink(QObject):
     received = pyqtSignal(list) # List of MIDI bytes in the message
 
-    def __init__(self, parent, maybe_output_port_name, maybe_input_port_name, jack_client, jack_lib_instance):
+    def __init__(self, parent, maybe_output_port_name, maybe_input_port_name, jack_client):
         super(MIDIControlLink, self).__init__(parent)
         self._ready = False
         self._snd_queue = queue.Queue()
         self._jack_client = jack_client
-        self._jack = jack_lib_instance
         self._input_port = self._output_port = None
         if maybe_input_port_name:
-            self._input_port = self._jack.port_register(self._jack_client, maybe_input_port_name, jacklib.JACK_DEFAULT_MIDI_TYPE, jacklib.JackPortIsInput, 0)
+            self._input_port = jacklib.port_register(self._jack_client, maybe_input_port_name, jacklib.JACK_DEFAULT_MIDI_TYPE, jacklib.JackPortIsInput, 0)
         if maybe_output_port_name:
-            self._output_port = self._jack.port_register(self._jack_client, maybe_output_port_name, jacklib.JACK_DEFAULT_MIDI_TYPE, jacklib.JackPortIsOutput, 0)
+            self._output_port = jacklib.port_register(self._jack_client, maybe_output_port_name, jacklib.JACK_DEFAULT_MIDI_TYPE, jacklib.JackPortIsOutput, 0)
         self._ready = True
 
     def process(self, nframes):
@@ -36,38 +36,38 @@ class MIDIControlLink(QObject):
 
         # Input message processing
         if self._input_port:
-            inbuf = self._jack.port_get_buffer(self._input_port, nframes)
+            inbuf = jacklib.port_get_buffer(self._input_port, nframes)
             if inbuf:
-                event_cnt = self._jack.midi_get_event_count(inbuf)
+                event_cnt = jacklib.midi_get_event_count(inbuf)
                 event = jacklib.jack_midi_event_t()
                 for i in range(event_cnt):
-                    res = self._jack.midi_event_get(byref(event), inbuf, i)
+                    res = jacklib.midi_event_get(byref(event), inbuf, i)
                     msg = [event.buffer[b] for b in range(event.size)]
                     self.received.emit(msg)
         
         # Output message processing
         if self._output_port:
-            outbuf = self._jack.port_get_buffer(self._output_port, nframes)
+            outbuf = jacklib.port_get_buffer(self._output_port, nframes)
             if outbuf:
-                self._jack.midi_clear_buffer(outbuf)
+                jacklib.midi_clear_buffer(outbuf)
                 while not self._snd_queue.empty():
                     msg = self._snd_queue.get(block=False)
                     msg_bytes = (c_ubyte * len(msg))()
                     for idx in range(len(msg)):
                         msg_bytes[idx] = c_ubyte(msg[idx])
-                    self._jack.midi_event_write(outbuf, 0, msg_bytes, len(msg))
+                    jacklib.midi_event_write(outbuf, 0, msg_bytes, len(msg))
 
     def is_input_connected_to(self, other_name):
-            return self._jack.port_connected_to(self._input_port, other_name)
+            return jacklib.port_connected_to(self._input_port, other_name)
     
     def is_output_connected_to(self, other_name):
-            return self._jack.port_connected_to(self._output_port, other_name)
+            return jacklib.port_connected_to(self._output_port, other_name)
     
     def connect_output(self, other_name):
-            return self._jack.connect(self._jack_client, self._jack.port_name(self._output_port), other_name)
+            return jacklib.connect(self._jack_client, jacklib.port_name(self._output_port), other_name)
     
     def connect_input(self, other_name):
-            return self._jack.connect(self._jack_client, other_name, self._jack.port_name(self._input_port))
+            return jacklib.connect(self._jack_client, other_name, jacklib.port_name(self._input_port))
     
     # List of MIDI bytes to send as a message
     @pyqtSlot(list)
@@ -77,9 +77,9 @@ class MIDIControlLink(QObject):
     @pyqtSlot()
     def destroy(self):
         if self._input_port:
-            self._jack.port_unregister(self._jack_client, self._input_port)
+            jacklib.port_unregister(self._jack_client, self._input_port)
         if self._output_port:
-            self._jack.port_unregister(self._jack_client, self._output_port)
+            jacklib.port_unregister(self._jack_client, self._output_port)
 
 @dataclass(eq=True, frozen=True)
 class AutoconnectRule:
@@ -95,20 +95,19 @@ class MIDIControlLinkManager(QObject):
     link_created = pyqtSignal(AutoconnectRule, MIDIControlLink)
     link_destroyed = pyqtSignal(AutoconnectRule)
 
-    def __init__(self, parent, jack_client, jack_lib_instance):
+    def __init__(self, parent, jack_client):
         super(MIDIControlLinkManager, self).__init__(parent)
         self._snd_queue = queue.Queue()
         self._jack_client = jack_client
-        self._jack = jack_lib_instance
         self._links : dict[Type[AutoconnectRule], Type[MIDIControlLink]] = {}
         self._rules : set[Type[AutoconnectRule]] = []
         self._lock = threading.RLock()
 
         self._process_callback = CFUNCTYPE(c_int, c_uint32, c_void_p)(lambda nframes, arg: self.process_callback(nframes))
-        if self._jack.set_process_callback(self._jack_client, self._process_callback, None) != 0:
+        if jacklib.set_process_callback(self._jack_client, self._process_callback, None) != 0:
             raise Exception('Unable to set JACK process callback for MIDI control')
         
-        self._jack.activate(self._jack_client)
+        jacklib.activate(self._jack_client)
     
     def process_callback(self, nframes):
         with self._lock:
@@ -134,7 +133,7 @@ class MIDIControlLinkManager(QObject):
                         rule.our_output_port,
                         rule.our_input_port,
                         self._jack_client,
-                        self._jack
+                        jacklib
                     )
                     with self._lock:
                         self._links[rule] = link
@@ -143,12 +142,12 @@ class MIDIControlLinkManager(QObject):
             if rule.input_regex or rule.output_regex:
                 matching_input_ports = matching_output_ports = []
                 if rule.input_regex:
-                    matching_input_ports = jacklib.c_char_p_p_to_list(
-                        self._jack.get_ports(self._jack_client, rule.input_regex, None, jacklib.JackPortIsOutput)
+                    matching_input_ports = helpers.c_char_p_p_to_list(
+                        jacklib.get_ports(self._jack_client, rule.input_regex, None, jacklib.JackPortIsOutput)
                     )
                 if rule.output_regex:
-                    matching_output_ports = jacklib.c_char_p_p_to_list(
-                        self._jack.get_ports(self._jack_client, rule.output_regex, None, jacklib.JackPortIsInput)
+                    matching_output_ports = helpers.c_char_p_p_to_list(
+                        jacklib.get_ports(self._jack_client, rule.output_regex, None, jacklib.JackPortIsInput)
                     )
                 
                 if len(matching_input_ports) + len(matching_output_ports) > 0 and \
@@ -159,7 +158,7 @@ class MIDIControlLinkManager(QObject):
                         rule.our_output_port,
                         rule.our_input_port,
                         self._jack_client,
-                        self._jack
+                        jacklib
                     )
                     with self._lock:
                         self._links[rule] = link

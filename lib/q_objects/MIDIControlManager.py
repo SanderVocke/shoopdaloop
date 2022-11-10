@@ -280,7 +280,7 @@ class MIDIController(QObject):
 
 # For communicating with MIDI control/input devices.
 class MIDIControlManager(QObject):
-    def __init__(self, parent, jack_client, jack_lib_instance):
+    def __init__(self, parent, jack_client):
         super(MIDIControlManager, self).__init__(parent)
 
         # TODO: hard-coded to the APC mini profile for now
@@ -301,8 +301,7 @@ class MIDIControlManager(QObject):
 
         self._link_manager = MIDIControlLinkManager(
             None,
-            jack_client,
-            jack_lib_instance
+            jack_client
         )
         self._link_manager.link_created.connect(self.new_link)
 
