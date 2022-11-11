@@ -150,13 +150,12 @@ Item {
             Grid {
                 visible: statusrect.hovered
                 x: 20
-                y: -1
+                y: 2
                 columns: 4
                 id: buttongrid
                 property int button_width: 18
-                property int button_height: 18
+                property int button_height: 22
                 spacing: 1
-                anchors.verticalCenter: iconitem.verticalCenter
 
                 SmallButtonWithMouseArea {
                     id : play
@@ -168,7 +167,8 @@ Item {
                         name: 'play'
                         color: 'green'
                     }
-                    //onClicked: { trackctl.play() }
+
+                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(LoopState.LoopActionType.DoPlay, []) }}
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
@@ -179,6 +179,29 @@ Item {
                         target: statusrect
                         function onPropagateMousePosition(pt) { play.onMousePosition(pt) }
                         function onPropagateMouseExited() { play.onMouseExited() }
+                    }
+
+                    Popup {
+                        CorrectButtonSize { Button {
+                            id : playlivefx
+                            width: buttongrid.button_width
+                            height: buttongrid.button_height
+                            IconWithText {
+                                size: parent.width
+                                anchors.centerIn: parent
+                                name: 'play'
+                                color: 'orange'
+                                text_color: Material.foreground
+                                text: "FX"
+                            }
+                            //onClicked: { trackctl.playLiveFx() }
+
+                            hoverEnabled: true
+                            ToolTip.delay: 1000
+                            ToolTip.timeout: 5000
+                            ToolTip.visible: hovered
+                            ToolTip.text: "Play dry recording through live effects. Allows hearing FX changes on-the-fly."
+                        }}
                     }
                 }
 
@@ -192,7 +215,9 @@ Item {
                         name: 'record'
                         color: 'red'
                     }
-                    //onClicked: { trackctl.record() }
+
+                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(LoopState.LoopActionType.DoRecord, []) }}
+
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
@@ -216,7 +241,8 @@ Item {
                         name: 'stop'
                         color: Material.foreground
                     }
-                    //onClicked: { trackctl.pause() }
+
+                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(LoopState.LoopActionType.DoStop, []) }}
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
@@ -325,26 +351,6 @@ Item {
                 //    ToolTip.text: "Trigger FX re-record. This will play the full dry loop once with live FX, recording the result for wet playback."
                 //}}
                 //
-                //CorrectButtonSize { Button {
-                //    id : playlivefx
-                //    width: buttongrid.button_width
-                //    height: buttongrid.button_height
-                //    IconWithText {
-                //        size: parent.width
-                //        anchors.centerIn: parent
-                //        name: 'play'
-                //        color: 'orange'
-                //        text_color: Material.foreground
-                //        text: "FX"
-                //    }
-                //    //onClicked: { trackctl.playLiveFx() }
-//
-                //    hoverEnabled: true
-                //    ToolTip.delay: 1000
-                //    ToolTip.timeout: 5000
-                //    ToolTip.visible: hovered
-                //    ToolTip.text: "Play dry recording through live effects. Allows hearing FX changes on-the-fly."
-                //}}
             }
 
             //TextField {

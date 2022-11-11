@@ -10,11 +10,13 @@ Rectangle {
     id: root
     property bool hovered
 
+    signal clicked()
+
     color: hovered ? 'grey' : 'transparent'
 
     MouseArea {
         anchors.fill: parent
-        onClicked: console.log("boo!")
+        onClicked: root.clicked()
     }
 
     function onMousePosition(_pt) {
