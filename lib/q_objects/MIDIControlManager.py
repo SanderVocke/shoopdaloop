@@ -4,6 +4,7 @@ from ..LoopState import LoopState
 from ..MidiScripting import *
 from ..flatten import flatten
 from .MIDIControlLink import *
+from .BackendManager import BackendManager
 
 from enum import Enum
 from typing import *
@@ -280,7 +281,7 @@ class MIDIController(QObject):
 
 # For communicating with MIDI control/input devices.
 class MIDIControlManager(QObject):
-    def __init__(self, parent, jack_client):
+    def __init__(self, parent, jack_client, backend_mgr):
         super(MIDIControlManager, self).__init__(parent)
 
         # TODO: hard-coded to the APC mini profile for now
@@ -301,7 +302,8 @@ class MIDIControlManager(QObject):
 
         self._link_manager = MIDIControlLinkManager(
             None,
-            jack_client
+            jack_client,
+            backend_mgr
         )
         self._link_manager.link_created.connect(self.new_link)
 

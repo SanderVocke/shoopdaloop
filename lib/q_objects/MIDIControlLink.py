@@ -6,6 +6,9 @@ from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot, QMetaObject, Qt
 from dataclasses import dataclass
 from typing import *
 from pprint import pprint
+from .BackendManager import BackendManager
+from threading import Thread
+import time
 
 import sys
 sys.path.append('../..')
@@ -18,44 +21,20 @@ from third_party.pyjacklib.jacklib import helpers
 class MIDIControlLink(QObject):
     received = pyqtSignal(list) # List of MIDI bytes in the message
 
-    def __init__(self, parent, maybe_output_port_name, maybe_input_port_name, jack_client):
+    def __init__(self, parent, maybe_output_port_name, maybe_input_port_name, jack_client, backend_mgr):
         super(MIDIControlLink, self).__init__(parent)
         self._ready = False
         self._snd_queue = queue.Queue()
         self._jack_client = jack_client
+        self._backend_mgr = backend_mgr
         self._input_port = self._output_port = None
         if maybe_input_port_name:
-            self._input_port = jacklib.port_register(self._jack_client, maybe_input_port_name, jacklib.JACK_DEFAULT_MIDI_TYPE, jacklib.JackPortIsInput, 0)
+            self._input_port = backend_mgr.create_slow_midi_input(
+                maybe_input_port_name,
+                lambda port, data: self.received.emit(data))
         if maybe_output_port_name:
-            self._output_port = jacklib.port_register(self._jack_client, maybe_output_port_name, jacklib.JACK_DEFAULT_MIDI_TYPE, jacklib.JackPortIsOutput, 0)
+            self._output_port = backend_mgr.create_slow_midi_output(maybe_output_port_name)
         self._ready = True
-
-    def process(self, nframes):
-        if not self._ready:
-            return
-
-        # Input message processing
-        if self._input_port:
-            inbuf = jacklib.port_get_buffer(self._input_port, nframes)
-            if inbuf:
-                event_cnt = jacklib.midi_get_event_count(inbuf)
-                event = jacklib.jack_midi_event_t()
-                for i in range(event_cnt):
-                    res = jacklib.midi_event_get(byref(event), inbuf, i)
-                    msg = [event.buffer[b] for b in range(event.size)]
-                    self.received.emit(msg)
-        
-        # Output message processing
-        if self._output_port:
-            outbuf = jacklib.port_get_buffer(self._output_port, nframes)
-            if outbuf:
-                jacklib.midi_clear_buffer(outbuf)
-                while not self._snd_queue.empty():
-                    msg = self._snd_queue.get(block=False)
-                    msg_bytes = (c_ubyte * len(msg))()
-                    for idx in range(len(msg)):
-                        msg_bytes[idx] = c_ubyte(msg[idx])
-                    jacklib.midi_event_write(outbuf, 0, msg_bytes, len(msg))
 
     def is_input_connected_to(self, other_name):
             return jacklib.port_connected_to(self._input_port, other_name)
@@ -72,14 +51,16 @@ class MIDIControlLink(QObject):
     # List of MIDI bytes to send as a message
     @pyqtSlot(list)
     def send(self, msg):
-        self._snd_queue.put(msg)
+        if self._output_port:
+            self._backend_mgr.send_slow_midi(self._output_port, msg)
     
     @pyqtSlot()
     def destroy(self):
+        self._ready = False
         if self._input_port:
-            jacklib.port_unregister(self._jack_client, self._input_port)
+            self._backend_mgr.destroy_slow_midi_port(self._input_port)
         if self._output_port:
-            jacklib.port_unregister(self._jack_client, self._output_port)
+            self._backend_mgr.destroy_slow_midi_port(self._output_port)
 
 @dataclass(eq=True, frozen=True)
 class AutoconnectRule:
@@ -95,25 +76,21 @@ class MIDIControlLinkManager(QObject):
     link_created = pyqtSignal(AutoconnectRule, MIDIControlLink)
     link_destroyed = pyqtSignal(AutoconnectRule)
 
-    def __init__(self, parent, jack_client):
+    def __init__(self, parent, jack_client, backend_mgr):
         super(MIDIControlLinkManager, self).__init__(parent)
         self._snd_queue = queue.Queue()
         self._jack_client = jack_client
         self._links : dict[Type[AutoconnectRule], Type[MIDIControlLink]] = {}
         self._rules : set[Type[AutoconnectRule]] = []
         self._lock = threading.RLock()
+        self._backend_mgr = backend_mgr
 
-        self._process_callback = CFUNCTYPE(c_int, c_uint32, c_void_p)(lambda nframes, arg: self.process_callback(nframes))
-        if jacklib.set_process_callback(self._jack_client, self._process_callback, None) != 0:
-            raise Exception('Unable to set JACK process callback for MIDI control')
-        
-        jacklib.activate(self._jack_client)
+        process_thread = Thread(target=lambda: self.process_func(), daemon=True)
+        process_thread.start()
     
-    def process_callback(self, nframes):
-        with self._lock:
-            for l in self._links.values():
-                l.process(nframes)
-        return 0
+    def process_func(self):
+        self._backend_mgr.process_slow_midi()
+        time.sleep(0.01)
     
     @pyqtSlot(list)
     def set_rules(self, rules : set[Type[AutoconnectRule]]):

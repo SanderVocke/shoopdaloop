@@ -11,6 +11,7 @@ import build.backend.shoopdaloop_backend as backend
 from lib.LoopState import *
 from collections import OrderedDict
 from third_party.pyjacklib import jacklib
+from functools import partial
 
 import time
 import cProfile
@@ -154,3 +155,27 @@ class BackendManager(QObject):
     def load_loop_data(self, loop_idx, data):
         c_data = (c_float * len(data))(*data)
         backend.load_loop_data(loop_idx, len(data), c_data)
+    
+    def create_slow_midi_input(self, name, rcv_callback):
+        retval = backend.create_slow_midi_port(name.encode('ascii'), backend.Input)
+    
+    def create_slow_midi_output(self, name):
+        return backend.create_slow_midi_port(name.encode('ascii'), backend.Output)
+    
+    def destroy_slow_midi_port(self, port):
+        backend.destroy_slow_midi_port(port);
+    
+    def send_slow_midi(self, port, data):
+        c_data = (c_ubyte * len(data))(*data)
+        backend.end_slow_midi(port, len(data), c_data)
+    
+    def set_slow_midi_port_received_callback(self, port, callback):
+        cb = backend.SlowMIDIReceivedCallback(partial(c_slow_midi_rcv_callback, callback))
+        backend.set_slow_midi_port_received_callback(port, cb)
+    
+    def process_slow_midi(self):
+        backend.process_slow_midi()
+
+def c_slow_midi_rcv_callback(python_cb, port, len, data):
+    p_data = [int(data[b]) for b in range(len)]
+    python_cb(port, p_data)

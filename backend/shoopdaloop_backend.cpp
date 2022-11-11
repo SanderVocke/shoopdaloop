@@ -1,7 +1,9 @@
 #include <HalideBuffer.h>
+#include <algorithm>
 #include <cmath>
 #include <jack/types.h>
 #include <jack/jack.h>
+#include <jack/midiport.h>
 
 #include "shoopdaloop_backend.h"
 #include "shoopdaloop_loops.h"
@@ -10,6 +12,7 @@
 #include <cstdlib>
 
 #include <iostream>
+#include <queue>
 #include <string>
 #include <vector>
 #include <unistd.h>
@@ -22,6 +25,8 @@
 
 using namespace Halide::Runtime;
 using namespace std;
+
+constexpr size_t slow_midi_port_queue_starting_size = 4096;
 
 backend_features_t g_features;
 typedef decltype(&shoopdaloop_loops) loops_fn;
@@ -99,8 +104,6 @@ std::mutex g_terminate_cv_m;
 
 UpdateCallback g_update_cb;
 
-bool finished = false;
-
 // A lock-free queue is used to pass commands to the audio
 // processing thread in the form of functors.
 constexpr unsigned command_queue_len = 1024;
@@ -123,7 +126,44 @@ struct benchmark_info {
 };
 boost::lockfree::spsc_queue<benchmark_info> g_benchmark_queue(benchmark_queue_len);
 
+// Keep track of the slow midi ports that have been opened.
+struct _slow_midi_port {
+    jack_port_t* jack_port;
+    std::string name;
+    slow_midi_port_kind_t kind;
+    std::vector<std::vector<uint8_t>> queue;
+    SlowMIDIReceivedCallback maybe_rcv_callback;
+};
+std::vector<_slow_midi_port> g_slow_midi_ports;
+
 extern "C" {
+
+// Process the slow midi ports
+void process_slow_midi_ports(jack_nframes_t nframes) {
+    for(auto &port : g_slow_midi_ports) {
+
+        if(port.jack_port) {
+            auto buf = jack_port_get_buffer(port.jack_port, nframes);
+
+            if(port.kind == Input) {
+                auto n_events = jack_midi_get_event_count(buf);
+                for(size_t i=0; i<n_events; i++) {
+                    jack_midi_event_t e;
+                    jack_midi_event_get(&e, buf, i);
+                    std::vector<uint8_t> msg(e.size); // TODO: don't allocate here
+                    memcpy((void*)msg.data(), (void*)e.buffer, e.size);
+                    port.queue.push_back(msg);
+                }
+            } else {
+                jack_midi_clear_buffer(buf);
+                for(auto &elem : port.queue) {
+                    jack_midi_event_write(buf, 0, (jack_midi_data_t*)elem.data(), elem.size());
+                }
+                port.queue.clear();
+            }
+        }
+    }
+}
 
 // The processing callback to be called by Jack.
 int jack_process (jack_nframes_t nframes, void *arg) {
@@ -560,34 +600,77 @@ void reset_port_input_remapping(unsigned port) {
     g_port_input_mappings(port) = port;
 }
 
-struct _slow_midi_port {
-    jack_port_t* jack_port;
-};
-
-slow_midi_port_t *create_slow_midi_port(
+jack_port_t *create_slow_midi_port(
     const char* name,
     slow_midi_port_kind_t kind
 ) {
-    return (slow_midi_port_t*) nullptr;
+    auto jport = jack_port_register(g_jack_client, name, JACK_DEFAULT_MIDI_TYPE,
+                                    kind == Input ? JackPortIsInput : JackPortIsOutput, 0);
+    if (jport) {
+        _slow_midi_port port {
+            .jack_port = jport,
+            .name = std::string(name),
+            .kind = kind,
+            .queue = std::vector<std::vector<uint8_t>>()
+        };
+        port.queue.reserve(slow_midi_port_queue_starting_size);
+        g_slow_midi_ports.push_back(port);
+        return jport;
+    }
+
+    return nullptr;
 }
 
 void set_slow_midi_port_received_callback(
-    slow_midi_port_t *port,
+    jack_port_t *port,
     SlowMIDIReceivedCallback callback
 ) {
-    return;
+    for(auto &it : g_slow_midi_ports) {
+        if(it.jack_port == port) {
+            it.maybe_rcv_callback = callback;
+        }
+    }
 }
 
-void destroy_slow_midi_port(slow_midi_port_t *port) {
-    return;
+void destroy_slow_midi_port(jack_port_t *port) {
+    if (port) {
+        jack_port_unregister(g_jack_client, port);
+    }
+
+    for(auto it = g_slow_midi_ports.begin(); it != g_slow_midi_ports.end(); it++) {
+        if(it->jack_port == port) {
+            g_slow_midi_ports.erase(it);
+            break;
+        }
+    }
 }
 
 void send_slow_midi(
-    slow_midi_port_t *port,
+    jack_port_t *port,
     uint8_t len,
     uint8_t *data
 ) {
-    return;
+    for(auto &it : g_slow_midi_ports) {
+        if(it.jack_port == port) {
+            std::vector<uint8_t> msg(len);
+            memcpy((void*)msg.data(), (void*)data, len);
+            it.queue.push_back(msg);
+            break;
+        }
+    }
+}
+
+void process_slow_midi() {
+    for (auto &it : g_slow_midi_ports) {
+        if(it.kind == Input && it.queue.size() > 0) {
+            if(it.maybe_rcv_callback) {
+                for (auto &elem : it.queue) {
+                    it.maybe_rcv_callback(it.jack_port, elem.size(), elem.data());
+                }
+            }
+            it.queue.clear();
+        }
+    }
 }
 
 } //extern "C"

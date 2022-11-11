@@ -71,10 +71,9 @@ with BackendManager(
     app
 ) as backend_mgr:
     jack_client = backend_mgr.jack_client
-    print(jack_client)
 
     click_track_generator = ClickTrackGenerator(app)
-    midi_control_mgr = MIDIControlManager(app, jack_client)
+    midi_control_mgr = MIDIControlManager(app, jack_client, backend_mgr)
 
     start_port_input_remapping_monitor(
         jack_client,

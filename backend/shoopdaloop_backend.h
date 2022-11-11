@@ -126,27 +126,28 @@ void terminate();
 // "slow" MIDI ports (e.g. for control purposes). Message handling
 // on such ports will be decoupled from the JACK processing thread via
 // queues.
-typedef struct _slow_midi_port slow_midi_port_t;
 typedef enum { Input, Output } slow_midi_port_kind_t;
 typedef int(*SlowMIDIReceivedCallback) (
-    slow_midi_port_t *port,
+    jack_port_t *port,
     uint8_t len,
     uint8_t *data
 );
-slow_midi_port_t *create_slow_midi_port(
+jack_port_t *create_slow_midi_port(
     const char* name,
     slow_midi_port_kind_t kind
 );
 void set_slow_midi_port_received_callback(
-    slow_midi_port_t *port,
+    jack_port_t *port,
     SlowMIDIReceivedCallback callback
 );
-void destroy_slow_midi_port(slow_midi_port_t *port);
+void destroy_slow_midi_port(jack_port_t *port);
 void send_slow_midi(
-    slow_midi_port_t *port,
+    jack_port_t *port,
     uint8_t len,
     uint8_t *data
 );
+// Will call the received callback for any received messages.
+void process_slow_midi();
 
 #ifdef __cplusplus
 }
