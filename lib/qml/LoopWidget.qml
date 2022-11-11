@@ -42,33 +42,21 @@ Item {
         ContextMenu {
             id: contextmenu
         }
-
-        MouseArea {
-            x: 0
-            y: 0
-            z: statusrect.z - 1
-            anchors {
-                fill: parent
-            }
-            acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
-            onClicked: (event) => {
-                           if (event.button === Qt.LeftButton) { widget.selected() }
-                           else if (event.button === Qt.MiddleButton) { widget.add_to_scene() }
-                           else if (event.button === Qt.RightButton) { contextmenu.popup() }
-                       }
-        }
     }
 
     component StatusRect : Rectangle {
         id: statusrect
         property var manager
-        property int x_spacing: 8
-        property int y_spacing: 0
+        property bool hovered : area.containsMouse
 
-        property alias name: name_field.text
+        property string name // TODO
+        //property alias name: name_field.text
 
-        width: loop.width + x_spacing
-        height: loop.height + y_spacing
+        signal propagateMousePosition(var point)
+        signal propagateMouseExited()
+
+        width: loop.width
+        height: loop.height
         color: widget.is_selected ? '#000044' : Material.background
         border.color: widget.is_in_hovered_scene && widget.is_in_selected_scene ? 'red' :
                       widget.is_in_hovered_scene ? 'blue' :
@@ -76,6 +64,23 @@ Item {
                       widget.is_selected ? Material.foreground :
                       'grey'
         border.width: 2
+
+        MouseArea {
+            id: area
+            x: 0
+            y: 0
+            anchors.fill: parent
+            //acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
+            //onClicked: (event) => {
+            //               if (event.button === Qt.LeftButton) { widget.selected() }
+            //               else if (event.button === Qt.MiddleButton) { widget.add_to_scene() }
+            //               else if (event.button === Qt.RightButton) { contextmenu.popup() }
+            //           }
+            hoverEnabled: true
+            propagateComposedEvents: true
+            onPositionChanged: (mouse) => { statusrect.propagateMousePosition(mapToGlobal(mouse.x, mouse.y)) }
+            onExited: statusrect.propagateMouseExited()
+        }
 
         Item {
             anchors.fill: parent
@@ -108,53 +113,252 @@ Item {
 
         Item {
             id : loop
-            width: childrenRect.width
-            height: childrenRect.height
-            x: parent.x_spacing/2
-            y: parent.y_spacing/2
+            width: 100
+            height: 26
+            x: 0
+            y: 0
 
-            Row {
-                spacing: 5
-                Item {
-                    id: iconitem
-                    width: 28
-                    height: 28
-                    y: 3
-                    LoopStateIcon {
-                        id: loopstateicon
-                        state: statusrect.manager ? statusrect.manager.state : LoopState.LoopState.Unknown
-                        show_timer_instead: statusrect.manager ? statusrect.manager.state != statusrect.manager.next_state : false
-                        connected: true
-                        size: iconitem.height
-                        y: 0
-                        anchors.horizontalCenter: iconitem.horizontalCenter
-                    }
-                    LoopStateIcon {
-                        id: loopnextstateicon
-                        state: statusrect.manager ? statusrect.manager.next_state : LoopState.LoopState.Unknown
-                        show_timer_instead: false
-                        connected: true
-                        size: iconitem.height * 0.65
-                        y: 0
-                        anchors.right : loopstateicon.right
-                        anchors.bottom : loopstateicon.bottom
-                        visible: statusrect.manager ? statusrect.manager.state != statusrect.manager.next_state : false
-                    }
+            Item {
+                id: iconitem
+                width: 24
+                height: 24
+                y: 0
+                x: 0
+                LoopStateIcon {
+                    id: loopstateicon
+                    state: statusrect.manager ? statusrect.manager.state : LoopState.LoopState.Unknown
+                    show_timer_instead: statusrect.manager ? statusrect.manager.state != statusrect.manager.next_state : false
+                    connected: true
+                    size: iconitem.height
+                    y: 0
+                    anchors.horizontalCenter: iconitem.horizontalCenter
                 }
-                TextField {
-                    id: name_field
-                    width: 60
-                    height: 35
-                    font.pixelSize: 12
-                    y: (loop.height - height)/2
-                    z: statusrect.z + 1
-
-                    onEditingFinished: {
-                        widget.request_rename(text)
-                        background_focus.forceActiveFocus();
-                    }
+                LoopStateIcon {
+                    id: loopnextstateicon
+                    state: statusrect.manager ? statusrect.manager.next_state : LoopState.LoopState.Unknown
+                    show_timer_instead: false
+                    connected: true
+                    size: iconitem.height * 0.65
+                    y: 0
+                    anchors.right : loopstateicon.right
+                    anchors.bottom : loopstateicon.bottom
+                    visible: statusrect.manager ? statusrect.manager.state != statusrect.manager.next_state : false
                 }
             }
+
+            // Testing
+            Grid {
+                visible: statusrect.hovered
+                x: 20
+                y: -1
+                columns: 4
+                id: buttongrid
+                property int button_width: 18
+                property int button_height: 18
+                spacing: 1
+                anchors.verticalCenter: iconitem.verticalCenter
+
+                SmallButtonWithMouseArea {
+                    id : play
+                    width: buttongrid.button_width
+                    height: buttongrid.button_height
+                    MaterialDesignIcon {
+                        size: parent.width
+                        anchors.centerIn: parent
+                        name: 'play'
+                        color: 'green'
+                    }
+                    //onClicked: { trackctl.play() }
+
+                    ToolTip.delay: 1000
+                    ToolTip.timeout: 5000
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Play wet recording."
+
+                    Connections {
+                        target: statusrect
+                        function onPropagateMousePosition(pt) { play.onMousePosition(pt) }
+                        function onPropagateMouseExited() { play.onMouseExited() }
+                    }
+                }
+
+                SmallButtonWithMouseArea {
+                    id : record
+                    width: buttongrid.button_width
+                    height: buttongrid.button_height
+                    MaterialDesignIcon {
+                        size: parent.width
+                        anchors.centerIn: parent
+                        name: 'record'
+                        color: 'red'
+                    }
+                    //onClicked: { trackctl.record() }
+
+                    ToolTip.delay: 1000
+                    ToolTip.timeout: 5000
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Trigger/stop recording. For master loop, starts immediately. For others, start/stop synced to next master loop cycle."
+
+                    Connections {
+                        target: statusrect
+                        function onPropagateMousePosition(pt) { record.onMousePosition(pt) }
+                        function onPropagateMouseExited() { record.onMouseExited() }
+                    }
+                }
+
+                SmallButtonWithMouseArea {
+                    id : stop
+                    width: buttongrid.button_width
+                    height: buttongrid.button_height
+                    MaterialDesignIcon {
+                        size: parent.width
+                        anchors.centerIn: parent
+                        name: 'stop'
+                        color: Material.foreground
+                    }
+                    //onClicked: { trackctl.pause() }
+
+                    ToolTip.delay: 1000
+                    ToolTip.timeout: 5000
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Stop."
+
+                    Connections {
+                        target: statusrect
+                        function onPropagateMousePosition(pt) { stop.onMousePosition(pt) }
+                        function onPropagateMouseExited() { stop.onMouseExited() }
+                    }
+                }
+
+                SmallButtonWithMouseArea {
+                    id : options
+                    width: buttongrid.button_width
+                    height: buttongrid.button_height
+                    MaterialDesignIcon {
+                        size: parent.width
+                        anchors.centerIn: parent
+                        name: 'dots-vertical'
+                        color: Material.foreground
+                    }
+                    //onClicked: { trackctl.pause() }
+
+                    ToolTip.delay: 1000
+                    ToolTip.timeout: 5000
+                    ToolTip.visible: hovered
+                    ToolTip.text: "More options."
+
+                    Connections {
+                        target: statusrect
+                        function onPropagateMousePosition(pt) { options.onMousePosition(pt) }
+                        function onPropagateMouseExited() { options.onMouseExited() }
+                    }
+                }
+
+                //CorrectButtonSize { Button {
+                //    id : recordN
+                //    property int n: 1
+                //    width: buttongrid.button_width
+                //    height: buttongrid.button_height
+                //    IconWithText {
+                //        size: parent.width
+                //        anchors.centerIn: parent
+                //        name: 'record'
+                //        color: 'red'
+                //        text_color: Material.foreground
+                //        text: recordN.n.toString()
+                //        font.pixelSize: size / 2.0
+                //    }
+                //    //onClicked: { trackctl.recordNCycles(n) }
+                //    //onPressAndHold: { menu.popup() }
+//
+                //    hoverEnabled: true
+                //    ToolTip.delay: 1000
+                //    ToolTip.timeout: 5000
+                //    ToolTip.visible: hovered
+                //    ToolTip.text: "Trigger fixed-length recording. Length (number shown) is the amount of master loop cycles to record. Press and hold this button to change this number."
+//
+                //    // TODO: editable text box instead of fixed options
+                //    Menu {
+                //        id: menu
+                //        title: 'Select # of cycles'
+                //        MenuItem {
+                //            text: "1"
+                //            onClicked: () => { recordN.n = 1 }
+                //        }
+                //        MenuItem {
+                //            text: "2"
+                //            onClicked: () => { recordN.n = 2 }
+                //        }
+                //        MenuItem {
+                //            text: "4"
+                //            onClicked: () => { recordN.n = 4 }
+                //        }
+                //        MenuItem {
+                //            text: "8"
+                //            onClicked: () => { recordN.n = 8 }
+                //        }
+                //        MenuItem {
+                //            text: "16"
+                //            onClicked: () => { recordN.n = 16 }
+                //        }
+                //    }
+                //}}
+                
+                //CorrectButtonSize { Button {
+                //    id : recordfx
+                //    width: buttongrid.button_width
+                //    height: buttongrid.button_height
+                //    IconWithText {
+                //        size: parent.width
+                //        anchors.centerIn: parent
+                //        name: 'record'
+                //        color: 'orange'
+                //        text_color: Material.foreground
+                //        text: "FX"
+                //    }
+                //    //onClicked: { trackctl.recordFx() }
+//
+                //    hoverEnabled: true
+                //    ToolTip.delay: 1000
+                //    ToolTip.timeout: 5000
+                //    ToolTip.visible: hovered
+                //    ToolTip.text: "Trigger FX re-record. This will play the full dry loop once with live FX, recording the result for wet playback."
+                //}}
+                //
+                //CorrectButtonSize { Button {
+                //    id : playlivefx
+                //    width: buttongrid.button_width
+                //    height: buttongrid.button_height
+                //    IconWithText {
+                //        size: parent.width
+                //        anchors.centerIn: parent
+                //        name: 'play'
+                //        color: 'orange'
+                //        text_color: Material.foreground
+                //        text: "FX"
+                //    }
+                //    //onClicked: { trackctl.playLiveFx() }
+//
+                //    hoverEnabled: true
+                //    ToolTip.delay: 1000
+                //    ToolTip.timeout: 5000
+                //    ToolTip.visible: hovered
+                //    ToolTip.text: "Play dry recording through live effects. Allows hearing FX changes on-the-fly."
+                //}}
+            }
+
+            //TextField {
+            //    id: name_field
+            //    width: 60
+            //    height: 35
+            //    font.pixelSize: 12
+            //    y: (loop.height - height)/2
+            //    z: statusrect.z + 1
+            //    onEditingFinished: {
+            //        widget.request_rename(text)
+            //        background_focus.forceActiveFocus();
+            //    }
+            //}
         }
     }
 
