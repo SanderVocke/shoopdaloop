@@ -58,52 +58,54 @@ mappings = get_port_loop_mappings(
         ['l', 'r']
     )
 
-with JackSession('ShoopDaLoop-control') as jack_client:
-    app = QGuiApplication(sys.argv)
+app = QGuiApplication(sys.argv)
 
-    with BackendManager(
-        mappings['port_name_pairs'],
-        mappings['loops_to_ports'],
-        mappings['loops_hard_sync'],
-        mappings['loops_soft_sync'],
-        60.0,
-        'ShoopDaLoop-backend',
-        0.03, # 30Hz updates
-        app
-    ) as backend_mgr:
-        click_track_generator = ClickTrackGenerator(app)
-        midi_control_mgr = MIDIControlManager(app, jack_client)
+with BackendManager(
+    mappings['port_name_pairs'],
+    mappings['loops_to_ports'],
+    mappings['loops_hard_sync'],
+    mappings['loops_soft_sync'],
+    60.0,
+    'ShoopDaLoop-backend',
+    0.03, # 30Hz updates
+    app
+) as backend_mgr:
+    jack_client = backend_mgr.jack_client
+    print(jack_client)
 
-        start_port_input_remapping_monitor(
-            jack_client,
-            [backend_mgr.get_jack_input_port(i) for i in range(len(mappings['port_name_pairs']))],
-            mappings['port_input_remaps_if_disconnected'],
-            backend_mgr.remap_port_input,
-            backend_mgr.reset_port_input_remap
-        )
+    click_track_generator = ClickTrackGenerator(app)
+    midi_control_mgr = MIDIControlManager(app, jack_client)
 
-        qmlRegisterType(NChannelAbstractLooperManager, 'NChannelAbstractLooperManager', 1, 0, 'NChannelAbstractLooperManager')
-        qmlRegisterType(DryWetPairAbstractLooperManager, 'DryWetPairAbstractLooperManager', 1, 0, 'DryWetPairAbstractLooperManager')
-        qmlRegisterType(BackendManager, 'BackendManager', 1, 0, 'BackendManager')
-        qmlRegisterType(BasicLooperManager, 'BasicLooperManager', 1, 0, 'BasicLooperManager')
-        qmlRegisterType(ClickTrackGenerator, 'ClickTrackGenerator', 1, 0, 'ClickTrackGenerator')
-        qmlRegisterType(MIDIControlManager, 'MIDIControlManager', 1, 0, 'MIDIControlManager')
+    start_port_input_remapping_monitor(
+        jack_client,
+        [backend_mgr.get_jack_input_port(i) for i in range(len(mappings['port_name_pairs']))],
+        mappings['port_input_remaps_if_disconnected'],
+        backend_mgr.remap_port_input,
+        backend_mgr.reset_port_input_remap
+    )
 
-        engine = QQmlApplicationEngine()
-        engine.rootContext().setContextProperty("backend_manager", backend_mgr)
-        engine.rootContext().setContextProperty("click_track_generator", click_track_generator)
-        engine.rootContext().setContextProperty("midi_control_manager", midi_control_mgr)
-        engine.quit.connect(app.quit)
-        engine.load('main.qml')
+    qmlRegisterType(NChannelAbstractLooperManager, 'NChannelAbstractLooperManager', 1, 0, 'NChannelAbstractLooperManager')
+    qmlRegisterType(DryWetPairAbstractLooperManager, 'DryWetPairAbstractLooperManager', 1, 0, 'DryWetPairAbstractLooperManager')
+    qmlRegisterType(BackendManager, 'BackendManager', 1, 0, 'BackendManager')
+    qmlRegisterType(BasicLooperManager, 'BasicLooperManager', 1, 0, 'BasicLooperManager')
+    qmlRegisterType(ClickTrackGenerator, 'ClickTrackGenerator', 1, 0, 'ClickTrackGenerator')
+    qmlRegisterType(MIDIControlManager, 'MIDIControlManager', 1, 0, 'MIDIControlManager')
 
-        exitcode = 0
+    engine = QQmlApplicationEngine()
+    engine.rootContext().setContextProperty("backend_manager", backend_mgr)
+    engine.rootContext().setContextProperty("click_track_generator", click_track_generator)
+    engine.rootContext().setContextProperty("midi_control_manager", midi_control_mgr)
+    engine.quit.connect(app.quit)
+    engine.load('main.qml')
 
-        # This hacky solution ensures that the Python interpreter has a chance
-        # to run every 100ms, which e.g. allows the signal handlers to work.
-        timer = QTimer()
-        # timer.start(100)
-        timer.timeout.connect(lambda: None)
+    exitcode = 0
 
-        exitcode = app.exec()
+    # This hacky solution ensures that the Python interpreter has a chance
+    # to run every 100ms, which e.g. allows the signal handlers to work.
+    timer = QTimer()
+    # timer.start(100)
+    timer.timeout.connect(lambda: None)
+
+    exitcode = app.exec()
 
 sys.exit(exitcode)

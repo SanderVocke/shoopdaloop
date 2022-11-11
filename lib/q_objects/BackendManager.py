@@ -78,7 +78,7 @@ class BackendManager(QObject):
         do_profiling = os.getenv('SHOOPDALOOP_PROFILING') != None
         features = backend.backend_features_t(backend.Profiling) if do_profiling else backend.backend_features_t(backend.Default)
         
-        self.jack_client = backend.initialize(
+        _jack_client = backend.initialize(
             self.n_loops,
             self.n_ports,
             self.max_loop_length_seconds,
@@ -92,6 +92,7 @@ class BackendManager(QObject):
             self.abort_cb,
             features
         )
+        self.jack_client = cast(_jack_client, POINTER(jacklib.jack_client_t))
     
     def get_jack_input_port(self, idx):
         return cast(backend.get_port_input_handle(idx), POINTER(jacklib.jack_port_t))

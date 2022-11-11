@@ -28,6 +28,8 @@ typedef enum {
     Tracing
 } backend_features_t;
 
+
+
 // The update callback provides the current looper state.
 // The callee should not free any pointers.
 typedef int(*UpdateCallback) (
@@ -119,6 +121,32 @@ void reset_port_input_remapping(unsigned port);
 
 // Terminate the back-end.
 void terminate();
+
+// Functions to create and manipulate
+// "slow" MIDI ports (e.g. for control purposes). Message handling
+// on such ports will be decoupled from the JACK processing thread via
+// queues.
+typedef struct _slow_midi_port slow_midi_port_t;
+typedef enum { Input, Output } slow_midi_port_kind_t;
+typedef int(*SlowMIDIReceivedCallback) (
+    slow_midi_port_t *port,
+    uint8_t len,
+    uint8_t *data
+);
+slow_midi_port_t *create_slow_midi_port(
+    const char* name,
+    slow_midi_port_kind_t kind
+);
+void set_slow_midi_port_received_callback(
+    slow_midi_port_t *port,
+    SlowMIDIReceivedCallback callback
+);
+void destroy_slow_midi_port(slow_midi_port_t *port);
+void send_slow_midi(
+    slow_midi_port_t *port,
+    uint8_t len,
+    uint8_t *data
+);
 
 #ifdef __cplusplus
 }

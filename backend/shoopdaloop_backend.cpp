@@ -560,4 +560,34 @@ void reset_port_input_remapping(unsigned port) {
     g_port_input_mappings(port) = port;
 }
 
+struct _slow_midi_port {
+    jack_port_t* jack_port;
+};
+
+slow_midi_port_t *create_slow_midi_port(
+    const char* name,
+    slow_midi_port_kind_t kind
+) {
+    return (slow_midi_port_t*) nullptr;
+}
+
+void set_slow_midi_port_received_callback(
+    slow_midi_port_t *port,
+    SlowMIDIReceivedCallback callback
+) {
+    return;
+}
+
+void destroy_slow_midi_port(slow_midi_port_t *port) {
+    return;
+}
+
+void send_slow_midi(
+    slow_midi_port_t *port,
+    uint8_t len,
+    uint8_t *data
+) {
+    return;
+}
+
 } //extern "C"
