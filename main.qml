@@ -55,7 +55,6 @@ ApplicationWindow {
             loops_per_track: shared.loops_per_track
             loops_of_selected_scene: shared.loops_of_selected_scene.map(map_loop_pos)
             loops_of_hovered_scene: shared.loops_of_hovered_scene.map(map_loop_pos)
-            selected_loops: shared.selected_loops.slice(1)
 
             Connections {
                 function onRequest_bind_loop_to_scene(track, loop) { shared.bind_loop_to_current_scene(track+1, loop) }
@@ -87,7 +86,6 @@ ApplicationWindow {
             maybe_master_loop_idx: 0
             master_loop_manager: shared.master_loop_manager
             loop_managers: [shared.master_loop_manager]
-            selected_loop: 0
             loops_of_selected_scene: []
             loops_of_hovered_scene: []
             onRenamed: (name) => shared.rename_track(0, name)

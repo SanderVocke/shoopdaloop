@@ -10,7 +10,6 @@ Item {
     id: track
     property int num_loops
     property int first_index
-    property int selected_loop
     property int maybe_master_loop_idx: -1 //-1 is none
     property var master_loop_manager
     property var loop_managers
@@ -21,7 +20,6 @@ Item {
     // Array of loop idxs
     property var loops_of_selected_scene: []
     property var loops_of_hovered_scene: []
-    property var active_loop_state: selected_loop >= 0 ? loop_managers[selected_loop].state : LoopState.LoopState.Unknown
 
     width: childrenRect.width
     height: childrenRect.height
@@ -87,7 +85,6 @@ Item {
                     LoopWidget {
                         id: lwidget
 
-                        is_selected: track.selected_loop === index
                         is_master: track.maybe_master_loop_idx === index
                         is_in_selected_scene: track.loops_of_selected_scene.includes(index)
                         is_in_hovered_scene: track.loops_of_hovered_scene.includes(index)
@@ -95,7 +92,6 @@ Item {
                         name: track.loop_names[index]
                         internal_name: track.name + ' loop ' + (index+1).toString()
 
-                        onSelected: () => { track.request_select_loop(index) }
                         onAdd_to_scene: () => { track.set_loop_in_scene(index) }
                         onRequest_load_sound_file: (filename) => { track.request_load_sound_file(index, filename) }
                         onRequest_save_sound_file: (filename) => { track.request_save_sound_file(index, filename) }
@@ -112,60 +108,6 @@ Item {
 
                 Connections {
                     target: trackctlwidget
-                    function onRecord() {
-                        if (track.active_loop_state === LoopState.LoopState.Recording ||
-                            track.active_loop_state === LoopState.LoopState.RecordingFX) {
-                            // TODO implement track.loop_managers[track.selected_loop].doStopRecord()
-                        } else {
-                            // Record on the selected loop and mute the others
-                            track.actions_on_loop_mgrs(track.selected_loop,
-                                                   (mgr) => { mgr.doLoopAction(LoopState.LoopActionType.DoRecord, []) },
-                                                   (mgr) => { mgr.doLoopAction(LoopState.LoopActionType.DoStop, []) })
-                        }
-                    }
-                    function onRecordFx() {
-                        if (track.active_loop_state === LoopState.LoopState.Recording ||
-                            track.active_loop_state === LoopState.LoopState.RecordingFX) {
-                            // TODO implement track.loop_managers[track.selected_loop].doStopRecord()
-                        } else {
-                            // Record FX on the selected loop and mute the others
-                            track.actions_on_loop_mgrs(track.selected_loop,
-                                                   (mgr) => { /*implement*/; },
-                                                   (mgr) => { mgr.doLoopAction(LoopState.LoopActionType.DoStop, []) })
-                        }
-                    }
-                    function onRecordNCycles(n) {
-                        if (track.active_loop_state === LoopState.LoopState.Recording ||
-                            track.active_loop_state === LoopState.LoopState.RecordingFX) {
-                            // TODO implement track.loop_managers[track.selected_loop].doStopRecord()
-                        } else {
-                            // Record on the selected loop and mute the others
-                            track.actions_on_loop_mgrs(track.selected_loop,
-                                                   (mgr) => { /*mgr.doRecordNCycles(n, track.master_loop_manager)*/ },
-                                                   (mgr) => { mgr.doLoopAction(LoopState.LoopActionType.DoStop, []) })
-                        }
-                    }
-                    function onPlayLiveFx() {
-                        // Play with live FX on the selected loop and mute the others
-                        track.actions_on_loop_mgrs(track.selected_loop,
-                                                (mgr) => { mgr.doLoopAction(LoopState.LoopActionType.DoPlayLiveFX, []) },
-                                                (mgr) => { mgr.doLoopAction(LoopState.LoopActionType.DoStop, []) })
-                    }
-                    function onPause() {
-                        // TODO stop instead of pause
-                        track.loop_managers[track.selected_loop].doLoopAction(LoopState.LoopActionType.DoStop, [])
-                    }
-                    function onPlay() {
-                        track.loop_managers[track.selected_loop].doLoopAction(LoopState.LoopActionType.DoPlay, [])
-                    }
-                    function onMute() {
-                        for(var idx = 0; idx < track.num_loops; idx++) {
-                            track.loop_managers[idx].doLoopAction(LoopState.LoopActionType.DoStop, [])
-                        }
-                    }
-                    function onUnmute() {
-                       /* track.loop_managers[track.selected_loop].doUnmute() */
-                    }
                     function onVolumeChanged() {
                         track.volume_changed(trackctlwidget.volume)
                     }

@@ -7,7 +7,6 @@ import '../../build/LoopState.js' as LoopState
 
 // The loop widget displays the state of a single loop within a track.
 Item {
-    property bool is_selected // Selected by user
     property bool is_master   // Master loop which everything syncs to in SL
     property bool is_in_selected_scene: false
     property bool is_in_hovered_scene: false
@@ -57,12 +56,25 @@ Item {
 
         width: loop.width
         height: loop.height
-        color: widget.is_selected ? '#000044' : Material.background
-        border.color: widget.is_in_hovered_scene && widget.is_in_selected_scene ? 'red' :
-                      widget.is_in_hovered_scene ? 'blue' :
-                      widget.is_in_selected_scene ? 'red' :
-                      widget.is_selected ? Material.foreground :
-                      'grey'
+        color: (manager && manager.state == LoopState.LoopState.Empty) ? Material.background : '#000044'
+        border.color: {
+            var default_color = 'grey'
+            if (!statusrect.manager) {
+                return default_color;
+            }
+
+            if (widget.is_in_hovered_scene) {
+                return 'blue';
+            } else if (widget.is_in_selected_scene) {
+                return 'red';
+            }
+
+            if (statusrect.manager.state == LoopState.LoopState.Empty) {
+                return default_color;
+            }
+
+            return '#DDDDDD' //blue'
+        }
         border.width: 2
 
         MouseArea {
@@ -92,7 +104,6 @@ Item {
                 anchors.right: parent.right
                 y: 0
                 manager: statusrect.manager
-                is_selected: widget.is_selected
             }
         }
 
@@ -182,26 +193,26 @@ Item {
                     }
 
                     Popup {
-                        CorrectButtonSize { Button {
-                            id : playlivefx
-                            width: buttongrid.button_width
-                            height: buttongrid.button_height
-                            IconWithText {
-                                size: parent.width
-                                anchors.centerIn: parent
-                                name: 'play'
-                                color: 'orange'
-                                text_color: Material.foreground
-                                text: "FX"
-                            }
-                            //onClicked: { trackctl.playLiveFx() }
+                        // CorrectButtonSize { Button {
+                        //     id : playlivefx
+                        //     width: buttongrid.button_width
+                        //     height: buttongrid.button_height
+                        //     IconWithText {
+                        //         size: parent.width
+                        //         anchors.centerIn: parent
+                        //         name: 'play'
+                        //         color: 'orange'
+                        //         text_color: Material.foreground
+                        //         text: "FX"
+                        //     }
+                        //     //onClicked: { trackctl.playLiveFx() }
 
-                            hoverEnabled: true
-                            ToolTip.delay: 1000
-                            ToolTip.timeout: 5000
-                            ToolTip.visible: hovered
-                            ToolTip.text: "Play dry recording through live effects. Allows hearing FX changes on-the-fly."
-                        }}
+                        //     hoverEnabled: true
+                        //     ToolTip.delay: 1000
+                        //     ToolTip.timeout: 5000
+                        //     ToolTip.visible: hovered
+                        //     ToolTip.text: "Play dry recording through live effects. Allows hearing FX changes on-the-fly."
+                        // }}
                     }
                 }
 
@@ -371,7 +382,6 @@ Item {
     component LoopProgressRect : Item {
         id: loopprogressrect
         property var manager
-        property bool is_selected
 
         Rectangle {
             function getRightMargin() {
@@ -386,7 +396,25 @@ Item {
                 fill: parent
                 rightMargin: getRightMargin()
             }
-            color: is_selected ? '#550055' : '#444444'
+            color: {
+                var default_color = '#444444'
+                if (!loopprogressrect.manager) {
+                    return default_color;
+                }
+
+                switch(loopprogressrect.manager.state) {
+                case LoopState.LoopState.Playing:
+                    return '#006600';
+                case LoopState.LoopState.PlayingLiveFX:
+                    return '#FFDD00';
+                case LoopState.LoopState.Recording:
+                    return '#880000';
+                case LoopState.LoopState.RecordingFX:
+                    return '#FF8800';
+                default:
+                    return default_color;
+                }
+            }
         }
     }
 
@@ -437,7 +465,7 @@ Item {
                 }
                 switch(lsicon.state) {
                 case LoopState.LoopState.Playing:
-                    return 'green'
+                    return '#00AA00'
                 case LoopState.LoopState.Recording:
                     return 'red'
                 case LoopState.LoopState.RecordingFX:

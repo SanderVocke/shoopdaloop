@@ -67,7 +67,6 @@ Item {
         }
         return r
     }
-    property var selected_loops: Array(tracks+1).fill(0)
     property var loop_names: {
         var outer, inner
         var names = []
@@ -100,7 +99,6 @@ Item {
     function state_to_dict() {
         return {
             'track_names': track_names,
-            'selected_loops': selected_loops,
             'scenes': scenes,
             'selected_scene': selected_scene,
             'hovered_scene': hovered_scene,
@@ -111,12 +109,10 @@ Item {
     }
     function set_state_from_dict(state_dict) {
         // RESET SELECTIONS
-        selected_loops = [0, 0, 0, 0, 0, 0, 0, 0, 0]
         selected_scene = -1
         hovered_scene = -1
         selected_section = -1
 
-        selected_loopsChanged()
         selected_sceneChanged()
         hovered_sceneChanged()
         selected_sectionChanged()
@@ -126,7 +122,6 @@ Item {
         scenes = state_dict.scenes
         sections = state_dict.sections
         loop_names = state_dict.loop_names
-        selected_loops = state_dict.selected_loops
         selected_scene = state_dict.selected_scene
         hovered_scene = state_dict.hovered_scene
         selected_section = state_dict.selected_section
@@ -135,7 +130,6 @@ Item {
         loop_namesChanged()
         scenesChanged()
         sectionsChanged()
-        selected_loopsChanged()
         selected_sceneChanged()
         hovered_sceneChanged()
         selected_sectionChanged()
@@ -178,18 +172,6 @@ Item {
 
     function set_track_passthrough(track_idx, level) {
         // TODO implement
-    }
-
-    function select_loop(track_idx, loop_idx) {
-        if (selected_loops[track_idx] == loop_idx) { return; }
-        
-
-        // TODO make any state changes to loops
-        
-
-        // Update everything else
-        selected_loops[track_idx] = loop_idx
-        selected_loopsChanged()
     }
 
     function rename_scene(idx, name) {
@@ -240,19 +222,19 @@ Item {
 
     function activate_scene(idx) {
         var tracks_covered = []
-        // Activate all loops listed in the scene
-        for (var lidx in scenes[idx].loops) {
-            var lp = scenes[idx].loops[lidx]
-            select_loop(lp[0], lp[1])
-            tracks_covered.push(parseInt(lp[0]))
-        }
-        // Deselect loops in any track that has no
-        // loop in this scene
-        for (var tidx in track_names) {
-            if (!tracks_covered.includes(parseInt(tidx))) {
-                select_loop(tidx, -1)
-            }
-        }
+        // // Activate all loops listed in the scene
+        // for (var lidx in scenes[idx].loops) {
+        //     var lp = scenes[idx].loops[lidx]
+        //     select_loop(lp[0], lp[1])
+        //     tracks_covered.push(parseInt(lp[0]))
+        // }
+        // // Deselect loops in any track that has no
+        // // loop in this scene
+        // for (var tidx in track_names) {
+        //     if (!tracks_covered.includes(parseInt(tidx))) {
+        //         select_loop(tidx, -1)
+        //     }
+        // }
     }
 
     function select_section(idx) {

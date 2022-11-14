@@ -46,11 +46,17 @@ class NChannelAbstractLooperManager(BasicLooperManager):
         if manager:
             self.signalLoopAction.connect(manager.do_loops_action)
             self.loadLoopData.connect(manager.load_loop_data)
-            manager.looper_mgrs[self.loop_idxs[0]].posChanged.connect(lambda v: NChannelAbstractLooperManager.pos.fset(self, v))
-            manager.looper_mgrs[self.loop_idxs[0]].lengthChanged.connect(lambda v: NChannelAbstractLooperManager.length.fset(self, v))
-            manager.looper_mgrs[self.loop_idxs[0]].stateChanged.connect(lambda v: NChannelAbstractLooperManager.state.fset(self, v))
-            manager.looper_mgrs[self.loop_idxs[0]].nextStateChanged.connect(lambda v: NChannelAbstractLooperManager.next_state.fset(self, v))
-            manager.looper_mgrs[self.loop_idxs[0]].volumeChanged.connect(lambda v: NChannelAbstractLooperManager.volume.fset(self, v))
+            looper_mgr = manager.looper_mgrs[self.loop_idxs[0]]
+            looper_mgr.posChanged.connect(lambda v: NChannelAbstractLooperManager.pos.fset(self, v))
+            looper_mgr.lengthChanged.connect(lambda v: NChannelAbstractLooperManager.length.fset(self, v))
+            looper_mgr.stateChanged.connect(lambda v: NChannelAbstractLooperManager.state.fset(self, v))
+            looper_mgr.nextStateChanged.connect(lambda v: NChannelAbstractLooperManager.next_state.fset(self, v))
+            looper_mgr.volumeChanged.connect(lambda v: NChannelAbstractLooperManager.volume.fset(self, v))
+            self.state = looper_mgr.state
+            self.length = looper_mgr.length
+            self.next_state = looper_mgr.next_state
+            self.volume = looper_mgr.volume
+            self.pos = looper_mgr.pos
 
     @pyqtSlot(result=str)
     def looper_type(self):

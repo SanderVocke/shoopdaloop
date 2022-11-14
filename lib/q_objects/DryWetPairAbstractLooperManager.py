@@ -139,6 +139,8 @@ class DryWetPairAbstractLooperManager(BasicLooperManager):
     @pyqtSlot()
     def updateLength(self):
         self.length = max(self.wet().length, self.dry().length)
+        self.updateState()
+        self.updateNextState()
     
     @pyqtSlot()
     def updatePos(self):
@@ -158,11 +160,14 @@ class DryWetPairAbstractLooperManager(BasicLooperManager):
 
         if self.wet().state == LoopState.Recording.value and \
            self.dry().state == LoopState.PlayingMuted.value:
-           new_state = LoopState.RecordingFX.value
+            new_state = LoopState.RecordingFX.value
         
         if self.wet().state == LoopState.PlayingMuted.value and \
            self.dry().state == LoopState.Playing.value:
-           new_state = LoopState.PlayingLiveFX.value
+            new_state = LoopState.PlayingLiveFX.value
+        
+        if self.wet().length <= 0.0 and self.dry().length <= 0.0:
+            new_state = LoopState.Empty.value
         
         if new_state != self.state:
             self.state = new_state
@@ -175,11 +180,15 @@ class DryWetPairAbstractLooperManager(BasicLooperManager):
 
         if self.wet().next_state == LoopState.Recording.value and \
            self.dry().next_state == LoopState.PlayingMuted.value:
-           new_next_state = LoopState.RecordingFX.value
+            new_next_state = LoopState.RecordingFX.value
         
         if self.wet().next_state == LoopState.PlayingMuted.value and \
            self.dry().next_state == LoopState.Playing.value:
-           new_next_state = LoopState.PlayingLiveFX.value
+            new_next_state = LoopState.PlayingLiveFX.value
+        
+        if self.wet().length <= 0.0 and self.dry().length <= 0.0 and \
+           new_next_state not in [LoopState.Recording.value, LoopState.RecordingFX.value]:
+            new_next_state = LoopState.Empty.value
         
         if new_next_state != self.next_state:
             self.next_state = new_next_state

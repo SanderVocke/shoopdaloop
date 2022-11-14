@@ -15,7 +15,6 @@ Item {
     property var loop_managers //2D array
     property var master_loop_manager
     property var master_loop_idx //[track][loop]
-    property var selected_loops
 
     //Arrays of [track, loop]
     property var loops_of_selected_scene: []
@@ -62,7 +61,6 @@ Item {
                         maybe_master_loop_idx: -1
                         master_loop_manager: tracks.master_loop_manager
                         loop_managers: tracks.loop_managers[index]
-                        selected_loop: tracks.selected_loops[index]
 
                         function unpack(loops) {
                             var r = []

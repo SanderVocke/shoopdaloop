@@ -349,6 +349,7 @@ public:
             _loop_lengths_in(loop) + n_recorded_samples
         );
 
+        
         // Compute output positions
         Expr n_played_samples = max(0, playing_range(loop)[1] - playing_range(loop)[0]);
         positions_out(loop) = select(
