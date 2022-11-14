@@ -157,7 +157,6 @@ Item {
                 }
             }
 
-            // Testing
             Grid {
                 visible: statusrect.hovered
                 x: 20
@@ -277,7 +276,7 @@ Item {
                         name: 'dots-vertical'
                         color: Material.foreground
                     }
-                    //onClicked: { trackctl.pause() }
+                    onClicked: { contextmenu.popup() }
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
