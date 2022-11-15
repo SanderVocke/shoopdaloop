@@ -21,7 +21,8 @@ Rectangle {
 
     function onMousePosition(_pt) {
         var pt = mapFromGlobal(_pt.x, _pt.y)
-        root.hovered = pt.x >= 0.0 && pt.x <= width && pt.y >= 0.0 && pt.y <= height
+        var inside = pt.x >= 0.0 && pt.x <= width && pt.y >= 0.0 && pt.y <= height
+        root.hovered = inside
     }
     function onMouseExited() {
         root.hovered = false

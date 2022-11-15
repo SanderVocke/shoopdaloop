@@ -158,7 +158,7 @@ Item {
             }
 
             Grid {
-                visible: statusrect.hovered
+                visible: statusrect.hovered || playlivefx.hovered || recordN.hovered || recordfx.hovered || contextmenu.visible
                 x: 20
                 y: 2
                 columns: 4
@@ -167,7 +167,7 @@ Item {
                 property int button_height: 22
                 spacing: 1
 
-                SmallButtonWithMouseArea {
+                SmallButtonWithCustomHover {
                     id : play
                     width: buttongrid.button_width
                     height: buttongrid.button_height
@@ -192,30 +192,62 @@ Item {
                     }
 
                     Popup {
-                        // CorrectButtonSize { Button {
-                        //     id : playlivefx
-                        //     width: buttongrid.button_width
-                        //     height: buttongrid.button_height
-                        //     IconWithText {
-                        //         size: parent.width
-                        //         anchors.centerIn: parent
-                        //         name: 'play'
-                        //         color: 'orange'
-                        //         text_color: Material.foreground
-                        //         text: "FX"
-                        //     }
-                        //     //onClicked: { trackctl.playLiveFx() }
+                        background: Item{}
+                        visible: play.hovered || ma.containsMouse
+                        leftInset: 0
+                        rightInset: 0
+                        topInset: 0
+                        bottomInset: 0
+                        padding: 0
+                        margins: 0
 
-                        //     hoverEnabled: true
-                        //     ToolTip.delay: 1000
-                        //     ToolTip.timeout: 5000
-                        //     ToolTip.visible: hovered
-                        //     ToolTip.text: "Play dry recording through live effects. Allows hearing FX changes on-the-fly."
-                        // }}
+                        x: 0
+                        y: play.height
+
+                        Rectangle {
+                            width: playlivefx.width
+                            height: playlivefx.height
+                            color: statusrect.color
+
+                            MouseArea {
+                                id: ma
+                                x: 0
+                                y: 0
+                                width: parent.width
+                                height: parent.height
+                                hoverEnabled: true
+
+                                onPositionChanged: (mouse) => { 
+                                    var p = mapToGlobal(mouse.x, mouse.y)
+                                    playlivefx.onMousePosition(p)
+                                }
+                                onExited: { playlivefx.onMouseExited() }
+                            }
+
+                            SmallButtonWithCustomHover {
+                                id : playlivefx
+                                width: buttongrid.button_width
+                                height: buttongrid.button_height
+                                IconWithText {
+                                    size: parent.width
+                                    anchors.centerIn: parent
+                                    name: 'play'
+                                    color: 'orange'
+                                    text_color: Material.foreground
+                                    text: "FX"
+                                }
+                                //onClicked: { trackctl.playLiveFx() }
+
+                                ToolTip.delay: 1000
+                                ToolTip.timeout: 5000
+                                ToolTip.visible: hovered
+                                ToolTip.text: "Play dry recording through live effects. Allows hearing FX changes on-the-fly."
+                            }
+                        }
                     }
                 }
 
-                SmallButtonWithMouseArea {
+                SmallButtonWithCustomHover {
                     id : record
                     width: buttongrid.button_width
                     height: buttongrid.button_height
@@ -239,9 +271,116 @@ Item {
                         function onPropagateMousePosition(pt) { record.onMousePosition(pt) }
                         function onPropagateMouseExited() { record.onMouseExited() }
                     }
+
+                    Popup {
+                        background: Item{}
+                        visible: record.hovered || ma_.containsMouse
+                        leftInset: 0
+                        rightInset: 0
+                        topInset: 0
+                        bottomInset: 0
+                        padding: 0
+                        margins: 0
+
+                        x: 0
+                        y: play.height
+
+                        Rectangle {
+                            width: recordN.width
+                            height: recordN.height + recordfx.height
+                            color: statusrect.color
+
+                            MouseArea {
+                                id: ma_
+                                x: 0
+                                y: 0
+                                width: parent.width
+                                height: parent.height
+                                hoverEnabled: true
+
+                                onPositionChanged: (mouse) => { 
+                                    var p = mapToGlobal(mouse.x, mouse.y)
+                                    recordN.onMousePosition(p)
+                                    recordfx.onMousePosition(p)
+                                }
+                                onExited: { recordN.onMouseExited(); recordfx.onMouseExited() }
+                            }
+
+                            Column {
+                                SmallButtonWithCustomHover {
+                                    id : recordN
+                                    property int n: 1
+                                    width: buttongrid.button_width
+                                    height: buttongrid.button_height
+                                    IconWithText {
+                                        size: parent.width
+                                        anchors.centerIn: parent
+                                        name: 'record'
+                                        color: 'red'
+                                        text_color: Material.foreground
+                                        text: recordN.n.toString()
+                                        font.pixelSize: size / 2.0
+                                    }
+                                    //onClicked: { trackctl.recordNCycles(n) }
+                                    //onPressAndHold: { menu.popup() }
+
+                                    ToolTip.delay: 1000
+                                    ToolTip.timeout: 5000
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: "Trigger fixed-length recording. Length (number shown) is the amount of master loop cycles to record. Press and hold this button to change this number."
+
+                                    // TODO: editable text box instead of fixed options
+                                    Menu {
+                                        id: menu
+                                        title: 'Select # of cycles'
+                                        MenuItem {
+                                            text: "1"
+                                            onClicked: () => { recordN.n = 1 }
+                                        }
+                                        MenuItem {
+                                            text: "2"
+                                            onClicked: () => { recordN.n = 2 }
+                                        }
+                                        MenuItem {
+                                            text: "4"
+                                            onClicked: () => { recordN.n = 4 }
+                                        }
+                                        MenuItem {
+                                            text: "8"
+                                            onClicked: () => { recordN.n = 8 }
+                                        }
+                                        MenuItem {
+                                            text: "16"
+                                            onClicked: () => { recordN.n = 16 }
+                                        }
+                                    }
+                                }
+                            
+                                SmallButtonWithCustomHover {
+                                    id : recordfx
+                                    width: buttongrid.button_width
+                                    height: buttongrid.button_height
+                                    IconWithText {
+                                        size: parent.width
+                                        anchors.centerIn: parent
+                                        name: 'record'
+                                        color: 'orange'
+                                        text_color: Material.foreground
+                                        text: "FX"
+                                    }
+                                    //onClicked: { trackctl.recordFx() }
+
+                                    ToolTip.delay: 1000
+                                    ToolTip.timeout: 5000
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: "Trigger FX re-record. This will play the full dry loop once with live FX, recording the result for wet playback."
+                                }
+                            }
+                        }
+                    }
                 }
 
-                SmallButtonWithMouseArea {
+                SmallButtonWithCustomHover {
                     id : stop
                     width: buttongrid.button_width
                     height: buttongrid.button_height
@@ -266,7 +405,7 @@ Item {
                     }
                 }
 
-                SmallButtonWithMouseArea {
+                SmallButtonWithCustomHover {
                     id : options
                     width: buttongrid.button_width
                     height: buttongrid.button_height
@@ -289,78 +428,6 @@ Item {
                         function onPropagateMouseExited() { options.onMouseExited() }
                     }
                 }
-
-                //CorrectButtonSize { Button {
-                //    id : recordN
-                //    property int n: 1
-                //    width: buttongrid.button_width
-                //    height: buttongrid.button_height
-                //    IconWithText {
-                //        size: parent.width
-                //        anchors.centerIn: parent
-                //        name: 'record'
-                //        color: 'red'
-                //        text_color: Material.foreground
-                //        text: recordN.n.toString()
-                //        font.pixelSize: size / 2.0
-                //    }
-                //    //onClicked: { trackctl.recordNCycles(n) }
-                //    //onPressAndHold: { menu.popup() }
-//
-                //    hoverEnabled: true
-                //    ToolTip.delay: 1000
-                //    ToolTip.timeout: 5000
-                //    ToolTip.visible: hovered
-                //    ToolTip.text: "Trigger fixed-length recording. Length (number shown) is the amount of master loop cycles to record. Press and hold this button to change this number."
-//
-                //    // TODO: editable text box instead of fixed options
-                //    Menu {
-                //        id: menu
-                //        title: 'Select # of cycles'
-                //        MenuItem {
-                //            text: "1"
-                //            onClicked: () => { recordN.n = 1 }
-                //        }
-                //        MenuItem {
-                //            text: "2"
-                //            onClicked: () => { recordN.n = 2 }
-                //        }
-                //        MenuItem {
-                //            text: "4"
-                //            onClicked: () => { recordN.n = 4 }
-                //        }
-                //        MenuItem {
-                //            text: "8"
-                //            onClicked: () => { recordN.n = 8 }
-                //        }
-                //        MenuItem {
-                //            text: "16"
-                //            onClicked: () => { recordN.n = 16 }
-                //        }
-                //    }
-                //}}
-                
-                //CorrectButtonSize { Button {
-                //    id : recordfx
-                //    width: buttongrid.button_width
-                //    height: buttongrid.button_height
-                //    IconWithText {
-                //        size: parent.width
-                //        anchors.centerIn: parent
-                //        name: 'record'
-                //        color: 'orange'
-                //        text_color: Material.foreground
-                //        text: "FX"
-                //    }
-                //    //onClicked: { trackctl.recordFx() }
-//
-                //    hoverEnabled: true
-                //    ToolTip.delay: 1000
-                //    ToolTip.timeout: 5000
-                //    ToolTip.visible: hovered
-                //    ToolTip.text: "Trigger FX re-record. This will play the full dry loop once with live FX, recording the result for wet playback."
-                //}}
-                //
             }
 
             //TextField {
@@ -507,6 +574,9 @@ Item {
     }
 
     component ContextMenu: Item {
+        property alias opened: menu.opened
+        visible: menu.visible
+
         ClickTrackDialog {
             id: clicktrackdialog
             onAcceptedClickTrack: (filename) => {
