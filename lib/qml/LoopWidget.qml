@@ -48,8 +48,7 @@ Item {
         property var manager
         property bool hovered : area.containsMouse
 
-        property string name // TODO
-        //property alias name: name_field.text
+        property string name
 
         signal propagateMousePosition(var point)
         signal propagateMouseExited()
@@ -157,8 +156,22 @@ Item {
                 }
             }
 
+            Text {
+                text: statusrect.name
+                color: Material.foreground
+                font.pixelSize: 11
+                verticalAlignment: Text.AlignVCenter
+                horizontalAlignment: Text.AlignHCenter
+                anchors.left: iconitem.right
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                anchors.right: parent.right
+                anchors.rightMargin: 6
+                visible: !buttongrid.visible
+            }
+
             Grid {
-                visible: statusrect.hovered || playlivefx.hovered || recordN.hovered || recordfx.hovered || contextmenu.visible
+                visible: statusrect.hovered || playlivefx.hovered || recordN.hovered || recordfx.hovered || contextmenu.visible || recordn_menu.visible
                 x: 20
                 y: 2
                 columns: 4
@@ -236,7 +249,7 @@ Item {
                                     text_color: Material.foreground
                                     text: "FX"
                                 }
-                                //onClicked: { trackctl.playLiveFx() }
+                                onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(LoopState.LoopActionType.DoPlayLiveFX, []) }}
 
                                 ToolTip.delay: 1000
                                 ToolTip.timeout: 5000
@@ -259,7 +272,6 @@ Item {
                     }
 
                     onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(LoopState.LoopActionType.DoRecord, []) }}
-
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
@@ -321,8 +333,8 @@ Item {
                                         text: recordN.n.toString()
                                         font.pixelSize: size / 2.0
                                     }
-                                    //onClicked: { trackctl.recordNCycles(n) }
-                                    //onPressAndHold: { menu.popup() }
+                                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(LoopState.LoopActionType.DoRecordN, [n]) }}
+                                    onPressAndHold: { recordn_menu.popup() }
 
                                     ToolTip.delay: 1000
                                     ToolTip.timeout: 5000
@@ -331,7 +343,7 @@ Item {
 
                                     // TODO: editable text box instead of fixed options
                                     Menu {
-                                        id: menu
+                                        id: recordn_menu
                                         title: 'Select # of cycles'
                                         MenuItem {
                                             text: "1"
@@ -368,7 +380,7 @@ Item {
                                         text_color: Material.foreground
                                         text: "FX"
                                     }
-                                    //onClicked: { trackctl.recordFx() }
+                                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(LoopState.LoopActionType.DoRecordFX, []) }}
 
                                     ToolTip.delay: 1000
                                     ToolTip.timeout: 5000
@@ -429,19 +441,6 @@ Item {
                     }
                 }
             }
-
-            //TextField {
-            //    id: name_field
-            //    width: 60
-            //    height: 35
-            //    font.pixelSize: 12
-            //    y: (loop.height - height)/2
-            //    z: statusrect.z + 1
-            //    onEditingFinished: {
-            //        widget.request_rename(text)
-            //        background_focus.forceActiveFocus();
-            //    }
-            //}
         }
     }
 
@@ -472,11 +471,11 @@ Item {
                 case LoopState.LoopState.Playing:
                     return '#006600';
                 case LoopState.LoopState.PlayingLiveFX:
-                    return '#FFDD00';
+                    return '#555500';
                 case LoopState.LoopState.Recording:
                     return '#880000';
                 case LoopState.LoopState.RecordingFX:
-                    return '#FF8800';
+                    return '#885500';
                 default:
                     return default_color;
                 }
@@ -587,6 +586,26 @@ Item {
         Menu {
             id: menu
             title: 'Record'
+            MenuItem {
+                Row {
+                    anchors.fill: parent
+                    spacing: 5
+                    anchors.leftMargin: 10
+                    Text {
+                        text: "Name:"
+                        color: Material.foreground
+                        anchors.verticalCenter: name_field.verticalCenter
+                    }
+                    TextField {
+                        id: name_field
+                        font.pixelSize: 12
+                        onEditingFinished: {
+                            widget.request_rename(text)
+                            background_focus.forceActiveFocus();
+                        }
+                    }
+                }
+            }
             MenuItem {
                 text: "Generate click loop..."
                 onClicked: () => clicktrackdialog.open()

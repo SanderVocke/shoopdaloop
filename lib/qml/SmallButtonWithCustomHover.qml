@@ -11,12 +11,14 @@ Rectangle {
     property bool hovered
 
     signal clicked()
-
+    signal pressAndHold()
+    
     color: hovered ? 'grey' : 'transparent'
 
     MouseArea {
         anchors.fill: parent
         onClicked: root.clicked()
+        onPressAndHold: root.pressAndHold()
     }
 
     function onMousePosition(_pt) {
