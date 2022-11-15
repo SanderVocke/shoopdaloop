@@ -142,6 +142,7 @@ Item {
                     size: iconitem.height
                     y: 0
                     anchors.horizontalCenter: iconitem.horizontalCenter
+                    onRightClicked: contextmenu.popup()
                 }
                 LoopStateIcon {
                     id: loopnextstateicon
@@ -171,7 +172,7 @@ Item {
             }
 
             Grid {
-                visible: statusrect.hovered || playlivefx.hovered || recordN.hovered || recordfx.hovered || contextmenu.visible || recordn_menu.visible
+                visible: statusrect.hovered || playlivefx.hovered || recordN.hovered || recordfx.hovered || recordn_menu.visible
                 x: 20
                 y: 2
                 columns: 4
@@ -416,28 +417,69 @@ Item {
                         function onPropagateMouseExited() { stop.onMouseExited() }
                     }
                 }
+            }
 
-                SmallButtonWithCustomHover {
-                    id : options
-                    width: buttongrid.button_width
-                    height: buttongrid.button_height
-                    MaterialDesignIcon {
-                        size: parent.width
-                        anchors.centerIn: parent
-                        name: 'dots-vertical'
-                        color: Material.foreground
+            Item {
+                anchors.right: parent.right
+                width: 18
+                height: 18
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.rightMargin: 5
+
+                // Display the volume dial always
+                Dial {
+                    anchors.fill: parent
+                    from: 0.0
+                    to:   1.0
+                    inputMode: Dial.Vertical
+
+                    handle.width: 4
+                    handle.height: 4
+                    
+                    background: Rectangle {
+                        radius: width / 2.0
+                        width: parent.width
+                        color: 'black'
                     }
-                    onClicked: { contextmenu.popup() }
+                }
 
-                    ToolTip.delay: 1000
-                    ToolTip.timeout: 5000
-                    ToolTip.visible: hovered
-                    ToolTip.text: "More options."
+                // An additional pop-up brings up a panning dial
+                Popup {
+                    background: Item{}
+                    visible: true
+                    leftInset: 0
+                    rightInset: 0
+                    topInset: 0
+                    bottomInset: 0
+                    padding: 0
+                    margins: 0
 
-                    Connections {
-                        target: statusrect
-                        function onPropagateMousePosition(pt) { options.onMousePosition(pt) }
-                        function onPropagateMouseExited() { options.onMouseExited() }
+                    x: 0
+                    y: 0
+
+                    Item {
+                        anchors.right: parent.right
+                        width: 18
+                        height: 18
+                        x: 0
+                        y: 0
+
+                        // Display the volume dial always
+                        Dial {
+                            anchors.fill: parent
+                            from: 0.0
+                            to:   1.0
+                            inputMode: Dial.Vertical
+
+                            handle.width: 4
+                            handle.height: 4
+                            
+                            background: Rectangle {
+                                radius: width / 2.0
+                                width: parent.width
+                                color: 'black'
+                            }
+                        }
                     }
                 }
             }
@@ -490,6 +532,8 @@ Item {
         property bool show_timer_instead
         property int size
         property string description: LoopState.LoopState_names[state] ? LoopState.LoopState_names[state] : "Invalid"
+
+        signal rightClicked()
 
         width: size
         height: size
@@ -562,6 +606,8 @@ Item {
             anchors.fill: parent
             hoverEnabled: true
             propagateComposedEvents: true
+            acceptedButtons: Qt.RightButton
+            onClicked: lsicon.rightClicked()
             id: ma
         }
 
