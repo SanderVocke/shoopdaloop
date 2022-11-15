@@ -162,7 +162,7 @@ Item {
                 color: Material.foreground
                 font.pixelSize: 11
                 verticalAlignment: Text.AlignVCenter
-                horizontalAlignment: Text.AlignHCenter
+                horizontalAlignment: Text.AlignLeft
                 anchors.left: iconitem.right
                 anchors.top: parent.top
                 anchors.bottom: parent.bottom
@@ -439,47 +439,9 @@ Item {
                     background: Rectangle {
                         radius: width / 2.0
                         width: parent.width
-                        color: 'black'
-                    }
-                }
-
-                // An additional pop-up brings up a panning dial
-                Popup {
-                    background: Item{}
-                    visible: true
-                    leftInset: 0
-                    rightInset: 0
-                    topInset: 0
-                    bottomInset: 0
-                    padding: 0
-                    margins: 0
-
-                    x: 0
-                    y: 0
-
-                    Item {
-                        anchors.right: parent.right
-                        width: 18
-                        height: 18
-                        x: 0
-                        y: 0
-
-                        // Display the volume dial always
-                        Dial {
-                            anchors.fill: parent
-                            from: 0.0
-                            to:   1.0
-                            inputMode: Dial.Vertical
-
-                            handle.width: 4
-                            handle.height: 4
-                            
-                            background: Rectangle {
-                                radius: width / 2.0
-                                width: parent.width
-                                color: 'black'
-                            }
-                        }
+                        color: '#222222'
+                        border.width: 1
+                        border.color: 'grey'
                     }
                 }
             }
