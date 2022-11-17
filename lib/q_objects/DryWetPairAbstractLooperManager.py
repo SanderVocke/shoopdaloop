@@ -11,12 +11,12 @@ import scipy as sp
 
 from ..LoopState import *
 from .NChannelAbstractLooperManager import NChannelAbstractLooperManager
-from .BasicLooperManager import BasicLooperManager
+from .LooperState import LooperState
 
 # Combines two loops into a single looper interface which
 # offers an FX send/return by using one loop for the dry and one for the
 # wet signal.
-class DryWetPairAbstractLooperManager(BasicLooperManager):
+class DryWetPairAbstractLooperManager(LooperState):
 
     # State change notifications
     dryLooperIdxsChanged = pyqtSignal(list)
