@@ -14,7 +14,7 @@ class PortState(QObject):
     passthroughMutedChanged = pyqtSignal(bool)
 
     def __init__(self, parent=None):
-        super(LooperState, self).__init__(parent)
+        super(PortState, self).__init__(parent)
         self._volume = 1.0
         self._muted = False
         self._passthrough = 1.0

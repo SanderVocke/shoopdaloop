@@ -136,6 +136,8 @@ class BackendManager(QObject):
             p = self.port_states[i]
             p.volume = port_volumes[i]
             p.passthrough = port_passthrough_levels[i]
+            p.muted = ports_muted[i] != 0
+            p.passthroughMuted = port_inputs_muted[i] != 0
         # # TODO port changes
         # pr.disable()
         # pr.print_stats()
