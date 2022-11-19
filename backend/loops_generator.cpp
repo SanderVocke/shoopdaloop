@@ -41,6 +41,10 @@ public:
     Input<Buffer<float, 1>> port_passthrough_levels{"port_passthrough_levels"};
     Input<Buffer<float, 1>> port_volumes{"port_volumes"};
 
+    // Np booleans to indicate whether each output port is muted
+    Input<Buffer<int8_t, 1>> ports_muted{"ports_muted"};
+    Input<Buffer<int8_t, 1>> port_inputs_muted{"port_inputs_muted"};
+
     // Nl levels to indicate how much playback volume we want on the loops
     Input<Buffer<float, 1>> loop_playback_volumes{"loop_playback_volumes"};
 
@@ -94,6 +98,8 @@ public:
             // port axis of 1D buffers
             port_volumes.dim(0).set_bounds(pf, pe);
             port_input_override_map.dim(0).set_bounds(pf, pe);
+            ports_muted.dim(0).set_bounds(pf, pe);
+            port_inputs_muted.dim(0).set_bounds(pf, pe);
         }
 
         Var loop("loop");
@@ -110,10 +116,15 @@ public:
         Func _port_input_override_map = repeat_edge(port_input_override_map);
         Func _states_in_b = repeat_edge(states_in);
         Func _next_states_in_b = repeat_edge(next_states_in);
+        Func _ports_muted = repeat_edge(ports_muted);
+        Func _port_inputs_muted = repeat_edge(port_inputs_muted);
 
-        // Do the port input overrides
+        // Do the port input overrides and port input mutes
+        Func _muted_samples_in("_muted_samples_in");
+        _muted_samples_in(x, port) = _orig_samples_in(x, port) *
+            select(_port_inputs_muted(port) != 0, 0.0f, 1.0f);
         Func _samples_in("_samples_in");
-        _samples_in(x, port) = _orig_samples_in(x, _port_input_override_map(port));
+        _samples_in(x, port) = _muted_samples_in(x, _port_input_override_map(port));
 
         // For hard-linked loops, sneakily get the state data from the master loop
         Func _loop_lengths_in, _positions_in, _soft_sync_map, _states_in, _next_states_in;
@@ -336,7 +347,9 @@ public:
             samples_out.dim(1).min(),
             samples_out.dim(1).max()
         )) += samples_out_per_loop(l2p.x, l2p.y);
-        samples_out(x, port) = samples_out(x, port) * port_volumes(port);
+        samples_out(x, port) = samples_out(x, port) *
+            port_volumes(port) *
+            select(_ports_muted(port) != 0, 0.0f, 1.0f);
 
         // Compute output states
         states_out(loop) = new_state(loop);

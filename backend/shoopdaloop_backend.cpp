@@ -71,6 +71,8 @@ Buffer<int32_t, 1> g_port_input_mappings;
 Buffer<float, 1> g_passthroughs; // Per port
 Buffer<float, 1> g_loop_volumes; // Per loop
 Buffer<float, 1> g_port_volumes; // Per port
+Buffer<int8_t, 1> g_ports_muted; // per port
+Buffer<int8_t, 1> g_port_inputs_muted; // per port
 
 std::vector<jack_port_t*> g_input_ports;
 std::vector<jack_port_t*> g_output_ports;
@@ -96,6 +98,7 @@ struct atomic_state {
     std::vector<std::atomic<loop_state_t>> states, next_states;
     std::vector<std::atomic<int32_t>> positions, lengths;
     std::vector<std::atomic<float>> passthroughs, loop_volumes, port_volumes;
+    std::vector<std::atomic<int8_t>> ports_muted, port_inputs_muted;
 };
 atomic_state g_atomic_state;
 
@@ -219,6 +222,8 @@ int jack_process (jack_nframes_t nframes, void *arg) {
         g_port_input_mappings,
         g_passthroughs,
         g_port_volumes,
+        g_ports_muted,
+        g_port_inputs_muted,
         g_loop_volumes,
         nframes,
         g_loop_len,
@@ -266,6 +271,8 @@ int jack_process (jack_nframes_t nframes, void *arg) {
     for(int i=0; i<g_n_ports; i++) {
         g_atomic_state.passthroughs[i] = g_passthroughs(i);
         g_atomic_state.port_volumes[i] = g_port_volumes(i);
+        g_atomic_state.ports_muted[i] = g_ports_muted(i);
+        g_atomic_state.port_inputs_muted[i] = g_port_inputs_muted(i);
     }
 
     auto did_output = std::chrono::high_resolution_clock::now();
@@ -354,6 +361,8 @@ jack_client_t* initialize(
     g_loops_soft_sync_mapping = Buffer<int32_t, 1>(n_loops);
     g_passthroughs = Buffer<float, 1>(n_ports);
     g_port_volumes = Buffer<float, 1>(n_ports);
+    g_ports_muted = Buffer<int8_t, 1>(n_ports);
+    g_port_inputs_muted = Buffer<int8_t, 1>(n_ports);
     g_loop_volumes = Buffer<float, 1>(n_loops);
     g_port_input_mappings = Buffer<int32_t, 1>(n_ports);
 
@@ -376,6 +385,8 @@ jack_client_t* initialize(
     g_atomic_state.port_volumes = std::vector<std::atomic<float>>(n_ports);
     g_atomic_state.passthroughs = std::vector<std::atomic<float>>(n_ports);
     g_atomic_state.positions = std::vector<std::atomic<int32_t>>(n_loops);
+    g_atomic_state.ports_muted = std::vector<std::atomic<int8_t>>(n_ports);
+    g_atomic_state.port_inputs_muted = std::vector<std::atomic<int8_t>>(n_ports);
 
     // Set the JACK process callback
     jack_set_process_callback(g_jack_client, jack_process, 0);
@@ -412,6 +423,8 @@ jack_client_t* initialize(
 
         g_passthroughs(i) = 1.0f;
         g_port_volumes(i) = 1.0f;
+        g_ports_muted(i) = 0;
+        g_port_inputs_muted(i) = 0;
     }
 
     if(jack_activate(g_jack_client)) {
@@ -513,11 +526,47 @@ int do_loop_action(
     return 0;
 }
 
+int do_port_action(
+    unsigned port_idx,
+    port_action_t action
+) {
+    std::function<void()> cmd = nullptr;
+
+    switch(action) {
+        case DoMute:
+            cmd = [port_idx]() {
+                g_ports_muted(port_idx) = 1;
+            };
+            break;
+        case DoUnmute:
+            cmd = [port_idx]() {
+                g_ports_muted(port_idx) = 0;
+            };
+            break;
+        case DoMuteInput:
+            cmd = [port_idx]() {
+                g_port_inputs_muted(port_idx) = 1;
+            };
+            break;
+        case DoUnmuteInput:
+            cmd = [port_idx]() {
+                g_port_inputs_muted(port_idx) = 0;
+            };
+            break;
+        default:
+        break;
+    }
+
+    if(cmd) { push_command(cmd); }
+    return 0;
+}
+
 void request_update() {
     // Allocate memory for a copy of the relevant state
     std::vector<loop_state_t> states(g_n_loops), next_states(g_n_loops);
     std::vector<int32_t> positions(g_n_loops), lengths(g_n_loops);
     std::vector<float> passthroughs(g_n_ports), loop_volumes(g_n_loops), port_volumes(g_n_ports);
+    std::vector<int8_t> ports_muted(g_n_ports), port_inputs_muted(g_n_ports);
 
     // Copy the state
     for(int i=0; i<g_n_loops; i++) {
@@ -530,6 +579,8 @@ void request_update() {
     for(int i=0; i<g_n_ports; i++) {
         passthroughs[i] = g_atomic_state.passthroughs[i];
         port_volumes[i] = g_atomic_state.port_volumes[i];
+        ports_muted[i] = g_atomic_state.ports_muted[i];
+        port_inputs_muted[i] = g_atomic_state.port_inputs_muted[i];
     }
     
     if (g_update_cb) {
@@ -542,7 +593,9 @@ void request_update() {
             positions.data(),
             loop_volumes.data(),
             port_volumes.data(),
-            passthroughs.data()
+            passthroughs.data(),
+            ports_muted.data(),
+            port_inputs_muted.data()
         );
     }
 }

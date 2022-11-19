@@ -114,7 +114,9 @@ class BackendManager(QObject):
                 loop_positions,
                 loop_volumes,
                 port_volumes,
-                port_passthrough_levels):
+                port_passthrough_levels,
+                ports_muted,
+                port_inputs_muted):
         # pr = cProfile.Profile()
         # pr.enable()
         for i in range(n_loops):

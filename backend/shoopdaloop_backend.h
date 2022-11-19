@@ -23,6 +23,13 @@ typedef enum  {
 } loop_action_t;
 
 typedef enum {
+    DoMute,
+    DoUnmute,
+    DoMuteInput,
+    DoUnmuteInput
+} port_action_t;
+
+typedef enum {
     Default,
     Profiling,
     Tracing
@@ -41,7 +48,9 @@ typedef int(*UpdateCallback) (
     int *loop_positions,
     float *loop_volumes,
     float *port_volumes,
-    float *port_passthrough_levels
+    float *port_passthrough_levels,
+    int8_t *ports_muted,
+    int8_t *port_inputs_muted
 );
 
 typedef void (*AbortCallback) ();
@@ -89,6 +98,12 @@ int do_loop_action(
     unsigned *loop_idxs,
     unsigned n_loop_idxs,
     loop_action_t action
+);
+
+// Perform an action on the given port.
+int do_port_action(
+    unsigned port_idx,
+    port_action_t action
 );
 
 // Request an update. The update callback will be immediately called.

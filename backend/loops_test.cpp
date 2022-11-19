@@ -32,6 +32,8 @@ struct loops_buffers {
     Buffer<float, 1> passthroughs;
     Buffer<float, 1> loop_volumes;
     Buffer<float, 1> port_volumes;
+    Buffer<int8_t, 1> ports_muted;
+    Buffer<int8_t, 1> port_inputs_muted;
 };
 
 loops_buffers setup_buffers(
@@ -65,6 +67,8 @@ loops_buffers setup_buffers(
 
     r.passthroughs = decltype(r.passthroughs)(n_ports);
     r.port_volumes = decltype(r.port_volumes)(n_ports);
+    r.ports_muted = decltype(r.ports_muted)(n_ports);
+    r.port_inputs_muted = decltype(r.port_inputs_muted)(n_ports);
 
     for(size_t i=0; i<n_loops; i++) {
         r.loops_hard_sync_mapping(i) = -1;
@@ -88,6 +92,8 @@ loops_buffers setup_buffers(
         r.passthroughs(i) = 1.0f;
         r.port_volumes(i) = 1.0f;
         r.port_input_override_map(i) = i;
+        r.ports_muted(i) = 0;
+        r.port_inputs_muted(i) = 0;
 
         for (size_t s = 0; s < process_samples; s++) {
             r.samples_in(s, i) = (float)s;
@@ -122,6 +128,8 @@ void run_loops(
         bufs.port_input_override_map,
         bufs.passthroughs,
         bufs.port_volumes,
+        bufs.ports_muted,
+        bufs.port_inputs_muted,
         bufs.loop_volumes,
         bufs.process_samples,
         bufs.storage_in.dim(0).extent(),
@@ -633,6 +641,54 @@ suite loops_tests = []() {
             } else {
                 expect(eq(sample_out, 0.0_f)) << " at index " << i;
             }            
+        }
+    };
+
+    "14_mute"_test = []() {
+        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
+        bufs.states_in(0) = bufs.next_states(0) = Playing;
+        bufs.positions_in(0) = 2;
+        bufs.lengths_in(0) = 11;
+        for(size_t i=0; i<bufs.process_samples; i++) {
+            bufs.samples_in(i, 0) = 0.0f;
+        };
+        bufs.ports_muted(0) = 1;
+        run_loops(bufs);
+        expect(eq(((int)bufs.states_out(0)), Playing));
+        expect(bufs.positions_out(0) == 10_i);
+        expect(bufs.lengths_out(0) == 11_i);
+
+        for(size_t i=0; i<bufs.storage_in.dim(0).extent(); i++) {
+            float storage_in = bufs.storage_in(i,0);
+            float storage_out = bufs.storage_out(i,0);
+            expect(eq(storage_out, storage_in)) << " at index " << i;
+        }
+        for(size_t i=0; i<bufs.process_samples; i++) {
+            float sample_out = bufs.samples_out(i,0);
+            expect(eq(sample_out, 0.0f)) << " at index " << i;
+        }
+    };
+
+    "15_mute_input"_test = []() {
+        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
+        bufs.states_in(0) = bufs.next_states(0) = Stopped;
+        bufs.positions_in(0) = 2;
+        bufs.lengths_in(0) = 11;
+        bufs.passthroughs(0) = 0.5f;
+        bufs.port_inputs_muted(0) = 1;
+        run_loops(bufs);
+        expect(bufs.states_out(0) == Stopped);
+        expect(bufs.positions_out(0) == 2_i);
+        expect(bufs.lengths_out(0) == 11_i);
+
+        for(size_t i=0; i<bufs.storage_in.dim(0).extent(); i++) {
+            float storage_in = bufs.storage_in(i,0);
+            float storage_out = bufs.storage_out(i,0);
+            expect(eq(storage_out, storage_in)) << " at index " << i;
+        }
+        for(size_t i=0; i<bufs.process_samples; i++) {
+            float sample_out = bufs.samples_out(i,0);
+            expect(eq(sample_out, 0.0f)) << " at index " << i;
         }
     };
 };
