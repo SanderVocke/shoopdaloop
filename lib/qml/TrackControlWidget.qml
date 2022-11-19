@@ -9,6 +9,8 @@ Item {
     width: childrenRect.width
     height: childrenRect.height
 
+    property list backend_port_states
+
     signal mute()
     signal unmute()
     property bool muted
@@ -37,6 +39,10 @@ Item {
                 height: 20
                 from: 0.0
                 to: 1.0
+
+                property real externalValue : backend_port_states.length > 0 ?
+                    backend_port_states[0].volume : 1.0
+
                 value: 1.0
                 ToolTip {
                     delay: 1000

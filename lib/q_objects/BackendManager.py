@@ -9,6 +9,7 @@ sys.path.append('../..')
 
 import build.backend.shoopdaloop_backend as backend
 from lib.LoopState import *
+from .PortState import PortState
 from collections import OrderedDict
 from third_party.pyjacklib import jacklib
 from functools import partial
@@ -50,6 +51,10 @@ class BackendManager(QObject):
 
         self.looper_mgrs = [
             NChannelAbstractLooperManager(self) for i in range(self.n_loops)
+        ]
+
+        self.port_states = [
+            PortState() for i in range(self.n_ports)
         ]
     
     def __enter__(self):
@@ -126,6 +131,11 @@ class BackendManager(QObject):
             m.length = loop_lengths[i]
             m.pos = loop_positions[i]
             m.volume = loop_volumes[i]
+
+        for i in range(n_ports):
+            p = self.port_states[i]
+            p.volume = port_volumes[i]
+            p.passthrough = port_passthrough_levels[i]
         # # TODO port changes
         # pr.disable()
         # pr.print_stats()

@@ -431,6 +431,12 @@ Item {
                     anchors.fill: parent
                     from: 0.0
                     to:   1.0
+                    signal internalValueChanged(real val)
+                    property real externalValue: statusrect.manager ? statusrect.manager.volume : 1.0
+
+                    onExternalValueChanged: { if (externalValue != value) {value = externalValue} }
+                    onMoved: { statusrect.manager.volume = value }
+
                     inputMode: Dial.Vertical
 
                     handle.width: 4

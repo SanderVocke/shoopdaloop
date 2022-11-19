@@ -6,12 +6,12 @@ import tempfile
 import soundfile as sf
 
 from ..LoopState import *
-from .BasicLooperManager import BasicLooperManager
+from .LooperState import LooperState
 
 # This looper manager manages a combination of multiple back-end loops
 # which are hard-linked and represent audio channels on an abstract
 # looper.
-class NChannelAbstractLooperManager(BasicLooperManager):
+class NChannelAbstractLooperManager(LooperState):
     signalLoopAction = pyqtSignal(list, int, list) # loop idxs, action_id, args
     loopIdxsChanged = pyqtSignal(list)
     loadLoopData = pyqtSignal(int, list) # loop idx, samples

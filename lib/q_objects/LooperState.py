@@ -7,7 +7,7 @@ import tempfile
 from ..LoopState import LoopState, LoopActionType
 
 # Represents the state of any looper.
-class BasicLooperManager(QObject):
+class LooperState(QObject):
 
     # State change notifications
     lengthChanged = pyqtSignal(float)
@@ -17,7 +17,7 @@ class BasicLooperManager(QObject):
     volumeChanged = pyqtSignal(float)
 
     def __init__(self, parent=None):
-        super(BasicLooperManager, self).__init__(parent)
+        super(LooperState, self).__init__(parent)
         self._length = 1.0
         self._pos = 0.0
         self._state = LoopState.Unknown.value

@@ -6,7 +6,7 @@ from PyQt6.QtGui import QGuiApplication
 from PyQt6.QtQml import QQmlApplicationEngine, qmlRegisterType
 from PyQt6.QtCore import QTimer, QMetaObject, Qt
 
-from lib.q_objects.BasicLooperManager import BasicLooperManager
+from lib.q_objects.LooperState import LooperState
 from lib.q_objects.NChannelAbstractLooperManager import NChannelAbstractLooperManager
 from lib.q_objects.DryWetPairAbstractLooperManager import DryWetPairAbstractLooperManager
 from lib.q_objects.BackendManager import BackendManager
@@ -86,7 +86,7 @@ with BackendManager(
     qmlRegisterType(NChannelAbstractLooperManager, 'NChannelAbstractLooperManager', 1, 0, 'NChannelAbstractLooperManager')
     qmlRegisterType(DryWetPairAbstractLooperManager, 'DryWetPairAbstractLooperManager', 1, 0, 'DryWetPairAbstractLooperManager')
     qmlRegisterType(BackendManager, 'BackendManager', 1, 0, 'BackendManager')
-    qmlRegisterType(BasicLooperManager, 'BasicLooperManager', 1, 0, 'BasicLooperManager')
+    qmlRegisterType(LooperState, 'LooperState', 1, 0, 'LooperState')
     qmlRegisterType(ClickTrackGenerator, 'ClickTrackGenerator', 1, 0, 'ClickTrackGenerator')
     qmlRegisterType(MIDIControlManager, 'MIDIControlManager', 1, 0, 'MIDIControlManager')
 
