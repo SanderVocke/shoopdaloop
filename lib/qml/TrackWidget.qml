@@ -2,7 +2,7 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
 
-import '../../build/LoopState.js' as LoopState
+import '../../build/StatesAndActions.js' as StatesAndActions
 
 // The track widget displays the state of a track (collection of
 // loopers with shared settings/control).
@@ -13,6 +13,7 @@ Item {
     property int maybe_master_loop_idx: -1 //-1 is none
     property var master_loop_manager
     property var loop_managers
+    property var port_manager
     property var loop_names
     property string name: ''
     property bool name_editable: true
@@ -103,7 +104,8 @@ Item {
                 TrackControlWidget {
                     id: trackctlwidget
 
-                    muted: track.active_loop_state === LoopState.LoopState.Muted
+                    muted: track.active_loop_state === StatesAndActions.StatesAndActions.Muted
+                    port_manager: track.port_manager
                 }
 
                 Connections {

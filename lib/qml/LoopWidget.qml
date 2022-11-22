@@ -3,7 +3,7 @@ import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
 import QtQuick.Dialogs
 
-import '../../build/LoopState.js' as LoopState
+import '../../build/StatesAndActions.js' as StatesAndActions
 
 // The loop widget displays the state of a single loop within a track.
 Item {
@@ -55,7 +55,7 @@ Item {
 
         width: loop.width
         height: loop.height
-        color: (manager && manager.state == LoopState.LoopState.Empty) ? Material.background : '#000044'
+        color: (manager && manager.state == StatesAndActions.StatesAndActions.Empty) ? Material.background : '#000044'
         border.color: {
             var default_color = 'grey'
             if (!statusrect.manager) {
@@ -68,7 +68,7 @@ Item {
                 return 'red';
             }
 
-            if (statusrect.manager.state == LoopState.LoopState.Empty) {
+            if (statusrect.manager.state == StatesAndActions.StatesAndActions.Empty) {
                 return default_color;
             }
 
@@ -136,7 +136,7 @@ Item {
                 x: 0
                 LoopStateIcon {
                     id: loopstateicon
-                    state: statusrect.manager ? statusrect.manager.state : LoopState.LoopState.Unknown
+                    state: statusrect.manager ? statusrect.manager.state : StatesAndActions.StatesAndActions.Unknown
                     show_timer_instead: statusrect.manager ? statusrect.manager.state != statusrect.manager.next_state : false
                     connected: true
                     size: iconitem.height
@@ -146,7 +146,7 @@ Item {
                 }
                 LoopStateIcon {
                     id: loopnextstateicon
-                    state: statusrect.manager ? statusrect.manager.next_state : LoopState.LoopState.Unknown
+                    state: statusrect.manager ? statusrect.manager.next_state : StatesAndActions.StatesAndActions.Unknown
                     show_timer_instead: false
                     connected: true
                     size: iconitem.height * 0.65
@@ -192,7 +192,7 @@ Item {
                         color: 'green'
                     }
 
-                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(LoopState.LoopActionType.DoPlay, []) }}
+                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoPlay, []) }}
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
@@ -250,7 +250,7 @@ Item {
                                     text_color: Material.foreground
                                     text: "FX"
                                 }
-                                onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(LoopState.LoopActionType.DoPlayLiveFX, []) }}
+                                onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoPlayLiveFX, []) }}
 
                                 ToolTip.delay: 1000
                                 ToolTip.timeout: 5000
@@ -272,7 +272,7 @@ Item {
                         color: 'red'
                     }
 
-                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(LoopState.LoopActionType.DoRecord, []) }}
+                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoRecord, []) }}
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
@@ -334,7 +334,7 @@ Item {
                                         text: recordN.n.toString()
                                         font.pixelSize: size / 2.0
                                     }
-                                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(LoopState.LoopActionType.DoRecordN, [n]) }}
+                                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoRecordN, [n]) }}
                                     onPressAndHold: { recordn_menu.popup() }
 
                                     ToolTip.delay: 1000
@@ -381,7 +381,7 @@ Item {
                                         text_color: Material.foreground
                                         text: "FX"
                                     }
-                                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(LoopState.LoopActionType.DoRecordFX, []) }}
+                                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoRecordFX, []) }}
 
                                     ToolTip.delay: 1000
                                     ToolTip.timeout: 5000
@@ -404,7 +404,7 @@ Item {
                         color: Material.foreground
                     }
 
-                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(LoopState.LoopActionType.DoStop, []) }}
+                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoStop, []) }}
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
@@ -478,13 +478,13 @@ Item {
                 }
 
                 switch(loopprogressrect.manager.state) {
-                case LoopState.LoopState.Playing:
+                case StatesAndActions.StatesAndActions.Playing:
                     return '#006600';
-                case LoopState.LoopState.PlayingLiveFX:
+                case StatesAndActions.StatesAndActions.PlayingLiveFX:
                     return '#555500';
-                case LoopState.LoopState.Recording:
+                case StatesAndActions.StatesAndActions.Recording:
                     return '#880000';
-                case LoopState.LoopState.RecordingFX:
+                case StatesAndActions.StatesAndActions.RecordingFX:
                     return '#885500';
                 default:
                     return default_color;
@@ -499,7 +499,7 @@ Item {
         property bool connected
         property bool show_timer_instead
         property int size
-        property string description: LoopState.LoopState_names[state] ? LoopState.LoopState_names[state] : "Invalid"
+        property string description: StatesAndActions.LoopState_names[state] ? StatesAndActions.LoopState_names[state] : "Invalid"
 
         signal rightClicked()
 
@@ -519,17 +519,17 @@ Item {
                 }
 
                 switch(lsicon.state) {
-                case LoopState.LoopState.Playing:
-                case LoopState.LoopState.PlayingLiveFX:
+                case StatesAndActions.StatesAndActions.Playing:
+                case StatesAndActions.StatesAndActions.PlayingLiveFX:
                     return 'play'
-                case LoopState.LoopState.PlayingMuted:
+                case StatesAndActions.StatesAndActions.PlayingMuted:
                     return 'volume-mute'
-                case LoopState.LoopState.Recording:
-                case LoopState.LoopState.RecordingFX:
+                case StatesAndActions.StatesAndActions.Recording:
+                case StatesAndActions.StatesAndActions.RecordingFX:
                     return 'record-rec'
-                case LoopState.LoopState.Stopped:
+                case StatesAndActions.StatesAndActions.Stopped:
                     return 'stop'
-                case LoopState.LoopState.Empty:
+                case StatesAndActions.StatesAndActions.Empty:
                     return 'border-none-variant'
                 default:
                     return 'help-circle'
@@ -541,12 +541,12 @@ Item {
                     return 'grey'
                 }
                 switch(lsicon.state) {
-                case LoopState.LoopState.Playing:
+                case StatesAndActions.StatesAndActions.Playing:
                     return '#00AA00'
-                case LoopState.LoopState.Recording:
+                case StatesAndActions.StatesAndActions.Recording:
                     return 'red'
-                case LoopState.LoopState.RecordingFX:
-                case LoopState.LoopState.PlayingLiveFX:
+                case StatesAndActions.StatesAndActions.RecordingFX:
+                case StatesAndActions.StatesAndActions.PlayingLiveFX:
                     return 'orange'
                 default:
                     return 'grey'
@@ -559,8 +559,8 @@ Item {
                     return ''
                 }
                 switch(lsicon.state) {
-                case LoopState.LoopState.PlayingLiveFX:
-                case LoopState.LoopState.RecordingFX:
+                case StatesAndActions.StatesAndActions.PlayingLiveFX:
+                case StatesAndActions.StatesAndActions.RecordingFX:
                     return 'FX'
                 default:
                     return ''

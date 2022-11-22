@@ -9,15 +9,11 @@ Item {
     width: childrenRect.width
     height: childrenRect.height
 
-    property list backend_port_states
+    property var port_manager
 
     signal mute()
     signal unmute()
     property bool muted
-    property alias volume: volume.value
-    property alias pan: pan.value
-    property bool passthrough_enabled: true
-    property real passthrough: passthrough_enabled ? volume.value : 0.0
 
     Column {
         spacing: 0
@@ -40,10 +36,19 @@ Item {
                 from: 0.0
                 to: 1.0
 
-                property real externalValue : backend_port_states.length > 0 ?
-                    backend_port_states[0].volume : 1.0
-
                 value: 1.0
+
+                // Bidirectional link with the actual backend property
+                onValueChanged: (v) => { 
+                    if (trackctl.port_manager && v != trackctl.port_manager.volume) {
+                        trackctl.port_manager.volume = v
+                    }
+                }
+                Connections {
+                    target: trackctl.port_manager
+                    function onVolumeChanged (v) { volume.value = v }
+                }
+
                 ToolTip {
                     delay: 1000
                     visible: volume_ma.containsMouse
@@ -51,6 +56,49 @@ Item {
                 }
                 MouseArea {
                     id: volume_ma
+                    hoverEnabled: true
+                    anchors.fill: parent
+                    acceptedButtons: Qt.NoButton
+                }
+            }
+        }
+        Row {
+            spacing: -2
+
+            MaterialDesignIcon {
+                size: 15
+                name: 'ear-hearing'
+                color: Material.foreground
+                anchors.verticalCenter: passthrough.verticalCenter
+            }
+            Slider {
+                id: passthrough
+                orientation: Qt.Horizontal
+                width: 90
+                height: 20
+                from: 0.0
+                to: 1.0
+
+                value: 1.0
+
+                // Bidirectional link with the actual backend property
+                onValueChanged: (v) => { 
+                    if (trackctl.port_manager && v != trackctl.port_manager.passthrough) {
+                        trackctl.port_manager.passthrough = v
+                    }
+                }
+                Connections {
+                    target: trackctl.port_manager
+                    function onPassthroughChanged (v) { passthrough.value = v }
+                }
+
+                ToolTip {
+                    delay: 1000
+                    visible: passthrough_ma.containsMouse
+                    text: 'Passthrough monitoring level.'
+                }
+                MouseArea {
+                    id: passthrough_ma
                     hoverEnabled: true
                     anchors.fill: parent
                     acceptedButtons: Qt.NoButton

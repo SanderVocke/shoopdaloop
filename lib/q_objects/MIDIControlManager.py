@@ -1,6 +1,6 @@
 from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot, QTimer
 
-from ..LoopState import LoopState
+from ..StatesAndActions import StatesAndActions
 from ..MidiScripting import *
 from ..flatten import flatten
 from .MIDIControlLink import *
@@ -169,7 +169,7 @@ class MIDIControlDialect:
     # Formulas to be executed when loops change to a particular state.
     # After a connection of a controller, first the reset formula will be
     # executed and then the loop state formulas for all loops.
-    loop_state_output_formulas: dict[Type[LoopState], str]
+    loop_state_output_formulas: dict[Type[StatesAndActions], str]
     # Formulas to be executed when loops change to a state not covered
     # by loop_state_output_formulas.
     loop_state_default_output_formula: Union[str, None]
@@ -195,13 +195,13 @@ builtin_dialects = {
         ],
         {
             # Loop states to button colors
-            LoopState.Recording.value: 'noteOn(0, loop_note, 3)',
-            LoopState.Playing.value: 'noteOn(0, loop_note, 1)',
-            LoopState.Stopped.value: 'noteOn(0, loop_note, 0)',
-            LoopState.PlayingMuted.value: 'noteOn(0, loop_note, 0)',
-            # LoopState.WaitStart.value: 'noteOn(0, loop_note, 4)',
-            # LoopState.WaitStop.value: 'noteOn(0, loop_note, 4)',
-            # LoopState.Off.value: 'noteOn(0, loop_note, 0)',
+            StatesAndActions.Recording.value: 'noteOn(0, loop_note, 3)',
+            StatesAndActions.Playing.value: 'noteOn(0, loop_note, 1)',
+            StatesAndActions.Stopped.value: 'noteOn(0, loop_note, 0)',
+            StatesAndActions.PlayingMuted.value: 'noteOn(0, loop_note, 0)',
+            # StatesAndActions.WaitStart.value: 'noteOn(0, loop_note, 4)',
+            # StatesAndActions.WaitStop.value: 'noteOn(0, loop_note, 4)',
+            # StatesAndActions.Off.value: 'noteOn(0, loop_note, 0)',
         },
         # Any unmapped state maps to yellow
         'noteOn(0, loop_note, 5)',

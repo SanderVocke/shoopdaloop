@@ -3,7 +3,7 @@
 import sys
 
 from lib.q_objects.BackendManager import BackendManager
-from lib.LoopState import *
+from lib.StatesAndActions import *
 from lib.JackSession import JackSession
 from third_party.pyjacklib import jacklib
 

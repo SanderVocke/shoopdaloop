@@ -35,6 +35,7 @@ class LoopActionType(Enum):
     DoRecord = backend.DoRecord
     DoRecordNCycles = backend.DoRecordNCycles
     DoClear = backend.DoClear
+    SetLoopVolume = backend.SetLoopVolume
     # Extended actions for front-end
     DoPlayLiveFX = -1
     DoRecordFX = -2
@@ -47,3 +48,11 @@ class LoopActionType(Enum):
         DoRecordFX: 'recordFX',
         DoPlayLiveFX: 'playLiveFX'
     }
+
+class PortActionType(Enum):
+    DoMute = backend.DoMute
+    DoMuteInput = backend.DoMuteInput
+    DoUnmute = backend.DoUnmute
+    DoUnmuteInput = backend.DoUnmuteInput
+    SetPortVolume = backend.SetPortVolume
+    SetPortPassthrough = backend.SetPortPassthrough

@@ -6,7 +6,7 @@ import operator
 from pprint import pformat
 from dataclasses import dataclass
 
-from .LoopState import *
+from .StatesAndActions import *
 from .flatten import flatten
 
 class MIDIMessage:

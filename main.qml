@@ -4,7 +4,7 @@ import QtQuick.Controls.Material 2.15
 import QtQuick.Dialogs
 
 import 'lib/qml'
-import 'build/LoopState.js' as LoopState
+import 'build/StatesAndActions.js' as StatesAndActions
 
 ApplicationWindow {
     visible: true

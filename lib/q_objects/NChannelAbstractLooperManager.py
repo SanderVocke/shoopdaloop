@@ -5,14 +5,14 @@ import os
 import tempfile
 import soundfile as sf
 
-from ..LoopState import *
+from ..StatesAndActions import *
 from .LooperState import LooperState
 
 # This looper manager manages a combination of multiple back-end loops
 # which are hard-linked and represent audio channels on an abstract
 # looper.
 class NChannelAbstractLooperManager(LooperState):
-    signalLoopAction = pyqtSignal(list, int, list) # loop idxs, action_id, args
+    signalLoopAction = pyqtSignal(list, int, float) # loop idxs, action_id, arg
     loopIdxsChanged = pyqtSignal(list)
     loadLoopData = pyqtSignal(int, list) # loop idx, samples
 
@@ -38,25 +38,26 @@ class NChannelAbstractLooperManager(LooperState):
     ##################
     
     @pyqtSlot(int, list)
-    def doLoopAction(self, action_id, args):
-        self.signalLoopAction.emit(self._loop_idxs, action_id, args)
+    def doLoopAction(self, action_id, arg):
+        self.signalLoopAction.emit(self._loop_idxs, action_id, arg)
 
     @pyqtSlot(QObject)
     def connect_backend_manager(self, manager):
         if manager:
             self.signalLoopAction.connect(manager.do_loops_action)
             self.loadLoopData.connect(manager.load_loop_data)
-            looper_mgr = manager.looper_mgrs[self.loop_idxs[0]]
-            looper_mgr.posChanged.connect(lambda v: NChannelAbstractLooperManager.pos.fset(self, v))
-            looper_mgr.lengthChanged.connect(lambda v: NChannelAbstractLooperManager.length.fset(self, v))
-            looper_mgr.stateChanged.connect(lambda v: NChannelAbstractLooperManager.state.fset(self, v))
-            looper_mgr.nextStateChanged.connect(lambda v: NChannelAbstractLooperManager.next_state.fset(self, v))
-            looper_mgr.volumeChanged.connect(lambda v: NChannelAbstractLooperManager.volume.fset(self, v))
-            self.state = looper_mgr.state
-            self.length = looper_mgr.length
-            self.next_state = looper_mgr.next_state
-            self.volume = looper_mgr.volume
-            self.pos = looper_mgr.pos
+            looper_state = manager.looper_states[self.loop_idxs[0]]
+            looper_state.posChanged.connect(lambda v: NChannelAbstractLooperManager.pos.fset(self, v))
+            looper_state.lengthChanged.connect(lambda v: NChannelAbstractLooperManager.length.fset(self, v))
+            looper_state.stateChanged.connect(lambda v: NChannelAbstractLooperManager.state.fset(self, v))
+            looper_state.nextStateChanged.connect(lambda v: NChannelAbstractLooperManager.next_state.fset(self, v))
+            looper_state.volumeChanged.connect(lambda v: NChannelAbstractLooperManager.volume.fset(self, v))
+            self.state = looper_state.state
+            self.length = looper_state.length
+            self.next_state = looper_state.next_state
+            self.volume = looper_state.volume
+            self.pos = looper_state.pos
+            self.volumeChanged.connect(lambda v: self.doLoopAction(LoopActionType.SetLoopVolume, v))
 
     @pyqtSlot(result=str)
     def looper_type(self):

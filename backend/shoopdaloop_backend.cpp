@@ -470,7 +470,8 @@ jack_client_t* initialize(
 int do_loop_action(
     unsigned *loop_idxs,
     unsigned n_loop_idxs,
-    loop_action_t action
+    loop_action_t action,
+    float maybe_arg
 ) {
     std::function<void()> cmd = nullptr;
     std::vector<unsigned> idxs(n_loop_idxs);
@@ -528,7 +529,8 @@ int do_loop_action(
 
 int do_port_action(
     unsigned port_idx,
-    port_action_t action
+    port_action_t action,
+    float mabye_arg
 ) {
     std::function<void()> cmd = nullptr;
 

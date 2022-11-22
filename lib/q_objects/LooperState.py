@@ -4,7 +4,7 @@ import time
 import os
 import tempfile
 
-from ..LoopState import LoopState, LoopActionType
+from ..StatesAndActions import StatesAndActions, LoopActionType
 
 # Represents the state of any looper.
 class LooperState(QObject):
@@ -20,8 +20,8 @@ class LooperState(QObject):
         super(LooperState, self).__init__(parent)
         self._length = 1.0
         self._pos = 0.0
-        self._state = LoopState.Unknown.value
-        self._next_state = LoopState.Unknown.value
+        self._state = StatesAndActions.Unknown.value
+        self._next_state = StatesAndActions.Unknown.value
         self._volume = 1.0
 
     ######################

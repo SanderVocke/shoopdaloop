@@ -8,11 +8,13 @@ import sys
 sys.path.append('../..')
 
 import build.backend.shoopdaloop_backend as backend
-from lib.LoopState import *
+from lib.StatesAndActions import *
 from .PortState import PortState
 from collections import OrderedDict
 from third_party.pyjacklib import jacklib
 from functools import partial
+
+from .LooperState import LooperState
 
 import time
 import cProfile
@@ -49,8 +51,8 @@ class BackendManager(QObject):
         self.update_timer.timeout.connect(lambda: backend.request_update())
         self.update_timer.start()
 
-        self.looper_mgrs = [
-            NChannelAbstractLooperManager(self) for i in range(self.n_loops)
+        self.looper_states = [
+            LooperState() for i in range(self.n_loops)
         ]
 
         self.port_states = [
@@ -125,7 +127,7 @@ class BackendManager(QObject):
         # pr = cProfile.Profile()
         # pr.enable()
         for i in range(n_loops):
-            m = self.looper_mgrs[i]
+            m = self.looper_states[i]
             m.state = loop_states[i]
             m.next_state = loop_next_states[i]
             m.length = loop_lengths[i]
@@ -147,8 +149,8 @@ class BackendManager(QObject):
         print("Backend aborted.")
         exit(1)
     
-    @pyqtSlot(list, int, list)
-    def do_loops_action(self, loop_idxs, action_id, args):
+    @pyqtSlot(list, int, float)
+    def do_loops_action(self, loop_idxs, action_id, maybe_arg):
         for loop_idx in loop_idxs:
             if loop_idx < 0 or loop_idx >= self.n_loops:
                 raise ValueError("Backend: loop idx out of range")
@@ -162,13 +164,25 @@ class BackendManager(QObject):
         backend.do_loop_action(
             idxs_data,
             len(loop_idxs),
-            backend.loop_action_t(action_id)
+            backend.loop_action_t(action_id),
+            maybe_arg
         )
-    
+
     @pyqtSlot(int, list)
     def load_loop_data(self, loop_idx, data):
         c_data = (c_float * len(data))(*data)
         backend.load_loop_data(loop_idx, len(data), c_data)
+    
+    @pyqtSlot(int, int, float)
+    def do_port_action(self, port_idx, action_id, maybe_arg):
+        if action_id < 0 or actino_id >= backend.PORT_ACTION_MAX:
+            raise ValueError("Backend: port action {} is not implemented in back-end".format(action_id))
+        
+        backend.do_port_action(
+            port_idx,
+            backend.port_action_t(action_id),
+            maybe_arg
+        )
     
     def create_slow_midi_input(self, name, rcv_callback):
         retval = backend.create_slow_midi_port(name.encode('ascii'), backend.Input)

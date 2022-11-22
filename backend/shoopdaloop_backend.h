@@ -19,6 +19,7 @@ typedef enum  {
     DoPlayMuted,
     DoStop,
     DoClear,
+    SetLoopVolume,
     LOOP_ACTION_MAX
 } loop_action_t;
 
@@ -26,7 +27,10 @@ typedef enum {
     DoMute,
     DoUnmute,
     DoMuteInput,
-    DoUnmuteInput
+    DoUnmuteInput,
+    SetPortVolume,
+    SetPortPassthrough,
+    PORT_ACTION_MAX
 } port_action_t;
 
 typedef enum {
@@ -91,19 +95,21 @@ jack_client_t* initialize(
 );
 
 
-// Perform an action on the given loop.
+// Perform an action on the given loop(s).
 // Passing multiple loops guarantees that state change on them
 // happens simultaneously.
 int do_loop_action(
     unsigned *loop_idxs,
     unsigned n_loop_idxs,
-    loop_action_t action
+    loop_action_t action,
+    float maybe_arg
 );
 
 // Perform an action on the given port.
 int do_port_action(
     unsigned port_idx,
-    port_action_t action
+    port_action_t action,
+    float maybe_arg
 );
 
 // Request an update. The update callback will be immediately called.

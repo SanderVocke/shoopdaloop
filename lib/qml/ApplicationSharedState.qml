@@ -3,7 +3,7 @@ import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
 
 import NChannelAbstractLooperManager 1.0
-import '../../build/LoopState.js' as LoopState
+import '../../build/StatesAndActions.js' as StatesAndActions
 
 Item {
     anchors {
@@ -56,6 +56,26 @@ Item {
     }
     property var master_loop_manager: {
         return loop_managers[0][0];
+    }
+    property var port_managers: {
+        function mgr_snippet (port_idx) {
+            return 'import QtQuick 2.0\n' +
+            'import PortManager 1.0\n' +
+            'PortManager { \n' +
+                'port_idx: ' + port_idx.toString()
+                ' }';
+        }
+
+        var managers = []
+        for (var i=0; i<tracks+1; i++) {
+            var mgr = Qt.createQmlObject(mgr_snippet(i),
+                    shared,
+                    "dynamicSnippet1");
+            mgr.connect_backend_manager(backend_manager)
+            managers.push(mgr)
+        }
+
+        return managers
     }
 
     // TRACKS STATE
