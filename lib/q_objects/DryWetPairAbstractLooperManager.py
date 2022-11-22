@@ -146,8 +146,8 @@ class DryWetPairAbstractLooperManager(LooperState):
     def updatePos(self):
         # In most cases, we want to show the position of the wet
         # loop.        
-        if self.wet().state == StatesAndActions.Stopped.value and \
-            self.dry().state == StatesAndActions.PlayingMuted.value:
+        if self.wet().state == LoopState.Stopped.value and \
+            self.dry().state == LoopState.PlayingMuted.value:
             # Playing with live FX. show the pos of the dry loop in this case
             self.pos = self.dry().pos
         else:
@@ -158,16 +158,16 @@ class DryWetPairAbstractLooperManager(LooperState):
         # In most cases, our overall state matches that of the wet loop.
         new_state = self.wet().state
 
-        if self.wet().state == StatesAndActions.Recording.value and \
-           self.dry().state == StatesAndActions.PlayingMuted.value:
-            new_state = StatesAndActions.RecordingFX.value
+        if self.wet().state == LoopState.Recording.value and \
+           self.dry().state == LoopState.PlayingMuted.value:
+            new_state = LoopState.RecordingFX.value
         
-        if self.wet().state == StatesAndActions.PlayingMuted.value and \
-           self.dry().state == StatesAndActions.Playing.value:
-            new_state = StatesAndActions.PlayingLiveFX.value
+        if self.wet().state == LoopState.PlayingMuted.value and \
+           self.dry().state == LoopState.Playing.value:
+            new_state = LoopState.PlayingLiveFX.value
         
         if self.wet().length <= 0.0 and self.dry().length <= 0.0:
-            new_state = StatesAndActions.Empty.value
+            new_state = LoopState.Empty.value
         
         if new_state != self.state:
             self.state = new_state
@@ -178,17 +178,17 @@ class DryWetPairAbstractLooperManager(LooperState):
         # In most cases, our overall state matches that of the wet loop.
         new_next_state = self.wet().next_state
 
-        if self.wet().next_state == StatesAndActions.Recording.value and \
-           self.dry().next_state == StatesAndActions.PlayingMuted.value:
-            new_next_state = StatesAndActions.RecordingFX.value
+        if self.wet().next_state == LoopState.Recording.value and \
+           self.dry().next_state == LoopState.PlayingMuted.value:
+            new_next_state = LoopState.RecordingFX.value
         
-        if self.wet().next_state == StatesAndActions.PlayingMuted.value and \
-           self.dry().next_state == StatesAndActions.Playing.value:
-            new_next_state = StatesAndActions.PlayingLiveFX.value
+        if self.wet().next_state == LoopState.PlayingMuted.value and \
+           self.dry().next_state == LoopState.Playing.value:
+            new_next_state = LoopState.PlayingLiveFX.value
         
         if self.wet().length <= 0.0 and self.dry().length <= 0.0 and \
-           new_next_state not in [StatesAndActions.Recording.value, StatesAndActions.RecordingFX.value]:
-            new_next_state = StatesAndActions.Empty.value
+           new_next_state not in [LoopState.Recording.value, LoopState.RecordingFX.value]:
+            new_next_state = LoopState.Empty.value
         
         if new_next_state != self.next_state:
             self.next_state = new_next_state

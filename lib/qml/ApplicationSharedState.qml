@@ -62,7 +62,7 @@ Item {
             return 'import QtQuick 2.0\n' +
             'import PortManager 1.0\n' +
             'PortManager { \n' +
-                'port_idx: ' + port_idx.toString()
+                'port_idx: ' + port_idx.toString() + '\n' +
                 ' }';
         }
 
@@ -177,21 +177,6 @@ Item {
                 on_other_loop_fn(mgr)
             }
         }
-    }
-
-    function set_track_pan(track_idx, pan) {
-        for(var i = 0; i < loop_managers[track_idx].length; i++) {
-            loop_managers[track_idx][i].panL = Math.max(pan, 0.0)
-            loop_managers[track_idx][i].panR = Math.min(pan, 0.0) + 1.0
-        }
-    }
-
-    function set_track_volume(track_idx, vol) {
-        // TODO implement
-    }
-
-    function set_track_passthrough(track_idx, level) {
-        // TODO implement
     }
 
     function rename_scene(idx, name) {
@@ -404,14 +389,14 @@ Item {
                 console.log("Ignoring MIDI control for out-of-bounds track: " + track.toString())
                 return
             }
-            set_track_pan(track, value)
+            // TODO port_managers[track].pan = value
         }
         function onSetVolume(track, value) {
             if (track < 0 || track >= loop_managers.length) {
                 console.log("Ignoring MIDI control for out-of-bounds track: " + track.toString())
                 return
             }
-            set_track_volume(track, value)
+            port_managers[track].volume = value
         }
         function onLoopAction(track, loop, action, args) {
             loop_idx =

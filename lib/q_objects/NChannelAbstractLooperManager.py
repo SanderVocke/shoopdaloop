@@ -57,7 +57,7 @@ class NChannelAbstractLooperManager(LooperState):
             self.next_state = looper_state.next_state
             self.volume = looper_state.volume
             self.pos = looper_state.pos
-            self.volumeChanged.connect(lambda v: self.doLoopAction(LoopActionType.SetLoopVolume, v))
+            self.volumeChanged.connect(lambda v: self.doLoopAction(LoopActionType.SetLoopVolume.value, v))
 
     @pyqtSlot(result=str)
     def looper_type(self):

@@ -32,9 +32,6 @@ Item {
     signal request_save_sound_file(int idx, string filename)
     signal request_rename_loop(int idx, string name)
     signal request_clear_loop(int idx)
-    signal volume_changed(real volume)
-    signal pan_changed(real pan)
-    signal passthrough_changed(real passthrough)
 
     function actions_on_loop_mgrs(idx, on_idx_loop_fn, on_other_loop_fn) {
         for(var i = 0; i < track.num_loops; i++) {
@@ -104,21 +101,8 @@ Item {
                 TrackControlWidget {
                     id: trackctlwidget
 
-                    muted: track.active_loop_state === StatesAndActions.StatesAndActions.Muted
+                    muted: track.active_loop_state === StatesAndActions.LoopState.Muted
                     port_manager: track.port_manager
-                }
-
-                Connections {
-                    target: trackctlwidget
-                    function onVolumeChanged() {
-                        track.volume_changed(trackctlwidget.volume)
-                    }
-                    function onPanChanged() {
-                        track.pan_changed(trackctlwidget.pan)
-                    }
-                    function onPassthroughChanged() {
-                        track.passthrough_changed(trackctlwidget.passthrough)
-                    }
                 }
             }
         }

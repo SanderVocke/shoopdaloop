@@ -50,6 +50,7 @@ ApplicationWindow {
             track_names: shared.track_names.slice(1)
             loop_names: shared.loop_names.slice(1)
             loop_managers: shared.loop_managers.slice(1)
+            port_managers: shared.port_managers.slice(1)
             first_loop_index: 2
             master_loop_manager: shared.master_loop_manager
             loops_per_track: shared.loops_per_track
@@ -64,9 +65,6 @@ ApplicationWindow {
                 function onRequest_save_sound_file(track, loop, filename) { shared.save_loop_sound_file(track+1, loop, filename) }
                 function onRequest_rename_loop(track, loop, name) { shared.rename_loop(track+1, loop, name) }
                 function onRequest_clear_loop(track, loop) { shared.clear_loop(track+1, loop) }
-                function onTrack_volume_changed(track, vol) { shared.set_track_volume(track+1, vol) }
-                function onTrack_pan_changed(track, pan) { shared.set_track_pan(track+1, pan) }
-                function onTrack_passthrough_changed(track, level) { shared.set_track_passthrough(track+1, level) }
             }
         }
 
@@ -86,6 +84,7 @@ ApplicationWindow {
             maybe_master_loop_idx: 0
             master_loop_manager: shared.master_loop_manager
             loop_managers: [shared.master_loop_manager]
+            port_manager: shared.port_managers[0]
             loops_of_selected_scene: []
             loops_of_hovered_scene: []
             onRenamed: (name) => shared.rename_track(0, name)
@@ -93,9 +92,6 @@ ApplicationWindow {
             onRequest_save_sound_file: (idx, filename) => shared.save_loop_sound_file(0, idx, filename)
             onRequest_rename_loop: (idx, name) => shared.rename_loop(0, idx, name)
             onRequest_clear_loop: (idx) => shared.clear_loop(0, idx)
-            onVolume_changed: (vol) => { shared.set_track_volume(0, vol) }
-            onPan_changed: (pan) => { shared.set_track_pan(0, pan) }
-            onPassthrough_changed: (level) => { shared.set_track_passthrough(0, level) }
         }
 
         ScenesWidget {

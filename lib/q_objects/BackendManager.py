@@ -175,7 +175,7 @@ class BackendManager(QObject):
     
     @pyqtSlot(int, int, float)
     def do_port_action(self, port_idx, action_id, maybe_arg):
-        if action_id < 0 or actino_id >= backend.PORT_ACTION_MAX:
+        if action_id < 0 or action_id >= backend.PORT_ACTION_MAX:
             raise ValueError("Backend: port action {} is not implemented in back-end".format(action_id))
         
         backend.do_port_action(

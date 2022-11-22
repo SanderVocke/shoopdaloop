@@ -55,7 +55,7 @@ Item {
 
         width: loop.width
         height: loop.height
-        color: (manager && manager.state == StatesAndActions.StatesAndActions.Empty) ? Material.background : '#000044'
+        color: (manager && manager.state == StatesAndActions.LoopState.Empty) ? Material.background : '#000044'
         border.color: {
             var default_color = 'grey'
             if (!statusrect.manager) {
@@ -68,7 +68,7 @@ Item {
                 return 'red';
             }
 
-            if (statusrect.manager.state == StatesAndActions.StatesAndActions.Empty) {
+            if (statusrect.manager.state == StatesAndActions.LoopState.Empty) {
                 return default_color;
             }
 
@@ -136,7 +136,7 @@ Item {
                 x: 0
                 LoopStateIcon {
                     id: loopstateicon
-                    state: statusrect.manager ? statusrect.manager.state : StatesAndActions.StatesAndActions.Unknown
+                    state: statusrect.manager ? statusrect.manager.state : StatesAndActions.LoopState.Unknown
                     show_timer_instead: statusrect.manager ? statusrect.manager.state != statusrect.manager.next_state : false
                     connected: true
                     size: iconitem.height
@@ -146,7 +146,7 @@ Item {
                 }
                 LoopStateIcon {
                     id: loopnextstateicon
-                    state: statusrect.manager ? statusrect.manager.next_state : StatesAndActions.StatesAndActions.Unknown
+                    state: statusrect.manager ? statusrect.manager.next_state : StatesAndActions.LoopState.Unknown
                     show_timer_instead: false
                     connected: true
                     size: iconitem.height * 0.65
@@ -478,13 +478,13 @@ Item {
                 }
 
                 switch(loopprogressrect.manager.state) {
-                case StatesAndActions.StatesAndActions.Playing:
+                case StatesAndActions.LoopState.Playing:
                     return '#006600';
-                case StatesAndActions.StatesAndActions.PlayingLiveFX:
+                case StatesAndActions.LoopState.PlayingLiveFX:
                     return '#555500';
-                case StatesAndActions.StatesAndActions.Recording:
+                case StatesAndActions.LoopState.Recording:
                     return '#880000';
-                case StatesAndActions.StatesAndActions.RecordingFX:
+                case StatesAndActions.LoopState.RecordingFX:
                     return '#885500';
                 default:
                     return default_color;
@@ -519,17 +519,17 @@ Item {
                 }
 
                 switch(lsicon.state) {
-                case StatesAndActions.StatesAndActions.Playing:
-                case StatesAndActions.StatesAndActions.PlayingLiveFX:
+                case StatesAndActions.LoopState.Playing:
+                case StatesAndActions.LoopState.PlayingLiveFX:
                     return 'play'
-                case StatesAndActions.StatesAndActions.PlayingMuted:
+                case StatesAndActions.LoopState.PlayingMuted:
                     return 'volume-mute'
-                case StatesAndActions.StatesAndActions.Recording:
-                case StatesAndActions.StatesAndActions.RecordingFX:
+                case StatesAndActions.LoopState.Recording:
+                case StatesAndActions.LoopState.RecordingFX:
                     return 'record-rec'
-                case StatesAndActions.StatesAndActions.Stopped:
+                case StatesAndActions.LoopState.Stopped:
                     return 'stop'
-                case StatesAndActions.StatesAndActions.Empty:
+                case StatesAndActions.LoopState.Empty:
                     return 'border-none-variant'
                 default:
                     return 'help-circle'
@@ -541,12 +541,12 @@ Item {
                     return 'grey'
                 }
                 switch(lsicon.state) {
-                case StatesAndActions.StatesAndActions.Playing:
+                case StatesAndActions.LoopState.Playing:
                     return '#00AA00'
-                case StatesAndActions.StatesAndActions.Recording:
+                case StatesAndActions.LoopState.Recording:
                     return 'red'
-                case StatesAndActions.StatesAndActions.RecordingFX:
-                case StatesAndActions.StatesAndActions.PlayingLiveFX:
+                case StatesAndActions.LoopState.RecordingFX:
+                case StatesAndActions.LoopState.PlayingLiveFX:
                     return 'orange'
                 default:
                     return 'grey'
@@ -559,8 +559,8 @@ Item {
                     return ''
                 }
                 switch(lsicon.state) {
-                case StatesAndActions.StatesAndActions.PlayingLiveFX:
-                case StatesAndActions.StatesAndActions.RecordingFX:
+                case StatesAndActions.LoopState.PlayingLiveFX:
+                case StatesAndActions.LoopState.RecordingFX:
                     return 'FX'
                 default:
                     return ''

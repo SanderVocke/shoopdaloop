@@ -51,5 +51,5 @@ class PortManager(PortState):
             self.muted = port_state.muted
             self.passthrough = port_state.passthrough
             self.passthroughMuted = port_state.passthroughMuted
-            self.volumeChanged.connect(lambda v: self.doPortAction(PortActionType.SetPortVolume, v))
-            self.passthroughChanged.connect(lambda v: self.doPortAction(PortActionType.SetPortPassthrough, v))
+            self.volumeChanged.connect(lambda v: self.doPortAction(PortActionType.SetPortVolume.value, v))
+            self.passthroughChanged.connect(lambda v: self.doPortAction(PortActionType.SetPortPassthrough.value, v))

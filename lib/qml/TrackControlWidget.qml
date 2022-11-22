@@ -39,9 +39,9 @@ Item {
                 value: 1.0
 
                 // Bidirectional link with the actual backend property
-                onValueChanged: (v) => { 
-                    if (trackctl.port_manager && v != trackctl.port_manager.volume) {
-                        trackctl.port_manager.volume = v
+                onValueChanged: () => { 
+                    if (trackctl.port_manager && volume.value != trackctl.port_manager.volume) {
+                        trackctl.port_manager.volume = volume.value
                     }
                 }
                 Connections {
@@ -82,9 +82,9 @@ Item {
                 value: 1.0
 
                 // Bidirectional link with the actual backend property
-                onValueChanged: (v) => { 
-                    if (trackctl.port_manager && v != trackctl.port_manager.passthrough) {
-                        trackctl.port_manager.passthrough = v
+                onValueChanged: () => { 
+                    if (trackctl.port_manager && passthrough.value != trackctl.port_manager.passthrough) {
+                        trackctl.port_manager.passthrough = passthrough.value
                     }
                 }
                 Connections {
