@@ -49,6 +49,7 @@ def is_running(pid):
 class BackendTests(unittest.TestCase):
 
     def setUp(self):
+        print("\n\nTESTCASE START")
         self.stack = contextlib.ExitStack()
         self.stack.__enter__()
         self.session = JackSession('test-backend')

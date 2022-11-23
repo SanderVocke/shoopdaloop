@@ -80,7 +80,7 @@ std::vector<jack_port_t*> g_output_ports;
 size_t g_n_loops;
 size_t g_n_ports;
 size_t g_loop_len;
-size_t g_buf_size;
+size_t g_buf_nframes;
 size_t g_sample_rate;
 
 std::vector<jack_default_audio_sample_t*> g_input_bufs, g_output_bufs;
@@ -206,38 +206,40 @@ int jack_process (jack_nframes_t nframes, void *arg) {
     // Copy samples into the combined input buffer.
     for(int i=0; i<g_input_ports.size(); i++) {
         if(g_input_bufs[i]) {
-            memcpy((void*)(&g_samples_in_raw[g_buf_size*i]), (void*)g_input_bufs[i], sizeof(float) * nframes);
+            memcpy((void*)(&g_samples_in_raw[g_buf_nframes*i]), (void*)g_input_bufs[i], sizeof(float) * nframes);
         }
     }
 
     auto did_input = std::chrono::high_resolution_clock::now();
 
     // Execute the loop engine.
-    g_loops_fn(
-        g_samples_in,
-        g_states[tick],
-        g_next_states,
-        g_positions[tick],
-        g_lengths[tick],
-        g_storage,
-        g_loops_to_ports,
-        g_loops_hard_sync_mapping,
-        g_loops_soft_sync_mapping,
-        g_port_input_mappings,
-        g_passthroughs,
-        g_port_volumes,
-        g_ports_muted,
-        g_port_inputs_muted,
-        g_loop_volumes,
-        nframes,
-        g_loop_len,
-        g_samples_out,
-        g_samples_out_per_loop,
-        g_states[tock],
-        g_positions[tock],
-        g_lengths[tock],
-        g_storage
-    );
+    if(g_loops_fn) {
+        g_loops_fn(
+            g_samples_in,
+            g_states[tick],
+            g_next_states,
+            g_positions[tick],
+            g_lengths[tick],
+            g_storage,
+            g_loops_to_ports,
+            g_loops_hard_sync_mapping,
+            g_loops_soft_sync_mapping,
+            g_port_input_mappings,
+            g_passthroughs,
+            g_port_volumes,
+            g_ports_muted,
+            g_port_inputs_muted,
+            g_loop_volumes,
+            nframes,
+            g_loop_len,
+            g_samples_out,
+            g_samples_out_per_loop,
+            g_states[tock],
+            g_positions[tock],
+            g_lengths[tock],
+            g_storage
+        );
+    }
     g_last_written_output_buffer_tick_tock = tock;
 
     // Debugging
@@ -260,7 +262,7 @@ int jack_process (jack_nframes_t nframes, void *arg) {
     // Get output port buffers and copy samples into them.
     for(int i=0; i<g_output_ports.size(); i++) {
         if(g_output_bufs[i]) {
-            memcpy((void*)g_output_bufs[i], (void*)(&g_samples_out_raw[g_buf_size*i]), sizeof(float) * nframes);
+            memcpy((void*)g_output_bufs[i], (void*)(&g_samples_out_raw[g_buf_nframes*i]), sizeof(float) * nframes);
         }
     }
 
@@ -342,13 +344,16 @@ jack_client_t* initialize(
     }
 
     // Get JACK buffer size and sample rate
-    g_buf_size = 
+    g_buf_nframes = 
         jack_port_type_get_buffer_size(g_jack_client, JACK_DEFAULT_AUDIO_TYPE) / sizeof(jack_default_audio_sample_t);
     g_sample_rate =
         (size_t) jack_get_sample_rate(g_jack_client);
-    std::cout << "Backend: JACK: buf size " << g_buf_size << " @ " << g_sample_rate << "samples/s" << std::endl;
+    std::cout << "Backend: JACK: buf size " << g_buf_nframes << " @ " << g_sample_rate << "samples/s" << std::endl;
 
     g_loop_len = (size_t)((float) g_sample_rate * loop_len_seconds);
+    g_abort_callback = nullptr;
+    g_last_written_output_buffer_tick_tock = 0;
+    g_cmd_queue.reset();
 
     // Allocate buffers
     g_states[0] = Buffer<int8_t, 1>(n_loops);
@@ -358,9 +363,9 @@ jack_client_t* initialize(
     g_positions[1] = Buffer<int32_t, 1>(n_loops);
     g_lengths[0] = Buffer<int32_t, 1>(n_loops);
     g_lengths[1] = Buffer<int32_t, 1>(n_loops);
-    g_samples_in_raw.resize(n_ports*g_buf_size);
-    g_samples_out_raw.resize(n_ports*g_buf_size);
-    g_samples_out_per_loop = Buffer<float, 2>(g_buf_size, n_loops);
+    g_samples_in_raw.resize(n_ports*g_buf_nframes);
+    g_samples_out_raw.resize(n_ports*g_buf_nframes);
+    g_samples_out_per_loop = Buffer<float, 2>(g_buf_nframes, n_loops);
     g_storage = Buffer<float, 2>(g_loop_len, n_loops);
     g_loops_to_ports = Buffer<int32_t, 1>(n_loops);
     g_loops_hard_sync_mapping = Buffer<int32_t, 1>(n_loops);
@@ -375,12 +380,12 @@ jack_client_t* initialize(
     g_samples_in = Buffer<float, 2>(
         halide_type_t {halide_type_float, 32, 1},
         (void*)g_samples_in_raw.data(),
-        g_buf_size, n_ports
+        g_buf_nframes, n_ports
     );
     g_samples_out = Buffer<float, 2>(
         halide_type_t {halide_type_float, 32, 1},
         (void*)g_samples_out_raw.data(),
-        g_buf_size, n_ports
+        g_buf_nframes, n_ports
     );
 
     // Allocate atomic state
@@ -413,6 +418,8 @@ jack_client_t* initialize(
     // Initialize ports
     g_input_bufs = std::vector<jack_default_audio_sample_t*>(n_ports);
     g_output_bufs = std::vector<jack_default_audio_sample_t*>(n_ports);
+    g_input_ports.clear();
+    g_output_ports.clear();
     for(size_t i=0; i<n_ports; i++) {
         g_port_input_mappings(i) = i;
         g_input_ports.push_back(jack_port_register(g_jack_client, input_port_names[i], JACK_DEFAULT_AUDIO_TYPE, JackPortIsInput, 0));
@@ -446,6 +453,7 @@ jack_client_t* initialize(
                 std::unique_lock<std::mutex> lock(g_terminate_cv_m);
                 if(g_terminate_cv.wait_for(lock, std::chrono::milliseconds(500)) == std::cv_status::no_timeout) {
                     // Terminated.
+                    std::cout << "Reporting thread terminating." << std::endl;
                     return nullptr;
                 }
 
@@ -453,7 +461,7 @@ jack_client_t* initialize(
                 benchmark_info info;
                 while(g_benchmark_queue.pop(info)) { popped++; };
                 if (popped > 0) {
-                    int period = (int)(1.0f / (float)g_sample_rate * (float)g_buf_size * 1000000.0f);
+                    int period = (int)(1.0f / (float)g_sample_rate * (float)g_buf_nframes * 1000000.0f);
                     float percent_of_period = (float) info.total_us / (float) period * 100.0f;
                     std::cout
                         << "Backend: total, getbuf, cmd, in, proc, out (us)" << std::endl
@@ -464,7 +472,7 @@ jack_client_t* initialize(
                         << info.input_copy_us << " "
                         << info.processing_us << " "
                         << info.output_copy_us << std::endl
-                        << "         period: " << g_buf_size << " @ " << g_sample_rate << " -> " << period << " us"
+                        << "         period: " << g_buf_nframes << " @ " << g_sample_rate << " -> " << period << " us"
                         << " (using " << percent_of_period << "%)\n";
                 }
             }
@@ -639,7 +647,7 @@ int load_loop_data(
         finished = true;
     });
 
-    while(!finished) {}
+    while(!finished && g_loops_fn) {}
     for(size_t idx = 0; idx < len; idx++) {
         g_storage(idx, loop_idx) = data[idx];
     }
@@ -649,7 +657,7 @@ int load_loop_data(
         g_lengths[0](loop_idx) = g_lengths[1](loop_idx) = len;
         finished = true;
     });
-    while(!finished) {}
+    while(!finished && g_loops_fn) {}
 
     return 0;
 }
@@ -665,7 +673,7 @@ unsigned get_loop_data(
         g_positions[0](loop_idx) = g_positions[1](loop_idx) = 0;
         finished = true;
     });
-    while(!finished) {}
+    while(!finished && g_loops_fn) {}
 
     auto len = g_lengths[g_last_written_output_buffer_tick_tock](loop_idx);
     auto data = (float*) malloc(sizeof(float) * len);
@@ -683,6 +691,7 @@ void terminate() {
     if (g_reporting_thread.joinable()) {
         g_reporting_thread.join();
     }
+    g_cmd_queue.reset();
 
     // TODO: explicit profiler print, can be removed if we solve segfault
     static void *const user_context = nullptr;
