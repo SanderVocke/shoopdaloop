@@ -64,6 +64,7 @@ class BackendManager(QObject):
         return self
 
     def __exit__(self, type, value, traceback):
+        print('Terminating back-end.')
         backend.terminate()
     
     def initialize_backend(self):
@@ -173,6 +174,16 @@ class BackendManager(QObject):
     def load_loop_data(self, loop_idx, data):
         c_data = (c_float * len(data))(*data)
         backend.load_loop_data(loop_idx, len(data), c_data)
+    
+    @pyqtSlot(int, result=list)
+    def get_loop_data(self, loop_idx):
+        c_float_p = POINTER(c_float)
+        c_data = c_float_p()
+        n_floats = backend.get_loop_data(loop_idx, byref(c_data))
+        data = [float(c_data[i]) for i in range(n_floats)]
+        backend.shoopdaloop_free(cast(c_data, c_void_p))
+        c_data = None
+        return data
     
     @pyqtSlot(int, int, float)
     def do_port_action(self, port_idx, action_id, maybe_arg):

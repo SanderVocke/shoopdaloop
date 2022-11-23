@@ -124,6 +124,15 @@ int load_loop_data(
     float *data
 );
 
+// Get loop data from storage.
+// Will set the loop state to Stopped.
+// Returns the amount of values in the data.
+// Caller is responsible for freeing the returned pointer.
+unsigned get_loop_data(
+    unsigned loop_idx,
+    float **data_out
+);
+
 // Get access to the JACK port structures of a port pair.
 jack_port_t* get_port_output_handle(unsigned port_idx);
 jack_port_t* get_port_input_handle(unsigned port_idx);
@@ -169,6 +178,8 @@ void send_slow_midi(
 );
 // Will call the received callback for any received messages.
 void process_slow_midi();
+
+void shoopdaloop_free(void* ptr);
 
 #ifdef __cplusplus
 }

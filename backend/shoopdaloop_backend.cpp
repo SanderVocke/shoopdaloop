@@ -639,16 +639,42 @@ int load_loop_data(
         finished = true;
     });
 
-
+    while(!finished) {}
     for(size_t idx = 0; idx < len; idx++) {
         g_storage(idx, loop_idx) = data[idx];
     }
 
-    push_command([len, loop_idx]() {
+    finished = false;
+    push_command([len, loop_idx, &finished]() {
         g_lengths[0](loop_idx) = g_lengths[1](loop_idx) = len;
+        finished = true;
     });
+    while(!finished) {}
 
     return 0;
+}
+
+unsigned get_loop_data(
+    unsigned loop_idx,
+    float ** data_out
+) {
+    std::atomic<bool> finished = false;
+    push_command([loop_idx, &finished]() {
+        g_next_states(loop_idx) = Stopped;
+        g_states[0](loop_idx) = g_states[1](loop_idx) = Stopped;
+        g_positions[0](loop_idx) = g_positions[1](loop_idx) = 0;
+        finished = true;
+    });
+    while(!finished) {}
+
+    auto len = g_lengths[g_last_written_output_buffer_tick_tock](loop_idx);
+    auto data = (float*) malloc(sizeof(float) * len);
+    for(size_t idx = 0; idx < len; idx++) {
+        data[idx] = g_storage(idx, loop_idx);
+    }
+    *data_out = data;
+
+    return len;
 }
 
 void terminate() {
@@ -658,7 +684,7 @@ void terminate() {
         g_reporting_thread.join();
     }
 
-    // TODO: can be removed if we solve segfault
+    // TODO: explicit profiler print, can be removed if we solve segfault
     static void *const user_context = nullptr;
     halide_profiler_report(user_context);
 }
@@ -750,6 +776,10 @@ void process_slow_midi() {
             it.queue.clear();
         }
     }
+}
+
+void shoopdaloop_free(void* ptr) {
+    free (ptr);
 }
 
 } //extern "C"
