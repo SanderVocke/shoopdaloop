@@ -104,7 +104,7 @@ with BackendManager(
     # This hacky solution ensures that the Python interpreter has a chance
     # to run every 100ms, which e.g. allows the signal handlers to work.
     timer = QTimer()
-    # timer.start(100)
+    timer.start(100)
     timer.timeout.connect(lambda: None)
 
     exitcode = app.exec()
