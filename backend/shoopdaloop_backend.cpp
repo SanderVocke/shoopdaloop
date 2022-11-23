@@ -516,6 +516,13 @@ int do_loop_action(
                 }
             };
             break;
+        case SetLoopVolume:
+            cmd = [idxs, maybe_arg]() {
+                for (auto const& idx: idxs) {
+                    g_loop_volumes(idx) = maybe_arg;
+                }
+            };
+            break;
         case DoRecordNCycles:
             std::cerr << "Backend: DoRecordNCycles not yet implemented" << std::endl;
             break;
@@ -530,7 +537,7 @@ int do_loop_action(
 int do_port_action(
     unsigned port_idx,
     port_action_t action,
-    float mabye_arg
+    float maybe_arg
 ) {
     std::function<void()> cmd = nullptr;
 
@@ -553,6 +560,16 @@ int do_port_action(
         case DoUnmuteInput:
             cmd = [port_idx]() {
                 g_port_inputs_muted(port_idx) = 0;
+            };
+            break;
+        case SetPortPassthrough:
+            cmd = [port_idx, maybe_arg]() {
+                g_passthroughs(port_idx) = maybe_arg;
+            };
+            break;
+        case SetPortVolume:
+            cmd = [port_idx, maybe_arg]() {
+                g_port_volumes(port_idx) = maybe_arg;
             };
             break;
         default:
