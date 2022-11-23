@@ -61,13 +61,22 @@ with JackSession('test-sdl-backend') as jack_session:
             match arg:
                 case 'play':
                     for i in range(len(mappings['loops_to_ports'])):
-                        backend_mgr.do_loops_action([i], LoopActionType.DoPlay.value, [])
+                        # First, record for a bit so that there is something to play
+                        backend_mgr.do_loops_action([i], LoopActionType.DoRecord.value, 0.0)
+                    
+                    print("Recording on all ports for 1 s...")
+                    time.sleep(1.0)
+                    print("Playback start.")
+
+                    for i in range(len(mappings['loops_to_ports'])):
+                        backend_mgr.do_loops_action([i], LoopActionType.DoPlay.value, 0.0)
                 case 'stop':
                     for i in range(len(mappings['loops_to_ports'])):
-                        backend_mgr.do_loops_action([i], LoopActionType.DoStop.value, [])
+                        backend_mgr.do_loops_action([i], LoopActionType.DoStop.value, 0.0)
                 case 'record':
+                    print('Recording on all ports.')
                     for i in range(len(mappings['loops_to_ports'])):
-                        backend_mgr.do_loops_action([i], LoopActionType.DoRecord.value, [])
+                        backend_mgr.do_loops_action([i], LoopActionType.DoRecord.value, 0.0)
 
         while(True):
             pass

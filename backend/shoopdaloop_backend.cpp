@@ -121,6 +121,7 @@ void push_command(std::function<void()> cmd) {
 // from the processing thread to an optional reporter.
 constexpr unsigned benchmark_queue_len = 10;
 struct benchmark_info {
+    float request_buffers_us;
     float command_processing_us;
     float input_copy_us;
     float processing_us;
@@ -172,7 +173,7 @@ void process_slow_midi_ports(jack_nframes_t nframes) {
 int jack_process (jack_nframes_t nframes, void *arg) {
     static auto last_measurement = std::chrono::high_resolution_clock::now();
     static size_t n_measurements = 0;
-    static float cmd_time = 0.0, in_time = 0.0, proc_time = 0.0, out_time = 0.0, total_time = 0.0;
+    static float get_buffers_time = 0.0, cmd_time = 0.0, in_time = 0.0, proc_time = 0.0, out_time = 0.0, total_time = 0.0;
     static uint8_t tick = 0;
     static uint8_t tock = 1;
 
@@ -191,6 +192,9 @@ int jack_process (jack_nframes_t nframes, void *arg) {
                 (jack_default_audio_sample_t*) jack_port_get_buffer(g_output_ports[i], nframes) :
                 nullptr;
     }
+
+    auto got_buffers = std::chrono::high_resolution_clock::now();
+
     // Process commands
     std::function<void()> cmd;
     while(g_cmd_queue.pop(cmd)) {
@@ -278,7 +282,8 @@ int jack_process (jack_nframes_t nframes, void *arg) {
     auto did_output = std::chrono::high_resolution_clock::now();
 
     // Benchmarking
-    cmd_time += std::chrono::duration_cast<std::chrono::microseconds>(did_cmds - start).count();
+    get_buffers_time += std::chrono::duration_cast<std::chrono::microseconds>(got_buffers - start).count();
+    cmd_time += std::chrono::duration_cast<std::chrono::microseconds>(did_cmds - got_buffers).count();
     in_time += std::chrono::duration_cast<std::chrono::microseconds>(did_input - did_cmds).count();
     proc_time += std::chrono::duration_cast<std::chrono::microseconds>(did_process - did_input).count();
     out_time += std::chrono::duration_cast<std::chrono::microseconds>(did_output - did_process).count();
@@ -287,13 +292,14 @@ int jack_process (jack_nframes_t nframes, void *arg) {
 
     if (std::chrono::duration_cast<std::chrono::milliseconds>(did_output - last_measurement).count() > 1000.0) {
         g_benchmark_queue.push(benchmark_info {
+            .request_buffers_us = get_buffers_time / (float)n_measurements,
             .command_processing_us = cmd_time / (float)n_measurements,
             .input_copy_us = in_time / (float)n_measurements,
             .processing_us = proc_time / (float)n_measurements,
             .output_copy_us = out_time / (float)n_measurements,
             .total_us = total_time / (float)n_measurements
         });
-        in_time = out_time = proc_time = total_time = cmd_time = 0.0f;
+        in_time = out_time = proc_time = total_time = cmd_time = get_buffers_time = 0.0f;
         n_measurements = 0;
         last_measurement = did_output;
     }
@@ -450,9 +456,10 @@ jack_client_t* initialize(
                     int period = (int)(1.0f / (float)g_sample_rate * (float)g_buf_size * 1000000.0f);
                     float percent_of_period = (float) info.total_us / (float) period * 100.0f;
                     std::cout
-                        << "Backend: total, cmd, in, proc, out (us)" << std::endl
+                        << "Backend: total, getbuf, cmd, in, proc, out (us)" << std::endl
                         << "         "
                         << info.total_us << " "
+                        << info.request_buffers_us << " "
                         << info.command_processing_us << " "
                         << info.input_copy_us << " "
                         << info.processing_us << " "
