@@ -105,37 +105,38 @@ Item {
                 }
             }
         }
-        Row {
-            spacing: -2
+        // TODO: reinstate panning
+        //Row {
+        //    spacing: -2
 
-            MaterialDesignIcon {
-                size: 15
-                name: 'unfold-more-vertical'
-                color: Material.foreground
-                anchors.verticalCenter: pan.verticalCenter
-            }
-            Slider {
-                id: pan
-                orientation: Qt.Horizontal
-                width: 90
-                height: 20
-                from: -1.0
-                to: 1.0
-                value: 0.0
-                ToolTip {
-                    delay: 1000
-                    visible: pan_ma.containsMouse
-                    text: 'Pan control. Right-click to center.'
-                }
-                MouseArea {
-                    id: pan_ma
-                    hoverEnabled: true
-                    anchors.fill: parent
-                    acceptedButtons: Qt.RightButton
-                    onClicked: (ev) => { pan.value = 0.0; }
-                }
-            }
-        }
+        //    MaterialDesignIcon {
+        //        size: 15
+        //        name: 'unfold-more-vertical'
+        //        color: Material.foreground
+        //        anchors.verticalCenter: pan.verticalCenter
+        //    }
+        //    Slider {
+        //        id: pan
+        //        orientation: Qt.Horizontal
+        //        width: 90
+        //        height: 20
+        //        from: -1.0
+        //        to: 1.0
+        //        value: 0.0
+        //        ToolTip {
+        //            delay: 1000
+        //            visible: pan_ma.containsMouse
+        //            text: 'Pan control. Right-click to center.'
+        //        }
+        //        MouseArea {
+        //            id: pan_ma
+        //            hoverEnabled: true
+        //            anchors.fill: parent
+        //            acceptedButtons: Qt.RightButton
+        //            onClicked: (ev) => { pan.value = 0.0; }
+        //        }
+        //    }
+        //}
 
         Grid {
             width: childrenRect.width
