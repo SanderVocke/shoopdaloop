@@ -23,6 +23,11 @@ from third_party.pyjacklib import jacklib
 
 from collections import OrderedDict
 
+import threading
+
+import importlib
+pynsm = importlib.import_module('third_party.new-session-manager.extras.pynsm.nsmclient')
+
 from pprint import *
 
 import signal
@@ -33,23 +38,60 @@ import random
 import string
 
 engine = None
+nsm_client = None
+exitcode = 0
+g_backend_mgr = None
 
-# Ensure that we forward any terminating signals to our child
-# processes
-def exit_handler(sig, frame):
-    print('Got signal {}.'.format(sig))
+class NSMQGuiApplication(QGuiApplication):
+    def __init__(self, argv):
+        super(NSMQGuiApplication, self).__init__(argv)
+        self.nsm_client = None
+    
+    def exit(self, retcode):
+        if nsm_client:
+            print("Requesting exit from NSM.")
+            nsm_client.serverSendExitToSelf()
+        else:
+            print("Exiting.")
+            self.really_exit()
+
+    def really_exit(self, retcode):
+        super.exit(retcode)
+
+app = NSMQGuiApplication(sys.argv)
+
+def exit_handler():
     current_process = psutil.Process()
     children = current_process.children(recursive=False)
     for child in children:
         print('Send signal {} => {}'.format(sig, child.pid))
         os.kill(child.pid, sig)
-    print('Exiting.')
     if engine:
         QMetaObject.invokeMethod(engine, 'quit')
 
-signal.signal(signal.SIGINT, exit_handler)
-signal.signal(signal.SIGQUIT, exit_handler)
-signal.signal(signal.SIGTERM, exit_handler)
+# Ensure that we forward any terminating signals to our child
+# processes
+def exit_signal_handler(sig, frame):
+    print('Got signal {}.'.format(sig))    
+    print('Exiting due to signal.')
+    exit_handler()
+
+def exit_nsm_handler():
+    print('Exiting due to NSM request.')
+    if g_backend_mgr:
+        g_backend_mgr.terminate()
+    exit_handler()
+    sys.exit(0)
+
+def load_session_handler(filename):
+    raise NotImplementedError()
+
+def save_session_handler(filename):
+    raise NotImplementedError()
+
+signal.signal(signal.SIGINT, exit_signal_handler)
+signal.signal(signal.SIGQUIT, exit_signal_handler)
+signal.signal(signal.SIGTERM, exit_signal_handler)
 
 script_pwd = os.path.dirname(__file__)
 
@@ -59,7 +101,19 @@ mappings = get_port_loop_mappings(
         ['l', 'r']
     )
 
-app = QGuiApplication(sys.argv)
+title = 'ShoopDaLoop'
+try:
+    nsm_client = pynsm.NSMClient(
+        prettyName = title,
+        supportsSaveStatus = True,
+        saveCallback = lambda path, session, client: save_session_handler(path),
+        openOrNewCallback = lambda path, session, client: load_session_handler(path),
+        exitProgramCallback = lambda path, session, client: exit_nsm_handler(),
+        loggingLevel = 'info'
+    )
+    title = nsm_client.ourClientNameUnderNSM
+except pynsm.NSMNotRunningError as e:
+    pass
 
 with BackendManager(
     mappings['port_name_pairs'],
@@ -67,10 +121,11 @@ with BackendManager(
     mappings['loops_hard_sync'],
     mappings['loops_soft_sync'],
     60.0,
-    'ShoopDaLoop-backend',
+    title,
     0.03, # 30Hz updates
     app
 ) as backend_mgr:
+    g_backend_mgr = backend_mgr
     jack_client = backend_mgr.jack_client
 
     click_track_generator = ClickTrackGenerator(app)
@@ -101,12 +156,19 @@ with BackendManager(
 
     exitcode = 0
 
-    # This hacky solution ensures that the Python interpreter has a chance
-    # to run every 100ms, which e.g. allows the signal handlers to work.
+    # The following ensures the Python interpreter has a chance to run, which
+    # would not happen otherwise once the Qt event loop starts - and this 
+    # is necessary for allowing the signal handlers to do their job.
+    # It's a hack but it works...
+    # NOTE: later added NSM react as another goal for this task.
+    def tick():
+        if nsm_client:
+                nsm_client.reactToMessage
     timer = QTimer()
     timer.start(100)
-    timer.timeout.connect(lambda: None)
+    timer.timeout.connect(tick)
 
+    print("Executing app.")
     exitcode = app.exec()
 
 sys.exit(exitcode)

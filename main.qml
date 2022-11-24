@@ -224,11 +224,11 @@ ApplicationWindow {
                     id: mainmenu
 
                     MenuItem {
-                        text: "Save session (inc. audio)"
+                        text: "Save copy of session (inc. audio)"
                         onClicked: { savesessiondialog.save_audio = true; savesessiondialog.open() }
                     }
                     MenuItem {
-                        text: "Save session (no audio)"
+                        text: "Save copy of session (no audio)"
                         onClicked: { savesessiondialog.save_audio = false; savesessiondialog.open() }
                     }
                     MenuItem {

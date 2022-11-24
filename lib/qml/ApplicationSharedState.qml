@@ -401,5 +401,11 @@ Item {
         function onNewSessionStateStr(state_str) {
             deserialize_state(state_str)
         }
+        function onRequestLoadSession(filename) {
+            load_session(filename)
+        }
+        function onRequestSaveSession(filename) {
+            save_session(filename, true)
+        }
     }
 }

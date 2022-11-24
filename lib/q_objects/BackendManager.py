@@ -31,6 +31,8 @@ from pprint import *
 
 class BackendManager(QObject):
     newSessionStateStr = pyqtSignal(str)
+    requestLoadSession = pyqtSignal(str)
+    requestSaveSession = pyqtSignal(str)
 
     def __init__(self,
                  port_name_pairs,
@@ -106,6 +108,9 @@ class BackendManager(QObject):
         return self
 
     def __exit__(self, type, value, traceback):
+        self.terminate()
+    
+    def terminate(self):
         print('Terminating back-end.')
         backend.terminate()
     
