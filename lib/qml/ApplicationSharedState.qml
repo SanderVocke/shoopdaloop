@@ -355,8 +355,7 @@ Item {
     }
 
     function load_session(filename) {
-        var my_state = backend_manager.load_session(filename)
-        deserialize_state(my_state)
+        backend_manager.load_session(filename)
     }
 
     Connections {
@@ -394,6 +393,13 @@ Item {
                     loop :
                     (track-1)*loops_per_track + loop_managers[0].length + loop;
             backend_manager.do_loop_action(loop_idx, action, args);
+        }
+    }
+
+    Connections {
+        target: backend_manager
+        function onNewSessionStateStr(state_str) {
+            deserialize_state(state_str)
         }
     }
 }

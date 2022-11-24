@@ -1,6 +1,6 @@
 from ctypes import *
 
-from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot, QTimer
+from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot, QTimer, pyqtProperty
 
 from .NChannelAbstractLooperManager import NChannelAbstractLooperManager
 
@@ -13,6 +13,7 @@ from .PortState import PortState
 from collections import OrderedDict
 from third_party.pyjacklib import jacklib
 from functools import partial
+from threading import Thread
 
 from .LooperState import LooperState
 
@@ -29,6 +30,8 @@ import tarfile
 from pprint import *
 
 class BackendManager(QObject):
+    newSessionStateStr = pyqtSignal(str)
+
     def __init__(self,
                  port_name_pairs,
                  loops_to_ports_map,
@@ -65,6 +68,37 @@ class BackendManager(QObject):
         self.update_timer.setInterval(int(1000.0 * update_period_seconds))
         self.update_timer.timeout.connect(lambda: backend.request_update())
         self.update_timer.start()
+
+        self._session_loading = False
+        self._session_saving = False
+
+    ######################
+    # PROPERTIES
+    ######################
+
+    sessionLoadingChanged = pyqtSignal(bool)
+    @pyqtProperty(bool, notify=sessionLoadingChanged)
+    def session_loading(self):
+        return self._session_loading
+    @session_loading.setter
+    def session_loading(self, s):
+        if self._session_loading != s:
+            self._session_loading = s
+            self.sessionLoadingChanged.emit(s)
+    
+    sessionSavingChanged = pyqtSignal(bool)
+    @pyqtProperty(bool, notify=sessionSavingChanged)
+    def session_saving(self):
+        return self._session_saving
+    @session_saving.setter
+    def session_saving(self, s):
+        if self._session_saving != s:
+            self._session_saving = s
+            self.sessionSavingChanged.emit(s)
+
+    ######################
+    # OTHER
+    ######################
     
     def __enter__(self):
         print('Starting back-end.')
@@ -262,74 +296,95 @@ class BackendManager(QObject):
     
     @pyqtSlot(str, str, bool)
     def save_session(self, filename, appstate_serialized, store_audio):
-        folder = tempfile.mkdtemp()
-        session_filename = folder + '/session.json'
-        tar_filename = folder + '/session.tar'
-        include_in_tarball = [session_filename]
+        def do_save():
+            try:
+                folder = tempfile.mkdtemp()
+                session_filename = folder + '/session.json'
+                tar_filename = folder + '/session.tar'
+                include_in_tarball = [session_filename]
 
-        with open(session_filename, 'w') as file:
-            file.write(appstate_serialized)
+                with open(session_filename, 'w') as file:
+                    file.write(appstate_serialized)
 
-        for idx in range(self.n_loops):
-            state = self.looper_states[idx]
-            json_filename = '{}/loop_{}_state.json'.format(folder, idx)
+                for idx in range(self.n_loops):
+                    state = self.looper_states[idx]
+                    json_filename = '{}/loop_{}_state.json'.format(folder, idx)
 
-            if state.length > 0.0 and store_audio:
-                wav_filename = '{}/loop_{}_data.wav'.format(folder, idx)
-                self.save_loops_to_file([idx], wav_filename)
-                include_in_tarball.append(wav_filename)
-            
-            with open(json_filename, 'w') as lfile:
-                lfile.write(state.serialize_session_state())
-            include_in_tarball.append(json_filename)
+                    if state.length > 0.0 and store_audio:
+                        wav_filename = '{}/loop_{}_data.wav'.format(folder, idx)
+                        self.save_loops_to_file([idx], wav_filename)
+                        include_in_tarball.append(wav_filename)
+                    
+                    with open(json_filename, 'w') as lfile:
+                        lfile.write(state.serialize_session_state())
+                    include_in_tarball.append(json_filename)
+                
+                for idx in range(self.n_ports):
+                    state = self.port_states[idx]
+                    json_filename = '{}/port_{}_state.json'.format(folder, idx)
+                    with open(json_filename, 'w') as pfile:
+                        pfile.write(state.serialize_session_state())
+                    include_in_tarball.append(json_filename)
+
+                # Now combine into a tarball
+                with tarfile.open(tar_filename, 'w') as file:
+                    for f in include_in_tarball:
+                        file.add(f, os.path.basename(f))
+
+                # Save as a session file
+                shutil.move(tar_filename, filename)
+
+                print("Saved session into {}".format(filename))
+                self.session_saving = False
+            except Exception as e:
+                print("Saving session into {} failed: {}".format(filename, str(e)))
         
-        for idx in range(self.n_ports):
-            state = self.port_states[idx]
-            json_filename = '{}/port_{}_state.json'.format(folder, idx)
-            with open(json_filename, 'w') as pfile:
-                pfile.write(state.serialize_session_state())
-            include_in_tarball.append(json_filename)
-
-        # Now combine into a tarball
-        with tarfile.open(tar_filename, 'w') as file:
-            for f in include_in_tarball:
-                file.add(f, os.path.basename(f))
-
-        # Save as a session file
-        shutil.move(tar_filename, filename)
-    
-    @pyqtSlot(str, result=str)
+        self.session_saving = True
+        thread = Thread(target=do_save)
+        thread.start()
+        
+    @pyqtSlot(str)
     def load_session(self, filename):
-        for idx in range(self.n_loops):
-            self.do_loops_action([idx], LoopActionType.DoClear.value, 0.0, False)
+        def do_load():
+            try:
+                for idx in range(self.n_loops):
+                    self.do_loops_action([idx], LoopActionType.DoClear.value, 0.0, False)
 
-        folder = tempfile.mkdtemp()
-        session_data = None
-        with tarfile.open(filename, 'r') as file:
-            file.extractall(folder)
+                folder = tempfile.mkdtemp()
+                session_data = None
+                with tarfile.open(filename, 'r') as file:
+                    file.extractall(folder)
 
-        session_filename = folder + '/session.json'
-        with open(session_filename, 'r') as file:
-            session_data = file.read()
+                session_filename = folder + '/session.json'
+                with open(session_filename, 'r') as file:
+                    session_data = file.read()
 
-        for idx in range(self.n_loops):
-            data_filename = '{}/loop_{}_data.wav'.format(folder, idx)
-            json_filename = '{}/loop_{}_state.json'.format(folder, idx)
-            # TODO: this assumes the # of loops is always the same.
-            if os.path.isfile(json_filename):
-                with open(json_filename, 'r') as json:
-                    self.looper_states[idx].deserialize_session_state(json.read())
-                if os.path.isfile(data_filename):
-                    self.load_loops_from_file([idx], data_filename)
-        
-        for idx in range(self.n_ports):
-            json_filename = '{}/port_{}_state.json'.format(folder, idx)
-            # TODO: this assumes the # of ports is always the same.
-            if os.path.isfile(json_filename):
-                with open(json_filename, 'r') as json:
-                    self.port_states[idx].deserialize_session_state(json.read())
-        
-        return session_data
+                for idx in range(self.n_loops):
+                    data_filename = '{}/loop_{}_data.wav'.format(folder, idx)
+                    json_filename = '{}/loop_{}_state.json'.format(folder, idx)
+                    # TODO: this assumes the # of loops is always the same.
+                    if os.path.isfile(json_filename):
+                        with open(json_filename, 'r') as json:
+                            self.looper_states[idx].deserialize_session_state(json.read())
+                        if os.path.isfile(data_filename):
+                            self.load_loops_from_file([idx], data_filename)
+                
+                for idx in range(self.n_ports):
+                    json_filename = '{}/port_{}_state.json'.format(folder, idx)
+                    # TODO: this assumes the # of ports is always the same.
+                    if os.path.isfile(json_filename):
+                        with open(json_filename, 'r') as json:
+                            self.port_states[idx].deserialize_session_state(json.read())
+            
+                self.newSessionStateStr.emit(session_data)
+                print("Loaded session from {}".format(filename))
+                self.session_loading = False
+            except Exception as e:
+                print("Loading session from {} failed: {}".format(filename, str(e)))
+
+        self.session_loading = True
+        thread = Thread(target=do_load)
+        thread.start()
 
 def c_slow_midi_rcv_callback(python_cb, port, len, data):
     p_data = [int(data[b]) for b in range(len)]

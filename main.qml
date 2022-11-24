@@ -263,5 +263,29 @@ ApplicationWindow {
                 }
             }
         }
+        
+        Popup {
+            visible: backend_manager.session_saving
+            modal: true
+
+            anchors.centerIn: parent
+
+            Text {
+                color: Material.foreground
+                text: "Saving session..."
+            }
+        }
+
+        Popup {
+            visible: backend_manager.session_loading
+            modal: true
+
+            anchors.centerIn: parent
+
+            Text {
+                color: Material.foreground
+                text: "Loading session..."
+            }
+        }
     }
 }
