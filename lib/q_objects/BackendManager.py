@@ -156,8 +156,8 @@ class BackendManager(QObject):
         print("Backend aborted.")
         exit(1)
     
-    @pyqtSlot(list, int, float)
-    def do_loops_action(self, loop_idxs, action_id, maybe_arg):
+    @pyqtSlot(list, int, float, bool)
+    def do_loops_action(self, loop_idxs, action_id, maybe_arg, with_soft_sync):
         for loop_idx in loop_idxs:
             if loop_idx < 0 or loop_idx >= self.n_loops:
                 raise ValueError("Backend: loop idx out of range")
@@ -172,7 +172,8 @@ class BackendManager(QObject):
             idxs_data,
             len(loop_idxs),
             backend.loop_action_t(action_id),
-            maybe_arg
+            maybe_arg,
+            with_soft_sync
         )
 
     @pyqtSlot(int, list)

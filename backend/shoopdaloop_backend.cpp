@@ -486,15 +486,19 @@ int do_loop_action(
     unsigned *loop_idxs,
     unsigned n_loop_idxs,
     loop_action_t action,
-    float maybe_arg
+    float maybe_arg,
+    unsigned with_soft_sync
 ) {
     std::function<void()> cmd = nullptr;
     std::vector<unsigned> idxs(n_loop_idxs);
     memcpy((void*)idxs.data(), (void*)loop_idxs, n_loop_idxs*sizeof(unsigned));
 
-    auto apply_state = [](std::vector<unsigned> loops, loop_state_t state) {
+    auto apply_state = [with_soft_sync](std::vector<unsigned> loops, loop_state_t state) {
         for(auto const& loop: loops) {
             g_next_states(loop) = state;
+            if(!with_soft_sync) {
+                g_states[0](loop) = g_states[1](loop) = state;
+            }
         }
     };
     switch(action) {

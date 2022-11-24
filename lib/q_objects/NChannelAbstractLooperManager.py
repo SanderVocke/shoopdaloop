@@ -12,7 +12,7 @@ from .LooperState import LooperState
 # which are hard-linked and represent audio channels on an abstract
 # looper.
 class NChannelAbstractLooperManager(LooperState):
-    signalLoopAction = pyqtSignal(list, int, float) # loop idxs, action_id, arg
+    signalLoopAction = pyqtSignal(list, int, float, bool) # loop idxs, action_id, arg, with_soft_sync
     loopIdxsChanged = pyqtSignal(list)
     loadLoopData = pyqtSignal(int, list) # loop idx, samples
     saveToFile = pyqtSignal(str)
@@ -38,9 +38,9 @@ class NChannelAbstractLooperManager(LooperState):
     # SLOTS
     ##################
     
-    @pyqtSlot(int, float)
-    def doLoopAction(self, action_id, arg):
-        self.signalLoopAction.emit(self._loop_idxs, action_id, arg)
+    @pyqtSlot(int, float, bool)
+    def doLoopAction(self, action_id, arg, with_soft_sync):
+        self.signalLoopAction.emit(self._loop_idxs, action_id, arg, with_soft_sync)
 
     @pyqtSlot(QObject)
     def connect_backend_manager(self, manager):
@@ -58,7 +58,7 @@ class NChannelAbstractLooperManager(LooperState):
             self.next_state = looper_state.next_state
             self.volume = looper_state.volume
             self.pos = looper_state.pos
-            self.volumeChanged.connect(lambda v: self.doLoopAction(LoopActionType.SetLoopVolume.value, v))
+            self.volumeChanged.connect(lambda v: self.doLoopAction(LoopActionType.SetLoopVolume.value, v, True))
             self.saveToFile.connect(lambda filename: manager.save_loops_to_file(self.loop_idxs, filename))
 
     @pyqtSlot(result=str)
@@ -77,7 +77,7 @@ class NChannelAbstractLooperManager(LooperState):
     
     @pyqtSlot(list)
     def load_loops_data(self, data):
-        self.doLoopAction(LoopActionType.DoClear.value, 0.0)
+        self.doLoopAction(LoopActionType.DoClear.value, 0.0, False)
         for i in range(len(self._loop_idxs)):
             if i < len(data):
                 # we got data for this channel

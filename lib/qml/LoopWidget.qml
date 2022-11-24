@@ -190,7 +190,7 @@ Item {
                         color: 'green'
                     }
 
-                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoPlay, 0.0) }}
+                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoPlay, 0.0, true) }}
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
@@ -248,7 +248,7 @@ Item {
                                     text_color: Material.foreground
                                     text: "FX"
                                 }
-                                onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoPlayLiveFX, 0.0) }}
+                                onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoPlayLiveFX, 0.0, true) }}
 
                                 ToolTip.delay: 1000
                                 ToolTip.timeout: 5000
@@ -270,7 +270,7 @@ Item {
                         color: 'red'
                     }
 
-                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoRecord, 0.0) }}
+                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoRecord, 0.0, true) }}
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
@@ -332,7 +332,7 @@ Item {
                                         text: recordN.n.toString()
                                         font.pixelSize: size / 2.0
                                     }
-                                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoRecordN, n) }}
+                                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoRecordN, n, true) }}
                                     onPressAndHold: { recordn_menu.popup() }
 
                                     ToolTip.delay: 1000
@@ -379,7 +379,7 @@ Item {
                                         text_color: Material.foreground
                                         text: "FX"
                                     }
-                                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoRecordFX, 0.0) }}
+                                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoRecordFX, 0.0, true) }}
 
                                     ToolTip.delay: 1000
                                     ToolTip.timeout: 5000
@@ -402,7 +402,7 @@ Item {
                         color: Material.foreground
                     }
 
-                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoStop, 0.0) }}
+                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoStop, 0.0, true) }}
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000

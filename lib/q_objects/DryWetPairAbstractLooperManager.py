@@ -206,8 +206,8 @@ class DryWetPairAbstractLooperManager(LooperState):
         self.wet().panL = 0.0
         self.wet().panR = 1.0
     
-    @pyqtSlot(int, float)
-    def doLoopAction(self, action_id, arg):
+    @pyqtSlot(int, float, bool)
+    def doLoopAction(self, action_id, arg, with_soft_sync):
         wet_action = action_id
         dry_action = action_id
         wet_arg = arg
@@ -232,8 +232,8 @@ class DryWetPairAbstractLooperManager(LooperState):
             case LoopActionType.DoRecordNCycles.value:
                 force_dry_passthrough = True
         
-        self.wet().doLoopAction(wet_action, wet_arg)
-        self.dry().doLoopAction(dry_action, dry_arg)
+        self.wet().doLoopAction(wet_action, wet_arg, with_soft_sync)
+        self.dry().doLoopAction(dry_action, dry_arg, with_soft_sync)
         if force_dry_passthrough != None:
             self.force_dry_passthrough = force_dry_passthrough
         if force_wet_passthrough != None:
@@ -259,10 +259,12 @@ class DryWetPairAbstractLooperManager(LooperState):
     
     @pyqtSlot(str)
     def doSaveWetToSoundFile(self, filename):
+        self.doLoopAction(LoopActionType.DoStop.value, 0.0, False)
         self.wet().save_to_file(filename)
     
     @pyqtSlot(str)
     def doSaveDryToSoundFile(self, filename):
+        self.doLoopAction(LoopActionType.DoStop.value, 0.0, False)
         self.dry().save_to_file(filename)
     
     @pyqtSlot(QObject)

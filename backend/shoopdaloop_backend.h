@@ -102,7 +102,8 @@ int do_loop_action(
     unsigned *loop_idxs,
     unsigned n_loop_idxs,
     loop_action_t action,
-    float maybe_arg
+    float maybe_arg,
+    unsigned with_soft_sync
 );
 
 // Perform an action on the given port.
