@@ -32,6 +32,7 @@ ApplicationWindow {
             margins: 6
         }
         id: shared
+        objectName: 'app_shared_state'
 
         TracksWidget {
             // Note the offset of 1 in all the track indexing. This is because we skip
