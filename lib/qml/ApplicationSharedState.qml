@@ -351,11 +351,11 @@ Item {
 
     function save_session(filename, store_audio) {
         var my_state = serialize_state()
-        // sl_global_manager.save_session(my_state, [].concat(...loop_managers), store_audio, filename)
+        backend_manager.save_session(filename, my_state, store_audio)
     }
 
     function load_session(filename) {
-        // var my_state = sl_global_manager.load_session([].concat(...loop_managers), osc_link, filename)
+        var my_state = backend_manager.load_session(filename)
         deserialize_state(my_state)
     }
 

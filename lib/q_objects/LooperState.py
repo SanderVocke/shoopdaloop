@@ -3,6 +3,7 @@ import re
 import time
 import os
 import tempfile
+import json
 
 from ..StatesAndActions import LoopState, LoopActionType
 
@@ -82,3 +83,15 @@ class LooperState(QObject):
         if self._volume != p:
             self._volume = p
             self.volumeChanged.emit(p)
+    
+    @pyqtSlot(result=str)
+    def serialize_session_state(self):
+        d = {
+            'volume' : self.volume,
+        }
+        return json.dumps(d)
+    
+    @pyqtSlot(str)
+    def deserialize_session_state(self, data):
+        d = json.loads(data)
+        self.volume = d['volume']

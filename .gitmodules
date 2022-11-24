@@ -7,3 +7,6 @@
 [submodule "third_party/ut"]
 	path = third_party/ut
 	url = https://github.com/boost-ext/ut.git
+[submodule "third_party/new-session-manager"]
+	path = third_party/new-session-manager
+	url = https://github.com/jackaudio/new-session-manager.git

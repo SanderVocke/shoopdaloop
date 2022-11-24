@@ -5,10 +5,6 @@ import os
 import tempfile
 from enum import Enum
 import math
-import soundfile as sf
-import numpy as np
-import scipy as sp
-
 from ..StatesAndActions import *
 from .NChannelAbstractLooperManager import NChannelAbstractLooperManager
 from .LooperState import LooperState
@@ -118,6 +114,7 @@ class DryWetPairAbstractLooperManager(LooperState):
             self._wet_looper.posChanged.connect(self.updatePos)
             self._wet_looper.stateChanged.connect(self.updateState)
             self._wet_looper.nextStateChanged.connect(self.updateNextState)
+            self._wet_looper.volumeChanged.connect(lambda v: DryWetPairAbstractLooperManager.volume.fset(self, v))
             self.wetLooperIdxsChanged.connect(lambda s: setattr(self._wet_looper, 'loop_idxs', s))
             
         return self._wet_looper
@@ -240,22 +237,17 @@ class DryWetPairAbstractLooperManager(LooperState):
             self.force_wet_passthrough = force_wet_passthrough
 
     @pyqtSlot(str)
+    def doLoadWetSoundFile(self, filename):
+        self.wet().load_from_file(filename)
+    
+    @pyqtSlot(str)
+    def doLoadDrySoundFile(self, filename):
+        self.dry().load_from_file(filename)
+
+    @pyqtSlot(str)
     def doLoadSoundFile(self, filename):
-        try:
-            np_data, samplerate = sf.read(filename, dtype='float32')
-            # np_data is N_Samples elements of N_Channels numbers, swap that to
-            # get per-channel arrays
-            np_data = np.swapaxes(np_data, 0, 1)
-            target_samplerate = 48000 # TODO get from back-end
-            n_samples = len(np_data[0])
-            target_n_samples = n_samples / float(samplerate) * target_samplerate
-            resampled = [
-                sp.signal.resample(d, int(target_n_samples)) for d in np_data
-            ]
-            self.wet().load_loops_data(resampled)
-            self.dry().load_loops_data(resampled)
-        except Exception as e:
-            print("Failed to load sound file: {}".format(format(e)))
+        self.doLoadDrySoundFile(filename)
+        self.doLoadWetSoundFile(filename)
     
     @pyqtSlot(str)
     def doSaveWetToSoundFile(self, filename):

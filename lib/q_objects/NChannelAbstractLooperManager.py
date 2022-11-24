@@ -16,6 +16,7 @@ class NChannelAbstractLooperManager(LooperState):
     loopIdxsChanged = pyqtSignal(list)
     loadLoopData = pyqtSignal(int, list) # loop idx, samples
     saveToFile = pyqtSignal(str)
+    loadFromFile = pyqtSignal(str)
 
     def __init__(self, parent=None, loop_idxs=[]):
         super(NChannelAbstractLooperManager, self).__init__(parent)
@@ -60,6 +61,7 @@ class NChannelAbstractLooperManager(LooperState):
             self.pos = looper_state.pos
             self.volumeChanged.connect(lambda v: self.doLoopAction(LoopActionType.SetLoopVolume.value, v, True))
             self.saveToFile.connect(lambda filename: manager.save_loops_to_file(self.loop_idxs, filename))
+            self.loadFromFile.connect(lambda filename: manager.load_loops_from_file(self.loop_idxs, filename))
 
     @pyqtSlot(result=str)
     def looper_type(self):
@@ -74,6 +76,11 @@ class NChannelAbstractLooperManager(LooperState):
     @pyqtSlot(str)
     def save_to_file(self, filename):
         self.saveToFile.emit(filename)
+    
+    # Load from a file.
+    @pyqtSlot(str)
+    def load_from_file(self, filename):
+        self.loadFromFile.emit(filename)
     
     @pyqtSlot(list)
     def load_loops_data(self, data):

@@ -356,7 +356,7 @@ class MIDIControlManager(QObject):
         self._loop_states_cache[(track, index)] = state
 
     @pyqtSlot(int)
-    def active_sripting_section_changed(self, idx):
+    def active_scripting_section_changed(self, idx):
         if self._active_scene_cache == idx:
             # Already sent this
             return

@@ -3,6 +3,7 @@ import re
 import time
 import os
 import tempfile
+import json
 
 # Represents the state of a port in the back-end
 class PortState(QObject):
@@ -63,3 +64,21 @@ class PortState(QObject):
         if self._passthroughMuted != l:
             self._passthroughMuted = l
             self.passthroughMutedChanged.emit(l)
+    
+    @pyqtSlot(result=str)
+    def serialize_session_state(self):
+        d = {
+            'volume' : self.volume,
+            'passthrough' : self.passthrough,
+            'muted' : self.muted,
+            'passthroughMuted': self.passthroughMuted,
+        }
+        return json.dumps(d)
+    
+    @pyqtSlot(str)
+    def deserialize_session_state(self, data):
+        d = json.loads(data)
+        self.volume = d['volume']
+        self.passthrough = d['passthrough']
+        self.muted = d['muted']
+        self.passthroughMuted = d['passthroughMuted']

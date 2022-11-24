@@ -22,6 +22,9 @@ import cProfile
 import soundfile as sf
 import numpy as np
 import scipy as sp
+import shutil
+import tempfile
+import tarfile
 
 from pprint import *
 
@@ -227,6 +230,106 @@ class BackendManager(QObject):
         # loop_datas is now a Nx2 array, reshape to 2xN
         data = np.swapaxes(loop_datas, 0, 1)
         sf.write(filename, data, backend.get_sample_rate())
+    
+    @pyqtSlot(list, str)
+    def load_loops_from_file(self, idxs, filename):
+        try:
+            np_data, samplerate = sf.read(filename, dtype='float32')
+            if np_data.ndim == 1:
+                np_data = [np_data]
+            elif np_data.ndim == 2:
+                # np_data is N_Samples elements of N_Channels numbers, swap that to
+                # get per-channel arrays
+                np_data = np.swapaxes(np_data, 0, 1)
+            else:
+                raise ValueError("Unexpected number of dimensions of sound data: {}".format(np_data.ndim))
+            target_samplerate = backend.get_sample_rate()
+            n_samples = len(np_data[0])
+            target_n_samples = n_samples / float(samplerate) * target_samplerate
+            resampled = [
+                sp.signal.resample(d, int(target_n_samples)) for d in np_data
+            ]
+            for n,idx in enumerate(idxs):
+                if n < len(resampled):
+                    self.load_loop_data(idx, resampled[n])
+                else:
+                    print("Requested to load {} loops from a {}-channel sound file. Re-using channel {}".format(
+                        len(idxs), len(resampled), len(resampled)-1
+                    ))
+                    self.load_loop_data(idx, resampled[len(resampled)-1])
+        except Exception as e:
+            print("Failed to load sound file: {}".format(format(e)))
+    
+    @pyqtSlot(str, str, bool)
+    def save_session(self, filename, appstate_serialized, store_audio):
+        folder = tempfile.mkdtemp()
+        session_filename = folder + '/session.json'
+        tar_filename = folder + '/session.tar'
+        include_in_tarball = [session_filename]
+
+        with open(session_filename, 'w') as file:
+            file.write(appstate_serialized)
+
+        for idx in range(self.n_loops):
+            state = self.looper_states[idx]
+            json_filename = '{}/loop_{}_state.json'.format(folder, idx)
+
+            if state.length > 0.0 and store_audio:
+                wav_filename = '{}/loop_{}_data.wav'.format(folder, idx)
+                self.save_loops_to_file([idx], wav_filename)
+                include_in_tarball.append(wav_filename)
+            
+            with open(json_filename, 'w') as lfile:
+                lfile.write(state.serialize_session_state())
+            include_in_tarball.append(json_filename)
+        
+        for idx in range(self.n_ports):
+            state = self.port_states[idx]
+            json_filename = '{}/port_{}_state.json'.format(folder, idx)
+            with open(json_filename, 'w') as pfile:
+                pfile.write(state.serialize_session_state())
+            include_in_tarball.append(json_filename)
+
+        # Now combine into a tarball
+        with tarfile.open(tar_filename, 'w') as file:
+            for f in include_in_tarball:
+                file.add(f, os.path.basename(f))
+
+        # Save as a session file
+        shutil.move(tar_filename, filename)
+    
+    @pyqtSlot(str, result=str)
+    def load_session(self, filename):
+        for idx in range(self.n_loops):
+            self.do_loops_action([idx], LoopActionType.DoClear.value, 0.0, False)
+
+        folder = tempfile.mkdtemp()
+        session_data = None
+        with tarfile.open(filename, 'r') as file:
+            file.extractall(folder)
+
+        session_filename = folder + '/session.json'
+        with open(session_filename, 'r') as file:
+            session_data = file.read()
+
+        for idx in range(self.n_loops):
+            data_filename = '{}/loop_{}_data.wav'.format(folder, idx)
+            json_filename = '{}/loop_{}_state.json'.format(folder, idx)
+            # TODO: this assumes the # of loops is always the same.
+            if os.path.isfile(json_filename):
+                with open(json_filename, 'r') as json:
+                    self.looper_states[idx].deserialize_session_state(json.read())
+                if os.path.isfile(data_filename):
+                    self.load_loops_from_file([idx], data_filename)
+        
+        for idx in range(self.n_ports):
+            json_filename = '{}/port_{}_state.json'.format(folder, idx)
+            # TODO: this assumes the # of ports is always the same.
+            if os.path.isfile(json_filename):
+                with open(json_filename, 'r') as json:
+                    self.port_states[idx].deserialize_session_state(json.read())
+        
+        return session_data
 
 def c_slow_midi_rcv_callback(python_cb, port, len, data):
     p_data = [int(data[b]) for b in range(len)]
