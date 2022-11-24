@@ -19,6 +19,10 @@ from .LooperState import LooperState
 import time
 import cProfile
 
+import soundfile as sf
+import numpy as np
+import scipy as sp
+
 from pprint import *
 
 class BackendManager(QObject):
@@ -216,6 +220,12 @@ class BackendManager(QObject):
     
     def process_slow_midi(self):
         backend.process_slow_midi()
+    
+    def save_loops_to_file(self, idxs, filename):
+        loop_datas = [self.get_loop_data(idx) for idx in idxs]
+        # loop_datas is now a Nx2 array, reshape to 2xN
+        data = np.swapaxes(loop_datas, 0, 1)
+        sf.write(filename, data, backend.get_sample_rate())
 
 def c_slow_midi_rcv_callback(python_cb, port, len, data):
     p_data = [int(data[b]) for b in range(len)]

@@ -791,4 +791,8 @@ void shoopdaloop_free(void* ptr) {
     free (ptr);
 }
 
+unsigned get_sample_rate() {
+    return g_sample_rate;
+}
+
 } //extern "C"

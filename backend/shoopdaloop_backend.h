@@ -181,6 +181,8 @@ void process_slow_midi();
 
 void shoopdaloop_free(void* ptr);
 
+unsigned get_sample_rate();
+
 #ifdef __cplusplus
 }
 #endif

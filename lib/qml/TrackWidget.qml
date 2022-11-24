@@ -28,8 +28,6 @@ Item {
     signal set_loop_in_scene(int idx)
     signal renamed(string name)
     signal request_select_loop(int idx)
-    signal request_load_sound_file(int idx, string filename)
-    signal request_save_sound_file(int idx, string filename)
     signal request_rename_loop(int idx, string name)
     signal request_clear_loop(int idx)
 
@@ -91,8 +89,6 @@ Item {
                         internal_name: track.name + ' loop ' + (index+1).toString()
 
                         onAdd_to_scene: () => { track.set_loop_in_scene(index) }
-                        onRequest_load_sound_file: (filename) => { track.request_load_sound_file(index, filename) }
-                        onRequest_save_sound_file: (filename) => { track.request_save_sound_file(index, filename) }
                         onRequest_rename: (name) => { track.request_rename_loop(index, name) }
                         onRequest_clear: () => { track.request_clear_loop(index) }
                     }

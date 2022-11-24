@@ -16,8 +16,6 @@ Item {
     
     signal selected() //directly selected by the user to be activated.
     signal add_to_scene() //selected by the user to be added to the current scene.
-    signal request_load_sound_file(string filename) //request to load a file into this loop
-    signal request_save_sound_file(string filename)
     signal request_rename(string name)
     signal request_clear()
 
@@ -192,7 +190,7 @@ Item {
                         color: 'green'
                     }
 
-                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoPlay, []) }}
+                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoPlay, 0.0) }}
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
@@ -250,7 +248,7 @@ Item {
                                     text_color: Material.foreground
                                     text: "FX"
                                 }
-                                onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoPlayLiveFX, []) }}
+                                onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoPlayLiveFX, 0.0) }}
 
                                 ToolTip.delay: 1000
                                 ToolTip.timeout: 5000
@@ -272,7 +270,7 @@ Item {
                         color: 'red'
                     }
 
-                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoRecord, []) }}
+                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoRecord, 0.0) }}
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
@@ -334,7 +332,7 @@ Item {
                                         text: recordN.n.toString()
                                         font.pixelSize: size / 2.0
                                     }
-                                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoRecordN, [n]) }}
+                                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoRecordN, n) }}
                                     onPressAndHold: { recordn_menu.popup() }
 
                                     ToolTip.delay: 1000
@@ -381,7 +379,7 @@ Item {
                                         text_color: Material.foreground
                                         text: "FX"
                                     }
-                                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoRecordFX, []) }}
+                                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoRecordFX, 0.0) }}
 
                                     ToolTip.delay: 1000
                                     ToolTip.timeout: 5000
@@ -404,7 +402,7 @@ Item {
                         color: Material.foreground
                     }
 
-                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoStop, []) }}
+                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoStop, 0.0) }}
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
@@ -593,7 +591,7 @@ Item {
         ClickTrackDialog {
             id: clicktrackdialog
             onAcceptedClickTrack: (filename) => {
-                                      widget.request_load_sound_file(filename)
+                                    widget.manager.doLoadSoundFile(filename)
                                   }
         }
 
@@ -625,8 +623,12 @@ Item {
                 onClicked: () => clicktrackdialog.open()
             }
             MenuItem {
-                text: "Save to file..."
-                onClicked: () => savedialog.open()
+                text: "Save dry to file..."
+                onClicked: () => { savedialog.save_wet = false; savedialog.open() }
+            }
+            MenuItem {
+                text: "Save wet to file..."
+                onClicked: () => { savedialog.save_wet = true; savedialog.open() }
             }
             MenuItem {
                 text: "Load from file..."
@@ -650,9 +652,11 @@ Item {
             acceptLabel: 'Save'
             nameFilters: ["WAV files (*.wav)"]
             defaultSuffix: 'wav'
+            property bool save_wet: true
             onAccepted: {
                 var filename = selectedFile.toString().replace('file://', '');
-                widget.request_save_wav(filename)
+                if (savedialog.save_wet) { widget.manager.doSaveWetToSoundFile(filename) }
+                else { widget.manager.doSaveDryToSoundFile(filename) }
             }
         }
 
@@ -663,7 +667,7 @@ Item {
             nameFilters: ["WAV files (*.wav)"]
             onAccepted: {
                 var filename = selectedFile.toString().replace('file://', '');
-                widget.request_load_sound_file(filename)
+                widget.manager.doLoadSoundFile(filename)
             }
 
         }

@@ -206,12 +206,12 @@ class DryWetPairAbstractLooperManager(LooperState):
         self.wet().panL = 0.0
         self.wet().panR = 1.0
     
-    @pyqtSlot(int, list)
-    def doLoopAction(self, action_id, args):
+    @pyqtSlot(int, float)
+    def doLoopAction(self, action_id, arg):
         wet_action = action_id
         dry_action = action_id
-        wet_args = args
-        dry_args = args
+        wet_arg = arg
+        dry_arg = arg
         force_dry_passthrough = False
         force_wet_passthrough = False
 
@@ -232,8 +232,8 @@ class DryWetPairAbstractLooperManager(LooperState):
             case LoopActionType.DoRecordNCycles.value:
                 force_dry_passthrough = True
         
-        self.wet().doLoopAction(wet_action, wet_args)
-        self.dry().doLoopAction(dry_action, dry_args)
+        self.wet().doLoopAction(wet_action, wet_arg)
+        self.dry().doLoopAction(dry_action, dry_arg)
         if force_dry_passthrough != None:
             self.force_dry_passthrough = force_dry_passthrough
         if force_wet_passthrough != None:
@@ -256,6 +256,14 @@ class DryWetPairAbstractLooperManager(LooperState):
             self.dry().load_loops_data(resampled)
         except Exception as e:
             print("Failed to load sound file: {}".format(format(e)))
+    
+    @pyqtSlot(str)
+    def doSaveWetToSoundFile(self, filename):
+        self.wet().save_to_file(filename)
+    
+    @pyqtSlot(str)
+    def doSaveDryToSoundFile(self, filename):
+        self.dry().save_to_file(filename)
     
     @pyqtSlot(QObject)
     def connect_backend_manager(self, manager):

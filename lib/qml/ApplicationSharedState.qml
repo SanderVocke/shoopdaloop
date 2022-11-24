@@ -344,16 +344,6 @@ Item {
         loops_of_hovered_sceneChanged()
     }
 
-    function load_loop_sound_file(track_idx, loop_idx, sound_filename) {
-        var mgr = loop_managers[track_idx][loop_idx];
-        mgr.doLoadSoundFile(sound_filename);
-    }
-
-    function save_sound_filename(track_idx, loop_idx, sound_filename) {
-        var mgr = loop_managers[track_idx][loop_idx];
-        // TODO implement: mgr.doSaveWav(wav_file);
-    }
-
     function clear_loop(track_idx, loop_idx) {
         var mgr = loop_managers[track_idx][loop_idx];
         // TODO: implement mgr.doClear();

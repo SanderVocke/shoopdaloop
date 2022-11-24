@@ -24,8 +24,6 @@ Item {
     signal request_bind_loop_to_scene(int track, int loop)
     signal request_rename(int track, string name)
     signal request_select_loop(int track, int loop)
-    signal request_load_sound_file(int track, int loop, string filename)
-    signal request_save_sound_file(int track, int loop, string filename)
     signal request_rename_loop(int track, int loop, string name)
     signal request_clear_loop(int track, int loop)
 
@@ -74,8 +72,6 @@ Item {
                         onSet_loop_in_scene: (l) => tracks.request_bind_loop_to_scene(index, l)
                         onRenamed: (name) => tracks.request_rename(index, name)
                         onRequest_select_loop: (idx) => tracks.request_select_loop(index, idx)
-                        onRequest_load_sound_file: (idx, filename) => tracks.request_load_sound_file(index, idx, filename)
-                        onRequest_save_sound_file: (idx, filename) => tracks.request_save_sound_file(index, idx, filename)
                         onRequest_rename_loop: (idx, name) => tracks.request_rename_loop(index, idx, name)
                         onRequest_clear_loop: (idx) => tracks.request_clear_loop(index, idx)
                     }
