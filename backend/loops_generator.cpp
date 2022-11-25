@@ -13,9 +13,17 @@ public:
     // Np = number of input/output ports
     // Nl = number of loopers (they may share ports)
     // Ll = number of samples stored in a loop
+    // NLat = number of samples in the latency buffer
 
     // Live input samples. Ns samples by Np ports
     Input<Buffer<float, 2>> samples_in{"samples_in"};
+
+    // Latency storage buffer. NLat samples by Np ports
+    Input<Buffer<float, 2>> latencybuf_in{"latencybuf_in"};
+    // Current position in the latency buffer.
+    Input<int32_t> latencybuf_writepos_in{"latencybuf_writepos_in"};
+    // Latency for each port, in samples. Np ports
+    Input<Buffer<int32_t, 1>> port_recording_latencies_in{"port_recording_latencies_in"};
 
     // Nl states, positions, lengths (one for each looper)
     Input<Buffer<int8_t, 1>> states_in{"states_in"};
@@ -57,6 +65,11 @@ public:
     // Ns x Np
     Output<Buffer<float, 2>> samples_out{"samples_out"};
 
+    // NLat x Np
+    Output<Buffer<float, 2>> latencybuf_out{"latencybuf_out"};
+
+    Output<int32_t> latencybuf_writepos_out{"latencybuf_writepos_out"};
+    
     // Ns x Nl, intermediate result before output mixing
     Output<Buffer<float, 2>> samples_out_per_loop{"samples_out_per_loop"};
 
@@ -118,13 +131,13 @@ public:
         Func _next_states_in_b = repeat_edge(next_states_in);
         Func _ports_muted = repeat_edge(ports_muted);
         Func _port_inputs_muted = repeat_edge(port_inputs_muted);
+        Func _latencybuf_in = repeat_edge(latencybuf_in);
+        Func _port_recording_latencies = repeat_edge(port_recording_latencies_in);
 
         // Do the port input overrides and port input mutes
         Func _muted_samples_in("_muted_samples_in");
         _muted_samples_in(x, port) = _orig_samples_in(x, port) *
             select(_port_inputs_muted(port) != 0, 0.0f, 1.0f);
-        Func _samples_in("_samples_in");
-        _samples_in(x, port) = _muted_samples_in(x, _port_input_override_map(port));
 
         // For hard-linked loops, sneakily get the state data from the master loop
         Func _loop_lengths_in, _positions_in, _soft_sync_map, _states_in, _next_states_in;
@@ -139,6 +152,27 @@ public:
         auto is_running_state = [](Expr state) { return state == Playing || state == PlayingMuted || state == Recording; };
         auto is_playing_state = [](Expr state) { return state == Playing || state == PlayingMuted; };
         auto clamp_to_storage = [&](Expr var) { return clamp(var, loop_storage_in.dim(0).min(), loop_storage_in.dim(0).max()); };
+
+        // Latency buffer operations
+        Expr n_frames = samples_in.dim(0).extent();
+        Expr lbuf_size = latencybuf_in.dim(0).extent();
+        RDom l(0, n_frames);
+        latencybuf_out(x, port) = Halide::undef<float>();
+        // Store samples into latency buffer
+        latencybuf_out((latencybuf_writepos_in + l) % lbuf_size, port) = _muted_samples_in(l, port);
+        Func _latencybuf_out = repeat_edge(latencybuf_out);
+        // Update write index
+        latencybuf_writepos_out() = (latencybuf_writepos_in + n_frames) % lbuf_size;
+
+        // Apply port input overrides to redirect both samples and latencies
+        Func _samples_in("_samples_in");
+        Expr remapped_port = _port_input_override_map(port);
+        // TODO: using input directly here, could also take the latest from the latency buf.
+        //       what is faster?
+        _samples_in(x, port) = _muted_samples_in(x, remapped_port);
+        Func _latency_applied_samples_in("_latency_applied_samples_in");
+        Expr sample_idx = (latencybuf_writepos_in - _port_recording_latencies(remapped_port) + x) % lbuf_size;
+        _latency_applied_samples_in(x, port) = _latencybuf_out(sample_idx, remapped_port);
 
         // State transitions due to sync connections
         
@@ -318,11 +352,11 @@ public:
         );
 
         // Compute stored recorded samples for each loop
-        Expr is_recording = rr.x >= recording_range(rr.y)[0] && rr.x < recording_range(rr.y)[1]; 
+        Expr is_recording = rr.x >= recording_range(rr.y)[0] && rr.x < recording_range(rr.y)[1];
         loop_storage_out(x, loop) = Halide::undef<float>();
         loop_storage_out(rr_record_index, rr.y) = select(
             is_recording,
-            _samples_in(rr.x, rr.y),
+            _latency_applied_samples_in(rr.x, rr.y),
             Halide::undef<float>() // No recording
         );
 
@@ -382,6 +416,8 @@ public:
         generates_soft_sync_at.compute_root();
         rr_playback_start_index.compute_root();
         rr_record_start_index.compute_root();
+        latencybuf_out.compute_root();
+        latencybuf_writepos_out.compute_root();
         // _loop_lengths_in.compute_root();
         // _positions_in.compute_root();
         // _soft_sync_map.compute_root();

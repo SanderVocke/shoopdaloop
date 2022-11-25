@@ -57,6 +57,11 @@ Buffer<float, 2> g_samples_out_per_loop;
 // Loop storage
 Buffer<float, 2> g_storage;
 
+// Latency buffer
+Buffer<float, 2> g_latency_buf;
+Buffer<int32_t, 1> g_port_recording_latencies;
+Buffer<int32_t, 0> g_latency_buf_write_pos;
+
 // Map of loop idx to port idx
 Buffer<int32_t, 1> g_loops_to_ports;
 
@@ -216,6 +221,9 @@ int jack_process (jack_nframes_t nframes, void *arg) {
     if(g_loops_fn) {
         g_loops_fn(
             g_samples_in,
+            g_latency_buf,
+            g_latency_buf_write_pos(),
+            g_port_recording_latencies,
             g_states[tick],
             g_next_states,
             g_positions[tick],
@@ -233,6 +241,8 @@ int jack_process (jack_nframes_t nframes, void *arg) {
             nframes,
             g_loop_len,
             g_samples_out,
+            g_latency_buf,
+            g_latency_buf_write_pos,
             g_samples_out_per_loop,
             g_states[tock],
             g_positions[tock],
@@ -376,6 +386,8 @@ jack_client_t* initialize(
     g_port_inputs_muted = Buffer<int8_t, 1>(n_ports);
     g_loop_volumes = Buffer<float, 1>(n_loops);
     g_port_input_mappings = Buffer<int32_t, 1>(n_ports);
+    g_latency_buf_write_pos = Buffer<int32_t>::make_scalar();
+    g_latency_buf_write_pos() = 0;
 
     g_samples_in = Buffer<float, 2>(
         halide_type_t {halide_type_float, 32, 1},

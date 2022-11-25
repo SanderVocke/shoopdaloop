@@ -18,11 +18,15 @@ backend_features_t g_backend = Default;
 struct loops_buffers {
     size_t process_samples;
     size_t max_loop_length;
+    size_t latency_buf_size;
+    Buffer<int32_t, 0> latency_buf_write_pos;
     Buffer<int8_t, 1> states_in, states_out;
     Buffer<int8_t, 1> next_states;
     Buffer<int32_t, 1> positions_in, positions_out;
     Buffer<int32_t, 1> lengths_in, lengths_out;
     Buffer<float, 2> samples_in, samples_out;
+    Buffer<float, 2> latency_buf;
+    Buffer<int32_t, 1> port_recording_latencies;
     Buffer<float, 2> samples_out_per_loop;
     Buffer<float, 2> storage_in, storage_out;
     Buffer<int32_t, 1> loops_to_ports;
@@ -45,6 +49,7 @@ loops_buffers setup_buffers(
     loops_buffers r;
 
     r.process_samples = process_samples;
+    r.latency_buf_size = process_samples * 4;
 
     r.states_in = decltype(r.states_in)(n_loops);
     r.states_out = decltype(r.states_out)(n_loops);
@@ -70,6 +75,11 @@ loops_buffers setup_buffers(
     r.ports_muted = decltype(r.ports_muted)(n_ports);
     r.port_inputs_muted = decltype(r.port_inputs_muted)(n_ports);
 
+    r.latency_buf = decltype(r.latency_buf)(r.latency_buf_size, n_ports);
+    r.latency_buf_write_pos = Buffer<int32_t>::make_scalar();
+    r.latency_buf_write_pos() = 0;
+    r.port_recording_latencies = decltype(r.port_recording_latencies)(n_ports);
+
     for(size_t i=0; i<n_loops; i++) {
         r.loops_hard_sync_mapping(i) = -1;
         r.loops_soft_sync_mapping(i) = -1;
@@ -94,6 +104,7 @@ loops_buffers setup_buffers(
         r.port_input_override_map(i) = i;
         r.ports_muted(i) = 0;
         r.port_inputs_muted(i) = 0;
+        r.port_recording_latencies(i) = 0;
 
         for (size_t s = 0; s < process_samples; s++) {
             r.samples_in(s, i) = (float)s;
@@ -117,6 +128,9 @@ void run_loops(
     };
     call_backend(
         bufs.samples_in,
+        bufs.latency_buf,
+        bufs.latency_buf_write_pos(),
+        bufs.port_recording_latencies,
         bufs.states_in,
         bufs.next_states,
         bufs.positions_in,
@@ -134,6 +148,8 @@ void run_loops(
         bufs.process_samples,
         bufs.storage_in.dim(0).extent(),
         bufs.samples_out,
+        bufs.latency_buf,
+        bufs.latency_buf_write_pos,
         bufs.samples_out_per_loop,
         bufs.states_out,
         bufs.positions_out,
