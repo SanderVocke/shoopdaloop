@@ -89,6 +89,7 @@ jack_client_t* initialize(
     const char **input_port_names,
     const char **output_port_names,
     const char *client_name,
+    unsigned latency_buf_size,
     UpdateCallback update_cb,
     AbortCallback abort_cb,
     backend_features_t features

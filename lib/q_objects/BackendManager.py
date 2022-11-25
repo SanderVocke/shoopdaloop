@@ -144,6 +144,7 @@ class BackendManager(QObject):
             input_port_names,
             output_port_names,
             self.client_name.encode('ascii'),
+            32768, # bit less than a second @ 48000
             self.update_cb,
             self.abort_cb,
             features

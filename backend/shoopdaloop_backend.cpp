@@ -329,6 +329,7 @@ jack_client_t* initialize(
     const char **input_port_names,
     const char **output_port_names,
     const char *client_name,
+    unsigned latency_buf_size,
     UpdateCallback update_cb,
     AbortCallback abort_cb,
     backend_features_t features
@@ -388,6 +389,8 @@ jack_client_t* initialize(
     g_port_input_mappings = Buffer<int32_t, 1>(n_ports);
     g_latency_buf_write_pos = Buffer<int32_t>::make_scalar();
     g_latency_buf_write_pos() = 0;
+    g_port_recording_latencies = Buffer<int32_t>(n_ports);
+    g_latency_buf = Buffer<float, 2>(latency_buf_size, n_ports);
 
     g_samples_in = Buffer<float, 2>(
         halide_type_t {halide_type_float, 32, 1},
@@ -436,6 +439,7 @@ jack_client_t* initialize(
         g_port_input_mappings(i) = i;
         g_input_ports.push_back(jack_port_register(g_jack_client, input_port_names[i], JACK_DEFAULT_AUDIO_TYPE, JackPortIsInput, 0));
         g_output_ports.push_back(jack_port_register(g_jack_client, output_port_names[i], JACK_DEFAULT_AUDIO_TYPE, JackPortIsOutput, 0));
+        g_port_recording_latencies(i) = 0;
 
         if(g_input_ports[i] == nullptr) {
             std::cerr << "Backend: Got null port" << std::endl;

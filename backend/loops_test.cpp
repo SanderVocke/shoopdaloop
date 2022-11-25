@@ -110,6 +110,9 @@ loops_buffers setup_buffers(
             r.samples_in(s, i) = (float)s;
             r.samples_out(s, i) = std::numeric_limits<float>::max();
         }
+        for (size_t s = 0; s < r.latency_buf_size; s++) {
+            r.latency_buf(s, i) = ((float)s) * 2.0f;
+        }
     }
 
     return r;
@@ -321,6 +324,49 @@ suite loops_tests = []() {
             float sample_out = bufs.samples_out(i,0);
             float storage = bufs.storage_in(i+2, 0);
             expect(eq(sample_out, sample_in)) << " at index " << i;
+        }
+    };
+
+    "4_2_record_with_latency"_test = []() {
+        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
+        bufs.states_in(0) = bufs.next_states(0) = Recording;
+        bufs.positions_in(0) = 2;
+        bufs.lengths_in(0) = 3;
+        bufs.latency_buf_write_pos() = 2;
+        bufs.port_recording_latencies(0) = 4;
+        Buffer<float, 2> latencybuf_copy = bufs.latency_buf;
+        run_loops(bufs);
+        expect(eq(((int)bufs.states_out(0)), Recording));
+        expect(bufs.positions_out(0) == 10_i);
+        expect(bufs.lengths_out(0) == 11_i);
+        for(size_t i=0; i<bufs.storage_in.dim(0).extent(); i++) {
+            float storage_in = bufs.storage_in(i,0);
+            float storage_out = bufs.storage_out(i,0);
+            if (i >= 2 && i < 6) {
+                // Recorded from latency buffer
+                float sample_in = latencybuf_copy((2-4+i-2) % bufs.latency_buf_size, 0);
+                expect(eq(storage_out, sample_in)) << " at index " << i;
+            } else if (i >= 6 && i < 10) {
+                // Recorded from samples in
+                float sample_in = bufs.samples_in(i-2-4, 0);
+                expect(eq(storage_out, sample_in)) << " at index " << i;
+            } else {
+                expect(eq(storage_out, storage_in)) << " at index " << i;
+            }
+        }
+        for(size_t i=0; i<bufs.process_samples; i++) {
+            float sample_in = bufs.samples_in(i,0);
+            float sample_out = bufs.samples_out(i,0);
+            float storage = bufs.storage_in(i+2, 0);
+            expect(eq(sample_out, sample_in)) << " at index " << i;
+        }
+        for(size_t i=0; i<bufs.latency_buf_size; i++) {
+            float lbuf_sample = bufs.latency_buf(i, 0);
+            if (i >= 2 && i < 10) {
+                expect(eq(lbuf_sample, bufs.samples_in(i-2, 0)));
+            } else {
+                expect(eq(lbuf_sample, latencybuf_copy(i, 0))); // original value
+            }
         }
     };
 
