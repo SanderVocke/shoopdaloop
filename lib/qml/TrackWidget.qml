@@ -85,6 +85,7 @@ Item {
                         is_in_selected_scene: track.loops_of_selected_scene.includes(index)
                         is_in_hovered_scene: track.loops_of_hovered_scene.includes(index)
                         manager: track.loop_managers[index]
+                        port_manager: track.port_manager
                         name: track.loop_names[index]
                         internal_name: track.name + ' loop ' + (index+1).toString()
 

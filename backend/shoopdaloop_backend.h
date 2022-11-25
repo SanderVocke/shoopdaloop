@@ -46,6 +46,7 @@ typedef enum {
 typedef int(*UpdateCallback) (
     unsigned n_loops,
     unsigned n_ports,
+    unsigned sample_rate,
     loop_state_t *loop_states,
     loop_state_t *loop_next_states,
     int *loop_lengths,
@@ -53,6 +54,7 @@ typedef int(*UpdateCallback) (
     float *loop_volumes,
     float *port_volumes,
     float *port_passthrough_levels,
+    int *port_latencies,
     int8_t *ports_muted,
     int8_t *port_inputs_muted
 );

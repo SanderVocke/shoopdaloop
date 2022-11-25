@@ -81,6 +81,8 @@ Buffer<int8_t, 1> g_port_inputs_muted; // per port
 
 std::vector<jack_port_t*> g_input_ports;
 std::vector<jack_port_t*> g_output_ports;
+std::vector<jack_nframes_t> g_input_port_latencies;
+std::vector<jack_nframes_t> g_output_port_latencies;
 
 size_t g_n_loops;
 size_t g_n_ports;
@@ -101,7 +103,7 @@ std::thread g_reporting_thread;
 // state back from the Jack processing thread to the main thread.
 struct atomic_state {
     std::vector<std::atomic<loop_state_t>> states, next_states;
-    std::vector<std::atomic<int32_t>> positions, lengths;
+    std::vector<std::atomic<int32_t>> positions, lengths, latencies;
     std::vector<std::atomic<float>> passthroughs, loop_volumes, port_volumes;
     std::vector<std::atomic<int8_t>> ports_muted, port_inputs_muted;
 };
@@ -170,6 +172,29 @@ void process_slow_midi_ports(jack_nframes_t nframes) {
                 }
                 port.queue.clear();
             }
+        }
+    }
+}
+
+// The latency update callback to be called by Jack.
+void jack_latency_callback(jack_latency_callback_mode_t mode, void * arg) {
+    if (mode == JackCaptureLatency) {
+        for(size_t i=0; i<g_input_ports.size(); i++) {
+            jack_latency_range_t range;
+            jack_port_get_latency_range(g_input_ports[i], JackCaptureLatency, &range);
+            g_input_port_latencies[i] = range.min;
+            // TODO: possible race condition? Although this should be a read-only from
+            // the other side.
+            g_port_recording_latencies(i) = g_input_port_latencies[i] + g_output_port_latencies[i];
+        }
+    } else if (mode == JackPlaybackLatency) {
+        for(size_t i=0; i<g_input_ports.size(); i++) {
+            jack_latency_range_t range;
+            jack_port_get_latency_range(g_output_ports[i], JackPlaybackLatency, &range);
+            g_output_port_latencies[i] = range.min;
+            // TODO: possible race condition? Although this should be a read-only from
+            // the other side.
+            g_port_recording_latencies(i) = g_input_port_latencies[i] + g_output_port_latencies[i];
         }
     }
 }
@@ -289,6 +314,7 @@ int jack_process (jack_nframes_t nframes, void *arg) {
         g_atomic_state.port_volumes[i] = g_port_volumes(i);
         g_atomic_state.ports_muted[i] = g_ports_muted(i);
         g_atomic_state.port_inputs_muted[i] = g_port_inputs_muted(i);
+        g_atomic_state.latencies[i] = g_port_recording_latencies(i);
     }
 
     auto did_output = std::chrono::high_resolution_clock::now();
@@ -413,9 +439,7 @@ jack_client_t* initialize(
     g_atomic_state.positions = std::vector<std::atomic<int32_t>>(n_loops);
     g_atomic_state.ports_muted = std::vector<std::atomic<int8_t>>(n_ports);
     g_atomic_state.port_inputs_muted = std::vector<std::atomic<int8_t>>(n_ports);
-
-    // Set the JACK process callback
-    jack_set_process_callback(g_jack_client, jack_process, 0);
+    g_atomic_state.latencies = std::vector<std::atomic<int32_t>>(n_ports);
 
     // Initialize loops
     for(size_t i=0; i<g_n_loops; i++) {
@@ -435,10 +459,14 @@ jack_client_t* initialize(
     g_output_bufs = std::vector<jack_default_audio_sample_t*>(n_ports);
     g_input_ports.clear();
     g_output_ports.clear();
+    g_input_port_latencies.clear();
+    g_output_port_latencies.clear();
     for(size_t i=0; i<n_ports; i++) {
         g_port_input_mappings(i) = i;
         g_input_ports.push_back(jack_port_register(g_jack_client, input_port_names[i], JACK_DEFAULT_AUDIO_TYPE, JackPortIsInput, 0));
         g_output_ports.push_back(jack_port_register(g_jack_client, output_port_names[i], JACK_DEFAULT_AUDIO_TYPE, JackPortIsOutput, 0));
+        g_input_port_latencies.push_back(0);
+        g_output_port_latencies.push_back(0);
         g_port_recording_latencies(i) = 0;
 
         if(g_input_ports[i] == nullptr) {
@@ -455,6 +483,10 @@ jack_client_t* initialize(
         g_ports_muted(i) = 0;
         g_port_inputs_muted(i) = 0;
     }
+
+    // Set the JACK process and latency callback
+    jack_set_process_callback(g_jack_client, jack_process, nullptr);
+    jack_set_latency_callback(g_jack_client, jack_latency_callback, nullptr);
 
     if(jack_activate(g_jack_client)) {
         std::cerr << "Backend: Failed to activate client" << std::endl;
@@ -618,7 +650,7 @@ int do_port_action(
 void request_update() {
     // Allocate memory for a copy of the relevant state
     std::vector<loop_state_t> states(g_n_loops), next_states(g_n_loops);
-    std::vector<int32_t> positions(g_n_loops), lengths(g_n_loops);
+    std::vector<int32_t> positions(g_n_loops), lengths(g_n_loops), latencies(g_n_ports);
     std::vector<float> passthroughs(g_n_ports), loop_volumes(g_n_loops), port_volumes(g_n_ports);
     std::vector<int8_t> ports_muted(g_n_ports), port_inputs_muted(g_n_ports);
 
@@ -635,12 +667,14 @@ void request_update() {
         port_volumes[i] = g_atomic_state.port_volumes[i];
         ports_muted[i] = g_atomic_state.ports_muted[i];
         port_inputs_muted[i] = g_atomic_state.port_inputs_muted[i];
+        latencies[i] = g_atomic_state.latencies[i];
     }
     
     if (g_update_cb) {
         int r = g_update_cb(
             g_n_loops,
             g_n_ports,
+            g_sample_rate,
             states.data(),
             next_states.data(),
             lengths.data(),
@@ -648,6 +682,7 @@ void request_update() {
             loop_volumes.data(),
             port_volumes.data(),
             passthroughs.data(),
+            latencies.data(),
             ports_muted.data(),
             port_inputs_muted.data()
         );

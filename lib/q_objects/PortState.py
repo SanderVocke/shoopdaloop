@@ -13,6 +13,7 @@ class PortState(QObject):
     mutedChanged = pyqtSignal(bool)
     passthroughChanged = pyqtSignal(float)
     passthroughMutedChanged = pyqtSignal(bool)
+    recordingLatencyChanged = pyqtSignal(float)
 
     def __init__(self, parent=None):
         super(PortState, self).__init__(parent)
@@ -20,6 +21,7 @@ class PortState(QObject):
         self._muted = False
         self._passthrough = 1.0
         self._passthroughMuted = False
+        self._recordingLatency = 0.0
     
     ######################
     # PROPERTIES
@@ -82,3 +84,13 @@ class PortState(QObject):
         self.passthrough = d['passthrough']
         self.muted = d['muted']
         self.passthroughMuted = d['passthroughMuted']
+    
+    # recording latency
+    @pyqtProperty(float, notify=recordingLatencyChanged)
+    def recordingLatency(self):
+        return self._recordingLatency
+    @recordingLatency.setter
+    def recordingLatency(self, l):
+        if self._recordingLatency != l:
+            self._recordingLatency = l
+            self.recordingLatencyChanged.emit(l)

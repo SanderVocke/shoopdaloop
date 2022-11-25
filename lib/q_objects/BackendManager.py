@@ -71,6 +71,8 @@ class BackendManager(QObject):
         self.update_timer.timeout.connect(lambda: backend.request_update())
         self.update_timer.start()
 
+        self._sample_rate = 0
+
         self._session_loading = False
         self._session_saving = False
 
@@ -97,6 +99,17 @@ class BackendManager(QObject):
         if self._session_saving != s:
             self._session_saving = s
             self.sessionSavingChanged.emit(s)
+    
+    sampleRateChanged = pyqtSignal(int)
+    @pyqtProperty(int, notify=sampleRateChanged)
+    def sample_rate(self):
+        return self._sample_rate
+    @sample_rate.setter
+    def sample_rate(self, s):
+        if self._sample_rate != s:
+            self._sample_rate = s
+            self.sampleRateChanged.emit(s)
+    
 
     ######################
     # OTHER
@@ -164,6 +177,7 @@ class BackendManager(QObject):
                 self,
                 n_loops,
                 n_ports,
+                sample_rate,
                 loop_states,
                 loop_next_states,
                 loop_lengths,
@@ -171,10 +185,13 @@ class BackendManager(QObject):
                 loop_volumes,
                 port_volumes,
                 port_passthrough_levels,
+                port_latencies,
                 ports_muted,
                 port_inputs_muted):
         # pr = cProfile.Profile()
         # pr.enable()
+        self.sample_rate = sample_rate
+
         for i in range(n_loops):
             m = self.looper_states[i]
             m.state = loop_states[i]
@@ -189,6 +206,9 @@ class BackendManager(QObject):
             p.passthrough = port_passthrough_levels[i]
             p.muted = ports_muted[i] != 0
             p.passthroughMuted = port_inputs_muted[i] != 0
+            p.recordingLatency = port_latencies[i] / self.sample_rate
+            if p.recordingLatency > 0.0:
+                print(port_latencies[i])
         
         # # TODO port changes
         # pr.disable()
