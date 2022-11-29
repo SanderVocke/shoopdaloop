@@ -128,6 +128,7 @@ void push_command(std::function<void()> cmd) {
 // from the processing thread to an optional reporter.
 constexpr unsigned benchmark_queue_len = 10;
 struct benchmark_info {
+    float process_slow_midi_us;
     float request_buffers_us;
     float command_processing_us;
     float input_copy_us;
@@ -158,6 +159,9 @@ void process_slow_midi_ports(jack_nframes_t nframes) {
 
             if(port.kind == Input) {
                 auto n_events = jack_midi_get_event_count(buf);
+                if(n_events > 0) {
+                    std::cout << "Receiving MIDI!\n";
+                }
                 for(size_t i=0; i<n_events; i++) {
                     jack_midi_event_t e;
                     jack_midi_event_get(&e, buf, i);
@@ -203,13 +207,23 @@ void jack_latency_callback(jack_latency_callback_mode_t mode, void * arg) {
 int jack_process (jack_nframes_t nframes, void *arg) {
     static auto last_measurement = std::chrono::high_resolution_clock::now();
     static size_t n_measurements = 0;
-    static float get_buffers_time = 0.0, cmd_time = 0.0, in_time = 0.0, proc_time = 0.0, out_time = 0.0, total_time = 0.0;
+    static float slow_midi_time = 0.0,
+                 get_buffers_time = 0.0,
+                 cmd_time = 0.0,
+                 in_time = 0.0,
+                 proc_time = 0.0,
+                 out_time = 0.0,
+                 total_time = 0.0;
     static uint8_t tick = 0;
     static uint8_t tock = 1;
 
     jack_default_audio_sample_t *buf;
 
     auto start = std::chrono::high_resolution_clock::now();
+
+    process_slow_midi_ports(nframes);
+
+    auto did_slow_midi = std::chrono::high_resolution_clock::now();
 
     // Get buffers
     for(int i=0; i<g_input_ports.size(); i++) {
@@ -320,7 +334,8 @@ int jack_process (jack_nframes_t nframes, void *arg) {
     auto did_output = std::chrono::high_resolution_clock::now();
 
     // Benchmarking
-    get_buffers_time += std::chrono::duration_cast<std::chrono::microseconds>(got_buffers - start).count();
+    slow_midi_time += std::chrono::duration_cast<std::chrono::microseconds>(did_slow_midi - start).count();
+    get_buffers_time += std::chrono::duration_cast<std::chrono::microseconds>(got_buffers - did_slow_midi).count();
     cmd_time += std::chrono::duration_cast<std::chrono::microseconds>(did_cmds - got_buffers).count();
     in_time += std::chrono::duration_cast<std::chrono::microseconds>(did_input - did_cmds).count();
     proc_time += std::chrono::duration_cast<std::chrono::microseconds>(did_process - did_input).count();
@@ -330,6 +345,7 @@ int jack_process (jack_nframes_t nframes, void *arg) {
 
     if (std::chrono::duration_cast<std::chrono::milliseconds>(did_output - last_measurement).count() > 1000.0) {
         g_benchmark_queue.push(benchmark_info {
+            .process_slow_midi_us = slow_midi_time / (float)n_measurements,
             .request_buffers_us = get_buffers_time / (float)n_measurements,
             .command_processing_us = cmd_time / (float)n_measurements,
             .input_copy_us = in_time / (float)n_measurements,
@@ -337,7 +353,7 @@ int jack_process (jack_nframes_t nframes, void *arg) {
             .output_copy_us = out_time / (float)n_measurements,
             .total_us = total_time / (float)n_measurements
         });
-        in_time = out_time = proc_time = total_time = cmd_time = get_buffers_time = 0.0f;
+        in_time = out_time = proc_time = total_time = cmd_time = get_buffers_time = slow_midi_time = 0.0f;
         n_measurements = 0;
         last_measurement = did_output;
     }
@@ -512,9 +528,10 @@ jack_client_t* initialize(
                     int period = (int)(1.0f / (float)g_sample_rate * (float)g_buf_nframes * 1000000.0f);
                     float percent_of_period = (float) info.total_us / (float) period * 100.0f;
                     std::cout
-                        << "Backend: total, getbuf, cmd, in, proc, out (us)" << std::endl
+                        << "Backend: total, slowmid, getbuf, cmd, in, proc, out (us)" << std::endl
                         << "         "
                         << info.total_us << " "
+                        << info.process_slow_midi_us << " "
                         << info.request_buffers_us << " "
                         << info.command_processing_us << " "
                         << info.input_copy_us << " "
@@ -787,6 +804,7 @@ jack_port_t *create_slow_midi_port(
         return jport;
     }
 
+    std::cout << "Backend: failed to create slow MIDI port." << std::endl;
     return nullptr;
 }
 
@@ -834,7 +852,10 @@ void process_slow_midi() {
         if(it.kind == Input && it.queue.size() > 0) {
             if(it.maybe_rcv_callback) {
                 for (auto &elem : it.queue) {
-                    it.maybe_rcv_callback(it.jack_port, elem.size(), elem.data());
+                    if(it.maybe_rcv_callback) {
+                        std::cout << "rcv cb" << std::endl;
+                        it.maybe_rcv_callback(it.jack_port, elem.size(), elem.data());
+                    }
                 }
             }
             it.queue.clear();

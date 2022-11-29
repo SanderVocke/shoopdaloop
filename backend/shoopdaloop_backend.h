@@ -161,7 +161,7 @@ void terminate();
 // on such ports will be decoupled from the JACK processing thread via
 // queues.
 typedef enum { Input, Output } slow_midi_port_kind_t;
-typedef int(*SlowMIDIReceivedCallback) (
+typedef void(*SlowMIDIReceivedCallback) (
     jack_port_t *port,
     uint8_t len,
     uint8_t *data

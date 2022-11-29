@@ -208,6 +208,7 @@ def eval_formula(formula: str, is_stmt: bool, substitutions: dict[str, str] = {}
         calls = {
             'noteOn': eval_noteOn,
             'noteOff': eval_noteOff,
+            'notesOn': eval_notesOn,
             'cc': eval_cc,
             'loopAction': eval_loopAction,
             'setPan': eval_setPan,

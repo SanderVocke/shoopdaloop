@@ -29,6 +29,18 @@ import tarfile
 
 from pprint import *
 
+class SlowMidiCallback():
+    def get_cb(self):
+        def c_cb(port, length, data):
+            array_type = (c_ubyte * length)
+            data_list = [data[i] for i in range(length)]
+            self.cb(data_list)
+        return backend.SlowMIDIReceivedCallback(c_cb)
+    
+    def __init__(self, cb):
+        self.cb = cb
+        self.c_cb = self.get_cb()
+
 class BackendManager(QObject):
     newSessionStateStr = pyqtSignal(str)
     requestLoadSession = pyqtSignal(str)
@@ -165,13 +177,16 @@ class BackendManager(QObject):
         self.jack_client = cast(_jack_client, POINTER(jacklib.jack_client_t))
     
     def get_jack_input_port(self, idx):
-        return cast(backend.get_port_input_handle(idx), POINTER(jacklib.jack_port_t))
+        return self.convert_to_jack_port(backend.get_port_input_handle(idx))
     
     def remap_port_input(self, port, remapped):
         backend.remap_port_input(port, remapped)
 
     def reset_port_input_remap(self, port):
         backend.reset_port_input_remapping(port)
+
+    def convert_to_jack_port(self, backend_port):
+        return cast(backend_port, POINTER(jacklib.jack_port_t))
 
     def update_cb(
                 self,
@@ -265,8 +280,11 @@ class BackendManager(QObject):
             maybe_arg
         )
     
+    #rcv_callback should be a SlowMidiCallback instance
     def create_slow_midi_input(self, name, rcv_callback):
         retval = backend.create_slow_midi_port(name.encode('ascii'), backend.Input)
+        backend.set_slow_midi_port_received_callback(retval, rcv_callback.c_cb)
+        return retval
     
     def create_slow_midi_output(self, name):
         return backend.create_slow_midi_port(name.encode('ascii'), backend.Output)
@@ -276,11 +294,7 @@ class BackendManager(QObject):
     
     def send_slow_midi(self, port, data):
         c_data = (c_ubyte * len(data))(*data)
-        backend.end_slow_midi(port, len(data), c_data)
-    
-    def set_slow_midi_port_received_callback(self, port, callback):
-        cb = backend.SlowMIDIReceivedCallback(partial(c_slow_midi_rcv_callback, callback))
-        backend.set_slow_midi_port_received_callback(port, cb)
+        backend.send_slow_midi(port, len(data), c_data)
     
     def process_slow_midi(self):
         backend.process_slow_midi()
