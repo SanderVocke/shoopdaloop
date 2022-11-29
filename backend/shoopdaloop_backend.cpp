@@ -189,7 +189,8 @@ void jack_latency_callback(jack_latency_callback_mode_t mode, void * arg) {
             g_input_port_latencies[i] = range.min;
             // TODO: possible race condition? Although this should be a read-only from
             // the other side.
-            g_port_recording_latencies(i) = g_input_port_latencies[i] + g_output_port_latencies[i];
+            // TODO: rethink the whole latency approach
+            //g_port_recording_latencies(i) = g_input_port_latencies[i] + g_output_port_latencies[i];
         }
     } else if (mode == JackPlaybackLatency) {
         for(size_t i=0; i<g_input_ports.size(); i++) {
@@ -198,7 +199,8 @@ void jack_latency_callback(jack_latency_callback_mode_t mode, void * arg) {
             g_output_port_latencies[i] = range.min;
             // TODO: possible race condition? Although this should be a read-only from
             // the other side.
-            g_port_recording_latencies(i) = g_input_port_latencies[i] + g_output_port_latencies[i];
+            // TODO: rethink the whole latency approach
+            //g_port_recording_latencies(i) = g_input_port_latencies[i] + g_output_port_latencies[i];
         }
     }
 }
