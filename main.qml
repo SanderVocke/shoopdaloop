@@ -205,62 +205,89 @@ ApplicationWindow {
                 rightMargin: 6
             }
 
-            Button {
-                anchors {
-                    top: parent.top
-                    left: parent.left
-                    right: parent.right
+            Column {
+                spacing: 0
+                anchors.fill: parent
+
+                Button {
+                    anchors {
+                        left: parent.left
+                        right: parent.right
+                    }
+                    height: 35
+                    onClicked: mainmenu.popup()
+
+                    MaterialDesignIcon {
+                        size: parent.width - 10
+                        anchors.centerIn: parent
+                        name: 'dots-vertical'
+                        color: Material.foreground
+                    }
+
+                    Menu {
+                        id: mainmenu
+
+                        MenuItem {
+                            text: "Save copy of session (inc. audio)"
+                            onClicked: { savesessiondialog.save_audio = true; savesessiondialog.open() }
+                        }
+                        MenuItem {
+                            text: "Save copy of session (no audio)"
+                            onClicked: { savesessiondialog.save_audio = false; savesessiondialog.open() }
+                        }
+                        MenuItem {
+                            text: "Load session"
+                            onClicked: loadsessiondialog.open()
+                        }
+                    }
+
+                    FileDialog {
+                        property bool save_audio: false
+                        id: savesessiondialog
+                        fileMode: FileDialog.SaveFile
+                        acceptLabel: 'Save'
+                        nameFilters: ["ShoopDaLoop session files (*.shl)(*.shl)"]
+                        defaultSuffix: 'shl'
+                        onAccepted: {
+                            var filename = selectedFile.toString().replace('file://', '');
+                            shared.save_session(filename, save_audio)
+                        }
+                    }
+
+                    FileDialog {
+                        id: loadsessiondialog
+                        fileMode: FileDialog.OpenFile
+                        acceptLabel: 'Load'
+                        nameFilters: ["ShoopDaLoop session files (*.shl)(*.shl)"]
+                        onAccepted: {
+                            var filename = selectedFile.toString().replace('file://', '');
+                            shared.load_session(filename)
+                        }
+
+                    }
                 }
-                height: 35
-                onClicked: mainmenu.popup()
 
-                MaterialDesignIcon {
-                    size: parent.width - 10
-                    anchors.centerIn: parent
-                    name: 'dots-vertical'
-                    color: Material.foreground
-                }
-
-                Menu {
-                    id: mainmenu
-
-                    MenuItem {
-                        text: "Save copy of session (inc. audio)"
-                        onClicked: { savesessiondialog.save_audio = true; savesessiondialog.open() }
+                Button {
+                    anchors {
+                        left: parent.left
+                        right: parent.right
                     }
-                    MenuItem {
-                        text: "Save copy of session (no audio)"
-                        onClicked: { savesessiondialog.save_audio = false; savesessiondialog.open() }
-                    }
-                    MenuItem {
-                        text: "Load session"
-                        onClicked: loadsessiondialog.open()
-                    }
-                }
+                    height: 35
+                    onClicked: settings.open()
 
-                FileDialog {
-                    property bool save_audio: false
-                    id: savesessiondialog
-                    fileMode: FileDialog.SaveFile
-                    acceptLabel: 'Save'
-                    nameFilters: ["ShoopDaLoop session files (*.shl)(*.shl)"]
-                    defaultSuffix: 'shl'
-                    onAccepted: {
-                        var filename = selectedFile.toString().replace('file://', '');
-                        shared.save_session(filename, save_audio)
-                    }
-                }
-
-                FileDialog {
-                    id: loadsessiondialog
-                    fileMode: FileDialog.OpenFile
-                    acceptLabel: 'Load'
-                    nameFilters: ["ShoopDaLoop session files (*.shl)(*.shl)"]
-                    onAccepted: {
-                        var filename = selectedFile.toString().replace('file://', '');
-                        shared.load_session(filename)
+                    MaterialDesignIcon {
+                        size: parent.width - 10
+                        anchors.centerIn: parent
+                        name: 'settings'
+                        color: Material.foreground
                     }
 
+                    SettingsDialog {
+                        id: settings
+                        parent: Overlay.overlay
+                        x: (parent.width - width) / 2
+                        y: (parent.height - height) / 2
+                    }
                 }
             }
         }

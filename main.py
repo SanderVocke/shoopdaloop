@@ -15,6 +15,7 @@ from lib.q_objects.MIDIControlManager import MIDIControlManager
 from lib.q_objects.MIDIControlLink import MIDIControlLink
 from lib.q_objects.BackendManager import BackendManager
 from lib.q_objects.PortManager import PortManager
+from lib.q_objects.MIDIControlDialect import MIDIControlDialect
 
 from lib.JackSession import JackSession
 from lib.port_loop_mappings import get_port_loop_mappings
@@ -146,6 +147,7 @@ with contextlib.ExitStack() as contextmgr:
             qmlRegisterType(ClickTrackGenerator, 'ClickTrackGenerator', 1, 0, 'ClickTrackGenerator')
             qmlRegisterType(MIDIControlManager, 'MIDIControlManager', 1, 0, 'MIDIControlManager')
             qmlRegisterType(PortManager, 'PortManager', 1, 0, 'PortManager')
+            qmlRegisterType(MIDIControlDialect, 'MIDIControlDialect', 1, 0, 'MIDIControlDialect')
 
             engine = QQmlApplicationEngine()
             engine.rootContext().setContextProperty("backend_manager", backend_mgr)
