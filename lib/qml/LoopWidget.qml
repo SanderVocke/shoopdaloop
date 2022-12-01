@@ -141,7 +141,7 @@ Item {
                     size: iconitem.height
                     y: 0
                     anchors.horizontalCenter: iconitem.horizontalCenter
-                    onRightClicked: contextmenu.popup()
+                    onClicked: contextmenu.popup()
                 }
                 LoopStateIcon {
                     id: loopnextstateicon
@@ -500,7 +500,7 @@ Item {
         property int size
         property string description: StatesAndActions.LoopState_names[state] ? StatesAndActions.LoopState_names[state] : "Invalid"
 
-        signal rightClicked()
+        signal clicked()
 
         width: size
         height: size
@@ -573,8 +573,8 @@ Item {
             anchors.fill: parent
             hoverEnabled: true
             propagateComposedEvents: true
-            acceptedButtons: Qt.RightButton
-            onClicked: lsicon.rightClicked()
+            acceptedButtons: Qt.RightButton | Qt.LeftButton
+            onClicked: lsicon.clicked()
             id: ma
         }
 
@@ -591,6 +591,7 @@ Item {
 
         ClickTrackDialog {
             id: clicktrackdialog
+
             onAcceptedClickTrack: (filename) => {
                                     widget.manager.doLoadSoundFile(filename)
                                   }
