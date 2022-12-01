@@ -591,6 +591,9 @@ Item {
 
         ClickTrackDialog {
             id: clicktrackdialog
+            parent: Overlay.overlay
+            x: (parent.width-width) / 2
+            y: (parent.height-height) / 2
 
             onAcceptedClickTrack: (filename) => {
                                     widget.manager.doLoadSoundFile(filename)
