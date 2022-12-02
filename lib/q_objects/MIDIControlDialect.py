@@ -11,15 +11,15 @@ class MIDIControlDialect(QObject):
     # This is a map of string -> string. Any occurrence of the
     # key string in any of the formulas used in this dialect
     # are replaced by their substitution.
-    substitutionsChanged = pyqtSignal('QMap<QString, QString>')
-    @pyqtProperty('QMap<QString, QString>', notify=substitutionsChanged)
+    substitutionsChanged = pyqtSignal('QVariantMap')
+    @pyqtProperty('QVariantMap', notify=substitutionsChanged)
     def substitutions(self):
         return self._substitutions
     @substitutions.setter
     def substitutions(self, s):
         if self._substitutions != s:
             self._substitutions = s
-            self.substitutionsChanged(s)
+            self.substitutionsChanged.emit(s)
     
     # input rules
     # This is a list of MIDIControlInputRule objects.
@@ -33,7 +33,7 @@ class MIDIControlDialect(QObject):
     def inputRules(self, s):
         if self._input_rules != s:
             self._input_rules = s
-            self.inputRulesChanged(s)
+            self.inputRulesChanged.emit(s)
     
     # loop state output formulas
     # This is a map of integer -> string.
@@ -47,4 +47,4 @@ class MIDIControlDialect(QObject):
     def loopStateChangeFormulas(self, s):
         if self._loop_state_changed_formulas != s:
             self._loop_state_changed_formulas = s
-            self.loopStateChangeFormulasChanged(s)
+            self.loopStateChangeFormulasChanged.emit(s)

@@ -9,8 +9,8 @@ class MIDIControlInputRule(QObject):
     # This is a map of string -> string. Any occurrence of the
     # key string in any of the formulas used in this dialect
     # are replaced by their substitution.
-    substitutionsChanged = pyqtSignal('QMap<QString, QString>')
-    @pyqtProperty('QMap<QString, QString>', notify=substitutionsChanged)
+    substitutionsChanged = pyqtSignal('QVariantMap')
+    @pyqtProperty('QVariantMap', notify=substitutionsChanged)
     def substitutions(self):
         return self._substitutions
     @substitutions.setter
