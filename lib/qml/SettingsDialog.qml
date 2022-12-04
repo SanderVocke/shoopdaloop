@@ -55,30 +55,46 @@ Dialog {
 
         Row {
             spacing: 2
+            property var active_profile: profile_selector.data
+
             Text {
-                anchors.verticalCenter: profile_name.verticalCenter
+                anchors.verticalCenter: profile_selector.verticalCenter
                 color: Material.foreground
                 text: 'Showing MIDI control profile:'
             }
             ComboBox {
-                id: profile_name
+                id: profile_selector
                 property var data: active_settings.profiles
                 model: data.map((element, index) => index) // Create array of indices only
                 width: 300
-                displayText: data[currentIndex][0].name
+                displayText: {
+                    console.log(data)
+                    console.log(data[currentIndex])
+                    console.log(data[currentIndex][0])
+                    return data[currentIndex][0].name
+                }
 
                 delegate: ItemDelegate {
-                    width: profile_name.width
+                    width: profile_selector.width
                     contentItem: Text {
-                        property var data : profile_name.data[modelData]
+                        property var data : profile_selector.data[modelData]
                         text: data[0].name + (data[1] ? '' : ' (inactive)')
                         color: data[1] ? Material.foreground : 'grey'
-                        //color: "#21be2b"
-                        //font: control.font
-                        //elide: Text.ElideRight
                         verticalAlignment: Text.AlignVCenter
                     }
-                    //highlighted: control.highlightedIndex === index
+                }
+            }
+            CheckBox {
+                property bool controlledState: parent.active_profile[1]
+                onControlledStateChanged: () => {
+                    console.log('controlled to', controlledState)
+                    checkState = controlledState ? Qt.Checked : Qt.Unchecked
+                    console.log('=>', checkState)
+                }
+                onCheckStateChanged: () => {
+                    console.log('check to', checkState)
+                    active_settings.profiles[profile_selector.currentIndex][1] = checkState == Qt.Checked
+                    console.log('=>', active_settings.profiles[profile_selector.currentIndex][1])
                 }
             }
         }
@@ -140,8 +156,7 @@ Dialog {
         // The actual setting is a map of autoconnect rule names to dialect names.
         readonly property var default_profiles: [
             // Signature: [profile, active]
-            [ builtin_akai_apc_mini_profile, true ],
-            [ builtin_akai_apc_mini_profile, false ]
+            [ builtin_akai_apc_mini_profile, true ]
         ]
 
         property var profiles: default_profiles
