@@ -55,7 +55,6 @@ Dialog {
 
         Row {
             spacing: 2
-            property var active_profile: profile_selector.data
 
             Text {
                 anchors.verticalCenter: profile_selector.verticalCenter
@@ -65,36 +64,32 @@ Dialog {
             ComboBox {
                 id: profile_selector
                 property var data: active_settings.profiles
+                property var active_profile_entry: data[currentIndex]
                 model: data.map((element, index) => index) // Create array of indices only
                 width: 300
                 displayText: {
                     console.log(data)
                     console.log(data[currentIndex])
-                    console.log(data[currentIndex][0])
-                    return data[currentIndex][0].name
+                    console.log(data[currentIndex].profile)
+                    return data[currentIndex].profile.name
                 }
 
                 delegate: ItemDelegate {
                     width: profile_selector.width
                     contentItem: Text {
-                        property var data : profile_selector.data[modelData]
-                        text: data[0].name + (data[1] ? '' : ' (inactive)')
-                        color: data[1] ? Material.foreground : 'grey'
+                        property var entry : profile_selector.data[modelData]
+                        text: entry.profile.name + (entry.active ? '' : ' (inactive)')
+                        color: entry.active ? Material.foreground : 'grey'
                         verticalAlignment: Text.AlignVCenter
                     }
                 }
             }
             CheckBox {
-                property bool controlledState: parent.active_profile[1]
-                onControlledStateChanged: () => {
-                    console.log('controlled to', controlledState)
-                    checkState = controlledState ? Qt.Checked : Qt.Unchecked
-                    console.log('=>', checkState)
-                }
+                property bool controlledState: profile_selector.active_profile_entry.active
                 onCheckStateChanged: () => {
                     console.log('check to', checkState)
-                    active_settings.profiles[profile_selector.currentIndex][1] = checkState == Qt.Checked
-                    console.log('=>', active_settings.profiles[profile_selector.currentIndex][1])
+                    active_settings.profiles[profile_selector.currentIndex].active = checkState == Qt.Checked
+                    console.log('=>', active_settings.profiles[profile_selector.currentIndex].active)
                 }
             }
         }
@@ -102,15 +97,31 @@ Dialog {
 
     component JACKSettings : Item {}
 
+    component MIDIControlProfile : Item {
+        property string name
+        property string midi_in_regex
+        property string midi_out_regex
+        property var substitutions
+        property var input_rules
+        property var loop_state_change_formulas
+        property string default_loop_state_change_formula
+        property string reset_formula
+    }
+
+    component MIDIControlProfileEntry : Item {
+        property var profile
+        property bool active
+    }
+
     component MIDIControlSettingsData : QtObject {
 
-        readonly property var builtin_akai_apc_mini_profile : {
-            'name': 'AKAI APC Mini',
+        readonly property var builtin_akai_apc_mini_profile : MIDIControlProfile {
+            name: 'AKAI APC Mini'
 
-            'midi_in_regex': '.*APC MINI MIDI.*',
-            'midi_out_regex': '.*APC MINI MIDI.*',
+            midi_in_regex: '.*APC MINI MIDI.*'
+            midi_out_regex: '.*APC MINI MIDI.*'
 
-            'substitutions': {
+            substitutions: {
                 // Map our loop index to the note identifier on the APC
                 'loop_note':  '0 if (track == 0 and loop == 0) else (56+track-1-loop*8)',
                 // Map note identifier on APC to our track index
@@ -119,9 +130,9 @@ Dialog {
                 'note_loop':  '0 if note == 0 else 7 - (note / 8)',
                 // Map fader CC identifier on APC to our track index
                 'fader_track': 'controller-48+1' //'controller-48+1 if controller >= 48 and controller < 56'
-            },
+            }
 
-            'inputRules': [
+            input_rules: [
                 // Input rule signature:
                 // [
                 //    { filter_type1: filter_arg1, filter_type2: filter_arg2, ...},
@@ -138,25 +149,27 @@ Dialog {
                     ['48 <= controller < 56'],
                     'setVolume(fader_track, value/127.0)'
                 ],
-            ],
+            ]
 
-            'loopStateChangeFormulas': {
+            loop_state_change_formulas: ({
                 // Signature { loop_state: handler_formula, ... }
                 [StatesAndActions.LoopState.Recording]: 'noteOn(0, loop_note, 3)',
                 [StatesAndActions.LoopState.Playing]: 'noteOn(0, loop_note, 1)',
                 [StatesAndActions.LoopState.Stopped]: 'noteOn(0, loop_note, 0)',
                 [StatesAndActions.LoopState.PlayingMuted]: 'noteOn(0, loop_note, 0)'
-            },
+            })
 
-            'loop_state_change_default_output_rule': 'noteOn(0, loop_note, 5)', // Unhandled state becomes yellow
+            default_loop_state_change_formula: 'noteOn(0, loop_note, 5)' // Unhandled state becomes yellow
             
-            'reset_output_rule': 'notesOn(0, 0, 98, 0)' // Everything off
+            reset_formula: 'notesOn(0, 0, 98, 0)' // Everything off
         }
 
         // The actual setting is a map of autoconnect rule names to dialect names.
-        readonly property var default_profiles: [
-            // Signature: [profile, active]
-            [ builtin_akai_apc_mini_profile, true ]
+        property list<Item> default_profiles: [
+            MIDIControlProfileEntry {
+                profile: builtin_akai_apc_mini_profile
+                active: true
+            }
         ]
 
         property var profiles: default_profiles
