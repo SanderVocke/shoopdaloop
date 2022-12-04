@@ -6,6 +6,8 @@ import MIDIControlDialect 1.0
 import MIDIControlInputRule 1.0
 import Qt.labs.qmlmodels 1.0
 
+import '../../build/StatesAndActions.js' as StatesAndActions
+
 Dialog {
     id: dialog
     modal: true
@@ -51,61 +53,32 @@ Dialog {
     component MIDISettings : Item {
         property var active_settings : MIDIControlSettingsData { id: active_midi_settings }
 
-        TableView {
-            anchors.fill: parent
-            columnSpacing : 1
-            rowSpacing : 1
-            clip : true
-
-            model: TableModel {
-                id: midi_settings_table
-                TableModelColumn { display: 'Device connection rule' }
-                TableModelColumn { display: 'MIDI dialect' }
-
-                rows: {
-                    var r = [{ 'Device connection rule': 'Device connection rule', 'MIDI dialect': 'MIDI dialect' }]
-                    var keys = Object.keys(active_midi_settings.settings)
-                    for (var i=0; i<keys.length; i++) {
-                        var autoconnect_rule_name = keys[i]
-                        var dialect_name = active_midi_settings.settings[autoconnect_rule_name]
-                        r.push({
-                            'Device connection rule': autoconnect_rule_name,
-                            'MIDI dialect': dialect_name
-                        })
-                    }
-                    for (var key in r) { 
-                        console.log(key, r[key])
-                    }
-                    return r
-                }
+        Row {
+            spacing: 2
+            Text {
+                anchors.verticalCenter: profile_name.verticalCenter
+                color: Material.foreground
+                text: 'Showing MIDI control profile:'
             }
+            ComboBox {
+                id: profile_name
+                property var data: active_settings.profiles
+                model: data.map((element, index) => index) // Create array of indices only
+                width: 300
+                displayText: data[currentIndex][0].name
 
-            delegate: DelegateChooser {
-                DelegateChoice {
-                    row: 0
-                    delegate: Text {
-                        text: display
+                delegate: ItemDelegate {
+                    width: profile_name.width
+                    contentItem: Text {
+                        property var data : profile_name.data[modelData]
+                        text: data[0].name + (data[1] ? '' : ' (inactive)')
+                        color: data[1] ? Material.foreground : 'grey'
+                        //color: "#21be2b"
+                        //font: control.font
+                        //elide: Text.ElideRight
+                        verticalAlignment: Text.AlignVCenter
                     }
-                }
-                DelegateChoice {
-                    delegate: ComboBox {
-                        implicitWidth: 200
-                        implicitHeight: 50
-
-                        //border.width: 2
-                        //radius: 4
-
-                        //border.color: 'grey'
-                        //color: '#222222'
-
-                        //Text {
-                        //    text: display
-                        //    color: Material.foreground
-                        //    anchors.centerIn: parent
-                        //}
-
-                        model: midi_settings_table.rows.map(r => r[Object.keys(r)[column]])
-                    }
+                    //highlighted: control.highlightedIndex === index
                 }
             }
         }
@@ -115,7 +88,12 @@ Dialog {
 
     component MIDIControlSettingsData : QtObject {
 
-        readonly property var builtin_akai_apc_mini_dialect : {
+        readonly property var builtin_akai_apc_mini_profile : {
+            'name': 'AKAI APC Mini',
+
+            'midi_in_regex': '.*APC MINI MIDI.*',
+            'midi_out_regex': '.*APC MINI MIDI.*',
+
             'substitutions': {
                 // Map our loop index to the note identifier on the APC
                 'loop_note':  '0 if (track == 0 and loop == 0) else (56+track-1-loop*8)',
@@ -127,12 +105,31 @@ Dialog {
                 'fader_track': 'controller-48+1' //'controller-48+1 if controller >= 48 and controller < 56'
             },
 
-            'inputRules': {
-
-            },
+            'inputRules': [
+                // Input rule signature:
+                // [
+                //    { filter_type1: filter_arg1, filter_type2: filter_arg2, ...},
+                //    [ condition_formula1, condition_formula2, ...]
+                //    handler_formula
+                // ]
+                [
+                    {[StatesAndActions.MIDIMessageFilterType.IsNoteOn]: null},
+                    ['note <= 64'],
+                    'loopAction(note_track, note_loop, play_or_stop)'
+                ],
+                [
+                    {[StatesAndActions.MIDIMessageFilterType.IsCCKind]: null},
+                    ['48 <= controller < 56'],
+                    'setVolume(fader_track, value/127.0)'
+                ],
+            ],
 
             'loopStateChangeFormulas': {
-
+                // Signature { loop_state: handler_formula, ... }
+                [StatesAndActions.LoopState.Recording]: 'noteOn(0, loop_note, 3)',
+                [StatesAndActions.LoopState.Playing]: 'noteOn(0, loop_note, 1)',
+                [StatesAndActions.LoopState.Stopped]: 'noteOn(0, loop_note, 0)',
+                [StatesAndActions.LoopState.PlayingMuted]: 'noteOn(0, loop_note, 0)'
             },
 
             'loop_state_change_default_output_rule': 'noteOn(0, loop_note, 5)', // Unhandled state becomes yellow
@@ -140,22 +137,13 @@ Dialog {
             'reset_output_rule': 'notesOn(0, 0, 98, 0)' // Everything off
         }
 
-        readonly property var builtin_dialects : {
-            'AKAI APC Mini (built-in)': builtin_akai_apc_mini_dialect
-        }
-
-        property var user_dialects: {}
-
-        readonly property var builtin_autoconnect_rules: {
-            'AKAI APC Mini (built-in)': null
-        }
-
-        property var user_autoconnect_rules: {}
-
         // The actual setting is a map of autoconnect rule names to dialect names.
-        readonly property var default_settings: {
-            'AKAI APC Mini (built-in)': 'AKAI APC Mini (built-in)'
-        }
-        property var settings: default_settings
+        readonly property var default_profiles: [
+            // Signature: [profile, active]
+            [ builtin_akai_apc_mini_profile, true ],
+            [ builtin_akai_apc_mini_profile, false ]
+        ]
+
+        property var profiles: default_profiles
     }
 }

@@ -1,6 +1,6 @@
 from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot, QTimer
 
-from ..StatesAndActions import LoopState
+from ..StatesAndActions import LoopState, MIDIMessageFilterType
 from ..MidiScripting import *
 from ..flatten import flatten
 from .MIDIControlLink import *
@@ -13,25 +13,12 @@ from copy import *
 import time
 from dataclasses import dataclass
 
-class MessageFilterType(Enum):
-    Channel = 0
-    IsNoteKind = 1 # filter on note messages
-    NoteId = 2
-    NoteVelocity = 3
-    IsNoteOn = 4
-    IsNoteOff = 5
-    IsNoteShortPress = 6
-    IsNoteDoublePress = 7
-    IsCCKind = 8 # filter on CC messages
-    CCController = 9
-    CCValue = 10
-
 class InputRule:
     press_period = 0.5
     doublepress_period = 1.0
 
     def __init__(self,
-                 filters : dict[Type[MessageFilterType], Union[None, int]],
+                 filters : dict[Type[MIDIMessageFilterType], Union[None, int]],
                  condition_formulas : list[str],
                  formula : str,
                  ):
@@ -63,18 +50,18 @@ class InputRule:
         if len(msg_bytes) >= 3:
             value_or_velocity = msg_bytes[2]
         
-        if (MessageFilterType.CCController.value in filters or MessageFilterType.CCValue.value in filters) and \
-           MessageFilterType.IsCCKind.value not in filters:
-           filters[MessageFilterType.IsCCKind.value] = None
+        if (MIDIMessageFilterType.CCController.value in filters or MIDIMessageFilterType.CCValue.value in filters) and \
+           MIDIMessageFilterType.IsCCKind.value not in filters:
+           filters[MIDIMessageFilterType.IsCCKind.value] = None
         
-        if (MessageFilterType.NoteId.value in filters or \
-            MessageFilterType.NoteVelocity.value in filters or \
-            MessageFilterType.IsNoteOff.value in filters or \
-            MessageFilterType.IsNoteOn.value in filters or \
-            MessageFilterType.IsNoteShortPress.value in filters or \
-            MessageFilterType.IsNoteDoublePress.value in filters) and \
-           MessageFilterType.IsNoteKind.value not in filters:
-           filters[MessageFilterType.IsNoteKind.value] = None
+        if (MIDIMessageFilterType.NoteId.value in filters or \
+            MIDIMessageFilterType.NoteVelocity.value in filters or \
+            MIDIMessageFilterType.IsNoteOff.value in filters or \
+            MIDIMessageFilterType.IsNoteOn.value in filters or \
+            MIDIMessageFilterType.IsNoteShortPress.value in filters or \
+            MIDIMessageFilterType.IsNoteDoublePress.value in filters) and \
+           MIDIMessageFilterType.IsNoteKind.value not in filters:
+           filters[MIDIMessageFilterType.IsNoteKind.value] = None
         
         if type_byte == 0x80:
             print('noteOff {} {}'.format(controller_or_note, value_or_velocity))
@@ -87,10 +74,10 @@ class InputRule:
             
             self._lastOff[controller_or_note] = _time
 
-            if MessageFilterType.IsCCKind.value in filters or \
-                MessageFilterType.IsNoteOn.value in filters or \
-                (MessageFilterType.NoteId.value in filters and filters[MessageFilterType.NoteId.value] != controller_or_note) or \
-                (MessageFilterType.NoteVelocity.value in filters and filters[MessageFilterType.NoteVelocity.value] != value_or_velocity):
+            if MIDIMessageFilterType.IsCCKind.value in filters or \
+                MIDIMessageFilterType.IsNoteOn.value in filters or \
+                (MIDIMessageFilterType.NoteId.value in filters and filters[MIDIMessageFilterType.NoteId.value] != controller_or_note) or \
+                (MIDIMessageFilterType.NoteVelocity.value in filters and filters[MIDIMessageFilterType.NoteVelocity.value] != value_or_velocity):
                 return False
                
         elif type_byte == 0x90:
@@ -98,17 +85,17 @@ class InputRule:
 
             self._lastOn[controller_or_note] = _time
 
-            if MessageFilterType.IsCCKind.value in filters or \
-                MessageFilterType.IsNoteOff.value in filters or \
-                (MessageFilterType.NoteId.value in filters and filters[MessageFilterType.NoteId.value] != controller_or_note) or \
-                (MessageFilterType.NoteVelocity.value in filters and filters[MessageFilterType.NoteVelocity.value] != value_or_velocity):
+            if MIDIMessageFilterType.IsCCKind.value in filters or \
+                MIDIMessageFilterType.IsNoteOff.value in filters or \
+                (MIDIMessageFilterType.NoteId.value in filters and filters[MIDIMessageFilterType.NoteId.value] != controller_or_note) or \
+                (MIDIMessageFilterType.NoteVelocity.value in filters and filters[MIDIMessageFilterType.NoteVelocity.value] != value_or_velocity):
                 return False
 
         elif type_byte == 0xB0:
             print('CC {} {}'.format(controller_or_note, value_or_velocity))
-            if MessageFilterType.IsNoteKind.value in filters or \
-                (MessageFilterType.CCController.value in filters and filters[MessageFilterType.CCController.value] != controller_or_note) or \
-                (MessageFilterType.CCValue.value in filters and filters[MessageFilterType.CCValue.value] != value_or_velocity):
+            if MIDIMessageFilterType.IsNoteKind.value in filters or \
+                (MIDIMessageFilterType.CCController.value in filters and filters[MIDIMessageFilterType.CCController.value] != controller_or_note) or \
+                (MIDIMessageFilterType.CCValue.value in filters and filters[MIDIMessageFilterType.CCValue.value] != value_or_velocity):
                 return False
         
         if press:
@@ -118,10 +105,10 @@ class InputRule:
                doublePress = True
             self._lastPress[controller_or_note] = _time
         
-        if MessageFilterType.IsNoteDoublePress in filters and not doublePress:
+        if MIDIMessageFilterType.IsNoteDoublePress in filters and not doublePress:
             return False
         
-        if MessageFilterType.IsNoteShortPress in filters and not press:
+        if MIDIMessageFilterType.IsNoteShortPress in filters and not press:
             return False
         
         return True
@@ -187,10 +174,10 @@ builtin_dialects = {
         },
         [   # Rules
             InputRule({
-                MessageFilterType.IsNoteOn.value: None,
+                MIDIMessageFilterType.IsNoteOn.value: None,
             }, ['note <= 64'], 'loopAction(note_track, note_loop, activate)'),
             InputRule({
-                MessageFilterType.IsCCKind.value: None,
+                MIDIMessageFilterType.IsCCKind.value: None,
             }, ['48 <= controller < 56'], 'setVolume(fader_track, value/127.0)')
         ],
         {
