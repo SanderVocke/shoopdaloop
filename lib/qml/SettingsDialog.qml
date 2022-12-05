@@ -15,7 +15,7 @@ Dialog {
     standardButtons: Dialog.Close
 
     width: 800
-    height: 450
+    height: 500
 
     Item {
         anchors.fill: parent
@@ -54,24 +54,38 @@ Dialog {
         property var active_settings : MIDIControlSettingsData { id: active_midi_settings }
 
         Row {
-            spacing: 2
+            id: profile_select_row
+            spacing: 5
+            anchors {
+                top: parent.top
+                left: parent.left
+                right: parent.right
+            }
 
-            Text {
+            Label {
                 anchors.verticalCenter: profile_selector.verticalCenter
+                verticalAlignment: Text.AlignVCenter
                 color: Material.foreground
                 text: 'Showing MIDI control profile:'
             }
+
             ComboBox {
                 id: profile_selector
                 property var data: active_settings.profiles
-                property var active_profile_entry: data[currentIndex]
-                model: data.map((element, index) => index) // Create array of indices only
+                property var active_profile_entry: currentIndex >= 0 ? data[currentIndex] : null
+                model: Object.keys(data).map((element, index) => index) // Create array of indices only
                 width: 300
-                displayText: {
-                    console.log(data)
-                    console.log(data[currentIndex])
-                    console.log(data[currentIndex].profile)
-                    return data[currentIndex].profile.name
+                
+                contentItem: Item {
+                    anchors.fill: parent
+                    Label {
+                        anchors.fill: parent
+                        anchors.leftMargin: 10
+                        color: profile_selector.active_profile_entry.active ? Material.foreground : 'grey'
+                        verticalAlignment: Text.AlignVCenter
+                        text: profile_selector.active_profile_entry.profile.name +
+                            (profile_selector.active_profile_entry.active ? '' : ' (inactive)')
+                    }
                 }
 
                 delegate: ItemDelegate {
@@ -85,14 +99,168 @@ Dialog {
                 }
             }
             CheckBox {
+                text: 'Profile active'
                 property bool controlledState: profile_selector.active_profile_entry.active
-                onCheckStateChanged: () => {
-                    console.log('check to', checkState)
-                    active_settings.profiles[profile_selector.currentIndex].active = checkState == Qt.Checked
-                    console.log('=>', active_settings.profiles[profile_selector.currentIndex].active)
+                Component.onCompleted: checkState = controlledState ? Qt.Checked : Qt.Unchecked
+                onControlledStateChanged: () => { checkState = controlledState ? Qt.Checked : Qt.Unchecked }
+                onCheckStateChanged: () => { active_settings.profiles[profile_selector.currentIndex].active = checkState == Qt.Checked }
+            }
+        }
+
+        ToolSeparator {
+            id: separator
+
+            anchors {
+                top: profile_select_row.bottom
+                left: parent.left
+                right: parent.right
+            }
+
+            orientation: Qt.Horizontal
+        }
+
+        ScrollView {            
+            anchors {
+                top: separator.bottom
+                left: parent.left
+                right: parent.right
+                bottom: parent.bottom
+            }
+
+            contentHeight: scrollcontent.height
+
+            ScrollBar.vertical.policy: ScrollBar.AlwaysOn
+
+            Item {
+                id: scrollcontent
+
+                anchors {
+                    left: parent.left
+                    right: parent.right
+                    top: parent.top
+                }
+
+                height: childrenRect.height
+                
+                Column {
+                    spacing: 10
+                    anchors {
+                        top:parent.top
+                        left: parent.left
+                        right: parent.right
+                        rightMargin: 25
+                    }
+
+                    GroupBox {
+                        title: 'JACK port autoconnect'
+                        width: parent.width
+
+                        Row {
+                            anchors.fill:parent
+                            spacing: 10
+
+                            Label {
+                                text: 'Input port regex:'
+                                verticalAlignment: Text.AlignVCenter
+                                anchors.verticalCenter: tf1.verticalCenter
+                            }
+                            TextField {
+                                id: tf1
+                                placeholderText: 'input port regex'
+                                property string controlledState: profile_selector.active_profile_entry.profile.midi_in_regex
+                                onControlledStateChanged: () => { text = controlledState }
+                                onTextChanged: () => { profile_selector.active_profile_entry.profile.midi_in_regex = text }
+                                Component.onCompleted: () => { text = controlledState }
+                                width: 190
+                            }
+                            Label {
+                                text: 'Output port regex:'
+                                verticalAlignment: Text.AlignVCenter
+                                anchors.verticalCenter: tf1.verticalCenter
+                            }
+                            TextField {
+                                placeholderText: 'output port regex'
+                                property string controlledState: profile_selector.active_profile_entry.profile.midi_out_regex
+                                onControlledStateChanged: () => { text = controlledState }
+                                onTextChanged: () => { profile_selector.active_profile_entry.profile.midi_out_regex = text }
+                                Component.onCompleted: () => { text = controlledState }
+                                width: 190
+                            }
+                        }
+                    }
+
+                    GroupBox {
+                        title: 'Formula substitutions'
+                        width: parent.width
+                        height: 350
+
+                        TableView {
+                            height: 300
+
+                            model: TableModel {
+                                TableModelColumn { display: 'from' }
+                                TableModelColumn { display: 'to' }
+
+                                rows: Object.entries(
+                                    profile_selector.active_profile_entry.profile.substitutions
+                                ).map((entry) => {
+                                    return {
+                                        'from': entry[0],
+                                        'to': entry[1]
+                                    }
+                                })
+                            }
+
+                            delegate: DelegateChooser {
+                                DelegateChoice {
+                                    column: 0
+                                    ItemDelegate {
+                                        TextField {
+                                            width: 120
+                                            text: Object.keys(
+                                                profile_selector.active_profile_entry.profile.substitutions
+                                            )[row]
+                                        }
+                                    }
+                                }
+                                DelegateChoice {
+                                    column: 1
+                                    ItemDelegate {
+                                        TextField {
+                                            width: 300
+                                            text: Object.values(
+                                                profile_selector.active_profile_entry.profile.substitutions
+                                            )[row]
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    GroupBox {
+                        title: 'MIDI input handling'
+                        width: parent.width
+                    }
+
+                    GroupBox {
+                        title: 'Loop state change event handling'
+                        width: parent.width
+                    }
+
+                    GroupBox {
+                        title: 'Other event handling'
+                        width: parent.width
+                    }
                 }
             }
         }
+    }
+
+    component SubsettingsLabel: Label {
+        verticalAlignment: Text.AlignVCenter
+        font.bold: true
+        font.pixelSize: 15
     }
 
     component JACKSettings : Item {}
@@ -136,19 +304,19 @@ Dialog {
                 // Input rule signature:
                 // [
                 //    { filter_type1: filter_arg1, filter_type2: filter_arg2, ...},
-                //    [ condition_formula1, condition_formula2, ...]
+                //    condition_formula,
                 //    handler_formula
                 // ]
                 [
                     {[StatesAndActions.MIDIMessageFilterType.IsNoteOn]: null},
-                    ['note <= 64'],
+                    'note <= 64',
                     'loopAction(note_track, note_loop, play_or_stop)'
                 ],
                 [
                     {[StatesAndActions.MIDIMessageFilterType.IsCCKind]: null},
-                    ['48 <= controller < 56'],
+                    '48 <= controller < 56',
                     'setVolume(fader_track, value/127.0)'
-                ],
+                ]
             ]
 
             loop_state_change_formulas: ({
