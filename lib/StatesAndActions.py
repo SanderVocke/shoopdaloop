@@ -58,28 +58,18 @@ class PortActionType(Enum):
     SetPortPassthrough = backend.SetPortPassthrough
 
 class MIDIMessageFilterType(Enum):
-    Channel = 0
-    IsNoteKind = 1 # filter on note messages
-    NoteId = 2
-    NoteVelocity = 3
-    IsNoteOn = 4
-    IsNoteOff = 5
-    IsNoteShortPress = 6
-    IsNoteDoublePress = 7
-    IsCCKind = 8 # filter on CC messages
-    CCController = 9
-    CCValue = 10
+    IsNoteKind = 0 # filter on note messages
+    IsNoteOn = 1
+    IsNoteOff = 2
+    IsNoteShortPress = 3
+    IsNoteDoublePress = 4
+    IsCCKind = 5 # filter on CC messages
 
     names = {
-        Channel: 'channel',
         IsNoteKind: 'note_kind',
-        NoteId: 'note_id',
-        NoteVelocity: 'note_velocity',
         IsNoteOn: 'is_note_on',
         IsNoteOff: 'is_note_off',
         IsNoteShortPress: 'is_note_short_press',
         IsNoteDoublePress: 'is_note_double_press',
         IsCCKind: 'is_cc_kind',
-        CCController: 'cc_controller',
-        CCValue: 'cc_value',
     }

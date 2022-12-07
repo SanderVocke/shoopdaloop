@@ -155,6 +155,7 @@ with contextlib.ExitStack() as contextmgr:
             engine.rootContext().setContextProperty("backend_manager", backend_mgr)
             engine.rootContext().setContextProperty("click_track_generator", click_track_generator)
             engine.rootContext().setContextProperty("midi_control_manager", midi_control_mgr)
+            engine.rootContext().setContextProperty("mainScriptDir",  os.path.dirname(os.path.realpath(sys.argv[0])))
             engine.quit.connect(app.quit)
             engine.load('main.qml')
 
