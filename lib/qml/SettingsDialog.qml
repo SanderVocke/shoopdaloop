@@ -12,7 +12,7 @@ Dialog {
     id: dialog
     modal: true
     title: 'Settings'
-    standardButtons: Dialog.Close
+    standardButtons: Dialog.Reset | Dialog.Save | Dialog.Close
 
     width: 800
     height: 500
