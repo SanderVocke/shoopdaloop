@@ -42,13 +42,23 @@ Dialog {
             currentIndex: bar.currentIndex
 
             MIDISettings {
-                id: midi_settings
+                id: midi_settings_being_edited
             }
             JACKSettings {
-                id: jack_settings
+                id: jack_settings_being_edited
             }
         }
     }
+
+    // Persistent storage
+    // TODO
+    //Settings {
+    //    category: "MIDI control"
+    //    
+    //    MIDIControlSettingsData {
+    //        id: midi_settings
+    //    }
+    //}
 
     component MIDISettings : Item {
         id: midi_settings

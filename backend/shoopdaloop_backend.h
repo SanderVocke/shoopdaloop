@@ -129,12 +129,17 @@ int load_loop_data(
 );
 
 // Get loop data from storage.
-// Will set the loop state to Stopped.
 // Returns the amount of values in the data.
 // Caller is responsible for freeing the returned pointer.
+// If do_stop is nonzero, the loop is first stopped. This
+// way, the caller is sure that the data is valid.
+// If not used, the data retrieved may already have been
+// invalidated by a changing length due to e.g. recording
+// or clearing the loop.
 unsigned get_loop_data(
     unsigned loop_idx,
-    float **data_out
+    float **data_out,
+    unsigned do_stop
 );
 
 // Get access to the JACK port structures of a port pair.

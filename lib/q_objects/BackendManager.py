@@ -260,10 +260,10 @@ class BackendManager(QObject):
         backend.load_loop_data(loop_idx, len(data), c_data)
     
     @pyqtSlot(int, result=list)
-    def get_loop_data(self, loop_idx):
+    def get_loop_data(self, loop_idx, do_stop=True):
         c_float_p = POINTER(c_float)
         c_data = c_float_p()
-        n_floats = backend.get_loop_data(loop_idx, byref(c_data))
+        n_floats = backend.get_loop_data(loop_idx, byref(c_data), int(bool(do_stop)))
         data = [float(c_data[i]) for i in range(n_floats)]
         backend.shoopdaloop_free(cast(c_data, c_void_p))
         c_data = None
@@ -279,6 +279,11 @@ class BackendManager(QObject):
             backend.port_action_t(action_id),
             maybe_arg
         )
+    
+    @pyqtSlot(int)
+    def update_loop_waveform(self, loop_idx):
+        data = self.get_loop_data(loop_idx)
+
     
     #rcv_callback should be a SlowMidiCallback instance
     def create_slow_midi_input(self, name, rcv_callback):

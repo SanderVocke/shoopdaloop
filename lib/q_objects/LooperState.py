@@ -83,7 +83,7 @@ class LooperState(QObject):
         if self._volume != p:
             self._volume = p
             self.volumeChanged.emit(p)
-    
+
     @pyqtSlot(result=str)
     def serialize_session_state(self):
         d = {

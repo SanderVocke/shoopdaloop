@@ -738,16 +738,19 @@ int load_loop_data(
 
 unsigned get_loop_data(
     unsigned loop_idx,
-    float ** data_out
+    float ** data_out,
+    unsigned do_stop
 ) {
-    std::atomic<bool> finished = false;
-    push_command([loop_idx, &finished]() {
-        g_next_states(loop_idx) = Stopped;
-        g_states[0](loop_idx) = g_states[1](loop_idx) = Stopped;
-        g_positions[0](loop_idx) = g_positions[1](loop_idx) = 0;
-        finished = true;
-    });
-    while(!finished && g_loops_fn) {}
+    if (do_stop) {
+        std::atomic<bool> finished = false;
+        push_command([loop_idx, &finished]() {
+            g_next_states(loop_idx) = Stopped;
+            g_states[0](loop_idx) = g_states[1](loop_idx) = Stopped;
+            g_positions[0](loop_idx) = g_positions[1](loop_idx) = 0;
+            finished = true;
+        });
+        while(!finished && g_loops_fn) {}
+    }
 
     auto len = g_lengths[g_last_written_output_buffer_tick_tock](loop_idx);
     auto data = (float*) malloc(sizeof(float) * len);

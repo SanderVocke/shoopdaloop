@@ -162,7 +162,6 @@ with contextlib.ExitStack() as contextmgr:
             qml_app_state = engine.rootObjects()[0].findChild(QObject, 'app_shared_state')
     
     def save_session_handler(path, session, client):
-        print("Hello!")
         initialize_app_if_not_already(client)
         print("NSM: save session {}".format(path))
         qml_app_state.save_session(path, True)
@@ -208,5 +207,5 @@ with contextlib.ExitStack() as contextmgr:
     print("Entering Qt event loop.")
     exitcode = app.exec()
 
-print("Exiting.")
+print("Qt event loop finished.")
 sys.exit(exitcode)
