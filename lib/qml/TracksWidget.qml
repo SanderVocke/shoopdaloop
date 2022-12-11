@@ -57,7 +57,10 @@ Item {
                         maybe_master_loop_idx: -1
                         master_loop_manager: tracks.master_loop_manager
                         loop_managers: tracks.loop_managers[index]
-                        port_manager: tracks.port_managers[index]
+                        dry_left_port_manager: tracks.port_managers[index*4]
+                        dry_right_port_manager: tracks.port_managers[index*4+1]
+                        wet_left_port_manager: tracks.port_managers[index*4+2]
+                        wet_right_port_manager: tracks.port_managers[index*4+3]
 
                         function unpack(loops) {
                             var r = []

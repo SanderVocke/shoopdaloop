@@ -9,11 +9,68 @@ Item {
     width: childrenRect.width
     height: childrenRect.height
 
-    property var port_manager
+    property var dry_left_port_manager
+    property var dry_right_port_manager
+    property var wet_left_port_manager
+    property var wet_right_port_manager
+
+    property real max_output_peak: Math.max(
+        wet_left_port_manager ? wet_left_port_manager.outputPeak : 0.0,
+        wet_right_port_manager ? wet_right_port_manager.outputPeak : 0.0
+    )
+
+    property real max_input_peak: Math.max(
+        dry_left_port_manager ? dry_left_port_manager.inputPeak : 0.0,
+        dry_right_port_manager ? dry_right_port_manager.inputPeak : 0.0
+    )
+
+    property alias volume: volume.value
+    property alias passthrough: passthrough.value
+    property bool muted: wet_left_port_manager ? wet_left_port_manager.muted : true
+    property bool passthroughMuted: dry_left_port_manager ? dry_left_port_manager.passthroughMuted : true
+
+    function push_volume(target) {
+        if (target && target.volume != volume) { target.volume = volume }
+    }
+
+    function push_passthrough(target) {
+        if (target && target.passthrough != passthrough) { target.passthrough = passthrough }
+    }
+
+    function toggle_muted() {
+        var n = !wet_left_port_manager.muted
+        wet_left_port_manager.muted = n
+        wet_right_port_manager.muted = n
+    }
+
+    function toggle_passthroughMuted() {
+        var n = !dry_left_port_manager.passthroughMuted
+        dry_left_port_manager.passthroughMuted = n
+        dry_right_port_manager.passthroughMuted = n
+    }
+
+    onVolumeChanged: {
+        push_volume(wet_left_port_manager)
+        push_volume(wet_right_port_manager)
+    }
+
+    onPassthroughChanged: {
+        push_passthrough(dry_left_port_manager)
+        push_passthrough(dry_right_port_manager)
+    }
+
+    Connections {
+        target: wet_left_port_manager || null
+        function onVolumeChanged() { volume = wet_left_port_manager.volume }
+    }
+
+    Connections {
+        target: dry_left_port_manager || null
+        function onPassthroughChanged() { passthrough = wet_left_port_manager.passthrough }
+    }
 
     signal mute()
     signal unmute()
-    property bool muted
 
     Column {
         spacing: 2
@@ -42,7 +99,7 @@ Item {
                     discharge_rate: 3
                     max_dt: 0.1
 
-                    input: trackctl.port_manager ? trackctl.port_manager.outputPeak : 0.0
+                    input: trackctl.max_output_peak
                 }
 
                 background: Rectangle {
@@ -82,19 +139,6 @@ Item {
                     from: 0.0
                     to: 1.0
 
-                    value: 1.0
-
-                    // Bidirectional link with the actual backend property
-                    onValueChanged: () => { 
-                        if (trackctl.port_manager && volume.value != trackctl.port_manager.volume) {
-                            trackctl.port_manager.volume = volume.value
-                        }
-                    }
-                    Connections {
-                        target: trackctl.port_manager
-                        function onVolumeChanged (v) { volume.value = v }
-                    }
-
                     ToolTip {
                         delay: 1000
                         visible: volume_ma.containsMouse
@@ -133,7 +177,7 @@ Item {
                     discharge_rate: 3
                     max_dt: 0.1
 
-                    input: trackctl.port_manager ? trackctl.port_manager.inputPeak : 0.0
+                    input: trackctl.max_input_peak
                 }
 
                 background: Rectangle {
@@ -172,19 +216,6 @@ Item {
                     height: 20
                     from: 0.0
                     to: 1.0
-
-                    value: 1.0
-
-                    // Bidirectional link with the actual backend property
-                    onValueChanged: () => { 
-                        if (trackctl.port_manager && passthrough.value != trackctl.port_manager.passthrough) {
-                            trackctl.port_manager.passthrough = passthrough.value
-                        }
-                    }
-                    Connections {
-                        target: trackctl.port_manager
-                        function onPassthroughChanged (v) { passthrough.value = v }
-                    }
 
                     ToolTip {
                         delay: 1000
@@ -248,10 +279,10 @@ Item {
                 MaterialDesignIcon {
                     size: parent.width - 3
                     anchors.centerIn: parent
-                    name: trackctl.port_manager.muted ? 'volume-mute' : 'volume-high'
-                    color: trackctl.port_manager.muted ? 'grey' : Material.foreground
+                    name: trackctl.muted ? 'volume-mute' : 'volume-high'
+                    color: trackctl.muted ? 'grey' : Material.foreground
                 }
-                onClicked: { trackctl.port_manager.muted = !trackctl.port_manager.muted }
+                onClicked: { trackctl.toggle_muted() }
 
                 hoverEnabled: true
                 ToolTip.delay: 1000
@@ -268,10 +299,10 @@ Item {
                     size: parent.width - 3
                     anchors.centerIn: parent
                     name: 'ear-hearing'
-                    color: trackctl.port_manager.passthroughMuted ?
+                    color: trackctl.passthroughMuted ?
                         'grey' : Material.foreground
                 }
-                onClicked: { trackctl.port_manager.passthroughMuted = !trackctl.port_manager.passthroughMuted }
+                onClicked: { trackctl.toggle_passthroughMuted() }
 
                 hoverEnabled: true
                 ToolTip.delay: 1000

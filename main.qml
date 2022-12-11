@@ -51,7 +51,7 @@ ApplicationWindow {
             track_names: shared.track_names.slice(1)
             loop_names: shared.loop_names.slice(1)
             loop_managers: shared.loop_managers.slice(1)
-            port_managers: shared.port_managers.slice(1)
+            port_managers: shared.port_managers.slice(4)
             first_loop_index: 2
             master_loop_manager: shared.master_loop_manager
             loops_per_track: shared.loops_per_track
@@ -83,7 +83,10 @@ ApplicationWindow {
             maybe_master_loop_idx: 0
             master_loop_manager: shared.master_loop_manager
             loop_managers: [shared.master_loop_manager]
-            port_manager: shared.port_managers[0]
+            dry_left_port_manager: shared.port_managers[0]
+            dry_right_port_manager: shared.port_managers[1]
+            wet_left_port_manager: shared.port_managers[2]
+            wet_right_port_manager: shared.port_managers[3]
             loops_of_selected_scene: []
             loops_of_hovered_scene: []
             onRenamed: (name) => shared.rename_track(0, name)

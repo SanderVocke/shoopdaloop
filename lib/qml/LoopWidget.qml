@@ -11,7 +11,10 @@ Item {
     property bool is_in_selected_scene: false
     property bool is_in_hovered_scene: false
     property var manager
-    property var port_manager
+    property var dry_left_port_manager
+    property var dry_right_port_manager
+    property var wet_left_port_manager
+    property var wet_right_port_manager
     property alias name: statusrect.name
     property string internal_name
     
@@ -758,10 +761,6 @@ Item {
             BackendLooperManagerDetails {
                 title: "Post-FX loop"
                 manager: window.manager.wet_looper
-            }
-            Text {
-                color: Material.foreground
-                text: 'rec. latency: ' + (widget.port_manager.recordingLatency * 1000.0).toFixed(1) + 'ms'
             }
         }
     }

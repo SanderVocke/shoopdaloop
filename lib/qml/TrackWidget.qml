@@ -13,7 +13,10 @@ Item {
     property int maybe_master_loop_idx: -1 //-1 is none
     property var master_loop_manager
     property var loop_managers
-    property var port_manager
+    property var dry_left_port_manager
+    property var dry_right_port_manager
+    property var wet_left_port_manager
+    property var wet_right_port_manager
     property var loop_names
     property string name: ''
     property bool name_editable: true
@@ -85,7 +88,10 @@ Item {
                         is_in_selected_scene: track.loops_of_selected_scene.includes(index)
                         is_in_hovered_scene: track.loops_of_hovered_scene.includes(index)
                         manager: track.loop_managers[index]
-                        port_manager: track.port_manager
+                        dry_left_port_manager: track.dry_left_port_manager
+                        dry_right_port_manager: track.dry_right_port_manager
+                        wet_left_port_manager: track.wet_left_port_manager
+                        wet_right_port_manager: track.wet_right_port_manager
                         name: track.loop_names[index]
                         internal_name: track.name + ' loop ' + (index+1).toString()
 
@@ -99,7 +105,10 @@ Item {
                     id: trackctlwidget
 
                     muted: track.active_loop_state === StatesAndActions.LoopState.Muted
-                    port_manager: track.port_manager
+                    dry_left_port_manager: track.dry_left_port_manager
+                    dry_right_port_manager: track.dry_right_port_manager
+                    wet_left_port_manager: track.wet_left_port_manager
+                    wet_right_port_manager: track.wet_right_port_manager
                 }
             }
         }
