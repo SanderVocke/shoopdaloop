@@ -115,6 +115,7 @@ class DryWetPairAbstractLooperManager(LooperState):
             self._wet_looper.stateChanged.connect(self.updateState)
             self._wet_looper.nextStateChanged.connect(self.updateNextState)
             self._wet_looper.volumeChanged.connect(lambda v: DryWetPairAbstractLooperManager.volume.fset(self, v))
+            self._wet_looper.outputPeakChanged.connect(lambda v: DryWetPairAbstractLooperManager.outputPeak.fset(self, v))
             self.wetLooperIdxsChanged.connect(lambda s: setattr(self._wet_looper, 'loop_idxs', s))
             
         return self._wet_looper

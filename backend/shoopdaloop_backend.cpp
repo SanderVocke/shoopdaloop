@@ -51,6 +51,11 @@ Buffer<int32_t, 1> g_lengths[2];
 std::vector<float> g_samples_in_raw, g_samples_out_raw; //Use vectors here so we control the layout
 Buffer<float, 2> g_samples_in, g_samples_out;
 
+// Peak buffers
+Buffer<float, 1> g_port_output_peaks;
+Buffer<float, 1> g_port_input_peaks;
+Buffer<float, 1> g_loop_output_peaks;
+
 // Intermediate sample buffer which stores per loop (not port)
 Buffer<float, 2> g_samples_out_per_loop;
 
@@ -94,8 +99,8 @@ std::vector<jack_default_audio_sample_t*> g_input_bufs, g_output_bufs;
 
 jack_client_t* g_jack_client;
 
-UpdateCallback g_update_callback;
 AbortCallback g_abort_callback;
+UpdateCallback g_update_cb;
 
 std::thread g_reporting_thread;
 
@@ -104,15 +109,13 @@ std::thread g_reporting_thread;
 struct atomic_state {
     std::vector<std::atomic<loop_state_t>> states, next_states;
     std::vector<std::atomic<int32_t>> positions, lengths, latencies;
-    std::vector<std::atomic<float>> passthroughs, loop_volumes, port_volumes;
+    std::vector<std::atomic<float>> passthroughs, loop_volumes, port_volumes, port_input_peaks, port_output_peaks, loop_output_peaks;
     std::vector<std::atomic<int8_t>> ports_muted, port_inputs_muted;
 };
 atomic_state g_atomic_state;
 
 std::condition_variable g_terminate_cv;
 std::mutex g_terminate_cv_m;
-
-UpdateCallback g_update_cb;
 
 // A lock-free queue is used to pass commands to the audio
 // processing thread in the form of functors.
@@ -282,6 +285,9 @@ int jack_process (jack_nframes_t nframes, void *arg) {
             nframes,
             g_loop_len,
             g_samples_out,
+            g_port_input_peaks,
+            g_port_output_peaks,
+            g_loop_output_peaks,
             g_latency_buf,
             g_latency_buf_write_pos,
             g_samples_out_per_loop,
@@ -324,6 +330,7 @@ int jack_process (jack_nframes_t nframes, void *arg) {
         g_atomic_state.lengths[i] = g_lengths[g_last_written_output_buffer_tick_tock](i);
         g_atomic_state.loop_volumes[i] = g_loop_volumes(i);
         g_atomic_state.positions[i] = g_positions[g_last_written_output_buffer_tick_tock](i);
+        g_atomic_state.loop_output_peaks[i] = g_loop_output_peaks(i);
     }
     for(int i=0; i<g_n_ports; i++) {
         g_atomic_state.passthroughs[i] = g_passthroughs(i);
@@ -331,6 +338,8 @@ int jack_process (jack_nframes_t nframes, void *arg) {
         g_atomic_state.ports_muted[i] = g_ports_muted(i);
         g_atomic_state.port_inputs_muted[i] = g_port_inputs_muted(i);
         g_atomic_state.latencies[i] = g_port_recording_latencies(i);
+        g_atomic_state.port_input_peaks[i] = g_port_input_peaks(i);
+        g_atomic_state.port_output_peaks[i] = g_port_output_peaks(i);
     }
 
     auto did_output = std::chrono::high_resolution_clock::now();
@@ -435,6 +444,9 @@ jack_client_t* initialize(
     g_latency_buf_write_pos() = 0;
     g_port_recording_latencies = Buffer<int32_t>(n_ports);
     g_latency_buf = Buffer<float, 2>(latency_buf_size, n_ports);
+    g_port_input_peaks = Buffer<float, 1>(n_ports);
+    g_port_output_peaks = Buffer<float, 1>(n_ports);
+    g_loop_output_peaks = Buffer<float, 1>(n_loops);
 
     g_samples_in = Buffer<float, 2>(
         halide_type_t {halide_type_float, 32, 1},
@@ -458,6 +470,9 @@ jack_client_t* initialize(
     g_atomic_state.ports_muted = std::vector<std::atomic<int8_t>>(n_ports);
     g_atomic_state.port_inputs_muted = std::vector<std::atomic<int8_t>>(n_ports);
     g_atomic_state.latencies = std::vector<std::atomic<int32_t>>(n_ports);
+    g_atomic_state.port_input_peaks = std::vector<std::atomic<float>>(n_ports);
+    g_atomic_state.port_output_peaks = std::vector<std::atomic<float>>(n_ports);
+    g_atomic_state.loop_output_peaks = std::vector<std::atomic<float>>(n_loops);
 
     // Initialize loops
     for(size_t i=0; i<g_n_loops; i++) {
@@ -703,7 +718,10 @@ void request_update() {
             passthroughs.data(),
             latencies.data(),
             ports_muted.data(),
-            port_inputs_muted.data()
+            port_inputs_muted.data(),
+            g_loop_output_peaks.data(),
+            g_port_output_peaks.data(),
+            g_port_input_peaks.data()
         );
     }
 }

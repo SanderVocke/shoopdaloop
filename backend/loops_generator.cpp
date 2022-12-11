@@ -65,6 +65,12 @@ public:
     // Ns x Np
     Output<Buffer<float, 2>> samples_out{"samples_out"};
 
+    // Np
+    Output<Buffer<float, 1>> port_input_peaks{"port_input_peaks"};
+    Output<Buffer<float, 1>> port_output_peaks{"port_output_peaks"};
+    // Nl
+    Output<Buffer<float, 1>> loop_output_peaks{"loop_output_peaks"};
+
     // NLat x Np
     Output<Buffer<float, 2>> latencybuf_out{"latencybuf_out"};
 
@@ -173,6 +179,10 @@ public:
         Func _latency_applied_samples_in("_latency_applied_samples_in");
         Expr sample_idx = (latencybuf_writepos_in - _port_recording_latencies(remapped_port) + x) % lbuf_size;
         _latency_applied_samples_in(x, port) = _latencybuf_out(sample_idx, remapped_port);
+
+        // Calculate input peaks
+        RDom all_samples(0, samples_in.dim(0).extent());
+        port_input_peaks(port) = argmax(abs(_samples_in(all_samples, port)))[1];
 
         // State transitions due to sync connections
         
@@ -371,6 +381,9 @@ public:
                 Halide::undef<float>() // No playback
             );
 
+        // Compute output peaks per loop
+        loop_output_peaks(loop) = argmax(abs(samples_out_per_loop(all_samples, loop)))[1];
+
         // Compute output samples mixed into ports
         samples_out(x, port) = _samples_in(x, port) * port_passthrough_levels(port);
         RDom l2p(0, n_samples, ports_map.dim(0).min(), ports_map.dim(0).extent());
@@ -384,6 +397,9 @@ public:
         samples_out(x, port) = samples_out(x, port) *
             port_volumes(port) *
             select(_ports_muted(port) != 0, 0.0f, 1.0f);
+        
+        // Compute output peaks per port
+        port_output_peaks(port) = argmax(abs(samples_out(all_samples, port)))[1];
 
         // Compute output states
         states_out(loop) = new_state(loop);
@@ -418,6 +434,9 @@ public:
         rr_record_start_index.compute_root();
         latencybuf_out.compute_root();
         latencybuf_writepos_out.compute_root();
+        port_input_peaks.compute_root();
+        port_output_peaks.compute_root();
+        loop_output_peaks.compute_root();
         // _loop_lengths_in.compute_root();
         // _positions_in.compute_root();
         // _soft_sync_map.compute_root();

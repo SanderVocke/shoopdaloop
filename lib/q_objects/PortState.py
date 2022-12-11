@@ -14,6 +14,8 @@ class PortState(QObject):
     passthroughChanged = pyqtSignal(float)
     passthroughMutedChanged = pyqtSignal(bool)
     recordingLatencyChanged = pyqtSignal(float)
+    outputPeakChanged = pyqtSignal(float)
+    inputPeakChanged = pyqtSignal(float)
 
     def __init__(self, parent=None):
         super(PortState, self).__init__(parent)
@@ -22,6 +24,8 @@ class PortState(QObject):
         self._passthrough = 1.0
         self._passthroughMuted = False
         self._recordingLatency = 0.0
+        self._output_peak = 0.0
+        self._input_peak = 0.0
     
     ######################
     # PROPERTIES
@@ -66,6 +70,28 @@ class PortState(QObject):
         if self._passthroughMuted != l:
             self._passthroughMuted = l
             self.passthroughMutedChanged.emit(l)
+    
+    # Output peak: amplitude value of 0.0-...
+    @pyqtProperty(float, notify=outputPeakChanged)
+    def outputPeak(self):
+        return self._output_peak
+    
+    @outputPeak.setter
+    def outputPeak(self, p):
+        if self._output_peak != p:
+            self._output_peak = p
+            self.outputPeakChanged.emit(p)
+
+    # Input peak: amplitude value of 0.0-...
+    @pyqtProperty(float, notify=inputPeakChanged)
+    def inputPeak(self):
+        return self._input_peak
+    
+    @inputPeak.setter
+    def inputPeak(self, p):
+        if self._input_peak != p:
+            self._input_peak = p
+            self.inputPeakChanged.emit(p)
     
     @pyqtSlot(result=str)
     def serialize_session_state(self):

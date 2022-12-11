@@ -16,6 +16,7 @@ class LooperState(QObject):
     stateChanged = pyqtSignal(int)
     nextStateChanged = pyqtSignal(int)
     volumeChanged = pyqtSignal(float)
+    outputPeakChanged = pyqtSignal(float)
 
     def __init__(self, parent=None):
         super(LooperState, self).__init__(parent)
@@ -24,6 +25,7 @@ class LooperState(QObject):
         self._state = LoopState.Unknown.value
         self._next_state = LoopState.Unknown.value
         self._volume = 1.0
+        self._output_peak = 0.0
 
     ######################
     # PROPERTIES
@@ -83,6 +85,17 @@ class LooperState(QObject):
         if self._volume != p:
             self._volume = p
             self.volumeChanged.emit(p)
+    
+    # Output peak: amplitude value of 0.0-...
+    @pyqtProperty(float, notify=outputPeakChanged)
+    def outputPeak(self):
+        return self._output_peak
+    
+    @outputPeak.setter
+    def outputPeak(self, p):
+        if self._output_peak != p:
+            self._output_peak = p
+            self.outputPeakChanged.emit(p)
 
     @pyqtSlot(result=str)
     def serialize_session_state(self):

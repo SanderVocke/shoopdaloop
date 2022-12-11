@@ -48,6 +48,8 @@ class PortManager(PortState):
             port_state.passthroughChanged.connect(lambda v: PortManager.passthrough.fset(self, v))
             port_state.passthroughMutedChanged.connect(lambda v: PortManager.passthroughMuted.fset(self, v))
             port_state.recordingLatencyChanged.connect(lambda v: PortManager.recordingLatency.fset(self, v))
+            port_state.outputPeakChanged.connect(lambda v: PortManager.outputPeak.fset(self, v))
+            port_state.inputPeakChanged.connect(lambda v: PortManager.inputPeak.fset(self, v))
             self.volume = port_state.volume
             self.muted = port_state.muted
             self.passthrough = port_state.passthrough

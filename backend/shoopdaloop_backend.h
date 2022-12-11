@@ -56,7 +56,10 @@ typedef int(*UpdateCallback) (
     float *port_passthrough_levels,
     int *port_latencies,
     int8_t *ports_muted,
-    int8_t *port_inputs_muted
+    int8_t *port_inputs_muted,
+    float *loop_output_peaks,
+    float *port_output_peaks,
+    float *port_input_peaks
 );
 
 typedef void (*AbortCallback) ();

@@ -202,7 +202,10 @@ class BackendManager(QObject):
                 port_passthrough_levels,
                 port_latencies,
                 ports_muted,
-                port_inputs_muted):
+                port_inputs_muted,
+                loop_output_peaks,
+                port_output_peaks,
+                port_input_peaks):
         # pr = cProfile.Profile()
         # pr.enable()
         self.sample_rate = sample_rate
@@ -214,6 +217,7 @@ class BackendManager(QObject):
             m.length = loop_lengths[i]
             m.pos = loop_positions[i]
             m.volume = loop_volumes[i]
+            m.outputPeak = loop_output_peaks[i]
 
         for i in range(n_ports):
             p = self.port_states[i]
@@ -222,8 +226,8 @@ class BackendManager(QObject):
             p.muted = ports_muted[i] != 0
             p.passthroughMuted = port_inputs_muted[i] != 0
             p.recordingLatency = port_latencies[i] / self.sample_rate
-            if p.recordingLatency > 0.0:
-                print(port_latencies[i])
+            p.outputPeak = port_output_peaks[i]
+            p.inputPeak = port_input_peaks[i]
         
         # # TODO port changes
         # pr.disable()

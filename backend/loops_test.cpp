@@ -38,6 +38,9 @@ struct loops_buffers {
     Buffer<float, 1> port_volumes;
     Buffer<int8_t, 1> ports_muted;
     Buffer<int8_t, 1> port_inputs_muted;
+    Buffer<float, 1> port_input_peaks;
+    Buffer<float, 1> port_output_peaks;
+    Buffer<float, 1> loop_output_peaks;
 };
 
 loops_buffers setup_buffers(
@@ -63,6 +66,7 @@ loops_buffers setup_buffers(
     r.loops_soft_sync_mapping = decltype(r.loops_soft_sync_mapping)(n_loops);
     r.port_input_override_map = decltype(r.port_input_override_map)(n_ports);
     r.loops_to_ports = decltype(r.loops_to_ports)(n_loops);
+    r.loop_output_peaks = decltype(r.loop_output_peaks)(n_loops);
 
     r.samples_in = decltype(r.samples_in)(process_samples, n_ports);
     r.samples_out = decltype(r.samples_in)(process_samples, n_ports);
@@ -74,6 +78,8 @@ loops_buffers setup_buffers(
     r.port_volumes = decltype(r.port_volumes)(n_ports);
     r.ports_muted = decltype(r.ports_muted)(n_ports);
     r.port_inputs_muted = decltype(r.port_inputs_muted)(n_ports);
+    r.port_input_peaks = decltype(r.port_input_peaks)(n_ports);
+    r.port_output_peaks = decltype(r.port_output_peaks)(n_ports);
 
     r.latency_buf = decltype(r.latency_buf)(r.latency_buf_size, n_ports);
     r.latency_buf_write_pos = Buffer<int32_t>::make_scalar();
@@ -151,6 +157,9 @@ void run_loops(
         bufs.process_samples,
         bufs.storage_in.dim(0).extent(),
         bufs.samples_out,
+        bufs.port_input_peaks,
+        bufs.port_output_peaks,
+        bufs.loop_output_peaks,
         bufs.latency_buf,
         bufs.latency_buf_write_pos,
         bufs.samples_out_per_loop,

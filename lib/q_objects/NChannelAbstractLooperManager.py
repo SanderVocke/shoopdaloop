@@ -54,11 +54,13 @@ class NChannelAbstractLooperManager(LooperState):
             looper_state.stateChanged.connect(lambda v: NChannelAbstractLooperManager.state.fset(self, v))
             looper_state.nextStateChanged.connect(lambda v: NChannelAbstractLooperManager.next_state.fset(self, v))
             looper_state.volumeChanged.connect(lambda v: NChannelAbstractLooperManager.volume.fset(self, v))
+            looper_state.outputPeakChanged.connect(lambda v: NChannelAbstractLooperManager.outputPeak.fset(self, v))
             self.state = looper_state.state
             self.length = looper_state.length
             self.next_state = looper_state.next_state
             self.volume = looper_state.volume
             self.pos = looper_state.pos
+            self.outputPeak = looper_state.outputPeak
             self.volumeChanged.connect(lambda v: self.doLoopAction(LoopActionType.SetLoopVolume.value, v, True))
             self.saveToFile.connect(lambda filename: manager.save_loops_to_file(self.loop_idxs, filename))
             self.loadFromFile.connect(lambda filename: manager.load_loops_from_file(self.loop_idxs, filename))
