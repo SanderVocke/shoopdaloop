@@ -11,8 +11,8 @@ Item {
 
     property var ports_manager
 
-    property alias volume: volume.value
-    property alias passthrough: passthrough.value
+    property alias volume: volume_slider.value
+    property alias passthrough: passthrough_slider.value
     property bool muted: ports_manager ? ports_manager.muted : true
     property bool passthroughMuted: ports_manager ? ports_manager.passthroughMuted : true
 
@@ -112,10 +112,10 @@ Item {
                     size: 15
                     name: 'volume-high'
                     color: Material.foreground
-                    anchors.verticalCenter: volume.verticalCenter
+                    anchors.verticalCenter: volume_slider.verticalCenter
                 }
                 Slider {
-                    id: volume
+                    id: volume_slider
                     orientation: Qt.Horizontal
                     width: 90
                     height: 20
@@ -192,10 +192,10 @@ Item {
                     size: 15
                     name: 'ear-hearing'
                     color: Material.foreground
-                    anchors.verticalCenter: passthrough.verticalCenter
+                    anchors.verticalCenter: passthrough_slider.verticalCenter
                 }
                 Slider {
-                    id: passthrough
+                    id: passthrough_slider
                     orientation: Qt.Horizontal
                     width: 90
                     height: 20

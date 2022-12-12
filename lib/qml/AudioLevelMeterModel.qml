@@ -1,13 +1,24 @@
 import QtQuick 2.15
 
-QtObject {
-    property real decrease_rate: 60.0
+Item {
+    property real decrease_rate: 120.0
     property real max_dt: 0.1
     property real input: 0.0
     property real prev_time: 0.0
     property real value: -1000000.0
 
-    onInputChanged: {
+    // In case the input doesn't change, we should
+    // still update the output value
+    Timer {
+        interval: 30
+        running: true
+        repeat: true
+        onTriggered: update()
+    }
+
+    onInputChanged: update()
+    
+    function update() {
         const d = new Date();
         var time = d.getTime()
         var dt = Math.min(max_dt, (time - prev_time) / 1000.0)
