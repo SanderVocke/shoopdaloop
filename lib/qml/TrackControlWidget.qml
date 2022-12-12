@@ -74,10 +74,12 @@ Item {
                     verticalCenter: volume_row.verticalCenter
                 }
 
-                VUMeterModel {
+                // Note: dB
+                from: -60.0
+                to: 0.0
+
+                AudioLevelMeterModel {
                     id: output_peak_meter
-                    charge_rate: 1000
-                    discharge_rate: 3
                     max_dt: 0.1
 
                     input: trackctl.ports_manager.outputPeak
@@ -152,10 +154,12 @@ Item {
                     verticalCenter: passthrough_row.verticalCenter
                 }
 
-                VUMeterModel {
+                // Note: dB
+                from: -60.0
+                to: 0.0
+
+                AudioLevelMeterModel {
                     id: input_peak_meter
-                    charge_rate: 1000
-                    discharge_rate: 3
                     max_dt: 0.1
 
                     input: trackctl.ports_manager.inputPeak
