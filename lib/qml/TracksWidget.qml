@@ -12,8 +12,8 @@ Item {
     property var loop_names: []
     property int loops_per_track
     property int first_loop_index: 0
-    property var loop_managers //2D array
-    property var port_managers //1D array
+    property var loop_managers //2D array (loops per track)
+    property var port_managers //1D array (one per track)
     property var master_loop_manager
     property var master_loop_idx //[track][loop]
 
@@ -57,10 +57,7 @@ Item {
                         maybe_master_loop_idx: -1
                         master_loop_manager: tracks.master_loop_manager
                         loop_managers: tracks.loop_managers[index]
-                        dry_left_port_manager: tracks.port_managers[index*4]
-                        dry_right_port_manager: tracks.port_managers[index*4+1]
-                        wet_left_port_manager: tracks.port_managers[index*4+2]
-                        wet_right_port_manager: tracks.port_managers[index*4+3]
+                        ports_manager: tracks.port_managers[index]
 
                         function unpack(loops) {
                             var r = []

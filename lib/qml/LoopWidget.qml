@@ -11,10 +11,7 @@ Item {
     property bool is_in_selected_scene: false
     property bool is_in_hovered_scene: false
     property var manager
-    property var dry_left_port_manager
-    property var dry_right_port_manager
-    property var wet_left_port_manager
-    property var wet_right_port_manager
+    property var ports_manager
     property alias name: statusrect.name
     property string internal_name
     

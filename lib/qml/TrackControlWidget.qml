@@ -9,25 +9,12 @@ Item {
     width: childrenRect.width
     height: childrenRect.height
 
-    property var dry_left_port_manager
-    property var dry_right_port_manager
-    property var wet_left_port_manager
-    property var wet_right_port_manager
-
-    property real max_output_peak: Math.max(
-        wet_left_port_manager ? wet_left_port_manager.outputPeak : 0.0,
-        wet_right_port_manager ? wet_right_port_manager.outputPeak : 0.0
-    )
-
-    property real max_input_peak: Math.max(
-        dry_left_port_manager ? dry_left_port_manager.inputPeak : 0.0,
-        dry_right_port_manager ? dry_right_port_manager.inputPeak : 0.0
-    )
+    property var ports_manager
 
     property alias volume: volume.value
     property alias passthrough: passthrough.value
-    property bool muted: wet_left_port_manager ? wet_left_port_manager.muted : true
-    property bool passthroughMuted: dry_left_port_manager ? dry_left_port_manager.passthroughMuted : true
+    property bool muted: ports_manager ? ports_manager.muted : true
+    property bool passthroughMuted: ports_manager ? ports_manager.passthroughMuted : true
 
     function push_volume(target) {
         if (target && target.volume != volume) { target.volume = volume }
@@ -38,35 +25,29 @@ Item {
     }
 
     function toggle_muted() {
-        var n = !wet_left_port_manager.muted
-        wet_left_port_manager.muted = n
-        wet_right_port_manager.muted = n
+        var n = !ports_manager.muted
+        ports_manager.muted = n
+        ports_manager.muted = n
     }
 
     function toggle_passthroughMuted() {
-        var n = !dry_left_port_manager.passthroughMuted
-        dry_left_port_manager.passthroughMuted = n
-        dry_right_port_manager.passthroughMuted = n
+        var n = !ports_manager.passthroughMuted
+        ports_manager.passthroughMuted = n
+        ports_manager.passthroughMuted = n
     }
 
     onVolumeChanged: {
-        push_volume(wet_left_port_manager)
-        push_volume(wet_right_port_manager)
+        push_volume(ports_manager)
     }
 
     onPassthroughChanged: {
-        push_passthrough(dry_left_port_manager)
-        push_passthrough(dry_right_port_manager)
+        push_passthrough(ports_manager)
     }
 
     Connections {
-        target: wet_left_port_manager || null
-        function onVolumeChanged() { volume = wet_left_port_manager.volume }
-    }
-
-    Connections {
-        target: dry_left_port_manager || null
-        function onPassthroughChanged() { passthrough = wet_left_port_manager.passthrough }
+        target: ports_manager || null
+        function onVolumeChanged() { volume = ports_manager.volume }
+        function onPassthroughChanged() { passthrough = ports_manager.passthrough }
     }
 
     signal mute()
@@ -99,7 +80,7 @@ Item {
                     discharge_rate: 3
                     max_dt: 0.1
 
-                    input: trackctl.max_output_peak
+                    input: trackctl.ports_manager.outputPeak
                 }
 
                 background: Rectangle {
@@ -177,7 +158,7 @@ Item {
                     discharge_rate: 3
                     max_dt: 0.1
 
-                    input: trackctl.max_input_peak
+                    input: trackctl.ports_manager.inputPeak
                 }
 
                 background: Rectangle {

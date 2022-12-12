@@ -15,8 +15,6 @@ from .LooperState import LooperState
 class DryWetPairAbstractLooperManager(LooperState):
 
     # State change notifications
-    dryLooperIdxsChanged = pyqtSignal(list)
-    wetLooperIdxsChanged = pyqtSignal(list)
     wetLooperChanged = pyqtSignal(QObject)
     dryLooperChanged = pyqtSignal(QObject)
 
@@ -26,47 +24,30 @@ class DryWetPairAbstractLooperManager(LooperState):
     forceWetPassthroughChanged = pyqtSignal(bool)
     forceDryPassthroughChanged = pyqtSignal(bool)
 
-    def __init__(self, parent=None):
+    def __init__(self, dry_looper, wet_looper, parent=None):
         super(DryWetPairAbstractLooperManager, self).__init__(parent)
         self._parent = parent
-        self._wet_looper_idxs = []
-        self._dry_looper_idxs = []
-        self._wet_looper = None
-        self._dry_looper = None
+        self._wet_looper = wet_looper
+        self._dry_looper = dry_looper
         self._force_wet_passthrough = False
         self._force_dry_passthrough = False
 
         self.volumeChanged.connect(self.updateVolumes)
         # self.panLChanged.connect(self.updatePans)
         # self.panRChanged.connect(self.updatePans)
+
+        # Connections
+        for l in [self._wet_looper, self._dry_looper]:
+            l.lengthChanged.connect(self.updateLength)
+            l.posChanged.connect(self.updatePos)
+            l.stateChanged.connect(self.updateState)
+            l.nextStateChanged.connect(self.updateNextState)
+            l.volumeChanged.connect(lambda v: DryWetPairAbstractLooperManager.volume.fset(self, v))
+            l.outputPeakChanged.connect(lambda v: DryWetPairAbstractLooperManager.outputPeak.fset(self, v))
     
     ######################
     # PROPERTIES
     ######################
-
-    @pyqtProperty(list, notify=dryLooperIdxsChanged)
-    def dry_looper_idxs(self):
-        return self._dry_looper_idxs
-
-    @dry_looper_idxs.setter
-    def dry_looper_idxs(self, i):
-        if i != self._dry_looper_idxs:
-            if self._dry_looper:
-                raise Exception("Changing loop idxs of already existing looper.")
-            self._dry_looper_idxs = i
-            self.dryLooperIdxsChanged.emit(i)
-    
-    @pyqtProperty(list, notify=wetLooperIdxsChanged)
-    def wet_looper_idxs(self):
-        return self._wet_looper_idxs
-
-    @wet_looper_idxs.setter
-    def wet_looper_idxs(self, i):
-        if i != self._wet_looper_idxs:
-            if self._wet_looper:
-                raise Exception("Changing loop idx sof already existing looper.")
-            self._wet_looper_idxs = i
-            self.wetLooperIdxsChanged.emit(i)
     
     @pyqtProperty(QObject, notify=dryLooperChanged)
     def dry_looper(self):
@@ -105,33 +86,9 @@ class DryWetPairAbstractLooperManager(LooperState):
     ##################
 
     def wet(self):
-        if self._wet_looper == None:
-            if self._wet_looper_idxs == []:
-                raise Exception("Trying to create looper before its index is known")
-            self._wet_looper = NChannelAbstractLooperManager(self._parent, self._wet_looper_idxs)
-            # Connections
-            self._wet_looper.lengthChanged.connect(self.updateLength)
-            self._wet_looper.posChanged.connect(self.updatePos)
-            self._wet_looper.stateChanged.connect(self.updateState)
-            self._wet_looper.nextStateChanged.connect(self.updateNextState)
-            self._wet_looper.volumeChanged.connect(lambda v: DryWetPairAbstractLooperManager.volume.fset(self, v))
-            self._wet_looper.outputPeakChanged.connect(lambda v: DryWetPairAbstractLooperManager.outputPeak.fset(self, v))
-            self.wetLooperIdxsChanged.connect(lambda s: setattr(self._wet_looper, 'loop_idxs', s))
-            
         return self._wet_looper
     
     def dry(self):
-        if self._dry_looper == None:
-            if self._dry_looper_idxs == []:
-                raise Exception("Trying to create looper before its index is known")
-            self._dry_looper = NChannelAbstractLooperManager(self._parent, self._dry_looper_idxs)
-            # Connections
-            self._dry_looper.lengthChanged.connect(self.updateLength)
-            self._dry_looper.posChanged.connect(self.updatePos)
-            self._dry_looper.stateChanged.connect(self.updateState)
-            self._dry_looper.nextStateChanged.connect(self.updateNextState)
-            self.dryLooperIdxsChanged.connect(lambda s: setattr(self._dry_looper, 'loop_idxs', s))
-            
         return self._dry_looper
 
     @pyqtSlot()
@@ -259,16 +216,6 @@ class DryWetPairAbstractLooperManager(LooperState):
     def doSaveDryToSoundFile(self, filename):
         self.doLoopAction(LoopActionType.DoStop.value, 0.0, False)
         self.dry().save_to_file(filename)
-    
-    @pyqtSlot(QObject)
-    def connect_backend_manager(self, manager):
-        if manager:
-            self.wet().connect_backend_manager(manager)
-            self.dry().connect_backend_manager(manager)
-    
-    @pyqtSlot(QObject, int, int)
-    def connect_midi_control_manager(self, manager, track_idx, loop_idx):
-        pass
     
     @pyqtSlot(result=str)
     def looper_type(self):

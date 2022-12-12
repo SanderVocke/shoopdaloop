@@ -3,8 +3,7 @@ import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
 import QtQuick.Dialogs
 
-import 'lib/qml'
-import 'build/StatesAndActions.js' as StatesAndActions
+import '../../build/StatesAndActions.js' as StatesAndActions
 
 ApplicationWindow {
     visible: true
@@ -51,7 +50,7 @@ ApplicationWindow {
             track_names: shared.track_names.slice(1)
             loop_names: shared.loop_names.slice(1)
             loop_managers: shared.loop_managers.slice(1)
-            port_managers: shared.port_managers.slice(4)
+            port_managers: shared.port_managers.slice(1)
             first_loop_index: 2
             master_loop_manager: shared.master_loop_manager
             loops_per_track: shared.loops_per_track
@@ -83,10 +82,7 @@ ApplicationWindow {
             maybe_master_loop_idx: 0
             master_loop_manager: shared.master_loop_manager
             loop_managers: [shared.master_loop_manager]
-            dry_left_port_manager: shared.port_managers[0]
-            dry_right_port_manager: shared.port_managers[1]
-            wet_left_port_manager: shared.port_managers[2]
-            wet_right_port_manager: shared.port_managers[3]
+            ports_manager: shared.port_managers[0]
             loops_of_selected_scene: []
             loops_of_hovered_scene: []
             onRenamed: (name) => shared.rename_track(0, name)
@@ -177,7 +173,7 @@ ApplicationWindow {
 
                     height: 60
                     width: height / sourceSize.height * sourceSize.width
-                    source: 'resources/logo-small.png'
+                    source: '../../resources/logo-small.png'
                     smooth: true
                 }
 

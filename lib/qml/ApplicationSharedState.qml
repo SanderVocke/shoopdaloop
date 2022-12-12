@@ -17,37 +17,15 @@ Item {
     property int loops_per_track: 6
     property int tracks: 8
     property var loop_managers: {
-        // Nested array of loop mgrs per track. Master loop is regarded as the first track.
-
-        function mgr_snippet (dry_loop_idxs, wet_loop_idxs, sync) {
-            return 'import QtQuick 2.0\n' +
-            'import DryWetPairAbstractLooperManager 1.0\n' +
-            'DryWetPairAbstractLooperManager { \n' +
-                'dry_looper_idxs: [' + dry_loop_idxs.toString() + ']\n' +
-                'wet_looper_idxs: [' + wet_loop_idxs.toString() + ']\n' +
-                ' }';
-        }
-
+        // Nested array of logical loop mgrs per track. Master loop is regarded as the first track.
         var outer, inner
         var managers = []
-        var master_mgr = Qt.createQmlObject(mgr_snippet([0,1], [2,3], true),
-                            shared,
-                            "dynamicSnippet1");
-        master_mgr.connect_midi_control_manager(midi_control_manager, 0, 0)
-        master_mgr.connect_backend_manager(backend_manager)
+        var master_mgr = backend_manager.logical_looper_managers[0]
         managers.push([master_mgr])
         for(outer = 0; outer < tracks; outer++) {
             var i_managers = []
             for(inner = 0; inner < loops_per_track; inner++) {
-                var base = (outer * loops_per_track + inner)*4 + 4;
-                var mgr = Qt.createQmlObject(mgr_snippet(
-                    [base, base+1],
-                    [base+2, base+3],
-                    true),
-                    shared,
-                    "dynamicSnippet1");
-                mgr.connect_midi_control_manager(midi_control_manager, outer + 1, inner)
-                mgr.connect_backend_manager(backend_manager)
+                var mgr = backend_manager.logical_looper_managers[1 + outer * loops_per_track + inner]
                 i_managers.push(mgr)
             }
             managers.push(i_managers)
@@ -58,23 +36,11 @@ Item {
         return loop_managers[0][0];
     }
     property var port_managers: {
-        function mgr_snippet (port_idx) {
-            return 'import QtQuick 2.0\n' +
-            'import PortManager 1.0\n' +
-            'PortManager { \n' +
-                'port_idx: ' + port_idx.toString() + '\n' +
-                ' }';
-        }
-
         var managers = []
         for (var i=0; i<tracks+1; i++) {
-            var mgr = Qt.createQmlObject(mgr_snippet(i),
-                    shared,
-                    "dynamicSnippet1");
-            mgr.connect_backend_manager(backend_manager)
+            var mgr = backend_manager.track_port_managers[i]
             managers.push(mgr)
         }
-
         return managers
     }
 

@@ -9,13 +9,16 @@ sys.path.append('../..')
 
 import build.backend.shoopdaloop_backend as backend
 from lib.StatesAndActions import *
-from .PortState import PortState
 from collections import OrderedDict
 from third_party.pyjacklib import jacklib
 from functools import partial
 from threading import Thread
 
 from .LooperState import LooperState
+from .DryWetPairAbstractLooperManager import DryWetPairAbstractLooperManager
+from .NChannelAbstractLooperManager import NChannelAbstractLooperManager
+from .PortManager import PortManager
+from .PortsManager import PortsManager
 
 import time
 import cProfile
@@ -69,12 +72,62 @@ class BackendManager(QObject):
         self.loops_soft_sync_map = loops_soft_sync_map
         self.loops_hard_sync_map = loops_hard_sync_map
 
-        self.looper_states = [
-            LooperState() for i in range(self.n_loops)
+        self._channel_looper_managers = [
+            LooperState(parent=self) for i in range(self.n_loops)
         ]
 
-        self.port_states = [
-            PortState() for i in range(self.n_ports)
+        def create_stereo_looper(idx):
+            channel_loop_idxs = [idx*2, idx*2+1]
+            l = NChannelAbstractLooperManager(
+                [self._channel_looper_managers[i] for i in channel_loop_idxs], parent=self)
+
+            l.signalLoopAction.connect(lambda action, arg, sync: self.do_loops_action(channel_loop_idxs, action, arg, sync))
+            l.loadLoopData.connect(lambda chan, data: self.load_loop_data(channel_loop_idxs[chan], data))            
+            l.saveToFile.connect(lambda filename: self.save_loops_to_file(channel_loop_idxs, filename))
+            l.loadFromFile.connect(lambda filename: self.load_loops_from_file(channel_loop_idxs, filename))
+
+            return l
+        
+        self._stereo_looper_managers = [
+            create_stereo_looper(idx) for idx in range(int(len(self._channel_looper_managers)/2))
+        ]
+
+        def create_logical_looper(idx):
+            l = DryWetPairAbstractLooperManager(
+                self._stereo_looper_managers[idx*2],
+                self._stereo_looper_managers[idx*2+1]
+            , parent=self)
+            
+            return l
+        
+        self._logical_looper_managers = [
+            create_logical_looper(idx) for idx in range(int(len(self._stereo_looper_managers)/2))
+        ]
+
+        self._channel_port_managers = [
+            PortManager(parent=self) for i in range(self.n_ports)
+        ]
+        for idx, p in enumerate(self._channel_port_managers):
+            p.signalPortAction.connect(lambda action_id, maybe_arg: self.do_port_action(idx, action_id, maybe_arg))
+
+        def create_stereo_ports_manager(idx):
+            p = PortsManager([
+                self._channel_port_managers[idx*2],
+                self._channel_port_managers[idx*2+1]
+                ], parent=self)
+            return p
+        self._stereo_port_managers = [
+            create_stereo_ports_manager(idx) for idx in range(int(len(self._channel_port_managers)/2))
+        ]
+
+        def create_track_ports_manager(idx):
+            p = PortsManager([
+                    self._stereo_port_managers[idx*2],
+                    self._stereo_port_managers[idx*2+1]
+                ], parent=self)
+            return p
+        self._track_port_managers = [
+            create_track_ports_manager(idx) for idx in range(int(len(self._stereo_port_managers)/2))
         ]
 
         self.update_timer = QTimer()
@@ -122,6 +175,47 @@ class BackendManager(QObject):
             self._sample_rate = s
             self.sampleRateChanged.emit(s)
     
+    # Looper managers are built up in a hierarchy.
+    # From top to bottom:
+    # - logical_looper_managers: managers of the N abstract loopers
+    #     which manage a pair of stereo loopers: one for the
+    #     dry recording and one for the wet recording.
+    #     These are the loopers as the user sees them.
+    # - stereo_looper_managers: managers of each of the N*2 stereo
+    #     loopers used for the dry and wet channels underneath.
+    # - channel_looper_managers: managers of each of the N*4
+    #     individual channel loopers underneath.
+
+    channel_looper_managersChanged = pyqtSignal(list)
+    @pyqtProperty(list, notify=channel_looper_managersChanged)
+    def channel_looper_managers(self):
+        return self._channel_looper_managers
+    
+    stereo_looper_managersChanged = pyqtSignal(list)
+    @pyqtProperty(list, notify=stereo_looper_managersChanged)
+    def stereo_looper_managers(self):
+        return self._stereo_looper_managers
+    
+    logical_looper_managersChanged = pyqtSignal(list)
+    @pyqtProperty(list, notify=logical_looper_managersChanged)
+    def logical_looper_managers(self):
+        return self._logical_looper_managers
+
+    # A similar hierarchy is used for the ports
+    channel_port_managersChanged = pyqtSignal(list)
+    @pyqtProperty(list, notify=channel_port_managersChanged)
+    def channel_port_managers(self):
+        return self._channel_port_managers
+    
+    stereo_port_managersChanged = pyqtSignal(list)
+    @pyqtProperty(list, notify=stereo_port_managersChanged)
+    def stereo_port_managers(self):
+        return self._stereo_port_managers
+    
+    track_port_managersChanged = pyqtSignal(list)
+    @pyqtProperty(list, notify=track_port_managersChanged)
+    def track_port_managers(self):
+        return self._track_port_managers
 
     ######################
     # OTHER
@@ -211,7 +305,7 @@ class BackendManager(QObject):
         self.sample_rate = sample_rate
 
         for i in range(n_loops):
-            m = self.looper_states[i]
+            m = self._channel_looper_managers[i]
             m.state = loop_states[i]
             m.next_state = loop_next_states[i]
             m.length = loop_lengths[i]
@@ -220,7 +314,7 @@ class BackendManager(QObject):
             m.outputPeak = loop_output_peaks[i]
 
         for i in range(n_ports):
-            p = self.port_states[i]
+            p = self._channel_port_managers[i]
             p.volume = port_volumes[i]
             p.passthrough = port_passthrough_levels[i]
             p.muted = ports_muted[i] != 0
@@ -356,7 +450,7 @@ class BackendManager(QObject):
                     file.write(appstate_serialized)
 
                 for idx in range(self.n_loops):
-                    state = self.looper_states[idx]
+                    state = self._channel_looper_managers[idx]
                     json_filename = '{}/loop_{}_state.json'.format(folder, idx)
 
                     if state.length > 0.0 and store_audio:
@@ -369,7 +463,7 @@ class BackendManager(QObject):
                     include_in_tarball.append(json_filename)
                 
                 for idx in range(self.n_ports):
-                    state = self.port_states[idx]
+                    state = self._channel_port_managers[idx]
                     json_filename = '{}/port_{}_state.json'.format(folder, idx)
                     with open(json_filename, 'w') as pfile:
                         pfile.write(state.serialize_session_state())
@@ -414,7 +508,7 @@ class BackendManager(QObject):
                     # TODO: this assumes the # of loops is always the same.
                     if os.path.isfile(json_filename):
                         with open(json_filename, 'r') as json:
-                            self.looper_states[idx].deserialize_session_state(json.read())
+                            self._channel_looper_managers[idx].deserialize_session_state(json.read())
                         if os.path.isfile(data_filename):
                             self.load_loops_from_file([idx], data_filename)
                 
@@ -423,7 +517,7 @@ class BackendManager(QObject):
                     # TODO: this assumes the # of ports is always the same.
                     if os.path.isfile(json_filename):
                         with open(json_filename, 'r') as json:
-                            self.port_states[idx].deserialize_session_state(json.read())
+                            self._channel_port_managers[idx].deserialize_session_state(json.read())
             
                 self.newSessionStateStr.emit(session_data)
                 print("Loaded session from {}".format(filename))

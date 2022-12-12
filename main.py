@@ -157,7 +157,7 @@ with contextlib.ExitStack() as contextmgr:
             engine.rootContext().setContextProperty("midi_control_manager", midi_control_mgr)
             engine.rootContext().setContextProperty("mainScriptDir",  os.path.dirname(os.path.realpath(sys.argv[0])))
             engine.quit.connect(app.quit)
-            engine.load('main.qml')
+            engine.load('lib/qml/main.qml')
 
             qml_app_state = engine.rootObjects()[0].findChild(QObject, 'app_shared_state')
     
