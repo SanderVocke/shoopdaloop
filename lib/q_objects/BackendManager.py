@@ -108,7 +108,7 @@ class BackendManager(QObject):
             PortManager(parent=self) for i in range(self.n_ports)
         ]
         for idx, p in enumerate(self._channel_port_managers):
-            p.signalPortAction.connect(lambda action_id, maybe_arg: self.do_port_action(idx, action_id, maybe_arg))
+            p.signalPortAction.connect(lambda action_id, maybe_arg, idx=idx: self.do_port_action(idx, action_id, maybe_arg))
 
         def create_stereo_ports_manager(idx):
             p = PortsManager([
@@ -315,11 +315,11 @@ class BackendManager(QObject):
 
         for i in range(n_ports):
             p = self._channel_port_managers[i]
-            p.volume = port_volumes[i]
-            p.passthrough = port_passthrough_levels[i]
-            p.muted = ports_muted[i] != 0
-            p.passthroughMuted = port_inputs_muted[i] != 0
-            p.recordingLatency = port_latencies[i] / self.sample_rate
+            p.set_volume_direct(port_volumes[i])
+            p.set_passthrough_direct(port_passthrough_levels[i])
+            p.set_muted_direct(ports_muted[i] != 0)
+            p.set_passthroughMuted_direct(port_inputs_muted[i] != 0)
+            p.set_recordingLatency_direct(port_latencies[i] / self.sample_rate)
             p.outputPeak = port_output_peaks[i]
             p.inputPeak = port_input_peaks[i]
         

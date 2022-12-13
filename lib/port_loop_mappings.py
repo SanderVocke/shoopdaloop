@@ -44,8 +44,6 @@ def get_port_loop_mappings(n_tracks, loops_per_track, loop_channel_names):
         # Add the return-out pair to the input remappings (if nothing connected to the return,
         # take samples from in).
         r['port_input_remaps_if_disconnected'] += [[base_port+2, base_port+0], [base_port+3, base_port+1]]
-    
-    print(r['loops_soft_sync'])
 
     add_ports_for_track('master_loop')
     add_loop(0)

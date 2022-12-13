@@ -5,6 +5,8 @@ import os
 import tempfile
 import json
 
+from ..StatesAndActions import PortActionType
+
 # Represents the state of a port in the back-end
 class PortManager(QObject):
 
@@ -37,17 +39,24 @@ class PortManager(QObject):
     def volume(self):
         return self._volume
     @volume.setter
-    def volume(self, l):
-        if self._volume != l:
-            self._volume = l
-            self.volumeChanged.emit(l)
+    def volume(self, v):
+        # Let back-end update the property for us
+        self.signalPortAction.emit(PortActionType.SetPortVolume.value, v)
+    # To modify from the back-end
+    def set_volume_direct(self, v):
+        if v != self._volume:
+            self._volume = v
+            self.volumeChanged.emit(v)
     
     # passthrough
     @pyqtProperty(float, notify=passthroughChanged)
     def passthrough(self):
         return self._passthrough
     @passthrough.setter
-    def passthrough(self, l):
+    def passthrough(self, v):
+        # Let back-end update the property for us
+        self.signalPortAction.emit(PortActionType.SetPortPassthrough.value, v)
+    def set_passthrough_direct(self, l):
         if self._passthrough != l:
             self._passthrough = l
             self.passthroughChanged.emit(l)
@@ -57,7 +66,10 @@ class PortManager(QObject):
     def muted(self):
         return self._muted
     @muted.setter
-    def muted(self, l):
+    def muted(self, v):
+        # Let back-end update the property for us
+        self.signalPortAction.emit(PortActionType.DoMute.value if v else PortActionType.DoUnmute.value, v)
+    def set_muted_direct(self, l):
         if self._muted != l:
             self._muted = l
             self.mutedChanged.emit(l)
@@ -67,7 +79,10 @@ class PortManager(QObject):
     def passthroughMuted(self):
         return self._passthroughMuted
     @passthroughMuted.setter
-    def passthroughMuted(self, l):
+    def passthroughMuted(self, v):
+        # Let back-end update the property for us
+        self.signalPortAction.emit(PortActionType.DoMuteInput.value if v else PortActionType.DoUnmuteInput.value, v)
+    def set_passthroughMuted_direct(self, l):
         if self._passthroughMuted != l:
             self._passthroughMuted = l
             self.passthroughMutedChanged.emit(l)
@@ -116,8 +131,7 @@ class PortManager(QObject):
     @pyqtProperty(float, notify=recordingLatencyChanged)
     def recordingLatency(self):
         return self._recordingLatency
-    @recordingLatency.setter
-    def recordingLatency(self, l):
+    def set_recordingLatency_direct(self, l):
         if self._recordingLatency != l:
             self._recordingLatency = l
             self.recordingLatencyChanged.emit(l)

@@ -13,8 +13,19 @@ Item {
 
     property alias volume: volume_slider.value
     property alias passthrough: passthrough_slider.value
-    property bool muted: ports_manager ? ports_manager.muted : true
-    property bool passthroughMuted: ports_manager ? ports_manager.passthroughMuted : true
+    property bool muted: ports_manager.muted
+    property bool passthroughMuted: ports_manager.passthroughMuted
+
+    Connections {
+        target: ports_manager
+        function onMutedChanged() { trackctl.muted = ports_manager.muted }
+        function onPassthroughMutedChanged() { trackctl.passthroughMuted = ports_manager.passthroughMuted }
+    }
+
+    Component.onCompleted: {
+        muted = ports_manager.muted
+        passthroughMuted = ports_manager.passthroughMuted
+    }
 
     function push_volume(target) {
         if (target && target.volume != volume) { target.volume = volume }
@@ -121,6 +132,7 @@ Item {
                     height: 20
                     from: 0.0
                     to: 1.0
+                    value: 1.0
 
                     ToolTip {
                         delay: 1000
@@ -201,6 +213,7 @@ Item {
                     height: 20
                     from: 0.0
                     to: 1.0
+                    value: 1.0
 
                     ToolTip {
                         delay: 1000
