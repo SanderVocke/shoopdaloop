@@ -53,7 +53,7 @@ Item {
         signal propagateMouseExited()
 
         width: loop.width
-        height: loop.height + peak_meter.height + 2
+        height: loop.height
 
         color: (manager && manager.state == StatesAndActions.LoopState.Empty) ? Material.background : '#000044'
         border.color: {
@@ -76,6 +76,44 @@ Item {
         }
         border.width: 2
 
+        Item {
+            anchors.fill: parent
+            anchors.margins: 2
+
+            LoopProgressRect {
+                anchors.fill: parent
+                manager: statusrect.manager
+            }
+        }
+
+        ProgressBar {
+            id: peak_meter
+            anchors.fill: parent
+            anchors.margins: 2
+
+            AudioLevelMeterModel {
+                id: output_peak_meter
+                max_dt: 0.1
+                input: statusrect.manager.outputPeak
+            }
+
+            from: -60.0
+            to: 0.0
+            value: output_peak_meter.value
+
+            background: Item { anchors.fill: peak_meter }
+            contentItem: Item {
+                implicitWidth: peak_meter.width
+                implicitHeight: peak_meter.height
+
+                Rectangle {
+                    width: peak_meter.visualPosition * peak_meter.width
+                    height: peak_meter.height
+                    color: Qt.rgba(1.0,1.0,1.0,0.2)
+                }
+            }
+        }
+
         MouseArea {
             id: area
             x: 0
@@ -91,19 +129,6 @@ Item {
             propagateComposedEvents: true
             onPositionChanged: (mouse) => { statusrect.propagateMousePosition(mapToGlobal(mouse.x, mouse.y)) }
             onExited: statusrect.propagateMouseExited()
-        }
-
-        Item {
-            anchors.fill: parent
-            anchors.margins: 2
-
-            LoopProgressRect {
-                height: loop.height
-                anchors.left: parent.left
-                anchors.right: parent.right
-                y: 0
-                manager: statusrect.manager
-            }
         }
 
         MaterialDesignIcon {
@@ -465,41 +490,6 @@ Item {
                     }
 
                     
-                }
-            }
-        }
-
-        ProgressBar {
-            id: peak_meter
-            anchors {
-                left: loop.left
-                right: loop.right
-                top: loop.bottom
-                leftMargin: 2
-                rightMargin: 2
-            }
-
-            AudioLevelMeterModel {
-                id: output_peak_meter
-                max_dt: 0.1
-                input: statusrect.manager.outputPeak
-            }
-
-            height: 3
-
-            from: -60.0
-            to: 0.0
-            value: output_peak_meter.value
-
-            background: Item { anchors.fill: peak_meter }
-            contentItem: Item {
-                implicitWidth: peak_meter.width
-                implicitHeight: peak_meter.height
-
-                Rectangle {
-                    width: peak_meter.visualPosition * peak_meter.width
-                    height: peak_meter.height
-                    color: 'grey'
                 }
             }
         }
