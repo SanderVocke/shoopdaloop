@@ -11,10 +11,52 @@ Item {
 
     property var ports_manager
 
-    property alias volume: volume_slider.value
-    property alias passthrough: passthrough_slider.value
+    property alias volume_dB: volume_slider.value
+    property alias passthrough_dB: passthrough_slider.value
+    property alias volume_dB_min: volume_slider.from
+    property alias passthrough_dB_min: passthrough_slider.from
     property bool muted: ports_manager.muted
     property bool passthroughMuted: ports_manager.passthroughMuted
+
+    LinearDbConversion {
+        id: convert_volume
+    }
+
+    LinearDbConversion {
+        id: convert_passthrough
+    }
+
+    function push_volume(target) {
+        convert_volume.dB = volume_dB
+        var v = convert_volume.linear
+        if (target && target.volume != v) { target.volume = v }
+    }
+
+    function push_passthrough(target) {
+        convert_passthrough.dB = passthrough_dB
+        var v = convert_passthrough.linear
+        if (target && target.passthrough != v) { target.passthrough = v }
+    }
+
+    onVolume_dBChanged: {
+        push_volume(ports_manager)
+    }
+
+    onPassthrough_dBChanged: {
+        push_passthrough(ports_manager)
+    }
+
+    Connections {
+        target: ports_manager || null
+        function onVolumeChanged() {
+            convert_volume.linear = ports_manager.volume
+            volume_dB = convert_volume.dB
+        }
+        function onPassthroughChanged() {
+            convert_passthrough.linear = ports_manager.passthrough
+            passthrough_dB = convert_passthrough.dB
+        }
+    }
 
     Connections {
         target: ports_manager
@@ -27,14 +69,6 @@ Item {
         passthroughMuted = ports_manager.passthroughMuted
     }
 
-    function push_volume(target) {
-        if (target && target.volume != volume) { target.volume = volume }
-    }
-
-    function push_passthrough(target) {
-        if (target && target.passthrough != passthrough) { target.passthrough = passthrough }
-    }
-
     function toggle_muted() {
         var n = !ports_manager.muted
         ports_manager.muted = n
@@ -45,20 +79,6 @@ Item {
         var n = !ports_manager.passthroughMuted
         ports_manager.passthroughMuted = n
         ports_manager.passthroughMuted = n
-    }
-
-    onVolumeChanged: {
-        push_volume(ports_manager)
-    }
-
-    onPassthroughChanged: {
-        push_passthrough(ports_manager)
-    }
-
-    Connections {
-        target: ports_manager || null
-        function onVolumeChanged() { volume = ports_manager.volume }
-        function onPassthroughChanged() { passthrough = ports_manager.passthrough }
     }
 
     signal mute()
@@ -130,9 +150,9 @@ Item {
                     orientation: Qt.Horizontal
                     width: 90
                     height: 20
-                    from: 0.0
-                    to: 1.0
-                    value: 1.0
+                    from: -60.0
+                    to: 20.0
+                    value: 0.0
 
                     ToolTip {
                         delay: 1000
@@ -211,9 +231,9 @@ Item {
                     orientation: Qt.Horizontal
                     width: 90
                     height: 20
-                    from: 0.0
-                    to: 1.0
-                    value: 1.0
+                    from: -60.0
+                    to: 20.0
+                    value: 0.0
 
                     ToolTip {
                         delay: 1000

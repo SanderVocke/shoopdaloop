@@ -427,14 +427,28 @@ Item {
 
                 // Display the volume dial always
                 Dial {
+                    id: volume_dial
                     anchors.fill: parent
-                    from: 0.0
-                    to:   1.0
-                    signal internalValueChanged(real val)
-                    property real externalValue: statusrect.manager ? statusrect.manager.volume : 1.0
+                    from: convert_volume.dB_threshold
+                    to:   20.0
+                    value: 0.0
 
-                    onExternalValueChanged: { if (externalValue != value) {value = externalValue} }
-                    onMoved: { statusrect.manager.volume = value }
+                    LinearDbConversion {
+                        id: convert_volume
+                    }
+
+                    onMoved: {
+                        convert_volume.dB = volume_dial.value
+                        statusrect.manager.volume = convert_volume.linear
+                    }
+
+                    Connections {
+                        target: statusrect.manager
+                        function onVolumeChanged() {
+                            convert_volume.linear = statusrect.manager.volume
+                            volume_dial.value = convert_volume.dB
+                        }
+                    }
 
                     inputMode: Dial.Vertical
 
@@ -448,6 +462,8 @@ Item {
                         border.width: 1
                         border.color: 'grey'
                     }
+
+                    
                 }
             }
         }

@@ -301,7 +301,6 @@ def eval_formula(formula: str, is_stmt: bool, substitutions: dict[str, str] = {}
             if isinstance(node, ast_type):
                 return evaluator(node)
 
-        print(ast.dump(node))
         raise ParseError('Invalid expression syntax', node)
     
     def eval_if_expr(node):
