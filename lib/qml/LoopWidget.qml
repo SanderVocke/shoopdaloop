@@ -520,13 +520,13 @@ Item {
 
                 switch(loopprogressrect.manager.state) {
                 case StatesAndActions.LoopState.Playing:
-                    return '#006600';
+                    return '#004400';
                 case StatesAndActions.LoopState.PlayingLiveFX:
-                    return '#555500';
+                    return '#333300';
                 case StatesAndActions.LoopState.Recording:
-                    return '#880000';
+                    return '#660000';
                 case StatesAndActions.LoopState.RecordingFX:
-                    return '#885500';
+                    return '#663300';
                 default:
                     return default_color;
                 }
