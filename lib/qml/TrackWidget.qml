@@ -95,6 +95,11 @@ Item {
                     }
                 }
 
+                Item {
+                    height: 5
+                    width: 10
+                }
+
                 TrackControlWidget {
                     id: trackctlwidget
 

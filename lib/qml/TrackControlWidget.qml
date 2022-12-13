@@ -139,16 +139,37 @@ Item {
                 spacing: -2
                 id: volume_row
 
-                MaterialDesignIcon {
-                    size: 15
-                    name: 'volume-high'
-                    color: Material.foreground
+                Item {
+                    width: 18
+                    height: width
                     anchors.verticalCenter: volume_slider.verticalCenter
+
+                    Rectangle {
+                        anchors.fill: parent
+                        visible: volume_mouse_area.containsMouse
+                        color: '#555555'
+                        radius: width/2
+                    }
+                    MouseArea {
+                        id: volume_mouse_area
+                        anchors.fill: parent
+                        acceptedButtons: Qt.LeftButton
+                        hoverEnabled: true
+
+                        onClicked: trackctl.toggle_muted()
+
+                        MaterialDesignIcon {
+                            size: parent.width
+                            name: trackctl.muted ? 'volume-mute' : 'volume-high'
+                            color: trackctl.muted ? 'grey' : Material.foreground
+                            anchors.fill: parent
+                        }
+                    }
                 }
                 Slider {
                     id: volume_slider
                     orientation: Qt.Horizontal
-                    width: 90
+                    width: 85
                     height: 20
                     from: -60.0
                     to: 20.0
@@ -220,16 +241,37 @@ Item {
                 id: passthrough_row
                 spacing: -2
 
-                MaterialDesignIcon {
-                    size: 15
-                    name: 'ear-hearing'
-                    color: Material.foreground
+                Item {
+                    width: 18
+                    height: width
                     anchors.verticalCenter: passthrough_slider.verticalCenter
+
+                    Rectangle {
+                        anchors.fill: parent
+                        visible: passthrough_mouse_area.containsMouse
+                        color: '#555555'
+                        radius: width/2
+                    }
+                    MouseArea {
+                        id: passthrough_mouse_area
+                        anchors.fill: parent
+                        acceptedButtons: Qt.LeftButton
+                        hoverEnabled: true
+
+                        onClicked: trackctl.toggle_passthroughMuted()
+
+                        MaterialDesignIcon {
+                            size: parent.width
+                            name: 'ear-hearing'
+                            color: trackctl.passthroughMuted ? 'grey' : Material.foreground
+                            anchors.fill: parent
+                        }
+                    }
                 }
                 Slider {
                     id: passthrough_slider
                     orientation: Qt.Horizontal
-                    width: 90
+                    width: 85
                     height: 20
                     from: -60.0
                     to: 20.0
@@ -282,52 +324,5 @@ Item {
         //        }
         //    }
         //}
-
-        Grid {
-            width: childrenRect.width
-            height: childrenRect.height
-            x: (parent.width - width) / 2
-
-            spacing: 2
-            columns: 4
-            Button {
-                id : mute
-                width: 23
-                height: 30
-                MaterialDesignIcon {
-                    size: parent.width - 3
-                    anchors.centerIn: parent
-                    name: trackctl.muted ? 'volume-mute' : 'volume-high'
-                    color: trackctl.muted ? 'grey' : Material.foreground
-                }
-                onClicked: { trackctl.toggle_muted() }
-
-                hoverEnabled: true
-                ToolTip.delay: 1000
-                ToolTip.timeout: 5000
-                ToolTip.visible: hovered
-                ToolTip.text: "(Un-)mute."
-            }
-            Button {
-                id : mon
-                width: 23
-                height: 30
-
-                MaterialDesignIcon {
-                    size: parent.width - 3
-                    anchors.centerIn: parent
-                    name: 'ear-hearing'
-                    color: trackctl.passthroughMuted ?
-                        'grey' : Material.foreground
-                }
-                onClicked: { trackctl.toggle_passthroughMuted() }
-
-                hoverEnabled: true
-                ToolTip.delay: 1000
-                ToolTip.timeout: 5000
-                ToolTip.visible: hovered
-                ToolTip.text: "En-/disable monitoring. Monitoring level matches track volume."
-            }
-        }
     }
 }
