@@ -63,6 +63,19 @@ public:
     // Nl levels to indicate how much playback volume we want on the loops
     Input<Buffer<float, 1>> loop_playback_volumes{"loop_playback_volumes"};
 
+    // Nevents x Np amount of input timestamps (in number of frames relative to the start of this cycle).
+    // The timestamps represent points in time where an event ocurred which we
+    // may want to record separately from the audio data (e.g. MIDI).
+    // The looping algorithm does not directly deal with these events, but provides:
+    // - resulting loop storage indices
+    //   to which these events may be associated (if we were recording at that time).
+    // - boolean outputs which indicate whether the events are to be passed through directly
+    //   to port outputs (e.g. MIDI monitoring).
+    // We also have IDs for the events, to map them to the loops and remapped ports later.
+    Input<Buffer<int32_t, 2>> port_event_timestamps_in{"port_event_timestamps_in"};
+    Input<Buffer<int32_t, 2>> port_event_ids_in{"port_event_ids_in"};
+    Input<Buffer<int32_t, 1>> n_port_events{"n_port_events"};
+
     // Ns
     Input<int32_t> n_samples{"n_samples"};
 
@@ -95,6 +108,14 @@ public:
     Output<Buffer<int8_t, 2>> next_states_out{"next_states_out"};
     Output<Buffer<int8_t, 2>> next_state_countdowns_out{"next_state_countdowns_out"};
 
+    // Nevents x Nl
+    Output<Buffer<int32_t, 2>> event_recording_timestamps_out{"event_recording_timestamps_out"};
+    Output<Buffer<int32_t, 2>> event_recording_ids_out{"event_recording_ids_out"};
+
+    // Nevents x Np
+    Output<Buffer<bool, 2>> event_passthrough_out{"event_passthrough_out"};
+    Output<Buffer<int32_t, 2>> event_passthrough_ids_out{"event_passthrough_ids_out"};
+
     // Nl x Ll
     Output<Buffer<float, 2>> loop_storage_out{"loop_storage_out"};
 
@@ -125,6 +146,8 @@ public:
 
             // port axis of 2D buffers
             samples_in.dim(1).set_bounds(pf, pe);
+            port_event_ids_in.dim(1).set_bounds(pf, pe);
+            port_event_timestamps_in.dim(1).set_bounds(pf, pe);
 
             // port axis of 1D buffers
             port_volumes.dim(0).set_bounds(pf, pe);
@@ -189,10 +212,12 @@ public:
         latencybuf_writepos_out() = (latencybuf_writepos_in + n_frames) % lbuf_size;
 
         // Apply port input overrides to redirect both samples and latencies
-        Func _samples_in("_samples_in");
+        Func _samples_in("_samples_in"), _port_event_timestamps_in{"_port_event_timestamps_in"}, _n_port_events{"_n_port_events"};
         Expr remapped_port = _port_input_override_map(port);
         // TODO: using input directly here, could also take the latest from the latency buf.
         //       what is faster?
+        _port_event_timestamps_in(x, port) = port_event_timestamps_in(x, remapped_port);
+        _n_port_events(port) = n_port_events(x, remapped_port);
         _samples_in(x, port) = _muted_samples_in(x, remapped_port);
         Func _latency_applied_samples_in("_latency_applied_samples_in");
         Expr sample_idx = (latencybuf_writepos_in - _port_recording_latencies(remapped_port) + x) % lbuf_size;
@@ -354,8 +379,16 @@ public:
         );
         recording_range(loop) = Tuple(recording_from, recording_to);
 
+        // Calculate which events should be passed through / recorded.
+        RDom event(0, port_event_timestamps_in.dim(0).extent());
+        event.where(event.x < n_port_events(port));
+        event_passthrough_out(x, port) = Halide::undef<bool>();
+        event_passthrough_out(event, port) = select(
+            port_passthrough_levels()
+        );
+
         // Per loop, store range where it will run at all.
-        // It can be derived that regardless of which state transition will happen,
+        // Note that regardless of which state transition will happen,
         // there will always be at most one continuous running range.
         Func running_range("running_range");
         running_range(loop) = Tuple(
