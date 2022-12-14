@@ -73,7 +73,6 @@ public:
     //   to port outputs (e.g. MIDI monitoring).
     // We also have IDs for the events, to map them to the loops and remapped ports later.
     Input<Buffer<int32_t, 2>> port_event_timestamps_in{"port_event_timestamps_in"};
-    Input<Buffer<int32_t, 2>> port_event_ids_in{"port_event_ids_in"};
     Input<Buffer<int32_t, 1>> n_port_events{"n_port_events"};
 
     // Ns
@@ -109,12 +108,9 @@ public:
     Output<Buffer<int8_t, 2>> next_state_countdowns_out{"next_state_countdowns_out"};
 
     // Nevents x Nl
+    // event_recording_timestamps_out holds the timestamps in loop storage where each event
+    // should be recorded, or -1 if not recorded at all.
     Output<Buffer<int32_t, 2>> event_recording_timestamps_out{"event_recording_timestamps_out"};
-    Output<Buffer<int32_t, 2>> event_recording_ids_out{"event_recording_ids_out"};
-
-    // Nevents x Np
-    Output<Buffer<bool, 2>> event_passthrough_out{"event_passthrough_out"};
-    Output<Buffer<int32_t, 2>> event_passthrough_ids_out{"event_passthrough_ids_out"};
 
     // Nl x Ll
     Output<Buffer<float, 2>> loop_storage_out{"loop_storage_out"};
@@ -146,7 +142,6 @@ public:
 
             // port axis of 2D buffers
             samples_in.dim(1).set_bounds(pf, pe);
-            port_event_ids_in.dim(1).set_bounds(pf, pe);
             port_event_timestamps_in.dim(1).set_bounds(pf, pe);
 
             // port axis of 1D buffers
@@ -154,6 +149,7 @@ public:
             port_input_override_map.dim(0).set_bounds(pf, pe);
             ports_muted.dim(0).set_bounds(pf, pe);
             port_inputs_muted.dim(0).set_bounds(pf, pe);
+            n_port_events.dim(0).set_bounds(pf, pe);
 
             // Constants
             next_states_in.dim(0).set_bounds(0, 2);
@@ -179,6 +175,8 @@ public:
         Func _port_inputs_muted = repeat_edge(port_inputs_muted);
         Func _latencybuf_in = repeat_edge(latencybuf_in);
         Func _port_recording_latencies = repeat_edge(port_recording_latencies_in);
+        Func _n_port_events_b = repeat_edge(n_port_events);
+        Func _port_event_timestamps_in_b = repeat_edge(port_event_timestamps_in);
 
         // Do the port input overrides and port input mutes
         Func _muted_samples_in("_muted_samples_in");
@@ -186,7 +184,8 @@ public:
             select(_port_inputs_muted(port) != 0, 0.0f, 1.0f);
 
         // For hard-linked loops, sneakily get the state data from the master loop
-        Func _loop_lengths_in, _positions_in, _soft_sync_map, _states_in, _next_states_in, _next_state_countdowns_in;
+        Func _loop_lengths_in, _positions_in, _soft_sync_map, _states_in, _next_states_in,
+             _next_state_countdowns_in;
         Expr mapped_loop = select(_hard_sync_map(loop) >= 0, _hard_sync_map(loop), loop);
         _loop_lengths_in(loop) = _loop_lengths_in_b(mapped_loop);
         _positions_in(loop) = _positions_in_b(mapped_loop);
@@ -211,13 +210,14 @@ public:
         // Update write index
         latencybuf_writepos_out() = (latencybuf_writepos_in + n_frames) % lbuf_size;
 
-        // Apply port input overrides to redirect both samples and latencies
-        Func _samples_in("_samples_in"), _port_event_timestamps_in{"_port_event_timestamps_in"}, _n_port_events{"_n_port_events"};
+        // Apply port input overrides to redirect both samples, events and latencies
+        Func _samples_in("_samples_in"), _port_event_timestamps_in{"_port_event_timestamps_in"},
+             _n_port_events{"_n_port_events"};
         Expr remapped_port = _port_input_override_map(port);
         // TODO: using input directly here, could also take the latest from the latency buf.
         //       what is faster?
-        _port_event_timestamps_in(x, port) = port_event_timestamps_in(x, remapped_port);
-        _n_port_events(port) = n_port_events(x, remapped_port);
+        _port_event_timestamps_in(x, port) = _port_event_timestamps_in_b(x, remapped_port);
+        _n_port_events(port) = _n_port_events_b(remapped_port);
         _samples_in(x, port) = _muted_samples_in(x, remapped_port);
         Func _latency_applied_samples_in("_latency_applied_samples_in");
         Expr sample_idx = (latencybuf_writepos_in - _port_recording_latencies(remapped_port) + x) % lbuf_size;
@@ -379,14 +379,6 @@ public:
         );
         recording_range(loop) = Tuple(recording_from, recording_to);
 
-        // Calculate which events should be passed through / recorded.
-        RDom event(0, port_event_timestamps_in.dim(0).extent());
-        event.where(event.x < n_port_events(port));
-        event_passthrough_out(x, port) = Halide::undef<bool>();
-        event_passthrough_out(event, port) = select(
-            port_passthrough_levels()
-        );
-
         // Per loop, store range where it will run at all.
         // Note that regardless of which state transition will happen,
         // there will always be at most one continuous running range.
@@ -438,6 +430,28 @@ public:
             is_recording,
             _latency_applied_samples_in(rr.x, rr.y),
             Halide::undef<float>() // No recording
+        );
+
+        // Calculate which events should be recorded and where in the loops.
+        RDom event(0, port_event_timestamps_in.dim(0).extent());
+        Expr loop_input_port = _port_input_override_map(ports_map(loop));
+        event.where(event.x < _n_port_events(loop_input_port));
+        event_recording_timestamps_out(x, loop) = Halide::undef<int32_t>();
+        Expr event_in_timestamp = _port_event_timestamps_in(event, loop_input_port);
+        // We already calculated the recording index in the loop before, but we used
+        // the rr domain for that. Use variable substitution to repurpose the same expression
+        // for events too.
+        Expr event_recording_index = Halide::Internal::substitute(
+            rr.y, loop,
+            Halide::Internal::substitute(
+                rr.x, event_in_timestamp,
+                rr_record_index
+            )
+        );
+        event_recording_timestamps_out(event, loop) = select(
+            event_in_timestamp >= recording_range(loop)[0] && event_in_timestamp < recording_range(loop)[1],
+            event_recording_index,
+            -1
         );
 
         // Compute output samples for each loop

@@ -19,10 +19,14 @@ struct loops_buffers {
     size_t process_samples;
     size_t max_loop_length;
     size_t latency_buf_size;
+    size_t max_n_events;
     Buffer<int32_t, 0> latency_buf_write_pos;
     Buffer<int8_t, 1> states_in, states_out;
     Buffer<int8_t, 2> next_states_in, next_states_out;
     Buffer<int8_t, 2> next_states_countdown_in, next_states_countdown_out;
+    Buffer<int32_t, 2> port_event_timestamps_in;
+    Buffer<int32_t, 2> event_recording_timestamps_out;
+    Buffer<int32_t, 1> n_port_events;
     Buffer<int32_t, 1> positions_in, positions_out;
     Buffer<int32_t, 1> lengths_in, lengths_out;
     Buffer<float, 2> samples_in, samples_out;
@@ -52,6 +56,7 @@ loops_buffers setup_buffers(
 ) {
     loops_buffers r;
 
+    r.max_n_events = 10;
     r.process_samples = process_samples;
     r.latency_buf_size = process_samples * 4;
 
@@ -71,12 +76,13 @@ loops_buffers setup_buffers(
     r.port_input_override_map = decltype(r.port_input_override_map)(n_ports);
     r.loops_to_ports = decltype(r.loops_to_ports)(n_loops);
     r.loop_output_peaks = decltype(r.loop_output_peaks)(n_loops);
-
+    
     r.samples_in = decltype(r.samples_in)(process_samples, n_ports);
     r.samples_out = decltype(r.samples_in)(process_samples, n_ports);
     r.samples_out_per_loop = decltype(r.samples_out_per_loop)(process_samples, n_loops);
     r.storage_in = decltype(r.storage_in)(storage_samples, n_loops);
     r.storage_out = decltype(r.storage_out)(storage_samples, n_loops);
+    r.event_recording_timestamps_out = decltype(r.event_recording_timestamps_out)(r.max_n_events, n_loops);
 
     r.passthroughs = decltype(r.passthroughs)(n_ports);
     r.port_volumes = decltype(r.port_volumes)(n_ports);
@@ -84,6 +90,8 @@ loops_buffers setup_buffers(
     r.port_inputs_muted = decltype(r.port_inputs_muted)(n_ports);
     r.port_input_peaks = decltype(r.port_input_peaks)(n_ports);
     r.port_output_peaks = decltype(r.port_output_peaks)(n_ports);
+    r.n_port_events = decltype(r.n_port_events)(n_ports);
+    r.port_event_timestamps_in = decltype(r.port_event_timestamps_in)(r.max_n_events, n_ports);
 
     r.latency_buf = decltype(r.latency_buf)(r.latency_buf_size, n_ports);
     r.latency_buf_write_pos = Buffer<int32_t>::make_scalar();
@@ -101,6 +109,9 @@ loops_buffers setup_buffers(
         r.loop_volumes(i) = 1.0f;
         r.loops_to_ports(i) = 0;
 
+        for (size_t s = 0; s < r.max_n_events; s++) {
+            r.event_recording_timestamps_out(s, i) = -1;
+        }
         for (size_t s = 0; s < r.storage_in.dim(0).extent(); s++) {
             r.storage_in(s, i) = r.storage_out(s, i) = -((float)s);
         }
@@ -116,13 +127,17 @@ loops_buffers setup_buffers(
         r.ports_muted(i) = 0;
         r.port_inputs_muted(i) = 0;
         r.port_recording_latencies(i) = 0;
+        r.n_port_events(i) = 0;
 
         for (size_t s = 0; s < process_samples; s++) {
-            r.samples_in(s, i) = (float)s;
+            r.samples_in(s, i) = (float)(s+i);
             r.samples_out(s, i) = std::numeric_limits<float>::max();
         }
         for (size_t s = 0; s < r.latency_buf_size; s++) {
-            r.latency_buf(s, i) = ((float)s) * 2.0f;
+            r.latency_buf(s, i) = ((float)s+i) * 2.0f;
+        }
+        for (size_t s = 0; s < r.max_n_events; s++) {
+            r.port_event_timestamps_in(s, i) = -1;
         }
     }
 
@@ -160,6 +175,8 @@ void run_loops(
         bufs.ports_muted,
         bufs.port_inputs_muted,
         bufs.loop_volumes,
+        bufs.port_event_timestamps_in,
+        bufs.n_port_events,
         bufs.process_samples,
         bufs.storage_in.dim(0).extent(),
         bufs.samples_out,
@@ -174,6 +191,7 @@ void run_loops(
         bufs.lengths_out,
         bufs.next_states_out,
         bufs.next_states_countdown_out,
+        bufs.event_recording_timestamps_out,
         bufs.storage_out
     );
 }
@@ -384,6 +402,37 @@ suite loops_tests = []() {
             } else {
                 expect(eq(lbuf_sample, latencybuf_copy(i, 0))); // original value
             }
+        }
+    };
+
+    "4_3_record_from_0_remapped"_test = []() {
+        loops_buffers bufs = setup_buffers(1, 4, 16, 8);
+        bufs.states_in(0) = bufs.next_states_in(0, 0) = Recording;
+        bufs.positions_in(0) = 0;
+        bufs.lengths_in(0) = 0;
+        bufs.port_input_override_map(0) = 3;
+        run_loops(bufs);
+        expect(eq(((int)bufs.states_out(0)), Recording));
+        expect(bufs.positions_out(0) == 0_i);
+        expect(bufs.lengths_out(0) == 8_i);
+
+
+        for(size_t i=0; i<bufs.storage_in.dim(0).extent(); i++) {
+            float storage_in = bufs.storage_in(i,0);
+            float storage_out = bufs.storage_out(i,0);
+            if (i < 8) {
+                // Recorded
+                float sample_in = bufs.samples_in(i, 3);
+                expect(eq(storage_out, sample_in)) << " at index " << i;
+            } else {
+                expect(eq(storage_out, storage_in)) << " at index " << i;
+            }
+        }
+        for(size_t i=0; i<bufs.process_samples; i++) {
+            float sample_in = bufs.samples_in(i,3);
+            float sample_out = bufs.samples_out(i,0);
+            float storage = bufs.storage_in(i+2, 0);
+            expect(eq(sample_out, sample_in)) << " at index " << i;
         }
     };
 
@@ -808,10 +857,113 @@ suite loops_tests = []() {
         for(size_t i=0; i<bufs.process_samples; i++) {
             float sample_in = bufs.samples_in(i,0);
             float sample_out = bufs.samples_out(i,0);
-            float storage = bufs.storage_in(i+10, 0);
+            float storage = bufs.storage_in((i+10)%16, 0);
             // Still playing back
             expect(eq(sample_out, storage)) << " at index " << i;
         }
+    };
+
+    "17_discard_events_while_not_recording"_test = []() {
+        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
+        bufs.states_in(0) = bufs.next_states_in(0, 0) = Playing;
+        bufs.positions_in(0) = 2;
+        bufs.lengths_in(0) = 11;
+        for(size_t i=0; i<bufs.process_samples; i++) {
+            bufs.samples_in(i, 0) = 0.0f;
+        };
+        bufs.port_event_timestamps_in(0, 0) = 2;
+        bufs.port_event_timestamps_in(1, 0) = 4;
+        bufs.n_port_events(0) = 2;
+        run_loops(bufs);
+        expect(eq(((int)bufs.states_out(0)), Playing));
+        expect(bufs.positions_out(0) == 10_i);
+        expect(bufs.lengths_out(0) == 11_i);
+        expect(bufs.event_recording_timestamps_out(0, 0) == -1);
+        expect(bufs.event_recording_timestamps_out(1, 0) == -1);
+
+        for(size_t i=0; i<bufs.storage_in.dim(0).extent(); i++) {
+            float storage_in = bufs.storage_in(i,0);
+            float storage_out = bufs.storage_out(i,0);
+            expect(eq(storage_out, storage_in)) << " at index " << i;
+        }
+        for(size_t i=0; i<bufs.process_samples; i++) {
+            float sample_in = bufs.samples_in(i,0);
+            float sample_out = bufs.samples_out(i,0);
+            float storage = bufs.storage_in(i+2, 0);
+            expect(eq(sample_out, storage)) << " at index " << i;
+        }
+    };
+
+    "18_record_events_from_0"_test = []() {
+        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
+        bufs.states_in(0) = bufs.next_states_in(0, 0) = Recording;
+        bufs.positions_in(0) = 0;
+        bufs.lengths_in(0) = 0;
+        bufs.port_event_timestamps_in(0, 0) = 3;
+        bufs.port_event_timestamps_in(1, 0) = 5;
+        bufs.port_event_timestamps_in(2, 0) = 6;
+        bufs.n_port_events(0) = 2; // to test that the 3rd one is ignored
+        run_loops(bufs);
+        expect(eq(((int)bufs.states_out(0)), Recording));
+        expect(bufs.positions_out(0) == 0_i);
+        expect(bufs.lengths_out(0) == 8_i);
+        expect(bufs.event_recording_timestamps_out(0, 0) == 3);
+        expect(bufs.event_recording_timestamps_out(1, 0) == 5);
+        expect(bufs.event_recording_timestamps_out(2, 0) == -1);
+
+        for(size_t i=0; i<bufs.storage_in.dim(0).extent(); i++) {
+            float storage_in = bufs.storage_in(i,0);
+            float storage_out = bufs.storage_out(i,0);
+            if (i < 8) {
+                // Recorded
+                float sample_in = bufs.samples_in(i, 0);
+                expect(eq(storage_out, sample_in)) << " at index " << i;
+            } else {
+                expect(eq(storage_out, storage_in)) << " at index " << i;
+            }
+        }
+        for(size_t i=0; i<bufs.process_samples; i++) {
+            float sample_in = bufs.samples_in(i,0);
+            float sample_out = bufs.samples_out(i,0);
+            float storage = bufs.storage_in(i+2, 0);
+            expect(eq(sample_out, sample_in)) << " at index " << i;
+        }
+    };
+
+    "18_1_record_events_from_2"_test = []() {
+        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
+        bufs.states_in(0) = bufs.next_states_in(0, 0) = Recording;
+        bufs.positions_in(0) = 2;
+        bufs.lengths_in(0) = 2;
+        bufs.port_event_timestamps_in(0, 0) = 3;
+        bufs.port_event_timestamps_in(1, 0) = 5;
+        bufs.port_event_timestamps_in(2, 0) = 6;
+        bufs.n_port_events(0) = 2; // to test that the 3rd one is ignored
+        run_loops(bufs);
+        expect(eq(((int)bufs.states_out(0)), Recording));
+        expect(bufs.lengths_out(0) == 10_i);
+        expect(bufs.event_recording_timestamps_out(0, 0) == 5);
+        expect(bufs.event_recording_timestamps_out(1, 0) == 7);
+        expect(bufs.event_recording_timestamps_out(2, 0) == -1);
+    };
+
+    "18_2_record_events_from_0_remapped"_test = []() {
+        loops_buffers bufs = setup_buffers(1, 4, 16, 8);
+        bufs.states_in(0) = bufs.next_states_in(0, 0) = Recording;
+        bufs.positions_in(0) = 0;
+        bufs.lengths_in(0) = 0;
+        bufs.port_input_override_map(0) = 3;
+        bufs.port_event_timestamps_in(0, 3) = 3;
+        bufs.port_event_timestamps_in(1, 3) = 5;
+        bufs.port_event_timestamps_in(2, 3) = 6;
+        bufs.n_port_events(3) = 2; // to test that the 3rd one is ignored
+        run_loops(bufs);
+        expect(eq(((int)bufs.states_out(0)), Recording));
+        expect(bufs.positions_out(0) == 0_i);
+        expect(bufs.lengths_out(0) == 8_i);
+        expect(bufs.event_recording_timestamps_out(0, 0) == 3);
+        expect(bufs.event_recording_timestamps_out(1, 0) == 5);
+        expect(bufs.event_recording_timestamps_out(2, 0) == -1);
     };
 };
 
