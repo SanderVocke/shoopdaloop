@@ -27,9 +27,16 @@ public:
 
     // Nl states, positions, lengths (one for each looper)
     Input<Buffer<int8_t, 1>> states_in{"states_in"};
-    Input<Buffer<int8_t, 1>> next_states_in{"next_states_in"};
     Input<Buffer<int32_t, 1>> positions_in{"positions_in"};
     Input<Buffer<int32_t, 1>> loop_lengths_in{"loop_lengths_in"};
+
+    // Nl x 2
+    // next_states holds the next 2 states planned for a loop.
+    // next_state_countdowns holds a counter that determines how many
+    // triggers it takes to move to the next state.
+    // -1 means "never transition"
+    Input<Buffer<int8_t, 2>> next_states_in{"next_states_in"};
+    Input<Buffer<int8_t, 2>> next_state_countdowns_in{"next_state_countdowns_in"};
 
     // Nl x Ll samples for loop storage
     Input<Buffer<float, 2>> loop_storage_in{"loop_storage_in"};
@@ -84,6 +91,10 @@ public:
     Output<Buffer<int32_t, 1>> positions_out{"positions_out"};
     Output<Buffer<int32_t, 1>> loop_lengths_out{"loop_lengths_out"};
 
+    // Nl x 2
+    Output<Buffer<int8_t, 2>> next_states_out{"next_states_out"};
+    Output<Buffer<int8_t, 2>> next_state_countdowns_out{"next_state_countdowns_out"};
+
     // Nl x Ll
     Output<Buffer<float, 2>> loop_storage_out{"loop_storage_out"};
 
@@ -100,7 +111,8 @@ public:
             Expr pe = port_passthrough_levels.dim(0).extent();
 
             // 1D buffers per loop
-            next_states_in.dim(0).set_bounds(lf, le);
+            next_states_in.dim(1).set_bounds(lf, le);
+            next_state_countdowns_in.dim(1).set_bounds(lf, le);
             positions_in.dim(0).set_bounds(lf, le);
             loop_lengths_in.dim(0).set_bounds(lf, le);
             hard_sync_map.dim(0).set_bounds(lf, le);
@@ -119,6 +131,10 @@ public:
             port_input_override_map.dim(0).set_bounds(pf, pe);
             ports_muted.dim(0).set_bounds(pf, pe);
             port_inputs_muted.dim(0).set_bounds(pf, pe);
+
+            // Constants
+            next_states_in.dim(0).set_bounds(0, 2);
+            next_state_countdowns_in.dim(0).set_bounds(0, 2);
         }
 
         Var loop("loop");
@@ -135,6 +151,7 @@ public:
         Func _port_input_override_map = repeat_edge(port_input_override_map);
         Func _states_in_b = repeat_edge(states_in);
         Func _next_states_in_b = repeat_edge(next_states_in);
+        Func _next_state_countdowns_in_b = constant_exterior(next_state_countdowns_in, -1);
         Func _ports_muted = repeat_edge(ports_muted);
         Func _port_inputs_muted = repeat_edge(port_inputs_muted);
         Func _latencybuf_in = repeat_edge(latencybuf_in);
@@ -146,13 +163,14 @@ public:
             select(_port_inputs_muted(port) != 0, 0.0f, 1.0f);
 
         // For hard-linked loops, sneakily get the state data from the master loop
-        Func _loop_lengths_in, _positions_in, _soft_sync_map, _states_in, _next_states_in;
+        Func _loop_lengths_in, _positions_in, _soft_sync_map, _states_in, _next_states_in, _next_state_countdowns_in;
         Expr mapped_loop = select(_hard_sync_map(loop) >= 0, _hard_sync_map(loop), loop);
         _loop_lengths_in(loop) = _loop_lengths_in_b(mapped_loop);
         _positions_in(loop) = _positions_in_b(mapped_loop);
         _soft_sync_map(loop) = _soft_sync_map_b(mapped_loop);
         _states_in(loop) = _states_in_b(mapped_loop);
-        _next_states_in(loop) = _next_states_in_b(mapped_loop);
+        _next_states_in(x, loop) = _next_states_in_b(x, mapped_loop);
+        _next_state_countdowns_in(x, loop) = _next_state_countdowns_in_b(x, mapped_loop);
         
         // Some definitions
         auto is_running_state = [](Expr state) { return state == Playing || state == PlayingMuted || state == Recording; };
@@ -198,7 +216,7 @@ public:
         Expr will_wrap = is_playing_state(_states_in(loop)) && (_loop_lengths_in(loop) - _positions_in(loop)) < n_samples;
         Expr is_transitioning_immediately =
             is_starting_to_play ||
-            (_states_in(loop) != _next_states_in(loop) &&
+            (_states_in(loop) != _next_states_in(0, loop) && // TODO: is this correct for all loops, or just master?
              !is_playing_state(_states_in(loop)));
         // Debug prints
         // is_starting_to_play = print_when(is_starting_to_play, is_starting_to_play, loop, "starting, p:", _positions_in(loop), "l:", _loop_lengths_in(loop), "n:", n_samples);
@@ -226,11 +244,30 @@ public:
         Expr my_master_loop = _soft_sync_map(loop);
         Expr will_receive_soft_sync = is_soft_synced && 
             _generates_soft_sync_at(my_master_loop) != -1;
-        Expr move_to_next_state = will_receive_soft_sync || !is_soft_synced; // non-soft-synced loops always move to next state immediately
-        // Right-hand side
+        Expr state_change_trigger = will_receive_soft_sync || !is_soft_synced; // non-soft-synced loops always trigger immediately
+        // Now deal with the next state countdown mechanics
+        Expr state_will_transition = state_change_trigger && _next_state_countdowns_in(0, loop) == 0;
+        next_state_countdowns_out(x, loop) = _next_state_countdowns_in(x, loop);
+        // Decrement countdowns
+        next_state_countdowns_out(0, loop) = select (
+            state_change_trigger && _next_state_countdowns_in(0, loop) > 0,
+            _next_state_countdowns_in(0, loop) - 1,
+            Halide::undef<int8_t>()
+        );
+        // Shift to next state if needed
+        next_state_countdowns_out(x, loop) = select(
+            state_will_transition,
+            _next_state_countdowns_in(x+1, loop), // Shift to next in queue
+            Halide::undef<int8_t>()
+        );
+        next_states_out(x, loop) = select(
+            state_will_transition,
+            _next_states_in(x+1, loop),
+            _next_states_in(x, loop)
+        );
         Expr _new_state = select(
-            move_to_next_state,
-            _next_states_in(loop),
+            state_will_transition,
+            _next_states_in(0, loop),
             _states_in(loop)
         );
         // Debug prints
@@ -246,11 +283,11 @@ public:
         Func playing_range("playing_range"), recording_range("recording_range"), muted_range("muted_range");
         // Some logic about playing state transitions
         Expr state_is_playing = _states_in(loop) == Playing || _states_in(loop) == PlayingMuted;
-        Expr next_state_is_playing = _next_states_in(loop) == Playing || _next_states_in(loop) == PlayingMuted;
+        Expr next_state_is_playing = _next_states_in(0, loop) == Playing || _next_states_in(0, loop) == PlayingMuted;
         Expr end_state_is_playing = new_state(loop) == Playing || _states_in(loop) == PlayingMuted;
-        Expr will_start_playing = will_receive_soft_sync && !state_is_playing && next_state_is_playing;
-        Expr will_stop_playing = will_receive_soft_sync && state_is_playing && !next_state_is_playing;
-        Expr will_transition_at = _generates_soft_sync_at(my_master_loop);
+        Expr will_start_playing = state_will_transition && !state_is_playing && next_state_is_playing;
+        Expr will_stop_playing = state_will_transition && state_is_playing && !next_state_is_playing;
+        Expr will_transition_at = select(will_receive_soft_sync, _generates_soft_sync_at(my_master_loop), 0);
         // Determine the range.
         Expr playing_from = select(
             state_is_playing,
@@ -293,9 +330,9 @@ public:
 
         // Some logic about recording state transitions
         Expr state_is_recording = _states_in(loop) == Recording;
-        Expr next_state_is_recording = _next_states_in(loop) == Recording;
-        Expr will_start_recording = will_receive_soft_sync && !state_is_recording && next_state_is_recording;
-        Expr will_stop_recording = will_receive_soft_sync && state_is_recording && !next_state_is_recording;
+        Expr next_state_is_recording = _next_states_in(0, loop) == Recording;
+        Expr will_start_recording = state_will_transition && !state_is_recording && next_state_is_recording;
+        Expr will_stop_recording = state_will_transition && state_is_recording && !next_state_is_recording;
         // Determine the range.
         Expr recording_from = select(
             state_is_recording,
@@ -437,6 +474,8 @@ public:
         port_input_peaks.compute_root();
         port_output_peaks.compute_root();
         loop_output_peaks.compute_root();
+        next_states_out.compute_root();
+        next_state_countdowns_out.compute_root();
         // _loop_lengths_in.compute_root();
         // _positions_in.compute_root();
         // _soft_sync_map.compute_root();

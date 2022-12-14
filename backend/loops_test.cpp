@@ -21,7 +21,8 @@ struct loops_buffers {
     size_t latency_buf_size;
     Buffer<int32_t, 0> latency_buf_write_pos;
     Buffer<int8_t, 1> states_in, states_out;
-    Buffer<int8_t, 1> next_states;
+    Buffer<int8_t, 2> next_states_in, next_states_out;
+    Buffer<int8_t, 2> next_states_countdown_in, next_states_countdown_out;
     Buffer<int32_t, 1> positions_in, positions_out;
     Buffer<int32_t, 1> lengths_in, lengths_out;
     Buffer<float, 2> samples_in, samples_out;
@@ -56,7 +57,10 @@ loops_buffers setup_buffers(
 
     r.states_in = decltype(r.states_in)(n_loops);
     r.states_out = decltype(r.states_out)(n_loops);
-    r.next_states = decltype(r.next_states)(n_loops);
+    r.next_states_in = decltype(r.next_states_in)(2, n_loops);
+    r.next_states_out = decltype(r.next_states_out)(2, n_loops);
+    r.next_states_countdown_in = decltype(r.next_states_countdown_in)(2, n_loops);
+    r.next_states_countdown_out = decltype(r.next_states_countdown_out)(2, n_loops);
     r.positions_in = decltype(r.positions_in)(n_loops);
     r.positions_out = decltype(r.positions_out)(n_loops);
     r.lengths_in = decltype(r.lengths_in)(n_loops);
@@ -90,7 +94,8 @@ loops_buffers setup_buffers(
         r.loops_hard_sync_mapping(i) = -1;
         r.loops_soft_sync_mapping(i) = -1;
         r.states_in(i) = Stopped;
-        r.next_states(i) = Stopped;
+        r.next_states_in(0, i) = r.next_states_in(1, i) = Stopped;
+        r.next_states_countdown_in(0, i) = r.next_states_countdown_in(1, i) = -1;
         r.positions_in(i) = 0;
         r.lengths_in(i) = 0;
         r.loop_volumes(i) = 1.0f;
@@ -141,9 +146,10 @@ void run_loops(
         bufs.latency_buf_write_pos(),
         bufs.port_recording_latencies,
         bufs.states_in,
-        bufs.next_states,
         bufs.positions_in,
         bufs.lengths_in,
+        bufs.next_states_in,
+        bufs.next_states_countdown_in,
         bufs.storage_in,
         bufs.loops_to_ports,
         bufs.loops_hard_sync_mapping,
@@ -166,6 +172,8 @@ void run_loops(
         bufs.states_out,
         bufs.positions_out,
         bufs.lengths_out,
+        bufs.next_states_out,
+        bufs.next_states_countdown_out,
         bufs.storage_out
     );
 }
@@ -175,7 +183,7 @@ suite loops_tests = []() {
 
     "1_stop"_test = []() {
         loops_buffers bufs = setup_buffers(1, 1, 16, 8);
-        bufs.states_in(0) = bufs.next_states(0) = Stopped;
+        bufs.states_in(0) = bufs.next_states_in(0, 0) = Stopped;
         bufs.positions_in(0) = 2;
         bufs.lengths_in(0) = 11;
         run_loops(bufs);
@@ -198,7 +206,7 @@ suite loops_tests = []() {
 
     "2_play"_test = []() {
         loops_buffers bufs = setup_buffers(1, 1, 16, 8);
-        bufs.states_in(0) = bufs.next_states(0) = Playing;
+        bufs.states_in(0) = bufs.next_states_in(0, 0) = Playing;
         bufs.positions_in(0) = 2;
         bufs.lengths_in(0) = 11;
         for(size_t i=0; i<bufs.process_samples; i++) {
@@ -224,7 +232,7 @@ suite loops_tests = []() {
 
     "2_1_play_long"_test = []() {
         loops_buffers bufs = setup_buffers(1, 1, 2048, 256);
-        bufs.states_in(0) = bufs.next_states(0) = Playing;
+        bufs.states_in(0) = bufs.next_states_in(0, 0) = Playing;
         bufs.positions_in(0) = 0;
         bufs.lengths_in(0) = 2048;
         for(size_t i=0; i<bufs.process_samples; i++) {
@@ -255,7 +263,7 @@ suite loops_tests = []() {
 
     "3_play_muted"_test = []() {
         loops_buffers bufs = setup_buffers(1, 1, 16, 8);
-        bufs.states_in(0) = bufs.next_states(0) = PlayingMuted;
+        bufs.states_in(0) = bufs.next_states_in(0, 0) = PlayingMuted;
         bufs.positions_in(0) = 2;
         bufs.lengths_in(0) = 11;
         run_loops(bufs);
@@ -278,7 +286,7 @@ suite loops_tests = []() {
 
     "4_record"_test = []() {
         loops_buffers bufs = setup_buffers(1, 1, 16, 8);
-        bufs.states_in(0) = bufs.next_states(0) = Recording;
+        bufs.states_in(0) = bufs.next_states_in(0, 0) = Recording;
         bufs.positions_in(0) = 2;
         bufs.lengths_in(0) = 3;
         run_loops(bufs);
@@ -308,7 +316,7 @@ suite loops_tests = []() {
 
     "4_1_record_from_0"_test = []() {
         loops_buffers bufs = setup_buffers(1, 1, 16, 8);
-        bufs.states_in(0) = bufs.next_states(0) = Recording;
+        bufs.states_in(0) = bufs.next_states_in(0, 0) = Recording;
         bufs.positions_in(0) = 0;
         bufs.lengths_in(0) = 0;
         run_loops(bufs);
@@ -338,7 +346,7 @@ suite loops_tests = []() {
 
     "4_2_record_with_latency"_test = []() {
         loops_buffers bufs = setup_buffers(1, 1, 16, 8);
-        bufs.states_in(0) = bufs.next_states(0) = Recording;
+        bufs.states_in(0) = bufs.next_states_in(0, 0) = Recording;
         bufs.positions_in(0) = 2;
         bufs.lengths_in(0) = 3;
         bufs.latency_buf_write_pos() = 2;
@@ -381,7 +389,7 @@ suite loops_tests = []() {
 
     "5_passthrough"_test = []() {
         loops_buffers bufs = setup_buffers(1, 1, 16, 8);
-        bufs.states_in(0) = bufs.next_states(0) = Stopped;
+        bufs.states_in(0) = bufs.next_states_in(0, 0) = Stopped;
         bufs.positions_in(0) = 2;
         bufs.lengths_in(0) = 11;
         bufs.passthroughs(0) = 0.5f;
@@ -405,7 +413,7 @@ suite loops_tests = []() {
 
     "5_1_passthrough_remapped"_test = []() {
         loops_buffers bufs = setup_buffers(1, 2, 16, 8);
-        bufs.states_in(0) = bufs.next_states(0) = Stopped;
+        bufs.states_in(0) = bufs.next_states_in(0, 0) = Stopped;
         bufs.positions_in(0) = 2;
         bufs.lengths_in(0) = 11;
         bufs.port_input_override_map(1) = 0;
@@ -436,7 +444,7 @@ suite loops_tests = []() {
 
     "6_loop_volume"_test = []() {
         loops_buffers bufs = setup_buffers(1, 1, 16, 8);
-        bufs.states_in(0) = bufs.next_states(0) = Playing;
+        bufs.states_in(0) = bufs.next_states_in(0, 0) = Playing;
         bufs.positions_in(0) = 2;
         bufs.lengths_in(0) = 11;
         bufs.loop_volumes(0) = 0.5f;
@@ -461,7 +469,8 @@ suite loops_tests = []() {
     "7_soft_sync_play_to_stop_self"_test = []() {
         loops_buffers bufs = setup_buffers(1, 1, 16, 8);
         bufs.states_in(0) = Playing;
-        bufs.next_states(0) = Stopped;
+        bufs.next_states_in(0, 0) = Stopped;
+        bufs.next_states_countdown_in(0, 0) = 0;
         bufs.positions_in(0) = 10;
         bufs.lengths_in(0) = 16;
         bufs.loops_soft_sync_mapping(0) = 0;
@@ -470,6 +479,7 @@ suite loops_tests = []() {
         expect(eq(((int)bufs.states_out(0)), Stopped));
         expect(bufs.positions_out(0) == 0_i);
         expect(bufs.lengths_out(0) == 16);
+        expect(bufs.next_states_countdown_out(0, 0) == -1);
 
         for(size_t i=0; i<bufs.storage_in.dim(0).extent(); i++) {
             float storage_in = bufs.storage_in(i,0);
@@ -493,7 +503,8 @@ suite loops_tests = []() {
     "8_soft_sync_play_to_record_self"_test = []() {
         loops_buffers bufs = setup_buffers(1, 1, 16, 8);
         bufs.states_in(0) = Playing;
-        bufs.next_states(0) = Recording;
+        bufs.next_states_in(0, 0) = Recording;
+        bufs.next_states_countdown_in(0, 0) = 0;
         bufs.positions_in(0) = 10;
         bufs.lengths_in(0) = 16;
         bufs.loops_soft_sync_mapping(0) = 0;
@@ -502,6 +513,7 @@ suite loops_tests = []() {
         expect(eq(((int)bufs.states_out(0)), Recording));
         expect(bufs.positions_out(0) == 2_i);
         expect(bufs.lengths_out(0) == 2_i);
+        expect(bufs.next_states_countdown_out(0, 0) == -1);
 
         for(size_t i=0; i<bufs.storage_in.dim(0).extent(); i++) {
             float storage_in = bufs.storage_in(i,0);
@@ -532,7 +544,8 @@ suite loops_tests = []() {
     "9_soft_sync_stop_to_record_self"_test = []() {
         loops_buffers bufs = setup_buffers(1, 1, 16, 8);
         bufs.states_in(0) = Stopped;
-        bufs.next_states(0) = Recording;
+        bufs.next_states_in(0, 0) = Recording;
+        bufs.next_states_countdown_in(0, 0) = 0;
         bufs.positions_in(0) = 0;
         bufs.lengths_in(0) = 0;
         bufs.loops_soft_sync_mapping(0) = 0;
@@ -541,6 +554,7 @@ suite loops_tests = []() {
         expect(eq(((int)bufs.states_out(0)), Recording));
         expect(bufs.positions_out(0) == 8_i);
         expect(bufs.lengths_out(0) == 8_i);
+        expect(bufs.next_states_countdown_out(0, 0) == -1);
 
         for(size_t i=0; i<bufs.storage_in.dim(0).extent(); i++) {
             float storage_in = bufs.storage_in(i,0);
@@ -564,7 +578,8 @@ suite loops_tests = []() {
     "10_soft_sync_record_to_play_self"_test = []() {
         loops_buffers bufs = setup_buffers(1, 1, 16, 8);
         bufs.states_in(0) = Recording;
-        bufs.next_states(0) = Playing;
+        bufs.next_states_in(0, 0) = Playing;
+        bufs.next_states_countdown_in(0, 0) = 0;
         bufs.positions_in(0) = 5;
         bufs.lengths_in(0) = 5;
         bufs.loops_soft_sync_mapping(0) = 0;
@@ -573,6 +588,7 @@ suite loops_tests = []() {
         expect(eq(((int)bufs.states_out(0)), Playing));
         expect(bufs.positions_out(0) == 3_i);
         expect(bufs.lengths_out(0) == 5_i);
+        expect(bufs.next_states_countdown_out(0, 0) == -1);
 
         for(size_t i=0; i<bufs.storage_in.dim(0).extent(); i++) {
             float storage_in = bufs.storage_in(i,0);
@@ -592,7 +608,8 @@ suite loops_tests = []() {
     "11_soft_sync_play_to_record_self"_test = []() {
         loops_buffers bufs = setup_buffers(1, 1, 16, 8);
         bufs.states_in(0) = Playing;
-        bufs.next_states(0) = Recording;
+        bufs.next_states_in(0, 0) = Recording;
+        bufs.next_states_countdown_in(0, 0) = 0;
         bufs.positions_in(0) = 5;
         bufs.lengths_in(0) = 10;
         bufs.loops_soft_sync_mapping(0) = 0;
@@ -601,6 +618,7 @@ suite loops_tests = []() {
         expect(eq(((int)bufs.states_out(0)), Recording));
         expect(bufs.positions_out(0) == 3_i);
         expect(bufs.lengths_out(0) == 3_i);
+        expect(bufs.next_states_countdown_out(0, 0) == -1);
 
         for(size_t i=0; i<bufs.storage_in.dim(0).extent(); i++) {
             float storage_in = bufs.storage_in(i,0);
@@ -626,7 +644,8 @@ suite loops_tests = []() {
     "12_no_soft_sync_play_to_record_self"_test = []() {
         loops_buffers bufs = setup_buffers(1, 1, 16, 8);
         bufs.states_in(0) = Playing;
-        bufs.next_states(0) = Recording;
+        bufs.next_states_in(0, 0) = Recording;
+        bufs.next_states_countdown_in(0, 0) = 0;
         bufs.positions_in(0) = 2;
         bufs.lengths_in(0) = 12;
         bufs.loops_soft_sync_mapping(0) = 0;
@@ -650,8 +669,9 @@ suite loops_tests = []() {
 
     "13_hard_sync_stop"_test = []() {
         loops_buffers bufs = setup_buffers(2, 1, 16, 8);
-        bufs.states_in(0) = bufs.next_states(0) = Stopped;
-        bufs.states_in(0) = bufs.next_states(1) = Playing;
+        bufs.states_in(0) = bufs.next_states_in(0, 0) = Stopped;
+        bufs.states_in(1) = bufs.next_states_in(0, 1) = Playing;
+        bufs.next_states_countdown_in(0, 0) = 0;
         bufs.positions_in(0) = 2;
         bufs.positions_in(1) = 5;
         bufs.lengths_in(0) = 11;
@@ -678,8 +698,9 @@ suite loops_tests = []() {
     "13_1_hard_sync_soft_sync_play_to_record_self"_test = []() {
         loops_buffers bufs = setup_buffers(2, 1, 16, 8);
         bufs.states_in(0) = Playing;
-        bufs.next_states(0) = Recording;
-        bufs.states_in(1) = Stopped; bufs.next_states(1) = Stopped;
+        bufs.next_states_in(0, 0) = Recording;
+        bufs.next_states_countdown_in(0, 0) = 0;
+        bufs.states_in(1) = Stopped; bufs.next_states_in(0, 1) = Stopped;
         bufs.positions_in(0) = 5;
         bufs.lengths_in(0) = 10;
         bufs.positions_in(2) = 2;
@@ -717,7 +738,7 @@ suite loops_tests = []() {
 
     "14_mute"_test = []() {
         loops_buffers bufs = setup_buffers(1, 1, 16, 8);
-        bufs.states_in(0) = bufs.next_states(0) = Playing;
+        bufs.states_in(0) = bufs.next_states_in(0, 0) = Playing;
         bufs.positions_in(0) = 2;
         bufs.lengths_in(0) = 11;
         for(size_t i=0; i<bufs.process_samples; i++) {
@@ -742,7 +763,7 @@ suite loops_tests = []() {
 
     "15_mute_input"_test = []() {
         loops_buffers bufs = setup_buffers(1, 1, 16, 8);
-        bufs.states_in(0) = bufs.next_states(0) = Stopped;
+        bufs.states_in(0) = bufs.next_states_in(0, 0) = Stopped;
         bufs.positions_in(0) = 2;
         bufs.lengths_in(0) = 11;
         bufs.passthroughs(0) = 0.5f;
