@@ -38,14 +38,20 @@ uint8_t g_last_written_output_buffer_tick_tock;
 // State for each loop
 Buffer<int8_t, 1> g_states[2];
 
-// Planned state for each loop
-Buffer<int8_t, 1> g_next_states;
+// Planned states for each loop
+Buffer<int8_t, 2> g_next_states[2];
+Buffer<int8_t, 2> g_next_states_countdown[2];
 
 // Position for each loop
 Buffer<int32_t, 1> g_positions[2];
 
 // Length for each loop
 Buffer<int32_t, 1> g_lengths[2];
+
+// Event handling
+Buffer<int32_t, 1> g_n_port_events;
+Buffer<int32_t, 2> g_port_event_timestamps_in;
+Buffer<int32_t, 2> g_event_recording_timestamps_out;
 
 // Sample input and output buffers
 std::vector<float> g_samples_in_raw, g_samples_out_raw; //Use vectors here so we control the layout
@@ -104,10 +110,14 @@ UpdateCallback g_update_cb;
 
 std::thread g_reporting_thread;
 
+constexpr size_t g_max_midi_events_per_cycle = 256;
+
 // A structure of atomic scalars is used to communicate the latest
 // state back from the Jack processing thread to the main thread.
 struct atomic_state {
-    std::vector<std::atomic<loop_state_t>> states, next_states;
+    std::vector<std::atomic<loop_state_t>> states;
+    std::vector<std::vector<std::atomic<loop_state_t>>> next_states;
+    std::vector<std::vector<std::atomic<int8_t>>> next_states_countdown;
     std::vector<std::atomic<int32_t>> positions, lengths, latencies;
     std::vector<std::atomic<float>> passthroughs, loop_volumes, port_volumes, port_input_peaks, port_output_peaks, loop_output_peaks;
     std::vector<std::atomic<int8_t>> ports_muted, port_inputs_muted;
@@ -269,9 +279,10 @@ int jack_process (jack_nframes_t nframes, void *arg) {
             g_latency_buf_write_pos(),
             g_port_recording_latencies,
             g_states[tick],
-            g_next_states,
             g_positions[tick],
             g_lengths[tick],
+            g_next_states[tick],
+            g_next_states_countdown[tick],
             g_storage,
             g_loops_to_ports,
             g_loops_hard_sync_mapping,
@@ -282,6 +293,8 @@ int jack_process (jack_nframes_t nframes, void *arg) {
             g_ports_muted,
             g_port_inputs_muted,
             g_loop_volumes,
+            g_port_event_timestamps_in,
+            g_n_port_events,
             nframes,
             g_loop_len,
             g_samples_out,
@@ -294,6 +307,9 @@ int jack_process (jack_nframes_t nframes, void *arg) {
             g_states[tock],
             g_positions[tock],
             g_lengths[tock],
+            g_next_states[tock],
+            g_next_states_countdown[tock],
+            g_event_recording_timestamps_out,
             g_storage
         );
     }
@@ -305,7 +321,7 @@ int jack_process (jack_nframes_t nframes, void *arg) {
             if(g_states[tock](i) != g_states[tick](i)) {
                 std::cout << "Loop " << i << ": " << (int)g_states[tick](i) << " -> "
                         << (int)g_states[tock](i) 
-                        << " (-> " << (int)g_next_states(i) << ")"
+                        << " (-> " << (int)g_next_states[tock](0, i) << ")"
                         << std::endl;
             }
         }
@@ -326,11 +342,14 @@ int jack_process (jack_nframes_t nframes, void *arg) {
     // Copy states to atomic for read-out
     for(int i=0; i<g_n_loops; i++) {
         g_atomic_state.states[i] = (loop_state_t) g_states[g_last_written_output_buffer_tick_tock](i);
-        g_atomic_state.next_states[i] = (loop_state_t) g_next_states(i);
         g_atomic_state.lengths[i] = g_lengths[g_last_written_output_buffer_tick_tock](i);
         g_atomic_state.loop_volumes[i] = g_loop_volumes(i);
         g_atomic_state.positions[i] = g_positions[g_last_written_output_buffer_tick_tock](i);
         g_atomic_state.loop_output_peaks[i] = g_loop_output_peaks(i);
+        g_atomic_state.next_states[i][0] = (loop_state_t) g_next_states[0](0, i);
+        g_atomic_state.next_states[i][1] = (loop_state_t) g_next_states[1](1, i);
+        g_atomic_state.next_states_countdown[i][0] = (loop_state_t) g_next_states_countdown[0](0, i);
+        g_atomic_state.next_states_countdown[i][1] = (loop_state_t) g_next_states_countdown[1](1, i);
     }
     for(int i=0; i<g_n_ports; i++) {
         g_atomic_state.passthroughs[i] = g_passthroughs(i);
@@ -422,7 +441,10 @@ jack_client_t* initialize(
     // Allocate buffers
     g_states[0] = Buffer<int8_t, 1>(n_loops);
     g_states[1] = Buffer<int8_t, 1>(n_loops);
-    g_next_states = Buffer<int8_t, 1>(n_loops);
+    g_next_states[0] = Buffer<int8_t, 2>(2, n_loops);
+    g_next_states[1] = Buffer<int8_t, 2>(2, n_loops);
+    g_next_states_countdown[0] = Buffer<int8_t, 2>(2, n_loops);
+    g_next_states_countdown[1] = Buffer<int8_t, 2>(2, n_loops);
     g_positions[0] = Buffer<int32_t, 1>(n_loops);
     g_positions[1] = Buffer<int32_t, 1>(n_loops);
     g_lengths[0] = Buffer<int32_t, 1>(n_loops);
@@ -447,6 +469,8 @@ jack_client_t* initialize(
     g_port_input_peaks = Buffer<float, 1>(n_ports);
     g_port_output_peaks = Buffer<float, 1>(n_ports);
     g_loop_output_peaks = Buffer<float, 1>(n_loops);
+    g_port_event_timestamps_in = Buffer<int32_t, 2>(g_max_midi_events_per_cycle, n_ports);
+    g_n_port_events = Buffer<int32_t, 1>(n_ports);
 
     g_samples_in = Buffer<float, 2>(
         halide_type_t {halide_type_float, 32, 1},
@@ -461,7 +485,6 @@ jack_client_t* initialize(
 
     // Allocate atomic state
     g_atomic_state.states = std::vector<std::atomic<loop_state_t>>(n_loops);
-    g_atomic_state.next_states = std::vector<std::atomic<loop_state_t>>(n_loops);
     g_atomic_state.lengths = std::vector<std::atomic<int32_t>>(n_loops);
     g_atomic_state.loop_volumes = std::vector<std::atomic<float>>(n_loops);
     g_atomic_state.port_volumes = std::vector<std::atomic<float>>(n_ports);
@@ -473,11 +496,20 @@ jack_client_t* initialize(
     g_atomic_state.port_input_peaks = std::vector<std::atomic<float>>(n_ports);
     g_atomic_state.port_output_peaks = std::vector<std::atomic<float>>(n_ports);
     g_atomic_state.loop_output_peaks = std::vector<std::atomic<float>>(n_loops);
+    g_atomic_state.next_states = std::vector<std::vector<std::atomic<loop_state_t>>>(n_loops);
+    g_atomic_state.next_states_countdown = std::vector<std::vector<std::atomic<int8_t>>>(n_loops);
+    for(size_t i=0; i<n_loops; i++) {
+        g_atomic_state.next_states[i] = std::vector<std::atomic<loop_state_t>>(2);
+        g_atomic_state.next_states_countdown[i] = std::vector<std::atomic<int8_t>>(2);
+    }
 
     // Initialize loops
     for(size_t i=0; i<g_n_loops; i++) {
         g_states[0](i) = g_states[1](i) = Stopped;
-        g_next_states(i) = Stopped;
+        g_next_states[0](0, i) = g_next_states[0](1, i) = Stopped;
+        g_next_states[1](0, i) = g_next_states[1](1, i) = Stopped;
+        g_next_states_countdown[0](0, i) = g_next_states_countdown[0](1, i) = Stopped;
+        g_next_states_countdown[1](0, i) = g_next_states_countdown[1](1, i) = Stopped;
         g_positions[0](i) = g_positions[1](i) = 0;
         g_lengths[0](i) = g_lengths[1](i) = 0;
         g_loops_to_ports(i) = loops_to_ports_mapping[i];
@@ -515,6 +547,7 @@ jack_client_t* initialize(
         g_port_volumes(i) = 1.0f;
         g_ports_muted(i) = 0;
         g_port_inputs_muted(i) = 0;
+        g_n_port_events(i) = 0;
     }
 
     // Set the JACK process and latency callback
@@ -577,7 +610,8 @@ int do_loop_action(
 
     auto apply_state = [with_soft_sync](std::vector<unsigned> loops, loop_state_t state) {
         for(auto const& loop: loops) {
-            g_next_states(loop) = state;
+            g_next_states[0](0, loop) = g_next_states[1](0, loop) = state;
+            g_next_states_countdown[0](0, loop) = g_next_states_countdown[1](0, loop) = 0;
             if(!with_soft_sync) {
                 g_states[0](loop) = g_states[1](loop) = state;
             }
@@ -691,7 +725,8 @@ void request_update() {
     // Copy the state
     for(int i=0; i<g_n_loops; i++) {
         states[i] = g_atomic_state.states[i];
-        next_states[i] = g_atomic_state.next_states[i];
+        // TODO
+        next_states[i] = g_atomic_state.next_states[i][0];
         positions[i] = g_atomic_state.positions[i];
         lengths[i] = g_atomic_state.lengths[i];
         loop_volumes[i] = g_atomic_state.loop_volumes[i];
@@ -733,7 +768,8 @@ int load_loop_data(
 ) {
     std::atomic<bool> finished = false;
     push_command([loop_idx, &finished]() {
-        g_next_states(loop_idx) = Stopped;
+        g_next_states_countdown[0](0, loop_idx) = g_next_states_countdown[0](1, loop_idx) =
+            g_next_states_countdown[1](0, loop_idx) = g_next_states_countdown[1](1, loop_idx) = -1;
         g_states[0](loop_idx) = g_states[1](loop_idx) = Stopped;
         g_positions[0](loop_idx) = g_positions[1](loop_idx) = 0;
         finished = true;
@@ -762,7 +798,8 @@ unsigned get_loop_data(
     if (do_stop) {
         std::atomic<bool> finished = false;
         push_command([loop_idx, &finished]() {
-            g_next_states(loop_idx) = Stopped;
+            g_next_states_countdown[0](0, loop_idx) = g_next_states_countdown[0](1, loop_idx) =
+                g_next_states_countdown[1](0, loop_idx) = g_next_states_countdown[1](1, loop_idx) = -1;
             g_states[0](loop_idx) = g_states[1](loop_idx) = Stopped;
             g_positions[0](loop_idx) = g_positions[1](loop_idx) = 0;
             finished = true;
