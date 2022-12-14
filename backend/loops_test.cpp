@@ -783,6 +783,36 @@ suite loops_tests = []() {
             expect(eq(sample_out, 0.0f)) << " at index " << i;
         }
     };
+
+    "16_soft_sync_play_to_stop_self_delayed"_test = []() {
+        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
+        bufs.states_in(0) = Playing;
+        bufs.next_states_in(0, 0) = Stopped;
+        bufs.next_states_countdown_in(0, 0) = 1;
+        bufs.positions_in(0) = 10;
+        bufs.lengths_in(0) = 16;
+        bufs.loops_soft_sync_mapping(0) = 0;
+        bufs.passthroughs(0) = 0.0f;
+        run_loops(bufs);
+        expect(eq(((int)bufs.states_out(0)), Playing));
+        expect(bufs.positions_out(0) == 2_i);
+        expect(bufs.lengths_out(0) == 16);
+        expect(bufs.next_states_countdown_out(0, 0) == 0);
+        expect(bufs.next_states_out(0, 0) == Stopped);
+
+        for(size_t i=0; i<bufs.storage_in.dim(0).extent(); i++) {
+            float storage_in = bufs.storage_in(i,0);
+            float storage_out = bufs.storage_out(i,0);
+            expect(eq(storage_out, storage_in)) << " at index " << i;
+        }
+        for(size_t i=0; i<bufs.process_samples; i++) {
+            float sample_in = bufs.samples_in(i,0);
+            float sample_out = bufs.samples_out(i,0);
+            float storage = bufs.storage_in(i+10, 0);
+            // Still playing back
+            expect(eq(sample_out, storage)) << " at index " << i;
+        }
+    };
 };
 
 void usage(std::string name) {
