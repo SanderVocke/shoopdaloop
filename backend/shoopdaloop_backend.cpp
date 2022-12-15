@@ -121,6 +121,9 @@ struct atomic_state {
     std::vector<std::atomic<int32_t>> positions, lengths, latencies;
     std::vector<std::atomic<float>> passthroughs, loop_volumes, port_volumes, port_input_peaks, port_output_peaks, loop_output_peaks;
     std::vector<std::atomic<int8_t>> ports_muted, port_inputs_muted;
+    std::vector<std::atomic<unsigned>> loop_n_output_events_since_last_update,
+        port_n_input_events_since_last_update,
+        port_n_output_events_since_last_update;
 };
 atomic_state g_atomic_state;
 
@@ -502,14 +505,17 @@ jack_client_t* initialize(
         g_atomic_state.next_states[i] = std::vector<std::atomic<loop_state_t>>(2);
         g_atomic_state.next_states_countdown[i] = std::vector<std::atomic<int8_t>>(2);
     }
+    g_atomic_state.loop_n_output_events_since_last_update = std::vector<std::atomic<unsigned>>(n_loops);
+    g_atomic_state.port_n_output_events_since_last_update = std::vector<std::atomic<unsigned>>(n_ports);
+    g_atomic_state.port_n_input_events_since_last_update = std::vector<std::atomic<unsigned>>(n_ports);
 
     // Initialize loops
     for(size_t i=0; i<g_n_loops; i++) {
         g_states[0](i) = g_states[1](i) = Stopped;
         g_next_states[0](0, i) = g_next_states[0](1, i) = Stopped;
         g_next_states[1](0, i) = g_next_states[1](1, i) = Stopped;
-        g_next_states_countdown[0](0, i) = g_next_states_countdown[0](1, i) = Stopped;
-        g_next_states_countdown[1](0, i) = g_next_states_countdown[1](1, i) = Stopped;
+        g_next_states_countdown[0](0, i) = g_next_states_countdown[0](1, i) = -1;
+        g_next_states_countdown[1](0, i) = g_next_states_countdown[1](1, i) = -1;
         g_positions[0](i) = g_positions[1](i) = 0;
         g_lengths[0](i) = g_lengths[1](i) = 0;
         g_loops_to_ports(i) = loops_to_ports_mapping[i];
@@ -517,8 +523,9 @@ jack_client_t* initialize(
             i : loops_hard_sync_mapping[i];
         g_loops_soft_sync_mapping(i) = loops_soft_sync_mapping[i];
         g_loop_volumes(i) = 1.0f;
+        g_atomic_state.loop_n_output_events_since_last_update[i] = 0;
     }
-
+    
     // Initialize ports
     g_input_bufs = std::vector<jack_default_audio_sample_t*>(n_ports);
     g_output_bufs = std::vector<jack_default_audio_sample_t*>(n_ports);
@@ -548,6 +555,9 @@ jack_client_t* initialize(
         g_ports_muted(i) = 0;
         g_port_inputs_muted(i) = 0;
         g_n_port_events(i) = 0;
+
+        g_atomic_state.port_n_input_events_since_last_update[i] = 0;
+        g_atomic_state.port_n_output_events_since_last_update[i] = 0;
     }
 
     // Set the JACK process and latency callback
@@ -718,18 +728,23 @@ int do_port_action(
 void request_update() {
     // Allocate memory for a copy of the relevant state
     std::vector<loop_state_t> states(g_n_loops), next_states(g_n_loops);
-    std::vector<int32_t> positions(g_n_loops), lengths(g_n_loops), latencies(g_n_ports);
+    std::vector<int32_t> positions(g_n_loops), lengths(g_n_loops), latencies(g_n_ports), next_state_countdowns(g_n_loops);
     std::vector<float> passthroughs(g_n_ports), loop_volumes(g_n_loops), port_volumes(g_n_ports);
     std::vector<int8_t> ports_muted(g_n_ports), port_inputs_muted(g_n_ports);
+    std::vector<unsigned> loop_n_output_events(g_n_loops), port_n_input_events(g_n_ports), port_n_output_events(g_n_ports);
 
     // Copy the state
     for(int i=0; i<g_n_loops; i++) {
         states[i] = g_atomic_state.states[i];
         // TODO
         next_states[i] = g_atomic_state.next_states[i][0];
+        next_state_countdowns[i] = g_atomic_state.next_states_countdown[i][0];
         positions[i] = g_atomic_state.positions[i];
         lengths[i] = g_atomic_state.lengths[i];
         loop_volumes[i] = g_atomic_state.loop_volumes[i];
+        loop_n_output_events[i] = g_atomic_state.loop_n_output_events_since_last_update[i];
+        // Reset counters
+        g_atomic_state.loop_n_output_events_since_last_update[i] = 0;
     }
     for(int i=0; i<g_n_ports; i++) {
         passthroughs[i] = g_atomic_state.passthroughs[i];
@@ -737,6 +752,11 @@ void request_update() {
         ports_muted[i] = g_atomic_state.ports_muted[i];
         port_inputs_muted[i] = g_atomic_state.port_inputs_muted[i];
         latencies[i] = g_atomic_state.latencies[i];
+        port_n_input_events[i] = g_atomic_state.port_n_input_events_since_last_update[i];
+        port_n_output_events[i] = g_atomic_state.port_n_output_events_since_last_update[i];
+        // Reset counters
+        g_atomic_state.port_n_input_events_since_last_update[i] = 0;
+        g_atomic_state.port_n_output_events_since_last_update[i] = 0;
     }
     
     if (g_update_cb) {
@@ -746,6 +766,7 @@ void request_update() {
             g_sample_rate,
             states.data(),
             next_states.data(),
+            next_state_countdowns.data(),
             lengths.data(),
             positions.data(),
             loop_volumes.data(),
@@ -756,7 +777,10 @@ void request_update() {
             port_inputs_muted.data(),
             g_loop_output_peaks.data(),
             g_port_output_peaks.data(),
-            g_port_input_peaks.data()
+            g_port_input_peaks.data(),
+            loop_n_output_events.data(),
+            port_n_input_events.data(),
+            port_n_output_events.data()
         );
     }
 }

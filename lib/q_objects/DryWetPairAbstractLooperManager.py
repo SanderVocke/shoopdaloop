@@ -42,6 +42,7 @@ class DryWetPairAbstractLooperManager(LooperState):
             l.posChanged.connect(self.updatePos)
             l.stateChanged.connect(self.updateState)
             l.nextStateChanged.connect(self.updateNextState)
+            l.nextStateCountdownChanged.connect(self.updateNextStateCountdown)
             l.volumeChanged.connect(lambda v: DryWetPairAbstractLooperManager.volume.fset(self, v))
             l.outputPeakChanged.connect(lambda v: DryWetPairAbstractLooperManager.outputPeak.fset(self, v))
     
@@ -96,6 +97,7 @@ class DryWetPairAbstractLooperManager(LooperState):
         self.length = max(self.wet().length, self.dry().length)
         self.updateState()
         self.updateNextState()
+        self.updateNextStateCountdown()
     
     @pyqtSlot()
     def updatePos(self):
@@ -148,6 +150,14 @@ class DryWetPairAbstractLooperManager(LooperState):
         if new_next_state != self.next_state:
             self.next_state = new_next_state
             self.nextStateChanged.emit(new_next_state)
+    
+    @pyqtSlot()
+    def updateNextStateCountdown(self):
+        new_cd = self.wet().next_state_countdown
+
+        if new_cd != self.next_state_countdown:
+            self.next_state_countdown = new_cd
+            self.nextStateCountdownChanged.emit(new_cd)
     
     @pyqtSlot()
     def updateVolumes(self):

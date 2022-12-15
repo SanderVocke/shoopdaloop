@@ -39,8 +39,6 @@ typedef enum {
     Tracing
 } backend_features_t;
 
-
-
 // The update callback provides the current looper state.
 // The callee should not free any pointers.
 typedef int(*UpdateCallback) (
@@ -49,6 +47,7 @@ typedef int(*UpdateCallback) (
     unsigned sample_rate,
     loop_state_t *loop_states,
     loop_state_t *loop_next_states,
+    int32_t *loop_next_state_countdowns,
     int *loop_lengths,
     int *loop_positions,
     float *loop_volumes,
@@ -59,7 +58,11 @@ typedef int(*UpdateCallback) (
     int8_t *port_inputs_muted,
     float *loop_output_peaks,
     float *port_output_peaks,
-    float *port_input_peaks
+    float *port_input_peaks,
+    // MIDI:
+    unsigned *loop_n_output_events,
+    unsigned *port_n_input_events,
+    unsigned *port_n_output_events
 );
 
 typedef void (*AbortCallback) ();

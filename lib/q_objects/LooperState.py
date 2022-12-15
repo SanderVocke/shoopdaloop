@@ -15,6 +15,7 @@ class LooperState(QObject):
     posChanged = pyqtSignal(float)
     stateChanged = pyqtSignal(int)
     nextStateChanged = pyqtSignal(int)
+    nextStateCountdownChanged = pyqtSignal(int)
     volumeChanged = pyqtSignal(float)
     outputPeakChanged = pyqtSignal(float)
 
@@ -24,6 +25,7 @@ class LooperState(QObject):
         self._pos = 0.0
         self._state = LoopState.Unknown.value
         self._next_state = LoopState.Unknown.value
+        self._next_state_countdown = -1
         self._volume = 1.0
         self._output_peak = 0.0
 
@@ -52,6 +54,18 @@ class LooperState(QObject):
         if self._next_state != s:
             self._next_state = s
             self.nextStateChanged.emit(s)
+    
+    # next state countdown. Decrements on every trigger
+    # until at 0, the next state is transitioned to
+    nextStateCountdownChanged = pyqtSignal(int)
+    @pyqtProperty(int, notify=nextStateCountdownChanged)
+    def next_state_countdown(self):
+        return self._next_state_countdown
+    @next_state_countdown.setter
+    def next_state_countdown(self, s):
+        if self._next_state_countdown != s:
+            self._next_state_countdown = s
+            self.nextStateCountdownChanged.emit(s)
 
     # length: loop length in seconds
     lengthChanged = pyqtSignal(float)

@@ -32,11 +32,13 @@ class NChannelAbstractLooperManager(LooperState):
             first_looper.lengthChanged.connect(lambda v: NChannelAbstractLooperManager.length.fset(self, v))
             first_looper.stateChanged.connect(lambda v: NChannelAbstractLooperManager.state.fset(self, v))
             first_looper.nextStateChanged.connect(lambda v: NChannelAbstractLooperManager.next_state.fset(self, v))
+            first_looper.nextStateCountdownChanged.connect(lambda v: NChannelAbstractLooperManager.next_state_countdown.fset(self, v))
             first_looper.volumeChanged.connect(lambda v: NChannelAbstractLooperManager.volume.fset(self, v))
             first_looper.outputPeakChanged.connect(lambda v: NChannelAbstractLooperManager.outputPeak.fset(self, maximum_output_peak(self.channel_loopers)))
             self.state = first_looper.state
             self.length = first_looper.length
             self.next_state = first_looper.next_state
+            self.next_state_countdown = first_looper.next_state_countdown
             self.volume = first_looper.volume
             self.pos = first_looper.pos
             self.outputPeak = first_looper.outputPeak

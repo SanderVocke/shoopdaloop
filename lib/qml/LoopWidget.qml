@@ -159,26 +159,42 @@ Item {
                 height: 24
                 y: 0
                 x: 0
+
+                property bool show_next_state:
+                    statusrect.manager && statusrect.manager.state != statusrect.manager.next_state &&
+                        statusrect.manager.next_state_countdown >= 0
+
                 LoopStateIcon {
                     id: loopstateicon
                     state: statusrect.manager ? statusrect.manager.state : StatesAndActions.LoopState.Unknown
-                    show_timer_instead: statusrect.manager ? statusrect.manager.state != statusrect.manager.next_state : false
+                    show_timer_instead: parent.show_next_state
+                    visible: !parent.show_next_state
                     connected: true
                     size: iconitem.height
                     y: 0
                     anchors.horizontalCenter: iconitem.horizontalCenter
                     onClicked: contextmenu.popup()
                 }
+                Text {
+                    text: statusrect.manager ? (statusrect.manager.next_state_countdown + 1).toString(): ''
+                    visible: parent.show_next_state
+                    anchors.fill: loopstateicon
+                    color: Material.foreground
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                    font.bold: true
+                }
                 LoopStateIcon {
                     id: loopnextstateicon
-                    state: statusrect.manager ? statusrect.manager.next_state : StatesAndActions.LoopState.Unknown
+                    state: parent.show_next_state ?
+                        statusrect.manager.next_state : StatesAndActions.LoopState.Unknown
                     show_timer_instead: false
                     connected: true
                     size: iconitem.height * 0.65
                     y: 0
                     anchors.right : loopstateicon.right
                     anchors.bottom : loopstateicon.bottom
-                    visible: statusrect.manager ? statusrect.manager.state != statusrect.manager.next_state : false
+                    visible: parent.show_next_state
                 }
             }
 

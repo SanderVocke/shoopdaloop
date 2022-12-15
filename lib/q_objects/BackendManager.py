@@ -289,6 +289,7 @@ class BackendManager(QObject):
                 sample_rate,
                 loop_states,
                 loop_next_states,
+                loop_next_state_countdowns,
                 loop_lengths,
                 loop_positions,
                 loop_volumes,
@@ -299,7 +300,10 @@ class BackendManager(QObject):
                 port_inputs_muted,
                 loop_output_peaks,
                 port_output_peaks,
-                port_input_peaks):
+                port_input_peaks,
+                loop_n_output_events,
+                port_n_input_events,
+                port_n_output_events):
         # pr = cProfile.Profile()
         # pr.enable()
         self.sample_rate = sample_rate
@@ -308,6 +312,7 @@ class BackendManager(QObject):
             m = self._channel_looper_managers[i]
             m.state = loop_states[i]
             m.next_state = loop_next_states[i]
+            m.next_state_countdown = loop_next_state_countdowns[i]
             m.length = loop_lengths[i]
             m.pos = loop_positions[i]
             m.volume = loop_volumes[i]
