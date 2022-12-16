@@ -11,9 +11,13 @@ Item {
     property bool is_in_selected_scene: false
     property bool is_in_hovered_scene: false
     property var manager
+    property var master_manager
     property var ports_manager
     property alias name: statusrect.name
     property string internal_name
+
+    property int n_multiples_of_master_length: manager && master_manager ? Math.ceil(manager.length / master_manager.length) : 1
+    property int current_cycle: manager && master_manager ? Math.floor(manager.pos / master_manager.length) : 0
     
     signal selected() //directly selected by the user to be activated.
     signal add_to_scene() //selected by the user to be added to the current scene.
@@ -168,21 +172,12 @@ Item {
                     id: loopstateicon
                     state: statusrect.manager ? statusrect.manager.state : StatesAndActions.LoopState.Unknown
                     show_timer_instead: parent.show_next_state
-                    visible: !parent.show_next_state
+                    visible: !parent.show_next_state || (parent.show_next_state && statusrect.manager.next_state_countdown == 0)
                     connected: true
                     size: iconitem.height
                     y: 0
                     anchors.horizontalCenter: iconitem.horizontalCenter
                     onClicked: contextmenu.popup()
-                }
-                Text {
-                    text: statusrect.manager ? (statusrect.manager.next_state_countdown + 1).toString(): ''
-                    visible: parent.show_next_state
-                    anchors.fill: loopstateicon
-                    color: Material.foreground
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                    font.bold: true
                 }
                 LoopStateIcon {
                     id: loopnextstateicon
@@ -195,6 +190,15 @@ Item {
                     anchors.right : loopstateicon.right
                     anchors.bottom : loopstateicon.bottom
                     visible: parent.show_next_state
+                }
+                Text {
+                    text: statusrect.manager ? (statusrect.manager.next_state_countdown + 1).toString(): ''
+                    visible: parent.show_next_state && statusrect.manager.next_state_countdown > 0
+                    anchors.fill: loopstateicon
+                    color: Material.foreground
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                    font.bold: true
                 }
             }
 
@@ -233,7 +237,7 @@ Item {
                         color: 'green'
                     }
 
-                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoPlay, 0.0, true) }}
+                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoPlay, [0.0], true) }}
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
@@ -291,7 +295,7 @@ Item {
                                     text_color: Material.foreground
                                     text: "FX"
                                 }
-                                onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoPlayLiveFX, 0.0, true) }}
+                                onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoPlayLiveFX, [0.0], true) }}
 
                                 ToolTip.delay: 1000
                                 ToolTip.timeout: 5000
@@ -313,7 +317,7 @@ Item {
                         color: 'red'
                     }
 
-                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoRecord, 0.0, true) }}
+                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoRecord, [0.0], true) }}
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
@@ -375,7 +379,14 @@ Item {
                                         text: recordN.n.toString()
                                         font.pixelSize: size / 2.0
                                     }
-                                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoRecordN, n, true) }}
+
+                                    function execute(n_cycles) {
+                                        if (statusrect && statusrect.manager) {
+                                            statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoRecordNCycles, [0.0, n_cycles], true)
+                                        }
+                                    }
+
+                                    onClicked: execute(n)
                                     onPressAndHold: { recordn_menu.popup() }
 
                                     ToolTip.delay: 1000
@@ -388,24 +399,24 @@ Item {
                                         id: recordn_menu
                                         title: 'Select # of cycles'
                                         MenuItem {
-                                            text: "1"
-                                            onClicked: () => { recordN.n = 1 }
+                                            text: "1 cycle"
+                                            onClicked: () => { recordN.execute(1) }
                                         }
                                         MenuItem {
-                                            text: "2"
-                                            onClicked: () => { recordN.n = 2 }
+                                            text: "2 cycles"
+                                            onClicked: () => { recordN.execute(2) }
                                         }
                                         MenuItem {
-                                            text: "4"
-                                            onClicked: () => { recordN.n = 4 }
+                                            text: "4 cycles"
+                                            onClicked: () => { recordN.execute(4) }
                                         }
                                         MenuItem {
-                                            text: "8"
-                                            onClicked: () => { recordN.n = 8 }
+                                            text: "8 cycles"
+                                            onClicked: () => { recordN.execute(8) }
                                         }
                                         MenuItem {
-                                            text: "16"
-                                            onClicked: () => { recordN.n = 16 }
+                                            text: "16 cycles"
+                                            onClicked: () => { recordN.execute(16) }
                                         }
                                     }
                                 }
@@ -422,7 +433,13 @@ Item {
                                         text_color: Material.foreground
                                         text: "FX"
                                     }
-                                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoRecordFX, 0.0, true) }}
+                                    onClicked: { if(statusrect.manager) {
+                                        var n = widget.n_multiples_of_master_length
+                                        var delay = widget.n_multiples_of_master_length - widget.current_cycle - 1
+                                        statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoReRecordFX,
+                                            [delay, n],
+                                            true)
+                                    }}
 
                                     ToolTip.delay: 1000
                                     ToolTip.timeout: 5000
@@ -445,7 +462,7 @@ Item {
                         color: Material.foreground
                     }
 
-                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoStop, 0.0, true) }}
+                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoStop, [0.0], true) }}
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
@@ -596,6 +613,9 @@ Item {
             color: {
                 if(!lsicon.connected) {
                     return 'grey'
+                }
+                if(lsicon.show_timer_instead) {
+                    return Material.foreground
                 }
                 switch(lsicon.state) {
                 case StatesAndActions.LoopState.Playing:

@@ -16,7 +16,7 @@ def maximum_output_peak(loopers):
 # which are hard-linked and represent audio channels on an abstract
 # looper.
 class NChannelAbstractLooperManager(LooperState):
-    signalLoopAction = pyqtSignal(int, float, bool) # action_id, arg, with_soft_sync
+    signalLoopAction = pyqtSignal(int, list, bool) # action_id, args, with_soft_sync
     loadLoopData = pyqtSignal(int, list) # channel idx, samples
     saveToFile = pyqtSignal(str)
     loadFromFile = pyqtSignal(str)
@@ -58,9 +58,9 @@ class NChannelAbstractLooperManager(LooperState):
     # SLOTS
     ##################
     
-    @pyqtSlot(int, float, bool)
-    def doLoopAction(self, action_id, arg, with_soft_sync):
-        self.signalLoopAction.emit(action_id, arg, with_soft_sync)
+    @pyqtSlot(int, list, bool)
+    def doLoopAction(self, action_id, args, with_soft_sync):
+        self.signalLoopAction.emit(action_id, args, with_soft_sync)
 
     @pyqtSlot(result=str)
     def looper_type(self):

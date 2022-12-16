@@ -13,13 +13,13 @@ typedef enum {
 } loop_state_t;
 
 typedef enum  {
-    DoRecord,
-    DoRecordNCycles,
-    DoPlay,
-    DoPlayMuted,
-    DoStop,
+    DoRecord,           // Arg 1 is # of cycles to delay before starting.
+    DoRecordNCycles,    // Arg 1 is # of cycles to delay before starting. Arg 2 # of cycles to record
+    DoPlay,             // Arg 1 is # of cycles to delay before starting.
+    DoPlayMuted,        // Arg 1 is # of cycles to delay before starting.
+    DoStop,             // Arg 1 is # of cycles to delay before starting.
     DoClear,
-    SetLoopVolume,
+    SetLoopVolume,      // Arg 1 is the new volume
     LOOP_ACTION_MAX
 } loop_action_t;
 
@@ -107,11 +107,13 @@ jack_client_t* initialize(
 // Perform an action on the given loop(s).
 // Passing multiple loops guarantees that state change on them
 // happens simultaneously.
+// Some actions have an argument (see the loop_action_t definition)
 int do_loop_action(
     unsigned *loop_idxs,
     unsigned n_loop_idxs,
     loop_action_t action,
-    float maybe_arg,
+    float *maybe_args,
+    unsigned n_args,
     unsigned with_soft_sync
 );
 

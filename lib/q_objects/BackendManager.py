@@ -81,7 +81,7 @@ class BackendManager(QObject):
             l = NChannelAbstractLooperManager(
                 [self._channel_looper_managers[i] for i in channel_loop_idxs], parent=self)
 
-            l.signalLoopAction.connect(lambda action, arg, sync: self.do_loops_action(channel_loop_idxs, action, arg, sync))
+            l.signalLoopAction.connect(lambda action, args, sync: self.do_loops_action(channel_loop_idxs, action, args, sync))
             l.loadLoopData.connect(lambda chan, data: self.load_loop_data(channel_loop_idxs[chan], data))            
             l.saveToFile.connect(lambda filename: self.save_loops_to_file(channel_loop_idxs, filename))
             l.loadFromFile.connect(lambda filename: self.load_loops_from_file(channel_loop_idxs, filename))
@@ -337,8 +337,8 @@ class BackendManager(QObject):
         print("Backend aborted.")
         exit(1)
     
-    @pyqtSlot(list, int, float, bool)
-    def do_loops_action(self, loop_idxs, action_id, maybe_arg, with_soft_sync):
+    @pyqtSlot(list, int, list, bool)
+    def do_loops_action(self, loop_idxs, action_id, maybe_args, with_soft_sync):
         for loop_idx in loop_idxs:
             if loop_idx < 0 or loop_idx >= self.n_loops:
                 raise ValueError("Backend: loop idx out of range")
@@ -348,12 +348,14 @@ class BackendManager(QObject):
            raise ValueError("Backend: loop action {} is not implemented in back-end".format(action_id))
         
         idxs_data = (c_uint * len(loop_idxs))(*loop_idxs)
+        args_data = (c_float * len(maybe_args))(*maybe_args)
         
         backend.do_loop_action(
             idxs_data,
             len(loop_idxs),
             backend.loop_action_t(action_id),
-            maybe_arg,
+            args_data,
+            len(maybe_args),
             with_soft_sync
         )
 
@@ -496,7 +498,7 @@ class BackendManager(QObject):
         def do_load():
             try:
                 for idx in range(self.n_loops):
-                    self.do_loops_action([idx], LoopActionType.DoClear.value, 0.0, False)
+                    self.do_loops_action([idx], LoopActionType.DoClear.value, [0.0], False)
 
                 folder = tempfile.mkdtemp()
                 session_data = None

@@ -116,7 +116,7 @@ class DryWetPairAbstractLooperManager(LooperState):
         new_state = self.wet().state
 
         if self.wet().state == LoopState.Recording.value and \
-           self.dry().state == LoopState.PlayingMuted.value:
+           self.dry().state == LoopState.Playing.value:
             new_state = LoopState.RecordingFX.value
         
         if self.wet().state == LoopState.PlayingMuted.value and \
@@ -136,7 +136,7 @@ class DryWetPairAbstractLooperManager(LooperState):
         new_next_state = self.wet().next_state
 
         if self.wet().next_state == LoopState.Recording.value and \
-           self.dry().next_state == LoopState.PlayingMuted.value:
+           self.dry().next_state == LoopState.Playing.value:
             new_next_state = LoopState.RecordingFX.value
         
         if self.wet().next_state == LoopState.PlayingMuted.value and \
@@ -171,12 +171,12 @@ class DryWetPairAbstractLooperManager(LooperState):
         self.wet().panL = 0.0
         self.wet().panR = 1.0
     
-    @pyqtSlot(int, float, bool)
-    def doLoopAction(self, action_id, arg, with_soft_sync):
+    @pyqtSlot(int, list, bool)
+    def doLoopAction(self, action_id, args, with_soft_sync):
         wet_action = action_id
         dry_action = action_id
-        wet_arg = arg
-        dry_arg = arg
+        wet_args = args
+        dry_args = args
         force_dry_passthrough = False
         force_wet_passthrough = False
 
@@ -190,15 +190,16 @@ class DryWetPairAbstractLooperManager(LooperState):
                 force_wet_passthrough = True
             case LoopActionType.DoRecord.value:
                 force_dry_passthrough = True
-            case LoopActionType.DoRecordFX.value:
-                # TODO: N cycles
-                wet_action = LoopActionType.DoRecord.value
+            case LoopActionType.DoReRecordFX.value:
+                wet_action = LoopActionType.DoRecordNCycles.value
                 dry_action = LoopActionType.DoPlay.value
+                # Note that delay and N cycles should be correctly set from caller
+                dry_args = [wet_args[0]]
             case LoopActionType.DoRecordNCycles.value:
                 force_dry_passthrough = True
         
-        self.wet().doLoopAction(wet_action, wet_arg, with_soft_sync)
-        self.dry().doLoopAction(dry_action, dry_arg, with_soft_sync)
+        self.wet().doLoopAction(wet_action, wet_args, with_soft_sync)
+        self.dry().doLoopAction(dry_action, dry_args, with_soft_sync)
         if force_dry_passthrough != None:
             self.force_dry_passthrough = force_dry_passthrough
         if force_wet_passthrough != None:
@@ -219,12 +220,12 @@ class DryWetPairAbstractLooperManager(LooperState):
     
     @pyqtSlot(str)
     def doSaveWetToSoundFile(self, filename):
-        self.doLoopAction(LoopActionType.DoStop.value, 0.0, False)
+        self.doLoopAction(LoopActionType.DoStop.value, [0.0], False)
         self.wet().save_to_file(filename)
     
     @pyqtSlot(str)
     def doSaveDryToSoundFile(self, filename):
-        self.doLoopAction(LoopActionType.DoStop.value, 0.0, False)
+        self.doLoopAction(LoopActionType.DoStop.value, [0.0], False)
         self.dry().save_to_file(filename)
     
     @pyqtSlot(result=str)

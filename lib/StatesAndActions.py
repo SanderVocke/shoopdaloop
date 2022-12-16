@@ -38,14 +38,14 @@ class LoopActionType(Enum):
     SetLoopVolume = backend.SetLoopVolume
     # Extended actions for front-end
     DoPlayLiveFX = -1
-    DoRecordFX = -2
+    DoReRecordFX = -2
 
     names = {
         DoPlay: 'play',
         DoPlayMuted: 'playMuted',
         DoStop: 'stop',
         DoRecord: 'record',
-        DoRecordFX: 'recordFX',
+        DoReRecordFX: 'reRecordFX',
         DoPlayLiveFX: 'playLiveFX'
     }
 

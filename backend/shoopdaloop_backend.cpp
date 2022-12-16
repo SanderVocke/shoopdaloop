@@ -23,6 +23,8 @@
 #include <memory>
 #include <condition_variable>
 
+#include <cmath>
+
 using namespace Halide::Runtime;
 using namespace std;
 
@@ -474,6 +476,7 @@ jack_client_t* initialize(
     g_loop_output_peaks = Buffer<float, 1>(n_loops);
     g_port_event_timestamps_in = Buffer<int32_t, 2>(g_max_midi_events_per_cycle, n_ports);
     g_n_port_events = Buffer<int32_t, 1>(n_ports);
+    g_event_recording_timestamps_out = Buffer<int32_t, 2>(g_max_midi_events_per_cycle, n_loops);
 
     g_samples_in = Buffer<float, 2>(
         halide_type_t {halide_type_float, 32, 1},
@@ -611,26 +614,52 @@ int do_loop_action(
     unsigned *loop_idxs,
     unsigned n_loop_idxs,
     loop_action_t action,
-    float maybe_arg,
+    float* maybe_args,
+    unsigned n_args,
     unsigned with_soft_sync
 ) {
     std::function<void()> cmd = nullptr;
     std::vector<unsigned> idxs(n_loop_idxs);
     memcpy((void*)idxs.data(), (void*)loop_idxs, n_loop_idxs*sizeof(unsigned));
 
-    auto apply_state = [with_soft_sync](std::vector<unsigned> loops, loop_state_t state) {
+    auto check_args = [n_args](int n_needed) {
+        if (n_args != n_needed) {
+            throw std::runtime_error("do_loop_action: incorrect # of args");
+        }
+    };
+
+    auto apply_state = [with_soft_sync](std::vector<unsigned> loops, loop_state_t state, int delay=0, bool is_next_next_state=false) {
         for(auto const& loop: loops) {
-            g_next_states[0](0, loop) = g_next_states[1](0, loop) = state;
-            g_next_states_countdown[0](0, loop) = g_next_states_countdown[1](0, loop) = 0;
+            int x_idx = is_next_next_state ? 1 : 0;
+            g_next_states[0](x_idx, loop) = g_next_states[1](x_idx, loop) = state;
+            g_next_states_countdown[0](x_idx, loop) = g_next_states_countdown[1](x_idx, loop) = delay;
             if(!with_soft_sync) {
                 g_states[0](loop) = g_states[1](loop) = state;
             }
         }
     };
+
+    int arg1_i = n_args >= 1 ? std::round(maybe_args[0]) : 0;
+    int arg2_i = n_args >= 2 ? std::round(maybe_args[1]) : 0;
+    int arg1_f = n_args >= 1 ? maybe_args[0] : 0;
+    int arg2_f = n_args >= 2 ? maybe_args[1] : 0;
+
     switch(action) {
         case DoRecord:
-            cmd = [idxs, apply_state]() {
-                apply_state(idxs, Recording);
+            check_args(1);
+            cmd = [idxs, apply_state, arg1_i]() {
+                apply_state(idxs, Recording, arg1_i);
+                for(auto const& idx: idxs) {
+                    g_positions[0](idx) = g_positions[1](idx) = 0;
+                    g_lengths[0](idx) = g_lengths[1](idx) = 0;
+                }
+            };
+            break;
+        case DoRecordNCycles:
+            check_args(2);
+            cmd = [idxs, apply_state, arg1_i, arg2_i]() {
+                apply_state(idxs, Recording, arg1_i);
+                apply_state(idxs, Playing, arg2_i-1, true);
                 for(auto const& idx: idxs) {
                     g_positions[0](idx) = g_positions[1](idx) = 0;
                     g_lengths[0](idx) = g_lengths[1](idx) = 0;
@@ -638,21 +667,25 @@ int do_loop_action(
             };
             break;
         case DoPlay:
-            cmd = [idxs, apply_state]() {
-                apply_state(idxs, Playing);
+            check_args(1);
+            cmd = [idxs, apply_state, arg1_i]() {
+                apply_state(idxs, Playing, arg1_i);
             };
             break;
         case DoPlayMuted:
-            cmd = [idxs, apply_state]() {
-                apply_state(idxs, PlayingMuted);
+            check_args(1);
+            cmd = [idxs, apply_state, arg1_i]() {
+                apply_state(idxs, PlayingMuted, arg1_i);
             };
             break;
         case DoStop:
-            cmd = [idxs, apply_state]() {
-                apply_state(idxs, Stopped);
+            check_args(1);
+            cmd = [idxs, apply_state, arg1_i]() {
+                apply_state(idxs, Stopped, arg1_i);
             };
             break;
         case DoClear:
+            check_args(0);
             cmd = [idxs, apply_state]() {
                 apply_state(idxs, Stopped);
                 for(auto const& idx: idxs) {
@@ -662,14 +695,12 @@ int do_loop_action(
             };
             break;
         case SetLoopVolume:
-            cmd = [idxs, maybe_arg]() {
+            check_args(1);
+            cmd = [idxs, arg1_f]() {
                 for (auto const& idx: idxs) {
-                    g_loop_volumes(idx) = maybe_arg;
+                    g_loop_volumes(idx) = arg1_f;
                 }
             };
-            break;
-        case DoRecordNCycles:
-            std::cerr << "Backend: DoRecordNCycles not yet implemented" << std::endl;
             break;
         default:
         break;
