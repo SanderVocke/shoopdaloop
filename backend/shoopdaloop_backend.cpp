@@ -822,6 +822,7 @@ int load_loop_data(
     float *data
 ) {
     std::atomic<bool> finished = false;
+    auto my_length = len;
     push_command([loop_idx, &finished]() {
         g_next_states_countdown[0](0, loop_idx) = g_next_states_countdown[0](1, loop_idx) =
             g_next_states_countdown[1](0, loop_idx) = g_next_states_countdown[1](1, loop_idx) = -1;
@@ -831,13 +832,27 @@ int load_loop_data(
     });
 
     while(!finished && g_loops_fn) {}
+
+    auto soft_synced_to = g_loops_soft_sync_mapping(loop_idx);
+
     for(size_t idx = 0; idx < len; idx++) {
         g_storage(idx, loop_idx) = data[idx];
     }
+    if(soft_synced_to >= 0 && soft_synced_to != loop_idx) {
+        auto soft_synced_length = g_lengths[g_last_written_output_buffer_tick_tock](soft_synced_to);
+        my_length = std::ceil((float)len / (float)soft_synced_length) * soft_synced_length;
+        if (my_length > len) {
+            std::cout << "Note: Rounding loaded loop data length up to a multiple of the master loop length." << std::endl;
+        }
+        for(size_t idx = len; idx < my_length; idx++) {
+            // Hold last value
+            g_storage(idx, loop_idx) = g_storage(len-1, loop_idx);
+        }
+    }
 
     finished = false;
-    push_command([len, loop_idx, &finished]() {
-        g_lengths[0](loop_idx) = g_lengths[1](loop_idx) = len;
+    push_command([loop_idx, my_length, &finished]() {
+        g_lengths[0](loop_idx) = g_lengths[1](loop_idx) = my_length;
         finished = true;
     });
     while(!finished && g_loops_fn) {}
