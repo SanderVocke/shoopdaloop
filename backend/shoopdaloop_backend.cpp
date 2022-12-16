@@ -660,10 +660,6 @@ int do_loop_action(
             cmd = [idxs, apply_state, arg1_i, arg2_i]() {
                 apply_state(idxs, Recording, arg1_i);
                 apply_state(idxs, Playing, arg2_i-1, true);
-                for(auto const& idx: idxs) {
-                    g_positions[0](idx) = g_positions[1](idx) = 0;
-                    g_lengths[0](idx) = g_lengths[1](idx) = 0;
-                }
             };
             break;
         case DoPlay:
