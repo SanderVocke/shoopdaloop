@@ -8,6 +8,7 @@
 #include "shoopdaloop_backend.h"
 #include "shoopdaloop_loops.h"
 #include "shoopdaloop_loops_profile.h"
+#include "midi_buffer.h"
 #include <chrono>
 #include <cstdlib>
 
@@ -29,6 +30,8 @@ using namespace Halide::Runtime;
 using namespace std;
 
 constexpr size_t slow_midi_port_queue_starting_size = 4096;
+constexpr size_t g_max_midi_events_per_cycle = 256;
+constexpr size_t g_midi_buffer_bytes = 81920;
 
 backend_features_t g_features;
 typedef decltype(&shoopdaloop_loops) loops_fn;
@@ -94,6 +97,8 @@ Buffer<int8_t, 1> g_port_inputs_muted; // per port
 
 std::vector<jack_port_t*> g_input_ports;
 std::vector<jack_port_t*> g_output_ports;
+std::vector<jack_port_t*> g_maybe_midi_input_ports;
+std::vector<jack_port_t*> g_maybe_midi_output_ports;
 std::vector<jack_nframes_t> g_input_port_latencies;
 std::vector<jack_nframes_t> g_output_port_latencies;
 
@@ -104,6 +109,7 @@ size_t g_buf_nframes;
 size_t g_sample_rate;
 
 std::vector<jack_default_audio_sample_t*> g_input_bufs, g_output_bufs;
+std::vector<void*> g_midi_input_bufs, g_midi_output_bufs;
 
 jack_client_t* g_jack_client;
 
@@ -111,8 +117,7 @@ AbortCallback g_abort_callback;
 UpdateCallback g_update_cb;
 
 std::thread g_reporting_thread;
-
-constexpr size_t g_max_midi_events_per_cycle = 256;
+std::vector<MIDIRingBuffer> g_loop_midi_buffers;
 
 // A structure of atomic scalars is used to communicate the latest
 // state back from the Jack processing thread to the main thread.
@@ -255,6 +260,14 @@ int jack_process (jack_nframes_t nframes, void *arg) {
                 g_output_ports[i] && jack_port_connected(g_output_ports[i]) ?
                 (jack_default_audio_sample_t*) jack_port_get_buffer(g_output_ports[i], nframes) :
                 nullptr;
+            g_midi_input_bufs[i] =
+                g_maybe_midi_input_ports[i] ?
+                jack_port_get_buffer(g_maybe_midi_input_ports[i], nframes) :
+                nullptr;
+            g_midi_output_bufs[i] =
+                g_maybe_midi_output_ports[i] ?
+                jack_port_get_buffer(g_maybe_midi_output_ports[i], nframes) :
+                nullptr;
     }
 
     auto got_buffers = std::chrono::high_resolution_clock::now();
@@ -271,6 +284,20 @@ int jack_process (jack_nframes_t nframes, void *arg) {
     for(int i=0; i<g_input_ports.size(); i++) {
         if(g_input_bufs[i]) {
             memcpy((void*)(&g_samples_in_raw[g_buf_nframes*i]), (void*)g_input_bufs[i], sizeof(float) * nframes);
+        }
+    }
+
+    // Process incoming MIDI.
+    for(int i=0; i<g_input_ports.size(); i++) {
+        auto buf = g_midi_input_bufs[i];
+        if(buf) {
+            auto n_events = jack_midi_get_event_count(buf);
+            g_n_port_events(i) = n_events;
+            for(size_t event_idx=0; event_idx<n_events; event_idx++) {
+                jack_midi_event_t e;
+                jack_midi_event_get(&e, buf, event_idx);
+                g_port_event_timestamps_in(event_idx, i) = e.time;
+            }
         }
     }
 
@@ -319,6 +346,52 @@ int jack_process (jack_nframes_t nframes, void *arg) {
         );
     }
     g_last_written_output_buffer_tick_tock = tock;
+
+    // Output recorded MIDI events from the loop storage.
+    for(int loop_idx=0; loop_idx<g_n_loops; loop_idx++) {
+        auto port_idx = g_loops_to_ports(loop_idx);
+        auto out_buf = g_midi_output_bufs[port_idx];
+        if(g_maybe_midi_output_ports[port_idx] && out_buf && loop_idx == 0 &&
+           g_states[tick](loop_idx) == Playing && g_loop_volumes(loop_idx) > 0.0f) {
+            jack_midi_clear_buffer(out_buf);
+            auto loop_buf = g_loop_midi_buffers[loop_idx];
+            if(!loop_buf.cursor_valid()) { std::cout << "Reset"  << std::endl; loop_buf.reset_cursor(); }
+            while(loop_buf.cursor_valid() && loop_buf.peek_cursor_metadata()) {
+                auto metadata = loop_buf.peek_cursor_metadata();
+                int32_t time_this_cycle = metadata->time - g_positions[tick](loop_idx);
+                if(time_this_cycle >= nframes) { break; } // Done for now, leave cursor for next iteration
+                if(time_this_cycle >= 0) {
+                    std::cout << "MIDI playback: " << metadata->time << "  -> " << time_this_cycle << "," << g_positions[tick](loop_idx) << std::endl;
+                    jack_midi_event_write(out_buf, metadata->time, loop_buf.peek_cursor_event_data(), metadata->size);
+                }
+                if(!loop_buf.increment_cursor()) { break; }
+            }
+        }
+    }
+
+    // Record incoming events to loops.
+    // The looping algorithm just provides us with storage timestamps at which
+    // to save MIDI events.
+    for(int loop_idx=0; loop_idx<g_n_loops; loop_idx++) {
+        auto port_idx = g_loops_to_ports(loop_idx);
+        for(int event_idx=0; event_idx<g_n_port_events(port_idx); event_idx++) {
+            auto storage_ts = g_event_recording_timestamps_out(event_idx, loop_idx);
+            auto mapped_port_idx = (g_port_input_mappings(port_idx) >= 0 && g_port_input_mappings(port_idx) != port_idx) ?
+                g_port_input_mappings(port_idx) : port_idx;
+            auto maybe_jack_buf = g_midi_input_bufs[mapped_port_idx];
+            if(storage_ts >= 0 && maybe_jack_buf) {
+                std::cout << "Record MIDI: loop " << loop_idx << " @ " << storage_ts << std::endl;
+                jack_midi_event_t e;
+                jack_midi_event_get(&e, maybe_jack_buf, event_idx);
+                if (!g_loop_midi_buffers[loop_idx].put({
+                    .time = (unsigned) storage_ts,
+                    .size = e.size
+                }, (uint8_t*)e.buffer)) {
+                    std::cerr << "Failed to record MIDI event @ loop " << loop_idx << std::endl;
+                }
+            }
+        }
+    }
 
     // Debugging
     if (false) {
@@ -403,6 +476,7 @@ jack_client_t* initialize(
     unsigned *loops_to_ports_mapping,
     int *loops_hard_sync_mapping,
     int *loops_soft_sync_mapping,
+    int *ports_midi_enabled_list,
     const char **input_port_names,
     const char **output_port_names,
     const char *client_name,
@@ -477,6 +551,7 @@ jack_client_t* initialize(
     g_port_event_timestamps_in = Buffer<int32_t, 2>(g_max_midi_events_per_cycle, n_ports);
     g_n_port_events = Buffer<int32_t, 1>(n_ports);
     g_event_recording_timestamps_out = Buffer<int32_t, 2>(g_max_midi_events_per_cycle, n_loops);
+    g_loop_midi_buffers = std::vector<MIDIRingBuffer>(n_loops);
 
     g_samples_in = Buffer<float, 2>(
         halide_type_t {halide_type_float, 32, 1},
@@ -527,19 +602,33 @@ jack_client_t* initialize(
         g_loops_soft_sync_mapping(i) = loops_soft_sync_mapping[i];
         g_loop_volumes(i) = 1.0f;
         g_atomic_state.loop_n_output_events_since_last_update[i] = 0;
+        g_loop_midi_buffers[i] = MIDIRingBuffer(81920);
     }
     
     // Initialize ports
     g_input_bufs = std::vector<jack_default_audio_sample_t*>(n_ports);
     g_output_bufs = std::vector<jack_default_audio_sample_t*>(n_ports);
+    g_midi_input_bufs = std::vector<void*>(n_ports);
+    g_midi_output_bufs = std::vector<void*>(n_ports);
     g_input_ports.clear();
     g_output_ports.clear();
+    g_maybe_midi_input_ports.clear();
+    g_maybe_midi_output_ports.clear();
     g_input_port_latencies.clear();
     g_output_port_latencies.clear();
     for(size_t i=0; i<n_ports; i++) {
         g_port_input_mappings(i) = i;
         g_input_ports.push_back(jack_port_register(g_jack_client, input_port_names[i], JACK_DEFAULT_AUDIO_TYPE, JackPortIsInput, 0));
         g_output_ports.push_back(jack_port_register(g_jack_client, output_port_names[i], JACK_DEFAULT_AUDIO_TYPE, JackPortIsOutput, 0));
+        if(std::find(ports_midi_enabled_list, ports_midi_enabled_list + n_ports, i) < (ports_midi_enabled_list + n_ports)) {
+            auto in_name = std::string(input_port_names[i]) + "_midi";
+            auto out_name = std::string(output_port_names[i]) + "_midi";
+            g_maybe_midi_input_ports.push_back(jack_port_register(g_jack_client, in_name.c_str(), JACK_DEFAULT_MIDI_TYPE, JackPortIsInput, 0));
+            g_maybe_midi_output_ports.push_back(jack_port_register(g_jack_client, out_name.c_str(), JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput, 0));
+        } else {
+            g_maybe_midi_input_ports.push_back(nullptr);
+            g_maybe_midi_output_ports.push_back(nullptr);
+        }
         g_input_port_latencies.push_back(0);
         g_output_port_latencies.push_back(0);
         g_port_recording_latencies(i) = 0;

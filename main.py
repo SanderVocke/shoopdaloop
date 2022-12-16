@@ -122,6 +122,7 @@ with contextlib.ExitStack() as contextmgr:
                 mappings['loops_to_ports'],
                 mappings['loops_hard_sync'],
                 mappings['loops_soft_sync'],
+                mappings['ports_midi_enabled'],
                 60.0,
                 title,
                 0.03, # 30Hz updates

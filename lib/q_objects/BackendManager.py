@@ -54,6 +54,7 @@ class BackendManager(QObject):
                  loops_to_ports_map,
                  loops_hard_sync_map,
                  loops_soft_sync_map,
+                 ports_midi_enabled_list,
                  max_loop_length_seconds,
                  client_name,
                  update_period_seconds,
@@ -71,6 +72,7 @@ class BackendManager(QObject):
         self.loops_to_ports = loops_to_ports_map
         self.loops_soft_sync_map = loops_soft_sync_map
         self.loops_hard_sync_map = loops_hard_sync_map
+        self.ports_midi_enabled_list = ports_midi_enabled_list
 
         self._channel_looper_managers = [
             LooperState(parent=self) for i in range(self.n_loops)
@@ -237,6 +239,7 @@ class BackendManager(QObject):
         loops_to_ports = (c_uint * self.n_loops)()
         loops_hard_sync_map = (c_int * self.n_loops)()
         loops_soft_sync_map = (c_int * self.n_loops)()
+        ports_midi_enabled_list = (c_int * len(self.ports_midi_enabled_list))()
         input_port_names = (POINTER(c_char) * self.n_ports)()
         output_port_names = (POINTER(c_char) * self.n_ports)()
 
@@ -250,6 +253,9 @@ class BackendManager(QObject):
             loops_hard_sync_map[i] = self.loops_hard_sync_map[i]
             loops_soft_sync_map[i] = self.loops_soft_sync_map[i]
         
+        for i in range(len(self.ports_midi_enabled_list)):
+            ports_midi_enabled_list[i] = self.ports_midi_enabled_list[i]
+        
         do_profiling = os.getenv('SHOOPDALOOP_PROFILING') != None
         features = backend.backend_features_t(backend.Profiling) if do_profiling else backend.backend_features_t(backend.Default)
         
@@ -260,6 +266,7 @@ class BackendManager(QObject):
             loops_to_ports,
             loops_hard_sync_map,
             loops_soft_sync_map,
+            ports_midi_enabled_list,
             input_port_names,
             output_port_names,
             self.client_name.encode('ascii'),

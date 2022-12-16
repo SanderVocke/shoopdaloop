@@ -9,6 +9,7 @@ def get_port_loop_mappings(n_tracks, loops_per_track, loop_channel_names):
         'loops_to_ports': [],
         'loops_soft_sync': [],
         'loops_hard_sync': [],
+        'ports_midi_enabled': [],
         # The following key is a list of tuples.
         # The first element is a port for which we should keep an eye on whether
         # its input is connected to anything or not. If not, its input should be
@@ -56,5 +57,8 @@ def get_port_loop_mappings(n_tracks, loops_per_track, loop_channel_names):
         
         for i in range(loops_per_track):
             add_loop(track_idx+1)
+        
+        # first two ports (dry l/r) have MIDI.
+        r['ports_midi_enabled'] += [track_idx*4, track_idx*4+1]
     
     return r

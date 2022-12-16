@@ -82,6 +82,8 @@ typedef void (*AbortCallback) ();
 // loops_soft_sync_mapping: Should contain n_loops indices, which indicate to which other loop the loop should be
 //                          "soft-synced". A soft-synced loop will only change state when its master (re-)starts playing.
 //                          Using a negative number or the loop's own index disables soft sync for that loop.
+// ports_midi_enabled_list: List of port indexes for the ports which should receive a pair of MIDI ports in addition
+//                          to audio.
 // input_port_names: n_ports strings which give the names of the inputs for the ports.
 // output_port_names: n_ports strings which give the names of the outputs for the ports.
 // client_name: Name of the JACK client to register
@@ -94,6 +96,7 @@ jack_client_t* initialize(
     unsigned *loops_to_ports_mapping,
     int *loops_hard_sync_mapping,
     int *loops_soft_sync_mapping,
+    int *ports_midi_enabled_list,
     const char **input_port_names,
     const char **output_port_names,
     const char *client_name,
