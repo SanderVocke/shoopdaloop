@@ -2,6 +2,7 @@
 #include <vector>
 #include <optional>
 #include <cstring>
+#include <iostream>
 
 typedef jack_midi_event_t midi_event_t;
 

@@ -101,7 +101,7 @@ Item {
                 input: statusrect.manager.outputPeak
             }
 
-            from: -60.0
+            from: -30.0
             to: 0.0
             value: output_peak_meter.value
 
@@ -488,11 +488,12 @@ Item {
                 Dial {
                     id: volume_dial
                     anchors.fill: parent
-                    from: convert_volume.dB_threshold
+                    from: -30.0
                     to:   20.0
                     value: 0.0
 
                     LinearDbConversion {
+                        dB_threshold: parent.from
                         id: convert_volume
                     }
 
@@ -720,7 +721,7 @@ Item {
             MenuItem {
                 text: "Clear"
                 onClicked: () => {
-                               widget.request_clear()
+                               if (widget.manager) { widget.manager.doLoopAction(StatesAndActions.LoopActionType.DoClear, [], false) }
                            }
             }
             MenuItem {

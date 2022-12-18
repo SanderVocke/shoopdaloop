@@ -350,12 +350,12 @@ int jack_process (jack_nframes_t nframes, void *arg) {
     // Output recorded MIDI events from the loop storage.
     for(int loop_idx=0; loop_idx<g_n_loops; loop_idx++) {
         auto port_idx = g_loops_to_ports(loop_idx);
-        auto out_buf = g_midi_output_bufs[port_idx];
-        if(g_maybe_midi_output_ports[port_idx] && out_buf && loop_idx == 0 &&
+        auto &out_buf = g_midi_output_bufs[port_idx];
+        if(g_maybe_midi_output_ports[port_idx] && out_buf &&
            g_states[tick](loop_idx) == Playing && g_loop_volumes(loop_idx) > 0.0f) {
             jack_midi_clear_buffer(out_buf);
-            auto loop_buf = g_loop_midi_buffers[loop_idx];
-            if(!loop_buf.cursor_valid()) { std::cout << "Reset"  << std::endl; loop_buf.reset_cursor(); }
+            auto &loop_buf = g_loop_midi_buffers[loop_idx];
+            if(!loop_buf.cursor_valid()) { loop_buf.reset_cursor(); }
             while(loop_buf.cursor_valid() && loop_buf.peek_cursor_metadata()) {
                 auto metadata = loop_buf.peek_cursor_metadata();
                 int32_t time_this_cycle = metadata->time - g_positions[tick](loop_idx);
@@ -363,6 +363,7 @@ int jack_process (jack_nframes_t nframes, void *arg) {
                 if(time_this_cycle >= 0) {
                     std::cout << "MIDI playback: " << metadata->time << "  -> " << time_this_cycle << "," << g_positions[tick](loop_idx) << std::endl;
                     jack_midi_event_write(out_buf, metadata->time, loop_buf.peek_cursor_event_data(), metadata->size);
+                    g_atomic_state.loop_n_output_events_since_last_update[loop_idx]++;
                 }
                 if(!loop_buf.increment_cursor()) { break; }
             }
@@ -378,7 +379,7 @@ int jack_process (jack_nframes_t nframes, void *arg) {
             auto storage_ts = g_event_recording_timestamps_out(event_idx, loop_idx);
             auto mapped_port_idx = (g_port_input_mappings(port_idx) >= 0 && g_port_input_mappings(port_idx) != port_idx) ?
                 g_port_input_mappings(port_idx) : port_idx;
-            auto maybe_jack_buf = g_midi_input_bufs[mapped_port_idx];
+            auto &maybe_jack_buf = g_midi_input_bufs[mapped_port_idx];
             if(storage_ts >= 0 && maybe_jack_buf) {
                 std::cout << "Record MIDI: loop " << loop_idx << " @ " << storage_ts << std::endl;
                 jack_midi_event_t e;

@@ -106,7 +106,7 @@ Item {
                 }
 
                 // Note: dB
-                from: -60.0
+                from: -30.0
                 to: 0.0
 
                 AudioLevelMeterModel {
@@ -171,7 +171,7 @@ Item {
                     orientation: Qt.Horizontal
                     width: 85
                     height: 20
-                    from: -60.0
+                    from: -30.0
                     to: 20.0
                     value: 0.0
 
@@ -208,7 +208,7 @@ Item {
                 }
 
                 // Note: dB
-                from: -60.0
+                from: -30.0
                 to: 0.0
 
                 AudioLevelMeterModel {
@@ -273,7 +273,7 @@ Item {
                     orientation: Qt.Horizontal
                     width: 85
                     height: 20
-                    from: -60.0
+                    from: -30.0
                     to: 20.0
                     value: 0.0
 

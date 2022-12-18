@@ -43,7 +43,7 @@ class NChannelAbstractLooperManager(LooperState):
             self.pos = first_looper.pos
             self.outputPeak = first_looper.outputPeak
         
-        self.volumeChanged.connect(lambda v: self.doLoopAction(LoopActionType.SetLoopVolume.value, v, True))
+        self.volumeChanged.connect(lambda v: self.doLoopAction(LoopActionType.SetLoopVolume.value, [v], True))
 
     ######################
     # PROPERTIES
