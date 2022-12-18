@@ -257,7 +257,7 @@ int jack_process (jack_nframes_t nframes, void *arg) {
                 (jack_default_audio_sample_t*) jack_port_get_buffer(g_input_ports[i], nframes) :
                 nullptr;
             g_output_bufs[i] =
-                g_output_ports[i] && jack_port_connected(g_output_ports[i]) ?
+                g_output_ports[i] ?
                 (jack_default_audio_sample_t*) jack_port_get_buffer(g_output_ports[i], nframes) :
                 nullptr;
             g_midi_input_bufs[i] =

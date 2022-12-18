@@ -96,11 +96,52 @@ Item {
                 right: parent.right
             }
             ProgressBar {
-                id: output_peak_bar
-                value: output_peak_meter.value
+                id: output_peak_bar_l
+                value: output_peak_meter_l.value
                 padding: 2
                 anchors {
                     left: parent.left
+                    right: parent.horizontalCenter
+                    verticalCenter: volume_row.verticalCenter
+                }
+
+                // Note: dB
+                from: -30.0
+                to: 0.0
+
+                AudioLevelMeterModel {
+                    id: output_peak_meter_l
+                    max_dt: 0.1
+
+                    input: trackctl.ports_manager.port_managers[1].port_managers[0].outputPeak
+                }
+
+                background: Rectangle {
+                    implicitWidth: 25
+                    implicitHeight: 16
+                    color: Material.background
+                    radius: 3
+                }
+
+                contentItem: Item {
+                    implicitWidth: 25
+                    implicitHeight: 16
+
+                    Rectangle {
+                        width: output_peak_bar_l.visualPosition * parent.width
+                        height: parent.height
+                        radius: 2
+                        color: 'grey'
+                        x: (1.0 - output_peak_bar_l.visualPosition) * parent.width
+                    }
+                }
+            }
+            ProgressBar {
+                id: output_peak_bar_r
+                value: output_peak_meter_r.value
+                padding: 2
+                anchors {
+                    left: parent.horizontalCenter
                     right: parent.right
                     verticalCenter: volume_row.verticalCenter
                 }
@@ -110,25 +151,25 @@ Item {
                 to: 0.0
 
                 AudioLevelMeterModel {
-                    id: output_peak_meter
+                    id: output_peak_meter_r
                     max_dt: 0.1
 
-                    input: trackctl.ports_manager.outputPeak
+                    input: trackctl.ports_manager.port_managers[1].port_managers[1].outputPeak
                 }
 
                 background: Rectangle {
-                    implicitWidth: 50
+                    implicitWidth: 25
                     implicitHeight: 16
                     color: Material.background
                     radius: 3
                 }
 
                 contentItem: Item {
-                    implicitWidth: 50
+                    implicitWidth: 25
                     implicitHeight: 16
 
                     Rectangle {
-                        width: output_peak_bar.visualPosition * parent.width
+                        width: output_peak_bar_r.visualPosition * parent.width
                         height: parent.height
                         radius: 2
                         color: 'grey'
@@ -198,11 +239,53 @@ Item {
                 right: parent.right
             }
             ProgressBar {
-                id: input_peak_bar
-                value: input_peak_meter.value
+                id: input_peak_l_bar
+                value: input_peak_meter_l.value
                 padding: 2
                 anchors {
                     left: parent.left
+                    right: parent.horizontalCenter
+                    verticalCenter: passthrough_row.verticalCenter
+                }
+
+                // Note: dB
+                from: -30.0
+                to: 0.0
+
+                AudioLevelMeterModel {
+                    id: input_peak_meter_l
+                    max_dt: 0.1
+
+                    // Dig into the wet manager, then the left-side manager
+                    input: trackctl.ports_manager.port_managers[1].port_managers[0].inputPeak
+                }
+
+                background: Rectangle {
+                    implicitWidth: 25
+                    implicitHeight: 16
+                    color: Material.background
+                    radius: 3
+                }
+
+                contentItem: Item {
+                    implicitWidth: 25
+                    implicitHeight: 16
+
+                    Rectangle {
+                        width: input_peak_l_bar.visualPosition * parent.width
+                        height: parent.height
+                        radius: 2
+                        color: 'grey'
+                        x: parent.width - input_peak_l_bar.visualPosition * parent.width
+                    }
+                }
+            }
+            ProgressBar {
+                id: input_peak_r_bar
+                value: input_peak_meter_r.value
+                padding: 2
+                anchors {
+                    left: parent.horizontalCenter
                     right: parent.right
                     verticalCenter: passthrough_row.verticalCenter
                 }
@@ -212,25 +295,26 @@ Item {
                 to: 0.0
 
                 AudioLevelMeterModel {
-                    id: input_peak_meter
+                    id: input_peak_meter_r
                     max_dt: 0.1
 
-                    input: trackctl.ports_manager.inputPeak
+                    // Dig into the wet manager, then the right-side manager
+                    input: trackctl.ports_manager.port_managers[1].port_managers[1].inputPeak
                 }
 
                 background: Rectangle {
-                    implicitWidth: 50
+                    implicitWidth: 25
                     implicitHeight: 16
                     color: Material.background
                     radius: 3
                 }
 
                 contentItem: Item {
-                    implicitWidth: 50
+                    implicitWidth: 25
                     implicitHeight: 16
 
                     Rectangle {
-                        width: input_peak_bar.visualPosition * parent.width
+                        width: input_peak_r_bar.visualPosition * parent.width
                         height: parent.height
                         radius: 2
                         color: 'grey'
