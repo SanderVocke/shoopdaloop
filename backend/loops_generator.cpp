@@ -177,6 +177,7 @@ public:
         Func _port_recording_latencies = repeat_edge(port_recording_latencies_in);
         Func _n_port_events_b = repeat_edge(n_port_events);
         Func _port_event_timestamps_in_b = repeat_edge(port_event_timestamps_in);
+        Func _ports_map = repeat_edge(ports_map);
 
         // Do the port input overrides and port input mutes
         Func _muted_samples_in("_muted_samples_in");
@@ -428,7 +429,7 @@ public:
         loop_storage_out(x, loop) = Halide::undef<float>();
         loop_storage_out(rr_record_index, rr.y) = select(
             is_recording,
-            _latency_applied_samples_in(rr.x, rr.y),
+            _latency_applied_samples_in(rr.x, _ports_map(rr.y)),
             Halide::undef<float>() // No recording
         );
 
