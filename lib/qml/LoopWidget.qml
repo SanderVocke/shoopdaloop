@@ -20,7 +20,7 @@ Item {
     property int current_cycle: manager && master_manager ? Math.floor(manager.pos / master_manager.length) : 0
     
     signal selected() //directly selected by the user to be activated.
-    signal add_to_scene() //selected by the user to be added to the current scene.
+    signal toggle_in_current_scene() //selected by the user to be added/removed to/from the current scene.
     signal request_rename(string name)
     signal request_clear()
 
@@ -123,12 +123,6 @@ Item {
             x: 0
             y: 0
             anchors.fill: parent
-            //acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
-            //onClicked: (event) => {
-            //               if (event.button === Qt.LeftButton) { widget.selected() }
-            //               else if (event.button === Qt.MiddleButton) { widget.add_to_scene() }
-            //               else if (event.button === Qt.RightButton) { contextmenu.popup() }
-            //           }
             hoverEnabled: true
             propagateComposedEvents: true
             onPositionChanged: (mouse) => { statusrect.propagateMousePosition(mapToGlobal(mouse.x, mouse.y)) }
@@ -177,7 +171,11 @@ Item {
                     size: iconitem.height
                     y: 0
                     anchors.horizontalCenter: iconitem.horizontalCenter
-                    onClicked: contextmenu.popup()
+                    onClicked: (event) => {
+                            if (event.button === Qt.LeftButton) { contextmenu.popup() }
+                            else if (event.button === Qt.MiddleButton) { widget.toggle_in_current_scene() }
+                            else if (event.button === Qt.RightButton) { contextmenu.popup() }
+                        }
                 }
                 LoopStateIcon {
                     id: loopnextstateicon
@@ -576,7 +574,7 @@ Item {
         property int size
         property string description: StatesAndActions.LoopState_names[state] ? StatesAndActions.LoopState_names[state] : "Invalid"
 
-        signal clicked()
+        signal clicked(var mouse)
 
         width: size
         height: size
@@ -652,8 +650,8 @@ Item {
             anchors.fill: parent
             hoverEnabled: true
             propagateComposedEvents: true
-            acceptedButtons: Qt.RightButton | Qt.LeftButton
-            onClicked: lsicon.clicked()
+            acceptedButtons: Qt.RightButton | Qt.MiddleButton | Qt.LeftButton
+            onClicked: (mouse) => lsicon.clicked(mouse)
             id: ma
         }
 

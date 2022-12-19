@@ -25,7 +25,7 @@ Item {
     width: childrenRect.width
     height: childrenRect.height
 
-    signal set_loop_in_scene(int idx)
+    signal toggle_loop_in_scene(int idx)
     signal renamed(string name)
     signal request_select_loop(int idx)
     signal request_rename_loop(int idx, string name)
@@ -90,7 +90,7 @@ Item {
                         name: track.loop_names[index]
                         internal_name: track.name + ' loop ' + (index+1).toString()
 
-                        onAdd_to_scene: () => { track.set_loop_in_scene(index) }
+                        onToggle_in_current_scene: () => { track.toggle_loop_in_scene(index) }
                         onRequest_rename: (name) => { track.request_rename_loop(index, name) }
                         onRequest_clear: () => { track.request_clear_loop(index) }
                     }

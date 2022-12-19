@@ -223,13 +223,15 @@ Item {
         sectionsChanged()
     }
 
-    function bind_loop_to_current_scene(track_idx, loop_idx) {
+    function toggle_loop_in_current_scene(track_idx, loop_idx) {
         if (selected_scene >= 0) {
-            // remove any previous setting for this track
             var modified = scenes[selected_scene].loops
-            modified = modified.filter(l => l[0] !== track_idx)
-            // add the new setting
-            modified.push([track_idx, loop_idx])
+            var idx = modified.findIndex((elem) => elem[0] == track_idx && elem[1] == loop_idx)
+            if (idx == -1) {
+                modified.push([track_idx, loop_idx])
+            } else {
+                modified.splice(idx, 1)
+            }
             scenes[selected_scene].loops = modified
             scenesChanged()
         }

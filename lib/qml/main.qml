@@ -58,7 +58,7 @@ ApplicationWindow {
             loops_of_hovered_scene: shared.loops_of_hovered_scene.map(map_loop_pos)
 
             Connections {
-                function onRequest_bind_loop_to_scene(track, loop) { shared.bind_loop_to_current_scene(track+1, loop) }
+                function onRequest_toggle_loop_in_scene(track, loop) { shared.toggle_loop_in_current_scene(track+1, loop) }
                 function onRequest_rename(track, name) { shared.rename_track(track+1, name) }
                 function onRequest_select_loop(track, loop) { shared.select_loop(track+1, loop) }
                 function onRequest_rename_loop(track, loop, name) { shared.rename_loop(track+1, loop, name) }
