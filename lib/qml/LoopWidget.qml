@@ -91,29 +91,86 @@ Item {
         }
 
         ProgressBar {
-            id: peak_meter
-            anchors.fill: parent
-            anchors.margins: 2
+            id: peak_meter_l
+            anchors {
+                left: parent.left
+                right: parent.horizontalCenter
+                bottom: parent.bottom
+                margins: 2
+            }
+            height: 3
 
             AudioLevelMeterModel {
-                id: output_peak_meter
+                id: output_peak_meter_l
                 max_dt: 0.1
-                input: statusrect.manager.outputPeak
+                input: {
+                    if (statusrect.manager && statusrect.manager.wet_looper) {
+                        return statusrect.manager.wet_looper.channel_loopers[0].outputPeak
+                    } else if (statusrect.manager && statusrect.manager.channel_loopers) {
+                        return statusrect.manager.channel_loopers[0].outputPeak
+                    } else if (statusrect.manager) {
+                        return statusrect.manager.outputPeak
+                    }
+                    return 0.0
+                }
             }
 
             from: -30.0
             to: 0.0
-            value: output_peak_meter.value
+            value: output_peak_meter_l.value
 
-            background: Item { anchors.fill: peak_meter }
+            background: Item { anchors.fill: peak_meter_l }
             contentItem: Item {
-                implicitWidth: peak_meter.width
-                implicitHeight: peak_meter.height
+                implicitWidth: peak_meter_l.width
+                implicitHeight: peak_meter_l.height
 
                 Rectangle {
-                    width: peak_meter.visualPosition * peak_meter.width
-                    height: peak_meter.height
-                    color: Qt.rgba(1.0,1.0,1.0,0.2)
+                    width: peak_meter_l.visualPosition * peak_meter_l.width
+                    height: peak_meter_l.height
+                    color: Material.accent
+                    x: peak_meter_l.width - width
+                }
+            }
+        }
+
+        ProgressBar {
+            id: peak_meter_r
+            anchors {
+                left: parent.horizontalCenter
+                right: parent.right
+                bottom: parent.bottom
+                margins: 2
+            }
+            height: 3
+
+            AudioLevelMeterModel {
+                id: output_peak_meter_r
+                max_dt: 0.1
+                input: {
+                    if (statusrect.manager && statusrect.manager.wet_looper) {
+                        return statusrect.manager.wet_looper.channel_loopers[0].outputPeak
+                    } else if (statusrect.manager && statusrect.manager.channel_loopers) {
+                        return statusrect.manager.channel_loopers[0].outputPeak
+                    } else if (statusrect.manager) {
+                        return statusrect.manager.outputPeak
+                    }
+                    return 0.0
+                }
+            }
+
+            from: -30.0
+            to: 0.0
+            value: output_peak_meter_r.value
+
+            background: Item { anchors.fill: peak_meter_r }
+            contentItem: Item {
+                implicitWidth: peak_meter_r.width
+                implicitHeight: peak_meter_r.height
+
+                Rectangle {
+                    width: peak_meter_r.visualPosition * peak_meter_r.width
+                    height: peak_meter_r.height
+                    color: Material.accent
                 }
             }
         }

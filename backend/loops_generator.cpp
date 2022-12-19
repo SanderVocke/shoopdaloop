@@ -449,8 +449,10 @@ public:
                 rr_record_index
             )
         );
+        Expr event_in_recording_range =
+            event_in_timestamp >= recording_range(loop)[0] && event_in_timestamp < recording_range(loop)[1];
         event_recording_timestamps_out(event, loop) = select(
-            event_in_timestamp >= recording_range(loop)[0] && event_in_timestamp < recording_range(loop)[1],
+            event_in_recording_range,
             event_recording_index,
             -1
         );
