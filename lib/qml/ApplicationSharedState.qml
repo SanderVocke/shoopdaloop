@@ -76,8 +76,7 @@ Item {
 
     // SEQUENCING STATE
     property var sections: [
-        { name: 'Section 1', scene_idx: -1, actions: []},
-        { name: 'Section 2', scene_idx: -1, actions: []}
+        { name: 'Section', actions: []}
     ]
     property int selected_section: -1
 
@@ -218,8 +217,13 @@ Item {
         sectionsChanged()
     }
 
-    function change_section_scene(section_idx, scene_idx) {
-        sections[section_idx].scene_idx = scene_idx
+    function delete_section(idx) {
+        sections.splice(idx, 1)
+        sectionsChanged()
+    }
+
+    function add_section() {
+        sections.push({ name: 'Section', actions: []})
         sectionsChanged()
     }
 
@@ -247,36 +251,14 @@ Item {
         loop_namesChanged()
     }
 
-    function add_action(section, type, track) {
-        var idx
-        var found = false
-        for (idx in sections[section].actions) {
-            var act = sections[section].actions[idx]
-            if (act[0] === type && act[1] === track) {
-                found = true
-                break
-            }
-        }
-        if (!found) {
-            sections[section].actions.push([type, track])
-            sectionsChanged()
-        }
+    function add_action(section, action) {
+        sections[section].actions.push(action)
+        sectionsChanged()
     }
 
-    function remove_action(section, type, track) {
-        var idx
-        var found_idx = -1
-        for (idx in sections[section].actions) {
-            var act = sections[section].actions[idx]
-            if (act[0] === type && act[1] === track) {
-                found_idx = idx
-                break
-            }
-        }
-        if (found_idx >= 0) {
-            sections[section].actions.splice(found_idx, 1)
-            sectionsChanged()
-        }
+    function remove_action(section, idx) {
+        sections[section].actions.splice(idx, 1)
+        sectionsChanged()
     }
 
     function update_scene_names() {

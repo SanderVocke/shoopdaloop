@@ -11,17 +11,17 @@ Rectangle {
     property var scene_names: []
     property var track_names: []
 
-    signal request_change_section_scene(int section_idx, int scene_idx)
     signal request_rename_section(int section_idx, string name)
-    signal request_select_section(int section_idx)
-    signal request_add_action(int section_idx, string type, int track_idx)
-    signal request_remove_action(int section_idx, string type, int track_idx)
+    signal request_delete_section(int section_idx)
+    signal request_add_section()
+    signal request_add_action(int section_idx, var action)
+    signal request_remove_action(int section_idx, int action_idx)
 
     Item {
         anchors.fill: parent
         anchors.margins: 6
 
-        Item {
+        Column {
             anchors {
                 top: parent.top
                 bottom: parent.bottom
@@ -35,7 +35,6 @@ Rectangle {
                 id: scriptingtext
 
                 anchors {
-                    top: parent.top
                     left: parent.left
                     right: parent.right
                 }
@@ -44,11 +43,19 @@ Rectangle {
                 font.pixelSize: 15
                 color: Material.foreground
                 verticalAlignment: Text.AlignTop
-                anchors {
-                    top: parent.top
-                    bottom: parent.bottom
-                }
             }
+
+            Button {
+                    width: 30
+                    height: 40
+                    MaterialDesignIcon {
+                        size: 20
+                        name: 'plus'
+                        color: Material.foreground
+                        anchors.centerIn: parent
+                    }
+                    onClicked: widget.request_add_section()
+                }
         }
 
         Rectangle {
@@ -85,7 +92,6 @@ Rectangle {
                             is_selected: widget.selected_section === index
                             name: widget.sections[index].name
                             available_scene_names: widget.scene_names
-                            selected_scene: widget.sections[index].scene_idx
                             track_names: widget.track_names
                             actions: widget.sections[index].actions
 
@@ -94,10 +100,11 @@ Rectangle {
                                 bottom: parent.bottom
                             }
 
-                            width: 100
+                            width: 150
 
                             Connections {
                                 function onRequest_rename(name) { widget.request_rename_section(index, name) }
+                                function onRequest_delete() { widget.request_delete_section(index) }
                                 function onClicked() {
                                     if (widget.selected_section === index) {
                                         widget.request_select_section(-1)
@@ -105,7 +112,6 @@ Rectangle {
                                         widget.request_select_section(index)
                                     }
                                 }
-                                function onRequest_select_scene(idx) { widget.request_change_section_scene(index, idx) }
                                 function onRequest_add_action(type, track_idx) { widget.request_add_action(index, type, track_idx) }
                                 function onRequest_remove_action(type, track_idx) { widget.request_remove_action(index, type, track_idx) }
                             }
@@ -114,118 +120,6 @@ Rectangle {
                 }
             }
         }
-    }
-
-    // Represent one action visually.
-    component ActionIcon : MaterialDesignIcon {
-        property var action
-
-        name: action[0] === 'record' ? 'record' :
-              action[0] === 'fx_live'? 'effect' : ''
-
-        color: action[0] === 'record' ? 'red' :
-               action[0] === 'fx_live' ? 'blue' : ''
-    }
-
-    // Represent the set of actions to be taken for a given section in the timeline.
-    component ActionsWidget : Item {
-        id: act_widget
-        property var actions: []
-        property var track_names: []
-        property int icon_size: 32
-
-        signal clicked()
-        signal request_add_action(string type, int track)
-        signal request_remove_action(string type, int track)
-
-        Button {
-            anchors {
-                fill: parent
-            }
-
-            onClicked: act_widget.clicked()
-
-            Text {
-                id: btlabel
-                text: 'Act'
-                color: Material.foreground
-                font.pixelSize: 12
-                anchors {
-                    left: parent.left
-                    top: parent.top
-                    bottom: parent.bottom
-                    leftMargin: act_widget.actions.length === 0 ? 30 : 10
-                }
-                verticalAlignment: Text.AlignVCenter
-                width: 40
-            }
-
-            Repeater {
-                model: actions.length
-                anchors {
-                    left: btlabel.right
-                    right: parent.right
-                    top: parent.top
-                    bottom: parent.bottom
-                }
-
-                ActionIcon {
-                    action: actions[index]
-                    size: act_widget.icon_size
-                    anchors {
-                        left: btlabel.right
-                        leftMargin: index * 10
-                        verticalCenter: parent.verticalCenter
-                    }
-                }
-            }
-        }
-
-        Menu {
-            id: contextmenu
-            Menu {
-                title: 'Record'
-                Repeater {
-                    model: act_widget.track_names ? act_widget.track_names.length : 0
-
-                    MenuItem {
-                        text: act_widget.track_names[index]
-
-                        function is_recorded() {
-                            var idx
-                            for (idx in act_widget.actions) {
-                                var act = act_widget.actions[idx]
-                                if (act[0] === 'record' && act[1] === index) {
-                                    return true
-                                }
-                            }
-                            return false
-                        }
-
-                        MaterialDesignIcon {
-                            name: 'record'
-                            color: 'red'
-                            visible: is_recorded()
-
-                            anchors {
-                                verticalCenter: parent.verticalCenter
-                                right: parent.right
-                                rightMargin: 20
-                            }
-                        }
-
-                        Connections {
-                            function onClicked() {
-                                if(is_recorded()) { act_widget.request_remove_action('record', index) }
-                                else { act_widget.request_add_action('record', index) }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        onClicked: () => { contextmenu.popup() }
     }
 
     // A widget to represent a single section item on the sequencing timeline.
@@ -237,11 +131,10 @@ Rectangle {
         property var available_scene_names
         property var track_names
         property var actions
-        property int selected_scene: -1
 
         signal clicked()
         signal request_rename(string name)
-        signal request_select_scene(int scene)
+        signal request_delete()
         signal request_add_action(string type, int track)
         signal request_remove_action(string type, int track)
 
@@ -255,64 +148,273 @@ Rectangle {
             onClicked: scriptitem.clicked()
         }
 
-        TextField {
-            id: section_name
+        Column {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.leftMargin: 5
+            anchors.rightMargin: 5
 
-            anchors {
-                left: parent.left
-                right: parent.right
-                top: parent.top
-                leftMargin: 30
-                rightMargin: 5
+            TextField {
+                id: section_name
+
+                anchors {
+                    left: parent.left
+                    right: parent.right
+                }
+                text: name
+                color: is_selected ? Material.background : Material.foreground
+                font.pixelSize: 12
+
+                onEditingFinished: () => { scriptitem.request_rename(displayText); background_focus.forceActiveFocus() }
             }
-            text: name
-            color: is_selected ? Material.background : Material.foreground
-            font.pixelSize: 12
 
-            onEditingFinished: () => { scriptitem.request_rename(displayText); background_focus.forceActiveFocus() }
+            Row {
+                anchors {
+                    left: parent.left
+                    right: parent.right
+                }
+                spacing: 3
+
+                Button {
+                    width: 20
+                    height: 30
+                    MaterialDesignIcon {
+                        size: 15
+                        name: 'plus'
+                        color: Material.foreground
+                        anchors.centerIn: parent
+                    }
+                    onClicked: action_popup.open()
+                }
+                Button {
+                    width: 20
+                    height: 30
+                    MaterialDesignIcon {
+                        size: 15
+                        name: 'delete'
+                        color: Material.foreground
+                        anchors.centerIn: parent
+                    }
+                    onClicked: delete_popup.open()
+                }
+            }
         }
 
-        ComboBox {
-            anchors {
-                top: section_name.bottom
-                left: parent.left
-                leftMargin: 3
-                right: parent.right
-                rightMargin: 3
-            }
-
-            id: combo
-
-            height: 30
-            font.pixelSize: 12
-            currentIndex: selected_scene + 1
-
-            model : ['(scene)'].concat(available_scene_names)
-            onModelChanged: () => { selected_sceneChanged() }
-            onActivated: (idx) => {
-                scriptitem.request_select_scene(idx - 1)
-            }
-        }
-
-        ActionsWidget {
-            anchors {
-                top: combo.bottom
-                left: parent.left
-                right: parent.right
-                leftMargin: 3
-                rightMargin: 3
-            }
-            height: 30
-
-            id: actionswidget
-
-            actions: scriptitem.actions
-            track_names: scriptitem.track_names
-            icon_size: 25
-
+        ScriptActionPopup {
+            id: action_popup
             Connections {
-                function onRequest_add_action(type, track) { scriptitem.request_add_action(type, track) }
-                function onRequest_remove_action(type, track) { scriptitem.request_remove_action(type, track) }
+                target: action_popup
+                function onAdd_action(action) {
+                    scriptitem.actions.push(action)
+                    console.log(JSON.stringify(scriptitem.actions))
+                }
+            }
+        }
+
+        Dialog {
+            id: delete_popup
+            title: 'Warning'
+            standardButtons: Dialog.Ok | Dialog.Cancel
+            parent: Overlay.overlay
+            anchors.centerIn: parent
+
+            onAccepted: {
+                close()
+                scriptitem.request_delete()
+            }
+
+            Text {
+                color: Material.foreground
+                text: 'Are you sure you want to delete section "' + scriptitem.name + '" from the script?'
+            }
+        }
+    }
+
+    component ScriptActionPopup : Dialog {
+        id: action_popup_component
+        property int labels_width: 120
+        property int font_pixel_size: 14
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        title: "Add action"
+        modal: true
+
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        
+        onAccepted: add_action(create_action_object())
+
+        signal add_action(var action)
+
+        function create_combo(id, label, item_ids_to_labels) {
+            var combo_model = 'ListModel {\n'
+            for (const [label, val] of Object.entries(item_ids_to_labels)) {
+                var full_val = (typeof val === 'string' || val instanceof String) ? '"' + val + '"' : val
+                combo_model += '   ListElement { label: "' + label + '"; value: ' + full_val + ' }\n'
+            }
+            combo_model += '}'
+            var snippet = '
+                import QtQuick 2.15
+                import QtQuick.Controls 2.15
+                import QtQuick.Controls.Material 2.15
+
+                Component {
+                    Row {
+                        spacing: 5
+                        property string setting: "' + id + '"
+                        property alias value: ' + id + '.currentValue
+                        Text {
+                            color: Material.foreground
+                            text: "' + label + '"
+                            horizontalAlignment: Text.AlignRight
+                            width: action_popup_component.labels_width
+                            font.pixelSize: action_popup_component.font_pixel_size
+                            anchors.verticalCenter: ' + id + '.verticalCenter
+                        }
+                        ComboBox {
+                            textRole: "label"
+                            valueRole: "value"
+                            id: ' + id + '
+                            model: ' + combo_model + '
+                            font.pixelSize: action_popup_component.font_pixel_size
+                        }
+                    }
+                }
+            '
+            return Qt.createQmlObject(snippet, action_popup_component, id)
+        }
+
+        function create_action_object() {
+            var r = {
+                'cycle': parseInt(on_cycle.text),
+                'action_type': action_type_combo.currentValue,
+                'action': action_combo.currentValue
+            }
+            for (var idx = 0; idx < combo_instantiations.count; idx++) {
+                var combo = combo_instantiations.itemAt(idx).item
+                if(combo !== undefined) {
+                    r[combo.setting] = combo.value
+                }
+            }
+            return r
+        }
+
+        property var combo_boxes: {
+            var r = []
+            switch(action_type_combo.currentValue) {
+                case 'scene':
+                    r.push(create_combo('scene', 'Scene:', {'Scene 1': 0, 'Scene 2': 1}))
+                    switch(action_combo.currentValue) {
+                        case 'play':
+                            r.push(create_combo('stop_others', 'Stop other loops:', {'No':'no', 'Yes':'yes'}))
+                            break
+                    }                
+                    break
+                case 'loop':
+                    r.push(create_combo('track', 'Track:', {'Track 1': 0, 'Track 2': 1}))
+                    r.push(create_combo('loop', 'Loop:', {'Loop 1': 1, 'Loop 2': 2}))
+                    switch(action_combo.currentValue) {
+                        case 'play':
+                            r.push(create_combo('stop_others', 'Stop other loops:', {'No':'no', 'In Track':'track', 'All':'all'}))
+                            break
+                        case 'record':
+                            break
+                        case 'stop':
+                            break
+                    }
+                    breaks
+            }
+
+            return r
+        }
+
+        Column {
+            Row {
+                Column {
+                    Row {
+                        spacing: 5
+                        Text {
+                            horizontalAlignment: Text.AlignRight
+                            width: action_popup_component.labels_width
+                            text: 'On Cycle:'
+                            color: Material.foreground
+                            font.pixelSize: action_popup_component.font_pixel_size
+                            anchors.verticalCenter: on_cycle.verticalCenter
+                        }
+                        TextField {
+                            id: on_cycle
+                            font.pixelSize: action_popup_component.font_pixel_size
+                            text: '0'
+                            validator: IntValidator { bottom: 0; top: 100 }
+                        }
+                    }
+                    Row {
+                        spacing: 5
+                        Text {
+                            horizontalAlignment: Text.AlignRight
+                            width: action_popup_component.labels_width
+                            text: 'Type:'
+                            color: Material.foreground
+                            font.pixelSize: action_popup_component.font_pixel_size
+                            anchors.verticalCenter: action_type_combo.verticalCenter
+                        }
+                        ComboBox {
+                            id: action_type_combo
+                            textRole: 'label'
+                            valueRole: 'value'
+                            model: ListModel {
+                                ListElement { label: 'Scene'; value: 'scene' }
+                                ListElement { label: 'Loop'; value: 'loop' }
+                            }
+                            font.pixelSize: action_popup_component.font_pixel_size
+                        }
+                    }
+                    Row {
+                        spacing: 5
+                        Text {
+                            horizontalAlignment: Text.AlignRight
+                            width: action_popup_component.labels_width
+                            text: 'Action:'
+                            color: Material.foreground
+                            font.pixelSize: action_popup_component.font_pixel_size
+                            anchors.verticalCenter: action_combo.verticalCenter
+                        }
+                        ComboBox {
+                            id: action_combo
+                            font.pixelSize: action_popup_component.font_pixel_size
+                            textRole: 'label'
+                            valueRole: 'value'
+
+                            property var scene_model: ListModel {
+                                ListElement { label: 'Play'; value: 'play' }
+                            }
+
+                            property var loop_model: ListModel {
+                                ListElement { label: 'Play'; value: 'play' }
+                                ListElement { label: 'Record'; value: 'record' }
+                                ListElement { label: 'Stop'; value: 'stop' }
+                            }
+
+                            model: {
+                                switch (action_type_combo.currentValue) {
+                                case 'scene':
+                                    return scene_model
+                                case 'loop':
+                                    return loop_model
+                                }
+                            }
+                        }
+                    }
+                }
+                Column {
+                    Repeater {
+                        model: combo_boxes.length
+                        id: combo_instantiations
+
+                        Loader {
+                            sourceComponent: combo_boxes[index]
+                        }
+                    }
+                }
             }
         }
     }
