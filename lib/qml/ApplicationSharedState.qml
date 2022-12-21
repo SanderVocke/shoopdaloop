@@ -78,7 +78,7 @@ Item {
     property var sections: [
         { name: 'Section', actions: []}
     ]
-    property int selected_section: -1
+    property int active_section: -1
 
     // (DE-)SERIALIZATION
     function state_to_dict() {
@@ -88,7 +88,7 @@ Item {
             'selected_scene': selected_scene,
             'hovered_scene': hovered_scene,
             'sections': sections,
-            'selected_section': selected_section,
+            'active_section': active_section,
             'loop_names': loop_names
         }
     }
@@ -96,11 +96,11 @@ Item {
         // RESET SELECTIONS
         selected_scene = -1
         hovered_scene = -1
-        selected_section = -1
+        active_section = -1
 
         selected_sceneChanged()
         hovered_sceneChanged()
-        selected_sectionChanged()
+        active_sectionChanged()
 
         // LOAD
         track_names = state_dict.track_names
@@ -109,7 +109,7 @@ Item {
         loop_names = state_dict.loop_names
         selected_scene = state_dict.selected_scene
         hovered_scene = state_dict.hovered_scene
-        selected_section = state_dict.selected_section
+        active_section = state_dict.active_section
 
         track_namesChanged()
         loop_namesChanged()
@@ -117,7 +117,7 @@ Item {
         sectionsChanged()
         selected_sceneChanged()
         hovered_sceneChanged()
-        selected_sectionChanged()
+        active_sectionChanged()
     }
     function serialize_state() {
         return JSON.stringify(state_to_dict())
@@ -208,8 +208,8 @@ Item {
     }
 
     function select_section(idx) {
-        selected_section = idx
-        selected_sectionChanged()
+        active_section = idx
+        active_sectionChanged()
     }
 
     function rename_section(idx, name) {
@@ -270,8 +270,8 @@ Item {
     }
 
     function update_selected_scene_from_section() {
-        if (selected_section >= 0) {
-            selected_scene = sections[selected_section].scene_idx
+        if (active_section >= 0) {
+            selected_scene = sections[active_section].scene_idx
             selected_sceneChanged()
         }
     }
@@ -310,9 +310,9 @@ Item {
 
     Connections {
         function onScenesChanged() { update_scene_names(); update_loops_of_selected_scene(); update_loops_of_hovered_scene() }
-        function onSelected_sectionChanged() {
+        function onActive_sectionChanged() {
             update_selected_scene_from_section()
-            midi_control_manager.active_scripting_section_changed(selected_section)
+            midi_control_manager.active_scripting_section_changed(active_section)
         }
         function onSelected_sceneChanged() {
             update_loops_of_selected_scene()

@@ -7,7 +7,7 @@ Rectangle {
     color: "#555555"
 
     property var sections : []
-    property int selected_section: -1
+    property int active_section: -1
     property var scene_names: []
     property var track_names: []
     property var loop_names: []
@@ -90,7 +90,7 @@ Rectangle {
                         anchors.fill: parent
 
                         ScriptItemWidget {
-                            is_selected: widget.selected_section === index
+                            highlighted: widget.active_section === index
                             name: widget.sections[index].name
                             available_scene_names: widget.scene_names
                             track_names: widget.track_names
@@ -106,13 +106,6 @@ Rectangle {
                             Connections {
                                 function onRequest_rename(name) { widget.request_rename_section(index, name) }
                                 function onRequest_delete() { widget.request_delete_section(index) }
-                                function onClicked() {
-                                    if (widget.selected_section === index) {
-                                        widget.request_select_section(-1)
-                                    } else {
-                                        widget.request_select_section(index)
-                                    }
-                                }
                                 function onRequest_add_action(type, track_idx) { widget.request_add_action(index, type, track_idx) }
                                 function onRequest_remove_action(type, track_idx) { widget.request_remove_action(index, type, track_idx) }
                             }
@@ -127,7 +120,7 @@ Rectangle {
     component ScriptItemWidget : Rectangle {
         id: scriptitem
 
-        property bool is_selected
+        property bool highlighted
         property string name
         property var available_scene_names
         property var track_names
@@ -139,8 +132,8 @@ Rectangle {
         signal request_add_action(string type, int track)
         signal request_remove_action(string type, int track)
 
-        color: is_selected ? 'grey' : Material.background
-        border.color: is_selected ? 'red' : 'grey'
+        color: Material.background
+        border.color: highlighted ? 'red' : 'grey'
         border.width: 2
 
         MouseArea {
@@ -164,7 +157,6 @@ Rectangle {
                     right: parent.right
                 }
                 text: name
-                color: is_selected ? Material.background : Material.foreground
                 font.pixelSize: 12
 
                 onEditingFinished: () => { scriptitem.request_rename(displayText); background_focus.forceActiveFocus() }
@@ -319,12 +311,32 @@ Rectangle {
                             }
                             MenuItem {
                                 text: "Delete"
+                                onClicked: {
+                                    scriptitem.actions.splice(index, 1)
+                                    scriptitem.actionsChanged()
+                                }
                             }
                             MenuItem {
                                 text: "Move Up"
+                                onClicked: {
+                                    if (index > 0) {
+                                        var tmp = scriptitem.actions[index-1]
+                                        scriptitem.actions[index-1] = scriptitem.actions[index]
+                                        scriptitem.actions[index] = tmp
+                                        scriptitem.actionsChanged()
+                                    }
+                                }
                             }
                             MenuItem {
                                 text: "Move Down"
+                                onClicked: {
+                                    if (index < scriptitem.actions.length - 1) {
+                                        var tmp = scriptitem.actions[index+1]
+                                        scriptitem.actions[index+1] = scriptitem.actions[index]
+                                        scriptitem.actions[index] = tmp
+                                        scriptitem.actionsChanged()
+                                    }
+                                }
                             }
                         }
                     }
