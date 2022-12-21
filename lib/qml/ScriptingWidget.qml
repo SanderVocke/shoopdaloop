@@ -149,6 +149,7 @@ Rectangle {
         }
 
         Column {
+            id: header
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.leftMargin: 5
@@ -176,13 +177,20 @@ Rectangle {
                 spacing: 3
 
                 Button {
-                    width: 20
+                    width: 60
                     height: 30
-                    MaterialDesignIcon {
-                        size: 15
-                        name: 'plus'
-                        color: Material.foreground
+                    Row {
                         anchors.centerIn: parent
+                        MaterialDesignIcon {
+                            size: 15
+                            name: 'plus'
+                            color: Material.foreground
+                        }
+                        Text {
+                            font.pixelSize: 12
+                            color: Material.foreground
+                            text: 'Action'
+                        }
                     }
                     onClicked: action_popup.open()
                 }
@@ -197,6 +205,106 @@ Rectangle {
                     }
                     onClicked: delete_popup.open()
                 }
+                Button {
+                    width: 20
+                    height: 30
+                    MaterialDesignIcon {
+                        size: 15
+                        name: 'play'
+                        color: Material.foreground
+                        anchors.centerIn: parent
+                    }
+                }
+            }
+        }
+
+        ScrollView {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.leftMargin: 5
+            anchors.rightMargin: 5
+            anchors.top: header.bottom
+            anchors.bottom: parent.bottom
+            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+
+            Column {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                spacing: 2
+
+                Repeater {
+                    model: scriptitem.actions.length
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+
+                    Rectangle {
+                        id: action_item
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        property var action: scriptitem.actions[index]
+                        height: 20
+                        color: '#444444'
+
+                        MaterialDesignIcon {
+                            id: action_icon
+                            size: 20
+                            anchors.verticalCenter: parent.verticalCenter
+                            name: {
+                                switch (action_item.action["action"]) {
+                                    case 'play':
+                                        return 'play'
+                                }
+                                return ''
+                            }
+                            color: Material.foreground
+                            anchors.centerIn: parent
+                        }
+
+                        Text {
+                            color: Material.foreground
+                            anchors.left: action_icon.right
+                            anchors.right: edit_action.left
+                            anchors.verticalCenter: parent.verticalCenter
+                            font.pixelSize: 12
+
+                            text: {
+                                switch(action_item.action["action_type"]) {
+                                    case "scene":
+                                        return 'Scene "' + action_item.action['scene'] + '"'
+                                }
+                                return ''
+                            }
+                        }
+
+                        Button {
+                            id: delete_action
+                            width: 20
+                            height: 30
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            MaterialDesignIcon {
+                                size: 15
+                                name: 'delete'
+                                color: Material.foreground
+                                anchors.centerIn: parent
+                            }
+                        }
+
+                        Button {
+                            id: edit_action
+                            width: 20
+                            height: 30
+                            anchors.right: delete_action.left
+                            anchors.verticalCenter: parent.verticalCenter
+                            MaterialDesignIcon {
+                                size: 15
+                                name: 'pencil'
+                                color: Material.foreground
+                                anchors.centerIn: parent
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -207,6 +315,7 @@ Rectangle {
                 function onAdd_action(action) {
                     scriptitem.actions.push(action)
                     console.log(JSON.stringify(scriptitem.actions))
+                    scriptitem.actionsChanged()
                 }
             }
         }
