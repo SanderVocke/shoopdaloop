@@ -302,7 +302,7 @@ Rectangle {
                             MenuItem {
                                 text: "Edit..."
                                 onClicked: {
-                                    menu_action_popup.adopt_action_object(action_item.action)
+                                    menu_action_popup.adopt_action(action_item.action)
                                     menu_action_popup.open()
                                 }
                                 ScriptActionPopup {
@@ -368,67 +368,56 @@ Rectangle {
         id: action_popup_component
         property int labels_width: 120
         property int font_pixel_size: 14
-        standardButtons: Dialog.Ok | Dialog.Cancel
+        standardButtons: {
+            var any_problems = false
+
+            var combos = [action_type_combo, action_combo, scene_combo, track_combo, loop_combo, stop_others_combo]
+            for (const c of combos) {
+                if (c.visible && c.currentValue === undefined) {
+                    return Dialog.Cancel
+                }
+            }
+            return Dialog.Ok | Dialog.Cancel
+        }
         title: "Script action"
         modal: true
+
+        width: 700
+        height: 300
 
         parent: Overlay.overlay
         anchors.centerIn: parent
         
-        onAccepted: accepted_action(create_action_object())
+        onAccepted: accepted_action(create_action())
         signal accepted_action(var action)
 
-        function create_combo(id, label, item_ids_to_labels) {
-            var combo_model = 'ListModel {\n'
-            for (const [label, val] of Object.entries(item_ids_to_labels)) {
-                var full_val = (typeof val === 'string' || val instanceof String) ? '"' + val + '"' : val
-                combo_model += '   ListElement { label: "' + label + '"; value: ' + full_val + ' }\n'
-            }
-            combo_model += '}'
-            var snippet = '
-                import QtQuick 2.15
-                import QtQuick.Controls 2.15
-                import QtQuick.Controls.Material 2.15
-
-                Component {
-                    Row {
-                        spacing: 5
-                        property string setting: "' + id + '"
-                        property alias value: ' + id + '.currentValue
-                        Text {
-                            color: Material.foreground
-                            text: "' + label + '"
-                            horizontalAlignment: Text.AlignRight
-                            width: action_popup_component.labels_width
-                            font.pixelSize: action_popup_component.font_pixel_size
-                            anchors.verticalCenter: ' + id + '.verticalCenter
-                        }
-                        ComboBox {
-                            textRole: "label"
-                            valueRole: "value"
-                            id: ' + id + '
-                            model: ' + combo_model + '
-                            font.pixelSize: action_popup_component.font_pixel_size
-                        }
-                    }
-                }
-            '
-            return Qt.createQmlObject(snippet, action_popup_component, id)
-        }
-
-        function create_action_object() {
-            var r = {
-                'cycle': parseInt(on_cycle.text),
-                'action_type': action_type_combo.currentValue,
-                'action': action_combo.currentValue
-            }
-            for (var idx = 0; idx < combo_instantiations.count; idx++) {
-                var combo = combo_instantiations.itemAt(idx).item
-                if(combo !== undefined) {
-                    r[combo.setting] = combo.value
-                }
+        onClosed: reset_action()
+        
+        function create_action() {
+            var r = {}
+            var combos = [action_type_combo, action_combo, scene_combo, track_combo, loop_combo, stop_others_combo]
+            for (const c of combos) {
+                if(c.visible) { r[c.setting] = c.currentValue }
             }
             return r
+        }
+        
+        function reset_action() {
+            var combos = [action_type_combo, action_combo, scene_combo, track_combo, loop_combo, stop_others_combo]
+            for (const c of combos) {
+                c.currentIndex = 0
+            }
+        }
+
+        function adopt_action(action) {
+            var combos = [action_type_combo, action_combo, scene_combo, track_combo, loop_combo, stop_others_combo]
+            for (var c of combos) {
+                if (c.setting in action) {
+                    c.currentIndex = c.indexOfValue(action[c.setting])
+                } else {
+                    c.currentIndex = -1
+                }
+            }
         }
 
         function create_enumeration(lst) {
@@ -436,38 +425,6 @@ Rectangle {
             for (var idx=0; idx < lst.length; idx++) {
                 r[lst[idx]] = idx
             }
-            return r
-        }
-
-        property var combo_boxes: {
-            var r = []
-            switch(action_type_combo.currentValue) {
-                case 'scene':
-                    r.push(create_combo('scene', 'Scene:', create_enumeration(widget.scene_names)))
-                    switch(action_combo.currentValue) {
-                        case 'play':
-                            r.push(create_combo('stop_others', 'Stop other loops:', {'No':'no', 'Yes':'yes'}))
-                            break
-                    }                
-                    break
-                case 'loop':
-                    r.push(create_combo('track', 'Track:', create_enumeration(widget.track_names)))
-                    // TODO: make loop selection dynamic and name-based
-                    r.push(create_combo('loop', 'Loop:', create_enumeration(
-                        [1, 2, 3, 4, 5, 6].map((idx) => 'Loop ' + idx.toString())
-                    )))
-                    switch(action_combo.currentValue) {
-                        case 'play':
-                            r.push(create_combo('stop_others', 'Stop other loops:', {'No':'no', 'In Track':'track', 'All':'all'}))
-                            break
-                        case 'record':
-                            break
-                        case 'stop':
-                            break
-                    }
-                    break
-            }
-
             return r
         }
 
@@ -550,6 +507,13 @@ Rectangle {
                                 ) : []
                         visible: action_type_combo.currentValue == 'loop'
                     }
+                    ScriptActionPopupCombo {
+                        id: stop_others_combo
+                        label: 'Stop other loops:'
+                        setting: 'stop_others'
+                        model: {'No':'no', 'In Track':'track', 'All':'all'}
+                        visible: action_combo.currentValue == 'play'
+                    }
                 }
             }
         }
@@ -562,6 +526,10 @@ Rectangle {
         property alias label: txt.text
         property var model
         property alias currentValue: combo.currentValue
+        property alias currentIndex: combo.currentIndex
+
+        function indexOfValue(val) { return combo.indexOfValue(val) }
+
         Text {
             id: txt
             color: Material.foreground
