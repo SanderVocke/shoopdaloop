@@ -28,7 +28,7 @@ Rectangle {
                 bottom: parent.bottom
                 left: parent.left
             }
-            width: 80
+            width: 120
 
             id: scriptingcontrol
 
