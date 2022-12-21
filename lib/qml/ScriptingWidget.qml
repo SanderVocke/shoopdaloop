@@ -257,50 +257,44 @@ Rectangle {
                                 return ''
                             }
                             color: Material.foreground
-                            anchors.centerIn: parent
                         }
 
                         Text {
                             color: Material.foreground
                             anchors.left: action_icon.right
-                            anchors.right: edit_action.left
+                            anchors.right: parent.right
                             anchors.verticalCenter: parent.verticalCenter
                             font.pixelSize: 12
 
                             text: {
                                 switch(action_item.action["action_type"]) {
                                     case "scene":
-                                        return 'Scene "' + action_item.action['scene'] + '"'
+                                        return 'Scn "' + widget.scene_names[action_item.action['scene']] + '"'
                                 }
                                 return ''
                             }
                         }
 
-                        Button {
-                            id: delete_action
-                            width: 20
-                            height: 30
-                            anchors.right: parent.right
-                            anchors.verticalCenter: parent.verticalCenter
-                            MaterialDesignIcon {
-                                size: 15
-                                name: 'delete'
-                                color: Material.foreground
-                                anchors.centerIn: parent
-                            }
+                        MouseArea {
+                            anchors.fill: parent
+                            acceptedButtons: Qt.LeftButton | Qt.RightButton
+                            hoverEnabled: true
+                            onClicked: action_menu.popup()
                         }
 
-                        Button {
-                            id: edit_action
-                            width: 20
-                            height: 30
-                            anchors.right: delete_action.left
-                            anchors.verticalCenter: parent.verticalCenter
-                            MaterialDesignIcon {
-                                size: 15
-                                name: 'pencil'
-                                color: Material.foreground
-                                anchors.centerIn: parent
+                        Menu {
+                            id: action_menu
+                            MenuItem {
+                                text: "Edit..."
+                            }
+                            MenuItem {
+                                text: "Delete"
+                            }
+                            MenuItem {
+                                text: "Move Up"
+                            }
+                            MenuItem {
+                                text: "Move Down"
                             }
                         }
                     }
@@ -407,11 +401,19 @@ Rectangle {
             return r
         }
 
+        function create_enumeration(lst) {
+            var r = {}
+            for (var idx=0; idx < lst.length; idx++) {
+                r[lst[idx]] = idx
+            }
+            return r
+        }
+
         property var combo_boxes: {
             var r = []
             switch(action_type_combo.currentValue) {
                 case 'scene':
-                    r.push(create_combo('scene', 'Scene:', {'Scene 1': 0, 'Scene 2': 1}))
+                    r.push(create_combo('scene', 'Scene:', create_enumeration(widget.scene_names)))
                     switch(action_combo.currentValue) {
                         case 'play':
                             r.push(create_combo('stop_others', 'Stop other loops:', {'No':'no', 'Yes':'yes'}))
@@ -430,7 +432,7 @@ Rectangle {
                         case 'stop':
                             break
                     }
-                    breaks
+                    break
             }
 
             return r
