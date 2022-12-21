@@ -134,6 +134,7 @@ ApplicationWindow {
             selected_section: shared.selected_section
             scene_names: shared.scene_names
             track_names: shared.track_names
+            loop_names: shared.loop_names
 
             Connections {
                 function onRequest_rename_section(idx, name) { shared.rename_section(idx, name) }

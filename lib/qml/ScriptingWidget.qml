@@ -10,6 +10,7 @@ Rectangle {
     property int selected_section: -1
     property var scene_names: []
     property var track_names: []
+    property var loop_names: []
 
     signal request_rename_section(int section_idx, string name)
     signal request_delete_section(int section_idx)
@@ -267,9 +268,23 @@ Rectangle {
                             font.pixelSize: 12
 
                             text: {
+                                var scene_name = 'scene' in action_item.action ? widget.scene_names[action_item.action['scene']] : ''
+                                var loop_exists = 'track' in action_item.action &&
+                                                      'loop' in action_item.action &&
+                                                      widget.loop_names.length > action_item.action['track'] &&
+                                                      widget.loop_names[action_item.action['track']].length > action_item.action['loop']
+                                var loop_name = loop_exists ? widget.loop_names[action_item.action['track']][action_item.action['loop']] : ''
+                                if (loop_exists && loop_name == '') {
+                                    loop_name = '(' + (action_item.action['track']).toString() + ', ' + (1+action_item.action['loop']).toString() + ')'
+                                } else {
+                                    loop_name = '"' + loop_name + '"'
+                                }
+
                                 switch(action_item.action["action_type"]) {
                                     case "scene":
-                                        return 'Scn "' + widget.scene_names[action_item.action['scene']] + '"'
+                                        return 'Scn "' + scene_name + '"'
+                                    case "loop":
+                                        return 'Loop ' + loop_name + ''
                                 }
                                 return ''
                             }
@@ -286,6 +301,21 @@ Rectangle {
                             id: action_menu
                             MenuItem {
                                 text: "Edit..."
+                                onClicked: {
+                                    menu_action_popup.adopt_action_object(action_item.action)
+                                    menu_action_popup.open()
+                                }
+                                ScriptActionPopup {
+                                    id: menu_action_popup
+                                    title: 'Edit action'
+                                    Connections {
+                                        target: menu_action_popup
+                                        function onAccepted_action(action) {
+                                            scriptitem.actions[index] = action
+                                            scriptitem.actionsChanged()
+                                        }
+                                    }
+                                }
                             }
                             MenuItem {
                                 text: "Delete"
@@ -304,9 +334,10 @@ Rectangle {
 
         ScriptActionPopup {
             id: action_popup
+            title: 'Add action'
             Connections {
                 target: action_popup
-                function onAdd_action(action) {
+                function onAccepted_action(action) {
                     scriptitem.actions.push(action)
                     console.log(JSON.stringify(scriptitem.actions))
                     scriptitem.actionsChanged()
@@ -338,15 +369,14 @@ Rectangle {
         property int labels_width: 120
         property int font_pixel_size: 14
         standardButtons: Dialog.Ok | Dialog.Cancel
-        title: "Add action"
+        title: "Script action"
         modal: true
 
         parent: Overlay.overlay
         anchors.centerIn: parent
         
-        onAccepted: add_action(create_action_object())
-
-        signal add_action(var action)
+        onAccepted: accepted_action(create_action_object())
+        signal accepted_action(var action)
 
         function create_combo(id, label, item_ids_to_labels) {
             var combo_model = 'ListModel {\n'
@@ -421,8 +451,11 @@ Rectangle {
                     }                
                     break
                 case 'loop':
-                    r.push(create_combo('track', 'Track:', {'Track 1': 0, 'Track 2': 1}))
-                    r.push(create_combo('loop', 'Loop:', {'Loop 1': 1, 'Loop 2': 2}))
+                    r.push(create_combo('track', 'Track:', create_enumeration(widget.track_names)))
+                    // TODO: make loop selection dynamic and name-based
+                    r.push(create_combo('loop', 'Loop:', create_enumeration(
+                        [1, 2, 3, 4, 5, 6].map((idx) => 'Loop ' + idx.toString())
+                    )))
                     switch(action_combo.currentValue) {
                         case 'play':
                             r.push(create_combo('stop_others', 'Stop other loops:', {'No':'no', 'In Track':'track', 'All':'all'}))
@@ -458,75 +491,93 @@ Rectangle {
                             validator: IntValidator { bottom: 0; top: 100 }
                         }
                     }
-                    Row {
-                        spacing: 5
-                        Text {
-                            horizontalAlignment: Text.AlignRight
-                            width: action_popup_component.labels_width
-                            text: 'Type:'
-                            color: Material.foreground
-                            font.pixelSize: action_popup_component.font_pixel_size
-                            anchors.verticalCenter: action_type_combo.verticalCenter
-                        }
-                        ComboBox {
-                            id: action_type_combo
-                            textRole: 'label'
-                            valueRole: 'value'
-                            model: ListModel {
-                                ListElement { label: 'Scene'; value: 'scene' }
-                                ListElement { label: 'Loop'; value: 'loop' }
-                            }
-                            font.pixelSize: action_popup_component.font_pixel_size
+                    ScriptActionPopupCombo {
+                        id: action_type_combo
+                        label: 'Type:'
+                        setting: 'action_type'
+                        model: {
+                            'Scene': 'scene',
+                            'Loop': 'loop'
                         }
                     }
-                    Row {
-                        spacing: 5
-                        Text {
-                            horizontalAlignment: Text.AlignRight
-                            width: action_popup_component.labels_width
-                            text: 'Action:'
-                            color: Material.foreground
-                            font.pixelSize: action_popup_component.font_pixel_size
-                            anchors.verticalCenter: action_combo.verticalCenter
+                    ScriptActionPopupCombo {
+                        id: action_combo
+                        label: 'Action:'
+                        setting: 'action'
+                        property var scene_model: {'Play': 'play'}
+                        property var loop_model: {
+                            'Play': 'play',
+                            'Record': 'record',
+                            'Stop': 'stop'
                         }
-                        ComboBox {
-                            id: action_combo
-                            font.pixelSize: action_popup_component.font_pixel_size
-                            textRole: 'label'
-                            valueRole: 'value'
 
-                            property var scene_model: ListModel {
-                                ListElement { label: 'Play'; value: 'play' }
-                            }
-
-                            property var loop_model: ListModel {
-                                ListElement { label: 'Play'; value: 'play' }
-                                ListElement { label: 'Record'; value: 'record' }
-                                ListElement { label: 'Stop'; value: 'stop' }
-                            }
-
-                            model: {
-                                switch (action_type_combo.currentValue) {
-                                case 'scene':
-                                    return scene_model
-                                case 'loop':
-                                    return loop_model
-                                }
+                        model: {
+                            switch (action_type_combo.currentValue) {
+                            case 'scene':
+                                return scene_model
+                            case 'loop':
+                                return loop_model
                             }
                         }
                     }
                 }
                 Column {
-                    Repeater {
-                        model: combo_boxes.length
-                        id: combo_instantiations
-
-                        Loader {
-                            sourceComponent: combo_boxes[index]
-                        }
+                    ScriptActionPopupCombo {
+                        id: scene_combo
+                        label: 'Scene:'
+                        setting: 'scene'
+                        model: create_enumeration(widget.scene_names)
+                        visible: action_type_combo.currentValue == 'scene'
+                    }
+                    ScriptActionPopupCombo {
+                        id: track_combo
+                        label: 'Track:'
+                        setting: 'track'
+                        model: create_enumeration(widget.track_names)
+                        visible: action_type_combo.currentValue == 'loop'
+                    }
+                    ScriptActionPopupCombo {
+                        id: loop_combo
+                        label: 'Loop:'
+                        setting: 'loop'
+                        property var track: track_combo.currentValue
+                        model: widget.loop_names.length > track ?
+                                create_enumeration(
+                                    widget.loop_names[track].map((name, idx) => {
+                                        if (name == '') { return '(' + track.toString() + ', ' + (idx+1).toString() + ')' }
+                                        return name
+                                    })
+                                ) : []
+                        visible: action_type_combo.currentValue == 'loop'
                     }
                 }
             }
+        }
+    }
+
+    component ScriptActionPopupCombo: Row {
+        spacing: 5
+        id: popup_combo
+        property string setting
+        property alias label: txt.text
+        property var model
+        property alias currentValue: combo.currentValue
+        Text {
+            id: txt
+            color: Material.foreground
+            horizontalAlignment: Text.AlignRight
+            width: action_popup_component.labels_width
+            font.pixelSize: action_popup_component.font_pixel_size
+            anchors.verticalCenter: combo.verticalCenter
+        }
+        ComboBox {
+            textRole: "label"
+            valueRole: "value"
+            id: combo
+            model: Object.entries(popup_combo.model).map((e) => {
+                return { 'label': e[0], 'value': e[1] }
+            })
+            font.pixelSize: action_popup_component.font_pixel_size
         }
     }
 }
