@@ -259,7 +259,7 @@ Item {
 
             Text {
                 text: statusrect.name
-                color: Material.foreground
+                color: /\([0-9]+, [0-9]+\)/.test(statusrect.name) ? 'grey' : Material.foreground
                 font.pixelSize: 11
                 verticalAlignment: Text.AlignVCenter
                 horizontalAlignment: Text.AlignLeft

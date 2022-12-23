@@ -60,7 +60,7 @@ Item {
         for (outer = 0; outer < tracks; outer++) {
             var track_loop_names = []
             for (inner = 0; inner < loops_per_track; inner++) {
-                track_loop_names.push('')
+                track_loop_names.push('(' + (outer+1).toString() + ', ' + (inner+1).toString() + ')')
             }
             names.push(track_loop_names)
         }
