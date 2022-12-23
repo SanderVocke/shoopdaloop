@@ -131,7 +131,6 @@ ApplicationWindow {
             }
 
             sections: shared.sections
-            active_section: shared.active_section
             scene_names: shared.scene_names
             track_names: shared.track_names
             loop_names: shared.loop_names

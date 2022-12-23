@@ -7,7 +7,6 @@ Rectangle {
     color: "#555555"
 
     property var sections : []
-    property int active_section: -1
     property var scene_names: []
     property var track_names: []
     property var loop_names: []
@@ -90,7 +89,6 @@ Rectangle {
                         anchors.fill: parent
 
                         ScriptItemWidget {
-                            highlighted: widget.active_section === index
                             name: widget.sections[index].name
                             available_scene_names: widget.scene_names
                             track_names: widget.track_names

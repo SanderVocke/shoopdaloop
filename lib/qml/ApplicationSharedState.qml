@@ -74,11 +74,14 @@ Item {
     property int selected_scene: -1
     property int hovered_scene: -1
 
-    // SEQUENCING STATE
+    // SCRIPTING STATE
     property var sections: [
-        { name: 'Section', actions: []}
+        { name: 'Section', actions: [], duration: 4 }
     ]
-    property int active_section: -1
+    // Playback control is based on the active cycle, meaning
+    // how many times the master loop has cycled.
+    property int script_current_cycle: -1
+    property bool script_playing: false
 
     // (DE-)SERIALIZATION
     function state_to_dict() {
@@ -88,7 +91,6 @@ Item {
             'selected_scene': selected_scene,
             'hovered_scene': hovered_scene,
             'sections': sections,
-            'active_section': active_section,
             'loop_names': loop_names
         }
     }
@@ -96,11 +98,9 @@ Item {
         // RESET SELECTIONS
         selected_scene = -1
         hovered_scene = -1
-        active_section = -1
 
         selected_sceneChanged()
         hovered_sceneChanged()
-        active_sectionChanged()
 
         // LOAD
         track_names = state_dict.track_names
@@ -109,7 +109,6 @@ Item {
         loop_names = state_dict.loop_names
         selected_scene = state_dict.selected_scene
         hovered_scene = state_dict.hovered_scene
-        active_section = state_dict.active_section
 
         track_namesChanged()
         loop_namesChanged()
@@ -117,7 +116,6 @@ Item {
         sectionsChanged()
         selected_sceneChanged()
         hovered_sceneChanged()
-        active_sectionChanged()
     }
     function serialize_state() {
         return JSON.stringify(state_to_dict())
@@ -130,6 +128,14 @@ Item {
     property var scene_names: []
     property var loops_of_selected_scene: []
     property var loops_of_hovered_scene: []
+
+    readonly property int script_total_cycles: {
+        var r = 0
+        for (const s of sections) {
+            r += s.duration
+        }
+        return r
+    }
 
     // FUNCTIONS
     function actions_on_loop_mgrs_in_track(track_idx, loop_idx, on_idx_loop_fn, on_other_loop_fn) {
@@ -207,11 +213,6 @@ Item {
         // }
     }
 
-    function select_section(idx) {
-        active_section = idx
-        active_sectionChanged()
-    }
-
     function rename_section(idx, name) {
         sections[idx].name = name
         sectionsChanged()
@@ -269,13 +270,6 @@ Item {
         scene_namesChanged()
     }
 
-    function update_selected_scene_from_section() {
-        if (active_section >= 0) {
-            selected_scene = sections[active_section].scene_idx
-            selected_sceneChanged()
-        }
-    }
-
     function update_loops_of_selected_scene() {
         if (selected_scene == -1) {
             loops_of_selected_scene = []
@@ -310,10 +304,6 @@ Item {
 
     Connections {
         function onScenesChanged() { update_scene_names(); update_loops_of_selected_scene(); update_loops_of_hovered_scene() }
-        function onActive_sectionChanged() {
-            update_selected_scene_from_section()
-            midi_control_manager.active_scripting_section_changed(active_section)
-        }
         function onSelected_sceneChanged() {
             update_loops_of_selected_scene()
             midi_control_manager.active_scene_changed(selected_scene)
