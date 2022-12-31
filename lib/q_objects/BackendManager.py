@@ -462,6 +462,8 @@ class BackendManager(QObject):
                 tar_filename = folder + '/session.tar'
                 include_in_tarball = [session_filename]
 
+                backend.set_storage_lock(1)
+
                 with open(session_filename, 'w') as file:
                     file.write(appstate_serialized)
 
@@ -497,6 +499,8 @@ class BackendManager(QObject):
                 self.session_saving = False
             except Exception as e:
                 print("Saving session into {} failed: {}".format(filename, str(e)))
+            finally:
+                backend.set_storage_lock(0)
         
         self.session_saving = True
         thread = Thread(target=do_save)
