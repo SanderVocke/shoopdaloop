@@ -356,6 +356,8 @@ class BackendManager(QObject):
         
         idxs_data = (c_uint * len(loop_idxs))(*loop_idxs)
         args_data = (c_float * len(maybe_args))(*maybe_args)
+
+        print('loops action {}, {}'.format(action_id, pformat(maybe_args)))
         
         backend.do_loop_action(
             idxs_data,

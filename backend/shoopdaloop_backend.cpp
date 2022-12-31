@@ -731,8 +731,10 @@ int do_loop_action(
 
     int arg1_i = n_args >= 1 ? std::round(maybe_args[0]) : 0;
     int arg2_i = n_args >= 2 ? std::round(maybe_args[1]) : 0;
-    int arg1_f = n_args >= 1 ? maybe_args[0] : 0;
-    int arg2_f = n_args >= 2 ? maybe_args[1] : 0;
+    int arg3_i = n_args >= 3 ? std::round(maybe_args[2]) : 0;
+    float arg1_f = n_args >= 1 ? maybe_args[0] : 0.0f;
+    float arg2_f = n_args >= 2 ? maybe_args[1] : 0.0f;
+    float arg3_f = n_args >= 3 ? maybe_args[2] : 0.0f;
 
     switch(action) {
         case DoRecord:
@@ -746,10 +748,10 @@ int do_loop_action(
             };
             break;
         case DoRecordNCycles:
-            check_args(2);
-            cmd = [idxs, apply_state, arg1_i, arg2_i]() {
+            check_args(3);
+            cmd = [idxs, apply_state, arg1_i, arg2_i, arg3_i]() {
                 apply_state(idxs, Recording, arg1_i);
-                apply_state(idxs, Playing, arg2_i-1, true);
+                apply_state(idxs, (loop_state_t) arg3_i, arg2_i-1, true);
             };
             break;
         case DoPlay:

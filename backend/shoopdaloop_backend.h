@@ -14,7 +14,7 @@ typedef enum {
 
 typedef enum  {
     DoRecord,           // Arg 1 is # of cycles to delay before starting.
-    DoRecordNCycles,    // Arg 1 is # of cycles to delay before starting. Arg 2 # of cycles to record
+    DoRecordNCycles,    // Arg 1 is # of cycles to delay before starting. Arg 2 # of cycles to record. Arg 3 is the next state after finishing.
     DoPlay,             // Arg 1 is # of cycles to delay before starting.
     DoPlayMuted,        // Arg 1 is # of cycles to delay before starting.
     DoStop,             // Arg 1 is # of cycles to delay before starting.

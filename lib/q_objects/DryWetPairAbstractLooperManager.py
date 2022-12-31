@@ -175,8 +175,8 @@ class DryWetPairAbstractLooperManager(LooperState):
     def doLoopAction(self, action_id, args, with_soft_sync):
         wet_action = action_id
         dry_action = action_id
-        wet_args = args
-        dry_args = args
+        wet_args = args.copy()
+        dry_args = args.copy()
         force_dry_passthrough = False
         force_wet_passthrough = False
 
@@ -196,6 +196,11 @@ class DryWetPairAbstractLooperManager(LooperState):
                 # Note that delay and N cycles should be correctly set from caller
                 dry_args = [wet_args[0]]
             case LoopActionType.DoRecordNCycles.value:
+                # For record N cycles, here we inject an additional argument
+                # telling the dry/wet loopers what their next state should be
+                # after recording is finished.
+                wet_args.append(float(LoopState.Playing.value))
+                dry_args.append(float(LoopState.PlayingMuted.value))
                 force_dry_passthrough = True
         
         self.wet().doLoopAction(wet_action, wet_args, with_soft_sync)
