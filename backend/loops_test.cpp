@@ -20,6 +20,7 @@ struct loops_buffers {
     size_t max_loop_length;
     size_t latency_buf_size;
     size_t max_n_events;
+    int8_t storage_lock;
     Buffer<int32_t, 0> latency_buf_write_pos;
     Buffer<int8_t, 1> states_in, states_out;
     Buffer<int8_t, 2> next_states_in, next_states_out;
@@ -76,6 +77,7 @@ loops_buffers setup_buffers(
     r.port_input_override_map = decltype(r.port_input_override_map)(n_ports);
     r.loops_to_ports = decltype(r.loops_to_ports)(n_loops);
     r.loop_output_peaks = decltype(r.loop_output_peaks)(n_loops);
+    r.storage_lock = 0;
     
     r.samples_in = decltype(r.samples_in)(process_samples, n_ports);
     r.samples_out = decltype(r.samples_in)(process_samples, n_ports);
@@ -179,6 +181,7 @@ void run_loops(
         bufs.n_port_events,
         bufs.process_samples,
         bufs.storage_in.dim(0).extent(),
+        bufs.storage_lock,
         bufs.samples_out,
         bufs.port_input_peaks,
         bufs.port_output_peaks,
@@ -964,6 +967,56 @@ suite loops_tests = []() {
         expect(bufs.event_recording_timestamps_out(0, 0) == 3);
         expect(bufs.event_recording_timestamps_out(1, 0) == 5);
         expect(bufs.event_recording_timestamps_out(2, 0) == -1);
+    };
+
+    "19_record_with_storage_lock"_test = []() {
+        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
+        bufs.states_in(0) = bufs.next_states_in(0, 0) = Recording;
+        bufs.positions_in(0) = 2;
+        bufs.lengths_in(0) = 3;
+        bufs.storage_lock = 1;
+        run_loops(bufs);
+        expect(eq(((int)bufs.states_out(0)), Recording));
+        expect(bufs.positions_out(0) == 1_i);
+        expect(bufs.lengths_out(0) == 3_i);
+
+
+        for(size_t i=0; i<bufs.storage_in.dim(0).extent(); i++) {
+            float storage_in = bufs.storage_in(i,0);
+            float storage_out = bufs.storage_out(i,0);
+            expect(eq(storage_out, storage_in)) << " at index " << i;
+        }
+        for(size_t i=0; i<bufs.process_samples; i++) {
+            float sample_in = bufs.samples_in(i,0);
+            float sample_out = bufs.samples_out(i,0);
+            float storage = bufs.storage_in(i+2, 0);
+            expect(eq(sample_out, sample_in)) << " at index " << i;
+        }
+    };
+
+    "19_1_record_from_0_with_storage_lock"_test = []() {
+        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
+        bufs.states_in(0) = bufs.next_states_in(0, 0) = Recording;
+        bufs.positions_in(0) = 0;
+        bufs.lengths_in(0) = 0;
+        bufs.storage_lock = 1;
+        run_loops(bufs);
+        expect(eq(((int)bufs.states_out(0)), Recording));
+        expect(bufs.positions_out(0) == 0_i);
+        expect(bufs.lengths_out(0) == 0_i);
+
+
+        for(size_t i=0; i<bufs.storage_in.dim(0).extent(); i++) {
+            float storage_in = bufs.storage_in(i,0);
+            float storage_out = bufs.storage_out(i,0);
+            expect(eq(storage_out, storage_in)) << " at index " << i;
+        }
+        for(size_t i=0; i<bufs.process_samples; i++) {
+            float sample_in = bufs.samples_in(i,0);
+            float sample_out = bufs.samples_out(i,0);
+            float storage = bufs.storage_in(i+2, 0);
+            expect(eq(sample_out, sample_in)) << " at index " << i;
+        }
     };
 };
 

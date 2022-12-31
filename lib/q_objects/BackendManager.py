@@ -85,7 +85,7 @@ class BackendManager(QObject):
 
             l.signalLoopAction.connect(lambda action, args, sync: self.do_loops_action(channel_loop_idxs, action, args, sync))
             l.loadLoopData.connect(lambda chan, data: self.load_loop_data(channel_loop_idxs[chan], data))            
-            l.saveToFile.connect(lambda filename: self.save_loops_to_file(channel_loop_idxs, filename))
+            l.saveToFile.connect(lambda filename: self.save_loops_to_file(channel_loop_idxs, filename, False))
             l.loadFromFile.connect(lambda filename: self.load_loops_from_file(channel_loop_idxs, filename, None))
 
             return l
@@ -356,8 +356,6 @@ class BackendManager(QObject):
         
         idxs_data = (c_uint * len(loop_idxs))(*loop_idxs)
         args_data = (c_float * len(maybe_args))(*maybe_args)
-
-        print('loops action {}, {}'.format(action_id, pformat(maybe_args)))
         
         backend.do_loop_action(
             idxs_data,
@@ -393,12 +391,7 @@ class BackendManager(QObject):
             backend.port_action_t(action_id),
             maybe_arg
         )
-    
-    @pyqtSlot(int)
-    def update_loop_waveform(self, loop_idx):
-        data = self.get_loop_data(loop_idx)
 
-    
     #rcv_callback should be a SlowMidiCallback instance
     def create_slow_midi_input(self, name, rcv_callback):
         retval = backend.create_slow_midi_port(name.encode('ascii'), backend.Input)
@@ -418,8 +411,8 @@ class BackendManager(QObject):
     def process_slow_midi(self):
         backend.process_slow_midi()
     
-    def save_loops_to_file(self, idxs, filename):
-        loop_datas = [self.get_loop_data(idx) for idx in idxs]
+    def save_loops_to_file(self, idxs, filename, do_stop=True):
+        loop_datas = [self.get_loop_data(idx, do_stop) for idx in idxs]
         # loop_datas is now a Nx2 array, reshape to 2xN
         data = np.swapaxes(loop_datas, 0, 1)
         sf.write(filename, data, backend.get_sample_rate())
@@ -443,7 +436,6 @@ class BackendManager(QObject):
                 sp.signal.resample(d, target_n_samples) for d in np_data
             ]
 
-            print(maybe_override_length)
             if maybe_override_length and maybe_override_length > len(resampled):
                 last_sample = resampled[len(resampled) - 1]
                 for idx in range(maybe_override_length - target_n_samples):
@@ -479,7 +471,7 @@ class BackendManager(QObject):
 
                     if state.length > 0.0 and store_audio:
                         wav_filename = '{}/loop_{}_data.wav'.format(folder, idx)
-                        self.save_loops_to_file([idx], wav_filename)
+                        self.save_loops_to_file([idx], wav_filename, False)
                         include_in_tarball.append(wav_filename)
                     
                     with open(json_filename, 'w') as lfile:

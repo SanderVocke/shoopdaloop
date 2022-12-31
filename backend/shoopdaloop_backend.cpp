@@ -95,6 +95,8 @@ Buffer<float, 1> g_port_volumes; // Per port
 Buffer<int8_t, 1> g_ports_muted; // per port
 Buffer<int8_t, 1> g_port_inputs_muted; // per port
 
+int8_t g_storage_lock = 0;
+
 std::vector<jack_port_t*> g_input_ports;
 std::vector<jack_port_t*> g_output_ports;
 std::vector<jack_port_t*> g_maybe_midi_input_ports;
@@ -329,6 +331,7 @@ int jack_process (jack_nframes_t nframes, void *arg) {
             g_n_port_events,
             nframes,
             g_loop_len,
+            g_storage_lock,
             g_samples_out,
             g_port_input_peaks,
             g_port_output_peaks,
@@ -553,6 +556,7 @@ jack_client_t* initialize(
     g_n_port_events = Buffer<int32_t, 1>(n_ports);
     g_event_recording_timestamps_out = Buffer<int32_t, 2>(g_max_midi_events_per_cycle, n_loops);
     g_loop_midi_buffers = std::vector<MIDIRingBuffer>(n_loops);
+    g_storage_lock = 0;
 
     g_samples_in = Buffer<float, 2>(
         halide_type_t {halide_type_float, 32, 1},
@@ -949,17 +953,20 @@ unsigned get_loop_data(
     float ** data_out,
     unsigned do_stop
 ) {
-    if (do_stop) {
-        std::atomic<bool> finished = false;
-        push_command([loop_idx, &finished]() {
+    auto prev_storage_lock = g_storage_lock;
+    std::atomic<bool> finished = false;
+    push_command([loop_idx, &finished, do_stop]() {
+        if (do_stop) {
             g_next_states_countdown[0](0, loop_idx) = g_next_states_countdown[0](1, loop_idx) =
                 g_next_states_countdown[1](0, loop_idx) = g_next_states_countdown[1](1, loop_idx) = -1;
             g_states[0](loop_idx) = g_states[1](loop_idx) = Stopped;
             g_positions[0](loop_idx) = g_positions[1](loop_idx) = 0;
-            finished = true;
-        });
-        while(!finished && g_loops_fn) {}
-    }
+        }
+        // TODO: check that we are not recording, this may be messed up by the storage lock
+        g_storage_lock = 1;
+        finished = true;
+    });
+    while(!finished && g_loops_fn) {}
 
     auto len = g_lengths[g_last_written_output_buffer_tick_tock](loop_idx);
     auto data = (float*) malloc(sizeof(float) * len);
@@ -968,7 +975,13 @@ unsigned get_loop_data(
     }
     *data_out = data;
 
+    g_storage_lock = prev_storage_lock;
+
     return len;
+}
+
+void set_storage_lock(unsigned int value) {
+    g_storage_lock = (int8_t) value;
 }
 
 void terminate() {

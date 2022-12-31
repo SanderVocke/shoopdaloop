@@ -142,16 +142,22 @@ int load_loop_data(
 // Get loop data from storage.
 // Returns the amount of values in the data.
 // Caller is responsible for freeing the returned pointer.
-// If do_stop is nonzero, the loop is first stopped. This
-// way, the caller is sure that the data is valid.
-// If not used, the data retrieved may already have been
-// invalidated by a changing length due to e.g. recording
-// or clearing the loop.
+// A storage lock is enabled to make sure that the data is
+// valid. However, strange behavior may occur when recording
+// while the storage lock is set.
+// If do_stop is nonzero, the loop is first stopped. That
+// way we can be sure that data and behavior are both valid.
 unsigned get_loop_data(
     unsigned loop_idx,
     float **data_out,
     unsigned do_stop
 );
+
+// Set the global storage lock.
+// Any nonzero value is "locked".
+// Use with care: when set the storage lock will prevent
+// loop content and lengths from changing, even if recording.
+void set_storage_lock(unsigned value);
 
 // Get access to the JACK port structures of a port pair.
 jack_port_t* get_port_output_handle(unsigned port_idx);

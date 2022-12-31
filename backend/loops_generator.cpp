@@ -81,6 +81,11 @@ public:
     // Ll
     Input<int32_t> max_loop_length{"max_loop_length"};
 
+    // The storage lock, if nonzero, will ensure that storage data and storage lengths
+    // remain unchanged regardless of the loop state. Can be used to e.g. make sure
+    // data is unaltered so that it can be read out thread-safe.
+    Input<int8_t> storage_lock{"storage_lock"};
+
     // Ns x Np
     Output<Buffer<float, 2>> samples_out{"samples_out"};
 
@@ -428,7 +433,7 @@ public:
         Expr is_recording = rr.x >= recording_range(rr.y)[0] && rr.x < recording_range(rr.y)[1];
         loop_storage_out(x, loop) = Halide::undef<float>();
         loop_storage_out(rr_record_index, rr.y) = select(
-            is_recording,
+            is_recording && storage_lock == 0,
             _latency_applied_samples_in(rr.x, _ports_map(rr.y)),
             Halide::undef<float>() // No recording
         );
@@ -452,7 +457,7 @@ public:
         Expr event_in_recording_range =
             event_in_timestamp >= recording_range(loop)[0] && event_in_timestamp < recording_range(loop)[1];
         event_recording_timestamps_out(event, loop) = select(
-            event_in_recording_range,
+            event_in_recording_range && storage_lock == 0,
             event_recording_index,
             -1
         );
@@ -494,11 +499,12 @@ public:
         // Compute output lengths
         Expr n_recorded_samples = max(0, recording_range(loop)[1] - recording_range(loop)[0]);
         loop_lengths_out(loop) = select(
-            will_start_recording,
-            n_recorded_samples,
-            _loop_lengths_in(loop) + n_recorded_samples
+            storage_lock == 0,
+                select(will_start_recording,
+                       n_recorded_samples,
+                       _loop_lengths_in(loop) + n_recorded_samples),
+            _loop_lengths_in(loop)
         );
-
         
         // Compute output positions
         Expr n_played_samples = max(0, playing_range(loop)[1] - playing_range(loop)[0]);
