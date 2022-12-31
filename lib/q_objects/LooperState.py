@@ -115,6 +115,7 @@ class LooperState(QObject):
     def serialize_session_state(self):
         d = {
             'volume' : self.volume,
+            'length' : self.length,
         }
         return json.dumps(d)
     
@@ -122,3 +123,4 @@ class LooperState(QObject):
     def deserialize_session_state(self, data):
         d = json.loads(data)
         self.volume = d['volume']
+        self.length = d['length']

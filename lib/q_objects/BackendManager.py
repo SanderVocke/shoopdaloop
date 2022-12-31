@@ -86,7 +86,7 @@ class BackendManager(QObject):
             l.signalLoopAction.connect(lambda action, args, sync: self.do_loops_action(channel_loop_idxs, action, args, sync))
             l.loadLoopData.connect(lambda chan, data: self.load_loop_data(channel_loop_idxs[chan], data))            
             l.saveToFile.connect(lambda filename: self.save_loops_to_file(channel_loop_idxs, filename))
-            l.loadFromFile.connect(lambda filename: self.load_loops_from_file(channel_loop_idxs, filename))
+            l.loadFromFile.connect(lambda filename: self.load_loops_from_file(channel_loop_idxs, filename, None))
 
             return l
         
@@ -423,7 +423,7 @@ class BackendManager(QObject):
         sf.write(filename, data, backend.get_sample_rate())
     
     @pyqtSlot(list, str)
-    def load_loops_from_file(self, idxs, filename):
+    def load_loops_from_file(self, idxs, filename, maybe_override_length):
         try:
             np_data, samplerate = sf.read(filename, dtype='float32')
             if np_data.ndim == 1:
@@ -436,10 +436,18 @@ class BackendManager(QObject):
                 raise ValueError("Unexpected number of dimensions of sound data: {}".format(np_data.ndim))
             target_samplerate = backend.get_sample_rate()
             n_samples = len(np_data[0])
-            target_n_samples = n_samples / float(samplerate) * target_samplerate
+            target_n_samples = int(n_samples / float(samplerate) * target_samplerate)
             resampled = [
-                sp.signal.resample(d, int(target_n_samples)) for d in np_data
+                sp.signal.resample(d, target_n_samples) for d in np_data
             ]
+
+            print(maybe_override_length)
+            if maybe_override_length and maybe_override_length > len(resampled):
+                last_sample = resampled[len(resampled) - 1]
+                for idx in range(maybe_override_length - target_n_samples):
+                    resampled.append(last_sample)
+            if maybe_override_length and maybe_override_length < len(resampled):
+                resampled = resampled[:maybe_override_length]
             for n,idx in enumerate(idxs):
                 if n < len(resampled):
                     self.load_loop_data(idx, resampled[n])
@@ -505,7 +513,7 @@ class BackendManager(QObject):
         def do_load():
             try:
                 for idx in range(self.n_loops):
-                    self.do_loops_action([idx], LoopActionType.DoClear.value, [0.0], False)
+                    self.do_loops_action([idx], LoopActionType.DoClear.value, [], False)
 
                 folder = tempfile.mkdtemp()
                 session_data = None
@@ -524,7 +532,7 @@ class BackendManager(QObject):
                         with open(json_filename, 'r') as json:
                             self._channel_looper_managers[idx].deserialize_session_state(json.read())
                         if os.path.isfile(data_filename):
-                            self.load_loops_from_file([idx], data_filename)
+                            self.load_loops_from_file([idx], data_filename, self._channel_looper_managers[idx].length)
                 
                 for idx in range(self.n_ports):
                     json_filename = '{}/port_{}_state.json'.format(folder, idx)
