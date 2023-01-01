@@ -343,6 +343,32 @@ suite loops_tests = []() {
         }
     };
 
+    "2_4_play_wrap"_test = []() {
+        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
+        bufs.states_in(0) = bufs.next_states_in(0, 0) = Playing;
+        bufs.positions_in(0) = 6;
+        bufs.lengths_in(0) = 11;
+        for(size_t i=0; i<bufs.process_samples; i++) {
+            bufs.samples_in(i, 0) = 0.0f;
+        };
+        run_loops(bufs);
+        expect(eq(((int)bufs.states_out(0)), Playing));
+        expect(bufs.positions_out(0) == 3_i);
+        expect(bufs.lengths_out(0) == 11_i);
+
+        for(size_t i=0; i<bufs.storage_in.dim(0).extent(); i++) {
+            float storage_in = bufs.storage_in(i,0);
+            float storage_out = bufs.storage_out(i,0);
+            expect(eq(storage_out, storage_in)) << " at index " << i;
+        }
+        for(size_t i=0; i<bufs.process_samples; i++) {
+            float sample_in = bufs.samples_in(i,0);
+            float sample_out = bufs.samples_out(i,0);
+            float storage = bufs.storage_in((i+6) % 11, 0);
+            expect(eq(sample_out, storage)) << " at index " << i;
+        }
+    };
+
     "3_play_muted"_test = []() {
         loops_buffers bufs = setup_buffers(1, 1, 16, 8);
         bufs.states_in(0) = bufs.next_states_in(0, 0) = PlayingMuted;

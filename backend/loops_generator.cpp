@@ -446,13 +446,12 @@ public:
         Expr rr_playback_index_wrapped_part =
             select (
                 will_wrap,
-                Halide::max(0, rr.x - will_wrap_from),
+                Halide::max(0, rr.x + 1 - will_wrap_from),
                 0
             );
-        Expr rr_playback_index =  to_rr ( print(clamp_to_storage(
-            (rr_playback_index_until_end_part + rr_playback_index_wrapped_part) % loop_storage_in.dim(0).extent() // Wrapping around again just in case len < n_frames
-        ), rr_playback_index_until_end_part, rr_playback_index_wrapped_part, will_wrap, will_wrap_from, will_receive_soft_sync, my_master_loop, _generates_soft_sync_at(my_master_loop),
-                _states_in(1), _next_states_in_b(0, 1), _next_states_in_b(1, 1)));
+        Expr rr_playback_index =  to_rr ( clamp_to_storage(
+            (rr_playback_index_until_end_part + rr_playback_index_wrapped_part) % _loop_lengths_in_b(rr.y) // Wrapping around again just in case len < n_frames
+        ));
 
         // Compute stored recorded samples for each loop
         Expr is_recording = rr.x >= recording_range(rr.y)[0] && rr.x < recording_range(rr.y)[1];
