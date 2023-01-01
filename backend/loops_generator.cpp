@@ -437,6 +437,10 @@ public:
                 will_receive_soft_sync_at,
                 will_play_beyond_end_from
             );
+
+                // Debug prints
+        will_wrap = print(will_wrap, will_wrap_from, is_soft_synced, will_play_beyond_end, will_play_beyond_end_from);
+        
         
         Expr rr_playback_index_until_end_part =
             Halide::min(
