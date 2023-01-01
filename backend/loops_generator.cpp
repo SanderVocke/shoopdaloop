@@ -441,7 +441,7 @@ public:
         Expr rr_playback_index_until_end_part =
             Halide::min(
                 (rr_playback_start_index(rr.y) + rr.x),
-                loop_storage_in.dim(0).extent() - 1
+                _loop_lengths_in_b(rr.y) - 1
             ); // Play until end of length and "hang" there
         Expr rr_playback_index_wrapped_part =
             select (
@@ -449,9 +449,10 @@ public:
                 Halide::max(0, rr.x - will_wrap_from),
                 0
             );
-        Expr rr_playback_index = to_rr (clamp_to_storage(
+        Expr rr_playback_index =  to_rr ( print(clamp_to_storage(
             (rr_playback_index_until_end_part + rr_playback_index_wrapped_part) % loop_storage_in.dim(0).extent() // Wrapping around again just in case len < n_frames
-        ));
+        ), rr_playback_index_until_end_part, rr_playback_index_wrapped_part, will_wrap, will_wrap_from, will_receive_soft_sync, my_master_loop, _generates_soft_sync_at(my_master_loop),
+                _states_in(1), _next_states_in_b(0, 1), _next_states_in_b(1, 1)));
 
         // Compute stored recorded samples for each loop
         Expr is_recording = rr.x >= recording_range(rr.y)[0] && rr.x < recording_range(rr.y)[1];
@@ -532,21 +533,19 @@ public:
         
         // Compute output positions
         // TODO: This should be determined based on playback index/recording index/static index
+        
+        Expr n_played_samples = max(0, playing_range(loop)[1] - playing_range(loop)[0]);
+        Expr old_version = select(
+            will_start_recording,
+            (_positions_in(loop) + n_played_samples) % loop_lengths_in(loop) + n_recorded_samples, // Wrap then record
+            (_positions_in(loop) + n_recorded_samples + n_played_samples) % loop_lengths_out(loop)           // Record then wrap
+        );
+
         positions_out(loop) = Halide::Internal::substitute(rr.y, loop, select(
             is_playing_state(states_out(loop)),
-            Halide::Internal::substitute(rr.x, n_samples-1, rr_playback_index),
-            select (states_out(loop) == Recording,
-                    rr_record_stop_index,
-                    _positions_in (loop)
-                   )
+            Halide::min(Halide::Internal::substitute(rr.x, n_samples-1, rr_playback_index) + 1, _loop_lengths_in(loop)-1),
+            old_version
         ));
-
-        // Expr n_played_samples = max(0, playing_range(loop)[1] - playing_range(loop)[0]);
-        // positions_out(loop) = select(
-        //     will_start_recording,
-        //     (_positions_in(loop) + n_played_samples) % loop_lengths_in(loop) + n_recorded_samples, // Wrap then record
-        //     (_positions_in(loop) + n_recorded_samples + n_played_samples) % loop_lengths_out(loop)           // Record then wrap
-        // );
 
         // Schedule
         new_state.compute_root();

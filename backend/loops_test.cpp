@@ -315,36 +315,31 @@ suite loops_tests = []() {
         }
     };
 
-    "2_3_play_long_soft_synced_to_idle_loop"_test = []() {
-        loops_buffers bufs = setup_buffers(1, 1, 2048, 256);
+    "2_3_play_and_wait_for_soft_sync"_test = []() {
+        loops_buffers bufs = setup_buffers(2, 1, 16, 8);
         bufs.states_in(0) = bufs.next_states_in(0, 0) = Playing;
-        bufs.states_in(1) = bufs.next_states_in(0, 1) = Stopped;
-        bufs.positions_in(0) = 0;
-        bufs.lengths_in(0) = 2048;
+        bufs.states_in(1) = bufs.next_states_in(0, 1) = Stopped; // no soft sync generated
         bufs.loops_soft_sync_mapping(0) = 1;
+        bufs.positions_in(0) = 8;
+        bufs.lengths_in(0) = 11;
         for(size_t i=0; i<bufs.process_samples; i++) {
             bufs.samples_in(i, 0) = 0.0f;
         };
-
-        for(size_t i=0; i<8; i++) {
-            run_loops(bufs);
-            expect(eq(((int)bufs.states_out(0)), Playing));
-            expect(eq(bufs.positions_out(0), (std::min((int)(256*(i+1)), 2048)))) << " at iteration " << i;
-            expect(bufs.lengths_out(0) == 2048_i);
-            
-            for(size_t j=0; j<bufs.process_samples; j++) {
-                float sample_out = bufs.samples_out(j,0);
-                float storage = bufs.storage_in(j+256*i, 0);
-                expect(eq(sample_out, storage)) << " at index " << j + i*256;
-            }
-
-            bufs.positions_in(0) = bufs.positions_out(0);
-        }
+        run_loops(bufs);
+        expect(eq(((int)bufs.states_out(0)), Playing));
+        expect(bufs.positions_out(0) == 10_i);
+        expect(bufs.lengths_out(0) == 11_i);
 
         for(size_t i=0; i<bufs.storage_in.dim(0).extent(); i++) {
             float storage_in = bufs.storage_in(i,0);
             float storage_out = bufs.storage_out(i,0);
             expect(eq(storage_out, storage_in)) << " at index " << i;
+        }
+        for(size_t i=0; i<bufs.process_samples; i++) {
+            float sample_in = bufs.samples_in(i,0);
+            float sample_out = bufs.samples_out(i,0);
+            float storage = bufs.storage_in(std::min<size_t>(i+8, 10), 0);
+            expect(eq(sample_out, storage)) << " at index " << i;
         }
     };
 

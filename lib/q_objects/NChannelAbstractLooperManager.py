@@ -83,7 +83,7 @@ class NChannelAbstractLooperManager(LooperState):
     
     @pyqtSlot(list)
     def load_loops_data(self, data):
-        self.doLoopAction(LoopActionType.DoClear.value, False)
+        self.doLoopAction(LoopActionType.DoClear.value, [], False)
         for i in range(len(self._channel_loopers)):
             if i < len(data):
                 # we got data for this channel
