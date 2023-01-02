@@ -195,7 +195,11 @@ public:
         Expr mapped_loop = select(_hard_sync_map(loop) >= 0, _hard_sync_map(loop), loop);
         _loop_lengths_in(loop) = _loop_lengths_in_b(mapped_loop);
         _positions_in(loop) = _positions_in_b(mapped_loop);
-        _soft_sync_map(loop) = _soft_sync_map_b(mapped_loop);
+        _soft_sync_map(loop) = select(
+            _soft_sync_map_b(mapped_loop) == mapped_loop,
+            loop, // If mapped loop is synced to self, pretend we are synced to ourselves too
+            _soft_sync_map_b(mapped_loop)
+        );
         _states_in(loop) = _states_in_b(mapped_loop);
         _next_states_in(x, loop) = _next_states_in_b(x, mapped_loop);
         _next_state_countdowns_in(x, loop) = _next_state_countdowns_in_b(x, mapped_loop);
@@ -425,7 +429,7 @@ public:
         Func rr_playback_start_index("rr_playback_start_index");
         rr_playback_start_index(loop) = select(
             will_start_playing && will_stop_recording,
-            rr_record_stop_index,
+            0, //rr_record_stop_index,
             _positions_in(loop)
         );
         
@@ -441,7 +445,7 @@ public:
         Expr rr_playback_index_until_end_part =
             Halide::min(
                 (rr_playback_start_index(rr.y) + rr.x),
-                _loop_lengths_in_b(rr.y) - 1
+                _loop_lengths_in(rr.y) - 1
             ); // Play until end of length and "hang" there
         Expr rr_playback_index_wrapped_part =
             select (
@@ -450,7 +454,7 @@ public:
                 0
             );
         Expr rr_playback_index =  to_rr ( clamp_to_storage(
-            (rr_playback_index_until_end_part + rr_playback_index_wrapped_part) % _loop_lengths_in_b(rr.y) // Wrapping around again just in case len < n_frames
+            (rr_playback_index_until_end_part + rr_playback_index_wrapped_part) % _loop_lengths_in(rr.y) // Wrapping around again just in case len < n_frames
         ));
 
         // Compute stored recorded samples for each loop
