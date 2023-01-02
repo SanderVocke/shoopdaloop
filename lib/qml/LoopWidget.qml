@@ -866,7 +866,7 @@ Item {
         id: window
         title: widget.internal_name + ' details'
 
-        width: 260
+        width: 500
         height: 400
         minimumWidth: width
         maximumWidth: width
@@ -912,14 +912,16 @@ Item {
                         id: waveform
 
                         data: [] 
-                        max: 1.0
+                        data_max: 1.0
+                        samples_per_pixel: 80
+                        pos: window.manager.pos
 
                         function update() {
                             data = backend_manager.get_loop_rms(
                                 0,
                                 0,
                                 window.manager.length,
-                                12
+                                samples_per_pixel
                             )
                             width = data.length
                             console.log(width)
