@@ -244,7 +244,7 @@ public:
         // - Any state change from stopped or recording to stopped, recording or playing
         Func generates_soft_sync_at("generates_soft_sync_at");
         Expr is_starting_to_play = is_playing_state(_states_in(loop)) && _positions_in(loop) == 0;
-        Expr will_play_beyond_end = is_playing_state(_states_in(loop)) && (_loop_lengths_in(loop) - _positions_in(loop)) < n_samples;
+        Expr will_play_beyond_end = is_playing_state(_states_in(loop)) && (_loop_lengths_in(loop) - _positions_in(loop)) <= n_samples;
         Expr will_play_beyond_end_from = (_loop_lengths_in(loop) - _positions_in(loop));
         Expr is_transitioning_immediately =
             is_starting_to_play ||
@@ -438,10 +438,6 @@ public:
                 will_play_beyond_end_from
             );
 
-                // Debug prints
-        will_wrap = print(will_wrap, will_wrap_from, is_soft_synced, will_play_beyond_end, will_play_beyond_end_from);
-        
-        
         Expr rr_playback_index_until_end_part =
             Halide::min(
                 (rr_playback_start_index(rr.y) + rr.x),
@@ -450,7 +446,7 @@ public:
         Expr rr_playback_index_wrapped_part =
             select (
                 will_wrap,
-                Halide::max(0, rr.x + 1 - will_wrap_from),
+                Halide::max(0, rr.x - will_wrap_from + 1),
                 0
             );
         Expr rr_playback_index =  to_rr ( clamp_to_storage(
@@ -495,11 +491,11 @@ public:
         Expr is_playing = rr.x >= playing_range(rr.y)[0] && rr.x < playing_range(rr.y)[1];
         Expr is_muted = rr.x >= muted_range(rr.y)[0] && rr.x < muted_range(rr.y)[1];
         samples_out_per_loop(rr.x, rr.y) = 
-            select(
+            to_rr (select(
                 is_playing && !is_muted,
                 _loop_storage_in(rr_playback_index, rr.y) * loop_playback_volumes(rr.y),
                 Halide::undef<float>() // No playback
-            );
+            ));
 
         // Compute output peaks per loop
         loop_output_peaks(loop) = argmax(abs(samples_out_per_loop(all_samples, loop)))[1];
@@ -546,7 +542,7 @@ public:
 
         positions_out(loop) = Halide::Internal::substitute(rr.y, loop, select(
             is_playing_state(states_out(loop)),
-            Halide::min(Halide::Internal::substitute(rr.x, n_samples-1, rr_playback_index) + 1, _loop_lengths_in(loop)-1),
+            Halide::Internal::substitute(rr.x, n_samples, rr_playback_index) % _loop_lengths_in(loop),
             old_version
         ));
 

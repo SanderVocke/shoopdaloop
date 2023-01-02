@@ -369,6 +369,42 @@ suite loops_tests = []() {
         }
     };
 
+    "2_5_play_with_delayed_soft_sync"_test = []() {
+        loops_buffers bufs = setup_buffers(2, 1, 16, 8);
+        bufs.states_in(0) = bufs.next_states_in(0, 0) = Playing;
+        bufs.states_in(1) = bufs.next_states_in(0, 1) = Playing;
+        bufs.loops_soft_sync_mapping(0) = 1;
+        bufs.positions_in(0) = 8;
+        bufs.positions_in(1) = 8;
+        bufs.lengths_in(0) = 11;
+        bufs.lengths_in(1) = 13;
+        for(size_t i=0; i<bufs.process_samples; i++) {
+            bufs.samples_in(i, 0) = 0.0f;
+        };
+        run_loops(bufs);
+        expect(eq(((int)bufs.states_out(0)), Playing));
+        expect(bufs.positions_out(0) == 3_i);
+        expect(bufs.positions_out(1) == 3_i);
+        expect(bufs.lengths_out(0) == 11_i);
+        expect(bufs.lengths_out(1) == 13_i);
+
+        for(size_t i=0; i<bufs.storage_in.dim(0).extent(); i++) {
+            float storage_in = bufs.storage_in(i,0);
+            float storage_out = bufs.storage_out(i,0);
+            expect(eq(storage_out, storage_in)) << " at index " << i;
+        }
+        for(size_t i=0; i<6; i++) {
+            float sample_out = bufs.samples_out(i,0);
+            float storage = bufs.storage_in(std::min<size_t>(i+8, 10), 0);
+            expect(eq(sample_out, storage)) << " at index " << i;
+        }
+        for(size_t i=6; i<bufs.process_samples; i++) {
+            float sample_out = bufs.samples_out(i,0);
+            float storage = bufs.storage_in(i-6, 0);
+            expect(eq(sample_out, storage)) << " at index " << i;
+        }
+    };
+
     "3_play_muted"_test = []() {
         loops_buffers bufs = setup_buffers(1, 1, 16, 8);
         bufs.states_in(0) = bufs.next_states_in(0, 0) = PlayingMuted;
