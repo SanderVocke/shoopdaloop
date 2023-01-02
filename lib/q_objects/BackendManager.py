@@ -385,7 +385,7 @@ class BackendManager(QObject):
     def get_loop_rms(self, loop_idx, from_sample, to_sample, samples_per_bin):
         c_float_p = POINTER(c_float)
         c_data = c_float_p()
-        n_floats = backend.get_loop_data_rms(loop_idx, from_sample, to_sample, samples_per_bin, byref(c_data))
+        n_floats = backend.get_loop_data_rms(loop_idx, from_sample, to_sample, samples_per_bin, byref(c_data))        
         data = [float(c_data[i]) for i in range(n_floats)]
         backend.shoopdaloop_free(cast(c_data, c_void_p))
         c_data = None

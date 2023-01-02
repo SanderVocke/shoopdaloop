@@ -867,15 +867,13 @@ Item {
         title: widget.internal_name + ' details'
 
         width: 260
-        height: 300
+        height: 400
         minimumWidth: width
         maximumWidth: width
         minimumHeight: height
         maximumHeight: height
         
         Material.theme: Material.Dark
-
-        //Component.onCompleted: waveform.update()
 
         Column {
             anchors.margins: 5
@@ -896,22 +894,45 @@ Item {
                 manager: window.manager.wet_looper
             }
 
-            Waveform {
+            Item {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 height: 100
-                id: waveform
 
-                data: [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]
+                ScrollView {
+                    anchors.fill: parent
+                    ScrollBar.horizontal.policy: ScrollBar.AlwaysOn
+                    ScrollBar.vertical.policy: ScrollBar.AlwaysOff
 
-                function update() {
-                    var d = backend_manager.get_loop_rms(
-                        0,
-                        0,
-                        24000,
-                        24
-                    )
-                    data = d
+                    contentWidth: waveform.width
+
+                    Waveform {
+                        width: 1
+                        height: parent.height - 20
+                        id: waveform
+
+                        data: [] 
+                        max: 1.0
+
+                        function update() {
+                            data = backend_manager.get_loop_rms(
+                                0,
+                                0,
+                                window.manager.length,
+                                12
+                            )
+                            width = data.length
+                            console.log(width)
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: {
+                                waveform.update()
+                                waveform.requestPaint()
+                            }
+                        }
+                    }
                 }
             }
         }
