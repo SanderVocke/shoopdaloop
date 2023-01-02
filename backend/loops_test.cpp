@@ -210,7 +210,7 @@ suite loops_tests = []() {
         bufs.lengths_in(0) = 11;
         run_loops(bufs);
         expect(bufs.states_out(0) == Stopped);
-        expect(bufs.positions_out(0) == 2_i);
+        expect(bufs.positions_out(0) == 0_i); // Stopping always resets to 0
         expect(bufs.lengths_out(0) == 11_i);
 
         for(size_t i=0; i<bufs.storage_in.dim(0).extent(); i++) {
@@ -436,11 +436,11 @@ suite loops_tests = []() {
         loops_buffers bufs = setup_buffers(1, 1, 16, 8);
         bufs.states_in(0) = bufs.next_states_in(0, 0) = Recording;
         bufs.positions_in(0) = 2;
-        bufs.lengths_in(0) = 3;
+        bufs.lengths_in(0) = 2;
         run_loops(bufs);
         expect(eq(((int)bufs.states_out(0)), Recording));
         expect(bufs.positions_out(0) == 10_i);
-        expect(bufs.lengths_out(0) == 11_i);
+        expect(bufs.lengths_out(0) == 10_i);
 
 
         for(size_t i=0; i<bufs.storage_in.dim(0).extent(); i++) {
@@ -469,7 +469,10 @@ suite loops_tests = []() {
         bufs.lengths_in(0) = 0;
         run_loops(bufs);
         expect(eq(((int)bufs.states_out(0)), Recording));
-        expect(bufs.positions_out(0) == 0_i);
+        // Note: after recording we have position == length.
+        // That sounds invalid, but makes the most sense if recording is set to continue:
+        // the new sample would be saved there and the length increased.
+        expect(bufs.positions_out(0) == 8_i);
         expect(bufs.lengths_out(0) == 8_i);
 
 
@@ -496,14 +499,14 @@ suite loops_tests = []() {
         loops_buffers bufs = setup_buffers(1, 1, 16, 8);
         bufs.states_in(0) = bufs.next_states_in(0, 0) = Recording;
         bufs.positions_in(0) = 2;
-        bufs.lengths_in(0) = 3;
+        bufs.lengths_in(0) = 2;
         bufs.latency_buf_write_pos() = 2;
         bufs.port_recording_latencies(0) = 4;
         Buffer<float, 2> latencybuf_copy = bufs.latency_buf;
         run_loops(bufs);
         expect(eq(((int)bufs.states_out(0)), Recording));
         expect(bufs.positions_out(0) == 10_i);
-        expect(bufs.lengths_out(0) == 11_i);
+        expect(bufs.lengths_out(0) == 10_i);
         for(size_t i=0; i<bufs.storage_in.dim(0).extent(); i++) {
             float storage_in = bufs.storage_in(i,0);
             float storage_out = bufs.storage_out(i,0);
@@ -543,7 +546,7 @@ suite loops_tests = []() {
         bufs.port_input_override_map(0) = 3;
         run_loops(bufs);
         expect(eq(((int)bufs.states_out(0)), Recording));
-        expect(bufs.positions_out(0) == 0_i);
+        expect(bufs.positions_out(0) == 8_i);
         expect(bufs.lengths_out(0) == 8_i);
 
 
@@ -574,7 +577,7 @@ suite loops_tests = []() {
         bufs.passthroughs(0) = 0.5f;
         run_loops(bufs);
         expect(bufs.states_out(0) == Stopped);
-        expect(bufs.positions_out(0) == 2_i);
+        expect(bufs.positions_out(0) == 0_i);
         expect(bufs.lengths_out(0) == 11_i);
 
         for(size_t i=0; i<bufs.storage_in.dim(0).extent(); i++) {
@@ -603,7 +606,7 @@ suite loops_tests = []() {
         }
         run_loops(bufs);
         expect(bufs.states_out(0) == Stopped);
-        expect(bufs.positions_out(0) == 2_i);
+        expect(bufs.positions_out(0) == 0_i);
         expect(bufs.lengths_out(0) == 11_i);
 
         for(size_t i=0; i<bufs.storage_in.dim(0).extent(); i++) {
@@ -759,9 +762,9 @@ suite loops_tests = []() {
         bufs.states_in(0) = Recording;
         bufs.next_states_in(0, 0) = Playing;
         bufs.next_states_countdown_in(0, 0) = 0;
-        bufs.positions_in(0) = 8;
+        bufs.positions_in(0) = 9;
         bufs.lengths_in(0) = 9;
-        //bufs.loops_soft_sync_mapping(0) = 0;
+        bufs.loops_soft_sync_mapping(0) = 0;
         bufs.passthroughs(0) = 0.0f;
         run_loops(bufs);
         expect(eq(((int)bufs.states_out(0)), Playing));
@@ -859,7 +862,7 @@ suite loops_tests = []() {
         bufs.passthroughs(0) = 1.0f;
         run_loops(bufs);
         expect(bufs.states_out(1) == Stopped);
-        expect(bufs.positions_out(1) == 2_i);
+        expect(bufs.positions_out(1) == 0_i);
         expect(bufs.lengths_out(1) == 11_i);
 
         for(size_t i=0; i<bufs.storage_in.dim(0).extent(); i++) {
@@ -950,7 +953,7 @@ suite loops_tests = []() {
         bufs.port_inputs_muted(0) = 1;
         run_loops(bufs);
         expect(bufs.states_out(0) == Stopped);
-        expect(bufs.positions_out(0) == 2_i);
+        expect(bufs.positions_out(0) == 0_i);
         expect(bufs.lengths_out(0) == 11_i);
 
         for(size_t i=0; i<bufs.storage_in.dim(0).extent(); i++) {
@@ -1036,7 +1039,7 @@ suite loops_tests = []() {
         bufs.n_port_events(0) = 2; // to test that the 3rd one is ignored
         run_loops(bufs);
         expect(eq(((int)bufs.states_out(0)), Recording));
-        expect(bufs.positions_out(0) == 0_i);
+        expect(bufs.positions_out(0) == 8_i);
         expect(bufs.lengths_out(0) == 8_i);
         expect(bufs.event_recording_timestamps_out(0, 0) == 3);
         expect(bufs.event_recording_timestamps_out(1, 0) == 5);
@@ -1090,7 +1093,7 @@ suite loops_tests = []() {
         bufs.n_port_events(3) = 2; // to test that the 3rd one is ignored
         run_loops(bufs);
         expect(eq(((int)bufs.states_out(0)), Recording));
-        expect(bufs.positions_out(0) == 0_i);
+        expect(bufs.positions_out(0) == 8_i);
         expect(bufs.lengths_out(0) == 8_i);
         expect(bufs.event_recording_timestamps_out(0, 0) == 3);
         expect(bufs.event_recording_timestamps_out(1, 0) == 5);
@@ -1105,7 +1108,7 @@ suite loops_tests = []() {
         bufs.storage_lock = 1;
         run_loops(bufs);
         expect(eq(((int)bufs.states_out(0)), Recording));
-        expect(bufs.positions_out(0) == 1_i);
+        expect(bufs.positions_out(0) == 3_i);
         expect(bufs.lengths_out(0) == 3_i);
 
 

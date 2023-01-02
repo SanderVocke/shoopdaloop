@@ -423,13 +423,11 @@ public:
             rr_record_start_index(rr.y) + rr.x - recording_range(rr.y)[0]
         );
         Expr rr_record_stop_index = rr_record_start_index(loop) + (recording_range(loop)[1] - recording_range(loop)[0]); // Not including last sample
-        // For playing back from storage, keep in mind:
-        // - If transitioning from recording, start from the recording end position
-        // - Otherwise, just continue at the position we were at
+        // For playing back from storage, we start from 0
         Func rr_playback_start_index("rr_playback_start_index");
         rr_playback_start_index(loop) = select(
-            will_start_playing && will_stop_recording,
-            0, //rr_record_stop_index,
+            will_start_playing,
+            0,
             _positions_in(loop)
         );
         
@@ -535,19 +533,23 @@ public:
         );
         
         // Compute output positions
-        // TODO: This should be determined based on playback index/recording index/static index
-        
-        Expr n_played_samples = max(0, playing_range(loop)[1] - playing_range(loop)[0]);
-        Expr old_version = select(
-            will_start_recording,
-            (_positions_in(loop) + n_played_samples) % loop_lengths_in(loop) + n_recorded_samples, // Wrap then record
-            (_positions_in(loop) + n_recorded_samples + n_played_samples) % loop_lengths_out(loop)           // Record then wrap
-        );
-
+        Expr next_position_if_was_playing = Halide::Internal::substitute(
+            rr.x,
+            n_samples,
+            rr_playback_index
+        ) % loop_lengths_out(loop);                               
         positions_out(loop) = Halide::Internal::substitute(rr.y, loop, select(
             is_playing_state(states_out(loop)),
-            Halide::Internal::substitute(rr.x, n_samples, rr_playback_index) % _loop_lengths_in(loop),
-            old_version
+            next_position_if_was_playing,
+            select(
+                states_out(loop) == Stopped,
+                0,
+                select(
+                    states_out(loop) == Recording,
+                    loop_lengths_out(loop),
+                    -1 // Unreachable. we know it is recording, this is just to make it readable
+                )
+            )
         ));
 
         // Schedule
@@ -606,7 +608,7 @@ public:
             //.vectorize(x, 8)
             ;
         
-        Pipeline({samples_out, loop_storage_out, states_out, positions_out, loop_lengths_out}).print_loop_nest();
+        // Pipeline({samples_out, loop_storage_out, states_out, positions_out, loop_lengths_out}).print_loop_nest();
     }
 };
 
