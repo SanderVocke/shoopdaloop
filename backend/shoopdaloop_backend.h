@@ -139,7 +139,7 @@ int load_loop_data(
     float *data
 );
 
-// Get loop data from storage.
+// Get raw loop data from storage.
 // Returns the amount of values in the data.
 // Caller is responsible for freeing the returned pointer.
 // A storage lock is enabled to make sure that the data is
@@ -151,6 +151,19 @@ unsigned get_loop_data(
     unsigned loop_idx,
     float **data_out,
     unsigned do_stop
+);
+
+// Get RMS power data of a loop's contents divided into bins.
+// A custom sample range can be specified, as well as how
+// many samples should be reduced per bin.
+// Together, these determine the amount of bins returned.
+// Caller is responsible for freeing the returned pointer.
+unsigned get_loop_data_rms(
+    unsigned loop_idx,
+    unsigned from_sample,
+    unsigned to_sample,
+    unsigned samples_per_bin,
+    float **data_out
 );
 
 // Set the global storage lock.

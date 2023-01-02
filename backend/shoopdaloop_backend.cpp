@@ -1098,4 +1098,41 @@ unsigned get_sample_rate() {
     return g_sample_rate;
 }
 
+unsigned get_loop_data_rms(
+    unsigned loop_idx,
+    unsigned from_sample,
+    unsigned to_sample,
+    unsigned samples_per_bin,
+    float **data_out
+) {
+    unsigned n_bins = std::ceil((float)std::max<int>(0, to_sample - from_sample) / (float) samples_per_bin);
+    float *bins = (float*)malloc(sizeof(float) * n_bins);
+
+    auto prev_storage_lock = g_storage_lock;
+    std::atomic<bool> finished = false;
+    push_command([loop_idx, &finished]() {
+        // TODO: check that we are not recording, this may be messed up by the storage lock
+        g_storage_lock = 1;
+        finished = true;
+    });
+    while(!finished && g_loops_fn) {}
+
+    for(size_t idx = 0; idx < n_bins; idx++) {
+        bins[idx] = 0.0f;
+        unsigned bin_start = from_sample + idx*samples_per_bin;
+        for(size_t sample = bin_start; sample < bin_start + samples_per_bin && sample < g_storage.dim(0).extent(); sample++) {
+            auto v = g_storage(from_sample + sample, loop_idx);
+            bins[idx] += v * v;
+        }
+    }
+    g_storage_lock = prev_storage_lock;
+
+    for(size_t idx = 0; idx < n_bins; idx++) {
+        bins[idx] = std::sqrt(bins[idx] / (float) samples_per_bin);
+    }
+
+    *data_out = bins;
+    return n_bins;
+}
+
 } //extern "C"
