@@ -13,26 +13,28 @@ Rectangle {
 
     property bool script_playing
     property int script_current_cycle
-    property int script_length: {
-        var l = 0
+    property var section_starts: {
+        var l = []
+        var c = 0
         for (var i = 0; i < sections.length; i++) {
-            l += sections[i].duration
+            l.push(c)
+            c += sections[i].duration
         }
+        l.push(c) // for end
         return l
     }
-    property var current_section: {
-        var l = 0
+    property int script_length: section_starts[sections.length]
+    property int current_section_idx: {
         for (var i = 0; i < sections.length; i++) {
-            if (script_current_cycle < (l + sections[i].duration)) {
-                return {'section': sections[i], 'section_start': l}
+            if (script_current_cycle < (section_starts[i] + sections[i].duration)) {
+                return i
             }
-            l += sections[i].duration
         }
-        return null
+        return -1
     }
     property int cycle_in_current_section: {
-        if (current_section['section']) {
-            return script_current_cycle - current_section['section_start']
+        if (current_section_idx >= 0) {
+            return script_current_cycle - section_starts[current_section_idx]
         }
         return -1
     }
@@ -153,6 +155,7 @@ Rectangle {
                             track_names: widget.track_names
                             actions: widget.sections[index].actions
                             duration: widget.sections[index].duration
+                            start_cycle: widget.section_starts[index]
 
                             anchors {
                                 top: parent.top
@@ -184,6 +187,7 @@ Rectangle {
         property var track_names
         property var actions
         property int duration
+        property int start_cycle
 
         signal clicked()
         signal request_rename(string name)
@@ -319,12 +323,21 @@ Rectangle {
                         anchors.left: parent.left
                         anchors.right: parent.right
                         property var action: scriptitem.actions[index]
-                        height: 20
                         property var original_color: '#444444'
+                        height: 20
                         color: original_color
 
-                        signal flash()
-                        onFlash: SequentialAnimation {
+                        Connections {
+                            target: widget
+                            function onScript_current_cycleChanged() {
+                                if (widget.script_current_cycle == scriptitem.start_cycle + action_item.action['on_cycle']) {
+                                    flash_animation.start()
+                                }
+                            }
+                        }
+
+                        SequentialAnimation {
+                            id: flash_animation
                             PropertyAnimation { target: action_item; property: 'color'; to: 'red' }
                             PropertyAnimation { target: action_item; property: 'color'; to: action_item.original_color }
                         }

@@ -242,7 +242,7 @@ Item {
     }
 
     function add_section() {
-        sections.push({ name: 'Section', actions: []})
+        sections.push({ name: 'Section', actions: [], duration: 4})
         sectionsChanged()
     }
 
