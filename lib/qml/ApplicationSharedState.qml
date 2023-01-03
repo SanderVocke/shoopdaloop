@@ -137,6 +137,24 @@ Item {
         return r
     }
 
+    // SCRIPTING BEHAVIOR
+    function play_script() {
+        if (script_current_cycle < 0) {
+            script_current_cycle = 0;
+        }
+        script_playing = true
+    }
+    function stop_script() { script_playing = false }
+
+    Connections {
+        target: master_loop_manager
+        function onCycled() {
+            if(script_playing) {
+                script_current_cycle += 1
+            }
+        }
+    }
+
     // FUNCTIONS
     function actions_on_loop_mgrs_in_track(track_idx, loop_idx, on_idx_loop_fn, on_other_loop_fn) {
         for(var i = 0; i < loop_managers[track_idx].length; i++) {

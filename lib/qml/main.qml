@@ -135,12 +135,18 @@ ApplicationWindow {
             track_names: shared.track_names
             loop_names: shared.loop_names
 
+            script_playing: shared.script_playing
+            script_current_cycle: shared.script_current_cycle
+
             Connections {
                 function onRequest_rename_section(idx, name) { shared.rename_section(idx, name) }
                 function onRequest_delete_section(idx) { shared.delete_section(idx) }
                 function onRequest_add_section() { shared.add_section() }
                 function onRequest_add_action(section, action) { shared.add_action(section, action) }
                 function onRequest_remove_action(section, idx) { shared.remove_action(section, idx) }
+                function onPlay() { shared.play_script() }
+                function onStop() { shared.stop_script() }
+                function onSet_cycle(cycle) { shared.script_current_cycle = cycle }
             }
         }
 

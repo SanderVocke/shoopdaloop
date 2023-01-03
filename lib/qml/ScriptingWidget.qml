@@ -11,11 +11,43 @@ Rectangle {
     property var track_names: []
     property var loop_names: []
 
+    property bool script_playing
+    property int script_current_cycle
+    property int script_length: {
+        var l = 0
+        for (var i = 0; i < sections.length; i++) {
+            l += sections[i].duration
+        }
+        return l
+    }
+    property var current_section: {
+        var l = 0
+        for (var i = 0; i < sections.length; i++) {
+            if (script_current_cycle < (l + sections[i].duration)) {
+                return {'section': sections[i], 'section_start': l}
+            }
+            l += sections[i].duration
+        }
+        return null
+    }
+    property int cycle_in_current_section: {
+        if (current_section['section']) {
+            return script_current_cycle - current_section['section_start']
+        }
+        return -1
+    }
+
+    // Section mgmt
     signal request_rename_section(int section_idx, string name)
     signal request_delete_section(int section_idx)
     signal request_add_section()
     signal request_add_action(int section_idx, var action)
     signal request_remove_action(int section_idx, int action_idx)
+
+    // Transport
+    signal play()
+    signal stop()
+    signal set_cycle(int cycle)
 
     Item {
         anchors.fill: parent
@@ -45,17 +77,44 @@ Rectangle {
                 verticalAlignment: Text.AlignTop
             }
 
+            Label {
+                color: Material.foreground
+                text: widget.script_current_cycle.toString() + '/' + widget.script_length.toString()
+            }
+
             Button {
-                    width: 30
-                    height: 40
-                    MaterialDesignIcon {
-                        size: 20
-                        name: 'plus'
-                        color: Material.foreground
-                        anchors.centerIn: parent
-                    }
-                    onClicked: widget.request_add_section()
+                width: 30
+                height: 40
+                MaterialDesignIcon {
+                    size: 20
+                    name: 'plus'
+                    color: Material.foreground
+                    anchors.centerIn: parent
                 }
+                onClicked: widget.request_add_section()
+            }
+            Button {
+                width: 30
+                height: 40
+                MaterialDesignIcon {
+                    size: 20
+                    name: 'play'
+                    color: Material.foreground
+                    anchors.centerIn: parent
+                }
+                onClicked: widget.play()
+            }
+            Button {
+                width: 30
+                height: 40
+                MaterialDesignIcon {
+                    size: 20
+                    name: 'pause'
+                    color: Material.foreground
+                    anchors.centerIn: parent
+                }
+                onClicked: widget.stop()
+            }
         }
 
         Rectangle {
@@ -93,6 +152,7 @@ Rectangle {
                             available_scene_names: widget.scene_names
                             track_names: widget.track_names
                             actions: widget.sections[index].actions
+                            duration: widget.sections[index].duration
 
                             anchors {
                                 top: parent.top
@@ -123,6 +183,7 @@ Rectangle {
         property var available_scene_names
         property var track_names
         property var actions
+        property int duration
 
         signal clicked()
         signal request_rename(string name)
@@ -158,6 +219,31 @@ Rectangle {
                 font.pixelSize: 12
 
                 onEditingFinished: () => { scriptitem.request_rename(displayText); background_focus.forceActiveFocus() }
+            }
+
+            Item {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                height: 24
+                Label {
+                    id: duration_label
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.left: parent.left
+                    text: 'Duration:'
+                    font.pixelSize: 12
+                    color: Material.foreground
+                }
+                SpinBox {
+                    id: spin
+                    value: scriptitem.duration
+                    from: 1
+                    anchors {
+                        left: duration_label.right
+                        right: parent.right
+                        verticalCenter: parent.verticalCenter
+                    }
+                    height: 30
+                }
             }
 
             Row {
@@ -234,16 +320,35 @@ Rectangle {
                         anchors.right: parent.right
                         property var action: scriptitem.actions[index]
                         height: 20
-                        color: '#444444'
+                        property var original_color: '#444444'
+                        color: original_color
+
+                        signal flash()
+                        onFlash: SequentialAnimation {
+                            PropertyAnimation { target: action_item; property: 'color'; to: 'red' }
+                            PropertyAnimation { target: action_item; property: 'color'; to: action_item.original_color }
+                        }
+
+                        Label {
+                            color: Material.foreground
+                            text: action_item.action['on_cycle']
+                            anchors.verticalCenter: parent.verticalCenter
+                            id: on_cycle_label
+                        }
 
                         MaterialDesignIcon {
                             id: action_icon
                             size: 20
                             anchors.verticalCenter: parent.verticalCenter
+                            anchors.left: on_cycle_label.right
                             name: {
                                 switch (action_item.action["action"]) {
                                     case 'play':
                                         return 'play'
+                                    case 'record':
+                                        return 'record'
+                                    case 'stop':
+                                        return 'stop'
                                 }
                                 return ''
                             }
@@ -409,6 +514,7 @@ Rectangle {
             for (const c of combos) {
                 if(c.visible) { r[c.setting] = c.currentValue }
             }
+            r['on_cycle'] = parseInt(on_cycle.text)
             return r
         }
         
@@ -417,6 +523,7 @@ Rectangle {
             for (const c of combos) {
                 c.currentIndex = 0
             }
+            on_cycle.text = '0'
         }
 
         function adopt_action(action) {
@@ -428,6 +535,7 @@ Rectangle {
                     c.currentIndex = -1
                 }
             }
+            on_cycle.text = action['on_cycle'].toString()
         }
 
         function create_enumeration(lst) {
@@ -463,8 +571,8 @@ Rectangle {
                         label: 'Type:'
                         setting: 'action_type'
                         model: {
-                            'Scene': 'scene',
-                            'Loop': 'loop'
+                            'Loop': 'loop',
+                            'Scene': 'scene'
                         }
                     }
                     ScriptActionPopupCombo {

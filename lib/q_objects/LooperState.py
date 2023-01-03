@@ -18,6 +18,9 @@ class LooperState(QObject):
     nextStateCountdownChanged = pyqtSignal(int)
     volumeChanged = pyqtSignal(float)
     outputPeakChanged = pyqtSignal(float)
+    
+    # Other signals
+    cycled = pyqtSignal()
 
     def __init__(self, parent=None):
         super(LooperState, self).__init__(parent)
