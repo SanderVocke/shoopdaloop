@@ -28,6 +28,7 @@ class LooperState(QObject):
         self._next_state_countdown = -1
         self._volume = 1.0
         self._output_peak = 0.0
+        self._get_waveforms_fn = lambda from_sample, to_sample, samples_per_bin: {}
 
     ######################
     # PROPERTIES
@@ -124,3 +125,10 @@ class LooperState(QObject):
         d = json.loads(data)
         self.volume = d['volume']
         self.length = d['length']
+    
+    def set_get_waveforms_fn(self, fn):
+        self._get_waveforms_fn = fn
+    
+    @pyqtSlot(int, int, int, result='QVariant')
+    def get_waveforms(self, from_sample, to_sample, samples_per_bin):
+        return self._get_waveforms_fn (from_sample, to_sample, samples_per_bin)

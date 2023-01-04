@@ -29,6 +29,7 @@ import scipy as sp
 import shutil
 import tempfile
 import tarfile
+from copy import copy
 
 from pprint import *
 
@@ -77,6 +78,10 @@ class BackendManager(QObject):
         self._channel_looper_managers = [
             LooperState(parent=self) for i in range(self.n_loops)
         ]
+        for idx, looper in enumerate(self._channel_looper_managers):
+            looper.set_get_waveforms_fn(lambda from_sample, to_sample, samples_per_bin, idx=idx: {
+                'waveform': self.get_loop_rms(idx, from_sample, to_sample, samples_per_bin)
+            })
 
         def create_stereo_looper(idx):
             channel_loop_idxs = [idx*2, idx*2+1]

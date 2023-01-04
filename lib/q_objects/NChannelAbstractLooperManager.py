@@ -100,3 +100,15 @@ class NChannelAbstractLooperManager(LooperState):
                 len(data),
                 len(self._channel_loopers)
             ))
+    
+    @pyqtSlot(int, int, int, result='QVariant')
+    def get_waveforms(self, from_sample, to_sample, samples_per_bin):
+        channel_results = [chan.get_waveforms(from_sample, to_sample, samples_per_bin) for chan in self._channel_loopers]
+        retval = {}
+        for idx, r in enumerate(channel_results):
+            for key in r.keys():
+                # rename the keys
+                retval['chan_{}_{}'.format(idx, key)] = r[key]
+        return retval
+        
+            

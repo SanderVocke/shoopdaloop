@@ -898,43 +898,15 @@ Item {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 height: 100
+                id: item
 
-                ScrollView {
+                LoopContentWidget {
+                    id: waveform
+                    waveform_data_max: 1.0
+                    min_db: -50.0
+                    manager: window.manager
+                    samples_per_pixel: manager.length / width
                     anchors.fill: parent
-                    ScrollBar.horizontal.policy: ScrollBar.AlwaysOn
-                    ScrollBar.vertical.policy: ScrollBar.AlwaysOff
-
-                    contentWidth: waveform.width
-
-                    Waveform {
-                        width: 1
-                        height: parent.height - 20
-                        id: waveform
-
-                        data: [] 
-                        data_max: 1.0
-                        samples_per_pixel: 80
-                        pos: window.manager.pos
-
-                        function update() {
-                            data = backend_manager.get_loop_rms(
-                                0,
-                                0,
-                                window.manager.length,
-                                samples_per_pixel
-                            )
-                            width = data.length
-                            console.log(width)
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: {
-                                waveform.update()
-                                waveform.requestPaint()
-                            }
-                        }
-                    }
                 }
             }
         }

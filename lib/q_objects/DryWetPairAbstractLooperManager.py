@@ -236,3 +236,15 @@ class DryWetPairAbstractLooperManager(LooperState):
     @pyqtSlot(result=str)
     def looper_type(self):
         return "DryWetPairAbstractLooperManager"
+    
+    @pyqtSlot(int, int, int, result='QVariant')
+    def get_waveforms(self, from_sample, to_sample, samples_per_bin):
+        wet = self.wet_looper.get_waveforms(from_sample, to_sample, samples_per_bin)
+        dry = self.dry_looper.get_waveforms(from_sample, to_sample, samples_per_bin)
+        individual_results = [chan.get_waveforms(from_sample, to_sample, samples_per_bin) for chan in [self.wet_looper, self.dry_looper]]
+        retval = {}
+        for key in wet.keys():
+            retval['wet_{}'.format(key)] = wet[key]
+        for key in dry.keys():
+            retval['dry_{}'.format(key)] = dry[key]
+        return retval
