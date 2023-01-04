@@ -76,7 +76,12 @@ Item {
 
     // SCRIPTING STATE
     property var sections: [
-        { name: 'Section', actions: [], duration: 4 }
+        { name: 'Test Sect', actions: [
+            { 'action_type': 'loop', 'track': 1, 'loop': 0, 'action': 'record', 'stop_others': 'no', 'on_cycle': 1 },
+            { 'action_type': 'loop', 'track': 1, 'loop': 1, 'action': 'record', 'stop_others': 'no', 'on_cycle': 1 },
+            { 'action_type': 'loop', 'track': 1, 'loop': 1, 'action': 'play', 'stop_others': 'no', 'on_cycle': 2 },
+            { 'action_type': 'loop', 'track': 1, 'loop': 0, 'action': 'play', 'stop_others': 'no', 'on_cycle': 3 }
+        ], duration: 4 }
     ]
     // Playback control is based on the active cycle, meaning
     // how many times the master loop has cycled.
@@ -318,6 +323,43 @@ Item {
 
     function load_session(filename) {
         backend_manager.load_session(filename)
+    }
+
+    function execute_action(action) {
+        switch (action['action_type']) {
+        case 'loop':
+            switch (action['action']) {
+                case 'play':
+                    actions_on_loop_mgrs_in_track(
+                        action['track'],
+                        action['loop'],
+                        (mgr) => mgr.doLoopAction(StatesAndActions.LoopActionType.DoPlay, [0.0], true),
+                        action['stop_others'] == 'yes' ?
+                            (mgr) => mgr.doLoopAction(StatesAndActions.LoopActionType.DoStop, [0.0], true) : () => {}
+                    );
+                    break;
+                case 'record':
+                    actions_on_loop_mgrs_in_track(
+                        action['track'],
+                        action['loop'],
+                        (mgr) => mgr.doLoopAction(StatesAndActions.LoopActionType.DoRecord, [0.0], true),
+                        action['stop_others'] == 'yes' ?
+                            (mgr) => mgr.doLoopAction(StatesAndActions.LoopActionType.DoStop, [0.0], true) : () => {}
+                    );
+                    break;
+                case 'stop':
+                    loop_managers[action['track']][action['loop']].doLoopAction(StatesAndActions.LoopActionType.DoStop, [0.0], true)
+                    break;
+            }
+            break
+        case 'scene':
+            switch (action['action']) {
+                case 'play':
+                    console.log('unimplemented')
+                    break
+            }
+            break
+        }
     }
 
     Connections {

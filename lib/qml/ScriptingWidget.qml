@@ -181,7 +181,9 @@ Rectangle {
     component ScriptItemWidget : Rectangle {
         id: scriptitem
 
-        property bool highlighted
+        property bool active: widget.script_playing &&
+                              widget.script_current_cycle >= start_cycle &&
+                              widget.script_current_cycle < (start_cycle + duration)
         property string name
         property var available_scene_names
         property var track_names
@@ -196,7 +198,7 @@ Rectangle {
         signal request_remove_action(string type, int track)
 
         color: Material.background
-        border.color: highlighted ? 'red' : 'grey'
+        border.color: active ? 'green' : 'grey'
         border.width: 2
 
         MouseArea {
@@ -323,24 +325,12 @@ Rectangle {
                         anchors.left: parent.left
                         anchors.right: parent.right
                         property var action: scriptitem.actions[index]
-                        property var original_color: '#444444'
+                        property var passive_color: '#444444'
+                        property var active_color: ('action' in action_item.action && action_item.action['action'] == 'record') ? 'red' : 'green'
                         height: 20
-                        color: original_color
-
-                        Connections {
-                            target: widget
-                            function onScript_current_cycleChanged() {
-                                if (widget.script_current_cycle == scriptitem.start_cycle + action_item.action['on_cycle']) {
-                                    flash_animation.start()
-                                }
-                            }
-                        }
-
-                        SequentialAnimation {
-                            id: flash_animation
-                            PropertyAnimation { target: action_item; property: 'color'; to: 'red' }
-                            PropertyAnimation { target: action_item; property: 'color'; to: action_item.original_color }
-                        }
+                        property bool active: widget.script_playing && 
+                               (widget.script_current_cycle == scriptitem.start_cycle + action_item.action['on_cycle'])
+                        color: active ? active_color : passive_color
 
                         Label {
                             color: Material.foreground
@@ -423,6 +413,12 @@ Rectangle {
                                             scriptitem.actionsChanged()
                                         }
                                     }
+                                }
+                            }
+                            MenuItem {
+                                text: "Execute"
+                                onClicked: {
+                                    shared.execute_action(scriptitem.actions[index])
                                 }
                             }
                             MenuItem {
@@ -643,7 +639,7 @@ Rectangle {
                         label: 'Stop other loops:'
                         setting: 'stop_others'
                         model: {'No':'no', 'In Track':'track', 'All':'all'}
-                        visible: action_combo.currentValue == 'play'
+                        visible: action_combo.currentValue == 'play' || action_combo.currentValue == 'record'
                     }
                 }
             }
