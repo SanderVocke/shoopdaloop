@@ -45,6 +45,7 @@ class NChannelAbstractLooperManager(LooperState):
         
         self.volumeChanged.connect(lambda v: self.doLoopAction(LoopActionType.SetLoopVolume.value, [v], True))
         self._channel_loopers[0].cycled.connect(lambda: self.cycled.emit())
+        self._channel_loopers[0].passed_halfway.connect(lambda: self.passed_halfway.emit())
 
     ######################
     # PROPERTIES

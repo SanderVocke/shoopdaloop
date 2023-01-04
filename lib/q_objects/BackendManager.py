@@ -339,7 +339,7 @@ class BackendManager(QObject):
             if is_playing_state(m.state) and is_playing_state(loop_states[i]) and \
                m.length > 0 and \
                (loop_positions[i] >= m.length / 2) and \
-               (m.pos[i] < m.length / 2):
+               (m.pos < m.length / 2):
                passed_halfway = True
                
             m.state = loop_states[i]

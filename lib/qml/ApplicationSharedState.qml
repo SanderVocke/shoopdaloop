@@ -85,7 +85,7 @@ Item {
     ]
     // Playback control is based on the active cycle, meaning
     // how many times the master loop has cycled.
-    property int script_current_cycle: -1
+    property int script_current_cycle: 0
     property bool script_playing: false
     property bool script_pause_after_sections: true
 
@@ -143,20 +143,80 @@ Item {
         return r
     }
 
-    // SCRIPTING BEHAVIOR
-    function play_script() {
-        if (script_current_cycle < 0) {
-            script_current_cycle = 0;
+    // SCRIPTING DERIVED STATE
+    function active_section_and_offset(cycle) {
+        for (var i = 0; i<sections.length; i++) {
+            var offset = cycle - section_start_cycles[i]
+            if (offset >= 0 && offset < sections[i].duration) {
+                return [i, offset]
+            }
         }
+        return [-1, -1];
+    }
+    readonly property var section_start_cycles: {
+        var tot = 0
+        var r = []
+        for (var section of sections) {
+            r.push (tot)
+            tot += section.duration
+        }
+        return r
+    }
+    readonly property bool pause_at_next_cycle: {
+        return !script_playing ||
+               (script_pause_after_sections && 
+                active_section_and_offset(script_current_cycle)[0] != active_section_and_offset(script_current_cycle+1)[0]);
+    }
+
+    // SCRIPTING BEHAVIOR AND SIGNALING
+    signal action_executed (int section_idx, int action_idx)
+    function all_stopped() {
+        for(var trk=0; trk<loop_managers.length; trk++) {
+            for(var loop of loop_managers[trk]) {
+                if (loop.state != StatesAndActions.LoopState.Stopped &&
+                    loop.state != StatesAndActions.LoopState.Empty) {
+                        return false
+                    }
+            }
+        }
+        return true
+    }
+    function play_script() {
+        if (!all_stopped()) {
+            console.log('TODO throw error: not all stopped')
+            return
+        }
+        execute_actions(script_current_cycle)
         script_playing = true
+        master_loop_manager.doLoopAction(StatesAndActions.LoopActionType.DoPlay, [0.0], false)
     }
     function stop_script() { script_playing = false }
+    function execute_actions(script_cycle) {
+        var sect_and_offset = active_section_and_offset(script_cycle)
+        if(sect_and_offset[0] >= 0) {
+            var section = sections[sect_and_offset[0]]
+            var offset = sect_and_offset[1]
+            for(var i=0; i<section['actions'].length; i++) {
+                var action = section['actions'][i]
+                if (offset == action['on_cycle']) {
+                    execute_action(action);
+                    action_executed(sect_and_offset[0], i)
+                }
+            }
+        }
+    }
 
     Connections {
         target: master_loop_manager
         function onCycled() {
             if(script_playing) {
                 script_current_cycle += 1
+                if(pause_at_next_cycle) { stop_script() }
+            }
+        }
+        function onPassed_halfway() {
+            if(script_playing && !pause_at_next_cycle) {
+                execute_actions(script_current_cycle+1)
             }
         }
     }
@@ -332,26 +392,36 @@ Item {
     }
 
     function execute_action(action) {
+        var stop_others_in_track = (track, loop) => {
+            for(var idx=0; idx<loop_managers[track].length; idx++) {
+                if(idx != loop) {
+                    loop_managers[track][idx].doLoopAction(StatesAndActions.LoopActionType.DoStop, [0.0], true)
+                }
+            }
+        }
+        var stop_others = (track, loop) => {
+            // Note: skip master track, this should always run
+            for(var trk=1; trk<loop_managers.length; trk++) {
+                for(var idx=0; idx<loop_managers[trk].length; idx++) {
+                    if(idx != loop || trk != track) {
+                        loop_managers[trk][idx].doLoopAction(StatesAndActions.LoopActionType.DoStop, [0.0], true)
+                    }
+                }
+            }
+        }
+
         switch (action['action_type']) {
         case 'loop':
             switch (action['action']) {
                 case 'play':
-                    actions_on_loop_mgrs_in_track(
-                        action['track'],
-                        action['loop'],
-                        (mgr) => mgr.doLoopAction(StatesAndActions.LoopActionType.DoPlay, [0.0], true),
-                        action['stop_others'] == 'yes' ?
-                            (mgr) => mgr.doLoopAction(StatesAndActions.LoopActionType.DoStop, [0.0], true) : () => {}
-                    );
+                    if(action['stop_others'] == 'track') { stop_others_in_track(action['track'], action['loop']) }
+                    else if(action['stop_others'] == 'all') { stop_others(action['track'], action['loop']) }
+                    loop_managers[action['track']][action['loop']].doLoopAction(StatesAndActions.LoopActionType.DoPlay, [0.0], true)
                     break;
                 case 'record':
-                    actions_on_loop_mgrs_in_track(
-                        action['track'],
-                        action['loop'],
-                        (mgr) => mgr.doLoopAction(StatesAndActions.LoopActionType.DoRecord, [0.0], true),
-                        action['stop_others'] == 'yes' ?
-                            (mgr) => mgr.doLoopAction(StatesAndActions.LoopActionType.DoStop, [0.0], true) : () => {}
-                    );
+                    if(action['stop_others'] == 'track') { stop_others_in_track(action['track'], action['loop']) }
+                    else if(action['stop_others'] == 'all') { stop_others(action['track'], action['loop']) }
+                    loop_managers[action['track']][action['loop']].doLoopAction(StatesAndActions.LoopActionType.DoRecord, [0.0], true)
                     break;
                 case 'stop':
                     loop_managers[action['track']][action['loop']].doLoopAction(StatesAndActions.LoopActionType.DoStop, [0.0], true)

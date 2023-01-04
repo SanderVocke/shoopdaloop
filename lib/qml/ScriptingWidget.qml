@@ -118,6 +118,17 @@ Rectangle {
                 }
                 onClicked: widget.stop()
             }
+            Button {
+                width: 30
+                height: 40
+                MaterialDesignIcon {
+                    size: 20
+                    name: 'rotate-left'
+                    color: Material.foreground
+                    anchors.centerIn: parent
+                }
+                onClicked: widget.set_cycle(0)
+            }
         }
 
         Rectangle {
@@ -172,6 +183,12 @@ Rectangle {
                                 function onRequest_remove_action(type, track_idx) { widget.request_remove_action(index, type, track_idx) }
                                 function onRequest_set_duration(duration) { widget.request_set_section_duration(index, duration) }
                             }
+                            Connections {
+                                target: shared
+                                function onAction_executed(section, action) {
+                                    if (section == index) { action_executed(action) }
+                                }
+                            }
                         }
                     }
                 }
@@ -199,6 +216,7 @@ Rectangle {
         signal request_add_action(string type, int track)
         signal request_remove_action(string type, int track)
         signal request_set_duration(int duration)
+        signal action_executed(int idx)
 
         color: Material.background
         border.color: active ? 'green' : 'grey'
@@ -295,16 +313,6 @@ Rectangle {
                     }
                     onClicked: delete_popup.open()
                 }
-                Button {
-                    width: 20
-                    height: 30
-                    MaterialDesignIcon {
-                        size: 15
-                        name: 'play'
-                        color: Material.foreground
-                        anchors.centerIn: parent
-                    }
-                }
             }
         }
 
@@ -333,13 +341,23 @@ Rectangle {
                         anchors.right: parent.right
                         property var action: scriptitem.actions[index]
                         property var passive_color: '#444444'
-                        property var active_color: ('action' in action_item.action && action_item.action['action'] == 'record') ? 'red' : 'green'
+                        property var active_color: ('action' in action && action['action'] == 'record') ? 'red' : 'green'
                         height: 20
-                        property bool active: widget.script_playing && scriptitem.active &&
-                               (widget.script_current_cycle == scriptitem.start_cycle + action_item.action['on_cycle'])
-                        color: active ? active_color : passive_color
+                        property bool active: false
+                        color: passive_color
 
-                        onActiveChanged: if (active) { shared.execute_action(action_item.action) }
+                        // Flash when the action is executed
+                        Connections {
+                            target: scriptitem
+                            function onAction_executed(idx) {
+                                if (idx == index) { flash_animation.start() }
+                            }
+                        }
+                        SequentialAnimation {
+                            id: flash_animation
+                            PropertyAnimation { target: action_item; property: 'color'; to: action_item.active_color }
+                            PropertyAnimation { target: action_item; property: 'color'; to: action_item.passive_color }
+                        }
 
                         Label {
                             color: Material.foreground
@@ -472,7 +490,6 @@ Rectangle {
                 target: action_popup
                 function onAccepted_action(action) {
                     scriptitem.actions.push(action)
-                    console.log(JSON.stringify(scriptitem.actions))
                     scriptitem.actionsChanged()
                 }
             }
