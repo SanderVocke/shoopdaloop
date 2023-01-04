@@ -102,7 +102,7 @@ script_pwd = os.path.dirname(__file__)
 
 mappings = get_port_loop_mappings(
         8,
-        6,
+        8,
         ['l', 'r']
     )
 

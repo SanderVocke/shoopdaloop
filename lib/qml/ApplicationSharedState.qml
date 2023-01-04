@@ -14,7 +14,7 @@ Item {
     id: shared
 
     // STATIC
-    property int loops_per_track: 6
+    property int loops_per_track: 8
     property int tracks: 8
     property var loop_managers: {
         // Nested array of logical loop mgrs per track. Master loop is regarded as the first track.

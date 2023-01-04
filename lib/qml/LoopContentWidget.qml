@@ -14,9 +14,6 @@ Item {
 
     //onSamples_per_pixelChanged: { update_data() }
 
-    layer.enabled: true
-    layer.samples: 4
-
     function update_data() {
         var waveforms = manager.get_waveforms(0, manager.length, samples_per_pixel)
         var entry = Object.entries(waveforms)[0]
