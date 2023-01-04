@@ -332,6 +332,8 @@ Rectangle {
                                (widget.script_current_cycle == scriptitem.start_cycle + action_item.action['on_cycle'])
                         color: active ? active_color : passive_color
 
+                        onActiveChanged: if (active) { shared.execute_action(action_item.action) }
+
                         Label {
                             color: Material.foreground
                             text: action_item.action['on_cycle']
