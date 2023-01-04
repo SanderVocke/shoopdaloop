@@ -333,6 +333,14 @@ class BackendManager(QObject):
                m.length > 0 and \
                (loop_positions[i] < m.pos):
                cycled = True
+            
+            # Determine if the loop passed the halfway point
+            passed_halfway = False
+            if is_playing_state(m.state) and is_playing_state(loop_states[i]) and \
+               m.length > 0 and \
+               (loop_positions[i] >= m.length / 2) and \
+               (m.pos[i] < m.length / 2):
+               passed_halfway = True
                
             m.state = loop_states[i]
             m.next_state = loop_next_states[i]
@@ -344,6 +352,8 @@ class BackendManager(QObject):
 
             if cycled:
                 m.cycled.emit()
+            if passed_halfway:
+                m.passed_halfway.emit()
 
         for i in range(n_ports):
             p = self._channel_port_managers[i]

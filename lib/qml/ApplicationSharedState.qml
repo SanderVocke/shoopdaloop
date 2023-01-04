@@ -87,6 +87,7 @@ Item {
     // how many times the master loop has cycled.
     property int script_current_cycle: -1
     property bool script_playing: false
+    property bool script_pause_after_sections: true
 
     // (DE-)SERIALIZATION
     function state_to_dict() {
@@ -248,6 +249,11 @@ Item {
 
     function add_section() {
         sections.push({ name: 'Section', actions: [], duration: 4})
+        sectionsChanged()
+    }
+
+    function set_section_duration(section, duration) {
+        sections[section].duration = duration
         sectionsChanged()
     }
 

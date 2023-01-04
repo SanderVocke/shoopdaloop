@@ -144,6 +144,7 @@ ApplicationWindow {
                 function onRequest_add_section() { shared.add_section() }
                 function onRequest_add_action(section, action) { shared.add_action(section, action) }
                 function onRequest_remove_action(section, idx) { shared.remove_action(section, idx) }
+                function onRequest_set_section_duration(section, duration) { shared.set_section_duration(section, duration) }
                 function onPlay() { shared.play_script() }
                 function onStop() { shared.stop_script() }
                 function onSet_cycle(cycle) { shared.script_current_cycle = cycle }

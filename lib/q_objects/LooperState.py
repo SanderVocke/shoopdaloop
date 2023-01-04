@@ -21,6 +21,7 @@ class LooperState(QObject):
     
     # Other signals
     cycled = pyqtSignal()
+    passed_halfway = pyqtSignal()
 
     def __init__(self, parent=None):
         super(LooperState, self).__init__(parent)

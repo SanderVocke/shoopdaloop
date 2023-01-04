@@ -45,6 +45,7 @@ Rectangle {
     signal request_add_section()
     signal request_add_action(int section_idx, var action)
     signal request_remove_action(int section_idx, int action_idx)
+    signal request_set_section_duration(int section_idx, int duration)
 
     // Transport
     signal play()
@@ -169,6 +170,7 @@ Rectangle {
                                 function onRequest_delete() { widget.request_delete_section(index) }
                                 function onRequest_add_action(type, track_idx) { widget.request_add_action(index, type, track_idx) }
                                 function onRequest_remove_action(type, track_idx) { widget.request_remove_action(index, type, track_idx) }
+                                function onRequest_set_duration(duration) { widget.request_set_section_duration(index, duration) }
                             }
                         }
                     }
@@ -196,6 +198,7 @@ Rectangle {
         signal request_delete()
         signal request_add_action(string type, int track)
         signal request_remove_action(string type, int track)
+        signal request_set_duration(int duration)
 
         color: Material.background
         border.color: active ? 'green' : 'grey'
@@ -241,7 +244,10 @@ Rectangle {
                 }
                 SpinBox {
                     id: spin
-                    value: scriptitem.duration
+                    property int watchedValue: scriptitem.duration
+                    onWatchedValueChanged: value = watchedValue
+                    onValueChanged: scriptitem.request_set_duration(value)
+                    value: watchedValue
                     from: 1
                     anchors {
                         left: duration_label.right
@@ -249,6 +255,7 @@ Rectangle {
                         verticalCenter: parent.verticalCenter
                     }
                     height: 30
+                    font.pixelSize: 12
                 }
             }
 
@@ -328,7 +335,7 @@ Rectangle {
                         property var passive_color: '#444444'
                         property var active_color: ('action' in action_item.action && action_item.action['action'] == 'record') ? 'red' : 'green'
                         height: 20
-                        property bool active: widget.script_playing && 
+                        property bool active: widget.script_playing && scriptitem.active &&
                                (widget.script_current_cycle == scriptitem.start_cycle + action_item.action['on_cycle'])
                         color: active ? active_color : passive_color
 
