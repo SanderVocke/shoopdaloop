@@ -320,8 +320,20 @@ class BackendManager(QObject):
         # pr.enable()
         self.sample_rate = sample_rate
 
+        def is_playing_state(state):
+            return state in \
+                [LoopState.Playing.value, LoopState.PlayingMuted.value, LoopState.PlayingLiveFX.value]
+
         for i in range(n_loops):
             m = self._channel_looper_managers[i]
+            
+            # Determine if the loop cycled
+            cycled = False
+            if is_playing_state(m.state) and is_playing_state(loop_states[i]) and \
+               m.length > 0 and \
+               (loop_positions[i] < m.pos):
+               cycled = True
+               
             m.state = loop_states[i]
             m.next_state = loop_next_states[i]
             m.next_state_countdown = loop_next_state_countdowns[i]
@@ -329,6 +341,9 @@ class BackendManager(QObject):
             m.pos = loop_positions[i]
             m.volume = loop_volumes[i]
             m.outputPeak = loop_output_peaks[i]
+
+            if cycled:
+                m.cycled.emit()
 
         for i in range(n_ports):
             p = self._channel_port_managers[i]

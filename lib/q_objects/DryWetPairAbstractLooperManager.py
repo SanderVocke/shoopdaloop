@@ -45,6 +45,7 @@ class DryWetPairAbstractLooperManager(LooperState):
             l.nextStateCountdownChanged.connect(self.updateNextStateCountdown)
             l.volumeChanged.connect(lambda v: DryWetPairAbstractLooperManager.volume.fset(self, v))
             l.outputPeakChanged.connect(lambda v: DryWetPairAbstractLooperManager.outputPeak.fset(self, v))
+        self._dry_looper.cycled.connect(lambda: self.cycled.emit())
     
     ######################
     # PROPERTIES
