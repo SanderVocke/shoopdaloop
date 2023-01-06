@@ -88,12 +88,9 @@ Item {
 
     // SCRIPTING STATE
     property var sections: [
-        { name: 'Test Sect', actions: [
-            { 'action_type': 'loop', 'track': 1, 'loop': 0, 'action': 'record', 'stop_others': 'no', 'on_cycle': 1 },
-            { 'action_type': 'loop', 'track': 1, 'loop': 1, 'action': 'record', 'stop_others': 'no', 'on_cycle': 1 },
-            { 'action_type': 'loop', 'track': 1, 'loop': 1, 'action': 'play',   'stop_others': 'no', 'on_cycle': 2 },
-            { 'action_type': 'loop', 'track': 1, 'loop': 0, 'action': 'play',   'stop_others': 'no', 'on_cycle': 3 }
-        ], duration: 4 }
+        //{ name: 'Test Sect', actions: [
+        //    { 'action_type': 'loop', 'track': 1, 'loop': 0, 'action': 'record', 'stop_others': 'no', 'on_cycle': 1 },
+        //], duration: 4 }
     ]
     // Playback control is based on the active cycle, meaning
     // how many times the master loop has cycled.

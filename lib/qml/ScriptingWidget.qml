@@ -128,17 +128,18 @@ Rectangle {
                     fill: parent
                     margins: parent.border.width + 1
                 }
+                id: scriptitems_scroll
 
                 ScrollBar.horizontal.policy: ScrollBar.AsNeeded
                 ScrollBar.vertical.policy: ScrollBar.AlwaysOff
 
                 Row {
                     spacing: 1
-                    anchors.fill: parent
 
                     Repeater {
                         model: widget.sections ? widget.sections.length : 0
-                        anchors.fill: parent
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
 
                         ScriptItemWidget {
                             name: widget.sections[index].name
@@ -148,11 +149,7 @@ Rectangle {
                             duration: widget.sections[index].duration
                             start_cycle: index < widget.section_starts.length ? widget.section_starts[index] : -1
 
-                            anchors {
-                                top: parent.top
-                                bottom: parent.bottom
-                            }
-
+                            height: scriptitems_scroll.height
                             width: 150
 
                             Connections {
