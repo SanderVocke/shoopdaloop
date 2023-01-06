@@ -52,6 +52,11 @@ public:
     // port instead of their own
     Input<Buffer<int32_t, 1>> port_input_override_map{"port_input_override_map"};
 
+    // Np indices which indicate to which mixed output each port's individual
+    // output should be mixed. -1 means to not mix it to any mixed output.
+    Input<Buffer<int32_t, 1>> port_to_mixed_outputs_map{"port_to_mixed_outputs_map"};
+    Input<int32_t>            n_mixed_output_ports{"n_mixed_output_ports"};
+
     // Np levels to indicate how much passthrough and volume we want on the ports
     Input<Buffer<float, 1>> port_passthrough_levels{"port_passthrough_levels"};
     Input<Buffer<float, 1>> port_volumes{"port_volumes"};
@@ -88,6 +93,9 @@ public:
 
     // Ns x Np
     Output<Buffer<float, 2>> samples_out{"samples_out"};
+
+    // Ns x Nm
+    Output<Buffer<float, 2>> mixed_samples_out{"mixed_samples_out"};
 
     // Np
     Output<Buffer<float, 1>> port_input_peaks{"port_input_peaks"};
@@ -155,6 +163,7 @@ public:
             ports_muted.dim(0).set_bounds(pf, pe);
             port_inputs_muted.dim(0).set_bounds(pf, pe);
             n_port_events.dim(0).set_bounds(pf, pe);
+            port_to_mixed_outputs_map.dim(0).set_bounds(pf, pe);
 
             // Constants
             next_states_in.dim(0).set_bounds(0, 2);
@@ -506,7 +515,7 @@ public:
         // Compute output peaks per loop
         loop_output_peaks(loop) = argmax(abs(samples_out_per_loop(all_samples, loop)))[1];
 
-        // Compute output samples mixed into ports
+        // Compute output samples mixed from loops into ports
         samples_out(x, port) = _samples_in(x, port) * port_passthrough_levels(port);
         RDom l2p(0, n_samples, ports_map.dim(0).min(), ports_map.dim(0).extent());
         // No need to mix in looper samples for non-playing loopers
@@ -519,6 +528,17 @@ public:
         samples_out(x, port) = samples_out(x, port) *
             port_volumes(port) *
             select(_ports_muted(port) != 0, 0.0f, 1.0f);
+
+        // Compute output samples mixed from ports into mixed outputs
+        Var mixed_port("mixed_port");
+        RDom rmixed_port(0, n_samples, 0, n_mixed_output_ports,
+                         samples_in.dim(1).min(), samples_in.dim(1).extent());
+        mixed_samples_out(x, mixed_port) = 0.0f;
+        mixed_samples_out(rmixed_port.x, rmixed_port.y) += select(
+            port_to_mixed_outputs_map(rmixed_port.z) == rmixed_port.y,
+            samples_out(rmixed_port.x, rmixed_port.z),
+            Halide::undef<float>()
+        );
         
         // Compute output peaks per port
         port_output_peaks(port) = argmax(abs(samples_out(all_samples, port)))[1];
@@ -574,6 +594,7 @@ public:
         loop_output_peaks.compute_root();
         next_states_out.compute_root();
         next_state_countdowns_out.compute_root();
+        //mixed_samples_out.compute_root();
         // _loop_lengths_in.compute_root();
         // _positions_in.compute_root();
         // _soft_sync_map.compute_root();

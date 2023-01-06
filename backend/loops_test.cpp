@@ -21,6 +21,7 @@ struct loops_buffers {
     size_t max_loop_length;
     size_t latency_buf_size;
     size_t max_n_events;
+    size_t n_mixed_output_ports;
     int8_t storage_lock;
     Buffer<int32_t, 0> latency_buf_write_pos;
     Buffer<int8_t, 1> states_in, states_out;
@@ -32,6 +33,7 @@ struct loops_buffers {
     Buffer<int32_t, 1> positions_in, positions_out;
     Buffer<int32_t, 1> lengths_in, lengths_out;
     Buffer<float, 2> samples_in, samples_out;
+    Buffer<float, 2> mixed_samples_out;
     Buffer<float, 2> latency_buf;
     Buffer<int32_t, 1> port_recording_latencies;
     Buffer<float, 2> samples_out_per_loop;
@@ -40,6 +42,7 @@ struct loops_buffers {
     Buffer<int32_t, 1> loops_hard_sync_mapping;
     Buffer<int32_t, 1> loops_soft_sync_mapping;
     Buffer<int32_t, 1> port_input_override_map;
+    Buffer<int32_t, 1> ports_to_mixed_outputs_map;
     Buffer<float, 1> passthroughs;
     Buffer<float, 1> loop_volumes;
     Buffer<float, 1> port_volumes;
@@ -53,6 +56,7 @@ struct loops_buffers {
 loops_buffers setup_buffers(
     size_t n_loops,
     size_t n_ports,
+    size_t n_mixed_output_ports,
     size_t storage_samples,
     size_t process_samples
 ) {
@@ -61,6 +65,7 @@ loops_buffers setup_buffers(
     r.max_n_events = 10;
     r.process_samples = process_samples;
     r.latency_buf_size = process_samples * 4;
+    r.n_mixed_output_ports = n_mixed_output_ports;
 
     r.states_in = decltype(r.states_in)(n_loops);
     r.states_out = decltype(r.states_out)(n_loops);
@@ -76,12 +81,14 @@ loops_buffers setup_buffers(
     r.loops_hard_sync_mapping = decltype(r.loops_hard_sync_mapping)(n_loops);
     r.loops_soft_sync_mapping = decltype(r.loops_soft_sync_mapping)(n_loops);
     r.port_input_override_map = decltype(r.port_input_override_map)(n_ports);
+    r.ports_to_mixed_outputs_map = decltype(r.ports_to_mixed_outputs_map)(n_ports);
     r.loops_to_ports = decltype(r.loops_to_ports)(n_loops);
     r.loop_output_peaks = decltype(r.loop_output_peaks)(n_loops);
     r.storage_lock = 0;
     
     r.samples_in = decltype(r.samples_in)(process_samples, n_ports);
     r.samples_out = decltype(r.samples_in)(process_samples, n_ports);
+    r.mixed_samples_out = decltype(r.mixed_samples_out)(process_samples, n_mixed_output_ports);
     r.samples_out_per_loop = decltype(r.samples_out_per_loop)(process_samples, n_loops);
     r.storage_in = decltype(r.storage_in)(storage_samples, n_loops);
     r.storage_out = decltype(r.storage_out)(storage_samples, n_loops);
@@ -131,6 +138,7 @@ loops_buffers setup_buffers(
         r.port_inputs_muted(i) = 0;
         r.port_recording_latencies(i) = 0;
         r.n_port_events(i) = 0;
+        r.ports_to_mixed_outputs_map(i) = -1;
 
         for (size_t s = 0; s < process_samples; s++) {
             r.samples_in(s, i) = (float)(s+i);
@@ -141,6 +149,12 @@ loops_buffers setup_buffers(
         }
         for (size_t s = 0; s < r.max_n_events; s++) {
             r.port_event_timestamps_in(s, i) = -1;
+        }
+    }
+
+    for(size_t i=0; i<n_mixed_output_ports; i++) {
+        for (size_t s = 0; s < process_samples; s++) {
+            r.mixed_samples_out(s, i) = 10*s;
         }
     }
 
@@ -173,6 +187,8 @@ void run_loops(
         bufs.loops_hard_sync_mapping,
         bufs.loops_soft_sync_mapping,
         bufs.port_input_override_map,
+        bufs.ports_to_mixed_outputs_map,
+        bufs.n_mixed_output_ports,
         bufs.passthroughs,
         bufs.port_volumes,
         bufs.ports_muted,
@@ -184,6 +200,7 @@ void run_loops(
         bufs.storage_in.dim(0).extent(),
         bufs.storage_lock,
         bufs.samples_out,
+        bufs.mixed_samples_out,
         bufs.port_input_peaks,
         bufs.port_output_peaks,
         bufs.loop_output_peaks,
@@ -204,7 +221,7 @@ suite loops_tests = []() {
     srand(1235930); // Seed random generator
 
     "1_stop"_test = []() {
-        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
+        loops_buffers bufs = setup_buffers(1, 1, 1, 16, 8);
         bufs.states_in(0) = bufs.next_states_in(0, 0) = Stopped;
         bufs.positions_in(0) = 2;
         bufs.lengths_in(0) = 11;
@@ -227,7 +244,7 @@ suite loops_tests = []() {
     };
 
     "2_play"_test = []() {
-        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
+        loops_buffers bufs = setup_buffers(1, 1, 1, 16, 8);
         bufs.states_in(0) = bufs.next_states_in(0, 0) = Playing;
         bufs.positions_in(0) = 2;
         bufs.lengths_in(0) = 11;
@@ -253,7 +270,7 @@ suite loops_tests = []() {
     };
 
     "2_1_play_long"_test = []() {
-        loops_buffers bufs = setup_buffers(1, 1, 2048, 256);
+        loops_buffers bufs = setup_buffers(1, 1, 1, 2048, 256);
         bufs.states_in(0) = bufs.next_states_in(0, 0) = Playing;
         bufs.positions_in(0) = 0;
         bufs.lengths_in(0) = 2048;
@@ -284,7 +301,7 @@ suite loops_tests = []() {
     };
 
     "2_2_play_long_soft_synced_to_self"_test = []() {
-        loops_buffers bufs = setup_buffers(1, 1, 2048, 256);
+        loops_buffers bufs = setup_buffers(1, 1, 1, 2048, 256);
         bufs.states_in(0) = bufs.next_states_in(0, 0) = Playing;
         bufs.positions_in(0) = 0;
         bufs.lengths_in(0) = 2048;
@@ -316,7 +333,7 @@ suite loops_tests = []() {
     };
 
     "2_3_play_and_wait_for_soft_sync"_test = []() {
-        loops_buffers bufs = setup_buffers(2, 1, 16, 8);
+        loops_buffers bufs = setup_buffers(2, 1, 1, 16, 8);
         bufs.states_in(0) = bufs.next_states_in(0, 0) = Playing;
         bufs.states_in(1) = bufs.next_states_in(0, 1) = Stopped; // no soft sync generated
         bufs.loops_soft_sync_mapping(0) = 1;
@@ -344,7 +361,7 @@ suite loops_tests = []() {
     };
 
     "2_4_play_wrap"_test = []() {
-        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
+        loops_buffers bufs = setup_buffers(1, 1, 1, 16, 8);
         bufs.states_in(0) = bufs.next_states_in(0, 0) = Playing;
         bufs.positions_in(0) = 6;
         bufs.lengths_in(0) = 11;
@@ -370,7 +387,7 @@ suite loops_tests = []() {
     };
 
     "2_5_play_with_delayed_soft_sync"_test = []() {
-        loops_buffers bufs = setup_buffers(2, 1, 16, 8);
+        loops_buffers bufs = setup_buffers(2, 1, 1, 16, 8);
         bufs.states_in(0) = bufs.next_states_in(0, 0) = Playing;
         bufs.states_in(1) = bufs.next_states_in(0, 1) = Playing;
         bufs.loops_soft_sync_mapping(0) = 1;
@@ -409,8 +426,33 @@ suite loops_tests = []() {
         }
     };
 
+    "2_6_play_mixed"_test = []() {
+        loops_buffers bufs = setup_buffers(2, 2, 1, 16, 8);
+        bufs.states_in(0) = bufs.next_states_in(0, 0) = Playing;
+        bufs.states_in(1) = bufs.next_states_in(1, 0) = Playing;
+        bufs.positions_in(0) = bufs.positions_in(1) = 2;
+        bufs.lengths_in(0) = bufs.lengths_in(1) = 11;
+        bufs.ports_to_mixed_outputs_map(0) = 0;
+        bufs.ports_to_mixed_outputs_map(1) = 0;
+        for(size_t i=0; i<bufs.process_samples; i++) {
+            bufs.samples_in(i, 0) = 0.0f;
+            bufs.samples_in(i, 1) = 0.0f;
+        };
+        run_loops(bufs);
+        expect(eq(((int)bufs.states_out(0)), Playing));
+        expect(bufs.positions_out(0) == 10_i);
+        expect(bufs.lengths_out(0) == 11_i);
+
+        for(size_t i=0; i<bufs.process_samples; i++) {
+            float sample_out = bufs.mixed_samples_out(i,0);
+            float storage1 = bufs.storage_in(i+2, 0);
+            float storage2 = bufs.storage_in(i+2, 1);
+            expect(eq(sample_out, storage1 + storage2)) << " at index " << i;
+        }
+    };
+
     "3_play_muted"_test = []() {
-        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
+        loops_buffers bufs = setup_buffers(1, 1, 1, 16, 8);
         bufs.states_in(0) = bufs.next_states_in(0, 0) = PlayingMuted;
         bufs.positions_in(0) = 2;
         bufs.lengths_in(0) = 11;
@@ -433,7 +475,7 @@ suite loops_tests = []() {
     };
 
     "4_record"_test = []() {
-        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
+        loops_buffers bufs = setup_buffers(1, 1, 1, 16, 8);
         bufs.states_in(0) = bufs.next_states_in(0, 0) = Recording;
         bufs.positions_in(0) = 2;
         bufs.lengths_in(0) = 2;
@@ -463,7 +505,7 @@ suite loops_tests = []() {
     };
 
     "4_1_record_from_0"_test = []() {
-        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
+        loops_buffers bufs = setup_buffers(1, 1, 1, 16, 8);
         bufs.states_in(0) = bufs.next_states_in(0, 0) = Recording;
         bufs.positions_in(0) = 0;
         bufs.lengths_in(0) = 0;
@@ -496,7 +538,7 @@ suite loops_tests = []() {
     };
 
     "4_2_record_with_latency"_test = []() {
-        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
+        loops_buffers bufs = setup_buffers(1, 1, 1, 16, 8);
         bufs.states_in(0) = bufs.next_states_in(0, 0) = Recording;
         bufs.positions_in(0) = 2;
         bufs.lengths_in(0) = 2;
@@ -539,7 +581,7 @@ suite loops_tests = []() {
     };
 
     "4_3_record_from_0_remapped"_test = []() {
-        loops_buffers bufs = setup_buffers(1, 4, 16, 8);
+        loops_buffers bufs = setup_buffers(1, 4, 1, 16, 8);
         bufs.states_in(0) = bufs.next_states_in(0, 0) = Recording;
         bufs.positions_in(0) = 0;
         bufs.lengths_in(0) = 0;
@@ -570,7 +612,7 @@ suite loops_tests = []() {
     };
 
     "5_passthrough"_test = []() {
-        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
+        loops_buffers bufs = setup_buffers(1, 1, 1, 16, 8);
         bufs.states_in(0) = bufs.next_states_in(0, 0) = Stopped;
         bufs.positions_in(0) = 2;
         bufs.lengths_in(0) = 11;
@@ -594,7 +636,7 @@ suite loops_tests = []() {
     };
 
     "5_1_passthrough_remapped"_test = []() {
-        loops_buffers bufs = setup_buffers(1, 2, 16, 8);
+        loops_buffers bufs = setup_buffers(1, 2, 1, 16, 8);
         bufs.states_in(0) = bufs.next_states_in(0, 0) = Stopped;
         bufs.positions_in(0) = 2;
         bufs.lengths_in(0) = 11;
@@ -625,7 +667,7 @@ suite loops_tests = []() {
     };
 
     "6_loop_volume"_test = []() {
-        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
+        loops_buffers bufs = setup_buffers(1, 1, 1, 16, 8);
         bufs.states_in(0) = bufs.next_states_in(0, 0) = Playing;
         bufs.positions_in(0) = 2;
         bufs.lengths_in(0) = 11;
@@ -649,7 +691,7 @@ suite loops_tests = []() {
     };
 
     "7_soft_sync_play_to_stop_self"_test = []() {
-        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
+        loops_buffers bufs = setup_buffers(1, 1, 1, 16, 8);
         bufs.states_in(0) = Playing;
         bufs.next_states_in(0, 0) = Stopped;
         bufs.next_states_countdown_in(0, 0) = 0;
@@ -683,7 +725,7 @@ suite loops_tests = []() {
     };
 
     "8_soft_sync_play_to_record_self"_test = []() {
-        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
+        loops_buffers bufs = setup_buffers(1, 1, 1, 16, 8);
         bufs.states_in(0) = Playing;
         bufs.next_states_in(0, 0) = Recording;
         bufs.next_states_countdown_in(0, 0) = 0;
@@ -724,7 +766,7 @@ suite loops_tests = []() {
     };
 
     "9_soft_sync_stop_to_record_self"_test = []() {
-        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
+        loops_buffers bufs = setup_buffers(1, 1, 1, 16, 8);
         bufs.states_in(0) = Stopped;
         bufs.next_states_in(0, 0) = Recording;
         bufs.next_states_countdown_in(0, 0) = 0;
@@ -758,7 +800,7 @@ suite loops_tests = []() {
     };
 
     "10_soft_sync_record_to_play_self"_test = []() {
-        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
+        loops_buffers bufs = setup_buffers(1, 1, 1, 16, 8);
         bufs.states_in(0) = Recording;
         bufs.next_states_in(0, 0) = Playing;
         bufs.next_states_countdown_in(0, 0) = 0;
@@ -788,7 +830,7 @@ suite loops_tests = []() {
     };
 
     "11_soft_sync_play_to_record_self"_test = []() {
-        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
+        loops_buffers bufs = setup_buffers(1, 1, 1, 16, 8);
         bufs.states_in(0) = Playing;
         bufs.next_states_in(0, 0) = Recording;
         bufs.next_states_countdown_in(0, 0) = 0;
@@ -824,7 +866,7 @@ suite loops_tests = []() {
     };
 
     "12_no_soft_sync_play_to_record_self"_test = []() {
-        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
+        loops_buffers bufs = setup_buffers(1, 1, 1, 16, 8);
         bufs.states_in(0) = Playing;
         bufs.next_states_in(0, 0) = Recording;
         bufs.next_states_countdown_in(0, 0) = 0;
@@ -850,7 +892,7 @@ suite loops_tests = []() {
     };
 
     "13_hard_sync_stop"_test = []() {
-        loops_buffers bufs = setup_buffers(2, 1, 16, 8);
+        loops_buffers bufs = setup_buffers(2, 1, 1, 16, 8);
         bufs.states_in(0) = bufs.next_states_in(0, 0) = Stopped;
         bufs.states_in(1) = bufs.next_states_in(0, 1) = Playing;
         bufs.next_states_countdown_in(0, 0) = 0;
@@ -878,7 +920,7 @@ suite loops_tests = []() {
     };
 
     "13_1_hard_sync_soft_sync_play_to_record_self"_test = []() {
-        loops_buffers bufs = setup_buffers(2, 2, 16, 8);
+        loops_buffers bufs = setup_buffers(2, 2, 1, 16, 8);
         bufs.states_in(0) = Playing;
         bufs.next_states_in(0, 0) = Recording;
         bufs.next_states_countdown_in(0, 0) = 0;
@@ -920,7 +962,7 @@ suite loops_tests = []() {
     };
 
     "14_mute"_test = []() {
-        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
+        loops_buffers bufs = setup_buffers(1, 1, 1, 16, 8);
         bufs.states_in(0) = bufs.next_states_in(0, 0) = Playing;
         bufs.positions_in(0) = 2;
         bufs.lengths_in(0) = 11;
@@ -945,7 +987,7 @@ suite loops_tests = []() {
     };
 
     "15_mute_input"_test = []() {
-        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
+        loops_buffers bufs = setup_buffers(1, 1, 1, 16, 8);
         bufs.states_in(0) = bufs.next_states_in(0, 0) = Stopped;
         bufs.positions_in(0) = 2;
         bufs.lengths_in(0) = 11;
@@ -968,7 +1010,7 @@ suite loops_tests = []() {
     };
 
     "16_soft_sync_play_to_stop_self_delayed"_test = []() {
-        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
+        loops_buffers bufs = setup_buffers(1, 1, 1, 16, 8);
         bufs.states_in(0) = Playing;
         bufs.next_states_in(0, 0) = Stopped;
         bufs.next_states_countdown_in(0, 0) = 1;
@@ -998,7 +1040,7 @@ suite loops_tests = []() {
     };
 
     "17_discard_events_while_not_recording"_test = []() {
-        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
+        loops_buffers bufs = setup_buffers(1, 1, 1, 16, 8);
         bufs.states_in(0) = bufs.next_states_in(0, 0) = Playing;
         bufs.positions_in(0) = 2;
         bufs.lengths_in(0) = 11;
@@ -1029,7 +1071,7 @@ suite loops_tests = []() {
     };
 
     "18_record_events_from_0"_test = []() {
-        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
+        loops_buffers bufs = setup_buffers(1, 1, 1, 16, 8);
         bufs.states_in(0) = bufs.next_states_in(0, 0) = Recording;
         bufs.positions_in(0) = 0;
         bufs.lengths_in(0) = 0;
@@ -1065,7 +1107,7 @@ suite loops_tests = []() {
     };
 
     "18_1_record_events_from_2"_test = []() {
-        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
+        loops_buffers bufs = setup_buffers(1, 1, 1, 16, 8);
         bufs.states_in(0) = bufs.next_states_in(0, 0) = Recording;
         bufs.positions_in(0) = 2;
         bufs.lengths_in(0) = 2;
@@ -1082,7 +1124,7 @@ suite loops_tests = []() {
     };
 
     "18_2_record_events_from_0_remapped"_test = []() {
-        loops_buffers bufs = setup_buffers(1, 4, 16, 8);
+        loops_buffers bufs = setup_buffers(1, 4, 1, 16, 8);
         bufs.states_in(0) = bufs.next_states_in(0, 0) = Recording;
         bufs.positions_in(0) = 0;
         bufs.lengths_in(0) = 0;
@@ -1101,7 +1143,7 @@ suite loops_tests = []() {
     };
 
     "19_record_with_storage_lock"_test = []() {
-        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
+        loops_buffers bufs = setup_buffers(1, 1, 1, 16, 8);
         bufs.states_in(0) = bufs.next_states_in(0, 0) = Recording;
         bufs.positions_in(0) = 2;
         bufs.lengths_in(0) = 3;
@@ -1126,7 +1168,7 @@ suite loops_tests = []() {
     };
 
     "19_1_record_from_0_with_storage_lock"_test = []() {
-        loops_buffers bufs = setup_buffers(1, 1, 16, 8);
+        loops_buffers bufs = setup_buffers(1, 1, 1, 16, 8);
         bufs.states_in(0) = bufs.next_states_in(0, 0) = Recording;
         bufs.positions_in(0) = 0;
         bufs.lengths_in(0) = 0;
