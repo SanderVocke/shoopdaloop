@@ -29,13 +29,13 @@ def get_port_loop_mappings(n_tracks, loops_per_track, loop_channel_names):
                 ('{}_in_{}'.format(track_name, n), '{}_send_{}'.format(track_name, n))
             )
         for channel_idx in range(len(loop_channel_names)):
-            r['ports_to_mixed_outputs'].append(0)#-1) #sends are not mixed anywhere
+            r['ports_to_mixed_outputs'].append(-1) #sends are not mixed anywhere
         for n in loop_channel_names:
             r['port_name_pairs'].append(
                 ('{}_return_{}'.format(track_name, n), '{}_out_{}'.format(track_name, n))
             )
         for channel_idx in range(len(loop_channel_names)):
-            r['ports_to_mixed_outputs'].append(0)#channel_idx)
+            r['ports_to_mixed_outputs'].append(channel_idx)
         
     def add_loop(track_idx):
         base_loop = len(r['loops_to_ports'])

@@ -249,7 +249,7 @@ class BackendManager(QObject):
         loops_to_ports = (c_uint * self.n_loops)()
         loops_hard_sync_map = (c_int * self.n_loops)()
         loops_soft_sync_map = (c_int * self.n_loops)()
-        ports_to_mixed_outputs_map = (c_int * self.n_mixed_output_ports)()
+        ports_to_mixed_outputs_map = (c_int * self.n_ports)()
         ports_midi_enabled_list = (c_int * len(self.ports_midi_enabled_list))()
         input_port_names = (POINTER(c_char) * self.n_ports)()
         output_port_names = (POINTER(c_char) * self.n_ports)()
@@ -268,7 +268,7 @@ class BackendManager(QObject):
             loops_hard_sync_map[i] = self.loops_hard_sync_map[i]
             loops_soft_sync_map[i] = self.loops_soft_sync_map[i]
         
-        for i in range(self.n_mixed_output_ports):
+        for i in range(self.n_ports):
             ports_to_mixed_outputs_map[i] = self.ports_to_mixed_outputs_map[i]
         
         for i in range(len(self.ports_midi_enabled_list)):

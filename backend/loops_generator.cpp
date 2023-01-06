@@ -533,7 +533,7 @@ public:
         // Compute output samples mixed from ports into mixed outputs
         RDom rmix(0, n_samples, samples_in.dim(1).min(), samples_in.dim(1).extent());
         mixed_samples_out(x, port) = 0.0f;
-        mixed_samples_out(rmix.x,
+        mixed_samples_out(rmix.x, 
                           clamp(_port_to_mixed_outputs_map(rmix.y), 0, mixed_samples_out.dim(1).extent()-1)) +=
                           samples_out(rmix.x, rmix.y);
         
