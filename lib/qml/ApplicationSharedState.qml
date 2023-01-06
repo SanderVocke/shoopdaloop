@@ -285,6 +285,7 @@ Item {
 
     function select_scene(idx) {
         selected_scene = idx
+        console.log(selected_scene)
         selected_sceneChanged()
     }
 
@@ -293,21 +294,16 @@ Item {
         hovered_sceneChanged()
     }
 
-    function activate_scene(idx) {
-        var tracks_covered = []
-        // // Activate all loops listed in the scene
-        // for (var lidx in scenes[idx].loops) {
-        //     var lp = scenes[idx].loops[lidx]
-        //     select_loop(lp[0], lp[1])
-        //     tracks_covered.push(parseInt(lp[0]))
-        // }
-        // // Deselect loops in any track that has no
-        // // loop in this scene
-        // for (var tidx in track_names) {
-        //     if (!tracks_covered.includes(parseInt(tidx))) {
-        //         select_loop(tidx, -1)
-        //     }
-        // }
+    function play_scene(idx) {
+        for (var track = 1; track <= tracks; track++) {
+            for (var loop = 0; loop < loops_per_track; loop++) {
+                if(scenes[idx].loops.find((elem) => elem[0] == track && elem[1] == loop) !== undefined) {
+                    loop_managers[track][loop].doLoopAction(StatesAndActions.LoopActionType.DoPlay, [0.0], true)
+                } else {
+                    loop_managers[track][loop].doLoopAction(StatesAndActions.LoopActionType.DoStop, [0.0], true)
+                }
+            }
+        }
     }
 
     function rename_section(idx, name) {

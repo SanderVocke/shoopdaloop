@@ -146,7 +146,7 @@ Rectangle {
                             track_names: widget.track_names
                             actions: widget.sections[index].actions
                             duration: widget.sections[index].duration
-                            start_cycle: { console.log(index, widget.section_starts); return widget.section_starts[index] }
+                            start_cycle: index < widget.section_starts.length ? widget.section_starts[index] : -1
 
                             anchors {
                                 top: parent.top

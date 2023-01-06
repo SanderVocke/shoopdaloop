@@ -12,8 +12,9 @@ Item {
     signal request_rename_scene(int idx, string new_name)
     signal request_add_scene()
     signal request_remove_scene(int idx)
-    signal request_select_scene(int idx, bool activate)
+    signal request_select_scene(int idx)
     signal request_hover_scene(int idx)
+    signal request_play_scene(int idx)
 
     Rectangle {
         width: parent.width
@@ -89,14 +90,10 @@ Item {
 
                                 Connections {
                                     function onLeftClicked() {
-                                        sceneswidget.request_select_scene(index, true)
-                                    }
-                                    function onMiddleClicked() {
                                         if (sceneswidget.selected_scene === index) {
-                                            // deselect
-                                            sceneswidget.request_select_scene(-1, false)
+                                            sceneswidget.request_select_scene(-1)
                                         } else {
-                                            sceneswidget.request_select_scene(index, false)
+                                            sceneswidget.request_select_scene(index)
                                         }
                                     }
                                     function onHoverEntered() { sceneswidget.request_hover_scene(index) }
@@ -106,6 +103,7 @@ Item {
                                     function onNameEntered(name) {
                                         sceneswidget.request_rename_scene(index, name)
                                     }
+                                    function onPlay() { sceneswidget.request_play_scene(index) }
                                 }
                             }
                         }
@@ -168,6 +166,7 @@ Item {
         signal hoverEntered()
         signal hoverExited()
         signal nameEntered(string name)
+        signal play()
 
         color: is_selected ? 'grey' : Material.background
         border.color: marea.containsMouse && is_selected ? 'red' :
@@ -191,6 +190,23 @@ Item {
             }
             onEntered: hoverEntered()
             onExited: hoverExited()
+        }
+
+        Button {
+            width: 20
+            height: 30
+            anchors {
+                left: parent.left
+                verticalCenter: parent.verticalCenter
+                leftMargin: 5
+            }
+            MaterialDesignIcon {
+                size: 15
+                name: 'play'
+                color: 'green'
+                anchors.centerIn: parent
+            }
+            onClicked: scenewidget.play()
         }
 
         TextField {
