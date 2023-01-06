@@ -295,6 +295,22 @@ ApplicationWindow {
                         y: (parent.height - height) / 2
                     }
                 }
+
+                Button {
+                    anchors {
+                        left: parent.left
+                        right: parent.right
+                    }
+                    height: 35
+                    onClicked: shared.stop_all_except_master()
+
+                    MaterialDesignIcon {
+                        size: parent.width - 10
+                        anchors.centerIn: parent
+                        name: 'stop'
+                        color: Material.foreground
+                    }
+                }
             }
         }
         

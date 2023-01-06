@@ -391,6 +391,14 @@ Item {
         // TODO: implement mgr.doClear();
     }
 
+    function stop_all_except_master() {
+        for (var track = 0; track < tracks; track++) {
+            for (var loop = 0; loop < loops_per_track; loop++) {
+                loop_managers[track+1][loop].doLoopAction(StatesAndActions.LoopActionType.DoStop, [0.0], true)
+            }
+        }
+    }
+
     function save_session(filename, store_audio) {
         var my_state = serialize_state()
         backend_manager.save_session(filename, my_state, store_audio)
