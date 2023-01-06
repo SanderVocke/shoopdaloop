@@ -39,14 +39,18 @@ class LoopActionType(Enum):
     # Extended actions for front-end
     DoPlayLiveFX = -1
     DoReRecordFX = -2
+    DoPlaySoloInTrack = -3
 
     names = {
         DoPlay: 'play',
         DoPlayMuted: 'playMuted',
+        DoPlaySoloInTrack: 'playSoloInTrack',
         DoStop: 'stop',
         DoRecord: 'record',
         DoReRecordFX: 'reRecordFX',
-        DoPlayLiveFX: 'playLiveFX'
+        DoPlayLiveFX: 'playLiveFX',
+        DoClear: 'clear',
+        SetLoopVolume: 'set_volume'
     }
 
 class PortActionType(Enum):

@@ -13,31 +13,10 @@ Rectangle {
 
     property bool script_playing
     property int script_current_cycle
-    property var section_starts: {
-        var l = []
-        var c = 0
-        for (var i = 0; i < sections.length; i++) {
-            l.push(c)
-            c += sections[i].duration
-        }
-        l.push(c) // for end
-        return l
-    }
-    property int script_length: section_starts[sections.length]
-    property int current_section_idx: {
-        for (var i = 0; i < sections.length; i++) {
-            if (script_current_cycle < (section_starts[i] + sections[i].duration)) {
-                return i
-            }
-        }
-        return -1
-    }
-    property int cycle_in_current_section: {
-        if (current_section_idx >= 0) {
-            return script_current_cycle - section_starts[current_section_idx]
-        }
-        return -1
-    }
+    property var section_starts
+    property int script_length
+    property int current_section_idx
+    property int cycle_in_current_section
 
     // Section mgmt
     signal request_rename_section(int section_idx, string name)
@@ -167,7 +146,7 @@ Rectangle {
                             track_names: widget.track_names
                             actions: widget.sections[index].actions
                             duration: widget.sections[index].duration
-                            start_cycle: widget.section_starts[index]
+                            start_cycle: { console.log(index, widget.section_starts); return widget.section_starts[index] }
 
                             anchors {
                                 top: parent.top
@@ -532,7 +511,7 @@ Rectangle {
         title: "Script action"
         modal: true
 
-        width: 700
+        width: 800
         height: 300
 
         parent: Overlay.overlay
@@ -581,109 +560,124 @@ Rectangle {
             return r
         }
 
-        Column {
-            Row {
-                Column {
-                    Row {
-                        spacing: 5
-                        Text {
-                            horizontalAlignment: Text.AlignRight
-                            width: action_popup_component.labels_width
-                            text: 'On Cycle:'
-                            color: Material.foreground
-                            font.pixelSize: action_popup_component.font_pixel_size
-                            anchors.verticalCenter: on_cycle.verticalCenter
-                        }
-                        TextField {
-                            id: on_cycle
-                            font.pixelSize: action_popup_component.font_pixel_size
-                            text: '0'
-                            validator: IntValidator { bottom: 0; top: 100 }
-                        }
-                    }
-                    ScriptActionPopupCombo {
-                        id: action_type_combo
-                        label: 'Type:'
-                        setting: 'action_type'
-                        model: {
-                            'Loop': 'loop',
-                            'Scene': 'scene'
-                        }
-                    }
-                    ScriptActionPopupCombo {
-                        id: action_combo
-                        label: 'Action:'
-                        setting: 'action'
-                        property var scene_model: {'Play': 'play'}
-                        property var loop_model: {
-                            'Play': 'play',
-                            'Record': 'record',
-                            'Stop': 'stop'
-                        }
+        Grid {
+            rows: 3
+            spacing: 5
+            flow: Grid.TopToBottom
 
-                        model: {
-                            switch (action_type_combo.currentValue) {
-                            case 'scene':
-                                return scene_model
-                            case 'loop':
-                                return loop_model
-                            }
-                        }
+            Row {
+                Text {
+                    horizontalAlignment: Text.AlignRight
+                    width: action_popup_component.labels_width
+                    text: 'On Cycle:'
+                    color: Material.foreground
+                    font.pixelSize: action_popup_component.font_pixel_size
+                    anchors.verticalCenter: on_cycle.verticalCenter
+                }
+                TextField {
+                    id: on_cycle
+                    font.pixelSize: action_popup_component.font_pixel_size
+                    text: '0'
+                    validator: IntValidator { bottom: 0; top: 100 }
+                }
+            }
+            ScriptActionPopupCombo {
+                id: action_type_combo
+                label: 'Type:'
+                setting: 'action_type'
+                model: {
+                    'Loop': 'loop',
+                    'Scene': 'scene',
+                    'Track': 'track',
+                }
+            }
+            ScriptActionPopupCombo {
+                id: action_combo
+                label: 'Action:'
+                setting: 'action'
+                property var scene_model: {
+                    'Play': 'play'
+                }
+                property var loop_model: {
+                    'Play': 'play',
+                    'Record': 'record',
+                    'Stop': 'stop'
+                }
+                property var track_model: {
+                    'Stop all loops': 'stop_all_loops',
+                    'Mute': 'mute',
+                    'Unmute': 'unmute',
+                    'Mute Passthrough': 'mute_passthrough',
+                    'Unmute Passthrough': 'unmute_passthrough'
+                }
+
+                model: {
+                    switch (action_type_combo.currentValue) {
+                    case 'scene':
+                        return scene_model
+                    case 'loop':
+                        return loop_model
+                    case 'track':
+                        return track_model
                     }
                 }
-                Column {
-                    ScriptActionPopupCombo {
-                        id: scene_combo
-                        label: 'Scene:'
-                        setting: 'scene'
-                        model: create_enumeration(widget.scene_names)
-                        visible: action_type_combo.currentValue == 'scene'
-                    }
-                    ScriptActionPopupCombo {
-                        id: track_combo
-                        label: 'Track:'
-                        setting: 'track'
-                        model: create_enumeration(widget.track_names)
-                        visible: action_type_combo.currentValue == 'loop'
-                    }
-                    ScriptActionPopupCombo {
-                        id: loop_combo
-                        label: 'Loop:'
-                        setting: 'loop'
-                        property var track: track_combo.currentValue
-                        model: widget.loop_names.length > track ?
-                                create_enumeration(
-                                    widget.loop_names[track].map((name, idx) => {
-                                        if (name == '') { return '(' + track.toString() + ', ' + (idx+1).toString() + ')' }
-                                        return name
-                                    })
-                                ) : []
-                        visible: action_type_combo.currentValue == 'loop'
-                    }
-                    ScriptActionPopupCombo {
-                        id: stop_others_combo
-                        label: 'Stop other loops:'
-                        setting: 'stop_others'
-                        model: {'No':'no', 'In Track':'track', 'All':'all'}
-                        visible: action_combo.currentValue == 'play' || action_combo.currentValue == 'record'
-                    }
-                }
+            }
+
+    
+            ScriptActionPopupCombo {
+                width: 100
+                id: scene_combo
+                label: 'Scene:'
+                setting: 'scene'
+                model: create_enumeration(widget.scene_names)
+                visible: action_type_combo.currentValue == 'scene'
+            }
+            ScriptActionPopupCombo {
+                id: track_combo
+                label: 'Track:'
+                setting: 'track'
+                model: create_enumeration(widget.track_names)
+                visible: action_type_combo.currentValue == 'loop'
+            }
+            ScriptActionPopupCombo {
+                id: loop_combo
+                label: 'Loop:'
+                setting: 'loop'
+                property var track: track_combo.currentValue
+                model: widget.loop_names.length > track ?
+                        create_enumeration(
+                            widget.loop_names[track].map((name, idx) => {
+                                if (name == '') { return '(' + track.toString() + ', ' + (idx+1).toString() + ')' }
+                                return name
+                            })
+                        ) : []
+                visible: action_type_combo.currentValue == 'loop'
+            }
+            ScriptActionPopupCombo {
+                id: stop_others_combo
+                label: 'Stop other loops:'
+                setting: 'stop_others'
+                model: {'No':'no', 'In Track':'track', 'All':'all'}
+                visible: action_combo.currentValue == 'play' || action_combo.currentValue == 'record'
             }
         }
     }
 
-    component ScriptActionPopupCombo: Row {
-        spacing: 5
+    component ScriptActionPopupCombo: Item {
         id: popup_combo
         property string setting
         property alias label: txt.text
         property var model
         property alias currentValue: combo.currentValue
         property alias currentIndex: combo.currentIndex
+        implicitHeight: Math.max(txt.implicitHeight, combo.implicitHeight)
+        implicitWidth: 350
 
         function indexOfValue(val) { return combo.indexOfValue(val) }
 
         Text {
+            y:0
+            anchors.left: parent.left
             id: txt
             color: Material.foreground
             horizontalAlignment: Text.AlignRight
@@ -692,6 +686,10 @@ Rectangle {
             anchors.verticalCenter: combo.verticalCenter
         }
         ComboBox {
+            y:0
+            anchors.left: txt.right
+            anchors.right: parent.right
+            anchors.leftMargin: 5
             textRole: "label"
             valueRole: "value"
             id: combo

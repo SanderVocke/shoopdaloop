@@ -137,6 +137,10 @@ ApplicationWindow {
 
             script_playing: shared.script_playing
             script_current_cycle: shared.script_current_cycle
+            section_starts: shared.section_start_cycles
+            script_length: shared.script_length
+            current_section_idx: shared.current_section_idx
+            cycle_in_current_section: shared.current_section_cycle_offset
 
             Connections {
                 function onRequest_rename_section(idx, name) { shared.rename_section(idx, name) }
@@ -264,7 +268,7 @@ ApplicationWindow {
                         id: loadsessiondialog
                         fileMode: FileDialog.OpenFile
                         acceptLabel: 'Load'
-                        nameFilters: ["ShoopDaLoop session files (*.shl)(*.shl)"]
+                        nameFilters: ["ShoopDaLoop session files (*.shl)(*.shl)", "All files (*)"]
                         onAccepted: {
                             var filename = selectedFile.toString().replace('file://', '');
                             shared.load_session(filename)

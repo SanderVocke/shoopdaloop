@@ -22,10 +22,22 @@ Item {
         var managers = []
         var master_mgr = backend_manager.logical_looper_managers[0]
         managers.push([master_mgr])
+        var stop_others_closure = (track, loop) => {
+            return () => {
+                    actions_on_loop_mgrs_in_track(
+                        track, loop, () => {},
+                        (m) => m.doLoopAction(StatesAndActions.LoopActionType.DoStop, [0.0], true)
+                    )
+                }
+        }
         for(outer = 0; outer < tracks; outer++) {
             var i_managers = []
             for(inner = 0; inner < loops_per_track; inner++) {
+                var track = outer+1
+                var loop = inner
                 var mgr = backend_manager.logical_looper_managers[1 + outer * loops_per_track + inner]
+                // Solo playing in track is handled here
+                mgr.stopOtherLoopsInTrack.connect(stop_others_closure(track, loop))
                 i_managers.push(mgr)
             }
             managers.push(i_managers)
@@ -79,25 +91,23 @@ Item {
         { name: 'Test Sect', actions: [
             { 'action_type': 'loop', 'track': 1, 'loop': 0, 'action': 'record', 'stop_others': 'no', 'on_cycle': 1 },
             { 'action_type': 'loop', 'track': 1, 'loop': 1, 'action': 'record', 'stop_others': 'no', 'on_cycle': 1 },
-            { 'action_type': 'loop', 'track': 1, 'loop': 1, 'action': 'play', 'stop_others': 'no', 'on_cycle': 2 },
-            { 'action_type': 'loop', 'track': 1, 'loop': 0, 'action': 'play', 'stop_others': 'no', 'on_cycle': 3 }
+            { 'action_type': 'loop', 'track': 1, 'loop': 1, 'action': 'play',   'stop_others': 'no', 'on_cycle': 2 },
+            { 'action_type': 'loop', 'track': 1, 'loop': 0, 'action': 'play',   'stop_others': 'no', 'on_cycle': 3 }
         ], duration: 4 }
     ]
     // Playback control is based on the active cycle, meaning
     // how many times the master loop has cycled.
     property int script_current_cycle: 0
     property bool script_playing: false
-    property bool script_pause_after_sections: true
+    property bool script_pause_after_sections: false
 
     // (DE-)SERIALIZATION
     function state_to_dict() {
         return {
             'track_names': track_names,
+            'loop_names': loop_names,
             'scenes': scenes,
-            'selected_scene': selected_scene,
-            'hovered_scene': hovered_scene,
             'sections': sections,
-            'loop_names': loop_names
         }
     }
     function set_state_from_dict(state_dict) {
@@ -113,15 +123,11 @@ Item {
         scenes = state_dict.scenes
         sections = state_dict.sections
         loop_names = state_dict.loop_names
-        selected_scene = state_dict.selected_scene
-        hovered_scene = state_dict.hovered_scene
 
         track_namesChanged()
         loop_namesChanged()
         scenesChanged()
         sectionsChanged()
-        selected_sceneChanged()
-        hovered_sceneChanged()
     }
     function serialize_state() {
         return JSON.stringify(state_to_dict())
@@ -162,10 +168,17 @@ Item {
         }
         return r
     }
+    readonly property int current_section_idx: active_section_and_offset(script_current_cycle)[0]
+    readonly property int current_section_cycle_offset: active_section_and_offset(script_current_cycle)[1]
     readonly property bool pause_at_next_cycle: {
         return !script_playing ||
                (script_pause_after_sections && 
                 active_section_and_offset(script_current_cycle)[0] != active_section_and_offset(script_current_cycle+1)[0]);
+    }
+    readonly property int script_length: {
+        var l = 0;
+        for(var sect of sections) { l += sect.duration }
+        return l
     }
 
     // SCRIPTING BEHAVIOR AND SIGNALING

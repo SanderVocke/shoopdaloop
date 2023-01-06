@@ -272,7 +272,7 @@ Item {
             }
 
             Grid {
-                visible: statusrect.hovered || playlivefx.hovered || recordN.hovered || recordfx.hovered || recordn_menu.visible
+                visible: statusrect.hovered || playlivefx.hovered || playsolointrack.hovered || recordN.hovered || recordfx.hovered || recordn_menu.visible
                 x: 20
                 y: 2
                 columns: 4
@@ -320,7 +320,7 @@ Item {
 
                         Rectangle {
                             width: playlivefx.width
-                            height: playlivefx.height
+                            height: playsolointrack.height + playlivefx.height
                             color: statusrect.color
 
                             MouseArea {
@@ -333,29 +333,53 @@ Item {
 
                                 onPositionChanged: (mouse) => { 
                                     var p = mapToGlobal(mouse.x, mouse.y)
+                                    playsolointrack.onMousePosition(p)
                                     playlivefx.onMousePosition(p)
                                 }
-                                onExited: { playlivefx.onMouseExited() }
+                                onExited: { playlivefx.onMouseExited(); playsolointrack.onMouseExited() }
                             }
 
-                            SmallButtonWithCustomHover {
-                                id : playlivefx
-                                width: buttongrid.button_width
-                                height: buttongrid.button_height
-                                IconWithText {
-                                    size: parent.width
-                                    anchors.centerIn: parent
-                                    name: 'play'
-                                    color: 'orange'
-                                    text_color: Material.foreground
-                                    text: "FX"
-                                }
-                                onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoPlayLiveFX, [0.0], true) }}
+                            Column {
+                                SmallButtonWithCustomHover {
+                                    id : playsolointrack
+                                    width: buttongrid.button_width
+                                    height: buttongrid.button_height
+                                    IconWithText {
+                                        size: parent.width
+                                        anchors.centerIn: parent
+                                        name: 'play'
+                                        color: 'green'
+                                        text_color: Material.foreground
+                                        text: "S"
+                                    }
+                                    onClicked: { if(statusrect.manager) { 
+                                        statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoPlaySoloInTrack, [0.0], true)
+                                        }}
 
-                                ToolTip.delay: 1000
-                                ToolTip.timeout: 5000
-                                ToolTip.visible: hovered
-                                ToolTip.text: "Play dry recording through live effects. Allows hearing FX changes on-the-fly."
+                                    ToolTip.delay: 1000
+                                    ToolTip.timeout: 5000
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: "Play wet recording solo in track."
+                                }
+                                SmallButtonWithCustomHover {
+                                    id : playlivefx
+                                    width: buttongrid.button_width
+                                    height: buttongrid.button_height
+                                    IconWithText {
+                                        size: parent.width
+                                        anchors.centerIn: parent
+                                        name: 'play'
+                                        color: 'orange'
+                                        text_color: Material.foreground
+                                        text: "FX"
+                                    }
+                                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoPlayLiveFX, [0.0], true) }}
+
+                                    ToolTip.delay: 1000
+                                    ToolTip.timeout: 5000
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: "Play dry recording through live effects. Allows hearing FX changes on-the-fly."
+                                }
                             }
                         }
                     }
@@ -462,8 +486,16 @@ Item {
                                             onClicked: () => { recordN.execute(2) }
                                         }
                                         MenuItem {
+                                            text: "3 cycles"
+                                            onClicked: () => { recordN.execute(3) }
+                                        }
+                                        MenuItem {
                                             text: "4 cycles"
                                             onClicked: () => { recordN.execute(4) }
+                                        }
+                                        MenuItem {
+                                            text: "6 cycles"
+                                            onClicked: () => { recordN.execute(6) }
                                         }
                                         MenuItem {
                                             text: "8 cycles"

@@ -24,6 +24,9 @@ class DryWetPairAbstractLooperManager(LooperState):
     forceWetPassthroughChanged = pyqtSignal(bool)
     forceDryPassthroughChanged = pyqtSignal(bool)
 
+    # Additional signals which have special handling
+    stopOtherLoopsInTrack = pyqtSignal()
+
     def __init__(self, dry_looper, wet_looper, parent=None):
         super(DryWetPairAbstractLooperManager, self).__init__(parent)
         self._parent = parent
@@ -175,6 +178,10 @@ class DryWetPairAbstractLooperManager(LooperState):
     
     @pyqtSlot(int, list, bool)
     def doLoopAction(self, action_id, args, with_soft_sync):
+        if action_id == LoopActionType.DoPlaySoloInTrack.value:
+            self.stopOtherLoopsInTrack.emit()
+            action_id = LoopActionType.DoPlay.value
+
         wet_action = action_id
         dry_action = action_id
         wet_args = args.copy()

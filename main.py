@@ -1,6 +1,7 @@
 #!/usr/bin/python
 
 import sys
+import os
 
 from PyQt6.QtGui import QGuiApplication
 from PyQt6.QtQml import QQmlApplicationEngine, qmlRegisterType
@@ -51,6 +52,9 @@ backend_mgr = None
 title = "ShoopDaLoop"
 qml_app_state = None
 engine = None
+
+
+script_dir = os.path.dirname(os.path.realpath(__file__))
 
 class NSMQGuiApplication(QGuiApplication):
     def __init__(self, argv):
@@ -158,7 +162,7 @@ with contextlib.ExitStack() as contextmgr:
             engine.rootContext().setContextProperty("midi_control_manager", midi_control_mgr)
             engine.rootContext().setContextProperty("mainScriptDir",  os.path.dirname(os.path.realpath(sys.argv[0])))
             engine.quit.connect(app.quit)
-            engine.load('lib/qml/main.qml')
+            engine.load('{}/lib/qml/main.qml'.format(script_dir))
 
             qml_app_state = engine.rootObjects()[0].findChild(QObject, 'app_shared_state')
     
