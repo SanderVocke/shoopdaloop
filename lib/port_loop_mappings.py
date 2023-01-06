@@ -6,9 +6,11 @@ def get_port_loop_mappings(n_tracks, loops_per_track, loop_channel_names):
     chans = len(loop_channel_names)
     r = {
         'port_name_pairs': [],
+        'mixed_output_port_names': [],
         'loops_to_ports': [],
         'loops_soft_sync': [],
         'loops_hard_sync': [],
+        'ports_to_mixed_outputs': [],
         'ports_midi_enabled': [],
         # The following key is a list of tuples.
         # The first element is a port for which we should keep an eye on whether
@@ -21,14 +23,19 @@ def get_port_loop_mappings(n_tracks, loops_per_track, loop_channel_names):
     def add_ports_for_track(track_name):
         # add in + send for each channel,
         # then return + out for each channel
+        # NOTE: order of loops is important here
         for n in loop_channel_names:
             r['port_name_pairs'].append(
                 ('{}_in_{}'.format(track_name, n), '{}_send_{}'.format(track_name, n))
             )
+        for channel_idx in range(len(loop_channel_names)):
+            r['ports_to_mixed_outputs'].append(0)#-1) #sends are not mixed anywhere
         for n in loop_channel_names:
             r['port_name_pairs'].append(
                 ('{}_return_{}'.format(track_name, n), '{}_out_{}'.format(track_name, n))
             )
+        for channel_idx in range(len(loop_channel_names)):
+            r['ports_to_mixed_outputs'].append(0)#channel_idx)
         
     def add_loop(track_idx):
         base_loop = len(r['loops_to_ports'])
@@ -45,6 +52,9 @@ def get_port_loop_mappings(n_tracks, loops_per_track, loop_channel_names):
         # Add the return-out pair to the input remappings (if nothing connected to the return,
         # take samples from in).
         r['port_input_remaps_if_disconnected'] += [[base_port+2, base_port+0], [base_port+3, base_port+1]]
+
+    for n in loop_channel_names:
+        r['mixed_output_port_names'].append('mixed_out_{}'.format(n))
 
     add_ports_for_track('master_loop')
     add_loop(0)

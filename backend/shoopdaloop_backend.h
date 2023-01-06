@@ -71,6 +71,8 @@ typedef void (*AbortCallback) ();
 // n_loops: Amount of loops to instantiate. Note that each loop is a mono channel only.
 // n_ports: Amount of ports to instantiate. A "port" here actually means a pair of
 //          associated input and output ports.
+// n_mixed_output_ports: Amount of additional ports to instantiate which will output mixed samples of the other
+//                       ports.
 // loop_len_seconds: Maximum amount of seconds a loop can store.
 // loops_to_ports_mapping: Should contain n_loops indices, which indicate to which port the loop should be connected.
 //                         Multiple loops can be connected to the same port.
@@ -82,23 +84,29 @@ typedef void (*AbortCallback) ();
 // loops_soft_sync_mapping: Should contain n_loops indices, which indicate to which other loop the loop should be
 //                          "soft-synced". A soft-synced loop will only change state when its master (re-)starts playing.
 //                          Using a negative number or the loop's own index disables soft sync for that loop.
+// ports_to_mixed_outputs_mapping: These indices indicate to which mixed output port each regular port's samples will
+//                                 be mixed. <0 is no target.
 // ports_midi_enabled_list: List of port indexes for the ports which should receive a pair of MIDI ports in addition
 //                          to audio.
 // input_port_names: n_ports strings which give the names of the inputs for the ports.
 // output_port_names: n_ports strings which give the names of the outputs for the ports.
+// mixed_output_port_names: n_mixed_ports strings which give the names of the mixed output ports.
 // client_name: Name of the JACK client to register
 // update_cb: this callback will be called when a state update is requested.
 // abort_cb: this callback will be called if the back-end aborts operation for any reason.
 jack_client_t* initialize(
     unsigned n_loops,
     unsigned n_ports,
+    unsigned n_mixed_output_ports,
     float loop_len_seconds,
     unsigned *loops_to_ports_mapping,
     int *loops_hard_sync_mapping,
     int *loops_soft_sync_mapping,
+    int *ports_to_mixed_outputs_mapping,
     int *ports_midi_enabled_list,
     const char **input_port_names,
     const char **output_port_names,
+    const char **mixed_output_port_names,
     const char *client_name,
     unsigned latency_buf_size,
     UpdateCallback update_cb,

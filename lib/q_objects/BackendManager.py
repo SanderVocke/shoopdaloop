@@ -52,9 +52,11 @@ class BackendManager(QObject):
 
     def __init__(self,
                  port_name_pairs,
+                 mixed_output_port_names,
                  loops_to_ports_map,
                  loops_hard_sync_map,
                  loops_soft_sync_map,
+                 ports_to_mixed_outputs_map,
                  ports_midi_enabled_list,
                  max_loop_length_seconds,
                  client_name,
@@ -67,6 +69,7 @@ class BackendManager(QObject):
 
         self.n_loops = len(loops_to_ports_map)
         self.n_ports = len(port_name_pairs)
+        self.n_mixed_output_ports = len(mixed_output_port_names)
         self.client_name = client_name
         self.max_loop_length_seconds = max_loop_length_seconds
         self.port_name_pairs = port_name_pairs
@@ -74,6 +77,8 @@ class BackendManager(QObject):
         self.loops_soft_sync_map = loops_soft_sync_map
         self.loops_hard_sync_map = loops_hard_sync_map
         self.ports_midi_enabled_list = ports_midi_enabled_list
+        self.ports_to_mixed_outputs_map = ports_to_mixed_outputs_map
+        self.mixed_output_port_names = mixed_output_port_names
 
         self._channel_looper_managers = [
             LooperState(parent=self) for i in range(self.n_loops)
@@ -244,36 +249,47 @@ class BackendManager(QObject):
         loops_to_ports = (c_uint * self.n_loops)()
         loops_hard_sync_map = (c_int * self.n_loops)()
         loops_soft_sync_map = (c_int * self.n_loops)()
+        ports_to_mixed_outputs_map = (c_int * self.n_mixed_output_ports)()
         ports_midi_enabled_list = (c_int * len(self.ports_midi_enabled_list))()
         input_port_names = (POINTER(c_char) * self.n_ports)()
         output_port_names = (POINTER(c_char) * self.n_ports)()
+        mixed_output_port_names = (POINTER(c_char) * self.n_mixed_output_ports)()
 
         # Construct the port names and loop mappings        
         for port_idx, item in enumerate(self.port_name_pairs):
             input_port_names[port_idx] = create_string_buffer(item[0].encode('ascii'))
             output_port_names[port_idx] = create_string_buffer(item[1].encode('ascii'))
+    
+        for idx, name in enumerate(self.mixed_output_port_names):
+            mixed_output_port_names[idx] = create_string_buffer(name.encode('ascii'))
         
         for i in range(self.n_loops):
             loops_to_ports[i] = self.loops_to_ports[i]
             loops_hard_sync_map[i] = self.loops_hard_sync_map[i]
             loops_soft_sync_map[i] = self.loops_soft_sync_map[i]
         
+        for i in range(self.n_mixed_output_ports):
+            ports_to_mixed_outputs_map[i] = self.ports_to_mixed_outputs_map[i]
+        
         for i in range(len(self.ports_midi_enabled_list)):
             ports_midi_enabled_list[i] = self.ports_midi_enabled_list[i]
         
         do_profiling = os.getenv('SHOOPDALOOP_PROFILING') != None
         features = backend.backend_features_t(backend.Profiling) if do_profiling else backend.backend_features_t(backend.Default)
-        
+
         _jack_client = backend.initialize(
             self.n_loops,
             self.n_ports,
+            self.n_mixed_output_ports,
             self.max_loop_length_seconds,
             loops_to_ports,
             loops_hard_sync_map,
             loops_soft_sync_map,
+            ports_to_mixed_outputs_map,
             ports_midi_enabled_list,
             input_port_names,
             output_port_names,
+            mixed_output_port_names,
             self.client_name.encode('ascii'),
             32768, # bit less than a second @ 48000
             self.update_cb,

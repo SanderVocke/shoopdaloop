@@ -192,6 +192,7 @@ public:
         Func _n_port_events_b = repeat_edge(n_port_events);
         Func _port_event_timestamps_in_b = repeat_edge(port_event_timestamps_in);
         Func _ports_map = repeat_edge(ports_map);
+        Func _port_to_mixed_outputs_map = repeat_edge(port_to_mixed_outputs_map);
 
         // Do the port input overrides and port input mutes
         Func _muted_samples_in("_muted_samples_in");
@@ -530,15 +531,11 @@ public:
             select(_ports_muted(port) != 0, 0.0f, 1.0f);
 
         // Compute output samples mixed from ports into mixed outputs
-        Var mixed_port("mixed_port");
-        RDom rmixed_port(0, n_samples, 0, n_mixed_output_ports,
-                         samples_in.dim(1).min(), samples_in.dim(1).extent());
-        mixed_samples_out(x, mixed_port) = 0.0f;
-        mixed_samples_out(rmixed_port.x, rmixed_port.y) += select(
-            port_to_mixed_outputs_map(rmixed_port.z) == rmixed_port.y,
-            samples_out(rmixed_port.x, rmixed_port.z),
-            Halide::undef<float>()
-        );
+        RDom rmix(0, n_samples, samples_in.dim(1).min(), samples_in.dim(1).extent());
+        mixed_samples_out(x, port) = 0.0f;
+        mixed_samples_out(rmix.x,
+                          clamp(_port_to_mixed_outputs_map(rmix.y), 0, mixed_samples_out.dim(1).extent()-1)) +=
+                          samples_out(rmix.x, rmix.y);
         
         // Compute output peaks per port
         port_output_peaks(port) = argmax(abs(samples_out(all_samples, port)))[1];

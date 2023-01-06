@@ -59,7 +59,7 @@ Buffer<int32_t, 2> g_port_event_timestamps_in;
 Buffer<int32_t, 2> g_event_recording_timestamps_out;
 
 // Sample input and output buffers
-std::vector<float> g_samples_in_raw, g_samples_out_raw; //Use vectors here so we control the layout
+std::vector<float> g_samples_in_raw, g_samples_out_raw, g_mixed_samples_out_raw; //Use vectors here so we control the layout
 Buffer<float, 2> g_samples_in, g_samples_out;
 
 // Peak buffers
@@ -69,6 +69,9 @@ Buffer<float, 1> g_loop_output_peaks;
 
 // Intermediate sample buffer which stores per loop (not port)
 Buffer<float, 2> g_samples_out_per_loop;
+
+// Mixed output samples
+Buffer<float, 2> g_mixed_samples_out;
 
 // Loop storage
 Buffer<float, 2> g_storage;
@@ -88,6 +91,9 @@ Buffer<int32_t, 1> g_loops_soft_sync_mapping;
 // Port input mappings
 Buffer<int32_t, 1> g_port_input_mappings;
 
+// Mixed output mappings
+Buffer<int32_t, 1> g_ports_to_mixed_outputs;
+
 // Levels
 Buffer<float, 1> g_passthroughs; // Per port
 Buffer<float, 1> g_loop_volumes; // Per loop
@@ -99,6 +105,7 @@ int8_t g_storage_lock = 0;
 
 std::vector<jack_port_t*> g_input_ports;
 std::vector<jack_port_t*> g_output_ports;
+std::vector<jack_port_t*> g_mixed_output_ports;
 std::vector<jack_port_t*> g_maybe_midi_input_ports;
 std::vector<jack_port_t*> g_maybe_midi_output_ports;
 std::vector<jack_nframes_t> g_input_port_latencies;
@@ -106,11 +113,12 @@ std::vector<jack_nframes_t> g_output_port_latencies;
 
 size_t g_n_loops;
 size_t g_n_ports;
+size_t g_n_mixed_output_ports;
 size_t g_loop_len;
 size_t g_buf_nframes;
 size_t g_sample_rate;
 
-std::vector<jack_default_audio_sample_t*> g_input_bufs, g_output_bufs;
+std::vector<jack_default_audio_sample_t*> g_input_bufs, g_output_bufs, g_mixed_output_bufs;
 std::vector<void*> g_midi_input_bufs, g_midi_output_bufs;
 
 jack_client_t* g_jack_client;
@@ -271,6 +279,12 @@ int jack_process (jack_nframes_t nframes, void *arg) {
                 jack_port_get_buffer(g_maybe_midi_output_ports[i], nframes) :
                 nullptr;
     }
+    for(int i=0; i<g_mixed_output_ports.size(); i++) {
+        g_mixed_output_bufs[i] =
+            g_mixed_output_ports[i] ?
+            (jack_default_audio_sample_t*) jack_port_get_buffer(g_mixed_output_ports[i], nframes) :
+                nullptr;
+    }
 
     auto got_buffers = std::chrono::high_resolution_clock::now();
 
@@ -322,6 +336,8 @@ int jack_process (jack_nframes_t nframes, void *arg) {
             g_loops_hard_sync_mapping,
             g_loops_soft_sync_mapping,
             g_port_input_mappings,
+            g_ports_to_mixed_outputs,
+            g_n_mixed_output_ports,
             g_passthroughs,
             g_port_volumes,
             g_ports_muted,
@@ -333,6 +349,7 @@ int jack_process (jack_nframes_t nframes, void *arg) {
             g_loop_len,
             g_storage_lock,
             g_samples_out,
+            g_mixed_samples_out,
             g_port_input_peaks,
             g_port_output_peaks,
             g_loop_output_peaks,
@@ -420,6 +437,11 @@ int jack_process (jack_nframes_t nframes, void *arg) {
             memcpy((void*)g_output_bufs[i], (void*)(&g_samples_out_raw[g_buf_nframes*i]), sizeof(float) * nframes);
         }
     }
+    for(int i=0; i<g_mixed_output_ports.size(); i++) {
+        if(g_mixed_output_bufs[i]) {
+            memcpy((void*)g_mixed_output_bufs[i], (void*)(&g_mixed_samples_out_raw[g_buf_nframes*i]), sizeof(float) * nframes);
+        }
+    }
 
     // Copy states to atomic for read-out
     for(int i=0; i<g_n_loops; i++) {
@@ -476,13 +498,16 @@ int jack_process (jack_nframes_t nframes, void *arg) {
 jack_client_t* initialize(
     unsigned n_loops,
     unsigned n_ports,
+    unsigned n_mixed_output_ports,
     float loop_len_seconds,
     unsigned *loops_to_ports_mapping,
     int *loops_hard_sync_mapping,
     int *loops_soft_sync_mapping,
+    int *ports_to_mixed_outputs_mapping,
     int *ports_midi_enabled_list,
     const char **input_port_names,
     const char **output_port_names,
+    const char **mixed_output_port_names,
     const char *client_name,
     unsigned latency_buf_size,
     UpdateCallback update_cb,
@@ -491,6 +516,7 @@ jack_client_t* initialize(
 ) {
     g_n_loops = n_loops;
     g_n_ports = n_ports;
+    g_n_mixed_output_ports = n_mixed_output_ports;
     g_features = features;
 
     switch(g_features) {
@@ -534,6 +560,7 @@ jack_client_t* initialize(
     g_lengths[1] = Buffer<int32_t, 1>(n_loops);
     g_samples_in_raw.resize(n_ports*g_buf_nframes);
     g_samples_out_raw.resize(n_ports*g_buf_nframes);
+    g_mixed_samples_out_raw.resize(n_mixed_output_ports*g_buf_nframes);
     g_samples_out_per_loop = Buffer<float, 2>(g_buf_nframes, n_loops);
     g_storage = Buffer<float, 2>(g_loop_len, n_loops);
     g_loops_to_ports = Buffer<int32_t, 1>(n_loops);
@@ -556,6 +583,7 @@ jack_client_t* initialize(
     g_n_port_events = Buffer<int32_t, 1>(n_ports);
     g_event_recording_timestamps_out = Buffer<int32_t, 2>(g_max_midi_events_per_cycle, n_loops);
     g_loop_midi_buffers = std::vector<MIDIRingBuffer>(n_loops);
+    g_ports_to_mixed_outputs = Buffer<int, 1>(n_ports);
     g_storage_lock = 0;
 
     g_samples_in = Buffer<float, 2>(
@@ -567,6 +595,11 @@ jack_client_t* initialize(
         halide_type_t {halide_type_float, 32, 1},
         (void*)g_samples_out_raw.data(),
         g_buf_nframes, n_ports
+    );
+    g_mixed_samples_out = Buffer<float, 2>(
+        halide_type_t {halide_type_float, 32, 1},
+        (void*)g_mixed_samples_out_raw.data(),
+        g_buf_nframes, n_mixed_output_ports
     );
 
     // Allocate atomic state
@@ -613,6 +646,7 @@ jack_client_t* initialize(
     // Initialize ports
     g_input_bufs = std::vector<jack_default_audio_sample_t*>(n_ports);
     g_output_bufs = std::vector<jack_default_audio_sample_t*>(n_ports);
+    g_mixed_output_bufs = std::vector<jack_default_audio_sample_t*>(n_mixed_output_ports);
     g_midi_input_bufs = std::vector<void*>(n_ports);
     g_midi_output_bufs = std::vector<void*>(n_ports);
     g_input_ports.clear();
@@ -621,6 +655,9 @@ jack_client_t* initialize(
     g_maybe_midi_output_ports.clear();
     g_input_port_latencies.clear();
     g_output_port_latencies.clear();
+    for(size_t i=0; i<n_mixed_output_ports; i++) {
+        g_mixed_output_ports.push_back(jack_port_register(g_jack_client, mixed_output_port_names[i], JACK_DEFAULT_AUDIO_TYPE, JackPortIsOutput, 0));
+    }
     for(size_t i=0; i<n_ports; i++) {
         g_port_input_mappings(i) = i;
         g_input_ports.push_back(jack_port_register(g_jack_client, input_port_names[i], JACK_DEFAULT_AUDIO_TYPE, JackPortIsInput, 0));
@@ -637,6 +674,7 @@ jack_client_t* initialize(
         g_input_port_latencies.push_back(0);
         g_output_port_latencies.push_back(0);
         g_port_recording_latencies(i) = 0;
+        g_ports_to_mixed_outputs(i) = ports_to_mixed_outputs_mapping[i];
 
         if(g_input_ports[i] == nullptr) {
             std::cerr << "Backend: Got null port" << std::endl;
