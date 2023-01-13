@@ -202,10 +202,14 @@ class DryWetPairAbstractLooperManager(LooperState):
             case LoopActionType.DoRecord.value:
                 force_dry_passthrough = True
             case LoopActionType.DoReRecordFX.value:
+                # For record N cycles, here we inject an additional argument
+                # telling the dry/wet loopers what their next state should be
+                # after recording is finished.
                 wet_action = LoopActionType.DoRecordNCycles.value
                 dry_action = LoopActionType.DoPlay.value
                 # Note that delay and N cycles should be correctly set from caller
                 dry_args = [wet_args[0]]
+                wet_args.append(float(LoopState.Playing.value))
             case LoopActionType.DoRecordNCycles.value:
                 # For record N cycles, here we inject an additional argument
                 # telling the dry/wet loopers what their next state should be
