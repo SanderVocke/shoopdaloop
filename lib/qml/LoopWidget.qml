@@ -402,12 +402,14 @@ Item {
                     }
 
                     onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoRecord, [0.0], true) }}
-                    onPressAndHold: {
+                    onPressAndHold: (mouse) => {
+                        var mp = mapToItem(background_focus, mouse.x, mouse.y)
                         var droppy_component = Qt.createComponent("DraggableRecordIcon.qml")
                         var droppy = droppy_component.createObject(appWindow, {
-                            x: 300,
-                            y: 300,
-                            size: 100,
+                            x: mp.x - buttongrid.button_width/2,
+                            y: mp.y - buttongrid.button_height/2,
+                            width: buttongrid.button_width,
+                            height: buttongrid.button_height,
                             draggable_type: 'record_n',
                             draggable_func: (other_manager) => {
                                 if (statusrect && statusrect.manager) {

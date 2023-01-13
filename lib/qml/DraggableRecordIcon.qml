@@ -2,17 +2,21 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
 
-MaterialDesignIcon {
-    name: 'record'
-    color: 'red'
-    
+Rectangle {
     Drag.active: dragArea.drag.active
-    Drag.hotSpot.x: 10
-    Drag.hotSpot.y: 10
+    Drag.hotSpot.x: width/2
+    Drag.hotSpot.y: height/2
     Drag.onDragFinished: { console.log ("icon dropped")}
 
     required property var draggable_type
     required property var draggable_func
+    property var drag_area: dragArea
+
+    MaterialDesignIcon {
+        name: 'record'
+        color: 'red'
+        anchors.fill: parent
+    }
 
     MouseArea {
         id: dragArea
