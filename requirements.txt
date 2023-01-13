@@ -1,2 +1,3 @@
 python-osc
 playsound
+resampy

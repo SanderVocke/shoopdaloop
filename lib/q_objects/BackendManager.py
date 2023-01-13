@@ -22,6 +22,7 @@ from .PortsManager import PortsManager
 
 import time
 import cProfile
+import resampy
 
 import soundfile as sf
 import numpy as np
@@ -492,9 +493,10 @@ class BackendManager(QObject):
             target_samplerate = backend.get_sample_rate()
             n_samples = len(np_data[0])
             target_n_samples = int(n_samples / float(samplerate) * target_samplerate)
-            resampled = [
-                sp.signal.resample(d, target_n_samples) for d in np_data
-            ]
+
+            resampled = np_data
+            if int(target_samplerate) != int(samplerate):
+                resampled = resampy.resample(np_data, samplerate, target_samplerate)
 
             if maybe_override_length and maybe_override_length > len(resampled):
                 last_sample = resampled[len(resampled) - 1]
