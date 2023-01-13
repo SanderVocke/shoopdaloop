@@ -26,6 +26,7 @@ class DryWetPairAbstractLooperManager(LooperState):
 
     # Additional signals which have special handling
     stopOtherLoopsInTrack = pyqtSignal()
+    loadedData = pyqtSignal()
 
     def __init__(self, dry_looper, wet_looper, parent=None):
         super(DryWetPairAbstractLooperManager, self).__init__(parent)
@@ -48,6 +49,7 @@ class DryWetPairAbstractLooperManager(LooperState):
             l.nextStateCountdownChanged.connect(self.updateNextStateCountdown)
             l.volumeChanged.connect(lambda v: DryWetPairAbstractLooperManager.volume.fset(self, v))
             l.outputPeakChanged.connect(lambda v: DryWetPairAbstractLooperManager.outputPeak.fset(self, v))
+            l.loadedData.connect(lambda: self.loadedData.emit())
         self._dry_looper.cycled.connect(lambda: self.cycled.emit())
         self._dry_looper.passed_halfway.connect(lambda: self.passed_halfway.emit())
     

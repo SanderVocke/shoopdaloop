@@ -11,13 +11,16 @@ Item {
     property alias max_db: waveform.max_db
     property alias waveform_data_max: waveform.waveform_data_max
     property alias dirty: waveform.dirty
+    property bool recording
 
-    //onSamples_per_pixelChanged: { update_data() }
+    property bool updating: false
 
     function update_data() {
+        updating = true
         var waveforms = manager.get_waveforms(0, manager.length, samples_per_pixel)
         var entry = Object.entries(waveforms)[0]
         waveform_data = entry[1]
+        updating = false
     }
 
     WaveformWidget {
@@ -33,11 +36,28 @@ Item {
         y: 0
     }
 
+    Rectangle {
+        color: 'blue'
+        anchors.fill: parent
+        visible: updating
+    }
+
+    Label {
+        anchors.fill: parent
+        background: Rectangle { color: 'black' }
+        visible: recording
+        color: Material.foreground
+        text: "Recording..."
+        horizontalAlignment: Text.AlignHCenter
+        verticalAlignment: Text.AlignVCenter
+    }
+
     MouseArea {
         anchors.fill: parent
         anchors.bottomMargin: 20
         onClicked: {
-            waveform.update_data()
+            update_data()
+            dirty = true
         }
     }
 }

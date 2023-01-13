@@ -10,6 +10,8 @@ Canvas {
     property real max_db: 0.0
     property bool dirty: false
 
+    function makeDirty() { dirty = true }
+
     onVisibleChanged: {
         if (visible && dirty) { requestPaint() }
     }

@@ -17,9 +17,9 @@ def maximum_output_peak(loopers):
 # looper.
 class NChannelAbstractLooperManager(LooperState):
     signalLoopAction = pyqtSignal(int, list, bool) # action_id, args, with_soft_sync
-    loadLoopData = pyqtSignal(int, list) # channel idx, samples
     saveToFile = pyqtSignal(str)
     loadFromFile = pyqtSignal(str)
+    loadedData = pyqtSignal()
 
     def __init__(self, channel_loopers, parent=None):
         super(NChannelAbstractLooperManager, self).__init__(parent)
@@ -68,11 +68,6 @@ class NChannelAbstractLooperManager(LooperState):
     def looper_type(self):
         return "NChannelAbstractLooperManager"
     
-    # Load one array of samples into one channel
-    @pyqtSlot(int, list)
-    def load_loop_data(self, channel, data):
-        self.loadLoopData.emit(channel, data)
-    
     # Save into a file.
     @pyqtSlot(str)
     def save_to_file(self, filename):
@@ -82,26 +77,6 @@ class NChannelAbstractLooperManager(LooperState):
     @pyqtSlot(str)
     def load_from_file(self, filename):
         self.loadFromFile.emit(filename)
-    
-    @pyqtSlot(list)
-    def load_loops_data(self, data):
-        self.doLoopAction(LoopActionType.DoClear.value, [], False)
-        for i in range(len(self._channel_loopers)):
-            if i < len(data):
-                # we got data for this channel
-                self.load_loop_data(i, data[i])
-            else:
-                # we didn't get data for this channel
-                print("Loaded sound data covers channels {}..{}, re-using first channel for channel {}".format(
-                    1, len(data), i
-                ))
-                self.load_loop_data(i, data[0])
-        if len(data) > len(self._channel_loopers):
-            print("Discarding {} of loaded sound data's {} channels (have {} loop channels)".format(
-                len(data) - len(self._channel_loopers),
-                len(data),
-                len(self._channel_loopers)
-            ))
     
     @pyqtSlot(int, int, int, result='QVariant')
     def get_waveforms(self, from_sample, to_sample, samples_per_bin):

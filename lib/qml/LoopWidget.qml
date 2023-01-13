@@ -939,6 +939,32 @@ Item {
                     manager: window.manager
                     samples_per_pixel: manager.length / width
                     anchors.fill: parent
+
+                    Connections {
+                        target: window
+                        function onVisibleChanged (visible) {
+                            if (visible) { waveform.update_data() }
+                        }
+                    }
+
+                    Connections {
+                        target: manager
+                        
+                        function maybe_update() {
+                            if (window.visible &&
+                                manager.state != StatesAndActions.LoopState.Recording &&
+                                manager.state != StatesAndActions.LoopState.RecordingFX) {
+                                    waveform.update_data()
+                                }
+                        }
+                        function onStateChanged() {
+                            maybe_update()
+                            waveform.recording = manager.state == StatesAndActions.LoopState.Recording ||
+                                                 manager.state == StatesAndActions.LoopState.RecordingFX
+                        }
+                        function onLengthChanged() { maybe_update() }
+                        function onLoadedData() { maybe_update() }
+                    }
                 }
             }
         }

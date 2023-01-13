@@ -89,14 +89,18 @@ class BackendManager(QObject):
             })
 
         def create_stereo_looper(idx):
+
             channel_loop_idxs = [idx*2, idx*2+1]
             l = NChannelAbstractLooperManager(
                 [self._channel_looper_managers[i] for i in channel_loop_idxs], parent=self)
+            
+            def load_from_file (filename):
+                self.load_loops_from_file(channel_loop_idxs, filename, None)
+                l.loadedData.emit()
 
             l.signalLoopAction.connect(lambda action, args, sync: self.do_loops_action(channel_loop_idxs, action, args, sync))
-            l.loadLoopData.connect(lambda chan, data: self.load_loop_data(channel_loop_idxs[chan], data))            
             l.saveToFile.connect(lambda filename: self.save_loops_to_file(channel_loop_idxs, filename, False))
-            l.loadFromFile.connect(lambda filename: self.load_loops_from_file(channel_loop_idxs, filename, None))
+            l.loadFromFile.connect(lambda filename: load_from_file(filename))
 
             return l
         
