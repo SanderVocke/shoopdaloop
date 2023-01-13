@@ -4,6 +4,7 @@ import QtQuick.Controls.Material 2.15
 import QtQuick.Dialogs
 
 import '../../build/StatesAndActions.js' as StatesAndActions
+import '../state_helpers.js' as State_helpers
 
 // The loop widget displays the state of a single loop within a track.
 Item {
@@ -401,10 +402,26 @@ Item {
                     }
 
                     onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoRecord, [0.0], true) }}
-                    onPressAndHold: { 
-                        console.log("hi" )
+                    onPressAndHold: {
                         var droppy_component = Qt.createComponent("DraggableRecordIcon.qml")
-                        var droppy = droppy_component.createObject(appWindow, {x: 300, y:300, size: 100})
+                        var droppy = droppy_component.createObject(appWindow, {
+                            x: 300,
+                            y: 300,
+                            size: 100,
+                            draggable_type: 'record_n',
+                            draggable_func: (other_manager) => {
+                                if (statusrect && statusrect.manager) {
+                                    var n_cycles_delay = 0
+                                    var n_cycles_record = 1
+                                    n_cycles_record = Math.ceil(other_manager.length / widget.master_manager.length)
+                                    if (State_helpers.is_playing_state(other_manager.state)) {
+                                        var current_cycle = Math.floor(other_manager.pos / widget.master_manager.length)
+                                        n_cycles_delay = Math.max(0, n_cycles_record - current_cycle - 1)
+                                    }
+                                    statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoRecordNCycles, [n_cycles_delay, n_cycles_record], true)
+                                }
+                            } 
+                        })
                     }
 
                     ToolTip.delay: 1000
@@ -861,6 +878,12 @@ Item {
     DropArea {
         id: droparea
         anchors.fill: parent
+        onDropped: (event) => {
+            if (event.source.draggable_type == 'record_n') {
+                console.log('Record N!')
+                event.source.draggable_func (widget.manager)
+            }
+        }
     }
 
     component LooperManagerDetails : Item {

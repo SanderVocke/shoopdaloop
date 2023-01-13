@@ -9,6 +9,7 @@ sys.path.append('../..')
 
 import build.backend.shoopdaloop_backend as backend
 from lib.StatesAndActions import *
+from lib.state_helpers import *
 from collections import OrderedDict
 from third_party.pyjacklib import jacklib
 from functools import partial
@@ -340,10 +341,6 @@ class BackendManager(QObject):
         # pr = cProfile.Profile()
         # pr.enable()
         self.sample_rate = sample_rate
-
-        def is_playing_state(state):
-            return state in \
-                [LoopState.Playing.value, LoopState.PlayingMuted.value, LoopState.PlayingLiveFX.value]
 
         for i in range(n_loops):
             m = self._channel_looper_managers[i]
