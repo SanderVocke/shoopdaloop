@@ -19,6 +19,8 @@ Item {
     property int n_multiples_of_master_length: manager && master_manager ? Math.ceil(manager.length / master_manager.length) : 1
     property int current_cycle: manager && master_manager ? Math.floor(manager.pos / master_manager.length) : 0
     
+    property alias containsDrag: droparea.containsDrag
+
     signal selected() //directly selected by the user to be activated.
     signal toggle_in_current_scene() //selected by the user to be added/removed to/from the current scene.
     signal request_rename(string name)
@@ -66,7 +68,9 @@ Item {
                 return default_color;
             }
 
-            if (widget.is_in_hovered_scene) {
+            if (widget.containsDrag) {
+                return 'yellow';
+            } else if (widget.is_in_hovered_scene) {
                 return 'blue';
             } else if (widget.is_in_selected_scene) {
                 return 'red';
@@ -397,6 +401,11 @@ Item {
                     }
 
                     onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoRecord, [0.0], true) }}
+                    onPressAndHold: { 
+                        console.log("hi" )
+                        var droppy_component = Qt.createComponent("DraggableRecordIcon.qml")
+                        var droppy = droppy_component.createObject(appWindow, {x: 300, y:300, size: 100})
+                    }
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
@@ -846,6 +855,12 @@ Item {
         function popup () {
             menu.popup()
         }
+    }
+
+    // Drop area for responding to drag 'n  drop
+    DropArea {
+        id: droparea
+        anchors.fill: parent
     }
 
     component LooperManagerDetails : Item {
