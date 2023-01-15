@@ -16,6 +16,9 @@ class MIDIMessage:
 
     def bytes(self):
         return []
+    
+    def __str__(self):
+        return ''
 
 class MIDINoteMessage(MIDIMessage):
     def __init__(self, channel : int, note : int, on : bool, velocity: int):
@@ -33,6 +36,11 @@ class MIDINoteMessage(MIDIMessage):
     
     def bytes(self):
         return [(0x90 if self._on else 0x80) + self._channel, self._note, self._velocity]
+    
+    def __str__(self):
+        return 'note ' + ('on' if self._on else 'off') + ', chan {}, note {}, vel {}'.format(
+            self._channel, self._note, self._velocity
+        )
 
 class MIDICCMessage(MIDIMessage):
     def __init__(self, channel : int, controller : int, value : int):
@@ -48,6 +56,11 @@ class MIDICCMessage(MIDIMessage):
     
     def bytes(self):
         return [0xB0 + self._channel, self._controller, self._value]
+    
+    def __str__(self):
+        return 'CC chan {}, controller {}, value {}'.format(
+            self._channel, self._controller, self._value
+        )
 
 class ParseError(Exception):
     pass
@@ -168,132 +181,6 @@ supported_calls = {
 }
 
 def eval_formula(formula: str, is_stmt: bool, substitutions: dict[str, str] = {}) -> list[MIDIMessage]:
-    # def eval_noteOn(arg_nodes : list[ast.Expr]):
-    #     if len(arg_nodes) != 3:
-    #         raise ParseError('noteOn takes 3 arguments (' + str(len(arg_nodes)) + ' given)')
-        
-    #     channel = eval_expr(arg_nodes[0])
-    #     note = eval_expr(arg_nodes[1])
-    #     velocity = eval_expr(arg_nodes[2])
-
-    #     if type(channel) is not int and type(channel) is not float:
-    #         raise ParseError('Could not evaluate noteOn channel value of type ' + str(type(channel)))
-    #     if type(note) is not int and type(note) is not float:
-    #         raise ParseError('Could not evaluate noteOn note value of type ' + str(type(note)))
-    #     if type(velocity) is not int and type(velocity) is not float:
-    #         raise ParseError('Could not evaluate noteOn velocity value of type ' + str(type(note)))
-        
-    #     return [ MIDINoteMessage(int(channel), int(note), True, int(velocity)) ]
-
-    # def eval_notesOn(arg_nodes : list[ast.Expr]):
-    #     if len(arg_nodes) != 4:
-    #         raise ParseError('notesOn takes 4 arguments (' + str(len(arg_nodes)) + ' given)')
-        
-    #     channel = eval_expr(arg_nodes[0])
-    #     firstNote = eval_expr(arg_nodes[1])
-    #     lastNote = eval_expr(arg_nodes[2])
-    #     velocity = eval_expr(arg_nodes[3])
-
-    #     if type(channel) is not int and type(channel) is not float:
-    #         raise ParseError('Could not evaluate notesOn channel value of type ' + str(type(channel)))
-    #     if type(firstNote) is not int and type(note) is not float:
-    #         raise ParseError('Could not evaluate notesOn first note value of type ' + str(type(note)))
-    #     if type(lastNote) is not int and type(note) is not float:
-    #         raise ParseError('Could not evaluate notesOn last note value of type ' + str(type(note)))
-    #     if type(velocity) is not int and type(velocity) is not float:
-    #         raise ParseError('Could not evaluate notesOn velocity value of type ' + str(type(note)))
-        
-    #     return [ eval_noteOn([ast.Constant(channel), ast.Constant(n), ast.Constant(velocity)]) for n in range(firstNote, lastNote+1) ]
-    
-    # def eval_noteOff(arg_nodes : list[ast.Expr]):
-    #     if len(arg_nodes) != 3:
-    #         raise ParseError('noteOff takes 3 arguments (' + str(len(arg_nodes)) + ' given)')
-        
-    #     channel = eval_expr(arg_nodes[0])
-    #     note = eval_expr(arg_nodes[1])
-    #     velocity = eval_expr(arg_nodes[2])
-
-    #     if type(channel) is not int and type(channel) is not float:
-    #         raise ParseError('Could not evaluate noteOff channel value of type ' + str(type(channel)))
-    #     if type(note) is not int and type(note) is not float:
-    #         raise ParseError('Could not evaluate noteOff note value of type ' + str(type(note)))
-    #     if type(velocity) is not int and type(velocity) is not float:
-    #         raise ParseError('Could not evaluate noteOff velocity value of type ' + str(type(note)))
-        
-    #     return [ MIDINoteMessage(int(channel), int(note), False, int(velocity)) ]
-    
-    # def eval_cc(arg_nodes : list[ast.Expr]):
-    #     if len(arg_nodes) != 3:
-    #         raise ParseError('cc takes 3 arguments (' + str(len(arg_nodes)) + ' given)')
-        
-    #     channel = eval_expr(arg_nodes[0])
-    #     controller = eval_expr(arg_nodes[1])
-    #     value = eval_expr(arg_nodes[2])
-
-    #     if type(channel) is not int and type(channel) is not float:
-    #         raise ParseError('Could not evaluate cc channel value of type ' + str(type(channel)))
-    #     if type(controller) is not int and type(controller) is not float:
-    #         raise ParseError('Could not evaluate cc controller value of type ' + str(type(controller)))
-    #     if type(value) is not int and type(value) is not float:
-    #         raise ParseError('Could not evaluate cc value value of type ' + str(type(value)))
-        
-    #     return [ MIDICCMessage(int(channel), int(controller), int(value)) ]
-    
-    # def eval_loopAction(arg_nodes : list[ast.Expr]):
-    #     if len(arg_nodes) < 3:
-    #         raise ParseError('loopAction takes at least 3 arguments ({} given}'.format(len(arg_nodes)))
-        
-    #     track_idx = eval_expr(arg_nodes[0])
-    #     loop_idx = eval_expr(arg_nodes[1])
-    #     action_node = arg_nodes[2]
-
-    #     if not isinstance(action_node, ast.Name):
-    #         raise ParseError('Expected identifier for loopAction, got {}'.format(str(type(action_node))))
-    #     action_name = action_node.id
-    #     if action_name not in loop_action_names:
-    #         raise ParseError('Unknown loop action: {}'.format(action_name))
-        
-    #     action_type = loop_action_names[action_name]
-
-    #     args = []
-    #     for n in arg_nodes[3:]:
-    #         args.append(eval_expr(n))
-        
-    #     if type(track_idx) is not int and type(track_idx) is not float:
-    #         raise ParseError('Could not evaluate track idx of loopAction (type {})'.format(str(type(track_idx))))
-    #     if type(loop_idx) is not int and type(loop_idx) is not float:
-    #         raise ParseError('Could not evaluate loop idx of loopAction (type {})'.format(str(type(loop_idx))))
-        
-    #     return [ LoopAction(action_type, int(track_idx), int(loop_idx), args) ]
-    
-    # def eval_setPan(arg_nodes : list[ast.Expr]):
-    #     if len(arg_nodes) != 2:
-    #         raise ParseError('setPan takes 2 arguments ({} given}'.format(len(arg_nodes)))
-        
-    #     track_idx = eval_expr(arg_nodes[0])
-    #     value = eval_expr(arg_nodes[1])
-
-    #     if type(track_idx) is not int and type(track_idx) is not float:
-    #         raise ParseError('Could not evaluate track idx of setPan (type {})'.format(str(type(track_idx))))
-    #     if type(value) is not int and type(value) is not float:
-    #         raise ParseError('Could not evaluate value of setPan (type {})'.format(str(type(value))))
-                    
-    #     return [ SetPan(int(track_idx), float(value)) ]
-    
-    # def eval_setVolume(arg_nodes : list[ast.Expr]):
-    #     if len(arg_nodes) != 2:
-    #         raise ParseError('setVolume takes 2 arguments ({} given}'.format(len(arg_nodes)))
-        
-    #     track_idx = eval_expr(arg_nodes[0])
-    #     value = eval_expr(arg_nodes[1])
-
-    #     if type(track_idx) is not int and type(track_idx) is not float:
-    #         raise ParseError('Could not evaluate track idx of setVolume (type {})'.format(str(type(track_idx))))
-    #     if type(value) is not int and type(value) is not float:
-    #         raise ParseError('Could not evaluate value of setVolume (type {})'.format(str(type(value))))
-                    
-    #     return [ SetVolume(int(track_idx), float(value)) ]
-
     def eval_stmt_call(node : ast.Call):
         if not isinstance(node.func, ast.Name):
             raise ParseError('Invalid syntax')

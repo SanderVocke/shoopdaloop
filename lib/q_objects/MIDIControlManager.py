@@ -50,13 +50,7 @@ class InputRule:
         if len(msg_bytes) >= 3:
             value_or_velocity = msg_bytes[2]
         
-        if (MIDIMessageFilterType.CCController.value in filters or MIDIMessageFilterType.CCValue.value in filters) and \
-           MIDIMessageFilterType.IsCCKind.value not in filters:
-           filters[MIDIMessageFilterType.IsCCKind.value] = None
-        
-        if (MIDIMessageFilterType.NoteId.value in filters or \
-            MIDIMessageFilterType.NoteVelocity.value in filters or \
-            MIDIMessageFilterType.IsNoteOff.value in filters or \
+        if (MIDIMessageFilterType.IsNoteOff.value in filters or \
             MIDIMessageFilterType.IsNoteOn.value in filters or \
             MIDIMessageFilterType.IsNoteShortPress.value in filters or \
             MIDIMessageFilterType.IsNoteDoublePress.value in filters) and \
@@ -75,9 +69,7 @@ class InputRule:
             self._lastOff[controller_or_note] = _time
 
             if MIDIMessageFilterType.IsCCKind.value in filters or \
-                MIDIMessageFilterType.IsNoteOn.value in filters or \
-                (MIDIMessageFilterType.NoteId.value in filters and filters[MIDIMessageFilterType.NoteId.value] != controller_or_note) or \
-                (MIDIMessageFilterType.NoteVelocity.value in filters and filters[MIDIMessageFilterType.NoteVelocity.value] != value_or_velocity):
+               MIDIMessageFilterType.IsNoteOn.value in filters:
                 return False
                
         elif type_byte == 0x90:
@@ -86,16 +78,12 @@ class InputRule:
             self._lastOn[controller_or_note] = _time
 
             if MIDIMessageFilterType.IsCCKind.value in filters or \
-                MIDIMessageFilterType.IsNoteOff.value in filters or \
-                (MIDIMessageFilterType.NoteId.value in filters and filters[MIDIMessageFilterType.NoteId.value] != controller_or_note) or \
-                (MIDIMessageFilterType.NoteVelocity.value in filters and filters[MIDIMessageFilterType.NoteVelocity.value] != value_or_velocity):
+                MIDIMessageFilterType.IsNoteOff.value in filters:
                 return False
 
         elif type_byte == 0xB0:
             print('CC {} {}'.format(controller_or_note, value_or_velocity))
-            if MIDIMessageFilterType.IsNoteKind.value in filters or \
-                (MIDIMessageFilterType.CCController.value in filters and filters[MIDIMessageFilterType.CCController.value] != controller_or_note) or \
-                (MIDIMessageFilterType.CCValue.value in filters and filters[MIDIMessageFilterType.CCValue.value] != value_or_velocity):
+            if MIDIMessageFilterType.IsNoteKind.value in filters:
                 return False
         
         if press:
@@ -167,15 +155,15 @@ class MIDIControlDialect:
 builtin_dialects = {
     'AKAI APC Mini': MIDIControlDialect(
         {   # Substitutions to map buttons to loops and vice versa
-            'loop_note':  '0 if (track == 0 and loop == 0) else (56+track-1-loop*8)',
-            'note_track': '0 if note == 0 else (note % 8 + 1)',
-            'note_loop':  '0 if note == 0 else 7 - (note / 8)',
+            'loop_note':  '0 if (track == 0 and loop == 0) else (56-loop*8+track-1)',
+            'note_track': 'note % 8 + 1',
+            'note_loop':  '7 - (note / 8)',
             'fader_track': 'controller-48+1', #'controller-48+1 if controller >= 48 and controller < 56'
         },
         [   # Rules
             InputRule({
                 MIDIMessageFilterType.IsNoteOn.value: None,
-            }, ['note <= 64'], 'loopAction(note_track, note_loop, activate)'),
+            }, ['note <= 64'], 'loopAction(note_track, note_loop, "play", 0)'),
             InputRule({
                 MIDIMessageFilterType.IsCCKind.value: None,
             }, ['48 <= controller < 56'], 'setVolume(fader_track, value/127.0)')
@@ -247,7 +235,7 @@ class MIDIController(QObject):
         self.trigger_actions(actions)
     
     @pyqtSlot(int, int, int)
-    def loop_state_changed(self, track, index, state):        
+    def loop_state_changed(self, track, index, state):
         if state in self._dialect.loop_state_output_formulas:
             self.send_midi_messages(eval_formula(self._dialect.loop_state_output_formulas[state], True, {**{'track': track, 'loop': index, 'state': state}, **self._dialect.substitutions}))
         elif self._dialect.loop_state_default_output_formula:

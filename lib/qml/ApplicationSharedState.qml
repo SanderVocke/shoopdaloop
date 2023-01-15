@@ -30,6 +30,9 @@ Item {
                     )
                 }
         }
+        var state_changed_closure = (track, loop) => {
+            return (state) => midi_control_manager.loop_state_changed(track, loop, state)
+        }
         for(outer = 0; outer < tracks; outer++) {
             var i_managers = []
             for(inner = 0; inner < loops_per_track; inner++) {
@@ -38,6 +41,7 @@ Item {
                 var mgr = backend_manager.logical_looper_managers[1 + outer * loops_per_track + inner]
                 // Solo playing in track is handled here
                 mgr.stopOtherLoopsInTrack.connect(stop_others_closure(track, loop))
+                mgr.stateChanged.connect(state_changed_closure(track, loop))
                 i_managers.push(mgr)
             }
             managers.push(i_managers)
@@ -463,13 +467,6 @@ Item {
 
     Connections {
         target: midi_control_manager
-        function onSetPan(track, value) {
-            if (track < 0 || track >= loop_managers.length) {
-                console.log("Ignoring MIDI control for out-of-bounds track: " + track.toString())
-                return
-            }
-            // TODO port_managers[track].pan = value
-        }
         function onSetVolume(track, value) {
             if (track < 0 || track >= loop_managers.length) {
                 console.log("Ignoring MIDI control for out-of-bounds track: " + track.toString())
@@ -478,11 +475,8 @@ Item {
             port_managers[track].volume = value
         }
         function onLoopAction(track, loop, action, args) {
-            loop_idx =
-                track == 0 ?
-                    loop :
-                    (track-1)*loops_per_track + loop_managers[0].length + loop;
-            backend_manager.do_loop_action(loop_idx, action, args);
+            console.log(track, loop, 'action', action, 'args', args)
+            loop_managers[track][loop].doLoopAction(action, args, true)
         }
     }
 

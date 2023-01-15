@@ -62,7 +62,7 @@ class MIDIControlLink(QObject):
     # List of MIDI bytes to send as a message
     @pyqtSlot(list)
     def send(self, msg):
-        if self._output_port:
+        if self._backend_output_port:
             self._backend_mgr.send_slow_midi(self._backend_output_port, msg)
     
     @pyqtSlot()

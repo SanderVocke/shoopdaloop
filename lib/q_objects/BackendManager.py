@@ -464,6 +464,7 @@ class BackendManager(QObject):
     
     def send_slow_midi(self, port, data):
         c_data = (c_ubyte * len(data))(*data)
+        print('backend send {}'.format(data))
         backend.send_slow_midi(port, len(data), c_data)
     
     def process_slow_midi(self):
