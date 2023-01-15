@@ -76,7 +76,7 @@ class SetVolume:
     value: float
 
 loop_action_names = {
-    _loop_action_names_helper.names[key]: key for key in _loop_action_names_helper.names.keys()
+    LoopActionType.names.value[key]: key for key in LoopActionType.names.value.keys()
 }
 
 supported_calls = {
@@ -312,8 +312,6 @@ def eval_formula(formula: str, is_stmt: bool, substitutions: dict[str, str] = {}
                 ))
 
         def parse_arg (arg, idx):
-            if call_desc['may_have_additional_args'] and idx >= len(call_desc['args']):
-                return arg
             arg_desc = call_desc['args'][idx]
             match arg_desc['type']:
                 case 'num':
@@ -326,7 +324,6 @@ def eval_formula(formula: str, is_stmt: bool, substitutions: dict[str, str] = {}
                         ))
                     return arg
                 case 'loop_action_str':
-                    print(arg)
                     if arg not in loop_action_names:
                         raise ParseError('Unknown loop action {} passed to call {}'.format(
                             arg,
@@ -337,7 +334,9 @@ def eval_formula(formula: str, is_stmt: bool, substitutions: dict[str, str] = {}
                 case other:
                     raise ParseError('Unknown argument type: "{}"'.format(arg_desc['type']))
         
-        parsed_args = [parse_arg(a, idx) for idx,a in enumerate(args)]
+        parsed_args = [parse_arg(a, idx) for idx,a in enumerate(args[:len(call_desc['args'])])]
+        if call_desc['may_have_additional_args']:
+            parsed_args.append(args[len(call_desc['args']):])
 
         return call_desc['evaluator'](*parsed_args)
 

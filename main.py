@@ -107,9 +107,6 @@ script_pwd = os.path.dirname(__file__)
 
 # START
 
-test()
-exit(0)
-
 mappings = get_port_loop_mappings(
         8,
         8,
