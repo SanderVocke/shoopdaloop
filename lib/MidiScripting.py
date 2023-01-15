@@ -225,6 +225,7 @@ def eval_formula(formula: str, is_stmt: bool, substitutions: dict[str, str] = {}
         if call_desc['may_have_additional_args']:
             parsed_args.append(args[len(call_desc['args']):])
 
+        print('{} {}'.format(node.func.id, args))
         return call_desc['evaluator'](*parsed_args)
 
     def eval_constant(node):

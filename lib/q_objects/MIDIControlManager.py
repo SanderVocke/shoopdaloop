@@ -157,7 +157,7 @@ builtin_dialects = {
         {   # Substitutions to map buttons to loops and vice versa
             'loop_note':  '0 if (track == 0 and loop == 0) else (56-loop*8+track-1)',
             'note_track': 'note % 8 + 1',
-            'note_loop':  '7 - (note / 8)',
+            'note_loop':  '7 - (note // 8)',
             'fader_track': 'controller-48+1', #'controller-48+1 if controller >= 48 and controller < 56'
         },
         [   # Rules
