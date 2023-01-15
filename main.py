@@ -22,6 +22,7 @@ from lib.q_objects.MIDIControlInputRule import MIDIControlInputRule
 from lib.JackSession import JackSession
 from lib.port_loop_mappings import get_port_loop_mappings
 from lib.port_input_remap_monitor import start_port_input_remapping_monitor
+from lib.MidiScripting import test
 from third_party.pyjacklib import jacklib
 
 from collections import OrderedDict
@@ -103,6 +104,11 @@ signal.signal(signal.SIGQUIT, exit_signal_handler)
 signal.signal(signal.SIGTERM, exit_signal_handler)
 
 script_pwd = os.path.dirname(__file__)
+
+# START
+
+test()
+exit(0)
 
 mappings = get_port_loop_mappings(
         8,

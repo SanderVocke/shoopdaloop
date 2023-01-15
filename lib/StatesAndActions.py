@@ -47,6 +47,7 @@ class LoopActionType(Enum):
         DoPlaySoloInTrack: 'playSoloInTrack',
         DoStop: 'stop',
         DoRecord: 'record',
+        DoRecordNCycles: 'recordN',
         DoReRecordFX: 'reRecordFX',
         DoPlayLiveFX: 'playLiveFX',
         DoClear: 'clear',
