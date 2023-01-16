@@ -40,6 +40,8 @@ class LoopActionType(Enum):
     DoPlayLiveFX = -1
     DoReRecordFX = -2
     DoPlaySoloInTrack = -3
+    DoTogglePlaying = -4 # Toggles between playing/stopped
+    DoSelect = -5
 
     names = {
         DoPlay: 'play',
@@ -51,7 +53,9 @@ class LoopActionType(Enum):
         DoReRecordFX: 'reRecordFX',
         DoPlayLiveFX: 'playLiveFX',
         DoClear: 'clear',
-        SetLoopVolume: 'set_volume'
+        SetLoopVolume: 'set_volume',
+        DoTogglePlaying: 'toggle_playing',
+        DoSelect: 'select'
     }
 
 class PortActionType(Enum):
@@ -61,6 +65,15 @@ class PortActionType(Enum):
     DoUnmuteInput = backend.DoUnmuteInput
     SetPortVolume = backend.SetPortVolume
     SetPortPassthrough = backend.SetPortPassthrough
+
+    names = {
+        DoMute: 'mute',
+        DoMuteInput: 'muteInput',
+        DoUnmute: 'unmute',
+        DoUnmuteInput: 'unmuteInput',
+        SetPortVolume: 'setVolume',
+        SetPortPassthrough: 'setPassthrough'
+    }
 
 class MIDIMessageFilterType(Enum):
     IsNoteKind = 0 # filter on note messages

@@ -10,9 +10,13 @@ import pprint
 from .StatesAndActions import *
 from .flatten import flatten
 
-class MIDIMessage:
+class ScriptingAction:
     def __init__(self):
         pass
+
+class MIDIMessage(ScriptingAction):
+    def __init__(self):
+        ScriptingAction.__init__(self)
 
     def bytes(self):
         return []
@@ -62,11 +66,9 @@ class MIDICCMessage(MIDIMessage):
             self._channel, self._controller, self._value
         )
 
-class ParseError(Exception):
-    pass
-
-class LoopAction:
+class LoopAction(ScriptingAction):
     def __init__(self, action_type, track_idx, loop_idx, args):
+        ScriptingAction.__init__(self)
         self.action_type = action_type
         self.track_idx = track_idx
         self.loop_idx = loop_idx
@@ -77,16 +79,36 @@ class LoopAction:
                self.track_idx == other.track_idx and \
                self.loop_idx == other.loop_idx and \
                self.args == other.args
+    
+    def __str__(self):
+        return 'Loop action: type {}, track {}, loop {}, args {}'.format(
+            self.action_type,
+            self.track_idx,
+            self.loop_idx,
+            pformat(self.args)
+        )
 
-@dataclass
-class SetPan:
-    track_idx: int
-    value: float
 
-@dataclass
-class SetVolume:
-    track_idx: int
-    value: float
+class TrackAction(ScriptingAction):
+    def __init__(self, track_idx, action_type, args):
+        self.action_type = action_type
+        self.track_idx = track_idx
+        self.args = args
+    
+    def __eq__(self, other):
+        return self.action_type == other.action_type and \
+               self.track_idx == other.track_idx and \
+               self.args == other.args
+    
+    def __str__(self):
+        return 'Track action: type {}, track {}, args {}'.format(
+            self.action_type,
+            self.track_idx,
+            pformat(self.args)
+        )
+
+class ParseError(Exception):
+    pass
 
 loop_action_names = {
     LoopActionType.names.value[key]: key for key in LoopActionType.names.value.keys()
@@ -94,6 +116,7 @@ loop_action_names = {
 
 supported_calls = {
     'noteOn': {
+        'is_stmt': True,
         'args': [
             {'name': 'channel', 'type': 'num' },
             {'name': 'note', 'type': 'num' },
@@ -101,11 +124,12 @@ supported_calls = {
         ],
         'may_have_additional_args': False,
         'description': 'Send a MIDI NoteOn message.',
-        'evaluator':   lambda channel, note, velocity: [ 
+        'evaluator': lambda get_var, set_var: lambda channel, note, velocity: [ 
             MIDINoteMessage(int(channel), int(note), True, int(velocity))
             ]
     },
     'noteOff': {
+        'is_stmt': True,
         'args': [
             {'name': 'channel', 'type': 'num' },
             {'name': 'note', 'type': 'num' },
@@ -113,11 +137,12 @@ supported_calls = {
         ],
         'may_have_additional_args': False,
         'description': 'Send a MIDI NoteOff message.',
-        'evaluator':   lambda channel, note, velocity: [
+        'evaluator':   lambda get_var, set_var: lambda channel, note, velocity: [
             MIDINoteMessage(int(channel), int(note), False, int(velocity))
             ]
     },
     'notesOn': {
+        'is_stmt': True,
         'args': [
             {'name': 'channel', 'type': 'num' },
             {'name': 'firstNote', 'type': 'num' },
@@ -126,11 +151,12 @@ supported_calls = {
         ],
         'may_have_additional_args': False,
         'description': 'Send a MIDI NoteOn message for all notes in a range.',
-        'evaluator':   lambda channel, firstNote, lastNote, velocity: [
+        'evaluator':   lambda get_var, set_var: lambda channel, firstNote, lastNote, velocity: [
             MIDINoteMessage(int(channel), int(note), True, int(velocity)) for note in range(firstNote, lastNote+1)
             ]
     },
     'notesOff': {
+        'is_stmt': True,
         'args': [
             {'name': 'channel', 'type': 'num' },
             {'name': 'firstNote', 'type': 'num' },
@@ -139,11 +165,12 @@ supported_calls = {
         ],
         'may_have_additional_args': False,
         'description': 'Send a MIDI NoteOff message for all notes in a range.',
-        'evaluator':   lambda channel, firstNote, lastNote, velocity: [
+        'evaluator':   lambda get_var, set_var: lambda channel, firstNote, lastNote, velocity: [
             MIDINoteMessage(int(channel), int(note), False, int(velocity)) for note in range(firstNote, lastNote+1)
             ]
     },
     'cc': {
+        'is_stmt': True,
         'args': [
             {'name': 'channel', 'type': 'num' },
             {'name': 'note', 'type': 'num' },
@@ -151,11 +178,12 @@ supported_calls = {
         ],
         'may_have_additional_args': False,
         'description': 'Send a MIDI CC message.',
-        'evaluator':   lambda channel, controller, value: [
+        'evaluator':   lambda get_var, set_var: lambda channel, controller, value: [
             MIDICCMessage(int(channel), int(controller), int(value))
             ]
     },
     'loopAction': {
+        'is_stmt': True,
         'args': [
             {'name': 'track_idx', 'type': 'num' },
             {'name': 'loop_idx', 'type': 'num' },
@@ -163,31 +191,60 @@ supported_calls = {
         ],
         'may_have_additional_args': True,
         'description': 'Perform an action on a loop.',
-        'evaluator':   lambda track_idx, loop_idx, action, rest: [
+        'evaluator':   lambda get_var, set_var: lambda track_idx, loop_idx, action, rest: [
             LoopAction(action, int(track_idx), int(loop_idx), rest)
             ]
     },
     'setVolume': {
+        'is_stmt': True,
         'args': [
             {'name': 'track_idx', 'type': 'num' },
             {'name': 'value', 'type': 'num' },
         ],
         'may_have_additional_args': False,
         'description': 'Set the volume of a track.',
-        'evaluator':   lambda track_idx, value: [
-            SetVolume (int (track_idx), float (value))
+        'evaluator':   lambda get_var, set_var: lambda track_idx, value: [
+            TrackAction(int(track_idx), PortActionType.SetPortVolume, [float(value)])
             ]
+    },
+    'set': {
+        'is_stmt': True,
+        'args': [
+            {'name': 'name', 'type': 'string' },
+            {'name': 'value', 'type': 'any' },
+        ],
+        'may_have_additional_args': False,
+        'description': 'Set a variable.',
+        'evaluator':   lambda get_var, set_var: lambda name, value: set_var(name, value)
+    },
+    'get': {
+        'is_stmt': False,
+        'args': [
+            {'name': 'name', 'type': 'string' },
+        ],
+        'may_have_additional_args': False,
+        'description': 'Get a variable.',
+        'evaluator':   lambda get_var, set_var: lambda name: get_var(name)
     },
 }
 
-def eval_formula(formula: str, is_stmt: bool, substitutions: dict[str, str] = {}) -> list[MIDIMessage]:
-    def eval_stmt_call(node : ast.Call):
+def eval_formula(formula: str,
+                 is_stmt: bool,
+                 substitutions: dict[str, str] = {},
+                 notes_currently_on: list[tuple[int,int]] = [],
+                 get_var: Callable = lambda name: None,
+                 set_var: Callable = lambda name, value: None
+                ) -> list[ScriptingAction]:
+
+    def eval_call(node : ast.Call, is_stmt: bool):
         if not isinstance(node.func, ast.Name):
             raise ParseError('Invalid syntax')
         
-        if not node.func.id in supported_calls.keys():
+        calls = {s: supported_calls[s] for s in supported_calls.keys() if supported_calls[s]['is_stmt'] == is_stmt}
+        
+        if not node.func.id in calls.keys():
             raise ParseError('Unknown function: "' + node.func.id + '"')
-        call_desc = supported_calls[node.func.id]
+        call_desc = calls[node.func.id]
         args = [eval_expr(arg) for arg in node.args]
         
         if len(args) < len(call_desc['args']) or \
@@ -218,6 +275,10 @@ def eval_formula(formula: str, is_stmt: bool, substitutions: dict[str, str] = {}
                         ))
                     action_type = loop_action_names[arg]
                     return action_type
+                case 'string':
+                    return str(arg)
+                case 'any':
+                    return arg
                 case other:
                     raise ParseError('Unknown argument type: "{}"'.format(arg_desc['type']))
         
@@ -226,7 +287,24 @@ def eval_formula(formula: str, is_stmt: bool, substitutions: dict[str, str] = {}
             parsed_args.append(args[len(call_desc['args']):])
 
         print('{} {}'.format(node.func.id, args))
-        return call_desc['evaluator'](*parsed_args)
+        return call_desc['evaluator'](get_var, set_var)(*parsed_args)
+    
+    def eval_stmt_call(node):
+        return eval_call(node, True)
+    
+    def eval_expr_call(node):
+        if not isinstance(node.func, ast.Name):
+              raise ParseError('Invalid syntax')
+        
+        if node.func.id == 'isNotePressed':
+            args = [eval_expr(arg) for arg in node.args]
+            if len(args) != 2:
+                raise ParseError('Call isNotePressed expects 2 arguments, but got {}'.format(len(args)))
+            channel = int(args[0])
+            note = int(args[1])
+            return (channel, note) in notes_currently_on
+
+        return eval_call(node, False)
 
     def eval_constant(node):
         return node.value
@@ -237,6 +315,10 @@ def eval_formula(formula: str, is_stmt: bool, substitutions: dict[str, str] = {}
             if not isinstance(m, ast.Expr):
                 raise ParseError('Failed to evaluate: ' + str(substitutions[node.id]))
             return eval_expr(m.value)
+        
+        maybe_var = get_var(node.id)
+        if maybe_var is not None:
+            return maybe_var
         
         raise ParseError('Unknown identifier: "{}"'.format(node.id))
     
@@ -302,6 +384,7 @@ def eval_formula(formula: str, is_stmt: bool, substitutions: dict[str, str] = {}
             ast.BoolOp: eval_bool_op,
             ast.Compare: eval_compare,
             ast.IfExp: eval_if_expr,
+            ast.Call: eval_expr_call
         }
 
         for ast_type, evaluator in evaluators.items():
@@ -364,12 +447,33 @@ def eval_formula(formula: str, is_stmt: bool, substitutions: dict[str, str] = {}
 def test():
     def check_eq(a, b):
         if (a != b):
-            raise Exception("{} != {}".format(pformat(a), pformat(b)))
-    check_eq(eval_formula('noteOn(1,2,100)', True, {}), [ MIDINoteMessage(1, 2, True, 100) ])
-    check_eq(eval_formula('noteOff(1,2,100)', True, {}), [ MIDINoteMessage(1, 2, False, 100) ])
-    check_eq(eval_formula('cc(1,2,5)', True, {}), [ MIDICCMessage(1, 2, 5) ])
+            raise Exception("{} != {}".format(pformat([str(x) for x in a]), pformat([str(x) for x in b])))
+    check_eq(eval_formula('noteOn(1,2,100)', True), [ MIDINoteMessage(1, 2, True, 100) ])
+    check_eq(eval_formula('noteOff(1,2,100)', True), [ MIDINoteMessage(1, 2, False, 100) ])
+    check_eq(eval_formula('cc(1,2,5)', True), [ MIDICCMessage(1, 2, 5) ])
     check_eq(eval_formula('noteOn(a,b,100)', True, {'a': 1, 'b': 2}), [ MIDINoteMessage(1, 2, True, 100)])
-    check_eq(eval_formula('noteOn(1, 2, 3) if 1 else noteOn(3, 2, 1)', True, {}), [ MIDINoteMessage(1, 2, True, 3)])
-    check_eq(eval_formula('noteOn(1, 2, 3) if 0 else noteOn(3, 2, 1)', True, {}), [ MIDINoteMessage(3, 2, True, 1)])
-    check_eq(eval_formula('loopAction(1, 2, "play")', True, {}), [ LoopAction(LoopActionType.DoPlay.value, 1, 2, []) ])
-    check_eq(eval_formula('loopAction(1, 2, "recordN", 10)', True, {}), [ LoopAction(LoopActionType.DoRecordNCycles.value, 1, 2, [10]) ])
+    check_eq(eval_formula('noteOn(1, 2, 3) if 1 else noteOn(3, 2, 1)', True), [ MIDINoteMessage(1, 2, True, 3)])
+    check_eq(eval_formula('noteOn(1, 2, 3) if 0 else noteOn(3, 2, 1)', True), [ MIDINoteMessage(3, 2, True, 1)])
+    check_eq(eval_formula('loopAction(1, 2, "play")', True), [ LoopAction(LoopActionType.DoPlay.value, 1, 2, []) ])
+    check_eq(eval_formula('loopAction(1, 2, "recordN", 10)', True), [ LoopAction(LoopActionType.DoRecordNCycles.value, 1, 2, [10]) ])
+    check_eq(eval_formula('loopAction(1, 2, "record" if isNotePressed(0, 0) else "play")', True, {}, [(0,0)]),
+                            [ LoopAction(LoopActionType.DoRecord.value, 1, 2, []) ])
+    check_eq(eval_formula('loopAction(1, 2, "record" if isNotePressed(0, 0) else "play")', True, {}, [(0,1)]),
+                            [ LoopAction(LoopActionType.DoPlay.value, 1, 2, []) ])
+    
+    class TestVars():
+        def __init__(self):
+            self.vars = {}
+        def set_var(self, name, value):
+            self.vars[name] = value
+        def get_var(self, name):
+            return self.vars[name]
+    do_set = lambda name, value: vars.set_var(name,value)
+    do_get = lambda name: vars.get_var(name)
+
+    # A small sequence with variables
+    vars = TestVars()
+    eval_formula('set("my_var", 5)', True, set_var=do_set)
+    check_eq(vars.get_var('my_var'), 5)
+    check_eq(eval_formula('noteOn(1, get("my_var"), 127 if get("my_var") > 5 else 126)', True, get_var = do_get),
+        [ MIDINoteMessage(1, 5, True, 126) ])

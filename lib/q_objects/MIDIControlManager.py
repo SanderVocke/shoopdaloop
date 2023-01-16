@@ -139,6 +139,8 @@ def get_builtin_substitutions(msg_bytes):
 class MIDIControlDialect:
     # Names found in formula expressions to be substituted by subformulas.
     substitutions: dict[str, str]
+    # All variables to track for the dialect need to be defined here with a default.
+    variables: dict[str, Any]
     # Rules for handling MIDI input messages.
     input_rules: list[Type[InputRule]]
     # Formulas to be executed when loops change to a particular state.
@@ -154,34 +156,40 @@ class MIDIControlDialect:
 
 builtin_dialects = {
     'AKAI APC Mini': MIDIControlDialect(
-        {   # Substitutions to map buttons to loops and vice versa
+        substitutions = {   # Substitutions to map buttons to loops and vice versa
             'loop_note':  '0 if (track == 0 and loop == 0) else (56-loop*8+track-1)',
             'note_track': 'note % 8 + 1',
             'note_loop':  '7 - (note // 8)',
-            'fader_track': 'controller-48+1', #'controller-48+1 if controller >= 48 and controller < 56'
+            'fader_track': 'controller-48+1',
+            'off': 0,
+            'green': 1, 'blink_green': 2,
+            'red': 3, 'blink_red': 4,
+            'yellow': 5, 'blink_yellow': 6
         },
-        [   # Rules
+        variables = {},
+        input_rules = [   # Rules
             InputRule({
                 MIDIMessageFilterType.IsNoteOn.value: None,
-            }, ['note <= 64'], 'loopAction(note_track, note_loop, "play", 0)'),
+            }, ['note <= 64'], 'loopAction(note_track, note_loop, "select" if isNotePressed(0, 0) else "record" if isNotePressed(0, 0) else "toggle_playing", 0)'),
             InputRule({
                 MIDIMessageFilterType.IsCCKind.value: None,
             }, ['48 <= controller < 56'], 'setVolume(fader_track, value/127.0)')
         ],
-        {
+        loop_state_output_formulas = {
             # Loop states to button colors
-            LoopState.Recording.value: 'noteOn(0, loop_note, 3)',
-            LoopState.Playing.value: 'noteOn(0, loop_note, 1)',
-            LoopState.Stopped.value: 'noteOn(0, loop_note, 0)',
-            LoopState.PlayingMuted.value: 'noteOn(0, loop_note, 0)',
-            # LoopState.WaitStart.value: 'noteOn(0, loop_note, 4)',
-            # LoopState.WaitStop.value: 'noteOn(0, loop_note, 4)',
-            # LoopState.Off.value: 'noteOn(0, loop_note, 0)',
+            LoopState.Recording.value: 'noteOn(0, loop_note, red)',
+            LoopState.Playing.value: 'noteOn(0, loop_note, green)',
+            LoopState.Stopped.value: 'noteOn(0, loop_note, off)',
+            LoopState.Unknown.value: 'noteOn(0, loop_note, off)',
+            LoopState.PlayingMuted.value: 'noteOn(0, loop_note, blink_green)',
+            LoopState.PlayingLiveFX.value: 'noteOn(0, loop_note, yellow)',
+            LoopState.RecordingFX.value: 'noteOn(0, loop_note, blink_red)',
+            LoopState.Empty.value: 'noteOn(0, loop_note, off)',
         },
         # Any unmapped state maps to yellow
-        'noteOn(0, loop_note, 5)',
+        loop_state_default_output_formula = 'noteOn(0, loop_note, 5)',
         # On reset, turn everything off
-        'notesOn(0, 0, 98, 0)',
+        reset_output_formula = 'notesOn(0, 0, 98, 0)',
         )
 }
 
