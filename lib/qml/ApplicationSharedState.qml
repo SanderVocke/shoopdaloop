@@ -14,9 +14,9 @@ Item {
     id: shared
 
     // STATIC
-    property int loops_per_track: 8
-    property int tracks: 8
-    property var loop_managers: {
+    readonly property int loops_per_track: 8
+    readonly property int tracks: 8
+    readonly property var loop_managers: {
         // Nested array of logical loop mgrs per track. Master loop is regarded as the first track.
         var outer, inner
         var managers = []
@@ -26,12 +26,19 @@ Item {
             return () => {
                     actions_on_loop_mgrs_in_track(
                         track, loop, () => {},
-                        (m) => m.doLoopAction(StatesAndActions.LoopActionType.DoStop, [0.0], true)
+                        (m) => m.doLoopAction(StatesAndActions.LoopActionType.DoStop, [0.0], true, false)
                     )
                 }
         }
         var state_changed_closure = (track, loop) => {
             return (state) => midi_control_manager.loop_state_changed(track, loop, state)
+        }
+        var did_loop_action_closure = (track, loop) => {
+            return (action, args, with_soft_sync, propagate_to_selected_loops) => {
+                if (propagate_to_selected_loops) {
+                    shared.propagate_action_to_selected_loops(track, loop, action, args, with_soft_sync)
+                }
+            }
         }
         for(outer = 0; outer < tracks; outer++) {
             var i_managers = []
@@ -42,16 +49,17 @@ Item {
                 // Solo playing in track is handled here
                 mgr.stopOtherLoopsInTrack.connect(stop_others_closure(track, loop))
                 mgr.stateChanged.connect(state_changed_closure(track, loop))
+                mgr.didLoopAction.connect(did_loop_action_closure(track, loop))
                 i_managers.push(mgr)
             }
             managers.push(i_managers)
         }
         return managers
     }
-    property var master_loop_manager: {
+    readonly property var master_loop_manager: {
         return loop_managers[0][0];
     }
-    property var port_managers: {
+    readonly property var port_managers: {
         var managers = []
         for (var i=0; i<tracks+1; i++) {
             var mgr = backend_manager.track_port_managers[i]
@@ -59,6 +67,7 @@ Item {
         }
         return managers
     }
+    readonly property var targeted_loop_manager: targeted_loop !== undefined ? loop_managers[targeted_loop[0]][targeted_loop[1]] : undefined
 
     // TRACKS STATE
     property var track_names: {
@@ -82,6 +91,13 @@ Item {
         }
         return names
     }
+    // Loop selection is useful for doing an action on a group of loops,
+    // or for MIDI controllers to select the loop(s) to operate on.
+    property var selected_loops: [] // list of [track_idx, loop_idx]
+
+    // The "targeted" loop is a special selection which contains only
+    // one loop. It is used for operations on loops w.r.t. another.
+    property var targeted_loop: undefined
 
     // SCENES STATE
     property var scenes: [
@@ -202,7 +218,7 @@ Item {
         }
         execute_actions(script_current_cycle)
         script_playing = true
-        master_loop_manager.doLoopAction(StatesAndActions.LoopActionType.DoPlay, [0.0], false)
+        master_loop_manager.doLoopAction(StatesAndActions.LoopActionType.DoPlay, [0.0], false, false)
     }
     function stop_script() { script_playing = false }
     function execute_actions(script_cycle) {
@@ -244,6 +260,45 @@ Item {
             }
             else {
                 on_other_loop_fn(mgr)
+            }
+        }
+    }
+
+    function select_loop(track_idx, loop_idx) {
+        selected_loops = selected_loops.filter(e => !(e[0] == track_idx && e[1] == loop_idx)).concat([[track_idx, loop_idx]])
+        selected_loopsChanged()
+    }
+
+    function deselect_loop(track_idx, loop_idx) {
+        selected_loops = selected_loops.filter(e => !(e[0] == track_idx && e[1] == loop_idx))
+        selected_loopsChanged()
+    }
+
+    function toggle_loop_selected(track_idx, loop_idx) {
+        if (targeted_loop !== undefined &&
+            targeted_loop[0] == track_idx &&
+            targeted_loop[1] == loop_idx) {
+            targeted_loop = undefined
+        } else if (loop_managers[track_idx][loop_idx].selected) {
+            deselect_loop(track_idx, loop_idx)
+        } else {
+            select_loop(track_idx, loop_idx)
+        }
+    }
+
+    function select_targeted_loop(track_idx, loop_idx) {
+        deselect_loop(track_idx, loop_idx)
+        targeted_loop = [track_idx, loop_idx]
+    }
+
+    function deselect_targeted_loop() {
+        targeted_loop = undefined
+    }
+
+    function propagate_action_to_selected_loops(track, loop, action, args, with_soft_sync) {
+        for (var l of selected_loops) {
+            if (!(track == l[0] && loop == l[1])) {
+                loop_managers[l[0]][l[1]].doLoopAction(action, args, with_soft_sync, false)
             }
         }
     }
@@ -299,9 +354,9 @@ Item {
         for (var track = 1; track <= tracks; track++) {
             for (var loop = 0; loop < loops_per_track; loop++) {
                 if(scenes[idx].loops.find((elem) => elem[0] == track && elem[1] == loop) !== undefined) {
-                    loop_managers[track][loop].doLoopAction(StatesAndActions.LoopActionType.DoPlay, [0.0], true)
+                    loop_managers[track][loop].doLoopAction(StatesAndActions.LoopActionType.DoPlay, [0.0], true, false)
                 } else {
-                    loop_managers[track][loop].doLoopAction(StatesAndActions.LoopActionType.DoStop, [0.0], true)
+                    loop_managers[track][loop].doLoopAction(StatesAndActions.LoopActionType.DoStop, [0.0], true, false)
                 }
             }
         }
@@ -395,7 +450,7 @@ Item {
     function stop_all_except_master() {
         for (var track = 0; track < tracks; track++) {
             for (var loop = 0; loop < loops_per_track; loop++) {
-                loop_managers[track+1][loop].doLoopAction(StatesAndActions.LoopActionType.DoStop, [0.0], true)
+                loop_managers[track+1][loop].doLoopAction(StatesAndActions.LoopActionType.DoStop, [0.0], true, false)
             }
         }
     }
@@ -413,7 +468,7 @@ Item {
         var stop_others_in_track = (track, loop) => {
             for(var idx=0; idx<loop_managers[track].length; idx++) {
                 if(idx != loop) {
-                    loop_managers[track][idx].doLoopAction(StatesAndActions.LoopActionType.DoStop, [0.0], true)
+                    loop_managers[track][idx].doLoopAction(StatesAndActions.LoopActionType.DoStop, [0.0], true, false)
                 }
             }
         }
@@ -422,7 +477,7 @@ Item {
             for(var trk=1; trk<loop_managers.length; trk++) {
                 for(var idx=0; idx<loop_managers[trk].length; idx++) {
                     if(idx != loop || trk != track) {
-                        loop_managers[trk][idx].doLoopAction(StatesAndActions.LoopActionType.DoStop, [0.0], true)
+                        loop_managers[trk][idx].doLoopAction(StatesAndActions.LoopActionType.DoStop, [0.0], true, false)
                     }
                 }
             }
@@ -434,15 +489,15 @@ Item {
                 case 'play':
                     if(action['stop_others'] == 'track') { stop_others_in_track(action['track'], action['loop']) }
                     else if(action['stop_others'] == 'all') { stop_others(action['track'], action['loop']) }
-                    loop_managers[action['track']][action['loop']].doLoopAction(StatesAndActions.LoopActionType.DoPlay, [0.0], true)
+                    loop_managers[action['track']][action['loop']].doLoopAction(StatesAndActions.LoopActionType.DoPlay, [0.0], true, false)
                     break;
                 case 'record':
                     if(action['stop_others'] == 'track') { stop_others_in_track(action['track'], action['loop']) }
                     else if(action['stop_others'] == 'all') { stop_others(action['track'], action['loop']) }
-                    loop_managers[action['track']][action['loop']].doLoopAction(StatesAndActions.LoopActionType.DoRecord, [0.0], true)
+                    loop_managers[action['track']][action['loop']].doLoopAction(StatesAndActions.LoopActionType.DoRecord, [0.0], true, false)
                     break;
                 case 'stop':
-                    loop_managers[action['track']][action['loop']].doLoopAction(StatesAndActions.LoopActionType.DoStop, [0.0], true)
+                    loop_managers[action['track']][action['loop']].doLoopAction(StatesAndActions.LoopActionType.DoStop, [0.0], true, false)
                     break;
             }
             break
@@ -463,6 +518,20 @@ Item {
             midi_control_manager.active_scene_changed(selected_scene)
         }
         function onHovered_sceneChanged() { update_loops_of_hovered_scene() }
+        function onSelected_loopsChanged() {
+            for (var track=0; track < loop_managers.length; track++) {
+                for (var loop=0; loop < loop_managers[track].length; loop++) {
+                    loop_managers[track][loop].selected = (selected_loops.find(e => e[0] == track && e[1] == loop) !== undefined)
+                }
+            }
+        }
+        function onTargeted_loopChanged() {
+            for (var track=0; track < loop_managers.length; track++) {
+                for (var loop=0; loop < loop_managers[track].length; loop++) {
+                    loop_managers[track][loop].targeted = (targeted_loop !== undefined && track == targeted_loop[0] && loop == targeted_loop[1])
+                }
+            }
+        }
     }
 
     Connections {
@@ -476,7 +545,7 @@ Item {
         }
         function onLoopAction(track, loop, action, args) {
             console.log(track, loop, 'action', action, 'args', args)
-            loop_managers[track][loop].doLoopAction(action, args, true)
+            loop_managers[track][loop].doLoopAction(action, args, true, true)
         }
     }
 

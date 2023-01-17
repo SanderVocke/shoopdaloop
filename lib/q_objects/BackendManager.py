@@ -100,7 +100,7 @@ class BackendManager(QObject):
                 self.load_loops_from_file(channel_loop_idxs, filename, None)
                 l.loadedData.emit()
 
-            l.signalLoopAction.connect(lambda action, args, sync: self.do_loops_action(channel_loop_idxs, action, args, sync))
+            l.signalLoopAction.connect(lambda action, args, sync: self.do_backend_loops_action(channel_loop_idxs, action, args, sync))
             l.saveToFile.connect(lambda filename: self.save_loops_to_file(channel_loop_idxs, filename, False))
             l.loadFromFile.connect(lambda filename: load_from_file(filename))
 
@@ -393,7 +393,7 @@ class BackendManager(QObject):
         exit(1)
     
     @pyqtSlot(list, int, list, bool)
-    def do_loops_action(self, loop_idxs, action_id, maybe_args, with_soft_sync):
+    def do_backend_loops_action(self, loop_idxs, action_id, maybe_args, with_soft_sync):
         for loop_idx in loop_idxs:
             if loop_idx < 0 or loop_idx >= self.n_loops:
                 raise ValueError("Backend: loop idx out of range")
@@ -571,7 +571,7 @@ class BackendManager(QObject):
         def do_load():
             try:
                 for idx in range(self.n_loops):
-                    self.do_loops_action([idx], LoopActionType.DoClear.value, [], False)
+                    self.do_backend_loops_action([idx], LoopActionType.DoClear.value, [], False)
 
                 folder = tempfile.mkdtemp()
                 session_data = None

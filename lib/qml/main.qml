@@ -54,6 +54,7 @@ ApplicationWindow {
             port_managers: shared.port_managers.slice(1)
             first_loop_index: 2
             master_loop_manager: shared.master_loop_manager
+            targeted_loop_manager: shared.targeted_loop_manager
             loops_per_track: shared.loops_per_track
             loops_of_selected_scene: shared.loops_of_selected_scene.map(map_loop_pos)
             loops_of_hovered_scene: shared.loops_of_hovered_scene.map(map_loop_pos)
@@ -64,6 +65,8 @@ ApplicationWindow {
                 function onRequest_select_loop(track, loop) { shared.select_loop(track+1, loop) }
                 function onRequest_rename_loop(track, loop, name) { shared.rename_loop(track+1, loop, name) }
                 function onRequest_clear_loop(track, loop) { shared.clear_loop(track+1, loop) }
+                function onRequest_toggle_loop_selected(track, loop) { shared.toggle_loop_selected(track+1, loop) }
+                function onRequest_set_targeted_loop(track, loop) { shared.select_targeted_loop(track+1, loop) }
             }
         }
 
@@ -82,6 +85,7 @@ ApplicationWindow {
             first_index: 0
             maybe_master_loop_idx: 0
             master_loop_manager: shared.master_loop_manager
+            targeted_loop_manager: shared.targeted_loop_manager
             loop_managers: [shared.master_loop_manager]
             ports_manager: shared.port_managers[0]
             loops_of_selected_scene: []
@@ -89,6 +93,8 @@ ApplicationWindow {
             onRenamed: (name) => shared.rename_track(0, name)
             onRequest_rename_loop: (idx, name) => shared.rename_loop(0, idx, name)
             onRequest_clear_loop: (idx) => shared.clear_loop(0, idx)
+            onRequest_toggle_loop_selected: (idx) => shared.toggle_loop_selected(0, idx)
+            onRequest_set_targeted_loop: (idx) => shared.select_targeted_loop(0, idx)
         }
 
         ScenesWidget {

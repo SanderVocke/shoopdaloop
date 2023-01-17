@@ -15,6 +15,7 @@ Item {
     property var loop_managers //2D array (loops per track)
     property var port_managers //1D array (one per track)
     property var master_loop_manager
+    property var targeted_loop_manager
     property var master_loop_idx //[track][loop]
 
     //Arrays of [track, loop]
@@ -26,6 +27,8 @@ Item {
     signal request_select_loop(int track, int loop)
     signal request_rename_loop(int track, int loop, string name)
     signal request_clear_loop(int track, int loop)
+    signal request_toggle_loop_selected(int track, int loop)
+    signal request_set_targeted_loop(int track, int loop)
 
     Rectangle {
         property int x_spacing: 0
@@ -58,6 +61,7 @@ Item {
                         master_loop_manager: tracks.master_loop_manager
                         loop_managers: tracks.loop_managers[index]
                         ports_manager: tracks.port_managers[index]
+                        targeted_loop_manager: tracks.targeted_loop_manager
 
                         function unpack(loops) {
                             var r = []
@@ -74,6 +78,8 @@ Item {
                         onRequest_select_loop: (idx) => tracks.request_select_loop(index, idx)
                         onRequest_rename_loop: (idx, name) => tracks.request_rename_loop(index, idx, name)
                         onRequest_clear_loop: (idx) => tracks.request_clear_loop(index, idx)
+                        onRequest_toggle_loop_selected: (idx) => tracks.request_toggle_loop_selected(index, idx)
+                        onRequest_set_targeted_loop: (idx) => tracks.request_set_targeted_loop(index, idx)
                     }
                 }
             }

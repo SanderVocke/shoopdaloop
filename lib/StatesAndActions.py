@@ -41,7 +41,7 @@ class LoopActionType(Enum):
     DoReRecordFX = -2
     DoPlaySoloInTrack = -3
     DoTogglePlaying = -4 # Toggles between playing/stopped
-    DoSelect = -5
+    DoSelect = -5        # Highlights (a) loop(s) for operating on
 
     names = {
         DoPlay: 'play',

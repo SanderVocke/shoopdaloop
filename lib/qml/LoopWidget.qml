@@ -13,19 +13,20 @@ Item {
     property bool is_in_hovered_scene: false
     property var manager
     property var master_manager
+    property var targeted_loop_manager
     property var ports_manager
     property alias name: statusrect.name
     property string internal_name
 
     property int n_multiples_of_master_length: manager && master_manager ? Math.ceil(manager.length / master_manager.length) : 1
     property int current_cycle: manager && master_manager ? Math.floor(manager.pos / master_manager.length) : 0
-    
-    property alias containsDrag: droparea.containsDrag
 
     signal selected() //directly selected by the user to be activated.
     signal toggle_in_current_scene() //selected by the user to be added/removed to/from the current scene.
     signal request_rename(string name)
     signal request_clear()
+    signal request_toggle_selected()
+    signal request_set_as_targeted()
 
     // Internal
     id : widget
@@ -69,7 +70,9 @@ Item {
                 return default_color;
             }
 
-            if (widget.containsDrag) {
+            if (widget.manager.targeted) {
+                return "orange";
+            } if (widget.manager.selected) {
                 return 'yellow';
             } else if (widget.is_in_hovered_scene) {
                 return 'blue';
@@ -233,8 +236,11 @@ Item {
                     size: iconitem.height
                     y: 0
                     anchors.horizontalCenter: iconitem.horizontalCenter
+                    onDoubleClicked: (event) => {
+                            if (event.button === Qt.LeftButton) { widget.request_set_as_targeted() }
+                        }
                     onClicked: (event) => {
-                            if (event.button === Qt.LeftButton) { contextmenu.popup() }
+                            if (event.button === Qt.LeftButton) { widget.request_toggle_selected() }
                             else if (event.button === Qt.MiddleButton) { widget.toggle_in_current_scene() }
                             else if (event.button === Qt.RightButton) { contextmenu.popup() }
                         }
@@ -297,7 +303,7 @@ Item {
                         color: 'green'
                     }
 
-                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoPlay, [0.0], true) }}
+                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoPlay, [0.0], true, true) }}
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
@@ -358,7 +364,7 @@ Item {
                                         text: "S"
                                     }
                                     onClicked: { if(statusrect.manager) { 
-                                        statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoPlaySoloInTrack, [0.0], true)
+                                        statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoPlaySoloInTrack, [0.0], true, true)
                                         }}
 
                                     ToolTip.delay: 1000
@@ -378,7 +384,7 @@ Item {
                                         text_color: Material.foreground
                                         text: "FX"
                                     }
-                                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoPlayLiveFX, [0.0], true) }}
+                                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoPlayLiveFX, [0.0], true, true) }}
 
                                     ToolTip.delay: 1000
                                     ToolTip.timeout: 5000
@@ -401,30 +407,7 @@ Item {
                         color: 'red'
                     }
 
-                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoRecord, [0.0], true) }}
-                    onPressAndHold: (mouse) => {
-                        var mp = mapToItem(background_focus, mouse.x, mouse.y)
-                        var droppy_component = Qt.createComponent("DraggableRecordIcon.qml")
-                        var droppy = droppy_component.createObject(appWindow, {
-                            x: mp.x - buttongrid.button_width/2,
-                            y: mp.y - buttongrid.button_height/2,
-                            width: buttongrid.button_width,
-                            height: buttongrid.button_height,
-                            draggable_type: 'record_n',
-                            draggable_func: (other_manager) => {
-                                if (statusrect && statusrect.manager) {
-                                    var n_cycles_delay = 0
-                                    var n_cycles_record = 1
-                                    n_cycles_record = Math.ceil(other_manager.length / widget.master_manager.length)
-                                    if (State_helpers.is_playing_state(other_manager.state)) {
-                                        var current_cycle = Math.floor(other_manager.pos / widget.master_manager.length)
-                                        n_cycles_delay = Math.max(0, n_cycles_record - current_cycle - 1)
-                                    }
-                                    statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoRecordNCycles, [n_cycles_delay, n_cycles_record], true)
-                                }
-                            } 
-                        })
-                    }
+                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoRecord, [0.0], true, true) }}
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
@@ -483,23 +466,37 @@ Item {
                                         name: 'record'
                                         color: 'red'
                                         text_color: Material.foreground
-                                        text: recordN.n.toString()
+                                        text: widget.targeted_loop_manager !== undefined ? "->" : recordN.n.toString()
                                         font.pixelSize: size / 2.0
                                     }
 
                                     function execute(n_cycles) {
                                         if (statusrect && statusrect.manager) {
-                                            statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoRecordNCycles, [0.0, n_cycles], true)
+                                            statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoRecordNCycles, [0.0, n_cycles], true, true)
                                         }
                                     }
 
-                                    onClicked: execute(n)
+                                    onClicked: {
+                                        if (widget.targeted_loop_manager === undefined) {
+                                            execute(n)
+                                        } else {
+                                            // A target loop is set. Do the "record together with" functionality.
+                                            var n_cycles_delay = 0
+                                            var n_cycles_record = 1
+                                            n_cycles_record = Math.ceil(widget.targeted_loop_manager.length / widget.master_manager.length)
+                                            if (State_helpers.is_playing_state(widget.targeted_loop_manager.state)) {
+                                                var current_cycle = Math.floor(widget.targeted_loop_manager.pos / widget.master_manager.length)
+                                                n_cycles_delay = Math.max(0, n_cycles_record - current_cycle - 1)
+                                            }
+                                            statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoRecordNCycles, [n_cycles_delay, n_cycles_record], true, true)
+                                        }
+                                    }
                                     onPressAndHold: { recordn_menu.popup() }
 
                                     ToolTip.delay: 1000
                                     ToolTip.timeout: 5000
                                     ToolTip.visible: hovered
-                                    ToolTip.text: "Trigger fixed-length recording. Length (number shown) is the amount of master loop cycles to record. Press and hold this button to change this number."
+                                    ToolTip.text: "Trigger fixed-length recording (usual) or 'record with' (if a target loop is set). 'Record with' will record for one full iteration synced with the target loop. Otherwise, fixed length (number shown) is the amount of master loop cycles to record. Press and hold this button to change this number."
 
                                     // TODO: editable text box instead of fixed options
                                     Menu {
@@ -553,7 +550,7 @@ Item {
                                         var delay = widget.n_multiples_of_master_length - widget.current_cycle - 1
                                         statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoReRecordFX,
                                             [delay, n],
-                                            true)
+                                            true, true)
                                     }}
 
                                     ToolTip.delay: 1000
@@ -577,7 +574,7 @@ Item {
                         color: Material.foreground
                     }
 
-                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoStop, [0.0], true) }}
+                    onClicked: { if(statusrect.manager) { statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoStop, [0.0], true, true) }}
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
@@ -692,6 +689,7 @@ Item {
         property string description: StatesAndActions.LoopState_names[state] ? StatesAndActions.LoopState_names[state] : "Invalid"
 
         signal clicked(var mouse)
+        signal doubleClicked(var mouse)
 
         width: size
         height: size
@@ -769,6 +767,7 @@ Item {
             propagateComposedEvents: true
             acceptedButtons: Qt.RightButton | Qt.MiddleButton | Qt.LeftButton
             onClicked: (mouse) => lsicon.clicked(mouse)
+            onDoubleClicked: (mouse) => lsicon.doubleClicked(mouse)
             id: ma
         }
 
@@ -836,7 +835,7 @@ Item {
             MenuItem {
                 text: "Clear"
                 onClicked: () => {
-                               if (widget.manager) { widget.manager.doLoopAction(StatesAndActions.LoopActionType.DoClear, [], false) }
+                               if (widget.manager) { widget.manager.doLoopAction(StatesAndActions.LoopActionType.DoClear, [], false, true) }
                            }
             }
             MenuItem {
@@ -873,18 +872,6 @@ Item {
 
         function popup () {
             menu.popup()
-        }
-    }
-
-    // Drop area for responding to drag 'n  drop
-    DropArea {
-        id: droparea
-        anchors.fill: parent
-        onDropped: (event) => {
-            if (event.source.draggable_type == 'record_n') {
-                console.log('Record N!')
-                event.source.draggable_func (widget.manager)
-            }
         }
     }
 

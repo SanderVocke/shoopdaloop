@@ -200,11 +200,22 @@ class MIDIController(QObject):
         super(MIDIController, self).__init__(parent)
         self._dialect = dialect
         self._manager = control_manager
+        self._vars = dialect.variables
     
     sendMidi = pyqtSignal(list) # list of byte values
     loopAction = pyqtSignal(int, int, int, list) # track idx, loop idx, LoopActionType value, args
     setPan = pyqtSignal(int, float)
     setVolume = pyqtSignal(int, float)
+
+    def set_var(self, name, value):
+        if name not in self._vars.keys():
+            raise Exception('MIDI dialect attempted to set var {}, which is not in its variables list.'.format(name))
+        self._vars[name] = value
+    
+    def get_var(self, name):
+        if name not in self._vars.keys():
+            raise Exception('MIDI dialect attempted to get var {}, which is not in its variables list.'.format(name))
+        return self._vars[name]
 
     def send_midi_messages(self, messages):
         for msg in messages:
@@ -239,15 +250,33 @@ class MIDIController(QObject):
                 if execute:
                     formulas_to_execute.append(r.formula)
         
-        actions = flatten([eval_formula(f, True, substitutions) for f in formulas_to_execute])
+        actions = flatten([eval_formula(
+            f,
+            True,
+            substitutions,
+            [], # FIXME notes
+            lambda name: self.get_var(name), lambda name, value: self.set_var(name, value)
+            ) for f in formulas_to_execute])
         self.trigger_actions(actions)
     
     @pyqtSlot(int, int, int)
     def loop_state_changed(self, track, index, state):
         if state in self._dialect.loop_state_output_formulas:
-            self.send_midi_messages(eval_formula(self._dialect.loop_state_output_formulas[state], True, {**{'track': track, 'loop': index, 'state': state}, **self._dialect.substitutions}))
+            self.send_midi_messages(eval_formula(
+                self._dialect.loop_state_output_formulas[state],
+                True,
+                {**{'track': track, 'loop': index, 'state': state}, **self._dialect.substitutions},
+                [], # FIXME notes
+                lambda name: self.get_var(name), lambda name, value: self.set_var(name, value)
+                ))
         elif self._dialect.loop_state_default_output_formula:
-            self.send_midi_messages(eval_formula(self._dialect.loop_state_default_output_formula, True, {**{'track': track, 'loop': index, 'state': state}, **self._dialect.substitutions}))
+            self.send_midi_messages(eval_formula(
+                self._dialect.loop_state_default_output_formula,
+                True,
+                {**{'track': track, 'loop': index, 'state': state}, **self._dialect.substitutions},
+                [], # FIXME notes
+                lambda name: self.get_var(name), lambda name, value: self.set_var(name, value)
+                ))
 
     @pyqtSlot(int)
     def active_sripting_section_changed(self, idx):
@@ -260,7 +289,13 @@ class MIDIController(QObject):
     @pyqtSlot()
     def reset(self):
         if self._dialect.reset_output_formula:
-            self.send_midi_messages(eval_formula(self._dialect.reset_output_formula, True, self._dialect.substitutions))
+            self.send_midi_messages(eval_formula(
+                self._dialect.reset_output_formula,
+                True,
+                self._dialect.substitutions,
+                [], # FIXME notes
+                lambda name: self.get_var(name), lambda name, value: self.set_var(name, value)
+                ))
 
 # For communicating with MIDI control/input devices.
 class MIDIControlManager(QObject):

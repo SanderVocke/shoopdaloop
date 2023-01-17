@@ -13,6 +13,7 @@ Item {
     property int maybe_master_loop_idx: -1 //-1 is none
     property var master_loop_manager
     property var loop_managers
+    property var targeted_loop_manager
     property var ports_manager
     property var loop_names
     property string name: ''
@@ -30,6 +31,8 @@ Item {
     signal request_select_loop(int idx)
     signal request_rename_loop(int idx, string name)
     signal request_clear_loop(int idx)
+    signal request_toggle_loop_selected(int idx)
+    signal request_set_targeted_loop(int idx)
 
     function actions_on_loop_mgrs(idx, on_idx_loop_fn, on_other_loop_fn) {
         for(var i = 0; i < track.num_loops; i++) {
@@ -86,6 +89,7 @@ Item {
                         is_in_hovered_scene: track.loops_of_hovered_scene.includes(index)
                         manager: track.loop_managers[index]
                         master_manager : track.master_loop_manager
+                        targeted_loop_manager: track.targeted_loop_manager
                         ports_manager: track.ports_manager
                         name: track.loop_names[index]
                         internal_name: track.name + ' loop ' + (index+1).toString()
@@ -93,6 +97,8 @@ Item {
                         onToggle_in_current_scene: () => { track.toggle_loop_in_scene(index) }
                         onRequest_rename: (name) => { track.request_rename_loop(index, name) }
                         onRequest_clear: () => { track.request_clear_loop(index) }
+                        onRequest_toggle_selected: () => { track.request_toggle_loop_selected(index) }
+                        onRequest_set_as_targeted: () => { track.request_set_targeted_loop(index) }
                     }
                 }
 

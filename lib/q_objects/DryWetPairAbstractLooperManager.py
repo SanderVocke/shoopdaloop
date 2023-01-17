@@ -28,6 +28,8 @@ class DryWetPairAbstractLooperManager(LooperState):
     stopOtherLoopsInTrack = pyqtSignal()
     loadedData = pyqtSignal()
 
+    didLoopAction = pyqtSignal(int, list, bool, bool) # action_id, args, with_soft_sync, propagate_to_selected_loops
+
     def __init__(self, dry_looper, wet_looper, parent=None):
         super(DryWetPairAbstractLooperManager, self).__init__(parent)
         self._parent = parent
@@ -37,8 +39,6 @@ class DryWetPairAbstractLooperManager(LooperState):
         self._force_dry_passthrough = False
 
         self.volumeChanged.connect(self.updateVolumes)
-        # self.panLChanged.connect(self.updatePans)
-        # self.panRChanged.connect(self.updatePans)
 
         # Connections
         for l in [self._wet_looper, self._dry_looper]:
@@ -178,8 +178,8 @@ class DryWetPairAbstractLooperManager(LooperState):
         self.wet().panL = 0.0
         self.wet().panR = 1.0
     
-    @pyqtSlot(int, list, bool)
-    def doLoopAction(self, action_id, args, with_soft_sync):
+    @pyqtSlot(int, list, bool, bool)
+    def doLoopAction(self, action_id, args, with_soft_sync, propagate_to_selected_loops):
         if action_id == LoopActionType.DoPlaySoloInTrack.value:
             self.stopOtherLoopsInTrack.emit()
             action_id = LoopActionType.DoPlay.value
@@ -218,12 +218,14 @@ class DryWetPairAbstractLooperManager(LooperState):
                 dry_args.append(float(LoopState.PlayingMuted.value))
                 force_dry_passthrough = True
         
-        self.wet().doLoopAction(wet_action, wet_args, with_soft_sync)
-        self.dry().doLoopAction(dry_action, dry_args, with_soft_sync)
         if force_dry_passthrough != None:
             self.force_dry_passthrough = force_dry_passthrough
         if force_wet_passthrough != None:
             self.force_wet_passthrough = force_wet_passthrough
+        
+        self.wet().doLoopAction(wet_action, wet_args, with_soft_sync, propagate_to_selected_loops)
+        self.dry().doLoopAction(dry_action, dry_args, with_soft_sync, propagate_to_selected_loops)
+        self.didLoopAction.emit(action_id, args, with_soft_sync, propagate_to_selected_loops)
 
     @pyqtSlot(str)
     def doLoadWetSoundFile(self, filename):
@@ -240,12 +242,12 @@ class DryWetPairAbstractLooperManager(LooperState):
     
     @pyqtSlot(str)
     def doSaveWetToSoundFile(self, filename):
-        self.doLoopAction(LoopActionType.DoStop.value, [0.0], False)
+        self.doLoopAction(LoopActionType.DoStop.value, [0.0], False, False)
         self.wet().save_to_file(filename)
     
     @pyqtSlot(str)
     def doSaveDryToSoundFile(self, filename):
-        self.doLoopAction(LoopActionType.DoStop.value, [0.0], False)
+        self.doLoopAction(LoopActionType.DoStop.value, [0.0], False, False)
         self.dry().save_to_file(filename)
     
     @pyqtSlot(result=str)

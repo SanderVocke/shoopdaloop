@@ -18,7 +18,9 @@ class LooperState(QObject):
     nextStateCountdownChanged = pyqtSignal(int)
     volumeChanged = pyqtSignal(float)
     outputPeakChanged = pyqtSignal(float)
-    
+    selectedChanged = pyqtSignal(bool)
+    targetedChanged = pyqtSignal(bool)
+
     # Other signals
     cycled = pyqtSignal()
     passed_halfway = pyqtSignal()
@@ -33,6 +35,8 @@ class LooperState(QObject):
         self._volume = 1.0
         self._output_peak = 0.0
         self._get_waveforms_fn = lambda from_sample, to_sample, samples_per_bin: {}
+        self._selected = False
+        self._targeted = False
 
     ######################
     # PROPERTIES
@@ -115,6 +119,30 @@ class LooperState(QObject):
         if self._output_peak != p:
             self._output_peak = p
             self.outputPeakChanged.emit(p)
+
+    # selected: whether the loop is in the current selection.
+    # this is not something known to the back-end.
+    selectedChanged = pyqtSignal(bool)
+    @pyqtProperty(bool, notify=selectedChanged)
+    def selected(self):
+        return self._selected
+    @selected.setter
+    def selected(self, p):
+        if self._selected != p:
+            self._selected = p
+            self.selectedChanged.emit(p)
+    
+    # targeted: whether the loop is the current "target".
+    # this is not something known to the back-end.
+    targetedChanged = pyqtSignal(bool)
+    @pyqtProperty(bool, notify=targetedChanged)
+    def targeted(self):
+        return self._targeted
+    @targeted.setter
+    def targeted(self, p):
+        if self._targeted != p:
+            self._targeted = p
+            self.targetedChanged.emit(p)
 
     @pyqtSlot(result=str)
     def serialize_session_state(self):
