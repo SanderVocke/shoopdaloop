@@ -42,6 +42,7 @@ class LoopActionType(Enum):
     DoPlaySoloInTrack = -3
     DoTogglePlaying = -4 # Toggles between playing/stopped
     DoSelect = -5        # Highlights (a) loop(s) for operating on
+    DoTarget = -6        # Selects the targeted loop
 
     names = {
         DoPlay: 'play',
@@ -55,7 +56,8 @@ class LoopActionType(Enum):
         DoClear: 'clear',
         SetLoopVolume: 'set_volume',
         DoTogglePlaying: 'toggle_playing',
-        DoSelect: 'select'
+        DoSelect: 'select',
+        DoTarget: 'target'
     }
 
 class PortActionType(Enum):

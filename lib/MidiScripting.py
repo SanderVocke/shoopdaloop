@@ -67,25 +67,28 @@ class MIDICCMessage(MIDIMessage):
         )
 
 class LoopAction(ScriptingAction):
-    def __init__(self, action_type, track_idx, loop_idx, args):
+    def __init__(self, action_type, track_idx, loop_idx, args, propagate_to_selected):
         ScriptingAction.__init__(self)
         self.action_type = action_type
         self.track_idx = track_idx
         self.loop_idx = loop_idx
         self.args = args
+        self.propagate_to_selected = propagate_to_selected
 
     def __eq__(self, other):
         return self.action_type == other.action_type and \
                self.track_idx == other.track_idx and \
                self.loop_idx == other.loop_idx and \
-               self.args == other.args
+               self.args == other.args and \
+               self.propagate_to_selected == other.propagate_to_selected
     
     def __str__(self):
-        return 'Loop action: type {}, track {}, loop {}, args {}'.format(
+        return 'Loop action: type {}, track {}, loop {}, args {}, propagate {}'.format(
             self.action_type,
             self.track_idx,
             self.loop_idx,
-            pformat(self.args)
+            pformat(self.args),
+            self.propagate_to_selected
         )
 
 
@@ -188,11 +191,12 @@ supported_calls = {
             {'name': 'track_idx', 'type': 'num' },
             {'name': 'loop_idx', 'type': 'num' },
             {'name': 'action', 'type': 'loop_action_str' },
+            {'name': 'propagate_to_selected', 'type': 'bool'}
         ],
         'may_have_additional_args': True,
         'description': 'Perform an action on a loop.',
-        'evaluator':   lambda get_var, set_var: lambda track_idx, loop_idx, action, rest: [
-            LoopAction(action, int(track_idx), int(loop_idx), rest)
+        'evaluator':   lambda get_var, set_var: lambda track_idx, loop_idx, action, propagate_to_selected, rest: [
+            LoopAction(action, int(track_idx), int(loop_idx), rest, bool(propagate_to_selected))
             ]
     },
     'setVolume': {
@@ -454,12 +458,12 @@ def test():
     check_eq(eval_formula('noteOn(a,b,100)', True, {'a': 1, 'b': 2}), [ MIDINoteMessage(1, 2, True, 100)])
     check_eq(eval_formula('noteOn(1, 2, 3) if 1 else noteOn(3, 2, 1)', True), [ MIDINoteMessage(1, 2, True, 3)])
     check_eq(eval_formula('noteOn(1, 2, 3) if 0 else noteOn(3, 2, 1)', True), [ MIDINoteMessage(3, 2, True, 1)])
-    check_eq(eval_formula('loopAction(1, 2, "play")', True), [ LoopAction(LoopActionType.DoPlay.value, 1, 2, []) ])
-    check_eq(eval_formula('loopAction(1, 2, "recordN", 10)', True), [ LoopAction(LoopActionType.DoRecordNCycles.value, 1, 2, [10]) ])
-    check_eq(eval_formula('loopAction(1, 2, "record" if isNotePressed(0, 0) else "play")', True, {}, [(0,0)]),
-                            [ LoopAction(LoopActionType.DoRecord.value, 1, 2, []) ])
-    check_eq(eval_formula('loopAction(1, 2, "record" if isNotePressed(0, 0) else "play")', True, {}, [(0,1)]),
-                            [ LoopAction(LoopActionType.DoPlay.value, 1, 2, []) ])
+    check_eq(eval_formula('loopAction(1, 2, "play", False)', True), [ LoopAction(LoopActionType.DoPlay.value, 1, 2, [], False) ])
+    check_eq(eval_formula('loopAction(1, 2, "recordN", True, 10)', True), [ LoopAction(LoopActionType.DoRecordNCycles.value, 1, 2, [10], True) ])
+    check_eq(eval_formula('loopAction(1, 2, "record" if isNotePressed(0, 0) else "play", True)', True, {}, [(0,0)]),
+                            [ LoopAction(LoopActionType.DoRecord.value, 1, 2, [], True) ])
+    check_eq(eval_formula('loopAction(1, 2, "record" if isNotePressed(0, 0) else "play", False)', True, {}, [(0,1)]),
+                            [ LoopAction(LoopActionType.DoPlay.value, 1, 2, [], False) ])
     
     class TestVars():
         def __init__(self):
