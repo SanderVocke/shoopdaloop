@@ -241,6 +241,10 @@ class DryWetPairAbstractLooperManager(LooperState):
         self.doLoadWetSoundFile(filename)
     
     @pyqtSlot(str)
+    def doLoadMidiFile(self, filename):
+        self.dry().load_midi_file(filename)
+    
+    @pyqtSlot(str)
     def doSaveWetToSoundFile(self, filename):
         self.doLoopAction(LoopActionType.DoStop.value, [0.0], False, False)
         self.wet().save_to_file(filename)
@@ -265,3 +269,7 @@ class DryWetPairAbstractLooperManager(LooperState):
         for key in dry.keys():
             retval['dry_{}'.format(key)] = dry[key]
         return retval
+
+    @pyqtSlot(result=list)
+    def get_midi(self):
+        return self.dry_looper.get_midi()

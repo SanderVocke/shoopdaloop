@@ -5,6 +5,8 @@ import QtQuick.Controls.Material 2.15
 Canvas {
     id: cnv
     property var waveform_data: []
+    property var midi_data: []
+    property int length_samples
     property real waveform_data_max
     property real min_db: -60.0
     property real max_db: 0.0
@@ -21,11 +23,13 @@ Canvas {
     }
 
     onWaveform_dataChanged: dirty = true
+    onMidi_dataChanged: dirty = true
     onWaveform_data_maxChanged: dirty = true
     onMin_dbChanged: dirty = true
     onMax_dbChanged: dirty = true
     onWidthChanged: dirty = true
     onHeightChanged: dirty = true
+    onLength_samplesChanged: dirty = true
     
     onPaint: {
         var ctx = getContext("2d");
@@ -43,6 +47,16 @@ Canvas {
                 (1.0-normalized)/2*height,
                 1,
                 normalized*height
+            )
+        }
+
+        ctx.fillStyle = Qt.rgba(0, 1, 1, 1);
+        for(var idx=0; idx < midi_data.length; idx++) {
+            ctx.fillRect(
+                midi_data[idx]['time'],
+                0,
+                1,
+                height
             )
         }
 

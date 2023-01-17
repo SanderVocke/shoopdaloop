@@ -829,8 +829,12 @@ Item {
                 onClicked: () => { savedialog.save_wet = true; savedialog.open() }
             }
             MenuItem {
-                text: "Load from file..."
+                text: "Load audio file..."
                 onClicked: () => loaddialog.open()
+            }
+            MenuItem {
+                text: "Load MIDI file..."
+                onClicked: () => midiloaddialog.open()
             }
             MenuItem {
                 text: "Clear"
@@ -867,7 +871,17 @@ Item {
                 var filename = selectedFile.toString().replace('file://', '');
                 widget.manager.doLoadSoundFile(filename)
             }
+        }
 
+        FileDialog {
+            id: midiloaddialog
+            fileMode: FileDialog.OpenFile
+            acceptLabel: 'Load'
+            nameFilters: ["Midi files (*.mid)"]
+            onAccepted: {
+                var filename = selectedFile.toString().replace('file://', '');
+                widget.manager.doLoadMidiFile(filename)
+            }
         }
 
         function popup () {
@@ -964,7 +978,8 @@ Item {
                     waveform_data_max: 1.0
                     min_db: -50.0
                     manager: window.manager
-                    samples_per_pixel: manager.length / width
+                    samples_per_waveform_pixel: manager.length / width
+                    length_samples: manager.length
                     anchors.fill: parent
 
                     Connections {

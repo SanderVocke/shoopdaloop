@@ -174,6 +174,28 @@ unsigned get_loop_data_rms(
     float **data_out
 );
 
+// Get a copy of a loop's MIDI data.
+// The binary format of the MIDI buffer is a contiguous sequence of events
+// each constructed as follows:
+// - uint32_t time
+// - size_t   size
+// - followed by [size] data bytes.
+// Caller is responsible for freeing the returned pointer.
+// returns length.
+unsigned get_loop_midi_data(
+    unsigned loop_idx,
+    unsigned char **data_out
+);
+
+// Overwrite a loop's MIDI data and update its length.
+// For the binary format, see get_loop_midi_data.
+unsigned set_loop_midi_data(
+    unsigned loop_idx,
+    unsigned char *data,
+    unsigned data_len,
+    unsigned new_loop_len
+);
+
 // Set the global storage lock.
 // Any nonzero value is "locked".
 // Use with care: when set the storage lock will prevent

@@ -35,6 +35,7 @@ class LooperState(QObject):
         self._volume = 1.0
         self._output_peak = 0.0
         self._get_waveforms_fn = lambda from_sample, to_sample, samples_per_bin: {}
+        self._get_midi_fn = lambda: []
         self._selected = False
         self._targeted = False
 
@@ -161,6 +162,13 @@ class LooperState(QObject):
     def set_get_waveforms_fn(self, fn):
         self._get_waveforms_fn = fn
     
+    def set_get_midi_fn(self, fn):
+        self._get_midi_fn = fn
+    
     @pyqtSlot(int, int, int, result='QVariant')
     def get_waveforms(self, from_sample, to_sample, samples_per_bin):
         return self._get_waveforms_fn (from_sample, to_sample, samples_per_bin)
+    
+    @pyqtSlot(result=list)
+    def get_midi(self):
+        return self._get_midi_fn()

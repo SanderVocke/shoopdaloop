@@ -19,6 +19,7 @@ class NChannelAbstractLooperManager(LooperState):
     signalLoopAction = pyqtSignal(int, list, bool, bool) # action_id, args, with_soft_sync, propagate_to_selected_loops
     saveToFile = pyqtSignal(str)
     loadFromFile = pyqtSignal(str)
+    loadMidiFile = pyqtSignal(str)
     loadedData = pyqtSignal()
 
     def __init__(self, channel_loopers, parent=None):
@@ -78,6 +79,10 @@ class NChannelAbstractLooperManager(LooperState):
     def load_from_file(self, filename):
         self.loadFromFile.emit(filename)
     
+    @pyqtSlot(str)
+    def load_midi_file(self, filename):
+        self.loadMidiFile.emit(filename)
+    
     @pyqtSlot(int, int, int, result='QVariant')
     def get_waveforms(self, from_sample, to_sample, samples_per_bin):
         channel_results = [chan.get_waveforms(from_sample, to_sample, samples_per_bin) for chan in self._channel_loopers]
@@ -87,5 +92,9 @@ class NChannelAbstractLooperManager(LooperState):
                 # rename the keys
                 retval['chan_{}_{}'.format(idx, key)] = r[key]
         return retval
+    
+    @pyqtSlot(result=list)
+    def get_midi(self):
+        return self._channel_loopers[0].get_midi()
         
             

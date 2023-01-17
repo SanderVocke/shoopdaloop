@@ -8,7 +8,7 @@ typedef jack_midi_event_t midi_event_t;
 
 typedef struct _midi_event_metadata_t {
     jack_nframes_t time;
-    size_t         size;
+    uint32_t       size;
 } midi_event_metadata_t;
 
 constexpr size_t typical_midi_message_size =
@@ -17,10 +17,38 @@ constexpr size_t typical_midi_message_size =
 struct MIDIRingBuffer {
     std::vector<uint8_t> data;
     size_t n_events;
-    size_t tail;
-    size_t head;
-    size_t head_start;
+    size_t tail; // Oldest event start
+    size_t head; // Write position
+    size_t head_start; // Youngest event start
     int32_t cursor;
+
+    uint8_t *copy_bytes(unsigned *length_out) {
+        *length_out = data.size() - bytes_available();
+        uint8_t *rval = (uint8_t*)malloc((size_t)*length_out);
+        for(size_t idx=0; idx < *length_out; idx++) {
+            rval[idx] = data[(idx + tail) % data.size()];
+        }
+        return rval;
+    }
+
+    void adopt_bytes(uint8_t *bytes, unsigned length) {
+        if (length > data.size()) {
+            data.resize(length);
+        }
+        memcpy(data.data(), bytes, (size_t) length);
+        tail = 0;
+        head = (size_t) length;
+        head_start = 0;
+        n_events = 0;
+
+        // Find start of last message
+        while ((head_start + peek_metadata(head_start, true)->size + sizeof (midi_event_metadata_t)) < head) {
+            head_start += (peek_metadata(head_start, true)->size + sizeof (midi_event_metadata_t));
+            n_events++;
+        }
+
+        reset_cursor();
+    }
 
     size_t bytes_available() {
         return data.size() - (normalize_idx(head) - normalize_idx(tail));
@@ -31,8 +59,8 @@ struct MIDIRingBuffer {
             (data.size() - (tail - idx));
     }
 
-    midi_event_metadata_t* peek_metadata(size_t data_byte_offset) {
-        return n_events > 0 ?
+    midi_event_metadata_t* peek_metadata(size_t data_byte_offset, bool ignore_n_events = false) {
+        return (ignore_n_events || n_events > 0) ?
             (midi_event_metadata_t*) &(data[data_byte_offset]) :
             nullptr;
     }

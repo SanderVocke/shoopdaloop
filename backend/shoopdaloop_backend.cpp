@@ -129,6 +129,8 @@ UpdateCallback g_update_cb;
 std::thread g_reporting_thread;
 std::vector<MIDIRingBuffer> g_loop_midi_buffers;
 
+constexpr unsigned g_midi_ring_buf_size = 81920;
+
 // A structure of atomic scalars is used to communicate the latest
 // state back from the Jack processing thread to the main thread.
 struct atomic_state {
@@ -640,7 +642,7 @@ jack_client_t* initialize(
         g_loops_soft_sync_mapping(i) = loops_soft_sync_mapping[i];
         g_loop_volumes(i) = 1.0f;
         g_atomic_state.loop_n_output_events_since_last_update[i] = 0;
-        g_loop_midi_buffers[i] = MIDIRingBuffer(81920);
+        g_loop_midi_buffers[i] = MIDIRingBuffer(g_midi_ring_buf_size);
     }
     
     // Initialize ports
@@ -1171,6 +1173,37 @@ unsigned get_loop_data_rms(
 
     *data_out = bins;
     return n_bins;
+}
+
+unsigned get_loop_midi_data(
+    unsigned loop_idx,
+    unsigned char **data_out
+) {
+    unsigned len;
+    *data_out = g_loop_midi_buffers[loop_idx].copy_bytes(&len);
+    return len;
+}
+
+unsigned set_loop_midi_data(
+    unsigned loop_idx,
+    unsigned char *data,
+    unsigned data_len,
+    unsigned new_loop_len
+) {
+    MIDIRingBuffer temp(g_midi_ring_buf_size);
+    temp.adopt_bytes(data, data_len);
+
+    g_loop_midi_buffers[loop_idx] = temp;
+
+    std::atomic<bool> finished = false;
+    push_command([loop_idx, new_loop_len, &finished]() {
+        // TODO: check that we are not recording, this may be messed up by the storage lock
+        g_lengths[0](loop_idx) = g_lengths[1](loop_idx) = new_loop_len;
+        finished = true;
+    });
+    while(!finished && g_loops_fn) {}
+
+    return 0;
 }
 
 } //extern "C"

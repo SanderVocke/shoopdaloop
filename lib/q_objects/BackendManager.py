@@ -12,7 +12,7 @@ from lib.StatesAndActions import *
 from lib.state_helpers import *
 from collections import OrderedDict
 from third_party.pyjacklib import jacklib
-from functools import partial
+from functools import partial, reduce
 from threading import Thread
 
 from .LooperState import LooperState
@@ -32,6 +32,8 @@ import shutil
 import tempfile
 import tarfile
 from copy import copy
+
+import mido
 
 from pprint import *
 
@@ -89,6 +91,7 @@ class BackendManager(QObject):
             looper.set_get_waveforms_fn(lambda from_sample, to_sample, samples_per_bin, idx=idx: {
                 'waveform': self.get_loop_rms(idx, from_sample, to_sample, samples_per_bin)
             })
+            looper.set_get_midi_fn(lambda idx=idx: self.get_loop_midi_messages(idx))
 
         def create_stereo_looper(idx):
 
@@ -99,10 +102,18 @@ class BackendManager(QObject):
             def load_from_file (filename):
                 self.load_loops_from_file(channel_loop_idxs, filename, None)
                 l.loadedData.emit()
+            
+            def load_midi_file (filename):
+                self.load_loop_midi_from_file(channel_loop_idxs[0], filename)
+                for i in channel_loop_idxs[1:]:
+                    self._channel_looper_managers[i].length = self._channel_looper_managers[0].length
+                l.length = self._channel_looper_managers[0].length
+                l.loadedData.emit()
 
             l.signalLoopAction.connect(lambda action, args, sync: self.do_backend_loops_action(channel_loop_idxs, action, args, sync))
             l.saveToFile.connect(lambda filename: self.save_loops_to_file(channel_loop_idxs, filename, False))
             l.loadFromFile.connect(lambda filename: load_from_file(filename))
+            l.loadMidiFile.connect(lambda filename: load_midi_file(filename))
 
             return l
         
@@ -475,6 +486,62 @@ class BackendManager(QObject):
         # loop_datas is now a Nx2 array, reshape to 2xN
         data = np.swapaxes(loop_datas, 0, 1)
         sf.write(filename, data, backend.get_sample_rate())
+    
+    @pyqtSlot(int, str)
+    def load_loop_midi_from_file(self, loop_idx, filename):
+        mido_file = mido.MidiFile(filename)
+        mido_msgs = [msg for msg in mido_file]
+        new_loop_len = int(mido_file.length * self.sample_rate) # TODO ceil?
+        def backend_msg_size(mido_msg):
+            return 4 + 4 + len(mido_msg.bytes()) # time + size + data
+        total_bytes = reduce(lambda a, b: a+b, [backend_msg_size(msg) for msg in mido_msgs])
+        total_time = 0.0
+        
+        c_data = (c_ubyte * total_bytes)()
+        c_data_idx = 0
+        for msg in mido_msgs:
+            msg_bytes = msg.bytes()
+
+            def append_uint32(val, byte_offset):
+                addr = addressof(c_data) + byte_offset
+                uint_ptr = cast(addr, POINTER(c_uint32))
+                uint_ptr[0] = int(val)
+
+            total_time += msg.time
+            append_uint32(int(total_time * self.sample_rate), c_data_idx)
+            c_data_idx += 4
+            append_uint32(len(msg_bytes), c_data_idx)
+            c_data_idx += 4
+            for i in range(len(msg_bytes)):
+                c_data[c_data_idx] = msg_bytes[i]
+                c_data_idx += 1
+        
+        backend.set_loop_midi_data(
+            loop_idx,
+            c_data,
+            c_uint(c_data_idx),
+            new_loop_len
+        )
+    
+    @pyqtSlot(int, result=list)
+    def get_loop_midi_messages(self, loop_idx):
+        c_data_p = POINTER(c_ubyte)
+        c_data = c_data_p()
+        n_bytes = backend.get_loop_midi_data(loop_idx, byref(c_data))
+        msg_start = 0
+        retval = []
+        while msg_start < n_bytes:
+            time_samples = int(cast(addressof(c_data.contents) + msg_start, POINTER(c_uint32))[0])
+            size = int(cast(addressof(c_data.contents) + msg_start + 4, POINTER(c_uint32))[0])
+            msg_bytes = [int(c_data[msg_start + 8 + idx]) for idx in range(size)]
+            msg = {
+                'time': time_samples,
+                'bytes': msg_bytes
+            }
+            retval.append(msg)
+            msg_start += 8 + size
+        backend.shoopdaloop_free(cast(c_data, c_void_p))
+        return retval
     
     @pyqtSlot(list, str)
     def load_loops_from_file(self, idxs, filename, maybe_override_length):
