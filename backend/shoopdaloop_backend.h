@@ -189,12 +189,17 @@ unsigned get_loop_midi_data(
 
 // Overwrite a loop's MIDI data and update its length.
 // For the binary format, see get_loop_midi_data.
+// The length of the loop should be set separately.
 unsigned set_loop_midi_data(
     unsigned loop_idx,
     unsigned char *data,
-    unsigned data_len,
-    unsigned new_loop_len
+    unsigned data_len
 );
+
+// TODO: extend for arbitrary sample range
+void set_loops_length(unsigned *loop_idxs,
+                      unsigned n_loop_idxs,
+                      unsigned length);
 
 // Set the global storage lock.
 // Any nonzero value is "locked".

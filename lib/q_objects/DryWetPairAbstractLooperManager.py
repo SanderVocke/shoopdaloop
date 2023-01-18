@@ -27,6 +27,7 @@ class DryWetPairAbstractLooperManager(LooperState):
     # Additional signals which have special handling
     stopOtherLoopsInTrack = pyqtSignal()
     loadedData = pyqtSignal()
+    loadMidiFile = pyqtSignal(str)
 
     didLoopAction = pyqtSignal(int, list, bool, bool) # action_id, args, with_soft_sync, propagate_to_selected_loops
 
@@ -273,3 +274,7 @@ class DryWetPairAbstractLooperManager(LooperState):
     @pyqtSlot(result=list)
     def get_midi(self):
         return self.dry_looper.get_midi()
+    
+    @pyqtSlot(str)
+    def doLoadMidiFile(self, filename):
+        self.loadMidiFile.emit(filename)

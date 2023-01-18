@@ -1187,23 +1187,27 @@ unsigned get_loop_midi_data(
 unsigned set_loop_midi_data(
     unsigned loop_idx,
     unsigned char *data,
-    unsigned data_len,
-    unsigned new_loop_len
+    unsigned data_len
 ) {
     MIDIRingBuffer temp(g_midi_ring_buf_size);
     temp.adopt_bytes(data, data_len);
 
     g_loop_midi_buffers[loop_idx] = temp;
+    return 0;
+}
 
+void set_loops_length(unsigned *loop_idxs,
+                      unsigned n_loop_idxs,
+                      unsigned length) {
     std::atomic<bool> finished = false;
-    push_command([loop_idx, new_loop_len, &finished]() {
+    push_command([loop_idxs, length, n_loop_idxs, &finished]() {
         // TODO: check that we are not recording, this may be messed up by the storage lock
-        g_lengths[0](loop_idx) = g_lengths[1](loop_idx) = new_loop_len;
+        for(size_t idx=0; idx<n_loop_idxs; idx++) {
+            g_lengths[0](loop_idxs[idx]) = g_lengths[1](loop_idxs[idx]) = length;
+        }
         finished = true;
     });
     while(!finished && g_loops_fn) {}
-
-    return 0;
 }
 
 } //extern "C"

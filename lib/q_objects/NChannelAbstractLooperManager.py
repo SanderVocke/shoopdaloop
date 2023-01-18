@@ -19,7 +19,6 @@ class NChannelAbstractLooperManager(LooperState):
     signalLoopAction = pyqtSignal(int, list, bool, bool) # action_id, args, with_soft_sync, propagate_to_selected_loops
     saveToFile = pyqtSignal(str)
     loadFromFile = pyqtSignal(str)
-    loadMidiFile = pyqtSignal(str)
     loadedData = pyqtSignal()
 
     def __init__(self, channel_loopers, parent=None):
@@ -27,15 +26,16 @@ class NChannelAbstractLooperManager(LooperState):
         self._channel_loopers = channel_loopers
 
         # Sync our own state from the first looper.
+        first_looper = self._channel_loopers[0]
+        first_looper.posChanged.connect(lambda v: NChannelAbstractLooperManager.pos.fset(self, v))
+        first_looper.lengthChanged.connect(lambda v: NChannelAbstractLooperManager.length.fset(self, v))
+        first_looper.stateChanged.connect(lambda v: NChannelAbstractLooperManager.state.fset(self, v))
+        first_looper.nextStateChanged.connect(lambda v: NChannelAbstractLooperManager.next_state.fset(self, v))
+        first_looper.nextStateCountdownChanged.connect(lambda v: NChannelAbstractLooperManager.next_state_countdown.fset(self, v))
+        first_looper.volumeChanged.connect(lambda v: NChannelAbstractLooperManager.volume.fset(self, v))
+        first_looper.outputPeakChanged.connect(lambda v: NChannelAbstractLooperManager.outputPeak.fset(self, maximum_output_peak(self.channel_loopers)))
         for l in self._channel_loopers:
-            first_looper = self._channel_loopers[0]
-            first_looper.posChanged.connect(lambda v: NChannelAbstractLooperManager.pos.fset(self, v))
-            first_looper.lengthChanged.connect(lambda v: NChannelAbstractLooperManager.length.fset(self, v))
-            first_looper.stateChanged.connect(lambda v: NChannelAbstractLooperManager.state.fset(self, v))
-            first_looper.nextStateChanged.connect(lambda v: NChannelAbstractLooperManager.next_state.fset(self, v))
-            first_looper.nextStateCountdownChanged.connect(lambda v: NChannelAbstractLooperManager.next_state_countdown.fset(self, v))
-            first_looper.volumeChanged.connect(lambda v: NChannelAbstractLooperManager.volume.fset(self, v))
-            first_looper.outputPeakChanged.connect(lambda v: NChannelAbstractLooperManager.outputPeak.fset(self, maximum_output_peak(self.channel_loopers)))
+            
             self.state = first_looper.state
             self.length = first_looper.length
             self.next_state = first_looper.next_state
@@ -78,10 +78,6 @@ class NChannelAbstractLooperManager(LooperState):
     @pyqtSlot(str)
     def load_from_file(self, filename):
         self.loadFromFile.emit(filename)
-    
-    @pyqtSlot(str)
-    def load_midi_file(self, filename):
-        self.loadMidiFile.emit(filename)
     
     @pyqtSlot(int, int, int, result='QVariant')
     def get_waveforms(self, from_sample, to_sample, samples_per_bin):

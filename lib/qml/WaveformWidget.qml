@@ -53,7 +53,7 @@ Canvas {
         ctx.fillStyle = Qt.rgba(0, 1, 1, 1);
         for(var idx=0; idx < midi_data.length; idx++) {
             ctx.fillRect(
-                midi_data[idx]['time'],
+                midi_data[idx]['time'] / length_samples * width,
                 0,
                 1,
                 height

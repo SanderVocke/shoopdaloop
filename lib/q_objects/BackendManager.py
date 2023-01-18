@@ -93,39 +93,53 @@ class BackendManager(QObject):
             })
             looper.set_get_midi_fn(lambda idx=idx: self.get_loop_midi_messages(idx))
 
-        def create_stereo_looper(idx):
+        def channels_for_stereo(stereo_idx):
+            return [stereo_idx*2, stereo_idx*2+1]
 
-            channel_loop_idxs = [idx*2, idx*2+1]
+        def create_stereo_looper(idx):
+            channel_loop_idxs = channels_for_stereo(idx)
             l = NChannelAbstractLooperManager(
                 [self._channel_looper_managers[i] for i in channel_loop_idxs], parent=self)
             
             def load_from_file (filename):
                 self.load_loops_from_file(channel_loop_idxs, filename, None)
                 l.loadedData.emit()
-            
-            def load_midi_file (filename):
-                self.load_loop_midi_from_file(channel_loop_idxs[0], filename)
-                for i in channel_loop_idxs[1:]:
-                    self._channel_looper_managers[i].length = self._channel_looper_managers[0].length
-                l.length = self._channel_looper_managers[0].length
-                l.loadedData.emit()
 
             l.signalLoopAction.connect(lambda action, args, sync: self.do_backend_loops_action(channel_loop_idxs, action, args, sync))
             l.saveToFile.connect(lambda filename: self.save_loops_to_file(channel_loop_idxs, filename, False))
             l.loadFromFile.connect(lambda filename: load_from_file(filename))
-            l.loadMidiFile.connect(lambda filename: load_midi_file(filename))
 
             return l
+        
+        def dry_wet_for_logical(logical_idx):
+            return [logical_idx*2, logical_idx*2+1]
+        
+        def channels_for_logical(logical_idx):
+            dry_wet = dry_wet_for_logical(logical_idx)
+            return channels_for_stereo(dry_wet[0]) + channels_for_stereo(dry_wet[1])
         
         self._stereo_looper_managers = [
             create_stereo_looper(idx) for idx in range(int(len(self._channel_looper_managers)/2))
         ]
 
         def create_logical_looper(idx):
-            l = DryWetPairAbstractLooperManager(
-                self._stereo_looper_managers[idx*2],
-                self._stereo_looper_managers[idx*2+1]
-            , parent=self)
+            dry_wet = dry_wet_for_logical(idx)
+            channels = channels_for_logical(idx)
+            l = DryWetPairAbstractLooperManager(self._stereo_looper_managers[dry_wet[0]],
+                                                self._stereo_looper_managers[dry_wet[1]],
+                                                parent=self)
+
+            def load_midi_file (filename):
+                mgrs = [self._channel_looper_managers[idx] for idx in channels]
+                print("channels: {}".format(channels))
+                new_length = self.load_loop_midi_from_file(channels_for_stereo(dry_wet[0])[0], filename)
+                backend_idxs = (c_uint * len(channels))()
+                for i,idx in enumerate(channels):
+                    backend_idxs[i] = idx
+                backend.set_loops_length(backend_idxs, len(channels), new_length)
+                l.loadedData.emit()
+            
+            l.loadMidiFile.connect(lambda filename: load_midi_file(filename))
             
             return l
         
@@ -487,7 +501,9 @@ class BackendManager(QObject):
         data = np.swapaxes(loop_datas, 0, 1)
         sf.write(filename, data, backend.get_sample_rate())
     
-    @pyqtSlot(int, str)
+    # Load MIDI data. Will not update the loop length, but the MIDI length
+    # in samples is returned.
+    @pyqtSlot(int, str, result=int)
     def load_loop_midi_from_file(self, loop_idx, filename):
         mido_file = mido.MidiFile(filename)
         mido_msgs = [msg for msg in mido_file]
@@ -519,9 +535,10 @@ class BackendManager(QObject):
         backend.set_loop_midi_data(
             loop_idx,
             c_data,
-            c_uint(c_data_idx),
-            new_loop_len
+            c_uint(c_data_idx)
         )
+
+        return new_loop_len
     
     @pyqtSlot(int, result=list)
     def get_loop_midi_messages(self, loop_idx):
