@@ -283,6 +283,8 @@ def eval_formula(formula: str,
                     return str(arg)
                 case 'any':
                     return arg
+                case 'bool':
+                    return bool(arg)
                 case other:
                     raise ParseError('Unknown argument type: "{}"'.format(arg_desc['type']))
         
@@ -290,7 +292,6 @@ def eval_formula(formula: str,
         if call_desc['may_have_additional_args']:
             parsed_args.append(args[len(call_desc['args']):])
 
-        print('{} {}'.format(node.func.id, args))
         return call_desc['evaluator'](get_var, set_var)(*parsed_args)
     
     def eval_stmt_call(node):

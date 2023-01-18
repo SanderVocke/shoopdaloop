@@ -481,6 +481,7 @@ Item {
                                             execute(n)
                                         } else {
                                             // A target loop is set. Do the "record together with" functionality.
+                                            // TODO: code is duplicated in app shared state for MIDI source
                                             var n_cycles_delay = 0
                                             var n_cycles_record = 1
                                             n_cycles_record = Math.ceil(widget.targeted_loop_manager.length / widget.master_manager.length)

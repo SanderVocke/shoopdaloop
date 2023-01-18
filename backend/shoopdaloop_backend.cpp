@@ -194,9 +194,6 @@ void process_slow_midi_ports(jack_nframes_t nframes) {
 
             if(port.kind == Input) {
                 auto n_events = jack_midi_get_event_count(buf);
-                if(n_events > 0) {
-                    std::cout << "Receiving MIDI!\n";
-                }
                 for(size_t i=0; i<n_events; i++) {
                     jack_midi_event_t e;
                     jack_midi_event_get(&e, buf, i);
@@ -1120,7 +1117,6 @@ void process_slow_midi() {
             if(it.maybe_rcv_callback) {
                 for (auto &elem : it.queue) {
                     if(it.maybe_rcv_callback) {
-                        std::cout << "rcv cb" << std::endl;
                         it.maybe_rcv_callback(it.jack_port, elem.size(), elem.data());
                     }
                 }

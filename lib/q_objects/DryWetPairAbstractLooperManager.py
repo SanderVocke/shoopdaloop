@@ -185,6 +185,8 @@ class DryWetPairAbstractLooperManager(LooperState):
         if action_id == LoopActionType.DoPlaySoloInTrack.value:
             self.stopOtherLoopsInTrack.emit()
             action_id = LoopActionType.DoPlay.value
+        if action_id == LoopActionType.DoTogglePlaying.value:
+            action_id = (LoopActionType.DoStop.value if self.state == LoopState.Playing.value else LoopActionType.DoPlay.value)
 
         wet_action = action_id
         dry_action = action_id
