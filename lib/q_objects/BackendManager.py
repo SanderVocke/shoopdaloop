@@ -131,7 +131,6 @@ class BackendManager(QObject):
 
             def load_midi_file (filename):
                 mgrs = [self._channel_looper_managers[idx] for idx in channels]
-                print("channels: {}".format(channels))
                 new_length = self.load_loop_midi_from_file(channels_for_stereo(dry_wet[0])[0], filename)
                 backend_idxs = (c_uint * len(channels))()
                 for i,idx in enumerate(channels):
@@ -139,7 +138,11 @@ class BackendManager(QObject):
                 backend.set_loops_length(backend_idxs, len(channels), new_length)
                 l.loadedData.emit()
             
+            def save_midi_file (filename):
+                self.save_loop_midi_to_file(channels_for_stereo(dry_wet_for_logical(idx)[0])[0], filename)
+            
             l.loadMidiFile.connect(lambda filename: load_midi_file(filename))
+            l.saveMidiFile.connect(lambda filename: save_midi_file(filename))
             
             return l
         
@@ -517,13 +520,16 @@ class BackendManager(QObject):
         c_data_idx = 0
         for msg in mido_msgs:
             msg_bytes = msg.bytes()
+            total_time += msg.time
+
+            if (msg.is_meta and msg.type != 'end_of_track') or msg.bytes()[0] == 0xFF:
+                continue # only EOT is interesting to save the length properly
 
             def append_uint32(val, byte_offset):
                 addr = addressof(c_data) + byte_offset
                 uint_ptr = cast(addr, POINTER(c_uint32))
                 uint_ptr[0] = int(val)
 
-            total_time += msg.time
             append_uint32(int(total_time * self.sample_rate), c_data_idx)
             c_data_idx += 4
             append_uint32(len(msg_bytes), c_data_idx)
@@ -560,6 +566,27 @@ class BackendManager(QObject):
         backend.shoopdaloop_free(cast(c_data, c_void_p))
         return retval
     
+    @pyqtSlot(int, str)
+    def save_loop_midi_to_file(self, idx, filename):
+        msgs = self.get_loop_midi_messages(idx)
+        mgr = self._channel_looper_managers[idx]
+        mido_file = mido.MidiFile()
+        # Use the default tempo (120) to store under, we don't know anything about our
+        # time signature.
+        beat_length_s = mido.bpm2tempo(120) / 1000000.0
+        mido_track = mido.MidiTrack()
+        mido_file.tracks.append(mido_track)
+        current_tick = 0
+        for msg in msgs:
+            absolute_time_s = msg['time'] / self.sample_rate
+            absolute_time_ticks = int(absolute_time_s / beat_length_s * mido_file.ticks_per_beat)
+            d_ticks = absolute_time_ticks - current_tick
+            mido_msg = mido.Message.from_bytes(msg['bytes'])
+            mido_msg.time = d_ticks
+            mido_track.append(mido_msg)
+            current_tick += d_ticks
+        mido_file.save(filename)
+
     @pyqtSlot(list, str)
     def load_loops_from_file(self, idxs, filename, maybe_override_length):
         try:
@@ -619,6 +646,10 @@ class BackendManager(QObject):
                         wav_filename = '{}/loop_{}_data.wav'.format(folder, idx)
                         self.save_loops_to_file([idx], wav_filename, False)
                         include_in_tarball.append(wav_filename)
+
+                        midi_filename = '{}/loop_{}_midi.mid'.format(folder, idx)
+                        self.save_loop_midi_to_file(idx, midi_filename)
+                        include_in_tarball.append(midi_filename)
                     
                     with open(json_filename, 'w') as lfile:
                         lfile.write(state.serialize_session_state())
@@ -667,14 +698,17 @@ class BackendManager(QObject):
                     session_data = file.read()
 
                 for idx in range(self.n_loops):
-                    data_filename = '{}/loop_{}_data.wav'.format(folder, idx)
+                    audio_data_filename = '{}/loop_{}_data.wav'.format(folder, idx)
+                    midi_data_filename = '{}/loop_{}_midi.mid'.format(folder, idx)
                     json_filename = '{}/loop_{}_state.json'.format(folder, idx)
                     # TODO: this assumes the # of loops is always the same.
                     if os.path.isfile(json_filename):
+                        if os.path.isfile(audio_data_filename):
+                            self.load_loops_from_file([idx], audio_data_filename, self._channel_looper_managers[idx].length)
+                        if os.path.isfile(midi_data_filename):
+                            self.load_loop_midi_from_file(idx, midi_data_filename)
                         with open(json_filename, 'r') as json:
                             self._channel_looper_managers[idx].deserialize_session_state(json.read())
-                        if os.path.isfile(data_filename):
-                            self.load_loops_from_file([idx], data_filename, self._channel_looper_managers[idx].length)
                 
                 for idx in range(self.n_ports):
                     json_filename = '{}/port_{}_state.json'.format(folder, idx)

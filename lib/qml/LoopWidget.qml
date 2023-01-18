@@ -833,6 +833,10 @@ Item {
                 onClicked: () => loaddialog.open()
             }
             MenuItem {
+                text: "Save MIDI to file..."
+                onClicked: () => midisavedialog.open()
+            }
+            MenuItem {
                 text: "Load MIDI file..."
                 onClicked: () => midiloaddialog.open()
             }
@@ -859,6 +863,18 @@ Item {
                 var filename = selectedFile.toString().replace('file://', '');
                 if (savedialog.save_wet) { widget.manager.doSaveWetToSoundFile(filename) }
                 else { widget.manager.doSaveDryToSoundFile(filename) }
+            }
+        }
+
+        FileDialog {
+            id: midisavedialog
+            fileMode: FileDialog.SaveFile
+            acceptLabel: 'Save'
+            nameFilters: ["MIDI files (*.mid)"]
+            defaultSuffix: 'mid'
+            onAccepted: {
+                var filename = selectedFile.toString().replace('file://', '');
+                widget.manager.doSaveMidiFile(filename)
             }
         }
 

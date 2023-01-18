@@ -28,6 +28,7 @@ class DryWetPairAbstractLooperManager(LooperState):
     stopOtherLoopsInTrack = pyqtSignal()
     loadedData = pyqtSignal()
     loadMidiFile = pyqtSignal(str)
+    saveMidiFile = pyqtSignal(str)
 
     didLoopAction = pyqtSignal(int, list, bool, bool) # action_id, args, with_soft_sync, propagate_to_selected_loops
 
@@ -278,3 +279,7 @@ class DryWetPairAbstractLooperManager(LooperState):
     @pyqtSlot(str)
     def doLoadMidiFile(self, filename):
         self.loadMidiFile.emit(filename)
+    
+    @pyqtSlot(str)
+    def doSaveMidiFile(self, filename):
+        self.saveMidiFile.emit(filename)
