@@ -9,11 +9,13 @@
 #include "shoopdaloop_loops.h"
 #include "shoopdaloop_loops_profile.h"
 #include "midi_buffer.h"
+#include "midi_state_tracker.h"
 #include <chrono>
 #include <cstdlib>
 
 #include <iostream>
 #include <queue>
+#include <ratio>
 #include <string>
 #include <vector>
 #include <unistd.h>
@@ -103,11 +105,41 @@ Buffer<int8_t, 1> g_port_inputs_muted; // per port
 
 int8_t g_storage_lock = 0;
 
+struct MIDINotesStateAroundLoop : public MIDINotesState {
+    MIDINotesStateAroundLoop() : MIDINotesState() {
+        notes_active_at_end.reserve(16*128);
+        reset();
+    }
+
+    // Inherited fields will track active/recent notes before record
+    std::vector<ActiveNote> notes_active_at_end;
+    std::chrono::time_point<std::chrono::high_resolution_clock> populated_at;
+
+    // This struct also stores the settings on how to use this info per loop.
+    bool auto_noteon_at_start = true;
+    bool auto_noteoff_at_end = true;
+    float pre_record_grace_period = 0.05;
+
+    void reset() {
+        MIDINotesState::reset();
+        notes_active_at_end.clear();
+    }
+
+    void populate_from(MIDIStateTracker &other) {
+        populated_at = std::chrono::high_resolution_clock::now();
+        active_notes = other.active_notes;
+        last_notes = other.last_notes;
+        notes_active_at_end.clear();
+    }
+};
+
 std::vector<jack_port_t*> g_input_ports;
 std::vector<jack_port_t*> g_output_ports;
 std::vector<jack_port_t*> g_mixed_output_ports;
 std::vector<jack_port_t*> g_maybe_midi_input_ports;
 std::vector<jack_port_t*> g_maybe_midi_output_ports;
+std::vector<MIDIStateTracker> g_midi_input_state_trackers;
+std::vector<MIDINotesStateAroundLoop> g_midi_input_notes_state_around_record;
 std::vector<jack_nframes_t> g_input_port_latencies;
 std::vector<jack_nframes_t> g_output_port_latencies;
 
@@ -194,9 +226,6 @@ void process_slow_midi_ports(jack_nframes_t nframes) {
 
             if(port.kind == Input) {
                 auto n_events = jack_midi_get_event_count(buf);
-                if(n_events > 0) {
-                    std::cout << "Receiving MIDI!\n";
-                }
                 for(size_t i=0; i<n_events; i++) {
                     jack_midi_event_t e;
                     jack_midi_event_get(&e, buf, i);
@@ -373,21 +402,78 @@ int jack_process (jack_nframes_t nframes, void *arg) {
     for(int loop_idx=0; loop_idx<g_n_loops; loop_idx++) {
         auto port_idx = g_loops_to_ports(loop_idx);
         auto &out_buf = g_midi_output_bufs[port_idx];
+
         if(g_maybe_midi_output_ports[port_idx] && out_buf &&
-           g_states[tick](loop_idx) == Playing && g_loop_volumes(loop_idx) > 0.0f) {
+           g_states[tick](loop_idx) == Playing
+           && g_loop_volumes(loop_idx) > 0.0f) {
+            // We have playback
+
             jack_midi_clear_buffer(out_buf);
             auto &loop_buf = g_loop_midi_buffers[loop_idx];
-            if(!loop_buf.cursor_valid()) { loop_buf.reset_cursor(); }
-            while(loop_buf.cursor_valid() && loop_buf.peek_cursor_metadata()) {
+            int32_t restart_time_this_cycle = g_positions[tock](loop_idx) < g_positions[tick](loop_idx) ?
+                nframes - g_positions[tock](loop_idx) :
+                nframes+1; // n/a
+            bool played_restart_notes = false;
+            while(loop_buf.peek_cursor_metadata()) {
+                // Check time of next note
                 auto metadata = loop_buf.peek_cursor_metadata();
-                int32_t time_this_cycle = metadata->time - g_positions[tick](loop_idx);
+                int32_t time_this_cycle = metadata->time >= g_positions[tick](loop_idx) ?
+                    metadata->time - g_positions[tick](loop_idx) :
+                    (g_lengths[tock](loop_idx) - g_positions[tick](loop_idx)) + metadata->time; //for wrapped playback
+
+                // Before maybe playing the next note, check if our loop is restarting. If so, we may need to
+                // play some auto-inserted events for incomplete notes around the edges.
+                if(!played_restart_notes && restart_time_this_cycle <= time_this_cycle && restart_time_this_cycle < nframes) {
+                    // We will restart before the next MIDI message. Do our special handling of "edge midi messages".
+                    auto const& state = g_midi_input_notes_state_around_record[loop_idx];
+                    // First, auto-play noteoff messages for any active notes.
+                    if(state.auto_noteoff_at_end) {
+                        for(auto const& msg: state.notes_active_at_end) {
+                            std::cout << "Playing auto note-off for note " << msg.note << std::endl;
+                            uint8_t msg_bytes[3] = { (uint8_t)(0x80 + msg.channel),
+                                                     (uint8_t)msg.note,
+                                                     (uint8_t)msg.velocity };
+                            jack_midi_event_write(out_buf, restart_time_this_cycle, msg_bytes, 3);
+                        }
+                    }
+                    // Now, play any complete notes that fell within the pre-record grace period at loop 0.
+                    if(state.pre_record_grace_period > 0.0f) {
+                        auto now = std::chrono::high_resolution_clock::now();
+                        for(auto const& msg: state.last_notes) {
+                            std::chrono::duration<float, std::milli> t_diff_to_record_start = state.populated_at - msg.on_t;
+                            float t_diff_to_record_start_s = t_diff_to_record_start.count() / 1000.0f;
+                            if(t_diff_to_record_start_s <= state.pre_record_grace_period) {
+                                std::cout << "Playing grace-period note " << msg.note << std::endl;
+                                uint8_t msg_bytes[3] = { (uint8_t)(0x90 + msg.channel),
+                                                     (uint8_t)msg.note,
+                                                     (uint8_t)msg.velocity };
+                                jack_midi_event_write(out_buf, restart_time_this_cycle, msg_bytes, 3); // noteOn
+                                msg_bytes[0] = (uint8_t)(0x80 + msg.channel);
+                                jack_midi_event_write(out_buf, restart_time_this_cycle, msg_bytes, 3); // noteOff
+                            }
+                        }
+                    }
+                    // Now, play noteOns for any messages for which we found an unstarted noteOff during recording.
+                    if(state.auto_noteon_at_start) {
+                        for(auto const& msg: state.active_notes) {
+                            std::cout << "Playing auto note-on for note " << msg.note << std::endl;
+                            uint8_t msg_bytes[3] = { (uint8_t)(0x90 + msg.channel),
+                                                     (uint8_t)msg.note,
+                                                     (uint8_t)msg.velocity };
+                            jack_midi_event_write(out_buf, restart_time_this_cycle, msg_bytes, 3);
+                        }
+                    }
+                    played_restart_notes = true;
+                }
+
+                // Now, play the next event in the recording if it is ready to play.
                 if(time_this_cycle >= nframes) { break; } // Done for now, leave cursor for next iteration
                 if(time_this_cycle >= 0) {
                     std::cout << "MIDI playback: " << metadata->time << "  -> " << time_this_cycle << "," << g_positions[tick](loop_idx) << std::endl;
                     jack_midi_event_write(out_buf, metadata->time, loop_buf.peek_cursor_event_data(), metadata->size);
                     g_atomic_state.loop_n_output_events_since_last_update[loop_idx]++;
                 }
-                if(!loop_buf.increment_cursor()) { break; }
+                if(!loop_buf.increment_cursor()) { loop_buf.reset_cursor(); }
             }
         }
     }
@@ -413,6 +499,21 @@ int jack_process (jack_nframes_t nframes, void *arg) {
                     std::cerr << "Failed to record MIDI event @ loop " << loop_idx << std::endl;
                 }
             }
+        }
+    }
+
+    // If we just started recording, set up the active notes information just before recording.
+    for(int loop_idx=0; loop_idx<g_n_loops; loop_idx++) {
+        if(g_states[tick](loop_idx) != Recording && g_states[tock](loop_idx) == Recording) {
+            g_midi_input_notes_state_around_record[loop_idx].populate_from(g_midi_input_state_trackers[loop_idx]);
+        }
+    }
+
+    // If we just ended recording, set up the active notes information at recording end.
+    for(int loop_idx=0; loop_idx<g_n_loops; loop_idx++) {
+        if(g_states[tick](loop_idx) == Recording && g_states[tock](loop_idx) != Recording) {
+            g_midi_input_notes_state_around_record[loop_idx].notes_active_at_end =
+                g_midi_input_state_trackers[loop_idx].active_notes;
         }
     }
 
@@ -655,6 +756,8 @@ jack_client_t* initialize(
     g_output_ports.clear();
     g_maybe_midi_input_ports.clear();
     g_maybe_midi_output_ports.clear();
+    g_midi_input_state_trackers.clear();
+    g_midi_input_notes_state_around_record.clear();
     g_input_port_latencies.clear();
     g_output_port_latencies.clear();
     for(size_t i=0; i<n_mixed_output_ports; i++) {
@@ -673,6 +776,8 @@ jack_client_t* initialize(
             g_maybe_midi_input_ports.push_back(nullptr);
             g_maybe_midi_output_ports.push_back(nullptr);
         }
+        g_midi_input_state_trackers.push_back(MIDIStateTracker());
+        g_midi_input_notes_state_around_record.push_back(MIDINotesStateAroundLoop());
         g_input_port_latencies.push_back(0);
         g_output_port_latencies.push_back(0);
         g_port_recording_latencies(i) = 0;

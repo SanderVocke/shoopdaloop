@@ -201,6 +201,21 @@ void set_loops_length(unsigned *loop_idxs,
                       unsigned n_loop_idxs,
                       unsigned length);
 
+// If nonzero, will emit a noteOn at loop start for every noteOff within
+// the loop which did not have a noteOn. The velocity is remembered
+// from when the note was actually played before recording.
+void set_loop_midi_auto_noteon(unsigned loop_idx, unsigned enabled);
+
+// Similar to auto noteon, this will automatically send a noteoff for any
+// note not terminated at loop end.
+void set_loop_midi_auto_noteoff(unsigned loop_idx, unsigned enabled);
+
+// Any MIDI notes completely played within the pre-record grace period
+// just before recording started, will be played back at loop start on
+// every cycle. This way we can catch e.g. drum hits played slightly too
+// early.
+void set_loop_midi_prerecord_grace_period(unsigned loop_idx, float seconds);
+
 // Set the global storage lock.
 // Any nonzero value is "locked".
 // Use with care: when set the storage lock will prevent
