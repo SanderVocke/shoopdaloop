@@ -158,17 +158,17 @@ builtin_dialects = {
             'green': 1, 'blink_green': 2,
             'red': 3, 'blink_red': 4,
             'yellow': 5, 'blink_yellow': 6,
-            'isShiftPressed': 'isNotePressed(0,98)',
+            'isSelectPressed': 'isNotePressed(0,86)',
             'isRecArmPressed': 'isNotePressed(0,84)'
         },
         variables = {},
         input_rules = [   # Rules
             InputRule({
                 MIDIMessageFilterType.IsNoteOn.value: None,
-            }, ['note <= 64'], 'loopAction(note_track, note_loop, "select" if isShiftPressed else ("record" if isRecArmPressed else "toggle_playing"), not isShiftPressed, 0)'),
+            }, ['note <= 64'], 'loopAction(note_track, note_loop, "select" if isSelectPressed else ("record" if isRecArmPressed else "toggle_playing"), not isSelectPressed, 0)'),
             InputRule({
                 MIDIMessageFilterType.IsNoteDoublePress.value: None,
-            }, ['note <= 64 and isShiftPressed'], 'loopAction(note_track, note_loop, "target", False, 0)'),
+            }, ['note <= 64 and isSelectPressed'], 'loopAction(note_track, note_loop, "target", False, 0)'),
             InputRule({
                 MIDIMessageFilterType.IsCCKind.value: None,
             }, ['48 <= controller < 56'], 'setVolume(fader_track, value/127.0)')

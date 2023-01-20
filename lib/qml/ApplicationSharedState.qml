@@ -32,7 +32,13 @@ Item {
                 }
         }
         var state_changed_closure = (track, loop, mgr) => {
-            return (dummy, mgr=mgr) => midi_control_manager.loop_state_changed(track, loop, mgr.state, mgr.selected, mgr.targeted)
+            return () =>
+                midi_control_manager.loop_state_changed(
+                    track,
+                    loop,
+                    mgr.state,
+                    mgr.selected,
+                    mgr.targeted)
         }
         var did_loop_action_closure = (track, loop) => {
             return (action, args, with_soft_sync, propagate_to_selected_loops) => {
