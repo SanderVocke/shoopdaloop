@@ -31,8 +31,8 @@ Item {
                     )
                 }
         }
-        var state_changed_closure = (track, loop) => {
-            return (state) => midi_control_manager.loop_state_changed(track, loop, state)
+        var state_changed_closure = (track, loop, mgr) => {
+            return (dummy, mgr=mgr) => midi_control_manager.loop_state_changed(track, loop, mgr.state, mgr.selected, mgr.targeted)
         }
         var did_loop_action_closure = (track, loop) => {
             return (action, args, with_soft_sync, propagate_to_selected_loops) => {
@@ -49,7 +49,9 @@ Item {
                 var mgr = backend_manager.logical_looper_managers[1 + outer * loops_per_track + inner]
                 // Solo playing in track is handled here
                 mgr.stopOtherLoopsInTrack.connect(stop_others_closure(track, loop))
-                mgr.stateChanged.connect(state_changed_closure(track, loop))
+                mgr.stateChanged.connect(state_changed_closure(track, loop, mgr))
+                mgr.selectedChanged.connect(state_changed_closure(track, loop, mgr))
+                mgr.targetedChanged.connect(state_changed_closure(track, loop, mgr))
                 mgr.didLoopAction.connect(did_loop_action_closure(track, loop))
                 i_managers.push(mgr)
             }

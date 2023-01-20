@@ -94,7 +94,7 @@ class InputRule:
         
         return True
 
-def get_builtin_substitutions(msg_bytes):
+def get_builtin_substitutions_for_message(msg_bytes):
 
     if len(msg_bytes) < 3:
         return {}
@@ -175,14 +175,14 @@ builtin_dialects = {
         ],
         loop_state_output_formulas = {
             # Loop states to button colors
-            LoopState.Recording.value: 'noteOn(0, loop_note, red)',
-            LoopState.Playing.value: 'noteOn(0, loop_note, green)',
-            LoopState.Stopped.value: 'noteOn(0, loop_note, off)',
-            LoopState.Unknown.value: 'noteOn(0, loop_note, off)',
-            LoopState.PlayingMuted.value: 'noteOn(0, loop_note, blink_green)',
-            LoopState.PlayingLiveFX.value: 'noteOn(0, loop_note, yellow)',
-            LoopState.RecordingFX.value: 'noteOn(0, loop_note, blink_red)',
-            LoopState.Empty.value: 'noteOn(0, loop_note, off)',
+            LoopState.Recording.value: 'noteOn(0, loop_note, yellow if is_loop_targeted else (blink_red if is_loop_selected else red))',
+            LoopState.Playing.value: 'noteOn(0, loop_note, yellow if is_loop_targeted else (blink_green if is_loop_selected else green))',
+            LoopState.Stopped.value: 'noteOn(0, loop_note, yellow if is_loop_targeted else (blink_yellow if is_loop_selected else off))',
+            LoopState.Unknown.value: 'noteOn(0, loop_note, yellow if is_loop_targeted else (blink_yellow if is_loop_selected else off))',
+            LoopState.PlayingMuted.value: 'noteOn(0, loop_note, yellow if is_loop_targeted else (blink_green if is_loop_selected else green))',
+            LoopState.PlayingLiveFX.value: 'noteOn(0, loop_note, yellow if is_loop_targeted else (blink_green if is_loop_selected else green))',
+            LoopState.RecordingFX.value: 'noteOn(0, loop_note, yellow if is_loop_targeted else (blink_red if is_loop_selected else red))',
+            LoopState.Empty.value: 'noteOn(0, loop_note, yellow if is_loop_targeted else (blink_yellow if is_loop_selected else off))',
         },
         # Any unmapped state maps to yellow
         loop_state_default_output_formula = 'noteOn(0, loop_note, 5)',
@@ -242,7 +242,7 @@ class MIDIController(QObject):
             self._notes_currently_on.add((_bytes[0] & 0x0F, _bytes[1]))
 
         # Process formulas for msg        
-        substitutions = {**get_builtin_substitutions(_bytes), **self._dialect.substitutions}
+        substitutions = {**get_builtin_substitutions_for_message(_bytes), **self._dialect.substitutions}
         formulas_to_execute = []
         for r in self._dialect.input_rules:
             if r.apply_filters(_bytes):
@@ -252,8 +252,10 @@ class MIDIController(QObject):
                                           False,
                                           substitutions,
                                           self._notes_currently_on,
-                                          lambda name: self.get_var(name),
-                                          lambda name, val: self.set_var(name, val)
+                                          {
+                                            'get_var': lambda name: self.get_var(name),
+                                            'set_var': lambda name, value: self.set_var(name, value)
+                                          }
                                           )
                     if not result or not isinstance(result, bool):
                         execute = False
@@ -265,27 +267,43 @@ class MIDIController(QObject):
             True,
             substitutions,
             self._notes_currently_on,
-            lambda name: self.get_var(name), lambda name, value: self.set_var(name, value)
+            {
+                'get_var': lambda name: self.get_var(name),
+                'set_var': lambda name, value: self.set_var(name, value)
+            }
             ) for f in formulas_to_execute])
         self.trigger_actions(actions)
     
-    @pyqtSlot(int, int, int)
-    def loop_state_changed(self, track, index, state):
+    @pyqtSlot(int, int, int, bool, bool)
+    def loop_state_changed(self, track, index, state, selected, targeted):
+        substitutions = {
+            'track': track,
+            'loop': index,
+            'state': state,
+            'is_loop_selected': selected,
+            'is_loop_targeted': targeted,
+        }
         if state in self._dialect.loop_state_output_formulas:
             self.send_midi_messages(eval_formula(
                 self._dialect.loop_state_output_formulas[state],
                 True,
-                {**{'track': track, 'loop': index, 'state': state}, **self._dialect.substitutions},
+                {**substitutions, **self._dialect.substitutions},
                 self._notes_currently_on,
-                lambda name: self.get_var(name), lambda name, value: self.set_var(name, value)
+                {
+                    'get_var': lambda name: self.get_var(name),
+                    'set_var': lambda name, value: self.set_var(name, value)
+                }
                 ))
         elif self._dialect.loop_state_default_output_formula:
             self.send_midi_messages(eval_formula(
                 self._dialect.loop_state_default_output_formula,
                 True,
-                {**{'track': track, 'loop': index, 'state': state}, **self._dialect.substitutions},
+                {**substitutions, **self._dialect.substitutions},
                 self._notes_currently_on,
-                lambda name: self.get_var(name), lambda name, value: self.set_var(name, value)
+                {
+                    'get_var': lambda name: self.get_var(name),
+                    'set_var': lambda name, value: self.set_var(name, value)
+                }
                 ))
 
     @pyqtSlot(int)
@@ -304,7 +322,10 @@ class MIDIController(QObject):
                 True,
                 self._dialect.substitutions,
                 self._notes_currently_on,
-                lambda name: self.get_var(name), lambda name, value: self.set_var(name, value)
+                {
+                    'get_var': lambda name: self.get_var(name),
+                    'set_var': lambda name, value: self.set_var(name, value)
+                }
                 ))
 
 # For communicating with MIDI control/input devices.
@@ -371,23 +392,24 @@ class MIDIControlManager(QObject):
             controller.active_scene_changed(self._active_scene_cache)
         if self._scripting_section_cache:
             controller.active_sripting_section_changed(self._scripting_section_cache)
-        for ((track, loop), state) in self._loop_states_cache.items():
-            controller.loop_state_changed(track, loop, state)
+        for ((track, loop), (state, selected, targeted)) in self._loop_states_cache.items():
+            controller.loop_state_changed(track, loop, state, selected, targeted)
 
     @pyqtSlot()
     def update_link_mgr(self):
         link_rules = self._autoconnect_rules.keys()
         self._link_manager.set_rules(link_rules)
     
-    @pyqtSlot(int, int, int)
-    def loop_state_changed(self, track, index, state):
-        if (track,index) in self._loop_states_cache and self._loop_states_cache[(track,index)] == state:
+    @pyqtSlot(int, int, int, bool, bool)
+    def loop_state_changed(self, track, index, state, selected, targeted):
+        if (track,index) in self._loop_states_cache and \
+            self._loop_states_cache[(track,index)] == (state, selected, targeted):
             # Already sent this
             return
         
         for c in self._controllers.values():
-            c.loop_state_changed(track, index, state)
-        self._loop_states_cache[(track, index)] = state
+            c.loop_state_changed(track, index, state, selected, targeted)
+        self._loop_states_cache[(track, index)] = (state, selected, targeted)
 
     @pyqtSlot(int)
     def active_scripting_section_changed(self, idx):
