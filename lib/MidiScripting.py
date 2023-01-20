@@ -127,7 +127,7 @@ supported_calls = {
         ],
         'may_have_additional_args': False,
         'description': 'Send a MIDI NoteOn message.',
-        'evaluator': lambda get_var, set_var: lambda channel, note, velocity: [ 
+        'evaluator': lambda helper_functions: lambda channel, note, velocity: [ 
             MIDINoteMessage(int(channel), int(note), True, int(velocity))
             ]
     },
@@ -140,7 +140,7 @@ supported_calls = {
         ],
         'may_have_additional_args': False,
         'description': 'Send a MIDI NoteOff message.',
-        'evaluator':   lambda get_var, set_var: lambda channel, note, velocity: [
+        'evaluator':   lambda helper_functions: lambda channel, note, velocity: [
             MIDINoteMessage(int(channel), int(note), False, int(velocity))
             ]
     },
@@ -154,7 +154,7 @@ supported_calls = {
         ],
         'may_have_additional_args': False,
         'description': 'Send a MIDI NoteOn message for all notes in a range.',
-        'evaluator':   lambda get_var, set_var: lambda channel, firstNote, lastNote, velocity: [
+        'evaluator':   lambda helper_functions: lambda channel, firstNote, lastNote, velocity: [
             MIDINoteMessage(int(channel), int(note), True, int(velocity)) for note in range(firstNote, lastNote+1)
             ]
     },
@@ -168,7 +168,7 @@ supported_calls = {
         ],
         'may_have_additional_args': False,
         'description': 'Send a MIDI NoteOff message for all notes in a range.',
-        'evaluator':   lambda get_var, set_var: lambda channel, firstNote, lastNote, velocity: [
+        'evaluator':   lambda helper_functions: lambda channel, firstNote, lastNote, velocity: [
             MIDINoteMessage(int(channel), int(note), False, int(velocity)) for note in range(firstNote, lastNote+1)
             ]
     },
@@ -181,7 +181,7 @@ supported_calls = {
         ],
         'may_have_additional_args': False,
         'description': 'Send a MIDI CC message.',
-        'evaluator':   lambda get_var, set_var: lambda channel, controller, value: [
+        'evaluator':   lambda helper_functions: lambda channel, controller, value: [
             MIDICCMessage(int(channel), int(controller), int(value))
             ]
     },
@@ -195,7 +195,7 @@ supported_calls = {
         ],
         'may_have_additional_args': True,
         'description': 'Perform an action on a loop.',
-        'evaluator':   lambda get_var, set_var: lambda track_idx, loop_idx, action, propagate_to_selected, rest: [
+        'evaluator':   lambda helper_functions: lambda track_idx, loop_idx, action, propagate_to_selected, rest: [
             LoopAction(action, int(track_idx), int(loop_idx), rest, bool(propagate_to_selected))
             ]
     },
@@ -207,7 +207,7 @@ supported_calls = {
         ],
         'may_have_additional_args': False,
         'description': 'Set the volume of a track.',
-        'evaluator':   lambda get_var, set_var: lambda track_idx, value: [
+        'evaluator':   lambda helper_functions: lambda track_idx, value: [
             TrackAction(int(track_idx), PortActionType.SetPortVolume, [float(value)])
             ]
     },
@@ -219,7 +219,7 @@ supported_calls = {
         ],
         'may_have_additional_args': False,
         'description': 'Set a variable.',
-        'evaluator':   lambda get_var, set_var: lambda name, value: set_var(name, value)
+        'evaluator':   lambda helper_functions: lambda name, value: helper_functions.set_var(name, value)
     },
     'get': {
         'is_stmt': False,
@@ -228,7 +228,7 @@ supported_calls = {
         ],
         'may_have_additional_args': False,
         'description': 'Get a variable.',
-        'evaluator':   lambda get_var, set_var: lambda name: get_var(name)
+        'evaluator':   lambda helper_functions: lambda name: helper_functions.get_var(name)
     },
 }
 
@@ -236,8 +236,7 @@ def eval_formula(formula: str,
                  is_stmt: bool,
                  substitutions: dict[str, str] = {},
                  notes_currently_on: list[tuple[int,int]] = [],
-                 get_var: Callable = lambda name: None,
-                 set_var: Callable = lambda name, value: None
+                 helper_functions: dict[str, Callable] = {},
                 ) -> list[ScriptingAction]:
 
     def eval_call(node : ast.Call, is_stmt: bool):
@@ -283,6 +282,8 @@ def eval_formula(formula: str,
                     return str(arg)
                 case 'any':
                     return arg
+                case 'bool':
+                    return bool(arg)
                 case other:
                     raise ParseError('Unknown argument type: "{}"'.format(arg_desc['type']))
         
@@ -290,8 +291,7 @@ def eval_formula(formula: str,
         if call_desc['may_have_additional_args']:
             parsed_args.append(args[len(call_desc['args']):])
 
-        print('{} {}'.format(node.func.id, args))
-        return call_desc['evaluator'](get_var, set_var)(*parsed_args)
+        return call_desc['evaluator'](helper_functions)(*parsed_args)
     
     def eval_stmt_call(node):
         return eval_call(node, True)
@@ -472,12 +472,14 @@ def test():
             self.vars[name] = value
         def get_var(self, name):
             return self.vars[name]
-    do_set = lambda name, value: vars.set_var(name,value)
-    do_get = lambda name: vars.get_var(name)
+    helpers = {
+        'get_var': lambda name: vars.get_var(name),
+        'set_var': lambda name, value: vars.set_var(name, value)
+    }
 
     # A small sequence with variables
     vars = TestVars()
-    eval_formula('set("my_var", 5)', True, set_var=do_set)
+    eval_formula('set("my_var", 5)', True, helper_functions=helpers)
     check_eq(vars.get_var('my_var'), 5)
-    check_eq(eval_formula('noteOn(1, get("my_var"), 127 if get("my_var") > 5 else 126)', True, get_var = do_get),
+    check_eq(eval_formula('noteOn(1, get("my_var"), 127 if get("my_var") > 5 else 126)', True, helper_functions=helpers),
         [ MIDINoteMessage(1, 5, True, 126) ])

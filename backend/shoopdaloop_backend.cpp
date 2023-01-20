@@ -1225,7 +1225,6 @@ void process_slow_midi() {
             if(it.maybe_rcv_callback) {
                 for (auto &elem : it.queue) {
                     if(it.maybe_rcv_callback) {
-                        std::cout << "rcv cb" << std::endl;
                         it.maybe_rcv_callback(it.jack_port, elem.size(), elem.data());
                     }
                 }

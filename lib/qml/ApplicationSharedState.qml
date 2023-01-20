@@ -4,6 +4,7 @@ import QtQuick.Controls.Material 2.15
 
 import NChannelAbstractLooperManager 1.0
 import '../../build/StatesAndActions.js' as StatesAndActions
+import '../state_helpers.js' as State_helpers
 
 Item {
     anchors {
@@ -30,8 +31,8 @@ Item {
                     )
                 }
         }
-        var state_changed_closure = (track, loop) => {
-            return (state) => midi_control_manager.loop_state_changed(track, loop, state)
+        var state_changed_closure = (track, loop, mgr) => {
+            return (dummy, mgr=mgr) => midi_control_manager.loop_state_changed(track, loop, mgr.state, mgr.selected, mgr.targeted)
         }
         var did_loop_action_closure = (track, loop) => {
             return (action, args, with_soft_sync, propagate_to_selected_loops) => {
@@ -48,7 +49,9 @@ Item {
                 var mgr = backend_manager.logical_looper_managers[1 + outer * loops_per_track + inner]
                 // Solo playing in track is handled here
                 mgr.stopOtherLoopsInTrack.connect(stop_others_closure(track, loop))
-                mgr.stateChanged.connect(state_changed_closure(track, loop))
+                mgr.stateChanged.connect(state_changed_closure(track, loop, mgr))
+                mgr.selectedChanged.connect(state_changed_closure(track, loop, mgr))
+                mgr.targetedChanged.connect(state_changed_closure(track, loop, mgr))
                 mgr.didLoopAction.connect(did_loop_action_closure(track, loop))
                 i_managers.push(mgr)
             }
@@ -341,7 +344,6 @@ Item {
 
     function select_scene(idx) {
         selected_scene = idx
-        console.log(selected_scene)
         selected_sceneChanged()
     }
 
@@ -531,6 +533,8 @@ Item {
                     loop_managers[track][loop].targeted = (targeted_loop !== undefined && track == targeted_loop[0] && loop == targeted_loop[1])
                 }
             }
+            midi_control_manager.targeted_loop = targeted_loop !== undefined ?
+                loop_managers[targeted_loop[0]][targeted_loop[1]] : undefined
         }
     }
 
@@ -544,8 +548,26 @@ Item {
             port_managers[track].volume = value
         }
         function onLoopAction(track, loop, action, args) {
-            console.log(track, loop, 'action', action, 'args', args)
-            loop_managers[track][loop].doLoopAction(action, args, true, true)
+            if (action == StatesAndActions.LoopActionType.DoSelect) {
+                toggle_loop_selected(track, loop)
+            } else if (action == StatesAndActions.LoopActionType.DoTarget) {
+                select_targeted_loop(track, loop)
+            } else if (action == StatesAndActions.LoopActionType.DoRecord && targeted_loop_manager !== undefined) {
+                // A target loop is set. Do the "record together with" functionality.
+                // TODO: code is duplicated in app shared state for GUI loop widget
+                var n_cycles_delay = 0
+                var n_cycles_record = 1
+                n_cycles_record = Math.ceil(targeted_loop_manager.length / master_loop_manager.length)
+                if (State_helpers.is_playing_state(targeted_loop_manager.state)) {
+                    var current_cycle = Math.floor(targeted_loop_manager.pos / master_loop_manager.length)
+                    n_cycles_delay = Math.max(0, n_cycles_record - current_cycle - 1)
+                }
+                loop_managers[track][loop].doLoopAction(StatesAndActions.LoopActionType.DoRecordNCycles,
+                                                        [n_cycles_delay, n_cycles_record],
+                                                        true, true);
+            } else {
+                loop_managers[track][loop].doLoopAction(action, args, true, true)
+            }
         }
     }
 

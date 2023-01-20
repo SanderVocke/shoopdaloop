@@ -1,4 +1,4 @@
-from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot, QTimer
+from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot, QTimer
 
 from ..StatesAndActions import LoopState, MIDIMessageFilterType
 from ..MidiScripting import *
@@ -12,6 +12,7 @@ from pprint import *
 from copy import *
 import time
 from dataclasses import dataclass
+import math
 
 class InputRule:
     press_period = 0.5
@@ -58,12 +59,9 @@ class InputRule:
            filters[MIDIMessageFilterType.IsNoteKind.value] = None
         
         if type_byte == 0x80:
-            print('noteOff {} {}'.format(controller_or_note, value_or_velocity))
-
             if controller_or_note in self._lastOn and \
                (controller_or_note not in self._lastOff or self._lastOff[controller_or_note] < self._lastOn[controller_or_note]) and \
                _time - self._lastOn[controller_or_note] < self.press_period:
-               print('press')
                press = True
             
             self._lastOff[controller_or_note] = _time
@@ -73,35 +71,30 @@ class InputRule:
                 return False
                
         elif type_byte == 0x90:
-            print('noteOn {}'.format(controller_or_note, value_or_velocity))
-
             self._lastOn[controller_or_note] = _time
-
             if MIDIMessageFilterType.IsCCKind.value in filters or \
                 MIDIMessageFilterType.IsNoteOff.value in filters:
                 return False
 
         elif type_byte == 0xB0:
-            print('CC {} {}'.format(controller_or_note, value_or_velocity))
             if MIDIMessageFilterType.IsNoteKind.value in filters:
                 return False
         
         if press:
             if controller_or_note in self._lastPress and \
                _time - self._lastPress[controller_or_note] < self.doublepress_period:
-               print('double-press')
                doublePress = True
             self._lastPress[controller_or_note] = _time
         
-        if MIDIMessageFilterType.IsNoteDoublePress in filters and not doublePress:
+        if MIDIMessageFilterType.IsNoteDoublePress.value in filters and not doublePress:
             return False
         
-        if MIDIMessageFilterType.IsNoteShortPress in filters and not press:
+        if MIDIMessageFilterType.IsNoteShortPress.value in filters and not press:
             return False
         
         return True
 
-def get_builtin_substitutions(msg_bytes):
+def get_builtin_substitutions_for_message(msg_bytes):
 
     if len(msg_bytes) < 3:
         return {}
@@ -165,31 +158,31 @@ builtin_dialects = {
             'green': 1, 'blink_green': 2,
             'red': 3, 'blink_red': 4,
             'yellow': 5, 'blink_yellow': 6,
-            'isShiftPressed': 'isNotePressed(0,0)', # TODO
-            'isRecArmPressed': 'isNotePressed(0,0)' # TODO
+            'isShiftPressed': 'isNotePressed(0,98)',
+            'isRecArmPressed': 'isNotePressed(0,84)'
         },
         variables = {},
         input_rules = [   # Rules
             InputRule({
                 MIDIMessageFilterType.IsNoteOn.value: None,
-            }, ['note <= 64'], 'loopAction(note_track, note_loop, "select" if isShiftPressed else "record" if isRecArmPressed else "toggle_playing", 0, !isShiftPressed)'),
+            }, ['note <= 64'], 'loopAction(note_track, note_loop, "select" if isShiftPressed else ("record" if isRecArmPressed else "toggle_playing"), not isShiftPressed, 0)'),
             InputRule({
                 MIDIMessageFilterType.IsNoteDoublePress.value: None,
-            }, ['note <= 64 && isShiftPressed'], 'loopAction(note_track, note_loop, "target", 0, False)'),
+            }, ['note <= 64 and isShiftPressed'], 'loopAction(note_track, note_loop, "target", False, 0)'),
             InputRule({
                 MIDIMessageFilterType.IsCCKind.value: None,
             }, ['48 <= controller < 56'], 'setVolume(fader_track, value/127.0)')
         ],
         loop_state_output_formulas = {
             # Loop states to button colors
-            LoopState.Recording.value: 'noteOn(0, loop_note, red)',
-            LoopState.Playing.value: 'noteOn(0, loop_note, green)',
-            LoopState.Stopped.value: 'noteOn(0, loop_note, off)',
-            LoopState.Unknown.value: 'noteOn(0, loop_note, off)',
-            LoopState.PlayingMuted.value: 'noteOn(0, loop_note, blink_green)',
-            LoopState.PlayingLiveFX.value: 'noteOn(0, loop_note, yellow)',
-            LoopState.RecordingFX.value: 'noteOn(0, loop_note, blink_red)',
-            LoopState.Empty.value: 'noteOn(0, loop_note, off)',
+            LoopState.Recording.value: 'noteOn(0, loop_note, yellow if is_loop_targeted else (blink_red if is_loop_selected else red))',
+            LoopState.Playing.value: 'noteOn(0, loop_note, yellow if is_loop_targeted else (blink_green if is_loop_selected else green))',
+            LoopState.Stopped.value: 'noteOn(0, loop_note, yellow if is_loop_targeted else (blink_yellow if is_loop_selected else off))',
+            LoopState.Unknown.value: 'noteOn(0, loop_note, yellow if is_loop_targeted else (blink_yellow if is_loop_selected else off))',
+            LoopState.PlayingMuted.value: 'noteOn(0, loop_note, yellow if is_loop_targeted else (blink_green if is_loop_selected else green))',
+            LoopState.PlayingLiveFX.value: 'noteOn(0, loop_note, yellow if is_loop_targeted else (blink_green if is_loop_selected else green))',
+            LoopState.RecordingFX.value: 'noteOn(0, loop_note, yellow if is_loop_targeted else (blink_red if is_loop_selected else red))',
+            LoopState.Empty.value: 'noteOn(0, loop_note, yellow if is_loop_targeted else (blink_yellow if is_loop_selected else off))',
         },
         # Any unmapped state maps to yellow
         loop_state_default_output_formula = 'noteOn(0, loop_note, 5)',
@@ -206,6 +199,7 @@ class MIDIController(QObject):
         self._dialect = dialect
         self._manager = control_manager
         self._vars = dialect.variables
+        self._notes_currently_on = set()
     
     sendMidi = pyqtSignal(list) # list of byte values
     loopAction = pyqtSignal(int, int, int, list) # track idx, loop idx, LoopActionType value, args
@@ -240,16 +234,29 @@ class MIDIController(QObject):
     def receiveMidi(self, _bytes):
         if len(_bytes) < 1:
             return
-        
-        substitutions = {**get_builtin_substitutions(_bytes), **self._dialect.substitutions}
+
+        # Process notes on/off
+        if _bytes[0] & 0xF0 == 0x80:
+            self._notes_currently_on.remove((_bytes[0] & 0x0F, _bytes[1]))
+        elif _bytes[0] & 0xF0 == 0x90:
+            self._notes_currently_on.add((_bytes[0] & 0x0F, _bytes[1]))
+
+        # Process formulas for msg        
+        substitutions = {**get_builtin_substitutions_for_message(_bytes), **self._dialect.substitutions}
         formulas_to_execute = []
         for r in self._dialect.input_rules:
             if r.apply_filters(_bytes):
-                print('filter pass')
                 execute = True
                 for c in r.condition_formulas:
-                    result = eval_formula(c, False, substitutions)
-                    print('cond result {} {}'.format(c, result))
+                    result = eval_formula(c,
+                                          False,
+                                          substitutions,
+                                          self._notes_currently_on,
+                                          {
+                                            'get_var': lambda name: self.get_var(name),
+                                            'set_var': lambda name, value: self.set_var(name, value)
+                                          }
+                                          )
                     if not result or not isinstance(result, bool):
                         execute = False
                 if execute:
@@ -259,28 +266,44 @@ class MIDIController(QObject):
             f,
             True,
             substitutions,
-            [], # FIXME notes
-            lambda name: self.get_var(name), lambda name, value: self.set_var(name, value)
+            self._notes_currently_on,
+            {
+                'get_var': lambda name: self.get_var(name),
+                'set_var': lambda name, value: self.set_var(name, value)
+            }
             ) for f in formulas_to_execute])
         self.trigger_actions(actions)
     
-    @pyqtSlot(int, int, int)
-    def loop_state_changed(self, track, index, state):
+    @pyqtSlot(int, int, int, bool, bool)
+    def loop_state_changed(self, track, index, state, selected, targeted):
+        substitutions = {
+            'track': track,
+            'loop': index,
+            'state': state,
+            'is_loop_selected': selected,
+            'is_loop_targeted': targeted,
+        }
         if state in self._dialect.loop_state_output_formulas:
             self.send_midi_messages(eval_formula(
                 self._dialect.loop_state_output_formulas[state],
                 True,
-                {**{'track': track, 'loop': index, 'state': state}, **self._dialect.substitutions},
-                [], # FIXME notes
-                lambda name: self.get_var(name), lambda name, value: self.set_var(name, value)
+                {**substitutions, **self._dialect.substitutions},
+                self._notes_currently_on,
+                {
+                    'get_var': lambda name: self.get_var(name),
+                    'set_var': lambda name, value: self.set_var(name, value)
+                }
                 ))
         elif self._dialect.loop_state_default_output_formula:
             self.send_midi_messages(eval_formula(
                 self._dialect.loop_state_default_output_formula,
                 True,
-                {**{'track': track, 'loop': index, 'state': state}, **self._dialect.substitutions},
-                [], # FIXME notes
-                lambda name: self.get_var(name), lambda name, value: self.set_var(name, value)
+                {**substitutions, **self._dialect.substitutions},
+                self._notes_currently_on,
+                {
+                    'get_var': lambda name: self.get_var(name),
+                    'set_var': lambda name, value: self.set_var(name, value)
+                }
                 ))
 
     @pyqtSlot(int)
@@ -298,8 +321,11 @@ class MIDIController(QObject):
                 self._dialect.reset_output_formula,
                 True,
                 self._dialect.substitutions,
-                [], # FIXME notes
-                lambda name: self.get_var(name), lambda name, value: self.set_var(name, value)
+                self._notes_currently_on,
+                {
+                    'get_var': lambda name: self.get_var(name),
+                    'set_var': lambda name, value: self.set_var(name, value)
+                }
                 ))
 
 # For communicating with MIDI control/input devices.
@@ -339,15 +365,21 @@ class MIDIControlManager(QObject):
         self.update_timer.timeout.connect(self._link_manager.update)
         self.update_timer.start()
 
+        self._targeted_loop = None
+
     loopAction = pyqtSignal(int, int, int, list) # track idx, loop idx, LoopActionType value, args
     setPan = pyqtSignal(int, float)
     setVolume = pyqtSignal(int, float)
+    
+    @pyqtSlot(int, int, int, list)
+    def do_loop_action(self, track, loop, action, args):
+        self.loopAction.emit(track, loop, action, args)
 
     @pyqtSlot(AutoconnectRule, MIDIControlLink)
     def new_link(self, rule, link):
         controller = MIDIController(self._autoconnect_rules[rule], self)
         self._controllers[rule] = controller
-        controller.loopAction.connect(self.loopAction)
+        controller.loopAction.connect(self.do_loop_action)
         controller.setPan.connect(self.setPan)
         controller.setVolume.connect(self.setVolume)
         link.received.connect(controller.receiveMidi)
@@ -360,23 +392,24 @@ class MIDIControlManager(QObject):
             controller.active_scene_changed(self._active_scene_cache)
         if self._scripting_section_cache:
             controller.active_sripting_section_changed(self._scripting_section_cache)
-        for ((track, loop), state) in self._loop_states_cache.items():
-            controller.loop_state_changed(track, loop, state)
+        for ((track, loop), (state, selected, targeted)) in self._loop_states_cache.items():
+            controller.loop_state_changed(track, loop, state, selected, targeted)
 
     @pyqtSlot()
     def update_link_mgr(self):
         link_rules = self._autoconnect_rules.keys()
         self._link_manager.set_rules(link_rules)
     
-    @pyqtSlot(int, int, int)
-    def loop_state_changed(self, track, index, state):
-        if (track,index) in self._loop_states_cache and self._loop_states_cache[(track,index)] == state:
+    @pyqtSlot(int, int, int, bool, bool)
+    def loop_state_changed(self, track, index, state, selected, targeted):
+        if (track,index) in self._loop_states_cache and \
+            self._loop_states_cache[(track,index)] == (state, selected, targeted):
             # Already sent this
             return
         
         for c in self._controllers.values():
-            c.loop_state_changed(track, index, state)
-        self._loop_states_cache[(track, index)] = state
+            c.loop_state_changed(track, index, state, selected, targeted)
+        self._loop_states_cache[(track, index)] = (state, selected, targeted)
 
     @pyqtSlot(int)
     def active_scripting_section_changed(self, idx):
