@@ -21,15 +21,15 @@ struct NoteOnOff {
     unsigned velocity;
 };
 
-unsigned channel (jack_midi_event_t &msg) {
+unsigned channel (jack_midi_event_t const& msg) {
     return msg.buffer[0] & 0x0F;
 }
 
-unsigned note (jack_midi_event_t &msg) {
+unsigned note (jack_midi_event_t const& msg) {
     return msg.buffer[1];
 }
 
-unsigned velocity (jack_midi_event_t &msg) {
+unsigned velocity (jack_midi_event_t const& msg) {
     return msg.buffer[2];
 }
 
@@ -67,15 +67,15 @@ struct MIDINotesState {
 struct MIDIStateTracker : public MIDINotesState {
     MIDIStateTracker() : MIDINotesState() {}
 
-    bool is_noteOn(jack_midi_event_t &msg) {
+    bool is_noteOn(jack_midi_event_t const& msg) {
         return (msg.buffer[0] & 0xF0) == 0x90;
     }
 
-    bool is_noteOff(jack_midi_event_t &msg) {
+    bool is_noteOff(jack_midi_event_t const& msg) {
         return (msg.buffer[0] & 0xF0) == 0x80;
     }
 
-    void process_msg(jack_midi_event_t &msg) {
+    void process_msg(jack_midi_event_t const& msg) {
         if(is_noteOff(msg)) {
             // Move from active to last, otherwise ignore
             auto it = std::find_if(active_notes.begin(), active_notes.end(),

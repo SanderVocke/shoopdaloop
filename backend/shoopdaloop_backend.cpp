@@ -131,6 +131,74 @@ struct MIDINotesStateAroundLoop : public MIDINotesState {
         last_notes = other.last_notes;
         notes_active_at_end.clear();
     }
+
+    // Takes the MIDI buffer for which the edge events are stored here,
+    // and makes a "frozen" copy that has all the edge events inserted
+    // as MIDI messages in the buffer.
+    MIDIRingBuffer freeze_buffer(MIDIRingBuffer &other) const {
+        MIDIRingBuffer retval(other.data.size());
+        generate_start_msgs([&retval](uint8_t* bytes, unsigned len) {
+            retval.put({ .time=0, .size=3 }, bytes);
+        });
+        other.reset_cursor();
+        for(;other.peek_cursor_metadata();) {
+            auto metadata = other.peek_cursor_metadata();
+            auto data = other.peek_cursor_event_data();
+            retval.put(*metadata, data);
+            if(!other.increment_cursor()) { break; }
+        }
+        generate_end_msgs([&retval](uint8_t* bytes, unsigned len) {
+            retval.put({ .time=0, .size=3 }, bytes);
+        });
+        return retval;
+    }
+
+    // Call the callback once in order for all the messages which should be sent
+    // before to properly start the MIDI loop.
+    void generate_start_msgs(std::function<void(uint8_t*, unsigned)> cb) const {
+        // Now, play any complete notes that fell within the pre-record grace period at loop 0.
+        if(pre_record_grace_period > 0.0f) {
+            auto now = std::chrono::high_resolution_clock::now();
+            for(auto const& msg: last_notes) {
+                std::chrono::duration<float, std::milli> t_diff_to_record_start = populated_at - msg.on_t;
+                float t_diff_to_record_start_s = t_diff_to_record_start.count() / 1000.0f;
+                if(t_diff_to_record_start_s <= pre_record_grace_period) {
+                    std::cout << "Playing grace-period note " << msg.note << std::endl;
+                    uint8_t msg_bytes[3] = { (uint8_t)(0x90 + msg.channel),
+                                            (uint8_t)msg.note,
+                                            (uint8_t)msg.velocity };
+                    cb(msg_bytes, 3); // noteOn
+                    msg_bytes[0] = (uint8_t)(0x80 + msg.channel);
+                    cb(msg_bytes, 3); // noteOff
+                }
+            }
+        }
+        // Now, play noteOns for any messages for which we found an unstarted noteOff during recording.
+        if(auto_noteon_at_start) {
+            for(auto const& msg: active_notes) {
+                std::cout << "Playing auto note-on for note " << msg.note << std::endl;
+                uint8_t msg_bytes[3] = { (uint8_t)(0x90 + msg.channel),
+                                            (uint8_t)msg.note,
+                                            (uint8_t)msg.velocity };
+                cb(msg_bytes, 3);
+            }
+        }
+    }
+
+    // Call the callback once in order for all the messages which should be sent
+    // to properly terminate the MIDI loop.
+    void generate_end_msgs(std::function<void(uint8_t*, unsigned)> cb) const {
+        // First, auto-play noteoff messages for any active notes.
+        if(auto_noteoff_at_end) {
+            for(auto const& msg: notes_active_at_end) {
+                std::cout << "Playing auto note-off for note " << msg.note << std::endl;
+                uint8_t msg_bytes[3] = { (uint8_t)(0x80 + msg.channel),
+                                         (uint8_t)msg.note,
+                                         (uint8_t)msg.velocity };
+                cb(msg_bytes, 3);
+            }
+        }
+    }
 };
 
 std::vector<jack_port_t*> g_input_ports;
@@ -216,6 +284,10 @@ struct _slow_midi_port {
 std::vector<_slow_midi_port> g_slow_midi_ports;
 
 extern "C" {
+
+bool is_playing_state (loop_state_t state) {
+    return state == Playing || state == PlayingMuted;
+}
 
 // Process the slow midi ports
 void process_slow_midi_ports(jack_nframes_t nframes) {
@@ -421,47 +493,22 @@ int jack_process (jack_nframes_t nframes, void *arg) {
                     metadata->time - g_positions[tick](loop_idx) :
                     (g_lengths[tock](loop_idx) - g_positions[tick](loop_idx)) + metadata->time; //for wrapped playback
 
-                // Before maybe playing the next note, check if our loop is restarting. If so, we may need to
+                // Before maybe playing the next note, check if our loop is ending/restarting. If so, we may need to
                 // play some auto-inserted events for incomplete notes around the edges.
-                if(!played_restart_notes && restart_time_this_cycle <= time_this_cycle && restart_time_this_cycle < nframes) {
+                if(!played_restart_notes &&
+                   restart_time_this_cycle <= time_this_cycle &&
+                   restart_time_this_cycle < nframes) {
                     // We will restart before the next MIDI message. Do our special handling of "edge midi messages".
                     auto const& state = g_midi_input_notes_state_around_record[loop_idx];
-                    // First, auto-play noteoff messages for any active notes.
-                    if(state.auto_noteoff_at_end) {
-                        for(auto const& msg: state.notes_active_at_end) {
-                            std::cout << "Playing auto note-off for note " << msg.note << std::endl;
-                            uint8_t msg_bytes[3] = { (uint8_t)(0x80 + msg.channel),
-                                                     (uint8_t)msg.note,
-                                                     (uint8_t)msg.velocity };
-                            jack_midi_event_write(out_buf, restart_time_this_cycle, msg_bytes, 3);
-                        }
-                    }
-                    // Now, play any complete notes that fell within the pre-record grace period at loop 0.
-                    if(state.pre_record_grace_period > 0.0f) {
-                        auto now = std::chrono::high_resolution_clock::now();
-                        for(auto const& msg: state.last_notes) {
-                            std::chrono::duration<float, std::milli> t_diff_to_record_start = state.populated_at - msg.on_t;
-                            float t_diff_to_record_start_s = t_diff_to_record_start.count() / 1000.0f;
-                            if(t_diff_to_record_start_s <= state.pre_record_grace_period) {
-                                std::cout << "Playing grace-period note " << msg.note << std::endl;
-                                uint8_t msg_bytes[3] = { (uint8_t)(0x90 + msg.channel),
-                                                     (uint8_t)msg.note,
-                                                     (uint8_t)msg.velocity };
-                                jack_midi_event_write(out_buf, restart_time_this_cycle, msg_bytes, 3); // noteOn
-                                msg_bytes[0] = (uint8_t)(0x80 + msg.channel);
-                                jack_midi_event_write(out_buf, restart_time_this_cycle, msg_bytes, 3); // noteOff
-                            }
-                        }
-                    }
-                    // Now, play noteOns for any messages for which we found an unstarted noteOff during recording.
-                    if(state.auto_noteon_at_start) {
-                        for(auto const& msg: state.active_notes) {
-                            std::cout << "Playing auto note-on for note " << msg.note << std::endl;
-                            uint8_t msg_bytes[3] = { (uint8_t)(0x90 + msg.channel),
-                                                     (uint8_t)msg.note,
-                                                     (uint8_t)msg.velocity };
-                            jack_midi_event_write(out_buf, restart_time_this_cycle, msg_bytes, 3);
-                        }
+                    // First, terminate the loop by closing active notes.
+                    state.generate_end_msgs([out_buf, restart_time_this_cycle](uint8_t* bytes, unsigned len) {
+                        jack_midi_event_write(out_buf, restart_time_this_cycle, bytes, len);
+                    });
+                    // Now, restart the loop by playing grace period notes and starting unstarted notes.
+                    if (is_playing_state((loop_state_t)g_states[tock](loop_idx))) {
+                        state.generate_start_msgs([out_buf, restart_time_this_cycle](uint8_t* bytes, unsigned len) {
+                            jack_midi_event_write(out_buf, restart_time_this_cycle, bytes, len);
+                        });
                     }
                     played_restart_notes = true;
                 }
@@ -492,6 +539,11 @@ int jack_process (jack_nframes_t nframes, void *arg) {
                 std::cout << "Record MIDI: loop " << loop_idx << " @ " << storage_ts << std::endl;
                 jack_midi_event_t e;
                 jack_midi_event_get(&e, maybe_jack_buf, event_idx);
+                g_midi_input_state_trackers[loop_idx].process_msg({
+                    .time = (unsigned) storage_ts,
+                    .size = e.size,
+                    .buffer = (uint8_t*)e.buffer
+                });
                 if (!g_loop_midi_buffers[loop_idx].put({
                     .time = (unsigned) storage_ts,
                     .size = e.size
@@ -1296,8 +1348,27 @@ unsigned set_loop_midi_data(
     MIDIRingBuffer temp(g_midi_ring_buf_size);
     temp.adopt_bytes(data, data_len);
 
-    g_loop_midi_buffers[loop_idx] = temp;
+    std::atomic<bool> finished = false;
+    push_command([loop_idx, &finished, &temp]() {
+        g_loop_midi_buffers[loop_idx] = temp;
+        g_midi_input_notes_state_around_record[loop_idx].reset();
+        finished = true;
+    });
+    while(!finished && g_loops_fn) {}
+    
     return 0;
+}
+
+void freeze_midi_buffer (unsigned loop_idx) {
+    MIDIRingBuffer temp = g_midi_input_notes_state_around_record[loop_idx].freeze_buffer(g_loop_midi_buffers[loop_idx]);
+
+    std::atomic<bool> finished = false;
+    push_command([loop_idx, &finished, &temp]() {
+        g_loop_midi_buffers[loop_idx] = temp;
+        g_midi_input_notes_state_around_record[loop_idx].reset();
+        finished = true;
+    });
+    while(!finished && g_loops_fn) {}
 }
 
 void set_loops_length(unsigned *loop_idxs,

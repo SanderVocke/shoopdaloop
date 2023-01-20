@@ -196,6 +196,15 @@ unsigned set_loop_midi_data(
     unsigned data_len
 );
 
+// The backend keeps track of some stuff that happened on the MIDI
+// ports just before/after recording, so that e.g. unstarted notes
+// can be autostarted, unterminated notes terminated, and notes
+// played just before recording included.
+// With this call, for a particular loop, this information is baked
+// into the recording buffer and then forgotten.
+// Useful when e.g. storing the data.
+void freeze_midi_buffer(unsigned loop_idx);
+
 // TODO: extend for arbitrary sample range
 void set_loops_length(unsigned *loop_idxs,
                       unsigned n_loop_idxs,

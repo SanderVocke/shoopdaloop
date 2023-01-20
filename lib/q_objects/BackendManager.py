@@ -567,6 +567,7 @@ class BackendManager(QObject):
     
     @pyqtSlot(int, str)
     def save_loop_midi_to_file(self, idx, filename):
+        backend.freeze_midi_buffer(idx)
         msgs = self.get_loop_midi_messages(idx)
         mgr = self._channel_looper_managers[idx]
         mido_file = mido.MidiFile()
