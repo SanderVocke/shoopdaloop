@@ -213,6 +213,8 @@ class DryWetPairAbstractLooperManager(LooperState):
                 dry_action = LoopActionType.DoPlay.value
                 # Note that delay and N cycles should be correctly set from caller
                 dry_args = [wet_args[0]]
+                # TODO: this results in both loops still playing after the recording.
+                # We need a DoPlayNCycles option!
                 wet_args.append(float(LoopState.Playing.value))
             case LoopActionType.DoRecordNCycles.value:
                 # For record N cycles, here we inject an additional argument

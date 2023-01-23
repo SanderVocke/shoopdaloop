@@ -127,6 +127,7 @@ with contextlib.ExitStack() as contextmgr:
             backend_mgr = BackendManager(
                 mappings['port_name_pairs'],
                 mappings['mixed_output_port_names'],
+                mappings['midi_port_name_pairs'],
                 mappings['loops_to_ports'],
                 mappings['loops_hard_sync'],
                 mappings['loops_soft_sync'],

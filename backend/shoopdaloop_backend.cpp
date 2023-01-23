@@ -415,17 +415,16 @@ int jack_process (jack_nframes_t nframes, void *arg) {
     for(int i=0; i<g_input_ports.size(); i++) {
         auto buf = g_midi_input_bufs[i];
         g_temporary_merging_buffers[i].clear();
-        if(buf) {
+        if(buf && !g_port_inputs_muted(i)) {
             auto n_events = jack_midi_get_event_count(buf);
             g_n_port_events(i) = n_events;
             for(size_t event_idx=0; event_idx<n_events; event_idx++) {
-                std::cout << "Rx midi\n";
                 jack_midi_event_t e;
                 jack_midi_event_get(&e, buf, event_idx);
                 g_port_event_timestamps_in(event_idx, i) = e.time;
                 
                 g_temporary_merging_buffers[i].put({
-                    .time = 0,
+                    .time = e.time,
                     .size = (unsigned) e.size
                 }, (uint8_t*)e.buffer);
                 g_midi_input_state_trackers[i].process_msg({
@@ -492,6 +491,8 @@ int jack_process (jack_nframes_t nframes, void *arg) {
     // we do all the output processing - passthrough, playback - in one loop, in-order.
     // Only recording is done separately.
     for(int loop_idx=0; loop_idx<g_n_loops; loop_idx++) {
+        // TODO loop muting
+
         auto port_idx = g_loops_to_ports(loop_idx);
         auto &out_buf = g_midi_output_bufs[port_idx];
         auto &out_port = g_maybe_midi_output_ports[port_idx];
@@ -510,11 +511,10 @@ int jack_process (jack_nframes_t nframes, void *arg) {
         auto &maybe_jack_buf = g_midi_input_bufs[mapped_port_idx];
 
         // Add playback events into the merged port sorting buffer
-        midi_event_metadata_t *next_meta = nullptr;
+        midi_event_metadata_t next_meta;
         uint8_t *next_data = nullptr;
         auto update = [&]() {
             if (g_states[tick](loop_idx) != Playing && g_states[tock](loop_idx) != Playing) {
-                next_meta = nullptr;
                 next_data = nullptr;
                 return false;
             }
@@ -522,100 +522,36 @@ int jack_process (jack_nframes_t nframes, void *arg) {
             while (true) {
                 auto from = g_positions[tick](loop_idx);
                 auto next = midi_storage.peek_cursor_metadata();
+                if (midi_storage.n_events > 0) {
+                }
                 if (next && next->time >= from && next-> time < (from + nframes)) {
-                    next_meta = next;
+                    next_meta = *next;
+                    next_meta.time -= from;
                     next_data = midi_storage.peek_cursor_event_data();
                     return true;
                 }
                 else if (next && next->time > (from + nframes)) {
-                    next_meta = nullptr;
                     next_data = nullptr;
                     return false;
                 }
                 else if (next == nullptr) {
                     midi_storage.reset_cursor();
-                    next_meta = nullptr;
                     next_data = nullptr;
                     return false;
                 }
 
-                midi_storage.increment_cursor();
+                if( !midi_storage.increment_cursor() ) {
+                    midi_storage.reset_cursor();
+                    next_data = nullptr;
+                    return false;
+                }
             }
         };
 
         while(update()) {
-            g_temporary_merging_buffers[loop_idx].insert(*next_meta, next_data);
+            g_temporary_merging_buffers[port_idx].insert(next_meta, next_data);
+            if (!midi_storage.increment_cursor()) { midi_storage.reset_cursor(); break; }
         }
-
-        // if(out_port && out_buf && port_volume && !port_muted && !port_in_muted) {
-        //     jack_midi_clear_buffer(out_buf);
-
-        //     midi_event_metadata_t *maybe_next_playback_event_metadata = nullptr;
-        //     midi_event_metadata_t *maybe_next_passthrough_event_metadata = nullptr;
-        //     midi_event_metadata_t *maybe_next_event_metadata = nullptr;
-        //     uint8_t *maybe_next_event_data = nullptr;
-        //     jack_midi_event_t evt;
-        //     midi_event_metadata_t evt_meta;
-        //     int current_passthrough_event_idx = -1;
-
-        //     auto next_pb = [&]() {
-        //         // TODO ensure the timestamp is set relative to this cycle
-        //         maybe_next_playback_event_metadata = next_playback_event(midi_storage, pos_before);
-        //         if (maybe_next_playback_event_metadata) {
-        //             maybe_next_playback_event_metadata->time -= pos_before;
-        //         }
-        //     };
-        //     auto next_pt = [&]() { 
-        //         current_passthrough_event_idx++;
-        //         if (current_passthrough_event_idx < n_events) {
-        //             jack_midi_event_get(&evt, maybe_jack_buf, (size_t)current_passthrough_event_idx);
-        //             evt_meta.time = evt.time;
-        //             evt_meta.size = evt.size;
-        //             maybe_next_passthrough_event_metadata = &evt_meta;
-        //         } else {
-        //             maybe_next_passthrough_event_metadata = nullptr;
-        //         }
-        //     };
-
-        //     auto update = [&]() {
-        //         if (maybe_next_playback_event_metadata && maybe_next_passthrough_event_metadata) {
-        //             maybe_next_event_metadata =  maybe_next_playback_event_metadata->time < maybe_next_passthrough_event_metadata->time ?
-        //                 maybe_next_playback_event_metadata : maybe_next_passthrough_event_metadata;
-        //         } else if (maybe_next_playback_event_metadata) {
-        //             std::cout << "MIDI playback: " << maybe_next_playback_event_metadata->time << "," << g_positions[tick](loop_idx) << std::endl;
-        //             maybe_next_event_metadata = maybe_next_playback_event_metadata;
-        //             maybe_next_event_data = midi_storage.peek_cursor_event_data();
-        //         } else if (maybe_next_passthrough_event_metadata) {
-        //             std::cout << "MIDI passthrough: " << maybe_next_passthrough_event_metadata->time << std::endl;
-        //             maybe_next_event_metadata = maybe_next_passthrough_event_metadata;
-        //             maybe_next_event_data = evt.buffer;
-        //         } else {
-        //             maybe_next_event_metadata = nullptr;
-        //         }
-        //     };
-        //     auto next = [&]() {
-        //         if (maybe_next_event_metadata == nullptr) {
-        //             return;
-        //         } else if (maybe_next_event_metadata == maybe_next_playback_event_metadata) {
-        //             next_pb();
-        //             update();
-        //         } else if (maybe_next_event_metadata == maybe_next_passthrough_event_metadata) {
-        //             next_pt();
-        //             update();
-        //         }
-        //     };
-
-        //     next_pb();
-        //     next_pt();
-        //     update();
-
-        //     // TODO: edge case MIDI events
-        //     while(maybe_next_event_metadata) {
-        //         std::cout << "MIDI out\n";
-        //         jack_midi_event_write(out_buf, maybe_next_event_metadata->time, maybe_next_event_data, maybe_next_event_metadata->size);
-        //         next();
-        //     }
-        // }
 
         // MIDI Recording: loops backend told us at which timestamps to record
         // the incoming messages, now actually store them
@@ -639,70 +575,17 @@ int jack_process (jack_nframes_t nframes, void *arg) {
     for (size_t i=0; i<g_n_ports; i++) {
         auto &maybe_jack_buf = g_midi_output_bufs[i];
         auto &ringbuf = g_temporary_merging_buffers[i];
-        if(maybe_jack_buf) {
+        if(maybe_jack_buf && !g_ports_muted(i)) {
             jack_midi_clear_buffer(maybe_jack_buf);
             ringbuf.reset_cursor();
             auto maybe_msg = ringbuf.peek_cursor_metadata();
             while(maybe_msg) {
-                std::cout << "MIDI out!\n" << ringbuf.cursor << std::endl;
                 jack_midi_event_write(maybe_jack_buf, maybe_msg->time, ringbuf.peek_cursor_event_data(), maybe_msg->size);
-                auto result = ringbuf.increment_cursor();
-                std::cout << result << std::endl;
-                if (!result) { std::cout << "brk\n"; break; }
+                if(!ringbuf.increment_cursor()) { break; }
                 maybe_msg = ringbuf.peek_cursor_metadata();
             }
         }
     }
-
-    //     if(g_maybe_midi_output_ports[port_idx] && out_buf &&
-    //        g_states[tick](loop_idx) == Playing
-    //        && g_loop_volumes(loop_idx) > 0.0f) {
-    //         // We have playback
-
-    //         jack_midi_clear_buffer(out_buf);
-    //         auto &loop_buf = g_loop_midi_buffers[loop_idx];
-    //         int32_t restart_time_this_cycle = g_positions[tock](loop_idx) < g_positions[tick](loop_idx) ?
-    //             nframes - g_positions[tock](loop_idx) :
-    //             nframes+1; // n/a
-    //         bool played_restart_notes = false;
-    //         while(loop_buf.peek_cursor_metadata()) {
-    //             // Check time of next note
-    //             auto metadata = loop_buf.peek_cursor_metadata();
-    //             int32_t time_this_cycle = metadata->time >= g_positions[tick](loop_idx) ?
-    //                 metadata->time - g_positions[tick](loop_idx) :
-    //                 (g_lengths[tock](loop_idx) - g_positions[tick](loop_idx)) + metadata->time; //for wrapped playback
-
-    //             // Before maybe playing the next note, check if our loop is ending/restarting. If so, we may need to
-    //             // play some auto-inserted events for incomplete notes around the edges.
-    //             if(!played_restart_notes &&
-    //                restart_time_this_cycle <= time_this_cycle &&
-    //                restart_time_this_cycle < nframes) {
-    //                 // We will restart before the next MIDI message. Do our special handling of "edge midi messages".
-    //                 auto const& state = g_midi_input_notes_state_around_record[loop_idx];
-    //                 // First, terminate the loop by closing active notes.
-    //                 state.generate_end_msgs([out_buf, restart_time_this_cycle](uint8_t* bytes, unsigned len) {
-    //                     jack_midi_event_write(out_buf, restart_time_this_cycle, bytes, len);
-    //                 });
-    //                 // Now, restart the loop by playing grace period notes and starting unstarted notes.
-    //                 if (is_playing_state((loop_state_t)g_states[tock](loop_idx))) {
-    //                     state.generate_start_msgs([out_buf, restart_time_this_cycle](uint8_t* bytes, unsigned len) {
-    //                         jack_midi_event_write(out_buf, restart_time_this_cycle, bytes, len);
-    //                     });
-    //                 }
-    //                 played_restart_notes = true;
-    //             }
-
-    //             // Now, play the next event in the recording if it is ready to play.
-    //             if(time_this_cycle >= nframes) { break; } // Done for now, leave cursor for next iteration
-    //             if(time_this_cycle >= 0) {
-    //                 std::cout << "MIDI playback: " << metadata->time << "  -> " << time_this_cycle << "," << g_positions[tick](loop_idx) << std::endl;
-    //                 jack_midi_event_write(out_buf, metadata->time, loop_buf.peek_cursor_event_data(), metadata->size);
-    //                 g_atomic_state.loop_n_output_events_since_last_update[loop_idx]++;
-    //             }
-    //             if(!loop_buf.increment_cursor()) { loop_buf.reset_cursor(); }
-    //         }
-    //     }
-    // }
 
     // If we just started recording, set up the active notes information just before recording.
     for(int loop_idx=0; loop_idx<g_n_loops; loop_idx++) {
@@ -809,10 +692,12 @@ jack_client_t* initialize(
     int *loops_hard_sync_mapping,
     int *loops_soft_sync_mapping,
     int *ports_to_mixed_outputs_mapping,
-    int *ports_midi_enabled_list,
+    unsigned *ports_midi_enabled,
     const char **input_port_names,
     const char **output_port_names,
     const char **mixed_output_port_names,
+    const char **midi_input_port_names,
+    const char **midi_output_port_names,
     const char *client_name,
     unsigned latency_buf_size,
     UpdateCallback update_cb,
@@ -967,15 +852,15 @@ jack_client_t* initialize(
     for(size_t i=0; i<n_mixed_output_ports; i++) {
         g_mixed_output_ports.push_back(jack_port_register(g_jack_client, mixed_output_port_names[i], JACK_DEFAULT_AUDIO_TYPE, JackPortIsOutput, 0));
     }
+    size_t midi_idx = 0;
     for(size_t i=0; i<n_ports; i++) {
         g_port_input_mappings(i) = i;
         g_input_ports.push_back(jack_port_register(g_jack_client, input_port_names[i], JACK_DEFAULT_AUDIO_TYPE, JackPortIsInput, 0));
         g_output_ports.push_back(jack_port_register(g_jack_client, output_port_names[i], JACK_DEFAULT_AUDIO_TYPE, JackPortIsOutput, 0));
-        if(std::find(ports_midi_enabled_list, ports_midi_enabled_list + n_ports, i) < (ports_midi_enabled_list + n_ports)) {
-            auto in_name = std::string(input_port_names[i]) + "_midi";
-            auto out_name = std::string(output_port_names[i]) + "_midi";
-            g_maybe_midi_input_ports.push_back(jack_port_register(g_jack_client, in_name.c_str(), JACK_DEFAULT_MIDI_TYPE, JackPortIsInput, 0));
-            g_maybe_midi_output_ports.push_back(jack_port_register(g_jack_client, out_name.c_str(), JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput, 0));
+        if(ports_midi_enabled[i]) {
+            g_maybe_midi_input_ports.push_back(jack_port_register(g_jack_client, midi_input_port_names[midi_idx], JACK_DEFAULT_MIDI_TYPE, JackPortIsInput, 0));
+            g_maybe_midi_output_ports.push_back(jack_port_register(g_jack_client, midi_output_port_names[midi_idx], JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput, 0));
+            midi_idx++;
         } else {
             g_maybe_midi_input_ports.push_back(nullptr);
             g_maybe_midi_output_ports.push_back(nullptr);

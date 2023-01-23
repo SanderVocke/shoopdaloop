@@ -111,11 +111,15 @@ struct MIDIRingBuffer {
     std::optional<size_t> next_event_offset(size_t data_byte_offset) {
         auto metadata = peek_metadata(data_byte_offset);
         if (metadata == nullptr) {
-            return {};
+            return std::nullopt;
         }
         size_t new_offset = (data_byte_offset + sizeof(midi_event_metadata_t) + metadata->size) % data.size();
-        std::cout << data_byte_offset << " -> " << normalize_idx(new_offset) << std::endl;
-        return normalize_idx(new_offset) < normalize_idx(head) ? new_offset : std::optional<size_t>({});
+
+        if (normalize_idx(new_offset) < normalize_idx(head))
+            return new_offset;
+        else {
+            return std::nullopt;
+        }
     }
 
     bool put (midi_event_metadata_t metadata, uint8_t* data) {

@@ -86,11 +86,12 @@ typedef void (*AbortCallback) ();
 //                          Using a negative number or the loop's own index disables soft sync for that loop.
 // ports_to_mixed_outputs_mapping: These indices indicate to which mixed output port each regular port's samples will
 //                                 be mixed. <0 is no target.
-// ports_midi_enabled_list: List of port indexes for the ports which should receive a pair of MIDI ports in addition
-//                          to audio.
+// ports_midi_enabled: n_ports booleans indicating whether that port has MIDI.
 // input_port_names: n_ports strings which give the names of the inputs for the ports.
 // output_port_names: n_ports strings which give the names of the outputs for the ports.
 // mixed_output_port_names: n_mixed_ports strings which give the names of the mixed output ports.
+// midi_input_port_names: n_midi_ports strings which give the names of the midi inputs.
+// midi_output_port_names: n_midi_ports strings which give the names of the midi outputs.
 // client_name: Name of the JACK client to register
 // update_cb: this callback will be called when a state update is requested.
 // abort_cb: this callback will be called if the back-end aborts operation for any reason.
@@ -103,10 +104,12 @@ jack_client_t* initialize(
     int *loops_hard_sync_mapping,
     int *loops_soft_sync_mapping,
     int *ports_to_mixed_outputs_mapping,
-    int *ports_midi_enabled_list,
+    unsigned *ports_midi_enabled,
     const char **input_port_names,
     const char **output_port_names,
     const char **mixed_output_port_names,
+    const char **midi_input_port_names,
+    const char **midi_output_port_names,
     const char *client_name,
     unsigned latency_buf_size,
     UpdateCallback update_cb,
