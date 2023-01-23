@@ -20,7 +20,7 @@ struct MIDIRingBuffer {
     size_t tail; // Oldest event start
     size_t head; // Write position
     size_t head_start; // Youngest event start
-    int32_t cursor;
+    int32_t cursor, prev_cursor;
 
     uint8_t *copy_bytes(unsigned *length_out) {
         *length_out = data.size() - bytes_available();
@@ -70,6 +70,11 @@ struct MIDIRingBuffer {
         return nullptr;
     }
 
+    midi_event_metadata_t* peek_prev_cursor_metadata() {
+        if(prev_cursor >= 0) { return peek_metadata(prev_cursor); }
+        return nullptr;
+    }
+
     uint8_t *peek_cursor_event_data() {
         auto metadata = peek_cursor_metadata();
         if(!metadata) { return nullptr; }
@@ -81,6 +86,7 @@ struct MIDIRingBuffer {
     }
 
     bool cursor_valid() { return cursor >= 0; }
+    bool prev_cursor_valid() { return prev_cursor >= 0; }
 
     // Try to increment the cursor to the next position.
     // returns true if successful.
@@ -89,6 +95,7 @@ struct MIDIRingBuffer {
         if(cursor == -1) { return false; }
         auto next = next_event_offset(cursor);
         if(next) { 
+            prev_cursor = cursor;
             cursor = next.value();
             return true;
         }
@@ -98,6 +105,7 @@ struct MIDIRingBuffer {
     // Reset cursor to the tail if any, to -1 otherwise.
     void reset_cursor() {
         cursor = (n_events == 0) ? -1 : tail;
+        prev_cursor = -1;
     }
 
     std::optional<size_t> next_event_offset(size_t data_byte_offset) {
@@ -106,6 +114,7 @@ struct MIDIRingBuffer {
             return {};
         }
         size_t new_offset = (data_byte_offset + sizeof(midi_event_metadata_t) + metadata->size) % data.size();
+        std::cout << data_byte_offset << " -> " << normalize_idx(new_offset) << std::endl;
         return normalize_idx(new_offset) < normalize_idx(head) ? new_offset : std::optional<size_t>({});
     }
 
@@ -131,11 +140,107 @@ struct MIDIRingBuffer {
         return false;        
     }
 
-    MIDIRingBuffer(size_t bytes) {
-        this->data = std::vector<uint8_t>(bytes);
+    bool insert_at_cursor (midi_event_metadata_t metadata, uint8_t* data) {
+        auto total_size = sizeof(metadata) + metadata.size;
+        auto maybe_cursor_metadata = peek_cursor_metadata();
+        auto maybe_before_metadata = peek_prev_cursor_metadata();
+
+        // First item case
+        if (n_events == 0) {
+            return put(metadata, data);
+        }
+
+        // Reject cases
+        if (bytes_available() < total_size) { return false; }
+        if (!cursor_valid()) { return false; }
+        if (maybe_cursor_metadata && maybe_cursor_metadata->time < metadata.time) { return false; } // out of order
+        if (maybe_before_metadata && maybe_before_metadata->time > metadata.time) { return false; } // out of order
+
+        // Simple put case
+        if (cursor_valid() && cursor == head) {
+            return put(metadata, data);
+        }
+
+        // Actual insertion
+        if (cursor_valid() && cursor < head) {
+            head += total_size;
+            head_start += total_size;
+            // Move everything forward to make space
+            for(size_t idx = head-1; idx >= cursor + total_size; idx--) {
+                data[idx] = data[idx-total_size];
+            }
+            // Now insert
+            memcpy(&(this->data[cursor]), &metadata, sizeof(metadata));
+            memcpy(&(this->data[cursor+sizeof(metadata)]), data, metadata.size);
+            n_events++;
+
+            return true;
+        }
+        
+        // Probably unreachable
+        return false;        
+    }
+
+    // Insertion. Keeps cursor on the same event, regardless where the new event
+    // was inserted.
+    bool insert (midi_event_metadata_t metadata, uint8_t* data) {
+        auto total_size = sizeof(metadata) + metadata.size;
+        auto old_cursor = cursor;
+        auto old_prev_cursor = prev_cursor;
+        auto maybe_cursor_metadata = peek_cursor_metadata();
+        auto maybe_before_metadata = peek_prev_cursor_metadata();
+
+        // If empty: simple put.
+        if(!maybe_before_metadata && !maybe_cursor_metadata) {
+            return put(metadata, data);
+        }
+
+        // If cursor is at end, simple put and put cursor at end again.
+        if(cursor == head && put(metadata, data)) {
+            prev_cursor = cursor;
+            cursor += total_size;
+            return true;
+        }
+
+        // Now we have to deal with other cases (inserting between or at beginning).
+        // Use the cursor and insert_at_cursor for this.
+        while(true) {
+            auto fits_between = maybe_before_metadata && maybe_cursor_metadata &&
+                maybe_before_metadata->time <= metadata.time &&
+                maybe_cursor_metadata->time > metadata.time;
+            auto fits_before = !maybe_before_metadata && maybe_cursor_metadata &&
+                maybe_cursor_metadata->time > metadata.time;
+
+            if ((fits_before || fits_between) && insert_at_cursor(metadata, data)) {
+                // We inserted at the cursor.
+                prev_cursor = cursor;
+                cursor += total_size;
+                return true;
+            }
+
+            // If at end, start from beginning until we reach where we started
+            if (cursor == head) { cursor = 0; }
+            else { increment_cursor(); }
+            if (cursor == old_cursor) {
+                // We went all the way around and did not find a matching place.
+                prev_cursor = old_prev_cursor;
+                return false;
+            }
+        }
+
+        // Should be unreachable
+        return false;
+    }
+
+    void clear() {
         this->n_events = 0;
         this->head = this->tail = this->head_start = 0;
         reset_cursor();
+    }
+
+    MIDIRingBuffer(size_t bytes) {
+        this->data = std::vector<uint8_t>(bytes);
+        clear();
     }
 
     MIDIRingBuffer() {

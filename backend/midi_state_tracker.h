@@ -33,6 +33,10 @@ unsigned velocity (jack_midi_event_t const& msg) {
     return msg.buffer[2];
 }
 
+unsigned time (jack_midi_event_t const& msg) {
+    return msg.time;
+}
+
 struct MIDINotesState {
     MIDINotesState() {
         active_notes.reserve(16*128);
@@ -80,15 +84,16 @@ struct MIDIStateTracker : public MIDINotesState {
             // Move from active to last, otherwise ignore
             auto it = std::find_if(active_notes.begin(), active_notes.end(),
                 [&msg](ActiveNote &a) {
-                    return a.channel = channel(msg) && a.note == note(msg);
+                    return a.channel == channel(msg) && a.note == note(msg);
                     });
             if (it != active_notes.end()) {
                 std::erase_if(last_notes,
                 [&msg](NoteOnOff &a) {
-                    return a.channel = channel(msg) && a.note == note(msg);
+                    return a.channel == channel(msg) && a.note == note(msg);
                     });
                 last_notes.push_back({
                     .on_t = it->on_t,
+                    .off_t = std::chrono::high_resolution_clock::now(),
                     .channel = it->channel,
                     .note = it->note,
                     .velocity = it->velocity
@@ -100,9 +105,9 @@ struct MIDIStateTracker : public MIDINotesState {
             // Remove from active notes in case it is a double noteon
             std::erase_if(active_notes,
                 [&msg](ActiveNote &a) {
-                    return a.channel = channel(msg) && a.note == note(msg);
+                    return a.channel == channel(msg) && a.note == note(msg);
                     });
-            active_notes.push_back({.channel = channel(msg), .note = note(msg), .velocity = velocity(msg)});
+            active_notes.push_back({.on_t = std::chrono::high_resolution_clock::now(), .channel = channel(msg), .note = note(msg), .velocity = velocity(msg)});
             sort_active_notes();
         }
     }
