@@ -68,7 +68,7 @@ def get_port_loop_mappings(n_tracks, loops_per_track, loop_channel_names):
         for i in range(loops_per_track):
             add_loop(track_idx+1)
         
-        # first two ports (dry l/r) have MIDI.
-        r['ports_midi_enabled'] += [track_idx*4, track_idx*4+1]
+        # first port (dry l) has MIDI.
+        r['ports_midi_enabled'].append(track_idx*4)
     
     return r

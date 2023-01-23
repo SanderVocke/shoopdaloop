@@ -419,6 +419,7 @@ int jack_process (jack_nframes_t nframes, void *arg) {
             auto n_events = jack_midi_get_event_count(buf);
             g_n_port_events(i) = n_events;
             for(size_t event_idx=0; event_idx<n_events; event_idx++) {
+                std::cout << "Rx midi\n";
                 jack_midi_event_t e;
                 jack_midi_event_get(&e, buf, event_idx);
                 g_port_event_timestamps_in(event_idx, i) = e.time;
@@ -621,10 +622,9 @@ int jack_process (jack_nframes_t nframes, void *arg) {
         for(int event_idx=0; event_idx<n_events; event_idx++) {
             auto storage_ts = g_event_recording_timestamps_out(event_idx, loop_idx);
             if(storage_ts >= 0 && maybe_jack_buf) {
-                std::cout << "Record MIDI: loop " << loop_idx << " @ " << storage_ts << std::endl;
                 jack_midi_event_t e;
                 jack_midi_event_get(&e, maybe_jack_buf, event_idx);
-                if (!midi_storage.put({
+                if (!g_loop_midi_buffers[loop_idx].put({
                     .time = (unsigned) storage_ts,
                     .size = (unsigned) e.size
                 }, (uint8_t*)e.buffer)) {
