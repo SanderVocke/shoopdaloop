@@ -4,6 +4,7 @@
 #include "AudioBuffer.h"
 #include <cstring>
 #include <memory>
+#include <stdexcept>
 #include <vector>
 #include <optional>
 
@@ -14,14 +15,14 @@ enum class AudioLoopOutputType {
 
 template<typename SampleT>
 class AudioLoop : public LoopInterface {
+private:
     typedef AudioBufferPool<SampleT> BufferPool;
     typedef AudioBuffer<SampleT> Buffer;
     
     enum PointOfInterestTypeFlags {
         StateTransition   = 1, // The loop will transition to its next state.
-        InternalBufferEnd = 2, // The current source buffer (chunk of the loop) is ending
-        ExternalBufferEnd = 4, // The recording/playback buffer space runs out
-        LoopEnd           = 8, // The loop ends
+        ExternalBufferEnd = 2, // The recording/playback buffer space runs out
+        LoopEnd           = 4, // The loop ends
     };
 
     struct PointOfInterest {
@@ -30,9 +31,9 @@ class AudioLoop : public LoopInterface {
     };
 
     struct Cursor {
-        size_t position;
-        size_t buffer_idx;
-        size_t pos_in_buffer;
+        size_t position;       // Overall loop position
+        size_t buffer_idx;     // idx of buffer in buffer list
+        size_t pos_in_buffer;  // position within current buffer
     };
 
     std::optional<PointOfInterest> m_next_poi;
@@ -74,58 +75,84 @@ public:
         return m_next_poi ? m_next_poi.value().when : (std::optional<size_t>)std::nullopt;
     }
 
+    void process_record(size_t n_samples) {
+        if (m_recording_source_buffer_size < n_samples) {
+            throw std::runtime_error("Attempting to record out of bounds");
+        }
+
+        auto &from = m_recording_source_buffer;
+        auto &to_buf = m_buffers.back();
+        auto to = to_buf->data_at(to_buf->head());
+        // Record all, or to the end of the current buffer, whichever
+        // comes first
+        auto n = std::min(n_samples, to_buf->space());
+        auto rest = n_samples - n;
+        to_buf->record(from, n);
+
+        m_recording_source_buffer += n;
+        m_recording_source_buffer_size -= n;
+
+        // If we reached the end of the buffer, add another
+        // and record the rest.
+        if(rest > 0) {
+            m_cursor.buffer_idx++;
+            m_buffers.push_back(std::shared_ptr<AudioBuffer<SampleT>>(m_buffer_pool->get_buffer()));
+            m_cursor.pos_in_buffer = 0;
+            process_record(rest);
+        }
+    }
+
+    void process_playback(size_t n_samples, bool muted) {
+        if (m_playback_target_buffer_size < n_samples) {
+            throw std::runtime_error("Attempting to play out of bounds");
+        }
+
+        auto  &from_buf = m_buffers[m_cursor.buffer_idx];
+        auto from = from_buf->data_at(m_cursor.pos_in_buffer);
+        auto &to = m_playback_target_buffer;
+        auto n = std::min(from_buf->head() - m_cursor.pos_in_buffer, n_samples);
+        auto rest = n_samples - n;
+
+        if (m_output_type == AudioLoopOutputType::Copy) {
+            memcpy((void*)to, (void*)from, n*sizeof(SampleT));
+        } else if (m_output_type == AudioLoopOutputType::Add) {
+            for(size_t idx=0; idx < n; idx++) {
+                to[idx] += from[idx];
+            }
+        } else {
+            throw std::runtime_error("Unsupported output type for audio loop.");
+        }
+
+        m_playback_target_buffer += n;
+        m_playback_target_buffer_size -= n;
+
+        // If we didn't play back all yet, go to next buffer and continue
+        if(rest > 0) {
+            m_cursor.buffer_idx++;
+            if(m_cursor.buffer_idx >= m_buffers.size()) {
+                throw std::runtime_error("Playback reached end before expected");
+            }
+            m_cursor.pos_in_buffer = 0;
+            process_playback(rest, muted);
+        }
+    }
+
     void process(size_t n_samples) override {
         if (m_next_poi && n_samples > m_next_poi.value().when) {
             throw std::runtime_error("Attempted to process loop beyond its next POI.");
         }
 
-        if (m_state == Recording) {
-            if (m_recording_source_buffer_size < n_samples) {
-                throw std::runtime_error("Attempting to record out of bounds");
-            }
-
-            auto from = m_recording_source_buffer;
-            auto to = m_buffers[m_cursor.buffer_idx]->data_at(m_buffers[m_cursor.buffer_idx]->head());
-            memcpy((void*)to, (void*)from, n_samples*sizeof(SampleT));
-
-            m_recording_source_buffer += n_samples;
-            m_recording_source_buffer_size -= n_samples;
-        } else if (m_state == Playing) {
-            if (m_playback_target_buffer_size < n_samples) {
-                throw std::runtime_error("Attempting to play out of bounds");
-            }
-
-            auto from = m_buffers[m_cursor.buffer_idx]->data_at(m_cursor.pos_in_buffer);
-            auto to = m_playback_target_buffer;
-            if (m_output_type == AudioLoopOutputType::Copy) {
-                memcpy((void*)to, (void*)from, n_samples*sizeof(SampleT));
-            } else if (m_output_type == AudioLoopOutputType::Add) {
-                for(size_t idx=0; idx < n_samples; idx++) {
-                    to[idx] += from[idx];
-                }
-            } else {
-                throw std::runtime_error("Unsupported output type for audio loop.");
-            }
-
-            m_playback_target_buffer += n_samples;
-            m_playback_target_buffer_size -= n_samples;
-        } else if (m_state == PlayingMuted) {
-            if (m_playback_target_buffer_size < n_samples) {
-                throw std::runtime_error("Attempting to play muted out of bounds");
-            }
-
-            auto from = m_buffers[m_cursor.buffer_idx]->data_at(m_cursor.pos_in_buffer);
-            auto to = m_playback_target_buffer;
-            if (m_output_type == AudioLoopOutputType::Copy) {
-                memset((void*)to, 0, n_samples*sizeof(SampleT));
-            }
-
-            m_playback_target_buffer += n_samples;
-            m_playback_target_buffer_size -= n_samples;
-        } else if (m_state == Stopped) {
-            ;
-        } else {
-            throw std::runtime_error("Unsupported loop state");
+        switch(m_state) {
+            case Recording:
+                process_record(n_samples);
+                break;
+            case Playing:
+                process_playback(n_samples, false);
+                break;
+            case PlayingMuted:
+                process_playback(n_samples, true);
+            case Stopped:
+                break;
         }
 
         if (m_next_poi) { m_next_poi.value().when -= n_samples; }
@@ -151,17 +178,15 @@ public:
     void update_poi() {
         // State transition POIs are managed via the external call interfaces.
         // Here we set the POIs that come from any other reason.
-        std::optional<PointOfInterest> loop_end_poi, external_end_poi, internal_end_poi;
+        std::optional<PointOfInterest> loop_end_poi, external_end_poi;
         if (m_state == Playing || m_state == PlayingMuted) {
             loop_end_poi = {.when = m_length - m_cursor.position, .type_flags = LoopEnd};
-            internal_end_poi = {.when = m_buffers[m_cursor.buffer_idx]->head() - m_cursor.pos_in_buffer, .type_flags = InternalBufferEnd};
             external_end_poi = {.when = m_playback_target_buffer_size, .type_flags = ExternalBufferEnd};
         } else if (m_state == Recording) {
-            internal_end_poi = {.when = m_buffers[m_cursor.buffer_idx]->size() - m_buffers[m_cursor.buffer_idx]->head(), .type_flags = InternalBufferEnd};
             external_end_poi = {.when = m_recording_source_buffer_size, .type_flags = ExternalBufferEnd};
         }
 
-        m_next_poi = dominant_poi(m_next_poi, loop_end_poi, external_end_poi, internal_end_poi);
+        m_next_poi = dominant_poi(m_next_poi, loop_end_poi, external_end_poi);
     }
 
     void set_playback_buffer(SampleT *buffer, size_t size) {
@@ -191,19 +216,6 @@ public:
         if (type_flags & StateTransition) {
             transition_now();
             type_flags &= ~(StateTransition);
-        }
-        if (type_flags & InternalBufferEnd) {
-            // TODO handle overflow
-            if (m_state == Playing || m_state == PlayingMuted) {
-                m_cursor.buffer_idx++;
-                m_cursor.pos_in_buffer = 0;
-            } else if (m_state == Recording) {
-                m_cursor.buffer_idx++;
-                m_buffers[m_cursor.buffer_idx] = get_new_buffer();
-            } else {
-                throw std::runtime_error("Cannot reach internal buffer end in this state");
-            }
-            type_flags &= ~(InternalBufferEnd);
         }
         if (type_flags & LoopEnd) {
             m_cursor = {.position = 0, .buffer_idx = 0, .pos_in_buffer = 0};

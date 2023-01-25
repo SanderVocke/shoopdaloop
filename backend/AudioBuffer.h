@@ -1,4 +1,6 @@
 #pragma once
+#include <cstring>
+#include <stdexcept>
 #include <vector>
 #include <stdio.h>
 
@@ -17,5 +19,11 @@ public:
     size_t space() const { return size() - head(); }
     SampleT* data() { return m_data.data(); }
     SampleT* data_at(size_t pos) { return m_data.data() + pos; }
-    void increment_head(size_t amount) { m_head += amount; }
+
+    void record(SampleT *source, size_t n_samples) {
+        if(n_samples > space()) {
+            throw std::runtime_error("Attempting to record out of bounds.");
+        }
+        memcpy((void*)(data_at(head())), (void*)source, n_samples*sizeof(SampleT));
+    }
 };
