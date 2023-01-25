@@ -33,4 +33,10 @@ public:
 
     // Transition right away.
     virtual void transition_now();
+
+    // Getters.
+    virtual size_t get_position() const;
+    virtual size_t get_length() const;
+
+    LoopInterface() = default;
 };

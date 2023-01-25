@@ -1,3 +1,4 @@
+#pragma once
 #include <boost/lockfree/queue.hpp>
 #include <memory>
 #include <thread>
@@ -10,13 +11,14 @@
 // buffers asynchronously.
 template<typename SampleT>
 class AudioBufferPool {
-    boost::lockfree::queue<std::shared_ptr<AudioBuffer<SampleT>>> m_queue;
+    typedef AudioBuffer<SampleT> Buffer;
+
+    boost::lockfree::queue<Buffer*> m_queue;
     const unsigned m_target_n_buffers;
     unsigned m_buffers_size;
     std::atomic<unsigned> m_actual_n_buffers;
     std::atomic<bool> m_finish;
     std::thread m_replenish_thread;
-    const std::chrono::duration<double, std::micro> m_replenish_delay;
 
 public:
     template<class Rep, class Period> AudioBufferPool(size_t target_n_buffers,
@@ -26,28 +28,30 @@ public:
         m_buffers_size(buffers_size),
         m_actual_n_buffers(0),
         m_finish(false),
-        m_replenish_delay(std::chrono::duration_cast<decltype(m_replenish_delay)>(replenishment_delay)
+        m_queue(target_n_buffers)
     {
-        m_queue = decltype(m_queue)(m_target_n_buffers);
         fill();
 
         // Start auto-replenishment
-        m_replenish_thread = std::thread(&AudioBufferPool<SampleT>::replenish_thread_fn, *this);
+        m_replenish_thread = std::thread(
+            [replenishment_delay, this]() { this->replenish_thread_fn(replenishment_delay); });
     }
 
     ~AudioBufferPool() {
-        if (m_replenish_thread) {
-            m_finish = true;
-            m_replenish_thread.join();
+        Buffer *buf;
+        while(m_queue.pop(buf)) {
+            delete buf;
         }
+        m_finish = true;
+        m_replenish_thread.join();
     }
 
     // Get a buffer. It is a shared pointer but if gotten via this
     // method, there will be no other references to it anywhere.
     // The buffer is taken lock-free from the pool. Should the pool be
     // empty, it is allocated in-place.
-    std::shared_ptr<AudioBuffer<SampleT>> get() {
-        std::shared_ptr<AudioBuffer<SampleT>> buf = nullptr;
+    Buffer* get() {
+        Buffer* buf = nullptr;
         if (m_queue.pop(buf)) { return buf; }
         else { return allocate(); }
     }
@@ -65,15 +69,16 @@ protected:
         }
     }
 
-    void replenish_thread_fn() {
+    template<class Rep, class Period>
+    void replenish_thread_fn(std::chrono::duration<Rep, Period> const& replenishment_delay) {
         while(true) {
             if (this->m_finish) { break; }
             fill();
-            std::this_thread::sleep_for(m_replenish_delay);
+            std::this_thread::sleep_for(replenishment_delay);
         }
     }
 
-    std::shared_ptr<AudioBuffer<SampleT>> allocate() {
-        return std::make_shared<AudioBuffer<SampleT>>(m_buffers_size);
+    Buffer *allocate() {
+        return new Buffer(m_buffers_size);
     }
 };

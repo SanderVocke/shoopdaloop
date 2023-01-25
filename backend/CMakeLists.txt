@@ -4,6 +4,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED YES)
 set(CMAKE_CXX_EXTENSIONS NO)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}")
 
+# Subdirs
+add_subdirectory(test)
+
 # Find Halide
 find_package(Halide REQUIRED)
 find_package(Jack REQUIRED)

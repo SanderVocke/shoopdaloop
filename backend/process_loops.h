@@ -1,3 +1,4 @@
+#pragma once
 #include "LoopInterface.h"
 #include <memory>
 #include <optional>

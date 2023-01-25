@@ -1,3 +1,4 @@
+#pragma once
 #include "LoopInterface.h"
 #include "AudioBufferPool.h"
 #include "AudioBuffer.h"
@@ -5,6 +6,11 @@
 #include <memory>
 #include <vector>
 #include <optional>
+
+enum class AudioLoopOutputType {
+    Copy,
+    Add
+};
 
 template<typename SampleT>
 class AudioLoop : public LoopInterface {
@@ -16,11 +22,6 @@ class AudioLoop : public LoopInterface {
         InternalBufferEnd = 2, // The current source buffer (chunk of the loop) is ending
         ExternalBufferEnd = 4, // The recording/playback buffer space runs out
         LoopEnd           = 8, // The loop ends
-    };
-
-    enum class OutputType {
-        Copy,
-        Add
     };
 
     struct PointOfInterest {
@@ -45,14 +46,16 @@ class AudioLoop : public LoopInterface {
     SampleT *m_recording_source_buffer;
     size_t   m_recording_source_buffer_size;
     
-    OutputType const m_output_type;
+    AudioLoopOutputType const m_output_type;
 
-    AudioLoop(std::shared_ptr<AudioBufferPool<SampleT>> buffer_pool, size_t initial_max_buffers, OutputType output_type) :
+public:
+
+    AudioLoop(std::shared_ptr<AudioBufferPool<SampleT>> buffer_pool, size_t initial_max_buffers, AudioLoopOutputType output_type) :
         m_buffer_pool(buffer_pool),
         m_length(0),
         m_cursor({.position = 0, .buffer_idx = 0, .pos_in_buffer = 0}),
         m_playback_target_buffer(nullptr),
-        m_next_poi(std::nullopt_t),
+        m_next_poi(std::nullopt),
         m_state(Stopped),
         m_next_state(Stopped),
         m_next_next_state(Stopped),
@@ -60,15 +63,17 @@ class AudioLoop : public LoopInterface {
         m_output_type(output_type)
     {
         m_buffers.reserve(initial_max_buffers);
-        m_buffers.push_back(m_buffer_pool.get()); // Initial recording buffer
+        m_buffers.push_back(get_new_buffer()); // Initial recording buffer
     }
 
+    AudioLoop() = default;
+
     std::optional<size_t> get_next_poi() const override {
-        return m_next_poi ? m_next_poi.value().when : m_next_poi;
+        return m_next_poi ? m_next_poi.value().when : (std::optional<size_t>)std::nullopt;
     }
 
     void process(size_t n_samples) override {
-        if (m_next_poi && n_samples > m_next_poi.when) {
+        if (m_next_poi && n_samples > m_next_poi.value().when) {
             throw std::runtime_error("Attempted to process loop beyond its next POI.");
         }
 
@@ -90,9 +95,9 @@ class AudioLoop : public LoopInterface {
 
             auto from = m_buffers[m_cursor.buffer_idx]->data_at(m_cursor.pos_in_buffer);
             auto to = m_playback_target_buffer;
-            if (m_output_type == AudioLoop::OutputType::Copy) {
+            if (m_output_type == AudioLoopOutputType::Copy) {
                 memcpy((void*)to, (void*)from, n_samples*sizeof(SampleT));
-            } else if (m_output_type == AudioLoop::OutputType::Add) {
+            } else if (m_output_type == AudioLoopOutputType::Add) {
                 for(size_t idx=0; idx < n_samples; idx++) {
                     to[idx] += from[idx];
                 }
@@ -109,7 +114,7 @@ class AudioLoop : public LoopInterface {
 
             auto from = m_buffers[m_cursor.buffer_idx]->data_at(m_cursor.pos_in_buffer);
             auto to = m_playback_target_buffer;
-            if (m_output_type == AudioLoop::OutputType::Copy) {
+            if (m_output_type == AudioLoopOutputType::Copy) {
                 memset((void*)to, 0, n_samples*sizeof(SampleT));
             }
 
@@ -121,7 +126,7 @@ class AudioLoop : public LoopInterface {
             throw std::runtime_error("Unsupported loop state");
         }
 
-        if (m_next_poi) { m_next_poi.when -= n_samples; }
+        if (m_next_poi) { m_next_poi.value().when -= n_samples; }
     }
 
     void set_next_state(loop_state_t state) override { m_next_state = state; }
@@ -130,32 +135,14 @@ class AudioLoop : public LoopInterface {
     loop_state_t get_next_state() const override { return m_next_state; };
     loop_state_t get_next_next_state() const override { return m_next_next_state; };
 
-    static std::optional<PointOfInterest> dominant_poi(std::optional<PointOfInterest> const& a, std::optional<PointOfInterest> const& b) {
-        if(a && !b) { return a; }
-        if(b && !a) { return b; }
-        if(!a && !b) { return std::nullopt_t; }
-        if(a && b && a.when == b.when) {
-            return {.when = a.when, .type = a.type | b.type };
-        }
-        if(a && b && a.when < b.when) {
-            return a;
-        }
-        return b;
-    }
-
-    template<typename ...Args>
-    static std::optional<PointOfInterest> dominant_poi(std::optional<PointOfInterest> const& first, Args... others) {
-        return dominant_poi(first, dominant_poi(others...));
-    }
-
     void plan_transition(size_t when=0) override {
-        m_next_poi = dominant_poi(m_next_poi, {.when = when, .type = StateTransition});
+        m_next_poi = dominant_poi(m_next_poi, PointOfInterest({.when = when, .type_flags = StateTransition}));
     }
 
     void transition_now() override {
         m_state = m_next_state;
         m_next_state = m_next_next_state;
-        m_next_poi = std::nullopt_t;
+        m_next_poi = std::nullopt;
         update_poi();
     }
 
@@ -164,12 +151,12 @@ class AudioLoop : public LoopInterface {
         // Here we set the POIs that come from any other reason.
         std::optional<PointOfInterest> loop_end_poi, external_end_poi, internal_end_poi;
         if (m_state == Playing || m_state == PlayingMuted) {
-            loop_end_poi = {.when = m_length - m_cursor.position, .type = LoopEnd};
-            internal_end_poi = {.when = m_buffers[m_cursor.buffer_idx]->head() - m_cursor.pos_in_buffer, .type = InternalBufferEnd};
-            external_end_poi = {.when = m_playback_target_buffer_size, .type = ExternalBufferEnd};
+            loop_end_poi = {.when = m_length - m_cursor.position, .type_flags = LoopEnd};
+            internal_end_poi = {.when = m_buffers[m_cursor.buffer_idx]->head() - m_cursor.pos_in_buffer, .type_flags = InternalBufferEnd};
+            external_end_poi = {.when = m_playback_target_buffer_size, .type_flags = ExternalBufferEnd};
         } else if (m_state == Recording) {
-            internal_end_poi = {.when = m_buffers[m_cursor.buffer_idx]->size() - m_buffers[m_cursor.buffer_idx]->head(), .type = InternalBufferEnd};
-            external_end_poi = {.when = m_recording_source_buffer_size, .type = ExternalBufferEnd};
+            internal_end_poi = {.when = m_buffers[m_cursor.buffer_idx]->size() - m_buffers[m_cursor.buffer_idx]->head(), .type_flags = InternalBufferEnd};
+            external_end_poi = {.when = m_recording_source_buffer_size, .type_flags = ExternalBufferEnd};
         }
 
         m_next_poi = dominant_poi(m_next_poi, loop_end_poi, external_end_poi, internal_end_poi);
@@ -179,8 +166,8 @@ class AudioLoop : public LoopInterface {
         m_playback_target_buffer = buffer;
         m_playback_target_buffer_size = size;
         if (m_state == Playing || m_state == PlayingMuted) {
-            if (m_next_poi) { m_next_poi.type &= ~(ExternalBufferEnd); }
-            m_next_poi = dominant_poi(m_next_poi, {.when = m_playback_target_buffer_size, .type = ExternalBufferEnd});
+            if (m_next_poi) { m_next_poi.type_flags &= ~(ExternalBufferEnd); }
+            m_next_poi = dominant_poi(m_next_poi, {.when = m_playback_target_buffer_size, .type_flags = ExternalBufferEnd});
         }
     }
 
@@ -188,17 +175,17 @@ class AudioLoop : public LoopInterface {
         m_recording_source_buffer = buffer;
         m_recording_source_buffer_size = size;
         if (m_state == Recording) {
-            if (m_next_poi) { m_next_poi.type &= ~(ExternalBufferEnd); }
-            m_next_poi = dominant_poi(m_next_poi, {.when = m_recording_source_buffer_size, .type = ExternalBufferEnd});
+            if (m_next_poi) { m_next_poi.type_flags &= ~(ExternalBufferEnd); }
+            m_next_poi = dominant_poi(m_next_poi, {.when = m_recording_source_buffer_size, .type_flags = ExternalBufferEnd});
         }
     }
 
     void handle_poi() override {
-        if (!m_next_poi || m_next_poi.when != 0) {
+        if (!m_next_poi || m_next_poi.value().when != 0) {
             return;
         }
 
-        auto type_flags = m_next_poi.type_flags;
+        auto type_flags = m_next_poi.value().type_flags;
         if (type_flags & StateTransition) {
             transition_now();
             type_flags &= ~(StateTransition);
@@ -210,23 +197,54 @@ class AudioLoop : public LoopInterface {
                 m_cursor.pos_in_buffer = 0;
             } else if (m_state == Recording) {
                 m_cursor.buffer_idx++;
-                m_buffers[m_cursor.buffer_idx] = m_buffer_pool.get();
+                m_buffers[m_cursor.buffer_idx] = get_new_buffer();
             } else {
                 throw std::runtime_error("Cannot reach internal buffer end in this state");
             }
             type_flags &= ~(InternalBufferEnd);
         }
         if (type_flags & LoopEnd) {
-            m_cursor = {.position = 0. .buffer_idx = 0, .pos_in_buffer = 0};
+            m_cursor = {.position = 0, .buffer_idx = 0, .pos_in_buffer = 0};
             type_flags &= ~(LoopEnd);
         }
 
         // Note: if any other type flags are given, we leave them there.
         // Those flags are meant to be cleared elsewhere.
-        m_next_poi = std::nullopt_t;
+        m_next_poi = std::nullopt;
         if (type_flags) {
-            m_next_poi = { .where = 0, .type = type_flags };
+            m_next_poi = PointOfInterest({ .when = 0, .type_flags = type_flags });
         }
         update_poi();
     }
-}
+
+    size_t get_position() const override { return m_cursor.position; }
+    size_t get_length() const override { return m_length; }
+
+protected:
+
+    static std::optional<PointOfInterest> dominant_poi(std::optional<PointOfInterest> const& dummy) {
+        return dummy;
+    }
+
+    static std::optional<PointOfInterest> dominant_poi(std::optional<PointOfInterest> const& a, std::optional<PointOfInterest> const& b) {
+        if(a && !b) { return a; }
+        if(b && !a) { return b; }
+        if(!a && !b) { return std::nullopt; }
+        if(a && b && a.value().when == b.value().when) {
+            return PointOfInterest({.when = a.value().when, .type_flags = a.value().type_flags | b.value().type_flags });
+        }
+        if(a && b && a.value().when < b.value().when) {
+            return a;
+        }
+        return b;
+    }
+
+    template<typename ...Args>
+    static std::optional<PointOfInterest> dominant_poi(std::optional<PointOfInterest> const& first, Args... others) {
+        return dominant_poi(first, dominant_poi(others...));
+    }
+
+    std::shared_ptr<Buffer> get_new_buffer() const {
+        return std::shared_ptr<Buffer>(m_buffer_pool->get());
+    }
+};
