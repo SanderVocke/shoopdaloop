@@ -1,7 +1,9 @@
 # All unit tests
 add_executable(unit_test_runner
     unit_test_runner.cpp
-    test_AudioLoop.cpp)
+    test_AudioLoop.cpp
+    test_AudioBufferPool.cpp
+    )
 
 target_link_libraries(unit_test_runner PRIVATE
                       ${BOOST_LIBRARIES})

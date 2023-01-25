@@ -21,6 +21,5 @@ suite AudioLoop_tests = []() {
         expect(loop.get_next_poi() == std::nullopt);
         expect(loop.get_length() == 0);
         expect(loop.get_position() == 0);
-
     };
 };

@@ -50,10 +50,15 @@ public:
     // method, there will be no other references to it anywhere.
     // The buffer is taken lock-free from the pool. Should the pool be
     // empty, it is allocated in-place.
-    Buffer* get() {
+    Buffer* get_buffer() {
         Buffer* buf = nullptr;
-        if (m_queue.pop(buf)) { return buf; }
-        else { return allocate(); }
+        if (m_queue.pop(buf)) {
+            m_actual_n_buffers--;
+            return buf;
+        }
+        else {
+            return allocate();
+        }
     }
 
 protected:
@@ -73,7 +78,7 @@ protected:
     void replenish_thread_fn(std::chrono::duration<Rep, Period> const& replenishment_delay) {
         while(true) {
             if (this->m_finish) { break; }
-            fill();
+            this->fill();
             std::this_thread::sleep_for(replenishment_delay);
         }
     }

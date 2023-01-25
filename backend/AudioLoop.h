@@ -68,6 +68,8 @@ public:
 
     AudioLoop() = default;
 
+    ~AudioLoop() override {}
+
     std::optional<size_t> get_next_poi() const override {
         return m_next_poi ? m_next_poi.value().when : (std::optional<size_t>)std::nullopt;
     }
@@ -245,6 +247,6 @@ protected:
     }
 
     std::shared_ptr<Buffer> get_new_buffer() const {
-        return std::shared_ptr<Buffer>(m_buffer_pool->get());
+        return std::shared_ptr<Buffer>(m_buffer_pool->get_buffer());
     }
 };
