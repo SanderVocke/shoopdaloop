@@ -34,9 +34,10 @@ public:
     // Transition right away.
     virtual void transition_now() = 0;
 
-    // Getters.
+    // Getters and setters.
     virtual size_t get_position() const = 0;
     virtual size_t get_length() const = 0;
+    virtual void set_position(size_t pos) = 0;
 
     LoopInterface() = default;
     virtual ~LoopInterface() {}

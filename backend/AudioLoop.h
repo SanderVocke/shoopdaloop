@@ -2,6 +2,7 @@
 #include "LoopInterface.h"
 #include "AudioBufferPool.h"
 #include "AudioBuffer.h"
+#include "AudioLoopTestInterface.h"
 #include <cstring>
 #include <memory>
 #include <stdexcept>
@@ -14,11 +15,14 @@ enum class AudioLoopOutputType {
 };
 
 template<typename SampleT>
-class AudioLoop : public LoopInterface {
-private:
+class AudioLoop : public LoopInterface, 
+                  public AudioLoopTestInterface<std::shared_ptr<AudioBuffer<SampleT>>> {
+public:
     typedef AudioBufferPool<SampleT> BufferPool;
-    typedef AudioBuffer<SampleT> Buffer;
+    typedef AudioBuffer<SampleT> BufferObj;
+    typedef std::shared_ptr<BufferObj> Buffer;
     
+private:
     enum PointOfInterestTypeFlags {
         StateTransition   = 1, // The loop will transition to its next state.
         ExternalBufferEnd = 2, // The recording/playback buffer space runs out
@@ -38,7 +42,7 @@ private:
 
     std::optional<PointOfInterest> m_next_poi;
     std::shared_ptr<BufferPool> m_buffer_pool;
-    std::vector<std::shared_ptr<Buffer>> m_buffers;
+    std::vector<Buffer> m_buffers;
     loop_state_t m_state, m_next_state, m_next_next_state;
     size_t m_length;
     Cursor m_cursor;
@@ -61,6 +65,7 @@ public:
         m_next_state(Stopped),
         m_next_next_state(Stopped),
         m_playback_target_buffer_size(0),
+        m_recording_source_buffer_size(0),
         m_output_type(output_type)
     {
         m_buffers.reserve(initial_max_buffers);
@@ -91,12 +96,13 @@ public:
 
         m_recording_source_buffer += n;
         m_recording_source_buffer_size -= n;
+        m_length += n;
 
         // If we reached the end of the buffer, add another
         // and record the rest.
         if(rest > 0) {
             m_cursor.buffer_idx++;
-            m_buffers.push_back(std::shared_ptr<AudioBuffer<SampleT>>(m_buffer_pool->get_buffer()));
+            m_buffers.push_back(Buffer(m_buffer_pool->get_buffer()));
             m_cursor.pos_in_buffer = 0;
             process_record(rest);
         }
@@ -186,7 +192,8 @@ public:
             external_end_poi = {.when = m_recording_source_buffer_size, .type_flags = ExternalBufferEnd};
         }
 
-        m_next_poi = dominant_poi(m_next_poi, loop_end_poi, external_end_poi);
+        // TODO something variadic or more efficient
+        m_next_poi = dominant_poi({m_next_poi, loop_end_poi, external_end_poi});
     }
 
     void set_playback_buffer(SampleT *buffer, size_t size) {
@@ -202,8 +209,8 @@ public:
         m_recording_source_buffer = buffer;
         m_recording_source_buffer_size = size;
         if (m_state == Recording) {
-            if (m_next_poi) { m_next_poi.type_flags &= ~(ExternalBufferEnd); }
-            m_next_poi = dominant_poi(m_next_poi, {.when = m_recording_source_buffer_size, .type_flags = ExternalBufferEnd});
+            if (m_next_poi) { m_next_poi.value().type_flags &= ~(ExternalBufferEnd); }
+            m_next_poi = dominant_poi(m_next_poi, PointOfInterest{.when = m_recording_source_buffer_size, .type_flags = ExternalBufferEnd});
         }
     }
 
@@ -234,12 +241,27 @@ public:
     size_t get_position() const override { return m_cursor.position; }
     size_t get_length() const override { return m_length; }
 
-protected:
+    void set_position(size_t pos) override {
+        // TODO: figure out in which buffer we are more efficiently,
+        // maybe by storing buffer start/end positions.
+        m_cursor.position = pos;
+        size_t start = 0, buf = 0;
+        while(buf < m_buffers.size()) {
+            auto head = m_buffers[buf]->head();
+            auto end = head + start;
+            if(start <= pos && end > pos) {
+                m_cursor.buffer_idx = buf;
+                m_cursor.pos_in_buffer = pos - start;
+                return;
+            }
+            start += head;
+            buf++;
+        }
 
-    static std::optional<PointOfInterest> dominant_poi(std::optional<PointOfInterest> const& dummy) {
-        return dummy;
+        throw std::runtime_error("Set position out of bounds.");
     }
 
+protected:
     static std::optional<PointOfInterest> dominant_poi(std::optional<PointOfInterest> const& a, std::optional<PointOfInterest> const& b) {
         if(a && !b) { return a; }
         if(b && !a) { return b; }
@@ -253,12 +275,20 @@ protected:
         return b;
     }
 
-    template<typename ...Args>
-    static std::optional<PointOfInterest> dominant_poi(std::optional<PointOfInterest> const& first, Args... others) {
-        return dominant_poi(first, dominant_poi(others...));
+    static std::optional<PointOfInterest> dominant_poi(std::vector<std::optional<PointOfInterest>> const& pois) {
+        if (pois.size() == 0) { return std::nullopt; }
+        if (pois.size() == 1) { return pois[0]; }
+        if (pois.size() == 2) { return dominant_poi(pois[0], pois[1]); }
+        auto reduced = std::vector<std::optional<PointOfInterest>>(pois.begin()+1, pois.end());
+        return dominant_poi(pois[0], dominant_poi(reduced));
     }
 
-    std::shared_ptr<Buffer> get_new_buffer() const {
-        return std::shared_ptr<Buffer>(m_buffer_pool->get_buffer());
+    Buffer get_new_buffer() const {
+        return Buffer(m_buffer_pool->get_buffer());
     }
+
+    // Testing interfaces
+    std::vector<Buffer> &buffers() override { return m_buffers; }
+    virtual size_t get_current_buffer_idx() const override { return m_cursor.buffer_idx; }
+    virtual size_t get_position_in_current_buffer() const override { return m_cursor.pos_in_buffer; }
 };

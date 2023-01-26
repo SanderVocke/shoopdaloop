@@ -25,5 +25,6 @@ public:
             throw std::runtime_error("Attempting to record out of bounds.");
         }
         memcpy((void*)(data_at(head())), (void*)source, n_samples*sizeof(SampleT));
+        m_head += n_samples;
     }
 };
