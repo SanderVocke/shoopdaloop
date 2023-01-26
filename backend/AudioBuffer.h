@@ -19,6 +19,7 @@ public:
     size_t space() const { return size() - head(); }
     SampleT* data() { return m_data.data(); }
     SampleT* data_at(size_t pos) { return m_data.data() + pos; }
+    SampleT at(size_t pos) const { return m_data.at(pos); }
 
     void record(SampleT *source, size_t n_samples) {
         if(n_samples > space()) {
