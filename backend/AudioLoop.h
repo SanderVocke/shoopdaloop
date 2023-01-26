@@ -80,21 +80,13 @@ public:
         return m_next_poi ? m_next_poi.value().when : (std::optional<size_t>)std::nullopt;
     }
 
-    void ensure_enough_buffers() {
-        while(m_cursor.buffer_idx >= m_buffers.size() - 1) {
-            // Always make sure we have a buffer to spare,
-            // that we are not recording into yet.
-            m_buffers.push_back(Buffer(m_buffer_pool->get_buffer()));
-        }
-    }
-
     void process_record(size_t n_samples) {
         if (m_recording_source_buffer_size < n_samples) {
             throw std::runtime_error("Attempting to record out of bounds");
         }
 
         auto &from = m_recording_source_buffer;
-        auto &to_buf = m_buffers.back(); // TODO wrong with spare buffer
+        auto &to_buf = m_buffers.back();
         auto to = to_buf->data_at(to_buf->head());
         // Record all, or to the end of the current buffer, whichever
         // comes first
@@ -108,13 +100,11 @@ public:
 
         // If we reached the end of the buffer, add another
         // and record the rest.
+        if(m_buffers.back()->space() == 0) {
+            m_buffers.push_back(Buffer(m_buffer_pool->get_buffer()));
+        }
         if(rest > 0) {
-            m_cursor.buffer_idx++;
-            ensure_enough_buffers();
             process_record(rest);
-        } else if (to_buf->space() == 0) {
-            m_cursor.buffer_idx++;
-            ensure_enough_buffers();
         }
     }
 
