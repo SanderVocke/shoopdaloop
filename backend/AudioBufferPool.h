@@ -61,6 +61,8 @@ public:
         }
     }
 
+    size_t buffer_size() const { return m_buffers_size; }
+
 protected:
     void push() {
         m_queue.push(allocate());

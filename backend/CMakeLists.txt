@@ -4,13 +4,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED YES)
 set(CMAKE_CXX_EXTENSIONS NO)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}")
 
-# Subdirs
-add_subdirectory(test)
-
-# Find Halide
+# Find pkgs
 find_package(Halide REQUIRED)
 find_package(Jack REQUIRED)
 find_package(Boost COMPONENTS ALL REQUIRED)
+
+# Subdirs
+add_subdirectory(test)
 
 # Generator
 add_halide_generator(shoopdaloop_loops.generator SOURCES loops_generator.cpp)
@@ -68,13 +68,13 @@ target_include_directories(loops_test
                         )
 
 # HTML for inspection
-add_custom_target(
-    shoopdaloop_loops.stmt.html
-    ALL
-    shoopdaloop_loops.generator target=host-no_asserts-no_bounds_query -g shoopdaloop_loops -e stmt_html -o .
-    BYPRODUCTS shoopdaloop_loops.stmt.html
-    DEPENDS shoopdaloop_loops.generator
-    )
+# add_custom_target(
+#     shoopdaloop_loops.stmt.html
+#     ALL
+#     shoopdaloop_loops.generator target=host-no_asserts-no_bounds_query -g shoopdaloop_loops -e stmt_html -o .
+#     BYPRODUCTS shoopdaloop_loops.stmt.html
+#     DEPENDS shoopdaloop_loops.generator
+#     )
 
 # Autogen Python bindings
 add_custom_target(

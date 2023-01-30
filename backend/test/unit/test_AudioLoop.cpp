@@ -3,27 +3,10 @@
 #include <functional>
 #include <numeric>
 #include "AudioLoop.h"
+#include "helpers.h"
 
 using namespace boost::ut;
 using namespace std::chrono_literals;
-
-template<typename S>
-std::vector<S> create_buf(size_t size, std::function<S(size_t)> elem_fn) {
-    std::vector<S> buf(size);
-    for(size_t idx=0; idx < buf.size(); idx++) {
-        buf[idx] = elem_fn(idx);
-    }
-    return buf;
-}
-
-template<typename S>
-void for_buf_elems(AudioBuffer<S> const& buf, std::function<void(size_t,S const&)> fn,
-                   int start=0, int n=-1) {
-    if(n < 0) { n = buf.head() - start; }
-    for(size_t idx=start; idx < (start+n); idx++) {
-        fn(idx, buf.at(idx));
-    }
-}
 
 suite AudioLoop_tests = []() {
     "1_stop"_test = []() {
@@ -55,9 +38,9 @@ suite AudioLoop_tests = []() {
             (AudioLoopTestInterface<AudioLoop<int>::Buffer> *)&loop;
 
         auto source_buf = create_buf<int>(512, [](size_t pos) { return pos; }); 
-        loop.set_next_state(Recording);
+        loop.plan_transition(Recording);
         loop.set_recording_buffer(source_buf.data(), source_buf.size());
-        loop.transition_now();
+        loop.trigger();
         loop.update_poi();
 
         expect(loop.get_state() == Recording);
@@ -74,7 +57,7 @@ suite AudioLoop_tests = []() {
         expect(eq(loop_test_if->get_current_buffer_idx(), 0));
         expect(eq(loop_test_if->get_position_in_current_buffer(), 0));
         expect(eq(loop_test_if->buffers()[0]->head(), 20));
-        for_buf_elems<int>(*loop_test_if->buffers()[0],
+        for_buf_elems<AudioBuffer<int>, int>(*loop_test_if->buffers()[0],
                       [](size_t pos, int const& val) {
                         expect(eq(val, pos)) << " @ position " << pos;
                       });
@@ -88,8 +71,8 @@ suite AudioLoop_tests = []() {
             (AudioLoopTestInterface<AudioLoop<int>::Buffer> *)&loop;
         
         loop.set_recording_buffer(nullptr, 0);
-        loop.set_next_state(Recording);
-        loop.transition_now();
+        loop.plan_transition(Recording);
+        loop.trigger();
         loop.update_poi();
 
         expect(throws([&]() { loop.process(20); }));
@@ -102,9 +85,9 @@ suite AudioLoop_tests = []() {
             (AudioLoopTestInterface<AudioLoop<int>::Buffer> *)&loop;
 
         auto source_buf = create_buf<int>(512, [](size_t pos) { return pos; }); 
-        loop.set_next_state(Recording);
+        loop.plan_transition(Recording);
         loop.set_recording_buffer(source_buf.data(), source_buf.size());
-        loop.transition_now();
+        loop.trigger();
         loop.update_poi();
 
         expect(loop.get_state() == Recording);
@@ -121,11 +104,10 @@ suite AudioLoop_tests = []() {
         expect(eq(loop_test_if->get_current_buffer_idx(), 0));
         expect(eq(loop_test_if->get_position_in_current_buffer(), 0));
         expect(eq(loop_test_if->buffers()[0]->head(), 64));
-        for_buf_elems<int>(*loop_test_if->buffers()[0],
+        for_loop_elems<AudioLoop<int>, int>(loop,
                       [](size_t pos, int const& val) {
                         expect(eq(val, pos)) << " @ position " << pos;
                       });
         expect(eq(loop_test_if->buffers().size(), 9));
-        
     };
 };
