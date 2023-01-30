@@ -86,8 +86,8 @@ int main(int argc, const char* argv[]) {
             10, // FIXME configurable
             AudioLoopOutputType::Add // FIXME configurable
         ));
-        g_loops.back()->set_next_state(g_state);
-        g_loops.back()->transition_now();
+        g_loops.back()->plan_transition(g_state);
+        g_loops.back()->trigger();
         g_loops.back()->handle_poi();
     }
 
