@@ -8,6 +8,7 @@
 #include <optional>
 #include <boost/lockfree/spsc_queue.hpp>
 #include <chrono>
+#include "shoopdaloop_backend.h"
 
 #include "JackAudioSystem.h"
 #include "AudioLoop.h"
@@ -27,23 +28,28 @@ struct LoopInfo : public LoopInterface {
     std::shared_ptr<PortInfo> maybe_input_port;
     std::shared_ptr<PortInfo> maybe_output_port;
 
-    std::optional<size_t> get_next_poi() const override                           { return loop->get_next_poi(); }
-    bool is_triggering_now() override                                             { return loop->is_triggering_now(); }
-    std::shared_ptr<LoopInterface> const& get_sync_source() const override        { return loop->get_sync_source(); }
-    void set_sync_source(std::shared_ptr<LoopInterface> const& src) override      { loop->set_sync_source(src); }
-    void trigger() override                                                       { loop->trigger(); }
-    void handle_poi() override                                                    { loop->handle_poi(); }
-    void handle_sync() override                                                   { loop->handle_sync(); }
-    void process(size_t n_samples) override                                       { loop->process(n_samples); }
-    size_t get_n_planned_transitions() const override                             { return loop->get_n_planned_transitions(); }
-    size_t get_planned_transition_delay(size_t idx) const override                { return loop->get_planned_transition_delay(idx); }
-    loop_state_t get_planned_transition_state(size_t idx) const override          { return loop->get_planned_transition_state(idx); }
-    void clear_planned_transitions() override                                     { loop->clear_planned_transitions(); }
-    void plan_transition(loop_state_t state, size_t n_cycles_delay = 0) override  { loop->plan_transition(state, n_cycles_delay); }
-    size_t get_position() const override                                          { return loop->get_position(); }
-    size_t get_length() const override                                            { return loop->get_length(); }
-    void set_position(size_t pos) override                                        { loop->set_position(pos); }
-    loop_state_t get_state() const override                                       { return loop->get_state(); }
+    // Implement the loop interface by forwarding all calls to the actual loop.
+    // This way we can use this structure as a loop everywhere.
+    void check() {
+        if (!loop) { throw std::runtime_error("Attempting to access non-existent loop."); }
+    }
+    std::optional<size_t> get_next_poi() const override                           { check(); return loop->get_next_poi(); }
+    bool is_triggering_now() override                                             { check(); return loop->is_triggering_now(); }
+    std::shared_ptr<LoopInterface> const& get_sync_source() const override        { check(); return loop->get_sync_source(); }
+    void set_sync_source(std::shared_ptr<LoopInterface> const& src) override      { check(); loop->set_sync_source(src); }
+    void trigger() override                                                       { check(); loop->trigger(); }
+    void handle_poi() override                                                    { check(); loop->handle_poi(); }
+    void handle_sync() override                                                   { check(); loop->handle_sync(); }
+    void process(size_t n_samples) override                                       { check(); loop->process(n_samples); }
+    size_t get_n_planned_transitions() const override                             { check(); return loop->get_n_planned_transitions(); }
+    size_t get_planned_transition_delay(size_t idx) const override                { check(); return loop->get_planned_transition_delay(idx); }
+    loop_state_t get_planned_transition_state(size_t idx) const override          { check(); return loop->get_planned_transition_state(idx); }
+    void clear_planned_transitions() override                                     { check(); loop->clear_planned_transitions(); }
+    void plan_transition(loop_state_t state, size_t n_cycles_delay = 0) override  { check(); loop->plan_transition(state, n_cycles_delay); }
+    size_t get_position() const override                                          { check(); return loop->get_position(); }
+    size_t get_length() const override                                            { check(); return loop->get_length(); }
+    void set_position(size_t pos) override                                        { check(); loop->set_position(pos); }
+    loop_state_t get_state() const override                                       { check(); return loop->get_state(); }
 };
 
 // CONSTANTS
@@ -64,7 +70,7 @@ constexpr size_t g_initial_loop_max_n_buffers = 256; // Allows for about 2 minut
 backend_features_t g_features;
 std::unique_ptr<JackAudioSystem> g_audio;
 std::vector<std::shared_ptr<LoopInfo>> g_loops;
-std::vector<std::shared_ptr<PortInfo>> g_ports;
+std::vector<std::shared_ptr<PortInfo>> g_loop_ports;
 std::shared_ptr<AudioBufferPool<float>> g_audio_buffer_pool;
 
 // A lock-free queue is used to pass commands to the audio
@@ -95,7 +101,7 @@ void process(size_t n_frames) {
 
     {
         // Aqcuire buffers.
-        for (auto &port_info : g_ports) {
+        for (auto &port_info : g_loop_ports) {
             port_info->maybe_audio_buffer = nullptr;
             port_info->maybe_midi_buffer  = nullptr;
             if (auto audio_port = std::dynamic_pointer_cast<AudioPortInterface<float>>(port->port)) {
@@ -166,7 +172,7 @@ jack_client_t* initialize(
 
     g_cmd_queue.reset();
     g_loops.clear();
-    g_ports.clear();
+    g_loop_ports.clear();
     
     {
         // Create loops.
@@ -183,5 +189,24 @@ jack_client_t* initialize(
     }
 
     {
+        // Create ports.
+        for (size_t idx=0; idx < n_ports; idx++) {
+            std::string audio_input_name(input_port_names[idx]);
+            std::string audio_output_name(output_port_names[idx]);
+            g_loop_ports.push_back(g_audio->open_audio_port(audio_input_name, PortDirection::Input));
+            g_loop_ports.push_back(g_audio->open_audio_port(audio_output_name, PortDirection::Output));
+            // TODO MIDI
+        }
     }
+
+    g_audio->start();
+
+    return g_audio->get_client();
+}
+
+unsigned get_sample_rate() {
+    if (g_audio == nullptr) {
+        throw std::runtime_error("Requesting sample-rate before back-end initialized");
+    }
+    return g_audio->get_sample_rate();
 }

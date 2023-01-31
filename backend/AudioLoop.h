@@ -55,7 +55,7 @@ public:
         m_buffers.push_back(get_new_buffer()); // Initial recording buffer
 
         // TODO
-        std::cerr << "Warning: AudioLoop should have a way to increase its buffers capacity outside of the processing thread." << std::endl;
+        std::cerr << "Warning: AudioLoop should have a way to increase its buffers capacity outside of the processing thread. Also atomic access." << std::endl;
     }
 
     AudioLoop() = default;

@@ -89,4 +89,8 @@ public:
     size_t get_sample_rate() const override {
         return jack_get_sample_rate(m_client);
     }
+
+    jack_client_t* get_client() const {
+        return m_client;
+    }
 };
