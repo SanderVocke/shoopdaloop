@@ -165,4 +165,16 @@ suite BasicLoop_tests = []() {
         bool passed = loop->get_soft_sync_source() == nullptr;
         expect(eq(passed, true));
     };
+
+    "6_playback_0_length"_test = []() {
+        BasicLoop loop;
+        loop.m_state = Playing;
+        loop.m_length = 0;
+        loop.m_position = 0;
+
+        loop.update_poi();
+        loop.process(10);
+
+        expect(eq(loop.get_state(), Stopped));
+    };
 };

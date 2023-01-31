@@ -24,8 +24,9 @@ public:
     virtual std::shared_ptr<LoopInterface> const& get_hard_sync_source() const = 0;
     virtual void set_hard_sync_source(std::shared_ptr<LoopInterface> const& src) = 0;
 
-    // Trigger from outside. Handled immediately.
-    virtual void trigger() = 0;
+    // Trigger from outside. Handled immediately. If propagate is set to true,
+    // other loops soft-synced to this one will also receive the trigger.
+    virtual void trigger(bool propagate=true) = 0;
 
     // Handle the current point of interest, leading to any internal state change
     // necessary. If the loop is not currently exactly at a point of interest,

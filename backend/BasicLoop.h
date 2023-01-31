@@ -57,6 +57,11 @@ public:
     }
 
     virtual void update_poi() {
+        if((m_state == Playing || m_state == PlayingMuted) && 
+           m_length == 0) {
+            handle_transition(Stopped);
+        }
+
         if(m_next_poi) {
             m_next_poi->type_flags &= ~(LoopEnd);
             if (m_next_poi->type_flags == 0) {
@@ -98,12 +103,11 @@ public:
     }
 
     bool is_triggering_now() override {
-        if (m_soft_sync_source && m_soft_sync_source->is_triggering_now()) { return true; }
-        if (m_triggering_now) { return true; }
         if (m_next_poi.has_value() && m_next_poi.value().when == 0) {
             handle_poi();
-            return is_triggering_now();
         }
+        if (m_soft_sync_source && m_soft_sync_source->is_triggering_now()) { return true; }
+        if (m_triggering_now) { return true; }
         return false;
     }
 
@@ -173,8 +177,10 @@ public:
         return m_soft_sync_source;
     }
 
-    void trigger() override {
-        m_triggering_now = true;
+    void trigger(bool propagate=true) override {
+        if (propagate) {
+            m_triggering_now = true;
+        }
         if (m_planned_states.size() > 0) {
             if (m_planned_state_countdowns.front() == 0) {
                 handle_transition(m_planned_states.front());
@@ -239,8 +245,17 @@ public:
     }
 
     void plan_transition(loop_state_t state, size_t n_cycles_delay = 0) override {
-        m_planned_states.push_back(state);
-        m_planned_state_countdowns.push_back(n_cycles_delay);
+        if (!m_soft_sync_source &&
+            !m_hard_sync_source &&
+            m_state != Playing &&
+            m_state != PlayingMuted) {
+            // Un-synced loops transition immediately from non-playing
+            // states.
+            handle_transition(state);
+        } else {
+            m_planned_states.push_back(state);
+            m_planned_state_countdowns.push_back(n_cycles_delay);
+        }
     }
 
     size_t get_position() const override {

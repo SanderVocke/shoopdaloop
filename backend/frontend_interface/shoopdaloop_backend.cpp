@@ -1,3 +1,4 @@
+#include <cmath>
 #include <stdio.h>
 #include "AudioPortInterface.h"
 #include "AudioBufferPool.h"
@@ -41,7 +42,7 @@ struct LoopInfo : public LoopInterface {
     void set_soft_sync_source(std::shared_ptr<LoopInterface> const& src) override { check(); loop->set_soft_sync_source(src); }
     std::shared_ptr<LoopInterface> const& get_hard_sync_source() const override   { check(); return loop->get_hard_sync_source(); }
     void set_hard_sync_source(std::shared_ptr<LoopInterface> const& src) override { check(); loop->set_hard_sync_source(src); }
-    void trigger() override                                                       { check(); loop->trigger(); }
+    void trigger(bool propagate) override                                         { check(); loop->trigger(propagate); }
     void handle_poi() override                                                    { check(); loop->handle_poi(); }
     void handle_soft_sync() override                                              { check(); loop->handle_soft_sync(); }
     void handle_hard_sync() override                                              { check(); loop->handle_hard_sync(); }   
@@ -451,7 +452,94 @@ int do_loop_action(
     unsigned n_args,
     unsigned with_soft_sync
 ) {
-    std::cerr << "do_loop_action unimplemented\n";
+    std::function<void()> cmd = nullptr;
+    std::vector<unsigned> idxs(n_loop_idxs);
+    memcpy((void*)idxs.data(), (void*)loop_idxs, n_loop_idxs*sizeof(unsigned));
+
+    auto check_args = [n_args, action](int n_needed) {
+        if (n_args != n_needed) {
+            throw std::runtime_error("do_loop_action: incorrect # of args");
+        }
+    };
+
+    auto plan_states = [with_soft_sync](std::vector<unsigned> loops,
+                                        loop_state_t state_1,
+                                        size_t delay_1 = 0,
+                                        std::optional<loop_state_t> state_2 = std::nullopt,
+                                        size_t delay_2 = 0,
+                                        std::optional<size_t> set_position_to = std::nullopt,
+                                        std::optional<size_t> set_length_to = std::nullopt) {
+        for (auto const& idx : loops) {
+            g_loops[idx]->clear_planned_transitions();
+            g_loops[idx]->plan_transition(state_1, delay_1);
+            if (state_2.has_value()) {
+                g_loops[idx]->plan_transition(state_2.value(), delay_2);
+            }
+            if (!with_soft_sync) {
+                g_loops[idx]->trigger(false);
+            }
+        }
+    };
+
+    int arg1_i = n_args >= 1 ? std::round(maybe_args[0]) : 0;
+    int arg2_i = n_args >= 2 ? std::round(maybe_args[1]) : 0;
+    int arg3_i = n_args >= 3 ? std::round(maybe_args[2]) : 0;
+    float arg1_f = n_args >= 1 ? maybe_args[0] : 0.0f;
+    float arg2_f = n_args >= 2 ? maybe_args[1] : 0.0f;
+    float arg3_f = n_args >= 3 ? maybe_args[2] : 0.0f;
+
+    switch(action) {
+        case DoRecord:
+            check_args(1);
+            cmd = [idxs, plan_states, arg1_i]() {
+                plan_states(idxs, Recording, arg1_i, std::nullopt, 0, 0, 0);
+            };
+            break;
+        case DoRecordNCycles:
+            check_args(3);
+            cmd = [idxs, plan_states, arg1_i, arg2_i, arg3_i]() {
+                plan_states(idxs, Recording, arg1_i, (loop_state_t)arg3_i, arg2_i-1);
+            };
+            break;
+        case DoPlay:
+            check_args(1);
+            cmd = [idxs, plan_states, arg1_i]() {
+                plan_states(idxs, Playing, arg1_i);
+            };
+            break;
+        case DoPlayMuted:
+            check_args(1);
+            cmd = [idxs, plan_states, arg1_i]() {
+                plan_states(idxs, PlayingMuted, arg1_i);
+            };
+            break;
+        case DoStop:
+            check_args(1);
+            cmd = [idxs, plan_states, arg1_i]() {
+                plan_states(idxs, Stopped, arg1_i);
+            };
+            break;
+        case DoClear:
+            check_args(0);
+            cmd = [idxs, plan_states]() {
+                plan_states(idxs, Stopped, 0, std::nullopt, 0, 0, 0);
+            };
+            break;
+        case SetLoopVolume:
+            check_args(1);
+            cmd = [idxs, arg1_f]() {
+                std::cerr << "SetLoopVolume action not implemented\n";
+                // TODO implement
+                // for (auto const& idx: idxs) {
+                //     g_loop_volumes(idx) = arg1_f;
+                // }
+            };
+            break;
+        default:
+        break;
+    }
+
+    if(cmd) { push_command(cmd); }
     return 0;
 }
 
