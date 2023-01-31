@@ -13,12 +13,27 @@ public:
         std::string client_name
     ) {}
 
-    template<typename SampleT>
-    std::shared_ptr<AudioPortInterface<SampleT>> open_audio_port(
+    virtual
+    std::shared_ptr<AudioPortInterface<float>> open_audio_port(
         std::string name,
         PortDirection direction
+    ) = 0;
+
+    // Create a MIDI port.
+    //
+    // decoupled: specifies whether the port should be decoupled
+    //   from real-time processing by having intermediate storage.
+    //   Such ports are suitable for reading out only once in a while,
+    //   at the cost of adding latency.
+    typedef int MidiPortInterface;
+    virtual
+    std::shared_ptr<MidiPortInterface> open_midi_port(
+        std::string name,
+        PortDirection direction,
+        bool decoupled
     );
 
-    AudioSystemInterface() = 0;
-    virtual ~AudioPortInterface() {}
+    virtual void start() = 0;
+
+    virtual ~AudioSystemInterface() {}
 };
