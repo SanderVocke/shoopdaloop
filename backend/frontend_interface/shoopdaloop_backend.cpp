@@ -1,14 +1,18 @@
 #include <stdio.h>
 #include "AudioPortInterface.h"
+#include "AudioBufferPool.h"
 #include "process_loops.h"
 #include "types.h"
 #include <memory>
 #include <vector>
 #include <optional>
 #include <boost/lockfree/spsc_queue.hpp>
+#include <chrono>
 
 #include "JackAudioSystem.h"
 #include "AudioLoop.h"
+
+using namespace std::chrono_literals;
 
 // TYPES
 
@@ -48,8 +52,10 @@ constexpr size_t g_slow_midi_port_queue_starting_size = 4096;
 constexpr size_t g_midi_buffer_bytes = 81920;
 constexpr size_t g_audio_recording_buffer_size = 24000; // 0.5 sec / buffer @ 48kHz
 constexpr size_t g_midi_max_merge_size = 4096;
-constexpr unsigned g_command_queue_len = 1024;
-
+constexpr size_t g_command_queue_len = 1024;
+constexpr size_t g_n_buffers_in_pool = 100;
+constexpr auto g_buffer_pool_replenish_delay = 100ms;
+constexpr size_t g_initial_loop_max_n_buffers = 256; // Allows for about 2 minutes of buffers before expanding
 
 
 
@@ -59,6 +65,7 @@ backend_features_t g_features;
 std::unique_ptr<JackAudioSystem> g_audio;
 std::vector<std::shared_ptr<LoopInfo>> g_loops;
 std::vector<std::shared_ptr<PortInfo>> g_ports;
+std::shared_ptr<AudioBufferPool<float>> g_audio_buffer_pool;
 
 // A lock-free queue is used to pass commands to the audio
 // processing thread in the form of functors.
@@ -145,6 +152,13 @@ jack_client_t* initialize(
     if (g_audio == nullptr) {
         g_audio = std::make_unique<JackAudioSystem>(std::string(client_name), process);
     }
+    if (g_audio_buffer_pool == nullptr) {
+        g_audio_buffer_pool = std::make_shared<AudioBufferPool<float>>(
+            g_n_buffers_in_pool,
+            g_audio_recording_buffer_size,
+            g_buffer_pool_replenish_delay
+        );
+    }
 
     if (features & Profiling) {
         throw std::runtime_error ("Profiling not implemented.");
@@ -160,9 +174,14 @@ jack_client_t* initialize(
         for (size_t idx=0; idx < n_loops; idx++) {
             auto loop = std::make_shared<LoopInfo>();
             loop->loop = std::make_shared<AudioLoop<float>>(
-
+                g_audio_buffer_pool,
+                g_initial_loop_max_n_buffers,
+                AudioLoopOutputType::Add // TODO: mixing properly with volume
             );
-            g_loops.push_back();
+            g_loops.push_back(loop);
         }
+    }
+
+    {
     }
 }
