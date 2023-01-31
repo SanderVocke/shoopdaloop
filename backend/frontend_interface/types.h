@@ -1,4 +1,7 @@
 #pragma once
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 typedef enum {
     Stopped,
@@ -30,7 +33,9 @@ typedef enum {
 } port_action_t;
 
 typedef enum {
-    Default,
-    Profiling,
-    Tracing
+    Profiling = 1
 } backend_features_t;
+
+#ifdef __cplusplus
+}
+#endif
