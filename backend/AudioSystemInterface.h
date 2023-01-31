@@ -2,15 +2,17 @@
 #include <optional>
 #include <memory>
 #include <stdio.h>
-#include "types.h"
+#include "PortInterface.h"
 #include <string>
+#include <map>
 #include "AudioPortInterface.h"
+#include <functional>
 
 class AudioSystemInterface {
 public:
-
     AudioSystemInterface(
-        std::string client_name
+        std::string client_name,
+        std::function<void(size_t)> process_cb
     ) {}
 
     virtual
@@ -25,15 +27,19 @@ public:
     //   from real-time processing by having intermediate storage.
     //   Such ports are suitable for reading out only once in a while,
     //   at the cost of adding latency.
-    typedef int MidiPortInterface;
+    // FIXME: inimplemented type
+    typedef PortInterface MidiPortInterface;
     virtual
     std::shared_ptr<MidiPortInterface> open_midi_port(
         std::string name,
         PortDirection direction,
         bool decoupled
-    );
+    ) = 0;
 
     virtual void start() = 0;
 
+    virtual size_t get_sample_rate() const = 0;
+
+    AudioSystemInterface() {}
     virtual ~AudioSystemInterface() {}
 };

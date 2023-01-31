@@ -4,23 +4,18 @@
 #include <stdio.h>
 #include "types.h"
 #include <string>
-
-enum class PortDirection {
-    Input,
-    Output
-};
+#include "PortInterface.h"
 
 template<typename SampleT>
-class AudioPortInterface {
+class AudioPortInterface : public PortInterface {
 public:
     AudioPortInterface(
         std::string name,
         PortDirection direction
-    ) {}
+    ) : PortInterface() {}
 
     virtual SampleT *get_buffer(size_t n_frames) = 0;
-    virtual void close() = 0;
 
-    AudioPortInterface() = 0;
+    AudioPortInterface() {}
     virtual ~AudioPortInterface() {}
 };

@@ -1,4 +1,6 @@
 #include "AudioBufferPool.h"
+#include "JackAudioSystem.h"
+#include "JackAudioPort.h"
 #include "AudioLoop.h"
 #include "process_loops.h"
 #include <boost/program_options/options_description.hpp>
@@ -10,12 +12,13 @@
 #include <chrono>
 #include <jack/types.h>
 #include <string>
+#include <memory>
 
 namespace po = boost::program_options;
 using namespace std::chrono_literals;
 
-std::vector<jack_port_t*> g_input_ports, g_output_ports;
-std::vector<jack_default_audio_sample_t*> g_input_bufs, g_output_bufs;
+std::vector<std::shared_ptr<PortInterface>> g_input_ports, g_output_ports;
+std::vector<float*> g_input_bufs, g_output_bufs;
 jack_client_t *g_client;
 size_t g_n_loops = 1;
 size_t g_n_loops_per_port = 1;
@@ -23,6 +26,7 @@ size_t g_n_ports = 1;
 size_t g_buffer_size = 48000;
 loop_state_t g_state = Stopped;
 std::vector<std::shared_ptr<AudioLoop<float>>> g_loops;
+std::unique_ptr<JackAudioSystem> g_audio;
 
 po::options_description get_options() {
     po::options_description options ("Options");
@@ -38,19 +42,26 @@ po::options_description get_options() {
     return options;
 }
 
-int
-process (jack_nframes_t nframes, void *arg)
+void process (jack_nframes_t nframes)
 {
+    for (size_t idx=0; idx<g_input_ports.size(); idx++) {
+        auto port = std::dynamic_pointer_cast<JackAudioPort>(g_input_ports[idx]);
+        g_input_bufs[idx] = port ? port->get_buffer(nframes) : nullptr;
+    }
+    for (size_t idx=0; idx<g_output_ports.size(); idx++) {
+        auto port = std::dynamic_pointer_cast<JackAudioPort>(g_output_ports[idx]);
+        g_output_bufs[idx] = port ? port->get_buffer(nframes) : nullptr;
+    }
+
     if (g_state == Recording) {
-        for (size_t idx=0; idx<g_n_ports; idx++) {
-            g_input_bufs[idx] = (float*) jack_port_get_buffer(g_input_ports[idx], nframes);
-        }
-        for (size_t idx=0; idx<g_n_loops; idx++) {
-            g_loops[idx]->set_recording_buffer(g_input_bufs[idx/g_n_loops_per_port], nframes);
+        for (size_t idx=0; idx<g_loops.size(); idx++) {
+            g_loops[idx]->set_recording_buffer(
+                g_input_bufs[idx / g_n_loops_per_port],
+                nframes
+            );
         }
         process_loops(g_loops, nframes);
     }
-    return 0;
 }
 
 int main(int argc, const char* argv[]) {
@@ -91,33 +102,22 @@ int main(int argc, const char* argv[]) {
         g_loops.back()->handle_poi();
     }
 
-    jack_status_t status;
-    g_client = jack_client_open ("jack_loops", JackNullOption, &status, nullptr);
-    if (g_client == nullptr) {
-        std::cerr << "Could not open JACK client." << std::endl;
-        return 1;
-    }
+    g_audio = std::make_unique<JackAudioSystem>(
+        "jack_loops",
+        process
+    );
 
     if (g_state == Recording) {
         for(size_t idx=0; idx<g_n_ports; idx++) {
-            g_input_ports.push_back(
-                jack_port_register (g_client, ("input_" + std::to_string(idx)).c_str(),
-					 JACK_DEFAULT_AUDIO_TYPE,
-					 JackPortIsInput, 0));
-            if (g_input_ports.back() == nullptr) {
-                std::cerr << "Could not create input port " << idx << std::endl;
-                return 1;
-            }
+            g_input_ports.push_back(g_audio->open_audio_port(
+                "input_" + std::to_string(idx),
+                PortDirection::Input
+            ));
         }
         g_input_bufs.resize(g_n_ports);
     }
 
-    jack_set_process_callback (g_client, process, 0);
-
-    if (jack_activate (g_client)) {
-		std::cerr << "Could not activate client" << std::endl;
-		return 1;
-	}
+    g_audio->start();
 
     while(true) {
         std::this_thread::sleep_for(100ms);

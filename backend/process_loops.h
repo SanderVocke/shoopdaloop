@@ -38,6 +38,6 @@ void process_loops(std::vector<std::shared_ptr<Loop>> const& loops,
 
     // If we didn't process the whole thing, keep going.
     if(process_until < n_samples) {
-        process_loops(loops, n_samples - process_until);
+        process_loops(loops, n_samples - process_until, n_recursive_0_procs + 1);
     }
 }
