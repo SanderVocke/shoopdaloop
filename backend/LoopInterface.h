@@ -16,9 +16,13 @@ public:
     // This function returns whether the the loop is triggering exactly on the
     // current cycle.
     virtual bool is_triggering_now() = 0;
-    // The sync source determines from which other loop this loop receives
-    virtual std::shared_ptr<LoopInterface> const& get_sync_source() const = 0;
-    virtual void set_sync_source(std::shared_ptr<LoopInterface> const& src) = 0;
+    // The soft sync source determines from which other loop this loop receives triggers.
+    virtual std::shared_ptr<LoopInterface> const& get_soft_sync_source() const = 0;
+    virtual void set_soft_sync_source(std::shared_ptr<LoopInterface> const& src) = 0;
+    // The hard sync source, if set, results in this loop following the state, length and position
+    // of the sync source exactly.
+    virtual std::shared_ptr<LoopInterface> const& get_hard_sync_source() const = 0;
+    virtual void set_hard_sync_source(std::shared_ptr<LoopInterface> const& src) = 0;
 
     // Trigger from outside. Handled immediately.
     virtual void trigger() = 0;
@@ -28,8 +32,9 @@ public:
     // nothing happens.
     virtual void handle_poi() = 0;
 
-    // Handle any pending triggers from sync source.
-    virtual void handle_sync() = 0;
+    // Handle soft sync / hard sync
+    virtual void handle_soft_sync() = 0;
+    virtual void handle_hard_sync() = 0;
 
     // Process the loop for N ticks.
     // A loop may never be processed beyond its next POI. If that is attempted,
@@ -50,7 +55,9 @@ public:
     virtual size_t get_position() const = 0;
     virtual size_t get_length() const = 0;
     virtual void set_position(size_t pos) = 0;
+    virtual void set_length(size_t length) = 0;
     virtual loop_state_t get_state() const = 0;
+    virtual void set_state(loop_state_t state) = 0;
 
     LoopInterface() = default;
     virtual ~LoopInterface() {}

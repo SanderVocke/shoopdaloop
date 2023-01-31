@@ -2,7 +2,6 @@
 #include <memory>
 #include <functional>
 #include <numeric>
-#include "helpers.h"
 
 using namespace boost::ut;
 
@@ -154,5 +153,16 @@ suite BasicLoop_tests = []() {
         loop.process(5);
 
         expect(eq(loop.is_triggering_now(), false));
+    };
+
+    "5_soft_sync_to_self"_test = []() {
+        auto loop = std::make_shared<BasicLoop>();
+        loop->m_state = Playing;
+        loop->m_length = 10;
+        loop->m_position = 0;
+        loop->set_soft_sync_source(loop);
+
+        bool passed = loop->get_soft_sync_source() == nullptr;
+        expect(eq(passed, true));
     };
 };

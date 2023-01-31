@@ -18,6 +18,6 @@ add_custom_target(
 )
 add_custom_target(
   shoopdaloop_backend.py
-  ALL ctypesgen -lshoopdaloop_backend ${CMAKE_CURRENT_SOURCE_DIR}/shoopdaloop_backend.h -o shoopdaloop_backend.py
+  ALL ctypesgen -lshoopdaloop_backend ${CMAKE_CURRENT_SOURCE_DIR}/shoopdaloop_backend.h ${CMAKE_CURRENT_SOURCE_DIR}/types.h -o shoopdaloop_backend.py
   DEPENDS shoopdaloop_backend __init__.py
   )

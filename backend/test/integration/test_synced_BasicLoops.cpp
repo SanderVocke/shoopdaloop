@@ -17,13 +17,14 @@ suite Synced_BasicLoops_tests = []() {
         auto loop1 = std::make_shared<BasicLoop>();
         auto loop2 = std::make_shared<BasicLoop>();
         
-        loop1->set_sync_source(loop2);
+        loop1->set_soft_sync_source(loop2);
         loop1->m_state = Stopped;
         loop1->plan_transition(Playing);
 
         loop2->trigger();
 
-        loop1->handle_sync();
+        loop1->handle_hard_sync();
+        loop1->handle_soft_sync();
 
         expect(loop1->get_state() == Playing);
     };
@@ -32,7 +33,7 @@ suite Synced_BasicLoops_tests = []() {
         auto loop1 = std::make_shared<BasicLoop>();
         auto loop2 = std::make_shared<BasicLoop>();
 
-        loop1->set_sync_source(loop2);
+        loop1->set_soft_sync_source(loop2);
         loop1->m_state = Stopped;
         loop1->m_length = 100;
         loop1->plan_transition(Playing);
@@ -48,6 +49,28 @@ suite Synced_BasicLoops_tests = []() {
         expect(eq(loop2->get_position(), 10));
         expect(eq(loop2->get_state(), Playing));
         expect(eq(loop2->is_triggering_now(), false));
+
+        expect(eq(loop1->get_state(), Playing));
+        expect(eq(loop1->get_position(), 10));
+    };
+
+    "3_hard_sync"_test = []() {
+        auto loop1 = std::make_shared<BasicLoop>();
+        auto loop2 = std::make_shared<BasicLoop>();
+
+        loop1->set_hard_sync_source(loop2);
+        loop1->m_state = Stopped;
+        loop1->m_length = 0;
+
+        loop2->m_state = Playing;
+        loop2->m_length = 100;
+        loop2->m_position = 90;
+        loop2->update_poi();
+
+        process_loops<BasicLoop>({loop1, loop2}, 20);
+
+        expect(eq(loop2->get_position(), 10));
+        expect(eq(loop2->get_state(), Playing));
 
         expect(eq(loop1->get_state(), Playing));
         expect(eq(loop1->get_position(), 10));

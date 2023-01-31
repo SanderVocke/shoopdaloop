@@ -51,6 +51,10 @@ public:
         jack_port_unregister(m_client, m_port);
     }
 
+    jack_port_t *get_jack_port() const {
+        return m_port;
+    }
+
     ~JackAudioPort() override {
         close();
     }

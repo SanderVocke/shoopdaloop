@@ -7,7 +7,7 @@ from .NChannelAbstractLooperManager import NChannelAbstractLooperManager
 import sys
 sys.path.append('../..')
 
-import build.backend.shoopdaloop_backend as backend
+import build.backend.frontend_interface.shoopdaloop_backend as backend
 from lib.StatesAndActions import *
 from lib.state_helpers import *
 from collections import OrderedDict
@@ -318,7 +318,7 @@ class BackendManager(QObject):
             ports_midi_enabled[i] = 1 if i in self.ports_midi_enabled_list else 0
         
         do_profiling = os.getenv('SHOOPDALOOP_PROFILING') != None
-        features = backend.backend_features_t(backend.Profiling) if do_profiling else backend.backend_features_t(backend.Default)
+        features = backend.backend_features_t(backend.Profiling) if do_profiling else 0
 
         _jack_client = backend.initialize(
             self.n_loops,

@@ -1,5 +1,6 @@
 #pragma once
 #include "LoopInterface.h"
+#include "types.h"
 #include <cstring>
 #include <memory>
 #include <stdexcept>
@@ -27,7 +28,8 @@ public:
 
 protected:
     std::optional<PointOfInterest> m_next_poi;
-    std::shared_ptr<LoopInterface> m_sync_source;
+    std::shared_ptr<LoopInterface> m_soft_sync_source;
+    std::shared_ptr<LoopInterface> m_hard_sync_source;
     loop_state_t m_state;
     std::deque<loop_state_t> m_planned_states;
     std::deque<size_t> m_planned_state_countdowns;
@@ -40,7 +42,8 @@ public:
     BasicLoop() :
         m_next_poi(std::nullopt),
         m_state(Stopped),
-        m_sync_source(nullptr),
+        m_soft_sync_source(nullptr),
+        m_hard_sync_source(nullptr),
         m_triggering_now(false),
         m_length(0),
         m_position(0)
@@ -95,7 +98,7 @@ public:
     }
 
     bool is_triggering_now() override {
-        if (m_sync_source && m_sync_source->is_triggering_now()) { return true; }
+        if (m_soft_sync_source && m_soft_sync_source->is_triggering_now()) { return true; }
         if (m_triggering_now) { return true; }
         if (m_next_poi.has_value() && m_next_poi.value().when == 0) {
             handle_poi();
@@ -104,6 +107,9 @@ public:
         return false;
     }
 
+    // Meant to be implemented by subclasses.
+    // Provides access to the startin states of processing and the usual
+    // ending states. Ending states may also be altered by the subclass.
     virtual void process_body(
         size_t n_samples,
         size_t pos_before,
@@ -153,11 +159,18 @@ public:
         update_poi();
     }
 
-    void set_sync_source(std::shared_ptr<LoopInterface> const& src) override {
-        m_sync_source = src;
+    void set_soft_sync_source(std::shared_ptr<LoopInterface> const& src) override {
+        if(m_soft_sync_source.get() != this) { m_soft_sync_source = src; }
     }
-    std::shared_ptr<LoopInterface> const& get_sync_source() const override {
-        return m_sync_source;
+    std::shared_ptr<LoopInterface> const& get_soft_sync_source() const override {
+        return m_soft_sync_source;
+    }
+
+    void set_hard_sync_source(std::shared_ptr<LoopInterface> const& src) override {
+        m_hard_sync_source = src;
+    }
+    std::shared_ptr<LoopInterface> const& get_hard_sync_source() const override {
+        return m_soft_sync_source;
     }
 
     void trigger() override {
@@ -173,9 +186,21 @@ public:
         }
     }
 
-    void handle_sync() override {
-        if (m_sync_source && m_sync_source->is_triggering_now()) {
+    void handle_soft_sync() override {
+        if (!m_hard_sync_source && m_soft_sync_source && m_soft_sync_source->is_triggering_now()) {
             trigger();
+        }
+    }
+
+    void handle_hard_sync() override {
+        if (m_hard_sync_source) {
+            set_state (m_hard_sync_source->get_state());
+            set_length (m_hard_sync_source->get_length());
+            set_position (m_hard_sync_source->get_position());
+            if (m_hard_sync_source->is_triggering_now()) {
+                m_triggering_now = true;
+            }
+            update_poi();
         }
     }
 
@@ -223,8 +248,11 @@ public:
     }
 
     void set_position(size_t pos) override {
-        m_position = pos;
-        update_poi();
+        if (pos != m_position) {
+            m_next_poi = std::nullopt;
+            m_position = pos;
+            update_poi();
+        }
     }
 
     size_t get_length() const override {
@@ -233,6 +261,25 @@ public:
 
     loop_state_t get_state() const override {
         return m_state;
+    }
+
+    void set_length(size_t len) override {
+        if (len != m_length) {
+            m_length = len;
+            if (m_position >= len) {
+                set_position(len-1);
+            }
+            m_next_poi = std::nullopt;
+            update_poi();
+        }
+    }
+
+    void set_state(loop_state_t state) override {
+        if (state != m_state) {
+            m_state = state;
+            m_next_poi = std::nullopt;
+            update_poi();
+        }
     }
 
 protected:

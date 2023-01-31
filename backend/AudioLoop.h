@@ -165,7 +165,7 @@ public:
         m_playback_target_buffer_size = size;
         if (m_state == Playing || m_state == PlayingMuted) {
             if (m_next_poi) { m_next_poi->type_flags &= ~(ExternalBufferEnd); }
-            m_next_poi = dominant_poi(m_next_poi, {.when = m_playback_target_buffer_size, .type_flags = ExternalBufferEnd});
+            m_next_poi = dominant_poi(m_next_poi, PointOfInterest{.when = m_playback_target_buffer_size, .type_flags = ExternalBufferEnd});
         }
     }
 
