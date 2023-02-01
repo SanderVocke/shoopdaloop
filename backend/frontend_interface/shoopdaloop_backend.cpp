@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include "AudioPortInterface.h"
 #include "AudioBufferPool.h"
+#include "PortInterface.h"
 #include "process_loops.h"
 #include "types.h"
 #include <memory>
@@ -20,6 +21,7 @@ using namespace std::chrono_literals;
 
 struct PortInfo {
     std::shared_ptr<PortInterface> port;
+    std::shared_ptr<PortInfo> maybe_remap_from;
     float   *maybe_audio_buffer;
     uint8_t *maybe_midi_buffer;
 
@@ -231,6 +233,13 @@ void process(size_t n_frames) {
             port_info->maybe_midi_buffer  = nullptr;
             if (auto audio_port = std::dynamic_pointer_cast<AudioPortInterface<float>>(port_info->port)) {
                 port_info->maybe_audio_buffer = audio_port->get_buffer(n_frames);
+            }
+        }
+        // Remap input buffers.
+        for (auto &port_info : g_loop_input_ports) {
+            if (port_info->maybe_remap_from) {
+                port_info->maybe_audio_buffer = port_info->maybe_remap_from->maybe_audio_buffer;
+                port_info->maybe_midi_buffer = port_info->maybe_remap_from->maybe_midi_buffer;
             }
         }
     }
@@ -616,11 +625,11 @@ jack_port_t* get_port_input_handle(unsigned port_idx) {
 }
 
 void remap_port_input(unsigned port, unsigned input_source) {
-    std::cerr << "remap_port_input unimplemented\n";
+    g_loop_input_ports[port]->maybe_remap_from = g_loop_input_ports[input_source];
 }
 
 void reset_port_input_remapping(unsigned port) {
-    std::cerr << "reset_port_input_remapping unimplemented\n";
+    g_loop_input_ports[port]->maybe_remap_from = nullptr;
 }
 
 void terminate() {
