@@ -4,17 +4,8 @@
 #include <cstring>
 #include <iostream>
 
-typedef jack_midi_event_t midi_event_t;
-
-typedef struct _midi_event_metadata_t {
-    jack_nframes_t time;
-    uint32_t       size;
-} midi_event_metadata_t;
-
-constexpr size_t typical_midi_message_size =
-    sizeof(midi_event_metadata_t) + 3;
-
-struct MIDIRingBuffer {
+template<typename TimeType, typename SizeType>
+class MidiRingBuffer {
     std::vector<uint8_t> data;
     size_t n_events;
     size_t tail; // Oldest event start
@@ -22,12 +13,17 @@ struct MIDIRingBuffer {
     size_t head_start; // Youngest event start
     int32_t cursor, prev_cursor;
 
-    uint8_t *copy_bytes(unsigned *length_out) {
-        *length_out = data.size() - bytes_available();
-        uint8_t *rval = (uint8_t*)malloc((size_t)*length_out);
-        for(size_t idx=0; idx < *length_out; idx++) {
+public:
+    constexpr static size_t metadata_size = sizeof(TimeType) + sizeof(SizeType);
+    constexpr static size_t typical_event_size = metadata_size + 3;
+
+    std::vector<uint8_t> copy_data() {
+        std::vector<uint8_t> rval(data.size() - bytes_available());
+
+        for(size_t idx=0; idx < rval.size(); idx++) {
             rval[idx] = data[(idx + tail) % data.size()];
         }
+
         return rval;
     }
 
@@ -42,8 +38,8 @@ struct MIDIRingBuffer {
         n_events = 0;
 
         // Find start of last message
-        while ((head_start + peek_metadata(head_start, true)->size + sizeof (midi_event_metadata_t)) < head) {
-            head_start += (peek_metadata(head_start, true)->size + sizeof (midi_event_metadata_t));
+        while ((head_start + peek_metadata(head_start, true)->size + metadata_size) < head) {
+            head_start += (peek_metadata(head_start, true)->size + metadata_size);
             n_events++;
         }
 
