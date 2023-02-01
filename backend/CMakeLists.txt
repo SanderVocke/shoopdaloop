@@ -2,7 +2,16 @@
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 set(CMAKE_CXX_EXTENSIONS NO)
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}")
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}/cmake")
+
+# Options
+option(ENABLE_PERFTOOLS "Link to pprof profiling library")
+if(ENABLE_PERFTOOLS)
+    add_compile_definitions(ENABLE_PERFTOOLS)
+    find_package(Gperftools REQUIRED COMPONENTS profiler)
+    link_libraries(${GPERFTOOLS_LIBRARIES})
+    include_directories(${GPERFTOOLS_INCLUDES})
+endif()
 
 # Find pkgs
 find_package(Jack REQUIRED)

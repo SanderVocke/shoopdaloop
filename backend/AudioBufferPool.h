@@ -3,8 +3,8 @@
 #include <memory>
 #include <thread>
 #include <atomic>
-#include <chrono>
 #include "AudioBuffer.h"
+#include <iostream>
 
 // A class which manages a queue of audio buffers which can be
 // consumed lock-free. The queue is continuously replenished with newly allocated
@@ -19,11 +19,11 @@ class AudioBufferPool {
     std::atomic<unsigned> m_actual_n_buffers;
     std::atomic<bool> m_finish;
     std::thread m_replenish_thread;
+    std::atomic_flag m_replenish_flag;
+    std::atomic_flag m_no_bufs_available_flag;
 
 public:
-    template<class Rep, class Period> AudioBufferPool(size_t target_n_buffers,
-                    size_t buffers_size,
-                    std::chrono::duration<Rep, Period> const& replenishment_delay) :
+    AudioBufferPool(size_t target_n_buffers, size_t buffers_size) :
         m_target_n_buffers(target_n_buffers),
         m_buffers_size(buffers_size),
         m_actual_n_buffers(0),
@@ -31,10 +31,12 @@ public:
         m_queue(target_n_buffers)
     {
         fill();
+        m_replenish_flag.clear();
+        m_no_bufs_available_flag.clear();
 
         // Start auto-replenishment
         m_replenish_thread = std::thread(
-            [replenishment_delay, this]() { this->replenish_thread_fn(replenishment_delay); });
+            [this]() { this->replenish_thread_fn(); });
     }
 
     ~AudioBufferPool() {
@@ -43,6 +45,8 @@ public:
             delete buf;
         }
         m_finish = true;
+        m_replenish_flag.test_and_set();
+        m_replenish_flag.notify_all();
         m_replenish_thread.join();
     }
 
@@ -54,9 +58,12 @@ public:
         Buffer* buf = nullptr;
         if (m_queue.pop(buf)) {
             m_actual_n_buffers--;
+            m_replenish_flag.test_and_set();
+            m_replenish_flag.notify_all();
             return buf;
         }
         else {
+            m_no_bufs_available_flag.test_and_set();
             return allocate();
         }
     }
@@ -76,12 +83,17 @@ protected:
         }
     }
 
-    template<class Rep, class Period>
-    void replenish_thread_fn(std::chrono::duration<Rep, Period> const& replenishment_delay) {
+    void replenish_thread_fn() {
         while(true) {
             if (this->m_finish) { break; }
+            m_replenish_flag.wait(false);
+            m_replenish_flag.clear();
+            if (m_no_bufs_available_flag.test()) {
+                m_no_bufs_available_flag.clear();
+                std::cerr << "Warning: one or more audio buffers were allocated on the processing thread because "
+                             "no pre-allocated buffers were available from the pool." << std::endl;
+            }
             this->fill();
-            std::this_thread::sleep_for(replenishment_delay);
         }
     }
 

@@ -38,6 +38,7 @@ po::options_description get_options() {
         ("record", "set loops to recording state")
         ("play", "set loops to playback state")
         ("playmuted", "set loops to playback muted state")
+        ("time,t", po::value<float>(), "amount of seconds to run before exiting")
         ;
     return options;
 }
@@ -69,6 +70,7 @@ int main(int argc, const char* argv[]) {
     po::variables_map vm;
     po::store(po::parse_command_line(argc, argv, options), vm);
     po::notify(vm);
+    std::optional<float> time;
 
     if (vm.count("help") || argc < 2) {
         std::cout << options << std::endl;
@@ -81,14 +83,14 @@ int main(int argc, const char* argv[]) {
     if (vm.count("loops"))          { g_n_loops = vm["loops"].as<size_t>(); }
     if (vm.count("loops-per-port")) { g_n_loops_per_port = vm["loops-per-port"].as<size_t>(); }
     if (vm.count("buffer-size"))    { g_buffer_size = vm["buffer-size"].as<size_t>(); }
+    if (vm.count("time"))           { time = vm["time"].as<float>(); }
 
     g_n_ports = g_n_loops / g_n_loops_per_port;
-    size_t pool_size = g_n_loops;
+    size_t pool_size = g_n_loops + 1;
 
     auto pool = std::make_shared<AudioBufferPool<float>>(
         pool_size,
-        g_buffer_size,
-        100ms
+        g_buffer_size
     );
     
     for(size_t idx=0; idx < g_n_loops; idx++) {
@@ -119,7 +121,14 @@ int main(int argc, const char* argv[]) {
 
     g_audio->start();
 
+    auto t_start = std::chrono::high_resolution_clock::now();
     while(true) {
         std::this_thread::sleep_for(100ms);
+        auto t = std::chrono::high_resolution_clock::now();
+        auto diff = t - t_start;
+        if(time.has_value() &&
+           std::chrono::duration_cast<std::chrono::milliseconds>(diff).count() > (time.value() * 1000.0f)) {
+                break;
+           }
     }
 }

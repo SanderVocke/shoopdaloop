@@ -157,7 +157,6 @@ constexpr size_t g_audio_recording_buffer_size = 24000; // 0.5 sec / buffer @ 48
 constexpr size_t g_midi_max_merge_size = 4096;
 constexpr size_t g_command_queue_len = 1024;
 constexpr size_t g_n_buffers_in_pool = 100;
-constexpr auto g_buffer_pool_replenish_delay = 100ms;
 constexpr size_t g_initial_loop_max_n_buffers = 256; // Allows for about 2 minutes of buffers before expanding
 
 
@@ -298,8 +297,7 @@ jack_client_t* initialize(
     if (g_audio_buffer_pool == nullptr) {
         g_audio_buffer_pool = std::make_shared<AudioBufferPool<float>>(
             g_n_buffers_in_pool,
-            g_audio_recording_buffer_size,
-            g_buffer_pool_replenish_delay
+            g_audio_recording_buffer_size
         );
     }
     g_update_callback = update_cb;
