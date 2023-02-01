@@ -3,6 +3,7 @@
 #include "JackAudioPort.h"
 #include "AudioLoop.h"
 #include "process_loops.h"
+#include "types.h"
 #include <boost/program_options/options_description.hpp>
 #include <boost/program_options/parsers.hpp>
 #include <boost/program_options/variables_map.hpp>
@@ -35,10 +36,11 @@ po::options_description get_options() {
         ("loops,l", po::value<size_t>(), "number of loops to instantiate")
         ("loops-per-port,p", po::value<size_t>(), "number of loops per JACK port")
         ("buffer-size,b", po::value<size_t>(), "# of samples per audio buffer")
-        ("record", "set loops to recording state")
-        ("play", "set loops to playback state")
-        ("playmuted", "set loops to playback muted state")
+        ("record", po::value<size_t>(), "# of loops to set to recording state")
+        ("play", po::value<size_t>(), "# of loops to playback state")
+        ("playmuted", po::value<size_t>(), "# of loops to set to playback muted state")
         ("time,t", po::value<float>(), "amount of seconds to run before exiting")
+        ("length", po::value<size_t>(), "length of the loops at init")
         ;
     return options;
 }
@@ -54,15 +56,18 @@ void process (jack_nframes_t nframes)
         g_output_bufs[idx] = port ? port->get_buffer(nframes) : nullptr;
     }
 
-    if (g_state == Recording) {
-        for (size_t idx=0; idx<g_loops.size(); idx++) {
-            g_loops[idx]->set_recording_buffer(
-                g_input_bufs[idx / g_n_loops_per_port],
-                nframes
-            );
-        }
-        process_loops(g_loops, nframes);
+    for (size_t idx=0; idx<g_n_loops; idx++) {
+        g_loops[idx]->set_recording_buffer(
+            g_input_bufs[idx / g_n_loops_per_port],
+            nframes
+        );
+        g_loops[idx]->set_playback_buffer(
+            g_output_bufs[idx / g_n_loops_per_port],
+            nframes
+        );
     }
+
+    process_loops(g_loops, nframes);
 }
 
 int main(int argc, const char* argv[]) {
@@ -71,21 +76,26 @@ int main(int argc, const char* argv[]) {
     po::store(po::parse_command_line(argc, argv, options), vm);
     po::notify(vm);
     std::optional<float> time;
+    size_t length = 24000;
+    size_t n_record = 0;
+    size_t n_play = 0;
+    size_t n_play_muted = 0;
 
     if (vm.count("help") || argc < 2) {
         std::cout << options << std::endl;
         return 1;
     }
 
-    if (vm.count("record"))         { g_state = Recording; }
-    if (vm.count("play"))           { g_state = Playing; }
-    if (vm.count("playmuted"))      { g_state = PlayingMuted; }
+    if (vm.count("record"))         { n_record = vm["record"].as<size_t>(); }
+    if (vm.count("play"))           { n_play = vm["play"].as<size_t>(); }
+    if (vm.count("playmuted"))      { n_play_muted = vm["playmuted"].as<size_t>(); }
     if (vm.count("loops"))          { g_n_loops = vm["loops"].as<size_t>(); }
     if (vm.count("loops-per-port")) { g_n_loops_per_port = vm["loops-per-port"].as<size_t>(); }
     if (vm.count("buffer-size"))    { g_buffer_size = vm["buffer-size"].as<size_t>(); }
     if (vm.count("time"))           { time = vm["time"].as<float>(); }
+    if (vm.count("length"))         { length = vm["length"].as<size_t>(); }
 
-    g_n_ports = g_n_loops / g_n_loops_per_port;
+    g_n_ports = std::ceil((float)g_n_loops / (float)g_n_loops_per_port);
     size_t pool_size = g_n_loops + 1;
 
     auto pool = std::make_shared<AudioBufferPool<float>>(
@@ -99,8 +109,17 @@ int main(int argc, const char* argv[]) {
             10, // FIXME configurable
             AudioLoopOutputType::Add // FIXME configurable
         ));
-        g_loops.back()->plan_transition(g_state);
-        g_loops.back()->trigger();
+        g_loops.back()->set_length(length);
+        if (idx < n_record) {
+            g_loops.back()->plan_transition(Recording);
+            g_loops.back()->trigger();
+        } else if (idx < (n_record + n_play)) {
+            g_loops.back()->plan_transition(Playing);
+            g_loops.back()->trigger();
+        } else if (idx < (n_record + n_play + n_play_muted)) {
+            g_loops.back()->plan_transition(PlayingMuted);
+            g_loops.back()->trigger();
+        }
         g_loops.back()->handle_poi();
     }
 
@@ -109,15 +128,18 @@ int main(int argc, const char* argv[]) {
         process
     );
 
-    if (g_state == Recording) {
-        for(size_t idx=0; idx<g_n_ports; idx++) {
-            g_input_ports.push_back(g_audio->open_audio_port(
-                "input_" + std::to_string(idx),
-                PortDirection::Input
-            ));
-        }
-        g_input_bufs.resize(g_n_ports);
+    for(size_t idx=0; idx<g_n_ports; idx++) {
+        g_input_ports.push_back(g_audio->open_audio_port(
+            "input_" + std::to_string(idx),
+            PortDirection::Input
+        ));
+        g_output_ports.push_back(g_audio->open_audio_port(
+            "output_" + std::to_string(idx),
+            PortDirection::Output
+        ));
     }
+    g_input_bufs.resize(g_n_ports);
+    g_output_bufs.resize(g_n_ports);
 
     g_audio->start();
 

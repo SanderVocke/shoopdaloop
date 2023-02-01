@@ -258,6 +258,14 @@ public:
         }
     }
 
+    void set_length(size_t length) override {
+        BasicLoop::set_length(length);
+
+        while(get_length() > m_buffers.size() * m_buffer_size) {
+            m_buffers.push_back(get_new_buffer());
+        }
+    }
+
 protected:
     Buffer get_new_buffer() const {
         auto buf = Buffer(m_buffer_pool->get_buffer());
