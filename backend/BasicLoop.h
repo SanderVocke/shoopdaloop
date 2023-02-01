@@ -157,8 +157,8 @@ public:
 
         if (m_next_poi) { m_next_poi.value().when -= n_samples; }
         m_position = pos_after;
-        m_length = length_after;
-        m_state = state_after;
+        set_length(length_after);
+        set_state(state_after);
         handle_poi();
         update_poi();
     }

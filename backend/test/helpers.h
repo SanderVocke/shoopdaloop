@@ -15,7 +15,7 @@ std::vector<S> create_buf(size_t size, std::function<S(size_t)> elem_fn) {
 template<typename Buf, typename S>
 void for_buf_elems(Buf const& buf, std::function<void(size_t,S const&)> fn,
                    int start=0, int n=-1) {
-    if(n < 0) { n = buf.head() - start; }
+    if(n < 0) { n = buf.size() - start; }
     for(size_t idx=start; idx < (start+n); idx++) {
         fn(idx, buf.at(idx));
     }

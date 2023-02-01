@@ -3,12 +3,17 @@
 #include "AudioBufferPool.h"
 #include "AudioBuffer.h"
 #include "AudioLoopTestInterface.h"
+#include <cmath>
 #include <cstring>
 #include <memory>
 #include <stdexcept>
+#include <thread>
 #include <vector>
 #include <optional>
 #include <iostream>
+#include <chrono>
+
+using namespace std::chrono_literals;
 
 enum class AudioLoopOutputType {
     Copy,
@@ -37,6 +42,16 @@ private:
     AudioLoopOutputType const m_output_type;
     size_t const m_buffer_size;
 
+    // For copying data in/out. Buffer pointers are copied during the process
+    // function to avoid race conditions, data is copied in other threads
+    // for performance.
+    struct DataSnapshot {
+        size_t length;
+        std::vector<Buffer> *data;
+    };
+    std::atomic<DataSnapshot *> maybe_copy_data_to;
+    std::atomic<DataSnapshot *> maybe_copy_data_from;
+
 public:
 
     AudioLoop(
@@ -49,13 +64,15 @@ public:
         m_playback_target_buffer_size(0),
         m_recording_source_buffer_size(0),
         m_output_type(output_type),
-        m_buffer_size(buffer_pool->buffer_size())
+        m_buffer_size(buffer_pool->buffer_size()),
+        maybe_copy_data_from(nullptr),
+        maybe_copy_data_to(nullptr)
     {
         m_buffers.reserve(initial_max_buffers);
         m_buffers.push_back(get_new_buffer()); // Initial recording buffer
 
         // TODO
-        std::cerr << "Warning: AudioLoop should have a way to increase its buffers capacity outside of the processing thread. Also atomic access." << std::endl;
+        std::cerr << "Warning: AudioLoop should have a way to increase its buffers capacity outside of the processing thread. Also atomic access. Also atomic planning of transitions." << std::endl;
     }
 
     AudioLoop() = default;
@@ -71,6 +88,19 @@ public:
         loop_state_t state_before,
         loop_state_t &state_after
         ) override {
+        // Copy data pointers and length in/out safely.
+        if (maybe_copy_data_to)     { 
+            *(maybe_copy_data_to.load())->data = m_buffers;
+            (maybe_copy_data_to.load())->length = get_length();
+            maybe_copy_data_to = nullptr;
+        }
+        if (maybe_copy_data_from) {
+            m_buffers = *(maybe_copy_data_from.load())->data;
+            set_length((maybe_copy_data_from.load())->length);
+            length_after = get_length(); // TODO: not nice that we have to do this. Otherwise BasicLoop overwrites our length change
+            maybe_copy_data_from = nullptr;
+        }
+
         switch (get_state()) {
             case Playing:
             case PlayingMuted:
@@ -82,6 +112,51 @@ public:
         }
     }
 
+    // Load data into the loop. Should always be called outside
+    // the processing thread.
+    void load_data(SampleT* samples, size_t len) {
+        static constexpr auto poll_interval = 10ms;
+
+        // Convert to internal storage layout
+        std::vector<Buffer> buffers(std::ceil((float)len / (float)m_buffer_size));
+        for (size_t idx=0; idx < buffers.size(); idx++) {
+            auto &buf = buffers[idx];
+            buf = std::make_shared<AudioBuffer<float>>(m_buffer_size);
+            size_t n_elems = idx >= (buffers.size() - 1) ?
+                len % m_buffer_size : m_buffer_size;
+            memcpy(buf->data(), samples + (idx * m_buffer_size), sizeof(SampleT)*n_elems);
+        }
+        DataSnapshot snapshot {len, &buffers};
+
+        // Copy in during process
+        maybe_copy_data_from = &snapshot;
+        while (maybe_copy_data_from != nullptr) {
+            std::this_thread::sleep_for(poll_interval);
+        }
+    }
+
+    // Get loop data. Should always be called outside
+    // the processing thread.
+    std::vector<SampleT> get_data() {
+        static constexpr auto poll_interval = 10ms;
+
+        std::vector<Buffer> buffers;
+        DataSnapshot snapshot { 0, &buffers };
+
+        // Copy out during process
+        maybe_copy_data_to = &snapshot;
+        while (maybe_copy_data_to != nullptr) {
+            std::this_thread::sleep_for(poll_interval);
+        }
+
+        std::vector<SampleT> samples(snapshot.length);
+        for(size_t idx=0; idx < samples.size(); idx++) {
+            samples[idx] = buffers[idx / m_buffer_size]->at(idx % m_buffer_size);
+        }
+
+        return samples;
+    }
+
     void process_record(size_t n_samples) {
         if (m_recording_source_buffer_size < n_samples) {
             throw std::runtime_error("Attempting to record out of bounds");
@@ -89,19 +164,21 @@ public:
 
         auto &from = m_recording_source_buffer;
         auto &to_buf = m_buffers.back();
-        auto to = to_buf->data_at(to_buf->head());
+        auto buf_head = m_length % m_buffer_size;
+        auto buf_space = m_buffer_size - buf_head;
+        
         // Record all, or to the end of the current buffer, whichever
         // comes first
-        auto n = std::min(n_samples, to_buf->space());
+        auto n = std::min(n_samples, buf_space);
         auto rest = n_samples - n;
-        to_buf->record(from, n);
+        memcpy((void*) &to_buf->at(buf_head), (void*)from, sizeof(SampleT)*n);
 
         m_recording_source_buffer += n;
         m_recording_source_buffer_size -= n;
 
-        // If we reached the end of the buffer, add another
+        // If we reached the end, add another buffer
         // and record the rest.
-        if(m_buffers.back()->space() == 0) {
+        if(m_length >= (m_buffer_size * m_buffers.size())) {
             m_buffers.push_back(get_new_buffer());
         }
         if(rest > 0) {
@@ -120,10 +197,13 @@ public:
 
         size_t buffer_idx = pos / m_buffer_size;
         size_t pos_in_buffer = pos % m_buffer_size;
+        size_t buf_head = buffer_idx == m_buffers.size()-1 ?
+            m_length % m_buffer_size :
+            m_buffer_size;
         auto  &from_buf = m_buffers[buffer_idx];
-        auto from = from_buf->data_at(pos_in_buffer);
-        auto &to = m_playback_target_buffer;
-        auto n = std::min(from_buf->head() - pos_in_buffer, n_samples);
+        SampleT* from = &from_buf->at(pos_in_buffer);
+        SampleT* &to = m_playback_target_buffer;
+        auto n = std::min(buf_head - pos_in_buffer, n_samples);
         auto rest = n_samples - n;
 
         if (m_output_type == AudioLoopOutputType::Copy) {

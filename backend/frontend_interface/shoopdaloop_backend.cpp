@@ -550,8 +550,26 @@ unsigned get_loop_data_rms(
     unsigned samples_per_bin,
     float **data_out
 ) {
-    std::cerr << "get_loop_data_rms unimplemented\n";
-    return 0;
+    unsigned n_bins = std::ceil((float)std::max<int>(0, to_sample - from_sample) / (float) samples_per_bin);
+    float *bins = (float*)malloc(sizeof(float) * n_bins);
+    float *data;
+    size_t n_samples = get_loop_data(loop_idx, &data, 0);
+
+    for(size_t idx = 0; idx < n_bins; idx++) {
+        bins[idx] = 0.0f;
+        unsigned bin_start = from_sample + idx*samples_per_bin;
+        for(size_t sample = bin_start; sample < bin_start + samples_per_bin && sample < n_samples; sample++) {
+            auto v = data[from_sample + sample];
+            bins[idx] += v * v;
+        }
+    }
+    for(size_t idx = 0; idx < n_bins; idx++) {
+        bins[idx] = std::sqrt(bins[idx] / (float) samples_per_bin);
+    }
+
+    *data_out = bins;
+    shoopdaloop_free(data);
+    return n_bins;
 }
 
 void shoopdaloop_free(void* ptr) {
@@ -615,7 +633,20 @@ int load_loop_data(
     unsigned len,
     float *data
 ) {
-    std::cerr << "load_loop_data unimplemented\n";
+    std::shared_ptr<AudioLoop<float>> loop = std::dynamic_pointer_cast<AudioLoop<float>>(g_loops[loop_idx]->loop);
+    if (!loop) {
+        throw std::runtime_error("Attempted to load audio data into a non-audio loop");
+    }
+
+    std::atomic<bool> finished = false;
+    push_command([loop, &finished]() {
+        loop->handle_transition(Stopped);
+        loop->set_position(0);
+        finished = true;
+    });
+    while(!finished) { std::this_thread::sleep_for(1ms); }
+
+    loop->load_data(data, len);
     return 0;
 }
 
@@ -624,8 +655,24 @@ unsigned get_loop_data(
     float ** data_out,
     unsigned do_stop
 ) {
-    std::cerr << "get_loop_data unimplemented\n";
-    return 0;
+    std::shared_ptr<AudioLoop<float>> loop = std::dynamic_pointer_cast<AudioLoop<float>>(g_loops[loop_idx]->loop);
+    if (!loop) {
+        throw std::runtime_error("Attempted to get audio data from a non-audio loop");
+    }
+    if (do_stop) {
+        std::atomic<bool> finished = false;
+        push_command([loop, &finished]() {
+            loop->handle_transition(Stopped);
+            loop->set_position(0);
+            finished = true;
+        });
+        while(!finished) { std::this_thread::sleep_for(1ms); }
+    }
+    auto data = loop->get_data();
+    float* new_data = (float*) malloc(sizeof(float) * data.size());
+    memcpy ((void*)new_data, (void*)data.data(), sizeof(float)*data.size());
+    *data_out = new_data;
+    return data.size();
 }
 
 void set_storage_lock(unsigned int value) {
