@@ -3,6 +3,7 @@
 #include <memory>
 #include <stdio.h>
 #include "PortInterface.h"
+#include "MidiPortInterface.h"
 #include <string>
 #include <map>
 #include "AudioPortInterface.h"
@@ -27,8 +28,6 @@ public:
     //   from real-time processing by having intermediate storage.
     //   Such ports are suitable for reading out only once in a while,
     //   at the cost of adding latency.
-    // FIXME: inimplemented type
-    typedef PortInterface MidiPortInterface;
     virtual
     std::shared_ptr<MidiPortInterface> open_midi_port(
         std::string name,

@@ -7,7 +7,7 @@
 #include <jack/midiport.h>
 #include <stdexcept>
 
-class JackMidiPort : public MidiPortInterface<jack_nframes_t, size_t> {
+class JackMidiPort : public MidiPortInterface {
     jack_port_t* m_port;
     jack_client_t* m_client;
     std::string m_name;
@@ -18,7 +18,7 @@ public:
         std::string name,
         PortDirection direction,
         jack_client_t *client
-    ) : MidiPortInterface<jack_nframes_t, size_t>(name, direction),
+    ) : MidiPortInterface(name, direction),
         m_client(client),
         m_direction(direction) {
 
@@ -62,8 +62,8 @@ public:
 
     void get_event(void* buffer,
                     size_t idx,
-                    size_t &size_out,
-                    jack_nframes_t &time_out,
+                    uint32_t &size_out,
+                    uint32_t &time_out,
                     uint8_t* &data_out) const override {
         jack_midi_event_t evt;
         jack_midi_event_get(&evt, buffer, idx);

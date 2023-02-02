@@ -1,5 +1,7 @@
 #pragma once
 #include "AudioSystemInterface.h"
+#include "JackMidiPort.h"
+#include "MidiPortInterface.h"
 #include "PortInterface.h"
 #include "JackAudioPort.h"
 #include <jack/jack.h>
@@ -83,7 +85,10 @@ public:
         PortDirection direction,
         bool decoupled
     ) override {
-        return nullptr; // TODO implement
+        std::shared_ptr<PortInterface> port =
+            std::make_shared<JackMidiPort>(name, direction, m_client);
+        m_ports[port->name()] = port;
+        return std::dynamic_pointer_cast<MidiPortInterface>(port);
     }
 
     size_t get_sample_rate() const override {
