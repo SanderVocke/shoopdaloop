@@ -7,7 +7,7 @@ add_subdirectory(tools)
 add_executable(test_runner
     test_runner.cpp
     unit/test_AudioLoop.cpp
-    unit/test_AudioBufferPool.cpp
+    unit/test_ObjectPool.cpp
     unit/test_BasicLoop.cpp
     integration/test_synced_BasicLoops.cpp
     )

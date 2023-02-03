@@ -1,6 +1,6 @@
 #pragma once
 #include "BasicLoop.h"
-#include "AudioBufferPool.h"
+#include "ObjectPool.h"
 #include "AudioBuffer.h"
 #include "AudioLoopTestInterface.h"
 #include <cmath>
@@ -24,8 +24,8 @@ template<typename SampleT>
 class AudioLoop : public BasicLoop,
                   public AudioLoopTestInterface<std::shared_ptr<AudioBuffer<SampleT>>> {
 public:
-    typedef AudioBufferPool<SampleT> BufferPool;
     typedef AudioBuffer<SampleT> BufferObj;
+    typedef ObjectPool<BufferObj> BufferPool;
     typedef std::shared_ptr<BufferObj> Buffer;
     
 private:
@@ -55,7 +55,7 @@ private:
 public:
 
     AudioLoop(
-            std::shared_ptr<AudioBufferPool<SampleT>> buffer_pool,
+            std::shared_ptr<BufferPool> buffer_pool,
             size_t initial_max_buffers,
             AudioLoopOutputType output_type) :
         BasicLoop(),
@@ -64,7 +64,7 @@ public:
         m_playback_target_buffer_size(0),
         m_recording_source_buffer_size(0),
         m_output_type(output_type),
-        m_buffer_size(buffer_pool->buffer_size()),
+        m_buffer_size(buffer_pool->object_size()),
         maybe_copy_data_from(nullptr),
         maybe_copy_data_to(nullptr)
     {
@@ -187,7 +187,7 @@ public:
     }
 
     SampleT const& at(size_t pos) const {
-        return m_buffers[pos / m_buffers.front()->size()]->at(pos % m_buffers.front()->size());
+        return m_buffers[pos / m_buffer_size]->at(pos % m_buffers.front()->size());
     }
 
     void process_playback(size_t pos, size_t n_samples, bool muted) {
@@ -206,14 +206,16 @@ public:
         auto n = std::min(buf_head - pos_in_buffer, n_samples);
         auto rest = n_samples - n;
 
-        if (m_output_type == AudioLoopOutputType::Copy) {
-            memcpy((void*)to, (void*)from, n*sizeof(SampleT));
-        } else if (m_output_type == AudioLoopOutputType::Add) {
-            for(size_t idx=0; idx < n; idx++) {
-                to[idx] += from[idx];
+        if (!muted) {
+            if (m_output_type == AudioLoopOutputType::Copy) {
+                memcpy((void*)to, (void*)from, n*sizeof(SampleT));
+            } else if (m_output_type == AudioLoopOutputType::Add) {
+                for(size_t idx=0; idx < n; idx++) {
+                    to[idx] += from[idx];
+                }
+            } else {
+                throw std::runtime_error("Unsupported output type for audio loop.");
             }
-        } else {
-            throw std::runtime_error("Unsupported output type for audio loop.");
         }
 
         m_playback_target_buffer += n;
@@ -268,7 +270,7 @@ public:
 
 protected:
     Buffer get_new_buffer() const {
-        auto buf = Buffer(m_buffer_pool->get_buffer());
+        auto buf = Buffer(m_buffer_pool->get_object());
         if (m_buffers.size() > 0 && buf->size() != m_buffers.back()->size()) {
             throw std::runtime_error("AudioLoop requires buffers of same length");
         }

@@ -10,7 +10,7 @@ using namespace std::chrono_literals;
 
 suite AudioLoop_tests = []() {
     "1_stop"_test = []() {
-        auto pool = std::make_shared<AudioBufferPool<int>>(10, 256);
+        auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 256);
         AudioLoop<int>loop(pool, 10, AudioLoopOutputType::Copy);
         AudioLoopTestInterface<AudioLoop<int>::Buffer> *loop_test_if =
             (AudioLoopTestInterface<AudioLoop<int>::Buffer> *)&loop;
@@ -31,7 +31,7 @@ suite AudioLoop_tests = []() {
     };
 
     "2_record"_test = []() {
-        auto pool = std::make_shared<AudioBufferPool<int>>(10, 64);
+        auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
         AudioLoop<int>loop(pool, 10, AudioLoopOutputType::Copy);
         AudioLoopTestInterface<AudioLoop<int>::Buffer> *loop_test_if =
             (AudioLoopTestInterface<AudioLoop<int>::Buffer> *)&loop;
@@ -63,7 +63,7 @@ suite AudioLoop_tests = []() {
     };
     
     "2_1_record_beyond_external_buf"_test = []() {
-        auto pool = std::make_shared<AudioBufferPool<int>>(10, 256);
+        auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 256);
         AudioLoop<int>loop(pool, 10, AudioLoopOutputType::Copy);
         AudioLoopTestInterface<AudioLoop<int>::Buffer> *loop_test_if =
             (AudioLoopTestInterface<AudioLoop<int>::Buffer> *)&loop;
@@ -77,7 +77,7 @@ suite AudioLoop_tests = []() {
     };
 
     "2_2_record_multiple_buffers"_test = []() {
-        auto pool = std::make_shared<AudioBufferPool<int>>(10, 64);
+        auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
         AudioLoop<int>loop(pool, 10, AudioLoopOutputType::Copy);
         AudioLoopTestInterface<AudioLoop<int>::Buffer> *loop_test_if =
             (AudioLoopTestInterface<AudioLoop<int>::Buffer> *)&loop;

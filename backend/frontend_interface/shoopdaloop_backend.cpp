@@ -1,7 +1,7 @@
 #include <cmath>
 #include <stdio.h>
 #include "AudioPortInterface.h"
-#include "AudioBufferPool.h"
+#include "ObjectPool.h"
 #include "PortInterface.h"
 #include "process_loops.h"
 #include "types.h"
@@ -168,7 +168,7 @@ std::unique_ptr<JackAudioSystem> g_audio;
 std::vector<std::shared_ptr<LoopInfo>> g_loops;
 std::vector<std::shared_ptr<PortInfo>> g_loop_input_ports;
 std::vector<std::shared_ptr<PortInfo>> g_loop_output_ports;
-std::shared_ptr<AudioBufferPool<float>> g_audio_buffer_pool;
+std::shared_ptr<ObjectPool<AudioBuffer<float>>> g_audio_buffer_pool;
 UpdateCallback g_update_callback;
 AbortCallback g_abort_callback;
 AtomicStateReport g_atomic_state;
@@ -295,7 +295,7 @@ jack_client_t* initialize(
         g_audio = std::make_unique<JackAudioSystem>(std::string(client_name), process);
     }
     if (g_audio_buffer_pool == nullptr) {
-        g_audio_buffer_pool = std::make_shared<AudioBufferPool<float>>(
+        g_audio_buffer_pool = std::make_shared<ObjectPool<AudioBuffer<float>>>(
             g_n_buffers_in_pool,
             g_audio_recording_buffer_size
         );

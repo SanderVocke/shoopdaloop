@@ -14,6 +14,36 @@ class JackMidiPort : public MidiPortInterface {
     PortDirection m_direction;
 
 public:
+    struct JackReadMidiBuf : public MidiReadableBufferInterface<jack_nframes_t, uint32_t> {
+        void* jack_buf;
+        JackReadMidiBuf(void* buf) : jack_buf(buf) {}
+
+        size_t get_n_events() const override { return jack_midi_get_event_count(jack_buf); }
+        void get_event(size_t idx,
+                       uint32_t &size_out,
+                       jack_nframes_t &time_out,
+                       uint8_t* &data_out) const override
+        {
+            jack_midi_event_t evt;
+            jack_midi_event_get(&evt, jack_buf, idx);
+            size_out = evt.size;
+            time_out = evt.time;
+            data_out = (uint8_t*) evt.buffer;
+        }
+    };
+
+    struct JackWriteMidiBuf : public MidiWriteableBufferInterface<jack_nframes_t, uint32_t> {
+        void* jack_buf;
+        JackWriteMidiBuf(void* buf) : jack_buf(buf) {}
+
+        void write_event(uint32_t size,
+                         jack_nframes_t time,
+                         uint8_t* data) override
+        {
+            jack_midi_event_write(jack_buf, time, (uint8_t*) data, size);
+        }
+    };
+
     JackMidiPort(
         std::string name,
         PortDirection direction,
@@ -52,24 +82,12 @@ public:
         return m_port;
     }
 
-    void* get_buffer(size_t n_frames) override {
-        return jack_port_get_buffer(m_port, n_frames);
+    std::unique_ptr<ReadBuf> get_read_buffer (size_t n_frames) override {
+        return std::make_unique<JackReadMidiBuf>(jack_port_get_buffer(m_port, n_frames));
     }
 
-    size_t get_n_events(void* buffer) const override {
-        return jack_midi_get_event_count(buffer);
-    }
-
-    void get_event(void* buffer,
-                    size_t idx,
-                    uint32_t &size_out,
-                    uint32_t &time_out,
-                    uint8_t* &data_out) const override {
-        jack_midi_event_t evt;
-        jack_midi_event_get(&evt, buffer, idx);
-        size_out = evt.size;
-        time_out = evt.time;
-        data_out = evt.buffer;
+    std::unique_ptr<WriteBuf> get_write_buffer (size_t n_frames) override {
+        return std::make_unique<JackWriteMidiBuf>(jack_port_get_buffer(m_port, n_frames));
     }
 
     ~JackMidiPort() override {

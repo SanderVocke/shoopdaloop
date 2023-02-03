@@ -1,4 +1,4 @@
-#include "AudioBufferPool.h"
+#include "ObjectPool.h"
 #include "JackAudioSystem.h"
 #include "JackAudioPort.h"
 #include "AudioLoop.h"
@@ -98,7 +98,7 @@ int main(int argc, const char* argv[]) {
     g_n_ports = std::ceil((float)g_n_loops / (float)g_n_loops_per_port);
     size_t pool_size = g_n_loops + 1;
 
-    auto pool = std::make_shared<AudioBufferPool<float>>(
+    auto pool = std::make_shared<ObjectPool<AudioBuffer<float>>>(
         pool_size,
         g_buffer_size
     );
