@@ -1,6 +1,8 @@
 #include <cmath>
 #include <stdio.h>
 #include "AudioPortInterface.h"
+#include "JackMidiPort.h"
+#include "MidiPortInterface.h"
 #include "ObjectPool.h"
 #include "PortInterface.h"
 #include "process_loops.h"
@@ -14,16 +16,25 @@
 
 #include "JackAudioSystem.h"
 #include "AudioLoop.h"
+#include "MidiLoop.h"
 
 using namespace std::chrono_literals;
 
 // TYPES
+using Time = uint32_t;
+using Size = uint16_t;
+using _MidiLoop = MidiLoop<Time, Size>;
+using AudioSystem = JackAudioSystem;
+using MidiPort = AudioSystem::MidiPort;
 
 struct PortInfo {
     std::shared_ptr<PortInterface> port;
     std::shared_ptr<PortInfo> maybe_remap_from;
     float   *maybe_audio_buffer;
-    uint8_t *maybe_midi_buffer;
+
+    std::shared_ptr<MidiPort> maybe_midi_port;
+    std::unique_ptr<MidiPort::ReadBuf> maybe_midi_input_buffer;
+    std::unique_ptr<MidiPort::WriteBuf> maybe_midi_output_buffer;
 
     PortInfo(std::shared_ptr<PortInterface> port) : port(port) {}
 };
@@ -32,6 +43,8 @@ struct LoopInfo : public LoopInterface {
     std::shared_ptr<LoopInterface> loop;
     std::shared_ptr<PortInfo> maybe_input_port;
     std::shared_ptr<PortInfo> maybe_output_port;
+
+    std::shared_ptr<_MidiLoop> maybe_midi_loop;
 
     // Implement the loop interface by forwarding all calls to the actual loop.
     // This way we can use this structure as a loop everywhere.
@@ -154,7 +167,6 @@ typedef StateReportTemplate<loop_state_t,
 constexpr size_t g_slow_midi_port_queue_starting_size = 4096;
 constexpr size_t g_midi_buffer_bytes = 81920;
 constexpr size_t g_audio_recording_buffer_size = 24000; // 0.5 sec / buffer @ 48kHz
-constexpr size_t g_midi_max_merge_size = 4096;
 constexpr size_t g_command_queue_len = 1024;
 constexpr size_t g_n_buffers_in_pool = 100;
 constexpr size_t g_initial_loop_max_n_buffers = 256; // Allows for about 2 minutes of buffers before expanding
@@ -222,23 +234,35 @@ void process(size_t n_frames) {
         // Aqcuire buffers.
         for (auto &port_info : g_loop_input_ports) {
             port_info->maybe_audio_buffer = nullptr;
-            port_info->maybe_midi_buffer  = nullptr;
-            if (auto audio_port = std::dynamic_pointer_cast<AudioPortInterface<float>>(port_info->port)) {
-                port_info->maybe_audio_buffer = audio_port->get_buffer(n_frames);
+            port_info->maybe_midi_input_buffer  = nullptr;
+            auto maybe_audio_port = std::dynamic_pointer_cast<AudioPortInterface<float>>(port_info->port);
+            auto maybe_midi_port = port_info->maybe_midi_port ?
+                std::dynamic_pointer_cast<MidiPort>(port_info->maybe_midi_port) : nullptr;
+            if (maybe_audio_port) {
+                port_info->maybe_audio_buffer = maybe_audio_port->get_buffer(n_frames);
+            }
+            if (maybe_midi_port) {
+                port_info->maybe_midi_input_buffer = maybe_midi_port->get_read_buffer(n_frames);
             }
         }
         for (auto &port_info : g_loop_output_ports) {
             port_info->maybe_audio_buffer = nullptr;
-            port_info->maybe_midi_buffer  = nullptr;
-            if (auto audio_port = std::dynamic_pointer_cast<AudioPortInterface<float>>(port_info->port)) {
-                port_info->maybe_audio_buffer = audio_port->get_buffer(n_frames);
+            port_info->maybe_midi_output_buffer  = nullptr;
+            auto maybe_audio_port = std::dynamic_pointer_cast<AudioPortInterface<float>>(port_info->port);
+            auto maybe_midi_port = port_info->maybe_midi_port ?
+                std::dynamic_pointer_cast<MidiPort>(port_info->maybe_midi_port) : nullptr;
+            if (maybe_audio_port) {
+                port_info->maybe_audio_buffer = maybe_audio_port->get_buffer(n_frames);
+            }
+            if (maybe_midi_port) {
+                port_info->maybe_midi_output_buffer = maybe_midi_port->get_write_buffer(n_frames);
             }
         }
         // Remap input buffers.
         for (auto &port_info : g_loop_input_ports) {
             if (port_info->maybe_remap_from) {
                 port_info->maybe_audio_buffer = port_info->maybe_remap_from->maybe_audio_buffer;
-                port_info->maybe_midi_buffer = port_info->maybe_remap_from->maybe_midi_buffer;
+                port_info->maybe_midi_input_buffer = port_info->maybe_remap_from->maybe_midi_input_buffer;
             }
         }
     }
@@ -254,10 +278,28 @@ void process(size_t n_frames) {
                     audio_loop->set_playback_buffer(loop_info->maybe_output_port->maybe_audio_buffer, n_frames);
                 }
             }
+            auto maybe_midi_loop = loop_info->maybe_midi_loop ?
+                std::dynamic_pointer_cast<_MidiLoop>(loop_info->maybe_midi_loop) : nullptr;
+            if (maybe_midi_loop) {
+                // TODO relax setters so that we can have different time and size types for the
+                // buffers than for storage.
+                if (loop_info->maybe_input_port &&
+                    loop_info->maybe_input_port->maybe_midi_input_buffer)
+                {
+                    maybe_midi_loop->set_recording_buffer(loop_info->maybe_input_port->maybe_midi_input_buffer.get(), n_frames);
+                }
+
+                if (loop_info->maybe_output_port &&
+                    loop_info->maybe_output_port->maybe_midi_output_buffer)
+                {
+                    maybe_midi_loop->set_playback_buffer(loop_info->maybe_output_port->maybe_midi_output_buffer.get(), n_frames);
+                }
+            }
         }
     }
 
     // Process.
+    // TODO: process MIDI too
     process_loops<LoopInfo>(g_loops, n_frames);
 
     // Update state
@@ -313,8 +355,7 @@ jack_client_t* initialize(
     g_loop_output_ports.clear();
     
     {
-        // Create loops.
-        // TODO: MIDI
+        // Create audio loops.
         for (size_t idx=0; idx < n_loops; idx++) {
             auto loop = std::make_shared<LoopInfo>();
             loop->loop = std::make_shared<AudioLoop<float>>(
@@ -335,7 +376,34 @@ jack_client_t* initialize(
             auto output_port = std::make_shared<PortInfo>(g_audio->open_audio_port(audio_output_name, PortDirection::Output));
             g_loop_input_ports.push_back(input_port);
             g_loop_output_ports.push_back(output_port);
-            // TODO MIDI
+        }
+    }
+
+    {
+        // Create Midi ports.
+        size_t midi_port_idx = 0;
+        for (size_t idx=0; idx < n_ports; idx++) {
+            if (ports_midi_enabled[idx]) {
+                std::string midi_input_name(midi_input_port_names[midi_port_idx]);
+                std::string midi_output_name(midi_output_port_names[midi_port_idx]);
+                auto input_port = g_audio->open_midi_port(midi_input_name, PortDirection::Input, false);
+                auto output_port = g_audio->open_midi_port(midi_output_name, PortDirection::Output, false);
+                g_loop_input_ports[idx]->maybe_midi_port = input_port;
+                g_loop_output_ports[idx]->maybe_midi_port = output_port;
+                midi_port_idx++;
+            }
+        }
+    }
+
+    {
+        // Create Midi loops.
+        for (size_t idx=0; idx < n_loops; idx++) {
+            if (g_loops[idx]->maybe_input_port &&
+                g_loops[idx]->maybe_input_port->maybe_midi_port)
+            {
+                auto loop = std::make_shared<MidiLoop<Time, Size>>(g_midi_buffer_bytes);
+                g_loops[idx]->maybe_midi_loop = loop;
+            }
         }
     }
     

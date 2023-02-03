@@ -9,9 +9,7 @@
 #include <stdexcept>
 #include <memory>
 
-class JackAudioSystem;
-
-class JackAudioSystem : public AudioSystemInterface {
+class JackAudioSystem : public AudioSystemInterface<jack_nframes_t, size_t> {
     jack_client_t * m_client;
     std::string m_client_name;
     size_t m_sample_rate;
@@ -80,7 +78,7 @@ public:
         return std::dynamic_pointer_cast<AudioPortInterface<float>>(port);
     }
 
-    std::shared_ptr<MidiPortInterface> open_midi_port(
+    std::shared_ptr<MidiPortInterface<jack_nframes_t, size_t>> open_midi_port(
         std::string name,
         PortDirection direction,
         bool decoupled
@@ -88,7 +86,7 @@ public:
         std::shared_ptr<PortInterface> port =
             std::make_shared<JackMidiPort>(name, direction, m_client);
         m_ports[port->name()] = port;
-        return std::dynamic_pointer_cast<MidiPortInterface>(port);
+        return std::dynamic_pointer_cast<MidiPortInterface<jack_nframes_t, size_t>>(port);
     }
 
     size_t get_sample_rate() const override {

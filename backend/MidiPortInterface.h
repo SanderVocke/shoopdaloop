@@ -25,9 +25,9 @@ public:
 };
 
 template<typename TimeType, typename SizeType>
-class _MidiPortInterface : public PortInterface {
+class MidiPortInterface : public PortInterface {
 public:
-    _MidiPortInterface(
+MidiPortInterface(
         std::string name,
         PortDirection direction
     ) : PortInterface() {}
@@ -38,8 +38,6 @@ public:
     virtual std::unique_ptr<ReadBuf>  get_read_buffer (size_t n_frames) = 0;
     virtual std::unique_ptr<WriteBuf> get_write_buffer(size_t n_frames) = 0;
 
-    _MidiPortInterface() {}
-    virtual ~_MidiPortInterface() {}
+    MidiPortInterface() {}
+    virtual ~MidiPortInterface() {}
 };
-
-typedef _MidiPortInterface<uint32_t, uint32_t> MidiPortInterface;
