@@ -200,10 +200,11 @@ public:
         auto s = std::make_shared<Storage>(m_storage->bytes_capacity());
         m_storage->copy(*s);
         std::vector<Message> r;
-        s->for_each_msg([&](TimeType time, SizeType size, uint8_t*data) {
+        s->for_each_msg([&r](TimeType time, SizeType size, uint8_t*data) {
             r.push_back({.time = time, .size = size, .data = std::vector<uint8_t>(size)});
             memcpy((void*)r.back().data.data(), (void*)data, size);
         });
+        return r;
     }
 
     void set_contents(std::vector<Message> contents) {

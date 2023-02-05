@@ -72,13 +72,3 @@ public:
         memcpy((void*)written.back().data.data(), (void*) data, size);
     }
 };
-
-template<typename Loop>
-std::vector<MidiMessage> get_loop_messages(Loop &loop) {
-    std::vector<MidiMessage> r;
-    loop.for_each_msg([&r](auto time, auto size, uint8_t *data) {
-        r.push_back({.time = time, .size = size, .data = std::vector<uint8_t>(size)});
-        memcpy((void*)r.back().data.data(), (void*)data, size);
-    });
-    return r;
-}

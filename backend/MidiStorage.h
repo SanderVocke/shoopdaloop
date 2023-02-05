@@ -13,11 +13,11 @@ template<typename _MidiStorage>
 class MidiStorageCursor {
     std::optional<size_t> offset;
     std::optional<size_t> prev_offset;
-    std::shared_ptr<_MidiStorage> storage;
+    std::shared_ptr<const _MidiStorage> storage;
     
     using Elem = typename _MidiStorage::Elem;
 public:
-    MidiStorageCursor(std::shared_ptr<_MidiStorage> &_storage) : storage(_storage) {}
+    MidiStorageCursor(std::shared_ptr<const _MidiStorage> _storage) : storage(_storage) {}
 
     bool valid() const { return offset.has_value(); }
 
@@ -125,7 +125,7 @@ private:
         return next_m_data_offset;
     }
 
-    Elem *unsafe_at(size_t offset) {
+    Elem *unsafe_at(size_t offset) const {
         return (Elem*)&(m_data.at(offset));
     }
 
@@ -246,14 +246,15 @@ public:
         return true;
     }
 
-    void for_each_msg(std::function<void(TimeType t, SizeType s, uint8_t* data)> cb) {
+    void for_each_msg(std::function<void(TimeType t, SizeType s, uint8_t* data)> cb) const {
         auto maybe_self = std::enable_shared_from_this<MidiStorage<TimeType, SizeType>>::weak_from_this();
         if (auto self = maybe_self.lock()) {
             auto cursor = std::make_shared<Cursor>(self);
-            for(cursor->reset(); cursor->valid(); cursor->next()) {
+            for(cursor->reset(); cursor->valid(); cursor->next()) {           
                 auto *elem = cursor->get();
                 cb(elem->time, elem->size, elem->data);
             }
+            cursor = nullptr;
         } else {
             throw std::runtime_error("Attempting to retrieve contents of destructed storage");
         }
