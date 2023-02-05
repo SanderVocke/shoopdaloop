@@ -12,7 +12,7 @@ using namespace boost::ut;
 #undef protected
 
 suite BasicLoop_tests = []() {
-    "1_stop"_test = []() {
+    "basicloop_1_stop"_test = []() {
         BasicLoop loop;
 
         expect(loop.get_state() == Stopped);
@@ -28,7 +28,7 @@ suite BasicLoop_tests = []() {
         expect(loop.get_position() == 0);
     };
 
-    "2_record"_test = []() {
+    "basicloop_2_record"_test = []() {
         BasicLoop loop;
         loop.m_state = Recording;
         loop.update_poi();
@@ -47,7 +47,7 @@ suite BasicLoop_tests = []() {
         
     };
 
-    "3_planned_transition"_test = []() {
+    "basicloop_3_planned_transition"_test = []() {
         BasicLoop loop;
         loop.m_state = Recording;
         loop.m_length = 10;
@@ -64,7 +64,7 @@ suite BasicLoop_tests = []() {
         expect(eq(loop.get_next_poi().value_or(999), 10)); // End of loop
     };
 
-    "3_1_planned_transition_delayed"_test = []() {
+    "basicloop_3_1_planned_transition_delayed"_test = []() {
         BasicLoop loop;
         loop.m_state = Recording;
         loop.m_length = 10;
@@ -86,7 +86,7 @@ suite BasicLoop_tests = []() {
         expect(eq(loop.get_next_poi().value_or(999), 10)); // End of loop
     };
 
-    "3_2_planned_transitions_delayed"_test = []() {
+    "basicloop_3_2_planned_transitions_delayed"_test = []() {
         BasicLoop loop;
         loop.m_state = Recording;
         loop.m_length = 10;
@@ -119,7 +119,7 @@ suite BasicLoop_tests = []() {
         expect(eq(loop.get_state(), Recording));
     };
 
-    "4_generate_trigger"_test = []() {
+    "basicloop_4_generate_trigger"_test = []() {
         BasicLoop loop;
         loop.m_state = Stopped;
         loop.m_length = 10;
@@ -130,7 +130,7 @@ suite BasicLoop_tests = []() {
         expect(eq(loop.is_triggering_now(), true));
     };
 
-    "4_1_generate_trigger_on_restart"_test = []() {
+    "basicloop_4_1_generate_trigger_on_restart"_test = []() {
         BasicLoop loop;
         loop.m_state = Playing;
         loop.m_length = 10;
@@ -155,7 +155,7 @@ suite BasicLoop_tests = []() {
         expect(eq(loop.is_triggering_now(), false));
     };
 
-    "5_soft_sync_to_self"_test = []() {
+    "basicloop_5_soft_sync_to_self"_test = []() {
         auto loop = std::make_shared<BasicLoop>();
         loop->m_state = Playing;
         loop->m_length = 10;
@@ -166,7 +166,7 @@ suite BasicLoop_tests = []() {
         expect(eq(passed, true));
     };
 
-    "6_playback_0_length"_test = []() {
+    "basicloop_6_playback_0_length"_test = []() {
         BasicLoop loop;
         loop.m_state = Playing;
         loop.m_length = 0;

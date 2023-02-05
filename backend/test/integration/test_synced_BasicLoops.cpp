@@ -13,7 +13,7 @@ using namespace boost::ut;
 #undef protected
 
 suite Synced_BasicLoops_tests = []() {
-    "1_simple"_test = []() {
+    "basicloop_sync_1_simple"_test = []() {
         auto loop1 = std::make_shared<BasicLoop>();
         auto loop2 = std::make_shared<BasicLoop>();
         
@@ -29,7 +29,7 @@ suite Synced_BasicLoops_tests = []() {
         expect(loop1->get_state() == Playing);
     };
 
-    "2_loop_restart"_test = []() {
+    "basicloop_sync_2_loop_restart"_test = []() {
         auto loop1 = std::make_shared<BasicLoop>();
         auto loop2 = std::make_shared<BasicLoop>();
 
@@ -54,7 +54,7 @@ suite Synced_BasicLoops_tests = []() {
         expect(eq(loop1->get_position(), 10));
     };
 
-    "3_hard_sync"_test = []() {
+    "basicloop_sync_3_hard_sync"_test = []() {
         auto loop1 = std::make_shared<BasicLoop>();
         auto loop2 = std::make_shared<BasicLoop>();
 

@@ -17,6 +17,15 @@ int main(int argc, const char *argv[]) {
             std::cout << "Filtering on: \"" << filter << "\"" << std::endl;
             
             cfg<override> = {.filter = filter};
+        } else if (arg.substr(0, 2) == "-h" || arg.substr(0, 6) == "--help") {
+            usage(std::string(argv[0]));
+            abort();
+        } else {
+            std::cerr << "Invalid argument." << std::endl;
+            usage(std::string(argv[0]));
+            abort();
         }
     }
+
+    return 0;
 }

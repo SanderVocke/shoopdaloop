@@ -6,7 +6,7 @@ using namespace boost::ut;
 using namespace std::chrono_literals;
 
 suite AudioBufferPool_tests = []() {
-    "1_many_objects"_test = []() {
+    "objectpool_1_many_objects"_test = []() {
         ObjectPool<int> pool(10, 256);
 
         for(size_t idx=0; idx<100; idx++) {

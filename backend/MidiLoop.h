@@ -8,8 +8,6 @@
 template<typename TimeType, typename SizeType>
 class MidiLoop : public BasicLoop {
 public:
-    using ReadBuf = MidiReadableBufferInterface<TimeType, SizeType>;
-    using WriteBuf = MidiWriteableBufferInterface<TimeType, SizeType>;
     using Storage = MidiStorage<TimeType, SizeType>;
     using StorageCursor = typename Storage::Cursor;
 
@@ -36,9 +34,9 @@ private:
         size_t events_left() const { return n_events_total - n_events_processed; }
     };
 
-    std::optional<ExternalBuf<WriteBuf*>> m_playback_target_buffer;
-    std::optional<ExternalBuf<ReadBuf*>>  m_recording_source_buffer;
-    Storage  m_storage;
+    std::optional<ExternalBuf<MidiWriteableBufferInterface*>> m_playback_target_buffer;
+    std::optional<ExternalBuf<MidiReadableBufferInterface *>> m_recording_source_buffer;
+    std::shared_ptr<Storage>       m_storage;
     std::shared_ptr<StorageCursor> m_playback_cursor;
 
 public:
@@ -46,9 +44,11 @@ public:
         BasicLoop(),
         m_playback_target_buffer(nullptr),
         m_recording_source_buffer(nullptr),
-        m_storage(data_size),
-        m_playback_cursor(m_storage->create_cursor())
-    {}
+        m_storage(std::make_shared<Storage>(data_size)),
+        m_playback_cursor(nullptr)
+    {
+        m_playback_cursor = m_storage->create_cursor();
+    }
 
     void process_body(
         size_t n_samples,
@@ -87,14 +87,14 @@ public:
             ;
             idx++)
         {
-            TimeType t;
-            SizeType s;
+            uint32_t t;
+            uint32_t s;
             uint8_t *d;
             recbuf.buf->get_event(idx, s, t, d);
-            if (t > record_end) {
+            if (t >= record_end) {
                 break;
             }
-            m_storage.append(our_length + t, s, d);
+            m_storage->append(our_length + (TimeType) t, (SizeType) s, d);
             recbuf.n_events_processed++;
         }
         
@@ -102,7 +102,7 @@ public:
     }
 
     void clear() {
-        m_storage.clear();
+        m_storage->clear();
         m_playback_cursor.reset();
     }
 
@@ -126,7 +126,7 @@ public:
                 // Future event
                 break;
             }
-            buf.write_event(event->size, event_time, event->data);
+            buf.buf->write_event(event->size, event_time, event->data);
             buf.n_events_processed++;
             m_playback_cursor->next();
         }
@@ -148,18 +148,18 @@ public:
         // Handle our own POI types
         std::optional<PointOfInterest> external_end_poi;
         if (get_state() == Playing || get_state() == PlayingMuted) {
-            size_t frames_left = m_playback_target_buffer.n_frames_total - m_playback_target_buffer.n_frames_processed;
+            size_t frames_left = m_playback_target_buffer.value().n_frames_total - m_playback_target_buffer.value().n_frames_processed;
             external_end_poi = {.when = frames_left, .type_flags = ExternalBufferEnd};
         } else if (get_state() == Recording) {
-            size_t frames_left = m_recording_source_buffer.n_frames_total - m_recording_source_buffer.n_frames_processed;
+            size_t frames_left = m_recording_source_buffer.value().n_frames_total - m_recording_source_buffer.value().n_frames_processed;
             external_end_poi = {.when = frames_left, .type_flags = ExternalBufferEnd};
         }
 
         m_next_poi = BasicLoop::dominant_poi(m_next_poi, external_end_poi);
     }
 
-    void set_playback_buffer(WriteBuf *buffer, size_t n_frames) {
-        m_playback_target_buffer = ExternalBuf<WriteBuf *> (buffer);
+    void set_playback_buffer(MidiWriteableBufferInterface *buffer, size_t n_frames) {
+        m_playback_target_buffer = ExternalBuf<MidiWriteableBufferInterface *> (buffer);
         m_playback_target_buffer.value().n_frames_total = n_frames;
         if (m_state == Playing || m_state == PlayingMuted) {
             if (m_next_poi) { m_next_poi->type_flags &= ~(ExternalBufferEnd); }
@@ -167,8 +167,8 @@ public:
         }
     }
 
-    void set_recording_buffer(ReadBuf *buffer, size_t n_frames) {
-        m_recording_source_buffer = ExternalBuf<ReadBuf *> (buffer);
+    void set_recording_buffer(MidiReadableBufferInterface *buffer, size_t n_frames) {
+        m_recording_source_buffer = ExternalBuf<MidiReadableBufferInterface *> (buffer);
         m_recording_source_buffer.value().n_frames_total = n_frames;
         m_recording_source_buffer.value().n_events_total = buffer->get_n_events();
         if (m_state == Recording) {
@@ -178,12 +178,40 @@ public:
     }
 
     void set_length(size_t length) override {
+        size_t old_length = m_length;
         BasicLoop::set_length(length);
-        std::cerr << "Proper MIDI buffer truncating not implemented, clearing" << std::endl;
-        clear();
+        if (m_length < old_length) {
+            std::cerr << "Proper MIDI buffer truncating not implemented, clearing" << std::endl;
+            clear();
+        }
     }
 
     void for_each_msg(std::function<void(TimeType t, SizeType s, uint8_t* data)> cb) {
-        m_storage.for_each_msg(cb);
+        m_storage->for_each_msg(cb);
+    }
+
+    struct Message {
+        TimeType time;
+        SizeType size;
+        std::vector<uint8_t> data;
+    };
+
+    std::vector<Message> retrieve_contents() const {
+        auto s = std::make_shared<Storage>(m_storage->bytes_capacity());
+        m_storage->copy(*s);
+        std::vector<Message> r;
+        s->for_each_msg([&](TimeType time, SizeType size, uint8_t*data) {
+            r.push_back({.time = time, .size = size, .data = std::vector<uint8_t>(size)});
+            memcpy((void*)r.back().data.data(), (void*)data, size);
+        });
+    }
+
+    void set_contents(std::vector<Message> contents) {
+        auto s = std::make_shared<Storage>(m_storage->bytes_capacity());
+        for(auto const& elem : contents) {
+            s->append(elem.time, elem.size, elem.data);
+        }
+        m_storage = s;
+        m_playback_cursor = m_storage->create_cursor();
     }
 };

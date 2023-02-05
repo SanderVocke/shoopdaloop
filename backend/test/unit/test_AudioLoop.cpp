@@ -9,7 +9,7 @@ using namespace boost::ut;
 using namespace std::chrono_literals;
 
 suite AudioLoop_tests = []() {
-    "1_stop"_test = []() {
+    "audioloop_1_stop"_test = []() {
         auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 256);
         AudioLoop<int>loop(pool, 10, AudioLoopOutputType::Copy);
         AudioLoopTestInterface<AudioLoop<int>::Buffer> *loop_test_if =
@@ -30,13 +30,13 @@ suite AudioLoop_tests = []() {
         expect(loop.get_position() == 0);
     };
 
-    "2_record"_test = []() {
+    "audioloop_2_record"_test = []() {
         auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
         AudioLoop<int>loop(pool, 10, AudioLoopOutputType::Copy);
         AudioLoopTestInterface<AudioLoop<int>::Buffer> *loop_test_if =
             (AudioLoopTestInterface<AudioLoop<int>::Buffer> *)&loop;
 
-        auto source_buf = create_buf<int>(512, [](size_t pos) { return pos; }); 
+        auto source_buf = create_audio_buf<int>(512, [](size_t pos) { return pos; }); 
         loop.plan_transition(Recording);
         loop.set_recording_buffer(source_buf.data(), source_buf.size());
         loop.trigger();
@@ -62,7 +62,7 @@ suite AudioLoop_tests = []() {
         
     };
     
-    "2_1_record_beyond_external_buf"_test = []() {
+    "audioloop_2_1_record_beyond_external_buf"_test = []() {
         auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 256);
         AudioLoop<int>loop(pool, 10, AudioLoopOutputType::Copy);
         AudioLoopTestInterface<AudioLoop<int>::Buffer> *loop_test_if =
@@ -76,13 +76,13 @@ suite AudioLoop_tests = []() {
         expect(throws([&]() { loop.process(20); }));
     };
 
-    "2_2_record_multiple_buffers"_test = []() {
+    "audioloop_2_2_record_multiple_buffers"_test = []() {
         auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
         AudioLoop<int>loop(pool, 10, AudioLoopOutputType::Copy);
         AudioLoopTestInterface<AudioLoop<int>::Buffer> *loop_test_if =
             (AudioLoopTestInterface<AudioLoop<int>::Buffer> *)&loop;
 
-        auto source_buf = create_buf<int>(512, [](size_t pos) { return pos; }); 
+        auto source_buf = create_audio_buf<int>(512, [](size_t pos) { return pos; }); 
         loop.plan_transition(Recording);
         loop.set_recording_buffer(source_buf.data(), source_buf.size());
         loop.trigger();

@@ -78,7 +78,7 @@ public:
         return std::dynamic_pointer_cast<AudioPortInterface<float>>(port);
     }
 
-    std::shared_ptr<MidiPortInterface<jack_nframes_t, size_t>> open_midi_port(
+    std::shared_ptr<MidiPortInterface> open_midi_port(
         std::string name,
         PortDirection direction,
         bool decoupled
@@ -86,7 +86,7 @@ public:
         std::shared_ptr<PortInterface> port =
             std::make_shared<JackMidiPort>(name, direction, m_client);
         m_ports[port->name()] = port;
-        return std::dynamic_pointer_cast<MidiPortInterface<jack_nframes_t, size_t>>(port);
+        return std::dynamic_pointer_cast<MidiPortInterface>(port);
     }
 
     size_t get_sample_rate() const override {

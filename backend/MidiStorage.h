@@ -22,7 +22,8 @@ public:
     bool valid() const { return offset.has_value(); }
 
     void invalidate() {
-        offset = prev_offset = std::nullopt;
+        offset.reset();
+        prev_offset.reset();
     }
 
     void reset() {
@@ -63,7 +64,7 @@ public:
              prev = next_offset,
              next_offset = storage->maybe_next_elem_offset(get()))
         {
-            Elem* next_elem = storage->unsafe_at(next_offset);
+            Elem* next_elem = storage->unsafe_at(next_offset.value());
             if (next_elem->time >= time) {
                 // Found
                 offset = next_offset;
@@ -109,9 +110,10 @@ private:
     static constexpr size_t n_starting_cursors = 10;
 
     bool valid_elem_at(size_t offset) const {
-        return m_head > m_tail ?
+        return m_n_events > 0 &&
+        (m_head > m_tail ?
             (offset >= m_tail && offset < m_head) :
-            (offset < m_head || offset >= m_tail);
+            (offset < m_head || offset >= m_tail));
     }
 
     std::optional<size_t> maybe_next_elem_offset(Elem *e) const {
@@ -149,12 +151,15 @@ public:
     }
 
     SharedCursor create_cursor() {
-        auto rval = std::make_shared<Cursor>(
-            std::enable_shared_from_this<MidiStorage<TimeType, SizeType>>::shared_from_this()
-        );
-        m_cursors.push_back(rval);
-        rval->reset();
-        return rval;
+        auto maybe_self = std::enable_shared_from_this<MidiStorage<TimeType, SizeType>>::weak_from_this();
+        if (auto self = maybe_self.lock()) {
+            auto rval = std::make_shared<Cursor>(self);
+            m_cursors.push_back(rval);
+            rval->reset();
+            return rval;
+        } else {
+            throw std::runtime_error("Attempting to create cursor for destructed storage");
+        }
     }
 
     size_t bytes_capacity() const { return m_data.size(); }
@@ -162,7 +167,7 @@ public:
     void clear() {
         for (auto &elem: m_cursors) {
             if(auto c = elem.lock()) {
-                c->reset(true);
+                c->invalidate();
             }
         }
         m_cursors.clear();
@@ -179,10 +184,11 @@ public:
             memcpy((void*)(to.m_data.data()), (void*)&(m_data.at(m_tail)), first_copy);
             memcpy((void*)(to.m_data.at(first_copy)), (void*)m_data.data(), second_copy);
         }
-        to.m_head = to.m_tail = 0;
+        to.m_tail = 0;
+        to.m_head = bytes_occupied();
         to.m_n_events = m_n_events;
         to.m_head_start = m_n_events > 0 ?
-            to.m_data.size() - (m_head - m_head_start) : 0;
+            to.m_head - (m_head - m_head_start) : 0;
     }
 
     size_t bytes_occupied() const {
@@ -201,7 +207,7 @@ public:
     }
 
     bool append(TimeType time, SizeType size, uint8_t* data) {
-        size_t sz = sizeof(time) + sizeof(sz) + size;
+        size_t sz = sizeof(time) + sizeof(size) + size;
         if (sz > bytes_free()) {
             std::cerr << "Ignoring store of MIDI message: buffer full." << std::endl;
             return false;
@@ -226,7 +232,8 @@ public:
         if (sz > bytes_free()) { return false; }
         if (m_n_events > 0 && unsafe_at(m_tail)->time < time) {
             // Don't store out-of-order messages
-            throw std::runtime_error("Attempting to store out-of-order MIDI message.");
+            std::cerr << "Ignoring store of out-of-order MIDI message." << std::endl;
+            return false;
         }
 
         int new_tail = (int)m_tail - (int)sz;
@@ -240,13 +247,15 @@ public:
     }
 
     void for_each_msg(std::function<void(TimeType t, SizeType s, uint8_t* data)> cb) {
-        auto cursor = std::make_shared<Cursor>(
-            std::enable_shared_from_this<MidiStorage<TimeType, SizeType>>::shared_from_this()
-        );
-        cursor.reset();
-        for(; cursor->next(); cursor.valid()) {
-            auto *elem = cursor->get();
-            cb(elem->time, elem->size, elem->data);
+        auto maybe_self = std::enable_shared_from_this<MidiStorage<TimeType, SizeType>>::weak_from_this();
+        if (auto self = maybe_self.lock()) {
+            auto cursor = std::make_shared<Cursor>(self);
+            for(cursor->reset(); cursor->valid(); cursor->next()) {
+                auto *elem = cursor->get();
+                cb(elem->time, elem->size, elem->data);
+            }
+        } else {
+            throw std::runtime_error("Attempting to retrieve contents of destructed storage");
         }
     }
 };

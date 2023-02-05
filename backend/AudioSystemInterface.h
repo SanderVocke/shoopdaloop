@@ -12,7 +12,6 @@
 template<typename TimeType, typename SizeType>
 class AudioSystemInterface {
 public:
-    using MidiPort = MidiPortInterface<TimeType, SizeType>;
 
     AudioSystemInterface(
         std::string client_name,
@@ -32,7 +31,7 @@ public:
     //   Such ports are suitable for reading out only once in a while,
     //   at the cost of adding latency.
     virtual
-    std::shared_ptr<MidiPort> open_midi_port(
+    std::shared_ptr<MidiPortInterface> open_midi_port(
         std::string name,
         PortDirection direction,
         bool decoupled

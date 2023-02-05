@@ -25,16 +25,15 @@ using Time = uint32_t;
 using Size = uint16_t;
 using _MidiLoop = MidiLoop<Time, Size>;
 using AudioSystem = JackAudioSystem;
-using MidiPort = AudioSystem::MidiPort;
 
 struct PortInfo {
     std::shared_ptr<PortInterface> port;
     std::shared_ptr<PortInfo> maybe_remap_from;
     float   *maybe_audio_buffer;
 
-    std::shared_ptr<MidiPort> maybe_midi_port;
-    std::unique_ptr<MidiPort::ReadBuf> maybe_midi_input_buffer;
-    std::unique_ptr<MidiPort::WriteBuf> maybe_midi_output_buffer;
+    std::shared_ptr<MidiPortInterface> maybe_midi_port;
+    std::shared_ptr<MidiReadableBufferInterface>  maybe_midi_input_buffer;
+    std::shared_ptr<MidiWriteableBufferInterface> maybe_midi_output_buffer;
 
     PortInfo(std::shared_ptr<PortInterface> port) : port(port) {}
 };
@@ -237,7 +236,7 @@ void process(size_t n_frames) {
             port_info->maybe_midi_input_buffer  = nullptr;
             auto maybe_audio_port = std::dynamic_pointer_cast<AudioPortInterface<float>>(port_info->port);
             auto maybe_midi_port = port_info->maybe_midi_port ?
-                std::dynamic_pointer_cast<MidiPort>(port_info->maybe_midi_port) : nullptr;
+                std::dynamic_pointer_cast<MidiPortInterface>(port_info->maybe_midi_port) : nullptr;
             if (maybe_audio_port) {
                 port_info->maybe_audio_buffer = maybe_audio_port->get_buffer(n_frames);
             }
@@ -250,7 +249,7 @@ void process(size_t n_frames) {
             port_info->maybe_midi_output_buffer  = nullptr;
             auto maybe_audio_port = std::dynamic_pointer_cast<AudioPortInterface<float>>(port_info->port);
             auto maybe_midi_port = port_info->maybe_midi_port ?
-                std::dynamic_pointer_cast<MidiPort>(port_info->maybe_midi_port) : nullptr;
+                std::dynamic_pointer_cast<MidiPortInterface>(port_info->maybe_midi_port) : nullptr;
             if (maybe_audio_port) {
                 port_info->maybe_audio_buffer = maybe_audio_port->get_buffer(n_frames);
             }
