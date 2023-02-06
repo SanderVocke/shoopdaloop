@@ -235,8 +235,10 @@ public:
             while (maybe_copy_data_to != nullptr) {
                 std::this_thread::sleep_for(poll_interval);
             }
+            length_out = d.length;
         } else {
             m_storage->copy(*s);
+            length_out = get_length();
         }
         std::vector<Message> r;
         s->for_each_msg([&r](TimeType time, SizeType size, uint8_t*data) {

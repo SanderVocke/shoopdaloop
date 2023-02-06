@@ -7,6 +7,13 @@
 
 using namespace boost::ut;
 
+template<typename MessageA, typename MessageB>
+void check_msgs_equal(MessageA const& a, MessageB const& b) {
+    expect(eq(a.time, b.time));
+    expect(eq(a.size, b.size));
+    expect(eq(a.data, b.data));
+}
+
 suite MidiLoop_tests = []() {
     "midiloop_1_stop"_test = []() {
         MidiLoop<uint32_t, uint16_t> loop(512);
@@ -58,15 +65,17 @@ suite MidiLoop_tests = []() {
         auto msgs = loop.retrieve_contents(length, false);
         expect(eq(length, 20));
         expect(eq(msgs.size(), 2));
-        for (size_t idx=0; idx<2; idx++) {
-            expect(eq(msgs.at(idx).time, source_buf.read.at(idx).time));
-            expect(eq(msgs.at(idx).size, source_buf.read.at(idx).size));
-            expect(eq(msgs.at(idx).data, source_buf.read.at(idx).data));
-        }
+        check_msgs_equal(msgs.at(0), source_buf.read.at(0));
+        check_msgs_equal(msgs.at(1), source_buf.read.at(1));
     };
 
-    "midiloop_2_1_record_out_of_bounds"_test = []() {
-        MidiLoop<uint32_t, uint16_t> loop(512);
+    "midiloop_2_1_record_append_out_of_order"_test = []() {
+        using Loop = MidiLoop<uint32_t, uint16_t>;
+        using Message = Loop::Message;
+        Loop loop(512);
+        std::vector<Message> contents = {
+            Message{.time = 11,  .size = 4, .data = { 0x01, 0x02, 0x03, 0x04 }}
+        };
 
         expect(loop.get_state() == Stopped);
         expect(loop.get_next_poi() == std::nullopt);
@@ -99,13 +108,7 @@ suite MidiLoop_tests = []() {
         auto msgs = loop.retrieve_contents(length, false);
         expect(eq(msgs.size(), 2));
         expect(eq(length, 20));
-        std::vector<int> expected_matches = {0, 2};
-        for (size_t idx = 0; idx < expected_matches.size(); idx++) {
-            expect(eq(msgs.at(idx).time, source_buf.read.at(expected_matches[idx]).time));
-            expect(eq(msgs.at(idx).size, source_buf.read.at(expected_matches[idx]).size));
-            expect(eq(msgs.at(idx).data, source_buf.read.at(expected_matches[idx]).data));
-        }
+        check_msgs_equal(msgs.at(0), source_buf.read.at(0));
+        check_msgs_equal(msgs.at(1), source_buf.read.at(2));
     };
-
-
 };
