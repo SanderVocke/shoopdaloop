@@ -4,6 +4,10 @@
 #include "MidiPortInterface.h"
 #include <optional>
 #include <functional>
+#include <chrono>
+#include <thread>
+
+using namespace std::chrono_literals;
 
 template<typename TimeType, typename SizeType>
 class MidiLoop : public BasicLoop {
@@ -39,13 +43,24 @@ private:
     std::shared_ptr<Storage>       m_storage;
     std::shared_ptr<StorageCursor> m_playback_cursor;
 
+    // For copying data in/out. The copy takes place in the process thread
+    // to avoid race conditions.
+    struct DataSnapshot {
+        size_t length;
+        std::shared_ptr<Storage> data;
+    };
+    std::atomic<DataSnapshot *> maybe_copy_data_to;
+    std::atomic<DataSnapshot *> maybe_copy_data_from;
+
 public:
     MidiLoop(size_t data_size) :
         BasicLoop(),
         m_playback_target_buffer(nullptr),
         m_recording_source_buffer(nullptr),
         m_storage(std::make_shared<Storage>(data_size)),
-        m_playback_cursor(nullptr)
+        m_playback_cursor(nullptr),
+        maybe_copy_data_from(nullptr),
+        maybe_copy_data_to(nullptr)
     {
         m_playback_cursor = m_storage->create_cursor();
     }
@@ -59,6 +74,18 @@ public:
         loop_state_t state_before,
         loop_state_t &state_after
         ) override {
+        if (maybe_copy_data_to) {
+            m_storage->copy(*maybe_copy_data_to.load()->data);
+            maybe_copy_data_to.load()->length = get_length();
+            maybe_copy_data_to = nullptr;
+        }
+        if (maybe_copy_data_from) {
+            m_storage = maybe_copy_data_from.load()->data;
+            set_length(maybe_copy_data_from.load()->length);
+            m_playback_cursor = m_storage->create_cursor();
+            maybe_copy_data_from = nullptr;
+        }
+
         switch (get_state()) {
             case Playing:
             case PlayingMuted:
@@ -196,9 +223,21 @@ public:
         std::vector<uint8_t> data;
     };
 
-    std::vector<Message> retrieve_contents() const {
+    std::vector<Message> retrieve_contents(size_t &length_out, bool thread_safe = true) {
+        static constexpr auto poll_interval = 10ms;
+
         auto s = std::make_shared<Storage>(m_storage->bytes_capacity());
-        m_storage->copy(*s);
+        if (thread_safe) {
+            std::cerr << "Warning: no timeout mechanism implemented" << std::endl;
+            DataSnapshot d;
+            d.data = s;
+            maybe_copy_data_to = &d;
+            while (maybe_copy_data_to != nullptr) {
+                std::this_thread::sleep_for(poll_interval);
+            }
+        } else {
+            m_storage->copy(*s);
+        }
         std::vector<Message> r;
         s->for_each_msg([&r](TimeType time, SizeType size, uint8_t*data) {
             r.push_back({.time = time, .size = size, .data = std::vector<uint8_t>(size)});
@@ -207,12 +246,26 @@ public:
         return r;
     }
 
-    void set_contents(std::vector<Message> contents) {
+    void set_contents(std::vector<Message> contents, size_t length, bool thread_safe = true) {
+        static constexpr auto poll_interval = 10ms;
+
         auto s = std::make_shared<Storage>(m_storage->bytes_capacity());
         for(auto const& elem : contents) {
             s->append(elem.time, elem.size, elem.data);
         }
-        m_storage = s;
+        if (thread_safe) {
+            std::cerr << "Warning: no timeout mechanism implemented" << std::endl;
+            DataSnapshot d;
+            d.data = s;
+            d.length = length;
+            maybe_copy_data_from = &d;
+            while (maybe_copy_data_from != nullptr) {
+                std::this_thread::sleep_for(poll_interval);
+            }
+        } else {
+            m_storage = s;
+            set_length(length);
+        }
         m_playback_cursor = m_storage->create_cursor();
     }
 };

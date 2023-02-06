@@ -130,6 +130,7 @@ public:
 
         // Copy in during process
         maybe_copy_data_from = &snapshot;
+        std::cerr << "Warning: no timeout mechanism implemented" << std::endl;
         while (maybe_copy_data_from != nullptr) {
             std::this_thread::sleep_for(poll_interval);
         }
@@ -145,6 +146,7 @@ public:
 
         // Copy out during process
         maybe_copy_data_to = &snapshot;
+        std::cerr << "Warning: no timeout mechanism implemented" << std::endl;
         while (maybe_copy_data_to != nullptr) {
             std::this_thread::sleep_for(poll_interval);
         }
