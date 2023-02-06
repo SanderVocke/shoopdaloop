@@ -58,7 +58,7 @@ suite AudioLoop_tests = []() {
         for_buf_elems<AudioBuffer<int>, int>(*loop_test_if->buffers()[0],
                       [](size_t pos, int const& val) {
                         expect(eq(val, pos)) << " @ position " << pos;
-                      });
+                      }, 0, 20);
         
     };
     
@@ -99,6 +99,7 @@ suite AudioLoop_tests = []() {
         expect(loop.get_next_poi() == 0) << loop.get_next_poi().value_or(0); // end of buffer
         expect(eq(loop.get_length(), 512));
         expect(eq(loop.get_position(), 0));
+        expect(ge(loop_test_if->buffers().size(), (512/64)));
         expect(eq(loop_test_if->get_current_buffer_idx(), 0));
         expect(eq(loop_test_if->get_position_in_current_buffer(), 0));
         for_loop_elems<AudioLoop<int>, int>(loop,

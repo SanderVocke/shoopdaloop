@@ -107,7 +107,7 @@ public:
                 process_playback(pos_before, n_samples, get_state() == PlayingMuted);
                 break;
             case Recording:
-                process_record(n_samples);
+                process_record(n_samples, length_after);
                 break;
             default:
                 break;
@@ -161,7 +161,7 @@ public:
         return samples;
     }
 
-    void process_record(size_t n_samples) {
+    void process_record(size_t n_samples, size_t length_before) {
         if (m_recording_source_buffer_size < n_samples) {
             throw std::runtime_error("Attempting to record out of bounds");
         }
@@ -182,11 +182,12 @@ public:
 
         // If we reached the end, add another buffer
         // and record the rest.
-        if(m_length >= (m_buffer_size * m_buffers.size())) {
+        size_t length_after = length_before + n;
+        if(length_after >= (m_buffer_size * m_buffers.size())) {
             m_buffers.push_back(get_new_buffer());
         }
         if(rest > 0) {
-            process_record(rest);
+            process_record(rest, length_after);
         }
     }
 
