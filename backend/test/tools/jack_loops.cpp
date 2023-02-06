@@ -133,7 +133,7 @@ int main(int argc, const char* argv[]) {
     g_n_midi_loops = g_midi ? n_loops : 0;
     g_n_audio_loops_per_port = g_midi ? 0 : n_loops_per_port;
     g_n_midi_loops_per_port = g_midi ? n_loops_per_port : 0;
-    g_n_midi_ports = g_midi ? std::ceil((float)g_n_audio_loops / (float)g_n_audio_loops_per_port) : 0;
+    g_n_midi_ports = g_midi ? std::ceil((float)g_n_midi_loops / (float)g_n_midi_loops_per_port) : 0;
     g_n_audio_ports = g_midi ? 0 : std::ceil((float)g_n_audio_loops / (float)g_n_audio_loops_per_port);
     size_t pool_size = g_n_audio_loops + 1;
 
@@ -188,11 +188,11 @@ int main(int argc, const char* argv[]) {
 
     for(size_t idx=0; idx<g_n_audio_ports; idx++) {
         g_input_audio_ports.push_back(g_audio->open_audio_port(
-            "input_" + std::to_string(idx),
+            "audio_input_" + std::to_string(idx),
             PortDirection::Input
         ));
         g_output_audio_ports.push_back(g_audio->open_audio_port(
-            "output_" + std::to_string(idx),
+            "audio_input_" + std::to_string(idx),
             PortDirection::Output
         ));
     }
@@ -201,12 +201,12 @@ int main(int argc, const char* argv[]) {
 
     for(size_t idx=0; idx<g_n_midi_ports; idx++) {
         g_input_midi_ports.push_back(g_audio->open_midi_port(
-            "input_" + std::to_string(idx),
+            "midi_input_" + std::to_string(idx),
             PortDirection::Input,
             false
         ));
         g_output_midi_ports.push_back(g_audio->open_midi_port(
-            "output_" + std::to_string(idx),
+            "midi_output_" + std::to_string(idx),
             PortDirection::Output,
             false
         ));
