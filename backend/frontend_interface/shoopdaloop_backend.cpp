@@ -476,18 +476,48 @@ void request_update() {
 
 unsigned get_loop_midi_data(
     unsigned loop_idx,
-    unsigned char **data_out
+    midi_event_t **events_out,
+    unsigned *loop_length_out
 ) {
-    std::cerr << "get_loop_midi_data unimplemented\n";
-    return 0;
+    if (!g_loops[loop_idx]->maybe_midi_loop) {
+        throw std::runtime_error("Attempting to get MIDI data for loop " +
+                                 std::to_string(loop_idx) +
+                                 ", which does not have MIDI");
+    }
+    size_t length;
+    auto events = g_loops[loop_idx]->maybe_midi_loop->retrieve_contents(length, true);
+    midi_event_t *c_events = (midi_event_t*) malloc(sizeof(midi_event_t) * events.size());
+    for (size_t idx = 0; idx < events.size(); idx++) {
+        c_events[idx].time = events[idx].time;
+        c_events[idx].size = events[idx].size;
+        c_events[idx].data = (unsigned char*) malloc(events[idx].size);
+        memcpy ((void*)events[idx].data.data(), (void*)c_events[idx].data, events[idx].size);
+    }
+    *events_out = c_events;
+    *loop_length_out = length;
+    return events.size();
 }
 
 unsigned set_loop_midi_data(
     unsigned loop_idx,
-    unsigned char *data,
-    unsigned data_len
+    midi_event_t *events,
+    unsigned n_events,
+    unsigned loop_length
 ) {
-    std::cerr << "set_loop_midi_data unimplemented\n";
+    if (!g_loops[loop_idx]->maybe_midi_loop) {
+        throw std::runtime_error("Attempting to set MIDI data for loop " +
+                                 std::to_string(loop_idx) +
+                                 ", which does not have MIDI");
+    }
+    std::vector<_MidiLoop::Message> _events;
+    for (size_t idx=0; idx<n_events; idx++) {
+        _MidiLoop::Message msg;
+        msg.time = events[idx].time;
+        msg.size = events[idx].size;
+        msg.data = std::vector<uint8_t>(msg.size);
+        memcpy((void*)msg.data.data(), (void*)events[idx].data, msg.size);
+    }
+    g_loops[loop_idx]->maybe_midi_loop->set_contents(_events, loop_length, true);
     return 0;
 }
 

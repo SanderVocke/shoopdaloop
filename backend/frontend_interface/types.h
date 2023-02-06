@@ -36,6 +36,12 @@ typedef enum {
     Profiling = 1
 } backend_features_t;
 
+typedef struct {
+    unsigned int time;
+    unsigned int size;
+    unsigned char *data;
+} midi_event_t;
+
 #ifdef __cplusplus
 }
 #endif
