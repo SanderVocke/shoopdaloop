@@ -56,8 +56,8 @@ public:
         if (!valid()) { reset(); }
         if (!valid()) { return; }
         std::optional<size_t> prev = offset;
-        for (auto next_offset = storage->maybe_next_elem_offset(get()),
-             prev = offset
+        for (auto next_offset = offset,
+             prev = prev_offset
              ;
              next_offset.has_value()
              ;
@@ -135,7 +135,7 @@ private:
             (m_head + m_data.size()) - m_tail;
     }
 
-    void store_unsafe(size_t offset, TimeType t, SizeType s, uint8_t* d) {
+    void store_unsafe(size_t offset, TimeType t, SizeType s, const uint8_t* d) {
         uint8_t* to = &(m_data.at(offset));
         memcpy((void*)to, &t, sizeof(t));
         memcpy((void*)(to + sizeof(t)), &s, sizeof(s));
@@ -206,7 +206,7 @@ public:
         return m_data.size() - bytes_occupied();
     }
 
-    bool append(TimeType time, SizeType size, uint8_t* data) {
+    bool append(TimeType time, SizeType size,  const uint8_t* data) {
         size_t sz = sizeof(time) + sizeof(size) + size;
         if (sz > bytes_free()) {
             std::cerr << "Ignoring store of MIDI message: buffer full." << std::endl;
@@ -227,7 +227,7 @@ public:
         return true;
     }
 
-    bool prepend(TimeType time, SizeType size, uint8_t* data) {
+    bool prepend(TimeType time, SizeType size, const uint8_t* data) {
         size_t sz = sizeof(time) + sizeof(sz) + size;
         if (sz > bytes_free()) { return false; }
         if (m_n_events > 0 && unsafe_at(m_tail)->time < time) {

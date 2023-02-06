@@ -105,8 +105,10 @@ public:
             case Playing:
             case PlayingMuted:
                 process_playback(pos_before, n_samples, get_state() == PlayingMuted);
+                break;
             case Recording:
                 process_record(n_samples);
+                break;
             default:
                 break;
         }

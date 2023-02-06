@@ -90,8 +90,10 @@ public:
             case Playing:
             case PlayingMuted:
                 process_playback(pos_before, n_samples, get_state() == PlayingMuted);
+                break;
             case Recording:
                 process_record(length_before, n_samples);
+                break;
             default:
                 break;
         }
@@ -153,7 +155,9 @@ public:
                 // Future event
                 break;
             }
-            buf.buf->write_event(event->size, event_time, event->data);
+            if (!muted) {
+                buf.buf->write_event(event->size, event_time, event->data);
+            }
             buf.n_events_processed++;
             m_playback_cursor->next();
         }
@@ -253,7 +257,7 @@ public:
 
         auto s = std::make_shared<Storage>(m_storage->bytes_capacity());
         for(auto const& elem : contents) {
-            s->append(elem.time, elem.size, elem.data);
+            s->append(elem.time, elem.size, elem.data.data());
         }
         if (thread_safe) {
             std::cerr << "Warning: no timeout mechanism implemented" << std::endl;

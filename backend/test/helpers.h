@@ -66,7 +66,7 @@ public:
         written.push_back(MidiMessage{
             .time = time,
             .size = size,
-            .data = std::vector<uint8_t>()
+            .data = std::vector<uint8_t>(size)
         });
 
         memcpy((void*)written.back().data.data(), (void*) data, size);
