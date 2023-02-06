@@ -13,23 +13,25 @@ using namespace boost::ut;
 #undef protected
 
 suite Synced_BasicLoops_tests = []() {
-    "basicloop_sync_1_simple"_test = []() {
+    "bl_sync_1_simple"_test = []() {
         auto loop1 = std::make_shared<BasicLoop>();
         auto loop2 = std::make_shared<BasicLoop>();
         
         loop1->set_soft_sync_source(loop2);
         loop1->m_state = Stopped;
+        loop1->set_length(10);
         loop1->plan_transition(Playing);
 
         loop2->trigger();
+        expect(eq(loop2->is_triggering_now(), true));
 
         loop1->handle_hard_sync();
         loop1->handle_soft_sync();
 
-        expect(loop1->get_state() == Playing);
+        expect(eq(loop1->get_state(), Playing));
     };
 
-    "basicloop_sync_2_loop_restart"_test = []() {
+    "bl_sync_2_loop_restart"_test = []() {
         auto loop1 = std::make_shared<BasicLoop>();
         auto loop2 = std::make_shared<BasicLoop>();
 
@@ -54,7 +56,7 @@ suite Synced_BasicLoops_tests = []() {
         expect(eq(loop1->get_position(), 10));
     };
 
-    "basicloop_sync_3_hard_sync"_test = []() {
+    "bl_sync_3_hard_sync"_test = []() {
         auto loop1 = std::make_shared<BasicLoop>();
         auto loop2 = std::make_shared<BasicLoop>();
 

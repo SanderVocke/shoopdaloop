@@ -49,6 +49,8 @@ suite BasicLoop_tests = []() {
 
     "basicloop_3_planned_transition"_test = []() {
         BasicLoop loop;
+        auto other = std::make_shared<BasicLoop>();
+        loop.set_soft_sync_source(other);
         loop.m_state = Recording;
         loop.m_length = 10;
         loop.update_poi();
@@ -66,6 +68,8 @@ suite BasicLoop_tests = []() {
 
     "basicloop_3_1_planned_transition_delayed"_test = []() {
         BasicLoop loop;
+        auto other = std::make_shared<BasicLoop>();
+        loop.set_soft_sync_source(other);
         loop.m_state = Recording;
         loop.m_length = 10;
         loop.update_poi();
@@ -88,6 +92,8 @@ suite BasicLoop_tests = []() {
 
     "basicloop_3_2_planned_transitions_delayed"_test = []() {
         BasicLoop loop;
+        auto other = std::make_shared<BasicLoop>();
+        loop.set_soft_sync_source(other);
         loop.m_state = Recording;
         loop.m_length = 10;
         loop.update_poi();
@@ -153,17 +159,6 @@ suite BasicLoop_tests = []() {
         loop.process(5);
 
         expect(eq(loop.is_triggering_now(), false));
-    };
-
-    "basicloop_5_soft_sync_to_self"_test = []() {
-        auto loop = std::make_shared<BasicLoop>();
-        loop->m_state = Playing;
-        loop->m_length = 10;
-        loop->m_position = 0;
-        loop->set_soft_sync_source(loop);
-
-        bool passed = loop->get_soft_sync_source() == nullptr;
-        expect(eq(passed, true));
     };
 
     "basicloop_6_playback_0_length"_test = []() {

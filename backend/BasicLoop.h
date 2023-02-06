@@ -164,7 +164,7 @@ public:
     }
 
     void set_soft_sync_source(std::shared_ptr<LoopInterface> const& src) override {
-        if(m_soft_sync_source.get() != this) { m_soft_sync_source = src; }
+        m_soft_sync_source = src;
     }
     std::shared_ptr<LoopInterface> const& get_soft_sync_source() const override {
         return m_soft_sync_source;
@@ -245,10 +245,13 @@ public:
     }
 
     void plan_transition(loop_state_t state, size_t n_cycles_delay = 0) override {
-        if (!m_soft_sync_source &&
-            !m_hard_sync_source &&
-            m_state != Playing &&
-            m_state != PlayingMuted) {
+        if (m_hard_sync_source) {
+            // Hard-synced loops will not plan any transitions, just follow
+            // the sync source.
+            return;
+        } else if (!m_soft_sync_source &&
+                    m_state != Playing &&
+                    m_state != PlayingMuted) {
             // Un-synced loops transition immediately from non-playing
             // states.
             handle_transition(state);
