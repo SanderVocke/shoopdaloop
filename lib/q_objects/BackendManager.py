@@ -189,6 +189,10 @@ class BackendManager(QObject):
 
         self._session_loading = False
         self._session_saving = False
+        self._session_save_counter = 0
+        self._session_save_failed_counter = 0
+        self._session_load_counter = 0
+        self._session_load_failed_counter = 0
 
     ######################
     # PROPERTIES
@@ -213,6 +217,46 @@ class BackendManager(QObject):
         if self._session_saving != s:
             self._session_saving = s
             self.sessionSavingChanged.emit(s)
+
+    sessionSaveCounterChanged = pyqtSignal(int)
+    @pyqtProperty(bool, notify=sessionSaveCounterChanged)
+    def session_save_counter(self):
+        return self._session_save_counter
+    @session_save_counter.setter
+    def session_save_counter(self, s):
+        if self._session_save_counter != s:
+            self._session_save_counter = s
+            self.sessionSaveCounterChanged.emit(s)
+    
+    sessionSaveFailedCounterChanged = pyqtSignal(int)
+    @pyqtProperty(bool, notify=sessionSaveFailedCounterChanged)
+    def session_save_failed_counter(self):
+        return self._session_save_failed_counter
+    @session_save_failed_counter.setter
+    def session_save_failed_counter(self, s):
+        if self._session_save_failed_counter != s:
+            self._session_save_failed_counter = s
+            self.sessionSaveFailedCounterChanged.emit(s)
+    
+    sessionLoadCounterChanged = pyqtSignal(int)
+    @pyqtProperty(bool, notify=sessionLoadCounterChanged)
+    def session_load_counter(self):
+        return self._session_load_counter
+    @session_load_counter.setter
+    def session_load_counter(self, s):
+        if self._session_load_counter != s:
+            self._session_load_counter = s
+            self.sessionLoadCounterChanged.emit(s)
+    
+    sessionLoadFailedCounterChanged = pyqtSignal(int)
+    @pyqtProperty(bool, notify=sessionLoadFailedCounterChanged)
+    def session_load_failed_counter(self):
+        return self._session_load_failed_counter
+    @session_load_failed_counter.setter
+    def session_load_failed_counter(self, s):
+        if self._session_load_failed_counter != s:
+            self._session_load_failed_counter = s
+            self.sessionLoadFailedCounterChanged.emit(s)
     
     sampleRateChanged = pyqtSignal(int)
     @pyqtProperty(int, notify=sampleRateChanged)
@@ -685,8 +729,10 @@ class BackendManager(QObject):
                 self.session_saving = False
             except Exception as e:
                 print("Saving session into {} failed: {}".format(filename, str(e)))
+                self.session_save_failed_counter = self.session_save_failed_counter + 1
             finally:
                 backend.set_storage_lock(0)
+                self.session_save_counter = self.session_save_counter + 1
         
         self.session_saving = True
         thread = Thread(target=do_save)
@@ -733,6 +779,9 @@ class BackendManager(QObject):
                 self.session_loading = False
             except Exception as e:
                 print("Loading session from {} failed: {}".format(filename, str(e)))
+                self.session_load_failed_counter = self.session_load_failed_counter + 1
+            finally:
+                self.session_load_counter = self.session_load_counter + 1
 
         self.session_loading = True
         thread = Thread(target=do_load)

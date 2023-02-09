@@ -172,20 +172,43 @@ with contextlib.ExitStack() as contextmgr:
 
             qml_app_state = engine.rootObjects()[0].findChild(QObject, 'app_shared_state')
     
+    def nsm_save_session(path):
+        print("NSM: save session {}".format(path))
+        counter = backend_mgr.session_save_counter
+        failed_counter = backend_mgr.session_save_failed_counter
+        qml_app_state.save_session(path, True)
+        while backend_mgr.session_save_counter == counter:
+            time.sleep(0.01)
+            app.processEvents() # We are on the GUI thread, ensure we stay responsive
+        if backend_mgr.session_save_failed_counter > failed_counter:
+            raise Exception('NSM session save failed.')
+        print("NSM: save session finished.")
+    
+    def nsm_load_session(path):
+        print("NSM: load session {}".format(path))
+        counter = backend_mgr.session_load_counter
+        failed_counter = backend_mgr.session_load_failed_counter
+        qml_app_state.load_session(path)
+        while backend_mgr.session_load_counter == counter:
+            time.sleep(0.01)
+            app.processEvents() # We are on the GUI thread, ensure we stay responsive
+        if backend_mgr.session_load_failed_counter > failed_counter:
+            raise Exception('NSM session load failed.')
+        print("NSM: load session finished.")
+
     def save_session_handler(path, session, client):
         initialize_app_if_not_already(client)
-        print("NSM: save session {}".format(path))
-        qml_app_state.save_session(path, True)
+        nsm_save_session(path)
 
     def load_session_handler(path, session, client):
         initialize_app_if_not_already(client)
         if os.path.isfile(path):
             print("NSM: load session {}".format(path))
-            qml_app_state.load_session(path)
+            nsm_load_session(path)
         else:
             print("NSM: create session {}".format(path))
             print(qml_app_state)
-            qml_app_state.save_session(path, True)
+            nsm_save_session(path)
     
     try:
         nsm_client = pynsm.NSMClient(
