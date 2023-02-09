@@ -324,6 +324,7 @@ ApplicationWindow {
         Popup {
             visible: backend_manager.session_saving
             modal: true
+            closePolicy: Popup.NoAutoClose
 
             anchors.centerIn: parent
 
@@ -336,6 +337,7 @@ ApplicationWindow {
         Popup {
             visible: backend_manager.session_loading
             modal: true
+            closePolicy: Popup.NoAutoClose
 
             anchors.centerIn: parent
 
