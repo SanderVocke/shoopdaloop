@@ -5,6 +5,7 @@
 #include "PortInterface.h"
 #include <jack/jack.h>
 #include <stdexcept>
+#include <cstring>
 
 class JackAudioPort : public AudioPortInterface<jack_default_audio_sample_t> {
     jack_port_t* m_port;
@@ -36,7 +37,11 @@ public:
     }
     
     float *get_buffer(size_t n_frames) override {
-        return (jack_default_audio_sample_t*) jack_port_get_buffer(m_port, n_frames);
+        auto rval = (jack_default_audio_sample_t*) jack_port_get_buffer(m_port, n_frames);
+        if (m_direction == PortDirection::Output) {
+            memset((void*)rval, 0, sizeof(jack_default_audio_sample_t) * n_frames);
+        }
+        return rval;
     }
 
     std::string const& name() const override {
