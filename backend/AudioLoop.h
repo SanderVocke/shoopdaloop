@@ -107,7 +107,7 @@ public:
                 process_playback(pos_before, n_samples, get_state() == PlayingMuted);
                 break;
             case Recording:
-                process_record(n_samples, length_after);
+                process_record(n_samples, length_before);
                 break;
             default:
                 break;
@@ -116,41 +116,51 @@ public:
 
     // Load data into the loop. Should always be called outside
     // the processing thread.
-    void load_data(SampleT* samples, size_t len) {
+    void load_data(SampleT* samples, size_t len, bool thread_safe = true) {
         static constexpr auto poll_interval = 10ms;
 
         // Convert to internal storage layout
         std::vector<Buffer> buffers(std::ceil((float)len / (float)m_buffer_size));
         for (size_t idx=0; idx < buffers.size(); idx++) {
             auto &buf = buffers[idx];
-            buf = std::make_shared<AudioBuffer<float>>(m_buffer_size);
-            size_t n_elems = idx >= (buffers.size() - 1) ?
+            buf = std::make_shared<AudioBuffer<SampleT>>(m_buffer_size);
+            size_t n_elems = idx == (buffers.size() - 1) && len < (m_buffers.size() * m_buffer_size) ?
                 len % m_buffer_size : m_buffer_size;
             memcpy(buf->data(), samples + (idx * m_buffer_size), sizeof(SampleT)*n_elems);
         }
         DataSnapshot snapshot {len, &buffers};
 
-        // Copy in during process
-        maybe_copy_data_from = &snapshot;
-        std::cerr << "Warning: no timeout mechanism implemented" << std::endl;
-        while (maybe_copy_data_from != nullptr) {
-            std::this_thread::sleep_for(poll_interval);
+        if (thread_safe) {
+            // Copy in during process
+            maybe_copy_data_from = &snapshot;
+            std::cerr << "Warning: no timeout mechanism implemented" << std::endl;
+            while (maybe_copy_data_from != nullptr) {
+                std::this_thread::sleep_for(poll_interval);
+            }
+        } else {
+            m_buffers = *snapshot.data;
+            set_length(snapshot.length);
         }
     }
 
     // Get loop data. Should always be called outside
     // the processing thread.
-    std::vector<SampleT> get_data() {
+    std::vector<SampleT> get_data(bool thread_safe = true) {
         static constexpr auto poll_interval = 10ms;
 
         std::vector<Buffer> buffers;
         DataSnapshot snapshot { 0, &buffers };
 
-        // Copy out during process
-        maybe_copy_data_to = &snapshot;
-        std::cerr << "Warning: no timeout mechanism implemented" << std::endl;
-        while (maybe_copy_data_to != nullptr) {
-            std::this_thread::sleep_for(poll_interval);
+        if (thread_safe) {
+            // Copy out during process
+            maybe_copy_data_to = &snapshot;
+            std::cerr << "Warning: no timeout mechanism implemented" << std::endl;
+            while (maybe_copy_data_to != nullptr) {
+                std::this_thread::sleep_for(poll_interval);
+            }
+        } else {
+            *snapshot.data = m_buffers;
+            snapshot.length = get_length();
         }
 
         std::vector<SampleT> samples(snapshot.length);
@@ -167,9 +177,13 @@ public:
         }
 
         auto &from = m_recording_source_buffer;
-        auto &to_buf = m_buffers.back();
-        auto buf_head = m_length % m_buffer_size;
+        auto buf_idx = length_before / m_buffer_size;
+        auto buf_head = length_before % m_buffer_size;
         auto buf_space = m_buffer_size - buf_head;
+        while (m_buffers.size() <= buf_idx) {
+            m_buffers.push_back(get_new_buffer());
+        }
+        auto &to_buf = m_buffers[buf_idx];
         
         // Record all, or to the end of the current buffer, whichever
         // comes first
@@ -182,12 +196,9 @@ public:
 
         // If we reached the end, add another buffer
         // and record the rest.
-        size_t length_after = length_before + n;
-        if(length_after >= (m_buffer_size * m_buffers.size())) {
-            m_buffers.push_back(get_new_buffer());
-        }
+        size_t length_before_next = length_before + n;
         if(rest > 0) {
-            process_record(rest, length_after);
+            process_record(rest, length_before_next);
         }
     }
 
@@ -202,7 +213,7 @@ public:
 
         size_t buffer_idx = pos / m_buffer_size;
         size_t pos_in_buffer = pos % m_buffer_size;
-        size_t buf_head = buffer_idx == m_buffers.size()-1 ?
+        size_t buf_head = buffer_idx == m_buffers.size()-1 && m_length < (m_buffer_size * m_buffers.size()) ?
             m_length % m_buffer_size :
             m_buffer_size;
         auto  &from_buf = m_buffers[buffer_idx];
