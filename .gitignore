@@ -7,3 +7,5 @@
 *.includes
 .qtc_clangd
 build
+.cache/
+.vscode/
