@@ -59,7 +59,7 @@ def get_port_loop_mappings(n_tracks, loops_per_track, loop_channel_names):
 
     add_ports_for_track('master_loop')
     r['ports_midi_enabled'].append(0)
-    r['midi_port_name_pairs'].append(('master_loop_midi_in', 'master_loop_midi_out'))
+    r['midi_port_name_pairs'].append(('master_loop_midi_in', 'master_loop_midi_send'))
     add_loop(0, False) # TODO no sync
     # For master loop, synchronize to itself
     # TODO: synced to nothing, check
@@ -74,6 +74,6 @@ def get_port_loop_mappings(n_tracks, loops_per_track, loop_channel_names):
         
         # first port (dry l) has MIDI.
         r['ports_midi_enabled'].append(track_idx*4)
-        r['midi_port_name_pairs'].append(('track_{}_midi_in'.format(track_idx+1), 'track_{}_midi_out'.format(track_idx+1)))
+        r['midi_port_name_pairs'].append(('track_{}_midi_in'.format(track_idx+1), 'track_{}_midi_send'.format(track_idx+1)))
     
     return r
