@@ -15,11 +15,13 @@ public:
     AudioMidiLoop() : BasicLoop() {}
 
     template<typename SampleT, typename BufferPool>
-    void add_audio_channel(std::shared_ptr<BufferPool> const& buffer_pool,
-                           size_t initial_max_buffers,
-                           AudioOutputType output_type) {
-        m_audio_subloops.push_back(std::make_unique<AudioChannelSubloop<SampleT>>(
+    std::shared_ptr<AudioChannelSubloop<SampleT>>
+    add_audio_channel(std::shared_ptr<BufferPool> const& buffer_pool,
+                      size_t initial_max_buffers,
+                      AudioOutputType output_type) {
+        m_audio_subloops.push_back(std::make_shared<AudioChannelSubloop<SampleT>>(
             buffer_pool, initial_max_buffers, output_type));
+        return m_audio_subloops.back();
     }
 
     template<typename SampleT>
@@ -32,8 +34,9 @@ public:
     }
 
     template<typename TimeType, typename SizeType>
-    void add_midi_channel(size_t data_size) {
-        m_midi_subloops.push_back(std::make_unique<MidiChannelSubloop<TimeType, SizeType>>(data_size));
+    std::shared_ptr<MidiChannelSubloop<TimeType, SizeType>> add_midi_channel(size_t data_size) {
+        m_midi_subloops.push_back(std::make_shared<MidiChannelSubloop<TimeType, SizeType>>(data_size));
+        return m_midi_subloops.back();
     }
 
     template<typename TimeType, typename SizeType>

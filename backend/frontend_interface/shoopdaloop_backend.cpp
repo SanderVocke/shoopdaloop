@@ -2,25 +2,30 @@
 
 // Internal
 #include "AudioBuffer.h"
-#include "AudioLoop.h"
-#include "AudioPortInterface.h"
+#include "AudioChannelSubloop.h"
+#include "AudioMidiLoop.h"
 #include "JackAudioSystem.h"
 #include "LoopInterface.h"
+#include "MidiChannelSubloop.h"
 #include "MidiLoop.h"
 #include "MidiPortInterface.h"
 #include "ObjectPool.h"
 #include "PortInterface.h"
+#include "SubloopInterface.h"
 #include "types.h"
 
 // System
 #include <boost/lockfree/spsc_queue.hpp>
 #include <memory>
 #include <stdexcept>
+#include <map>
 
 // CONSTANTS
 constexpr size_t gc_n_buffers_in_pool = 100;
 constexpr size_t gc_audio_buffer_size = 24000;
 constexpr size_t gc_command_queue_size = 256;
+constexpr size_t gc_audio_channel_initial_buffers = 100;
+constexpr size_t gc_midi_storage_size = 10000;
 
 // FORWARD DECLARATIONS
 struct LoopInfo;
@@ -32,10 +37,13 @@ using AudioBufferPool = ObjectPool<DefaultAudioBuffer>;
 using AudioSystem = JackAudioSystem;
 using Time = uint32_t;
 using Size = uint16_t;
-using SharedLoop = std::shared_ptr<LoopInterface>;
+using Loop = AudioMidiLoop;
+using SharedLoop = std::shared_ptr<Loop>;
+using SharedLoopChannel = std::shared_ptr<SubloopInterface>;
+using SharedLoopAudioChannel = std::shared_ptr<AudioChannelSubloop<float>>;
+using SharedLoopMidiChannel = std::shared_ptr<MidiChannelSubloop<uint32_t, uint16_t>>;
 using SharedPort = std::shared_ptr<PortInterface>;
 using SharedPortInfo = std::shared_ptr<PortInfo>;
-using SharedPortInfos = std::vector<SharedPortInfo>;
 using SharedLoopInfo = std::shared_ptr<LoopInfo>;
 using Command = std::function<void()>;
 using CommandQueue = boost::lockfree::spsc_queue<Command>;
@@ -43,14 +51,12 @@ using CommandQueue = boost::lockfree::spsc_queue<Command>;
 // TYPES
 struct LoopInfo {
     SharedLoop loop;
-    std::vector<SharedPortInfos> output_audio_ports;
-    std::vector<SharedPortInfos> input_audio_ports;
-    std::vector<SharedPortInfos> output_midi_ports;
-    std::vector<SharedPortInfos> input_midi_ports;
+    std::map<SubloopInterface, std::vector<SharedPortInfo>> input_port_mappings;
+    std::map<SubloopInterface, std::vector<SharedPortInfo>> output_port_mappings;
 
     shoopdaloop_audio_port *c_ptr () const { return (shoopdaloop_audio_port*)this; }
 
-    LoopInfo(SharedLoop const& l) : loop(loop) {}
+    LoopInfo() : loop(std::make_shared<Loop>()) {}
 };
 
 struct PortInfo {
@@ -71,6 +77,18 @@ std::shared_ptr<AudioBufferPool> g_audio_buffer_pool;
 std::vector<SharedLoopInfo> g_loops;
 std::vector<SharedPortInfo> g_ports;
 CommandQueue g_cmd_queue (gc_command_queue_size);
+
+// HELPER FUNCTIONS
+SharedLoopInfo find_loop(shoopdaloop_loop* c_ptr) {
+    auto r = std::find_if(g_loops.begin(), g_loops.end(),
+        [&](auto const& e) { return (shoopdaloop_loop*)e.get() == c_ptr; });
+    if (r == g_loops.end()) {
+        throw std::runtime_error("Attempting to find non-existent loop.");
+    }
+    return *r;
+}
+
+// API FUNCTIONS
 
 void process(size_t n_frames) {}
 
@@ -120,4 +138,29 @@ unsigned get_sample_rate() {
 }
 
 shoopdaloop_loop *create_loop() {
+    auto r = std::make_shared<LoopInfo>();
+    g_loops.push_back(r);
+    return (shoopdaloop_loop*) r.get();
+}
+
+shoopdaloop_loop_audio_channel *add_audio_channel (shoopdaloop_loop *loop) {
+    SharedLoopInfo loop_info = find_loop(loop);
+    auto r = loop_info->loop->add_audio_channel<float>(g_audio_buffer_pool,
+                                                       gc_audio_channel_initial_buffers,
+                                                       AudioOutputType::Copy);
+    return (shoopdaloop_loop_audio_channel *)r.get();
+}
+
+shoopdaloop_loop_midi_channel  *add_midi_channel  (shoopdaloop_loop *loop) {
+    SharedLoopInfo loop_info = find_loop(loop);
+    auto r = loop_info->loop->add_midi_channel<Time, Size>(gc_midi_storage_size);
+    return (shoopdaloop_loop_midi_channel *)r.get();
+}
+
+shoopdaloop_loop_audio_channel *get_audio_channel (shoopdaloop_loop *loop, size_t idx) {
+    return (shoopdaloop_loop_audio_channel *)find_loop(loop)->loop->audio_channel<float>(idx).get();
+}
+
+shoopdaloop_loop_midi_channel *get_midi_channel (shoopdaloop_loop *loop, size_t idx) {
+    return (shoopdaloop_loop_midi_channel *)find_loop(loop)->loop->midi_channel<Time, Size>(idx).get();
 }
