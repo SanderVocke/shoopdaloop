@@ -1,8 +1,7 @@
 #pragma once
-#include "BasicLoop.h"
+#include "SubloopInterface.h"
 #include "ObjectPool.h"
 #include "AudioBuffer.h"
-#include "AudioLoopTestInterface.h"
 #include <cmath>
 #include <cstring>
 #include <memory>
@@ -15,32 +14,29 @@
 
 using namespace std::chrono_literals;
 
-enum class AudioLoopOutputType {
+enum class AudioOutputType {
     Copy,
     Add
 };
 
 template<typename SampleT>
-class AudioLoop : public BasicLoop,
-                  public AudioLoopTestInterface<std::shared_ptr<AudioBuffer<SampleT>>> {
+class AudioChannelSubloop : public SubloopInterface {
 public:
     typedef AudioBuffer<SampleT> BufferObj;
     typedef ObjectPool<BufferObj> BufferPool;
     typedef std::shared_ptr<BufferObj> Buffer;
     
 private:
-    enum AudioLoopPointOfInterestTypeFlags {
-        ExternalBufferEnd = BasicPointOfInterestFlags_End,
-    };
-
     std::shared_ptr<BufferPool> m_buffer_pool;
     std::vector<Buffer> m_buffers;
     SampleT *m_playback_target_buffer;
     size_t   m_playback_target_buffer_size;
     SampleT *m_recording_source_buffer;
     size_t   m_recording_source_buffer_size;
-    AudioLoopOutputType const m_output_type;
+    AudioOutputType const m_output_type;
     size_t const m_buffer_size;
+
+    std::atomic<size_t> m_data_length;
 
     // For copying data in/out. Buffer pointers are copied during the process
     // function to avoid race conditions, data is copied in other threads
@@ -54,15 +50,15 @@ private:
 
 public:
 
-    AudioLoop(
+    AudioChannelSubloop(
             std::shared_ptr<BufferPool> buffer_pool,
             size_t initial_max_buffers,
-            AudioLoopOutputType output_type) :
-        BasicLoop(),
+            AudioOutputType output_type) :
         m_buffer_pool(buffer_pool),
         m_playback_target_buffer(nullptr),
         m_playback_target_buffer_size(0),
         m_recording_source_buffer_size(0),
+        m_data_length(0),
         m_output_type(output_type),
         m_buffer_size(buffer_pool->object_size()),
         maybe_copy_data_from(nullptr),
@@ -72,39 +68,37 @@ public:
         m_buffers.push_back(get_new_buffer()); // Initial recording buffer
 
         // TODO
-        std::cerr << "Warning: AudioLoop should have a way to increase its buffers capacity outside of the processing thread. Also atomic access. Also atomic planning of transitions." << std::endl;
+        std::cerr << "Warning: AudioChannelSubloop should have a way to increase its buffers capacity outside of the processing thread. Also atomic access. Also atomic planning of transitions." << std::endl;
     }
 
-    AudioLoop() = default;
+    AudioChannelSubloop() = default;
+    ~AudioChannelSubloop() override {}
 
-    ~AudioLoop() override {}
-
-    void process_body(
+    void process(
+        loop_state_t state_before,
+        loop_state_t state_after,
         size_t n_samples,
         size_t pos_before,
-        size_t &pos_after,
+        size_t pos_after,
         size_t length_before,
-        size_t &length_after,
-        loop_state_t state_before,
-        loop_state_t &state_after
-        ) override {
+        size_t length_after
+    ) override {
         // Copy data pointers and length in/out safely.
         if (maybe_copy_data_to)     { 
             *(maybe_copy_data_to.load())->data = m_buffers;
-            (maybe_copy_data_to.load())->length = get_length();
+            (maybe_copy_data_to.load())->length = m_data_length;
             maybe_copy_data_to = nullptr;
         }
         if (maybe_copy_data_from) {
             m_buffers = *(maybe_copy_data_from.load())->data;
-            set_length((maybe_copy_data_from.load())->length);
-            length_after = get_length(); // TODO: not nice that we have to do this. Otherwise BasicLoop overwrites our length change
+            m_data_length = maybe_copy_data_from.load()->length;
             maybe_copy_data_from = nullptr;
         }
 
-        switch (get_state()) {
+        switch (state_before) {
             case Playing:
             case PlayingMuted:
-                process_playback(pos_before, n_samples, get_state() == PlayingMuted);
+                process_playback(pos_before, length_before, n_samples, state_before == PlayingMuted);
                 break;
             case Recording:
                 process_record(n_samples, length_before);
@@ -139,7 +133,7 @@ public:
             }
         } else {
             m_buffers = *snapshot.data;
-            set_length(snapshot.length);
+            m_data_length = snapshot.length;
         }
     }
 
@@ -160,7 +154,7 @@ public:
             }
         } else {
             *snapshot.data = m_buffers;
-            snapshot.length = get_length();
+            snapshot.length = m_data_length;
         }
 
         std::vector<SampleT> samples(snapshot.length);
@@ -177,8 +171,8 @@ public:
         }
 
         auto &from = m_recording_source_buffer;
-        auto buf_idx = length_before / m_buffer_size;
-        auto buf_head = length_before % m_buffer_size;
+        auto buf_idx = m_data_length / m_buffer_size;
+        auto buf_head = m_data_length % m_buffer_size;
         auto buf_space = m_buffer_size - buf_head;
         while (m_buffers.size() <= buf_idx) {
             m_buffers.push_back(get_new_buffer());
@@ -193,6 +187,7 @@ public:
 
         m_recording_source_buffer += n;
         m_recording_source_buffer_size -= n;
+        m_data_length += n;
 
         // If we reached the end, add another buffer
         // and record the rest.
@@ -206,15 +201,17 @@ public:
         return m_buffers[pos / m_buffer_size]->at(pos % m_buffers.front()->size());
     }
 
-    void process_playback(size_t pos, size_t n_samples, bool muted) {
+    size_t data_length() const { return m_data_length; }
+
+    void process_playback(size_t pos, size_t length, size_t n_samples, bool muted) {
         if (m_playback_target_buffer_size < n_samples) {
             throw std::runtime_error("Attempting to play out of bounds");
         }
 
         size_t buffer_idx = pos / m_buffer_size;
         size_t pos_in_buffer = pos % m_buffer_size;
-        size_t buf_head = buffer_idx == m_buffers.size()-1 && m_length < (m_buffer_size * m_buffers.size()) ?
-            m_length % m_buffer_size :
+        size_t buf_head = buffer_idx == m_buffers.size()-1 && length < (m_buffer_size * m_buffers.size()) ?
+            length % m_buffer_size :
             m_buffer_size;
         auto  &from_buf = m_buffers[buffer_idx];
         SampleT* from = &from_buf->at(pos_in_buffer);
@@ -223,9 +220,9 @@ public:
         auto rest = n_samples - n;
 
         if (!muted) {
-            if (m_output_type == AudioLoopOutputType::Copy) {
+            if (m_output_type == AudioOutputType::Copy) {
                 memcpy((void*)to, (void*)from, n*sizeof(SampleT));
-            } else if (m_output_type == AudioLoopOutputType::Add) {
+            } else if (m_output_type == AudioOutputType::Add) {
                 for(size_t idx=0; idx < n; idx++) {
                     to[idx] += from[idx];
                 }
@@ -239,49 +236,34 @@ public:
 
         // If we didn't play back all yet, go to next buffer and continue
         if(rest > 0) {
-            process_playback(pos + n, rest, muted);
+            process_playback(pos + n, length, rest, muted);
         }
     }
 
-    void update_poi() override {
-        BasicLoop::update_poi();
-
-        // Handle our own POI types
-        std::optional<PointOfInterest> external_end_poi;
-        if (get_state() == Playing || get_state() == PlayingMuted) {
-            external_end_poi = {.when = m_playback_target_buffer_size, .type_flags = ExternalBufferEnd};
-        } else if (get_state() == Recording) {
-            external_end_poi = {.when = m_recording_source_buffer_size, .type_flags = ExternalBufferEnd};
+    std::optional<size_t> get_next_poi(loop_state_t state,
+                                       size_t length,
+                                       size_t position) const override {
+        if (state == Playing || state == PlayingMuted) {
+            return m_playback_target_buffer_size;
+        } else if (state == Recording) {
+            return m_recording_source_buffer_size;
         }
-
-        m_next_poi = BasicLoop::dominant_poi(m_next_poi, external_end_poi);
+        return std::nullopt;
     }
+
+    void handle_poi(loop_state_t state,
+                            size_t length,
+                            size_t position) override {};
 
 
     void set_playback_buffer(SampleT *buffer, size_t size) {
         m_playback_target_buffer = buffer;
         m_playback_target_buffer_size = size;
-        if (m_state == Playing || m_state == PlayingMuted) {
-            if (m_next_poi) { m_next_poi->type_flags &= ~(ExternalBufferEnd); }
-            m_next_poi = dominant_poi(m_next_poi, PointOfInterest{.when = m_playback_target_buffer_size, .type_flags = ExternalBufferEnd});
-        }
     }
 
     void set_recording_buffer(SampleT *buffer, size_t size) {
         m_recording_source_buffer = buffer;
         m_recording_source_buffer_size = size;
-        if (m_state == Recording) {
-            if (m_next_poi) { m_next_poi->type_flags &= ~(ExternalBufferEnd); }
-            m_next_poi = dominant_poi(m_next_poi, PointOfInterest{.when = m_recording_source_buffer_size, .type_flags = ExternalBufferEnd});
-        }
-    }
-
-    void set_length(size_t length) override {
-        BasicLoop::set_length(length);
-
-        while(get_length() > m_buffers.size() * m_buffer_size) {
-            m_buffers.push_back(get_new_buffer());
-        }
     }
 
 protected:
@@ -292,9 +274,4 @@ protected:
         }
         return buf;
     }
-
-    // Testing interfaces
-    std::vector<Buffer> &buffers() override { return m_buffers; }
-    virtual size_t get_current_buffer_idx() const override { return get_position() / m_buffer_size; }
-    virtual size_t get_position_in_current_buffer() const override { return get_position() % m_buffer_size; }
 };

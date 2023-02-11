@@ -23,12 +23,12 @@ void for_buf_elems(Buf const& buf, std::function<void(size_t,S const&)> fn,
     }
 }
 
-template<typename Loop, typename S>
-void for_loop_elems(Loop const& loop, std::function<void(size_t,S const&)> fn,
+template<typename Channel, typename S>
+void for_channel_elems(Channel const& chan, std::function<void(size_t,S const&)> fn,
                    int start=0, int n=-1) {
-    if(n < 0) { n = loop.get_length() - start; }
+    if(n < 0) { n = chan.data_length() - start; }
     for(size_t idx=start; idx < (start+n); idx++) {
-        fn(idx, loop.at(idx));
+        fn(idx, chan.at(idx));
     }
 }
 

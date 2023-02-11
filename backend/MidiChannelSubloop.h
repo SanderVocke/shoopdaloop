@@ -1,7 +1,7 @@
 #pragma once
-#include "BasicLoop.h"
 #include "MidiStorage.h"
 #include "MidiPortInterface.h"
+#include "SubloopInterface.h"
 #include <optional>
 #include <functional>
 #include <chrono>
@@ -10,16 +10,12 @@
 using namespace std::chrono_literals;
 
 template<typename TimeType, typename SizeType>
-class MidiLoop : public BasicLoop {
+class MidiChannelSubloop : public SubloopInterface {
 public:
     using Storage = MidiStorage<TimeType, SizeType>;
     using StorageCursor = typename Storage::Cursor;
 
 private:
-    enum MidiLoopPointOfInterestTypeFlags {
-        ExternalBufferEnd = BasicPointOfInterestFlags_End,
-    };
-
     template <typename Buf>
     struct ExternalBuf {
         Buf buf;
@@ -46,15 +42,13 @@ private:
     // For copying data in/out. The copy takes place in the process thread
     // to avoid race conditions.
     struct DataSnapshot {
-        size_t length;
         std::shared_ptr<Storage> data;
     };
     std::atomic<DataSnapshot *> maybe_copy_data_to;
     std::atomic<DataSnapshot *> maybe_copy_data_from;
 
 public:
-    MidiLoop(size_t data_size) :
-        BasicLoop(),
+    MidiChannelSubloop(size_t data_size) :
         m_playback_target_buffer(nullptr),
         m_recording_source_buffer(nullptr),
         m_storage(std::make_shared<Storage>(data_size)),
@@ -65,31 +59,29 @@ public:
         m_playback_cursor = m_storage->create_cursor();
     }
 
-    void process_body(
+    void process(
+        loop_state_t state_before,
+        loop_state_t state_after,
         size_t n_samples,
         size_t pos_before,
-        size_t &pos_after,
+        size_t pos_after,
         size_t length_before,
-        size_t &length_after,
-        loop_state_t state_before,
-        loop_state_t &state_after
+        size_t length_after
         ) override {
         if (maybe_copy_data_to) {
             m_storage->copy(*maybe_copy_data_to.load()->data);
-            maybe_copy_data_to.load()->length = get_length();
             maybe_copy_data_to = nullptr;
         }
         if (maybe_copy_data_from) {
             m_storage = maybe_copy_data_from.load()->data;
-            set_length(maybe_copy_data_from.load()->length);
             m_playback_cursor = m_storage->create_cursor();
             maybe_copy_data_from = nullptr;
         }
 
-        switch (get_state()) {
+        switch (state_before) {
             case Playing:
             case PlayingMuted:
-                process_playback(pos_before, n_samples, get_state() == PlayingMuted);
+                process_playback(pos_before, length_before, n_samples, state_before == PlayingMuted);
                 break;
             case Recording:
                 process_record(length_before, n_samples);
@@ -135,7 +127,7 @@ public:
         m_playback_cursor.reset();
     }
 
-    void process_playback(size_t our_pos, size_t n_samples, bool muted) {
+    void process_playback(size_t our_pos, size_t our_length, size_t n_samples, bool muted) {
         if (!m_playback_target_buffer.has_value()) {
             throw std::runtime_error("Playing without target buffer");
         }
@@ -165,56 +157,27 @@ public:
         buf.n_frames_processed += n_samples;
     }
 
-    void set_position(size_t pos) override {
-        size_t old_pos = get_position();
-        BasicLoop::set_position(pos);
-        if(get_position() < old_pos) {
-            m_playback_cursor.reset();
-        }
-    }
-
-    void update_poi() override {
-        BasicLoop::update_poi();
-
-        // Handle our own POI types
-        std::optional<PointOfInterest> external_end_poi;
-        if (get_state() == Playing || get_state() == PlayingMuted) {
-            size_t frames_left = m_playback_target_buffer.value().n_frames_total - m_playback_target_buffer.value().n_frames_processed;
-            external_end_poi = {.when = frames_left, .type_flags = ExternalBufferEnd};
-        } else if (get_state() == Recording) {
-            size_t frames_left = m_recording_source_buffer.value().n_frames_total - m_recording_source_buffer.value().n_frames_processed;
-            external_end_poi = {.when = frames_left, .type_flags = ExternalBufferEnd};
+    std::optional<size_t> get_next_poi(loop_state_t state,
+                                               size_t length,
+                                               size_t position) const override {
+        if (state == Playing || state == PlayingMuted) {
+            return m_playback_target_buffer.value().n_frames_total - m_playback_target_buffer.value().n_frames_processed;
+        } else if (state == Recording) {
+            return m_recording_source_buffer.value().n_frames_total - m_recording_source_buffer.value().n_frames_processed;
         }
 
-        m_next_poi = BasicLoop::dominant_poi(m_next_poi, external_end_poi);
+        return std::nullopt;
     }
 
     void set_playback_buffer(MidiWriteableBufferInterface *buffer, size_t n_frames) {
         m_playback_target_buffer = ExternalBuf<MidiWriteableBufferInterface *> (buffer);
         m_playback_target_buffer.value().n_frames_total = n_frames;
-        if (m_state == Playing || m_state == PlayingMuted) {
-            if (m_next_poi) { m_next_poi->type_flags &= ~(ExternalBufferEnd); }
-            m_next_poi = dominant_poi(m_next_poi, PointOfInterest{.when = n_frames, .type_flags = ExternalBufferEnd});
-        }
     }
 
     void set_recording_buffer(MidiReadableBufferInterface *buffer, size_t n_frames) {
         m_recording_source_buffer = ExternalBuf<MidiReadableBufferInterface *> (buffer);
         m_recording_source_buffer.value().n_frames_total = n_frames;
         m_recording_source_buffer.value().n_events_total = buffer->get_n_events();
-        if (m_state == Recording) {
-            if (m_next_poi) { m_next_poi->type_flags &= ~(ExternalBufferEnd); }
-            m_next_poi = dominant_poi(m_next_poi, PointOfInterest{.when = n_frames, .type_flags = ExternalBufferEnd});
-        }
-    }
-
-    void set_length(size_t length) override {
-        size_t old_length = m_length;
-        BasicLoop::set_length(length);
-        if (m_length < old_length) {
-            std::cerr << "Proper MIDI buffer truncating not implemented, clearing" << std::endl;
-            clear();
-        }
     }
 
     void for_each_msg(std::function<void(TimeType t, SizeType s, uint8_t* data)> cb) {
@@ -227,7 +190,7 @@ public:
         std::vector<uint8_t> data;
     };
 
-    std::vector<Message> retrieve_contents(size_t &length_out, bool thread_safe = true) {
+    std::vector<Message> retrieve_contents(bool thread_safe = true) {
         static constexpr auto poll_interval = 10ms;
 
         auto s = std::make_shared<Storage>(m_storage->bytes_capacity());
@@ -239,10 +202,8 @@ public:
             while (maybe_copy_data_to != nullptr) {
                 std::this_thread::sleep_for(poll_interval);
             }
-            length_out = d.length;
         } else {
             m_storage->copy(*s);
-            length_out = get_length();
         }
         std::vector<Message> r;
         s->for_each_msg([&r](TimeType time, SizeType size, uint8_t*data) {
@@ -252,7 +213,7 @@ public:
         return r;
     }
 
-    void set_contents(std::vector<Message> contents, size_t length, bool thread_safe = true) {
+    void set_contents(std::vector<Message> contents, bool thread_safe = true) {
         static constexpr auto poll_interval = 10ms;
 
         auto s = std::make_shared<Storage>(m_storage->bytes_capacity());
@@ -263,15 +224,17 @@ public:
             std::cerr << "Warning: no timeout mechanism implemented" << std::endl;
             DataSnapshot d;
             d.data = s;
-            d.length = length;
             maybe_copy_data_from = &d;
             while (maybe_copy_data_from != nullptr) {
                 std::this_thread::sleep_for(poll_interval);
             }
         } else {
             m_storage = s;
-            set_length(length);
         }
         m_playback_cursor = m_storage->create_cursor();
     }
+
+    void handle_poi(loop_state_t state,
+                    size_t length,
+                    size_t position) {}
 };

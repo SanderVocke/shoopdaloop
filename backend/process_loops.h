@@ -19,7 +19,6 @@ void process_loops(std::vector<std::shared_ptr<Loop>> const& loops,
 
     // Gather up all POIs.
     for(size_t i=0; i<loops.size(); i++) {
-        loops[i]->handle_hard_sync();
         size_t poi = loops[i]->get_next_poi().value_or(n_samples);
         process_until = std::min(process_until, poi);
     }

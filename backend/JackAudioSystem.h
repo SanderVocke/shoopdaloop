@@ -96,4 +96,8 @@ public:
     jack_client_t* get_client() const {
         return m_client;
     }
+
+    const char* get_client_name() const {
+        return m_client_name.c_str();
+    }
 };

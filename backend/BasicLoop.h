@@ -111,18 +111,15 @@ public:
         return false;
     }
 
-    // Meant to be implemented by subclasses.
-    // Provides access to the startin states of processing and the usual
-    // ending states. Ending states may also be altered by the subclass.
-    virtual void process_body(
+    virtual void process_subloops(
+        loop_state_t state_before,
+        loop_state_t state_after,
         size_t n_samples,
         size_t pos_before,
-        size_t &pos_after,
+        size_t pos_after,
         size_t length_before,
-        size_t &length_after,
-        loop_state_t state_before,
-        loop_state_t &state_after
-        ) {}
+        size_t length_after
+    ) {}
 
     void process(size_t n_samples) override {
         if (n_samples == 0) {
@@ -137,8 +134,6 @@ public:
         size_t pos_after = m_position;
         size_t length_before = m_length;
         size_t length_after = m_length;
-        loop_state_t state_before = m_state;
-        loop_state_t state_after = m_state;
 
         switch(m_state) {
             case Recording:
@@ -152,13 +147,12 @@ public:
                 break;
         }
 
-        process_body(n_samples, pos_before, pos_after,
-            length_before, length_after, state_before, state_after);
+        process_subloops(m_state, m_state, n_samples, pos_before, pos_after,
+            length_before, length_after);
 
         if (m_next_poi) { m_next_poi.value().when -= n_samples; }
         m_position = pos_after;
         set_length(length_after);
-        set_state(state_after);
         handle_poi();
         update_poi();
     }
@@ -167,13 +161,6 @@ public:
         m_soft_sync_source = src;
     }
     std::shared_ptr<LoopInterface> const& get_soft_sync_source() const override {
-        return m_soft_sync_source;
-    }
-
-    void set_hard_sync_source(std::shared_ptr<LoopInterface> const& src) override {
-        m_hard_sync_source = src;
-    }
-    std::shared_ptr<LoopInterface> const& get_hard_sync_source() const override {
         return m_soft_sync_source;
     }
 
@@ -195,18 +182,6 @@ public:
     void handle_soft_sync() override {
         if (!m_hard_sync_source && m_soft_sync_source && m_soft_sync_source->is_triggering_now()) {
             trigger();
-        }
-    }
-
-    void handle_hard_sync() override {
-        if (m_hard_sync_source) {
-            set_state (m_hard_sync_source->get_state());
-            set_length (m_hard_sync_source->get_length());
-            set_position (m_hard_sync_source->get_position());
-            if (m_hard_sync_source->is_triggering_now()) {
-                m_triggering_now = true;
-            }
-            update_poi();
         }
     }
 

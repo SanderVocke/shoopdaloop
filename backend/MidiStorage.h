@@ -206,6 +206,8 @@ public:
         return m_data.size() - bytes_occupied();
     }
 
+    size_t n_events() const { return m_n_events; }
+
     bool append(TimeType time, SizeType size,  const uint8_t* data) {
         size_t sz = sizeof(time) + sizeof(size) + size;
         if (sz > bytes_free()) {

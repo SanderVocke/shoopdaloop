@@ -6,11 +6,16 @@
 
 class LoopInterface {
 public:
-    // Get the next point of interest in ticks.
+        // Get the next point of interest in ticks.
     // A point of interest is the first point until when the loop can be processed
     // without updating its state.
     // Returning a nullopt_t indicates that the loop may be processed indefinitely.
     virtual std::optional<size_t> get_next_poi() const = 0;
+
+    // Handle the current point of interest, leading to any internal state change
+    // necessary. If the loop is not currently exactly at a point of interest,
+    // nothing happens.
+    virtual void handle_poi() = 0;
 
     // Triggers are used for triggering other loops to transition their state.
     // This function returns whether the the loop is triggering exactly on the
@@ -19,23 +24,13 @@ public:
     // The soft sync source determines from which other loop this loop receives triggers.
     virtual std::shared_ptr<LoopInterface> const& get_soft_sync_source() const = 0;
     virtual void set_soft_sync_source(std::shared_ptr<LoopInterface> const& src) = 0;
-    // The hard sync source, if set, results in this loop following the state, length and position
-    // of the sync source exactly.
-    virtual std::shared_ptr<LoopInterface> const& get_hard_sync_source() const = 0;
-    virtual void set_hard_sync_source(std::shared_ptr<LoopInterface> const& src) = 0;
 
     // Trigger from outside. Handled immediately. If propagate is set to true,
     // other loops soft-synced to this one will also receive the trigger.
     virtual void trigger(bool propagate=true) = 0;
 
-    // Handle the current point of interest, leading to any internal state change
-    // necessary. If the loop is not currently exactly at a point of interest,
-    // nothing happens.
-    virtual void handle_poi() = 0;
-
-    // Handle soft sync / hard sync
+    // Handle soft sync
     virtual void handle_soft_sync() = 0;
-    virtual void handle_hard_sync() = 0;
 
     // Process the loop for N ticks.
     // A loop may never be processed beyond its next POI. If that is attempted,
@@ -43,8 +38,7 @@ public:
     virtual void process(size_t n_samples) = 0;
 
     // State transitions may be planned for a loop.
-    // The delay is measured in amount of triggers received before transitioning.
-    // Note that the delays are stacked (each delay starts counting)
+    // The delay is measured in amount of triggers received before transitioning.    // Note that the delays are stacked (each delay starts counting)
     // down from the transition before it).
     virtual size_t          get_n_planned_transitions() const = 0;
     virtual size_t          get_planned_transition_delay(size_t idx) const = 0;
@@ -52,13 +46,14 @@ public:
     virtual void            clear_planned_transitions() = 0;
     virtual void            plan_transition(loop_state_t state, size_t n_cycles_delay = 0) = 0;
 
+
     // Getters and setters.
-    virtual size_t get_position() const = 0;
-    virtual size_t get_length() const = 0;
-    virtual void set_position(size_t pos) = 0;
-    virtual void set_length(size_t length) = 0;
+    virtual size_t       get_position() const = 0;
+    virtual size_t       get_length() const = 0;
+    virtual void         set_position(size_t pos) = 0;
+    virtual void         set_length(size_t length) = 0;
     virtual loop_state_t get_state() const = 0;
-    virtual void set_state(loop_state_t state) = 0;
+    virtual void         set_state(loop_state_t state) = 0;
 
     LoopInterface() = default;
     virtual ~LoopInterface() {}
