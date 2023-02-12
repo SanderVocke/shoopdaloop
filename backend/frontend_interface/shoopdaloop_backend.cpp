@@ -5,13 +5,12 @@
 #include "AudioChannelSubloop.h"
 #include "AudioMidiLoop.h"
 #include "JackAudioSystem.h"
-#include "LoopInterface.h"
 #include "MidiChannelSubloop.h"
-#include "MidiLoop.h"
 #include "MidiPortInterface.h"
 #include "ObjectPool.h"
 #include "PortInterface.h"
 #include "SubloopInterface.h"
+#include "CommandQueue.h"
 #include "types.h"
 
 // System
@@ -46,7 +45,6 @@ using SharedPort = std::shared_ptr<PortInterface>;
 using SharedPortInfo = std::shared_ptr<PortInfo>;
 using SharedLoopInfo = std::shared_ptr<LoopInfo>;
 using Command = std::function<void()>;
-using CommandQueue = boost::lockfree::spsc_queue<Command>;
 
 // TYPES
 struct LoopInfo {
@@ -76,7 +74,7 @@ std::unique_ptr<AudioSystem> g_audio_system;
 std::shared_ptr<AudioBufferPool> g_audio_buffer_pool;
 std::vector<SharedLoopInfo> g_loops;
 std::vector<SharedPortInfo> g_ports;
-CommandQueue g_cmd_queue (gc_command_queue_size);
+CommandQueue g_cmd_queue (gc_command_queue_size, 1000, 1000);
 
 // HELPER FUNCTIONS
 SharedLoopInfo find_loop(shoopdaloop_loop* c_ptr) {
@@ -86,6 +84,17 @@ SharedLoopInfo find_loop(shoopdaloop_loop* c_ptr) {
         throw std::runtime_error("Attempting to find non-existent loop.");
     }
     return *r;
+}
+
+SharedLoopAudioChannel find_audio_channel(Loop &loop,
+                                          shoopdaloop_loop_audio_channel *channel) {
+    for (size_t idx=0; idx < loop.n_audio_channels(); idx++) {
+        SharedLoopAudioChannel chan = loop.audio_channel<float>(idx);
+        if ((shoopdaloop_loop_audio_channel*)chan.get() == channel) {
+            return chan;
+        }
+    }
+    throw std::runtime_error("Attempting to find non-existent autio channel.");
 }
 
 // API FUNCTIONS
@@ -101,7 +110,7 @@ void initialize (const char* client_name_hint) {
             gc_n_buffers_in_pool, gc_audio_buffer_size
         );
     }
-    g_cmd_queue.reset();
+    g_cmd_queue.clear();
     g_loops.clear();
     g_ports.clear();
 
@@ -239,3 +248,23 @@ void load_loop_data (shoopdaloop_loop *loop, loop_data_t data) {
     load_loop_midi_data(loop, data.midi_data);
     find_loop(loop)->loop->set_length(data.length);
 }
+
+void delete_audio_channel(shoopdaloop_loop *loop, shoopdaloop_loop_audio_channel *channel) {
+    auto &loop_info = *find_loop(loop);
+    auto _channel = find_audio_channel(*loop_info.loop, channel);
+    throw BLABi23592u3```;
+}
+
+void                  delete_midi_channel      (shoopdaloop_loop_midi_channel  *channel);
+void                  connect_audio_output     (shoopdaloop_loop_audio_channel *channel, shoopdaloop_audio_port *port);
+void                  connect_midi_output      (shoopdaloop_loop_midi_channel  *channel, shoopdaloop_midi_port *port);
+void                  disconnect_audio_outputs (shoopdaloop_loop_audio_channel *channel);
+void                  disconnect_midi_outputs  (shoopdaloop_loop_midi_channel  *channel);
+audio_channel_data_t  get_audio_channel_data   (shoopdaloop_loop_audio_channel *channel);
+audio_channel_data_t  get_audio_rms_data       (shoopdaloop_loop_audio_channel *channel,
+                                                unsigned from_sample,
+                                                unsigned to_sample,
+                                                unsigned samples_per_bin);
+midi_channel_data_t   get_midi_channel_data    (shoopdaloop_loop_midi_channel  *channel);
+void                  load_audio_channel_data  (shoopdaloop_loop_audio_channel *channel, audio_channel_data_t data);
+void                  load_midi_channel_data   (shoopdaloop_loop_midi_channel  *channel, midi_channel_data_t  data);
