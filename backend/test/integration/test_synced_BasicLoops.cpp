@@ -35,13 +35,13 @@ suite Synced_BasicLoops_tests = []() {
         auto loop2 = std::make_shared<BasicLoop>();
 
         loop1->set_soft_sync_source(loop2);
-        loop1->set_state(Stopped, false);
         loop1->set_length(100, false);
+        loop1->set_state(Stopped, false);
         loop1->plan_transition(Playing);
         loop1->PROC_update_poi();
 
-        loop2->set_state(Playing);
         loop2->set_length(100, false);
+        loop2->set_state(Playing);
         loop2->set_position(90, false);
         loop2->PROC_update_poi();
 

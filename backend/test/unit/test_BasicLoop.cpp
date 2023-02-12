@@ -138,9 +138,9 @@ suite BasicLoop_tests = []() {
 
     "basicloop_4_1_generate_trigger_on_restart"_test = []() {
         BasicLoop loop;
-        loop.set_state(Playing, false);
         loop.set_length(10, false);
         loop.set_position(0, false);
+        loop.set_state(Playing, false);
         
         expect(eq(loop.PROC_is_triggering_now(), false));
 

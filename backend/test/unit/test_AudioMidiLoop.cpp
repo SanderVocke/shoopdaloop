@@ -199,14 +199,13 @@ suite AudioMidiLoop_audio_tests = []() {
         
         auto data = create_audio_buf<int>(512, [](size_t pos) { return pos; });
         channel.load_data(data.data(), 512, false);
-        loop.set_length(512);
 
+        loop.set_length(512);
         loop.plan_transition(Playing);
         loop.PROC_trigger();
         loop.PROC_update_poi();
 
         expect(loop.get_state() == Playing);
-        expect(loop.PROC_get_next_poi() == 0) << loop.PROC_get_next_poi().value_or(0); // end of buffer
         expect(loop.get_position() == 0);
         expect(loop.get_length() == 512);
 
@@ -214,6 +213,7 @@ suite AudioMidiLoop_audio_tests = []() {
         for(size_t processed = 0; processed < 512; processed+=64) {
             
             channel.PROC_set_playback_buffer(play_buf.data()+processed, 64);
+            expect(loop.PROC_get_next_poi() == 64) << loop.PROC_get_next_poi().value_or(0); // end of buffer
             loop.PROC_update_poi();
             loop.PROC_process(64);
         }
