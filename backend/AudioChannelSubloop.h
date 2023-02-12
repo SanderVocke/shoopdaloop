@@ -22,7 +22,7 @@ enum class AudioOutputType {
 
 template<typename SampleT>
 class AudioChannelSubloop : public SubloopInterface,
-                            private WithCommandQueue<10, 1000000, 1000000, 1000> {
+                            private WithCommandQueue<10, 1000, 1000> {
 public:
     typedef AudioBuffer<SampleT> BufferObj;
     typedef ObjectPool<BufferObj> BufferPool;
@@ -47,7 +47,7 @@ public:
             std::shared_ptr<BufferPool> buffer_pool,
             size_t initial_max_buffers,
             AudioOutputType output_type) :
-        WithCommandQueue<10, 1000000, 1000000, 1000>(),
+        WithCommandQueue<10, 1000, 1000>(),
         ma_buffer_pool(buffer_pool),
         ma_data_length(0),
         ma_output_type(output_type),

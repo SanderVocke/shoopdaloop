@@ -22,7 +22,7 @@ enum BasicPointOfInterestFlags {
 // logic of handling points of interest while processing, planning
 // state transitions etc.
 class BasicLoop : public LoopInterface,
-                  protected WithCommandQueue<100, 1000000, 1000000, 1000> {
+                  protected WithCommandQueue<100, 1000, 1000> {
 public:
     struct PointOfInterest {
         size_t when;
@@ -43,7 +43,7 @@ protected:
 public:
 
     BasicLoop() :
-        WithCommandQueue<100, 1000000, 1000000, 1000>(),
+        WithCommandQueue<100, 1000, 1000>(),
         mp_next_poi(std::nullopt),
         ma_state(Stopped),
         mp_soft_sync_source(nullptr),
@@ -157,7 +157,7 @@ public:
 
         if (mp_next_poi) { mp_next_poi.value().when -= n_samples; }
         ma_position = pos_after;
-        set_length(length_after);
+        set_length(length_after, false);
         PROC_handle_poi();
         PROC_update_poi();
     }
@@ -194,7 +194,7 @@ public:
     }
 
     void PROC_handle_soft_sync() override {
-        if (!mp_soft_sync_source && mp_soft_sync_source->PROC_is_triggering_now()) {
+        if (mp_soft_sync_source && mp_soft_sync_source->PROC_is_triggering_now()) {
             PROC_trigger();
         }
     }

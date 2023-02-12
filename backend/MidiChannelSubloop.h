@@ -12,7 +12,7 @@ using namespace std::chrono_literals;
 
 template<typename TimeType, typename SizeType>
 class MidiChannelSubloop : public SubloopInterface,
-                           private WithCommandQueue<10, 1000000, 1000000, 1000> {
+                           private WithCommandQueue<10, 1000, 1000> {
 public:
     using Storage = MidiStorage<TimeType, SizeType>;
     using StorageCursor = typename Storage::Cursor;
@@ -44,7 +44,7 @@ private:
 
 public:
     MidiChannelSubloop(size_t data_size) :
-        WithCommandQueue<10, 1000000, 1000000, 1000>(),
+        WithCommandQueue<10, 1000, 1000>(),
         mp_playback_target_buffer(nullptr),
         mp_recording_source_buffer(nullptr),
         mp_storage(std::make_shared<Storage>(data_size)),
