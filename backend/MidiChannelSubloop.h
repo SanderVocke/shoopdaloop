@@ -2,6 +2,7 @@
 #include "MidiStorage.h"
 #include "MidiPortInterface.h"
 #include "SubloopInterface.h"
+#include "WithCommandQueue.h"
 #include <optional>
 #include <functional>
 #include <chrono>
@@ -10,7 +11,8 @@
 using namespace std::chrono_literals;
 
 template<typename TimeType, typename SizeType>
-class MidiChannelSubloop : public SubloopInterface {
+class MidiChannelSubloop : public SubloopInterface,
+                           private WithCommandQueue<10, 1000000, 1000000, 1000> {
 public:
     using Storage = MidiStorage<TimeType, SizeType>;
     using StorageCursor = typename Storage::Cursor;
@@ -34,32 +36,24 @@ private:
         size_t events_left() const { return n_events_total - n_events_processed; }
     };
 
-    std::optional<ExternalBuf<MidiWriteableBufferInterface*>> m_playback_target_buffer;
-    std::optional<ExternalBuf<MidiReadableBufferInterface *>> m_recording_source_buffer;
-    std::shared_ptr<Storage>       m_storage;
-    std::shared_ptr<StorageCursor> m_playback_cursor;
-
-    // For copying data in/out. The copy takes place in the process thread
-    // to avoid race conditions.
-    struct DataSnapshot {
-        std::shared_ptr<Storage> data;
-    };
-    std::atomic<DataSnapshot *> maybe_copy_data_to;
-    std::atomic<DataSnapshot *> maybe_copy_data_from;
+    // Process thread access only (mp*)
+    std::optional<ExternalBuf<MidiWriteableBufferInterface*>> mp_playback_target_buffer;
+    std::optional<ExternalBuf<MidiReadableBufferInterface *>> mp_recording_source_buffer;
+    std::shared_ptr<Storage>       mp_storage;
+    std::shared_ptr<StorageCursor> mp_playback_cursor;
 
 public:
     MidiChannelSubloop(size_t data_size) :
-        m_playback_target_buffer(nullptr),
-        m_recording_source_buffer(nullptr),
-        m_storage(std::make_shared<Storage>(data_size)),
-        m_playback_cursor(nullptr),
-        maybe_copy_data_from(nullptr),
-        maybe_copy_data_to(nullptr)
+        WithCommandQueue<10, 1000000, 1000000, 1000>(),
+        mp_playback_target_buffer(nullptr),
+        mp_recording_source_buffer(nullptr),
+        mp_storage(std::make_shared<Storage>(data_size)),
+        mp_playback_cursor(nullptr)
     {
-        m_playback_cursor = m_storage->create_cursor();
+        mp_playback_cursor = mp_storage->create_cursor();
     }
 
-    void process(
+    void PROC_process(
         loop_state_t state_before,
         loop_state_t state_after,
         size_t n_samples,
@@ -68,34 +62,26 @@ public:
         size_t length_before,
         size_t length_after
         ) override {
-        if (maybe_copy_data_to) {
-            m_storage->copy(*maybe_copy_data_to.load()->data);
-            maybe_copy_data_to = nullptr;
-        }
-        if (maybe_copy_data_from) {
-            m_storage = maybe_copy_data_from.load()->data;
-            m_playback_cursor = m_storage->create_cursor();
-            maybe_copy_data_from = nullptr;
-        }
+        PROC_handle_command_queue();
 
         switch (state_before) {
             case Playing:
             case PlayingMuted:
-                process_playback(pos_before, length_before, n_samples, state_before == PlayingMuted);
+                PROC_process_playback(pos_before, length_before, n_samples, state_before == PlayingMuted);
                 break;
             case Recording:
-                process_record(length_before, n_samples);
+                PROC_process_record(length_before, n_samples);
                 break;
             default:
                 break;
         }
     }
 
-    void process_record(size_t our_length, size_t n_samples) {
-        if (!m_recording_source_buffer.has_value()) {
+    void PROC_process_record(size_t our_length, size_t n_samples) {
+        if (!mp_recording_source_buffer.has_value()) {
             throw std::runtime_error("Recording without source buffer");
         }
-        auto &recbuf = m_recording_source_buffer.value();
+        auto &recbuf = mp_recording_source_buffer.value();
         if (recbuf.frames_left() < n_samples) {
             throw std::runtime_error("Attempting to record out of bounds");
         }
@@ -111,77 +97,77 @@ public:
             uint32_t t;
             uint32_t s;
             uint8_t *d;
-            recbuf.buf->get_event(idx, s, t, d);
+            recbuf.buf->PROC_get_event(idx, s, t, d);
             if (t >= record_end) {
                 break;
             }
-            m_storage->append(our_length + (TimeType) t, (SizeType) s, d);
+            mp_storage->append(our_length + (TimeType) t, (SizeType) s, d);
             recbuf.n_events_processed++;
         }
         
         recbuf.n_frames_processed += n_samples;
     }
 
-    void clear() {
-        m_storage->clear();
-        m_playback_cursor.reset();
+    void clear(bool thread_safe=true) {
+        auto fn = [&]() {
+            mp_storage->clear();
+            mp_playback_cursor.reset();
+        };
+        if (thread_safe) { exec_process_thread_command(fn); }
+        else { fn(); }
     }
 
-    void process_playback(size_t our_pos, size_t our_length, size_t n_samples, bool muted) {
-        if (!m_playback_target_buffer.has_value()) {
+    void PROC_process_playback(size_t our_pos, size_t our_length, size_t n_samples, bool muted) {
+        if (!mp_playback_target_buffer.has_value()) {
             throw std::runtime_error("Playing without target buffer");
         }
-        auto &buf = m_playback_target_buffer.value();
+        auto &buf = mp_playback_target_buffer.value();
         if (buf.frames_left() < n_samples) {
             throw std::runtime_error("Attempting to play back out of bounds");
         }
 
         // Playback any events
         size_t end = buf.n_frames_processed + n_samples;
-        m_playback_cursor->find_time_forward(our_pos);
-        while(m_playback_cursor->valid())
+        mp_playback_cursor->find_time_forward(our_pos);
+        while(mp_playback_cursor->valid())
         {
-            auto *event = m_playback_cursor->get();
+            auto *event = mp_playback_cursor->get();
             size_t event_time = event->time - our_pos;
             if (event_time >= n_samples) {
                 // Future event
                 break;
             }
             if (!muted) {
-                buf.buf->write_event(event->size, event_time, event->data);
+                buf.buf->PROC_write_event(event->size, event_time, event->data);
             }
             buf.n_events_processed++;
-            m_playback_cursor->next();
+            mp_playback_cursor->next();
         }
         
         buf.n_frames_processed += n_samples;
     }
 
-    std::optional<size_t> get_next_poi(loop_state_t state,
+    std::optional<size_t> PROC_get_next_poi(loop_state_t state,
                                                size_t length,
                                                size_t position) const override {
         if (state == Playing || state == PlayingMuted) {
-            return m_playback_target_buffer.value().n_frames_total - m_playback_target_buffer.value().n_frames_processed;
+            return mp_playback_target_buffer.value().n_frames_total - mp_playback_target_buffer.value().n_frames_processed;
         } else if (state == Recording) {
-            return m_recording_source_buffer.value().n_frames_total - m_recording_source_buffer.value().n_frames_processed;
+            return mp_recording_source_buffer.value().n_frames_total - mp_recording_source_buffer.value().n_frames_processed;
         }
 
         return std::nullopt;
     }
 
-    void set_playback_buffer(MidiWriteableBufferInterface *buffer, size_t n_frames) {
-        m_playback_target_buffer = ExternalBuf<MidiWriteableBufferInterface *> (buffer);
-        m_playback_target_buffer.value().n_frames_total = n_frames;
+    void PROC_set_playback_buffer(MidiWriteableBufferInterface *buffer, size_t n_frames) {
+        mp_playback_target_buffer = ExternalBuf<MidiWriteableBufferInterface *> (buffer);
+        mp_playback_target_buffer.value().n_frames_total = n_frames;
     }
 
-    void set_recording_buffer(MidiReadableBufferInterface *buffer, size_t n_frames) {
-        m_recording_source_buffer = ExternalBuf<MidiReadableBufferInterface *> (buffer);
-        m_recording_source_buffer.value().n_frames_total = n_frames;
-        m_recording_source_buffer.value().n_events_total = buffer->get_n_events();
-    }
-
-    void for_each_msg(std::function<void(TimeType t, SizeType s, uint8_t* data)> cb) {
-        m_storage->for_each_msg(cb);
+    void PROC_set_recording_buffer(MidiReadableBufferInterface *buffer, size_t n_frames) {
+        mp_recording_source_buffer = ExternalBuf<MidiReadableBufferInterface *> (buffer);
+        mp_recording_source_buffer.value().n_frames_total = n_frames;
+        mp_recording_source_buffer.value().n_events_total = buffer->PROC_get_n_events();
     }
 
     struct Message {
@@ -191,20 +177,13 @@ public:
     };
 
     std::vector<Message> retrieve_contents(bool thread_safe = true) {
-        static constexpr auto poll_interval = 10ms;
+        auto s = std::make_shared<Storage>(mp_storage->bytes_capacity());
+        auto fn = [&]() {
+            mp_storage->copy(*s);
+        };
+        if (thread_safe) { exec_process_thread_command(fn); }
+        else { fn(); }
 
-        auto s = std::make_shared<Storage>(m_storage->bytes_capacity());
-        if (thread_safe) {
-            std::cerr << "Warning: no timeout mechanism implemented" << std::endl;
-            DataSnapshot d;
-            d.data = s;
-            maybe_copy_data_to = &d;
-            while (maybe_copy_data_to != nullptr) {
-                std::this_thread::sleep_for(poll_interval);
-            }
-        } else {
-            m_storage->copy(*s);
-        }
         std::vector<Message> r;
         s->for_each_msg([&r](TimeType time, SizeType size, uint8_t*data) {
             r.push_back({.time = time, .size = size, .data = std::vector<uint8_t>(size)});
@@ -214,27 +193,21 @@ public:
     }
 
     void set_contents(std::vector<Message> contents, bool thread_safe = true) {
-        static constexpr auto poll_interval = 10ms;
-
-        auto s = std::make_shared<Storage>(m_storage->bytes_capacity());
+        auto s = std::make_shared<Storage>(mp_storage->bytes_capacity());
         for(auto const& elem : contents) {
             s->append(elem.time, elem.size, elem.data.data());
         }
-        if (thread_safe) {
-            std::cerr << "Warning: no timeout mechanism implemented" << std::endl;
-            DataSnapshot d;
-            d.data = s;
-            maybe_copy_data_from = &d;
-            while (maybe_copy_data_from != nullptr) {
-                std::this_thread::sleep_for(poll_interval);
-            }
-        } else {
-            m_storage = s;
-        }
-        m_playback_cursor = m_storage->create_cursor();
+
+        auto fn = [&]() {
+            mp_storage = s;
+            mp_playback_cursor = mp_storage->create_cursor();
+        };
+
+        if (thread_safe) { exec_process_thread_command(fn); }
+        else { fn(); }
     }
 
-    void handle_poi(loop_state_t state,
+    void PROC_handle_poi(loop_state_t state,
                     size_t length,
-                    size_t position) {}
+                    size_t position) override {}
 };

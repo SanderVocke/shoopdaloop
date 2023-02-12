@@ -28,17 +28,17 @@ suite AudioMidiLoop_audio_tests = []() {
     "audioloop_1_stop"_test = []() {
         auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 256);
         AudioMidiLoop loop;
-        loop.add_audio_channel<int>(pool, 10, AudioOutputType::Copy);
+        loop.add_audio_channel<int>(pool, 10, AudioOutputType::Copy, false);
 
         expect(loop.get_state() == Stopped);
-        expect(loop.get_next_poi() == std::nullopt);
+        expect(loop.PROC_get_next_poi() == std::nullopt);
         expect(loop.get_length() == 0);
         expect(loop.get_position() == 0);
 
-        loop.process(1000);
+        loop.PROC_process(1000);
 
         expect(loop.get_state() == Stopped);
-        expect(loop.get_next_poi() == std::nullopt);
+        expect(loop.PROC_get_next_poi() == std::nullopt);
         expect(loop.get_length() == 0);
         expect(loop.get_position() == 0);
     };
@@ -46,24 +46,24 @@ suite AudioMidiLoop_audio_tests = []() {
     "audioloop_2_record"_test = []() {
         auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
         AudioMidiLoop loop;
-        loop.add_audio_channel<int>(pool, 10, AudioOutputType::Copy);
+        loop.add_audio_channel<int>(pool, 10, AudioOutputType::Copy, false);
         auto &channel = *loop.audio_channel<int>(0);
 
         auto source_buf = create_audio_buf<int>(512, [](size_t pos) { return pos; }); 
         loop.plan_transition(Recording);
-        channel.set_recording_buffer(source_buf.data(), source_buf.size());
-        loop.trigger();
-        loop.update_poi();
+        channel.PROC_set_recording_buffer(source_buf.data(), source_buf.size());
+        loop.PROC_trigger();
+        loop.PROC_update_poi();
 
         expect(eq(loop.get_state(), Recording));
-        expect(eq(loop.get_next_poi().value_or(999), 512)) << loop.get_next_poi().value_or(0); // end of buffer
+        expect(eq(loop.PROC_get_next_poi().value_or(999), 512)) << loop.PROC_get_next_poi().value_or(0); // end of buffer
         expect(eq(loop.get_length(), 0));
         expect(eq(loop.get_position(), 0));
 
-        loop.process(20);
+        loop.PROC_process(20);
 
         expect(eq(loop.get_state(), Recording));
-        expect(eq(loop.get_next_poi().value_or(999), 492)) << loop.get_next_poi().value_or(0); // end of buffer
+        expect(eq(loop.PROC_get_next_poi().value_or(999), 492)) << loop.PROC_get_next_poi().value_or(0); // end of buffer
         expect(eq(loop.get_length(), 20));
         expect(eq(loop.get_position(), 0));
         for_channel_elems<AudioChannelSubloop<int>, int>(
@@ -79,38 +79,38 @@ suite AudioMidiLoop_audio_tests = []() {
     "audioloop_2_1_record_beyond_external_buf"_test = []() {
         auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 256);
         AudioMidiLoop loop;
-        loop.add_audio_channel<int>(pool, 10, AudioOutputType::Copy);
+        loop.add_audio_channel<int>(pool, 10, AudioOutputType::Copy, false);
         auto &channel = *loop.audio_channel<int>(0);
         
-        channel.set_recording_buffer(nullptr, 0);
+        channel.PROC_set_recording_buffer(nullptr, 0);
         loop.plan_transition(Recording);
-        loop.trigger();
-        loop.update_poi();
+        loop.PROC_trigger();
+        loop.PROC_update_poi();
 
-        expect(throws([&]() { loop.process(20); }));
+        expect(throws([&]() { loop.PROC_process(20); }));
     };
 
     "audioloop_2_2_record_multiple_buffers"_test = []() {
         auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
         AudioMidiLoop loop;
-        loop.add_audio_channel<int>(pool, 10, AudioOutputType::Copy);
+        loop.add_audio_channel<int>(pool, 10, AudioOutputType::Copy, false);
         auto &channel = *loop.audio_channel<int>(0);
 
         auto source_buf = create_audio_buf<int>(512, [](size_t pos) { return pos; }); 
         loop.plan_transition(Recording);
-        channel.set_recording_buffer(source_buf.data(), source_buf.size());
-        loop.trigger();
-        loop.update_poi();
+        channel.PROC_set_recording_buffer(source_buf.data(), source_buf.size());
+        loop.PROC_trigger();
+        loop.PROC_update_poi();
 
         expect(loop.get_state() == Recording);
-        expect(loop.get_next_poi() == 512) << loop.get_next_poi().value_or(0); // end of buffer
+        expect(loop.PROC_get_next_poi() == 512) << loop.PROC_get_next_poi().value_or(0); // end of buffer
         expect(loop.get_length() == 0);
         expect(loop.get_position() == 0);
 
-        loop.process(512);
+        loop.PROC_process(512);
 
         expect(loop.get_state() == Recording);
-        expect(loop.get_next_poi() == 0) << loop.get_next_poi().value_or(0); // end of buffer
+        expect(loop.PROC_get_next_poi() == 0) << loop.PROC_get_next_poi().value_or(0); // end of buffer
         expect(eq(loop.get_length(), 512));
         expect(eq(loop.get_position(), 0));
         for_channel_elems<AudioChannelSubloop<int>, int>(
@@ -124,31 +124,31 @@ suite AudioMidiLoop_audio_tests = []() {
     "audioloop_2_3_record_multiple_source_buffers"_test = []() {
         auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
         AudioMidiLoop loop;
-        loop.add_audio_channel<int>(pool, 10, AudioOutputType::Copy);
+        loop.add_audio_channel<int>(pool, 10, AudioOutputType::Copy, false);
         auto &channel = *loop.audio_channel<int>(0);
 
         auto source_buf = create_audio_buf<int>(32, [](size_t pos) { return pos; });
         loop.plan_transition(Recording);
-        channel.set_recording_buffer(source_buf.data(), source_buf.size());
-        loop.trigger();
-        loop.update_poi();
+        channel.PROC_set_recording_buffer(source_buf.data(), source_buf.size());
+        loop.PROC_trigger();
+        loop.PROC_update_poi();
 
         expect(loop.get_state() == Recording);
-        expect(loop.get_next_poi() == 32) << loop.get_next_poi().value_or(0); // end of buffer
+        expect(loop.PROC_get_next_poi() == 32) << loop.PROC_get_next_poi().value_or(0); // end of buffer
         expect(loop.get_length() == 0);
         expect(loop.get_position() == 0);
 
         for(size_t samples_processed = 0; samples_processed < 512; ) {
-            loop.process(32);
+            loop.PROC_process(32);
             samples_processed += 32;
             source_buf = create_audio_buf<int>(32, [&](size_t pos) { return pos + samples_processed; });
-            channel.set_recording_buffer(source_buf.data(), source_buf.size());
-            loop.handle_poi();
-            loop.update_poi();
+            channel.PROC_set_recording_buffer(source_buf.data(), source_buf.size());
+            loop.PROC_handle_poi();
+            loop.PROC_update_poi();
         }
 
         expect(loop.get_state() == Recording);
-        expect(eq(loop.get_next_poi().value_or(999), 32)) << loop.get_next_poi().value_or(0); // end of buffer
+        expect(eq(loop.PROC_get_next_poi().value_or(999), 32)) << loop.PROC_get_next_poi().value_or(0); // end of buffer
         expect(eq(loop.get_length(), 512));
         expect(eq(loop.get_position(), 0));
         for_channel_elems<AudioChannelSubloop<int>, int>(
@@ -162,7 +162,7 @@ suite AudioMidiLoop_audio_tests = []() {
     "audioloop_3_playback"_test = []() {
         auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
         AudioMidiLoop loop;
-        loop.add_audio_channel<int>(pool, 10, AudioOutputType::Copy);
+        loop.add_audio_channel<int>(pool, 10, AudioOutputType::Copy, false);
         auto &channel = *loop.audio_channel<int>(0);
         
         auto data = create_audio_buf<int>(64, [](size_t pos) { return pos; });
@@ -171,19 +171,19 @@ suite AudioMidiLoop_audio_tests = []() {
         auto play_buf = std::vector<int>(64);
 
         loop.plan_transition(Playing);
-        channel.set_playback_buffer(play_buf.data(), play_buf.size());
-        loop.trigger();
-        loop.update_poi();
+        channel.PROC_set_playback_buffer(play_buf.data(), play_buf.size());
+        loop.PROC_trigger();
+        loop.PROC_update_poi();
 
         expect(loop.get_state() == Playing);
-        expect(loop.get_next_poi() == 64) << loop.get_next_poi().value_or(0); // end of buffer
+        expect(loop.PROC_get_next_poi() == 64) << loop.PROC_get_next_poi().value_or(0); // end of buffer
         expect(loop.get_position() == 0);
         expect(loop.get_length() == 64);
 
-        loop.process(20);
+        loop.PROC_process(20);
 
         expect(loop.get_state() == Playing);
-        expect(loop.get_next_poi() == 44) << loop.get_next_poi().value_or(0); // end of buffer
+        expect(loop.PROC_get_next_poi() == 44) << loop.PROC_get_next_poi().value_or(0); // end of buffer
         expect(eq(loop.get_length(), 64));
         expect(eq(loop.get_position(), 20));
         for(size_t idx=0; idx<20; idx++) {
@@ -194,7 +194,7 @@ suite AudioMidiLoop_audio_tests = []() {
     "audioloop_3_1_playback_multiple_target_buffers"_test = []() {
         auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
         AudioMidiLoop loop;
-        loop.add_audio_channel<int>(pool, 10, AudioOutputType::Copy);
+        loop.add_audio_channel<int>(pool, 10, AudioOutputType::Copy, false);
         auto &channel = *loop.audio_channel<int>(0);
         
         auto data = create_audio_buf<int>(512, [](size_t pos) { return pos; });
@@ -202,20 +202,20 @@ suite AudioMidiLoop_audio_tests = []() {
         loop.set_length(512);
 
         loop.plan_transition(Playing);
-        loop.trigger();
-        loop.update_poi();
+        loop.PROC_trigger();
+        loop.PROC_update_poi();
 
         expect(loop.get_state() == Playing);
-        expect(loop.get_next_poi() == 0) << loop.get_next_poi().value_or(0); // end of buffer
+        expect(loop.PROC_get_next_poi() == 0) << loop.PROC_get_next_poi().value_or(0); // end of buffer
         expect(loop.get_position() == 0);
         expect(loop.get_length() == 512);
 
         auto play_buf = std::vector<int>(512);
         for(size_t processed = 0; processed < 512; processed+=64) {
             
-            channel.set_playback_buffer(play_buf.data()+processed, 64);
-            loop.update_poi();
-            loop.process(64);
+            channel.PROC_set_playback_buffer(play_buf.data()+processed, 64);
+            loop.PROC_update_poi();
+            loop.PROC_process(64);
         }
 
         for (size_t idx=0; idx<512; idx++) {
@@ -227,29 +227,29 @@ suite AudioMidiLoop_audio_tests = []() {
 suite AudioMidiLoop_midi_tests = []() {
     "midiloop_1_stop"_test = []() {
         AudioMidiLoop loop;
-        loop.add_midi_channel<uint32_t, uint16_t>(512);
+        loop.add_midi_channel<uint32_t, uint16_t>(512, false);
         auto &channel = *loop.midi_channel<uint32_t, uint16_t>(0);
 
         expect(loop.get_state() == Stopped);
-        expect(loop.get_next_poi() == std::nullopt);
+        expect(loop.PROC_get_next_poi() == std::nullopt);
         expect(loop.get_length() == 0);
         expect(loop.get_position() == 0);
 
-        loop.process(1000);
+        loop.PROC_process(1000);
 
         expect(loop.get_state() == Stopped);
-        expect(loop.get_next_poi() == std::nullopt);
+        expect(loop.PROC_get_next_poi() == std::nullopt);
         expect(loop.get_length() == 0);
         expect(loop.get_position() == 0);
     };
 
     "midiloop_2_record"_test = []() {
         AudioMidiLoop loop;
-        loop.add_midi_channel<uint32_t, uint16_t>(512);
+        loop.add_midi_channel<uint32_t, uint16_t>(512, false);
         auto &channel = *loop.midi_channel<uint32_t, uint16_t>(0);
 
         expect(loop.get_state() == Stopped);
-        expect(loop.get_next_poi() == std::nullopt);
+        expect(loop.PROC_get_next_poi() == std::nullopt);
         expect(loop.get_length() == 0);
         expect(loop.get_position() == 0);
 
@@ -259,19 +259,19 @@ suite AudioMidiLoop_midi_tests = []() {
         source_buf.read.push_back({.time = 20, .size = 1, .data = { 0x01 }});
         
         loop.plan_transition(Recording);
-        channel.set_recording_buffer(&source_buf, 512);
-        loop.trigger();
-        loop.update_poi();
+        channel.PROC_set_recording_buffer(&source_buf, 512);
+        loop.PROC_trigger();
+        loop.PROC_update_poi();
 
         expect(loop.get_state() == Recording);
-        expect(loop.get_next_poi() == 512) << loop.get_next_poi().value_or(0); // end of buffer
+        expect(loop.PROC_get_next_poi() == 512) << loop.PROC_get_next_poi().value_or(0); // end of buffer
         expect(loop.get_length() == 0);
         expect(loop.get_position() == 0);
 
-        loop.process(20);
+        loop.PROC_process(20);
 
         expect(loop.get_state() == Recording);
-        expect(loop.get_next_poi() == 492) << loop.get_next_poi().value_or(0); // end of buffer
+        expect(loop.PROC_get_next_poi() == 492) << loop.PROC_get_next_poi().value_or(0); // end of buffer
         expect(eq(loop.get_length(), 20));
         expect(eq(loop.get_position(), 0));
 
@@ -285,7 +285,7 @@ suite AudioMidiLoop_midi_tests = []() {
 
     "midiloop_2_1_record_append_out_of_order"_test = []() {
         AudioMidiLoop loop;
-        loop.add_midi_channel<uint32_t, uint16_t>(512);
+        loop.add_midi_channel<uint32_t, uint16_t>(512, false);
         auto &channel = *loop.midi_channel<uint32_t, uint16_t>(0);
         using Message = MidiChannelSubloop<uint32_t, uint16_t>::Message;
         std::vector<Message> contents = {
@@ -295,7 +295,7 @@ suite AudioMidiLoop_midi_tests = []() {
         loop.set_length(100);
 
         expect(loop.get_state() == Stopped);
-        expect(loop.get_next_poi() == std::nullopt);
+        expect(loop.PROC_get_next_poi() == std::nullopt);
         expect(loop.get_length() == 100);
         expect(loop.get_position() == 0);
 
@@ -305,19 +305,19 @@ suite AudioMidiLoop_midi_tests = []() {
         source_buf.read.push_back({.time = 11, .size = 1, .data =  { 0x01 }});
         
         loop.plan_transition(Recording);
-        channel.set_recording_buffer(&source_buf, 512);
-        loop.trigger();
-        loop.update_poi();
+        channel.PROC_set_recording_buffer(&source_buf, 512);
+        loop.PROC_trigger();
+        loop.PROC_update_poi();
 
         expect(loop.get_state() == Recording);
-        expect(loop.get_next_poi() == 512) << loop.get_next_poi().value_or(0); // end of buffer
+        expect(loop.PROC_get_next_poi() == 512) << loop.PROC_get_next_poi().value_or(0); // end of buffer
         expect(loop.get_length() == 100);
         expect(loop.get_position() == 0);
 
-        loop.process(20);
+        loop.PROC_process(20);
 
         expect(loop.get_state() == Recording);
-        expect(loop.get_next_poi() == 492) << loop.get_next_poi().value_or(0); // end of buffer
+        expect(loop.PROC_get_next_poi() == 492) << loop.PROC_get_next_poi().value_or(0); // end of buffer
         expect(eq(loop.get_length(), 120));
         expect(eq(loop.get_position(), 0));
 
@@ -331,7 +331,7 @@ suite AudioMidiLoop_midi_tests = []() {
 
     "midiloop_3_playback"_test = []() {
         AudioMidiLoop loop;
-        loop.add_midi_channel<uint32_t, uint16_t>(512);
+        loop.add_midi_channel<uint32_t, uint16_t>(512, false);
         auto &channel = *loop.midi_channel<uint32_t, uint16_t>(0);
         using Message = MidiChannelSubloop<uint32_t, uint16_t>::Message;
         std::vector<Message> contents = {
@@ -343,26 +343,26 @@ suite AudioMidiLoop_midi_tests = []() {
         loop.set_length(100);
 
         expect(loop.get_state() == Stopped);
-        expect(loop.get_next_poi() == std::nullopt);
+        expect(loop.PROC_get_next_poi() == std::nullopt);
         expect(loop.get_length() == 100);
         expect(loop.get_position() == 0);
 
         auto play_buf = MidiTestBuffer();
         
         loop.plan_transition(Playing);
-        channel.set_playback_buffer(&play_buf, 512);
-        loop.trigger();
-        loop.update_poi();
+        channel.PROC_set_playback_buffer(&play_buf, 512);
+        loop.PROC_trigger();
+        loop.PROC_update_poi();
 
         expect(loop.get_state() == Playing);
-        expect(loop.get_next_poi() == 100) << loop.get_next_poi().value_or(0); // end of loop
+        expect(loop.PROC_get_next_poi() == 100) << loop.PROC_get_next_poi().value_or(0); // end of loop
         expect(loop.get_length() == 100);
         expect(loop.get_position() == 0);
 
-        loop.process(20);
+        loop.PROC_process(20);
 
         expect(loop.get_state() == Playing);
-        expect(loop.get_next_poi() == 80) << loop.get_next_poi().value_or(0); // end of loop
+        expect(loop.PROC_get_next_poi() == 80) << loop.PROC_get_next_poi().value_or(0); // end of loop
         expect(eq(loop.get_length(), 100));
         expect(eq(loop.get_position(), 20));
 
@@ -374,7 +374,7 @@ suite AudioMidiLoop_midi_tests = []() {
 
     "midiloop_4_playback_muted"_test = []() {
         AudioMidiLoop loop;
-        loop.add_midi_channel<uint32_t, uint16_t>(512);
+        loop.add_midi_channel<uint32_t, uint16_t>(512, false);
         auto &channel = *loop.midi_channel<uint32_t, uint16_t>(0);
         using Message = MidiChannelSubloop<uint32_t, uint16_t>::Message;
         std::vector<Message> contents = {
@@ -386,26 +386,26 @@ suite AudioMidiLoop_midi_tests = []() {
         loop.set_length(100);
 
         expect(loop.get_state() == Stopped);
-        expect(loop.get_next_poi() == std::nullopt);
+        expect(loop.PROC_get_next_poi() == std::nullopt);
         expect(loop.get_length() == 100);
         expect(loop.get_position() == 0);
 
         auto play_buf = MidiTestBuffer();
         
         loop.plan_transition(PlayingMuted);
-        channel.set_playback_buffer(&play_buf, 512);
-        loop.trigger();
-        loop.update_poi();
+        channel.PROC_set_playback_buffer(&play_buf, 512);
+        loop.PROC_trigger();
+        loop.PROC_update_poi();
 
         expect(loop.get_state() == PlayingMuted);
-        expect(loop.get_next_poi() == 100) << loop.get_next_poi().value_or(0); // end of loop
+        expect(loop.PROC_get_next_poi() == 100) << loop.PROC_get_next_poi().value_or(0); // end of loop
         expect(loop.get_length() == 100);
         expect(loop.get_position() == 0);
 
-        loop.process(20);
+        loop.PROC_process(20);
 
         expect(loop.get_state() == PlayingMuted);
-        expect(loop.get_next_poi() == 80) << loop.get_next_poi().value_or(0); // end of loop
+        expect(loop.PROC_get_next_poi() == 80) << loop.PROC_get_next_poi().value_or(0); // end of loop
         expect(eq(loop.get_length(), 100));
         expect(eq(loop.get_position(), 20));
 

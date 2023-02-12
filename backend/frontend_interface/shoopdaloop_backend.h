@@ -24,6 +24,11 @@ unsigned          get_n_midi_channels      (shoopdaloop_loop *loop);
 void              delete_loop              (shoopdaloop_loop *loop);
 loop_data_t       get_loop_data            (shoopdaloop_loop *loop);
 void              load_loop_data           (shoopdaloop_loop *loop, loop_data_t data);
+audio_data_t      get_loop_audio_data      (shoopdaloop_loop *loop);
+void              load_loop_audio_data     (shoopdaloop_loop *loop, audio_data_t data);
+midi_data_t       get_loop_midi_data       (shoopdaloop_loop *loop);
+void              load_loop_midi_data      (shoopdaloop_loop *loop, midi_data_t data);
+
 
 // Loop channels
 void                  delete_audio_channel     (shoopdaloop_loop_audio_channel *channel);
@@ -38,8 +43,8 @@ audio_channel_data_t  get_audio_rms_data       (shoopdaloop_loop_audio_channel *
                                                 unsigned to_sample,
                                                 unsigned samples_per_bin);
 midi_channel_data_t   get_midi_channel_data    (shoopdaloop_loop_midi_channel  *channel);
-void                  set_audio_channel_data   (shoopdaloop_loop_audio_channel *channel, audio_channel_data_t data);
-void                  set_midi_channel_data    (shoopdaloop_loop_midi_channel  *channel, midi_channel_data_t  data);
+void                  load_audio_channel_data  (shoopdaloop_loop_audio_channel *channel, audio_channel_data_t data);
+void                  load_midi_channel_data   (shoopdaloop_loop_midi_channel  *channel, midi_channel_data_t  data);
 
 // Actions
 void do_loops_action (unsigned int      n_loops,

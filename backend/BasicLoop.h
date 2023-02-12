@@ -1,5 +1,6 @@
 #pragma once
 #include "LoopInterface.h"
+#include "WithCommandQueue.h"
 #include "types.h"
 #include <cstring>
 #include <memory>
@@ -8,6 +9,7 @@
 #include <optional>
 #include <iostream>
 #include <deque>
+#include <atomic>
 
 enum BasicPointOfInterestFlags {
     Trigger = 1,
@@ -19,7 +21,8 @@ enum BasicPointOfInterestFlags {
 // That includes keeping track of the first upcoming point of interest,
 // logic of handling points of interest while processing, planning
 // state transitions etc.
-class BasicLoop : public LoopInterface {
+class BasicLoop : public LoopInterface,
+                  protected WithCommandQueue<100, 1000000, 1000000, 1000> {
 public:
     struct PointOfInterest {
         size_t when;
@@ -27,91 +30,91 @@ public:
     };
 
 protected:
-    std::optional<PointOfInterest> m_next_poi;
-    std::shared_ptr<LoopInterface> m_soft_sync_source;
-    std::shared_ptr<LoopInterface> m_hard_sync_source;
-    loop_state_t m_state;
-    std::deque<loop_state_t> m_planned_states;
-    std::deque<size_t> m_planned_state_countdowns;
-    bool m_triggering_now;
-    size_t m_length;
-    size_t m_position;
+    std::optional<PointOfInterest> mp_next_poi;
+    std::shared_ptr<LoopInterface> mp_soft_sync_source;
+    std::deque<loop_state_t> mp_planned_states;
+    std::deque<size_t> mp_planned_state_countdowns;
+
+    std::atomic<loop_state_t> ma_state;
+    std::atomic<bool> ma_triggering_now;
+    std::atomic<size_t> ma_length;
+    std::atomic<size_t> ma_position;
 
 public:
 
     BasicLoop() :
-        m_next_poi(std::nullopt),
-        m_state(Stopped),
-        m_soft_sync_source(nullptr),
-        m_hard_sync_source(nullptr),
-        m_triggering_now(false),
-        m_length(0),
-        m_position(0)
+        WithCommandQueue<100, 1000000, 1000000, 1000>(),
+        mp_next_poi(std::nullopt),
+        ma_state(Stopped),
+        mp_soft_sync_source(nullptr),
+        ma_triggering_now(false),
+        ma_length(0),
+        ma_position(0)
     {}
     ~BasicLoop() override {}
 
     // We always assume that the POI has been properly updated by whatever calls were
     // made in the past. Simply return.
-    std::optional<size_t> get_next_poi() const override {
-        return m_next_poi ? m_next_poi.value().when : (std::optional<size_t>)std::nullopt;
+    std::optional<size_t> PROC_get_next_poi() const override {
+        return mp_next_poi ? mp_next_poi.value().when : (std::optional<size_t>)std::nullopt;
     }
 
-    virtual void update_poi() {
-        if((m_state == Playing || m_state == PlayingMuted) && 
-           m_length == 0) {
-            handle_transition(Stopped);
+    virtual void PROC_update_poi() {
+        if((ma_state == Playing || ma_state == PlayingMuted) && 
+           ma_length == 0) {
+            PROC_handle_transition(Stopped);
         }
 
-        if(m_next_poi) {
-            m_next_poi->type_flags &= ~(LoopEnd);
-            if (m_next_poi->type_flags == 0) {
-                m_next_poi = std::nullopt;
+        if(mp_next_poi) {
+            mp_next_poi->type_flags &= ~(LoopEnd);
+            if (mp_next_poi->type_flags == 0) {
+                mp_next_poi = std::nullopt;
             }
         }
 
         std::optional<PointOfInterest> loop_end_poi;
-        if (m_state == Playing || m_state == PlayingMuted) {
+        if (ma_state == Playing || ma_state == PlayingMuted) {
             std::optional<PointOfInterest> loop_end_poi = PointOfInterest {
-                .when = m_length - m_position,
+                .when = ma_length - ma_position,
                 .type_flags = LoopEnd
             };
-            m_next_poi = dominant_poi(m_next_poi, loop_end_poi);
+            mp_next_poi = dominant_poi(mp_next_poi, loop_end_poi);
         }
     }
 
-    void handle_poi() override {
+    void PROC_handle_poi() override {
         // Only handle POIs that are reached right now.
-        if (!m_next_poi || m_next_poi.value().when != 0) {
+        if (!mp_next_poi || mp_next_poi.value().when != 0) {
             return;
         }
 
-        if (m_next_poi->type_flags & Trigger) {
-            trigger();
-            m_next_poi->type_flags &= ~(Trigger);
+        if (mp_next_poi->type_flags & Trigger) {
+            PROC_trigger();
+            mp_next_poi->type_flags &= ~(Trigger);
         }
-        if (m_next_poi->type_flags & LoopEnd) {
-            m_position = 0;
-            m_triggering_now = true; // Emit a trigger on restart
-            trigger();
-            m_next_poi->type_flags &= !(LoopEnd);
+        if (mp_next_poi->type_flags & LoopEnd) {
+            ma_position = 0;
+            ma_triggering_now = true; // Emit a trigger on restart
+            PROC_trigger();
+            mp_next_poi->type_flags &= !(LoopEnd);
         }
 
-        if (m_next_poi->type_flags == 0) {
-            m_next_poi = std::nullopt;
-            update_poi();
+        if (mp_next_poi->type_flags == 0) {
+            mp_next_poi = std::nullopt;
+            PROC_update_poi();
         }
     }
 
-    bool is_triggering_now() override {
-        if (m_next_poi.has_value() && m_next_poi.value().when == 0) {
-            handle_poi();
+    bool PROC_is_triggering_now() override {
+        if (mp_next_poi.has_value() && mp_next_poi.value().when == 0) {
+            PROC_handle_poi();
         }
-        if (m_soft_sync_source && m_soft_sync_source->is_triggering_now()) { return true; }
-        if (m_triggering_now) { return true; }
+        if (mp_soft_sync_source && mp_soft_sync_source->PROC_is_triggering_now()) { return true; }
+        if (ma_triggering_now) { return true; }
         return false;
     }
 
-    virtual void process_subloops(
+    virtual void PROC_process_subloops(
         loop_state_t state_before,
         loop_state_t state_after,
         size_t n_samples,
@@ -121,21 +124,23 @@ public:
         size_t length_after
     ) {}
 
-    void process(size_t n_samples) override {
+    void PROC_process(size_t n_samples) override {
         if (n_samples == 0) {
             throw std::runtime_error("Processing by 0");
         }
-        if (m_next_poi && n_samples > m_next_poi.value().when) {
+        if (mp_next_poi && n_samples > mp_next_poi.value().when) {
             throw std::runtime_error("Attempted to process loop beyond its next POI.");
         }
-        m_triggering_now = false;
+        PROC_handle_command_queue();
 
-        size_t pos_before = m_position;
-        size_t pos_after = m_position;
-        size_t length_before = m_length;
-        size_t length_after = m_length;
+        ma_triggering_now = false;
 
-        switch(m_state) {
+        size_t pos_before = ma_position;
+        size_t pos_after = ma_position;
+        size_t length_before = ma_length;
+        size_t length_after = ma_length;
+
+        switch(ma_state) {
             case Recording:
                 length_after += n_samples;
                 break;
@@ -147,132 +152,183 @@ public:
                 break;
         }
 
-        process_subloops(m_state, m_state, n_samples, pos_before, pos_after,
+        PROC_process_subloops(ma_state, ma_state, n_samples, pos_before, pos_after,
             length_before, length_after);
 
-        if (m_next_poi) { m_next_poi.value().when -= n_samples; }
-        m_position = pos_after;
+        if (mp_next_poi) { mp_next_poi.value().when -= n_samples; }
+        ma_position = pos_after;
         set_length(length_after);
-        handle_poi();
-        update_poi();
+        PROC_handle_poi();
+        PROC_update_poi();
     }
 
-    void set_soft_sync_source(std::shared_ptr<LoopInterface> const& src) override {
-        m_soft_sync_source = src;
-    }
-    std::shared_ptr<LoopInterface> const& get_soft_sync_source() const override {
-        return m_soft_sync_source;
-    }
-
-    void trigger(bool propagate=true) override {
-        if (propagate) {
-            m_triggering_now = true;
-        }
-        if (m_planned_states.size() > 0) {
-            if (m_planned_state_countdowns.front() == 0) {
-                handle_transition(m_planned_states.front());
-                m_planned_states.pop_front();
-                m_planned_state_countdowns.pop_front();
-            } else {
-                m_planned_state_countdowns.front()--;
-            }
-        }
-    }
-
-    void handle_soft_sync() override {
-        if (!m_hard_sync_source && m_soft_sync_source && m_soft_sync_source->is_triggering_now()) {
-            trigger();
-        }
-    }
-
-    void handle_transition(loop_state_t new_state) {
-        m_state = new_state;
-        if (m_state == Stopped) { m_position = 0; }
-        if ((m_state == Playing || m_state == PlayingMuted) &&
-            m_position == 0) {
-                m_triggering_now = true;
-            }
-        m_next_poi = std::nullopt;
-        update_poi();
-    }
-
-    size_t get_n_planned_transitions() const override {
-        return m_planned_states.size();
-    }
-
-    size_t get_planned_transition_delay(size_t idx) const override {
-        if(idx >= m_planned_state_countdowns.size()) {
-            throw std::runtime_error("Attempted to get out-of-bounds planned transition");
-        }
-        return m_planned_state_countdowns.at(idx);
-    }
-
-    loop_state_t get_planned_transition_state(size_t idx) const override {
-        if(idx >= m_planned_states.size()) {
-            throw std::runtime_error("Attempted to get out-of-bounds planned transition");
-        }
-        return m_planned_states.at(idx);
-    }
-
-    void clear_planned_transitions() override {
-        m_planned_states.clear();
-        m_planned_state_countdowns.clear();
-    }
-
-    void plan_transition(loop_state_t state, size_t n_cycles_delay = 0) override {
-        if (m_hard_sync_source) {
-            // Hard-synced loops will not plan any transitions, just follow
-            // the sync source.
-            return;
-        } else if (!m_soft_sync_source &&
-                    m_state != Playing &&
-                    m_state != PlayingMuted) {
-            // Un-synced loops transition immediately from non-playing
-            // states.
-            handle_transition(state);
+    void set_soft_sync_source(std::shared_ptr<LoopInterface> const& src, bool thread_safe=true) override {
+        if(thread_safe) {
+            exec_process_thread_command([&]() { mp_soft_sync_source = src; });
         } else {
-            m_planned_states.push_back(state);
-            m_planned_state_countdowns.push_back(n_cycles_delay);
+            mp_soft_sync_source = src;
         }
+    }
+    std::shared_ptr<LoopInterface> get_soft_sync_source(bool thread_safe = true) override {
+        if(thread_safe) {
+            std::shared_ptr<LoopInterface> rval;
+            exec_process_thread_command([&]() { rval = mp_soft_sync_source; });
+            return rval;
+        }
+        return mp_soft_sync_source;
+    }
+
+    void PROC_trigger(bool propagate=true) override {
+        if (propagate) {
+            ma_triggering_now = true;
+        }
+        if (mp_planned_states.size() > 0) {
+            if (mp_planned_state_countdowns.front() == 0) {
+                PROC_handle_transition(mp_planned_states.front());
+                mp_planned_states.pop_front();
+                mp_planned_state_countdowns.pop_front();
+            } else {
+                mp_planned_state_countdowns.front()--;
+            }
+        }
+    }
+
+    void PROC_handle_soft_sync() override {
+        if (!mp_soft_sync_source && mp_soft_sync_source->PROC_is_triggering_now()) {
+            PROC_trigger();
+        }
+    }
+
+    void PROC_handle_transition(loop_state_t new_state) {
+        ma_state = new_state;
+        if (ma_state == Stopped) { ma_position = 0; }
+        if ((ma_state == Playing || ma_state == PlayingMuted) &&
+            ma_position == 0) {
+                ma_triggering_now = true;
+            }
+        mp_next_poi = std::nullopt;
+        PROC_update_poi();
+    }
+
+    size_t get_n_planned_transitions(bool thread_safe=true) override {
+        if (thread_safe) {
+            size_t rval;
+            exec_process_thread_command([&]() { rval = mp_planned_states.size(); });
+            return rval;
+        }
+        return mp_planned_states.size();
+    }
+
+    size_t get_planned_transition_delay(size_t idx, bool thread_safe=true) override {
+        size_t rval;
+        auto fn = [&]() {
+            if(idx >= mp_planned_state_countdowns.size()) {
+                throw std::runtime_error("Attempted to get out-of-bounds planned transition");
+            }
+            rval = mp_planned_state_countdowns.at(idx);
+        };
+        if (thread_safe) {
+            exec_process_thread_command(fn);
+        } else {
+            fn();
+        }
+        return rval;
+    }
+
+    loop_state_t get_planned_transition_state(size_t idx, bool thread_safe=true) override {
+        loop_state_t rval;
+        auto fn = [&]() {
+            if(idx >= mp_planned_states.size()) {
+                throw std::runtime_error("Attempted to get out-of-bounds planned transition");
+            }
+            rval = mp_planned_states.at(idx);
+        };
+        if (thread_safe) {
+            exec_process_thread_command(fn);
+        } else {
+            fn();
+        }
+        return rval;
+    }
+
+    void clear_planned_transitions(bool thread_safe) override {
+        auto fn = [&]() { 
+            mp_planned_states.clear();
+            mp_planned_state_countdowns.clear();
+        };
+        if (thread_safe) {
+            exec_process_thread_command(fn);
+        } else {
+            fn();
+        }
+    }
+
+    void plan_transition(loop_state_t state, size_t n_cycles_delay = 0, bool thread_safe=true) override {
+        auto fn = [&]() {
+            if (!mp_soft_sync_source &&
+                        ma_state != Playing &&
+                        ma_state != PlayingMuted) {
+                // Un-synced loops transition immediately from non-playing
+                // states.
+                PROC_handle_transition(state);
+            } else {
+                mp_planned_states.push_back(state);
+                mp_planned_state_countdowns.push_back(n_cycles_delay);
+            }
+        };
+        if (thread_safe) { exec_process_thread_command(fn); }
+        else { fn(); }
     }
 
     size_t get_position() const override {
-        return m_position;
+        return ma_position;
     }
 
-    void set_position(size_t pos) override {
-        if (pos != m_position) {
-            m_next_poi = std::nullopt;
-            m_position = pos;
-            update_poi();
-        }
+    void set_position(size_t pos, bool thread_safe=true) override {
+        auto fn = [&]() {
+            if (pos != ma_position) {
+                mp_next_poi = std::nullopt;
+                ma_position = pos;
+                PROC_update_poi();
+            }
+        };
+        if (thread_safe) { exec_process_thread_command(fn); }
+        else { fn(); }
     }
 
     size_t get_length() const override {
-        return m_length;
+        return ma_length;
     }
 
     loop_state_t get_state() const override {
-        return m_state;
+        return ma_state;
     }
 
-    void set_length(size_t len) override {
-        if (len != m_length) {
-            m_length = len;
-            if (m_position >= len) {
-                set_position(len-1);
+    void set_length(size_t len, bool thread_safe=true) override {
+        auto fn = [&]() {
+            if (len != ma_length) {
+                ma_length = len;
+                if (ma_position >= len) {
+                    set_position(len-1);
+                }
+                mp_next_poi = std::nullopt;
+                PROC_update_poi();
             }
-            m_next_poi = std::nullopt;
-            update_poi();
-        }
+        };
+        if (thread_safe) { exec_process_thread_command(fn); }
+        else { fn(); }
     }
 
-    void set_state(loop_state_t state) override {
-        if (state != m_state) {
-            m_state = state;
-            m_next_poi = std::nullopt;
-            update_poi();
-        }
+    void set_state(loop_state_t state, bool thread_safe=true) override {
+        auto fn = [&]() {
+            if (state != ma_state) {
+                ma_state = state;
+                mp_next_poi = std::nullopt;
+                PROC_update_poi();
+            }
+        };
+        if (thread_safe) { exec_process_thread_command(fn); }
+        else { fn(); }
     }
 
 protected:

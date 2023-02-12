@@ -19,21 +19,21 @@ void process_loops(std::vector<std::shared_ptr<Loop>> const& loops,
 
     // Gather up all POIs.
     for(size_t i=0; i<loops.size(); i++) {
-        size_t poi = loops[i]->get_next_poi().value_or(n_samples);
+        size_t poi = loops[i]->PROC_get_next_poi().value_or(n_samples);
         process_until = std::min(process_until, poi);
     }
 
     // Process until the first POI, then handle POIs and triggers.
     for(size_t i=0; i<loops.size(); i++) {
         if (process_until > 0) {
-            loops[i]->process(process_until);
+            loops[i]->PROC_process(process_until);
         }
     }
     for(size_t i=0; i<loops.size(); i++) {
-        loops[i]->handle_poi();
+        loops[i]->PROC_handle_poi();
     }
     for(size_t i=0; i<loops.size(); i++) {
-        loops[i]->handle_soft_sync();
+        loops[i]->PROC_handle_soft_sync();
     }
 
     // If we didn't process the whole thing, keep going.

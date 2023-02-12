@@ -36,7 +36,7 @@ public:
         m_name = std::string(jack_port_name(m_port));
     }
     
-    float *get_buffer(size_t n_frames) override {
+    float *PROC_get_buffer(size_t n_frames) override {
         auto rval = (jack_default_audio_sample_t*) jack_port_get_buffer(m_port, n_frames);
         if (m_direction == PortDirection::Output) {
             memset((void*)rval, 0, sizeof(jack_default_audio_sample_t) * n_frames);

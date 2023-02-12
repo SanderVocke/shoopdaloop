@@ -18,8 +18,8 @@ public:
         void* jack_buf;
         JackReadMidiBuf(void* buf) : jack_buf(buf) {}
 
-        size_t get_n_events() const override { return jack_midi_get_event_count(jack_buf); }
-        void get_event(size_t idx,
+        size_t PROC_get_n_events() const override { return jack_midi_get_event_count(jack_buf); }
+        void PROC_get_event(size_t idx,
                        uint32_t &size_out,
                        uint32_t &time_out,
                        uint8_t* &data_out) const override
@@ -36,7 +36,7 @@ public:
         void* jack_buf;
         JackWriteMidiBuf(void* buf) : jack_buf(buf) {}
 
-        void write_event(uint32_t size,
+        void PROC_write_event(uint32_t size,
                          uint32_t time,
                          uint8_t* data)
         {
@@ -82,11 +82,11 @@ public:
         return m_port;
     }
 
-    std::unique_ptr<MidiReadableBufferInterface> get_read_buffer (size_t n_frames) override {
+    std::unique_ptr<MidiReadableBufferInterface> PROC_get_read_buffer (size_t n_frames) override {
         return std::make_unique<JackReadMidiBuf>(jack_port_get_buffer(m_port, n_frames));
     }
 
-    std::unique_ptr<MidiWriteableBufferInterface> get_write_buffer (size_t n_frames) override {
+    std::unique_ptr<MidiWriteableBufferInterface> PROC_get_write_buffer (size_t n_frames) override {
         return std::make_unique<JackWriteMidiBuf>(jack_port_get_buffer(m_port, n_frames));
     }
 

@@ -16,13 +16,13 @@ class JackAudioSystem : public AudioSystemInterface<jack_nframes_t, size_t> {
     std::map<std::string, std::shared_ptr<PortInterface>> m_ports;
     std::function<void(size_t)> m_process_cb;
 
-    static int process_cb_static (jack_nframes_t nframes,
+    static int PROC_process_cb_static (jack_nframes_t nframes,
                                   void *arg) {
         auto &inst = *((JackAudioSystem *)arg);
-        return inst.process_cb_inst(nframes);
+        return inst.PROC_process_cb_inst(nframes);
     }
 
-    int process_cb_inst (jack_nframes_t nframes) {
+    int PROC_process_cb_inst (jack_nframes_t nframes) {
         if (m_process_cb) {
             m_process_cb((size_t) nframes);
         }
@@ -53,7 +53,7 @@ public:
         }
 
         jack_set_process_callback(m_client,
-                                  JackAudioSystem::process_cb_static,
+                                  JackAudioSystem::PROC_process_cb_static,
                                   (void*)this);
     }
 

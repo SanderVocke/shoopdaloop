@@ -24,11 +24,13 @@ void for_buf_elems(Buf const& buf, std::function<void(size_t,S const&)> fn,
 }
 
 template<typename Channel, typename S>
-void for_channel_elems(Channel const& chan, std::function<void(size_t,S const&)> fn,
+void for_channel_elems(Channel &chan, std::function<void(size_t,S const&)> fn,
                    int start=0, int n=-1) {
     if(n < 0) { n = chan.data_length() - start; }
+    
+    auto elems = chan.get_data(false);
     for(size_t idx=start; idx < (start+n); idx++) {
-        fn(idx, chan.at(idx));
+        fn(idx, elems[idx]);
     }
 }
 
@@ -45,11 +47,11 @@ public:
     size_t length;
 
 
-    size_t get_n_events() const override {
+    size_t PROC_get_n_events() const override {
         return read.size();
     }
 
-    void   get_event(size_t idx,
+    void   PROC_get_event(size_t idx,
                              uint32_t &size_out,
                              uint32_t &time_out,
                              uint8_t* &data_out) const override
@@ -59,7 +61,7 @@ public:
         data_out = (uint8_t*)read[idx].data.data();
     }
 
-    void write_event(uint32_t size,
+    void PROC_write_event(uint32_t size,
                              uint32_t time,
                              uint8_t* data) override
     {

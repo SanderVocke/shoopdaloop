@@ -14,7 +14,7 @@ public:
         PortDirection direction
     ) : PortInterface() {}
 
-    virtual SampleT *get_buffer(size_t n_frames) = 0;
+    virtual SampleT *PROC_get_buffer(size_t n_frames) = 0;
 
     AudioPortInterface() {}
     virtual ~AudioPortInterface() {}

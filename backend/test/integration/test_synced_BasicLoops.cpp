@@ -18,14 +18,14 @@ suite Synced_BasicLoops_tests = []() {
         auto loop2 = std::make_shared<BasicLoop>();
         
         loop1->set_soft_sync_source(loop2);
-        loop1->m_state = Stopped;
-        loop1->set_length(10);
+        loop1->set_state(Stopped, false);
+        loop1->set_length(10, false);
         loop1->plan_transition(Playing);
 
-        loop2->trigger();
-        expect(eq(loop2->is_triggering_now(), true));
+        loop2->PROC_trigger();
+        expect(eq(loop2->PROC_is_triggering_now(), true));
 
-        loop1->handle_soft_sync();
+        loop1->PROC_handle_soft_sync();
 
         expect(eq(loop1->get_state(), Playing));
     };
@@ -35,21 +35,21 @@ suite Synced_BasicLoops_tests = []() {
         auto loop2 = std::make_shared<BasicLoop>();
 
         loop1->set_soft_sync_source(loop2);
-        loop1->m_state = Stopped;
-        loop1->m_length = 100;
+        loop1->set_state(Stopped, false);
+        loop1->set_length(100, false);
         loop1->plan_transition(Playing);
-        loop1->update_poi();
+        loop1->PROC_update_poi();
 
-        loop2->m_state = Playing;
-        loop2->m_length = 100;
-        loop2->m_position = 90;
-        loop2->update_poi();
+        loop2->set_state(Playing);
+        loop2->set_length(100, false);
+        loop2->set_position(90, false);
+        loop2->PROC_update_poi();
 
         process_loops<BasicLoop>({loop1, loop2}, 20);
 
         expect(eq(loop2->get_position(), 10));
         expect(eq(loop2->get_state(), Playing));
-        expect(eq(loop2->is_triggering_now(), false));
+        expect(eq(loop2->PROC_is_triggering_now(), false));
 
         expect(eq(loop1->get_state(), Playing));
         expect(eq(loop1->get_position(), 10));

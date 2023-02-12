@@ -138,6 +138,7 @@ unsigned get_sample_rate() {
 }
 
 shoopdaloop_loop *create_loop() {
+    std::cerr << "Warning: create_loop should be made thread-safe" << std::endl;
     auto r = std::make_shared<LoopInfo>();
     g_loops.push_back(r);
     return (shoopdaloop_loop*) r.get();
@@ -145,6 +146,7 @@ shoopdaloop_loop *create_loop() {
 
 shoopdaloop_loop_audio_channel *add_audio_channel (shoopdaloop_loop *loop) {
     SharedLoopInfo loop_info = find_loop(loop);
+    std::cerr << "Warning: add_audio_channel should be made thread-safe" << std::endl;
     auto r = loop_info->loop->add_audio_channel<float>(g_audio_buffer_pool,
                                                        gc_audio_channel_initial_buffers,
                                                        AudioOutputType::Copy);
@@ -153,6 +155,7 @@ shoopdaloop_loop_audio_channel *add_audio_channel (shoopdaloop_loop *loop) {
 
 shoopdaloop_loop_midi_channel  *add_midi_channel  (shoopdaloop_loop *loop) {
     SharedLoopInfo loop_info = find_loop(loop);
+    std::cerr << "Warning: add_midi_channel should be made thread-safe" << std::endl;
     auto r = loop_info->loop->add_midi_channel<Time, Size>(gc_midi_storage_size);
     return (shoopdaloop_loop_midi_channel *)r.get();
 }
@@ -163,4 +166,76 @@ shoopdaloop_loop_audio_channel *get_audio_channel (shoopdaloop_loop *loop, size_
 
 shoopdaloop_loop_midi_channel *get_midi_channel (shoopdaloop_loop *loop, size_t idx) {
     return (shoopdaloop_loop_midi_channel *)find_loop(loop)->loop->midi_channel<Time, Size>(idx).get();
+}
+
+unsigned get_n_audio_channels (shoopdaloop_loop *loop) {
+    return find_loop(loop)->loop->n_audio_channels();
+}
+
+unsigned get_n_midi_channels (shoopdaloop_loop *loop) {
+    return find_loop(loop)->loop->n_midi_channels();
+}
+
+void delete_loop (shoopdaloop_loop *loop) {
+    auto r = std::find_if(g_loops.begin(), g_loops.end(),
+        [&](auto const& e) { return (shoopdaloop_loop*)e.get() == loop; });
+    if (r == g_loops.end()) {
+        throw std::runtime_error("Attempting to delete non-existent loop.");
+    }
+    g_loops.erase(r);
+}
+
+audio_data_t get_loop_audio_data (shoopdaloop_loop *loop) {
+    auto &loop_info = *find_loop(loop);
+    audio_data_t a;
+    a.n_channels = loop_info.loop->n_audio_channels();
+    a.channels_data = (audio_channel_data_t*)malloc(sizeof(audio_channel_data_t) * a.n_channels);
+    for (size_t idx=0; idx < a.n_channels; idx++) {
+        a.channels_data[idx] = get_audio_channel_data(get_audio_channel(loop, idx));
+    }
+    return a;
+}
+
+midi_data_t get_loop_midi_data (shoopdaloop_loop *loop) {
+    auto &loop_info = *find_loop(loop);
+    midi_data_t a;
+    a.n_channels = loop_info.loop->n_midi_channels();
+    a.channels_data = (midi_channel_data_t*)malloc(sizeof(midi_channel_data_t) * a.n_channels);
+    for (size_t idx=0; idx < a.n_channels; idx++) {
+        a.channels_data[idx] = get_midi_channel_data(get_midi_channel(loop, idx));
+    }
+    return a;
+}
+
+void load_loop_audio_data(shoopdaloop_loop *loop, audio_data_t data) {
+    auto &loop_info = *find_loop(loop);
+    for (size_t idx=0; idx < data.n_channels; idx++) {
+        audio_channel_data_t &d = data.channels_data[idx];
+        load_audio_channel_data(get_audio_channel(loop, idx), d);
+    }
+}
+
+void load_loop_midi_data(shoopdaloop_loop *loop, midi_data_t data) {
+    auto &loop_info = *find_loop(loop);
+    for (size_t idx=0; idx < data.n_channels; idx++) {
+        midi_channel_data_t &d = data.channels_data[idx];
+        load_midi_channel_data(get_midi_channel(loop, idx), d);
+    }
+}
+
+loop_data_t get_loop_data (shoopdaloop_loop *loop) {
+    auto &loop_info = *find_loop(loop);
+
+    loop_data_t r;
+    r.audio_data = get_loop_audio_data(loop);
+    r.midi_data = get_loop_midi_data(loop);
+    r.length = loop_info.loop->get_length();
+
+    return r;
+}
+
+void load_loop_data (shoopdaloop_loop *loop, loop_data_t data) {
+    load_loop_audio_data(loop, data.audio_data);
+    load_loop_midi_data(loop, data.midi_data);
+    find_loop(loop)->loop->set_length(data.length);
 }
