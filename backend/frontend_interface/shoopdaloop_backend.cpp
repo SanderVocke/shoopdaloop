@@ -714,6 +714,7 @@ void connect_midi_output(shoopdaloop_loop_midi_channel *channel, shoopdaloop_mid
 
 void connect_audio_input(shoopdaloop_loop_audio_channel *channel, shoopdaloop_audio_port *port) {
     g_cmd_queue.queue([&]() {
+        std::cout << "Connect " << port << ", " << internal_audio_port(port).get() << std::endl;
         auto _port = internal_audio_port(port);
         auto _channel = internal_audio_channel(channel);
         _channel->connect_input_port(_port, false);
@@ -841,6 +842,7 @@ shoopdaloop_audio_port *open_audio_port (const char* name_hint, port_direction_t
     g_cmd_queue.queue([pi]() {
         g_ports.push_back(pi);
     });
+    std::cout << "Open " << pi.get() << std::endl;
     return external_audio_port(pi);
 }
 
