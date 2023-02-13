@@ -86,7 +86,6 @@ int main(int argc, const char* argv[]) {
     for(size_t idx=0; idx < n_audio_inputs; idx++) {
         std::string name = "audio_in_" + std::to_string(idx+1);
         g_audio_input_ports.push_back(open_audio_port(name.c_str(), Input));
-        std::cout << "Saved " << g_audio_input_ports.back() << std::endl;
     }
     std::cout << "Creating " << n_audio_outputs << " audio outputs." << std::endl;
     for(size_t idx=0; idx < n_audio_outputs; idx++) {
@@ -109,7 +108,6 @@ int main(int argc, const char* argv[]) {
     port_idx = 0;
     for (size_t loop_idx=0; loop_idx < n_loops; loop_idx++) {
         for (size_t chan_idx=0; chan_idx < n_audio_channels; chan_idx++) {
-            std::cout << "Using " << g_audio_input_ports[port_idx] << std::endl;
             connect_audio_input(g_audio_channels[loop_idx][chan_idx], g_audio_input_ports[port_idx]);
             port_idx = (port_idx+1) % n_audio_inputs;
         }
