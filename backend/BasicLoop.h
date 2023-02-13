@@ -33,7 +33,7 @@ protected:
     std::optional<PointOfInterest> mp_next_poi;
     std::shared_ptr<LoopInterface> mp_soft_sync_source;
     std::deque<loop_state_t> mp_planned_states;
-    std::deque<size_t> mp_planned_state_countdowns;
+    std::deque<int> mp_planned_state_countdowns;
 
     std::atomic<loop_state_t> ma_state;
     std::atomic<bool> ma_triggering_now;
@@ -182,14 +182,14 @@ public:
         if (propagate) {
             ma_triggering_now = true;
         }
-        if (mp_planned_states.size() > 0) {
-            if (mp_planned_state_countdowns.front() == 0) {
-                PROC_handle_transition(mp_planned_states.front());
-                mp_planned_states.pop_front();
-                mp_planned_state_countdowns.pop_front();
-            } else {
-                mp_planned_state_countdowns.front()--;
-            }
+
+        for (auto &elem: mp_planned_state_countdowns) {
+            elem--;
+        }
+        while (mp_planned_state_countdowns.front() < 0) {
+            PROC_handle_transition(mp_planned_states.front());
+            mp_planned_state_countdowns.pop_front();
+            mp_planned_states.pop_front();
         }
     }
 
@@ -263,17 +263,33 @@ public:
         }
     }
 
-    void plan_transition(loop_state_t state, size_t n_cycles_delay = 0, bool thread_safe=true) override {
+    void plan_transition(loop_state_t state, size_t n_cycles_delay = 0, bool wait_for_soft_sync = true, bool thread_safe=true) override {
         auto fn = [&]() {
-            if (!mp_soft_sync_source &&
-                        ma_state != Playing &&
-                        ma_state != PlayingMuted) {
+            bool transitioning_immediately =
+                (!mp_soft_sync_source && ma_state != Playing && ma_state != PlayingMuted) ||
+                (!wait_for_soft_sync);
+            if (transitioning_immediately) {
                 // Un-synced loops transition immediately from non-playing
                 // states.
                 PROC_handle_transition(state);
+                mp_planned_states.clear();
+                mp_planned_state_countdowns.clear();
             } else {
-                mp_planned_states.push_back(state);
-                mp_planned_state_countdowns.push_back(n_cycles_delay);
+                size_t insertion_point;
+                for (insertion_point=0; insertion_point <= mp_planned_state_countdowns.size(); insertion_point++) {
+                    if (insertion_point < mp_planned_state_countdowns.size() &&
+                        mp_planned_state_countdowns[insertion_point] <= n_cycles_delay) { break; }
+                }
+                if (insertion_point >= mp_planned_state_countdowns.size()) {
+                    mp_planned_state_countdowns.push_back(n_cycles_delay);
+                    mp_planned_states.push_back(state);
+                } else {
+                    // Replace some planned states
+                    mp_planned_state_countdowns[insertion_point] = n_cycles_delay;
+                    mp_planned_states[insertion_point] = state;
+                    mp_planned_state_countdowns.resize(insertion_point+1);
+                    mp_planned_states.resize(insertion_point+1);
+                }
             }
         };
         if (thread_safe) { exec_process_thread_command(fn); }

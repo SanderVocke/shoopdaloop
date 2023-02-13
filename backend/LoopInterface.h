@@ -39,13 +39,13 @@ public:
     virtual void PROC_process(size_t n_samples) = 0;
 
     // State transitions may be planned for a loop.
-    // The delay is measured in amount of triggers received before transitioning.    // Note that the delays are stacked (each delay starts counting)
-    // down from the transition before it).
+    // The delay is measured in amount of triggers received before transitioning.
+    // The delays are absolute, as opposed to relative to the transition before it.
     virtual size_t          get_n_planned_transitions(bool thread_safe = true) = 0;
     virtual size_t          get_planned_transition_delay(size_t idx, bool thread_safe = true) = 0;
     virtual loop_state_t    get_planned_transition_state(size_t idx, bool thread_safe = true) = 0;
     virtual void            clear_planned_transitions(bool thread_safe = true) = 0;
-    virtual void            plan_transition(loop_state_t state, size_t n_cycles_delay = 0, bool thread_safe = true) = 0;
+    virtual void            plan_transition(loop_state_t state, size_t n_cycles_delay = 0, bool wait_for_soft_sync = true, bool thread_safe = true) = 0;
 
 
     // Getters and setters.

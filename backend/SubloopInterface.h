@@ -32,7 +32,7 @@ public:
         size_t pos_before,
         size_t pos_after,
         size_t length_before,
-        size_t ength_after
+        size_t length_after
     ) = 0;
 
     SubloopInterface() = default;

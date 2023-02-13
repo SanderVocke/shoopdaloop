@@ -80,8 +80,7 @@ public:
 
     std::shared_ptr<MidiPortInterface> open_midi_port(
         std::string name,
-        PortDirection direction,
-        bool decoupled
+        PortDirection direction
     ) override {
         std::shared_ptr<PortInterface> port =
             std::make_shared<JackMidiPort>(name, direction, m_client);

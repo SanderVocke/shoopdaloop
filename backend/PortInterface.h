@@ -14,5 +14,5 @@ public:
     virtual std::string const& name() const = 0;
 
     PortInterface() {}
-    virtual ~PortInterface() {}
+    virtual ~PortInterface() = 0;
 };

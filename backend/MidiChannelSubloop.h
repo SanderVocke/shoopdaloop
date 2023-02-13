@@ -3,6 +3,7 @@
 #include "MidiPortInterface.h"
 #include "SubloopInterface.h"
 #include "WithCommandQueue.h"
+#include "MidiMessage.h"
 #include <optional>
 #include <functional>
 #include <chrono>
@@ -16,6 +17,7 @@ class MidiChannelSubloop : public SubloopInterface,
 public:
     using Storage = MidiStorage<TimeType, SizeType>;
     using StorageCursor = typename Storage::Cursor;
+    using Message = MidiMessage<TimeType, SizeType>;
 
 private:
     template <typename Buf>
@@ -170,12 +172,6 @@ public:
         mp_recording_source_buffer.value().n_events_total = buffer->PROC_get_n_events();
     }
 
-    struct Message {
-        TimeType time;
-        SizeType size;
-        std::vector<uint8_t> data;
-    };
-
     std::vector<Message> retrieve_contents(bool thread_safe = true) {
         auto s = std::make_shared<Storage>(mp_storage->bytes_capacity());
         auto fn = [&]() {
@@ -210,4 +206,9 @@ public:
     void PROC_handle_poi(loop_state_t state,
                     size_t length,
                     size_t position) override {}
+    
+    void PROC_clear() {
+        mp_storage->clear();
+        mp_playback_cursor->reset();
+    }
 };

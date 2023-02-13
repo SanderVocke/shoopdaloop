@@ -13,6 +13,7 @@ typedef enum {
     LOOP_STATE_MAX
 } loop_state_t;
 
+#warning Remove action types
 typedef enum  {
     DoRecord,           // Arg 1 is # of cycles to delay before starting.
     DoRecordNCycles,    // Arg 1 is # of cycles to delay before starting. Arg 2 # of cycles to record. Arg 3 is the next state after finishing.
@@ -40,12 +41,12 @@ typedef enum {
     Profiling = 1
 } backend_features_t;
 
-typedef struct _shoopdaloop_loop               shoopdaloop_loop;
-typedef struct _shoopdaloop_loop_audio_channel shoopdaloop_loop_audio_channel;
-typedef struct _shoopdaloop_loop_midi_channel  shoopdaloop_loop_midi_channel;
-typedef struct _shoopdaloop_audio_port         shoopdaloop_audio_port;
-typedef struct _shoopdaloop_midi_port          shoopdaloop_midi_port;
-typedef struct _shoopdaloop_slow_midi_port     shoopdaloop_slow_midi_port;
+typedef struct _shoopdaloop_loop                shoopdaloop_loop;
+typedef struct _shoopdaloop_loop_audio_channel  shoopdaloop_loop_audio_channel;
+typedef struct _shoopdaloop_loop_midi_channel   shoopdaloop_loop_midi_channel;
+typedef struct _shoopdaloop_audio_port          shoopdaloop_audio_port;
+typedef struct _shoopdaloop_midi_port           shoopdaloop_midi_port;
+typedef struct _shoopdaloop_decoupled_midi_port shoopdaloop_decoupled_midi_port;
 typedef struct {
     unsigned int            n_output_ports;
     _shoopdaloop_audio_port *output_ports;
@@ -139,8 +140,6 @@ typedef struct {
     audio_data_t audio_data;
     midi_data_t  midi_data;
 } loop_data_t;
-
-typedef void(*SlowMIDIReceivedCallback) (shoopdaloop_slow_midi_port *port, unsigned len, unsigned char *data);
 
 #ifdef __cplusplus
 }

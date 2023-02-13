@@ -25,16 +25,10 @@ public:
     ) = 0;
 
     // Create a MIDI port.
-    //
-    // decoupled: specifies whether the port should be decoupled
-    //   from real-time processing by having intermediate storage.
-    //   Such ports are suitable for reading out only once in a while,
-    //   at the cost of adding latency.
     virtual
     std::shared_ptr<MidiPortInterface> open_midi_port(
         std::string name,
-        PortDirection direction,
-        bool decoupled
+        PortDirection direction
     ) = 0;
 
     virtual void start() = 0;

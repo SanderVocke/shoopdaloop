@@ -237,6 +237,11 @@ public:
         mp_recording_source_buffer_size = size;
     }
 
+    void PROC_clear() {
+        mp_buffers.clear();
+        ma_data_length = 0;
+    }
+
 protected:
     Buffer get_new_buffer() const {
         auto buf = Buffer(ma_buffer_pool->get_object());
