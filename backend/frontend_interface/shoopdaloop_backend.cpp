@@ -32,7 +32,7 @@ constexpr size_t gc_initial_max_ports = 1024;
 constexpr size_t gc_initial_max_decoupled_midi_ports = 512;
 constexpr size_t gc_n_buffers_in_pool = 128;
 constexpr size_t gc_audio_buffer_size = 32768;
-constexpr size_t gc_command_queue_size = 256;
+constexpr size_t gc_command_queue_size = 2048;
 constexpr size_t gc_audio_channel_initial_buffers = 128;
 constexpr size_t gc_midi_storage_size = 16384;
 constexpr size_t gc_default_max_port_mappings = 8;
@@ -379,7 +379,6 @@ void LoopInfo::delete_midi_channel(SharedChannelInfo chan) {
 
 // HELPER FUNCTIONS
 SharedPortInfo internal_audio_port(shoopdaloop_audio_port *port) {
-    std::cout << "Int " << port << std::endl;
     return ((PortInfo*)port)->shared_from_this();
 }
 
@@ -408,7 +407,6 @@ shoopdaloop_midi_port* external_midi_port(SharedPortInfo port) {
 }
 
 shoopdaloop_loop_audio_channel* external_audio_channel(SharedChannelInfo port) {
-    std::cout << "Ext " << port.get() << std::endl;
     return (shoopdaloop_loop_audio_channel*) port.get();
 }
 
@@ -697,7 +695,7 @@ void delete_midi_channel_idx(shoopdaloop_loop *loop, size_t idx) {
 }
 
 void connect_audio_output(shoopdaloop_loop_audio_channel *channel, shoopdaloop_audio_port *port) {
-    g_cmd_queue.queue([&]() {
+    g_cmd_queue.queue([=]() {
         auto _port = internal_audio_port(port);
         auto _channel = internal_audio_channel(channel);
         _channel->connect_output_port(_port, false);
@@ -705,7 +703,7 @@ void connect_audio_output(shoopdaloop_loop_audio_channel *channel, shoopdaloop_a
 }
 
 void connect_midi_output(shoopdaloop_loop_midi_channel *channel, shoopdaloop_midi_port *port) {
-    g_cmd_queue.queue([&]() {
+    g_cmd_queue.queue([=]() {
         auto _port = internal_midi_port(port);
         auto _channel = internal_midi_channel(channel);
         _channel->connect_output_port(_port, false);
@@ -713,8 +711,7 @@ void connect_midi_output(shoopdaloop_loop_midi_channel *channel, shoopdaloop_mid
 }
 
 void connect_audio_input(shoopdaloop_loop_audio_channel *channel, shoopdaloop_audio_port *port) {
-    g_cmd_queue.queue([&]() {
-        std::cout << "Connect " << port << ", " << internal_audio_port(port).get() << std::endl;
+    g_cmd_queue.queue([=]() {
         auto _port = internal_audio_port(port);
         auto _channel = internal_audio_channel(channel);
         _channel->connect_input_port(_port, false);
@@ -722,7 +719,7 @@ void connect_audio_input(shoopdaloop_loop_audio_channel *channel, shoopdaloop_au
 }
 
 void connect_midi_input(shoopdaloop_loop_midi_channel *channel, shoopdaloop_midi_port *port) {
-    g_cmd_queue.queue([&]() {
+    g_cmd_queue.queue([=]() {
         auto _port = internal_midi_port(port);
         auto _channel = internal_midi_channel(channel);
         _channel->connect_input_port(_port, false);
@@ -730,7 +727,7 @@ void connect_midi_input(shoopdaloop_loop_midi_channel *channel, shoopdaloop_midi
 }
 
 void disconnect_audio_output (shoopdaloop_loop_audio_channel *channel, shoopdaloop_audio_port* port) {
-    g_cmd_queue.queue([&]() {
+    g_cmd_queue.queue([=]() {
         auto _port = internal_audio_port(port);
         auto _channel = internal_audio_channel(channel);
         _channel->disconnect_output_port(_port, false);
@@ -738,7 +735,7 @@ void disconnect_audio_output (shoopdaloop_loop_audio_channel *channel, shoopdalo
 }
 
 void disconnect_midi_output (shoopdaloop_loop_midi_channel  *channel, shoopdaloop_midi_port* port) {
-    g_cmd_queue.queue([&]() {
+    g_cmd_queue.queue([=]() {
         auto _port = internal_midi_port(port);
         auto _channel = internal_midi_channel(channel);
         _channel->disconnect_output_port(_port, false);
@@ -746,14 +743,14 @@ void disconnect_midi_output (shoopdaloop_loop_midi_channel  *channel, shoopdaloo
 }
 
 void disconnect_audio_outputs (shoopdaloop_loop_audio_channel *channel) {
-    g_cmd_queue.queue([&]() {
+    g_cmd_queue.queue([=]() {
         auto _channel = internal_audio_channel(channel);
         _channel->disconnect_output_ports(false);
     });
 }
 
 void disconnect_midi_outputs  (shoopdaloop_loop_midi_channel  *channel) {
-    g_cmd_queue.queue([&]() {
+    g_cmd_queue.queue([=]() {
         auto _channel = internal_midi_channel(channel);
         _channel->disconnect_output_ports(false);
     });
@@ -761,7 +758,7 @@ void disconnect_midi_outputs  (shoopdaloop_loop_midi_channel  *channel) {
 
 audio_channel_data_t get_audio_channel_data (shoopdaloop_loop_audio_channel *channel) {
     auto &chan = *internal_audio_channel(channel);
-    return external_audio_data(chan.audio().get_data(true));
+    return external_audio_data(chan.audio().get_data());
 }
 
 audio_channel_data_t get_audio_rms_data (shoopdaloop_loop_audio_channel *channel,
@@ -803,7 +800,7 @@ void loops_transition(unsigned int n_loops,
                       loop_state_t state,
                       size_t delay, // In # of triggers
                       unsigned wait_for_soft_sync) {
-    g_cmd_queue.queue([&]() {
+    g_cmd_queue.queue([=]() {
         for (size_t idx=0; idx<n_loops; idx++) {
             auto &loop_info = *internal_loop(loops[idx]);
             loop_info.loop->plan_transition(state, delay, wait_for_soft_sync);
@@ -813,7 +810,7 @@ void loops_transition(unsigned int n_loops,
 
 void clear_loop_data (shoopdaloop_loop *loop) {
     auto &_loop = *internal_loop(loop);
-    g_cmd_queue.queue([&]() {
+    g_cmd_queue.queue([=]() {
         for (auto &chan : _loop.mp_audio_channels) {
             chan->audio().PROC_clear();
         }
@@ -824,13 +821,13 @@ void clear_loop_data (shoopdaloop_loop *loop) {
 }
 
 void clear_audio_channel (shoopdaloop_loop_audio_channel *channel) {
-    g_cmd_queue.queue([&]() {
+    g_cmd_queue.queue([=]() {
         internal_audio_channel(channel)->audio().PROC_clear();
     });
 }
 
 void clear_midi_channel (shoopdaloop_loop_midi_channel *channel) {
-    g_cmd_queue.queue([&]() {
+    g_cmd_queue.queue([=]() {
         internal_midi_channel(channel)->midi().PROC_clear();
     });
 }
@@ -842,7 +839,6 @@ shoopdaloop_audio_port *open_audio_port (const char* name_hint, port_direction_t
     g_cmd_queue.queue([pi]() {
         g_ports.push_back(pi);
     });
-    std::cout << "Open " << pi.get() << std::endl;
     return external_audio_port(pi);
 }
 
@@ -850,7 +846,7 @@ void close_audio_port (shoopdaloop_audio_port *port) {
     auto pi = internal_audio_port(port);
     // Removing from the list should be enough, as there
     // are only weak pointers elsewhere.
-    g_cmd_queue.queue([&]() {
+    g_cmd_queue.queue([=]() {
         g_ports.erase(
             std::remove_if(g_ports.begin(), g_ports.end(),
                 [&](auto const& e) { return e == pi; }),
@@ -878,7 +874,7 @@ void close_midi_port (shoopdaloop_midi_port *port) {
     auto pi = internal_midi_port(port);
     // Removing from the list should be enough, as there
     // are only weak pointers elsewhere.
-    g_cmd_queue.queue([&]() {
+    g_cmd_queue.queue([=]() {
         g_ports.erase(
             std::remove_if(g_ports.begin(), g_ports.end(),
                 [&](auto const& e) { return e == pi; }),
@@ -897,7 +893,7 @@ shoopdaloop_decoupled_midi_port *open_decoupled_midi_port(const char* name_hint,
     auto decoupled = std::make_shared<_DecoupledMidiPort>(port,
         gc_decoupled_midi_port_queue_size,
         direction == Input ? PortDirection::Input : PortDirection::Output);
-    g_cmd_queue.queue_and_wait([&]() {
+    g_cmd_queue.queue_and_wait([=]() {
         g_decoupled_midi_ports.push_back(decoupled);
     });
     return external_decoupled_midi_port(decoupled);
@@ -920,7 +916,7 @@ midi_event_t *maybe_next_message(shoopdaloop_decoupled_midi_port *port) {
 
 void close_decoupled_midi_port(shoopdaloop_decoupled_midi_port *port) {
     auto _port = internal_decoupled_midi_port(port);
-    g_cmd_queue.queue([&]() {
+    g_cmd_queue.queue([=]() {
         g_decoupled_midi_ports.erase(
             std::remove_if(g_decoupled_midi_ports.begin(), g_decoupled_midi_ports.end(),
                 [&](auto const& e) { return e.get() == _port.get(); }),

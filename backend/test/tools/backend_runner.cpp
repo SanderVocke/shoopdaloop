@@ -72,7 +72,7 @@ int main(int argc, const char* argv[]) {
         for (size_t j=0; j<n_midi_channels; j++) {
             midis.push_back(add_midi_channel(loop));
         }
-
+        
         g_loops.push_back(loop);
         g_audio_channels.push_back(audios);
         g_midi_channels.push_back(midis);
@@ -88,21 +88,21 @@ int main(int argc, const char* argv[]) {
         g_audio_input_ports.push_back(open_audio_port(name.c_str(), Input));
         std::cout << "Saved " << g_audio_input_ports.back() << std::endl;
     }
-    // std::cout << "Creating " << n_audio_outputs << " audio outputs." << std::endl;
-    // for(size_t idx=0; idx < n_audio_outputs; idx++) {
-    //     std::string name = "audio_out_" + std::to_string(idx+1);
-    //     g_audio_output_ports.push_back(open_audio_port(name.c_str(), Output));
-    // }
-    // std::cout << "Creating " << n_midi_inputs << " MIDI inputs." << std::endl;
-    // for(size_t idx=0; idx < n_midi_inputs; idx++) {
-    //     std::string name = "midi_in_" + std::to_string(idx+1);
-    //     g_midi_input_ports.push_back(open_midi_port(name.c_str(), Input));
-    // }
-    // std::cout << "Creating " << n_midi_outputs << " MIDI outputs." << std::endl;
-    // for(size_t idx=0; idx < n_midi_outputs; idx++) {
-    //     std::string name = "midi_out_" + std::to_string(idx+1);
-    //     g_midi_output_ports.push_back(open_midi_port(name.c_str(), Output));
-    // }
+    std::cout << "Creating " << n_audio_outputs << " audio outputs." << std::endl;
+    for(size_t idx=0; idx < n_audio_outputs; idx++) {
+        std::string name = "audio_out_" + std::to_string(idx+1);
+        g_audio_output_ports.push_back(open_audio_port(name.c_str(), Output));
+    }
+    std::cout << "Creating " << n_midi_inputs << " MIDI inputs." << std::endl;
+    for(size_t idx=0; idx < n_midi_inputs; idx++) {
+        std::string name = "midi_in_" + std::to_string(idx+1);
+        g_midi_input_ports.push_back(open_midi_port(name.c_str(), Input));
+    }
+    std::cout << "Creating " << n_midi_outputs << " MIDI outputs." << std::endl;
+    for(size_t idx=0; idx < n_midi_outputs; idx++) {
+        std::string name = "midi_out_" + std::to_string(idx+1);
+        g_midi_output_ports.push_back(open_midi_port(name.c_str(), Output));
+    }
 
     std::cout << "Connecting ports in round-robin fashion." << std::endl;
     size_t port_idx;
@@ -114,27 +114,27 @@ int main(int argc, const char* argv[]) {
             port_idx = (port_idx+1) % n_audio_inputs;
         }
     }
-    // port_idx = 0;
-    // for (size_t loop_idx=0; loop_idx < n_loops; loop_idx++) {
-    //     for (size_t chan_idx=0; chan_idx < n_audio_channels; chan_idx++) {
-    //         //connect_audio_output(g_audio_channels[loop_idx][chan_idx], g_audio_output_ports[port_idx]);
-    //         port_idx = (port_idx+1) % n_audio_outputs;
-    //     }
-    // }
-    // port_idx = 0;
-    // for (size_t loop_idx=0; loop_idx < n_loops; loop_idx++) {
-    //     for (size_t chan_idx=0; chan_idx < n_midi_channels; chan_idx++) {
-    //         //connect_midi_input(g_midi_channels[loop_idx][chan_idx], g_midi_input_ports[port_idx]);
-    //         port_idx = (port_idx+1) % n_midi_inputs;
-    //     }
-    // }
-    // port_idx = 0;
-    // for (size_t loop_idx=0; loop_idx < n_loops; loop_idx++) {
-    //     for (size_t chan_idx=0; chan_idx < n_midi_channels; chan_idx++) {
-    //         //connect_midi_output(g_midi_channels[loop_idx][chan_idx], g_midi_output_ports[port_idx]);
-    //         port_idx = (port_idx+1) % n_midi_outputs;
-    //     }
-    // }
+    port_idx = 0;
+    for (size_t loop_idx=0; loop_idx < n_loops; loop_idx++) {
+        for (size_t chan_idx=0; chan_idx < n_audio_channels; chan_idx++) {
+            connect_audio_output(g_audio_channels[loop_idx][chan_idx], g_audio_output_ports[port_idx]);
+            port_idx = (port_idx+1) % n_audio_outputs;
+        }
+    }
+    port_idx = 0;
+    for (size_t loop_idx=0; loop_idx < n_loops; loop_idx++) {
+        for (size_t chan_idx=0; chan_idx < n_midi_channels; chan_idx++) {
+            connect_midi_input(g_midi_channels[loop_idx][chan_idx], g_midi_input_ports[port_idx]);
+            port_idx = (port_idx+1) % n_midi_inputs;
+        }
+    }
+    port_idx = 0;
+    for (size_t loop_idx=0; loop_idx < n_loops; loop_idx++) {
+        for (size_t chan_idx=0; chan_idx < n_midi_channels; chan_idx++) {
+            connect_midi_output(g_midi_channels[loop_idx][chan_idx], g_midi_output_ports[port_idx]);
+            port_idx = (port_idx+1) % n_midi_outputs;
+        }
+    }
 
     while(true) { std::this_thread::sleep_for(10ms); }
 }
