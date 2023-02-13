@@ -32,7 +32,7 @@ private:
     // Members which may be accessed from any thread (ma prefix)
     std::shared_ptr<BufferPool> ma_buffer_pool;
     AudioOutputType const ma_output_type;
-    size_t const ma_buffer_size;
+    const size_t ma_buffer_size;
     std::atomic<size_t> ma_data_length;
 
     // Members which may be accessed from the process thread only (mp prefix)
@@ -58,6 +58,21 @@ public:
 
         // TODO
         std::cerr << "Warning: AudioChannelSubloop should have a way to increase its buffers capacity outside of the processing thread. Also atomic access. Also atomic planning of transitions." << std::endl;
+    }
+
+    // NOTE: only use on process thread!
+    AudioChannelSubloop<SampleT>& operator= (AudioChannelSubloop<SampleT> const& other) {
+        if (other.ma_buffer_size != ma_buffer_size) {
+            throw std::runtime_error("Cannot copy audio channels with different buffer sizes.");
+        }
+        ma_buffer_pool = other.ma_buffer_pool;
+        ma_data_length = other.ma_data_length.load();
+        mp_buffers = other.mp_buffers;
+        mp_playback_target_buffer = other.mp_playback_target_buffer;
+        mp_playback_target_buffer_size = other.mp_playback_target_buffer_size;
+        mp_recording_source_buffer = other.mp_recording_source_buffer;
+        mp_recording_source_buffer_size = other.mp_recording_source_buffer_size;
+        return *this;
     }
 
     AudioChannelSubloop() = default;

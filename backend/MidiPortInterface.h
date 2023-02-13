@@ -14,7 +14,7 @@ public:
                              uint8_t* &data_out) const = 0;
     
     MidiReadableBufferInterface() {}
-    virtual ~MidiReadableBufferInterface() = 0;
+    virtual ~MidiReadableBufferInterface() {};
 };
 
 
@@ -25,7 +25,7 @@ public:
                              uint8_t* data) = 0;
     
     MidiWriteableBufferInterface() {}
-    virtual ~MidiWriteableBufferInterface() = 0;
+    virtual ~MidiWriteableBufferInterface() {};
 };
 
 class MidiPortInterface : public PortInterface {
@@ -39,5 +39,5 @@ MidiPortInterface(
     virtual std::unique_ptr<MidiWriteableBufferInterface> PROC_get_write_buffer (size_t n_frames) = 0;
 
     MidiPortInterface() {}
-    virtual ~MidiPortInterface() = 0;
+    virtual ~MidiPortInterface() {};
 };

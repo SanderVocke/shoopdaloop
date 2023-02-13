@@ -55,6 +55,15 @@ public:
         mp_playback_cursor = mp_storage->create_cursor();
     }
 
+    // NOTE: only use on process thread
+    MidiChannelSubloop<TimeType, SizeType>& operator= (MidiChannelSubloop<TimeType, SizeType> const& other) {
+        mp_playback_target_buffer = other.mp_playback_target_buffer;
+        mp_recording_source_buffer = other.mp_recording_source_buffer;
+        mp_storage = other.mp_storage;
+        mp_playback_cursor = other.mp_playback_cursor;
+        return *this;
+    }
+
     void PROC_process(
         loop_state_t state_before,
         loop_state_t state_after,
