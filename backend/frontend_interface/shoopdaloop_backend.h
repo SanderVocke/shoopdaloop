@@ -33,6 +33,8 @@ void              load_loop_midi_data      (shoopdaloop_loop *loop, midi_data_t 
 // Loop channels
 void                  delete_audio_channel     (shoopdaloop_loop *loop, shoopdaloop_loop_audio_channel *channel);
 void                  delete_midi_channel      (shoopdaloop_loop *loop, shoopdaloop_loop_midi_channel  *channel);
+void                  delete_audio_channel_idx (shoopdaloop_loop *loop, size_t idx);
+void                  delete_midi_channel_idx  (shoopdaloop_loop *loop, size_t idx);
 void                  connect_audio_output     (shoopdaloop_loop_audio_channel *channel, shoopdaloop_audio_port *port);
 void                  connect_midi_output      (shoopdaloop_loop_midi_channel  *channel, shoopdaloop_midi_port *port);
 void                  disconnect_audio_outputs (shoopdaloop_loop_audio_channel *channel);

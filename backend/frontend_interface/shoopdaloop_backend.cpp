@@ -47,7 +47,7 @@ using SharedLoopInfo = std::shared_ptr<LoopInfo>;
 using Command = std::function<void()>;
 
 // TYPES
-struct LoopInfo {
+struct LoopInfo : public std::enable_shared_from_this<LoopInfo> {
     SharedLoop loop;
     std::map<SubloopInterface, std::vector<SharedPortInfo>> input_port_mappings;
     std::map<SubloopInterface, std::vector<SharedPortInfo>> output_port_mappings;
@@ -57,7 +57,7 @@ struct LoopInfo {
     LoopInfo() : loop(std::make_shared<Loop>()) {}
 };
 
-struct PortInfo {
+struct PortInfo : public std::enable_shared_from_this<PortInfo> {
     SharedPort port;
     audio_sample_t *maybe_audio_buffer;
     std::shared_ptr<MidiReadableBufferInterface> maybe_midi_input_buffer;
@@ -87,14 +87,37 @@ SharedLoopInfo find_loop(shoopdaloop_loop* c_ptr) {
 }
 
 SharedLoopAudioChannel find_audio_channel(Loop &loop,
-                                          shoopdaloop_loop_audio_channel *channel) {
+                                          shoopdaloop_loop_audio_channel *channel,
+                                          size_t &found_idx_out) {
     for (size_t idx=0; idx < loop.n_audio_channels(); idx++) {
         SharedLoopAudioChannel chan = loop.audio_channel<float>(idx);
         if ((shoopdaloop_loop_audio_channel*)chan.get() == channel) {
+            found_idx_out = idx;
             return chan;
         }
     }
-    throw std::runtime_error("Attempting to find non-existent autio channel.");
+    throw std::runtime_error("Attempting to find non-existent audio channel.");
+}
+
+SharedLoopMidiChannel find_midi_channel(Loop &loop,
+                                          shoopdaloop_loop_midi_channel *channel,
+                                          size_t &found_idx_out) {
+    for (size_t idx=0; idx < loop.n_midi_channels(); idx++) {
+        SharedLoopMidiChannel chan = loop.midi_channel<Time, Size>(idx);
+        if ((shoopdaloop_loop_midi_channel*)chan.get() == channel) {
+            found_idx_out = idx;
+            return chan;
+        }
+    }
+    throw std::runtime_error("Attempting to find non-existent midi channel.");
+}
+
+SharedPortInfo internal_audio_port(shoopdaloop_audio_port *port) {
+    return ((PortInfo*)port)->shared_from_this();
+}
+
+SharedPortInfo internal_midi_port(shoopdaloop_audio_port *port) {
+    return ((PortInfo*)port)->shared_from_this();
 }
 
 // API FUNCTIONS
@@ -162,7 +185,7 @@ shoopdaloop_loop_audio_channel *add_audio_channel (shoopdaloop_loop *loop) {
     return (shoopdaloop_loop_audio_channel *)r.get();
 }
 
-shoopdaloop_loop_midi_channel  *add_midi_channel  (shoopdaloop_loop *loop) {
+shoopdaloop_loop_midi_channel *add_midi_channel (shoopdaloop_loop *loop) {
     SharedLoopInfo loop_info = find_loop(loop);
     std::cerr << "Warning: add_midi_channel should be made thread-safe" << std::endl;
     auto r = loop_info->loop->add_midi_channel<Time, Size>(gc_midi_storage_size);
@@ -251,12 +274,32 @@ void load_loop_data (shoopdaloop_loop *loop, loop_data_t data) {
 
 void delete_audio_channel(shoopdaloop_loop *loop, shoopdaloop_loop_audio_channel *channel) {
     auto &loop_info = *find_loop(loop);
-    auto _channel = find_audio_channel(*loop_info.loop, channel);
-    throw BLABi23592u3```;
+    size_t idx;
+    find_audio_channel(*loop_info.loop, channel, idx);
+    delete_audio_channel_idx(loop, idx);
 }
 
-void                  delete_midi_channel      (shoopdaloop_loop_midi_channel  *channel);
-void                  connect_audio_output     (shoopdaloop_loop_audio_channel *channel, shoopdaloop_audio_port *port);
+void delete_midi_channel(shoopdaloop_loop *loop, shoopdaloop_loop_midi_channel *channel) {
+    auto &loop_info = *find_loop(loop);
+    size_t idx;
+    find_midi_channel(*loop_info.loop, channel, idx);
+    delete_midi_channel_idx(loop, idx);
+}
+
+void delete_audio_channel_idx(shoopdaloop_loop *loop, size_t idx) {
+    auto &loop_info = *find_loop(loop);
+    loop_info.loop->delete_audio_channel(idx);
+}
+
+void delete_midi_channel_idx(shoopdaloop_loop *loop, size_t idx) {
+    auto &loop_info = *find_loop(loop);
+    loop_info.loop->delete_midi_channel(idx);
+}
+
+void connect_audio_output(shoopdaloop_loop_audio_channel *channel, shoopdaloop_audio_port *port) {
+    auto _port = internal_audio_port(port);
+}
+
 void                  connect_midi_output      (shoopdaloop_loop_midi_channel  *channel, shoopdaloop_midi_port *port);
 void                  disconnect_audio_outputs (shoopdaloop_loop_audio_channel *channel);
 void                  disconnect_midi_outputs  (shoopdaloop_loop_midi_channel  *channel);
