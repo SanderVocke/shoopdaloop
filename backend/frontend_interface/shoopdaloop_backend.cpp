@@ -29,6 +29,7 @@ constexpr size_t gc_midi_storage_size = 10000;
 // FORWARD DECLARATIONS
 struct LoopInfo;
 struct PortInfo;
+struct ChannelInfo;
 
 // TYPE ALIASES
 using DefaultAudioBuffer = AudioBuffer<audio_sample_t>;
@@ -44,17 +45,22 @@ using SharedLoopMidiChannel = std::shared_ptr<MidiChannelSubloop<uint32_t, uint1
 using SharedPort = std::shared_ptr<PortInterface>;
 using SharedPortInfo = std::shared_ptr<PortInfo>;
 using SharedLoopInfo = std::shared_ptr<LoopInfo>;
+using SharedChannelInfo = std::shared_ptr<ChannelInfo>;
 using Command = std::function<void()>;
 
 // TYPES
 struct LoopInfo : public std::enable_shared_from_this<LoopInfo> {
     SharedLoop loop;
-    std::map<SubloopInterface, std::vector<SharedPortInfo>> input_port_mappings;
-    std::map<SubloopInterface, std::vector<SharedPortInfo>> output_port_mappings;
-
     shoopdaloop_audio_port *c_ptr () const { return (shoopdaloop_audio_port*)this; }
 
     LoopInfo() : loop(std::make_shared<Loop>()) {}
+};
+
+struct ChannelInfo : public std::enable_shared_from_this<ChannelInfo> {
+    SharedLoopChannel channel;
+    SharedLoop loop;
+
+    std::vector<SharedPortInfo> port_mappings;
 };
 
 struct PortInfo : public std::enable_shared_from_this<PortInfo> {
@@ -77,15 +83,6 @@ std::vector<SharedPortInfo> g_ports;
 CommandQueue g_cmd_queue (gc_command_queue_size, 1000, 1000);
 
 // HELPER FUNCTIONS
-SharedLoopInfo find_loop(shoopdaloop_loop* c_ptr) {
-    auto r = std::find_if(g_loops.begin(), g_loops.end(),
-        [&](auto const& e) { return (shoopdaloop_loop*)e.get() == c_ptr; });
-    if (r == g_loops.end()) {
-        throw std::runtime_error("Attempting to find non-existent loop.");
-    }
-    return *r;
-}
-
 SharedLoopAudioChannel find_audio_channel(Loop &loop,
                                           shoopdaloop_loop_audio_channel *channel,
                                           size_t &found_idx_out) {
@@ -118,6 +115,38 @@ SharedPortInfo internal_audio_port(shoopdaloop_audio_port *port) {
 
 SharedPortInfo internal_midi_port(shoopdaloop_audio_port *port) {
     return ((PortInfo*)port)->shared_from_this();
+}
+
+SharedChannelInfo internal_audio_channel(shoopdaloop_loop_audio_channel *chan) {
+    return ((ChannelInfo*)chan)->shared_from_this();
+}
+
+SharedChannelInfo internal_midi_channel(shoopdaloop_loop_midi_channel *chan) {
+    return ((ChannelInfo*)chan)->shared_from_this();
+}
+
+SharedLoopInfo internal_loop(shoopdaloop_loop *loop) {
+    return ((LoopInfo*)loop)->shared_from_this();
+}
+
+shoopdaloop_audio_port* external_audio_port(SharedPortInfo port) {
+    return (shoopdaloop_audio_port*) port.get();
+}
+
+shoopdaloop_midi_port* external_midi_port(SharedPortInfo port) {
+    return (shoopdaloop_midi_port*) port.get();
+}
+
+shoopdaloop_loop_audio_channel* external_audio_channel(SharedPortInfo port) {
+    return (shoopdaloop_loop_audio_channel*) port.get();
+}
+
+shoopdaloop_loop_midi_channel* external_midi_channel(SharedPortInfo port) {
+    return (shoopdaloop_loop_midi_channel*) port.get();
+}
+
+shoopdaloop_loop* external_loop(SharedLoopInfo loop) {
+    return (shoopdaloop_loop*)loop.get();
 }
 
 // API FUNCTIONS
