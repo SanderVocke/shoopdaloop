@@ -28,7 +28,7 @@ audio_data_t      get_loop_audio_data      (shoopdaloop_loop *loop);
 void              load_loop_audio_data     (shoopdaloop_loop *loop, audio_data_t data);
 midi_data_t       get_loop_midi_data       (shoopdaloop_loop *loop);
 void              load_loop_midi_data      (shoopdaloop_loop *loop, midi_data_t data);
-void              clear_loop_data          (shoopdaloop_loop *loop);
+void              clear_loop               (shoopdaloop_loop *loop, size_t length);
 
 // Loop channels
 void                  clear_audio_channel      (shoopdaloop_loop_audio_channel *channel);
@@ -62,6 +62,10 @@ void                  load_midi_channel_data   (shoopdaloop_loop_midi_channel  *
 // Otherwise, the transition is planned. Any already planned transitions
 // that happen after this one are cancelled, any already planned transitions
 // that happen before are left in place.
+void loop_transition(shoopdaloop_loop *loop,
+                      loop_state_t state,
+                      size_t delay, // In # of triggers
+                      unsigned wait_for_soft_sync);
 void loops_transition(unsigned int n_loops,
                       shoopdaloop_loop **loops,
                       loop_state_t state,

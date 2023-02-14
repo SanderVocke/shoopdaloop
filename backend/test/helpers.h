@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <functional>
 #include "MidiPortInterface.h"
+#include "MidiMessage.h"
 #include <cstring>
 
 template<typename S>
@@ -34,16 +35,12 @@ void for_channel_elems(Channel &chan, std::function<void(size_t,S const&)> fn,
     }
 }
 
-struct MidiMessage {
-    uint32_t time;
-    uint32_t size;
-    std::vector<uint8_t> data;
-};
+typedef MidiMessage<uint32_t, uint32_t> Msg;
 class MidiTestBuffer : public MidiReadableBufferInterface,
                        public MidiWriteableBufferInterface {
 public:
-    std::vector<MidiMessage> read;
-    std::vector<MidiMessage> written;
+    std::vector<Msg> read;
+    std::vector<Msg> written;
     size_t length;
 
 
@@ -65,7 +62,7 @@ public:
                              uint32_t time,
                              uint8_t* data) override
     {
-        written.push_back(MidiMessage{
+        written.push_back(Msg{
             .time = time,
             .size = size,
             .data = std::vector<uint8_t>(size)

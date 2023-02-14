@@ -88,7 +88,10 @@ struct PortInfo : public std::enable_shared_from_this<PortInfo> {
     std::shared_ptr<MidiReadableBufferInterface> maybe_midi_input_buffer;
     std::shared_ptr<MidiWriteableBufferInterface> maybe_midi_output_buffer;
 
-    PortInfo (SharedPort const& port) : port(port) {}
+    PortInfo (SharedPort const& port) : port(port),
+        maybe_audio_buffer(nullptr),
+        maybe_midi_input_buffer(nullptr),
+        maybe_midi_output_buffer(nullptr) {}
 
     void PROC_reset_buffers();
     void PROC_update_audio_buffer_if_none(size_t n_frames);
@@ -100,7 +103,7 @@ struct PortInfo : public std::enable_shared_from_this<PortInfo> {
 
 struct ChannelInfo : public std::enable_shared_from_this<ChannelInfo> {
     SharedLoopChannel channel;
-    const SharedLoopInfo loop;
+    SharedLoopInfo loop;
 
     WeakPortInfo mp_input_port_mapping;
     std::vector<WeakPortInfo> mp_output_port_mappings;
@@ -114,9 +117,7 @@ struct ChannelInfo : public std::enable_shared_from_this<ChannelInfo> {
 
     // NOTE: only use on process thread
     ChannelInfo &operator= (ChannelInfo const& other) {
-        if (other.loop != loop) {
-            throw std::runtime_error ("Channel assignment: loop mismatch");
-        }
+        loop = other.loop;
         channel = other.channel;
         mp_input_port_mapping = other.mp_input_port_mapping;
         mp_output_port_mappings = other.mp_output_port_mappings;
@@ -131,6 +132,8 @@ struct ChannelInfo : public std::enable_shared_from_this<ChannelInfo> {
     void disconnect_input_port(bool thread_safe=true);
     void PROC_prepare_process_audio(size_t n_frames);
     void PROC_prepare_process_midi(size_t n_frames);
+    void PROC_finalize_process_audio();
+    void PROC_finalize_process_midi();
     LoopAudioChannel &audio();
     LoopMidiChannel &midi();
 };
@@ -150,6 +153,7 @@ struct LoopInfo : public std::enable_shared_from_this<LoopInfo> {
     void delete_audio_channel(SharedChannelInfo chan);
     void delete_midi_channel(SharedChannelInfo chan);
     void PROC_prepare_process(size_t n_frames);
+    void PROC_finalize_process();
 
     // SharedLoopAudioChannel find_audio_channel(
     //                                       shoopdaloop_loop_audio_channel *channel,
@@ -284,15 +288,33 @@ void ChannelInfo::disconnect_input_port(bool thread_safe) {
     else { fn(); }
 }
 
+#warning This does not deal with multiple output channels properly
 void ChannelInfo::PROC_prepare_process_audio(size_t n_frames) {
     auto in_locked = mp_input_port_mapping.lock();
     if (in_locked) {
         in_locked->PROC_update_audio_buffer_if_none(n_frames);
+        auto chan = dynamic_cast<LoopAudioChannel*>(channel.get());
+        chan->PROC_set_recording_buffer(in_locked->maybe_audio_buffer, n_frames);
     }
     for (auto &port : mp_output_port_mappings) {
         auto locked = port.lock();
         if (locked) {
             locked->PROC_update_audio_buffer_if_none(n_frames);
+            auto chan = dynamic_cast<LoopAudioChannel*>(channel.get());
+            chan->PROC_set_playback_buffer(in_locked->maybe_audio_buffer, n_frames);
+        }
+    }
+}
+
+void ChannelInfo::PROC_finalize_process_audio() {
+    auto in_locked = mp_input_port_mapping.lock();
+    if (in_locked) {
+        in_locked->PROC_reset_buffers();
+    }
+    for (auto &port : mp_output_port_mappings) {
+        auto locked = port.lock();
+        if (locked) {
+            locked->PROC_reset_buffers();
         }
     }
 }
@@ -301,11 +323,29 @@ void ChannelInfo::PROC_prepare_process_midi(size_t n_frames) {
     auto in_locked = mp_input_port_mapping.lock();
     if (in_locked) {
         in_locked->PROC_update_midi_input_buffer_if_none(n_frames);
+        auto chan = dynamic_cast<LoopMidiChannel*>(channel.get());
+        chan->PROC_set_recording_buffer(in_locked->maybe_midi_input_buffer.get(), n_frames);
     }
     for (auto &port : mp_output_port_mappings) {
         auto locked = port.lock();
         if (locked) {
             locked->PROC_update_midi_output_buffer_if_none(n_frames);
+            auto chan = dynamic_cast<LoopMidiChannel*>(channel.get());
+            chan->PROC_set_playback_buffer(in_locked->maybe_midi_output_buffer.get(), n_frames);
+        }
+    }
+}
+
+
+void ChannelInfo::PROC_finalize_process_midi() {
+    auto in_locked = mp_input_port_mapping.lock();
+    if (in_locked) {
+        in_locked->PROC_reset_buffers();
+    }
+    for (auto &port : mp_output_port_mappings) {
+        auto locked = port.lock();
+        if (locked) {
+            locked->PROC_reset_buffers();
         }
     }
 }
@@ -326,6 +366,15 @@ void LoopInfo::PROC_prepare_process(size_t n_frames) {
     }
     for (auto &chan : mp_midi_channels) {
         chan->PROC_prepare_process_midi(n_frames);
+    }
+}
+
+void LoopInfo::PROC_finalize_process() {
+    for (auto &chan : mp_audio_channels) {
+        chan->PROC_finalize_process_audio();
+    }
+    for (auto &chan : mp_midi_channels) {
+        chan->PROC_finalize_process_midi();
     }
 }
 
@@ -494,6 +543,11 @@ void PROC_process(size_t n_frames) {
     // Process the loops.
     process_loops<LoopInfo>
         (g_loops, [](LoopInfo &l) { return (LoopInterface*)l.loop.get(); }, n_frames);
+
+    // Prepare state for next round.
+    for (size_t idx=0; idx < g_loops.size(); idx++) {
+        g_loops[idx]->PROC_finalize_process();
+    }
 }
 
 // API FUNCTIONS
@@ -580,9 +634,9 @@ shoopdaloop_loop_midi_channel *add_midi_channel (shoopdaloop_loop *loop) {
     // queue a copy-assignment of its value. This allows us to return before
     // the channel has really been created, without altering the pointed-to
     // address later.
-    SharedLoopInfo loop_info = internal_loop(loop);
-    auto r = std::make_shared<ChannelInfo> (nullptr, loop_info);
-    g_cmd_queue.queue([r, loop_info]() {
+    auto r = std::make_shared<ChannelInfo> (nullptr, nullptr);
+    g_cmd_queue.queue([=]() {
+        SharedLoopInfo loop_info = internal_loop(loop);
         auto chan = loop_info->loop->add_midi_channel<Time, Size>(gc_midi_storage_size, false);
         auto replacement = std::make_shared<ChannelInfo> (chan, loop_info);
         loop_info->mp_midi_channels.push_back(r);
@@ -795,6 +849,16 @@ void load_midi_channel_data (shoopdaloop_loop_midi_channel  *channel, midi_chann
     chan.midi().set_contents(internal_midi_data(data));
 }
 
+void loop_transition(shoopdaloop_loop *loop,
+                      loop_state_t state,
+                      size_t delay, // In # of triggers
+                      unsigned wait_for_soft_sync) {
+    g_cmd_queue.queue([=]() {
+        auto &loop_info = *internal_loop(loop);
+        loop_info.loop->plan_transition(state, delay, wait_for_soft_sync, false);
+    });
+}
+
 void loops_transition(unsigned int n_loops,
                       shoopdaloop_loop **loops,
                       loop_state_t state,
@@ -803,26 +867,27 @@ void loops_transition(unsigned int n_loops,
     g_cmd_queue.queue([=]() {
         for (size_t idx=0; idx<n_loops; idx++) {
             auto &loop_info = *internal_loop(loops[idx]);
-            loop_info.loop->plan_transition(state, delay, wait_for_soft_sync);
+            loop_info.loop->plan_transition(state, delay, wait_for_soft_sync, false);
         }
     });
 }
 
-void clear_loop_data (shoopdaloop_loop *loop) {
-    auto &_loop = *internal_loop(loop);
+void clear_loop (shoopdaloop_loop *loop, size_t length) {
     g_cmd_queue.queue([=]() {
+        auto &_loop = *internal_loop(loop);
         for (auto &chan : _loop.mp_audio_channels) {
-            chan->audio().PROC_clear();
+            chan->audio().PROC_clear(length);
         }
         for (auto &chan : _loop.mp_midi_channels) {
             chan->midi().PROC_clear();
         }
+        _loop.loop->set_length(length, false);
     });
 }
 
-void clear_audio_channel (shoopdaloop_loop_audio_channel *channel) {
+void clear_audio_channel (shoopdaloop_loop_audio_channel *channel, size_t length) {
     g_cmd_queue.queue([=]() {
-        internal_audio_channel(channel)->audio().PROC_clear();
+        internal_audio_channel(channel)->audio().PROC_clear(length);
     });
 }
 
@@ -871,10 +936,10 @@ shoopdaloop_midi_port *open_midi_port (const char* name_hint, port_direction_t d
 }
 
 void close_midi_port (shoopdaloop_midi_port *port) {
-    auto pi = internal_midi_port(port);
     // Removing from the list should be enough, as there
     // are only weak pointers elsewhere.
     g_cmd_queue.queue([=]() {
+        auto pi = internal_midi_port(port);
         g_ports.erase(
             std::remove_if(g_ports.begin(), g_ports.end(),
                 [&](auto const& e) { return e == pi; }),
@@ -915,8 +980,8 @@ midi_event_t *maybe_next_message(shoopdaloop_decoupled_midi_port *port) {
 }
 
 void close_decoupled_midi_port(shoopdaloop_decoupled_midi_port *port) {
-    auto _port = internal_decoupled_midi_port(port);
     g_cmd_queue.queue([=]() {
+        auto _port = internal_decoupled_midi_port(port);
         g_decoupled_midi_ports.erase(
             std::remove_if(g_decoupled_midi_ports.begin(), g_decoupled_midi_ports.end(),
                 [&](auto const& e) { return e.get() == _port.get(); }),

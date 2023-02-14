@@ -99,7 +99,7 @@ suite BasicLoop_tests = []() {
         loop.PROC_update_poi();
 
         loop.plan_transition(Playing, 1);
-        loop.plan_transition(Recording, 1);
+        loop.plan_transition(Recording, 3);
 
         expect(eq(loop.PROC_get_next_poi().value_or(999), 999));
         expect(eq(loop.get_state(), Recording));
@@ -123,6 +123,38 @@ suite BasicLoop_tests = []() {
         
         expect(eq(loop.PROC_get_next_poi().value_or(999), 999));
         expect(eq(loop.get_state(), Recording));
+    };
+
+    "basicloop_3_3_planned_transitions_cancellation_1"_test = []() {
+        BasicLoop loop;
+        auto other = std::make_shared<BasicLoop>();
+        loop.set_soft_sync_source(other);
+        loop.set_state(Recording, false);
+        loop.set_length(10, false);
+        loop.PROC_update_poi();
+
+        loop.plan_transition(Playing, 3);
+        loop.plan_transition(PlayingMuted, 2);
+
+        expect(eq(loop.PROC_get_next_poi().value_or(999), 999));
+        expect(eq(loop.get_state(), Recording));
+
+        loop.PROC_trigger();
+        loop.PROC_trigger();
+
+        expect(eq(loop.PROC_get_next_poi().value_or(999), 999));
+        expect(eq(loop.get_state(), Recording));
+
+        loop.PROC_trigger();
+
+        expect(eq(loop.get_state(), PlayingMuted));
+        expect(eq(loop.PROC_get_next_poi().value_or(999), 10)); // End of loop
+
+        loop.PROC_trigger();
+        loop.PROC_trigger();
+
+        expect(eq(loop.get_state(), PlayingMuted));
+        expect(eq(loop.PROC_get_next_poi().value_or(999), 10)); // End of loop
     };
 
     "basicloop_4_generate_trigger"_test = []() {

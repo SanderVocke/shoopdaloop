@@ -51,7 +51,11 @@ public:
         ma_buffer_pool(buffer_pool),
         ma_data_length(0),
         ma_output_type(output_type),
-        ma_buffer_size(buffer_pool->object_size())
+        ma_buffer_size(buffer_pool->object_size()),
+        mp_recording_source_buffer(nullptr),
+        mp_playback_target_buffer(nullptr),
+        mp_playback_target_buffer_size(0),
+        mp_recording_source_buffer_size(0)
     {
         mp_buffers.reserve(initial_max_buffers);
         mp_buffers.push_back(get_new_buffer()); // Initial recording buffer
@@ -191,7 +195,10 @@ public:
 
     void PROC_process_playback(size_t pos, size_t length, size_t n_samples, bool muted) {
         if (mp_playback_target_buffer_size < n_samples) {
-            throw std::runtime_error("Attempting to play out of bounds");
+            throw std::runtime_error("Attempting to play out of bounds of target buffer");
+        }
+        if (ma_data_length == 0) {
+            throw std::runtime_error("Attempting to play from empty channel");
         }
 
         size_t buffer_idx = pos / ma_buffer_size;
@@ -252,9 +259,12 @@ public:
         mp_recording_source_buffer_size = size;
     }
 
-    void PROC_clear() {
-        mp_buffers.clear();
-        ma_data_length = 0;
+    void PROC_clear(size_t length) {
+        mp_buffers.resize(std::ceil((float)length / (float)ma_buffer_size));
+        for (auto &b: mp_buffers) {
+            memset((void*)b->data(), 0, sizeof(SampleT) * b->size());
+        }
+        ma_data_length = length;
     }
 
 protected:

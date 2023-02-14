@@ -278,7 +278,7 @@ public:
                 size_t insertion_point;
                 for (insertion_point=0; insertion_point <= mp_planned_state_countdowns.size(); insertion_point++) {
                     if (insertion_point < mp_planned_state_countdowns.size() &&
-                        mp_planned_state_countdowns[insertion_point] <= n_cycles_delay) { break; }
+                        mp_planned_state_countdowns[insertion_point] >= n_cycles_delay) { break; }
                 }
                 if (insertion_point >= mp_planned_state_countdowns.size()) {
                     mp_planned_state_countdowns.push_back(n_cycles_delay);

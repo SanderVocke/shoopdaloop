@@ -59,6 +59,7 @@ int main(int argc, const char* argv[]) {
     size_t n_loops = vm["loops"].as<size_t>();
     size_t n_audio_channels = vm["audio-channels"].as<size_t>();
     size_t n_midi_channels = vm["midi-channels"].as<size_t>();
+    size_t loop_length = vm["length"].as<size_t>();
     std::cout << "Creating " << n_loops << " loops." << std::endl;
     for(size_t idx=0; idx < n_loops; idx++) {
         auto loop = create_loop();
@@ -72,6 +73,8 @@ int main(int argc, const char* argv[]) {
         for (size_t j=0; j<n_midi_channels; j++) {
             midis.push_back(add_midi_channel(loop));
         }
+
+        clear_loop (loop, loop_length);
         
         g_loops.push_back(loop);
         g_audio_channels.push_back(audios);
@@ -132,6 +135,26 @@ int main(int argc, const char* argv[]) {
             connect_midi_output(g_midi_channels[loop_idx][chan_idx], g_midi_output_ports[port_idx]);
             port_idx = (port_idx+1) % n_midi_outputs;
         }
+    }
+
+    size_t n_record = vm["record"].as<size_t>();
+    size_t n_play = vm["play"].as<size_t>();
+    size_t n_playmuted = vm["playmuted"].as<size_t>();
+    size_t lidx = 0;
+    if (n_record > 0) { std::cout << n_record << " loops -> record" << std::endl; }
+    for(size_t i=0; i<n_record; i++) {
+        loop_transition(g_loops[lidx], Recording, 0, false);
+        lidx++;
+    }
+    if (n_play > 0) { std::cout << n_play << " loops -> play" << std::endl; }
+    for(size_t i=0; i<n_play; i++) {
+        loop_transition(g_loops[lidx], Playing, 0, false);
+        lidx++;
+    }
+    if (n_playmuted > 0) { std::cout << n_playmuted << " loops -> play muted" << std::endl; }
+    for(size_t i=0; i<n_playmuted; i++) {
+        loop_transition(g_loops[lidx], PlayingMuted, 0, false);
+        lidx++;
     }
 
     while(true) { std::this_thread::sleep_for(10ms); }
