@@ -620,7 +620,6 @@ shoopdaloop_loop_audio_channel *add_audio_channel (shoopdaloop_loop *loop) {
     g_cmd_queue.queue([r, loop_info]() {
         auto chan = loop_info->loop->add_audio_channel<audio_sample_t>(g_audio_buffer_pool,
                                                         gc_audio_channel_initial_buffers,
-                                                        AudioOutputType::Copy,
                                                         false);
         auto replacement = std::make_shared<ChannelInfo> (chan, loop_info);
         loop_info->mp_audio_channels.push_back(r);
@@ -998,6 +997,37 @@ void send_decoupled_midi(shoopdaloop_decoupled_midi_port *port, unsigned length,
     _port.push_outgoing(m);
 }
 
-void shoopdaloop_free(void* ptr) {
-    free (ptr);
+void free_midi_event(midi_event_t e) {
+    free(e.data);
+}
+
+void free_midi_channel_data(midi_channel_data_t d) {
+    for(size_t idx=0; idx<d.n_events; idx++) {
+        free_midi_event(d.events[idx]);
+    }
+    free(d.events);
+}
+
+void free_audio_channel_data(audio_channel_data_t d) {
+    free(d.data);
+}
+
+midi_event_t alloc_midi_event(size_t data_bytes) {
+    midi_event_t r;
+    r.size = data_bytes;
+    r.time = 0;
+    r.data = (unsigned char*) malloc(data_bytes);
+    return r;
+}
+
+midi_channel_data_t alloc_midi_channel_data(size_t n_events) {
+    midi_channel_data_t r;
+    r.n_events = n_events;
+    r.events = (midi_event_t*)malloc (sizeof(midi_event_t) * n_events);
+}
+
+audio_channel_data_t alloc_audio_channel_data(size_t n_samples) {
+    audio_channel_data_t r;
+    r.n_samples = n_samples;
+    r.data = (audio_sample_t*) malloc(sizeof(audio_sample_t) * n_samples);
 }

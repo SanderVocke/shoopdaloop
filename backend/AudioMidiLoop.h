@@ -19,10 +19,9 @@ public:
     std::shared_ptr<AudioChannelSubloop<SampleT>>
     add_audio_channel(std::shared_ptr<BufferPool> const& buffer_pool,
                       size_t initial_max_buffers,
-                      AudioOutputType output_type,
                       bool thread_safe=true) {
         auto subloop = std::make_shared<AudioChannelSubloop<SampleT>>(
-            buffer_pool, initial_max_buffers, output_type);
+            buffer_pool, initial_max_buffers);
         auto fn = [&]() {
             mp_audio_subloops.push_back(subloop);
         };

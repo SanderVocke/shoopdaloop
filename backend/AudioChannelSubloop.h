@@ -15,11 +15,6 @@
 
 using namespace std::chrono_literals;
 
-enum class AudioOutputType {
-    Copy,
-    Add
-};
-
 template<typename SampleT>
 class AudioChannelSubloop : public SubloopInterface,
                             private WithCommandQueue<10, 1000, 1000> {
@@ -31,7 +26,6 @@ public:
 private:
     // Members which may be accessed from any thread (ma prefix)
     std::shared_ptr<BufferPool> ma_buffer_pool;
-    AudioOutputType const ma_output_type;
     const size_t ma_buffer_size;
     std::atomic<size_t> ma_data_length;
 
@@ -45,12 +39,10 @@ public:
 
     AudioChannelSubloop(
             std::shared_ptr<BufferPool> buffer_pool,
-            size_t initial_max_buffers,
-            AudioOutputType output_type) :
+            size_t initial_max_buffers) :
         WithCommandQueue<10, 1000, 1000>(),
         ma_buffer_pool(buffer_pool),
         ma_data_length(0),
-        ma_output_type(output_type),
         ma_buffer_size(buffer_pool->object_size()),
         mp_recording_source_buffer(nullptr),
         mp_playback_target_buffer(nullptr),
@@ -93,6 +85,11 @@ public:
     ) override {
         // Execute any commands queued from other threads.
         PROC_handle_command_queue();
+
+        // FIXME: always passthrough at full volume
+        if (mp_playback_target_buffer_size >= n_samples && mp_recording_source_buffer_size >= n_samples) {
+            memcpy((void*)mp_playback_target_buffer, (void*)mp_recording_source_buffer, sizeof(SampleT) * n_samples);
+        }
 
         switch (state_before) {
             case Playing:
@@ -213,14 +210,8 @@ public:
         auto rest = n_samples - n;
 
         if (!muted) {
-            if (ma_output_type == AudioOutputType::Copy) {
-                memcpy((void*)to, (void*)from, n*sizeof(SampleT));
-            } else if (ma_output_type == AudioOutputType::Add) {
-                for(size_t idx=0; idx < n; idx++) {
-                    to[idx] += from[idx];
-                }
-            } else {
-                throw std::runtime_error("Unsupported output type for audio loop.");
+            for(size_t idx=0; idx < n; idx++) {
+                to[idx] += from[idx];
             }
         }
 

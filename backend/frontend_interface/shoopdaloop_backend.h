@@ -22,12 +22,6 @@ shoopdaloop_loop_midi_channel  *get_midi_channel  (shoopdaloop_loop *loop, size_
 unsigned          get_n_audio_channels     (shoopdaloop_loop *loop);
 unsigned          get_n_midi_channels      (shoopdaloop_loop *loop);
 void              delete_loop              (shoopdaloop_loop *loop);
-loop_data_t       get_loop_data            (shoopdaloop_loop *loop);
-void              load_loop_data           (shoopdaloop_loop *loop, loop_data_t data);
-audio_data_t      get_loop_audio_data      (shoopdaloop_loop *loop);
-void              load_loop_audio_data     (shoopdaloop_loop *loop, audio_data_t data);
-midi_data_t       get_loop_midi_data       (shoopdaloop_loop *loop);
-void              load_loop_midi_data      (shoopdaloop_loop *loop, midi_data_t data);
 void              clear_loop               (shoopdaloop_loop *loop, size_t length);
 
 // Loop channels
@@ -40,7 +34,7 @@ void                  delete_midi_channel_idx  (shoopdaloop_loop *loop, size_t i
 void                  connect_audio_output     (shoopdaloop_loop_audio_channel *channel, shoopdaloop_audio_port *port);
 void                  connect_midi_output      (shoopdaloop_loop_midi_channel  *channel, shoopdaloop_midi_port *port);
 void                  connect_audio_input      (shoopdaloop_loop_audio_channel *channel, shoopdaloop_audio_port *port);
-void                  connect_midi_input      ( shoopdaloop_loop_midi_channel  *channel, shoopdaloop_midi_port *port);
+void                  connect_midi_input       (shoopdaloop_loop_midi_channel  *channel, shoopdaloop_midi_port *port);
 void                  disconnect_audio_outputs (shoopdaloop_loop_audio_channel *channel);
 void                  disconnect_midi_outputs  (shoopdaloop_loop_midi_channel  *channel);
 void                  disconnect_audio_output  (shoopdaloop_loop_audio_channel *channel, shoopdaloop_audio_port* port);
@@ -103,8 +97,15 @@ midi_event_t *maybe_next_message(shoopdaloop_decoupled_midi_port *port);
 void close_decoupled_midi_port(shoopdaloop_decoupled_midi_port *port);
 void send_decoupled_midi(shoopdaloop_decoupled_midi_port *port, unsigned length, unsigned char *data);
 
-// For freeing any returned allocated pointers
-void shoopdaloop_free(void* ptr);
+// Helpers for freeing any heap allocations associated with data objects
+void free_midi_event(midi_event_t e);
+void free_midi_channel_data(midi_channel_data_t d);
+void free_audio_channel_data(audio_channel_data_t d);
+
+// Helpers for allocating data objects
+midi_event_t alloc_midi_event(size_t data_bytes);
+midi_channel_data_t alloc_midi_channel_data(size_t n_events);
+audio_channel_data_t alloc_audio_channel_data(size_t n_samples);
 
 #ifdef __cplusplus
 }
