@@ -14,7 +14,7 @@ from .LooperState import LooperState
 # wet signal.
 class DryWetPairAbstractLooperManager(LooperState):
 
-    # State change notifications
+    # mode change notifications
     wetLooperChanged = pyqtSignal(QObject)
     dryLooperChanged = pyqtSignal(QObject)
 
@@ -46,9 +46,9 @@ class DryWetPairAbstractLooperManager(LooperState):
         for l in [self._wet_looper, self._dry_looper]:
             l.lengthChanged.connect(self.updateLength)
             l.posChanged.connect(self.updatePos)
-            l.stateChanged.connect(self.updateState)
-            l.nextStateChanged.connect(self.updateNextState)
-            l.nextStateCountdownChanged.connect(self.updateNextStateCountdown)
+            l.modeChanged.connect(self.updateState)
+            l.nextModeChanged.connect(self.updateNextState)
+            l.nextModeCountdownChanged.connect(self.updateNextStateCountdown)
             l.volumeChanged.connect(lambda v: DryWetPairAbstractLooperManager.volume.fset(self, v))
             l.outputPeakChanged.connect(lambda v: DryWetPairAbstractLooperManager.outputPeak.fset(self, v))
             l.loadedData.connect(lambda: self.loadedData.emit())
@@ -112,8 +112,8 @@ class DryWetPairAbstractLooperManager(LooperState):
     def updatePos(self):
         # In most cases, we want to show the position of the wet
         # loop.        
-        if self.wet().state == LoopState.Stopped.value and \
-            self.dry().state == LoopState.PlayingMuted.value:
+        if self.wet().mode == LoopMode.Stopped.value and \
+            self.dry().mode == LoopMode.PlayingMuted.value:
             # Playing with live FX. show the pos of the dry loop in this case
             self.pos = self.dry().pos
         else:
@@ -121,52 +121,52 @@ class DryWetPairAbstractLooperManager(LooperState):
     
     @pyqtSlot()
     def updateState(self):
-        # In most cases, our overall state matches that of the wet loop.
-        new_state = self.wet().state
+        # In most cases, our overall mode matches that of the wet loop.
+        new_state = self.wet().mode
 
-        if self.wet().state == LoopState.Recording.value and \
-           self.dry().state == LoopState.Playing.value:
-            new_state = LoopState.RecordingFX.value
+        if self.wet().mode == LoopMode.Recording.value and \
+           self.dry().mode == LoopMode.Playing.value:
+            new_state = LoopMode.RecordingFX.value
         
-        if self.wet().state == LoopState.PlayingMuted.value and \
-           self.dry().state == LoopState.Playing.value:
-            new_state = LoopState.PlayingLiveFX.value
+        if self.wet().mode == LoopMode.PlayingMuted.value and \
+           self.dry().mode == LoopMode.Playing.value:
+            new_state = LoopMode.PlayingLiveFX.value
         
         if self.wet().length <= 0.0 and self.dry().length <= 0.0:
-            new_state = LoopState.Empty.value
+            new_state = LoopMode.Empty.value
         
-        if new_state != self.state:
-            self.state = new_state
-            self.stateChanged.emit(new_state)
+        if new_state != self.mode:
+            self.mode = new_state
+            self.modeChanged.emit(new_state)
     
     @pyqtSlot()
     def updateNextState(self):
-        # In most cases, our overall state matches that of the wet loop.
-        new_next_state = self.wet().next_state
+        # In most cases, our overall mode matches that of the wet loop.
+        new_next_mode = self.wet().next_mode
 
-        if self.wet().next_state == LoopState.Recording.value and \
-           self.dry().next_state == LoopState.Playing.value:
-            new_next_state = LoopState.RecordingFX.value
+        if self.wet().next_mode == LoopMode.Recording.value and \
+           self.dry().next_mode == LoopMode.Playing.value:
+            new_next_mode = LoopMode.RecordingFX.value
         
-        if self.wet().next_state == LoopState.PlayingMuted.value and \
-           self.dry().next_state == LoopState.Playing.value:
-            new_next_state = LoopState.PlayingLiveFX.value
+        if self.wet().next_mode == LoopMode.PlayingMuted.value and \
+           self.dry().next_mode == LoopMode.Playing.value:
+            new_next_mode = LoopMode.PlayingLiveFX.value
         
         if self.wet().length <= 0.0 and self.dry().length <= 0.0 and \
-           new_next_state not in [LoopState.Recording.value, LoopState.RecordingFX.value]:
-            new_next_state = LoopState.Empty.value
+           new_next_mode not in [LoopMode.Recording.value, LoopMode.RecordingFX.value]:
+            new_next_mode = LoopMode.Empty.value
         
-        if new_next_state != self.next_state:
-            self.next_state = new_next_state
-            self.nextStateChanged.emit(new_next_state)
+        if new_next_mode != self.next_mode:
+            self.next_mode = new_next_mode
+            self.nextModeChanged.emit(new_next_mode)
     
     @pyqtSlot()
     def updateNextStateCountdown(self):
-        new_cd = self.wet().next_state_countdown
+        new_cd = self.wet().next_mode_countdown
 
-        if new_cd != self.next_state_countdown:
-            self.next_state_countdown = new_cd
-            self.nextStateCountdownChanged.emit(new_cd)
+        if new_cd != self.next_mode_countdown:
+            self.next_mode_countdown = new_cd
+            self.nextModeCountdownChanged.emit(new_cd)
     
     @pyqtSlot()
     def updateVolumes(self):
@@ -186,7 +186,7 @@ class DryWetPairAbstractLooperManager(LooperState):
             self.stopOtherLoopsInTrack.emit()
             action_id = LoopActionType.DoPlay.value
         if action_id == LoopActionType.DoTogglePlaying.value:
-            action_id = (LoopActionType.DoStop.value if self.state == LoopState.Playing.value else LoopActionType.DoPlay.value)
+            action_id = (LoopActionType.DoStop.value if self.mode == LoopMode.Playing.value else LoopActionType.DoPlay.value)
 
         wet_action = action_id
         dry_action = action_id
@@ -207,7 +207,7 @@ class DryWetPairAbstractLooperManager(LooperState):
                 force_dry_passthrough = True
             case LoopActionType.DoReRecordFX.value:
                 # For record N cycles, here we inject an additional argument
-                # telling the dry/wet loopers what their next state should be
+                # telling the dry/wet loopers what their next mode should be
                 # after recording is finished.
                 wet_action = LoopActionType.DoRecordNCycles.value
                 dry_action = LoopActionType.DoPlay.value
@@ -215,13 +215,13 @@ class DryWetPairAbstractLooperManager(LooperState):
                 dry_args = [wet_args[0]]
                 # TODO: this results in both loops still playing after the recording.
                 # We need a DoPlayNCycles option!
-                wet_args.append(float(LoopState.Playing.value))
+                wet_args.append(float(LoopMode.Playing.value))
             case LoopActionType.DoRecordNCycles.value:
                 # For record N cycles, here we inject an additional argument
-                # telling the dry/wet loopers what their next state should be
+                # telling the dry/wet loopers what their next mode should be
                 # after recording is finished.
-                wet_args.append(float(LoopState.Playing.value))
-                dry_args.append(float(LoopState.PlayingMuted.value))
+                wet_args.append(float(LoopMode.Playing.value))
+                dry_args.append(float(LoopMode.PlayingMuted.value))
                 force_dry_passthrough = True
         
         if force_dry_passthrough != None:

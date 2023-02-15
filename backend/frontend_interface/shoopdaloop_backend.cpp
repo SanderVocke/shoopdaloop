@@ -591,10 +591,6 @@ const char *get_jack_client_name() {
     return g_audio_system->get_client_name();
 }
 
-state_info_t request_state_update() {
-    throw std::runtime_error("request_state_update() not implemented");
-}
-
 unsigned get_sample_rate() {
     if (!g_audio_system) {
         throw std::runtime_error("get_sample_rate() called before initialization");
@@ -849,24 +845,24 @@ void load_midi_channel_data (shoopdaloop_loop_midi_channel  *channel, midi_chann
 }
 
 void loop_transition(shoopdaloop_loop *loop,
-                      loop_state_t state,
+                      loop_mode_t mode,
                       size_t delay, // In # of triggers
                       unsigned wait_for_soft_sync) {
     g_cmd_queue.queue([=]() {
         auto &loop_info = *internal_loop(loop);
-        loop_info.loop->plan_transition(state, delay, wait_for_soft_sync, false);
+        loop_info.loop->plan_transition(mode, delay, wait_for_soft_sync, false);
     });
 }
 
 void loops_transition(unsigned int n_loops,
                       shoopdaloop_loop **loops,
-                      loop_state_t state,
+                      loop_mode_t mode,
                       size_t delay, // In # of triggers
                       unsigned wait_for_soft_sync) {
     g_cmd_queue.queue([=]() {
         for (size_t idx=0; idx<n_loops; idx++) {
             auto &loop_info = *internal_loop(loops[idx]);
-            loop_info.loop->plan_transition(state, delay, wait_for_soft_sync, false);
+            loop_info.loop->plan_transition(mode, delay, wait_for_soft_sync, false);
         }
     });
 }

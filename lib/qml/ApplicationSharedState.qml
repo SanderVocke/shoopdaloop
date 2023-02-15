@@ -36,7 +36,7 @@ Item {
                 midi_control_manager.loop_state_changed(
                     track,
                     loop,
-                    mgr.state,
+                    mgr.mode,
                     mgr.selected,
                     mgr.targeted)
         }
@@ -55,7 +55,7 @@ Item {
                 var mgr = backend_manager.logical_looper_managers[1 + outer * loops_per_track + inner]
                 // Solo playing in track is handled here
                 mgr.stopOtherLoopsInTrack.connect(stop_others_closure(track, loop))
-                mgr.stateChanged.connect(state_changed_closure(track, loop, mgr))
+                mgr.modeChanged.connect(state_changed_closure(track, loop, mgr))
                 mgr.selectedChanged.connect(state_changed_closure(track, loop, mgr))
                 mgr.targetedChanged.connect(state_changed_closure(track, loop, mgr))
                 mgr.didLoopAction.connect(did_loop_action_closure(track, loop))
@@ -78,7 +78,7 @@ Item {
     }
     readonly property var targeted_loop_manager: targeted_loop !== undefined ? loop_managers[targeted_loop[0]][targeted_loop[1]] : undefined
 
-    // TRACKS STATE
+    // TRACKS mode
     property var track_names: {
         var r = []
         r.push('Master')
@@ -212,8 +212,8 @@ Item {
     function all_stopped() {
         for(var trk=0; trk<loop_managers.length; trk++) {
             for(var loop of loop_managers[trk]) {
-                if (loop.state != StatesAndActions.LoopState.Stopped &&
-                    loop.state != StatesAndActions.LoopState.Empty) {
+                if (loop.mode != StatesAndActions.LoopMode.Stopped &&
+                    loop.mode != StatesAndActions.LoopMode.Empty) {
                         return false
                     }
             }
@@ -560,11 +560,11 @@ Item {
                 select_targeted_loop(track, loop)
             } else if (action == StatesAndActions.LoopActionType.DoRecord && targeted_loop_manager !== undefined) {
                 // A target loop is set. Do the "record together with" functionality.
-                // TODO: code is duplicated in app shared state for GUI loop widget
+                // TODO: code is duplicated in app shared mode for GUI loop widget
                 var n_cycles_delay = 0
                 var n_cycles_record = 1
                 n_cycles_record = Math.ceil(targeted_loop_manager.length / master_loop_manager.length)
-                if (State_helpers.is_playing_state(targeted_loop_manager.state)) {
+                if (State_helpers.is_playing_state(targeted_loop_manager.mode)) {
                     var current_cycle = Math.floor(targeted_loop_manager.pos / master_loop_manager.length)
                     n_cycles_delay = Math.max(0, n_cycles_record - current_cycle - 1)
                 }

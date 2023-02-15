@@ -63,25 +63,25 @@ struct LoopInfo : public LoopInterface {
     void process(size_t n_samples) override                                       { check(); loop->process(n_samples); }
     size_t get_n_planned_transitions() const override                             { check(); return loop->get_n_planned_transitions(); }
     size_t get_planned_transition_delay(size_t idx) const override                { check(); return loop->get_planned_transition_delay(idx); }
-    loop_state_t get_planned_transition_state(size_t idx) const override          { check(); return loop->get_planned_transition_state(idx); }
+    loop_mode_t get_planned_transition_state(size_t idx) const override          { check(); return loop->get_planned_transition_state(idx); }
     void clear_planned_transitions() override                                     { check(); loop->clear_planned_transitions(); }
-    void plan_transition(loop_state_t state, size_t n_cycles_delay = 0) override  { check(); loop->plan_transition(state, n_cycles_delay); }
+    void plan_transition(loop_mode_t mode, size_t n_cycles_delay = 0) override  { check(); loop->plan_transition(mode, n_cycles_delay); }
     size_t get_position() const override                                          { check(); return loop->get_position(); }
     size_t get_length() const override                                            { check(); return loop->get_length(); }
     void set_position(size_t pos) override                                        { check(); loop->set_position(pos); }
-    loop_state_t get_state() const override                                       { check(); return loop->get_state(); }
-    void set_state(loop_state_t state) override                                   { check(); return loop->set_state(state); }
+    loop_mode_t get_mode() const override                                       { check(); return loop->get_mode(); }
+    void set_mode(loop_mode_t mode) override                                   { check(); return loop->set_mode(mode); }
     void set_length(size_t length) override                                       { check(); return loop->set_length(length); }
 };
 
 // A structure of atomic scalars is used to communicate the latest
-// state back from the Jack processing thread to the main thread.
+// mode back from the Jack processing thread to the main thread.
 // The templating allows us to inject atomic types or not depending on the need.
-template<typename LoopState, typename Int8, typename Int32, typename Float, typename Unsigned>
+template<typename LoopMode, typename Int8, typename Int32, typename Float, typename Unsigned>
 struct StateReportTemplate {
-    std::vector<LoopState> states;
-    std::vector<LoopState> next_states;
-    std::vector<Int32> next_states_countdown;
+    std::vector<LoopMode> states;
+    std::vector<LoopMode> next_modes;
+    std::vector<Int32> next_modes_countdown;
     std::vector<Int32> positions, lengths, latencies;
     std::vector<Float> passthroughs, loop_volumes, port_volumes, port_input_peaks, port_output_peaks, loop_output_peaks;
     std::vector<Int8> ports_muted, port_inputs_muted;
@@ -89,11 +89,11 @@ struct StateReportTemplate {
         port_n_input_events_since_last_update,
         port_n_output_events_since_last_update;
     
-    // Resize the state object. Makes contents invalid.
+    // Resize the mode object. Makes contents invalid.
     void resize(size_t n_loops, size_t n_ports) {
         states = decltype(states)(n_loops);
-        next_states = decltype(next_states)(n_loops);
-        next_states_countdown = decltype(next_states_countdown)(n_loops);
+        next_modes = decltype(next_modes)(n_loops);
+        next_modes_countdown = decltype(next_modes_countdown)(n_loops);
         positions = decltype(positions)(n_loops);
         lengths = decltype(lengths)(n_loops);
         latencies = decltype(latencies)(n_loops);
@@ -122,8 +122,8 @@ struct StateReportTemplate {
             other.loop_volumes[idx] = loop_volumes[idx];
             other.loop_output_peaks[idx] = loop_output_peaks[idx];
             other.loop_n_output_events_since_last_update[idx] = loop_n_output_events_since_last_update[idx];
-            other.next_states[idx] = next_states[idx];
-            other.next_states_countdown[idx] = next_states_countdown[idx];
+            other.next_modes[idx] = next_modes[idx];
+            other.next_modes_countdown[idx] = next_modes_countdown[idx];
         }
         for (size_t idx=0; idx<port_volumes.size(); idx++) {
             other.passthroughs[idx] = passthroughs[idx];
@@ -150,12 +150,12 @@ struct StateReportTemplate {
         }
     }
 };
-typedef StateReportTemplate<std::atomic<loop_state_t>,
+typedef StateReportTemplate<std::atomic<loop_mode_t>,
                             std::atomic<int8_t>,
                             std::atomic<int32_t>,
                             std::atomic<float>,
                             std::atomic<unsigned>> AtomicStateReport;
-typedef StateReportTemplate<loop_state_t,
+typedef StateReportTemplate<loop_mode_t,
                             int8_t,
                             int32_t,
                             float,
@@ -200,16 +200,16 @@ void push_command(std::function<void()> cmd) {
     }
 }
 
-// Update the atomic state from the loops and ports. Should be called from the processing thread only.
+// Update the atomic mode from the loops and ports. Should be called from the processing thread only.
 void update_atomic_state() {
     for (size_t idx=0; idx<g_loops.size(); idx++) {
         auto &loop = g_loops[idx];
         g_atomic_state.positions[idx] = loop->get_position();
         g_atomic_state.lengths[idx] = loop->get_length();
-        g_atomic_state.states[idx] = loop->get_state();
-        g_atomic_state.next_states[idx] = loop->get_n_planned_transitions() > 0 ?
-            loop->get_planned_transition_state(0) : (loop_state_t)-1;
-        g_atomic_state.next_states_countdown[idx] = loop->get_n_planned_transitions() > 0 ?
+        g_atomic_state.states[idx] = loop->get_mode();
+        g_atomic_state.next_modes[idx] = loop->get_n_planned_transitions() > 0 ?
+            loop->get_planned_transition_state(0) : (loop_mode_t)-1;
+        g_atomic_state.next_modes_countdown[idx] = loop->get_n_planned_transitions() > 0 ?
             loop->get_planned_transition_delay(0) : -1;
         // TODO the rest
     }
@@ -301,7 +301,7 @@ void process(size_t n_frames) {
     // TODO: process MIDI too
     process_loops<LoopInfo>(g_loops, n_frames);
 
-    // Update state
+    // Update mode
     update_atomic_state();
 }
 
@@ -427,7 +427,7 @@ jack_client_t* initialize(
         }
     }
 
-    // Initialize the atomic state used for status reporting.
+    // Initialize the atomic mode used for status reporting.
     g_atomic_state.resize(n_loops, n_ports);
 
     g_audio->start();
@@ -452,8 +452,8 @@ void request_update() {
             g_loop_input_ports.size(), // Because we regard input+output as a "port" in this context
             g_audio->get_sample_rate(),
             s.states.data(),
-            s.next_states.data(),
-            s.next_states_countdown.data(),
+            s.next_modes.data(),
+            s.next_modes_countdown.data(),
             s.lengths.data(),
             s.positions.data(),
             s.loop_volumes.data(),
@@ -567,9 +567,9 @@ int do_loop_action(
     };
 
     auto plan_states = [with_soft_sync](std::vector<unsigned> loops,
-                                        loop_state_t state_1,
+                                        loop_mode_t mode_1,
                                         size_t delay_1 = 0,
-                                        std::optional<loop_state_t> state_2 = std::nullopt,
+                                        std::optional<loop_mode_t> state_2 = std::nullopt,
                                         size_t delay_2 = 0,
                                         std::optional<size_t> set_position_to = std::nullopt,
                                         std::optional<size_t> set_length_to = std::nullopt) {
@@ -602,7 +602,7 @@ int do_loop_action(
         case DoRecordNCycles:
             check_args(3);
             cmd = [idxs, plan_states, arg1_i, arg2_i, arg3_i]() {
-                plan_states(idxs, Recording, arg1_i, (loop_state_t)arg3_i, arg2_i-1);
+                plan_states(idxs, Recording, arg1_i, (loop_mode_t)arg3_i, arg2_i-1);
             };
             break;
         case DoPlay:

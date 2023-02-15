@@ -23,6 +23,7 @@ unsigned          get_n_audio_channels     (shoopdaloop_loop *loop);
 unsigned          get_n_midi_channels      (shoopdaloop_loop *loop);
 void              delete_loop              (shoopdaloop_loop *loop);
 void              clear_loop               (shoopdaloop_loop *loop, size_t length);
+loop_state_t      get_loop_state           (shoopdaloop_loop *loop);
 
 // Loop channels
 void                  clear_audio_channel      (shoopdaloop_loop_audio_channel *channel);
@@ -57,12 +58,12 @@ void                  load_midi_channel_data   (shoopdaloop_loop_midi_channel  *
 // that happen after this one are cancelled, any already planned transitions
 // that happen before are left in place.
 void loop_transition(shoopdaloop_loop *loop,
-                      loop_state_t state,
+                      loop_mode_t mode,
                       size_t delay, // In # of triggers
                       unsigned wait_for_soft_sync);
 void loops_transition(unsigned int n_loops,
                       shoopdaloop_loop **loops,
-                      loop_state_t state,
+                      loop_mode_t mode,
                       size_t delay, // In # of triggers
                       unsigned wait_for_soft_sync);
 
@@ -101,6 +102,7 @@ void send_decoupled_midi(shoopdaloop_decoupled_midi_port *port, unsigned length,
 void free_midi_event(midi_event_t e);
 void free_midi_channel_data(midi_channel_data_t d);
 void free_audio_channel_data(audio_channel_data_t d);
+void free_loop_state(loop_state_t d);
 
 // Helpers for allocating data objects
 midi_event_t alloc_midi_event(size_t data_bytes);

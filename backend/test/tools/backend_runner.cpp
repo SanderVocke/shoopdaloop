@@ -33,9 +33,9 @@ po::options_description get_options() {
         ("midi-output-ports", po::value<size_t>()->default_value(1), "number of midi output ports")
         ("audio-channels,a", po::value<size_t>()->default_value(1), "number of audio channels per loop")
         ("midi-channels,m", po::value<size_t>()->default_value(1), "number of midi channels per loop")
-        ("record", po::value<size_t>()->default_value(0), "# of loops to set to recording state")
-        ("play", po::value<size_t>()->default_value(0), "# of loops to playback state")
-        ("playmuted", po::value<size_t>()->default_value(0), "# of loops to set to playback muted state")
+        ("record", po::value<size_t>()->default_value(0), "# of loops to set to recording mode")
+        ("play", po::value<size_t>()->default_value(0), "# of loops to playback mode")
+        ("playmuted", po::value<size_t>()->default_value(0), "# of loops to set to playback muted mode")
         ("time,t", po::value<float>(), "amount of seconds to run before exiting")
         ("length", po::value<size_t>()->default_value(0), "length of the loops at init")
         ;

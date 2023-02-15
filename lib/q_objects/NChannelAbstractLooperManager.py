@@ -25,21 +25,21 @@ class NChannelAbstractLooperManager(LooperState):
         super(NChannelAbstractLooperManager, self).__init__(parent)
         self._channel_loopers = channel_loopers
 
-        # Sync our own state from the first looper.
+        # Sync our own mode from the first looper.
         first_looper = self._channel_loopers[0]
         first_looper.posChanged.connect(lambda v: NChannelAbstractLooperManager.pos.fset(self, v))
         first_looper.lengthChanged.connect(lambda v: NChannelAbstractLooperManager.length.fset(self, v))
-        first_looper.stateChanged.connect(lambda v: NChannelAbstractLooperManager.state.fset(self, v))
-        first_looper.nextStateChanged.connect(lambda v: NChannelAbstractLooperManager.next_state.fset(self, v))
-        first_looper.nextStateCountdownChanged.connect(lambda v: NChannelAbstractLooperManager.next_state_countdown.fset(self, v))
+        first_looper.modeChanged.connect(lambda v: NChannelAbstractLooperManager.mode.fset(self, v))
+        first_looper.nextModeChanged.connect(lambda v: NChannelAbstractLooperManager.next_mode.fset(self, v))
+        first_looper.nextModeCountdownChanged.connect(lambda v: NChannelAbstractLooperManager.next_mode_countdown.fset(self, v))
         first_looper.volumeChanged.connect(lambda v: NChannelAbstractLooperManager.volume.fset(self, v))
         first_looper.outputPeakChanged.connect(lambda v: NChannelAbstractLooperManager.outputPeak.fset(self, maximum_output_peak(self.channel_loopers)))
         for l in self._channel_loopers:
             
-            self.state = first_looper.state
+            self.mode = first_looper.mode
             self.length = first_looper.length
-            self.next_state = first_looper.next_state
-            self.next_state_countdown = first_looper.next_state_countdown
+            self.next_mode = first_looper.next_mode
+            self.next_mode_countdown = first_looper.next_mode_countdown
             self.volume = first_looper.volume
             self.pos = first_looper.pos
             self.outputPeak = first_looper.outputPeak

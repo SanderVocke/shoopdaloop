@@ -40,16 +40,16 @@ print("  m : play muted")
 def press(key):
     if key == 'r':
         print ('record')
-        loop.transition(LoopState.Recording, 0, False)
+        loop.transition(LoopMode.Recording, 0, False)
     elif key == 'p':
         print ('play')
-        loop.transition(LoopState.Playing, 0, False)
+        loop.transition(LoopMode.Playing, 0, False)
     elif key == 's':
         print ('stop')
-        loop.transition(LoopState.Stopped, 0, False)
+        loop.transition(LoopMode.Stopped, 0, False)
     elif key == 'm':
         print ('play muted')
-        loop.transition(LoopState.PlayingMuted, 0, False)
+        loop.transition(LoopMode.PlayingMuted, 0, False)
     elif key == 'c':
         print ('clear (not implemented)')
 

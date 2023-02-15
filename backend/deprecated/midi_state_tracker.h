@@ -66,7 +66,7 @@ struct MIDINotesState {
     std::vector<NoteOnOff>   last_notes;
 };
 
-// Tracks state of a single MIDI port regarding active and last MIDI notes.
+// Tracks mode of a single MIDI port regarding active and last MIDI notes.
 // Notes will always be sorted according to start time.
 struct MIDIStateTracker : public MIDINotesState {
     MIDIStateTracker() : MIDINotesState() {}

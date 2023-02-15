@@ -20,7 +20,7 @@ enum BasicPointOfInterestFlags {
 // The basic loop implements common semantics shared by all loop types.
 // That includes keeping track of the first upcoming point of interest,
 // logic of handling points of interest while processing, planning
-// state transitions etc.
+// mode transitions etc.
 class BasicLoop : public LoopInterface,
                   protected WithCommandQueue<100, 1000, 1000> {
 public:
@@ -32,10 +32,10 @@ public:
 protected:
     std::optional<PointOfInterest> mp_next_poi;
     std::shared_ptr<LoopInterface> mp_soft_sync_source;
-    std::deque<loop_state_t> mp_planned_states;
+    std::deque<loop_mode_t> mp_planned_states;
     std::deque<int> mp_planned_state_countdowns;
 
-    std::atomic<loop_state_t> ma_state;
+    std::atomic<loop_mode_t> ma_mode;
     std::atomic<bool> ma_triggering_now;
     std::atomic<size_t> ma_length;
     std::atomic<size_t> ma_position;
@@ -45,7 +45,7 @@ public:
     BasicLoop() :
         WithCommandQueue<100, 1000, 1000>(),
         mp_next_poi(std::nullopt),
-        ma_state(Stopped),
+        ma_mode(Stopped),
         mp_soft_sync_source(nullptr),
         ma_triggering_now(false),
         ma_length(0),
@@ -60,7 +60,7 @@ public:
     }
 
     virtual void PROC_update_poi() {
-        if((ma_state == Playing || ma_state == PlayingMuted) && 
+        if((ma_mode == Playing || ma_mode == PlayingMuted) && 
            ma_length == 0) {
             PROC_handle_transition(Stopped);
         }
@@ -73,7 +73,7 @@ public:
         }
 
         std::optional<PointOfInterest> loop_end_poi;
-        if (ma_state == Playing || ma_state == PlayingMuted) {
+        if (ma_mode == Playing || ma_mode == PlayingMuted) {
             std::optional<PointOfInterest> loop_end_poi = PointOfInterest {
                 .when = ma_length - ma_position,
                 .type_flags = LoopEnd
@@ -115,8 +115,8 @@ public:
     }
 
     virtual void PROC_process_subloops(
-        loop_state_t state_before,
-        loop_state_t state_after,
+        loop_mode_t mode_before,
+        loop_mode_t mode_after,
         size_t n_samples,
         size_t pos_before,
         size_t pos_after,
@@ -140,7 +140,7 @@ public:
         size_t length_before = ma_length;
         size_t length_after = ma_length;
 
-        switch(ma_state) {
+        switch(ma_mode) {
             case Recording:
                 length_after += n_samples;
                 break;
@@ -152,7 +152,7 @@ public:
                 break;
         }
 
-        PROC_process_subloops(ma_state, ma_state, n_samples, pos_before, pos_after,
+        PROC_process_subloops(ma_mode, ma_mode, n_samples, pos_before, pos_after,
             length_before, length_after);
 
         if (mp_next_poi) { mp_next_poi.value().when -= n_samples; }
@@ -199,10 +199,10 @@ public:
         }
     }
 
-    void PROC_handle_transition(loop_state_t new_state) {
-        ma_state = new_state;
-        if (ma_state == Stopped) { ma_position = 0; }
-        if ((ma_state == Playing || ma_state == PlayingMuted) &&
+    void PROC_handle_transition(loop_mode_t new_state) {
+        ma_mode = new_state;
+        if (ma_mode == Stopped) { ma_position = 0; }
+        if ((ma_mode == Playing || ma_mode == PlayingMuted) &&
             ma_position == 0) {
                 ma_triggering_now = true;
             }
@@ -235,8 +235,8 @@ public:
         return rval;
     }
 
-    loop_state_t get_planned_transition_state(size_t idx, bool thread_safe=true) override {
-        loop_state_t rval;
+    loop_mode_t get_planned_transition_state(size_t idx, bool thread_safe=true) override {
+        loop_mode_t rval;
         auto fn = [&]() {
             if(idx >= mp_planned_states.size()) {
                 throw std::runtime_error("Attempted to get out-of-bounds planned transition");
@@ -263,15 +263,15 @@ public:
         }
     }
 
-    void plan_transition(loop_state_t state, size_t n_cycles_delay = 0, bool wait_for_soft_sync = true, bool thread_safe=true) override {
+    void plan_transition(loop_mode_t mode, size_t n_cycles_delay = 0, bool wait_for_soft_sync = true, bool thread_safe=true) override {
         auto fn = [&]() {
             bool transitioning_immediately =
-                (!mp_soft_sync_source && ma_state != Playing && ma_state != PlayingMuted) ||
+                (!mp_soft_sync_source && ma_mode != Playing && ma_mode != PlayingMuted) ||
                 (!wait_for_soft_sync);
             if (transitioning_immediately) {
                 // Un-synced loops transition immediately from non-playing
                 // states.
-                PROC_handle_transition(state);
+                PROC_handle_transition(mode);
                 mp_planned_states.clear();
                 mp_planned_state_countdowns.clear();
             } else {
@@ -282,11 +282,11 @@ public:
                 }
                 if (insertion_point >= mp_planned_state_countdowns.size()) {
                     mp_planned_state_countdowns.push_back(n_cycles_delay);
-                    mp_planned_states.push_back(state);
+                    mp_planned_states.push_back(mode);
                 } else {
                     // Replace some planned states
                     mp_planned_state_countdowns[insertion_point] = n_cycles_delay;
-                    mp_planned_states[insertion_point] = state;
+                    mp_planned_states[insertion_point] = mode;
                     mp_planned_state_countdowns.resize(insertion_point+1);
                     mp_planned_states.resize(insertion_point+1);
                 }
@@ -316,8 +316,8 @@ public:
         return ma_length;
     }
 
-    loop_state_t get_state() const override {
-        return ma_state;
+    loop_mode_t get_mode() const override {
+        return ma_mode;
     }
 
     void set_length(size_t len, bool thread_safe=true) override {
@@ -335,10 +335,10 @@ public:
         else { fn(); }
     }
 
-    void set_state(loop_state_t state, bool thread_safe=true) override {
+    void set_mode(loop_mode_t mode, bool thread_safe=true) override {
         auto fn = [&]() {
-            if (state != ma_state) {
-                ma_state = state;
+            if (mode != ma_mode) {
+                ma_mode = mode;
                 mp_next_poi = std::nullopt;
                 PROC_update_poi();
             }

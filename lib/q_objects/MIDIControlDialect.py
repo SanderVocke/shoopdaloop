@@ -35,10 +35,10 @@ class MIDIControlDialect(QObject):
             self._input_rules = s
             self.inputRulesChanged.emit(s)
     
-    # loop state output formulas
+    # loop mode output formulas
     # This is a map of integer -> string.
     # Each entry represents a formula to be executed when a loop
-    # changes its state to the given integer value.
+    # changes its mode to the given integer value.
     loopStateChangeFormulasChanged = pyqtSignal('QMap<int, QVariant>')
     @pyqtProperty('QMap<int, QVariant>', notify=loopStateChangeFormulasChanged)
     def loopStateChangeFormulas(self):

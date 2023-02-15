@@ -43,12 +43,12 @@ loops_fn g_loops_fn = shoopdaloop_loops;
 // Last written output index in in/out pairs (goes tick tock)
 uint8_t g_last_written_output_buffer_tick_tock;
 
-// State for each loop
+// mode for each loop
 Buffer<int8_t, 1> g_states[2];
 
 // Planned states for each loop
-Buffer<int8_t, 2> g_next_states[2];
-Buffer<int8_t, 2> g_next_states_countdown[2];
+Buffer<int8_t, 2> g_next_modes[2];
+Buffer<int8_t, 2> g_next_modes_countdown[2];
 
 // Position for each loop
 Buffer<int32_t, 1> g_positions[2];
@@ -234,11 +234,11 @@ std::vector<MIDIRingBuffer> g_temporary_merging_buffers;
 constexpr unsigned g_midi_ring_buf_size = 81920;
 
 // A structure of atomic scalars is used to communicate the latest
-// state back from the Jack processing thread to the main thread.
+// mode back from the Jack processing thread to the main thread.
 struct atomic_state {
-    std::vector<std::atomic<loop_state_t>> states;
-    std::vector<std::vector<std::atomic<loop_state_t>>> next_states;
-    std::vector<std::vector<std::atomic<int8_t>>> next_states_countdown;
+    std::vector<std::atomic<loop_mode_t>> states;
+    std::vector<std::vector<std::atomic<loop_mode_t>>> next_modes;
+    std::vector<std::vector<std::atomic<int8_t>>> next_modes_countdown;
     std::vector<std::atomic<int32_t>> positions, lengths, latencies;
     std::vector<std::atomic<float>> passthroughs, loop_volumes, port_volumes, port_input_peaks, port_output_peaks, loop_output_peaks;
     std::vector<std::atomic<int8_t>> ports_muted, port_inputs_muted;
@@ -287,8 +287,8 @@ std::vector<_slow_midi_port> g_slow_midi_ports;
 
 extern "C" {
 
-bool is_playing_state (loop_state_t state) {
-    return state == Playing || state == PlayingMuted;
+bool is_playing_state (loop_mode_t mode) {
+    return mode == Playing || mode == PlayingMuted;
 }
 
 // Process the slow midi ports
@@ -411,7 +411,7 @@ int jack_process (jack_nframes_t nframes, void *arg) {
     // For incoming MIDI on the input ports:
     // - Store the timestamps for the loops backend to determine whether+where to record them
     // - Store the events into a temporary buffer to combine with playback events later
-    // - Notify the MIDI state trackers so they can keep track of recent & active notes played
+    // - Notify the MIDI mode trackers so they can keep track of recent & active notes played
     for(int i=0; i<g_input_ports.size(); i++) {
         auto buf = g_midi_input_bufs[i];
         g_temporary_merging_buffers[i].clear();
@@ -448,8 +448,8 @@ int jack_process (jack_nframes_t nframes, void *arg) {
             g_states[tick],
             g_positions[tick],
             g_lengths[tick],
-            g_next_states[tick],
-            g_next_states_countdown[tick],
+            g_next_modes[tick],
+            g_next_modes_countdown[tick],
             g_storage,
             g_loops_to_ports,
             g_loops_hard_sync_mapping,
@@ -478,8 +478,8 @@ int jack_process (jack_nframes_t nframes, void *arg) {
             g_states[tock],
             g_positions[tock],
             g_lengths[tock],
-            g_next_states[tock],
-            g_next_states_countdown[tock],
+            g_next_modes[tock],
+            g_next_modes_countdown[tock],
             g_event_recording_timestamps_out,
             g_storage
         );
@@ -503,8 +503,8 @@ int jack_process (jack_nframes_t nframes, void *arg) {
         auto &midi_storage = g_loop_midi_buffers[loop_idx];
         auto &pos_before = g_positions[tick](loop_idx);
         auto &pos_after = g_positions[tock](loop_idx);
-        auto &state_before = g_states[tick][loop_idx];
-        auto &state_after = g_states[tock][loop_idx];
+        auto &mode_before = g_states[tick][loop_idx];
+        auto &mode_after = g_states[tock][loop_idx];
         auto &n_events = g_n_port_events(port_idx);
         auto mapped_port_idx = (g_port_input_mappings(port_idx) >= 0 && g_port_input_mappings(port_idx) != port_idx) ?
                 g_port_input_mappings(port_idx) : port_idx;
@@ -518,7 +518,7 @@ int jack_process (jack_nframes_t nframes, void *arg) {
                 next_data = nullptr;
                 return false;
             }
-            // TODO correct behavior on state changes
+            // TODO correct behavior on mode changes
             while (true) {
                 auto from = g_positions[tick](loop_idx);
                 auto next = midi_storage.peek_cursor_metadata();
@@ -608,7 +608,7 @@ int jack_process (jack_nframes_t nframes, void *arg) {
             if(g_states[tock](i) != g_states[tick](i)) {
                 std::cout << "Loop " << i << ": " << (int)g_states[tick](i) << " -> "
                         << (int)g_states[tock](i) 
-                        << " (-> " << (int)g_next_states[tock](0, i) << ")"
+                        << " (-> " << (int)g_next_modes[tock](0, i) << ")"
                         << std::endl;
             }
         }
@@ -633,15 +633,15 @@ int jack_process (jack_nframes_t nframes, void *arg) {
 
     // Copy states to atomic for read-out
     for(int i=0; i<g_n_loops; i++) {
-        g_atomic_state.states[i] = (loop_state_t) g_states[g_last_written_output_buffer_tick_tock](i);
+        g_atomic_state.states[i] = (loop_mode_t) g_states[g_last_written_output_buffer_tick_tock](i);
         g_atomic_state.lengths[i] = g_lengths[g_last_written_output_buffer_tick_tock](i);
         g_atomic_state.loop_volumes[i] = g_loop_volumes(i);
         g_atomic_state.positions[i] = g_positions[g_last_written_output_buffer_tick_tock](i);
         g_atomic_state.loop_output_peaks[i] = g_loop_output_peaks(i);
-        g_atomic_state.next_states[i][0] = (loop_state_t) g_next_states[0](0, i);
-        g_atomic_state.next_states[i][1] = (loop_state_t) g_next_states[1](1, i);
-        g_atomic_state.next_states_countdown[i][0] = (loop_state_t) g_next_states_countdown[0](0, i);
-        g_atomic_state.next_states_countdown[i][1] = (loop_state_t) g_next_states_countdown[1](1, i);
+        g_atomic_state.next_modes[i][0] = (loop_mode_t) g_next_modes[0](0, i);
+        g_atomic_state.next_modes[i][1] = (loop_mode_t) g_next_modes[1](1, i);
+        g_atomic_state.next_modes_countdown[i][0] = (loop_mode_t) g_next_modes_countdown[0](0, i);
+        g_atomic_state.next_modes_countdown[i][1] = (loop_mode_t) g_next_modes_countdown[1](1, i);
     }
     for(int i=0; i<g_n_ports; i++) {
         g_atomic_state.passthroughs[i] = g_passthroughs(i);
@@ -740,10 +740,10 @@ jack_client_t* initialize(
     // Allocate buffers
     g_states[0] = Buffer<int8_t, 1>(n_loops);
     g_states[1] = Buffer<int8_t, 1>(n_loops);
-    g_next_states[0] = Buffer<int8_t, 2>(2, n_loops);
-    g_next_states[1] = Buffer<int8_t, 2>(2, n_loops);
-    g_next_states_countdown[0] = Buffer<int8_t, 2>(2, n_loops);
-    g_next_states_countdown[1] = Buffer<int8_t, 2>(2, n_loops);
+    g_next_modes[0] = Buffer<int8_t, 2>(2, n_loops);
+    g_next_modes[1] = Buffer<int8_t, 2>(2, n_loops);
+    g_next_modes_countdown[0] = Buffer<int8_t, 2>(2, n_loops);
+    g_next_modes_countdown[1] = Buffer<int8_t, 2>(2, n_loops);
     g_positions[0] = Buffer<int32_t, 1>(n_loops);
     g_positions[1] = Buffer<int32_t, 1>(n_loops);
     g_lengths[0] = Buffer<int32_t, 1>(n_loops);
@@ -793,8 +793,8 @@ jack_client_t* initialize(
         g_buf_nframes, n_mixed_output_ports
     );
 
-    // Allocate atomic state
-    g_atomic_state.states = std::vector<std::atomic<loop_state_t>>(n_loops);
+    // Allocate atomic mode
+    g_atomic_state.states = std::vector<std::atomic<loop_mode_t>>(n_loops);
     g_atomic_state.lengths = std::vector<std::atomic<int32_t>>(n_loops);
     g_atomic_state.loop_volumes = std::vector<std::atomic<float>>(n_loops);
     g_atomic_state.port_volumes = std::vector<std::atomic<float>>(n_ports);
@@ -806,11 +806,11 @@ jack_client_t* initialize(
     g_atomic_state.port_input_peaks = std::vector<std::atomic<float>>(n_ports);
     g_atomic_state.port_output_peaks = std::vector<std::atomic<float>>(n_ports);
     g_atomic_state.loop_output_peaks = std::vector<std::atomic<float>>(n_loops);
-    g_atomic_state.next_states = std::vector<std::vector<std::atomic<loop_state_t>>>(n_loops);
-    g_atomic_state.next_states_countdown = std::vector<std::vector<std::atomic<int8_t>>>(n_loops);
+    g_atomic_state.next_modes = std::vector<std::vector<std::atomic<loop_mode_t>>>(n_loops);
+    g_atomic_state.next_modes_countdown = std::vector<std::vector<std::atomic<int8_t>>>(n_loops);
     for(size_t i=0; i<n_loops; i++) {
-        g_atomic_state.next_states[i] = std::vector<std::atomic<loop_state_t>>(2);
-        g_atomic_state.next_states_countdown[i] = std::vector<std::atomic<int8_t>>(2);
+        g_atomic_state.next_modes[i] = std::vector<std::atomic<loop_mode_t>>(2);
+        g_atomic_state.next_modes_countdown[i] = std::vector<std::atomic<int8_t>>(2);
     }
     g_atomic_state.loop_n_output_events_since_last_update = std::vector<std::atomic<unsigned>>(n_loops);
     g_atomic_state.port_n_output_events_since_last_update = std::vector<std::atomic<unsigned>>(n_ports);
@@ -819,10 +819,10 @@ jack_client_t* initialize(
     // Initialize loops
     for(size_t i=0; i<g_n_loops; i++) {
         g_states[0](i) = g_states[1](i) = Stopped;
-        g_next_states[0](0, i) = g_next_states[0](1, i) = Stopped;
-        g_next_states[1](0, i) = g_next_states[1](1, i) = Stopped;
-        g_next_states_countdown[0](0, i) = g_next_states_countdown[0](1, i) = -1;
-        g_next_states_countdown[1](0, i) = g_next_states_countdown[1](1, i) = -1;
+        g_next_modes[0](0, i) = g_next_modes[0](1, i) = Stopped;
+        g_next_modes[1](0, i) = g_next_modes[1](1, i) = Stopped;
+        g_next_modes_countdown[0](0, i) = g_next_modes_countdown[0](1, i) = -1;
+        g_next_modes_countdown[1](0, i) = g_next_modes_countdown[1](1, i) = -1;
         g_positions[0](i) = g_positions[1](i) = 0;
         g_lengths[0](i) = g_lengths[1](i) = 0;
         g_loops_to_ports(i) = loops_to_ports_mapping[i];
@@ -956,13 +956,13 @@ int do_loop_action(
         }
     };
 
-    auto apply_state = [with_soft_sync](std::vector<unsigned> loops, loop_state_t state, int delay=0, bool is_next_next_state=false) {
+    auto apply_state = [with_soft_sync](std::vector<unsigned> loops, loop_mode_t mode, int delay=0, bool is_next_next_mode=false) {
         for(auto const& loop: loops) {
-            int x_idx = is_next_next_state ? 1 : 0;
-            g_next_states[0](x_idx, loop) = g_next_states[1](x_idx, loop) = state;
-            g_next_states_countdown[0](x_idx, loop) = g_next_states_countdown[1](x_idx, loop) = delay;
+            int x_idx = is_next_next_mode ? 1 : 0;
+            g_next_modes[0](x_idx, loop) = g_next_modes[1](x_idx, loop) = mode;
+            g_next_modes_countdown[0](x_idx, loop) = g_next_modes_countdown[1](x_idx, loop) = delay;
             if(!with_soft_sync) {
-                g_states[0](loop) = g_states[1](loop) = state;
+                g_states[0](loop) = g_states[1](loop) = mode;
             }
         }
     };
@@ -989,7 +989,7 @@ int do_loop_action(
             check_args(3);
             cmd = [idxs, apply_state, arg1_i, arg2_i, arg3_i]() {
                 apply_state(idxs, Recording, arg1_i);
-                apply_state(idxs, (loop_state_t) arg3_i, arg2_i-1, true);
+                apply_state(idxs, (loop_mode_t) arg3_i, arg2_i-1, true);
             };
             break;
         case DoPlay:
@@ -1083,19 +1083,19 @@ int do_port_action(
 }
 
 void request_update() {
-    // Allocate memory for a copy of the relevant state
-    std::vector<loop_state_t> states(g_n_loops), next_states(g_n_loops);
-    std::vector<int32_t> positions(g_n_loops), lengths(g_n_loops), latencies(g_n_ports), next_state_countdowns(g_n_loops);
+    // Allocate memory for a copy of the relevant mode
+    std::vector<loop_mode_t> states(g_n_loops), next_modes(g_n_loops);
+    std::vector<int32_t> positions(g_n_loops), lengths(g_n_loops), latencies(g_n_ports), next_mode_countdowns(g_n_loops);
     std::vector<float> passthroughs(g_n_ports), loop_volumes(g_n_loops), port_volumes(g_n_ports);
     std::vector<int8_t> ports_muted(g_n_ports), port_inputs_muted(g_n_ports);
     std::vector<unsigned> loop_n_output_events(g_n_loops), port_n_input_events(g_n_ports), port_n_output_events(g_n_ports);
 
-    // Copy the state
+    // Copy the mode
     for(int i=0; i<g_n_loops; i++) {
         states[i] = g_atomic_state.states[i];
         // TODO
-        next_states[i] = g_atomic_state.next_states[i][0];
-        next_state_countdowns[i] = g_atomic_state.next_states_countdown[i][0];
+        next_modes[i] = g_atomic_state.next_modes[i][0];
+        next_mode_countdowns[i] = g_atomic_state.next_modes_countdown[i][0];
         positions[i] = g_atomic_state.positions[i];
         lengths[i] = g_atomic_state.lengths[i];
         loop_volumes[i] = g_atomic_state.loop_volumes[i];
@@ -1122,8 +1122,8 @@ void request_update() {
             g_n_ports,
             g_sample_rate,
             states.data(),
-            next_states.data(),
-            next_state_countdowns.data(),
+            next_modes.data(),
+            next_mode_countdowns.data(),
             lengths.data(),
             positions.data(),
             loop_volumes.data(),
@@ -1150,8 +1150,8 @@ int load_loop_data(
     std::atomic<bool> finished = false;
     auto my_length = len;
     push_command([loop_idx, &finished]() {
-        g_next_states_countdown[0](0, loop_idx) = g_next_states_countdown[0](1, loop_idx) =
-            g_next_states_countdown[1](0, loop_idx) = g_next_states_countdown[1](1, loop_idx) = -1;
+        g_next_modes_countdown[0](0, loop_idx) = g_next_modes_countdown[0](1, loop_idx) =
+            g_next_modes_countdown[1](0, loop_idx) = g_next_modes_countdown[1](1, loop_idx) = -1;
         g_states[0](loop_idx) = g_states[1](loop_idx) = Stopped;
         g_positions[0](loop_idx) = g_positions[1](loop_idx) = 0;
         finished = true;
@@ -1191,8 +1191,8 @@ unsigned get_loop_data(
     std::atomic<bool> finished = false;
     push_command([loop_idx, &finished, do_stop]() {
         if (do_stop) {
-            g_next_states_countdown[0](0, loop_idx) = g_next_states_countdown[0](1, loop_idx) =
-                g_next_states_countdown[1](0, loop_idx) = g_next_states_countdown[1](1, loop_idx) = -1;
+            g_next_modes_countdown[0](0, loop_idx) = g_next_modes_countdown[0](1, loop_idx) =
+                g_next_modes_countdown[1](0, loop_idx) = g_next_modes_countdown[1](1, loop_idx) = -1;
             g_states[0](loop_idx) = g_states[1](loop_idx) = Stopped;
             g_positions[0](loop_idx) = g_positions[1](loop_idx) = 0;
         }

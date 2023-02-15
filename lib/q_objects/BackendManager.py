@@ -405,8 +405,8 @@ class BackendManager(QObject):
                 n_ports,
                 sample_rate,
                 loop_states,
-                loop_next_states,
-                loop_next_state_countdowns,
+                loop_next_modes,
+                loop_next_mode_countdowns,
                 loop_lengths,
                 loop_positions,
                 loop_volumes,
@@ -430,22 +430,22 @@ class BackendManager(QObject):
             
             # Determine if the loop cycled
             cycled = False
-            if is_playing_state(m.state) and is_playing_state(loop_states[i]) and \
+            if is_playing_state(m.mode) and is_playing_state(loop_states[i]) and \
                m.length > 0 and \
                (loop_positions[i] < m.pos):
                cycled = True
             
             # Determine if the loop passed the halfway point
             passed_halfway = False
-            if is_playing_state(m.state) and is_playing_state(loop_states[i]) and \
+            if is_playing_state(m.mode) and is_playing_state(loop_states[i]) and \
                m.length > 0 and \
                (loop_positions[i] >= m.length / 2) and \
                (m.pos < m.length / 2):
                passed_halfway = True
                
-            m.state = loop_states[i]
-            m.next_state = loop_next_states[i]
-            m.next_state_countdown = loop_next_state_countdowns[i]
+            m.mode = loop_states[i]
+            m.next_mode = loop_next_modes[i]
+            m.next_mode_countdown = loop_next_mode_countdowns[i]
             m.length = loop_lengths[i]
             m.pos = loop_positions[i]
             m.volume = loop_volumes[i]
@@ -694,10 +694,10 @@ class BackendManager(QObject):
                     file.write(appstate_serialized)
 
                 for idx in range(self.n_loops):
-                    state = self._channel_looper_managers[idx]
-                    json_filename = '{}/loop_{}_state.json'.format(folder, idx)
+                    mode = self._channel_looper_managers[idx]
+                    json_filename = '{}/loop_{}_mode.json'.format(folder, idx)
 
-                    if state.length > 0.0 and store_audio:
+                    if mode.length > 0.0 and store_audio:
                         wav_filename = '{}/loop_{}_data.wav'.format(folder, idx)
                         self.save_loops_to_file([idx], wav_filename, False)
                         include_in_tarball.append(wav_filename)
@@ -707,14 +707,14 @@ class BackendManager(QObject):
                         include_in_tarball.append(midi_filename)
                     
                     with open(json_filename, 'w') as lfile:
-                        lfile.write(state.serialize_session_state())
+                        lfile.write(mode.serialize_session_state())
                     include_in_tarball.append(json_filename)
                 
                 for idx in range(self.n_ports):
-                    state = self._channel_port_managers[idx]
-                    json_filename = '{}/port_{}_state.json'.format(folder, idx)
+                    mode = self._channel_port_managers[idx]
+                    json_filename = '{}/port_{}_mode.json'.format(folder, idx)
                     with open(json_filename, 'w') as pfile:
-                        pfile.write(state.serialize_session_state())
+                        pfile.write(mode.serialize_session_state())
                     include_in_tarball.append(json_filename)
 
                 # Now combine into a tarball
@@ -757,7 +757,7 @@ class BackendManager(QObject):
                 for idx in range(self.n_loops):
                     audio_data_filename = '{}/loop_{}_data.wav'.format(folder, idx)
                     midi_data_filename = '{}/loop_{}_midi.mid'.format(folder, idx)
-                    json_filename = '{}/loop_{}_state.json'.format(folder, idx)
+                    json_filename = '{}/loop_{}_mode.json'.format(folder, idx)
                     # TODO: this assumes the # of loops is always the same.
                     if os.path.isfile(json_filename):
                         if os.path.isfile(audio_data_filename):
@@ -768,7 +768,7 @@ class BackendManager(QObject):
                             self._channel_looper_managers[idx].deserialize_session_state(json.read())
                 
                 for idx in range(self.n_ports):
-                    json_filename = '{}/port_{}_state.json'.format(folder, idx)
+                    json_filename = '{}/port_{}_mode.json'.format(folder, idx)
                     # TODO: this assumes the # of ports is always the same.
                     if os.path.isfile(json_filename):
                         with open(json_filename, 'r') as json:

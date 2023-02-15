@@ -65,8 +65,8 @@ public:
     }
 
     void PROC_process(
-        loop_state_t state_before,
-        loop_state_t state_after,
+        loop_mode_t mode_before,
+        loop_mode_t mode_after,
         size_t n_samples,
         size_t pos_before,
         size_t pos_after,
@@ -75,10 +75,10 @@ public:
         ) override {
         PROC_handle_command_queue();
 
-        switch (state_before) {
+        switch (mode_before) {
             case Playing:
             case PlayingMuted:
-                PROC_process_playback(pos_before, length_before, n_samples, state_before == PlayingMuted);
+                PROC_process_playback(pos_before, length_before, n_samples, mode_before == PlayingMuted);
                 break;
             case Recording:
                 PROC_process_record(length_before, n_samples);
@@ -158,12 +158,12 @@ public:
         buf.n_frames_processed += n_samples;
     }
 
-    std::optional<size_t> PROC_get_next_poi(loop_state_t state,
+    std::optional<size_t> PROC_get_next_poi(loop_mode_t mode,
                                                size_t length,
                                                size_t position) const override {
-        if (state == Playing || state == PlayingMuted) {
+        if (mode == Playing || mode == PlayingMuted) {
             return mp_playback_target_buffer.value().n_frames_total - mp_playback_target_buffer.value().n_frames_processed;
-        } else if (state == Recording) {
+        } else if (mode == Recording) {
             return mp_recording_source_buffer.value().n_frames_total - mp_recording_source_buffer.value().n_frames_processed;
         }
 
@@ -212,7 +212,7 @@ public:
         else { fn(); }
     }
 
-    void PROC_handle_poi(loop_state_t state,
+    void PROC_handle_poi(loop_mode_t mode,
                     size_t length,
                     size_t position) override {}
     

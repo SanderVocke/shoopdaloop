@@ -5,10 +5,13 @@ import os
 import tempfile
 import json
 
-from ..StatesAndActions import LoopMode, LoopActionType
+import sys
+sys.path.append('../..')
 
-# Represents the mode of any looper.
-class LooperState(QObject):
+import lib.backend as backend
+
+# Wraps a back-end loop.
+class BackendLoop(QObject):
 
     # mode change notifications
     lengthChanged = pyqtSignal(float)
@@ -18,26 +21,21 @@ class LooperState(QObject):
     nextModeCountdownChanged = pyqtSignal(int)
     volumeChanged = pyqtSignal(float)
     outputPeakChanged = pyqtSignal(float)
-    selectedChanged = pyqtSignal(bool)
-    targetedChanged = pyqtSignal(bool)
 
     # Other signals
     cycled = pyqtSignal()
     passed_halfway = pyqtSignal()
 
-    def __init__(self, parent=None):
-        super(LooperState, self).__init__(parent)
+    def __init__(self, backend_loop : Type[backend.BackendLoop], parent=None):
+        super(BackendLoop, self).__init__(parent)
         self._length = 1.0
         self._pos = 0.0
-        self._mode = LoopMode.Unknown.value
-        self._next_mode = LoopMode.Unknown.value
+        self._mode = backend.LoopMode.Unknown.value()
+        self._next_mode = backend.LoopMode.Unknown.value()
         self._next_mode_countdown = -1
         self._volume = 1.0
         self._output_peak = 0.0
-        self._get_waveforms_fn = lambda from_sample, to_sample, samples_per_bin: {}
-        self._get_midi_fn = lambda: []
-        self._selected = False
-        self._targeted = False
+        self._backend_loop = backend_loop
 
     ######################
     # PROPERTIES
@@ -120,55 +118,28 @@ class LooperState(QObject):
         if self._output_peak != p:
             self._output_peak = p
             self.outputPeakChanged.emit(p)
+    
+    ###########
+    ## SLOTS
+    ###########
 
-    # selected: whether the loop is in the current selection.
-    # this is not something known to the back-end.
-    selectedChanged = pyqtSignal(bool)
-    @pyqtProperty(bool, notify=selectedChanged)
-    def selected(self):
-        return self._selected
-    @selected.setter
-    def selected(self, p):
-        if self._selected != p:
-            self._selected = p
-            self.selectedChanged.emit(p)
-    
-    # targeted: whether the loop is the current "target".
-    # this is not something known to the back-end.
-    targetedChanged = pyqtSignal(bool)
-    @pyqtProperty(bool, notify=targetedChanged)
-    def targeted(self):
-        return self._targeted
-    @targeted.setter
-    def targeted(self, p):
-        if self._targeted != p:
-            self._targeted = p
-            self.targetedChanged.emit(p)
+    # Update mode from the back-end.
+    @pyqtSlot()
+    def update(self):
+        state = self._backend_loop.get_state()
+        self.mode = state.mode
+        self.length = state.length
+        self.pos = state.pos
+        # TODO output peak, volume
 
-    @pyqtSlot(result=str)
-    def serialize_session_state(self):
-        d = {
-            'volume' : self.volume,
-            'length' : self.length,
-        }
-        return json.dumps(d)
+    @pyqtSlot(int, bool)
+    def record(self, delay, wait_for_soft_sync):
+        self._backend_loop.transition(backend.LoopMode.Recording, delay, wait_for_soft_sync)
     
-    @pyqtSlot(str)
-    def deserialize_session_state(self, data):
-        d = json.loads(data)
-        self.volume = d['volume']
-        self.length = d['length']
+    @pyqtSlot(int, bool)
+    def play(self, delay, wait_for_soft_sync):
+        self._backend_loop.transition(backend.LoopMode.Playing, delay, wait_for_soft_sync)
     
-    def set_get_waveforms_fn(self, fn):
-        self._get_waveforms_fn = fn
-    
-    def set_get_midi_fn(self, fn):
-        self._get_midi_fn = fn
-    
-    @pyqtSlot(int, int, int, result='QVariant')
-    def get_waveforms(self, from_sample, to_sample, samples_per_bin):
-        return self._get_waveforms_fn (from_sample, to_sample, samples_per_bin)
-    
-    @pyqtSlot(result=list)
-    def get_midi(self):
-        return self._get_midi_fn()
+    @pyqtSlot(int, bool)
+    def stop(self, delay, wait_for_soft_sync):
+        self._backend_loop.transition(backend.LoopMode.Stopped, delay, wait_for_soft_sync)

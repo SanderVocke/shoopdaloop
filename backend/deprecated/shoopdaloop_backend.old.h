@@ -5,15 +5,15 @@
 extern "C" {
 #endif
 
-// The update callback provides the current looper state.
+// The update callback provides the current looper mode.
 // The callee should not free any pointers.
 typedef int(*UpdateCallback) (
     unsigned n_loops,
     unsigned n_ports,
     unsigned sample_rate,
-    loop_state_t *loop_states,
-    loop_state_t *loop_next_states,
-    int32_t *loop_next_state_countdowns,
+    loop_mode_t *loop_states,
+    loop_mode_t *loop_next_modes,
+    int32_t *loop_next_mode_countdowns,
     int *loop_lengths,
     int *loop_positions,
     float *loop_volumes,
@@ -44,11 +44,11 @@ typedef void (*AbortCallback) ();
 //                         Multiple loops can be connected to the same port.
 //                         In that case, they receive the same input and their output is mixed.
 // loops_hard_sync_mapping: Should contain n_loops indices, which indicate to which other loop the loop should be
-//                          "hard-synced". A hard-synced loop will always mirror its master's state, length and position.
+//                          "hard-synced". A hard-synced loop will always mirror its master's mode, length and position.
 //                          Typical use-case is for making a multi-channel loop, using a looper for each channel.
 //                          Using a negative number or the loop's own index disables hard sync for that loop.
 // loops_soft_sync_mapping: Should contain n_loops indices, which indicate to which other loop the loop should be
-//                          "soft-synced". A soft-synced loop will only change state when its master (re-)starts playing.
+//                          "soft-synced". A soft-synced loop will only change mode when its master (re-)starts playing.
 //                          Using a negative number or the loop's own index disables soft sync for that loop.
 // ports_to_mixed_outputs_mapping: These indices indicate to which mixed output port each regular port's samples will
 //                                 be mixed. <0 is no target.
@@ -59,7 +59,7 @@ typedef void (*AbortCallback) ();
 // midi_input_port_names: n_midi_ports strings which give the names of the midi inputs.
 // midi_output_port_names: n_midi_ports strings which give the names of the midi outputs.
 // client_name: Name of the JACK client to register
-// update_cb: this callback will be called when a state update is requested.
+// update_cb: this callback will be called when a mode update is requested.
 // abort_cb: this callback will be called if the back-end aborts operation for any reason.
 jack_client_t* initialize(
     unsigned n_loops,
@@ -85,7 +85,7 @@ jack_client_t* initialize(
 
 
 // Perform an action on the given loop(s).
-// Passing multiple loops guarantees that state change on them
+// Passing multiple loops guarantees that mode change on them
 // happens simultaneously.
 // Some actions have an argument (see the loop_action_t definition)
 int do_loop_action(
@@ -108,7 +108,7 @@ int do_port_action(
 void request_update();
 
 // Load data into loop storage.
-// Will set the loop state to Stopped and ignore any data longer
+// Will set the loop mode to Stopped and ignore any data longer
 // than the maximum loop storage.
 int load_loop_data(
     unsigned loop_idx,

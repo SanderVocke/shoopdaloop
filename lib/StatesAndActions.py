@@ -6,7 +6,7 @@ sys.path.append(pwd + '/../build')
 
 from backend.frontend_interface import shoopdaloop_backend as backend
 
-class LoopState(Enum):
+class LoopMode(Enum):
     Stopped = backend.Stopped
     Playing = backend.Playing
     PlayingMuted = backend.PlayingMuted

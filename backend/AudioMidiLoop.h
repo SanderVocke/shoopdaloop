@@ -93,21 +93,21 @@ public:
     }
 
     void PROC_process_subloops(
-        loop_state_t state_before,
-        loop_state_t state_after,
+        loop_mode_t mode_before,
+        loop_mode_t mode_after,
         size_t n_samples,
         size_t pos_before,
         size_t pos_after,
         size_t length_before,
         size_t length_after
         ) override {
-        BasicLoop::PROC_process_subloops(state_before, state_after, n_samples, pos_before, pos_after, length_before, length_after);
+        BasicLoop::PROC_process_subloops(mode_before, mode_after, n_samples, pos_before, pos_after, length_before, length_after);
 
         for(auto &aloop : mp_audio_subloops) {
-            aloop->PROC_process(state_before, state_after, n_samples, pos_before, pos_after, length_before, length_after);
+            aloop->PROC_process(mode_before, mode_after, n_samples, pos_before, pos_after, length_before, length_after);
         }
         for(auto &mloop : mp_midi_subloops) {
-            mloop->PROC_process(state_before, state_after, n_samples, pos_before, pos_after, length_before, length_after);
+            mloop->PROC_process(mode_before, mode_after, n_samples, pos_before, pos_after, length_before, length_after);
         }
     }
 
@@ -122,10 +122,10 @@ public:
         };
 
         for (auto &channel: mp_audio_subloops) {
-            merge(channel->PROC_get_next_poi(get_state(), get_length(), get_position()));
+            merge(channel->PROC_get_next_poi(get_mode(), get_length(), get_position()));
         }
         for (auto &channel: mp_midi_subloops) {
-            merge(channel->PROC_get_next_poi(get_state(), get_length(), get_position()));
+            merge(channel->PROC_get_next_poi(get_mode(), get_length(), get_position()));
         }
 
         return rval;
@@ -135,10 +135,10 @@ public:
         BasicLoop::PROC_handle_poi();
 
         for (auto &channel: mp_audio_subloops) {
-            channel->PROC_handle_poi(get_state(), get_length(), get_position());
+            channel->PROC_handle_poi(get_mode(), get_length(), get_position());
         }
         for (auto &channel: mp_midi_subloops) {
-            channel->PROC_handle_poi(get_state(), get_length(), get_position());
+            channel->PROC_handle_poi(get_mode(), get_length(), get_position());
         }
     }
 };

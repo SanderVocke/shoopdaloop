@@ -465,14 +465,14 @@ Dialog {
                                         }
 
                                         model: {
-                                            var LS = StatesAndActions.LoopState
+                                            var LS = StatesAndActions.LoopMode
                                             var names = StatesAndActions.LoopState_names
                                             return Object.entries(LS).map((entry) => {
                                                 return { value: entry[1], text: names[entry[1]] }
                                             });
                                         }
 
-                                        property int controlledState: midi_settings.active_profile_entry.profile.loop_state_change_formulas[index]['state']
+                                        property int controlledState: midi_settings.active_profile_entry.profile.loop_state_change_formulas[index]['mode']
                                         function update() {
                                             currentIndex = model.findIndex((m) => { return m.value == controlledState })
                                         }
@@ -484,7 +484,7 @@ Dialog {
 
                                         onActivated: (activated_idx) => {
                                             popup.close()
-                                            midi_settings.active_profile_entry.profile.loop_state_change_formulas[index]['state'] = model[activated_idx].value
+                                            midi_settings.active_profile_entry.profile.loop_state_change_formulas[index]['mode'] = model[activated_idx].value
                                             midi_settings.active_profile_entry.profile.loop_state_change_formulasChanged()
                                         }
                                     }
@@ -529,7 +529,7 @@ Dialog {
                                 text: 'Add'
                                 onClicked: {
                                     midi_settings.active_profile_entry.profile.loop_state_change_formulas.push({
-                                        'state': StatesAndActions.LoopState.Stopped,
+                                        'mode': StatesAndActions.LoopMode.Stopped,
                                         'action': ''
                                     })
                                     midi_settings.active_profile_entry.profile.loop_state_change_formulasChanged()
@@ -664,13 +664,13 @@ Dialog {
             ]
 
             loop_state_change_formulas: [
-                { 'state': StatesAndActions.LoopState.Recording, 'action': 'noteOn(0, loop_note, 3)' },
-                { 'state': StatesAndActions.LoopState.Playing, 'action': 'noteOn(0, loop_note, 1)' },
-                { 'state': StatesAndActions.LoopState.Stopped, 'action': 'noteOn(0, loop_note, 0)' },
-                { 'state': StatesAndActions.LoopState.PlayingMuted, 'action': 'noteOn(0, loop_note, 0)' }
+                { 'mode': StatesAndActions.LoopMode.Recording, 'action': 'noteOn(0, loop_note, 3)' },
+                { 'mode': StatesAndActions.LoopMode.Playing, 'action': 'noteOn(0, loop_note, 1)' },
+                { 'mode': StatesAndActions.LoopMode.Stopped, 'action': 'noteOn(0, loop_note, 0)' },
+                { 'mode': StatesAndActions.LoopMode.PlayingMuted, 'action': 'noteOn(0, loop_note, 0)' }
             ]
 
-            default_loop_state_change_formula: 'noteOn(0, loop_note, 5)' // Unhandled state becomes yellow
+            default_loop_state_change_formula: 'noteOn(0, loop_note, 5)' // Unhandled mode becomes yellow
             
             reset_formula: 'notesOn(0, 0, 98, 0)' // Everything off
         }

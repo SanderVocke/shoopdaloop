@@ -75,8 +75,8 @@ public:
     ~AudioChannelSubloop() override {}
 
     void PROC_process(
-        loop_state_t state_before,
-        loop_state_t state_after,
+        loop_mode_t mode_before,
+        loop_mode_t mode_after,
         size_t n_samples,
         size_t pos_before,
         size_t pos_after,
@@ -91,10 +91,10 @@ public:
             memcpy((void*)mp_playback_target_buffer, (void*)mp_recording_source_buffer, sizeof(SampleT) * n_samples);
         }
 
-        switch (state_before) {
+        switch (mode_before) {
             case Playing:
             case PlayingMuted:
-                PROC_process_playback(pos_before, length_before, n_samples, state_before == PlayingMuted);
+                PROC_process_playback(pos_before, length_before, n_samples, mode_before == PlayingMuted);
                 break;
             case Recording:
                 PROC_process_record(n_samples, length_before);
@@ -224,18 +224,18 @@ public:
         }
     }
 
-    std::optional<size_t> PROC_get_next_poi(loop_state_t state,
+    std::optional<size_t> PROC_get_next_poi(loop_mode_t mode,
                                        size_t length,
                                        size_t position) const override {
-        if (state == Playing || state == PlayingMuted) {
+        if (mode == Playing || mode == PlayingMuted) {
             return mp_playback_target_buffer_size;
-        } else if (state == Recording) {
+        } else if (mode == Recording) {
             return mp_recording_source_buffer_size;
         }
         return std::nullopt;
     }
 
-    void PROC_handle_poi(loop_state_t state,
+    void PROC_handle_poi(loop_mode_t mode,
                             size_t length,
                             size_t position) override {};
 

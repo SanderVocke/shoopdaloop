@@ -38,14 +38,14 @@ public:
     // an exception is thrown.
     virtual void PROC_process(size_t n_samples) = 0;
 
-    // State transitions may be planned for a loop.
+    // mode transitions may be planned for a loop.
     // The delay is measured in amount of triggers received before transitioning.
     // The delays are absolute, as opposed to relative to the transition before it.
     virtual size_t          get_n_planned_transitions(bool thread_safe = true) = 0;
     virtual size_t          get_planned_transition_delay(size_t idx, bool thread_safe = true) = 0;
-    virtual loop_state_t    get_planned_transition_state(size_t idx, bool thread_safe = true) = 0;
+    virtual loop_mode_t     get_planned_transition_state(size_t idx, bool thread_safe = true) = 0;
     virtual void            clear_planned_transitions(bool thread_safe = true) = 0;
-    virtual void            plan_transition(loop_state_t state, size_t n_cycles_delay = 0, bool wait_for_soft_sync = true, bool thread_safe = true) = 0;
+    virtual void            plan_transition(loop_mode_t mode, size_t n_cycles_delay = 0, bool wait_for_soft_sync = true, bool thread_safe = true) = 0;
 
 
     // Getters and setters.
@@ -53,8 +53,8 @@ public:
     virtual size_t       get_length() const = 0;
     virtual void         set_position(size_t pos, bool thread_safe=true) = 0;
     virtual void         set_length(size_t length, bool thread_safe=true) = 0;
-    virtual loop_state_t get_state() const = 0;
-    virtual void         set_state(loop_state_t state, bool thread_safe=true) = 0;
+    virtual loop_mode_t  get_mode() const = 0;
+    virtual void         set_mode(loop_mode_t mode, bool thread_safe=true) = 0;
 
     LoopInterface() = default;
     virtual ~LoopInterface() {}

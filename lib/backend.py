@@ -23,11 +23,42 @@ class PortType(Enum):
     Audio = 0
     Midi = 1
 
-class LoopState(Enum):
+class LoopMode(Enum):
     Stopped = backend.Stopped
     Playing = backend.Playing
     PlayingMuted = backend.PlayingMuted
     Recording = backend.Recording
+
+@dataclass
+class LoopAudioChannelState:
+    output_peak : float
+    volume : float
+
+    def __init__(self, backend_state : 'backend.loop_audio_channel_state_t'):
+        self.output_peak = backend_state.output_peak
+        self.volume = backend_state.volume
+
+@dataclass
+class LoopMidiChannelState:
+    n_events_triggered : int
+
+    def __init__(self, backend_state : 'backend.loop_midi_channel_state_t'):
+        self.n_events_triggered = backend_state.n_events_triggered
+
+@dataclass
+class LoopState:
+    length: int
+    pos: int
+    mode: Type[LoopMode]
+    audio_channel_states: list['LoopAudioChannelState']
+    midi_channel_states: list['LoopMidiChannelState']
+
+    def __init__(self, backend_loop_state : 'backend.loop_state_t'):
+        self.length = backend_loop_state.length
+        self.pos = backend_loop_state.pos
+        self.mode = backend_loop_state.mode
+        self.audio_channel_states = [LoopAudioChannelState(backend_loop_state.audio_channel_states[i]) for i in range(backend_loop_state.n_audio_channels)]
+        self.midi_channel_states = [LoopMidiChannelState(backend_loop_state.midi_channel_states[i]) for i in range(backend_loop_state.n_midi_channels)]
 
 # Wraps the Shoopdaloop backend with more Python-friendly wrappers
 @dataclass
@@ -35,13 +66,14 @@ class BackendMidiMessage:
     time: int
     data: bytes
 
-def from_midi_event_t(msg) -> BackendMidiMessage:
-    time = msg.time
-    size = msg.size
-    array_type = (c_ubyte * size)
-    array = cast(msg.data, array_type)
-    data = bytes(array)
-    return BackendMidiMessage(time, data)
+    def __init__(self, backend_msg : 'backend.midi_event_t'):
+        time = msg.time
+        size = msg.size
+        array_type = (c_ubyte * size)
+        array = cast(msg.data, array_type)
+        data = bytes(array)
+        self.time = time
+        self.data = data
 
 class BackendLoopAudioChannel:
     def __init__(self, loop):
@@ -66,7 +98,7 @@ class BackendLoopMidiChannel:
     
     def get_data(self) -> list[BackendMidiMessage]:
         r = backend.get_midi_channel_data(self.shoop_c_handle)
-        msgs = [from_midi_event_t(r.events[i]) for i in range(r.n_events)]
+        msgs = [BackendMidiMessage(r.events[i]) for i in range(r.n_events)]
         backend.free_midi_channel_data(r)
         return msgs
     
@@ -101,12 +133,18 @@ class BackendLoop:
     def midi_channels(self) -> list[Type[BackendLoopMidiChannel]]:
         return self.midi_channels
 
-    def transition(self, to_state : Type[LoopState],
+    def transition(self, to_state : Type[LoopMode],
                    cycles_delay : int, wait_for_soft_sync : bool):
         backend.loop_transition(self.shoop_c_handle,
                                 to_state.value,
                                 cycles_delay,
                                 wait_for_soft_sync)
+    
+    def get_state(self):
+        state = backend.get_loop_state(self.shoop_c_handle)
+        rval = LoopState(state)
+        backend.free_loop_state(state)
+        return rval
     
     def __del__(self):
         backend.delete_loop(self.shoop_c_handle)

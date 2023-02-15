@@ -1,6 +1,6 @@
 from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot, QTimer
 
-from ..StatesAndActions import LoopState, MIDIMessageFilterType
+from ..StatesAndActions import LoopMode, MIDIMessageFilterType
 from ..MidiScripting import *
 from ..flatten import flatten
 from .MIDIControlLink import *
@@ -136,11 +136,11 @@ class MIDIControlDialect:
     variables: dict[str, Any]
     # Rules for handling MIDI input messages.
     input_rules: list[Type[InputRule]]
-    # Formulas to be executed when loops change to a particular state.
+    # Formulas to be executed when loops change to a particular mode.
     # After a connection of a controller, first the reset formula will be
-    # executed and then the loop state formulas for all loops.
-    loop_state_output_formulas: dict[Type[LoopState], str]
-    # Formulas to be executed when loops change to a state not covered
+    # executed and then the loop mode formulas for all loops.
+    loop_state_output_formulas: dict[Type[LoopMode], str]
+    # Formulas to be executed when loops change to a mode not covered
     # by loop_state_output_formulas.
     loop_state_default_output_formula: Union[str, None]
     # Formula to be executed to reset a MIDI device (e.g. when connected,
@@ -175,16 +175,16 @@ builtin_dialects = {
         ],
         loop_state_output_formulas = {
             # Loop states to button colors
-            LoopState.Recording.value: 'noteOn(0, loop_note, yellow if is_loop_targeted else (blink_red if is_loop_selected else red))',
-            LoopState.Playing.value: 'noteOn(0, loop_note, yellow if is_loop_targeted else (blink_green if is_loop_selected else green))',
-            LoopState.Stopped.value: 'noteOn(0, loop_note, yellow if is_loop_targeted else (blink_yellow if is_loop_selected else off))',
-            LoopState.Unknown.value: 'noteOn(0, loop_note, yellow if is_loop_targeted else (blink_yellow if is_loop_selected else off))',
-            LoopState.PlayingMuted.value: 'noteOn(0, loop_note, yellow if is_loop_targeted else (blink_green if is_loop_selected else green))',
-            LoopState.PlayingLiveFX.value: 'noteOn(0, loop_note, yellow if is_loop_targeted else (blink_green if is_loop_selected else green))',
-            LoopState.RecordingFX.value: 'noteOn(0, loop_note, yellow if is_loop_targeted else (blink_red if is_loop_selected else red))',
-            LoopState.Empty.value: 'noteOn(0, loop_note, yellow if is_loop_targeted else (blink_yellow if is_loop_selected else off))',
+            LoopMode.Recording.value: 'noteOn(0, loop_note, yellow if is_loop_targeted else (blink_red if is_loop_selected else red))',
+            LoopMode.Playing.value: 'noteOn(0, loop_note, yellow if is_loop_targeted else (blink_green if is_loop_selected else green))',
+            LoopMode.Stopped.value: 'noteOn(0, loop_note, yellow if is_loop_targeted else (blink_yellow if is_loop_selected else off))',
+            LoopMode.Unknown.value: 'noteOn(0, loop_note, yellow if is_loop_targeted else (blink_yellow if is_loop_selected else off))',
+            LoopMode.PlayingMuted.value: 'noteOn(0, loop_note, yellow if is_loop_targeted else (blink_green if is_loop_selected else green))',
+            LoopMode.PlayingLiveFX.value: 'noteOn(0, loop_note, yellow if is_loop_targeted else (blink_green if is_loop_selected else green))',
+            LoopMode.RecordingFX.value: 'noteOn(0, loop_note, yellow if is_loop_targeted else (blink_red if is_loop_selected else red))',
+            LoopMode.Empty.value: 'noteOn(0, loop_note, yellow if is_loop_targeted else (blink_yellow if is_loop_selected else off))',
         },
-        # Any unmapped state maps to yellow
+        # Any unmapped mode maps to yellow
         loop_state_default_output_formula = 'noteOn(0, loop_note, 5)',
         # On reset, turn everything off
         reset_output_formula = 'notesOn(0, 0, 98, 0)',
@@ -275,17 +275,17 @@ class MIDIController(QObject):
         self.trigger_actions(actions)
     
     @pyqtSlot(int, int, int, bool, bool)
-    def loop_state_changed(self, track, index, state, selected, targeted):
+    def loop_state_changed(self, track, index, mode, selected, targeted):
         substitutions = {
             'track': track,
             'loop': index,
-            'state': state,
+            'mode': mode,
             'is_loop_selected': selected,
             'is_loop_targeted': targeted,
         }
-        if state in self._dialect.loop_state_output_formulas:
+        if mode in self._dialect.loop_state_output_formulas:
             self.send_midi_messages(eval_formula(
-                self._dialect.loop_state_output_formulas[state],
+                self._dialect.loop_state_output_formulas[mode],
                 True,
                 {**substitutions, **self._dialect.substitutions},
                 self._notes_currently_on,
@@ -345,7 +345,7 @@ class MIDIControlManager(QObject):
             ): builtin_dialects['AKAI APC Mini']
         }
 
-        self._loop_states_cache = {} # tuple of (track, loop) => last transmitted state
+        self._loop_states_cache = {} # tuple of (track, loop) => last transmitted mode
         self._scripting_section_cache = None # last transmitted section
         self._active_scene_cache = None # last transmitted active scene
 
@@ -392,8 +392,8 @@ class MIDIControlManager(QObject):
             controller.active_scene_changed(self._active_scene_cache)
         if self._scripting_section_cache:
             controller.active_sripting_section_changed(self._scripting_section_cache)
-        for ((track, loop), (state, selected, targeted)) in self._loop_states_cache.items():
-            controller.loop_state_changed(track, loop, state, selected, targeted)
+        for ((track, loop), (mode, selected, targeted)) in self._loop_states_cache.items():
+            controller.loop_state_changed(track, loop, mode, selected, targeted)
 
     @pyqtSlot()
     def update_link_mgr(self):
@@ -401,15 +401,15 @@ class MIDIControlManager(QObject):
         self._link_manager.set_rules(link_rules)
     
     @pyqtSlot(int, int, int, bool, bool)
-    def loop_state_changed(self, track, index, state, selected, targeted):
+    def loop_state_changed(self, track, index, mode, selected, targeted):
         if (track,index) in self._loop_states_cache and \
-            self._loop_states_cache[(track,index)] == (state, selected, targeted):
+            self._loop_states_cache[(track,index)] == (mode, selected, targeted):
             # Already sent this
             return
         
         for c in self._controllers.values():
-            c.loop_state_changed(track, index, state, selected, targeted)
-        self._loop_states_cache[(track, index)] = (state, selected, targeted)
+            c.loop_state_changed(track, index, mode, selected, targeted)
+        self._loop_states_cache[(track, index)] = (mode, selected, targeted)
 
     @pyqtSlot(int)
     def active_scripting_section_changed(self, idx):
@@ -418,7 +418,7 @@ class MIDIControlManager(QObject):
             return
         
         for c in self._controllers.values():
-            c.active_sripting_section_changed(track, index, state)
+            c.active_sripting_section_changed(track, index, mode)
         self._active_scene_cache = idx
     
     @pyqtSlot(int)
@@ -428,5 +428,5 @@ class MIDIControlManager(QObject):
             return
         
         for c in self._controllers.values():
-            c.active_scene_changed(track, index, state)
+            c.active_scene_changed(track, index, mode)
         self._scripting_section_cache = idx

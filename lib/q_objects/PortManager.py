@@ -10,7 +10,7 @@ from ..StatesAndActions import PortActionType
 # Represents the state of a port in the back-end
 class PortManager(QObject):
 
-    # State change notifications
+    # state change notifications
     volumeChanged = pyqtSignal(float)
     mutedChanged = pyqtSignal(bool)
     passthroughChanged = pyqtSignal(float)

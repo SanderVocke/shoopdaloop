@@ -110,7 +110,7 @@ Item {
                 TrackControlWidget {
                     id: trackctlwidget
 
-                    muted: track.active_loop_state === StatesAndActions.LoopState.Muted
+                    muted: track.active_loop_state === StatesAndActions.LoopMode.Muted
                     ports_manager: track.ports_manager
                 }
             }

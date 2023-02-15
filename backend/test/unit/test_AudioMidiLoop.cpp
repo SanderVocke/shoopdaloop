@@ -30,14 +30,14 @@ suite AudioMidiLoop_audio_tests = []() {
         AudioMidiLoop loop;
         loop.add_audio_channel<int>(pool, 10, false);
 
-        expect(loop.get_state() == Stopped);
+        expect(loop.get_mode() == Stopped);
         expect(loop.PROC_get_next_poi() == std::nullopt);
         expect(loop.get_length() == 0);
         expect(loop.get_position() == 0);
 
         loop.PROC_process(1000);
 
-        expect(loop.get_state() == Stopped);
+        expect(loop.get_mode() == Stopped);
         expect(loop.PROC_get_next_poi() == std::nullopt);
         expect(loop.get_length() == 0);
         expect(loop.get_position() == 0);
@@ -55,14 +55,14 @@ suite AudioMidiLoop_audio_tests = []() {
         loop.PROC_trigger();
         loop.PROC_update_poi();
 
-        expect(eq(loop.get_state(), Recording));
+        expect(eq(loop.get_mode(), Recording));
         expect(eq(loop.PROC_get_next_poi().value_or(999), 512)) << loop.PROC_get_next_poi().value_or(0); // end of buffer
         expect(eq(loop.get_length(), 0));
         expect(eq(loop.get_position(), 0));
 
         loop.PROC_process(20);
 
-        expect(eq(loop.get_state(), Recording));
+        expect(eq(loop.get_mode(), Recording));
         expect(eq(loop.PROC_get_next_poi().value_or(999), 492)) << loop.PROC_get_next_poi().value_or(0); // end of buffer
         expect(eq(loop.get_length(), 20));
         expect(eq(loop.get_position(), 0));
@@ -102,14 +102,14 @@ suite AudioMidiLoop_audio_tests = []() {
         loop.PROC_trigger();
         loop.PROC_update_poi();
 
-        expect(loop.get_state() == Recording);
+        expect(loop.get_mode() == Recording);
         expect(loop.PROC_get_next_poi() == 512) << loop.PROC_get_next_poi().value_or(0); // end of buffer
         expect(loop.get_length() == 0);
         expect(loop.get_position() == 0);
 
         loop.PROC_process(512);
 
-        expect(loop.get_state() == Recording);
+        expect(loop.get_mode() == Recording);
         expect(loop.PROC_get_next_poi() == 0) << loop.PROC_get_next_poi().value_or(0); // end of buffer
         expect(eq(loop.get_length(), 512));
         expect(eq(loop.get_position(), 0));
@@ -133,7 +133,7 @@ suite AudioMidiLoop_audio_tests = []() {
         loop.PROC_trigger();
         loop.PROC_update_poi();
 
-        expect(loop.get_state() == Recording);
+        expect(loop.get_mode() == Recording);
         expect(loop.PROC_get_next_poi() == 32) << loop.PROC_get_next_poi().value_or(0); // end of buffer
         expect(loop.get_length() == 0);
         expect(loop.get_position() == 0);
@@ -147,7 +147,7 @@ suite AudioMidiLoop_audio_tests = []() {
             loop.PROC_update_poi();
         }
 
-        expect(loop.get_state() == Recording);
+        expect(loop.get_mode() == Recording);
         expect(eq(loop.PROC_get_next_poi().value_or(999), 32)) << loop.PROC_get_next_poi().value_or(0); // end of buffer
         expect(eq(loop.get_length(), 512));
         expect(eq(loop.get_position(), 0));
@@ -175,14 +175,14 @@ suite AudioMidiLoop_audio_tests = []() {
         loop.PROC_trigger();
         loop.PROC_update_poi();
 
-        expect(loop.get_state() == Playing);
+        expect(loop.get_mode() == Playing);
         expect(loop.PROC_get_next_poi() == 64) << loop.PROC_get_next_poi().value_or(0); // end of buffer
         expect(loop.get_position() == 0);
         expect(loop.get_length() == 64);
 
         loop.PROC_process(20);
 
-        expect(loop.get_state() == Playing);
+        expect(loop.get_mode() == Playing);
         expect(loop.PROC_get_next_poi() == 44) << loop.PROC_get_next_poi().value_or(0); // end of buffer
         expect(eq(loop.get_length(), 64));
         expect(eq(loop.get_position(), 20));
@@ -205,7 +205,7 @@ suite AudioMidiLoop_audio_tests = []() {
         loop.PROC_trigger();
         loop.PROC_update_poi();
 
-        expect(loop.get_state() == Playing);
+        expect(loop.get_mode() == Playing);
         expect(loop.get_position() == 0);
         expect(loop.get_length() == 512);
 
@@ -230,14 +230,14 @@ suite AudioMidiLoop_midi_tests = []() {
         loop.add_midi_channel<uint32_t, uint16_t>(512, false);
         auto &channel = *loop.midi_channel<uint32_t, uint16_t>(0);
 
-        expect(loop.get_state() == Stopped);
+        expect(loop.get_mode() == Stopped);
         expect(loop.PROC_get_next_poi() == std::nullopt);
         expect(loop.get_length() == 0);
         expect(loop.get_position() == 0);
 
         loop.PROC_process(1000);
 
-        expect(loop.get_state() == Stopped);
+        expect(loop.get_mode() == Stopped);
         expect(loop.PROC_get_next_poi() == std::nullopt);
         expect(loop.get_length() == 0);
         expect(loop.get_position() == 0);
@@ -248,7 +248,7 @@ suite AudioMidiLoop_midi_tests = []() {
         loop.add_midi_channel<uint32_t, uint16_t>(512, false);
         auto &channel = *loop.midi_channel<uint32_t, uint16_t>(0);
 
-        expect(loop.get_state() == Stopped);
+        expect(loop.get_mode() == Stopped);
         expect(loop.PROC_get_next_poi() == std::nullopt);
         expect(loop.get_length() == 0);
         expect(loop.get_position() == 0);
@@ -263,14 +263,14 @@ suite AudioMidiLoop_midi_tests = []() {
         loop.PROC_trigger();
         loop.PROC_update_poi();
 
-        expect(loop.get_state() == Recording);
+        expect(loop.get_mode() == Recording);
         expect(loop.PROC_get_next_poi() == 512) << loop.PROC_get_next_poi().value_or(0); // end of buffer
         expect(loop.get_length() == 0);
         expect(loop.get_position() == 0);
 
         loop.PROC_process(20);
 
-        expect(loop.get_state() == Recording);
+        expect(loop.get_mode() == Recording);
         expect(loop.PROC_get_next_poi() == 492) << loop.PROC_get_next_poi().value_or(0); // end of buffer
         expect(eq(loop.get_length(), 20));
         expect(eq(loop.get_position(), 0));
@@ -294,7 +294,7 @@ suite AudioMidiLoop_midi_tests = []() {
         channel.set_contents(contents, false);
         loop.set_length(100);
 
-        expect(loop.get_state() == Stopped);
+        expect(loop.get_mode() == Stopped);
         expect(loop.PROC_get_next_poi() == std::nullopt);
         expect(loop.get_length() == 100);
         expect(loop.get_position() == 0);
@@ -309,14 +309,14 @@ suite AudioMidiLoop_midi_tests = []() {
         loop.PROC_trigger();
         loop.PROC_update_poi();
 
-        expect(loop.get_state() == Recording);
+        expect(loop.get_mode() == Recording);
         expect(loop.PROC_get_next_poi() == 512) << loop.PROC_get_next_poi().value_or(0); // end of buffer
         expect(loop.get_length() == 100);
         expect(loop.get_position() == 0);
 
         loop.PROC_process(20);
 
-        expect(loop.get_state() == Recording);
+        expect(loop.get_mode() == Recording);
         expect(loop.PROC_get_next_poi() == 492) << loop.PROC_get_next_poi().value_or(0); // end of buffer
         expect(eq(loop.get_length(), 120));
         expect(eq(loop.get_position(), 0));
@@ -342,7 +342,7 @@ suite AudioMidiLoop_midi_tests = []() {
         channel.set_contents(contents, false);
         loop.set_length(100);
 
-        expect(loop.get_state() == Stopped);
+        expect(loop.get_mode() == Stopped);
         expect(loop.PROC_get_next_poi() == std::nullopt);
         expect(loop.get_length() == 100);
         expect(loop.get_position() == 0);
@@ -354,14 +354,14 @@ suite AudioMidiLoop_midi_tests = []() {
         loop.PROC_trigger();
         loop.PROC_update_poi();
 
-        expect(loop.get_state() == Playing);
+        expect(loop.get_mode() == Playing);
         expect(loop.PROC_get_next_poi() == 100) << loop.PROC_get_next_poi().value_or(0); // end of loop
         expect(loop.get_length() == 100);
         expect(loop.get_position() == 0);
 
         loop.PROC_process(20);
 
-        expect(loop.get_state() == Playing);
+        expect(loop.get_mode() == Playing);
         expect(loop.PROC_get_next_poi() == 80) << loop.PROC_get_next_poi().value_or(0); // end of loop
         expect(eq(loop.get_length(), 100));
         expect(eq(loop.get_position(), 20));
@@ -385,7 +385,7 @@ suite AudioMidiLoop_midi_tests = []() {
         channel.set_contents(contents, false);
         loop.set_length(100);
 
-        expect(loop.get_state() == Stopped);
+        expect(loop.get_mode() == Stopped);
         expect(loop.PROC_get_next_poi() == std::nullopt);
         expect(loop.get_length() == 100);
         expect(loop.get_position() == 0);
@@ -397,14 +397,14 @@ suite AudioMidiLoop_midi_tests = []() {
         loop.PROC_trigger();
         loop.PROC_update_poi();
 
-        expect(loop.get_state() == PlayingMuted);
+        expect(loop.get_mode() == PlayingMuted);
         expect(loop.PROC_get_next_poi() == 100) << loop.PROC_get_next_poi().value_or(0); // end of loop
         expect(loop.get_length() == 100);
         expect(loop.get_position() == 0);
 
         loop.PROC_process(20);
 
-        expect(loop.get_state() == PlayingMuted);
+        expect(loop.get_mode() == PlayingMuted);
         expect(loop.PROC_get_next_poi() == 80) << loop.PROC_get_next_poi().value_or(0); // end of loop
         expect(eq(loop.get_length(), 100));
         expect(eq(loop.get_position(), 20));

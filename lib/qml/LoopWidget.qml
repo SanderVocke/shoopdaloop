@@ -63,7 +63,7 @@ Item {
         width: loop.width
         height: loop.height
 
-        color: (manager && manager.state == StatesAndActions.LoopState.Empty) ? Material.background : '#000044'
+        color: (manager && manager.mode == StatesAndActions.LoopMode.Empty) ? Material.background : '#000044'
         border.color: {
             var default_color = 'grey'
             if (!statusrect.manager) {
@@ -80,7 +80,7 @@ Item {
                 return 'red';
             }
 
-            if (statusrect.manager.state == StatesAndActions.LoopState.Empty) {
+            if (statusrect.manager.mode == StatesAndActions.LoopMode.Empty) {
                 return default_color;
             }
 
@@ -223,15 +223,15 @@ Item {
                 y: 0
                 x: 0
 
-                property bool show_next_state:
-                    statusrect.manager && statusrect.manager.state != statusrect.manager.next_state &&
-                        statusrect.manager.next_state_countdown >= 0
+                property bool show_next_mode:
+                    statusrect.manager && statusrect.manager.mode != statusrect.manager.next_mode &&
+                        statusrect.manager.next_mode_countdown >= 0
 
                 LoopStateIcon {
                     id: loopstateicon
-                    state: statusrect.manager ? statusrect.manager.state : StatesAndActions.LoopState.Unknown
-                    show_timer_instead: parent.show_next_state
-                    visible: !parent.show_next_state || (parent.show_next_state && statusrect.manager.next_state_countdown == 0)
+                    mode: statusrect.manager ? statusrect.manager.mode : StatesAndActions.LoopMode.Unknown
+                    show_timer_instead: parent.show_next_mode
+                    visible: !parent.show_next_mode || (parent.show_next_mode && statusrect.manager.next_mode_countdown == 0)
                     connected: true
                     size: iconitem.height
                     y: 0
@@ -247,19 +247,19 @@ Item {
                 }
                 LoopStateIcon {
                     id: loopnextstateicon
-                    state: parent.show_next_state ?
-                        statusrect.manager.next_state : StatesAndActions.LoopState.Unknown
+                    mode: parent.show_next_mode ?
+                        statusrect.manager.next_mode : StatesAndActions.LoopMode.Unknown
                     show_timer_instead: false
                     connected: true
                     size: iconitem.height * 0.65
                     y: 0
                     anchors.right : loopstateicon.right
                     anchors.bottom : loopstateicon.bottom
-                    visible: parent.show_next_state
+                    visible: parent.show_next_mode
                 }
                 Text {
-                    text: statusrect.manager ? (statusrect.manager.next_state_countdown + 1).toString(): ''
-                    visible: parent.show_next_state && statusrect.manager.next_state_countdown > 0
+                    text: statusrect.manager ? (statusrect.manager.next_mode_countdown + 1).toString(): ''
+                    visible: parent.show_next_mode && statusrect.manager.next_mode_countdown > 0
                     anchors.fill: loopstateicon
                     color: Material.foreground
                     horizontalAlignment: Text.AlignHCenter
@@ -485,7 +485,7 @@ Item {
                                             var n_cycles_delay = 0
                                             var n_cycles_record = 1
                                             n_cycles_record = Math.ceil(widget.targeted_loop_manager.length / widget.master_manager.length)
-                                            if (State_helpers.is_playing_state(widget.targeted_loop_manager.state)) {
+                                            if (State_helpers.is_playing_state(widget.targeted_loop_manager.mode)) {
                                                 var current_cycle = Math.floor(widget.targeted_loop_manager.pos / widget.master_manager.length)
                                                 n_cycles_delay = Math.max(0, n_cycles_record - current_cycle - 1)
                                             }
@@ -665,14 +665,14 @@ Item {
                     return default_color;
                 }
 
-                switch(loopprogressrect.manager.state) {
-                case StatesAndActions.LoopState.Playing:
+                switch(loopprogressrect.manager.mode) {
+                case StatesAndActions.LoopMode.Playing:
                     return '#004400';
-                case StatesAndActions.LoopState.PlayingLiveFX:
+                case StatesAndActions.LoopMode.PlayingLiveFX:
                     return '#333300';
-                case StatesAndActions.LoopState.Recording:
+                case StatesAndActions.LoopMode.Recording:
                     return '#660000';
-                case StatesAndActions.LoopState.RecordingFX:
+                case StatesAndActions.LoopMode.RecordingFX:
                     return '#663300';
                 default:
                     return default_color;
@@ -683,11 +683,11 @@ Item {
 
     component LoopStateIcon : Item {
         id: lsicon
-        property int state
+        property int mode
         property bool connected
         property bool show_timer_instead
         property int size
-        property string description: StatesAndActions.LoopState_names[state] ? StatesAndActions.LoopState_names[state] : "Invalid"
+        property string description: StatesAndActions.LoopState_names[mode] ? StatesAndActions.LoopState_names[mode] : "Invalid"
 
         signal clicked(var mouse)
         signal doubleClicked(var mouse)
@@ -707,18 +707,18 @@ Item {
                     return 'timer-sand'
                 }
 
-                switch(lsicon.state) {
-                case StatesAndActions.LoopState.Playing:
-                case StatesAndActions.LoopState.PlayingLiveFX:
+                switch(lsicon.mode) {
+                case StatesAndActions.LoopMode.Playing:
+                case StatesAndActions.LoopMode.PlayingLiveFX:
                     return 'play'
-                case StatesAndActions.LoopState.PlayingMuted:
+                case StatesAndActions.LoopMode.PlayingMuted:
                     return 'volume-mute'
-                case StatesAndActions.LoopState.Recording:
-                case StatesAndActions.LoopState.RecordingFX:
+                case StatesAndActions.LoopMode.Recording:
+                case StatesAndActions.LoopMode.RecordingFX:
                     return 'record-rec'
-                case StatesAndActions.LoopState.Stopped:
+                case StatesAndActions.LoopMode.Stopped:
                     return 'stop'
-                case StatesAndActions.LoopState.Empty:
+                case StatesAndActions.LoopMode.Empty:
                     return 'border-none-variant'
                 default:
                     return 'help-circle'
@@ -732,13 +732,13 @@ Item {
                 if(lsicon.show_timer_instead) {
                     return Material.foreground
                 }
-                switch(lsicon.state) {
-                case StatesAndActions.LoopState.Playing:
+                switch(lsicon.mode) {
+                case StatesAndActions.LoopMode.Playing:
                     return '#00AA00'
-                case StatesAndActions.LoopState.Recording:
+                case StatesAndActions.LoopMode.Recording:
                     return 'red'
-                case StatesAndActions.LoopState.RecordingFX:
-                case StatesAndActions.LoopState.PlayingLiveFX:
+                case StatesAndActions.LoopMode.RecordingFX:
+                case StatesAndActions.LoopMode.PlayingLiveFX:
                     return 'orange'
                 default:
                     return 'grey'
@@ -750,9 +750,9 @@ Item {
                 if(lsicon.show_timer_instead) {
                     return ''
                 }
-                switch(lsicon.state) {
-                case StatesAndActions.LoopState.PlayingLiveFX:
-                case StatesAndActions.LoopState.RecordingFX:
+                switch(lsicon.mode) {
+                case StatesAndActions.LoopMode.PlayingLiveFX:
+                case StatesAndActions.LoopMode.RecordingFX:
                     return 'FX'
                 default:
                     return ''
@@ -1011,15 +1011,15 @@ Item {
                         
                         function maybe_update() {
                             if (window.visible &&
-                                manager.state != StatesAndActions.LoopState.Recording &&
-                                manager.state != StatesAndActions.LoopState.RecordingFX) {
+                                manager.mode != StatesAndActions.LoopMode.Recording &&
+                                manager.mode != StatesAndActions.LoopMode.RecordingFX) {
                                     waveform.update_data()
                                 }
                         }
                         function onStateChanged() {
                             maybe_update()
-                            waveform.recording = manager.state == StatesAndActions.LoopState.Recording ||
-                                                 manager.state == StatesAndActions.LoopState.RecordingFX
+                            waveform.recording = manager.mode == StatesAndActions.LoopMode.Recording ||
+                                                 manager.mode == StatesAndActions.LoopMode.RecordingFX
                         }
                         function onLengthChanged() { maybe_update() }
                         function onLoadedData() { maybe_update() }

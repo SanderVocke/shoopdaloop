@@ -6,24 +6,16 @@ extern "C" {
 typedef float audio_sample_t;
 
 typedef enum {
+    Unknown,
     Stopped,
     Playing,
     PlayingMuted, // Useful for generating sync while not outputting any sound
     Recording,
+    Replacing,
+    PlayingDryThroughWet,
+    RecordingFromDry,
     LOOP_STATE_MAX
-} loop_state_t;
-
-#warning Remove action types
-typedef enum  {
-    DoRecord,           // Arg 1 is # of cycles to delay before starting.
-    DoRecordNCycles,    // Arg 1 is # of cycles to delay before starting. Arg 2 # of cycles to record. Arg 3 is the next state after finishing.
-    DoPlay,             // Arg 1 is # of cycles to delay before starting.
-    DoPlayMuted,        // Arg 1 is # of cycles to delay before starting.
-    DoStop,             // Arg 1 is # of cycles to delay before starting.
-    DoClear,
-    SetLoopVolume,      // Arg 1 is the new volume
-    LOOP_ACTION_MAX
-} loop_action_t;
+} loop_mode_t;
 
 typedef enum {
     DoMute,
@@ -34,6 +26,26 @@ typedef enum {
     SetPortPassthrough,
     PORT_ACTION_MAX
 } port_action_t;
+
+typedef struct {
+    float volume;
+    float output_peak;
+} loop_audio_channel_state_t;
+
+typedef struct {
+    size_t n_events_triggered;
+} loop_midi_channel_state_t;
+
+typedef struct {
+    loop_mode_t mode;
+    size_t length;
+    size_t position;
+    float volume;
+    size_t n_audio_channels;
+    loop_audio_channel_state_t *audio_channel_states;
+    size_t n_midi_channels;
+    loop_midi_channel_state_t *midi_channel_states;
+} loop_state_t;
 
 typedef enum { Input, Output } port_direction_t;
 
@@ -62,6 +74,7 @@ typedef struct {
     _shoopdaloop_midi_port *input_ports;
     unsigned int            n_events_processed;
 } midi_channel_state_info_t;
+
 typedef struct {
     // Identifying info
     shoopdaloop_loop *self;
@@ -69,12 +82,12 @@ typedef struct {
     // Basic
     unsigned int length;
     unsigned int position;
-    loop_state_t state;
+    loop_mode_t mode;
     float        volume;
 
-    // Planned state changes
+    // Planned mode changes
     unsigned int n_planned_states;
-    loop_state_t *planned_states;
+    loop_mode_t *planned_states;
     unsigned int *planned_state_delays;
 
     // Audio

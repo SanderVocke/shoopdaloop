@@ -32,7 +32,7 @@ def write_enum(f, name, enum):
         f.write('\n}\n\n')
 
 with open(output_filename, 'w') as f:
-    write_enum(f, 'LoopState', LoopState)
+    write_enum(f, 'LoopMode', LoopMode)
     write_enum(f, 'LoopActionType', LoopActionType)
     write_enum(f, 'PortActionType', PortActionType)
     write_enum(f, 'MIDIMessageFilterType', MIDIMessageFilterType)
