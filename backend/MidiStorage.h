@@ -143,7 +143,7 @@ private:
     }
 
 public:
-    MidiStorage<TimeType, SizeType>(size_t data_size) :
+    MidiStorage(size_t data_size) :
         m_head(0), m_tail(0), m_head_start(0), m_n_events(0),
         m_data(data_size)
     {

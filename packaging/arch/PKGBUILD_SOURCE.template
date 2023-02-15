@@ -1,0 +1,18 @@
+pkgname=shoopdaloop
+pkgver=***VERSION***
+pkgrel=***RELEASE***
+arch=(***ARCH***)
+source=(***SOURCE***)
+makedepends=(
+    'cmake'
+    'base-devel'
+)
+
+build() {
+    cmake -B build -S "shoopdaloop-***VERSION***" -DCMAKE_BUILD_TYPE=***BUILDTYPE***
+    cmake --build build
+}
+
+package() {
+    echo "hi!"
+}
