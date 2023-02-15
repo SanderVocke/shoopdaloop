@@ -9,19 +9,10 @@ import sys
 sys.path.append('../..')
 
 import lib.backend as backend
+from lib.mode_helpers import is_playing_mode
 
 # Wraps a back-end loop.
 class BackendLoop(QObject):
-
-    # mode change notifications
-    lengthChanged = pyqtSignal(float)
-    posChanged = pyqtSignal(float)
-    modeChanged = pyqtSignal(int)
-    nextModeChanged = pyqtSignal(int)
-    nextModeCountdownChanged = pyqtSignal(int)
-    volumeChanged = pyqtSignal(float)
-    outputPeakChanged = pyqtSignal(float)
-
     # Other signals
     cycled = pyqtSignal()
     passed_halfway = pyqtSignal()
@@ -97,28 +88,6 @@ class BackendLoop(QObject):
             self._pos = p
             self.posChanged.emit(p)
     
-    # Volume: volume of playback in 0.0-1.0
-    @pyqtProperty(float, notify=volumeChanged)
-    def volume(self):
-        return self._volume
-    
-    @volume.setter
-    def volume(self, p):
-        if self._volume != p:
-            self._volume = p
-            self.volumeChanged.emit(p)
-    
-    # Output peak: amplitude value of 0.0-...
-    @pyqtProperty(float, notify=outputPeakChanged)
-    def outputPeak(self):
-        return self._output_peak
-    
-    @outputPeak.setter
-    def outputPeak(self, p):
-        if self._output_peak != p:
-            self._output_peak = p
-            self.outputPeakChanged.emit(p)
-    
     ###########
     ## SLOTS
     ###########
@@ -126,11 +95,22 @@ class BackendLoop(QObject):
     # Update mode from the back-end.
     @pyqtSlot()
     def update(self):
+        prev_before_halway = (self.length > 0 and self.pos < self.length/2)
+        prev_pos = self.pos
+        prev_mode = self.mode
+
         state = self._backend_loop.get_state()
         self.mode = state.mode
         self.length = state.length
         self.pos = state.pos
-        # TODO output peak, volume
+
+        after_halfway = (self.length > 0 and self.pos >= self.length/2)
+        if (after_halfway and prev_before_halway):
+            self.passed_halfway.emit()
+        if (self.pos < prev_pos and is_playing_mode(prev_mode) and is_playing_mode(self.mode)):
+            self.cycled.emit()
+
+        # TODO output peak, volume, other channel-related stuff
 
     @pyqtSlot(int, bool)
     def record(self, delay, wait_for_soft_sync):

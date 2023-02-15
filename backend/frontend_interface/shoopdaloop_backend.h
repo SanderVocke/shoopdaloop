@@ -48,6 +48,8 @@ audio_channel_data_t  get_audio_rms_data       (shoopdaloop_loop_audio_channel *
 midi_channel_data_t   get_midi_channel_data    (shoopdaloop_loop_midi_channel  *channel);
 void                  load_audio_channel_data  (shoopdaloop_loop_audio_channel *channel, audio_channel_data_t data);
 void                  load_midi_channel_data   (shoopdaloop_loop_midi_channel  *channel, midi_channel_data_t  data);
+audio_channel_state_t get_audio_channel_state  (shoopdaloop_loop_audio_channel *channel);
+midi_channel_state_t  get_midi_channel_state   (shoopdaloop_loop_midi_channel  *channel);
 
 // Actions
 
@@ -86,11 +88,13 @@ void loops_transition(unsigned int n_loops,
 shoopdaloop_audio_port *open_audio_port (const char* name_hint, port_direction_t direction);
 void close_audio_port (shoopdaloop_audio_port *port);
 jack_port_t *get_audio_port_jack_handle(shoopdaloop_audio_port *port);
+audio_port_state_t get_audio_port_state(shoopdaloop_audio_port *port);
 
 // Midi ports
 shoopdaloop_midi_port *open_midi_port (const char* name_hint, port_direction_t direction);
 void close_midi_port (shoopdaloop_midi_port *port);
 jack_port_t *get_midi_port_jack_handle(shoopdaloop_midi_port *port);
+midi_port_state_t get_midi_port_state(shoopdaloop_midi_port *port);
 
 // Decoupled midi ports
 shoopdaloop_decoupled_midi_port *open_decoupled_midi_port(const char* name_hint, port_direction_t direction);
@@ -103,6 +107,10 @@ void free_midi_event(midi_event_t e);
 void free_midi_channel_data(midi_channel_data_t d);
 void free_audio_channel_data(audio_channel_data_t d);
 void free_loop_state(loop_state_t d);
+void free_audio_port_state(audio_port_state d);
+void free_midi_port_state(midi_port_state d);
+void free_audio_channel_state(audio_channel_state_t d);
+void free_midi_channel_state(midi_channel_state_t d);
 
 // Helpers for allocating data objects
 midi_event_t alloc_midi_event(size_t data_bytes);

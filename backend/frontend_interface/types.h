@@ -9,7 +9,6 @@ typedef enum {
     Unknown,
     Stopped,
     Playing,
-    PlayingMuted, // Useful for generating sync while not outputting any sound
     Recording,
     Replacing,
     PlayingDryThroughWet,
@@ -42,10 +41,21 @@ typedef struct {
     size_t position;
     float volume;
     size_t n_audio_channels;
-    loop_audio_channel_state_t *audio_channel_states;
+    shoopdaloop_audio_channel_t *audio_channels;
     size_t n_midi_channels;
-    loop_midi_channel_state_t *midi_channel_states;
+    shoopdaloop_midi_channel_t *midi_channels;
 } loop_state_t;
+
+typedef struct {
+    float peak;
+    float volume;
+    const char* name;
+} audio_port_state_t;
+
+typedef struct {
+    size_t n_events_triggered;
+    const char* name;
+} midi_port_state_t;
 
 typedef enum { Input, Output } port_direction_t;
 
