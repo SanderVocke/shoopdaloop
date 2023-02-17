@@ -236,6 +236,8 @@ Item {
                     size: iconitem.height
                     y: 0
                     anchors.horizontalCenter: iconitem.horizontalCenter
+                    muted: { console.log('unimplemented muted'); return false; }
+                    empty: statusrect.backend_loop.length == 0
                     onDoubleClicked: (event) => {
                             if (event.button === Qt.LeftButton) { widget.request_set_as_targeted() }
                         }
