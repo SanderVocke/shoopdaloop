@@ -301,7 +301,7 @@ void ChannelInfo::PROC_prepare_process_audio(size_t n_frames) {
         if (locked) {
             locked->PROC_update_audio_buffer_if_none(n_frames);
             auto chan = dynamic_cast<LoopAudioChannel*>(channel.get());
-            chan->PROC_set_playback_buffer(in_locked->maybe_audio_buffer, n_frames);
+            chan->PROC_set_playback_buffer(locked->maybe_audio_buffer, n_frames);
         }
     }
 }
@@ -331,7 +331,7 @@ void ChannelInfo::PROC_prepare_process_midi(size_t n_frames) {
         if (locked) {
             locked->PROC_update_midi_output_buffer_if_none(n_frames);
             auto chan = dynamic_cast<LoopMidiChannel*>(channel.get());
-            chan->PROC_set_playback_buffer(in_locked->maybe_midi_output_buffer.get(), n_frames);
+            chan->PROC_set_playback_buffer(locked->maybe_midi_output_buffer.get(), n_frames);
         }
     }
 }
@@ -972,8 +972,10 @@ audio_channel_data_t *alloc_audio_channel_data(size_t n_samples) {
 #warning state getters incomplete
 audio_channel_state_info_t *get_audio_channel_state (shoopdaloop_loop_audio_channel_t *channel) {
     auto r = new audio_channel_state_info_t;
-    r->output_peak = 0.0;
+    auto &_channel = *dynamic_cast<LoopAudioChannel*>(internal_audio_channel(channel)->channel.get());
+    r->output_peak = _channel.get_output_peak();
     r->volume = 0.0;
+    _channel.reset_output_peak();
     return r;
 }
 

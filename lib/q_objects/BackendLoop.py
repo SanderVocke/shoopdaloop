@@ -28,8 +28,6 @@ class BackendLoop(QObject):
         self._mode = backend.LoopMode.Unknown.value
         self._next_mode = None
         self._next_transition_delay = None
-        self._volume = 1.0
-        self._output_peak = 0.0
         self._backend_loop = backend_loop
 
     ######################
@@ -96,6 +94,11 @@ class BackendLoop(QObject):
     # Update mode from the back-end.
     @pyqtSlot()
     def update(self):
+        for channel in self.findChildren(BackendLoopAudioChannel):
+            channel.update()
+        for channel in self.findChildren(BackendLoopMidiChannel):
+            channel.update()
+
         prev_before_halway = (self.length > 0 and self.position < self.length/2)
         prev_position = self._position
         prev_mode = self._mode

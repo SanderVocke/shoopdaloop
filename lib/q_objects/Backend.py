@@ -42,8 +42,7 @@ class Backend(QObject):
     # Request state updates for all back-end objects.
     @pyqtSlot()
     def update(self):
-        loops = self.findChildren(BackendLoop)
-        for loop in loops:
+        for loop in self.findChildren(BackendLoop):
             loop.update()
     
     # Start a timer to regularly call update.

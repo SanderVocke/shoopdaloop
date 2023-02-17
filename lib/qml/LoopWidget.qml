@@ -113,14 +113,9 @@ Item {
                 id: output_peak_meter_l
                 max_dt: 0.1
                 input: {
-                    console.log('unimplementeds')
-                    // if (statusrect.backend_loop && statusrect.backend_loop.wet_looper) {
-                    //     return statusrect.backend_loop.wet_looper.channel_loopers[0].outputPeak
-                    // } else if (statusrect.backend_loop && statusrect.backend_loop.channel_loopers) {
-                    //     return statusrect.backend_loop.channel_loopers[0].outputPeak
-                    // } else if (statusrect.backend_loop) {
-                    //     return statusrect.backend_loop.outputPeak
-                    // }
+                    if (statusrect.backend_loop && statusrect.backend_loop.audio_channels.length >= 1) {
+                        return statusrect.backend_loop.audio_channels[0].output_peak
+                    }
                     return 0.0
                 }
             }
@@ -157,13 +152,9 @@ Item {
                 id: output_peak_meter_r
                 max_dt: 0.1
                 input: {
-                    // if (statusrect.backend_loop && statusrect.backend_loop.wet_looper) {
-                    //     return statusrect.backend_loop.wet_looper.channel_loopers[0].outputPeak
-                    // } else if (statusrect.backend_loop && statusrect.backend_loop.channel_loopers) {
-                    //     return statusrect.backend_loop.channel_loopers[0].outputPeak
-                    // } else if (statusrect.backend_loop) {
-                    //     return statusrect.backend_loop.outputPeak
-                    // }
+                    if (statusrect.backend_loop && statusrect.backend_loop.audio_channels.length >= 2) {
+                        return statusrect.backend_loop.audio_channels[1].output_peak
+                    }
                     console.log('Unimplemented')
                     return 0.0
                 }

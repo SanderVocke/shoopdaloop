@@ -32,11 +32,6 @@ class BackendLoopMidiChannel(QObject):
     @pyqtProperty(int, notify=nEventsTriggeredChanged)
     def n_events_triggered(self):
         return self._n_events_triggered
-    @n_events_triggered.setter
-    def n_events_triggered(self, s):
-        if self._n_events_triggered != s:
-            self._n_events_triggered = s
-            self.nEventsTriggeredChanged.emit(s)
     
     #######################
     ## SLOTS
@@ -47,4 +42,12 @@ class BackendLoopMidiChannel(QObject):
         backend_channel = self._backend_obj
         backend_port = midi_port.get_backend_obj()
         backend_channel.connect(backend_port)
+    
+    @pyqtSlot()
+    def update(self):
+        state = self._backend_obj.get_state()
+
+        if state.n_events_triggered != self._n_events_triggered:
+            self._n_events_triggered = state.n_events_triggered
+            self.nEventsTriggeredChanged.emit(self._n_events_triggered)
     

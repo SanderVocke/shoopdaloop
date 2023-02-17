@@ -105,6 +105,12 @@ class BackendLoopAudioChannel:
             backend_data[0].data[i] = data[i]
         backend.load_audio_channel_data(self.shoop_c_handle, backend_data)
         backend.destroy_audio_channel_data(backend_data)
+    
+    def get_state(self):
+        state = backend.get_audio_channel_state(self.shoop_c_handle)
+        rval = LoopAudioChannelState(state[0])
+        backend.destroy_audio_channel_state_info(state)
+        return rval
 
     def __del__(self):
         backend.destroy_audio_channel(self.shoop_c_handle)
@@ -125,6 +131,12 @@ class BackendLoopMidiChannel:
             backend.connect_midi_input(self.shoop_c_handle, port.c_handle())
         else:
             backend.connect_midi_output(self.shoop_c_handle, port.c_handle())
+    
+    def get_state(self):
+        state = backend.get_midi_channel_state(self.shoop_c_handle)
+        rval = LoopMidiChannelState(state[0])
+        backend.destroy_midi_channel_state_info(state)
+        return rval
     
     def __del__(self):
         backend.destroy_midi_channel(self.shoop_c_handle)

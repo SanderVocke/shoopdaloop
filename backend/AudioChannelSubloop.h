@@ -28,6 +28,7 @@ private:
     std::shared_ptr<BufferPool> ma_buffer_pool;
     const size_t ma_buffer_size;
     std::atomic<size_t> ma_data_length;
+    std::atomic<float> ma_output_peak;
 
     // Members which may be accessed from the process thread only (mp prefix)
     std::vector<Buffer> mp_buffers;
@@ -47,7 +48,8 @@ public:
         mp_recording_source_buffer(nullptr),
         mp_playback_target_buffer(nullptr),
         mp_playback_target_buffer_size(0),
-        mp_recording_source_buffer_size(0)
+        mp_recording_source_buffer_size(0),
+        ma_output_peak(0)
     {
         mp_buffers.reserve(initial_max_buffers);
         mp_buffers.push_back(get_new_buffer()); // Initial recording buffer
@@ -192,12 +194,6 @@ public:
             throw std::runtime_error("Attempting to play from empty channel");
         }
 
-        static size_t calls = 0;
-        calls++;
-        if((calls % 100) == 0) {
-            std::cout << "pos " << position << ", len " << length << ", n " << n_samples <<std::endl;
-        }
-
         size_t buffer_idx = position / ma_buffer_size;
         size_t pos_in_buffer = position % ma_buffer_size;
         size_t buf_head = (buffer_idx == mp_buffers.size()-1) ?
@@ -212,6 +208,7 @@ public:
         if (!muted) {
             for(size_t idx=0; idx < n; idx++) {
                 to[idx] += from[idx];
+                ma_output_peak = std::max((float)ma_output_peak.load(), (float)std::abs(from[idx]));
             }
         }
 
@@ -256,6 +253,14 @@ public:
             memset((void*)b->data(), 0, sizeof(SampleT) * b->size());
         }
         ma_data_length = length;
+    }
+
+    float get_output_peak() const {
+        return ma_output_peak;
+    }
+
+    void reset_output_peak() {
+        ma_output_peak = 0.0f;
     }
 
 protected:

@@ -30,25 +30,15 @@ class BackendLoopAudioChannel(QObject):
 
     # output peak
     outputPeakChanged = pyqtSignal(float)
-    @pyqtProperty(int, notify=outputPeakChanged)
+    @pyqtProperty(float, notify=outputPeakChanged)
     def output_peak(self):
         return self._output_peak
-    @output_peak.setter
-    def output_peak(self, s):
-        if self._output_peak != s:
-            self._output_peak = s
-            self.outputPeakChanged.emit(s)
     
     # volume
     volumeChanged = pyqtSignal(float)
-    @pyqtProperty(int, notify=volumeChanged)
+    @pyqtProperty(float, notify=volumeChanged)
     def volume(self):
         return self._volume
-    @volume.setter
-    def volume(self, s):
-        if self._volume != s:
-            self._volume = s
-            self.volumeChanged.emit(s)
     
     ######################
     # SLOTS
@@ -69,3 +59,11 @@ class BackendLoopAudioChannel(QObject):
     def load_data(self, data):
         backend_channel = self._backend_obj
         backend_channel.load_data(data)
+    
+    @pyqtSlot()
+    def update(self):
+        state = self._backend_obj.get_state()
+
+        if state.output_peak != self._output_peak:
+            self._output_peak = state.output_peak
+            self.outputPeakChanged.emit(self._output_peak)
