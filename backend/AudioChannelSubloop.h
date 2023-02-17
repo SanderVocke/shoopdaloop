@@ -107,17 +107,17 @@ public:
     // the processing thread.
     void load_data(SampleT* samples, size_t len, bool thread_safe = true) {
         // Convert to internal storage layout
-        std::vector<Buffer> buffers(std::ceil((float)len / (float)ma_buffer_size));
-        for (size_t idx=0; idx < buffers.size(); idx++) {
-            auto &buf = buffers[idx];
+        auto buffers = std::make_shared<std::vector<Buffer>>(std::ceil((float)len / (float)ma_buffer_size));
+        for (size_t idx=0; idx < buffers->size(); idx++) {
+            auto &buf = buffers->at(idx);
             buf = std::make_shared<AudioBuffer<SampleT>>(ma_buffer_size);
             size_t already_copied = idx*ma_buffer_size;
             size_t n_elems = std::min(ma_buffer_size, len - already_copied);
             memcpy(buf->data(), samples + (idx * ma_buffer_size), sizeof(SampleT)*n_elems);
         }
 
-        auto cmd = [&]() {
-            mp_buffers = buffers;
+        auto cmd = [=]() {
+            mp_buffers = *buffers;
             ma_data_length = len;
         };
 
@@ -133,7 +133,7 @@ public:
     std::vector<SampleT> get_data(bool thread_safe = true) {
         std::vector<Buffer> buffers;
         size_t length;
-        auto cmd = [&]() {
+        auto cmd = [this, &buffers, &length]() {
             buffers = mp_buffers;
             length = ma_data_length;
         };

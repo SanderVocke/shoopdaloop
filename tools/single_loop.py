@@ -40,6 +40,8 @@ midi.connect(midi_out)
 
 be.start_update_timer(30)
 
+loop.modeChanged.connect(lambda m : print("loop -> {}".format(LoopMode(m).name)))
+
 register_qml_class(Backend, "Backend")
 register_qml_class(BackendLoop, "BackendLoop")
 

@@ -163,7 +163,7 @@ public:
 
     void set_soft_sync_source(std::shared_ptr<LoopInterface> const& src, bool thread_safe=true) override {
         if(thread_safe) {
-            exec_process_thread_command([&]() { mp_soft_sync_source = src; });
+            exec_process_thread_command([=]() { mp_soft_sync_source = src; });
         } else {
             mp_soft_sync_source = src;
         }
@@ -171,7 +171,7 @@ public:
     std::shared_ptr<LoopInterface> get_soft_sync_source(bool thread_safe = true) override {
         if(thread_safe) {
             std::shared_ptr<LoopInterface> rval;
-            exec_process_thread_command([&]() { rval = mp_soft_sync_source; });
+            exec_process_thread_command([this, &rval]() { rval = mp_soft_sync_source; });
             return rval;
         }
         return mp_soft_sync_source;
@@ -212,7 +212,7 @@ public:
     size_t get_n_planned_transitions(bool thread_safe=true) override {
         if (thread_safe) {
             size_t rval;
-            exec_process_thread_command([&]() { rval = mp_planned_states.size(); });
+            exec_process_thread_command([this, &rval]() { rval = mp_planned_states.size(); });
             return rval;
         }
         return mp_planned_states.size();
@@ -220,7 +220,7 @@ public:
 
     size_t get_planned_transition_delay(size_t idx, bool thread_safe=true) override {
         size_t rval;
-        auto fn = [&]() {
+        auto fn = [=,&rval]() {
             if(idx >= mp_planned_state_countdowns.size()) {
                 throw std::runtime_error("Attempted to get out-of-bounds planned transition");
             }
@@ -236,7 +236,7 @@ public:
 
     loop_mode_t get_planned_transition_state(size_t idx, bool thread_safe=true) override {
         loop_mode_t rval;
-        auto fn = [&]() {
+        auto fn = [=,&rval]() {
             if(idx >= mp_planned_states.size()) {
                 throw std::runtime_error("Attempted to get out-of-bounds planned transition");
             }
@@ -251,7 +251,7 @@ public:
     }
 
     void clear_planned_transitions(bool thread_safe) override {
-        auto fn = [&]() { 
+        auto fn = [this]() { 
             mp_planned_states.clear();
             mp_planned_state_countdowns.clear();
         };
@@ -263,7 +263,7 @@ public:
     }
 
     void plan_transition(loop_mode_t mode, size_t n_cycles_delay = 0, bool wait_for_soft_sync = true, bool thread_safe=true) override {
-        auto fn = [&]() {
+        auto fn = [=]() {
             bool transitioning_immediately =
                 (!mp_soft_sync_source && ma_mode != Playing) ||
                 (!wait_for_soft_sync);
@@ -300,7 +300,7 @@ public:
     }
 
     void set_position(size_t position, bool thread_safe=true) override {
-        auto fn = [&]() {
+        auto fn = [=]() {
             if (position != ma_position) {
                 mp_next_poi = std::nullopt;
                 ma_position = position;
@@ -320,7 +320,7 @@ public:
     }
 
     void set_length(size_t len, bool thread_safe=true) override {
-        auto fn = [&]() {
+        auto fn = [=]() {
             if (len != ma_length) {
                 ma_length = len;
                 if (ma_position >= len) {
@@ -335,7 +335,7 @@ public:
     }
 
     void set_mode(loop_mode_t mode, bool thread_safe=true) override {
-        auto fn = [&]() {
+        auto fn = [=]() {
             if (mode != ma_mode) {
                 ma_mode = mode;
                 mp_next_poi = std::nullopt;

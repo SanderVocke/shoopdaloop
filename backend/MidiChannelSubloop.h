@@ -119,7 +119,7 @@ public:
     }
 
     void clear(bool thread_safe=true) {
-        auto fn = [&]() {
+        auto fn = [this]() {
             mp_storage->clear();
             mp_playback_cursor.reset();
         };
@@ -182,7 +182,7 @@ public:
 
     std::vector<Message> retrieve_contents(bool thread_safe = true) {
         auto s = std::make_shared<Storage>(mp_storage->bytes_capacity());
-        auto fn = [&]() {
+        auto fn = [this, &s]() {
             mp_storage->copy(*s);
         };
         if (thread_safe) { exec_process_thread_command(fn); }
@@ -202,7 +202,7 @@ public:
             s->append(elem.time, elem.size, elem.data.data());
         }
 
-        auto fn = [&]() {
+        auto fn = [this, &s]() {
             mp_storage = s;
             mp_playback_cursor = mp_storage->create_cursor();
         };

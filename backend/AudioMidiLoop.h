@@ -22,7 +22,7 @@ public:
                       bool thread_safe=true) {
         auto subloop = std::make_shared<AudioChannelSubloop<SampleT>>(
             buffer_pool, initial_max_buffers);
-        auto fn = [&]() {
+        auto fn = [=]() {
             mp_audio_subloops.push_back(subloop);
         };
         if (thread_safe) { exec_process_thread_command(fn); }
@@ -34,7 +34,7 @@ public:
     std::shared_ptr<AudioChannelSubloop<SampleT>> audio_channel(size_t idx, bool thread_safe = true) {
         std::shared_ptr<SubloopInterface> iface;
         if (thread_safe) {
-            exec_process_thread_command([&]() { iface = mp_audio_subloops.at(idx); });
+            exec_process_thread_command([this, idx, &iface]() { iface = mp_audio_subloops.at(idx); });
         } else { iface = mp_audio_subloops.at(idx); }
 
         auto maybe_r = std::dynamic_pointer_cast<AudioChannelSubloop<SampleT>>(iface);
@@ -47,7 +47,7 @@ public:
     template<typename TimeType, typename SizeType>
     std::shared_ptr<MidiChannelSubloop<TimeType, SizeType>> add_midi_channel(size_t data_size, bool thread_safe = true) {
         auto subloop = std::make_shared<MidiChannelSubloop<TimeType, SizeType>>(data_size);
-        auto fn = [&]() {
+        auto fn = [this, &subloop]() {
             mp_midi_subloops.push_back(subloop);
         };
         if (thread_safe) { exec_process_thread_command(fn); }
@@ -60,7 +60,7 @@ public:
     std::shared_ptr<MidiChannelSubloop<TimeType, SizeType>> midi_channel(size_t idx, bool thread_safe=true) {
         std::shared_ptr<SubloopInterface> iface;
         if (thread_safe) {
-            exec_process_thread_command([&]() { iface = mp_midi_subloops.at(idx); });
+            exec_process_thread_command([this, idx, &iface]() { iface = mp_midi_subloops.at(idx); });
         } else { iface = mp_midi_subloops.at(idx); }
 
         auto maybe_r = std::dynamic_pointer_cast<MidiChannelSubloop<TimeType, SizeType>>(iface);
@@ -72,14 +72,14 @@ public:
 
     size_t n_audio_channels (bool thread_safe=true) {
         size_t rval;
-        if (thread_safe) { exec_process_thread_command( [&]() { rval = mp_audio_subloops.size(); } ); }
+        if (thread_safe) { exec_process_thread_command( [this, &rval]() { rval = mp_audio_subloops.size(); } ); }
         else { rval = mp_audio_subloops.size(); }
         return rval;
     }
 
     size_t n_midi_channels (bool thread_safe=true) {
         size_t rval;
-        if (thread_safe) { exec_process_thread_command( [&]() { rval = mp_midi_subloops.size(); } ); }
+        if (thread_safe) { exec_process_thread_command( [this, &rval]() { rval = mp_midi_subloops.size(); } ); }
         else { rval = mp_midi_subloops.size(); }
         return rval;
     }
@@ -114,7 +114,7 @@ public:
     std::optional<size_t> PROC_get_next_poi() const override {
         auto rval = BasicLoop::PROC_get_next_poi();
 
-        auto merge = [&](std::optional<size_t> other) {
+        auto merge = [&rval](std::optional<size_t> other) {
             if (other.has_value() &&
                 (!rval.has_value() || other.value() < rval.value())) {
                     rval = other;

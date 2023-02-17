@@ -225,7 +225,7 @@ MidiPort &PortInfo::midi() {
 }
 
 void ChannelInfo::connect_output_port(SharedPortInfo port, bool thread_safe) {
-    auto fn = [&]() {
+    auto fn = [this, port]() {
         for (auto const& elem : mp_output_port_mappings) {
             if (elem.lock() == port) { return; }
         }
@@ -236,7 +236,7 @@ void ChannelInfo::connect_output_port(SharedPortInfo port, bool thread_safe) {
 }
 
 void ChannelInfo::connect_input_port(SharedPortInfo port, bool thread_safe) {
-    auto fn = [&]() {
+    auto fn = [this, port]() {
         mp_input_port_mapping = port;
     };
     if (thread_safe) { g_cmd_queue.queue(fn); }
@@ -244,11 +244,11 @@ void ChannelInfo::connect_input_port(SharedPortInfo port, bool thread_safe) {
 }
 
 void ChannelInfo::disconnect_output_port(SharedPortInfo port, bool thread_safe) {
-    auto fn = [&]() {
+    auto fn = [this, port]() {
         for (auto it = mp_output_port_mappings.rbegin(); it != mp_output_port_mappings.rend(); it++) {
             mp_output_port_mappings.erase(
                 std::remove_if(mp_output_port_mappings.begin(), mp_output_port_mappings.end(),
-                    [&](auto const& e) {
+                    [port](auto const& e) {
                         auto l = e.lock();
                         return !l || l == port;
                     }), mp_output_port_mappings.end());
@@ -259,7 +259,7 @@ void ChannelInfo::disconnect_output_port(SharedPortInfo port, bool thread_safe) 
 }
 
 void ChannelInfo::disconnect_output_ports(bool thread_safe) {
-    auto fn = [&]() {
+    auto fn = [this]() {
         mp_output_port_mappings.clear();
     };
     if (thread_safe) { g_cmd_queue.queue(fn); }
@@ -267,7 +267,7 @@ void ChannelInfo::disconnect_output_ports(bool thread_safe) {
 }
 
 void ChannelInfo::disconnect_input_port(SharedPortInfo port, bool thread_safe) {
-    auto fn = [&]() {
+    auto fn = [this, port]() {
         auto locked = mp_input_port_mapping.lock();
         if (locked) {
             if (port != locked) {
@@ -281,7 +281,7 @@ void ChannelInfo::disconnect_input_port(SharedPortInfo port, bool thread_safe) {
 }
 
 void ChannelInfo::disconnect_input_port(bool thread_safe) {
-    auto fn = [&]() {
+    auto fn = [this]() {
         mp_input_port_mapping.reset();
     };
     if (thread_safe) { g_cmd_queue.queue(fn); }
@@ -379,9 +379,9 @@ void LoopInfo::PROC_finalize_process() {
 }
 
 void LoopInfo::delete_audio_channel_idx(size_t idx) {
-    g_cmd_queue.queue([&]() {
+    g_cmd_queue.queue([this, idx]() {
         auto _chan = loop->audio_channel<audio_sample_t>(idx);
-        auto r = std::find_if(mp_audio_channels.begin(), mp_audio_channels.end(), [&](auto const& e) { return _chan.get() == e->channel.get(); });
+        auto r = std::find_if(mp_audio_channels.begin(), mp_audio_channels.end(), [&_chan](auto const& e) { return _chan.get() == e->channel.get(); });
         if (r == mp_audio_channels.end()) {
             throw std::runtime_error("Attempting to delete non-existent audio channel.");
         }
@@ -391,9 +391,9 @@ void LoopInfo::delete_audio_channel_idx(size_t idx) {
 }
 
 void LoopInfo::delete_midi_channel_idx(size_t idx) {
-    g_cmd_queue.queue([&]() {
+    g_cmd_queue.queue([this, idx]() {
         auto _chan = loop->midi_channel<Time, Size>(idx);
-        auto r = std::find_if(mp_midi_channels.begin(), mp_midi_channels.end(), [&](auto const& e) { return _chan.get() == e->channel.get(); });
+        auto r = std::find_if(mp_midi_channels.begin(), mp_midi_channels.end(), [&_chan](auto const& e) { return _chan.get() == e->channel.get(); });
         if (r == mp_midi_channels.end()) {
             throw std::runtime_error("Attempting to delete non-existent midi channel.");
         }
@@ -403,8 +403,8 @@ void LoopInfo::delete_midi_channel_idx(size_t idx) {
 }
 
 void LoopInfo::delete_audio_channel(SharedChannelInfo chan) {
-    g_cmd_queue.queue([&]() {
-        auto r = std::find_if(mp_audio_channels.begin(), mp_audio_channels.end(), [&](auto const& e) { return chan->channel.get() == e->channel.get(); });
+    g_cmd_queue.queue([this, chan]() {
+        auto r = std::find_if(mp_audio_channels.begin(), mp_audio_channels.end(), [chan](auto const& e) { return chan->channel.get() == e->channel.get(); });
         if (r == mp_audio_channels.end()) {
             throw std::runtime_error("Attempting to delete non-existent audio channel.");
         }
@@ -415,8 +415,8 @@ void LoopInfo::delete_audio_channel(SharedChannelInfo chan) {
 }
 
 void LoopInfo::delete_midi_channel(SharedChannelInfo chan) {
-    g_cmd_queue.queue([&]() {
-        auto r = std::find_if(mp_midi_channels.begin(), mp_midi_channels.end(), [&](auto const& e) { return chan->channel.get() == e->channel.get(); });
+    g_cmd_queue.queue([this, chan]() {
+        auto r = std::find_if(mp_midi_channels.begin(), mp_midi_channels.end(), [chan](auto const& e) { return chan->channel.get() == e->channel.get(); });
         if (r == mp_midi_channels.end()) {
             throw std::runtime_error("Attempting to delete non-existent midi channel.");
         }
@@ -660,7 +660,7 @@ unsigned get_n_midi_channels (shoopdaloop_loop_t *loop) {
 
 void delete_loop (shoopdaloop_loop_t *loop) {
     auto r = std::find_if(g_loops.begin(), g_loops.end(),
-        [&](auto const& e) { return (shoopdaloop_loop_t*)e.get() == loop; });
+        [loop](auto const& e) { return (shoopdaloop_loop_t*)e.get() == loop; });
     if (r == g_loops.end()) {
         throw std::runtime_error("Attempting to delete non-existent loop.");
     }
@@ -909,7 +909,7 @@ void close_audio_port (shoopdaloop_audio_port_t *port) {
     g_cmd_queue.queue([=]() {
         g_ports.erase(
             std::remove_if(g_ports.begin(), g_ports.end(),
-                [&](auto const& e) { return e == pi; }),
+                [pi](auto const& e) { return e == pi; }),
             g_ports.end()
         );
     });
@@ -937,7 +937,7 @@ void close_midi_port (shoopdaloop_midi_port_t *port) {
         auto pi = internal_midi_port(port);
         g_ports.erase(
             std::remove_if(g_ports.begin(), g_ports.end(),
-                [&](auto const& e) { return e == pi; }),
+                [pi](auto const& e) { return e == pi; }),
             g_ports.end()
         );
     });
@@ -979,7 +979,7 @@ void close_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *port) {
         auto _port = internal_decoupled_midi_port(port);
         g_decoupled_midi_ports.erase(
             std::remove_if(g_decoupled_midi_ports.begin(), g_decoupled_midi_ports.end(),
-                [&](auto const& e) { return e.get() == _port.get(); }),
+                [&_port](auto const& e) { return e.get() == _port.get(); }),
             g_decoupled_midi_ports.end()
         );
     });
