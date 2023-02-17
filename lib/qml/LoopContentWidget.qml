@@ -35,7 +35,7 @@ Item {
         color: 'green'
         width: 2
         height: widget.height
-        x: widget.manager.pos / widget.manager.length * widget.width
+        x: widget.manager.position / widget.manager.length * widget.width
         y: 0
     }
 

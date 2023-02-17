@@ -19,7 +19,7 @@ Item {
     property string internal_name
 
     property int n_multiples_of_master_length: manager && master_manager ? Math.ceil(manager.length / master_manager.length) : 1
-    property int current_cycle: manager && master_manager ? Math.floor(manager.pos / master_manager.length) : 0
+    property int current_cycle: manager && master_manager ? Math.floor(manager.position / master_manager.length) : 0
 
     signal selected() //directly selected by the user to be activated.
     signal toggle_in_current_scene() //selected by the user to be added/removed to/from the current scene.
@@ -486,7 +486,7 @@ Item {
                                             var n_cycles_record = 1
                                             n_cycles_record = Math.ceil(widget.targeted_loop_manager.length / widget.master_manager.length)
                                             if (State_helpers.is_playing_state(widget.targeted_loop_manager.mode)) {
-                                                var current_cycle = Math.floor(widget.targeted_loop_manager.pos / widget.master_manager.length)
+                                                var current_cycle = Math.floor(widget.targeted_loop_manager.position / widget.master_manager.length)
                                                 n_cycles_delay = Math.max(0, n_cycles_record - current_cycle - 1)
                                             }
                                             statusrect.manager.doLoopAction(StatesAndActions.LoopActionType.DoRecordNCycles, [n_cycles_delay, n_cycles_record], true, true)
@@ -650,7 +650,7 @@ Item {
             function getRightMargin() {
                 var st = loopprogressrect.manager
                 if(st && st.length && st.length > 0) {
-                    return (1.0 - (st.pos / st.length)) * parent.width
+                    return (1.0 - (st.position / st.length)) * parent.width
                 }
                 return parent.width
             }

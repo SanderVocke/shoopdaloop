@@ -27,7 +27,7 @@ class NChannelAbstractLooperManager(LooperState):
 
         # Sync our own mode from the first looper.
         first_looper = self._channel_loopers[0]
-        first_looper.posChanged.connect(lambda v: NChannelAbstractLooperManager.pos.fset(self, v))
+        first_looper.posChanged.connect(lambda v: NChannelAbstractLooperManager.position.fset(self, v))
         first_looper.lengthChanged.connect(lambda v: NChannelAbstractLooperManager.length.fset(self, v))
         first_looper.modeChanged.connect(lambda v: NChannelAbstractLooperManager.mode.fset(self, v))
         first_looper.nextModeChanged.connect(lambda v: NChannelAbstractLooperManager.next_mode.fset(self, v))
@@ -41,7 +41,7 @@ class NChannelAbstractLooperManager(LooperState):
             self.next_mode = first_looper.next_mode
             self.next_mode_countdown = first_looper.next_mode_countdown
             self.volume = first_looper.volume
-            self.pos = first_looper.pos
+            self.position = first_looper.position
             self.outputPeak = first_looper.outputPeak
         
         self.volumeChanged.connect(lambda v: self.doLoopAction(LoopActionType.SetLoopVolume.value, [v], True, False))

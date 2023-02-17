@@ -565,7 +565,7 @@ Item {
                 var n_cycles_record = 1
                 n_cycles_record = Math.ceil(targeted_loop_manager.length / master_loop_manager.length)
                 if (State_helpers.is_playing_state(targeted_loop_manager.mode)) {
-                    var current_cycle = Math.floor(targeted_loop_manager.pos / master_loop_manager.length)
+                    var current_cycle = Math.floor(targeted_loop_manager.position / master_loop_manager.length)
                     n_cycles_delay = Math.max(0, n_cycles_record - current_cycle - 1)
                 }
                 loop_managers[track][loop].doLoopAction(StatesAndActions.LoopActionType.DoRecordNCycles,

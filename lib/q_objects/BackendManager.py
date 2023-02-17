@@ -432,7 +432,7 @@ class BackendManager(QObject):
             cycled = False
             if is_playing_state(m.mode) and is_playing_state(loop_states[i]) and \
                m.length > 0 and \
-               (loop_positions[i] < m.pos):
+               (loop_positions[i] < m.position):
                cycled = True
             
             # Determine if the loop passed the halfway point
@@ -440,14 +440,14 @@ class BackendManager(QObject):
             if is_playing_state(m.mode) and is_playing_state(loop_states[i]) and \
                m.length > 0 and \
                (loop_positions[i] >= m.length / 2) and \
-               (m.pos < m.length / 2):
+               (m.position < m.length / 2):
                passed_halfway = True
                
             m.mode = loop_states[i]
             m.next_mode = loop_next_modes[i]
             m.next_mode_countdown = loop_next_mode_countdowns[i]
             m.length = loop_lengths[i]
-            m.pos = loop_positions[i]
+            m.position = loop_positions[i]
             m.volume = loop_volumes[i]
             m.outputPeak = loop_output_peaks[i]
 

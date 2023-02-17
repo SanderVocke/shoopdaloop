@@ -17,7 +17,7 @@ Item {
 
     readonly property bool is_master: backend_loop == master_backend_loop
     //property int n_multiples_of_master_length: backend_loop && master_backend_loop ? Math.ceil(backend_loop.length / master_backend_loop.length) : 1
-    //property int current_cycle: backend_loop && master_backend_loop ? Math.floor(backend_loop.pos / master_backend_loop.length) : 0
+    //property int current_cycle: backend_loop && master_backend_loop ? Math.floor(backend_loop.position / master_backend_loop.length) : 0
 
     signal selected() //directly selected by the user to be activated.
     signal toggle_in_current_scene() //selected by the user to be added/removed to/from the current scene.
@@ -493,7 +493,7 @@ Item {
                                             var n_cycles_record = 1
                                             n_cycles_record = Math.ceil(widget.targeted_backend_loop.length / widget.master_backend_loop.length)
                                             if (State_helpers.is_playing_state(widget.targeted_backend_loop.mode)) {
-                                                var current_cycle = Math.floor(widget.targeted_backend_loop.pos / widget.master_backend_loop.length)
+                                                var current_cycle = Math.floor(widget.targeted_backend_loop.position / widget.master_backend_loop.length)
                                                 n_cycles_delay = Math.max(0, n_cycles_record - current_cycle - 1)
                                             }
                                             console.log('unimplemented!')
@@ -661,7 +661,7 @@ Item {
             function getRightMargin() {
                 var st = loopprogressrect.backend_loop
                 if(st && st.length && st.length > 0) {
-                    return (1.0 - (st.pos / st.length)) * parent.width
+                    return (1.0 - (st.position / st.length)) * parent.width
                 }
                 return parent.width
             }

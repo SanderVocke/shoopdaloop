@@ -88,13 +88,13 @@ class LooperState(QObject):
             self._length = l
             self.lengthChanged.emit(l)
 
-    # pos: loop playback position in seconds
+    # position: loop playback position in seconds
     posChanged = pyqtSignal(float)
     @pyqtProperty(float, notify=posChanged)
-    def pos(self):
+    def position(self):
         return self._pos
-    @pos.setter
-    def pos(self, p):
+    @position.setter
+    def position(self, p):
         if self._pos != p:
             self._pos = p
             self.posChanged.emit(p)

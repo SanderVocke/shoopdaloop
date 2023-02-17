@@ -185,11 +185,11 @@ public:
 
     size_t data_length() const { return ma_data_length; }
 
-    SampleT const& PROC_at(size_t pos) const {
-        return mp_buffers[pos / ma_buffer_size]->at(pos % mp_buffers.front()->size());
+    SampleT const& PROC_at(size_t position) const {
+        return mp_buffers[position / ma_buffer_size]->at(position % mp_buffers.front()->size());
     }
 
-    void PROC_process_playback(size_t pos, size_t length, size_t n_samples, bool muted) {
+    void PROC_process_playback(size_t position, size_t length, size_t n_samples, bool muted) {
         if (mp_playback_target_buffer_size < n_samples) {
             throw std::runtime_error("Attempting to play out of bounds of target buffer");
         }
@@ -197,8 +197,8 @@ public:
             throw std::runtime_error("Attempting to play from empty channel");
         }
 
-        size_t buffer_idx = pos / ma_buffer_size;
-        size_t pos_in_buffer = pos % ma_buffer_size;
+        size_t buffer_idx = position / ma_buffer_size;
+        size_t pos_in_buffer = position % ma_buffer_size;
         size_t buf_head = (buffer_idx == mp_buffers.size()-1) ?
             ma_data_length - (buffer_idx * ma_buffer_size) :
             ma_buffer_size;
@@ -219,7 +219,7 @@ public:
 
         // If we didn't play back all yet, go to next buffer and continue
         if(rest > 0) {
-            PROC_process_playback(pos + n, length, rest, muted);
+            PROC_process_playback(position + n, length, rest, muted);
         }
     }
 

@@ -68,7 +68,7 @@ struct LoopInfo : public LoopInterface {
     void plan_transition(loop_mode_t mode, size_t n_cycles_delay = 0) override  { check(); loop->plan_transition(mode, n_cycles_delay); }
     size_t get_position() const override                                          { check(); return loop->get_position(); }
     size_t get_length() const override                                            { check(); return loop->get_length(); }
-    void set_position(size_t pos) override                                        { check(); loop->set_position(pos); }
+    void set_position(size_t position) override                                        { check(); loop->set_position(position); }
     loop_mode_t get_mode() const override                                       { check(); return loop->get_mode(); }
     void set_mode(loop_mode_t mode) override                                   { check(); return loop->set_mode(mode); }
     void set_length(size_t length) override                                       { check(); return loop->set_length(length); }

@@ -51,7 +51,7 @@ public:
     // Getters and setters.
     virtual size_t       get_position() const = 0;
     virtual size_t       get_length() const = 0;
-    virtual void         set_position(size_t pos, bool thread_safe=true) = 0;
+    virtual void         set_position(size_t position, bool thread_safe=true) = 0;
     virtual void         set_length(size_t length, bool thread_safe=true) = 0;
     virtual loop_mode_t  get_mode() const = 0;
     virtual void         set_mode(loop_mode_t mode, bool thread_safe=true) = 0;

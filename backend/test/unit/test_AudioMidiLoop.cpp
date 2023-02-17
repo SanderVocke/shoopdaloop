@@ -49,7 +49,7 @@ suite AudioMidiLoop_audio_tests = []() {
         loop.add_audio_channel<int>(pool, 10, false);
         auto &channel = *loop.audio_channel<int>(0);
 
-        auto source_buf = create_audio_buf<int>(512, [](size_t pos) { return pos; }); 
+        auto source_buf = create_audio_buf<int>(512, [](size_t position) { return position; }); 
         loop.plan_transition(Recording);
         channel.PROC_set_recording_buffer(source_buf.data(), source_buf.size());
         loop.PROC_trigger();
@@ -68,8 +68,8 @@ suite AudioMidiLoop_audio_tests = []() {
         expect(eq(loop.get_position(), 0));
         for_channel_elems<AudioChannelSubloop<int>, int>(
             channel, 
-            [](size_t pos, int const& val) {
-                expect(eq(val, pos)) << " @ position " << pos;
+            [](size_t position, int const& val) {
+                expect(eq(val, position)) << " @ position " << position;
             },
             0,
             20
@@ -96,7 +96,7 @@ suite AudioMidiLoop_audio_tests = []() {
         loop.add_audio_channel<int>(pool, 10, false);
         auto &channel = *loop.audio_channel<int>(0);
 
-        auto source_buf = create_audio_buf<int>(512, [](size_t pos) { return pos; }); 
+        auto source_buf = create_audio_buf<int>(512, [](size_t position) { return position; }); 
         loop.plan_transition(Recording);
         channel.PROC_set_recording_buffer(source_buf.data(), source_buf.size());
         loop.PROC_trigger();
@@ -115,8 +115,8 @@ suite AudioMidiLoop_audio_tests = []() {
         expect(eq(loop.get_position(), 0));
         for_channel_elems<AudioChannelSubloop<int>, int>(
             channel, 
-            [](size_t pos, int const& val) {
-                expect(eq(val, pos)) << " @ position " << pos;
+            [](size_t position, int const& val) {
+                expect(eq(val, position)) << " @ position " << position;
             }
         );
     };
@@ -127,7 +127,7 @@ suite AudioMidiLoop_audio_tests = []() {
         loop.add_audio_channel<int>(pool, 10, false);
         auto &channel = *loop.audio_channel<int>(0);
 
-        auto source_buf = create_audio_buf<int>(32, [](size_t pos) { return pos; });
+        auto source_buf = create_audio_buf<int>(32, [](size_t position) { return position; });
         loop.plan_transition(Recording);
         channel.PROC_set_recording_buffer(source_buf.data(), source_buf.size());
         loop.PROC_trigger();
@@ -141,7 +141,7 @@ suite AudioMidiLoop_audio_tests = []() {
         for(size_t samples_processed = 0; samples_processed < 512; ) {
             loop.PROC_process(32);
             samples_processed += 32;
-            source_buf = create_audio_buf<int>(32, [&](size_t pos) { return pos + samples_processed; });
+            source_buf = create_audio_buf<int>(32, [&](size_t position) { return position + samples_processed; });
             channel.PROC_set_recording_buffer(source_buf.data(), source_buf.size());
             loop.PROC_handle_poi();
             loop.PROC_update_poi();
@@ -153,8 +153,8 @@ suite AudioMidiLoop_audio_tests = []() {
         expect(eq(loop.get_position(), 0));
         for_channel_elems<AudioChannelSubloop<int>, int>(
             channel, 
-            [](size_t pos, int const& val) {
-                expect(eq(val, pos)) << " @ position " << pos;
+            [](size_t position, int const& val) {
+                expect(eq(val, position)) << " @ position " << position;
             }
         );
     };
@@ -165,7 +165,7 @@ suite AudioMidiLoop_audio_tests = []() {
         loop.add_audio_channel<int>(pool, 10, false);
         auto &channel = *loop.audio_channel<int>(0);
         
-        auto data = create_audio_buf<int>(64, [](size_t pos) { return pos; });
+        auto data = create_audio_buf<int>(64, [](size_t position) { return position; });
         channel.load_data(data.data(), 64, false);
         loop.set_length(64);
         auto play_buf = std::vector<int>(64);
@@ -197,7 +197,7 @@ suite AudioMidiLoop_audio_tests = []() {
         loop.add_audio_channel<int>(pool, 10, false);
         auto &channel = *loop.audio_channel<int>(0);
         
-        auto data = create_audio_buf<int>(512, [](size_t pos) { return pos; });
+        auto data = create_audio_buf<int>(512, [](size_t position) { return position; });
         channel.load_data(data.data(), 512, false);
 
         loop.set_length(512);
@@ -219,7 +219,7 @@ suite AudioMidiLoop_audio_tests = []() {
         }
 
         for (size_t idx=0; idx<512; idx++) {
-            expect(eq(play_buf[idx], idx)) << "@ pos " << idx;
+            expect(eq(play_buf[idx], idx)) << "@ position " << idx;
         }
     };
 };

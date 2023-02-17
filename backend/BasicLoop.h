@@ -299,11 +299,11 @@ public:
         return ma_position;
     }
 
-    void set_position(size_t pos, bool thread_safe=true) override {
+    void set_position(size_t position, bool thread_safe=true) override {
         auto fn = [&]() {
-            if (pos != ma_position) {
+            if (position != ma_position) {
                 mp_next_poi = std::nullopt;
-                ma_position = pos;
+                ma_position = position;
                 PROC_update_poi();
             }
         };

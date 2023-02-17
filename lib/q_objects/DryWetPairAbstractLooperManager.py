@@ -114,10 +114,10 @@ class DryWetPairAbstractLooperManager(LooperState):
         # loop.        
         if self.wet().mode == LoopMode.Stopped.value and \
             self.dry().mode == LoopMode.PlayingMuted.value:
-            # Playing with live FX. show the pos of the dry loop in this case
-            self.pos = self.dry().pos
+            # Playing with live FX. show the position of the dry loop in this case
+            self.position = self.dry().position
         else:
-            self.pos = self.wet().pos
+            self.position = self.wet().position
     
     @pyqtSlot()
     def updateState(self):
