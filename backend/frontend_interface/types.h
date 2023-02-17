@@ -12,7 +12,7 @@ typedef enum {
     Recording,
     Replacing,
     PlayingDryThroughWet,
-    RecordingFromDry,
+    RecordingDryIntoWet,
     LOOP_MODE_INVALID
 } loop_mode_t;
 

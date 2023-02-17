@@ -90,6 +90,18 @@ class BackendLoop(QObject):
             self._next_transition_delay = p
             self.nextTransitionDelayChanged.emit(p)
     
+    # audio_channels: audio channel objects associated with this loop
+    audioChannelsChanged = pyqtSignal('QVariant')
+    @pyqtProperty('QVariant', notify=audioChannelsChanged)
+    def audio_channels(self):
+        return self.findChildren(BackendLoopAudioChannel)
+    
+    # audio_channels: audio channel objects associated with this loop
+    midiChannelsChanged = pyqtSignal('QVariant')
+    @pyqtProperty('QVariant', notify=midiChannelsChanged)
+    def midi_channels(self):
+        return self.findChildren(BackendLoopMidiChannel)
+    
     ###########
     ## SLOTS
     ###########
@@ -130,8 +142,12 @@ class BackendLoop(QObject):
     
     @pyqtSlot(result=BackendLoopAudioChannel)
     def add_audio_channel(self):
-        return BackendLoopAudioChannel(self._backend_loop.add_audio_channel(), self)
+        r = BackendLoopAudioChannel(self._backend_loop.add_audio_channel(), self)
+        self.audioChannelsChanged.emit(self.audio_channels)
+        return r
     
     @pyqtSlot(result=BackendLoopMidiChannel)
     def add_midi_channel(self):
-        return BackendLoopMidiChannel(self._backend_loop.add_midi_channel(), self)
+        r = BackendLoopMidiChannel(self._backend_loop.add_midi_channel(), self)
+        self.midiChannelsChanged.emit(self.midi_channels)
+        return r

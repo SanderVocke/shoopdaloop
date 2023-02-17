@@ -26,7 +26,7 @@ class LoopMode(Enum):
     Playing = backend.Playing
     Recording = backend.Recording
     PlayingDryThroughWet = backend.PlayingDryThroughWet
-    RecordingFromDry = backend.RecordingFromDry
+    RecordingDryIntoWet = backend.RecordingDryIntoWet
 
 @dataclass
 class LoopAudioChannelState:
@@ -90,6 +90,10 @@ class BackendLoopAudioChannel:
             backend.connect_audio_input(self.shoop_c_handle, port.c_handle())
         else:
             backend.connect_audio_output(self.shoop_c_handle, port.c_handle())
+    
+    def get_rms_data(self, from_sample, to_sample, samples_per_bin):
+        print("Unimplemented!")
+        return []
     
     def __del__(self):
         backend.destroy_audio_channel(self.shoop_c_handle)

@@ -4,6 +4,7 @@ import QtQuick.Controls.Material 2.15
 import QtQuick.Dialogs
 
 import '../../build/types.js' as Types
+import '../mode_helpers.js' as ModeHelpers
 
 // The loop widget displays the state of a single loop within a track.
 Item {
@@ -703,7 +704,7 @@ Item {
         property bool empty
         property bool muted
         property int size
-        property string description: 'UNIMPLEMENTED' //StatesAndActions.LoopState_names[mode] ? StatesAndActions.LoopState_names[mode] : "Invalid"
+        property string description: ModeHelpers.mode_name(mode)
 
         signal clicked(var mouse)
         signal doubleClicked(var mouse)
@@ -1004,41 +1005,42 @@ Item {
                 height: 100
                 id: item
 
-                // LoopContentWidget {
-                //     id: waveform
-                //     waveform_data_max: 1.0
-                //     min_db: -50.0
-                //     backend_loop: window.backend_loop
-                //     samples_per_waveform_pixel: backend_loop.length / width
-                //     length_samples: backend_loop.length
-                //     anchors.fill: parent
+                LoopContentWidget {
+                    id: waveform
+                    waveform_data_max: 1.0
+                    min_db: -50.0
+                    backend_loop: window.backend_loop
+                    samples_per_waveform_pixel: backend_loop.length / width
+                    length_samples: backend_loop.length
+                    anchors.fill: parent
 
-                //     Connections {
-                //         target: window
-                //         function onVisibleChanged (visible) {
-                //             if (visible) { waveform.update_data() }
-                //         }
-                //     }
+                    Connections {
+                        target: window
+                        function onVisibleChanged (visible) {
+                            if (visible) { waveform.update_data() }
+                        }
+                    }
 
-                //     Connections {
-                //         target: backend_loop
+                    Connections {
+                        target: backend_loop
                         
-                //         function maybe_update() {
-                //             if (window.visible &&
-                //                 backend_loop.mode != Types.LoopMode.Recording &&
-                //                 backend_loop.mode != Types.LoopMode.RecordingFX) {
-                //                     waveform.update_data()
-                //                 }
-                //         }
-                //         function onStateChanged() {
-                //             maybe_update()
-                //             waveform.recording = backend_loop.mode == Types.LoopMode.Recording ||
-                //                                  backend_loop.mode == Types.LoopMode.RecordingFX
-                //         }
-                //         function onLengthChanged() { maybe_update() }
-                //         function onLoadedData() { maybe_update() }
-                //     }
-                // }
+                        // TODO the triggering
+                        // function maybe_update() {
+                        //     if (window.visible &&
+                        //         backend_loop.mode != Types.LoopMode.Recording &&
+                        //         backend_loop.mode != Types.LoopMode.RecordingFX) {
+                        //             waveform.update_data()
+                        //         }
+                        // }
+                        // function onStateChanged() {
+                        //     maybe_update()
+                        //     waveform.recording = backend_loop.mode == Types.LoopMode.Recording ||
+                        //                          backend_loop.mode == Types.LoopMode.RecordingFX
+                        // }
+                        function onLengthChanged() { maybe_update() }
+                        // function onLoadedData() { maybe_update() }
+                    }
+                }
             }
         }
     }
