@@ -804,7 +804,7 @@ Item {
             y: (parent.height-height) / 2
 
             onAcceptedClickTrack: (filename) => {
-                                    widget.backend_loop.doLoadSoundFile(filename)
+                                    widget.backend_loop.load_audio_file(filename)
                                   }
         }
 
@@ -901,7 +901,7 @@ Item {
             nameFilters: ["WAV files (*.wav)"]
             onAccepted: {
                 var filename = selectedFile.toString().replace('file://', '');
-                widget.backend_loop.doLoadSoundFile(filename)
+                widget.backend_loop.load_audio_file(filename, false, 0)
             }
         }
 
@@ -986,17 +986,9 @@ Item {
             spacing: 5
             anchors.fill: parent
 
-            DryWetPairAbstractLooperManagerDetails {
+            BackendLooperManagerDetails {
                 title: "Overall loop"
                 backend_loop: window.backend_loop
-            }
-            BackendLooperManagerDetails {
-                title: "Pre-FX loop"
-                backend_loop: window.backend_loop.dry_looper
-            }
-            BackendLooperManagerDetails {
-                title: "Post-FX loop"
-                backend_loop: window.backend_loop.wet_looper
             }
 
             Item {

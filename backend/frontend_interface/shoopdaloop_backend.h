@@ -10,6 +10,7 @@ void initialize (const char* client_name_hint);
 void terminate ();
 jack_client_t *get_jack_client_handle();
 const char    *get_jack_client_name();
+unsigned get_sample_rate();
 
 // Loops
 shoopdaloop_loop_t *create_loop();
@@ -20,7 +21,9 @@ shoopdaloop_loop_midi_channel_t  *get_midi_channel  (shoopdaloop_loop_t *loop, s
 unsigned          get_n_audio_channels     (shoopdaloop_loop_t *loop);
 unsigned          get_n_midi_channels      (shoopdaloop_loop_t *loop);
 void              clear_loop               (shoopdaloop_loop_t *loop, size_t length);
-loop_state_info_t *get_loop_state           (shoopdaloop_loop_t *loop);
+loop_state_info_t *get_loop_state          (shoopdaloop_loop_t *loop);
+void              set_loop_length          (shoopdaloop_loop_t *loop, size_t length);
+void              set_loop_position        (shoopdaloop_loop_t *loop, size_t position);
 
 // Loop channels
 void                   clear_audio_channel      (shoopdaloop_loop_audio_channel_t *channel);
@@ -39,8 +42,8 @@ audio_channel_data_t  *get_audio_rms_data       (shoopdaloop_loop_audio_channel_
                                                 unsigned to_sample,
                                                 unsigned samples_per_bin);
 midi_channel_data_t   *get_midi_channel_data    (shoopdaloop_loop_midi_channel_t  *channel);
-void                   load_audio_channel_data  (shoopdaloop_loop_audio_channel_t *channel, audio_channel_data_t data);
-void                   load_midi_channel_data   (shoopdaloop_loop_midi_channel_t  *channel, midi_channel_data_t  data);
+void                   load_audio_channel_data  (shoopdaloop_loop_audio_channel_t *channel, audio_channel_data_t *data);
+void                   load_midi_channel_data   (shoopdaloop_loop_midi_channel_t  *channel, midi_channel_data_t  *data);
 audio_channel_state_info_t *get_audio_channel_state  (shoopdaloop_loop_audio_channel_t *channel);
 midi_channel_state_info_t  *get_midi_channel_state   (shoopdaloop_loop_midi_channel_t  *channel);
 
@@ -53,21 +56,6 @@ void loops_transition(unsigned int n_loops,
                       loop_mode_t mode,
                       size_t delay, // In # of triggers
                       unsigned wait_for_soft_sync);
-
-// void do_loops_action (unsigned int      n_loops,
-//                       shoopdaloop_loop_t *loops,
-//                       loop_action_t     action,
-//                       unsigned int      n_args,
-//                       float            *maybe_args,
-//                       unsigned          wait_soft_sync);
-
-// void do_ports_action(unsigned int             n_audio_ports,
-//                      unsigned int             n_midi_ports,
-//                      shoopdaloop_audio_port_t  *audio_ports,
-//                      shoopdaloop_midi_port_t   *midi_ports,
-//                      port_action_t            action,
-//                      unsigned int             n_args,
-//                      float                   *maybe_args);
 
 // Audio ports
 shoopdaloop_audio_port_t *open_audio_port (const char* name_hint, port_direction_t direction);

@@ -13,11 +13,11 @@ from lib.q_objects.BackendLoop import BackendLoop
 from lib.q_objects.BackendAudioPort import BackendAudioPort
 from lib.q_objects.BackendMidiPort import BackendMidiPort
 
-# Wraps a back-end loop.
+# Wraps the back-end.
 class Backend(QObject):
     def __init__(self, client_name_hint : str, parent=None):
         super(Backend, self).__init__(parent)
-        self._backend_obj = backend.Backend(client_name_hint)
+        backend.init_backend(client_name_hint)
 
     ######################
     # PROPERTIES
@@ -29,15 +29,15 @@ class Backend(QObject):
 
     @pyqtSlot(result=BackendLoop)
     def create_loop(self):
-        return BackendLoop(self._backend_obj.create_loop(), self)
+        return BackendLoop(backend.create_loop(), self)
     
     @pyqtSlot(result=BackendAudioPort)
     def open_audio_port(self, name_hint, direction : backend.PortDirection):
-        return BackendAudioPort(self._backend_obj.open_audio_port(name_hint, direction), self)
+        return BackendAudioPort(backend.open_audio_port(name_hint, direction), self)
     
     @pyqtSlot(result=BackendMidiPort)
     def open_midi_port(self, name_hint, direction : backend.PortDirection):
-        return BackendMidiPort(self._backend_obj.open_midi_port(name_hint, direction), self)
+        return BackendMidiPort(backend.open_midi_port(name_hint, direction), self)
     
     # Request state updates for all back-end objects.
     @pyqtSlot()
@@ -53,3 +53,20 @@ class Backend(QObject):
         timer.setSingleShot(False)
         timer.timeout.connect(self.update)
         timer.start(interval_ms)
+    
+    @pyqtSlot(result=int)
+    def get_sample_rate(self):
+        return backend.get_sample_rate()
+
+# Poor man's singleton
+g_backend = None
+def create_backend(client_name_hint, qt_parent):
+    global g_backend
+    g_backend = Backend(client_name_hint, qt_parent)
+    return g_backend
+
+def get_backend():
+    global g_backend
+    if not g_backend:
+        raise Exception('Attempt to get back-end before it was instantiated.')
+    return g_backend

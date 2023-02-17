@@ -13,6 +13,7 @@ import lib.backend as backend
 from lib.mode_helpers import is_playing_mode
 from lib.q_objects.BackendLoopAudioChannel import BackendLoopAudioChannel
 from lib.q_objects.BackendLoopMidiChannel import BackendLoopMidiChannel
+from lib.sound_file_io import load_audio_file
 
 # Wraps a back-end loop.
 class BackendLoop(QObject):
@@ -40,55 +41,41 @@ class BackendLoop(QObject):
     @pyqtProperty(int, notify=modeChanged)
     def mode(self):
         return self._mode
-    @mode.setter
-    def mode(self, s):
-        if self._mode != s:
-            self._mode = s
-            self.modeChanged.emit(s)
+    # Indirect setter via back-end
+    @pyqtSlot(int)
+    def set_mode(self, mode):
+        self._backend_loop.set_mode(mode)
 
     # length: loop length in seconds
     lengthChanged = pyqtSignal(float)
     @pyqtProperty(float, notify=lengthChanged)
     def length(self):
         return self._length
-    @length.setter
-    def length(self, l):
-        if self._length != l:
-            self._length = l
-            self.lengthChanged.emit(l)
+    # Indirect setter via back-end
+    @pyqtSlot(int)
+    def set_length(self, length):
+        self._backend_loop.set_length(length)
 
     # position: loop playback position in seconds
     positionChanged = pyqtSignal(float)
     @pyqtProperty(float, notify=positionChanged)
     def position(self):
         return self._position
-    @position.setter
-    def position(self, p):
-        if self._position != p:
-            self._position = p
-            self.positionChanged.emit(p)
+    @pyqtSlot(int)
+    def set_position(self, position):
+        self._backend_loop.set_position(position)
 
     # next_mode: first upcoming mode change
     nextModeChanged = pyqtSignal('QVariant')
     @pyqtProperty('QVariant', notify=nextModeChanged)
     def next_mode(self):
         return self._next_mode
-    @next_mode.setter
-    def next_mode(self, p):
-        if self._next_mode != p:
-            self._next_mode = p
-            self.nextModeChanged.emit(p)
     
     # next_mode: first upcoming mode change
     nextTransitionDelayChanged = pyqtSignal('QVariant')
     @pyqtProperty('QVariant', notify=nextTransitionDelayChanged)
     def next_transition_delay(self):
         return self._next_transition_delay
-    @next_transition_delay.setter
-    def next_transition_delay(self, p):
-        if self._next_transition_delay != p:
-            self._next_transition_delay = p
-            self.nextTransitionDelayChanged.emit(p)
     
     # audio_channels: audio channel objects associated with this loop
     audioChannelsChanged = pyqtSignal('QVariant')
@@ -110,23 +97,35 @@ class BackendLoop(QObject):
     @pyqtSlot()
     def update(self):
         prev_before_halway = (self.length > 0 and self.position < self.length/2)
-        prev_position = self.position
-        prev_mode = self.mode
+        prev_position = self._position
+        prev_mode = self._mode
+        prev_length = self._length
+        prev_next_mode = self._next_mode
+        prev_next_delay = self._next_transition_delay
 
         state = self._backend_loop.get_state()
-        self.mode = state.mode
-        self.length = state.length
-        self.position = state.position
-        self.next_mode = state.maybe_next_mode
-        self.next_transition_delay = state.maybe_next_delay
+        self._mode = state.mode
+        self._length = state.length
+        self._position = state.position
+        self._next_mode = state.maybe_next_mode
+        self._next_transition_delay = state.maybe_next_delay
+
+        if prev_mode != self._mode:
+            self.modeChanged.emit(self._mode)
+        if prev_length != self._length:
+            self.lengthChanged.emit(self._length)
+        if prev_position != self._position:
+            self.positionChanged.emit(self._position)
+        if prev_next_mode != self._next_mode:
+            self.nextModeChanged.emit(self._next_mode)
+        if prev_next_delay != self._next_transition_delay:
+            self.nextTransitionDelayChanged.emit(self._next_transition_delay)
 
         after_halfway = (self.length > 0 and self.position >= self.length/2)
         if (after_halfway and prev_before_halway):
             self.passed_halfway.emit()
         if (self.position < prev_position and is_playing_mode(prev_mode) and is_playing_mode(self.mode)):
             self.cycled.emit()
-
-        # TODO output peak, volume, other channel-related stuff
 
     @pyqtSlot(int, bool)
     def record(self, delay, wait_for_soft_sync):
@@ -151,3 +150,18 @@ class BackendLoop(QObject):
         r = BackendLoopMidiChannel(self._backend_loop.add_midi_channel(), self)
         self.midiChannelsChanged.emit(self.midi_channels)
         return r
+    
+    @pyqtSlot(str, bool, int)
+    def load_audio_file(self, filename, force_length, forced_length):
+        sound_channels = load_audio_file(filename,
+                                         backend.get_sample_rate(),
+                                        (forced_length if force_length else None))
+        if sound_channels is not None:
+            self.stop(0, False)
+            self.set_position(0)
+            if len(sound_channels) != len(self.audio_channels):
+                print ("Loaded {} channels but loop has {} channels. Assigning data to channels in round-robin fashion."
+                    .format(len(sound_channels), len(self.audio_channels)))
+            for idx in range(len(self.audio_channels)):
+                self.audio_channels[idx].load_data(sound_channels[idx % len(sound_channels)])
+            self.set_length(len(sound_channels[0]))

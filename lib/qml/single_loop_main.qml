@@ -5,8 +5,8 @@ import QtQuick.Dialogs
 
 ApplicationWindow {
     visible: true
-    width:300
-    height: 300
+    width: 1200
+    height: 600
     maximumWidth: width
     maximumHeight: height
     minimumWidth: width

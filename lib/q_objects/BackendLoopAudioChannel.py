@@ -64,3 +64,8 @@ class BackendLoopAudioChannel(QObject):
     def get_rms_data(self, from_sample, to_sample, samples_per_bin):
         backend_channel = self._backend_obj
         return backend_channel.get_rms_data(from_sample, to_sample, samples_per_bin)
+    
+    @pyqtSlot(list)
+    def load_data(self, data):
+        backend_channel = self._backend_obj
+        backend_channel.load_data(data)
