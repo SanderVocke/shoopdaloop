@@ -10,7 +10,6 @@ void initialize (const char* client_name_hint);
 void terminate ();
 jack_client_t *get_jack_client_handle();
 const char    *get_jack_client_name();
-unsigned       get_sample_rate();
 
 // Loops
 shoopdaloop_loop_t *create_loop();
@@ -105,11 +104,6 @@ void send_decoupled_midi(shoopdaloop_decoupled_midi_port_t *port, unsigned lengt
 void free_midi_event(midi_event_t e);
 void free_midi_channel_data(midi_channel_data_t d);
 void free_audio_channel_data(audio_channel_data_t d);
-void free_loop_state(loop_state_info_t d);
-void free_audio_port_state(audio_port_state_info_t d);
-void free_midi_port_state(midi_port_state_info_t d);
-void free_audio_channel_state(audio_channel_state_info_t d);
-void free_midi_channel_state(midi_channel_state_info_t d);
 
 // Helpers for allocating data objects
 midi_event_t alloc_midi_event(size_t data_bytes);

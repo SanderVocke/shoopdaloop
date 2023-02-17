@@ -2,11 +2,12 @@
 
 import sys
 import os
-sys.path.append(
-    os.path.dirname(os.path.realpath(__file__)) + '/..'
-)
+script_dir = os.path.dirname(os.path.realpath(__file__))
+sys.path.append(script_dir + '/..')
 
 from PyQt6.QtGui import QGuiApplication
+from PyQt6.QtQml import QQmlApplicationEngine
+
 from lib.q_objects.BackendAudioPort import BackendAudioPort
 from lib.q_objects.BackendMidiPort import BackendMidiPort
 from lib.q_objects.BackendLoop import BackendLoop
@@ -14,9 +15,8 @@ from lib.q_objects.BackendLoopAudioChannel import BackendLoopAudioChannel
 from lib.q_objects.BackendLoopMidiChannel import BackendLoopMidiChannel
 from lib.q_objects.Backend import Backend
 from lib.backend import LoopMode, PortDirection
+from lib.qml_helpers import register_qml_class
 import time
-import curses
-from sshkeyboard import listen_keyboard
 
 print ("Starting a single loop with stereo audio and MIDI.")
 app = QGuiApplication(sys.argv)
@@ -40,29 +40,13 @@ midi.connect(midi_out)
 
 be.start_update_timer(30)
 
-loop.modeChanged.connect(lambda mode : print('Loop -> mode {}'.format(mode)))
+register_qml_class(Backend, "Backend")
+register_qml_class(BackendLoop, "BackendLoop")
 
-print("Loop ready. Key commands:")
-print("  s : stop")
-print("  r : record")
-print("  p : play")
-print("  c : clear")
+engine = QQmlApplicationEngine()
+engine.quit.connect(app.quit)
+engine.rootContext().setContextProperty("rootcontext_backend_loop", loop)
+engine.load('{}/../lib/qml/single_loop_main.qml'.format(script_dir))
 
+#loop.modeChanged.connect(lambda mode : print('Loop -> mode {}'.format(mode)))
 exitcode = app.exec()
-
-# def press(key):
-#     if key == 'r':
-#         print ('record')
-#         loop.record(0, False)
-#     elif key == 'p':
-#         print ('play')
-#         loop.play(0, False)
-#     elif key == 's':
-#         print ('stop')
-#         loop.stop(0, False)
-#     elif key == 'c':
-#         print ('clear (not implemented)')
-
-# listen_keyboard(
-#     on_press=press,
-# )

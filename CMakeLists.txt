@@ -12,10 +12,10 @@ add_custom_target(
     )
 
 # Generate javascript copy of enums
-# add_custom_target(
-#     StatesAndActions.js
-#     ALL
-#     python ${CMAKE_CURRENT_SOURCE_DIR}/lib/codegen/gen_js_enums.py ${CMAKE_CURRENT_BINARY_DIR}/StatesAndActions.js
-#     DEPENDS shoopdaloop_backend.py build_module
-#     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-# )
+add_custom_target(
+    types.js
+    ALL
+    python ${CMAKE_CURRENT_SOURCE_DIR}/lib/codegen/gen_js_enums.py ${CMAKE_CURRENT_BINARY_DIR}/types.js
+    DEPENDS shoopdaloop_backend.py build_module
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)

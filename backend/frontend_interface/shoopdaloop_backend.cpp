@@ -1030,44 +1030,40 @@ audio_channel_data_t alloc_audio_channel_data(size_t n_samples) {
     return r;
 }
 
-#warning using queue_and_wait here is way too slow. Do it atomically
-loop_state_info_t get_loop_state(shoopdaloop_loop_t *loop) {
-    loop_state_info_t r;
-    std::vector<SharedChannelInfo> audio_channels, midi_channels;
-
-    g_cmd_queue.queue_and_wait([=, &r, &audio_channels, &midi_channels]() {
-        auto _loop = internal_loop(loop);
-        r.mode = _loop->loop->get_mode();
-        r.position = _loop->loop->get_position();
-        r.length = _loop->loop->get_length();
-        audio_channels = _loop->mp_audio_channels;
-        midi_channels = _loop->mp_midi_channels;
-    });
-
-    r.n_audio_channels = audio_channels.size();
-    r.n_midi_channels = midi_channels.size();
-    r.audio_channels = (shoopdaloop_loop_audio_channel_t**) malloc(sizeof(shoopdaloop_loop_audio_channel_t*) * audio_channels.size());
-    r.midi_channels = (shoopdaloop_loop_midi_channel_t**) malloc(sizeof(shoopdaloop_loop_midi_channel_t*) * midi_channels.size());
-    for(size_t idx=0; idx<audio_channels.size(); idx++) {
-        r.audio_channels[idx] = external_audio_channel(audio_channels[idx]);
-    }
-    for(size_t idx=0; idx<midi_channels.size(); idx++) {
-        r.midi_channels[idx] = external_midi_channel(midi_channels[idx]);
-    }
-
+#warning state getters incomplete
+audio_channel_state_info_t get_audio_channel_state (shoopdaloop_loop_audio_channel_t *channel) {
+    audio_channel_state_info_t r;
+    r.output_peak = 0.0;
+    r.volume = 0.0;
     return r;
 }
 
-audio_channel_state_info_t get_audio_channel_state (shoopdaloop_loop_audio_channel_t *channel) {
-}
-
 midi_channel_state_info_t  get_midi_channel_state   (shoopdaloop_loop_midi_channel_t  *channel) {
+    midi_channel_state_info_t r;
+    r.n_events_triggered = 0;
+    return r;
 }
 
 audio_port_state_info_t get_audio_port_state(shoopdaloop_audio_port_t *port) {
+    audio_port_state_info_t r;
+    r.peak = 0.0;
+    r.volume = 0.0;
+    r.name = "UNIMPLEMENTED";
+    return r;
 }
 
 midi_port_state_info_t get_midi_port_state(shoopdaloop_midi_port_t *port) {
+    midi_port_state_info_t r;
+    r.n_events_triggered = 0;
+    r.name = "UNIMPLEMENTED";
+    return r;
 }
 
-void free_loop_state (loop_state_info_t d) {}
+loop_state_info_t get_loop_state(shoopdaloop_loop_t *loop) {
+    loop_state_info_t r;
+    auto _loop = internal_loop(loop);
+    r.mode = _loop->loop->get_mode();
+    r.position = _loop->loop->get_position();
+    r.length = _loop->loop->get_length();
+    return r;
+}

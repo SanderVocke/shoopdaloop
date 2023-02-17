@@ -4,7 +4,7 @@ sys.path.append(pwd + '/..')
 sys.path.append(pwd + '/../..')
 sys.path.append(pwd + '/../../build')
 
-from StatesAndActions import *
+from lib.backend import LoopMode
 from pprint import *
 
 output_filename = sys.argv[1]
@@ -33,6 +33,3 @@ def write_enum(f, name, enum):
 
 with open(output_filename, 'w') as f:
     write_enum(f, 'LoopMode', LoopMode)
-    write_enum(f, 'LoopActionType', LoopActionType)
-    write_enum(f, 'PortActionType', PortActionType)
-    write_enum(f, 'MIDIMessageFilterType', MIDIMessageFilterType)

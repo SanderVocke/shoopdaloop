@@ -24,6 +24,8 @@ class LoopMode(Enum):
     Stopped = backend.Stopped
     Playing = backend.Playing
     Recording = backend.Recording
+    PlayingDryThroughWet = backend.PlayingDryThroughWet
+    RecordingFromDry = backend.RecordingFromDry
 
 @dataclass
 class LoopAudioChannelState:
@@ -128,7 +130,6 @@ class BackendLoop:
     def get_state(self):
         state = backend.get_loop_state(self.shoop_c_handle)
         rval = LoopState(state)
-        backend.free_loop_state(state)
         return rval
     
     def __del__(self):

@@ -34,15 +34,6 @@ typedef struct _shoopdaloop_midi_port           shoopdaloop_midi_port_t;
 typedef struct _shoopdaloop_decoupled_midi_port shoopdaloop_decoupled_midi_port_t;
 
 typedef struct {
-    float volume;
-    float output_peak;
-} loop_audio_channel_state_info_t;
-
-typedef struct {
-    size_t n_events_triggered;
-} loop_midi_channel_state_info_t;
-
-typedef struct {
     loop_mode_t mode;
     size_t length;
     size_t position;
@@ -59,6 +50,15 @@ typedef struct {
     const char* name;
 } midi_port_state_info_t;
 
+typedef struct {
+    size_t n_loops;
+    loop_state_info_t *loop_states;
+    size_t n_audio_ports;
+    audio_port_state_info_t *audio_port_states;
+    size_t n_midi_ports;
+    midi_port_state_info_t *midi_port_states;
+} state_info_t;
+
 typedef enum { Input, Output } port_direction_t;
 
 typedef enum {
@@ -66,19 +66,12 @@ typedef enum {
 } backend_features_t;
 
 typedef struct {
-    unsigned int             n_output_ports;
-    shoopdaloop_audio_port_t *output_ports;
-    unsigned int             n_input_ports;
-    shoopdaloop_audio_port_t *input_ports;
+    float volume;
     float output_peak;
 } audio_channel_state_info_t;
 
 typedef struct {
-    unsigned int            n_output_ports;
-    shoopdaloop_midi_port_t *output_ports;
-    unsigned int            n_input_ports;
-    shoopdaloop_midi_port_t *input_ports;
-    unsigned int            n_events_processed;
+    unsigned int n_events_triggered;
 } midi_channel_state_info_t;
 
 typedef struct {
