@@ -158,11 +158,8 @@ class BackendLoop(QObject):
         self.midiChannelsChanged.emit(self.midi_channels)
         return r
     
-    @pyqtSlot(str, bool, int)
-    def load_audio_file(self, filename, force_length, forced_length):
-        sound_channels = load_audio_file(filename,
-                                         backend.get_sample_rate(),
-                                        (forced_length if force_length else None))
+    @pyqtSlot(list)
+    def load_audio_data(self, sound_channels):
         if sound_channels is not None:
             self.stop(0, False)
             self.set_position(0)
@@ -172,3 +169,10 @@ class BackendLoop(QObject):
             for idx in range(len(self.audio_channels)):
                 self.audio_channels[idx].load_data(sound_channels[idx % len(sound_channels)])
             self.set_length(len(sound_channels[0]))
+    
+    @pyqtSlot(str, bool, int)
+    def load_audio_file(self, filename, force_length, forced_length):
+        sound_channels = load_audio_file(filename,
+                                         backend.get_sample_rate(),
+                                        (forced_length if force_length else None))
+        self.load_audio_data(sound_channels)

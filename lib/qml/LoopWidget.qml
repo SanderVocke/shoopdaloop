@@ -1017,20 +1017,17 @@ Item {
                         target: backend_loop
                         
                         // TODO the triggering
-                        // function maybe_update() {
-                        //     if (window.visible &&
-                        //         backend_loop.mode != Types.LoopMode.Recording &&
-                        //         backend_loop.mode != Types.LoopMode.RecordingFX) {
-                        //             waveform.update_data()
-                        //         }
-                        // }
-                        // function onStateChanged() {
-                        //     maybe_update()
-                        //     waveform.recording = backend_loop.mode == Types.LoopMode.Recording ||
-                        //                          backend_loop.mode == Types.LoopMode.RecordingFX
-                        // }
+                        function maybe_update() {
+                            if (window.visible &&
+                                !ModeHelpers.is_recording_state(backend_loop.mode)) {
+                                    waveform.update_data()
+                                }
+                        }
+                        function onStateChanged() {
+                            maybe_update()
+                            waveform.recording = ModeHelpers.is_recording_state(backend_loop.mode)
+                        }
                         function onLengthChanged() { maybe_update() }
-                        // function onLoadedData() { maybe_update() }
                     }
                 }
             }
