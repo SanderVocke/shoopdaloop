@@ -288,7 +288,7 @@ std::vector<_slow_midi_port> g_slow_midi_ports;
 extern "C" {
 
 bool is_playing_state (loop_mode_t mode) {
-    return mode == Playing || mode == PlayingMuted;
+    return mode == Playing;
 }
 
 // Process the slow midi ports

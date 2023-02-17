@@ -134,7 +134,7 @@ suite BasicLoop_tests = []() {
         loop.PROC_update_poi();
 
         loop.plan_transition(Playing, 3);
-        loop.plan_transition(PlayingMuted, 2);
+        loop.plan_transition(Stopped, 2);
 
         expect(eq(loop.PROC_get_next_poi().value_or(999), 999));
         expect(eq(loop.get_mode(), Recording));
@@ -147,13 +147,13 @@ suite BasicLoop_tests = []() {
 
         loop.PROC_trigger();
 
-        expect(eq(loop.get_mode(), PlayingMuted));
+        expect(eq(loop.get_mode(), Stopped));
         expect(eq(loop.PROC_get_next_poi().value_or(999), 10)); // End of loop
 
         loop.PROC_trigger();
         loop.PROC_trigger();
 
-        expect(eq(loop.get_mode(), PlayingMuted));
+        expect(eq(loop.get_mode(), Stopped));
         expect(eq(loop.PROC_get_next_poi().value_or(999), 10)); // End of loop
     };
 

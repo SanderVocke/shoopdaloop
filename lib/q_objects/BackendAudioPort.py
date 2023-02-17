@@ -4,6 +4,7 @@ import time
 import os
 import tempfile
 import json
+from typing import *
 
 import sys
 sys.path.append('../..')
@@ -12,12 +13,12 @@ import lib.backend as backend
 
 # Wraps a back-end port.
 class BackendAudioPort(QObject):
-    def __init__(self, backend_loop : Type[backend.BackendLoop], parent=None):
+    def __init__(self, backend_port : Type[backend.BackendAudioPort], parent=None):
         super(BackendAudioPort, self).__init__(parent)
         self._peak = 0.0
         self._volume = 1.0
         self._name = ''
-        self._backend_port = backend_port
+        self._backend_obj = backend_port
 
     ######################
     # PROPERTIES
@@ -63,7 +64,12 @@ class BackendAudioPort(QObject):
     # Update mode from the back-end.
     @pyqtSlot()
     def update(self):
-        state = self._backend_port.get_state()
+        state = self._backend_obj.get_state()
         self.peak = state.peak
         self.volume = state.volume
         self.name = state.name
+    
+    # Get the wrapped back-end object.
+    @pyqtSlot(result=backend.BackendAudioPort)
+    def get_backend_obj(self):
+        return self._backend_obj

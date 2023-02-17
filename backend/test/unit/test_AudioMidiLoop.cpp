@@ -371,45 +371,4 @@ suite AudioMidiLoop_midi_tests = []() {
         check_msgs_equal(msgs.at(0), contents.at(0));
         check_msgs_equal(msgs.at(1), contents.at(1));
     };
-
-    "midiloop_4_playback_muted"_test = []() {
-        AudioMidiLoop loop;
-        loop.add_midi_channel<uint32_t, uint16_t>(512, false);
-        auto &channel = *loop.midi_channel<uint32_t, uint16_t>(0);
-        using Message = MidiChannelSubloop<uint32_t, uint16_t>::Message;
-        std::vector<Message> contents = {
-            Message{.time = 0,  .size = 1, .data = { 0x01 }},
-            Message{.time = 10,  .size = 1, .data = { 0x02 }},
-            Message{.time = 21,  .size = 1, .data = { 0x03 }},
-        };
-        channel.set_contents(contents, false);
-        loop.set_length(100);
-
-        expect(loop.get_mode() == Stopped);
-        expect(loop.PROC_get_next_poi() == std::nullopt);
-        expect(loop.get_length() == 100);
-        expect(loop.get_position() == 0);
-
-        auto play_buf = MidiTestBuffer();
-        
-        loop.plan_transition(PlayingMuted);
-        channel.PROC_set_playback_buffer(&play_buf, 512);
-        loop.PROC_trigger();
-        loop.PROC_update_poi();
-
-        expect(loop.get_mode() == PlayingMuted);
-        expect(loop.PROC_get_next_poi() == 100) << loop.PROC_get_next_poi().value_or(0); // end of loop
-        expect(loop.get_length() == 100);
-        expect(loop.get_position() == 0);
-
-        loop.PROC_process(20);
-
-        expect(loop.get_mode() == PlayingMuted);
-        expect(loop.PROC_get_next_poi() == 80) << loop.PROC_get_next_poi().value_or(0); // end of loop
-        expect(eq(loop.get_length(), 100));
-        expect(eq(loop.get_position(), 20));
-
-        auto msgs = play_buf.written;
-        expect(eq(msgs.size(), 0));
-    };
 };

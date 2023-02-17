@@ -77,8 +77,7 @@ public:
 
         switch (mode_before) {
             case Playing:
-            case PlayingMuted:
-                PROC_process_playback(pos_before, length_before, n_samples, mode_before == PlayingMuted);
+                PROC_process_playback(pos_before, length_before, n_samples, false);
                 break;
             case Recording:
                 PROC_process_record(length_before, n_samples);
@@ -161,7 +160,7 @@ public:
     std::optional<size_t> PROC_get_next_poi(loop_mode_t mode,
                                                size_t length,
                                                size_t position) const override {
-        if (mode == Playing || mode == PlayingMuted) {
+        if (mode == Playing) {
             return mp_playback_target_buffer.value().n_frames_total - mp_playback_target_buffer.value().n_frames_processed;
         } else if (mode == Recording) {
             return mp_recording_source_buffer.value().n_frames_total - mp_recording_source_buffer.value().n_frames_processed;

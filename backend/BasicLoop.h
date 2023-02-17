@@ -60,7 +60,7 @@ public:
     }
 
     virtual void PROC_update_poi() {
-        if((ma_mode == Playing || ma_mode == PlayingMuted) && 
+        if((ma_mode == Playing) && 
            ma_length == 0) {
             PROC_handle_transition(Stopped);
         }
@@ -73,7 +73,7 @@ public:
         }
 
         std::optional<PointOfInterest> loop_end_poi;
-        if (ma_mode == Playing || ma_mode == PlayingMuted) {
+        if (ma_mode == Playing) {
             std::optional<PointOfInterest> loop_end_poi = PointOfInterest {
                 .when = ma_length - ma_position,
                 .type_flags = LoopEnd
@@ -145,7 +145,6 @@ public:
                 length_after += n_samples;
                 break;
             case Playing:
-            case PlayingMuted:
                 pos_after += n_samples;
                 break;
             default:
@@ -202,7 +201,7 @@ public:
     void PROC_handle_transition(loop_mode_t new_state) {
         ma_mode = new_state;
         if (ma_mode == Stopped) { ma_position = 0; }
-        if ((ma_mode == Playing || ma_mode == PlayingMuted) &&
+        if ((ma_mode == Playing) &&
             ma_position == 0) {
                 ma_triggering_now = true;
             }
@@ -266,7 +265,7 @@ public:
     void plan_transition(loop_mode_t mode, size_t n_cycles_delay = 0, bool wait_for_soft_sync = true, bool thread_safe=true) override {
         auto fn = [&]() {
             bool transitioning_immediately =
-                (!mp_soft_sync_source && ma_mode != Playing && ma_mode != PlayingMuted) ||
+                (!mp_soft_sync_source && ma_mode != Playing) ||
                 (!wait_for_soft_sync);
             if (transitioning_immediately) {
                 // Un-synced loops transition immediately from non-playing

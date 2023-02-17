@@ -215,8 +215,8 @@ public:
         _next_mode_countdowns_in(x, loop) = _next_mode_countdowns_in_b(x, mapped_loop);
         
         // Some definitions
-        auto is_running_state = [](Expr mode) { return mode == Playing || mode == PlayingMuted || mode == Recording; };
-        auto is_playing_state = [](Expr mode) { return mode == Playing || mode == PlayingMuted; };
+        auto is_running_state = [](Expr mode) { return mode == Playing || mode == Recording; };
+        auto is_playing_state = [](Expr mode) { return mode == Playing; };
         auto clamp_to_storage = [&](Expr var) { return clamp(var, loop_storage_in.dim(0).min(), loop_storage_in.dim(0).max()); };
 
         // Latency buffer operations
@@ -333,9 +333,9 @@ public:
         // The additional "muted range" is just for determining whether to actually output samples later.
         Func playing_range("playing_range"), recording_range("recording_range"), muted_range("muted_range");
         // Some logic about playing mode transitions
-        Expr state_is_playing = _states_in(loop) == Playing || _states_in(loop) == PlayingMuted;
-        Expr next_mode_is_playing = _next_modes_in(0, loop) == Playing || _next_modes_in(0, loop) == PlayingMuted;
-        Expr end_state_is_playing = new_state(loop) == Playing || _states_in(loop) == PlayingMuted;
+        Expr state_is_playing = _states_in(loop) == Playing ;
+        Expr next_mode_is_playing = _next_modes_in(0, loop) == Playing ;
+        Expr end_state_is_playing = new_state(loop) == Playing ;
         Expr will_start_playing = state_will_transition && !state_is_playing && next_mode_is_playing;
         Expr will_stop_playing = state_will_transition && state_is_playing && !next_mode_is_playing;
         Expr will_receive_soft_sync_at = _generates_soft_sync_at(my_master_loop);

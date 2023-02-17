@@ -1,9 +1,11 @@
 from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot, QTimer
+from .BackendAudioPort import BackendAudioPort
 import re
 import time
 import os
 import tempfile
 import json
+from typing import *
 
 import sys
 sys.path.append('../..')
@@ -52,6 +54,8 @@ class BackendLoopAudioChannel(QObject):
     # SLOTS
     ######################
 
-    @pyqtSlot(QObject) # BackendAudioPort
+    @pyqtSlot(BackendAudioPort)
     def connect(self, audio_port):
-        
+        backend_channel = self._backend_obj
+        backend_port = audio_port.get_backend_obj()
+        backend_channel.connect(backend_port)

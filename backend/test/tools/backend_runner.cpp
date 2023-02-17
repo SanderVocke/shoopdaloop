@@ -16,11 +16,11 @@
 namespace po = boost::program_options;
 using namespace std::chrono_literals;
 
-std::vector<shoopdaloop_loop*> g_loops;
-std::vector<shoopdaloop_audio_port*> g_audio_input_ports, g_audio_output_ports;
-std::vector<shoopdaloop_midi_port*> g_midi_input_ports, g_midi_output_ports;
-std::vector<std::vector<shoopdaloop_loop_audio_channel*>> g_audio_channels;
-std::vector<std::vector<shoopdaloop_loop_midi_channel*>> g_midi_channels;
+std::vector<shoopdaloop_loop_t*> g_loops;
+std::vector<shoopdaloop_audio_port_t*> g_audio_input_ports, g_audio_output_ports;
+std::vector<shoopdaloop_midi_port_t*> g_midi_input_ports, g_midi_output_ports;
+std::vector<std::vector<shoopdaloop_loop_audio_channel_t*>> g_audio_channels;
+std::vector<std::vector<shoopdaloop_loop_midi_channel_t*>> g_midi_channels;
 
 po::options_description get_options() {
     po::options_description options ("Options");
@@ -35,7 +35,6 @@ po::options_description get_options() {
         ("midi-channels,m", po::value<size_t>()->default_value(1), "number of midi channels per loop")
         ("record", po::value<size_t>()->default_value(0), "# of loops to set to recording mode")
         ("play", po::value<size_t>()->default_value(0), "# of loops to playback mode")
-        ("playmuted", po::value<size_t>()->default_value(0), "# of loops to set to playback muted mode")
         ("time,t", po::value<float>(), "amount of seconds to run before exiting")
         ("length", po::value<size_t>()->default_value(0), "length of the loops at init")
         ;
@@ -63,8 +62,8 @@ int main(int argc, const char* argv[]) {
     std::cout << "Creating " << n_loops << " loops." << std::endl;
     for(size_t idx=0; idx < n_loops; idx++) {
         auto loop = create_loop();
-        std::vector<shoopdaloop_loop_audio_channel*> audios;
-        std::vector<shoopdaloop_loop_midi_channel*> midis;
+        std::vector<shoopdaloop_loop_audio_channel_t*> audios;
+        std::vector<shoopdaloop_loop_midi_channel_t*> midis;
 
         for (size_t j=0; j<n_audio_channels; j++) {
             audios.push_back(add_audio_channel(loop));
@@ -139,7 +138,6 @@ int main(int argc, const char* argv[]) {
 
     size_t n_record = vm["record"].as<size_t>();
     size_t n_play = vm["play"].as<size_t>();
-    size_t n_playmuted = vm["playmuted"].as<size_t>();
     size_t lidx = 0;
     if (n_record > 0) { std::cout << n_record << " loops -> record" << std::endl; }
     for(size_t i=0; i<n_record; i++) {
@@ -151,11 +149,5 @@ int main(int argc, const char* argv[]) {
         loop_transition(g_loops[lidx], Playing, 0, false);
         lidx++;
     }
-    if (n_playmuted > 0) { std::cout << n_playmuted << " loops -> play muted" << std::endl; }
-    for(size_t i=0; i<n_playmuted; i++) {
-        loop_transition(g_loops[lidx], PlayingMuted, 0, false);
-        lidx++;
-    }
-
     while(true) { std::this_thread::sleep_for(10ms); }
 }

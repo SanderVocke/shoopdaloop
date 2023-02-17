@@ -1,9 +1,11 @@
 from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot, QTimer
+from .BackendMidiPort import BackendMidiPort
 import re
 import time
 import os
 import tempfile
 import json
+from typing import *
 
 import sys
 sys.path.append('../..')
@@ -39,4 +41,10 @@ class BackendLoopMidiChannel(QObject):
     #######################
     ## SLOTS
     #######################
+
+    @pyqtSlot(BackendMidiPort)
+    def connect(self, midi_port):
+        backend_channel = self._backend_obj
+        backend_port = midi_port.get_backend_obj()
+        backend_channel.connect(backend_port)
     

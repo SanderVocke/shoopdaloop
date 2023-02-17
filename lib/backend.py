@@ -20,9 +20,9 @@ class PortDirection(Enum):
     Output = 1
 
 class LoopMode(Enum):
+    Unknown = backend.Unknown
     Stopped = backend.Stopped
     Playing = backend.Playing
-    PlayingMuted = backend.PlayingMuted
     Recording = backend.Recording
 
 @dataclass
@@ -44,18 +44,16 @@ class LoopMidiChannelState:
 @dataclass
 class LoopState:
     length: int
-    pos: int
+    position: int
     mode: Type[LoopMode]
-    audio_channel_states: list['LoopAudioChannelState']
-    midi_channel_states: list['LoopMidiChannelState']
+    #audio_channels: list['BackendLoopAudioChannel']
+    #midi_channels: list['BackendLoopAudioChannel']
 
     def __init__(self, backend_loop_state : 'backend.loop_state_t'):
         self.length = backend_loop_state.length
-        self.pos = backend_loop_state.pos
+        self.position = backend_loop_state.position
         self.mode = backend_loop_state.mode
-        self.audio_channel_states = [LoopAudioChannelState(backend_loop_state.audio_channel_states[i]) for i in range(backend_loop_state.n_audio_channels)]
-        self.midi_channel_states = [LoopMidiChannelState(backend_loop_state.midi_channel_states[i]) for i in range(backend_loop_state.n_midi_channels)]
-
+    
 # Wraps the Shoopdaloop backend with more Python-friendly wrappers
 @dataclass
 class BackendMidiMessage:
@@ -108,27 +106,17 @@ class BackendLoopMidiChannel:
 class BackendLoop:
     def __init__(self, _backend : 'Backend', c_handle : 'POINTER(backend.shoopdaloop_loop_t)'):
         self.shoop_c_handle = c_handle
-        self.audio_channels = dict()
-        self.midi_channels = dict()
     
     def c_handle(self):
         return self.shoop_c_handle
     
     def add_audio_channel(self) -> 'BackendLoopAudioChannel':
         rval = BackendLoopAudioChannel(self, backend.add_audio_channel(self.c_handle()))
-        self.audio_channels.append(rval)
         return rval
     
     def add_midi_channel(self) -> 'BackendLoopMidiChannel':
         rval = BackendLoopMidiChannel(self, backend.add_midi_channel(self.c_handle()))
-        self.midi_channels.append(rval)
         return rval
-    
-    def audio_channels(self) -> list['BackendLoopAudioChannel']:
-        return self.audio_channels
-    
-    def midi_channels(self) -> list['BackendLoopMidiChannel']:
-        return self.midi_channels
 
     def transition(self, to_state : Type['LoopMode'],
                    cycles_delay : int, wait_for_soft_sync : bool):
@@ -144,10 +132,6 @@ class BackendLoop:
         return rval
     
     def __del__(self):
-        for c in self.audio_channels:
-            backend.re
-        for c in self.midi_channels:
-            del c
         backend.delete_loop(self.shoop_c_handle)
 
 class BackendAudioPort:
@@ -197,9 +181,6 @@ class Backend():
         backend.initialize(client_name_hint.encode('ascii'))
         self.shoop_c_handle = backend.get_jack_client_handle()
         self.jack_c_handle = cast(self.shoop_c_handle, POINTER(jacklib.jack_client_t))
-        self.loops = dict()
-        self.audio_ports = dict()
-        self.midi_ports = dict()
 
     def pyjacklib_client_handle(self):
         return self.jack_c_handle
@@ -213,33 +194,23 @@ class Backend():
     def create_loop(self) -> Type['BackendLoop']:
         handle = backend.create_loop()
         rval = BackendLoop(self, handle)
-        self.loops[handle] = rval
         return rval
     
     def delete_loop(self, loop : 'BackendLoop'):
         handle = loop.c_handle()
-        del self.loops[handle]
         del loop
     
     def open_audio_port(self, name_hint : str, direction : 'PortDirection') -> 'BackendAudioPort':
         _dir = (backend.Input if direction == PortDirection.Input else backend.Output)
         handle = backend.open_audio_port(name_hint.encode('ascii'), _dir)
         port = BackendMidiPort(self, handle, direction)
-        self.audio_ports[handle] = port
         return port
     
     def open_midi_port(self, name_hint : str, direction : 'PortDirection') -> 'BackendMidiPort':
         _dir = (backend.Input if direction == PortDirection.Input else backend.Output)
         handle = backend.open_midi_port(name_hint.encode('ascii'), _dir)
         port = BackendMidiPort(self, handle, direction)
-        self.midi_ports[handle] = port
         return port
 
     def __del__(self):
-        for p in self.audio_ports.values():
-            del p
-        for p in self.midi_ports.values():
-            del p
-        for l in self.loops.values():
-            del l
         backend.terminate()

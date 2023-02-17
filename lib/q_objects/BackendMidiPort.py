@@ -4,6 +4,7 @@ import time
 import os
 import tempfile
 import json
+from typing import *
 
 import sys
 sys.path.append('../..')
@@ -12,11 +13,11 @@ import lib.backend as backend
 
 # Wraps a back-end port.
 class BackendMidiPort(QObject):
-    def __init__(self, backend_port : Type[backend.BackendPort], parent=None):
+    def __init__(self, backend_port : Type[backend.BackendMidiPort], parent=None):
         super(BackendMidiPort, self).__init__(parent)
         self._n_events_triggered = 0
         self._name = ''
-        self._backend_port = backend_port
+        self._backend_obj = backend_port
 
     ######################
     # PROPERTIES
@@ -54,3 +55,8 @@ class BackendMidiPort(QObject):
         state = self._backend_port.get_state()
         self.n_events_triggered = state.n_events_triggered
         self.name = state.name
+    
+     # Get the wrapped back-end object.
+    @pyqtSlot(result=backend.BackendMidiPort)
+    def get_backend_obj(self):
+        return self._backend_obj
