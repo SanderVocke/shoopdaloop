@@ -50,15 +50,6 @@ typedef struct {
     const char* name;
 } midi_port_state_info_t;
 
-typedef struct {
-    size_t n_loops;
-    loop_state_info_t *loop_states;
-    size_t n_audio_ports;
-    audio_port_state_info_t *audio_port_states;
-    size_t n_midi_ports;
-    midi_port_state_info_t *midi_port_states;
-} state_info_t;
-
 typedef enum { Input, Output } port_direction_t;
 
 typedef enum {
@@ -80,11 +71,6 @@ typedef struct {
 } audio_channel_data_t;
 
 typedef struct {
-    unsigned int n_channels;
-    audio_channel_data_t *channels_data;
-} audio_data_t;
-
-typedef struct {
     unsigned int time;
     unsigned int size;
     unsigned char *data;
@@ -92,19 +78,8 @@ typedef struct {
 
 typedef struct {
     unsigned int n_events;
-    midi_event_t *events;
+    midi_event_t **events;
 } midi_channel_data_t;
-
-typedef struct {
-    unsigned int n_channels;
-    midi_channel_data_t *channels_data;
-} midi_data_t;
-
-typedef struct {
-    unsigned int length;
-    audio_data_t audio_data;
-    midi_data_t  midi_data;
-} loop_data_t;
 
 #ifdef __cplusplus
 }

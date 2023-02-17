@@ -443,6 +443,7 @@ SharedChannelInfo internal_midi_channel(shoopdaloop_loop_midi_channel_t *chan) {
     return ((ChannelInfo*)chan)->shared_from_this();
 }
 
+#warning make the handles point to globally stored weak pointers to avoid trying to access deleted shared object
 SharedLoopInfo internal_loop(shoopdaloop_loop_t *loop) {
     return ((LoopInfo*)loop)->shared_from_this();
 }
@@ -467,25 +468,24 @@ shoopdaloop_loop_t* external_loop(SharedLoopInfo loop) {
     return (shoopdaloop_loop_t*)loop.get();
 }
 
-audio_channel_data_t external_audio_data(std::vector<audio_sample_t> f) {
-    audio_channel_data_t d;
-    d.n_samples = f.size();
-    d.data = (audio_sample_t*) malloc(sizeof(audio_sample_t) * f.size());
-    memcpy((void*)d.data, (void*)f.data(), sizeof(audio_sample_t) * f.size());
+audio_channel_data_t *external_audio_data(std::vector<audio_sample_t> f) {
+    auto d = new audio_channel_data_t;
+    d->n_samples = f.size();
+    d->data = (audio_sample_t*) malloc(sizeof(audio_sample_t) * f.size());
+    memcpy((void*)d->data, (void*)f.data(), sizeof(audio_sample_t) * f.size());
     return d;
 }
 
-midi_channel_data_t external_midi_data(std::vector<_MidiMessage> m) {
-    midi_channel_data_t d;
-    d.n_events = m.size();
-    d.events = (midi_event_t*) malloc(sizeof(midi_event_t) * m.size());
+midi_channel_data_t *external_midi_data(std::vector<_MidiMessage> m) {
+    auto d = new midi_channel_data_t;
+    d->n_events = m.size();
+    d->events = (midi_event_t**) malloc(sizeof(midi_event_t*) * m.size());
     for (size_t idx=0; idx < m.size(); idx++) {
-        midi_event_t e;
-        e.size = m[idx].size;
-        e.time = m[idx].time;
-        e.data = (unsigned char*) malloc(m[idx].size);
-        memcpy((void*)e.data, (void*)m[idx].data.data(), m[idx].size);
-        d.events[idx] = e;
+        auto e = alloc_midi_event(m[idx].size);
+        e->size = m[idx].size;
+        e->time = m[idx].time;
+        memcpy((void*)e->data, (void*)m[idx].data.data(), m[idx].size);
+        d->events[idx] = e;
     }
     return d;
 }
@@ -500,10 +500,10 @@ std::vector<_MidiMessage> internal_midi_data(midi_channel_data_t const& d) {
     auto r = std::vector<_MidiMessage>(d.n_events);
     for (size_t idx=0; idx < d.n_events; idx++) {
         _MidiMessage m;
-        m.size = d.events[idx].size;
-        m.time = d.events[idx].time;
+        m.size = d.events[idx]->size;
+        m.time = d.events[idx]->time;
         m.data = std::vector<uint8_t>(m.size);
-        memcpy((void*)m.data.data(), (void*)d.events[idx].data, m.size);
+        memcpy((void*)m.data.data(), (void*)d.events[idx]->data, m.size);
         r[idx] = m;
     }
     return r;
@@ -658,70 +658,6 @@ unsigned get_n_midi_channels (shoopdaloop_loop_t *loop) {
     return internal_loop(loop)->loop->n_midi_channels();
 }
 
-void delete_loop (shoopdaloop_loop_t *loop) {
-    auto r = std::find_if(g_loops.begin(), g_loops.end(),
-        [loop](auto const& e) { return (shoopdaloop_loop_t*)e.get() == loop; });
-    if (r == g_loops.end()) {
-        throw std::runtime_error("Attempting to delete non-existent loop.");
-    }
-    g_loops.erase(r);
-}
-
-audio_data_t get_loop_audio_data (shoopdaloop_loop_t *loop) {
-    auto &loop_info = *internal_loop(loop);
-    audio_data_t a;
-    a.n_channels = loop_info.loop->n_audio_channels();
-    a.channels_data = (audio_channel_data_t*)malloc(sizeof(audio_channel_data_t) * a.n_channels);
-    for (size_t idx=0; idx < a.n_channels; idx++) {
-        a.channels_data[idx] = get_audio_channel_data(get_audio_channel(loop, idx));
-    }
-    return a;
-}
-
-midi_data_t get_loop_midi_data (shoopdaloop_loop_t *loop) {
-    auto &loop_info = *internal_loop(loop);
-    midi_data_t a;
-    a.n_channels = loop_info.loop->n_midi_channels();
-    a.channels_data = (midi_channel_data_t*)malloc(sizeof(midi_channel_data_t) * a.n_channels);
-    for (size_t idx=0; idx < a.n_channels; idx++) {
-        a.channels_data[idx] = get_midi_channel_data(get_midi_channel(loop, idx));
-    }
-    return a;
-}
-
-void load_loop_audio_data(shoopdaloop_loop_t *loop, audio_data_t data) {
-    auto &loop_info = *internal_loop(loop);
-    for (size_t idx=0; idx < data.n_channels; idx++) {
-        audio_channel_data_t &d = data.channels_data[idx];
-        load_audio_channel_data(get_audio_channel(loop, idx), d);
-    }
-}
-
-void load_loop_midi_data(shoopdaloop_loop_t *loop, midi_data_t data) {
-    auto &loop_info = *internal_loop(loop);
-    for (size_t idx=0; idx < data.n_channels; idx++) {
-        midi_channel_data_t &d = data.channels_data[idx];
-        load_midi_channel_data(get_midi_channel(loop, idx), d);
-    }
-}
-
-loop_data_t get_loop_data (shoopdaloop_loop_t *loop) {
-    auto &loop_info = *internal_loop(loop);
-
-    loop_data_t r;
-    r.audio_data = get_loop_audio_data(loop);
-    r.midi_data = get_loop_midi_data(loop);
-    r.length = loop_info.loop->get_length();
-
-    return r;
-}
-
-void load_loop_data (shoopdaloop_loop_t *loop, loop_data_t data) {
-    load_loop_audio_data(loop, data.audio_data);
-    load_loop_midi_data(loop, data.midi_data);
-    internal_loop(loop)->loop->set_length(data.length);
-}
-
 void delete_audio_channel(shoopdaloop_loop_t *loop, shoopdaloop_loop_audio_channel_t *channel) {
     auto &loop_info = *internal_loop(loop);
     size_t idx;
@@ -805,12 +741,12 @@ void disconnect_midi_outputs  (shoopdaloop_loop_midi_channel_t  *channel) {
     });
 }
 
-audio_channel_data_t get_audio_channel_data (shoopdaloop_loop_audio_channel_t *channel) {
+audio_channel_data_t *get_audio_channel_data (shoopdaloop_loop_audio_channel_t *channel) {
     auto &chan = *internal_audio_channel(channel);
     return external_audio_data(chan.audio().get_data());
 }
 
-audio_channel_data_t get_audio_rms_data (shoopdaloop_loop_audio_channel_t *channel,
+audio_channel_data_t *get_audio_rms_data (shoopdaloop_loop_audio_channel_t *channel,
                                         unsigned from_sample,
                                         unsigned to_sample,
                                         unsigned samples_per_bin) {
@@ -829,7 +765,7 @@ audio_channel_data_t get_audio_rms_data (shoopdaloop_loop_audio_channel_t *chann
     return external_audio_data(bins);
 }
 
-midi_channel_data_t get_midi_channel_data (shoopdaloop_loop_midi_channel_t  *channel) {
+midi_channel_data_t *get_midi_channel_data (shoopdaloop_loop_midi_channel_t  *channel) {
     auto &chan = *internal_midi_channel(channel);
     return external_midi_data(chan.midi().retrieve_contents());
 }
@@ -963,7 +899,7 @@ midi_event_t *maybe_next_message(shoopdaloop_decoupled_midi_port_t *port) {
     auto &_port = *internal_decoupled_midi_port(port);
     auto m = _port.pop_incoming();
     if (m.has_value()) {
-        auto r = (midi_event_t*) malloc(sizeof(midi_event_t));
+        auto r = alloc_midi_event(m->size);
         r->time = 0;
         r->size = m->size;
         r->data = (uint8_t*)malloc(r->size);
@@ -993,77 +929,124 @@ void send_decoupled_midi(shoopdaloop_decoupled_midi_port_t *port, unsigned lengt
     _port.push_outgoing(m);
 }
 
-void free_midi_event(midi_event_t e) {
-    free(e.data);
-}
-
-void free_midi_channel_data(midi_channel_data_t d) {
-    for(size_t idx=0; idx<d.n_events; idx++) {
-        free_midi_event(d.events[idx]);
-    }
-    free(d.events);
-}
-
-void free_audio_channel_data(audio_channel_data_t d) {
-    free(d.data);
-}
-
-midi_event_t alloc_midi_event(size_t data_bytes) {
-    midi_event_t r;
-    r.size = data_bytes;
-    r.time = 0;
-    r.data = (unsigned char*) malloc(data_bytes);
+midi_event_t *alloc_midi_event(size_t data_bytes) {
+    auto r = new midi_event_t;
+    r->size = data_bytes;
+    r->time = 0;
+    r->data = (unsigned char*) malloc(data_bytes);
     return r;
 }
 
-midi_channel_data_t alloc_midi_channel_data(size_t n_events) {
-    midi_channel_data_t r;
-    r.n_events = n_events;
-    r.events = (midi_event_t*)malloc (sizeof(midi_event_t) * n_events);
+midi_channel_data_t *alloc_midi_channel_data(size_t n_events) {
+    auto r = new midi_channel_data_t;
+    r->n_events = n_events;
+    r->events = (midi_event_t**)malloc (sizeof(midi_event_t*) * n_events);
     return r;
 }
 
-audio_channel_data_t alloc_audio_channel_data(size_t n_samples) {
-    audio_channel_data_t r;
-    r.n_samples = n_samples;
-    r.data = (audio_sample_t*) malloc(sizeof(audio_sample_t) * n_samples);
+audio_channel_data_t *alloc_audio_channel_data(size_t n_samples) {
+    auto r = new audio_channel_data_t;
+    r->n_samples = n_samples;
+    r->data = (audio_sample_t*) malloc(sizeof(audio_sample_t) * n_samples);
     return r;
 }
 
 #warning state getters incomplete
-audio_channel_state_info_t get_audio_channel_state (shoopdaloop_loop_audio_channel_t *channel) {
-    audio_channel_state_info_t r;
-    r.output_peak = 0.0;
-    r.volume = 0.0;
+audio_channel_state_info_t *get_audio_channel_state (shoopdaloop_loop_audio_channel_t *channel) {
+    auto r = new audio_channel_state_info_t;
+    r->output_peak = 0.0;
+    r->volume = 0.0;
     return r;
 }
 
-midi_channel_state_info_t  get_midi_channel_state   (shoopdaloop_loop_midi_channel_t  *channel) {
-    midi_channel_state_info_t r;
-    r.n_events_triggered = 0;
+midi_channel_state_info_t *get_midi_channel_state   (shoopdaloop_loop_midi_channel_t  *channel) {
+    auto r = new midi_channel_state_info_t;
+    r->n_events_triggered = 0;
     return r;
 }
 
-audio_port_state_info_t get_audio_port_state(shoopdaloop_audio_port_t *port) {
-    audio_port_state_info_t r;
-    r.peak = 0.0;
-    r.volume = 0.0;
-    r.name = "UNIMPLEMENTED";
+audio_port_state_info_t *get_audio_port_state(shoopdaloop_audio_port_t *port) {
+    auto r = new audio_port_state_info_t;
+    r->peak = 0.0;
+    r->volume = 0.0;
+    r->name = "UNIMPLEMENTED";
     return r;
 }
 
-midi_port_state_info_t get_midi_port_state(shoopdaloop_midi_port_t *port) {
-    midi_port_state_info_t r;
-    r.n_events_triggered = 0;
-    r.name = "UNIMPLEMENTED";
+midi_port_state_info_t *get_midi_port_state(shoopdaloop_midi_port_t *port) {
+    auto r = new midi_port_state_info_t;
+    r->n_events_triggered = 0;
+    r->name = "UNIMPLEMENTED";
     return r;
 }
 
-loop_state_info_t get_loop_state(shoopdaloop_loop_t *loop) {
-    loop_state_info_t r;
+loop_state_info_t *get_loop_state(shoopdaloop_loop_t *loop) {
+    auto r = new loop_state_info_t;
     auto _loop = internal_loop(loop);
-    r.mode = _loop->loop->get_mode();
-    r.position = _loop->loop->get_position();
-    r.length = _loop->loop->get_length();
+    r->mode = _loop->loop->get_mode();
+    r->position = _loop->loop->get_position();
+    r->length = _loop->loop->get_length();
     return r;
+}
+
+void destroy_midi_event(midi_event_t *e) {
+    free(e->data);
+    free(e);
+}
+
+void destroy_midi_channel_data(midi_channel_data_t *d) {
+    for(size_t idx=0; idx<d->n_events; idx++) {
+        destroy_midi_event(d->events[idx]);
+    }
+    free(d->events);
+    free(d);
+}
+
+void destroy_audio_channel_data(audio_channel_data_t *d) {
+    free(d->data);
+    free(d);
+}
+
+void destroy_audio_channel_state_info(audio_channel_state_info_t *d) {
+    free(d);
+}
+
+void destroy_midi_channel_state_info(midi_channel_state_info_t *d) {
+    free(d);
+}
+
+void destroy_loop(shoopdaloop_loop_t *d) {
+    throw std::runtime_error("unimplemented");
+}
+
+void destroy_audio_port(shoopdaloop_audio_port_t *d) {
+    throw std::runtime_error("unimplemented");
+}
+
+void destroy_midi_port(shoopdaloop_midi_port_t *d) {
+    throw std::runtime_error("unimplemented");
+}
+
+void destroy_midi_port_state_info(midi_port_state_info_t *d) {
+    free(d);
+}
+
+void destroy_audio_port_state_info(audio_port_state_info_t *d) {
+    free(d);
+}
+
+void destroy_audio_channel(shoopdaloop_loop_audio_channel_t *d) {
+    throw std::runtime_error("unimplemented");
+}
+
+void destroy_midi_channel(shoopdaloop_loop_midi_channel_t *d) {
+    throw std::runtime_error("unimplemented");
+}
+
+void destroy_shoopdaloop_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *d) {
+    throw std::runtime_error("unimplemented");
+}
+
+void destroy_loop_state_info(loop_state_info_t *state) {
+    free(state);
 }
