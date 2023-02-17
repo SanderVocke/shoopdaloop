@@ -986,6 +986,7 @@ loop_state_info_t *get_loop_state(shoopdaloop_loop_t *loop) {
     r->mode = _loop->loop->get_mode();
     r->position = _loop->loop->get_position();
     r->length = _loop->loop->get_length();
+    _loop->loop->get_first_planned_transition(r->maybe_next_mode, r->maybe_next_mode_delay);
     return r;
 }
 

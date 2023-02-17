@@ -13,7 +13,7 @@ typedef enum {
     Replacing,
     PlayingDryThroughWet,
     RecordingFromDry,
-    LOOP_STATE_MAX
+    LOOP_MODE_INVALID
 } loop_mode_t;
 
 typedef enum {
@@ -23,7 +23,7 @@ typedef enum {
     DoUnmuteInput,
     SetPortVolume,
     SetPortPassthrough,
-    PORT_ACTION_MAX
+    PORT_ACTION_INVALID
 } port_action_t;
 
 typedef struct _shoopdaloop_loop                shoopdaloop_loop_t;
@@ -37,6 +37,8 @@ typedef struct {
     loop_mode_t mode;
     size_t length;
     size_t position;
+    loop_mode_t maybe_next_mode;
+    size_t maybe_next_mode_delay;
 } loop_state_info_t;
 
 typedef struct {

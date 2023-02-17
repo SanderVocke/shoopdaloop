@@ -224,14 +224,15 @@ Item {
                 x: 0
 
                 property bool show_next_mode: 
-                    statusrect.backend_loop && statusrect.backend_loop.mode != statusrect.backend_loop.next_mode &&
-                        statusrect.backend_loop.next_mode_countdown >= 0
+                    statusrect.backend_loop && 
+                        statusrect.backend_loop.next_mode != null &&
+                        statusrect.backend_loop.mode != statusrect.backend_loop.next_mode
 
                 LoopStateIcon {
                     id: loopstateicon
                     mode: statusrect.backend_loop ? statusrect.backend_loop.mode : Types.LoopMode.Unknown
                     show_timer_instead: parent.show_next_mode
-                    visible: !parent.show_next_mode || (parent.show_next_mode && statusrect.backend_loop.next_mode_countdown == 0)
+                    visible: !parent.show_next_mode || (parent.show_next_mode && statusrect.backend_loop.next_transition_delay == 0)
                     connected: true
                     size: iconitem.height
                     y: 0
@@ -260,8 +261,8 @@ Item {
                     visible: parent.show_next_mode
                 }
                 Text {
-                    text: statusrect.backend_loop ? (statusrect.backend_loop.next_mode_countdown + 1).toString(): ''
-                    visible: parent.show_next_mode && statusrect.backend_loop.next_mode_countdown > 0
+                    text: statusrect.backend_loop ? (statusrect.backend_loop.next_transition_delay + 1).toString(): ''
+                    visible: parent.show_next_mode && statusrect.backend_loop.next_transition_delay > 0
                     anchors.fill: loopstateicon
                     color: Material.foreground
                     horizontalAlignment: Text.AlignHCenter

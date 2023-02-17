@@ -25,8 +25,8 @@ class BackendLoop(QObject):
         self._length = 1.0
         self._position = 0.0
         self._mode = backend.LoopMode.Unknown.value
-        self._next_mode = backend.LoopMode.Unknown.value
-        self._next_mode_countdown = -1
+        self._next_mode = None
+        self._next_transition_delay = None
         self._volume = 1.0
         self._output_peak = 0.0
         self._backend_loop = backend_loop
@@ -45,29 +45,6 @@ class BackendLoop(QObject):
         if self._mode != s:
             self._mode = s
             self.modeChanged.emit(s)
-    
-    # next mode
-    nextModeChanged = pyqtSignal(int)
-    @pyqtProperty(int, notify=nextModeChanged)
-    def next_mode(self):
-        return self._next_mode
-    @next_mode.setter
-    def next_mode(self, s):
-        if self._next_mode != s:
-            self._next_mode = s
-            self.nextModeChanged.emit(s)
-    
-    # next mode countdown. Decrements on every trigger
-    # until at 0, the next mode is transitioned to
-    nextModeCountdownChanged = pyqtSignal(int)
-    @pyqtProperty(int, notify=nextModeCountdownChanged)
-    def next_mode_countdown(self):
-        return self._next_mode_countdown
-    @next_mode_countdown.setter
-    def next_mode_countdown(self, s):
-        if self._next_mode_countdown != s:
-            self._next_mode_countdown = s
-            self.nextModeCountdownChanged.emit(s)
 
     # length: loop length in seconds
     lengthChanged = pyqtSignal(float)
@@ -90,6 +67,28 @@ class BackendLoop(QObject):
         if self._position != p:
             self._position = p
             self.positionChanged.emit(p)
+
+    # next_mode: first upcoming mode change
+    nextModeChanged = pyqtSignal('QVariant')
+    @pyqtProperty('QVariant', notify=nextModeChanged)
+    def next_mode(self):
+        return self._next_mode
+    @next_mode.setter
+    def next_mode(self, p):
+        if self._next_mode != p:
+            self._next_mode = p
+            self.nextModeChanged.emit(p)
+    
+    # next_mode: first upcoming mode change
+    nextTransitionDelayChanged = pyqtSignal('QVariant')
+    @pyqtProperty('QVariant', notify=nextTransitionDelayChanged)
+    def next_transition_delay(self):
+        return self._next_transition_delay
+    @next_transition_delay.setter
+    def next_transition_delay(self, p):
+        if self._next_transition_delay != p:
+            self._next_transition_delay = p
+            self.nextTransitionDelayChanged.emit(p)
     
     ###########
     ## SLOTS
@@ -106,6 +105,8 @@ class BackendLoop(QObject):
         self.mode = state.mode
         self.length = state.length
         self.position = state.position
+        self.next_mode = state.maybe_next_mode
+        self.next_transition_delay = state.maybe_next_delay
 
         after_halfway = (self.length > 0 and self.position >= self.length/2)
         if (after_halfway and prev_before_halway):

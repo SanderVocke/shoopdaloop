@@ -55,6 +55,7 @@ public:
     virtual void         set_length(size_t length, bool thread_safe=true) = 0;
     virtual loop_mode_t  get_mode() const = 0;
     virtual void         set_mode(loop_mode_t mode, bool thread_safe=true) = 0;
+    virtual void get_first_planned_transition(loop_mode_t &maybe_mode_out, size_t &delay_out) = 0;
 
     LoopInterface() = default;
     virtual ~LoopInterface() {}

@@ -39,6 +39,10 @@ protected:
     std::atomic<bool> ma_triggering_now;
     std::atomic<size_t> ma_length;
     std::atomic<size_t> ma_position;
+    
+    // Cached state for easy lock-free reading.
+    std::atomic<loop_mode_t> ma_maybe_next_planned_mode;
+    std::atomic<int> ma_maybe_next_planned_delay;
 
 public:
 
@@ -49,7 +53,9 @@ public:
         mp_soft_sync_source(nullptr),
         ma_triggering_now(false),
         ma_length(0),
-        ma_position(0)
+        ma_position(0),
+        ma_maybe_next_planned_mode(LOOP_MODE_INVALID),
+        ma_maybe_next_planned_delay(-1)
     {}
     ~BasicLoop() override {}
 
@@ -177,6 +183,13 @@ public:
         return mp_soft_sync_source;
     }
 
+    void PROC_update_planned_transition_cache() {
+        ma_maybe_next_planned_mode = mp_planned_states.size() > 0 ?
+            (loop_mode_t) mp_planned_states.front() : LOOP_MODE_INVALID;
+        ma_maybe_next_planned_delay = mp_planned_state_countdowns.size() > 0 ?
+            mp_planned_state_countdowns.front() : -1;
+    }
+
     void PROC_trigger(bool propagate=true) override {
         if (propagate) {
             ma_triggering_now = true;
@@ -185,11 +198,12 @@ public:
         for (auto &elem: mp_planned_state_countdowns) {
             elem--;
         }
-        while (mp_planned_state_countdowns.front() < 0) {
+        while (mp_planned_state_countdowns.front() < 0 && mp_planned_state_countdowns.size() > 0) {
             PROC_handle_transition(mp_planned_states.front());
             mp_planned_state_countdowns.pop_front();
             mp_planned_states.pop_front();
         }
+        PROC_update_planned_transition_cache();
     }
 
     void PROC_handle_soft_sync() override {
@@ -199,14 +213,19 @@ public:
     }
 
     void PROC_handle_transition(loop_mode_t new_state) {
-        ma_mode = new_state;
-        if (ma_mode == Stopped) { ma_position = 0; }
-        if ((ma_mode == Playing) &&
-            ma_position == 0) {
-                ma_triggering_now = true;
+        if (ma_mode != new_state) {
+            ma_mode = new_state;
+            if(ma_mode > LOOP_MODE_INVALID) {
+                throw std::runtime_error ("Mode exceeded");
             }
-        mp_next_poi = std::nullopt;
-        PROC_update_poi();
+            if (ma_mode == Stopped) { ma_position = 0; }
+            if ((ma_mode == Playing) &&
+                ma_position == 0) {
+                    ma_triggering_now = true;
+                }
+            mp_next_poi = std::nullopt;
+            PROC_update_poi();
+        }
     }
 
     size_t get_n_planned_transitions(bool thread_safe=true) override {
@@ -254,6 +273,7 @@ public:
         auto fn = [this]() { 
             mp_planned_states.clear();
             mp_planned_state_countdowns.clear();
+            PROC_update_planned_transition_cache();
         };
         if (thread_safe) {
             exec_process_thread_command(fn);
@@ -290,6 +310,7 @@ public:
                     mp_planned_states.resize(insertion_point+1);
                 }
             }
+            PROC_update_planned_transition_cache();
         };
         if (thread_safe) { exec_process_thread_command(fn); }
         else { fn(); }
@@ -319,6 +340,18 @@ public:
         return ma_mode;
     }
 
+    void get_first_planned_transition(loop_mode_t &maybe_mode_out, size_t &delay_out) override {
+        loop_mode_t maybe_mode = ma_maybe_next_planned_mode;
+        int maybe_delay = ma_maybe_next_planned_delay;
+        if (maybe_delay >= 0 && maybe_mode != LOOP_MODE_INVALID) {
+            maybe_mode_out = maybe_mode;
+            delay_out = maybe_delay;
+        } else {
+            maybe_mode_out = LOOP_MODE_INVALID;
+            delay_out = 0;
+        }
+    }
+
     void set_length(size_t len, bool thread_safe=true) override {
         auto fn = [=]() {
             if (len != ma_length) {
@@ -336,11 +369,7 @@ public:
 
     void set_mode(loop_mode_t mode, bool thread_safe=true) override {
         auto fn = [=]() {
-            if (mode != ma_mode) {
-                ma_mode = mode;
-                mp_next_poi = std::nullopt;
-                PROC_update_poi();
-            }
+            PROC_handle_transition(mode);
         };
         if (thread_safe) { exec_process_thread_command(fn); }
         else { fn(); }

@@ -6,7 +6,6 @@ sys.path.append(
 sys.path.append(
     os.path.dirname(os.path.realpath(__file__)) + '/../build/backend/frontend_interface'
 )
-print(sys.path)
 import shoopdaloop_backend as backend
 from typing import *
 from third_party.pyjacklib import jacklib
@@ -14,6 +13,8 @@ from ctypes import *
 import mido
 from enum import Enum
 from dataclasses import dataclass
+import typing
+import copy
 
 class PortDirection(Enum):
     Input = 0
@@ -48,13 +49,15 @@ class LoopState:
     length: int
     position: int
     mode: Type[LoopMode]
-    #audio_channels: list['BackendLoopAudioChannel']
-    #midi_channels: list['BackendLoopAudioChannel']
+    maybe_next_mode: typing.Union[Type[LoopMode], None]
+    maybe_next_delay: typing.Union[int, None]
 
     def __init__(self, backend_loop_state : 'backend.loop_state_t'):
         self.length = backend_loop_state.length
         self.position = backend_loop_state.position
         self.mode = backend_loop_state.mode
+        self.maybe_next_mode =  (None if backend_loop_state.maybe_next_mode == backend.LOOP_MODE_INVALID else backend_loop_state.maybe_next_mode)
+        self.maybe_next_delay = (None if backend_loop_state.maybe_next_mode == backend.LOOP_MODE_INVALID else backend_loop_state.maybe_next_mode_delay)
     
 # Wraps the Shoopdaloop backend with more Python-friendly wrappers
 @dataclass
