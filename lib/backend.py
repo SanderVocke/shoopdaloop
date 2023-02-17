@@ -72,13 +72,13 @@ class BackendMidiMessage:
         self.data = data
 
 class BackendLoopAudioChannel:
-    def __init__(self, loop, c_handle):
+    def __init__(self, loop, c_handle : 'POINTER(backend.shoopdaloop_loop_audio_channel)'):
         self.loop_shoop_c_handle = loop.c_handle()
         self.shoop_c_handle = c_handle
     
     def get_data(self) -> list[float]:
         r = backend.get_audio_channel_data(self.shoop_c_handle)
-        data = [float(r.data[i]) for i in range(r.n_samples)]
+        data = [float(r[0].data[i]) for i in range(r[0].n_samples)]
         backend.free_audio_channel_data(r)
         return data
     
@@ -87,6 +87,9 @@ class BackendLoopAudioChannel:
             backend.connect_audio_input(self.shoop_c_handle, port.c_handle())
         else:
             backend.connect_audio_output(self.shoop_c_handle, port.c_handle())
+    
+    def __del__(self):
+        backend.destroy_audio_channel(self.shoop_c_handle)
 
 class BackendLoopMidiChannel:
     def __init__(self, loop : 'BackendLoop', c_handle : 'POINTER(backend.shoopdaloop_loop_midi_channel_t)'):
@@ -95,8 +98,8 @@ class BackendLoopMidiChannel:
     
     def get_data(self) -> list['BackendMidiMessage']:
         r = backend.get_midi_channel_data(self.shoop_c_handle)
-        msgs = [BackendMidiMessage(r.events[i]) for i in range(r.n_events)]
-        backend.free_midi_channel_data(r)
+        msgs = [BackendMidiMessage(r[0].events[i]) for i in range(r[0].n_events)]
+        backend.destroy_midi_channel_data(r)
         return msgs
     
     def connect(self, port : 'BackendMidiPort'):
@@ -104,6 +107,9 @@ class BackendLoopMidiChannel:
             backend.connect_midi_input(self.shoop_c_handle, port.c_handle())
         else:
             backend.connect_midi_output(self.shoop_c_handle, port.c_handle())
+    
+    def __del__(self):
+        backend.destroy_midi_channel(self.shoop_c_handle)
 
 class BackendLoop:
     def __init__(self, _backend : 'Backend', c_handle : 'POINTER(backend.shoopdaloop_loop_t)'):
@@ -129,11 +135,12 @@ class BackendLoop:
     
     def get_state(self):
         state = backend.get_loop_state(self.shoop_c_handle)
-        rval = LoopState(state)
+        rval = LoopState(state[0])
+        backend.destroy_loop_state_info(state)
         return rval
     
     def __del__(self):
-        backend.delete_loop(self.shoop_c_handle)
+        backend.destroy_loop(self.shoop_c_handle)
 
 class BackendAudioPort:
     def __init__(self, _backend : 'Backend', c_handle : 'POINTER(backend.shoopdaloop_audio_port_t)',
@@ -149,12 +156,12 @@ class BackendAudioPort:
     
     def name(self):
         state = backend.get_audio_port_state(self._c_handle)
-        name = str(state.name.decode('ascii'))
-        backend.free_audio_port_state(state)
+        name = str(state[0].name.decode('ascii'))
+        backend.destroy_audio_port_state(state)
         return name
     
     def __del__(self):
-        backend.close_audio_port(self._c_handle)
+        backend.destroy_audio_port(self._c_handle)
 
 class BackendMidiPort:
     def __init__(self, _backend : 'Backend', c_handle : 'POINTER(backend.shoopdaloop_midi_port_t)',
@@ -170,12 +177,12 @@ class BackendMidiPort:
     
     def name(self):
         state = backend.get_audio_port_state(self._c_handle)
-        name = str(state.name.decode('ascii'))
-        backend.free_audio_port_state(state)
+        name = str(state[0].name.decode('ascii'))
+        backend.destroy_midi_port_state(state[0])
         return name
     
     def __del__(self):
-        backend.close_midi_port(self._c_handle)
+        backend.destroy_midi_port(self._c_handle)
 
 class Backend():
     def __init__(self, client_name_hint : str):
@@ -196,10 +203,6 @@ class Backend():
         handle = backend.create_loop()
         rval = BackendLoop(self, handle)
         return rval
-    
-    def delete_loop(self, loop : 'BackendLoop'):
-        handle = loop.c_handle()
-        del loop
     
     def open_audio_port(self, name_hint : str, direction : 'PortDirection') -> 'BackendAudioPort':
         _dir = (backend.Input if direction == PortDirection.Input else backend.Output)
