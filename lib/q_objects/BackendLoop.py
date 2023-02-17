@@ -139,6 +139,10 @@ class BackendLoop(QObject):
     def stop(self, delay, wait_for_soft_sync):
         self._backend_loop.transition(backend.LoopMode.Stopped, delay, wait_for_soft_sync)
     
+    @pyqtSlot(int)
+    def clear(self, length):
+        self._backend_loop.clear(length)
+    
     @pyqtSlot(result=BackendLoopAudioChannel)
     def add_audio_channel(self):
         r = BackendLoopAudioChannel(self._backend_loop.add_audio_channel(), self)

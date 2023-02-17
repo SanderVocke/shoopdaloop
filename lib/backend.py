@@ -163,6 +163,9 @@ class BackendLoop:
     def set_position(self, position):
         backend.set_loop_position(self.shoop_c_handle, position)
     
+    def clear(self, length):
+        backend.clear_loop(self.shoop_c_handle, length)
+    
     def __del__(self):
         backend.destroy_loop(self.shoop_c_handle)
 

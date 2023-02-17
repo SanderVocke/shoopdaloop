@@ -86,11 +86,6 @@ public:
         // Execute any commands queued from other threads.
         PROC_handle_command_queue();
 
-        // FIXME: always passthrough at full volume
-        if (mp_playback_target_buffer_size >= n_samples && mp_recording_source_buffer_size >= n_samples) {
-            memcpy((void*)mp_playback_target_buffer, (void*)mp_recording_source_buffer, sizeof(SampleT) * n_samples);
-        }
-
         switch (mode_before) {
             case Playing:
                 PROC_process_playback(pos_before, length_before, n_samples, false);
@@ -197,6 +192,12 @@ public:
             throw std::runtime_error("Attempting to play from empty channel");
         }
 
+        static size_t calls = 0;
+        calls++;
+        if((calls % 100) == 0) {
+            std::cout << "pos " << position << ", len " << length << ", n " << n_samples <<std::endl;
+        }
+
         size_t buffer_idx = position / ma_buffer_size;
         size_t pos_in_buffer = position % ma_buffer_size;
         size_t buf_head = (buffer_idx == mp_buffers.size()-1) ?
@@ -261,7 +262,7 @@ protected:
     Buffer get_new_buffer() const {
         auto buf = Buffer(ma_buffer_pool->get_object());
         if (buf->size() != ma_buffer_size) {
-            throw std::runtime_error("AudioLoop requires buffers of same length");
+            throw std::runtime_error("AudioChannelSubloop requires buffers of same length");
         }
         return buf;
     }

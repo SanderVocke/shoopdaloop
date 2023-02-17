@@ -357,7 +357,7 @@ public:
             if (len != ma_length) {
                 ma_length = len;
                 if (ma_position >= len) {
-                    set_position(len-1);
+                    set_position(len-1, false);
                 }
                 mp_next_poi = std::nullopt;
                 PROC_update_poi();

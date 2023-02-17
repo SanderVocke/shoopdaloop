@@ -16,6 +16,8 @@ Item {
     property var master_backend_loop // BackendLoop
     property var targeted_backend_loop // BackendLoop
 
+    property var additional_context_menu_options : null // dict of option name -> functor
+
     readonly property bool is_master: backend_loop == master_backend_loop
     //property int n_multiples_of_master_length: backend_loop && master_backend_loop ? Math.ceil(backend_loop.length / master_backend_loop.length) : 1
     //property int current_cycle: backend_loop && master_backend_loop ? Math.floor(backend_loop.position / master_backend_loop.length) : 0
@@ -831,17 +833,23 @@ Item {
                     }
                 }
             }
-            MenuItem {
-                text: "Generate click loop..."
-                onClicked: () => clicktrackdialog.open()
-            }
+            //MenuItem {
+            //    text: "Generate click loop..."
+            //    onClicked: () => clicktrackdialog.open()
+            //}
             MenuItem {
                 text: "Save dry to file..."
-                onClicked: () => { savedialog.save_wet = false; savedialog.open() }
+                onClicked: () => { 
+                    console.log("unimplemented")
+                    //savedialog.save_wet = false; savedialog.open()
+                }
             }
             MenuItem {
                 text: "Save wet to file..."
-                onClicked: () => { savedialog.save_wet = true; savedialog.open() }
+                onClicked: () => {
+                    console.log('unimplemented')
+                    //savedialog.save_wet = true; savedialog.open()
+                }
             }
             MenuItem {
                 text: "Load audio file..."
@@ -858,9 +866,10 @@ Item {
             MenuItem {
                 text: "Clear"
                 onClicked: () => {
-                                console.log('unimplemented!')
-                               //if (widget.backend_loop) { widget.backend_loop.doLoopAction(StatesAndActions.LoopActionType.DoClear, [], false, true) }
-                           }
+                    if (widget.backend_loop) {
+                        widget.backend_loop.clear(0);
+                    }
+                }
             }
             MenuItem {
                 text: "Loop details window"
