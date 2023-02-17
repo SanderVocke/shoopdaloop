@@ -92,8 +92,11 @@ class BackendLoopAudioChannel:
             backend.connect_audio_output(self.shoop_c_handle, port.c_handle())
     
     def get_rms_data(self, from_sample, to_sample, samples_per_bin):
-        print("Unimplemented!")
-        return []
+        data = backend.get_audio_rms_data (self.shoop_c_handle, from_sample, to_sample, samples_per_bin)
+        result = [float(data[0].data[i]) for i in range(data[0].n_samples)]
+        array = None
+        backend.destroy_audio_channel_data(data)
+        return result
     
     def __del__(self):
         backend.destroy_audio_channel(self.shoop_c_handle)
