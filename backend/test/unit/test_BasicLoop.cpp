@@ -148,13 +148,13 @@ suite BasicLoop_tests = []() {
         loop.PROC_trigger();
 
         expect(eq(loop.get_mode(), Stopped));
-        expect(eq(loop.PROC_get_next_poi().value_or(999), 10)); // End of loop
+        expect(eq(loop.PROC_get_next_poi().value_or(999), 999));
 
         loop.PROC_trigger();
         loop.PROC_trigger();
 
         expect(eq(loop.get_mode(), Stopped));
-        expect(eq(loop.PROC_get_next_poi().value_or(999), 10)); // End of loop
+        expect(eq(loop.PROC_get_next_poi().value_or(999), 999));
     };
 
     "basicloop_4_generate_trigger"_test = []() {
@@ -171,13 +171,13 @@ suite BasicLoop_tests = []() {
     "basicloop_4_1_generate_trigger_on_restart"_test = []() {
         BasicLoop loop;
         loop.set_length(10, false);
-        loop.set_position(0, false);
+        loop.set_position(1, false);
         loop.set_mode(Playing, false);
         
         expect(eq(loop.PROC_is_triggering_now(), false));
 
         loop.PROC_update_poi();
-        loop.PROC_process(9);
+        loop.PROC_process(8);
 
         expect(eq(loop.PROC_is_triggering_now(), false));
 

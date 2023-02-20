@@ -196,30 +196,42 @@ public:
         if (ma_data_length == 0) {
             throw std::runtime_error("Attempting to play from empty channel");
         }
-
-        size_t buffer_idx = position / ma_buffer_size;
-        size_t pos_in_buffer = position % ma_buffer_size;
-        size_t buf_head = (buffer_idx == mp_buffers.size()-1) ?
-            ma_data_length - (buffer_idx * ma_buffer_size) :
-            ma_buffer_size;
-        auto  &from_buf = mp_buffers[buffer_idx];
-        SampleT* from = &from_buf->at(pos_in_buffer);
-        SampleT* &to = mp_playback_target_buffer;
-        auto n = std::min(buf_head - pos_in_buffer, n_samples);
-        auto rest = n_samples - n;
-
-        if (!muted) {
-            for(size_t idx=0; idx < n; idx++) {
-                to[idx] += from[idx];
-            }
+        if (position >= length) {
+            throw std::runtime_error("Position out of bounds");
         }
 
-        mp_playback_target_buffer += n;
-        mp_playback_target_buffer_size -= n;
+        
+        if (position < ma_data_length) {
+            // We have something to play.
+            size_t buffer_idx = position / ma_buffer_size;
+            size_t pos_in_buffer = position % ma_buffer_size;
+            size_t buf_head = (buffer_idx == mp_buffers.size()-1) ?
+                ma_data_length - (buffer_idx * ma_buffer_size) :
+                ma_buffer_size;
+            size_t samples_left_in_data = length - position;
+            auto  &from_buf = mp_buffers[buffer_idx];
+            SampleT* from = &from_buf->at(pos_in_buffer);
+            SampleT* &to = mp_playback_target_buffer;
+            auto n = std::min({buf_head - pos_in_buffer, samples_left_in_data, n_samples});
+            auto rest = n_samples - n;
 
-        // If we didn't play back all yet, go to next buffer and continue
-        if(rest > 0) {
-            PROC_process_playback(position + n, length, rest, muted);
+            if (!muted) {
+                for(size_t idx=0; idx < n; idx++) {
+                    to[idx] += from[idx];
+                }
+            }
+
+            mp_playback_target_buffer += n;
+            mp_playback_target_buffer_size -= n;
+
+            // If we didn't play back all yet, go to next buffer and continue
+            if(rest > 0) {
+                PROC_process_playback(position + n, length, rest, muted);
+            }
+        } else {
+            // We have nothing to play. Just leave the output buffer as-is.
+            mp_playback_target_buffer += n_samples;
+            mp_playback_target_buffer_size -= n_samples;
         }
     }
 

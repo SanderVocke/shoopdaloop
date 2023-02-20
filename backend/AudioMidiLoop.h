@@ -34,7 +34,7 @@ public:
     std::shared_ptr<AudioChannelSubloop<SampleT>> audio_channel(size_t idx, bool thread_safe = true) {
         std::shared_ptr<SubloopInterface> iface;
         if (thread_safe) {
-            exec_process_thread_command([this, idx, &iface]() { iface = mp_audio_subloops.at(idx); });
+        exec_process_thread_command([this, idx, &iface]() { iface = mp_audio_subloops.at(idx); });
         } else { iface = mp_audio_subloops.at(idx); }
 
         auto maybe_r = std::dynamic_pointer_cast<AudioChannelSubloop<SampleT>>(iface);

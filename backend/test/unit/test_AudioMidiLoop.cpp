@@ -222,6 +222,133 @@ suite AudioMidiLoop_audio_tests = []() {
             expect(eq(play_buf[idx], idx)) << "@ position " << idx;
         }
     };
+
+    "audioloop_3_2_playback_shorter_data"_test = []() {
+        auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
+        AudioMidiLoop loop;
+        loop.add_audio_channel<int>(pool, 10, false);
+        auto &channel = *loop.audio_channel<int>(0);
+        
+        auto data = create_audio_buf<int>(32, [](size_t position) { return position; });
+        channel.load_data(data.data(), 32, false);
+        loop.set_length(64);
+        auto play_buf = std::vector<int>(64);
+
+        loop.plan_transition(Playing);
+        channel.PROC_set_playback_buffer(play_buf.data(), play_buf.size());
+        loop.PROC_trigger();
+        loop.PROC_update_poi();
+
+        expect(loop.get_mode() == Playing);
+        expect(loop.PROC_get_next_poi() == 64) << loop.PROC_get_next_poi().value_or(0); // end of buffer
+        expect(loop.get_position() == 0);
+        expect(loop.get_length() == 64);
+
+        loop.PROC_process(62);
+
+        expect(loop.get_mode() == Playing);
+        expect(loop.PROC_get_next_poi() == 2) << loop.PROC_get_next_poi().value_or(0); // end of buffer
+        expect(eq(loop.get_length(), 64));
+        expect(eq(loop.get_position(), 62));
+        for(size_t idx=0; idx<32; idx++) {
+            expect(eq(play_buf[idx], data[idx])) << "@ position " << idx;
+        }
+        for(size_t idx=32; idx<62; idx++) {
+            expect(eq(play_buf[idx], 0)) << "@ position" << idx;
+        }
+    };
+
+    "audioloop_3_3_playback_wrap"_test = []() {
+        auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
+        AudioMidiLoop loop;
+        loop.add_audio_channel<int>(pool, 10, false);
+        auto &channel = *loop.audio_channel<int>(0);
+        
+        auto data = create_audio_buf<int>(64, [](size_t position) { return position; });
+        channel.load_data(data.data(), 64, false);
+        loop.set_length(64);
+        loop.set_position(48);
+        auto play_buf = std::vector<int>(64);
+
+        loop.plan_transition(Playing);
+        channel.PROC_set_playback_buffer(play_buf.data(), play_buf.size());
+        loop.PROC_trigger();
+        loop.PROC_update_poi();
+
+        expect(loop.get_mode() == Playing);
+        expect(loop.PROC_get_next_poi() == (64-48)) << loop.PROC_get_next_poi().value_or(0); // end of loop
+        expect(loop.get_position() == 48);
+        expect(loop.get_length() == 64);
+
+        loop.PROC_process(16);
+        loop.PROC_handle_poi();
+
+        expect(loop.get_mode() == Playing);
+        expect(loop.PROC_get_next_poi() == 48) << loop.PROC_get_next_poi().value_or(0); // end of buffer
+        expect(eq(loop.get_length(), 64));
+        expect(eq(loop.get_position(), 0));
+        
+        loop.PROC_process(48);
+        loop.PROC_handle_poi();
+
+        expect(loop.get_mode() == Playing);
+        expect(loop.PROC_get_next_poi() == 0) << loop.PROC_get_next_poi().value_or(0); // end of buffer
+        expect(eq(loop.get_length(), 64));
+        expect(eq(loop.get_position(), 48));
+        
+        for(size_t idx=0; idx<(64-48); idx++) {
+            expect(eq(play_buf[idx], data[idx+48])) << "@ position " << idx;
+        }
+        for(size_t idx=0; idx<48; idx++) {
+            expect(eq(play_buf[idx+(64-48)], data[idx])) << "@ position " << idx;
+        }
+    };
+
+    "audioloop_3_4_playback_wrap_longer_data"_test = []() {
+        auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
+        AudioMidiLoop loop;
+        loop.add_audio_channel<int>(pool, 10, false);
+        auto &channel = *loop.audio_channel<int>(0);
+        
+        auto data = create_audio_buf<int>(128, [](size_t position) { return position; });
+        channel.load_data(data.data(), 128, false);
+        loop.set_length(64);
+        loop.set_position(48);
+        auto play_buf = std::vector<int>(64);
+
+        loop.plan_transition(Playing);
+        channel.PROC_set_playback_buffer(play_buf.data(), play_buf.size());
+        loop.PROC_trigger();
+        loop.PROC_update_poi();
+
+        expect(loop.get_mode() == Playing);
+        expect(loop.PROC_get_next_poi() == (64-48)) << loop.PROC_get_next_poi().value_or(0); // end of loop
+        expect(loop.get_position() == 48);
+        expect(loop.get_length() == 64);
+
+        loop.PROC_process(16);
+        loop.PROC_handle_poi();
+
+        expect(loop.get_mode() == Playing);
+        expect(loop.PROC_get_next_poi() == 48) << loop.PROC_get_next_poi().value_or(0); // end of buffer
+        expect(eq(loop.get_length(), 64));
+        expect(eq(loop.get_position(), 0));
+        
+        loop.PROC_process(48);
+        loop.PROC_handle_poi();
+
+        expect(loop.get_mode() == Playing);
+        expect(loop.PROC_get_next_poi() == 0) << loop.PROC_get_next_poi().value_or(0); // end of buffer
+        expect(eq(loop.get_length(), 64));
+        expect(eq(loop.get_position(), 48));
+        
+        for(size_t idx=0; idx<(64-48); idx++) {
+            expect(eq(play_buf[idx], data[idx+48])) << "@ position " << idx;
+        }
+        for(size_t idx=0; idx<48; idx++) {
+            expect(eq(play_buf[idx+(64-48)], data[idx])) << "@ position " << idx;
+        }
+    };
 };
 
 suite AudioMidiLoop_midi_tests = []() {
