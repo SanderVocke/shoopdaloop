@@ -176,7 +176,7 @@ suite AudioMidiLoop_audio_tests = []() {
 
         expect(eq(loop.get_mode(), Recording));
         expect(eq(loop.PROC_get_next_poi().value_or(999), 512)) << loop.PROC_get_next_poi().value_or(0); // end of buffer
-        expect(eq(loop.get_length(), 0));
+        expect(eq(loop.get_length(), 128));
         expect(eq(loop.get_position(), 0));
 
         loop.PROC_process(20);
@@ -209,11 +209,12 @@ suite AudioMidiLoop_audio_tests = []() {
             [](size_t position, int const& val) {
                 expect(eq(val, position-128)) << " @ position " << position;
             },
-            128
+            128,
+            20
         );
     };
 
-    "audioloop_2_4_record_onto_larger_buffer"_test = []() {
+    "audioloop_2_5_record_onto_larger_buffer"_test = []() {
         auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
         AudioMidiLoop loop;
         loop.add_audio_channel<int>(pool, 10, true, false);
@@ -230,14 +231,14 @@ suite AudioMidiLoop_audio_tests = []() {
 
         expect(eq(loop.get_mode(), Recording));
         expect(eq(loop.PROC_get_next_poi().value_or(999), 512)) << loop.PROC_get_next_poi().value_or(0); // end of buffer
-        expect(eq(loop.get_length(), 0));
+        expect(eq(loop.get_length(), 64));
         expect(eq(loop.get_position(), 0));
 
-        loop.PROC_process(20);
+        loop.PROC_process(64);
 
         expect(eq(loop.get_mode(), Recording));
-        expect(eq(loop.PROC_get_next_poi().value_or(999), 492)) << loop.PROC_get_next_poi().value_or(0); // end of buffer
-        expect(eq(loop.get_length(), 148));
+        expect(eq(loop.PROC_get_next_poi().value_or(999), 448)) << loop.PROC_get_next_poi().value_or(0); // end of buffer
+        expect(eq(loop.get_length(), 128));
         expect(eq(loop.get_position(), 0));
         // First 64 elements should be unchanged after record
         for_channel_elems<AudioChannelSubloop<int>, int>(

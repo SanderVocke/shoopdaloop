@@ -160,8 +160,8 @@ public:
         }
 
         auto &from = mp_recording_source_buffer;
-        auto buf_idx = ma_data_length / ma_buffer_size;
-        auto buf_head = ma_data_length % ma_buffer_size;
+        auto buf_idx = length_before / ma_buffer_size;
+        auto buf_head = length_before % ma_buffer_size;
         auto buf_space = ma_buffer_size - buf_head;
         while (mp_buffers.size() <= buf_idx) {
             mp_buffers.push_back(get_new_buffer());
@@ -176,7 +176,7 @@ public:
 
         mp_recording_source_buffer += n;
         mp_recording_source_buffer_size -= n;
-        ma_data_length += n;
+        ma_data_length = std::max(ma_data_length.load(), length_before + n);
 
         // If we reached the end, add another buffer
         // and record the rest.
