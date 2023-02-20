@@ -301,7 +301,7 @@ void ChannelInfo::PROC_prepare_process_audio(size_t n_frames) {
         if (locked) {
             locked->PROC_update_audio_buffer_if_none(n_frames);
             auto chan = dynamic_cast<LoopAudioChannel*>(channel.get());
-            chan->PROC_set_playback_buffer(in_locked->maybe_audio_buffer, n_frames);
+            chan->PROC_set_playback_buffer(locked->maybe_audio_buffer, n_frames);
         }
     }
 }
@@ -331,7 +331,7 @@ void ChannelInfo::PROC_prepare_process_midi(size_t n_frames) {
         if (locked) {
             locked->PROC_update_midi_output_buffer_if_none(n_frames);
             auto chan = dynamic_cast<LoopMidiChannel*>(channel.get());
-            chan->PROC_set_playback_buffer(in_locked->maybe_midi_output_buffer.get(), n_frames);
+            chan->PROC_set_playback_buffer(locked->maybe_midi_output_buffer.get(), n_frames);
         }
     }
 }
@@ -753,16 +753,20 @@ audio_channel_data_t *get_audio_rms_data (shoopdaloop_loop_audio_channel_t *chan
     auto &chan = *internal_audio_channel(channel);
     auto data = chan.audio().get_data();
     auto n_samples = to_sample - from_sample;
-    std::vector<audio_sample_t> bins (std::ceil((float)n_samples / (float)samples_per_bin));
-    for (size_t idx = 0; idx < bins.size(); idx++) {
-        bins[idx] = 0.0;
-        size_t from = from_sample + samples_per_bin*idx;
-        size_t to = std::min(from_sample + samples_per_bin, to_sample);
-        for (size_t di = from; di < to; di++) {
-            bins[idx] += sqrtf(data[di] * data[di]);
+    if (n_samples == 0) {
+        return external_audio_data(std::vector<audio_sample_t>(0));
+    } else {
+        std::vector<audio_sample_t> bins (std::ceil((float)n_samples / (float)(samples_per_bin)));
+        for (size_t idx = 0; idx < bins.size(); idx++) {
+            bins[idx] = 0.0;
+            size_t from = from_sample + samples_per_bin*idx;
+            size_t to = std::min(from_sample + samples_per_bin, to_sample);
+            for (size_t di = from; di < to; di++) {
+                bins[idx] += sqrtf(data[di] * data[di]);
+            }
         }
+        return external_audio_data(bins);
     }
-    return external_audio_data(bins);
 }
 
 midi_channel_data_t *get_midi_channel_data (shoopdaloop_loop_midi_channel_t  *channel) {
@@ -770,14 +774,14 @@ midi_channel_data_t *get_midi_channel_data (shoopdaloop_loop_midi_channel_t  *ch
     return external_midi_data(chan.midi().retrieve_contents());
 }
 
-void load_audio_channel_data  (shoopdaloop_loop_audio_channel_t *channel, audio_channel_data_t data) {
+void load_audio_channel_data  (shoopdaloop_loop_audio_channel_t *channel, audio_channel_data_t *data) {
     auto &chan = *internal_audio_channel(channel);
-    chan.audio().load_data(data.data, data.n_samples);
+    chan.audio().load_data(data->data, data->n_samples);
 }
 
-void load_midi_channel_data (shoopdaloop_loop_midi_channel_t  *channel, midi_channel_data_t  data) {
+void load_midi_channel_data (shoopdaloop_loop_midi_channel_t  *channel, midi_channel_data_t  *data) {
     auto &chan = *internal_midi_channel(channel);
-    chan.midi().set_contents(internal_midi_data(data));
+    chan.midi().set_contents(internal_midi_data(*data));
 }
 
 void loop_transition(shoopdaloop_loop_t *loop,
@@ -813,6 +817,20 @@ void clear_loop (shoopdaloop_loop_t *loop, size_t length) {
             chan->midi().PROC_clear();
         }
         _loop.loop->set_length(length, false);
+    });
+}
+
+void set_loop_length (shoopdaloop_loop_t *loop, size_t length) {
+    g_cmd_queue.queue([=]() {
+        auto &_loop = *internal_loop(loop);
+        _loop.loop->set_length(length, false);
+    });
+}
+
+void set_loop_position (shoopdaloop_loop_t *loop, size_t position) {
+    g_cmd_queue.queue([=]() {
+        auto &_loop = *internal_loop(loop);
+        _loop.loop->set_position(position, false);
     });
 }
 
@@ -954,8 +972,10 @@ audio_channel_data_t *alloc_audio_channel_data(size_t n_samples) {
 #warning state getters incomplete
 audio_channel_state_info_t *get_audio_channel_state (shoopdaloop_loop_audio_channel_t *channel) {
     auto r = new audio_channel_state_info_t;
-    r->output_peak = 0.0;
+    auto &_channel = *dynamic_cast<LoopAudioChannel*>(internal_audio_channel(channel)->channel.get());
+    r->output_peak = _channel.get_output_peak();
     r->volume = 0.0;
+    _channel.reset_output_peak();
     return r;
 }
 
@@ -986,7 +1006,11 @@ loop_state_info_t *get_loop_state(shoopdaloop_loop_t *loop) {
     r->mode = _loop->loop->get_mode();
     r->position = _loop->loop->get_position();
     r->length = _loop->loop->get_length();
-    _loop->loop->get_first_planned_transition(r->maybe_next_mode, r->maybe_next_mode_delay);
+    loop_mode_t next_mode;
+    size_t next_delay;
+    _loop->loop->get_first_planned_transition(next_mode, next_delay);
+    r->maybe_next_mode = next_mode;
+    r->maybe_next_mode_delay = next_delay;
     return r;
 }
 

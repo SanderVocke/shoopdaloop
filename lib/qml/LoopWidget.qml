@@ -16,6 +16,8 @@ Item {
     property var master_backend_loop // BackendLoop
     property var targeted_backend_loop // BackendLoop
 
+    property var additional_context_menu_options : null // dict of option name -> functor
+
     readonly property bool is_master: backend_loop == master_backend_loop
     //property int n_multiples_of_master_length: backend_loop && master_backend_loop ? Math.ceil(backend_loop.length / master_backend_loop.length) : 1
     //property int current_cycle: backend_loop && master_backend_loop ? Math.floor(backend_loop.position / master_backend_loop.length) : 0
@@ -111,14 +113,9 @@ Item {
                 id: output_peak_meter_l
                 max_dt: 0.1
                 input: {
-                    console.log('unimplementeds')
-                    // if (statusrect.backend_loop && statusrect.backend_loop.wet_looper) {
-                    //     return statusrect.backend_loop.wet_looper.channel_loopers[0].outputPeak
-                    // } else if (statusrect.backend_loop && statusrect.backend_loop.channel_loopers) {
-                    //     return statusrect.backend_loop.channel_loopers[0].outputPeak
-                    // } else if (statusrect.backend_loop) {
-                    //     return statusrect.backend_loop.outputPeak
-                    // }
+                    if (statusrect.backend_loop && statusrect.backend_loop.audio_channels.length >= 1) {
+                        return statusrect.backend_loop.audio_channels[0].output_peak
+                    }
                     return 0.0
                 }
             }
@@ -155,13 +152,9 @@ Item {
                 id: output_peak_meter_r
                 max_dt: 0.1
                 input: {
-                    // if (statusrect.backend_loop && statusrect.backend_loop.wet_looper) {
-                    //     return statusrect.backend_loop.wet_looper.channel_loopers[0].outputPeak
-                    // } else if (statusrect.backend_loop && statusrect.backend_loop.channel_loopers) {
-                    //     return statusrect.backend_loop.channel_loopers[0].outputPeak
-                    // } else if (statusrect.backend_loop) {
-                    //     return statusrect.backend_loop.outputPeak
-                    // }
+                    if (statusrect.backend_loop && statusrect.backend_loop.audio_channels.length >= 2) {
+                        return statusrect.backend_loop.audio_channels[1].output_peak
+                    }
                     console.log('Unimplemented')
                     return 0.0
                 }
@@ -804,7 +797,7 @@ Item {
             y: (parent.height-height) / 2
 
             onAcceptedClickTrack: (filename) => {
-                                    widget.backend_loop.doLoadSoundFile(filename)
+                                    widget.backend_loop.load_audio_file(filename)
                                   }
         }
 
@@ -831,17 +824,23 @@ Item {
                     }
                 }
             }
-            MenuItem {
-                text: "Generate click loop..."
-                onClicked: () => clicktrackdialog.open()
-            }
+            //MenuItem {
+            //    text: "Generate click loop..."
+            //    onClicked: () => clicktrackdialog.open()
+            //}
             MenuItem {
                 text: "Save dry to file..."
-                onClicked: () => { savedialog.save_wet = false; savedialog.open() }
+                onClicked: () => { 
+                    console.log("unimplemented")
+                    //savedialog.save_wet = false; savedialog.open()
+                }
             }
             MenuItem {
                 text: "Save wet to file..."
-                onClicked: () => { savedialog.save_wet = true; savedialog.open() }
+                onClicked: () => {
+                    console.log('unimplemented')
+                    //savedialog.save_wet = true; savedialog.open()
+                }
             }
             MenuItem {
                 text: "Load audio file..."
@@ -858,9 +857,10 @@ Item {
             MenuItem {
                 text: "Clear"
                 onClicked: () => {
-                                console.log('unimplemented!')
-                               //if (widget.backend_loop) { widget.backend_loop.doLoopAction(StatesAndActions.LoopActionType.DoClear, [], false, true) }
-                           }
+                    if (widget.backend_loop) {
+                        widget.backend_loop.clear(0);
+                    }
+                }
             }
             MenuItem {
                 text: "Loop details window"
@@ -901,7 +901,7 @@ Item {
             nameFilters: ["WAV files (*.wav)"]
             onAccepted: {
                 var filename = selectedFile.toString().replace('file://', '');
-                widget.backend_loop.doLoadSoundFile(filename)
+                widget.backend_loop.load_audio_file(filename, false, 0)
             }
         }
 
@@ -986,17 +986,9 @@ Item {
             spacing: 5
             anchors.fill: parent
 
-            DryWetPairAbstractLooperManagerDetails {
+            BackendLooperManagerDetails {
                 title: "Overall loop"
                 backend_loop: window.backend_loop
-            }
-            BackendLooperManagerDetails {
-                title: "Pre-FX loop"
-                backend_loop: window.backend_loop.dry_looper
-            }
-            BackendLooperManagerDetails {
-                title: "Post-FX loop"
-                backend_loop: window.backend_loop.wet_looper
             }
 
             Item {
@@ -1025,20 +1017,17 @@ Item {
                         target: backend_loop
                         
                         // TODO the triggering
-                        // function maybe_update() {
-                        //     if (window.visible &&
-                        //         backend_loop.mode != Types.LoopMode.Recording &&
-                        //         backend_loop.mode != Types.LoopMode.RecordingFX) {
-                        //             waveform.update_data()
-                        //         }
-                        // }
-                        // function onStateChanged() {
-                        //     maybe_update()
-                        //     waveform.recording = backend_loop.mode == Types.LoopMode.Recording ||
-                        //                          backend_loop.mode == Types.LoopMode.RecordingFX
-                        // }
+                        function maybe_update() {
+                            if (window.visible &&
+                                !ModeHelpers.is_recording_state(backend_loop.mode)) {
+                                    waveform.update_data()
+                                }
+                        }
+                        function onStateChanged() {
+                            maybe_update()
+                            waveform.recording = ModeHelpers.is_recording_state(backend_loop.mode)
+                        }
                         function onLengthChanged() { maybe_update() }
-                        // function onLoadedData() { maybe_update() }
                     }
                 }
             }

@@ -1,8 +1,8 @@
 import QtQuick 2.15
 
 Item {
-    property real max_decrease_rate: 120.0
-    property real max_decrease_rate_acceleration: 10.0
+    property real max_decrease_rate: 40.0
+    property real max_decrease_rate_acceleration: 10000.0
     property real max_dt: 0.1
     property real input: 0.0
     property real prev_decrease_rate: 0.0

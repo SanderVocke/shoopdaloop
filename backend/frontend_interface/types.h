@@ -35,10 +35,10 @@ typedef struct _shoopdaloop_decoupled_midi_port shoopdaloop_decoupled_midi_port_
 
 typedef struct {
     loop_mode_t mode;
-    size_t length;
-    size_t position;
+    unsigned length;
+    unsigned position;
     loop_mode_t maybe_next_mode;
-    size_t maybe_next_mode_delay;
+    unsigned maybe_next_mode_delay;
 } loop_state_info_t;
 
 typedef struct {
@@ -48,15 +48,11 @@ typedef struct {
 } audio_port_state_info_t;
 
 typedef struct {
-    size_t n_events_triggered;
+    unsigned n_events_triggered;
     const char* name;
 } midi_port_state_info_t;
 
 typedef enum { Input, Output } port_direction_t;
-
-typedef enum {
-    Profiling = 1
-} backend_features_t;
 
 typedef struct {
     float volume;

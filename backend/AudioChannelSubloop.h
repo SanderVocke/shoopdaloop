@@ -28,6 +28,7 @@ private:
     std::shared_ptr<BufferPool> ma_buffer_pool;
     const size_t ma_buffer_size;
     std::atomic<size_t> ma_data_length;
+    std::atomic<float> ma_output_peak;
 
     // Members which may be accessed from the process thread only (mp prefix)
     std::vector<Buffer> mp_buffers;
@@ -47,7 +48,8 @@ public:
         mp_recording_source_buffer(nullptr),
         mp_playback_target_buffer(nullptr),
         mp_playback_target_buffer_size(0),
-        mp_recording_source_buffer_size(0)
+        mp_recording_source_buffer_size(0),
+        ma_output_peak(0)
     {
         mp_buffers.reserve(initial_max_buffers);
         mp_buffers.push_back(get_new_buffer()); // Initial recording buffer
@@ -85,11 +87,6 @@ public:
     ) override {
         // Execute any commands queued from other threads.
         PROC_handle_command_queue();
-
-        // FIXME: always passthrough at full volume
-        if (mp_playback_target_buffer_size >= n_samples && mp_recording_source_buffer_size >= n_samples) {
-            memcpy((void*)mp_playback_target_buffer, (void*)mp_recording_source_buffer, sizeof(SampleT) * n_samples);
-        }
 
         switch (mode_before) {
             case Playing:
@@ -218,6 +215,7 @@ public:
             if (!muted) {
                 for(size_t idx=0; idx < n; idx++) {
                     to[idx] += from[idx];
+                    ma_output_peak = std::max((float)ma_output_peak.load(), (float)std::abs(from[idx]));
                 }
             }
 
@@ -269,11 +267,19 @@ public:
         ma_data_length = length;
     }
 
+    float get_output_peak() const {
+        return ma_output_peak;
+    }
+
+    void reset_output_peak() {
+        ma_output_peak = 0.0f;
+    }
+
 protected:
     Buffer get_new_buffer() const {
         auto buf = Buffer(ma_buffer_pool->get_object());
         if (buf->size() != ma_buffer_size) {
-            throw std::runtime_error("AudioLoop requires buffers of same length");
+            throw std::runtime_error("AudioChannelSubloop requires buffers of same length");
         }
         return buf;
     }
