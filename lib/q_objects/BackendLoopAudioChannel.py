@@ -67,3 +67,8 @@ class BackendLoopAudioChannel(QObject):
         if state.output_peak != self._output_peak:
             self._output_peak = state.output_peak
             self.outputPeakChanged.emit(self._output_peak)
+    
+    @pyqtSlot()
+    def close(self):
+        self._backend_obj.destroy()
+        self.destroy()

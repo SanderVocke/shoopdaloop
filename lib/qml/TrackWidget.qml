@@ -2,37 +2,37 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
 
-import '../../build/StatesAndActions.js' as StatesAndActions
+import '../../build/types.js' as Types
 
 // The track widget displays the state of a track (collection of
 // loopers with shared settings/control).
 Item {
     id: track
-    property int num_loops
-    property int first_index
-    property int maybe_master_loop_idx: -1 //-1 is none
-    property var master_loop_manager
-    property var loop_managers
-    property var targeted_loop_manager
-    property var ports_manager
-    property var loop_names
+
+    property int num_slots
+
+    property var master_loop   // LoopWidget
+    property var targeted_loop // LoopWidget
+
+    //FIXME: property var ports_manager
+
     property string name: ''
     property bool name_editable: true
 
-    // Array of loop idxs
+    // Array of LoopWidget
     property var loops_of_selected_scene: []
-    property var loops_of_hovered_scene: []
+    property var loops_of_hovered_scene:  []
 
     width: childrenRect.width
     height: childrenRect.height
 
-    signal toggle_loop_in_scene(int idx)
+    signal toggle_loop_in_scene(var loop)
     signal renamed(string name)
-    signal request_select_loop(int idx)
-    signal request_rename_loop(int idx, string name)
-    signal request_clear_loop(int idx)
-    signal request_toggle_loop_selected(int idx)
-    signal request_set_targeted_loop(int idx)
+    signal request_select_loop(var loop)
+    signal request_rename_loop(var loop, string name)
+    signal request_clear_loop(var loop)
+    signal request_toggle_loop_selected(var loop)
+    signal request_set_targeted_loop(var loop)
 
     function actions_on_loop_mgrs(idx, on_idx_loop_fn, on_other_loop_fn) {
         for(var i = 0; i < track.num_loops; i++) {

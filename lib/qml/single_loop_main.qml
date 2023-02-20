@@ -3,6 +3,9 @@ import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
 import QtQuick.Dialogs
 
+import Backend
+import BackendLoop
+
 ApplicationWindow {
     visible: true
     width: 1200
@@ -28,8 +31,9 @@ ApplicationWindow {
         is_in_hovered_scene: false
         is_in_selected_scene: false
         name: "Loop"
-        backend_loop: rootcontext_backend_loop
-        master_backend_loop: rootcontext_backend_loop
-        targeted_backend_loop: null
+        objectName: 'loop'
+        backend_loop: backend.create_loop()
+        master_loop: null
+        targeted_loop: null
     }
 }

@@ -6,15 +6,21 @@ import QtQuick.Dialogs
 import '../../build/types.js' as Types
 import '../mode_helpers.js' as ModeHelpers
 
-// The loop widget displays the state of a single loop within a track.
+// The loop widget allows manipulating a single loop within a track.
 Item {
     property bool is_in_selected_scene: false
     property bool is_in_hovered_scene: false
     property alias name: statusrect.name
 
-    property var backend_loop // BackendLoop
-    property var master_backend_loop // BackendLoop
-    property var targeted_backend_loop // BackendLoop
+    property var backend_loop  // BackendLoop
+    property var master_loop   // LoopWidget
+    property var targeted_loop // LoopWidget
+
+    property var dry_port_pairs // List of PortPair
+    property var wet_port_pairs // List of PortPair
+
+    property var dry_channels // List of Channel
+    property var wet_channels // List of Channel
 
     property var additional_context_menu_options : null // dict of option name -> functor
 

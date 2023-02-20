@@ -50,4 +50,8 @@ class BackendLoopMidiChannel(QObject):
         if state.n_events_triggered != self._n_events_triggered:
             self._n_events_triggered = state.n_events_triggered
             self.nEventsTriggeredChanged.emit(self._n_events_triggered)
-    
+
+    @pyqtSlot()
+    def close(self):
+        self._backend_obj.destroy()
+        self.destroy()

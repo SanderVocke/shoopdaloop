@@ -111,10 +111,14 @@ class BackendLoopAudioChannel:
         rval = LoopAudioChannelState(state[0])
         backend.destroy_audio_channel_state_info(state)
         return rval
+    
+    def destroy(self):
+        if self.shoop_c_handle:
+            backend.destroy_audio_channel(self.shoop_c_handle)
+            self.shoop_c_handle = None
 
     def __del__(self):
-        backend.destroy_audio_channel(self.shoop_c_handle)
-
+        self.destroy()
 class BackendLoopMidiChannel:
     def __init__(self, loop : 'BackendLoop', c_handle : 'POINTER(backend.shoopdaloop_loop_midi_channel_t)'):
         self.loop_shoop_c_handle = loop.c_handle()
@@ -138,8 +142,13 @@ class BackendLoopMidiChannel:
         backend.destroy_midi_channel_state_info(state)
         return rval
     
+    def destroy(self):
+        if self.shoop_c_handle:
+            backend.destroy_audio_channel(self.shoop_c_handle)
+            self.shoop_c_handle = None
+
     def __del__(self):
-        backend.destroy_midi_channel(self.shoop_c_handle)
+        self.destroy()
 
 class BackendLoop:
     def __init__(self, c_handle : 'POINTER(backend.shoopdaloop_loop_t)'):
@@ -248,7 +257,7 @@ def create_loop() -> Type['BackendLoop']:
 def open_audio_port(name_hint : str, direction : 'PortDirection') -> 'BackendAudioPort':
     _dir = (backend.Input if direction == PortDirection.Input else backend.Output)
     handle = backend.open_audio_port(name_hint.encode('ascii'), _dir)
-    port = BackendMidiPort(handle, direction)
+    port = BackendAudioPort(handle, direction)
     return port
 
 def open_midi_port(name_hint : str, direction : 'PortDirection') -> 'BackendMidiPort':

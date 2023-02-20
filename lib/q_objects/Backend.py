@@ -56,16 +56,3 @@ class Backend(QObject):
     @pyqtSlot(result=int)
     def get_sample_rate(self):
         return backend.get_sample_rate()
-
-# Poor man's singleton
-g_backend = None
-def create_backend(client_name_hint, qt_parent):
-    global g_backend
-    g_backend = Backend(client_name_hint, qt_parent)
-    return g_backend
-
-def get_backend():
-    global g_backend
-    if not g_backend:
-        raise Exception('Attempt to get back-end before it was instantiated.')
-    return g_backend
