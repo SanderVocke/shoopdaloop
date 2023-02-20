@@ -35,6 +35,11 @@ public:
         size_t length_after
     ) = 0;
 
+    // Set/get whether the subloop is enabled or not. If disabled, a subloop will always
+    // process as if it is stopped, regardless of the parent loop mode.
+    virtual void set_enabled(bool enabled) = 0;
+    virtual bool get_enabled() const = 0;
+
     SubloopInterface() = default;
     virtual ~SubloopInterface() {}
 };

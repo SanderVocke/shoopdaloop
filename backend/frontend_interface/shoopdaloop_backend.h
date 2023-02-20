@@ -14,8 +14,8 @@ unsigned get_sample_rate();
 
 // Loops
 shoopdaloop_loop_t *create_loop();
-shoopdaloop_loop_audio_channel_t *add_audio_channel (shoopdaloop_loop_t *loop);
-shoopdaloop_loop_midi_channel_t  *add_midi_channel  (shoopdaloop_loop_t *loop);
+shoopdaloop_loop_audio_channel_t *add_audio_channel (shoopdaloop_loop_t *loop, unsigned enabled);
+shoopdaloop_loop_midi_channel_t  *add_midi_channel  (shoopdaloop_loop_t *loop, unsigned enabled);
 shoopdaloop_loop_audio_channel_t *get_audio_channel (shoopdaloop_loop_t *loop, size_t idx);
 shoopdaloop_loop_midi_channel_t  *get_midi_channel  (shoopdaloop_loop_t *loop, size_t idx);
 unsigned          get_n_audio_channels     (shoopdaloop_loop_t *loop);

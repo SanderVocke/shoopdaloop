@@ -148,12 +148,14 @@ class BackendLoop:
     def c_handle(self):
         return self.shoop_c_handle
     
-    def add_audio_channel(self) -> 'BackendLoopAudioChannel':
-        rval = BackendLoopAudioChannel(self, backend.add_audio_channel(self.c_handle()))
+    def add_audio_channel(self, enabled) -> 'BackendLoopAudioChannel':
+        _enabled = int(1 if enabled else 0)
+        rval = BackendLoopAudioChannel(self, backend.add_audio_channel(self.c_handle(), _enabled))
         return rval
     
-    def add_midi_channel(self) -> 'BackendLoopMidiChannel':
-        rval = BackendLoopMidiChannel(self, backend.add_midi_channel(self.c_handle()))
+    def add_midi_channel(self, enabled) -> 'BackendLoopMidiChannel':
+        _enabled = int(1 if enabled else 0)
+        rval = BackendLoopMidiChannel(self, backend.add_midi_channel(self.c_handle(), _enabled))
         return rval
 
     def transition(self, to_state : Type['LoopMode'],

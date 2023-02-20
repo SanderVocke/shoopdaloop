@@ -29,6 +29,7 @@ private:
     const size_t ma_buffer_size;
     std::atomic<size_t> ma_data_length;
     std::atomic<float> ma_output_peak;
+    std::atomic<bool> ma_enabled;
 
     // Members which may be accessed from the process thread only (mp prefix)
     std::vector<Buffer> mp_buffers;
@@ -40,7 +41,8 @@ public:
 
     AudioChannelSubloop(
             std::shared_ptr<BufferPool> buffer_pool,
-            size_t initial_max_buffers) :
+            size_t initial_max_buffers,
+            bool enabled) :
         WithCommandQueue<10, 1000, 1000>(),
         ma_buffer_pool(buffer_pool),
         ma_data_length(0),
@@ -49,7 +51,8 @@ public:
         mp_playback_target_buffer(nullptr),
         mp_playback_target_buffer_size(0),
         mp_recording_source_buffer_size(0),
-        ma_output_peak(0)
+        ma_output_peak(0),
+        ma_enabled(enabled)
     {
         mp_buffers.reserve(initial_max_buffers);
         mp_buffers.push_back(get_new_buffer()); // Initial recording buffer
@@ -70,6 +73,7 @@ public:
         mp_playback_target_buffer_size = other.mp_playback_target_buffer_size;
         mp_recording_source_buffer = other.mp_recording_source_buffer;
         mp_recording_source_buffer_size = other.mp_recording_source_buffer_size;
+        ma_enabled = other.ma_enabled;
         return *this;
     }
 
@@ -88,15 +92,17 @@ public:
         // Execute any commands queued from other threads.
         PROC_handle_command_queue();
 
-        switch (mode_before) {
-            case Playing:
-                PROC_process_playback(pos_before, length_before, n_samples, false);
-                break;
-            case Recording:
-                PROC_process_record(n_samples, length_before);
-                break;
-            default:
-                break;
+        if (ma_enabled) {
+            switch (mode_before) {
+                case Playing:
+                    PROC_process_playback(pos_before, length_before, n_samples, false);
+                    break;
+                case Recording:
+                    PROC_process_record(n_samples, length_before);
+                    break;
+                default:
+                    break;
+            }
         }
     }
 
@@ -236,10 +242,12 @@ public:
     std::optional<size_t> PROC_get_next_poi(loop_mode_t mode,
                                        size_t length,
                                        size_t position) const override {
-        if (mode == Playing) {
-            return mp_playback_target_buffer_size;
-        } else if (mode == Recording) {
-            return mp_recording_source_buffer_size;
+        if (ma_enabled) {
+            if (mode == Playing) {
+                return mp_playback_target_buffer_size;
+            } else if (mode == Recording) {
+                return mp_recording_source_buffer_size;
+            }
         }
         return std::nullopt;
     }
@@ -273,6 +281,14 @@ public:
 
     void reset_output_peak() {
         ma_output_peak = 0.0f;
+    }
+
+    void set_enabled(bool enabled) override {
+        ma_enabled = enabled;
+    }
+
+    bool get_enabled() const override {
+        return ma_enabled;
     }
 
 protected:

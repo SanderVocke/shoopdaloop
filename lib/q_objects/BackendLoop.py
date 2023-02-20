@@ -147,14 +147,14 @@ class BackendLoop(QObject):
         self._backend_loop.clear(length)
     
     @pyqtSlot(result=BackendLoopAudioChannel)
-    def add_audio_channel(self):
-        r = BackendLoopAudioChannel(self._backend_loop.add_audio_channel(), self)
+    def add_audio_channel(self, enabled):
+        r = BackendLoopAudioChannel(self._backend_loop.add_audio_channel(enabled), self)
         self.audioChannelsChanged.emit(self.audio_channels)
         return r
     
     @pyqtSlot(result=BackendLoopMidiChannel)
-    def add_midi_channel(self):
-        r = BackendLoopMidiChannel(self._backend_loop.add_midi_channel(), self)
+    def add_midi_channel(self, enabled):
+        r = BackendLoopMidiChannel(self._backend_loop.add_midi_channel(enabled), self)
         self.midiChannelsChanged.emit(self.midi_channels)
         return r
     

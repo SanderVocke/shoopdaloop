@@ -19,9 +19,10 @@ public:
     std::shared_ptr<AudioChannelSubloop<SampleT>>
     add_audio_channel(std::shared_ptr<BufferPool> const& buffer_pool,
                       size_t initial_max_buffers,
+                      bool enabled,
                       bool thread_safe=true) {
         auto subloop = std::make_shared<AudioChannelSubloop<SampleT>>(
-            buffer_pool, initial_max_buffers);
+            buffer_pool, initial_max_buffers, enabled);
         auto fn = [=]() {
             mp_audio_subloops.push_back(subloop);
         };
@@ -45,8 +46,8 @@ public:
     }
 
     template<typename TimeType, typename SizeType>
-    std::shared_ptr<MidiChannelSubloop<TimeType, SizeType>> add_midi_channel(size_t data_size, bool thread_safe = true) {
-        auto subloop = std::make_shared<MidiChannelSubloop<TimeType, SizeType>>(data_size);
+    std::shared_ptr<MidiChannelSubloop<TimeType, SizeType>> add_midi_channel(size_t data_size, bool enabled, bool thread_safe = true) {
+        auto subloop = std::make_shared<MidiChannelSubloop<TimeType, SizeType>>(data_size, enabled);
         auto fn = [this, &subloop]() {
             mp_midi_subloops.push_back(subloop);
         };

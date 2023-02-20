@@ -44,13 +44,17 @@ private:
     std::shared_ptr<Storage>       mp_storage;
     std::shared_ptr<StorageCursor> mp_playback_cursor;
 
+    // Any thread access
+    std::atomic<bool> ma_enabled;
+
 public:
-    MidiChannelSubloop(size_t data_size) :
+    MidiChannelSubloop(size_t data_size, bool enabled) :
         WithCommandQueue<10, 1000, 1000>(),
         mp_playback_target_buffer(nullptr),
         mp_recording_source_buffer(nullptr),
         mp_storage(std::make_shared<Storage>(data_size)),
-        mp_playback_cursor(nullptr)
+        mp_playback_cursor(nullptr),
+        ma_enabled(enabled)
     {
         mp_playback_cursor = mp_storage->create_cursor();
     }
@@ -61,6 +65,7 @@ public:
         mp_recording_source_buffer = other.mp_recording_source_buffer;
         mp_storage = other.mp_storage;
         mp_playback_cursor = other.mp_playback_cursor;
+        ma_enabled = other.ma_enabled;
         return *this;
     }
 
@@ -75,15 +80,17 @@ public:
         ) override {
         PROC_handle_command_queue();
 
-        switch (mode_before) {
-            case Playing:
-                PROC_process_playback(pos_before, length_before, n_samples, false);
-                break;
-            case Recording:
-                PROC_process_record(length_before, n_samples);
-                break;
-            default:
-                break;
+        if (ma_enabled) {
+            switch (mode_before) {
+                case Playing:
+                    PROC_process_playback(pos_before, length_before, n_samples, false);
+                    break;
+                case Recording:
+                    PROC_process_record(length_before, n_samples);
+                    break;
+                default:
+                    break;
+            }
         }
     }
 
@@ -160,10 +167,12 @@ public:
     std::optional<size_t> PROC_get_next_poi(loop_mode_t mode,
                                                size_t length,
                                                size_t position) const override {
-        if (mode == Playing) {
-            return mp_playback_target_buffer.value().n_frames_total - mp_playback_target_buffer.value().n_frames_processed;
-        } else if (mode == Recording) {
-            return mp_recording_source_buffer.value().n_frames_total - mp_recording_source_buffer.value().n_frames_processed;
+        if (ma_enabled) {
+            if (mode == Playing) {
+                return mp_playback_target_buffer.value().n_frames_total - mp_playback_target_buffer.value().n_frames_processed;
+            } else if (mode == Recording) {
+                return mp_recording_source_buffer.value().n_frames_total - mp_recording_source_buffer.value().n_frames_processed;
+            }
         }
 
         return std::nullopt;
@@ -218,5 +227,13 @@ public:
     void PROC_clear() {
         mp_storage->clear();
         mp_playback_cursor->reset();
+    }
+
+    void set_enabled(bool enabled) override {
+        ma_enabled = enabled;
+    }
+
+    bool get_enabled() const override {
+        return ma_enabled;
     }
 };

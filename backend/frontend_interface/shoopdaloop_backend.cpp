@@ -606,16 +606,17 @@ shoopdaloop_loop_t *create_loop() {
     return (shoopdaloop_loop_t*) r.get();
 }
 
-shoopdaloop_loop_audio_channel_t *add_audio_channel (shoopdaloop_loop_t *loop) {
+shoopdaloop_loop_audio_channel_t *add_audio_channel (shoopdaloop_loop_t *loop, unsigned enabled) {
     // Note: we jump through hoops here to pre-create a shared ptr and then
     // queue a copy-assignment of its value. This allows us to return before
     // the channel has really been created, without altering the pointed-to
     // address later.
     SharedLoopInfo loop_info = internal_loop(loop);
     auto r = std::make_shared<ChannelInfo> (nullptr, loop_info);
-    g_cmd_queue.queue([r, loop_info]() {
+    g_cmd_queue.queue([r, loop_info, enabled]() {
         auto chan = loop_info->loop->add_audio_channel<audio_sample_t>(g_audio_buffer_pool,
                                                         gc_audio_channel_initial_buffers,
+                                                        enabled != 0,
                                                         false);
         auto replacement = std::make_shared<ChannelInfo> (chan, loop_info);
         loop_info->mp_audio_channels.push_back(r);
@@ -624,7 +625,7 @@ shoopdaloop_loop_audio_channel_t *add_audio_channel (shoopdaloop_loop_t *loop) {
     return external_audio_channel(r);
 }
 
-shoopdaloop_loop_midi_channel_t *add_midi_channel (shoopdaloop_loop_t *loop) {
+shoopdaloop_loop_midi_channel_t *add_midi_channel (shoopdaloop_loop_t *loop, unsigned enabled) {
     // Note: we jump through hoops here to pre-create a shared ptr and then
     // queue a copy-assignment of its value. This allows us to return before
     // the channel has really been created, without altering the pointed-to
@@ -632,7 +633,7 @@ shoopdaloop_loop_midi_channel_t *add_midi_channel (shoopdaloop_loop_t *loop) {
     auto r = std::make_shared<ChannelInfo> (nullptr, nullptr);
     g_cmd_queue.queue([=]() {
         SharedLoopInfo loop_info = internal_loop(loop);
-        auto chan = loop_info->loop->add_midi_channel<Time, Size>(gc_midi_storage_size, false);
+        auto chan = loop_info->loop->add_midi_channel<Time, Size>(gc_midi_storage_size, enabled != 0, false);
         auto replacement = std::make_shared<ChannelInfo> (chan, loop_info);
         loop_info->mp_midi_channels.push_back(r);
         *r = *replacement;
