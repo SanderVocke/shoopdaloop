@@ -92,6 +92,7 @@ class Loop(QObject):
     # Update mode from the back-end.
     @pyqtSlot()
     def update(self):
+        print("update loop")
         for channel in self.audio_channels():
             channel.update()
         for channel in self.midi_channels():

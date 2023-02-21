@@ -21,10 +21,17 @@ class AudioPort(QObject):
         self._backend_obj = None
         self._direction = ''
         self._name = ''
+        self._initialized = False
 
     ######################
     # PROPERTIES
     ######################
+
+    # initialized
+    initializedChanged = pyqtSignal(bool)
+    @pyqtProperty(bool, notify=initializedChanged)
+    def initialized(self):
+        return self._initialized
 
     # name hint
     nameHintChanged = pyqtSignal(str)
@@ -117,3 +124,5 @@ class AudioPort(QObject):
             if not direction:
                 raise Exception("Invalid direction.")
             self._backend_obj = backend.open_audio_port(self._name_hint, direction)
+            self._initialized = True
+            self.initializedChanged.emit(True)

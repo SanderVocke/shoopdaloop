@@ -9,7 +9,6 @@ import sys
 sys.path.append('../..')
 
 import lib.backend as backend
-from lib.q_objects.Loop import Loop
 from lib.q_objects.AudioPort import AudioPort
 from lib.q_objects.MidiPort import MidiPort
 
@@ -21,6 +20,8 @@ class Backend(QObject):
         self._timer = None
         self._initialized = False
         self._client_name_hint = ""
+    
+    update = pyqtSignal()
 
     ######################
     # PROPERTIES
@@ -38,7 +39,7 @@ class Backend(QObject):
                 self._timer = None
             self._timer = QTimer(self)
             self._timer.setSingleShot(False)
-            self._timer.timeout.connect(self.update)
+            self._timer.timeout.connect(self.doUpdate)
             self._timer.start(self._update_interval_ms)
     
     initializedChanged = pyqtSignal(bool)
@@ -62,11 +63,11 @@ class Backend(QObject):
     ## SLOTS
     ###########
 
-    # Request state updates for all back-end objects.
     @pyqtSlot()
-    def update(self):
-        for loop in self.findChildren(Loop):
+    def doUpdate(self):
+        for loop in self.findChildren(QObject, 'Loop'):
             loop.update()
+        self.update.emit()
     
     @pyqtSlot(result=int)
     def get_sample_rate(self):

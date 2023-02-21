@@ -25,21 +25,30 @@ ApplicationWindow {
     }
 
     Backend {
+        id: backend
+        
         client_name_hint: "single_loop"
         update_interval_ms: 30
 
+        AudioPortPair {
+            id: audio_ports
+            input_name_hint: 'audio_in'
+            output_name_hint: 'audio_out'
+        }
+        MidiPortPair {
+            id: midi_ports
+            input_name_hint: 'midi_in'
+            output_name_hint: 'midi_out'
+        }
+
         Loop {
             id: loop
-
             LoopAudioChannel {
+                loop: loop
+                ports: audio_ports.ports
             }
             LoopMidiChannel {
             }
-        }
-
-        AudioPortPair {
-            input_name_hint: 'audio_in'
-            output_name_hint: 'audio_out'
         }
     }
 
@@ -48,7 +57,7 @@ ApplicationWindow {
         is_in_selected_scene: false
         name: "Loop"
         backend_loop: loop
-        master_loop: loop
+        master_loop: null
         targeted_loop: null
     }
 }

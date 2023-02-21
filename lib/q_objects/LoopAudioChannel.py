@@ -25,17 +25,23 @@ class LoopAudioChannel(QObject):
         self._volume = 0.0
         self._backend_obj = None        
         self._loop = None
-        if parent and parent.inherits("Loop"):
-            self._loop = parent
-            self.maybe_initialize()
+        self._connected_ports = []
+        self._ports = []
     
     def maybe_initialize(self):
         if self._loop and not self._backend_obj:
             self._backend_obj = self._loop.add_audio_channel(True)
+            self.initializedChanged.emit(True)
 
     ######################
     # PROPERTIES
     ######################
+
+    # initialized
+    initializedChanged = pyqtSignal(bool)
+    @pyqtProperty(bool, notify=initializedChanged)
+    def initialized(self):
+        return bool(self._backend_obj)
 
     # loop
     loopChanged = pyqtSignal(Loop.Loop)
@@ -49,6 +55,27 @@ class LoopAudioChannel(QObject):
                 raise Exception('May not change loop of existing audio channel')
             self._loop = l
             self.maybe_initialize()
+    
+    # connected ports
+    connectedPortsChanged = pyqtSignal(list)
+    @pyqtProperty(list, notify=connectedPortsChanged)
+    def connected_ports(self):
+        return self._connected_ports
+    
+    # ports to connect
+    portsChanged = pyqtSignal(list)
+    @pyqtProperty(list, notify=portsChanged)
+    def ports(self):
+        return self._ports
+    @ports.setter
+    def ports(self, p):
+        for port in self._connected_ports:
+            if not port in p:
+                self.disconnect(port)
+        for port in p:
+            if not port in self._connected_ports:
+                self.connect(port)
+        self._ports = p
 
     # output peak
     outputPeakChanged = pyqtSignal(float)
@@ -66,13 +93,31 @@ class LoopAudioChannel(QObject):
     # SLOTS
     ######################
 
+    @pyqtSlot()
+    def initialize(self):
+        self.maybe_initialize()
+
     @pyqtSlot(AudioPort)
     def connect(self, audio_port):
         if not self._backend_obj:
-            raise Exception("Attempting to connect an invalid audio channel.")
-        backend_channel = self._backend_obj
-        backend_port = audio_port.get_backend_obj()
-        backend_channel.connect(backend_port)
+            self.initializedChanged.connect(lambda: self.connect(audio_port))
+        elif audio_port not in self._connected_ports:
+            backend_channel = self._backend_obj
+            backend_port = audio_port.get_backend_obj()
+            backend_channel.connect(backend_port)
+            self._connected_ports.append(audio_port)
+            self.connectedPortsChanged.emit(self._connected_ports)
+    
+    @pyqtSlot(AudioPort)
+    def disconnect(self, audio_port):
+        if not self._backend_obj:
+            self.initializedChanged.connect(lambda: self.disconnect(audio_port))
+        elif audio_port in self._connected_ports:
+            backend_channel = self._backend_obj
+            backend_port = audio_port.get_backend_obj()
+            backend_channel.disconnect(backend_port)
+            self._connected_ports.remove(audio_port)
+            self.connectedPortsChanged.emit(self._connected_ports)
     
     @pyqtSlot(int, int, int, result=list)
     def get_rms_data(self, from_sample, to_sample, samples_per_bin):
