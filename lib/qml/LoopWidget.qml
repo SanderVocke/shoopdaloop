@@ -8,25 +8,24 @@ import '../mode_helpers.js' as ModeHelpers
 
 // The loop widget allows manipulating a single loop within a track.
 Item {
+    // Inputs
     property bool is_in_selected_scene: false
-    property bool is_in_hovered_scene: false
+    property bool is_in_hovered_scene:  false
     property alias name: statusrect.name
-
-    property var backend_loop  // BackendLoop
-    property var master_loop   // LoopWidget
-    property var targeted_loop // LoopWidget
-
-    property var dry_port_pairs // List of PortPair
-    property var wet_port_pairs // List of PortPair
-
-    property var dry_channels // List of Channel
-    property var wet_channels // List of Channel
-
+    property LoopWidget master_loop
+    property LoopWidget targeted_loop
+    property list<var> direct_port_pairs // List of ***PortPair
+    property list<var> dry_port_pairs   // List of ***PortPair
+    property list<var> wet_port_pairs   // List of ***PortPair
+    property var mixed_wet_output_port  // AudioPort
     property var additional_context_menu_options : null // dict of option name -> functor
 
-    readonly property bool is_master: backend_loop == master_backend_loop
-    //property int n_multiples_of_master_length: backend_loop && master_backend_loop ? Math.ceil(backend_loop.length / master_backend_loop.length) : 1
-    //property int current_cycle: backend_loop && master_backend_loop ? Math.floor(backend_loop.position / master_backend_loop.length) : 0
+    // Internally controlled
+    property DynamicLoop maybe_loop : loop
+    readonly property bool is_master: loop && loop == master_loop
+
+    //property int n_multiples_of_master_length: loop && master_loop ? Math.ceil(loop.length / master_loop.length) : 1
+    //property int current_cycle: loop && master_loop ? Math.floor(loop.position / master_loop.length) : 0
 
     signal selected() //directly selected by the user to be activated.
     signal toggle_in_current_scene() //selected by the user to be added/removed to/from the current scene.
@@ -42,14 +41,25 @@ Item {
     height: childrenRect.height
     clip: true
 
+    DynamicLoop {
+        id: loop
+
+        PortChannelRouter {
+            direct_port_pairs: widget.direct_port_pairs
+            dry_port_pairs: widget.dry_port_pairs
+            wet_port_pairs: widget.wet_port_pairs
+            maybe_mixed_wet_audio_output_port: widget.mixed_wet_output_port
+        }
+    }
+
     // UI
     StatusRect {
         id: statusrect
-        backend_loop: widget.backend_loop
+        loop: widget.maybe_loop
 
         DetailsWindow {
             id: detailswindow
-            backend_loop: statusrect.backend_loop
+            loop: statusrect.loop
         }
 
         ContextMenu {
@@ -59,7 +69,7 @@ Item {
 
     component StatusRect : Rectangle {
         id: statusrect
-        property var backend_loop
+        property var loop
         property bool hovered : area.containsMouse
 
         property string name
@@ -70,16 +80,16 @@ Item {
         width: loop.width
         height: loop.height
 
-        color: (backend_loop && backend_loop.length == 0) ? Material.background : '#000044'
+        color: (loop && loop.length == 0) ? Material.background : '#000044'
         border.color: {
             var default_color = 'grey'
-            if (!statusrect.backend_loop) {
+            if (!statusrect.loop) {
                 return default_color;
             }
 
-            if (widget.backend_loop.targeted) {
+            if (widget.maybe_loop.targeted) {
                 return "orange";
-            } if (widget.backend_loop.selected) {
+            } if (widget.maybe_loop.selected) {
                 return 'yellow';
             } else if (widget.is_in_hovered_scene) {
                 return 'blue';
@@ -87,7 +97,7 @@ Item {
                 return 'red';
             }
 
-            if (statusrect.backend_loop.length == 0) {
+            if (statusrect.loop.length == 0) {
                 return default_color;
             }
 
@@ -101,7 +111,7 @@ Item {
 
             LoopProgressRect {
                 anchors.fill: parent
-                backend_loop: statusrect.backend_loop
+                loop: statusrect.loop
             }
         }
 
@@ -119,8 +129,8 @@ Item {
                 id: output_peak_meter_l
                 max_dt: 0.1
                 input: {
-                    if (statusrect.backend_loop && statusrect.backend_loop.audio_channels.length >= 1) {
-                        return statusrect.backend_loop.audio_channels[0].output_peak
+                    if (statusrect.loop && statusrect.loop.audio_channels.length >= 1) {
+                        return statusrect.loop.audio_channels[0].output_peak
                     }
                     return 0.0
                 }
@@ -158,8 +168,8 @@ Item {
                 id: output_peak_meter_r
                 max_dt: 0.1
                 input: {
-                    if (statusrect.backend_loop && statusrect.backend_loop.audio_channels.length >= 2) {
-                        return statusrect.backend_loop.audio_channels[1].output_peak
+                    if (statusrect.loop && statusrect.loop.audio_channels.length >= 2) {
+                        return statusrect.loop.audio_channels[1].output_peak
                     }
                     console.log('Unimplemented')
                     return 0.0
@@ -224,21 +234,21 @@ Item {
                 x: 0
 
                 property bool show_next_mode: 
-                    statusrect.backend_loop && 
-                        statusrect.backend_loop.next_mode != null &&
-                        statusrect.backend_loop.mode != statusrect.backend_loop.next_mode
+                    statusrect.loop && 
+                        statusrect.loop.next_mode != null &&
+                        statusrect.loop.mode != statusrect.loop.next_mode
 
                 LoopStateIcon {
                     id: loopstateicon
-                    mode: statusrect.backend_loop ? statusrect.backend_loop.mode : Types.LoopMode.Unknown
+                    mode: statusrect.loop ? statusrect.loop.mode : Types.LoopMode.Unknown
                     show_timer_instead: parent.show_next_mode
-                    visible: !parent.show_next_mode || (parent.show_next_mode && statusrect.backend_loop.next_transition_delay == 0)
+                    visible: !parent.show_next_mode || (parent.show_next_mode && statusrect.loop.next_transition_delay == 0)
                     connected: true
                     size: iconitem.height
                     y: 0
                     anchors.horizontalCenter: iconitem.horizontalCenter
                     muted: { console.log('unimplemented muted'); return false; }
-                    empty: statusrect.backend_loop.length == 0
+                    empty: statusrect.loop.length == 0
                     onDoubleClicked: (event) => {
                             if (event.button === Qt.LeftButton) { widget.request_set_as_targeted() }
                         }
@@ -251,7 +261,7 @@ Item {
                 LoopStateIcon {
                     id: loopnextstateicon
                     mode: parent.show_next_mode ?
-                        statusrect.backend_loop.next_mode : Types.LoopMode.Unknown
+                        statusrect.loop.next_mode : Types.LoopMode.Unknown
                     show_timer_instead: false
                     connected: true
                     size: iconitem.height * 0.65
@@ -261,8 +271,8 @@ Item {
                     visible: parent.show_next_mode
                 }
                 Text {
-                    text: statusrect.backend_loop ? (statusrect.backend_loop.next_transition_delay + 1).toString(): ''
-                    visible: parent.show_next_mode && statusrect.backend_loop.next_transition_delay > 0
+                    text: statusrect.loop ? (statusrect.loop.next_transition_delay + 1).toString(): ''
+                    visible: parent.show_next_mode && statusrect.loop.next_transition_delay > 0
                     anchors.fill: loopstateicon
                     color: Material.foreground
                     horizontalAlignment: Text.AlignHCenter
@@ -306,7 +316,7 @@ Item {
                         color: 'green'
                     }
 
-                    onClicked: { if(statusrect.backend_loop) { statusrect.backend_loop.play(0, true) }}
+                    onClicked: { if(statusrect.loop) { statusrect.loop.play(0, true) }}
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
@@ -366,9 +376,9 @@ Item {
                                         text_color: Material.foreground
                                         text: "S"
                                     }
-                                    onClicked: { if(statusrect.backend_loop) { 
+                                    onClicked: { if(statusrect.loop) { 
                                         console.log('unimplemented!')
-                                        //statusrect.backend_loop.doLoopAction(StatesAndActions.LoopActionType.DoPlaySoloInTrack, [0.0], true, true)
+                                        //statusrect.loop.doLoopAction(StatesAndActions.LoopActionType.DoPlaySoloInTrack, [0.0], true, true)
                                         }}
 
                                     ToolTip.delay: 1000
@@ -388,9 +398,9 @@ Item {
                                         text_color: Material.foreground
                                         text: "FX"
                                     }
-                                    onClicked: { if(statusrect.backend_loop) { 
+                                    onClicked: { if(statusrect.loop) { 
                                         console.log('unimplemented!')
-                                        //statusrect.backend_loop.doLoopAction(StatesAndActions.LoopActionType.DoPlayLiveFX, [0.0], true, true)
+                                        //statusrect.loop.doLoopAction(StatesAndActions.LoopActionType.DoPlayLiveFX, [0.0], true, true)
                                     }}
 
                                     ToolTip.delay: 1000
@@ -414,8 +424,8 @@ Item {
                         color: 'red'
                     }
 
-                    onClicked: { if(statusrect.backend_loop) {
-                        statusrect.backend_loop.record(0, true);
+                    onClicked: { if(statusrect.loop) {
+                        statusrect.loop.record(0, true);
                     }}
 
                     ToolTip.delay: 1000
@@ -475,32 +485,32 @@ Item {
                                         name: 'record'
                                         color: 'red'
                                         text_color: Material.foreground
-                                        text: widget.targeted_backend_loop !== undefined ? "->" : recordN.n.toString()
+                                        text: widget.targeted_loop !== undefined ? "->" : recordN.n.toString()
                                         font.pixelSize: size / 2.0
                                     }
 
                                     function execute(n_cycles) {
-                                        if (statusrect && statusrect.backend_loop) {
+                                        if (statusrect && statusrect.loop) {
                                             console.log('unimplemented!')
-                                            //statusrect.backend_loop.doLoopAction(StatesAndActions.LoopActionType.DoRecordNCycles, [0.0, n_cycles], true, true)
+                                            //statusrect.loop.doLoopAction(StatesAndActions.LoopActionType.DoRecordNCycles, [0.0, n_cycles], true, true)
                                         }
                                     }
 
                                     onClicked: {
-                                        if (widget.targeted_backend_loop === undefined) {
+                                        if (widget.targeted_loop === undefined) {
                                             execute(n)
                                         } else {
                                             // A target loop is set. Do the "record together with" functionality.
                                             // TODO: code is duplicated in app shared state for MIDI source
                                             var n_cycles_delay = 0
                                             var n_cycles_record = 1
-                                            n_cycles_record = Math.ceil(widget.targeted_backend_loop.length / widget.master_backend_loop.length)
-                                            if (State_helpers.is_playing_state(widget.targeted_backend_loop.mode)) {
-                                                var current_cycle = Math.floor(widget.targeted_backend_loop.position / widget.master_backend_loop.length)
+                                            n_cycles_record = Math.ceil(widget.targeted_loop.length / widget.master_loop.length)
+                                            if (State_helpers.is_playing_state(widget.targeted_loop.mode)) {
+                                                var current_cycle = Math.floor(widget.targeted_loop.position / widget.master_loop.length)
                                                 n_cycles_delay = Math.max(0, n_cycles_record - current_cycle - 1)
                                             }
                                             console.log('unimplemented!')
-                                            //statusrect.backend_loop.doLoopAction(StatesAndActions.LoopActionType.DoRecordNCycles, [n_cycles_delay, n_cycles_record], true, true)
+                                            //statusrect.loop.doLoopAction(StatesAndActions.LoopActionType.DoRecordNCycles, [n_cycles_delay, n_cycles_record], true, true)
                                         }
                                     }
                                     onPressAndHold: { recordn_menu.popup() }
@@ -557,11 +567,11 @@ Item {
                                         text_color: Material.foreground
                                         text: "FX"
                                     }
-                                    onClicked: { if(statusrect.backend_loop) {
+                                    onClicked: { if(statusrect.loop) {
                                         var n = widget.n_multiples_of_master_length
                                         var delay = widget.n_multiples_of_master_length - widget.current_cycle - 1
                                         console.log('unimplemented!')
-                                        //statusrect.backend_loop.doLoopAction(StatesAndActions.LoopActionType.DoReRecordFX,
+                                        //statusrect.loop.doLoopAction(StatesAndActions.LoopActionType.DoReRecordFX,
                                         //    [delay, n],
                                         //    true, true)
                                     }}
@@ -587,8 +597,8 @@ Item {
                         color: Material.foreground
                     }
 
-                    onClicked: { if(statusrect.backend_loop) {
-                        statusrect.backend_loop.stop(0, true)
+                    onClicked: { if(statusrect.loop) {
+                        statusrect.loop.stop(0, true)
                     }}
 
                     ToolTip.delay: 1000
@@ -626,13 +636,13 @@ Item {
 
                     onMoved: {
                         convert_volume.dB = volume_dial.value
-                        statusrect.backend_loop.volume = convert_volume.linear
+                        statusrect.loop.volume = convert_volume.linear
                     }
 
                     Connections {
-                        target: statusrect.backend_loop
+                        target: statusrect.loop
                         function onVolumeChanged() {
-                            convert_volume.linear = statusrect.backend_loop.volume
+                            convert_volume.linear = statusrect.loop.volume
                             volume_dial.value = convert_volume.dB
                         }
                     }
@@ -658,11 +668,11 @@ Item {
 
     component LoopProgressRect : Item {
         id: loopprogressrect
-        property var backend_loop
+        property var loop
 
         Rectangle {
             function getRightMargin() {
-                var st = loopprogressrect.backend_loop
+                var st = loopprogressrect.loop
                 if(st && st.length && st.length > 0) {
                     return (1.0 - (st.position / st.length)) * parent.width
                 }
@@ -675,11 +685,11 @@ Item {
             }
             color: {
                 var default_color = '#444444'
-                if (!loopprogressrect.backend_loop) {
+                if (!loopprogressrect.loop) {
                     return default_color;
                 }
 
-                switch(loopprogressrect.backend_loop.mode) {
+                switch(loopprogressrect.loop.mode) {
                 case Types.LoopMode.Playing:
                     return '#004400';
                 case Types.LoopMode.PlayingLiveFX:
@@ -803,7 +813,7 @@ Item {
             y: (parent.height-height) / 2
 
             onAcceptedClickTrack: (filename) => {
-                                    widget.backend_loop.load_audio_file(filename)
+                                    widget.maybe_loop.load_audio_file(filename)
                                   }
         }
 
@@ -863,8 +873,8 @@ Item {
             MenuItem {
                 text: "Clear"
                 onClicked: () => {
-                    if (widget.backend_loop) {
-                        widget.backend_loop.clear(0);
+                    if (widget.maybe_loop) {
+                        widget.maybe_loop.clear(0);
                     }
                 }
             }
@@ -883,8 +893,8 @@ Item {
             property bool save_wet: true
             onAccepted: {
                 var filename = selectedFile.toString().replace('file://', '');
-                if (savedialog.save_wet) { widget.backend_loop.doSaveWetToSoundFile(filename) }
-                else { widget.backend_loop.doSaveDryToSoundFile(filename) }
+                if (savedialog.save_wet) { widget.maybe_loop.doSaveWetToSoundFile(filename) }
+                else { widget.maybe_loop.doSaveDryToSoundFile(filename) }
             }
         }
 
@@ -896,7 +906,7 @@ Item {
             defaultSuffix: 'mid'
             onAccepted: {
                 var filename = selectedFile.toString().replace('file://', '');
-                widget.backend_loop.doSaveMidiFile(filename)
+                widget.maybe_loop.doSaveMidiFile(filename)
             }
         }
 
@@ -907,7 +917,7 @@ Item {
             nameFilters: ["WAV files (*.wav)"]
             onAccepted: {
                 var filename = selectedFile.toString().replace('file://', '');
-                widget.backend_loop.load_audio_file(filename, false, 0)
+                widget.maybe_loop.load_audio_file(filename, false, 0)
             }
         }
 
@@ -918,7 +928,7 @@ Item {
             nameFilters: ["Midi files (*.mid)"]
             onAccepted: {
                 var filename = selectedFile.toString().replace('file://', '');
-                widget.backend_loop.doLoadMidiFile(filename)
+                widget.maybe_loop.doLoadMidiFile(filename)
             }
         }
 
@@ -929,7 +939,7 @@ Item {
 
     component LooperManagerDetails : Item {
         id: looper_details
-        property var backend_loop
+        property var loop
         property string title
 
         width: childrenRect.width
@@ -945,14 +955,14 @@ Item {
                 Row {
                     spacing: 5
                     StatusRect {
-                        backend_loop: looper_details.backend_loop
+                        loop: looper_details.loop
                     }
                     Grid {
                         columns: 4
                         spacing: 3
                         horizontalItemAlignment: Grid.AlignRight
                         Text { text: 'vol:'; color: Material.foreground }
-                        Text { text:  'unimplemented' /*backend_loop ? looper_details.backend_loop.volume.toFixed(2) : ""*/; color: Material.foreground }
+                        Text { text:  'unimplemented' /*loop ? looper_details.loop.volume.toFixed(2) : ""*/; color: Material.foreground }
                     }
                     Item {
                         id: children_placeholder
@@ -973,7 +983,7 @@ Item {
     }
 
     component DetailsWindow : ApplicationWindow {
-        property var backend_loop
+        property var loop
         id: window
         title: widget.internal_name + ' details'
 
@@ -994,7 +1004,7 @@ Item {
 
             BackendLooperManagerDetails {
                 title: "Overall loop"
-                backend_loop: window.backend_loop
+                loop: window.loop
             }
 
             Item {
@@ -1007,9 +1017,9 @@ Item {
                     id: waveform
                     waveform_data_max: 1.0
                     min_db: -50.0
-                    backend_loop: window.backend_loop
-                    samples_per_waveform_pixel: backend_loop.length / width
-                    length_samples: backend_loop.length
+                    backend_loop: window.loop
+                    samples_per_waveform_pixel: loop.length / width
+                    length_samples: loop.length
                     anchors.fill: parent
 
                     Connections {
@@ -1020,18 +1030,18 @@ Item {
                     }
 
                     Connections {
-                        target: backend_loop
+                        target: loop
                         
                         // TODO the triggering
                         function maybe_update() {
                             if (window.visible &&
-                                !ModeHelpers.is_recording_state(backend_loop.mode)) {
+                                !ModeHelpers.is_recording_state(loop.mode)) {
                                     waveform.update_data()
                                 }
                         }
                         function onStateChanged() {
                             maybe_update()
-                            waveform.recording = ModeHelpers.is_recording_state(backend_loop.mode)
+                            waveform.recording = ModeHelpers.is_recording_state(loop.mode)
                         }
                         function onLengthChanged() { maybe_update() }
                     }

@@ -46,26 +46,13 @@ ApplicationWindow {
             output_name_hint: 'midi_out'
         }
 
-        Loop {
-            id: loop
-            LoopAudioChannel {
-                ports: audio_ports_l.ports
-            }
-            LoopAudioChannel {
-                ports: audio_ports_r.ports
-            }
-            LoopMidiChannel {
-                ports: midi_ports.ports
-            }
+        LoopWidget {
+            is_in_hovered_scene: false
+            is_in_selected_scene: false
+            name: "Loop"
+            master_loop: null
+            targeted_loop: null
+            direct_port_pairs: [audio_ports_l, audio_ports_r, midi_ports]
         }
-    }
-
-    LoopWidget {
-        is_in_hovered_scene: false
-        is_in_selected_scene: false
-        name: "Loop"
-        backend_loop: loop
-        master_loop: null
-        targeted_loop: null
     }
 }

@@ -25,8 +25,8 @@ class Loop(QQuickItem):
         self._backend_loop = backend.create_loop()
         self._position = 0
         self._mode = backend.LoopMode.Unknown.value
-        self._next_mode = None
-        self._next_transition_delay = None
+        self._next_mode = backend.LoopMode.Unknown.value
+        self._next_transition_delay = -1
         self._length = 0
         self.update()
 
@@ -65,14 +65,14 @@ class Loop(QQuickItem):
         self._backend_loop.set_position(position)
 
     # next_mode: first upcoming mode change
-    nextModeChanged = pyqtSignal('QVariant')
-    @pyqtProperty('QVariant', notify=nextModeChanged)
+    nextModeChanged = pyqtSignal(int)
+    @pyqtProperty(int, notify=nextModeChanged)
     def next_mode(self):
         return self._next_mode
     
     # next_mode: first upcoming mode change
-    nextTransitionDelayChanged = pyqtSignal('QVariant')
-    @pyqtProperty('QVariant', notify=nextTransitionDelayChanged)
+    nextTransitionDelayChanged = pyqtSignal(int)
+    @pyqtProperty(int, notify=nextTransitionDelayChanged)
     def next_transition_delay(self):
         return self._next_transition_delay
     
@@ -109,8 +109,8 @@ class Loop(QQuickItem):
         self._mode = state.mode
         self._length = state.length
         self._position = state.position
-        self._next_mode = state.maybe_next_mode
-        self._next_transition_delay = state.maybe_next_delay
+        self._next_mode = state.maybe_next_mode or state.mode
+        self._next_transition_delay = state.maybe_next_delay or -1
 
         if prev_mode != self._mode:
             self.modeChanged.emit(self._mode)
