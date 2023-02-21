@@ -38,7 +38,7 @@ Item {
         color: 'green'
         width: 2
         height: widget.height
-        x: widget.backend_loop.position / widget.backend_loop.length * widget.width
+        x: widget.backend_loop ? widget.backend_loop.position / widget.backend_loop.length * widget.width : 0
         y: 0
     }
 

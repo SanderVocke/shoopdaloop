@@ -81,7 +81,10 @@ Item {
         width: loop.width
         height: loop.height
 
-        color: (loop && loop.length == 0) ? Material.background : '#000044'
+        color: {
+            console.log('TEST', loop, loop.length)
+            return (loop.length > 0) ? '#000044' : Material.background
+        }
         border.color: {
             var default_color = 'grey'
             if (!statusrect.loop) {
