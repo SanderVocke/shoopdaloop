@@ -44,7 +44,6 @@ ApplicationWindow {
         Loop {
             id: loop
             LoopAudioChannel {
-                loop: loop
                 ports: audio_ports.ports
             }
             LoopMidiChannel {

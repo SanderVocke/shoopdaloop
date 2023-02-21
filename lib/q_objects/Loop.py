@@ -158,11 +158,11 @@ class Loop(QQuickItem):
         if sound_channels is not None:
             self.stop(0, False)
             self.set_position(0)
-            if len(sound_channels) != len(self.audio_channels):
+            if len(sound_channels) != len(self.audio_channels()):
                 print ("Loaded {} channels but loop has {} channels. Assigning data to channels in round-robin fashion."
-                    .format(len(sound_channels), len(self.audio_channels)))
-            for idx in range(len(self.audio_channels)):
-                self.audio_channels[idx].load_data(sound_channels[idx % len(sound_channels)])
+                    .format(len(sound_channels), len(self.audio_channels())))
+            for idx in range(len(self.audio_channels())):
+                self.audio_channels()[idx].load_data(sound_channels[idx % len(sound_channels)])
             self.set_length(len(sound_channels[0]))
     
     @pyqtSlot(str, bool, int)

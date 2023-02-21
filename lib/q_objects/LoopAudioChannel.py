@@ -28,6 +28,11 @@ class LoopAudioChannel(QQuickItem):
         self._loop = None
         self._connected_ports = []
         self._ports = []
+
+        def maybe_use_parent(p):
+            if p and p.inherits('Loop') and self._loop == None:
+                self.loop = p
+        self.parentChanged.connect(lambda p: maybe_use_parent(p))
     
     def maybe_initialize(self):
         if self._loop and not self._backend_obj:
