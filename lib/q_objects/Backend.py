@@ -12,6 +12,7 @@ sys.path.append('../..')
 import lib.backend as backend
 from lib.q_objects.AudioPort import AudioPort
 from lib.q_objects.MidiPort import MidiPort
+from lib.findChildItems import findChildItems
 
 # Wraps the back-end.
 class Backend(QQuickItem):
@@ -68,7 +69,7 @@ class Backend(QQuickItem):
     @pyqtSlot()
     def doUpdate(self):
         from lib.q_objects.Loop import Loop
-        for loop in self.findChildren(Loop):
+        for loop in findChildItems(self, lambda c: isinstance(c, Loop)):
             loop.update()
         self.update.emit()
     

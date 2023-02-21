@@ -12,6 +12,7 @@ import sys
 sys.path.append('../..')
 
 import lib.backend as backend
+from lib.findFirstParent import findFirstParent
 import lib.q_objects.Loop as Loop
 
 # Wraps a back-end loop channel.
@@ -23,10 +24,9 @@ class LoopChannel(QQuickItem):
         self._connected_ports = []
         self._ports = []
 
-        def maybe_use_parent(p):
-            if p and p.inherits('Loop') and self._loop == None:
-                self.loop = p
-        self.parentChanged.connect(lambda p: maybe_use_parent(p))
+        self.rescan_parents()
+        if not self._loop:
+            self.parentChanged.connect(self.rescan_parents)
     
     def maybe_initialize(self):
         raise Exception("Unimplemented for base class")
@@ -48,7 +48,7 @@ class LoopChannel(QQuickItem):
         return self._loop
     @loop.setter
     def loop(self, l):
-        if l != self._loop:
+        if l and l != self._loop:
             if self._loop or self._backend_obj:
                 raise Exception('May not change loop of existing channel')
             self._loop = l
@@ -117,3 +117,9 @@ class LoopChannel(QQuickItem):
     def close(self):
         self._backend_obj.destroy()
         self._backend_obj = None
+    
+    @pyqtSlot()
+    def rescan_parents(self):
+        maybe_loop = findFirstParent(self, lambda p: p and isinstance(p, QObject) and p.inherits('Loop') and self._loop == None)
+        if maybe_loop:
+            self.loop = maybe_loop

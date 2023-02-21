@@ -103,4 +103,5 @@ class Port(QQuickItem):
             if self._name_hint != '' and not self._backend_obj:
                 self.maybe_initialize_impl(self._name_hint, direction)
                 if self._backend_obj:
+                    self._initialized = True
                     self.initializedChanged.emit(True)

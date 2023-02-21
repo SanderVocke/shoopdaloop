@@ -45,6 +45,7 @@ Item {
         id: loop
 
         PortChannelRouter {
+            loop: loop.maybe_loop
             direct_port_pairs: widget.direct_port_pairs
             dry_port_pairs: widget.dry_port_pairs
             wet_port_pairs: widget.wet_port_pairs
