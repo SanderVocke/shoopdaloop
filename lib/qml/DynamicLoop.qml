@@ -14,6 +14,7 @@ Item {
     default property alias contents : children_holder.children
 
     function load() {
+        console.log('load')
         loader.active = true
     }
 
@@ -48,6 +49,7 @@ Item {
     }
 
     function record(delay, wait_for_soft_sync) {
+        console.log('record')
         load()
         loader.item.record(delay, wait_for_soft_sync)
     }

@@ -10,18 +10,14 @@ Item {
     id: track
 
     property int num_slots
-
     property var master_loop   // LoopWidget
     property var targeted_loop // LoopWidget
-
-    //FIXME: property var ports_manager
 
     property string name: ''
     property bool name_editable: true
 
-    // Array of LoopWidget
-    property var loops_of_selected_scene: []
-    property var loops_of_hovered_scene:  []
+    property list<LoopWidget> loops_of_selected_scene: []
+    property list<LoopWidget> loops_of_hovered_scene:  []
 
     width: childrenRect.width
     height: childrenRect.height
@@ -44,6 +40,33 @@ Item {
                 on_other_loop_fn(mgr)
             }
         }
+    }
+
+    // TODO: make ports dynamic
+    AudioPortPair {
+        id: dry_audio_l
+        input_name_hint: 'audio_in_l'
+        output_name_hint: 'audio_send_l'
+    }
+    AudioPortPair {
+        id: dry_audio_r
+        input_name_hint: 'audio_in_r'
+        output_name_hint: 'audio_send_r'
+    }
+    MidiPortPair {
+        id: dry_midi
+        input_name_hint: 'midi_in'
+        output_name_hint: 'midi_send'
+    }
+    AudioPortPair {
+        id: wet_audio_l
+        input_name_hint: 'audio_return_l'
+        output_name_hint: 'audio_out_l'
+    }
+    AudioPortPair {
+        id: wet_audio_r
+        input_name_hint: 'audio_return_r'
+        output_name_hint: 'audio_out_r'
     }
 
     Rectangle {
@@ -76,29 +99,30 @@ Item {
                 }
 
                 Repeater {
-                    model: track.num_loops
+                    model: track.num_slots
                     id: loops
                     width: childrenRect.width
                     height: childrenRect.height
 
                     LoopWidget {
                         id: lwidget
+                        //name: track.loop_names[index]
+                        //is_in_selected_scene: track.loops_of_selected_scene.includes(index)
+                        //is_in_hovered_scene: track.loops_of_hovered_scene.includes(index)
+                        name: 'Loop ' + (index+1).toString()
 
-                        is_master: track.maybe_master_loop_idx === index
-                        is_in_selected_scene: track.loops_of_selected_scene.includes(index)
-                        is_in_hovered_scene: track.loops_of_hovered_scene.includes(index)
-                        manager: track.loop_managers[index]
-                        master_manager : track.master_loop_manager
-                        targeted_loop_manager: track.targeted_loop_manager
-                        ports_manager: track.ports_manager
-                        name: track.loop_names[index]
-                        internal_name: track.name + ' loop ' + (index+1).toString()
+                        master_loop: null
+                        targeted_loop: null
 
-                        onToggle_in_current_scene: () => { track.toggle_loop_in_scene(index) }
-                        onRequest_rename: (name) => { track.request_rename_loop(index, name) }
-                        onRequest_clear: () => { track.request_clear_loop(index) }
-                        onRequest_toggle_selected: () => { track.request_toggle_loop_selected(index) }
-                        onRequest_set_as_targeted: () => { track.request_set_targeted_loop(index) }
+                        direct_port_pairs: []
+                        dry_port_pairs: [ dry_audio_l, dry_audio_r, dry_midi ]
+                        wet_port_pairs: [ wet_audio_l, wet_audio_r ]
+
+                        //onToggle_in_current_scene: () => { track.toggle_loop_in_scene(index) }
+                        //onRequest_rename: (name) => { track.request_rename_loop(index, name) }
+                        //onRequest_clear: () => { track.request_clear_loop(index) }
+                        //onRequest_toggle_selected: () => { track.request_toggle_loop_selected(index) }
+                        //onRequest_set_as_targeted: () => { track.request_set_targeted_loop(index) }
                     }
                 }
 
@@ -110,8 +134,8 @@ Item {
                 TrackControlWidget {
                     id: trackctlwidget
 
-                    muted: track.active_loop_state === StatesAndActions.LoopMode.Muted
-                    ports_manager: track.ports_manager
+                    //muted: track.active_loop_state === StatesAndActions.LoopMode.Muted
+                    //ports_manager: track.ports_manager
                 }
             }
         }

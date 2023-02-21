@@ -93,6 +93,7 @@ class Loop(QQuickItem):
     # Update mode from the back-end.
     @pyqtSlot()
     def update(self):
+        print('update!')
         for channel in self.audio_channels():
             channel.update()
         for channel in self.midi_channels():
