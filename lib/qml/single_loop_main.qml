@@ -3,9 +3,6 @@ import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
 import QtQuick.Dialogs
 
-import Backend
-import BackendLoop
-
 ApplicationWindow {
     visible: true
     width: 1200
@@ -27,13 +24,31 @@ ApplicationWindow {
         onClicked: () => { forceActiveFocus() }
     }
 
+    Backend {
+        client_name_hint: "single_loop"
+        update_interval_ms: 30
+
+        Loop {
+            id: loop
+
+            LoopAudioChannel {
+            }
+            LoopMidiChannel {
+            }
+        }
+
+        AudioPortPair {
+            input_name_hint: 'audio_in'
+            output_name_hint: 'audio_out'
+        }
+    }
+
     LoopWidget {
         is_in_hovered_scene: false
         is_in_selected_scene: false
         name: "Loop"
-        objectName: 'loop'
-        backend_loop: backend.create_loop()
-        master_loop: null
+        backend_loop: loop
+        master_loop: loop
         targeted_loop: null
     }
 }

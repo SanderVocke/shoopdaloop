@@ -11,24 +11,23 @@ sys.path.append('../..')
 
 import lib.backend as backend
 from lib.mode_helpers import is_playing_mode
-from lib.q_objects.BackendLoopAudioChannel import BackendLoopAudioChannel
-from lib.q_objects.BackendLoopMidiChannel import BackendLoopMidiChannel
 from lib.sound_file_io import load_audio_file
 
 # Wraps a back-end loop.
-class BackendLoop(QObject):
+class Loop(QObject):
     # Other signals
     cycled = pyqtSignal()
     passed_halfway = pyqtSignal()
 
-    def __init__(self, backend_loop : Type[backend.BackendLoop], parent=None):
-        super(BackendLoop, self).__init__(parent)
-        self._length = 1.0
-        self._position = 0.0
+    def __init__(self, parent=None):
+        super(Loop, self).__init__(parent)
+        self._backend_loop = backend.create_loop()
+        self._position = 0
         self._mode = backend.LoopMode.Unknown.value
         self._next_mode = None
         self._next_transition_delay = None
-        self._backend_loop = backend_loop
+        self._length = 0
+        self.update()
 
     ######################
     # PROPERTIES
@@ -44,9 +43,9 @@ class BackendLoop(QObject):
     def set_mode(self, mode):
         self._backend_loop.set_mode(mode)
 
-    # length: loop length in seconds
-    lengthChanged = pyqtSignal(float)
-    @pyqtProperty(float, notify=lengthChanged)
+    # length: loop length in samples
+    lengthChanged = pyqtSignal(int)
+    @pyqtProperty(int, notify=lengthChanged)
     def length(self):
         return self._length
     # Indirect setter via back-end
@@ -54,11 +53,12 @@ class BackendLoop(QObject):
     def set_length(self, length):
         self._backend_loop.set_length(length)
 
-    # position: loop playback position in seconds
-    positionChanged = pyqtSignal(float)
-    @pyqtProperty(float, notify=positionChanged)
+    # position: loop playback position in samples
+    positionChanged = pyqtSignal(int)
+    @pyqtProperty(int, notify=positionChanged)
     def position(self):
         return self._position
+    # Indirect setter via back-end
     @pyqtSlot(int)
     def set_position(self, position):
         self._backend_loop.set_position(position)
@@ -75,31 +75,29 @@ class BackendLoop(QObject):
     def next_transition_delay(self):
         return self._next_transition_delay
     
-    # audio_channels: audio channel objects associated with this loop
-    audioChannelsChanged = pyqtSignal('QVariant')
-    @pyqtProperty('QVariant', notify=audioChannelsChanged)
-    def audio_channels(self):
-        return self.findChildren(BackendLoopAudioChannel)
-    
-    # audio_channels: audio channel objects associated with this loop
-    midiChannelsChanged = pyqtSignal('QVariant')
-    @pyqtProperty('QVariant', notify=midiChannelsChanged)
-    def midi_channels(self):
-        return self.findChildren(BackendLoopMidiChannel)
-    
     ###########
     ## SLOTS
     ###########
 
+    @pyqtSlot(result=list)
+    def audio_channels(self):
+        import lib.q_objects.LoopAudioChannel as LoopAudioChannel
+        return self.findChildren(LoopAudioChannel.LoopAudioChannel)
+    
+    @pyqtSlot(result=list)
+    def midi_channels(self):
+        import lib.q_objects.LoopMidiChannel as LoopMidiChannel
+        return self.findChildren(LoopMidiChannel.LoopMidiChannel)
+
     # Update mode from the back-end.
     @pyqtSlot()
     def update(self):
-        for channel in self.findChildren(BackendLoopAudioChannel):
+        for channel in self.audio_channels():
             channel.update()
-        for channel in self.findChildren(BackendLoopMidiChannel):
+        for channel in self.midi_channels():
             channel.update()
 
-        prev_before_halway = (self.length > 0 and self.position < self.length/2)
+        prev_before_halway = (self._length > 0 and self._position < self._length/2)
         prev_position = self._position
         prev_mode = self._mode
         prev_length = self._length
@@ -146,17 +144,13 @@ class BackendLoop(QObject):
     def clear(self, length):
         self._backend_loop.clear(length)
     
-    @pyqtSlot(result=BackendLoopAudioChannel)
+    @pyqtSlot(result=backend.BackendLoopMidiChannel)
     def add_audio_channel(self, enabled):
-        r = BackendLoopAudioChannel(self._backend_loop.add_audio_channel(enabled), self)
-        self.audioChannelsChanged.emit(self.audio_channels)
-        return r
+        return self._backend_loop.add_audio_channel(enabled)
     
-    @pyqtSlot(result=BackendLoopMidiChannel)
+    @pyqtSlot(result=backend.BackendLoopMidiChannel)
     def add_midi_channel(self, enabled):
-        r = BackendLoopMidiChannel(self._backend_loop.add_midi_channel(enabled), self)
-        self.midiChannelsChanged.emit(self.midi_channels)
-        return r
+        return self._backend_loop.add_midi_channel(enabled)
     
     @pyqtSlot(list)
     def load_audio_data(self, sound_channels):
