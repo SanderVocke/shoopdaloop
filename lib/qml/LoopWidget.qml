@@ -415,7 +415,6 @@ Item {
                     }
 
                     onClicked: { if(statusrect.backend_loop) {
-                        console.log("RECORD: ", statusrect.backend_loop)
                         statusrect.backend_loop.record(0, true);
                     }}
 

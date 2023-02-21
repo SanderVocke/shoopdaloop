@@ -1,4 +1,5 @@
 from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot, QTimer
+from PyQt6.QtQuick import QQuickItem
 from .AudioPort import AudioPort
 import re
 import time
@@ -14,7 +15,7 @@ import lib.backend as backend
 import lib.q_objects.Loop as Loop
 
 # Wraps a back-end loop audio channel.
-class LoopAudioChannel(QObject):
+class LoopAudioChannel(QQuickItem):
     # Other signals
     cycled = pyqtSignal()
     passed_halfway = pyqtSignal()
@@ -136,7 +137,7 @@ class LoopAudioChannel(QObject):
     @pyqtSlot()
     def update(self):
         if not self._backend_obj:
-            raise Exception("Attempting to update an invalid audio channel.")
+            return
         state = self._backend_obj.get_state()
 
         if state.output_peak != self._output_peak:

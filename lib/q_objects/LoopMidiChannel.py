@@ -1,4 +1,5 @@
 from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot, QTimer
+from PyQt6.QtQuick import QQuickItem
 from .MidiPort import MidiPort
 import re
 import time
@@ -14,7 +15,7 @@ import lib.backend as backend
 import lib.q_objects.Loop as Loop
 
 # Wraps a back-end loop midi channel.
-class LoopMidiChannel(QObject):
+class LoopMidiChannel(QQuickItem):
     # Other signals
     cycled = pyqtSignal()
     passed_halfway = pyqtSignal()
@@ -66,7 +67,7 @@ class LoopMidiChannel(QObject):
     @pyqtSlot()
     def update(self):
         if not self._backend_obj:
-            raise Exception("Attempting to update an invalid Midi channel.")
+            return
         state = self._backend_obj.get_state()
 
         if state.n_events_triggered != self._n_events_triggered:

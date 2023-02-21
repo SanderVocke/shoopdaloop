@@ -1,4 +1,5 @@
 from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot, QTimer
+from PyQt6.QtQuick import QQuickItem
 import re
 import time
 import os
@@ -12,7 +13,7 @@ sys.path.append('../..')
 import lib.backend as backend
 
 # Wraps a back-end port.
-class MidiPort(QObject):
+class MidiPort(QQuickItem):
     def __init__(self, parent=None):
         super(MidiPort, self).__init__(parent)
         self._n_events_triggered = 0

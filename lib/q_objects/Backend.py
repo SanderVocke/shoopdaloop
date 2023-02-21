@@ -1,4 +1,5 @@
 from PyQt6.QtCore import Qt, QObject, pyqtSignal, pyqtProperty, pyqtSlot, QTimer
+from PyQt6.QtQuick import QQuickItem
 import re
 import time
 import os
@@ -13,10 +14,10 @@ from lib.q_objects.AudioPort import AudioPort
 from lib.q_objects.MidiPort import MidiPort
 
 # Wraps the back-end.
-class Backend(QObject):
+class Backend(QQuickItem):
     def __init__(self, client_name_hint : str, parent=None):
         super(Backend, self).__init__(parent)
-        self._update_interval_ms = 100
+        self._update_interval_ms = 0
         self._timer = None
         self._initialized = False
         self._client_name_hint = ""
@@ -34,6 +35,7 @@ class Backend(QObject):
     @update_interval_ms.setter
     def update_interval_ms(self, u):
         if u != self._update_interval_ms:
+            self._update_interval_ms = u
             if self._timer:
                 self._timer.destroy()
                 self._timer = None
@@ -65,7 +67,8 @@ class Backend(QObject):
 
     @pyqtSlot()
     def doUpdate(self):
-        for loop in self.findChildren(QObject, 'Loop'):
+        from lib.q_objects.Loop import Loop
+        for loop in self.findChildren(Loop):
             loop.update()
         self.update.emit()
     

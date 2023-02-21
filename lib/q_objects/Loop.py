@@ -1,4 +1,5 @@
 from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot, QTimer
+from PyQt6.QtQuick import QQuickItem
 import re
 import time
 import os
@@ -14,7 +15,7 @@ from lib.mode_helpers import is_playing_mode
 from lib.sound_file_io import load_audio_file
 
 # Wraps a back-end loop.
-class Loop(QObject):
+class Loop(QQuickItem):
     # Other signals
     cycled = pyqtSignal()
     passed_halfway = pyqtSignal()
@@ -92,7 +93,6 @@ class Loop(QObject):
     # Update mode from the back-end.
     @pyqtSlot()
     def update(self):
-        print("update loop")
         for channel in self.audio_channels():
             channel.update()
         for channel in self.midi_channels():
