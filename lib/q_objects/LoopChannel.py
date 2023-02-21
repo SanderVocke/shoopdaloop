@@ -1,0 +1,119 @@
+from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot, QTimer
+from PyQt6.QtQuick import QQuickItem
+from .AudioPort import AudioPort
+import re
+import time
+import os
+import tempfile
+import json
+from typing import *
+
+import sys
+sys.path.append('../..')
+
+import lib.backend as backend
+import lib.q_objects.Loop as Loop
+
+# Wraps a back-end loop channel.
+class LoopChannel(QQuickItem):
+    def __init__(self, parent=None):
+        super(LoopChannel, self).__init__(parent)
+        self._backend_obj = None        
+        self._loop = None
+        self._connected_ports = []
+        self._ports = []
+
+        def maybe_use_parent(p):
+            if p and p.inherits('Loop') and self._loop == None:
+                self.loop = p
+        self.parentChanged.connect(lambda p: maybe_use_parent(p))
+    
+    def maybe_initialize(self):
+        raise Exception("Unimplemented for base class")
+
+    ######################
+    # PROPERTIES
+    ######################
+
+    # initialized
+    initializedChanged = pyqtSignal(bool)
+    @pyqtProperty(bool, notify=initializedChanged)
+    def initialized(self):
+        return bool(self._backend_obj)
+
+    # loop
+    loopChanged = pyqtSignal(Loop.Loop)
+    @pyqtProperty(Loop.Loop, notify=loopChanged)
+    def loop(self):
+        return self._loop
+    @loop.setter
+    def loop(self, l):
+        if l != self._loop:
+            if self._loop or self._backend_obj:
+                raise Exception('May not change loop of existing channel')
+            self._loop = l
+            self.maybe_initialize()
+    
+    # connected ports
+    connectedPortsChanged = pyqtSignal(list)
+    @pyqtProperty(list, notify=connectedPortsChanged)
+    def connected_ports(self):
+        return self._connected_ports
+    
+    # ports to connect
+    portsChanged = pyqtSignal(list)
+    @pyqtProperty(list, notify=portsChanged)
+    def ports(self):
+        return self._ports
+    @ports.setter
+    def ports(self, p):
+        for port in self._connected_ports:
+            if not port in p:
+                self.disconnect(port)
+        for port in p:
+            if not port in self._connected_ports:
+                self.connect(port)
+        self._ports = p
+    
+    ######################
+    # SLOTS
+    ######################
+
+    @pyqtSlot()
+    def initialize(self):
+        self.maybe_initialize()
+
+    @pyqtSlot('QVariant')
+    def connect(self, port):
+        if not self._backend_obj:
+            self.initializedChanged.connect(lambda: self.connect(port))
+        elif not port.initialized:
+            port.initializedChanged.connect(lambda: self.connect(port))
+        elif port not in self._connected_ports:
+            backend_channel = self._backend_obj
+            backend_port = port.get_backend_obj()
+            backend_channel.connect(backend_port)
+            self._connected_ports.append(port)
+            self.connectedPortsChanged.emit(self._connected_ports)
+    
+    @pyqtSlot('QVariant')
+    def disconnect(self, port):
+        if not self._backend_obj:
+            self.initializedChanged.connect(lambda: self.disconnect(port))
+        elif not port.initialized:
+            port.initializedChanged.connect(lambda: self.disconnect(port))
+        elif port in self._connected_ports:
+            backend_channel = self._backend_obj
+            backend_port = port.get_backend_obj()
+            backend_channel.disconnect(backend_port)
+            self._connected_ports.remove(port)
+            self.connectedPortsChanged.emit(self._connected_ports)
+    
+    @pyqtSlot()
+    def update(self):
+        raise Exception("Unimplemented for base class")
+    
+    @pyqtSlot()
+    def close(self):
+        self._backend_obj.destroy()
+        self._backend_obj = None

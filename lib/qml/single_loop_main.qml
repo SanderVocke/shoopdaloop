@@ -31,9 +31,14 @@ ApplicationWindow {
         update_interval_ms: 30
 
         AudioPortPair {
-            id: audio_ports
-            input_name_hint: 'audio_in'
-            output_name_hint: 'audio_out'
+            id: audio_ports_l
+            input_name_hint: 'audio_in_l'
+            output_name_hint: 'audio_out_l'
+        }
+        AudioPortPair {
+            id: audio_ports_r
+            input_name_hint: 'audio_in_r'
+            output_name_hint: 'audio_out_r'
         }
         MidiPortPair {
             id: midi_ports
@@ -44,9 +49,13 @@ ApplicationWindow {
         Loop {
             id: loop
             LoopAudioChannel {
-                ports: audio_ports.ports
+                ports: audio_ports_l.ports
+            }
+            LoopAudioChannel {
+                ports: audio_ports_r.ports
             }
             LoopMidiChannel {
+                ports: midi_ports.ports
             }
         }
     }

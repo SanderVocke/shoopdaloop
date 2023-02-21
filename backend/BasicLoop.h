@@ -62,7 +62,7 @@ public:
     // We always assume that the POI has been properly updated by whatever calls were
     // made in the past. Simply return.
     std::optional<size_t> PROC_get_next_poi() const override {
-        return mp_next_poi ? mp_next_poi.value().when : (std::optional<size_t>)std::nullopt;
+        return mp_next_poi.has_value() ? mp_next_poi.value().when : (std::optional<size_t>)std::nullopt;
     }
 
     virtual void PROC_update_poi() {

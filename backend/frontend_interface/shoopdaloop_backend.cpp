@@ -15,6 +15,7 @@
 #include "SubloopInterface.h"
 #include "DecoupledMidiPort.h"
 #include "CommandQueue.h"
+#include "DummyMidiBufs.h"
 #include "process_loops.h"
 #include "types.h"
 
@@ -39,6 +40,7 @@ constexpr size_t gc_default_max_port_mappings = 8;
 constexpr size_t gc_default_max_midi_channels = 8;
 constexpr size_t gc_default_max_audio_channels = 8;
 constexpr size_t gc_decoupled_midi_port_queue_size = 256;
+constexpr size_t gc_default_audio_dummy_buffer_size = 16384;
 }
 
 // FORWARD DECLARATIONS
@@ -78,6 +80,10 @@ std::shared_ptr<AudioBufferPool> g_audio_buffer_pool;
 std::vector<SharedLoopInfo> g_loops;
 std::vector<SharedPortInfo> g_ports;
 std::vector<SharedDecoupledMidiPort> g_decoupled_midi_ports;
+std::vector<audio_sample_t> g_dummy_audio_input_buffer;
+std::vector<audio_sample_t> g_dummy_audio_output_buffer;
+std::shared_ptr<DummyReadMidiBuf> g_dummy_midi_input_buffer;
+std::shared_ptr<DummyWriteMidiBuf> g_dummy_midi_output_buffer;
 CommandQueue g_cmd_queue (gc_command_queue_size, 1000, 1000);
 }
 
@@ -295,14 +301,30 @@ void ChannelInfo::PROC_prepare_process_audio(size_t n_frames) {
         in_locked->PROC_update_audio_buffer_if_none(n_frames);
         auto chan = dynamic_cast<LoopAudioChannel*>(channel.get());
         chan->PROC_set_recording_buffer(in_locked->maybe_audio_buffer, n_frames);
+    } else {
+        if (g_dummy_audio_input_buffer.size() < n_frames*sizeof(audio_sample_t)) {
+            g_dummy_audio_input_buffer.resize(n_frames*sizeof(audio_sample_t));
+            memset((void*)g_dummy_audio_input_buffer.data(), 0, n_frames*sizeof(audio_sample_t));
+        }
+        auto chan = dynamic_cast<LoopAudioChannel*>(channel.get());
+        chan->PROC_set_recording_buffer(g_dummy_audio_input_buffer.data(), n_frames);
     }
+    size_t n_outputs_mapped = 0;
     for (auto &port : mp_output_port_mappings) {
         auto locked = port.lock();
         if (locked) {
             locked->PROC_update_audio_buffer_if_none(n_frames);
             auto chan = dynamic_cast<LoopAudioChannel*>(channel.get());
             chan->PROC_set_playback_buffer(locked->maybe_audio_buffer, n_frames);
+            n_outputs_mapped++;
         }
+    }
+    if (n_outputs_mapped == 0) {
+        if (g_dummy_audio_output_buffer.size() < n_frames*sizeof(audio_sample_t)) {
+            g_dummy_audio_output_buffer.resize(n_frames*sizeof(audio_sample_t));
+        }
+        auto chan = dynamic_cast<LoopAudioChannel*>(channel.get());
+        chan->PROC_set_playback_buffer(g_dummy_audio_output_buffer.data(), n_frames);
     }
 }
 
@@ -325,14 +347,22 @@ void ChannelInfo::PROC_prepare_process_midi(size_t n_frames) {
         in_locked->PROC_update_midi_input_buffer_if_none(n_frames);
         auto chan = dynamic_cast<LoopMidiChannel*>(channel.get());
         chan->PROC_set_recording_buffer(in_locked->maybe_midi_input_buffer.get(), n_frames);
+    } else {
+        auto chan = dynamic_cast<LoopMidiChannel*>(channel.get());
+        chan->PROC_set_recording_buffer(g_dummy_midi_input_buffer.get(), n_frames);
     }
+    size_t n_outputs_mapped = 0;
     for (auto &port : mp_output_port_mappings) {
         auto locked = port.lock();
+        auto chan = dynamic_cast<LoopMidiChannel*>(channel.get());
         if (locked) {
             locked->PROC_update_midi_output_buffer_if_none(n_frames);
-            auto chan = dynamic_cast<LoopMidiChannel*>(channel.get());
             chan->PROC_set_playback_buffer(locked->maybe_midi_output_buffer.get(), n_frames);
         }
+    }
+    if (n_outputs_mapped == 0) {
+        auto chan = dynamic_cast<LoopMidiChannel*>(channel.get());
+        chan->PROC_set_playback_buffer(g_dummy_midi_output_buffer.get(), n_frames);
     }
 }
 
@@ -565,6 +595,13 @@ void initialize (const char* client_name_hint) {
     g_loops.clear();
     g_ports.clear();
     g_decoupled_midi_ports.clear();
+
+    g_dummy_audio_input_buffer = std::vector<audio_sample_t>(gc_default_audio_dummy_buffer_size);
+    memset((void*)g_dummy_audio_input_buffer.data(), 0, sizeof(audio_sample_t) * g_dummy_audio_input_buffer.size());
+    g_dummy_audio_output_buffer = std::vector<audio_sample_t>(gc_default_audio_dummy_buffer_size);
+    memset((void*)g_dummy_audio_output_buffer.data(), 0, sizeof(audio_sample_t) * g_dummy_audio_output_buffer.size());
+    g_dummy_midi_input_buffer = std::make_shared<DummyReadMidiBuf>();
+    g_dummy_midi_output_buffer = std::make_shared<DummyWriteMidiBuf>();
 
     g_loops.reserve(gc_initial_max_loops);
     g_ports.reserve(gc_initial_max_ports);

@@ -119,6 +119,7 @@ class BackendLoopAudioChannel:
 
     def __del__(self):
         self.destroy()
+    
 class BackendLoopMidiChannel:
     def __init__(self, loop : 'BackendLoop', c_handle : 'POINTER(backend.shoopdaloop_loop_midi_channel_t)'):
         self.loop_shoop_c_handle = loop.c_handle()
