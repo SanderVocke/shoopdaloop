@@ -9,7 +9,7 @@ from backend.frontend_interface import shoopdaloop_backend as backend
 class LoopMode(Enum):
     Stopped = backend.Stopped
     Playing = backend.Playing
-    PlayingMuted = backend.PlayingMuted
+    PlayingMuted = -1000 #FIXME backend.PlayingMuted
     Recording = backend.Recording
     # Extended states for front-end
     Unknown = -1
@@ -29,13 +29,13 @@ class LoopMode(Enum):
     }
 
 class LoopActionType(Enum):
-    DoPlay = backend.DoPlay
-    DoPlayMuted = backend.DoPlayMuted
-    DoStop = backend.DoStop
-    DoRecord = backend.DoRecord
-    DoRecordNCycles = backend.DoRecordNCycles
-    DoClear = backend.DoClear
-    SetLoopVolume = backend.SetLoopVolume
+    DoPlay = 0
+    DoPlayMuted = 1
+    DoStop = 2
+    DoRecord = 3
+    DoRecordNCycles = 4
+    DoClear = 5
+    SetLoopVolume = 6
     # Extended actions for front-end
     DoPlayLiveFX = -1
     DoReRecordFX = -2
@@ -61,12 +61,12 @@ class LoopActionType(Enum):
     }
 
 class PortActionType(Enum):
-    DoMute = backend.DoMute
-    DoMuteInput = backend.DoMuteInput
-    DoUnmute = backend.DoUnmute
-    DoUnmuteInput = backend.DoUnmuteInput
-    SetPortVolume = backend.SetPortVolume
-    SetPortPassthrough = backend.SetPortPassthrough
+    DoMute = 0
+    DoMuteInput = 1
+    DoUnmute = 2
+    DoUnmuteInput = 3
+    SetPortVolume = 4
+    SetPortPassthrough = 5
 
     names = {
         DoMute: 'mute',

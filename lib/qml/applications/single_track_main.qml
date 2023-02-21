@@ -3,6 +3,8 @@ import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
 import QtQuick.Dialogs
 
+import ".."
+
 ApplicationWindow {
     visible: true
     width: 1200
@@ -11,7 +13,7 @@ ApplicationWindow {
     maximumHeight: height
     minimumWidth: width
     minimumHeight: height
-    title: "ShoopDaLoop Single Loop"
+    title: "ShoopDaLoop Single Track"
     id: appWindow
 
     Material.theme: Material.Dark
@@ -27,7 +29,7 @@ ApplicationWindow {
     Backend {
         id: backend
         
-        client_name_hint: "single_loop"
+        client_name_hint: "single_track"
         update_interval_ms: 30
 
         TrackWidget {

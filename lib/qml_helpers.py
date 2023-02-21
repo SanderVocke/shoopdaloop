@@ -11,6 +11,11 @@ from lib.q_objects.Loop import Loop
 from lib.q_objects.LoopAudioChannel import LoopAudioChannel
 from lib.q_objects.LoopMidiChannel import LoopMidiChannel
 from lib.q_objects.Backend import Backend
+from lib.q_objects.ClickTrackGenerator import ClickTrackGenerator
+#from lib.q_objects.MIDIControlManager import MIDIControlManager
+#from lib.q_objects.MIDIControlLink import MIDIControlLink
+#from lib.q_objects.MIDIControlDialect import MIDIControlDialect
+#from lib.q_objects.MIDIControlInputRule import MIDIControlInputRule
 
 def register_qml_class(t, name):
     qmlRegisterType(t, name, 1, 0, name)
@@ -21,5 +26,10 @@ def register_shoopdaloop_qml_classes():
     register_qml_class(Loop, 'Loop')
     register_qml_class(LoopAudioChannel, 'LoopAudioChannel')
     register_qml_class(LoopMidiChannel, 'LoopMidiChannel')
+    register_qml_class(ClickTrackGenerator, 'ClickTrackGenerator')
+    #register_qml_class(MIDIControlManager, 'MIDIControlManager')
+    #register_qml_class(MIDIControlLink, 'MIDIControlLink')
+    #register_qml_class(MIDIControlDialect, 'MIDIControlDialect')
+    #register_qml_class(MIDIControlInputRule, 'BacMIDIControlInputRulekend')
     register_qml_class(Backend, 'Backend')
 

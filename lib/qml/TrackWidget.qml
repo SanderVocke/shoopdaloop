@@ -10,8 +10,8 @@ Item {
     id: track
 
     property int num_slots
-    property var master_loop   // LoopWidget
-    property var targeted_loop // LoopWidget
+    property LoopWidget master_loop
+    property LoopWidget targeted_loop
 
     property string name: ''
     property bool name_editable: true

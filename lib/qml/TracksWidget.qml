@@ -8,27 +8,21 @@ Item {
     width: childrenRect.width
     height: childrenRect.height
 
-    property var track_names: []
-    property var loop_names: []
-    property int loops_per_track
-    property int first_loop_index: 0
-    property var loop_managers //2D array (loops per track)
-    property var port_managers //1D array (one per track)
-    property var master_loop_manager
-    property var targeted_loop_manager
-    property var master_loop_idx //[track][loop]
+    property int slots_per_track
+    property int n_tracks
+    property LoopWidget master_loop
+    property LoopWidget targeted_loop
 
-    //Arrays of [track, loop]
-    property var loops_of_selected_scene: []
-    property var loops_of_hovered_scene: []
+    property list<LoopWidget> loops_of_selected_scene: []
+    property list<LoopWidget> loops_of_hovered_scene: []
 
-    signal request_toggle_loop_in_scene(int track, int loop)
-    signal request_rename(int track, string name)
-    signal request_select_loop(int track, int loop)
-    signal request_rename_loop(int track, int loop, string name)
-    signal request_clear_loop(int track, int loop)
-    signal request_toggle_loop_selected(int track, int loop)
-    signal request_set_targeted_loop(int track, int loop)
+    // signal request_toggle_loop_in_scene(int track, int loop)
+    // signal request_rename(int track, string name)
+    // signal request_select_loop(int track, int loop)
+    // signal request_rename_loop(int track, int loop, string name)
+    // signal request_clear_loop(int track, int loop)
+    // signal request_toggle_loop_selected(int track, int loop)
+    // signal request_set_targeted_loop(int track, int loop)
 
     Rectangle {
         property int x_spacing: 0
@@ -49,37 +43,16 @@ Item {
                 spacing: 3
 
                 Repeater {
-                    model: tracks.track_names ? tracks.track_names.length : 0
+                    model: tracks.n_tracks
                     id: tracks_repeater
 
                     TrackWidget {
-                        name: tracks.track_names[index]
-                        loop_names: tracks.loop_names[index]
-                        num_loops: tracks.loops_per_track
-                        first_index: index * tracks.loops_per_track + tracks.first_loop_index
-                        maybe_master_loop_idx: -1
-                        master_loop_manager: tracks.master_loop_manager
-                        loop_managers: tracks.loop_managers[index]
-                        ports_manager: tracks.port_managers[index]
-                        targeted_loop_manager: tracks.targeted_loop_manager
+                        num_slots: tracks.slots_per_track
 
-                        function unpack(loops) {
-                            var r = []
-                            var l
-                            for (l in loops) { if (loops[l][0] === index) { r.push(loops[l][1]) } }
-                            return r
-                        }
+                        master_loop: tracks.master_loop
+                        targeted_loop: tracks.targeted_loop
 
-                        loops_of_selected_scene: unpack(tracks.loops_of_selected_scene)
-                        loops_of_hovered_scene: unpack(tracks.loops_of_hovered_scene)
-
-                        onToggle_loop_in_scene: (l) => tracks.request_toggle_loop_in_scene(index, l)
-                        onRenamed: (name) => tracks.request_rename(index, name)
-                        onRequest_select_loop: (idx) => tracks.request_select_loop(index, idx)
-                        onRequest_rename_loop: (idx, name) => tracks.request_rename_loop(index, idx, name)
-                        onRequest_clear_loop: (idx) => tracks.request_clear_loop(index, idx)
-                        onRequest_toggle_loop_selected: (idx) => tracks.request_toggle_loop_selected(index, idx)
-                        onRequest_set_targeted_loop: (idx) => tracks.request_set_targeted_loop(index, idx)
+                        name: 'Track ' + (index + 1).toString()
                     }
                 }
             }

@@ -3,7 +3,7 @@ import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
 import QtQuick.Dialogs
 
-import '../../build/StatesAndActions.js' as StatesAndActions
+import ".."
 
 ApplicationWindow {
     visible: true
@@ -26,13 +26,14 @@ ApplicationWindow {
         onClicked: () => { forceActiveFocus() }
     }
 
-    ApplicationSharedState {
+    Backend {
+        update_interval_ms: 30
+        client_name_hint: 'Shoopdaloop'
+
         anchors {
             fill: parent
             margins: 6
         }
-        id: shared
-        objectName: 'app_shared_state'
 
         TracksWidget {
             // Note the offset of 1 in all the track indexing. This is because we skip
@@ -44,30 +45,33 @@ ApplicationWindow {
                 right: parent.right
             }
 
-            function map_loop_pos(loop_pos) {
-                return [loop_pos[0]-1, loop_pos[1]];
-            }
+            slots_per_track: 8
+            n_tracks: 8
 
-            track_names: shared.track_names.slice(1)
-            loop_names: shared.loop_names.slice(1)
-            loop_managers: shared.loop_managers.slice(1)
-            port_managers: shared.port_managers.slice(1)
-            first_loop_index: 2
-            master_loop_manager: shared.master_loop_manager
-            targeted_loop_manager: shared.targeted_loop_manager
-            loops_per_track: shared.loops_per_track
-            loops_of_selected_scene: shared.loops_of_selected_scene.map(map_loop_pos)
-            loops_of_hovered_scene: shared.loops_of_hovered_scene.map(map_loop_pos)
+            // function map_loop_pos(loop_pos) {
+            //     return [loop_pos[0]-1, loop_pos[1]];
+            // }
 
-            Connections {
-                function onRequest_toggle_loop_in_scene(track, loop) { shared.toggle_loop_in_current_scene(track+1, loop) }
-                function onRequest_rename(track, name) { shared.rename_track(track+1, name) }
-                function onRequest_select_loop(track, loop) { shared.select_loop(track+1, loop) }
-                function onRequest_rename_loop(track, loop, name) { shared.rename_loop(track+1, loop, name) }
-                function onRequest_clear_loop(track, loop) { shared.clear_loop(track+1, loop) }
-                function onRequest_toggle_loop_selected(track, loop) { shared.toggle_loop_selected(track+1, loop) }
-                function onRequest_set_targeted_loop(track, loop) { shared.select_targeted_loop(track+1, loop) }
-            }
+            // track_names: shared.track_names.slice(1)
+            // loop_names: shared.loop_names.slice(1)
+            // loop_managers: shared.loop_managers.slice(1)
+            // port_managers: shared.port_managers.slice(1)
+            // first_loop_index: 2
+            // master_loop_manager: shared.master_loop_manager
+            // targeted_loop_manager: shared.targeted_loop_manager
+            // loops_per_track: shared.loops_per_track
+            // loops_of_selected_scene: shared.loops_of_selected_scene.map(map_loop_pos)
+            // loops_of_hovered_scene: shared.loops_of_hovered_scene.map(map_loop_pos)
+
+            // Connections {
+            //     function onRequest_toggle_loop_in_scene(track, loop) { shared.toggle_loop_in_current_scene(track+1, loop) }
+            //     function onRequest_rename(track, name) { shared.rename_track(track+1, name) }
+            //     function onRequest_select_loop(track, loop) { shared.select_loop(track+1, loop) }
+            //     function onRequest_rename_loop(track, loop, name) { shared.rename_loop(track+1, loop, name) }
+            //     function onRequest_clear_loop(track, loop) { shared.clear_loop(track+1, loop) }
+            //     function onRequest_toggle_loop_selected(track, loop) { shared.toggle_loop_selected(track+1, loop) }
+            //     function onRequest_set_targeted_loop(track, loop) { shared.select_targeted_loop(track+1, loop) }
+            // }
         }
 
         // Master loop track with only one loop
@@ -79,22 +83,25 @@ ApplicationWindow {
                 rightMargin: 6
             }
 
-            name: shared.track_names[0]
-            loop_names: shared.loop_names[0]
-            num_loops: 1
-            first_index: 0
-            maybe_master_loop_idx: 0
-            master_loop_manager: shared.master_loop_manager
-            targeted_loop_manager: shared.targeted_loop_manager
-            loop_managers: [shared.master_loop_manager]
-            ports_manager: shared.port_managers[0]
-            loops_of_selected_scene: []
-            loops_of_hovered_scene: []
-            onRenamed: (name) => shared.rename_track(0, name)
-            onRequest_rename_loop: (idx, name) => shared.rename_loop(0, idx, name)
-            onRequest_clear_loop: (idx) => shared.clear_loop(0, idx)
-            onRequest_toggle_loop_selected: (idx) => shared.toggle_loop_selected(0, idx)
-            onRequest_set_targeted_loop: (idx) => shared.select_targeted_loop(0, idx)
+            name: 'Master'
+            num_slots: 1
+
+            // name: shared.track_names[0]
+            // loop_names: shared.loop_names[0]
+            // num_loops: 1
+            // first_index: 0
+            // maybe_master_loop_idx: 0
+            // master_loop_manager: shared.master_loop_manager
+            // targeted_loop_manager: shared.targeted_loop_manager
+            // loop_managers: [shared.master_loop_manager]
+            // ports_manager: shared.port_managers[0]
+            // loops_of_selected_scene: []
+            // loops_of_hovered_scene: []
+            // onRenamed: (name) => shared.rename_track(0, name)
+            // onRequest_rename_loop: (idx, name) => shared.rename_loop(0, idx, name)
+            // onRequest_clear_loop: (idx) => shared.clear_loop(0, idx)
+            // onRequest_toggle_loop_selected: (idx) => shared.toggle_loop_selected(0, idx)
+            // onRequest_set_targeted_loop: (idx) => shared.select_targeted_loop(0, idx)
         }
 
         ScenesWidget {
@@ -111,14 +118,14 @@ ApplicationWindow {
             selected_scene: shared.selected_scene
             hovered_scene: shared.hovered_scene
 
-            Connections {
-                function onRequest_rename_scene(idx, name) { shared.rename_scene(idx, name) }
-                function onRequest_add_scene() { shared.add_scene() }
-                function onRequest_remove_scene(idx) { shared.remove_scene(idx) }
-                function onRequest_select_scene(idx) { shared.select_scene(idx) }
-                function onRequest_play_scene(idx) { shared.play_scene(idx) }
-                function onRequest_hover_scene(idx) { shared.hover_scene(idx) }
-            }
+            // Connections {
+            //     function onRequest_rename_scene(idx, name) { shared.rename_scene(idx, name) }
+            //     function onRequest_add_scene() { shared.add_scene() }
+            //     function onRequest_remove_scene(idx) { shared.remove_scene(idx) }
+            //     function onRequest_select_scene(idx) { shared.select_scene(idx) }
+            //     function onRequest_play_scene(idx) { shared.play_scene(idx) }
+            //     function onRequest_hover_scene(idx) { shared.hover_scene(idx) }
+            // }
         }
 
         ScriptingWidget {
@@ -133,29 +140,29 @@ ApplicationWindow {
                 rightMargin: 6
             }
 
-            sections: shared.sections
-            scene_names: shared.scene_names
-            track_names: shared.track_names
-            loop_names: shared.loop_names
+            // sections: shared.sections
+            // scene_names: shared.scene_names
+            // track_names: shared.track_names
+            // loop_names: shared.loop_names
 
-            script_playing: shared.script_playing
-            script_current_cycle: shared.script_current_cycle
-            section_starts: shared.section_start_cycles
-            script_length: shared.script_length
-            current_section_idx: shared.current_section_idx
-            cycle_in_current_section: shared.current_section_cycle_offset
+            // script_playing: shared.script_playing
+            // script_current_cycle: shared.script_current_cycle
+            // section_starts: shared.section_start_cycles
+            // script_length: shared.script_length
+            // current_section_idx: shared.current_section_idx
+            // cycle_in_current_section: shared.current_section_cycle_offset
 
-            Connections {
-                function onRequest_rename_section(idx, name) { shared.rename_section(idx, name) }
-                function onRequest_delete_section(idx) { shared.delete_section(idx) }
-                function onRequest_add_section() { shared.add_section() }
-                function onRequest_add_action(section, action) { shared.add_action(section, action) }
-                function onRequest_remove_action(section, idx) { shared.remove_action(section, idx) }
-                function onRequest_set_section_duration(section, duration) { shared.set_section_duration(section, duration) }
-                function onPlay() { shared.play_script() }
-                function onStop() { shared.stop_script() }
-                function onSet_cycle(cycle) { shared.script_current_cycle = cycle }
-            }
+            // Connections {
+            //     function onRequest_rename_section(idx, name) { shared.rename_section(idx, name) }
+            //     function onRequest_delete_section(idx) { shared.delete_section(idx) }
+            //     function onRequest_add_section() { shared.add_section() }
+            //     function onRequest_add_action(section, action) { shared.add_action(section, action) }
+            //     function onRequest_remove_action(section, idx) { shared.remove_action(section, idx) }
+            //     function onRequest_set_section_duration(section, duration) { shared.set_section_duration(section, duration) }
+            //     function onPlay() { shared.play_script() }
+            //     function onStop() { shared.stop_script() }
+            //     function onSet_cycle(cycle) { shared.script_current_cycle = cycle }
+            // }
         }
 
         Item {
@@ -295,12 +302,12 @@ ApplicationWindow {
                         color: Material.foreground
                     }
 
-                    SettingsDialog {
-                        id: settings
-                        parent: Overlay.overlay
-                        x: (parent.width - width) / 2
-                        y: (parent.height - height) / 2
-                    }
+                    // SettingsDialog {
+                    //     id: settings
+                    //     parent: Overlay.overlay
+                    //     x: (parent.width - width) / 2
+                    //     y: (parent.height - height) / 2
+                    // }
                 }
 
                 Button {
