@@ -25,7 +25,7 @@ inline Message with_time (Message const& msg, size_t time) {
 }
 
 suite AudioMidiLoop_audio_tests = []() {
-    "audioloop_1_stop"_test = []() {
+    "al_1_stop"_test = []() {
         auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 256);
         AudioMidiLoop loop;
         loop.add_audio_channel<int>(pool, 10, Direct, false);
@@ -43,7 +43,7 @@ suite AudioMidiLoop_audio_tests = []() {
         expect(loop.get_position() == 0);
     };
 
-    "audioloop_2_record"_test = []() {
+    "al_2_record"_test = []() {
         auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
         AudioMidiLoop loop;
         loop.add_audio_channel<int>(pool, 10, Direct, false);
@@ -76,7 +76,7 @@ suite AudioMidiLoop_audio_tests = []() {
         );
     };
     
-    "audioloop_2_1_record_beyond_external_buf"_test = []() {
+    "al_2_1_record_beyond_external_buf"_test = []() {
         auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 256);
         AudioMidiLoop loop;
         loop.add_audio_channel<int>(pool, 10, Direct, false);
@@ -90,7 +90,7 @@ suite AudioMidiLoop_audio_tests = []() {
         expect(throws([&]() { loop.PROC_process(20); }));
     };
 
-    "audioloop_2_2_record_multiple_buffers"_test = []() {
+    "al_2_2_record_multiple_buffers"_test = []() {
         auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
         AudioMidiLoop loop;
         loop.add_audio_channel<int>(pool, 10, Direct, false);
@@ -121,7 +121,7 @@ suite AudioMidiLoop_audio_tests = []() {
         );
     };
 
-    "audioloop_2_3_record_multiple_source_buffers"_test = []() {
+    "al_2_3_record_multiple_source_buffers"_test = []() {
         auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
         AudioMidiLoop loop;
         loop.add_audio_channel<int>(pool, 10, Direct, false);
@@ -159,19 +159,19 @@ suite AudioMidiLoop_audio_tests = []() {
         );
     };
 
-    "audioloop_2_4_record_onto_smaller_buffer"_test = []() {
+    "al_2_4_record_onto_smaller_buffer"_test = []() {
         auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
         AudioMidiLoop loop;
         loop.add_audio_channel<int>(pool, 10, Direct, false);
         auto &channel = *loop.audio_channel<int>(0);
         auto data = create_audio_buf<int>(64, [](size_t position) { return -((int)position); });
         channel.load_data(data.data(), 64, false);
+        loop.plan_transition(Recording);
+        loop.PROC_trigger();
         loop.set_length(128);
 
         auto source_buf = create_audio_buf<int>(512, [](size_t position) { return position; }); 
-        loop.plan_transition(Recording);
         channel.PROC_set_recording_buffer(source_buf.data(), source_buf.size());
-        loop.PROC_trigger();
         loop.PROC_update_poi();
 
         expect(eq(loop.get_mode(), Recording));
@@ -214,19 +214,19 @@ suite AudioMidiLoop_audio_tests = []() {
         );
     };
 
-    "audioloop_2_5_record_onto_larger_buffer"_test = []() {
+    "al_2_5_record_onto_larger_buffer"_test = []() {
         auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
         AudioMidiLoop loop;
         loop.add_audio_channel<int>(pool, 10, Direct, false);
         auto &channel = *loop.audio_channel<int>(0);
         auto data = create_audio_buf<int>(128, [](size_t position) { return -((int)position); });
         channel.load_data(data.data(), 128, false);
+        loop.plan_transition(Recording);
+        loop.PROC_trigger();
         loop.set_length(64);
 
         auto source_buf = create_audio_buf<int>(512, [](size_t position) { return position; }); 
-        loop.plan_transition(Recording);
         channel.PROC_set_recording_buffer(source_buf.data(), source_buf.size());
-        loop.PROC_trigger();
         loop.PROC_update_poi();
 
         expect(eq(loop.get_mode(), Recording));
@@ -259,7 +259,7 @@ suite AudioMidiLoop_audio_tests = []() {
         );
     };
 
-    "audioloop_3_playback"_test = []() {
+    "al_3_playback"_test = []() {
         auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
         AudioMidiLoop loop;
         loop.add_audio_channel<int>(pool, 10, Direct, false);
@@ -291,7 +291,7 @@ suite AudioMidiLoop_audio_tests = []() {
         }        
     };
 
-    "audioloop_3_1_playback_multiple_target_buffers"_test = []() {
+    "al_3_1_playback_multiple_target_buffers"_test = []() {
         auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
         AudioMidiLoop loop;
         loop.add_audio_channel<int>(pool, 10, Direct, false);
@@ -323,7 +323,7 @@ suite AudioMidiLoop_audio_tests = []() {
         }
     };
 
-    "audioloop_3_2_playback_shorter_data"_test = []() {
+    "al_3_2_playback_shorter_data"_test = []() {
         auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
         AudioMidiLoop loop;
         loop.add_audio_channel<int>(pool, 10, Direct, false);
@@ -358,7 +358,7 @@ suite AudioMidiLoop_audio_tests = []() {
         }
     };
 
-    "audioloop_3_3_playback_wrap"_test = []() {
+    "al_3_3_playback_wrap"_test = []() {
         auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
         AudioMidiLoop loop;
         loop.add_audio_channel<int>(pool, 10, Direct, false);
@@ -366,13 +366,13 @@ suite AudioMidiLoop_audio_tests = []() {
         
         auto data = create_audio_buf<int>(64, [](size_t position) { return position; });
         channel.load_data(data.data(), 64, false);
+        loop.plan_transition(Playing);
+        loop.PROC_trigger();
         loop.set_length(64);
         loop.set_position(48);
         auto play_buf = std::vector<int>(64);
 
-        loop.plan_transition(Playing);
         channel.PROC_set_playback_buffer(play_buf.data(), play_buf.size());
-        loop.PROC_trigger();
         loop.PROC_update_poi();
 
         expect(loop.get_mode() == Playing);
@@ -404,7 +404,7 @@ suite AudioMidiLoop_audio_tests = []() {
         }
     };
 
-    "audioloop_3_4_playback_wrap_longer_data"_test = []() {
+    "al_3_4_playback_wrap_longer_data"_test = []() {
         auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
         AudioMidiLoop loop;
         loop.add_audio_channel<int>(pool, 10, Direct, false);
@@ -412,13 +412,13 @@ suite AudioMidiLoop_audio_tests = []() {
         
         auto data = create_audio_buf<int>(128, [](size_t position) { return position; });
         channel.load_data(data.data(), 128, false);
+        loop.plan_transition(Playing);
+        loop.PROC_trigger();
         loop.set_length(64);
         loop.set_position(48);
         auto play_buf = std::vector<int>(64);
 
-        loop.plan_transition(Playing);
         channel.PROC_set_playback_buffer(play_buf.data(), play_buf.size());
-        loop.PROC_trigger();
         loop.PROC_update_poi();
 
         expect(loop.get_mode() == Playing);
@@ -452,7 +452,7 @@ suite AudioMidiLoop_audio_tests = []() {
 };
 
 suite AudioMidiLoop_midi_tests = []() {
-    "midiloop_1_stop"_test = []() {
+    "ml_1_stop"_test = []() {
         AudioMidiLoop loop;
         loop.add_midi_channel<uint32_t, uint16_t>(512, Direct, false);
         auto &channel = *loop.midi_channel<uint32_t, uint16_t>(0);
@@ -470,7 +470,7 @@ suite AudioMidiLoop_midi_tests = []() {
         expect(loop.get_position() == 0);
     };
 
-    "midiloop_2_record"_test = []() {
+    "ml_2_record"_test = []() {
         AudioMidiLoop loop;
         loop.add_midi_channel<uint32_t, uint16_t>(512, Direct, false);
         auto &channel = *loop.midi_channel<uint32_t, uint16_t>(0);
@@ -510,7 +510,7 @@ suite AudioMidiLoop_midi_tests = []() {
         check_msgs_equal(msgs.at(1), source_buf.read.at(1));
     };
 
-    "midiloop_2_1_record_append_out_of_order"_test = []() {
+    "ml_2_1_record_append_out_of_order"_test = []() {
         AudioMidiLoop loop;
         loop.add_midi_channel<uint32_t, uint16_t>(512, Direct, false);
         auto &channel = *loop.midi_channel<uint32_t, uint16_t>(0);
@@ -556,7 +556,7 @@ suite AudioMidiLoop_midi_tests = []() {
         check_msgs_equal(msgs.at(1), with_time(source_buf.read.at(2), 111));
     };
 
-    "midiloop_3_playback"_test = []() {
+    "ml_3_playback"_test = []() {
         AudioMidiLoop loop;
         loop.add_midi_channel<uint32_t, uint16_t>(512, Direct, false);
         auto &channel = *loop.midi_channel<uint32_t, uint16_t>(0);

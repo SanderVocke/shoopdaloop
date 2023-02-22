@@ -12,7 +12,7 @@ using namespace boost::ut;
 #undef protected
 
 suite BasicLoop_tests = []() {
-    "basicloop_1_stop"_test = []() {
+    "bl_1_stop"_test = []() {
         BasicLoop loop;
 
         expect(loop.get_mode() == Stopped);
@@ -28,7 +28,7 @@ suite BasicLoop_tests = []() {
         expect(loop.get_position() == 0);
     };
 
-    "basicloop_2_record"_test = []() {
+    "bl_2_record"_test = []() {
         BasicLoop loop;
         loop.set_mode(Recording, false);
         loop.PROC_update_poi();
@@ -47,7 +47,7 @@ suite BasicLoop_tests = []() {
         
     };
 
-    "basicloop_3_planned_transition"_test = []() {
+    "bl_3_planned_transition"_test = []() {
         BasicLoop loop;
         auto other = std::make_shared<BasicLoop>();
         loop.set_sync_source(other);
@@ -66,7 +66,7 @@ suite BasicLoop_tests = []() {
         expect(eq(loop.PROC_get_next_poi().value_or(999), 10)); // End of loop
     };
 
-    "basicloop_3_1_planned_transition_delayed"_test = []() {
+    "bl_3_1_planned_transition_delayed"_test = []() {
         BasicLoop loop;
         auto other = std::make_shared<BasicLoop>();
         loop.set_sync_source(other);
@@ -90,7 +90,7 @@ suite BasicLoop_tests = []() {
         expect(eq(loop.PROC_get_next_poi().value_or(999), 10)); // End of loop
     };
 
-    "basicloop_3_2_planned_transitions_delayed"_test = []() {
+    "bl_3_2_planned_transitions_delayed"_test = []() {
         BasicLoop loop;
         auto other = std::make_shared<BasicLoop>();
         loop.set_sync_source(other);
@@ -125,7 +125,7 @@ suite BasicLoop_tests = []() {
         expect(eq(loop.get_mode(), Recording));
     };
 
-    "basicloop_3_3_planned_transitions_cancellation_1"_test = []() {
+    "bl_3_3_planned_transitions_cancellation_1"_test = []() {
         BasicLoop loop;
         auto other = std::make_shared<BasicLoop>();
         loop.set_sync_source(other);
@@ -157,7 +157,7 @@ suite BasicLoop_tests = []() {
         expect(eq(loop.PROC_get_next_poi().value_or(999), 999));
     };
 
-    "basicloop_4_generate_trigger"_test = []() {
+    "bl_4_generate_trigger"_test = []() {
         BasicLoop loop;
         loop.set_mode(Stopped, false);
         loop.set_length(10, false);
@@ -168,7 +168,7 @@ suite BasicLoop_tests = []() {
         expect(eq(loop.PROC_is_triggering_now(), true));
     };
 
-    "basicloop_4_1_generate_trigger_on_restart"_test = []() {
+    "bl_4_1_generate_trigger_on_restart"_test = []() {
         BasicLoop loop;
         loop.set_length(10, false);
         loop.set_position(1, false);
@@ -193,7 +193,7 @@ suite BasicLoop_tests = []() {
         expect(eq(loop.PROC_is_triggering_now(), false));
     };
 
-    "basicloop_6_playback_0_length"_test = []() {
+    "bl_6_playback_0_length"_test = []() {
         BasicLoop loop;
         loop.set_mode(Playing, false);
         loop.set_length(0, false);
