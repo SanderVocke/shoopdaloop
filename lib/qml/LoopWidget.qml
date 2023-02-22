@@ -485,7 +485,7 @@ Item {
                                         name: 'record'
                                         color: 'red'
                                         text_color: Material.foreground
-                                        text: widget.targeted_loop ? "->" : recordN.n.toString()
+                                        text: (widget.targeted_loop !== undefined && widget.targeted_loop !== null) ? "->" : recordN.n.toString()
                                         font.pixelSize: size / 2.0
                                     }
 
@@ -498,9 +498,11 @@ Item {
                                     }
 
                                     onClicked: {
-                                        if (!widget.targeted_loop) {
+                                        if (widget.targeted_loop === undefined || widget.targeted_loop === null) {
+                                            console.log("no targeted")
                                             execute(0, recordN.n)
                                         } else {
+                                            console.log("targeted")
                                             // A target loop is set. Do the "record together with" functionality.
                                             // TODO: code is duplicated in app shared state for MIDI source
                                             var n_cycles_delay = 0
@@ -526,31 +528,31 @@ Item {
                                         title: 'Select # of cycles'
                                         MenuItem {
                                             text: "1 cycle"
-                                            onClicked: () => { recordN.execute(1) }
+                                            onClicked: () => { recordN.execute(0, 1) }
                                         }
                                         MenuItem {
                                             text: "2 cycles"
-                                            onClicked: () => { recordN.execute(2) }
+                                            onClicked: () => { recordN.execute(0, 2) }
                                         }
                                         MenuItem {
                                             text: "3 cycles"
-                                            onClicked: () => { recordN.execute(3) }
+                                            onClicked: () => { recordN.execute(0, 3) }
                                         }
                                         MenuItem {
                                             text: "4 cycles"
-                                            onClicked: () => { recordN.execute(4) }
+                                            onClicked: () => { recordN.execute(0, 4) }
                                         }
                                         MenuItem {
                                             text: "6 cycles"
-                                            onClicked: () => { recordN.execute(6) }
+                                            onClicked: () => { recordN.execute(0, 6) }
                                         }
                                         MenuItem {
                                             text: "8 cycles"
-                                            onClicked: () => { recordN.execute(8) }
+                                            onClicked: () => { recordN.execute(0, 8) }
                                         }
                                         MenuItem {
                                             text: "16 cycles"
-                                            onClicked: () => { recordN.execute(16) }
+                                            onClicked: () => { recordN.execute(0, 16) }
                                         }
                                     }
                                 }
