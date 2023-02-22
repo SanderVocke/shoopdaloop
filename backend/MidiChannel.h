@@ -1,7 +1,7 @@
 #pragma once
 #include "MidiStorage.h"
 #include "MidiPortInterface.h"
-#include "SubloopInterface.h"
+#include "ChannelInterface.h"
 #include "WithCommandQueue.h"
 #include "MidiMessage.h"
 #include <optional>
@@ -12,7 +12,7 @@
 using namespace std::chrono_literals;
 
 template<typename TimeType, typename SizeType>
-class MidiChannelSubloop : public SubloopInterface,
+class MidiChannel : public ChannelInterface,
                            private WithCommandQueue<10, 1000, 1000> {
 public:
     using Storage = MidiStorage<TimeType, SizeType>;
@@ -45,27 +45,27 @@ private:
     std::shared_ptr<StorageCursor> mp_playback_cursor;
 
     // Any thread access
-    std::atomic<bool> ma_enabled;
+    std::atomic<channel_mode_t> ma_mode;
 
 public:
-    MidiChannelSubloop(size_t data_size, bool enabled) :
+    MidiChannel(size_t data_size, channel_mode_t mode) :
         WithCommandQueue<10, 1000, 1000>(),
         mp_playback_target_buffer(nullptr),
         mp_recording_source_buffer(nullptr),
         mp_storage(std::make_shared<Storage>(data_size)),
         mp_playback_cursor(nullptr),
-        ma_enabled(enabled)
+        ma_mode(mode)
     {
         mp_playback_cursor = mp_storage->create_cursor();
     }
 
     // NOTE: only use on process thread
-    MidiChannelSubloop<TimeType, SizeType>& operator= (MidiChannelSubloop<TimeType, SizeType> const& other) {
+    MidiChannel<TimeType, SizeType>& operator= (MidiChannel<TimeType, SizeType> const& other) {
         mp_playback_target_buffer = other.mp_playback_target_buffer;
         mp_recording_source_buffer = other.mp_recording_source_buffer;
         mp_storage = other.mp_storage;
         mp_playback_cursor = other.mp_playback_cursor;
-        ma_enabled = other.ma_enabled;
+        ma_mode = other.ma_mode;
         return *this;
     }
 
@@ -80,7 +80,7 @@ public:
         ) override {
         PROC_handle_command_queue();
 
-        if (ma_enabled) {
+        if (ma_mode) {
             switch (mode_before) {
                 case Playing:
                     PROC_process_playback(pos_before, length_before, n_samples, false);
@@ -167,7 +167,7 @@ public:
     std::optional<size_t> PROC_get_next_poi(loop_mode_t mode,
                                                size_t length,
                                                size_t position) const override {
-        if (ma_enabled) {
+        if (ma_mode) {
             if (mode == Playing) {
                 return mp_playback_target_buffer.value().n_frames_total - mp_playback_target_buffer.value().n_frames_processed;
             } else if (mode == Recording) {
@@ -229,11 +229,11 @@ public:
         mp_playback_cursor->reset();
     }
 
-    void set_enabled(bool enabled) override {
-        ma_enabled = enabled;
+    void set_mode(channel_mode_t mode) override {
+        ma_mode = mode;
     }
 
-    bool get_enabled() const override {
-        return ma_enabled;
+    channel_mode_t get_mode() const override {
+        return ma_mode;
     }
 };

@@ -36,9 +36,9 @@ Item {
         return loader.item.midi_channels();
     }
 
-    function add_audio_channel(enabled) {
+    function add_audio_channel(mode) {
         load()
-        return loader.item.add_audio_channel(enabled)
+        return loader.item.add_audio_channel(mode)
     }
 
     function add_midi_channel(enabled) {

@@ -28,21 +28,31 @@ class LoopMode(Enum):
     PlayingDryThroughWet = backend.PlayingDryThroughWet
     RecordingDryIntoWet = backend.RecordingDryIntoWet
 
+class ChannelMode(Enum):
+    Disabled = backend.Disabled
+    Direct = backend.Direct
+    Dry = backend.Dry
+    Wet = backend.Wet
+
 @dataclass
 class LoopAudioChannelState:
+    mode : Type[ChannelMode]
     output_peak : float
     volume : float
 
     def __init__(self, backend_state : 'backend.loop_audio_channel_state_t'):
         self.output_peak = backend_state.output_peak
         self.volume = backend_state.volume
+        self.mode = backend_state.mode
 
 @dataclass
 class LoopMidiChannelState:
+    mode: Type[ChannelMode]
     n_events_triggered : int
 
     def __init__(self, backend_state : 'backend.loop_midi_channel_state_t'):
         self.n_events_triggered = backend_state.n_events_triggered
+        self.mode = backend_state.mode
 
 @dataclass
 class LoopState:
@@ -112,6 +122,9 @@ class BackendLoopAudioChannel:
         backend.destroy_audio_channel_state_info(state)
         return rval
     
+    def set_mode(self, mode : Type['ChannelMode']):
+        backend.set_audio_channel_mode(self.shoop_c_handle, mode.value)
+    
     def destroy(self):
         if self.shoop_c_handle:
             backend.destroy_audio_channel(self.shoop_c_handle)
@@ -143,6 +156,9 @@ class BackendLoopMidiChannel:
         backend.destroy_midi_channel_state_info(state)
         return rval
     
+    def set_mode(self, mode : Type['ChannelMode']):
+        backend.set_midi_channel_mode(self.shoop_c_handle, mode.value)
+    
     def destroy(self):
         if self.shoop_c_handle:
             backend.destroy_audio_channel(self.shoop_c_handle)
@@ -158,14 +174,12 @@ class BackendLoop:
     def c_handle(self):
         return self.shoop_c_handle
     
-    def add_audio_channel(self, enabled) -> 'BackendLoopAudioChannel':
-        _enabled = int(1 if enabled else 0)
-        rval = BackendLoopAudioChannel(self, backend.add_audio_channel(self.c_handle(), _enabled))
+    def add_audio_channel(self, mode : Type['ChannelMode']) -> 'BackendLoopAudioChannel':
+        rval = BackendLoopAudioChannel(self, backend.add_audio_channel(self.c_handle(), mode.value))
         return rval
     
-    def add_midi_channel(self, enabled) -> 'BackendLoopMidiChannel':
-        _enabled = int(1 if enabled else 0)
-        rval = BackendLoopMidiChannel(self, backend.add_midi_channel(self.c_handle(), _enabled))
+    def add_midi_channel(self, mode : Type['ChannelMode']) -> 'BackendLoopMidiChannel':
+        rval = BackendLoopMidiChannel(self, backend.add_midi_channel(self.c_handle(), mode.value))
         return rval
 
     def transition(self, to_state : Type['LoopMode'],

@@ -120,7 +120,7 @@ public:
         return false;
     }
 
-    virtual void PROC_process_subloops(
+    virtual void PROC_process_channels(
         loop_mode_t mode_before,
         loop_mode_t mode_after,
         size_t n_samples,
@@ -157,7 +157,7 @@ public:
                 break;
         }
 
-        PROC_process_subloops(ma_mode, ma_mode, n_samples, pos_before, pos_after,
+        PROC_process_channels(ma_mode, ma_mode, n_samples, pos_before, pos_after,
             length_before, length_after);
 
         if (mp_next_poi) { mp_next_poi.value().when -= n_samples; }

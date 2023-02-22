@@ -4,10 +4,10 @@
 #include <stdio.h>
 #include "types.h"
 
-// A sub loop is a class which can run as a dependent on an actual loop. It does
+// A generic channel is a class which can run as a dependent on an actual loop. It does
 // not manage its own mode transitions, position or length, but instead is tightly
 // controlled by its parent loop.
-class SubloopInterface {
+class ChannelInterface {
 public:
     // Get the next point of interest in ticks.
     // A point of interest is the first point until when the loop can be processed
@@ -24,7 +24,7 @@ public:
                             size_t length,
                             size_t position) = 0;
 
-    // Process. The subloop may alter the after state.
+    // Process. The channel may alter the after state.
     virtual void PROC_process(
         loop_mode_t mode_before,
         loop_mode_t mode_after,
@@ -35,11 +35,10 @@ public:
         size_t length_after
     ) = 0;
 
-    // Set/get whether the subloop is enabled or not. If disabled, a subloop will always
-    // process as if it is stopped, regardless of the parent loop mode.
-    virtual void set_enabled(bool enabled) = 0;
-    virtual bool get_enabled() const = 0;
+    // Set/get the channel mode
+    virtual void set_mode(channel_mode_t mode) = 0;
+    virtual channel_mode_t get_mode() const = 0;
 
-    SubloopInterface() = default;
-    virtual ~SubloopInterface() {}
+    ChannelInterface() = default;
+    virtual ~ChannelInterface() {}
 };

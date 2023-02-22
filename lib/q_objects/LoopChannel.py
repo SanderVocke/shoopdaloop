@@ -21,6 +21,7 @@ class LoopChannel(QQuickItem):
         super(LoopChannel, self).__init__(parent)
         self._backend_obj = None        
         self._loop = None
+        self._mode = backend.ChannelMode.Disabled
         self._connected_ports = []
         self._ports = []
 
@@ -53,7 +54,22 @@ class LoopChannel(QQuickItem):
                 raise Exception('May not change loop of existing channel')
             self._loop = l
             self.maybe_initialize()
-    
+
+    # mode
+    modeChanged = pyqtSignal(int)
+    @pyqtProperty(int, notify=modeChanged)
+    def mode(self):
+        return self._mode
+    # indirect setter via back-end
+    @pyqtSlot(int)
+    def set_mode(self, mode):
+        _mode = backend.ChannelMode(mode)
+        if _mode != self._mode:
+            if self._backend_obj:
+                self._backend_obj.set_mode(_mode)
+            else:
+                self.initializedChanged.connect(lambda: self.set_mode(_mode))
+
     # connected ports
     connectedPortsChanged = pyqtSignal(list)
     @pyqtProperty(list, notify=connectedPortsChanged)

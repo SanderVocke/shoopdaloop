@@ -66,11 +66,11 @@ int main(int argc, const char* argv[]) {
         std::vector<shoopdaloop_loop_midi_channel_t*> midis;
 
         for (size_t j=0; j<n_audio_channels; j++) {
-            audios.push_back(add_audio_channel(loop, true));
+            audios.push_back(add_audio_channel(loop, Direct));
         }
 
         for (size_t j=0; j<n_midi_channels; j++) {
-            midis.push_back(add_midi_channel(loop, true));
+            midis.push_back(add_midi_channel(loop, Direct));
         }
 
         clear_loop (loop, loop_length);

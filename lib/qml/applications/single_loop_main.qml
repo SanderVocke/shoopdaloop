@@ -33,19 +33,34 @@ ApplicationWindow {
         update_interval_ms: 30
 
         AudioPortPair {
-            id: audio_ports_l
-            input_name_hint: 'audio_in_l'
-            output_name_hint: 'audio_out_l'
+            id: audio_ports_dry
+            input_name_hint: 'audio_dry_in'
+            output_name_hint: 'audio_dry_out'
         }
         AudioPortPair {
-            id: audio_ports_r
-            input_name_hint: 'audio_in_r'
-            output_name_hint: 'audio_out_r'
+            id: audio_ports_wet
+            input_name_hint: 'audio_wet_in'
+            output_name_hint: 'audio_wet_out'
+        }
+        AudioPortPair {
+            id: audio_ports_direct
+            input_name_hint: 'audio_direct_in'
+            output_name_hint: 'audio_direct_out'
         }
         MidiPortPair {
-            id: midi_ports
-            input_name_hint: 'midi_in'
-            output_name_hint: 'midi_out'
+            id: midi_ports_dry
+            input_name_hint: 'midi_dry_in'
+            output_name_hint: 'midi_dry_out'
+        }
+        MidiPortPair {
+            id: midi_ports_wet
+            input_name_hint: 'midi_wet_in'
+            output_name_hint: 'midi_wet_out'
+        }
+        MidiPortPair {
+            id: midi_ports_direct
+            input_name_hint: 'midi_direct_in'
+            output_name_hint: 'midi_direct_out'
         }
 
         LoopWidget {
@@ -54,7 +69,9 @@ ApplicationWindow {
             name: "Loop"
             master_loop: null
             targeted_loop: null
-            direct_port_pairs: [audio_ports_l, audio_ports_r, midi_ports]
+            direct_port_pairs: [audio_ports_direct, midi_ports_direct]
+            dry_port_pairs: [audio_ports_dry, midi_ports_dry]
+            wet_port_pairs: [audio_ports_wet, midi_ports_wet]
         }
     }
 }

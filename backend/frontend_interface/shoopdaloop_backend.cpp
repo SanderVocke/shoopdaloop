@@ -2,17 +2,17 @@
 
 // Internal
 #include "AudioBuffer.h"
-#include "AudioChannelSubloop.h"
+#include "AudioChannel.h"
 #include "AudioMidiLoop.h"
 #include "AudioPortInterface.h"
 #include "JackAudioPort.h"
 #include "JackAudioSystem.h"
-#include "MidiChannelSubloop.h"
+#include "MidiChannel.h"
 #include "MidiMessage.h"
 #include "MidiPortInterface.h"
 #include "ObjectPool.h"
 #include "PortInterface.h"
-#include "SubloopInterface.h"
+#include "ChannelInterface.h"
 #include "DecoupledMidiPort.h"
 #include "CommandQueue.h"
 #include "DummyMidiBufs.h"
@@ -56,9 +56,9 @@ using Time = uint32_t;
 using Size = uint16_t;
 using Loop = AudioMidiLoop;
 using SharedLoop = std::shared_ptr<Loop>;
-using SharedLoopChannel = std::shared_ptr<SubloopInterface>;
-using LoopAudioChannel = AudioChannelSubloop<audio_sample_t>;
-using LoopMidiChannel = MidiChannelSubloop<uint32_t, uint16_t>;
+using SharedLoopChannel = std::shared_ptr<ChannelInterface>;
+using LoopAudioChannel = AudioChannel<audio_sample_t>;
+using LoopMidiChannel = MidiChannel<uint32_t, uint16_t>;
 using SharedLoopAudioChannel = std::shared_ptr<LoopAudioChannel>;
 using SharedLoopMidiChannel = std::shared_ptr<LoopMidiChannel>;
 using SharedPort = std::shared_ptr<PortInterface>;
@@ -643,17 +643,17 @@ shoopdaloop_loop_t *create_loop() {
     return (shoopdaloop_loop_t*) r.get();
 }
 
-shoopdaloop_loop_audio_channel_t *add_audio_channel (shoopdaloop_loop_t *loop, unsigned enabled) {
+shoopdaloop_loop_audio_channel_t *add_audio_channel (shoopdaloop_loop_t *loop, channel_mode_t mode) {
     // Note: we jump through hoops here to pre-create a shared ptr and then
     // queue a copy-assignment of its value. This allows us to return before
     // the channel has really been created, without altering the pointed-to
     // address later.
     SharedLoopInfo loop_info = internal_loop(loop);
     auto r = std::make_shared<ChannelInfo> (nullptr, loop_info);
-    g_cmd_queue.queue([r, loop_info, enabled]() {
+    g_cmd_queue.queue([r, loop_info, mode]() {
         auto chan = loop_info->loop->add_audio_channel<audio_sample_t>(g_audio_buffer_pool,
                                                         gc_audio_channel_initial_buffers,
-                                                        enabled != 0,
+                                                        mode,
                                                         false);
         auto replacement = std::make_shared<ChannelInfo> (chan, loop_info);
         loop_info->mp_audio_channels.push_back(r);
@@ -662,7 +662,7 @@ shoopdaloop_loop_audio_channel_t *add_audio_channel (shoopdaloop_loop_t *loop, u
     return external_audio_channel(r);
 }
 
-shoopdaloop_loop_midi_channel_t *add_midi_channel (shoopdaloop_loop_t *loop, unsigned enabled) {
+shoopdaloop_loop_midi_channel_t *add_midi_channel (shoopdaloop_loop_t *loop, channel_mode_t mode) {
     // Note: we jump through hoops here to pre-create a shared ptr and then
     // queue a copy-assignment of its value. This allows us to return before
     // the channel has really been created, without altering the pointed-to
@@ -670,7 +670,7 @@ shoopdaloop_loop_midi_channel_t *add_midi_channel (shoopdaloop_loop_t *loop, uns
     auto r = std::make_shared<ChannelInfo> (nullptr, nullptr);
     g_cmd_queue.queue([=]() {
         SharedLoopInfo loop_info = internal_loop(loop);
-        auto chan = loop_info->loop->add_midi_channel<Time, Size>(gc_midi_storage_size, enabled != 0, false);
+        auto chan = loop_info->loop->add_midi_channel<Time, Size>(gc_midi_storage_size, mode, false);
         auto replacement = std::make_shared<ChannelInfo> (chan, loop_info);
         loop_info->mp_midi_channels.push_back(r);
         *r = *replacement;
@@ -1013,14 +1013,31 @@ audio_channel_state_info_t *get_audio_channel_state (shoopdaloop_loop_audio_chan
     auto &_channel = *dynamic_cast<LoopAudioChannel*>(internal_audio_channel(channel)->channel.get());
     r->output_peak = _channel.get_output_peak();
     r->volume = 0.0;
+    r->mode = _channel.get_mode();
     _channel.reset_output_peak();
     return r;
 }
 
 midi_channel_state_info_t *get_midi_channel_state   (shoopdaloop_loop_midi_channel_t  *channel) {
     auto r = new midi_channel_state_info_t;
+    auto &_channel = *dynamic_cast<LoopMidiChannel*>(internal_midi_channel(channel)->channel.get());
     r->n_events_triggered = 0;
+    r->mode = _channel.get_mode();
     return r;
+}
+
+void set_audio_channel_mode (shoopdaloop_loop_audio_channel_t * channel, channel_mode_t mode) {
+    g_cmd_queue.queue([=]() {
+        auto _channel = internal_audio_channel(channel);
+        _channel->channel->set_mode(mode);
+    });
+}
+
+void set_midi_channel_mode (shoopdaloop_loop_midi_channel_t * channel, channel_mode_t mode) {
+    g_cmd_queue.queue([=]() {
+        auto _channel = internal_midi_channel(channel);
+        _channel->channel->set_mode(mode);
+    });
 }
 
 audio_port_state_info_t *get_audio_port_state(shoopdaloop_audio_port_t *port) {

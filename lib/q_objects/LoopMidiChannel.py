@@ -24,7 +24,7 @@ class LoopMidiChannel(LoopChannel):
     
     def maybe_initialize(self):
         if self._loop and not self._backend_obj:
-            self._backend_obj = self._loop.add_midi_channel(True)
+            self._backend_obj = self._loop.add_midi_channel(self.mode)
             self.initializedChanged.emit(True)
 
     ######################

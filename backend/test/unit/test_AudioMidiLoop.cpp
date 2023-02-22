@@ -2,9 +2,9 @@
 #include <memory>
 #include <functional>
 #include <numeric>
-#include "AudioChannelSubloop.h"
+#include "AudioChannel.h"
 #include "AudioMidiLoop.h"
-#include "MidiChannelSubloop.h"
+#include "MidiChannel.h"
 #include "helpers.h"
 
 using namespace boost::ut;
@@ -28,7 +28,7 @@ suite AudioMidiLoop_audio_tests = []() {
     "audioloop_1_stop"_test = []() {
         auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 256);
         AudioMidiLoop loop;
-        loop.add_audio_channel<int>(pool, 10, true, false);
+        loop.add_audio_channel<int>(pool, 10, Direct, false);
 
         expect(loop.get_mode() == Stopped);
         expect(loop.PROC_get_next_poi() == std::nullopt);
@@ -46,7 +46,7 @@ suite AudioMidiLoop_audio_tests = []() {
     "audioloop_2_record"_test = []() {
         auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
         AudioMidiLoop loop;
-        loop.add_audio_channel<int>(pool, 10, true, false);
+        loop.add_audio_channel<int>(pool, 10, Direct, false);
         auto &channel = *loop.audio_channel<int>(0);
 
         auto source_buf = create_audio_buf<int>(512, [](size_t position) { return position; }); 
@@ -66,7 +66,7 @@ suite AudioMidiLoop_audio_tests = []() {
         expect(eq(loop.PROC_get_next_poi().value_or(999), 492)) << loop.PROC_get_next_poi().value_or(0); // end of buffer
         expect(eq(loop.get_length(), 20));
         expect(eq(loop.get_position(), 0));
-        for_channel_elems<AudioChannelSubloop<int>, int>(
+        for_channel_elems<AudioChannel<int>, int>(
             channel, 
             [](size_t position, int const& val) {
                 expect(eq(val, position)) << " @ position " << position;
@@ -79,7 +79,7 @@ suite AudioMidiLoop_audio_tests = []() {
     "audioloop_2_1_record_beyond_external_buf"_test = []() {
         auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 256);
         AudioMidiLoop loop;
-        loop.add_audio_channel<int>(pool, 10, true, false);
+        loop.add_audio_channel<int>(pool, 10, Direct, false);
         auto &channel = *loop.audio_channel<int>(0);
         
         channel.PROC_set_recording_buffer(nullptr, 0);
@@ -93,7 +93,7 @@ suite AudioMidiLoop_audio_tests = []() {
     "audioloop_2_2_record_multiple_buffers"_test = []() {
         auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
         AudioMidiLoop loop;
-        loop.add_audio_channel<int>(pool, 10, true, false);
+        loop.add_audio_channel<int>(pool, 10, Direct, false);
         auto &channel = *loop.audio_channel<int>(0);
 
         auto source_buf = create_audio_buf<int>(512, [](size_t position) { return position; }); 
@@ -113,7 +113,7 @@ suite AudioMidiLoop_audio_tests = []() {
         expect(loop.PROC_get_next_poi() == 0) << loop.PROC_get_next_poi().value_or(0); // end of buffer
         expect(eq(loop.get_length(), 512));
         expect(eq(loop.get_position(), 0));
-        for_channel_elems<AudioChannelSubloop<int>, int>(
+        for_channel_elems<AudioChannel<int>, int>(
             channel, 
             [](size_t position, int const& val) {
                 expect(eq(val, position)) << " @ position " << position;
@@ -124,7 +124,7 @@ suite AudioMidiLoop_audio_tests = []() {
     "audioloop_2_3_record_multiple_source_buffers"_test = []() {
         auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
         AudioMidiLoop loop;
-        loop.add_audio_channel<int>(pool, 10, true, false);
+        loop.add_audio_channel<int>(pool, 10, Direct, false);
         auto &channel = *loop.audio_channel<int>(0);
 
         auto source_buf = create_audio_buf<int>(32, [](size_t position) { return position; });
@@ -151,7 +151,7 @@ suite AudioMidiLoop_audio_tests = []() {
         expect(eq(loop.PROC_get_next_poi().value_or(999), 32)) << loop.PROC_get_next_poi().value_or(0); // end of buffer
         expect(eq(loop.get_length(), 512));
         expect(eq(loop.get_position(), 0));
-        for_channel_elems<AudioChannelSubloop<int>, int>(
+        for_channel_elems<AudioChannel<int>, int>(
             channel, 
             [](size_t position, int const& val) {
                 expect(eq(val, position)) << " @ position " << position;
@@ -162,7 +162,7 @@ suite AudioMidiLoop_audio_tests = []() {
     "audioloop_2_4_record_onto_smaller_buffer"_test = []() {
         auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
         AudioMidiLoop loop;
-        loop.add_audio_channel<int>(pool, 10, true, false);
+        loop.add_audio_channel<int>(pool, 10, Direct, false);
         auto &channel = *loop.audio_channel<int>(0);
         auto data = create_audio_buf<int>(64, [](size_t position) { return -((int)position); });
         channel.load_data(data.data(), 64, false);
@@ -186,7 +186,7 @@ suite AudioMidiLoop_audio_tests = []() {
         expect(eq(loop.get_length(), 148));
         expect(eq(loop.get_position(), 0));
         // First 64 elements should be unchanged after record
-        for_channel_elems<AudioChannelSubloop<int>, int>(
+        for_channel_elems<AudioChannel<int>, int>(
             channel, 
             [](size_t position, int const& val) {
                 expect(eq(val, -((int)position))) << " @ position " << position;
@@ -195,7 +195,7 @@ suite AudioMidiLoop_audio_tests = []() {
             64
         );
         // The missing "data gap" should be filled with zeroes
-        for_channel_elems<AudioChannelSubloop<int>, int>(
+        for_channel_elems<AudioChannel<int>, int>(
             channel, 
             [](size_t position, int const& val) {
                 expect(eq(val, 0)) << " @ position " << position;
@@ -204,7 +204,7 @@ suite AudioMidiLoop_audio_tests = []() {
             64
         );
         // The new recording should be appended at the end.
-        for_channel_elems<AudioChannelSubloop<int>, int>(
+        for_channel_elems<AudioChannel<int>, int>(
             channel, 
             [](size_t position, int const& val) {
                 expect(eq(val, position-128)) << " @ position " << position;
@@ -217,7 +217,7 @@ suite AudioMidiLoop_audio_tests = []() {
     "audioloop_2_5_record_onto_larger_buffer"_test = []() {
         auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
         AudioMidiLoop loop;
-        loop.add_audio_channel<int>(pool, 10, true, false);
+        loop.add_audio_channel<int>(pool, 10, Direct, false);
         auto &channel = *loop.audio_channel<int>(0);
         auto data = create_audio_buf<int>(128, [](size_t position) { return -((int)position); });
         channel.load_data(data.data(), 128, false);
@@ -241,7 +241,7 @@ suite AudioMidiLoop_audio_tests = []() {
         expect(eq(loop.get_length(), 128));
         expect(eq(loop.get_position(), 0));
         // First 64 elements should be unchanged after record
-        for_channel_elems<AudioChannelSubloop<int>, int>(
+        for_channel_elems<AudioChannel<int>, int>(
             channel, 
             [](size_t position, int const& val) {
                 expect(eq(val, -((int)position))) << " @ position " << position;
@@ -250,7 +250,7 @@ suite AudioMidiLoop_audio_tests = []() {
             64
         );
         // The next samples should have been overwritten by the recording.
-        for_channel_elems<AudioChannelSubloop<int>, int>(
+        for_channel_elems<AudioChannel<int>, int>(
             channel, 
             [](size_t position, int const& val) {
                 expect(eq(val, position-64)) << " @ position " << position;
@@ -262,7 +262,7 @@ suite AudioMidiLoop_audio_tests = []() {
     "audioloop_3_playback"_test = []() {
         auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
         AudioMidiLoop loop;
-        loop.add_audio_channel<int>(pool, 10, true, false);
+        loop.add_audio_channel<int>(pool, 10, Direct, false);
         auto &channel = *loop.audio_channel<int>(0);
         
         auto data = create_audio_buf<int>(64, [](size_t position) { return position; });
@@ -294,7 +294,7 @@ suite AudioMidiLoop_audio_tests = []() {
     "audioloop_3_1_playback_multiple_target_buffers"_test = []() {
         auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
         AudioMidiLoop loop;
-        loop.add_audio_channel<int>(pool, 10, true, false);
+        loop.add_audio_channel<int>(pool, 10, Direct, false);
         auto &channel = *loop.audio_channel<int>(0);
         
         auto data = create_audio_buf<int>(512, [](size_t position) { return position; });
@@ -326,7 +326,7 @@ suite AudioMidiLoop_audio_tests = []() {
     "audioloop_3_2_playback_shorter_data"_test = []() {
         auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
         AudioMidiLoop loop;
-        loop.add_audio_channel<int>(pool, 10, true, false);
+        loop.add_audio_channel<int>(pool, 10, Direct, false);
         auto &channel = *loop.audio_channel<int>(0);
         
         auto data = create_audio_buf<int>(32, [](size_t position) { return position; });
@@ -361,7 +361,7 @@ suite AudioMidiLoop_audio_tests = []() {
     "audioloop_3_3_playback_wrap"_test = []() {
         auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
         AudioMidiLoop loop;
-        loop.add_audio_channel<int>(pool, 10, true, false);
+        loop.add_audio_channel<int>(pool, 10, Direct, false);
         auto &channel = *loop.audio_channel<int>(0);
         
         auto data = create_audio_buf<int>(64, [](size_t position) { return position; });
@@ -407,7 +407,7 @@ suite AudioMidiLoop_audio_tests = []() {
     "audioloop_3_4_playback_wrap_longer_data"_test = []() {
         auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
         AudioMidiLoop loop;
-        loop.add_audio_channel<int>(pool, 10, true, false);
+        loop.add_audio_channel<int>(pool, 10, Direct, false);
         auto &channel = *loop.audio_channel<int>(0);
         
         auto data = create_audio_buf<int>(128, [](size_t position) { return position; });
@@ -454,7 +454,7 @@ suite AudioMidiLoop_audio_tests = []() {
 suite AudioMidiLoop_midi_tests = []() {
     "midiloop_1_stop"_test = []() {
         AudioMidiLoop loop;
-        loop.add_midi_channel<uint32_t, uint16_t>(512, true, false);
+        loop.add_midi_channel<uint32_t, uint16_t>(512, Direct, false);
         auto &channel = *loop.midi_channel<uint32_t, uint16_t>(0);
 
         expect(loop.get_mode() == Stopped);
@@ -472,7 +472,7 @@ suite AudioMidiLoop_midi_tests = []() {
 
     "midiloop_2_record"_test = []() {
         AudioMidiLoop loop;
-        loop.add_midi_channel<uint32_t, uint16_t>(512, true, false);
+        loop.add_midi_channel<uint32_t, uint16_t>(512, Direct, false);
         auto &channel = *loop.midi_channel<uint32_t, uint16_t>(0);
 
         expect(loop.get_mode() == Stopped);
@@ -512,9 +512,9 @@ suite AudioMidiLoop_midi_tests = []() {
 
     "midiloop_2_1_record_append_out_of_order"_test = []() {
         AudioMidiLoop loop;
-        loop.add_midi_channel<uint32_t, uint16_t>(512, true, false);
+        loop.add_midi_channel<uint32_t, uint16_t>(512, Direct, false);
         auto &channel = *loop.midi_channel<uint32_t, uint16_t>(0);
-        using Message = MidiChannelSubloop<uint32_t, uint16_t>::Message;
+        using Message = MidiChannel<uint32_t, uint16_t>::Message;
         std::vector<Message> contents = {
             Message{.time = 111,  .size = 4, .data = { 0x01, 0x02, 0x03, 0x04 }}
         };
@@ -558,9 +558,9 @@ suite AudioMidiLoop_midi_tests = []() {
 
     "midiloop_3_playback"_test = []() {
         AudioMidiLoop loop;
-        loop.add_midi_channel<uint32_t, uint16_t>(512, true, false);
+        loop.add_midi_channel<uint32_t, uint16_t>(512, Direct, false);
         auto &channel = *loop.midi_channel<uint32_t, uint16_t>(0);
-        using Message = MidiChannelSubloop<uint32_t, uint16_t>::Message;
+        using Message = MidiChannel<uint32_t, uint16_t>::Message;
         std::vector<Message> contents = {
             Message{.time = 0,  .size = 1, .data = { 0x01 }},
             Message{.time = 10,  .size = 1, .data = { 0x02 }},

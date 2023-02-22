@@ -1,5 +1,5 @@
 #pragma once
-#include "SubloopInterface.h"
+#include "ChannelInterface.h"
 #include "ObjectPool.h"
 #include "AudioBuffer.h"
 #include "WithCommandQueue.h"
@@ -16,7 +16,7 @@
 using namespace std::chrono_literals;
 
 template<typename SampleT>
-class AudioChannelSubloop : public SubloopInterface,
+class AudioChannel : public ChannelInterface,
                             private WithCommandQueue<10, 1000, 1000> {
 public:
     typedef AudioBuffer<SampleT> BufferObj;
@@ -29,7 +29,7 @@ private:
     const size_t ma_buffer_size;
     std::atomic<size_t> ma_data_length;
     std::atomic<float> ma_output_peak;
-    std::atomic<bool> ma_enabled;
+    std::atomic<channel_mode_t> ma_mode;
 
     // Members which may be accessed from the process thread only (mp prefix)
     std::vector<Buffer> mp_buffers;
@@ -39,10 +39,10 @@ private:
     size_t   mp_recording_source_buffer_size;
 public:
 
-    AudioChannelSubloop(
+    AudioChannel(
             std::shared_ptr<BufferPool> buffer_pool,
             size_t initial_max_buffers,
-            bool enabled) :
+            channel_mode_t mode) :
         WithCommandQueue<10, 1000, 1000>(),
         ma_buffer_pool(buffer_pool),
         ma_data_length(0),
@@ -52,17 +52,17 @@ public:
         mp_playback_target_buffer_size(0),
         mp_recording_source_buffer_size(0),
         ma_output_peak(0),
-        ma_enabled(enabled)
+        ma_mode(mode)
     {
         mp_buffers.reserve(initial_max_buffers);
         mp_buffers.push_back(get_new_buffer()); // Initial recording buffer
 
         // TODO
-        std::cerr << "Warning: AudioChannelSubloop should have a way to increase its buffers capacity outside of the processing thread. Also atomic access. Also atomic planning of transitions." << std::endl;
+        std::cerr << "Warning: AudioChannel should have a way to increase its buffers capacity outside of the processing thread. Also atomic access. Also atomic planning of transitions." << std::endl;
     }
 
     // NOTE: only use on process thread!
-    AudioChannelSubloop<SampleT>& operator= (AudioChannelSubloop<SampleT> const& other) {
+    AudioChannel<SampleT>& operator= (AudioChannel<SampleT> const& other) {
         if (other.ma_buffer_size != ma_buffer_size) {
             throw std::runtime_error("Cannot copy audio channels with different buffer sizes.");
         }
@@ -73,12 +73,12 @@ public:
         mp_playback_target_buffer_size = other.mp_playback_target_buffer_size;
         mp_recording_source_buffer = other.mp_recording_source_buffer;
         mp_recording_source_buffer_size = other.mp_recording_source_buffer_size;
-        ma_enabled = other.ma_enabled;
+        ma_mode = other.ma_mode;
         return *this;
     }
 
-    AudioChannelSubloop() = default;
-    ~AudioChannelSubloop() override {}
+    AudioChannel() = default;
+    ~AudioChannel() override {}
 
     void PROC_process(
         loop_mode_t mode_before,
@@ -92,7 +92,7 @@ public:
         // Execute any commands queued from other threads.
         PROC_handle_command_queue();
 
-        if (ma_enabled) {
+        if (ma_mode) {
             switch (mode_before) {
                 case Playing:
                     PROC_process_playback(pos_before, length_before, n_samples, false);
@@ -242,7 +242,7 @@ public:
     std::optional<size_t> PROC_get_next_poi(loop_mode_t mode,
                                        size_t length,
                                        size_t position) const override {
-        if (ma_enabled) {
+        if (ma_mode) {
             if (mode == Playing) {
                 return mp_playback_target_buffer_size;
             } else if (mode == Recording) {
@@ -283,19 +283,19 @@ public:
         ma_output_peak = 0.0f;
     }
 
-    void set_enabled(bool enabled) override {
-        ma_enabled = enabled;
+    void set_mode(channel_mode_t mode) override {
+        ma_mode = mode;
     }
 
-    bool get_enabled() const override {
-        return ma_enabled;
+    channel_mode_t get_mode() const override {
+        return ma_mode;
     }
 
 protected:
     Buffer get_new_buffer() const {
         auto buf = Buffer(ma_buffer_pool->get_object());
         if (buf->size() != ma_buffer_size) {
-            throw std::runtime_error("AudioChannelSubloop requires buffers of same length");
+            throw std::runtime_error("AudioChannel requires buffers of same length");
         }
         return buf;
     }

@@ -159,12 +159,12 @@ class Loop(QQuickItem):
         self._backend_loop.clear(length)
     
     @pyqtSlot(result=backend.BackendLoopMidiChannel)
-    def add_audio_channel(self, enabled):
-        return self._backend_loop.add_audio_channel(enabled)
+    def add_audio_channel(self, mode):
+        return self._backend_loop.add_audio_channel(mode)
     
     @pyqtSlot(result=backend.BackendLoopMidiChannel)
-    def add_midi_channel(self, enabled):
-        return self._backend_loop.add_midi_channel(enabled)
+    def add_midi_channel(self, mode):
+        return self._backend_loop.add_midi_channel(mode)
     
     @pyqtSlot(list)
     def load_audio_data(self, sound_channels):

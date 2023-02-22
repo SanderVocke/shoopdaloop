@@ -27,7 +27,7 @@ def load_audio_file(filename, target_sample_rate, maybe_override_length=None):
         resampled = np_data
         if int(target_sample_rate) != int(sample_rate_in):
             for chan in resampled:
-                chan = chan.resample(np_data, sample_rate_in, target_sample_rate)
+                chan = resampy.resample(chan, sample_rate_in, target_sample_rate)
 
         # Length override
         for chan in resampled:

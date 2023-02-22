@@ -4,7 +4,7 @@ sys.path.append(pwd + '/..')
 sys.path.append(pwd + '/../..')
 sys.path.append(pwd + '/../../build')
 
-from lib.backend import LoopMode
+from lib.backend import LoopMode, ChannelMode
 from pprint import *
 
 output_filename = sys.argv[1]
@@ -33,3 +33,4 @@ def write_enum(f, name, enum):
 
 with open(output_filename, 'w') as f:
     write_enum(f, 'LoopMode', LoopMode)
+    write_enum(f, 'ChannelMode', ChannelMode)
