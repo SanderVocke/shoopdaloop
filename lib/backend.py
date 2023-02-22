@@ -184,6 +184,7 @@ class BackendLoop:
 
     def transition(self, to_state : Type['LoopMode'],
                    cycles_delay : int, wait_for_soft_sync : bool):
+        print('transition: {}, {}, {}'.format(to_state, cycles_delay, wait_for_soft_sync))
         backend.loop_transition(self.shoop_c_handle,
                                 to_state.value,
                                 cycles_delay,

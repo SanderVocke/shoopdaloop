@@ -12,8 +12,8 @@ Item {
     property bool is_in_selected_scene: false
     property bool is_in_hovered_scene:  false
     property alias name: statusrect.name
-    property LoopWidget master_loop
-    property LoopWidget targeted_loop
+    property LoopWidget master_loop : null
+    property LoopWidget targeted_loop : null
     property list<var> direct_port_pairs // List of ***PortPair
     property list<var> dry_port_pairs   // List of ***PortPair
     property list<var> wet_port_pairs   // List of ***PortPair
@@ -485,11 +485,12 @@ Item {
                                         name: 'record'
                                         color: 'red'
                                         text_color: Material.foreground
-                                        text: widget.targeted_loop !== undefined ? "->" : recordN.n.toString()
+                                        text: widget.targeted_loop ? "->" : recordN.n.toString()
                                         font.pixelSize: size / 2.0
                                     }
 
                                     function execute(delay, n_cycles) {
+                                        console.log('execute', delay, n_cycles)
                                         { if(statusrect.loop) {
                                             statusrect.loop.record(delay, true)
                                             statusrect.loop.play(delay + n_cycles, true)
@@ -497,8 +498,8 @@ Item {
                                     }
 
                                     onClicked: {
-                                        if (widget.targeted_loop === undefined) {
-                                            execute(0, n)
+                                        if (!widget.targeted_loop) {
+                                            execute(0, recordN.n)
                                         } else {
                                             // A target loop is set. Do the "record together with" functionality.
                                             // TODO: code is duplicated in app shared state for MIDI source
