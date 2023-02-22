@@ -151,6 +151,9 @@ public:
                 length_after += n_samples;
                 break;
             case Playing:
+            case Replacing:
+            case PlayingDryThroughWet:
+            case RecordingDryIntoWet:
                 pos_after += n_samples;
                 break;
             default:

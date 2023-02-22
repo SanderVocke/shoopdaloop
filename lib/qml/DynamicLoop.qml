@@ -76,6 +76,21 @@ Item {
         loader.item.clear(length)
     }
 
+    function play_dry_through_wet(delay, wait_for_soft_sync) {
+        load()
+        loader.item.play_dry_through_wet(delay, wait_for_soft_sync)
+    }
+
+    function record_dry_into_wet(delay, wait_for_soft_sync) {
+        load()
+        loader.item.record_dry_into_wet(delay, wait_for_soft_sync)
+    }
+
+    function replace(delay, wait_for_soft_sync) {
+        load()
+        loader.item.replace(delay, wait_for_soft_sync)
+    }
+
     function update() {
         if (ready) { loader.item.update() }
     }

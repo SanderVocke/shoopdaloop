@@ -4,6 +4,7 @@
 #include "ChannelInterface.h"
 #include "WithCommandQueue.h"
 #include "MidiMessage.h"
+#include "modified_loop_mode_for_channel.h"
 #include <optional>
 #include <functional>
 #include <chrono>
@@ -69,6 +70,7 @@ public:
         return *this;
     }
 
+#warning Replace use-case not covered for MIDI.
     void PROC_process(
         loop_mode_t mode_before,
         loop_mode_t mode_after,
@@ -80,17 +82,20 @@ public:
         ) override {
         PROC_handle_command_queue();
 
-        if (ma_mode) {
-            switch (mode_before) {
-                case Playing:
-                    PROC_process_playback(pos_before, length_before, n_samples, false);
-                    break;
-                case Recording:
-                    PROC_process_record(length_before, n_samples);
-                    break;
-                default:
-                    break;
-            }
+        loop_mode_t modified_mode = modified_loop_mode_for_channel(mode_before, ma_mode);
+
+        switch (modified_mode) {
+            case Playing:
+                PROC_process_playback(pos_before, length_before, n_samples, false);
+                break;
+            case Recording:
+                PROC_process_record(length_before, n_samples);
+                break;
+            case Stopped:
+            case Replacing:
+                break;
+            default:
+                break;
         }
     }
 

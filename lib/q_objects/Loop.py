@@ -154,6 +154,18 @@ class Loop(QQuickItem):
     def stop(self, delay, wait_for_soft_sync):
         self._backend_loop.transition(backend.LoopMode.Stopped, delay, wait_for_soft_sync)
     
+    @pyqtSlot(int, bool)
+    def replace(self, delay, wait_for_soft_sync):
+        self._backend_loop.transition(backend.LoopMode.Replacing, delay, wait_for_soft_sync)
+
+    @pyqtSlot(int, bool)
+    def play_dry_through_wet(self, delay, wait_for_soft_sync):
+        self._backend_loop.transition(backend.LoopMode.PlayingDryThroughWet, delay, wait_for_soft_sync)
+
+    @pyqtSlot(int, bool)
+    def record_dry_into_wet(self, delay, wait_for_soft_sync):
+        self._backend_loop.transition(backend.LoopMode.RecordingDryIntoWet, delay, wait_for_soft_sync)
+
     @pyqtSlot(int)
     def clear(self, length):
         self._backend_loop.clear(length)

@@ -403,10 +403,7 @@ Item {
                                         text_color: Material.foreground
                                         text: "FX"
                                     }
-                                    onClicked: { if(statusrect.loop) { 
-                                        console.log('unimplemented!')
-                                        //statusrect.loop.doLoopAction(StatesAndActions.LoopActionType.DoPlayLiveFX, [0.0], true, true)
-                                    }}
+                                    onClicked: { if(statusrect.loop) { statusrect.loop.play_dry_through_wet(0, true) }}
 
                                     ToolTip.delay: 1000
                                     ToolTip.timeout: 5000
@@ -429,9 +426,7 @@ Item {
                         color: 'red'
                     }
 
-                    onClicked: { if(statusrect.loop) {
-                        statusrect.loop.record(0, true);
-                    }}
+                    onClicked: { if(statusrect.loop) { statusrect.loop.record(0, true) }}
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
@@ -494,16 +489,16 @@ Item {
                                         font.pixelSize: size / 2.0
                                     }
 
-                                    function execute(n_cycles) {
-                                        if (statusrect && statusrect.loop) {
-                                            console.log('unimplemented!')
-                                            //statusrect.loop.doLoopAction(StatesAndActions.LoopActionType.DoRecordNCycles, [0.0, n_cycles], true, true)
-                                        }
+                                    function execute(delay, n_cycles) {
+                                        { if(statusrect.loop) {
+                                            statusrect.loop.record(delay, true)
+                                            statusrect.loop.play(delay + n_cycles, true)
+                                        }}
                                     }
 
                                     onClicked: {
                                         if (widget.targeted_loop === undefined) {
-                                            execute(n)
+                                            execute(0, n)
                                         } else {
                                             // A target loop is set. Do the "record together with" functionality.
                                             // TODO: code is duplicated in app shared state for MIDI source
@@ -514,8 +509,7 @@ Item {
                                                 var current_cycle = Math.floor(widget.targeted_loop.position / widget.master_loop.length)
                                                 n_cycles_delay = Math.max(0, n_cycles_record - current_cycle - 1)
                                             }
-                                            console.log('unimplemented!')
-                                            //statusrect.loop.doLoopAction(StatesAndActions.LoopActionType.DoRecordNCycles, [n_cycles_delay, n_cycles_record], true, true)
+                                            execute(n_cycles_delay, n_cycles_record)
                                         }
                                     }
                                     onPressAndHold: { recordn_menu.popup() }
@@ -743,8 +737,10 @@ Item {
 
                 switch(lsicon.mode) {
                 case Types.LoopMode.Playing:
+                case Types.LoopMode.PlayingDryThroughWet:
                     return lsicon.muted ? 'volume-mute' : 'play'
                 case Types.LoopMode.Recording:
+                case Types.LoopMode.RecordingDryIntoWet:
                     return 'record-rec'
                 case Types.LoopMode.Stopped:
                     return 'stop'
@@ -765,9 +761,9 @@ Item {
                     return '#00AA00'
                 case Types.LoopMode.Recording:
                     return 'red'
-                // case Types.LoopMode.RecordingFX:
-                // case Types.LoopMode.PlayingLiveFX:
-                //     return 'orange'
+                case Types.LoopMode.RecordingDryIntoWet:
+                case Types.LoopMode.PlayingDryThroughWet:
+                    return 'orange'
                 default:
                     return 'grey'
                 }
@@ -779,8 +775,8 @@ Item {
                     return ''
                 }
                 switch(lsicon.mode) {
-                case Types.LoopMode.PlayingLiveFX:
-                case Types.LoopMode.RecordingFX:
+                case Types.LoopMode.RecordingDryIntoWet:
+                case Types.LoopMode.PlayingDryThroughWet:
                     return 'FX'
                 default:
                     return ''

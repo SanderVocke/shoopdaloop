@@ -3,6 +3,8 @@
 #include "ObjectPool.h"
 #include "AudioBuffer.h"
 #include "WithCommandQueue.h"
+#include "types.h"
+#include "modified_loop_mode_for_channel.h"
 #include <cmath>
 #include <cstring>
 #include <memory>
@@ -92,17 +94,23 @@ public:
         // Execute any commands queued from other threads.
         PROC_handle_command_queue();
 
-        if (ma_mode) {
-            switch (mode_before) {
-                case Playing:
-                    PROC_process_playback(pos_before, length_before, n_samples, false);
-                    break;
-                case Recording:
-                    PROC_process_record(n_samples, length_before);
-                    break;
-                default:
-                    break;
-            }
+        loop_mode_t modified_mode = modified_loop_mode_for_channel(mode_before, ma_mode);
+
+        switch (modified_mode) {
+            case Playing:
+                PROC_process_playback(pos_before, length_before, n_samples, false);
+                break;
+            case Recording:
+                PROC_process_record(n_samples, length_before);
+                break;
+            case Replacing:
+                PROC_process_replace(pos_before, length_before, n_samples);
+                break;
+            case Stopped:
+                break;
+            default:
+                throw std::runtime_error("Unhandled loop mode in channel");
+                break;
         }
     }
 
@@ -186,6 +194,44 @@ public:
         }
     }
 
+    void PROC_process_replace(size_t position, size_t length, size_t n_samples) {
+        if (mp_recording_source_buffer_size < n_samples) {
+            throw std::runtime_error("Attempting to replace out of bounds of recording buffer");
+        }
+        if (ma_data_length == 0) {
+            throw std::runtime_error("Attempting to replace empty channel");
+        }
+        
+        if (position < ma_data_length) {
+            // We have something to replace.
+            size_t buffer_idx = position / ma_buffer_size;
+            size_t pos_in_buffer = position % ma_buffer_size;
+            size_t buf_head = (buffer_idx == mp_buffers.size()-1) ?
+                ma_data_length - (buffer_idx * ma_buffer_size) :
+                ma_buffer_size;
+            size_t samples_left_in_data = length - position;
+            auto  &to_buf = mp_buffers[buffer_idx];
+            SampleT* to = &to_buf->at(pos_in_buffer);
+            SampleT* &from = mp_recording_source_buffer;
+            auto n = std::min({buf_head - pos_in_buffer, samples_left_in_data, n_samples});
+            auto rest = n_samples - n;
+
+            memcpy((void*)to, (void*)from, sizeof(SampleT) * n);
+
+            mp_recording_source_buffer += n;
+            mp_recording_source_buffer_size -= n;
+
+            // If we didn't replace all yet, go to next buffer and continue
+            if(rest > 0) {
+                PROC_process_replace(position + n, length, rest);
+            }
+        } else {
+            // We have nothing to replace. Just leave the buffer as-is.
+            mp_recording_source_buffer += n_samples;
+            mp_recording_source_buffer_size -= n_samples;
+        }
+    }
+
     size_t data_length() const { return ma_data_length; }
 
     SampleT const& PROC_at(size_t position) const {
@@ -199,10 +245,6 @@ public:
         if (ma_data_length == 0) {
             throw std::runtime_error("Attempting to play from empty channel");
         }
-        if (position >= length) {
-            throw std::runtime_error("Position out of bounds");
-        }
-
         
         if (position < ma_data_length) {
             // We have something to play.
