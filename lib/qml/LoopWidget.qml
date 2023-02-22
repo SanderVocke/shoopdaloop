@@ -25,8 +25,10 @@ Item {
     property Loop maybe_loaded_loop : dynamic_loop.maybe_loop
     readonly property bool is_master: master_loop && master_loop == this
 
-    //property int n_multiples_of_master_length: loop && master_loop ? Math.ceil(loop.length / master_loop.length) : 1
-    //property int current_cycle: loop && master_loop ? Math.floor(loop.position / master_loop.length) : 0
+    property int n_multiples_of_master_length: master_loop ?
+        Math.ceil(dynamic_loop.length / master_loop.maybe_loop.length) : 1
+    property int current_cycle: master_loop ?
+        Math.floor(dynamic_loop.position / master_loop.maybe_loop.length) : 0
 
     signal selected() //directly selected by the user to be activated.
     signal toggle_in_current_scene() //selected by the user to be added/removed to/from the current scene.
@@ -572,10 +574,10 @@ Item {
                                     onClicked: { if(statusrect.loop) {
                                         var n = widget.n_multiples_of_master_length
                                         var delay = widget.n_multiples_of_master_length - widget.current_cycle - 1
-                                        console.log('unimplemented!')
-                                        //statusrect.loop.doLoopAction(StatesAndActions.LoopActionType.DoReRecordFX,
-                                        //    [delay, n],
-                                        //    true, true)
+                                        var prev_mode = statusrect.loop.mode
+                                        console.log('n', n, 'delay', delay)
+                                        statusrect.loop.record_dry_into_wet(delay, true)
+                                        statusrect.loop.transition(prev_mode, delay + n, true)
                                     }}
 
                                     ToolTip.delay: 1000

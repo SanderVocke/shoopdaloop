@@ -141,30 +141,35 @@ class Loop(QQuickItem):
             self.passed_halfway.emit()
         if (self.position < prev_position and is_playing_mode(prev_mode) and is_playing_mode(self.mode)):
             self.cycled.emit()
+    
+    @pyqtSlot(int, int, bool)
+    def transition(self, mode, delay, wait_for_soft_sync):
+        print('transition loop.py: {} {} {}'.format(mode, delay, wait_for_soft_sync))
+        self._backend_loop.transition(backend.LoopMode(mode), delay, wait_for_soft_sync)
 
     @pyqtSlot(int, bool)
     def record(self, delay, wait_for_soft_sync):
-        self._backend_loop.transition(backend.LoopMode.Recording, delay, wait_for_soft_sync)
+        self.transition(backend.LoopMode.Recording, delay, wait_for_soft_sync)
     
     @pyqtSlot(int, bool)
     def play(self, delay, wait_for_soft_sync):
-        self._backend_loop.transition(backend.LoopMode.Playing, delay, wait_for_soft_sync)
+        self.transition(backend.LoopMode.Playing, delay, wait_for_soft_sync)
     
     @pyqtSlot(int, bool)
     def stop(self, delay, wait_for_soft_sync):
-        self._backend_loop.transition(backend.LoopMode.Stopped, delay, wait_for_soft_sync)
+        self.transition(backend.LoopMode.Stopped, delay, wait_for_soft_sync)
     
     @pyqtSlot(int, bool)
     def replace(self, delay, wait_for_soft_sync):
-        self._backend_loop.transition(backend.LoopMode.Replacing, delay, wait_for_soft_sync)
+        self.transition(backend.LoopMode.Replacing, delay, wait_for_soft_sync)
 
     @pyqtSlot(int, bool)
     def play_dry_through_wet(self, delay, wait_for_soft_sync):
-        self._backend_loop.transition(backend.LoopMode.PlayingDryThroughWet, delay, wait_for_soft_sync)
+        self.transition(backend.LoopMode.PlayingDryThroughWet, delay, wait_for_soft_sync)
 
     @pyqtSlot(int, bool)
     def record_dry_into_wet(self, delay, wait_for_soft_sync):
-        self._backend_loop.transition(backend.LoopMode.RecordingDryIntoWet, delay, wait_for_soft_sync)
+        self.transition(backend.LoopMode.RecordingDryIntoWet, delay, wait_for_soft_sync)
 
     @pyqtSlot(int)
     def clear(self, length):

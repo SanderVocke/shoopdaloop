@@ -37,6 +37,7 @@ protected:
 
     std::atomic<loop_mode_t> ma_mode;
     std::atomic<bool> ma_triggering_now;
+    std::atomic<bool> ma_already_triggered;
     std::atomic<size_t> ma_length;
     std::atomic<size_t> ma_position;
     
@@ -55,7 +56,8 @@ public:
         ma_length(0),
         ma_position(0),
         ma_maybe_next_planned_mode(LOOP_MODE_INVALID),
-        ma_maybe_next_planned_delay(-1)
+        ma_maybe_next_planned_delay(-1),
+        ma_already_triggered(false)
     {}
     ~BasicLoop() override {}
 
@@ -66,7 +68,10 @@ public:
     }
 
     virtual void PROC_update_poi() {
-        if((ma_mode == Playing) && 
+        if((ma_mode == Playing ||
+            ma_mode == PlayingDryThroughWet ||
+            ma_mode == Replacing ||
+            ma_mode == RecordingDryIntoWet) && 
            ma_length == 0) {
             PROC_handle_transition(Stopped);
         }
@@ -79,7 +84,10 @@ public:
         }
 
         std::optional<PointOfInterest> loop_end_poi;
-        if (ma_mode == Playing) {
+        if (ma_mode == Playing ||
+            ma_mode == PlayingDryThroughWet ||
+            ma_mode == RecordingDryIntoWet ||
+            ma_mode == Replacing) {
             std::optional<PointOfInterest> loop_end_poi = PointOfInterest {
                 .when = ma_length - ma_position,
                 .type_flags = LoopEnd
@@ -140,6 +148,7 @@ public:
         PROC_handle_command_queue();
 
         ma_triggering_now = false;
+        ma_already_triggered = false;
 
         size_t pos_before = ma_position;
         size_t pos_after = ma_position;
@@ -194,6 +203,8 @@ public:
     }
 
     void PROC_trigger(bool propagate=true) override {
+        if (ma_already_triggered) { return; }
+        ma_already_triggered = true;
         if (propagate) {
             ma_triggering_now = true;
         }
@@ -217,11 +228,11 @@ public:
 
     void PROC_handle_transition(loop_mode_t new_state) {
         if (ma_mode != new_state) {
+            set_position(0, false);
             if (new_state == Recording) {
                 // Recording always resets the loop.
                 // Don't bother clearing the channels.
                 set_length(0, false);
-                set_position(0, false);
             }
             ma_mode = new_state;
             if(ma_mode > LOOP_MODE_INVALID) {

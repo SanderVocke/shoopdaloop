@@ -91,6 +91,11 @@ Item {
         loader.item.replace(delay, wait_for_soft_sync)
     }
 
+    function transition(mode, delay, wait_for_soft_sync) {
+        load()
+        loader.item.transition(mode, delay, wait_for_soft_sync)
+    }
+
     function update() {
         if (ready) { loader.item.update() }
     }
