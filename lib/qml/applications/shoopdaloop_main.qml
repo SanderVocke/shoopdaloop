@@ -52,9 +52,9 @@ ApplicationWindow {
             targeted_loop = loop
         }
 
-        function transition_selected(mode, delay, wait_for_sync) {
+        function transition_selected(mode, delay, wait_for_sync, exclude_loop) {
             for(var i = 0; i<all_loops.length; i++) {
-                if (all_loops[i].selected) {
+                if (all_loops[i].selected && all_loops[i] != exclude_loop) {
                     all_loops[i].transition(mode, delay, wait_for_sync, false)
                 }
             }
@@ -69,7 +69,7 @@ ApplicationWindow {
                 set_targeted_loop(loop)
             })
             loop.onTransition.connect((mode, delay, wait_for_sync) => {
-                transition_selected(mode, delay, wait_for_sync)
+                transition_selected(mode, delay, wait_for_sync, loop)
             })
         }
 
