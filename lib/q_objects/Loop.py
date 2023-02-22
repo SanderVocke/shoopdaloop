@@ -28,6 +28,7 @@ class Loop(QQuickItem):
         self._next_mode = backend.LoopMode.Unknown.value
         self._next_transition_delay = -1
         self._length = 0
+        self._sync_source = None
         self.update()
 
     ######################
@@ -76,6 +77,18 @@ class Loop(QQuickItem):
     def next_transition_delay(self):
         return self._next_transition_delay
     
+    # synchronization source loop
+    syncSourceChanged = pyqtSignal('QVariant')
+    @pyqtProperty('QVariant', notify=syncSourceChanged)
+    def sync_source(self):
+        return self._sync_source
+    @sync_source.setter
+    def sync_source(self, loop):
+        if loop != self._sync_source:
+            self._sync_source = loop
+            self._backend_loop.set_sync_source(loop._backend_loop)
+            self.syncSourceChanged.emit(loop)
+    
     ###########
     ## SLOTS
     ###########
@@ -109,8 +122,8 @@ class Loop(QQuickItem):
         self._mode = state.mode
         self._length = state.length
         self._position = state.position
-        self._next_mode = state.maybe_next_mode or state.mode
-        self._next_transition_delay = state.maybe_next_delay or -1
+        self._next_mode = (state.maybe_next_mode if state.maybe_next_mode != None else state.mode)
+        self._next_transition_delay = (state.maybe_next_delay if state.maybe_next_delay != None else -1)
 
         if prev_mode != self._mode:
             self.modeChanged.emit(self._mode)

@@ -21,8 +21,9 @@ Item {
     property var additional_context_menu_options : null // dict of option name -> functor
 
     // Internally controlled
-    property DynamicLoop maybe_loop : loop
-    readonly property bool is_master: loop && loop == master_loop
+    property DynamicLoop maybe_loop : dynamic_loop
+    property Loop maybe_loaded_loop : dynamic_loop.maybe_loop
+    readonly property bool is_master: master_loop && master_loop == this
 
     //property int n_multiples_of_master_length: loop && master_loop ? Math.ceil(loop.length / master_loop.length) : 1
     //property int current_cycle: loop && master_loop ? Math.floor(loop.position / master_loop.length) : 0
@@ -42,10 +43,12 @@ Item {
     clip: true
 
     DynamicLoop {
-        id: loop
+        id: dynamic_loop
+        force_load : is_master // Master loop should always be there to sync to
+        sync_source : master_loop && !is_master ? master_loop.maybe_loaded_loop : null
 
         PortChannelRouter {
-            loop: loop.maybe_loop
+            loop: dynamic_loop.maybe_loop
             direct_port_pairs: widget.direct_port_pairs
             dry_port_pairs: widget.dry_port_pairs
             wet_port_pairs: widget.wet_port_pairs
@@ -78,13 +81,11 @@ Item {
         signal propagateMousePosition(var point)
         signal propagateMouseExited()
 
-        width: loop.width
-        height: loop.height
+        width: loopitem.width
+        height: loopitem.height
 
-        color: {
-            console.log('TEST', loop, loop.length)
-            return (loop.length > 0) ? '#000044' : Material.background
-        }
+        color: (loop.length > 0) ? '#000044' : Material.background
+
         border.color: {
             var default_color = 'grey'
             if (!statusrect.loop) {
@@ -224,7 +225,7 @@ Item {
         }
 
         Item {
-            id : loop
+            id: loopitem
             width: 100
             height: 26
             x: 0

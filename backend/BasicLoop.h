@@ -31,7 +31,7 @@ public:
 
 protected:
     std::optional<PointOfInterest> mp_next_poi;
-    std::shared_ptr<LoopInterface> mp_soft_sync_source;
+    std::shared_ptr<LoopInterface> mp_sync_source;
     std::deque<loop_mode_t> mp_planned_states;
     std::deque<int> mp_planned_state_countdowns;
 
@@ -50,7 +50,7 @@ public:
         WithCommandQueue<100, 1000, 1000>(),
         mp_next_poi(std::nullopt),
         ma_mode(Stopped),
-        mp_soft_sync_source(nullptr),
+        mp_sync_source(nullptr),
         ma_triggering_now(false),
         ma_length(0),
         ma_position(0),
@@ -115,7 +115,7 @@ public:
         if (mp_next_poi.has_value() && mp_next_poi.value().when == 0) {
             PROC_handle_poi();
         }
-        if (mp_soft_sync_source && mp_soft_sync_source->PROC_is_triggering_now()) { return true; }
+        if (mp_sync_source && mp_sync_source->PROC_is_triggering_now()) { return true; }
         if (ma_triggering_now) { return true; }
         return false;
     }
@@ -167,20 +167,20 @@ public:
         PROC_update_poi();
     }
 
-    void set_soft_sync_source(std::shared_ptr<LoopInterface> const& src, bool thread_safe=true) override {
+    void set_sync_source(std::shared_ptr<LoopInterface> const& src, bool thread_safe=true) override {
         if(thread_safe) {
-            exec_process_thread_command([=]() { mp_soft_sync_source = src; });
+            exec_process_thread_command([=]() { mp_sync_source = src; });
         } else {
-            mp_soft_sync_source = src;
+            mp_sync_source = src;
         }
     }
-    std::shared_ptr<LoopInterface> get_soft_sync_source(bool thread_safe = true) override {
+    std::shared_ptr<LoopInterface> get_sync_source(bool thread_safe = true) override {
         if(thread_safe) {
             std::shared_ptr<LoopInterface> rval;
-            exec_process_thread_command([this, &rval]() { rval = mp_soft_sync_source; });
+            exec_process_thread_command([this, &rval]() { rval = mp_sync_source; });
             return rval;
         }
-        return mp_soft_sync_source;
+        return mp_sync_source;
     }
 
     void PROC_update_planned_transition_cache() {
@@ -206,8 +206,8 @@ public:
         PROC_update_planned_transition_cache();
     }
 
-    void PROC_handle_soft_sync() override {
-        if (mp_soft_sync_source && mp_soft_sync_source->PROC_is_triggering_now()) {
+    void PROC_handle_sync() override {
+        if (mp_sync_source && mp_sync_source->PROC_is_triggering_now()) {
             PROC_trigger();
         }
     }
@@ -288,11 +288,11 @@ public:
         }
     }
 
-    void plan_transition(loop_mode_t mode, size_t n_cycles_delay = 0, bool wait_for_soft_sync = true, bool thread_safe=true) override {
+    void plan_transition(loop_mode_t mode, size_t n_cycles_delay = 0, bool wait_for_sync = true, bool thread_safe=true) override {
         auto fn = [=]() {
             bool transitioning_immediately =
-                (!mp_soft_sync_source && ma_mode != Playing) ||
-                (!wait_for_soft_sync);
+                (!mp_sync_source && ma_mode != Playing) ||
+                (!wait_for_sync);
             if (transitioning_immediately) {
                 // Un-synced loops transition immediately from non-playing
                 // states.

@@ -50,7 +50,7 @@ suite BasicLoop_tests = []() {
     "basicloop_3_planned_transition"_test = []() {
         BasicLoop loop;
         auto other = std::make_shared<BasicLoop>();
-        loop.set_soft_sync_source(other);
+        loop.set_sync_source(other);
         loop.set_mode(Recording, false);
         loop.set_length(10, false);
         loop.PROC_update_poi();
@@ -69,7 +69,7 @@ suite BasicLoop_tests = []() {
     "basicloop_3_1_planned_transition_delayed"_test = []() {
         BasicLoop loop;
         auto other = std::make_shared<BasicLoop>();
-        loop.set_soft_sync_source(other);
+        loop.set_sync_source(other);
         loop.set_mode(Recording, false);
         loop.set_length(10, false);
         loop.PROC_update_poi();
@@ -93,7 +93,7 @@ suite BasicLoop_tests = []() {
     "basicloop_3_2_planned_transitions_delayed"_test = []() {
         BasicLoop loop;
         auto other = std::make_shared<BasicLoop>();
-        loop.set_soft_sync_source(other);
+        loop.set_sync_source(other);
         loop.set_mode(Recording, false);
         loop.set_length(10, false);
         loop.PROC_update_poi();
@@ -128,7 +128,7 @@ suite BasicLoop_tests = []() {
     "basicloop_3_3_planned_transitions_cancellation_1"_test = []() {
         BasicLoop loop;
         auto other = std::make_shared<BasicLoop>();
-        loop.set_soft_sync_source(other);
+        loop.set_sync_source(other);
         loop.set_mode(Recording, false);
         loop.set_length(10, false);
         loop.PROC_update_poi();

@@ -825,10 +825,10 @@ void load_midi_channel_data (shoopdaloop_loop_midi_channel_t  *channel, midi_cha
 void loop_transition(shoopdaloop_loop_t *loop,
                       loop_mode_t mode,
                       size_t delay, // In # of triggers
-                      unsigned wait_for_soft_sync) {
+                      unsigned wait_for_sync) {
     g_cmd_queue.queue([=]() {
         auto &loop_info = *internal_loop(loop);
-        loop_info.loop->plan_transition(mode, delay, wait_for_soft_sync, false);
+        loop_info.loop->plan_transition(mode, delay, wait_for_sync, false);
     });
 }
 
@@ -836,11 +836,11 @@ void loops_transition(unsigned int n_loops,
                       shoopdaloop_loop_t **loops,
                       loop_mode_t mode,
                       size_t delay, // In # of triggers
-                      unsigned wait_for_soft_sync) {
+                      unsigned wait_for_sync) {
     g_cmd_queue.queue([=]() {
         for (size_t idx=0; idx<n_loops; idx++) {
             auto &loop_info = *internal_loop(loops[idx]);
-            loop_info.loop->plan_transition(mode, delay, wait_for_soft_sync, false);
+            loop_info.loop->plan_transition(mode, delay, wait_for_sync, false);
         }
     });
 }
@@ -1050,6 +1050,18 @@ loop_state_info_t *get_loop_state(shoopdaloop_loop_t *loop) {
     r->maybe_next_mode = next_mode;
     r->maybe_next_mode_delay = next_delay;
     return r;
+}
+
+void set_loop_sync_source (shoopdaloop_loop_t *loop, shoopdaloop_loop_t *sync_source) {
+    g_cmd_queue.queue([=]() {
+        auto &_loop = *internal_loop(loop);
+        if (sync_source) {
+            auto &src = *internal_loop(sync_source);
+            _loop.loop->set_sync_source(src.loop, false);
+        } else {
+            _loop.loop->set_sync_source(nullptr, false);
+        }
+    });
 }
 
 void destroy_midi_event(midi_event_t *e) {

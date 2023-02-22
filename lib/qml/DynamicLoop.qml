@@ -5,6 +5,8 @@ import '../../build/types.js' as Types
 
 // Wrap a Loop that may be dynamically loaded by a Loader in a just-in-time way.
 Item {
+    id: item
+
     readonly property bool ready : loader.status == Loader.Ready
     readonly property int mode : ready ? loader.item.mode : Types.LoopMode.Stopped
     readonly property int length : ready ? loader.item.length : 0
@@ -13,6 +15,12 @@ Item {
     readonly property int next_transition_delay : ready ? loader.item.next_transition_delay : -1
     readonly property var maybe_loop : loader.item
     default property alias contents : children_holder.children
+
+    property bool force_load : false
+
+    // Careful: these bindings work only one-way (updating the internal loop).
+    // If the value of the loop property changes, it will not be reflected back.
+    property var sync_source : null
 
     function load() {
         loader.active = true
@@ -74,7 +82,7 @@ Item {
 
     Loader {
         id: loader
-        active: false
+        active: item.force_load
         source: "Loop.qml"
     }
 
@@ -85,6 +93,12 @@ Item {
 
         Connections {
             target: loader
+            function onLoaded() {
+                console.log('LOADED LOOP', item.sync_source)
+                loader.item.sync_source = Qt.binding(() => {
+                    return item.sync_source
+                })
+            }
         }
     }
 }

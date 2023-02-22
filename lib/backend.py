@@ -190,6 +190,12 @@ class BackendLoop:
     def clear(self, length):
         backend.clear_loop(self.shoop_c_handle, length)
     
+    def set_sync_source(self, loop):
+        if loop:
+            backend.set_loop_sync_source(self.shoop_c_handle, loop.shoop_c_handle)
+        else:
+            backend.set_loop_sync_source(self.shoop_c_handle, None)
+    
     def __del__(self):
         backend.destroy_loop(self.shoop_c_handle)
 

@@ -39,7 +39,7 @@ void process_loops(std::vector<std::shared_ptr<Loop>> const& loops_access,
         lg(*loops_access[i].get())->PROC_handle_poi();
     }
     for(size_t i=0; i<loops_access.size(); i++) {
-        lg(*loops_access[i].get())->PROC_handle_soft_sync();
+        lg(*loops_access[i].get())->PROC_handle_sync();
     }
 
     // If we didn't process the whole thing, keep going.

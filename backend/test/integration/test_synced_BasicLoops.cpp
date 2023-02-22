@@ -17,7 +17,7 @@ suite Synced_BasicLoops_tests = []() {
         auto loop1 = std::make_shared<BasicLoop>();
         auto loop2 = std::make_shared<BasicLoop>();
         
-        loop1->set_soft_sync_source(loop2);
+        loop1->set_sync_source(loop2);
         loop1->set_mode(Stopped, false);
         loop1->set_length(10, false);
         loop1->plan_transition(Playing);
@@ -25,7 +25,7 @@ suite Synced_BasicLoops_tests = []() {
         loop2->PROC_trigger();
         expect(eq(loop2->PROC_is_triggering_now(), true));
 
-        loop1->PROC_handle_soft_sync();
+        loop1->PROC_handle_sync();
 
         expect(eq(loop1->get_mode(), Playing));
     };
@@ -34,7 +34,7 @@ suite Synced_BasicLoops_tests = []() {
         auto loop1 = std::make_shared<BasicLoop>();
         auto loop2 = std::make_shared<BasicLoop>();
 
-        loop1->set_soft_sync_source(loop2);
+        loop1->set_sync_source(loop2);
         loop1->set_length(100, false);
         loop1->set_mode(Stopped, false);
         loop1->plan_transition(Playing);

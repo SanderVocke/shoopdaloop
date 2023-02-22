@@ -24,6 +24,7 @@ void              clear_loop               (shoopdaloop_loop_t *loop, size_t len
 loop_state_info_t *get_loop_state          (shoopdaloop_loop_t *loop);
 void              set_loop_length          (shoopdaloop_loop_t *loop, size_t length);
 void              set_loop_position        (shoopdaloop_loop_t *loop, size_t position);
+void              set_loop_sync_source     (shoopdaloop_loop_t *loop, shoopdaloop_loop_t *sync_source);
 
 // Loop channels
 void                   clear_audio_channel      (shoopdaloop_loop_audio_channel_t *channel);
@@ -50,12 +51,12 @@ midi_channel_state_info_t  *get_midi_channel_state   (shoopdaloop_loop_midi_chan
 void loop_transition(shoopdaloop_loop_t *loop,
                       loop_mode_t mode,
                       size_t delay, // In # of triggers
-                      unsigned wait_for_soft_sync);
+                      unsigned wait_for_sync);
 void loops_transition(unsigned int n_loops,
                       shoopdaloop_loop_t **loops,
                       loop_mode_t mode,
                       size_t delay, // In # of triggers
-                      unsigned wait_for_soft_sync);
+                      unsigned wait_for_sync);
 
 // Audio ports
 shoopdaloop_audio_port_t *open_audio_port (const char* name_hint, port_direction_t direction);
