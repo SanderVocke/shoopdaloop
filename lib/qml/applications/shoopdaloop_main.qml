@@ -29,10 +29,37 @@ ApplicationWindow {
     Backend {
         update_interval_ms: 30
         client_name_hint: 'Shoopdaloop'
+        id: backend
 
         anchors {
             fill: parent
             margins: 6
+        }
+
+        property LoopWidget master_loop : null
+        property LoopWidget targeted_loop : null
+        property list<LoopWidget> all_loops : []
+        property var loop_coordinates : ({})
+
+        function set_targeted_loop(loop) {
+            for(var i = 0; i<all_loops.length; i++) {
+                if (all_loops[i] == loop) {
+                    all_loops[i].target()
+                } else {
+                    all_loops[i].untarget()
+                }
+            }
+            targeted_loop = loop
+        }
+
+        function register_loop(track_index, loop_index, loop, is_master) {
+            if (is_master) { master_loop = loop }
+            all_loops.push(loop)
+            loop_coordinates[loop] = [track_index, loop_index]
+            console.log('connecteroo')
+            loop.onTargetedChanged.connect(() => {
+                set_targeted_loop(loop)
+            })
         }
 
         TracksWidget {
@@ -47,6 +74,10 @@ ApplicationWindow {
 
             slots_per_track: 8
             n_tracks: 8
+            master_loop: backend.master_loop
+            targeted_loop: backend.targeted_loop
+
+            onLoop_created: (ti, li, loop) => { backend.register_loop(ti, li, loop, false) }
 
             // function map_loop_pos(loop_pos) {
             //     return [loop_pos[0]-1, loop_pos[1]];
@@ -85,6 +116,10 @@ ApplicationWindow {
 
             name: 'Master'
             num_slots: 1
+            master_loop: backend.master_loop
+            targeted_loop: backend.targeted_loop
+
+            onLoop_created: (li, loop) => { backend.register_loop(-1, li, loop, true) }
 
             // name: shared.track_names[0]
             // loop_names: shared.loop_names[0]

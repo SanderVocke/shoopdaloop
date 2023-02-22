@@ -23,6 +23,8 @@ Item {
     // Internally controlled
     property DynamicLoop maybe_loop : dynamic_loop
     property Loop maybe_loaded_loop : dynamic_loop.maybe_loop
+    property bool selected : false
+    property bool targeted : false
     readonly property bool is_master: master_loop && master_loop == this
 
     property int n_multiples_of_master_length: master_loop ?
@@ -30,12 +32,20 @@ Item {
     property int current_cycle: master_loop ?
         Math.floor(dynamic_loop.position / master_loop.maybe_loop.length) : 0
 
-    signal selected() //directly selected by the user to be activated.
-    signal toggle_in_current_scene() //selected by the user to be added/removed to/from the current scene.
-    signal request_rename(string name)
-    signal request_clear()
-    signal request_toggle_selected()
-    signal request_set_as_targeted()
+    // Public methods
+    function select() { targeted = false; selected = true }
+    function deselect() { selected = false }
+    function toggle_selected() { if (selected) { deselect() } else { select() } }
+    function target() { selected = false; targeted = true;  }
+    function untarget() { targeted = false }
+    function toggle_targeted() { if (targeted) { untarget() } else { target() } }
+
+    // signal selected() //directly selected by the user to be activated.
+    // signal toggle_in_current_scene() //selected by the user to be added/removed to/from the current scene.
+    // signal request_rename(string name)
+    // signal request_clear()
+    // signal request_toggle_selected()
+    // signal request_set_as_targeted()
 
     // Internal
     id : widget
@@ -94,9 +104,9 @@ Item {
                 return default_color;
             }
 
-            if (widget.maybe_loop.targeted) {
+            if (widget.targeted) {
                 return "orange";
-            } if (widget.maybe_loop.selected) {
+            } if (widget.selected) {
                 return 'yellow';
             } else if (widget.is_in_hovered_scene) {
                 return 'blue';
@@ -257,10 +267,10 @@ Item {
                     muted: { console.log('unimplemented muted'); return false; }
                     empty: statusrect.loop.length == 0
                     onDoubleClicked: (event) => {
-                            if (event.button === Qt.LeftButton) { widget.request_set_as_targeted() }
+                            if (event.button === Qt.LeftButton) { widget.target() }
                         }
                     onClicked: (event) => {
-                            if (event.button === Qt.LeftButton) { widget.request_toggle_selected() }
+                            if (event.button === Qt.LeftButton) { widget.toggle_selected() }
                             else if (event.button === Qt.MiddleButton) { widget.toggle_in_current_scene() }
                             else if (event.button === Qt.RightButton) { contextmenu.popup() }
                         }
@@ -501,10 +511,8 @@ Item {
 
                                     onClicked: {
                                         if (widget.targeted_loop === undefined || widget.targeted_loop === null) {
-                                            console.log("no targeted")
                                             execute(0, recordN.n)
                                         } else {
-                                            console.log("targeted")
                                             // A target loop is set. Do the "record together with" functionality.
                                             // TODO: code is duplicated in app shared state for MIDI source
                                             var n_cycles_delay = 0
@@ -678,7 +686,9 @@ Item {
             function getRightMargin() {
                 var st = loopprogressrect.loop
                 if(st && st.length && st.length > 0) {
-                    return (1.0 - (st.position / st.length)) * parent.width
+                    return st.mode == Types.LoopMode.Recording ?
+                        0.0 :
+                        (1.0 - (st.position / st.length)) * parent.width
                 }
                 return parent.width
             }

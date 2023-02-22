@@ -29,6 +29,7 @@ Item {
     signal request_clear_loop(var loop)
     signal request_toggle_loop_selected(var loop)
     signal request_set_targeted_loop(var loop)
+    signal loop_created(int index, LoopWidget loop)
 
     function actions_on_loop_mgrs(idx, on_idx_loop_fn, on_other_loop_fn) {
         for(var i = 0; i < track.num_loops; i++) {
@@ -100,9 +101,11 @@ Item {
 
                 Repeater {
                     model: track.num_slots
-                    id: loops
+                    id: loops_repeater
                     width: childrenRect.width
                     height: childrenRect.height
+
+                    onItemAdded: (index, loop) => track.loop_created(index, loop)
 
                     LoopWidget {
                         id: lwidget
@@ -111,8 +114,8 @@ Item {
                         //is_in_hovered_scene: track.loops_of_hovered_scene.includes(index)
                         name: 'Loop ' + (index+1).toString()
 
-                        master_loop: null
-                        targeted_loop: null
+                        master_loop: track.master_loop
+                        targeted_loop: track.targeted_loop
 
                         direct_port_pairs: []
                         dry_port_pairs: [ dry_audio_l, dry_audio_r, dry_midi ]

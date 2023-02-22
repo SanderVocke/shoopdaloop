@@ -16,6 +16,8 @@ Item {
     property list<LoopWidget> loops_of_selected_scene: []
     property list<LoopWidget> loops_of_hovered_scene: []
 
+    signal loop_created(int track_index, int loop_index, LoopWidget loop)
+
     // signal request_toggle_loop_in_scene(int track, int loop)
     // signal request_rename(int track, string name)
     // signal request_select_loop(int track, int loop)
@@ -53,6 +55,8 @@ Item {
                         targeted_loop: tracks.targeted_loop
 
                         name: 'Track ' + (index + 1).toString()
+
+                        onLoop_created: (loop_index, loop) => tracks.loop_created(index, loop_index, loop)
                     }
                 }
             }
