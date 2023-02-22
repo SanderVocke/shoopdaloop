@@ -214,9 +214,15 @@ public:
 
     void PROC_handle_transition(loop_mode_t new_state) {
         if (ma_mode != new_state) {
+            if (new_state == Recording) {
+                // Recording always resets the loop.
+                // Don't bother clearing the channels.
+                set_length(0, false);
+                set_position(0, false);
+            }
             ma_mode = new_state;
             if(ma_mode > LOOP_MODE_INVALID) {
-                throw std::runtime_error ("Mode exceeded");
+                throw std::runtime_error ("Invalid mode");
             }
             if (ma_mode == Stopped) { ma_position = 0; }
             if ((ma_mode == Playing) &&
