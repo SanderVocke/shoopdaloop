@@ -67,7 +67,7 @@ class BackendTests(unittest.TestCase):
             self.mappings['port_name_pairs'],
             self.mappings['loops_to_ports'],
             self.mappings['loops_hard_sync'],
-            self.mappings['loops_soft_sync'],
+            self.mappings['loops_sync'],
             60.0,
             'test-backend',
             0.03 # About 30Hz updates

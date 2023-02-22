@@ -55,6 +55,7 @@ Item {
                         targeted_loop: tracks.targeted_loop
 
                         name: 'Track ' + (index + 1).toString()
+                        port_name_prefix: 'track_' + (index+1).toString() + '_'
 
                         onLoop_created: (loop_index, loop) => tracks.loop_created(index, loop_index, loop)
                     }

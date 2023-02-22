@@ -41,9 +41,9 @@ Item {
                     mgr.targeted)
         }
         var did_loop_action_closure = (track, loop) => {
-            return (action, args, with_soft_sync, propagate_to_selected_loops) => {
+            return (action, args, with_sync, propagate_to_selected_loops) => {
                 if (propagate_to_selected_loops) {
-                    shared.propagate_action_to_selected_loops(track, loop, action, args, with_soft_sync)
+                    shared.propagate_action_to_selected_loops(track, loop, action, args, with_sync)
                 }
             }
         }
@@ -304,10 +304,10 @@ Item {
         targeted_loop = undefined
     }
 
-    function propagate_action_to_selected_loops(track, loop, action, args, with_soft_sync) {
+    function propagate_action_to_selected_loops(track, loop, action, args, with_sync) {
         for (var l of selected_loops) {
             if (!(track == l[0] && loop == l[1])) {
-                loop_managers[l[0]][l[1]].doLoopAction(action, args, with_soft_sync, false)
+                loop_managers[l[0]][l[1]].doLoopAction(action, args, with_sync, false)
             }
         }
     }

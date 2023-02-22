@@ -56,44 +56,14 @@ Item {
         loader.item.load_audio_file(filename, force_length, forced_length)
     }
 
-    function record(delay, wait_for_soft_sync) {
-        load()
-        loader.item.record(delay, wait_for_soft_sync)
-    }
-
-    function play(delay, wait_for_soft_sync) {
-        load()
-        loader.item.play(delay, wait_for_soft_sync)
-    }
-
-    function stop(delay, wait_for_soft_sync) {
-        load()
-        loader.item.stop(delay, wait_for_soft_sync)
-    }
-
     function clear(length) {
         load()
         loader.item.clear(length)
     }
 
-    function play_dry_through_wet(delay, wait_for_soft_sync) {
+    function transition(mode, delay, wait_for_sync) {
         load()
-        loader.item.play_dry_through_wet(delay, wait_for_soft_sync)
-    }
-
-    function record_dry_into_wet(delay, wait_for_soft_sync) {
-        load()
-        loader.item.record_dry_into_wet(delay, wait_for_soft_sync)
-    }
-
-    function replace(delay, wait_for_soft_sync) {
-        load()
-        loader.item.replace(delay, wait_for_soft_sync)
-    }
-
-    function transition(mode, delay, wait_for_soft_sync) {
-        load()
-        loader.item.transition(mode, delay, wait_for_soft_sync)
+        loader.item.transition(mode, delay, wait_for_sync)
     }
 
     function update() {

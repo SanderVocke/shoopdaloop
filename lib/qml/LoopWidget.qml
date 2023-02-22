@@ -32,7 +32,19 @@ Item {
     property int current_cycle: master_loop ?
         Math.floor(dynamic_loop.position / master_loop.maybe_loop.length) : 0
 
+    // Signals
+    signal onClear(int length)
+    signal onTransition(int mode, int delay, bool wait_for_sync)
+
     // Public methods
+    function transition(mode, delay, wait_for_sync, emit=true) {
+        dynamic_loop.transition(mode, delay, wait_for_sync);
+        if (emit) { onTransition(mode, delay, wait_for_sync) }
+    }
+    function clear(length, emit=true) {
+        dynamic_loop.clear(length);
+        if (emit) { onClear(length) }
+    }
     function select() { targeted = false; selected = true }
     function deselect() { selected = false }
     function toggle_selected() { if (selected) { deselect() } else { select() } }
@@ -333,7 +345,7 @@ Item {
                         color: 'green'
                     }
 
-                    onClicked: { if(statusrect.loop) { statusrect.loop.play(0, true) }}
+                    onClicked: widget.transition(Types.LoopMode.Playing, 0, true)
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
@@ -415,7 +427,7 @@ Item {
                                         text_color: Material.foreground
                                         text: "FX"
                                     }
-                                    onClicked: { if(statusrect.loop) { statusrect.loop.play_dry_through_wet(0, true) }}
+                                    onClicked: widget.transition(Types.LoopMode.PlayingDryThroughWet, 0, true)
 
                                     ToolTip.delay: 1000
                                     ToolTip.timeout: 5000
@@ -438,7 +450,7 @@ Item {
                         color: 'red'
                     }
 
-                    onClicked: { if(statusrect.loop) { statusrect.loop.record(0, true) }}
+                    onClicked: widget.transition(Types.LoopMode.Recording, 0, true)
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
@@ -502,11 +514,8 @@ Item {
                                     }
 
                                     function execute(delay, n_cycles) {
-                                        console.log('execute', delay, n_cycles)
-                                        { if(statusrect.loop) {
-                                            statusrect.loop.record(delay, true)
-                                            statusrect.loop.play(delay + n_cycles, true)
-                                        }}
+                                        widget.transition(Types.LoopMode.Recording, delay, true)
+                                        widget.transition(Types.LoopMode.Playing, delay + n_cycles, true)
                                     }
 
                                     onClicked: {
@@ -579,14 +588,14 @@ Item {
                                         text_color: Material.foreground
                                         text: "FX"
                                     }
-                                    onClicked: { if(statusrect.loop) {
+                                    onClicked: {
                                         var n = widget.n_multiples_of_master_length
                                         var delay = widget.n_multiples_of_master_length - widget.current_cycle - 1
                                         var prev_mode = statusrect.loop.mode
                                         console.log('n', n, 'delay', delay)
-                                        statusrect.loop.record_dry_into_wet(delay, true)
+                                        widget.transition(Types.LoopMode.RecordingDryIntoWet, delay, true)
                                         statusrect.loop.transition(prev_mode, delay + n, true)
-                                    }}
+                                    }
 
                                     ToolTip.delay: 1000
                                     ToolTip.timeout: 5000
@@ -609,9 +618,7 @@ Item {
                         color: Material.foreground
                     }
 
-                    onClicked: { if(statusrect.loop) {
-                        statusrect.loop.stop(0, true)
-                    }}
+                    onClicked: widget.transition(Types.LoopMode.Stopped, 0, true)
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000

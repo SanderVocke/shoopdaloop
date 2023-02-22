@@ -51,7 +51,7 @@ with JackSession('test-sdl-backend') as jack_session:
         mappings['port_name_pairs'],
         mappings['loops_to_ports'],
         mappings['loops_hard_sync'],
-        mappings['loops_soft_sync'],
+        mappings['loops_sync'],
         60.0,
         'test-sdl-backend',
         0.03 # About 30Hz updates

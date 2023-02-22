@@ -15,6 +15,7 @@ Item {
 
     property string name: ''
     property bool name_editable: true
+    property string port_name_prefix: ''
 
     property list<LoopWidget> loops_of_selected_scene: []
     property list<LoopWidget> loops_of_hovered_scene:  []
@@ -44,30 +45,32 @@ Item {
     }
 
     // TODO: make ports dynamic
+    // TODO: apparently the order in which these are instantiated will make
+    // Patchance group the pairs or not. Quite confusing...
     AudioPortPair {
         id: dry_audio_l
-        input_name_hint: 'audio_in_l'
-        output_name_hint: 'audio_send_l'
+        input_name_hint: track.port_name_prefix + 'in_2'
+        output_name_hint: track.port_name_prefix + 'send_2'
     }
     AudioPortPair {
         id: dry_audio_r
-        input_name_hint: 'audio_in_r'
-        output_name_hint: 'audio_send_r'
+        input_name_hint: track.port_name_prefix + 'in_1'
+        output_name_hint: track.port_name_prefix + 'send_1'
     }
     MidiPortPair {
         id: dry_midi
-        input_name_hint: 'midi_in'
-        output_name_hint: 'midi_send'
+        input_name_hint: track.port_name_prefix + 'midi_in'
+        output_name_hint: track.port_name_prefix + 'midi_send'
     }
     AudioPortPair {
         id: wet_audio_l
-        input_name_hint: 'audio_return_l'
-        output_name_hint: 'audio_out_l'
+        input_name_hint: track.port_name_prefix + 'return_2'
+        output_name_hint: track.port_name_prefix + 'out_2'
     }
     AudioPortPair {
         id: wet_audio_r
-        input_name_hint: 'audio_return_r'
-        output_name_hint: 'audio_out_r'
+        input_name_hint: track.port_name_prefix + 'return_1'
+        output_name_hint: track.port_name_prefix + 'out_1'
     }
 
     Rectangle {

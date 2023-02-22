@@ -183,12 +183,12 @@ class BackendLoop:
         return rval
 
     def transition(self, to_state : Type['LoopMode'],
-                   cycles_delay : int, wait_for_soft_sync : bool):
-        print('transition: {}, {}, {}'.format(to_state, cycles_delay, wait_for_soft_sync))
+                   cycles_delay : int, wait_for_sync : bool):
+        print('transition: {}, {}, {}'.format(to_state, cycles_delay, wait_for_sync))
         backend.loop_transition(self.shoop_c_handle,
                                 to_state.value,
                                 cycles_delay,
-                                wait_for_soft_sync)
+                                wait_for_sync)
     
     def get_state(self):
         state = backend.get_loop_state(self.shoop_c_handle)

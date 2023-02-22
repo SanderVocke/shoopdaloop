@@ -60,7 +60,7 @@ class BackendManager(QObject):
                  midi_port_name_pairs,
                  loops_to_ports_map,
                  loops_hard_sync_map,
-                 loops_soft_sync_map,
+                 loops_sync_map,
                  ports_to_mixed_outputs_map,
                  ports_midi_enabled_list,
                  max_loop_length_seconds,
@@ -80,7 +80,7 @@ class BackendManager(QObject):
         self.max_loop_length_seconds = max_loop_length_seconds
         self.port_name_pairs = port_name_pairs
         self.loops_to_ports = loops_to_ports_map
-        self.loops_soft_sync_map = loops_soft_sync_map
+        self.loops_sync_map = loops_sync_map
         self.loops_hard_sync_map = loops_hard_sync_map
         self.ports_midi_enabled_list = ports_midi_enabled_list
         self.ports_to_mixed_outputs_map = ports_to_mixed_outputs_map
@@ -329,7 +329,7 @@ class BackendManager(QObject):
     def initialize_backend(self):
         loops_to_ports = (c_uint * self.n_loops)()
         loops_hard_sync_map = (c_int * self.n_loops)()
-        loops_soft_sync_map = (c_int * self.n_loops)()
+        loops_sync_map = (c_int * self.n_loops)()
         ports_to_mixed_outputs_map = (c_int * self.n_ports)()
         ports_midi_enabled = (c_uint * self.n_ports)()
         input_port_names = (POINTER(c_char) * self.n_ports)()
@@ -353,7 +353,7 @@ class BackendManager(QObject):
         for i in range(self.n_loops):
             loops_to_ports[i] = self.loops_to_ports[i]
             loops_hard_sync_map[i] = self.loops_hard_sync_map[i]
-            loops_soft_sync_map[i] = self.loops_soft_sync_map[i]
+            loops_sync_map[i] = self.loops_sync_map[i]
         
         for i in range(self.n_ports):
             ports_to_mixed_outputs_map[i] = self.ports_to_mixed_outputs_map[i]
@@ -371,7 +371,7 @@ class BackendManager(QObject):
             self.max_loop_length_seconds,
             loops_to_ports,
             loops_hard_sync_map,
-            loops_soft_sync_map,
+            loops_sync_map,
             ports_to_mixed_outputs_map,
             ports_midi_enabled,
             input_port_names,
@@ -476,7 +476,7 @@ class BackendManager(QObject):
         exit(1)
     
     @pyqtSlot(list, int, list, bool)
-    def do_backend_loops_action(self, loop_idxs, action_id, maybe_args, with_soft_sync):
+    def do_backend_loops_action(self, loop_idxs, action_id, maybe_args, with_sync):
         for loop_idx in loop_idxs:
             if loop_idx < 0 or loop_idx >= self.n_loops:
                 raise ValueError("Backend: loop idx out of range")
@@ -494,7 +494,7 @@ class BackendManager(QObject):
             backend.loop_action_t(action_id),
             args_data,
             len(maybe_args),
-            with_soft_sync
+            with_sync
         )
 
     @pyqtSlot(int, list)

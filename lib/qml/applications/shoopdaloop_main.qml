@@ -52,6 +52,14 @@ ApplicationWindow {
             targeted_loop = loop
         }
 
+        function transition_selected(mode, delay, wait_for_sync) {
+            for(var i = 0; i<all_loops.length; i++) {
+                if (all_loops[i].selected) {
+                    all_loops[i].transition(mode, delay, wait_for_sync, false)
+                }
+            }
+        }
+
         function register_loop(track_index, loop_index, loop, is_master) {
             if (is_master) { master_loop = loop }
             all_loops.push(loop)
@@ -59,6 +67,9 @@ ApplicationWindow {
             console.log('connecteroo')
             loop.onTargetedChanged.connect(() => {
                 set_targeted_loop(loop)
+            })
+            loop.onTransition.connect((mode, delay, wait_for_sync) => {
+                transition_selected(mode, delay, wait_for_sync)
             })
         }
 
@@ -115,6 +126,7 @@ ApplicationWindow {
             }
 
             name: 'Master'
+            port_name_prefix: 'master_'
             num_slots: 1
             master_loop: backend.master_loop
             targeted_loop: backend.targeted_loop
