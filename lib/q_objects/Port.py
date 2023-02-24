@@ -87,8 +87,10 @@ class Port(QQuickItem):
     
     @pyqtSlot()
     def close(self):
-        self._backend_obj.destroy()
-        self._backend_obj = None
+        print("PORT CLOSE")
+        if self._backend_obj:
+            self._backend_obj.destroy()
+            self._backend_obj = None
 
     ##########
     ## INTERNAL MEMBERS

@@ -39,7 +39,7 @@ Item {
         function onContentsChanged() { update_master_and_targeted() }
     }
     Component.onCompleted: {
-        if(objects_registry) { objects_registry.register(descriptor.id, this) }
+        objects_registry.register(descriptor.id, this)
         if(descriptor.is_master) { state_registry.register('master_loop', this) }
         update_master_and_targeted()
     }
@@ -75,6 +75,16 @@ Item {
         dynamic_loop.clear(length);
         if (emit) { onClear(length) }
     }
+    function qml_close() {
+        objects_registry.unregister(descriptor.id)
+        for(var i=0; i<audio_channels.model; i++) {
+            audio_channels.itemAt(i).qml_close();
+        }
+        for(var i=0; i<midi_channels.model; i++) {
+            midi_channels.itemAt(i).qml_close();
+        }
+        dynamic_loop.qml_close();
+    }
     function select() { targeted = false; selected = true }
     function deselect() { selected = false }
     function toggle_selected() { if (selected) { deselect() } else { select() } }
@@ -99,6 +109,7 @@ Item {
         sync_source : widget.master_loop && !widget.is_master ? widget.master_loop.maybe_loaded_loop : null;
 
         Repeater {
+            id: audio_channels
             model : widget.audio_channel_descriptors.length
 
             LoopAudioChannel {
@@ -109,6 +120,7 @@ Item {
             }
         }
         Repeater {
+            id: midi_channels
             model : widget.midi_channel_descriptors.length
 
             LoopMidiChannel {

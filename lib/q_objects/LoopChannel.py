@@ -131,9 +131,9 @@ class LoopChannel(QQuickItem):
     
     @pyqtSlot()
     def close(self):
-        print("CLOSE CHANNEL")
-        self._backend_obj.destroy()
-        self._backend_obj = None
+        if self._backend_obj:
+            self._backend_obj.destroy()
+            self._backend_obj = None
     
     @pyqtSlot()
     def rescan_parents(self):

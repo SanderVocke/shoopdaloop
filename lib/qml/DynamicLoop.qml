@@ -25,6 +25,12 @@ Item {
     function load() {
         loader.active = true
     }
+    
+    function qml_close() {
+        if (loader.active) {
+            loader.item.close();
+        }
+    }
 
     function audio_channels() {
         if (!ready) { return []; }

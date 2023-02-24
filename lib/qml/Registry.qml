@@ -8,6 +8,7 @@ QtObject {
     signal contentsChanged()
     signal itemAdded(var id, var item)
     signal itemModified(var id)
+    signal itemRemoved(var id)
 
     function register(id, object) {
         if(id in data) {
@@ -18,6 +19,20 @@ QtObject {
         }
         data[id] = object
         itemAdded(id, object)
+        contentsChanged()
+    }
+
+    function unregister(id) {
+        if(!(id in data)) {
+            throw new Error("attempting to unregister non-existent key: " + id)
+        }
+        if(verbose) {
+            console.log("REGISTRY: Unregistered:", id)
+        }
+        console.log('before', data[id])
+        delete data[id]
+        console.log('after', data[id])
+        itemRemoved(id)
         contentsChanged()
     }
 

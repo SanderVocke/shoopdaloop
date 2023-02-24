@@ -18,6 +18,18 @@ Item {
         schema: 'track.1'
     }
     Component.onCompleted: if(objects_registry) { objects_registry.register(descriptor.id, this) }
+    function qml_close() {
+        objects_registry.unregister(descriptor.id)
+        for(var i=0; i<audio_ports.model; i++) {
+            audio_ports.itemAt(i).qml_close();
+        }
+        for(var i=0; i<midi_ports.model; i++) {
+            midi_ports.itemAt(i).qml_close();
+        }
+        for(var i=0; i<loops.model; i++) {
+            loops.itemAt(i).qml_close();
+        }
+    }
     
     readonly property int num_slots : descriptor.loops.length
     readonly property string name: descriptor.name
@@ -55,7 +67,10 @@ Item {
     // TODO: apparently the order in which these are instantiated will make
     // Patchance group the pairs or not. Quite confusing...
 
+    
+
     Repeater {
+        id : audio_ports
         model : track.audio_port_descriptors.length
 
         AudioPort {
@@ -65,6 +80,7 @@ Item {
         }
     }
     Repeater {
+        id : midi_ports
         model : track.midi_port_descriptors.length
 
         MidiPort {
@@ -105,7 +121,7 @@ Item {
 
                 Repeater {
                     model: track.num_slots
-                    id: loops_repeater
+                    id: loops
                     width: childrenRect.width
                     height: childrenRect.height
 

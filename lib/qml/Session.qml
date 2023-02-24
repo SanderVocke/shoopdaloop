@@ -117,8 +117,8 @@ Item {
                         anchors.centerIn: parent
                     }
                     onClicked: {
-                        for(var i=session.tracks.length-1; i>1; i--) {
-                            session.tracks[i].destroy()
+                        for(var i=session.tracks.length-1; i>0; i--) {
+                            session.tracks[i].qml_close()
                         }
                         session.tracks.length = 1;
                     }

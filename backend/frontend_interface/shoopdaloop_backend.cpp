@@ -1108,15 +1108,39 @@ void destroy_midi_channel_state_info(midi_channel_state_info_t *d) {
 }
 
 void destroy_loop(shoopdaloop_loop_t *d) {
-    throw std::runtime_error("unimplemented");
+    std::cerr << "Warning: destroying loops is unimplemented" << std::endl;
 }
 
 void destroy_audio_port(shoopdaloop_audio_port_t *d) {
-    throw std::runtime_error("unimplemented");
+    auto port = internal_audio_port(d);
+    g_cmd_queue.queue([port]() {
+        // Remove port, which should stop anything from accessing it
+        bool found = false;
+        for(auto &elem : g_ports) {
+            if(elem == port) { elem = nullptr; found = true; }
+        }
+        if (!found) {
+            throw std::runtime_error("Did not find audio port to destroy");
+        }
+        // Now also close the port for the audio back-end
+        port->port->close();
+    });
 }
 
 void destroy_midi_port(shoopdaloop_midi_port_t *d) {
-    throw std::runtime_error("unimplemented");
+    auto port = internal_midi_port(d);
+    g_cmd_queue.queue([port]() {
+        // Remove port, which should stop anything from accessing it
+        bool found = false;
+        for(auto &elem : g_ports) {
+            if(elem == port) { elem = nullptr; found = true; }
+        }
+        if (!found) {
+            throw std::runtime_error("Did not find audio port to destroy");
+        }
+        // Now also close the port for the audio back-end
+        port->port->close();
+    });
 }
 
 void destroy_midi_port_state_info(midi_port_state_info_t *d) {
@@ -1128,11 +1152,11 @@ void destroy_audio_port_state_info(audio_port_state_info_t *d) {
 }
 
 void destroy_audio_channel(shoopdaloop_loop_audio_channel_t *d) {
-    throw std::runtime_error("unimplemented");
+    std::cerr << "Warning: destroying audio channels is unimplemented" << std::endl;
 }
 
 void destroy_midi_channel(shoopdaloop_loop_midi_channel_t *d) {
-    throw std::runtime_error("unimplemented");
+    std::cerr << "Warning: destroying midi channels is unimplemented" << std::endl;
 }
 
 void destroy_shoopdaloop_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *d) {

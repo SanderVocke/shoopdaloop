@@ -14,8 +14,10 @@ AudioPort {
     Component.onCompleted: {
         if(objects_registry) { objects_registry.register(descriptor.id, this) }
     }
-    Component.onDestruction: close()
-
+    function qml_close() {
+        objects_registry.unregister(descriptor.id)
+        close()
+    }
     direction : descriptor.direction
     name_hint : descriptor.name
     volume : descriptor.volume

@@ -32,7 +32,10 @@ LoopAudioChannel {
         set_mode(initial_mode)
         if(objects_registry) { objects_registry.register(descriptor.id, this) }
     }
-    Component.onDestruction: close()
+    function qml_close() {
+        objects_registry.unregister(descriptor.id)
+        close()
+    }
     Connections {
         target: objects_registry
         // React to ports being instantiated later than channels
