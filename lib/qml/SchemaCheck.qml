@@ -5,7 +5,6 @@ QtObject {
     property string schema
 
     Component.onCompleted: {
-        console.log("checking ", schema, descriptor)
         schema_validator.validate_schema(descriptor, schema)
     }
 }

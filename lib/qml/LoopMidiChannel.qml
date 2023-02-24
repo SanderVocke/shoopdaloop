@@ -31,8 +31,8 @@ LoopMidiChannel {
     Component.onCompleted: {
         set_mode(initial_mode)
         if(objects_registry) { objects_registry.register(descriptor.id, this) }
-        update_ports()
     }
+    Component.onDestruction: close()
     Connections {
         target: objects_registry
         // React to ports being instantiated later than channels

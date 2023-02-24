@@ -232,8 +232,13 @@ class BackendAudioPort:
         backend.destroy_audio_port_state(state)
         return name
     
+    def destroy(self):
+        if self._c_handle:
+            backend.destroy_audio_port(self._c_handle)
+            self._c_handle = None
+
     def __del__(self):
-        backend.destroy_audio_port(self._c_handle)
+        self.destroy()
 
 class BackendMidiPort:
     def __init__(self, c_handle : 'POINTER(backend.shoopdaloop_midi_port_t)',
@@ -253,8 +258,13 @@ class BackendMidiPort:
         backend.destroy_midi_port_state(state[0])
         return name
     
+    def destroy(self):
+        if self._c_handle:
+            backend.destroy_midi_port(self._c_handle)
+            self._c_handle = None
+
     def __del__(self):
-        backend.destroy_midi_port(self._c_handle)
+        self.destroy()
 
 def init_backend(client_name_hint : str):
     backend.initialize(client_name_hint.encode('ascii'))

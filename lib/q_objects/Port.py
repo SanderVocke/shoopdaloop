@@ -84,6 +84,11 @@ class Port(QQuickItem):
     @pyqtSlot(result='QVariant')
     def get_backend_obj(self):
         return self._backend_obj
+    
+    @pyqtSlot()
+    def close(self):
+        self._backend_obj.destroy()
+        self._backend_obj = None
 
     ##########
     ## INTERNAL MEMBERS

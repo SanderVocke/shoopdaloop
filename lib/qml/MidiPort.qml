@@ -12,8 +12,8 @@ MidiPort {
         schema: 'midiport.1'
     }
     Component.onCompleted: if(objects_registry) { objects_registry.register(descriptor.id, this) }
+    Component.onDestruction: close()
 
     direction : descriptor.direction
     name_hint : descriptor.name
-    volume : descriptor.volume
 }

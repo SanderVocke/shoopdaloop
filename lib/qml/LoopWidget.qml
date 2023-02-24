@@ -21,7 +21,7 @@ Item {
 
     property bool is_in_selected_scene: false
     property bool is_in_hovered_scene:  false
-    readonly property string name: descriptor.name
+    readonly property string name: ''
     property LoopWidget master_loop : null
     property LoopWidget targeted_loop : null
     readonly property var audio_channel_descriptors: descriptor.channels.filter(c => c.type == 'audio')
@@ -96,7 +96,7 @@ Item {
     DynamicLoop {
         id: dynamic_loop
         force_load : is_master // Master loop should always be there to sync to
-        sync_source : {var r = widget.master_loop && !widget.is_master ? widget.master_loop.maybe_loaded_loop : null; console.log("SYNC", r); return r; }
+        sync_source : widget.master_loop && !widget.is_master ? widget.master_loop.maybe_loaded_loop : null;
 
         Repeater {
             model : widget.audio_channel_descriptors.length
@@ -235,13 +235,14 @@ Item {
             AudioLevelMeterModel {
                 id: output_peak_meter_r
                 max_dt: 0.1
-                input: {
-                    if (statusrect.loop && statusrect.loop.audio_channels.length >= 2) {
-                        return statusrect.loop.audio_channels[1].output_peak
-                    }
-                    console.log('Unimplemented')
-                    return 0.0
-                }
+                input: 0.0
+                // input: {
+                //     if (statusrect.loop && statusrect.loop.audio_channels.length >= 2) {
+                //         return statusrect.loop.audio_channels[1].output_peak
+                //     }
+                //     console.log('Unimplemented')
+                //     return 0.0
+                // }
             }
 
             from: -30.0
@@ -315,7 +316,8 @@ Item {
                     size: iconitem.height
                     y: 0
                     anchors.horizontalCenter: iconitem.horizontalCenter
-                    muted: { console.log('unimplemented muted'); return false; }
+                    muted: false
+                    //muted: { console.log('unimplemented muted'); return false; }
                     empty: statusrect.loop.length == 0
                     onDoubleClicked: (event) => {
                             if (event.button === Qt.LeftButton) { widget.target() }
@@ -697,13 +699,13 @@ Item {
                         statusrect.loop.volume = convert_volume.linear
                     }
 
-                    Connections {
-                        target: statusrect.loop
-                        function onVolumeChanged() {
-                            convert_volume.linear = statusrect.loop.volume
-                            volume_dial.value = convert_volume.dB
-                        }
-                    }
+                    // Connections {
+                    //     target: statusrect.loop
+                    //     function onVolumeChanged() {
+                    //         convert_volume.linear = statusrect.loop.volume
+                    //         volume_dial.value = convert_volume.dB
+                    //     }
+                    // }
 
                     inputMode: Dial.Vertical
 
@@ -868,16 +870,16 @@ Item {
         property alias opened: menu.opened
         visible: menu.visible
 
-        ClickTrackDialog {
-            id: clicktrackdialog
-            parent: Overlay.overlay
-            x: (parent.width-width) / 2
-            y: (parent.height-height) / 2
+        // ClickTrackDialog {
+        //     id: clicktrackdialog
+        //     parent: Overlay.overlay
+        //     x: (parent.width-width) / 2
+        //     y: (parent.height-height) / 2
 
-            onAcceptedClickTrack: (filename) => {
-                                    widget.maybe_loop.load_audio_file(filename)
-                                  }
-        }
+        //     onAcceptedClickTrack: (filename) => {
+        //                             widget.maybe_loop.load_audio_file(filename)
+        //                           }
+        // }
 
         Menu {
             id: menu

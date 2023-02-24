@@ -15,8 +15,8 @@ Item {
     property alias passthrough_dB: passthrough_slider.value
     property alias volume_dB_min: volume_slider.from
     property alias passthrough_dB_min: passthrough_slider.from
-    property bool muted: ports_manager.muted
-    property bool passthroughMuted: ports_manager.passthroughMuted
+    property bool muted: false //ports_manager.muted
+    property bool passthroughMuted: false //ports_manager.passthroughMuted
 
     LinearDbConversion {
         id: convert_volume
@@ -58,16 +58,16 @@ Item {
         }
     }
 
-    Connections {
-        target: ports_manager
-        function onMutedChanged() { trackctl.muted = ports_manager.muted }
-        function onPassthroughMutedChanged() { trackctl.passthroughMuted = ports_manager.passthroughMuted }
-    }
+    // Connections {
+    //     target: ports_manager
+    //     function onMutedChanged() { trackctl.muted = ports_manager.muted }
+    //     function onPassthroughMutedChanged() { trackctl.passthroughMuted = ports_manager.passthroughMuted }
+    // }
 
-    Component.onCompleted: {
-        muted = ports_manager.muted
-        passthroughMuted = ports_manager.passthroughMuted
-    }
+    // Component.onCompleted: {
+    //     muted = ports_manager.muted
+    //     passthroughMuted = ports_manager.passthroughMuted
+    // }
 
     function toggle_muted() {
         var n = !ports_manager.muted
@@ -113,7 +113,8 @@ Item {
                     id: output_peak_meter_l
                     max_dt: 0.1
 
-                    input: trackctl.ports_manager.port_managers[1].port_managers[0].outputPeak
+                    input: 0.0
+                    //input: trackctl.ports_manager.port_managers[1].port_managers[0].outputPeak
                 }
 
                 background: Rectangle {
@@ -154,7 +155,7 @@ Item {
                     id: output_peak_meter_r
                     max_dt: 0.1
 
-                    input: trackctl.ports_manager.port_managers[1].port_managers[1].outputPeak
+                    input: 0.0 //trackctl.ports_manager.port_managers[1].port_managers[1].outputPeak
                 }
 
                 background: Rectangle {
@@ -257,7 +258,7 @@ Item {
                     max_dt: 0.1
 
                     // Dig into the wet manager, then the left-side manager
-                    input: trackctl.ports_manager.port_managers[1].port_managers[0].inputPeak
+                    input: 0.0 //trackctl.ports_manager.port_managers[1].port_managers[0].inputPeak
                 }
 
                 background: Rectangle {
@@ -299,7 +300,7 @@ Item {
                     max_dt: 0.1
 
                     // Dig into the wet manager, then the right-side manager
-                    input: trackctl.ports_manager.port_managers[1].port_managers[1].inputPeak
+                    input: 0.0 //trackctl.ports_manager.port_managers[1].port_managers[1].inputPeak
                 }
 
                 background: Rectangle {

@@ -28,6 +28,6 @@ ApplicationWindow {
     }
 
     Session {
-        descriptor: GenerateSession.generate_default_session()
+        initial_descriptor: GenerateSession.generate_default_session()
     }
 }

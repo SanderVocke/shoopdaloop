@@ -35,7 +35,6 @@ def validate_single_object(obj):
     with open(schema_filename, 'r') as f:
         schema = json.load(f)
     validate(instance=obj, schema=schema)
-    print("Validated object of schema {}".format(schema_str))
 
 def validate_session_object(obj, schemaname):
     if type(obj) is not dict:

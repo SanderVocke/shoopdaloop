@@ -1,4 +1,8 @@
 import QtQuick 2.15
+import QtQuick.Controls 2.15
+import QtQuick.Controls.Material 2.15
+
+import "../generate_session.js" as GenerateSession
 
 Item {
     id: session
@@ -6,26 +10,46 @@ Item {
     // The descriptor is an object matching the ShoopDaLoop session JSON
     // schema. The Session object will manage an actual session (consisting)
     // of loops, tracks, etc.) to match the loaded descriptor.
-    // Changes in the session are fed back into the descriptor.
-    // The descriptor may not be directly modified.
-    property var descriptor : ({
+    // The descriptor may not be directly modified and is only used at initialization.
+    // To get an up-to-date descriptor of the current state, call generate_descriptor().
+    property var initial_descriptor : ({
         'schema': 'session.1',
         'tracks': [],
         'ports': []
     })
 
     SchemaCheck {
-        descriptor: session.descriptor
+        descriptor: session.initial_descriptor
         schema: 'session.1'
     }
 
     // Objects registry just stores object ids -> objects.
-    property Registry objects_registry: Registry { verbose: true }
+    property Registry objects_registry: Registry { verbose: false }
 
     // State registry stores the following optional states:
     // - "master_loop" -> LoopWidget which holds the master loop
     // - "targeted_loop" -> LoopWidget which is currently targeted
-    property Registry state_registry: Registry { verbose: true }
+    property Registry state_registry: Registry { verbose: false }
+
+    property var track_factory : Qt.createComponent("TrackWidget.qml")
+    property alias tracks : tracks_row.children
+    function add_track(properties) {
+        if (track_factory.status != Component.Ready) {
+            throw new Error("Track factory not ready")
+        }
+        var track = track_factory.createObject(session, properties);
+        session.tracks.push(track)
+    }
+
+    Component.onCompleted: {
+        session.initial_descriptor.tracks.forEach(desc => {
+            session.add_track({
+                descriptor: desc,
+                objects_registry: session.objects_registry,
+                state_registry: session.state_registry
+            });
+        })
+    }
 
     Backend {
         update_interval_ms: 30
@@ -39,32 +63,65 @@ Item {
 
         Row {
             spacing: 3
-            
-            // Master loop track item.
-            TrackWidget {
-                id: masterlooptrack
-                anchors {
-                    top: parent.top
-                    //right: other_tracks.left
-                    //rightMargin: 6
-                }
-                descriptor: session.descriptor.tracks[0]
-                objects_registry: session.objects_registry
-                state_registry: session.state_registry
+
+            Row {
+                spacing: 3
+                id: tracks_row
             }
 
-            Repeater {
-                model: session.descriptor.tracks.length - 1
+            // Repeater {
+            //     model: session.track_descriptors.length
 
-                TrackWidget {
-                    anchors {
-                        top: parent.top
-                        //right: other_tracks.left
-                        //rightMargin: 6
+            //     TrackWidget {
+            //         anchors {
+            //             top: parent.top
+            //             //right: other_tracks.left
+            //             //rightMargin: 6
+            //         }
+            //         descriptor: session.track_descriptors[index]
+            //         objects_registry: session.objects_registry
+            //         state_registry: session.state_registry
+            //     }
+            // }
+
+            Column {
+                spacing: 3
+
+                Button {
+                    width: 30
+                    height: 40
+                    MaterialDesignIcon {
+                        size: 20
+                        name: 'plus'
+                        color: Material.foreground
+                        anchors.centerIn: parent
                     }
-                    descriptor: session.descriptor.tracks[index+1]
-                    objects_registry: session.objects_registry
-                    state_registry: session.state_registry
+                    onClicked: {
+                        var idx = (session.tracks.length).toString()
+                        var track_descriptor = GenerateSession.generate_default_track("Track " + idx, 1, 'track_' + idx)
+                        session.add_track({
+                            descriptor: track_descriptor,
+                            objects_registry: session.objects_registry,
+                            state_registry: session.state_registry
+                        })
+                    }
+                }
+
+                Button {
+                    width: 30
+                    height: 40
+                    MaterialDesignIcon {
+                        size: 20
+                        name: 'close'
+                        color: Material.foreground
+                        anchors.centerIn: parent
+                    }
+                    onClicked: {
+                        for(var i=session.tracks.length-1; i>1; i--) {
+                            session.tracks[i].destroy()
+                        }
+                        session.tracks.length = 1;
+                    }
                 }
             }
         }
