@@ -67,8 +67,6 @@ Item {
     // TODO: apparently the order in which these are instantiated will make
     // Patchance group the pairs or not. Quite confusing...
 
-    
-
     Repeater {
         id : audio_ports
         model : track.audio_port_descriptors.length
@@ -115,7 +113,7 @@ Item {
 
                     onEditingFinished: () => {
                                            background_focus.forceActiveFocus()
-                                           track.renamed(text)
+                                           track.name = text
                                        }
                 }
 

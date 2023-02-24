@@ -67,22 +67,8 @@ Item {
             Row {
                 spacing: 3
                 id: tracks_row
+                // Note: tracks injected here
             }
-
-            // Repeater {
-            //     model: session.track_descriptors.length
-
-            //     TrackWidget {
-            //         anchors {
-            //             top: parent.top
-            //             //right: other_tracks.left
-            //             //rightMargin: 6
-            //         }
-            //         descriptor: session.track_descriptors[index]
-            //         objects_registry: session.objects_registry
-            //         state_registry: session.state_registry
-            //     }
-            // }
 
             Column {
                 spacing: 3
