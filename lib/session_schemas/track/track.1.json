@@ -1,0 +1,31 @@
+{
+    "type": "object",
+    "properties": {
+        "schema":       { "const": "track.1" },
+        "id":           { "type": "string"  },
+        "name":         { "type": "string" },
+        "loops": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "schema": { "const": "loop.1", "$comment": "see loop.1 schema" }
+                },
+                "required": ["schema"]
+            }
+        },
+        "ports": {
+            "$comment": "ports associated with this track",
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "schema": { "enum": ["audioport.1", "midiport.1"],
+                                "$comment": "See audioport.1, midiport.1 schemas" }
+                },
+                "required": ["schema"]
+            }
+        }
+    },
+    "required": ["schema", "id", "name", "loops", "ports"]
+}

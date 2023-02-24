@@ -76,19 +76,18 @@ Item {
         source: "Loop.qml"
     }
 
-    // This will hold any children (typically Loop...Channels), and reparent
-    // to go inside the loaded Loop once loaded.
+    // This will hold any children (typically Loop...Channels)
     Item {
         id: children_holder
+    }
 
-        Connections {
-            target: loader
-            function onLoaded() {
-                console.log('LOADED LOOP', item.sync_source)
-                loader.item.sync_source = Qt.binding(() => {
-                    return item.sync_source
-                })
-            }
+    Connections {
+        target: loader
+        function onLoaded() {
+            loader.item.sync_source = Qt.binding(() => {
+                return item.sync_source
+            })
         }
     }
+    onSync_sourceChanged: if(ready) { loader.item.sync_source = sync_source }
 }

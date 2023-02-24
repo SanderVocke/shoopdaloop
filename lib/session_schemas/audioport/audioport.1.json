@@ -1,0 +1,11 @@
+{
+    "type": "object",
+    "properties": {
+        "schema":       { "const": "audioport.1" },
+        "id":           { "type": "string"  },
+        "name":         { "type": "string" },
+        "direction":    { "enum": ["input", "output"] },
+        "volume":       { "type": "number" }
+    },
+    "required": ["schema", "id", "name", "direction", "volume"]
+}

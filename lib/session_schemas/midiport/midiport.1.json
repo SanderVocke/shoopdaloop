@@ -1,0 +1,10 @@
+{
+    "type": "object",
+    "properties": {
+        "schema":       { "const": "midiport.1" },
+        "id":           { "type": "string"  },
+        "name":         { "type": "string" },
+        "direction":    { "enum": ["input", "output"] }
+    },
+    "required": ["schema", "id", "name", "direction"]
+}

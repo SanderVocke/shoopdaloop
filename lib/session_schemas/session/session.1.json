@@ -1,0 +1,26 @@
+{
+    "type": "object",
+    "properties": {
+        "schema":       { "const": "session.1" },
+        "tracks": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "schema": { "const": "track.1", "$comment": "see track.1 schema" }
+            },
+            "required": ["schema"]
+        },
+        "ports": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "schema": { "enum": ["audioport.1", "midiport.1"],
+                                "$comment": "See audioport.1, midiport.1 schemas" }
+                },
+                "required": ["schema"]
+            }
+        }
+    },
+    "required": ["schema", "tracks", "ports"]
+}

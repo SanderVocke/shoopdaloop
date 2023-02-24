@@ -1,0 +1,17 @@
+{
+    "type": "object",
+    "properties": {
+        "schema":       { "const": "channel.1" },
+        "id":           { "type": "string"  },
+        "mode":         { "enum": ["disabled", "direct", "dry", "wet"] },
+        "type":         { "enum": ["audio", "midi"] },
+        "data_length":  { "type": "integer" },
+        "data_file":    { "type": "string" },
+        "recording_starts_at": { "type": "string", "format": "date-time" },
+        "connected_port_ids": {
+            "type": "array",
+            "items": { "type": "string" }
+        }
+    },
+    "required": ["schema", "id", "mode", "type", "data_length"]
+}

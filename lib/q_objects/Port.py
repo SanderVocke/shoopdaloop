@@ -55,8 +55,8 @@ class Port(QQuickItem):
         if d != self._direction:
             if self._direction != '':
                 raise Exception('Port direction may only be set once.')
-            if d not in ['in', 'out']:
-                raise Exception('Port direction may only be "in" or "out"')
+            if d not in ['input', 'output']:
+                raise Exception('Port direction may only be "input" or "output"')
             self._direction = d
             self.maybe_initialize()
     
@@ -94,9 +94,9 @@ class Port(QQuickItem):
     def maybe_initialize(self):
         if self._name_hint != '' and self._direction != '' and not self._backend_obj:
             direction = None
-            if self._direction == 'in':
+            if self._direction == 'input':
                 direction = backend.PortDirection.Input
-            elif self._direction == 'out':
+            elif self._direction == 'output':
                 direction = backend.PortDirection.Output
             if not direction:
                 raise Exception("Invalid direction.")

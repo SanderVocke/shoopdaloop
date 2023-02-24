@@ -9,68 +9,69 @@ import '../../build/types.js' as Types
 Item {
     id: track
 
-    property int num_slots
-    property LoopWidget master_loop
-    property LoopWidget targeted_loop
+    property var descriptor : null
+    property Registry objects_registry : null
+    property Registry state_registry : null
 
-    property string name: ''
-    property bool name_editable: true
-    property string port_name_prefix: ''
-
-    property list<LoopWidget> loops_of_selected_scene: []
-    property list<LoopWidget> loops_of_hovered_scene:  []
+    SchemaCheck {
+        descriptor: track.descriptor
+        schema: 'track.1'
+    }
+    Component.onCompleted: if(objects_registry) { objects_registry.register(descriptor.id, this) }
+    
+    readonly property int num_slots : descriptor.loops.length
+    readonly property string name: descriptor.name
+    readonly property bool name_editable: true
+    readonly property string port_name_prefix: ''
+    readonly property var audio_port_descriptors : descriptor.ports.filter(p => p.schema == 'audioport.1')
+    readonly property var midi_port_descriptors : descriptor.ports.filter(p => p.schema == 'midiport.1')
+    readonly property var loop_descriptors : descriptor.loops
 
     width: childrenRect.width
     height: childrenRect.height
 
-    signal toggle_loop_in_scene(var loop)
-    signal renamed(string name)
-    signal request_select_loop(var loop)
-    signal request_rename_loop(var loop, string name)
-    signal request_clear_loop(var loop)
-    signal request_toggle_loop_selected(var loop)
-    signal request_set_targeted_loop(var loop)
-    signal loop_created(int index, LoopWidget loop)
+    // signal toggle_loop_in_scene(var loop)
+    // signal renamed(string name)
+    // signal request_select_loop(var loop)
+    // signal request_rename_loop(var loop, string name)
+    // signal request_clear_loop(var loop)
+    // signal request_toggle_loop_selected(var loop)
+    // signal request_set_targeted_loop(var loop)
+    // signal loop_created(int index, LoopWidget loop)
 
-    function actions_on_loop_mgrs(idx, on_idx_loop_fn, on_other_loop_fn) {
-        for(var i = 0; i < track.num_loops; i++) {
-            var mgr = loop_managers[i]
-            if (idx === i) {
-                on_idx_loop_fn(mgr)
-            }
-            else {
-                on_other_loop_fn(mgr)
-            }
-        }
-    }
+    // function actions_on_loop_mgrs(idx, on_idx_loop_fn, on_other_loop_fn) {
+    //     for(var i = 0; i < track.num_loops; i++) {
+    //         var mgr = loop_managers[i]
+    //         if (idx === i) {
+    //             on_idx_loop_fn(mgr)
+    //         }
+    //         else {
+    //             on_other_loop_fn(mgr)
+    //         }
+    //     }
+    // }
 
     // TODO: make ports dynamic
     // TODO: apparently the order in which these are instantiated will make
     // Patchance group the pairs or not. Quite confusing...
-    AudioPortPair {
-        id: dry_audio_l
-        input_name_hint: track.port_name_prefix + 'in_2'
-        output_name_hint: track.port_name_prefix + 'send_2'
+
+    Repeater {
+        model : track.audio_port_descriptors.length
+
+        AudioPort {
+            descriptor: track.audio_port_descriptors[index]
+            objects_registry: track.objects_registry
+            state_registry: track.state_registry
+        }
     }
-    AudioPortPair {
-        id: dry_audio_r
-        input_name_hint: track.port_name_prefix + 'in_1'
-        output_name_hint: track.port_name_prefix + 'send_1'
-    }
-    MidiPortPair {
-        id: dry_midi
-        input_name_hint: track.port_name_prefix + 'midi_in'
-        output_name_hint: track.port_name_prefix + 'midi_send'
-    }
-    AudioPortPair {
-        id: wet_audio_l
-        input_name_hint: track.port_name_prefix + 'return_2'
-        output_name_hint: track.port_name_prefix + 'out_2'
-    }
-    AudioPortPair {
-        id: wet_audio_r
-        input_name_hint: track.port_name_prefix + 'return_1'
-        output_name_hint: track.port_name_prefix + 'out_1'
+    Repeater {
+        model : track.midi_port_descriptors.length
+
+        MidiPort {
+            descriptor: track.midi_port_descriptors[index]
+            objects_registry: track.objects_registry
+            state_registry: track.state_registry
+        }
     }
 
     Rectangle {
@@ -108,21 +109,22 @@ Item {
                     width: childrenRect.width
                     height: childrenRect.height
 
-                    onItemAdded: (index, loop) => track.loop_created(index, loop)
-
                     LoopWidget {
-                        id: lwidget
-                        //name: track.loop_names[index]
-                        //is_in_selected_scene: track.loops_of_selected_scene.includes(index)
-                        //is_in_hovered_scene: track.loops_of_hovered_scene.includes(index)
-                        name: 'Loop ' + (index+1).toString()
+                        descriptor : track.loop_descriptors[index]
+                        objects_registry : track.objects_registry
+                        state_registry : track.state_registry
 
-                        master_loop: track.master_loop
-                        targeted_loop: track.targeted_loop
+                        // id: lwidget
+                        // //name: track.loop_names[index]
+                        // //is_in_selected_scene: track.loops_of_selected_scene.includes(index)
+                        // //is_in_hovered_scene: track.loops_of_hovered_scene.includes(index)
+                        // name: 'Loop ' + (index+1).toString()
+                        // master_loop: track.master_loop
+                        // targeted_loop: track.targeted_loop
 
-                        direct_port_pairs: []
-                        dry_port_pairs: [ dry_audio_l, dry_audio_r, dry_midi ]
-                        wet_port_pairs: [ wet_audio_l, wet_audio_r ]
+                        // direct_port_pairs: []
+                        // dry_port_pairs: [ dry_audio_l, dry_audio_r, dry_midi ]
+                        // wet_port_pairs: [ wet_audio_l, wet_audio_r ]
 
                         //onToggle_in_current_scene: () => { track.toggle_loop_in_scene(index) }
                         //onRequest_rename: (name) => { track.request_rename_loop(index, name) }

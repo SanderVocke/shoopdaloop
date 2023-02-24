@@ -1,4 +1,6 @@
-python-osc
 playsound
 resampy
 mido
+jsonschema
+numpy
+scipy

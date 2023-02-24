@@ -8,16 +8,46 @@ import '../mode_helpers.js' as ModeHelpers
 
 // The loop widget allows manipulating a single loop within a track.
 Item {
-    // Inputs
+    id: widget
+
+    property var descriptor : null
+    property Registry objects_registry : null
+    property Registry state_registry : null
+
+    SchemaCheck {
+        descriptor: widget.descriptor
+        schema: 'loop.1'
+    }
+
     property bool is_in_selected_scene: false
     property bool is_in_hovered_scene:  false
-    property alias name: statusrect.name
+    readonly property string name: descriptor.name
     property LoopWidget master_loop : null
     property LoopWidget targeted_loop : null
-    property list<var> direct_port_pairs // List of ***PortPair
-    property list<var> dry_port_pairs   // List of ***PortPair
-    property list<var> wet_port_pairs   // List of ***PortPair
-    property var mixed_wet_output_port  // AudioPort
+    readonly property var audio_channel_descriptors: descriptor.channels.filter(c => c.type == 'audio')
+    readonly property var midi_channel_descriptors: descriptor.channels.filter(c => c.type == 'midi')
+
+    function update_master_and_targeted() {
+        widget.master_loop = state_registry.has('master_loop') ?
+                state_registry.get('master_loop') : null;
+        widget.targeted_loop = state_registry.has('targeted_loop') ?
+                state_registry.get('targeted_loop') : null;
+    }
+
+    Connections {
+        target: state_registry
+        function onContentsChanged() { update_master_and_targeted() }
+    }
+    Component.onCompleted: {
+        if(objects_registry) { objects_registry.register(descriptor.id, this) }
+        if(descriptor.is_master) { state_registry.register('master_loop', this) }
+        update_master_and_targeted()
+    }
+
+    // property list<var> direct_port_pairs // List of ***PortPair
+    // property list<var> dry_port_pairs   // List of ***PortPair
+    // property list<var> wet_port_pairs   // List of ***PortPair
+    // property var mixed_wet_output_port  // AudioPort
     property var additional_context_menu_options : null // dict of option name -> functor
 
     // Internally controlled
@@ -36,7 +66,7 @@ Item {
     signal onClear(int length)
     signal onTransition(int mode, int delay, bool wait_for_sync)
 
-    // Public methods
+    // Methods
     function transition(mode, delay, wait_for_sync, emit=true) {
         dynamic_loop.transition(mode, delay, wait_for_sync);
         if (emit) { onTransition(mode, delay, wait_for_sync) }
@@ -59,9 +89,6 @@ Item {
     // signal request_toggle_selected()
     // signal request_set_as_targeted()
 
-    // Internal
-    id : widget
-
     width: childrenRect.width
     height: childrenRect.height
     clip: true
@@ -69,14 +96,27 @@ Item {
     DynamicLoop {
         id: dynamic_loop
         force_load : is_master // Master loop should always be there to sync to
-        sync_source : master_loop && !is_master ? master_loop.maybe_loaded_loop : null
+        sync_source : {var r = widget.master_loop && !widget.is_master ? widget.master_loop.maybe_loaded_loop : null; console.log("SYNC", r); return r; }
 
-        PortChannelRouter {
-            loop: dynamic_loop.maybe_loop
-            direct_port_pairs: widget.direct_port_pairs
-            dry_port_pairs: widget.dry_port_pairs
-            wet_port_pairs: widget.wet_port_pairs
-            maybe_mixed_wet_audio_output_port: widget.mixed_wet_output_port
+        Repeater {
+            model : widget.audio_channel_descriptors.length
+
+            LoopAudioChannel {
+                loop: dynamic_loop.maybe_loop
+                descriptor: widget.audio_channel_descriptors[index]
+                objects_registry: widget.objects_registry
+                state_registry: widget.state_registry
+            }
+        }
+        Repeater {
+            model : widget.midi_channel_descriptors.length
+
+            LoopMidiChannel {
+                loop: dynamic_loop.maybe_loop
+                descriptor: widget.midi_channel_descriptors[index]
+                objects_registry: widget.objects_registry
+                state_registry: widget.state_registry
+            }
         }
     }
 
@@ -99,8 +139,7 @@ Item {
         id: statusrect
         property var loop
         property bool hovered : area.containsMouse
-
-        property string name
+        property string name : widget.name
 
         signal propagateMousePosition(var point)
         signal propagateMouseExited()

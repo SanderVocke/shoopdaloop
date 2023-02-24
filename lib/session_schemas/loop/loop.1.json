@@ -1,0 +1,18 @@
+{
+    "type": "object",
+    "properties": {
+        "schema":       { "const": "loop.1" },
+        "id":           { "type": "string"  },
+        "length":       { "type": "integer" },
+        "is_master":    { "type": "boolean" },
+        "channels": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": { "schema": { "const": "channel.1", "$comment": "see channel.1 schema" } },
+                "required": ["schema"]
+            }
+        }
+    },
+    "required": ["schema", "id", "length", "channels", "is_master"]
+}

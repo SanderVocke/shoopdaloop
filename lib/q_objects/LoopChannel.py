@@ -102,10 +102,13 @@ class LoopChannel(QQuickItem):
     @pyqtSlot('QVariant')
     def connect(self, port):
         if not self._backend_obj:
+            print ("DEFER SELF")
             self.initializedChanged.connect(lambda: self.connect(port))
         elif not port.initialized:
+            print ("DEFER PORT")
             port.initializedChanged.connect(lambda: self.connect(port))
         elif port not in self._connected_ports:
+            print ("CONNECT")
             backend_channel = self._backend_obj
             backend_port = port.get_backend_obj()
             backend_channel.connect(backend_port)
