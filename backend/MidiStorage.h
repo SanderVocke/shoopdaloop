@@ -11,40 +11,52 @@
 
 template<typename _MidiStorage>
 class MidiStorageCursor {
-    std::optional<size_t> offset;
-    std::optional<size_t> prev_offset;
-    std::shared_ptr<const _MidiStorage> storage;
+    std::optional<size_t> m_offset;
+    std::optional<size_t> m_prev_offset;
+    std::shared_ptr<const _MidiStorage> m_storage;
     
     using Elem = typename _MidiStorage::Elem;
 public:
-    MidiStorageCursor(std::shared_ptr<const _MidiStorage> _storage) : storage(_storage) {}
+    MidiStorageCursor(std::shared_ptr<const _MidiStorage> _storage) : m_storage(_storage) {}
 
-    bool valid() const { return offset.has_value(); }
+    bool valid() const { return m_offset.has_value(); }
+
+    std::optional<size_t> offset() const { return m_offset; }
+    std::optional<size_t> prev_offset() const { return m_prev_offset; }
 
     void invalidate() {
-        offset.reset();
-        prev_offset.reset();
+        m_offset.reset();
+        m_prev_offset.reset();
+    }
+
+    void overwrite(size_t offset, size_t prev_offset) {
+        m_offset = offset;
+        m_prev_offset = prev_offset;
     }
 
     void reset() {
-        if (storage->m_n_events == 0) { invalidate(); }
+        if (m_storage->m_n_events == 0) { invalidate(); }
         else {
-            offset = storage->m_tail;
-            prev_offset = std::nullopt;
+            m_offset = m_storage->m_tail;
+            m_prev_offset = std::nullopt;
         }
     }
 
-    Elem *get() const {
-        return offset.has_value() ?
-            (Elem*)(&storage->m_data.at(offset.value())) :
+    Elem *get(size_t raw_offset) const {
+        return m_offset.has_value() ?
+            (Elem*)(&m_storage->m_data.at(raw_offset)) :
             nullptr;
     }
 
+    Elem *get() const {
+        return get(m_offset.value());
+    }
+
     void next() {
-        auto next_offset = storage->maybe_next_elem_offset(get());
+        auto next_offset = m_storage->maybe_next_elem_offset(get());
         if (next_offset.has_value()) {
-            prev_offset = offset;
-            offset = next_offset;
+            m_prev_offset = m_offset;
+            m_offset = next_offset;
         } else {
             invalidate();
         }
@@ -52,24 +64,27 @@ public:
 
     // Iterate a cursor to the point that it points to the
     // first event after a given time.
-    void find_time_forward(size_t time) {
+    // Returns the amount of events processed to get to that point.
+    size_t find_time_forward(size_t time) {
         if (!valid()) { reset(); }
-        if (!valid()) { return; }
-        std::optional<size_t> prev = offset;
-        for (auto next_offset = offset,
-             prev = prev_offset
+        if (!valid()) { return 0; }
+        std::optional<size_t> prev = m_offset;
+        size_t n_processed = 0;
+        for (auto next_offset = m_offset,
+             prev = m_prev_offset
              ;
              next_offset.has_value()
              ;
              prev = next_offset,
-             next_offset = storage->maybe_next_elem_offset(get()))
+             next_offset = m_storage->maybe_next_elem_offset(m_storage->unsafe_at(next_offset.value())),
+             n_processed++)
         {
-            Elem* next_elem = storage->unsafe_at(next_offset.value());
+            Elem* next_elem = m_storage->unsafe_at(next_offset.value());
             if (next_elem->time >= time) {
                 // Found
-                offset = next_offset;
-                prev_offset = prev;
-                return;
+                m_offset = next_offset;
+                m_prev_offset = prev;
+                return n_processed;
             }
         }
 
@@ -172,7 +187,27 @@ public:
         }
         m_cursors.clear();
         m_head = m_tail = m_head_start = m_n_events = 0;
-    };
+    }
+
+    // Note: should only be used if caller knows that "bytes" is exactly
+    // at a boundary between messages
+    void truncate(TimeType time) {
+        if (m_n_events > 0 && unsafe_at(m_head_start)->time > time) {
+            auto cursor = create_cursor();
+            if (cursor->valid()) {
+                m_n_events = cursor->find_time_forward(time);
+                m_head = cursor->offset().value();
+                m_head_start = cursor->prev_offset().value_or(0);
+
+                for (auto &cursor: m_cursors) {
+                    std::shared_ptr<Cursor> maybe_shared = cursor.lock();
+                    if(maybe_shared) {
+                        if (maybe_shared->offset() > m_head) { maybe_shared->overwrite(m_head, m_head_start); }
+                    }
+                }
+            }
+        }
+    }
 
     void copy(MyType &to) const {
         if (to.m_data.size() < m_data.size()) { to.m_data.resize(m_data.size()); }

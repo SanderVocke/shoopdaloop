@@ -108,6 +108,9 @@ public:
             throw std::runtime_error("Attempting to record out of bounds");
         }
 
+        // Truncate buffer if necessary
+        mp_storage->truncate(our_length);
+        
         // Record any incoming events
         size_t record_end = recbuf.n_frames_processed + n_samples;
         for(size_t idx=recbuf.n_events_processed

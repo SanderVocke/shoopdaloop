@@ -515,10 +515,6 @@ suite AudioMidiLoop_midi_tests = []() {
         loop.add_midi_channel<uint32_t, uint16_t>(512, Direct, false);
         auto &channel = *loop.midi_channel<uint32_t, uint16_t>(0);
         using Message = MidiChannel<uint32_t, uint16_t>::Message;
-        std::vector<Message> contents = {
-            Message{.time = 111,  .size = 4, .data = { 0x01, 0x02, 0x03, 0x04 }}
-        };
-        channel.set_contents(contents, false);
 
         loop.set_mode(Recording, false);
         loop.set_length(100);
@@ -544,7 +540,7 @@ suite AudioMidiLoop_midi_tests = []() {
         auto msgs = channel.retrieve_contents(false);
         expect(eq(msgs.size(), 2));
         expect(eq(length, 120));
-        check_msgs_equal(msgs.at(0), contents.at(0));
+        check_msgs_equal(msgs.at(0), with_time(source_buf.read.at(0), 110));
         check_msgs_equal(msgs.at(1), with_time(source_buf.read.at(2), 111));
     };
 
@@ -627,6 +623,53 @@ suite AudioMidiLoop_midi_tests = []() {
         check_msgs_equal(msgs.at(6), source_bufs[2].read.at(0), 30);
         check_msgs_equal(msgs.at(7), source_bufs[2].read.at(1), 30);
         check_msgs_equal(msgs.at(8), source_bufs[2].read.at(2), 30);
+    };
+
+    "ml_2_3_record_onto_longer_buffer"_test = []() {
+        AudioMidiLoop loop;
+        loop.add_midi_channel<uint32_t, uint16_t>(512, Direct, false);
+        auto &channel = *loop.midi_channel<uint32_t, uint16_t>(0);
+        using Message = MidiChannel<uint32_t, uint16_t>::Message;
+        std::vector<Message> contents = {
+            Message{.time = 0,  .size = 1, .data = { 0x01 }},
+            Message{.time = 10,  .size = 1, .data = { 0x02 }},
+            Message{.time = 21,  .size = 1, .data = { 0x03 }},
+            Message{.time = 30,  .size = 1, .data = { 0x02 }},
+            Message{.time = 50,  .size = 1, .data = { 0x03 }},
+        };
+        channel.set_contents(contents);
+        loop.set_mode(Recording, false);
+        loop.set_length(25, false);
+
+        expect(eq(loop.get_mode() , Recording));
+        expect(loop.PROC_get_next_poi() == 0) << loop.PROC_get_next_poi().value_or(0);
+        expect(eq(loop.get_length() , 25));
+        expect(eq(loop.get_position() , 0));
+
+        auto source_buf = MidiTestBuffer();
+        source_buf.read.push_back({.time = 1, .size = 3, .data = { 0x01, 0x02, 0x03 }});
+        source_buf.read.push_back({.time = 2, .size = 2, .data = { 0x01, 0x02 }});
+        source_buf.read.push_back({.time = 3, .size = 1, .data = { 0x01 }});
+        channel.PROC_set_recording_buffer(&source_buf, 512);
+        
+        loop.PROC_trigger();
+        loop.PROC_update_poi();
+
+        expect(eq(loop.get_mode() , Recording));
+        expect(loop.PROC_get_next_poi() == 512) << loop.PROC_get_next_poi().value_or(0); // end of buffer
+        expect(eq(loop.get_length() , 25));
+        expect(eq(loop.get_position() , 0));
+
+        loop.PROC_process(20);
+
+        expect(eq(loop.get_mode() , Recording));
+        expect(loop.PROC_get_next_poi() == 492) << loop.PROC_get_next_poi().value_or(0); // end of buffer
+        expect(eq(loop.get_length(), 45));
+        expect(eq(loop.get_position(), 0));
+        auto msgs = channel.retrieve_contents(false);
+        expect(eq(msgs.size(), 6));
+        for (size_t i=0; i<3; i++) { check_msgs_equal(msgs.at(i), contents.at(i)); }
+        for (size_t i=3; i<6; i++) { check_msgs_equal(msgs.at(i), source_buf.read.at(i-3), 25); }
     };
 
     "ml_3_playback"_test = []() {
