@@ -205,6 +205,7 @@ public:
     void PROC_trigger(bool propagate=true) override {
         if (ma_already_triggered) { return; }
         ma_already_triggered = true;
+        
         if (propagate) {
             ma_triggering_now = true;
         }

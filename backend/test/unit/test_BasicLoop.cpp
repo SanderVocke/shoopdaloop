@@ -2,6 +2,7 @@
 #include <memory>
 #include <functional>
 #include <numeric>
+#include <iostream>
 
 using namespace boost::ut;
 
@@ -80,6 +81,7 @@ suite BasicLoop_tests = []() {
         expect(eq(loop.get_mode(), Recording));
 
         loop.PROC_trigger();
+        loop.PROC_process(1); // Cannot trigger twice in same cycle
 
         expect(eq(loop.PROC_get_next_poi().value_or(999), 999));
         expect(eq(loop.get_mode(), Recording));
@@ -87,7 +89,7 @@ suite BasicLoop_tests = []() {
         loop.PROC_trigger();
 
         expect(eq(loop.get_mode(), Playing));
-        expect(eq(loop.PROC_get_next_poi().value_or(999), 10)); // End of loop
+        expect(eq(loop.PROC_get_next_poi().value_or(999), 11)); // End of loop
     };
 
     "bl_3_2_planned_transitions_delayed"_test = []() {
@@ -109,16 +111,19 @@ suite BasicLoop_tests = []() {
         expect(eq(loop.PROC_get_next_poi().value_or(999), 999));
         expect(eq(loop.get_mode(), Recording));
 
+        loop.PROC_process(1); // Cannot trigger twice in same cycle
+        loop.PROC_trigger();
+
+        expect(eq(loop.get_mode(), Playing));
+        expect(eq(loop.PROC_get_next_poi().value_or(999), 11)); // End of loop
+
+        loop.PROC_process(1); // Cannot trigger twice in same cycle
         loop.PROC_trigger();
 
         expect(eq(loop.get_mode(), Playing));
         expect(eq(loop.PROC_get_next_poi().value_or(999), 10)); // End of loop
 
-        loop.PROC_trigger();
-
-        expect(eq(loop.get_mode(), Playing));
-        expect(eq(loop.PROC_get_next_poi().value_or(999), 10)); // End of loop
-
+        loop.PROC_process(1); // Cannot trigger twice in same cycle
         loop.PROC_trigger();
         
         expect(eq(loop.PROC_get_next_poi().value_or(999), 999));
@@ -140,17 +145,21 @@ suite BasicLoop_tests = []() {
         expect(eq(loop.get_mode(), Recording));
 
         loop.PROC_trigger();
+        loop.PROC_process(1); // Cannot trigger twice in same cycle
         loop.PROC_trigger();
 
         expect(eq(loop.PROC_get_next_poi().value_or(999), 999));
         expect(eq(loop.get_mode(), Recording));
 
+        loop.PROC_process(1); // Cannot trigger twice in same cycle
         loop.PROC_trigger();
 
         expect(eq(loop.get_mode(), Stopped));
         expect(eq(loop.PROC_get_next_poi().value_or(999), 999));
 
+        loop.PROC_process(1); // Cannot trigger twice in same cycle
         loop.PROC_trigger();
+        loop.PROC_process(1); // Cannot trigger twice in same cycle
         loop.PROC_trigger();
 
         expect(eq(loop.get_mode(), Stopped));
@@ -170,9 +179,11 @@ suite BasicLoop_tests = []() {
 
     "bl_4_1_generate_trigger_on_restart"_test = []() {
         BasicLoop loop;
+        expect(eq(loop.PROC_is_triggering_now(), false));
+
         loop.set_length(10, false);
-        loop.set_position(1, false);
         loop.set_mode(Playing, false);
+        loop.PROC_process(1);
         
         expect(eq(loop.PROC_is_triggering_now(), false));
 
