@@ -17,6 +17,7 @@ MidiPort {
         close()
     }
 
+    property list<string> name_parts : descriptor.name_parts
+    name_hint : name_parts.join('')
     direction : descriptor.direction
-    name_hint : descriptor.name
 }

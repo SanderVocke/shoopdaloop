@@ -6,6 +6,7 @@
 #include <jack/jack.h>
 #include <stdexcept>
 #include <cstring>
+#include <iostream>
 
 class JackAudioPort : public AudioPortInterface<jack_default_audio_sample_t> {
     jack_port_t* m_port;
@@ -44,7 +45,7 @@ public:
         return rval;
     }
 
-    std::string const& name() const override {
+    std::string name() const override {
         return m_name;
     }
 

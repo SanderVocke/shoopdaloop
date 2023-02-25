@@ -66,7 +66,7 @@ public:
         m_name = std::string(jack_port_name(m_port));
     }
 
-    std::string const& name() const override {
+    std::string name() const override {
         return m_name;
     }
 

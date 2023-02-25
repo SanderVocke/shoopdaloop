@@ -7,18 +7,23 @@ QtObject {
 
     signal contentsChanged()
     signal itemAdded(var id, var item)
-    signal itemModified(var id)
+    signal itemModified(var id, var item)
     signal itemRemoved(var id)
 
-    function register(id, object) {
-        if(id in data) {
+    function register(id, object, overwrite=false) {
+        if(id in data && !overwrite) {
             throw new Error("attempting to re-register existing key: " + id)
         }
-        if(verbose) {
+        if(verbose && !(id in data)) {
             console.log("REGISTRY: Registered:", id, " => ", object)
+             data[id] = object
+            itemAdded(id, object)
+        } else if(verbose && overwrite && (id in data)) {
+            console.log("REGISTRY: Overwrite: ", id, ":", data[id], " => ", object)
+            data[id] = object
+            itemModified(id, object)
         }
-        data[id] = object
-        itemAdded(id, object)
+       
         contentsChanged()
     }
 
@@ -52,7 +57,7 @@ QtObject {
             console.log("REGISTRY: Modifying:", id)
         }
         fn(data[id])
-        itemModified(id)
+        itemModified(id, data[id])
         contentsChanged()
     }
 

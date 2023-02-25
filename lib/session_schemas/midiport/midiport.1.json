@@ -3,8 +3,8 @@
     "properties": {
         "schema":       { "const": "midiport.1" },
         "id":           { "type": "string"  },
-        "name":         { "type": "string" },
+        "name_parts":   { "type": "array", "items": { "type": "string" } },
         "direction":    { "enum": ["input", "output"] }
     },
-    "required": ["schema", "id", "name", "direction"]
+    "required": ["schema", "id", "name_parts", "direction"]
 }

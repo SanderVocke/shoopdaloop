@@ -34,11 +34,14 @@ Item {
     property var track_factory : Qt.createComponent("TrackWidget.qml")
     property alias tracks : tracks_row.children
     function add_track(properties) {
-        if (track_factory.status != Component.Ready) {
+        if (track_factory.status == Component.Error) {
+            throw new Error("Failed to load track factory: " + track_factory.errorString())
+        } else if (track_factory.status != Component.Ready) {
             throw new Error("Track factory not ready")
+        } else {
+            var track = track_factory.createObject(session, properties);
+            session.tracks.push(track)
         }
-        var track = track_factory.createObject(session, properties);
-        session.tracks.push(track)
     }
 
     Component.onCompleted: {

@@ -20,19 +20,14 @@ Item {
     Component.onCompleted: if(objects_registry) { objects_registry.register(descriptor.id, this) }
     function qml_close() {
         objects_registry.unregister(descriptor.id)
-        for(var i=0; i<audio_ports.model; i++) {
-            audio_ports.itemAt(i).qml_close();
-        }
-        for(var i=0; i<midi_ports.model; i++) {
-            midi_ports.itemAt(i).qml_close();
-        }
+        all_ports().forEach(p => p.qml_close())
         for(var i=0; i<loops.model; i++) {
             loops.itemAt(i).qml_close();
         }
     }
     
     readonly property int num_slots : descriptor.loops.length
-    readonly property string name: descriptor.name
+    property string name: descriptor.name
     readonly property bool name_editable: true
     readonly property string port_name_prefix: ''
     readonly property var audio_port_descriptors : descriptor.ports.filter(p => p.schema == 'audioport.1')
@@ -68,7 +63,7 @@ Item {
     // Patchance group the pairs or not. Quite confusing...
 
     Repeater {
-        id : audio_ports
+        id : audio_ports_repeater
         model : track.audio_port_descriptors.length
 
         AudioPort {
@@ -78,7 +73,7 @@ Item {
         }
     }
     Repeater {
-        id : midi_ports
+        id : midi_ports_repeater
         model : track.midi_port_descriptors.length
 
         MidiPort {
@@ -86,6 +81,12 @@ Item {
             objects_registry: track.objects_registry
             state_registry: track.state_registry
         }
+    }
+    function all_ports() {
+        return [
+            ...Array.from(Array(audio_ports_repeater.model).keys()).map(i => audio_ports_repeater.itemAt(i)),
+            ...Array.from(Array(midi_ports_repeater.model).keys()).map(i => midi_ports_repeater.itemAt(i))
+        ]
     }
 
     Rectangle {

@@ -32,5 +32,5 @@ add_custom_command(
 add_custom_target(
   backend_c_bindings
   ALL
-  DEPENDS shoopdaloop_backend.py
+  DEPENDS shoopdaloop_backend.py ${CMAKE_CURRENT_SOURCE_DIR}/shoopdaloop_backend.h
   )

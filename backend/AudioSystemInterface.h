@@ -24,7 +24,6 @@ public:
         PortDirection direction
     ) = 0;
 
-    // Create a MIDI port.
     virtual
     std::shared_ptr<MidiPortInterface> open_midi_port(
         std::string name,
