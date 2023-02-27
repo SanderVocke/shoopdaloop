@@ -70,7 +70,6 @@ public:
     virtual void PROC_update_poi() {
         if((ma_mode == Playing ||
             ma_mode == PlayingDryThroughWet ||
-            ma_mode == Replacing ||
             ma_mode == RecordingDryIntoWet) && 
            ma_length == 0) {
             PROC_handle_transition(Stopped);
@@ -86,8 +85,7 @@ public:
         std::optional<PointOfInterest> loop_end_poi;
         if (ma_mode == Playing ||
             ma_mode == PlayingDryThroughWet ||
-            ma_mode == RecordingDryIntoWet ||
-            ma_mode == Replacing) {
+            ma_mode == RecordingDryIntoWet) {
             std::optional<PointOfInterest> loop_end_poi = PointOfInterest {
                 .when = ma_length - ma_position,
                 .type_flags = LoopEnd
@@ -159,8 +157,11 @@ public:
             case Recording:
                 length_after += n_samples;
                 break;
-            case Playing:
             case Replacing:
+                pos_after += n_samples;
+                length_after = std::max(length_after, pos_after);
+                break;
+            case Playing:
             case PlayingDryThroughWet:
             case RecordingDryIntoWet:
                 pos_after += n_samples;
@@ -174,7 +175,7 @@ public:
 
         if (mp_next_poi) { mp_next_poi.value().when -= n_samples; }
         ma_position = pos_after;
-        set_length(length_after, false);
+        ma_length = length_after;
         PROC_handle_poi();
         PROC_update_poi();
     }

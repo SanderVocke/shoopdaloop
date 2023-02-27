@@ -287,7 +287,7 @@ public:
         if (ma_mode) {
             if (mode == Playing) {
                 return mp_playback_target_buffer_size;
-            } else if (mode == Recording) {
+            } else if (mode == Recording || mode == Replacing) {
                 return mp_recording_source_buffer_size;
             }
         }

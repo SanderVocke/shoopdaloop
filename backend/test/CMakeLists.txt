@@ -6,7 +6,8 @@ add_subdirectory(tools)
 # Test runner
 add_executable(test_runner
     test_runner.cpp
-    unit/test_AudioMidiLoop.cpp
+    unit/test_AudioMidiLoop_audio.cpp
+    unit/test_AudioMidiLoop_midi.cpp
     unit/test_ObjectPool.cpp
     unit/test_BasicLoop.cpp
     integration/test_synced_BasicLoops.cpp
