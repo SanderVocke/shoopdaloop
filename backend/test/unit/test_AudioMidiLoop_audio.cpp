@@ -33,11 +33,16 @@ suite AudioMidiLoop_audio_tests = []() {
         auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
         AudioMidiLoop loop;
         loop.add_audio_channel<int>(pool, 10, Direct, false);
-        auto &channel = *loop.audio_channel<int>(0);
+        loop.add_audio_channel<int>(pool, 10, Dry, false);
+        loop.add_audio_channel<int>(pool, 10, Wet, false);
+        std::vector<std::shared_ptr<AudioChannel<int>>> channels = 
+            {loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2) };
 
         auto source_buf = create_audio_buf<int>(512, [](size_t position) { return position; }); 
         loop.plan_transition(Recording);
-        channel.PROC_set_recording_buffer(source_buf.data(), source_buf.size());
+        channels[0]->PROC_set_recording_buffer(source_buf.data(), source_buf.size());
+        channels[1]->PROC_set_recording_buffer(source_buf.data(), source_buf.size());
+        channels[2]->PROC_set_recording_buffer(source_buf.data(), source_buf.size());
         loop.PROC_trigger();
         loop.PROC_update_poi();
 
@@ -52,14 +57,16 @@ suite AudioMidiLoop_audio_tests = []() {
         expect(eq(loop.PROC_get_next_poi().value_or(999), 492)) << loop.PROC_get_next_poi().value_or(0); // end of buffer
         expect(eq(loop.get_length(), 20));
         expect(eq(loop.get_position(), 0));
-        for_channel_elems<AudioChannel<int>, int>(
-            channel, 
-            [](size_t position, int const& val) {
-                expect(eq(val, position)) << " @ position " << position;
-            },
-            0,
-            20
-        );
+        for (auto &channel : channels) {
+            for_channel_elems<AudioChannel<int>, int>(
+                *channel, 
+                [](size_t position, int const& val) {
+                    expect(eq(val, position)) << " @ position " << position;
+                },
+                0,
+                20
+            );
+        }
     };
     
     "al_2_1_record_beyond_external_buf"_test = []() {
@@ -249,15 +256,20 @@ suite AudioMidiLoop_audio_tests = []() {
         auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
         AudioMidiLoop loop;
         loop.add_audio_channel<int>(pool, 10, Direct, false);
-        auto &channel = *loop.audio_channel<int>(0);
+        loop.add_audio_channel<int>(pool, 10, Dry, false);
+        loop.add_audio_channel<int>(pool, 10, Wet, false);
+        std::vector<std::shared_ptr<AudioChannel<int>>> channels =
+            {loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2)};
         
         auto data = create_audio_buf<int>(64, [](size_t position) { return position; });
-        channel.load_data(data.data(), 64, false);
+        for (auto &channel : channels) { channel->load_data(data.data(), 64, false); }
         loop.set_length(64);
-        auto play_buf = std::vector<int>(64);
+        std::vector<std::vector<int>> play_bufs = { std::vector<int>(64), std::vector<int>(64), std::vector<int>(64) };
 
         loop.plan_transition(Playing);
-        channel.PROC_set_playback_buffer(play_buf.data(), play_buf.size());
+        for (size_t idx=0; idx<3; idx++) {
+            channels[idx]->PROC_set_playback_buffer(play_bufs[idx].data(), play_bufs[idx].size());
+        }
         loop.PROC_trigger();
         loop.PROC_update_poi();
 
@@ -273,8 +285,14 @@ suite AudioMidiLoop_audio_tests = []() {
         expect(eq(loop.get_length(), 64));
         expect(eq(loop.get_position(), 20));
         for(size_t idx=0; idx<20; idx++) {
-            expect(eq(play_buf[idx], data[idx])) << "@ position " << idx;
-        }        
+            expect(eq(play_bufs[0][idx], data[idx])) << "@ position " << idx;
+        }
+        for(size_t idx=0; idx<20; idx++) {
+            expect(eq(play_bufs[1][idx], 0)) << "@ position " << idx; // Dry loop idle
+        }  
+        for(size_t idx=0; idx<20; idx++) {
+            expect(eq(play_bufs[2][idx], data[idx])) << "@ position " << idx; // Wet loop playing
+        }      
     };
 
     "al_3_1_playback_multiple_target_buffers"_test = []() {
@@ -439,15 +457,18 @@ suite AudioMidiLoop_audio_tests = []() {
         auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
         AudioMidiLoop loop;
         loop.add_audio_channel<int>(pool, 10, Direct, false);
-        auto &channel = *loop.audio_channel<int>(0);
+        loop.add_audio_channel<int>(pool, 10, Dry, false);
+        loop.add_audio_channel<int>(pool, 10, Wet, false);
+        std::vector<std::shared_ptr<AudioChannel<int>>> channels = 
+            { loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2) };
         
         auto data = create_audio_buf<int>(64, [](size_t position) { return position; });
-        channel.load_data(data.data(), 64, false);
+        for (auto &channel : channels) { channel->load_data(data.data(), 64, false); }
         loop.set_length(64);
         loop.set_mode(Replacing, false);
         loop.set_position(16);
         auto input_buf = create_audio_buf<int>(64, [](size_t position) { return -((int)position); });
-        channel.PROC_set_recording_buffer(input_buf.data(), input_buf.size());
+        for (auto &channel: channels) { channel->PROC_set_recording_buffer(input_buf.data(), input_buf.size()); }
         loop.PROC_update_poi();
 
         expect(eq(loop.get_mode() , Replacing));
@@ -461,17 +482,19 @@ suite AudioMidiLoop_audio_tests = []() {
         expect(loop.PROC_get_next_poi() == 64-32) << loop.PROC_get_next_poi().value_or(0); // end of buffer
         expect(eq(loop.get_length(), 64));
         expect(eq(loop.get_position(), 16+32));
-        for_channel_elems<AudioChannel<int>, int>(
-            channel, 
-            [&](size_t position, int const& val) {
-                if(position < 16 || position >= (16+32)) {
-                    //untouched
-                    expect(eq(val, data[position])) << "@ position " << position;
-                } else {
-                    //replaced
-                    expect(eq(val, input_buf[position-16])) << "@ position " << position;
-                }
-            });
+        for (auto &channel : channels) {
+            for_channel_elems<AudioChannel<int>, int>(
+                *channel, 
+                [&](size_t position, int const& val) {
+                    if(position < 16 || position >= (16+32)) {
+                        //untouched
+                        expect(eq(val, data[position])) << "@ position " << position;
+                    } else {
+                        //replaced
+                        expect(eq(val, input_buf[position-16])) << "@ position " << position;
+                    }
+                });
+        }
     };
 
     "al_4_1_replace_onto_smaller_buffer"_test = []() {
@@ -511,5 +534,122 @@ suite AudioMidiLoop_audio_tests = []() {
                     expect(eq(val, input_buf[position-48])) << "@ position " << position;
                 }
             });
+    };
+
+    "al_5_play_dry_through_wet"_test = []() {
+        auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
+        AudioMidiLoop loop;
+        loop.add_audio_channel<int>(pool, 10, Direct, false);
+        loop.add_audio_channel<int>(pool, 10, Dry, false);
+        loop.add_audio_channel<int>(pool, 10, Wet, false);
+        std::vector<std::shared_ptr<AudioChannel<int>>> channels =
+            {loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2)};
+        
+        auto data = create_audio_buf<int>(64, [](size_t position) { return position; });
+        for (auto &channel : channels) { channel->load_data(data.data(), 64, false); }
+        loop.set_length(64);
+        std::vector<std::vector<int>> play_bufs = { std::vector<int>(64), std::vector<int>(64), std::vector<int>(64) };
+
+        loop.plan_transition(PlayingDryThroughWet);
+        for (size_t idx=0; idx<3; idx++) {
+            channels[idx]->PROC_set_playback_buffer(play_bufs[idx].data(), play_bufs[idx].size());
+        }
+        loop.PROC_trigger();
+        loop.PROC_update_poi();
+
+        expect(eq(loop.get_mode() , PlayingDryThroughWet));
+        expect(loop.PROC_get_next_poi() == 64) << loop.PROC_get_next_poi().value_or(0); // end of buffer
+        expect(eq(loop.get_position() , 0));
+        expect(eq(loop.get_length() , 64));
+
+        loop.PROC_process(20);
+
+        expect(eq(loop.get_mode() , PlayingDryThroughWet));
+        expect(loop.PROC_get_next_poi() == 44) << loop.PROC_get_next_poi().value_or(0); // end of buffer
+        expect(eq(loop.get_length(), 64));
+        expect(eq(loop.get_position(), 20));
+        for(size_t idx=0; idx<20; idx++) {
+            expect(eq(play_bufs[0][idx], data[idx])) << "@ position " << idx;
+        }
+        for(size_t idx=0; idx<20; idx++) {
+            expect(eq(play_bufs[1][idx], data[idx])) << "@ position " << idx; // Dry loop playing
+        }  
+        for(size_t idx=0; idx<20; idx++) {
+            expect(eq(play_bufs[2][idx], 0)) << "@ position " << idx; // Wet loop idle
+        }      
+    };
+
+    "al_6_record_dry_into_wet"_test = []() {
+        auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
+        AudioMidiLoop loop;
+        loop.add_audio_channel<int>(pool, 10, Direct, false);
+        loop.add_audio_channel<int>(pool, 10, Dry, false);
+        loop.add_audio_channel<int>(pool, 10, Wet, false);
+        std::vector<std::shared_ptr<AudioChannel<int>>> channels = 
+            { loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2) };
+        
+        auto data = create_audio_buf<int>(64, [](size_t position) { return position; });
+        for (auto &channel : channels) { channel->load_data(data.data(), 64, false); }
+        loop.set_length(64);
+        loop.set_mode(RecordingDryIntoWet, false);
+        loop.set_position(16);
+        auto input_buf = create_audio_buf<int>(64, [](size_t position) { return -((int)position); });
+        for (auto &channel: channels) { channel->PROC_set_recording_buffer(input_buf.data(), input_buf.size()); }
+        std::vector<std::vector<int>> output_bufs = {std::vector<int>(32), std::vector<int>(32), std::vector<int>(32)};
+        for (size_t idx=0; idx<3; idx++) {
+            channels[idx]->PROC_set_playback_buffer(output_bufs[idx].data(), 32);
+        }
+        loop.PROC_update_poi();
+
+        expect(eq(loop.get_mode() , RecordingDryIntoWet));
+        expect(loop.PROC_get_next_poi() == 48) << loop.PROC_get_next_poi().value_or(0); // end of loop
+        expect(eq(loop.get_position() , 16));
+        expect(eq(loop.get_length() , 64));
+
+        loop.PROC_process(32);
+
+        expect(eq(loop.get_mode() , RecordingDryIntoWet));
+        expect(loop.PROC_get_next_poi() == 48-32) << loop.PROC_get_next_poi().value_or(0); // end of loop
+        expect(eq(loop.get_length(), 64));
+        expect(eq(loop.get_position(), 16+32));
+        // Direct channel does replacement
+        for_channel_elems<AudioChannel<int>, int>(
+            *channels[0], 
+            [&](size_t position, int const& val) {
+                if(position < 16 || position >= (16+32)) {
+                    //untouched
+                    expect(eq(val, data[position])) << "@ position " << position;
+                } else {
+                    //replaced
+                    expect(eq(val, input_buf[position-16])) << "@ position " << position;
+                }
+            });
+        for(auto &elem : output_bufs[0]) { expect(eq(elem, 0)); }
+        
+        // Dry channel does playback
+        for_channel_elems<AudioChannel<int>, int>(
+            *channels[1], 
+            [&](size_t position, int const& val) {
+                //untouched
+                expect(eq(val, data[position])) << "@ position " << position;
+            });
+        for(size_t idx=0; idx<32; idx++) {
+            expect(eq(output_bufs[1][idx], idx+16)) << "@ position " << idx;
+        }
+        
+
+        // Wet channel is replacing
+        for_channel_elems<AudioChannel<int>, int>(
+            *channels[2], 
+            [&](size_t position, int const& val) {
+                if(position < 16 || position >= (16+32)) {
+                    //untouched
+                    expect(eq(val, data[position])) << "@ position " << position;
+                } else {
+                    //replaced
+                    expect(eq(val, input_buf[position-16])) << "@ position " << position;
+                }
+            });
+        for(auto &elem : output_bufs[0]) { expect(eq(elem, 0)); }
     };
 };
