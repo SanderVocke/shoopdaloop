@@ -27,10 +27,11 @@ add_custom_target(
 add_custom_command(
   OUTPUT shoopdaloop_backend.py
   COMMAND ctypesgen -lshoopdaloop_backend ${CMAKE_CURRENT_SOURCE_DIR}/shoopdaloop_backend.h ${CMAKE_CURRENT_SOURCE_DIR}/types.h -o shoopdaloop_backend.py
+  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/shoopdaloop_backend.h
   COMMENT "Generating C bindings for back-end."
   )
 add_custom_target(
   backend_c_bindings
   ALL
-  DEPENDS shoopdaloop_backend.py ${CMAKE_CURRENT_SOURCE_DIR}/shoopdaloop_backend.h
+  DEPENDS shoopdaloop_backend.py
   )
