@@ -5,8 +5,10 @@
 #include "AudioChannel.h"
 #include "AudioMidiLoop.h"
 #include "AudioPortInterface.h"
+#include "AudioSystemInterface.h"
 #include "JackAudioPort.h"
 #include "JackAudioSystem.h"
+#include "DummyAudioSystem.h"
 #include "MidiChannel.h"
 #include "MidiMessage.h"
 #include "MidiPortInterface.h"
@@ -25,11 +27,6 @@
 #include <memory>
 #include <stdexcept>
 #include <map>
-
-// Qt test backend
-#ifdef QT_TEST_BACKEND
-#include "QtProxyAudioSystem.h"
-#endif
 
 // CONSTANTS
 namespace {
@@ -56,13 +53,10 @@ struct ChannelInfo;
 // TYPE ALIASES
 using DefaultAudioBuffer = AudioBuffer<audio_sample_t>;
 using AudioBufferPool = ObjectPool<DefaultAudioBuffer>;
-#ifdef QT_TEST_BACKEND
-using AudioSystem = QtProxyAudioSystem<audio_sample_t>;
-#else
-using AudioSystem = JackAudioSystem;
-#endif
 using Time = uint32_t;
 using Size = uint16_t;
+using AudioSystem = AudioSystemInterface<Time, Size>;
+using _DummyAudioSystem = DummyAudioSystem<Time, Size>;
 using Loop = AudioMidiLoop;
 using SharedLoop = std::shared_ptr<Loop>;
 using SharedLoopChannel = std::shared_ptr<ChannelInterface>;
@@ -589,11 +583,42 @@ void PROC_process(size_t n_frames) {
     }
 }
 
+std::optional<audio_system_type_t> audio_system_type(AudioSystem *sys) {
+    if (!sys) {
+        return std::nullopt;
+    } else if (dynamic_cast<JackAudioSystem*>(sys)) {
+        return Jack;
+    } else if (dynamic_cast<_DummyAudioSystem*>(sys)) {
+        return Dummy;
+    } else {
+        throw std::runtime_error("Unimplemented");
+    }
+}
+
 // API FUNCTIONS
 
-void initialize (const char* client_name_hint) {
+void initialize (audio_system_type_t audio_system, const char* client_name_hint) {
+    auto _audio_system_type = audio_system_type(g_audio_system.get());
+    if (_audio_system_type.has_value() && _audio_system_type != audio_system) {
+        g_audio_system->close();
+        g_audio_system.reset(nullptr);
+        _audio_system_type = std::nullopt;
+    }
     if (!g_audio_system) {
-        g_audio_system = std::make_unique<AudioSystem>(std::string(client_name_hint), PROC_process);
+        switch (audio_system) {
+        case Jack:
+            g_audio_system = std::unique_ptr<AudioSystem>(dynamic_cast<AudioSystem*>(new JackAudioSystem(
+                std::string(client_name_hint), PROC_process
+            )));
+            break;
+        case Dummy:
+            g_audio_system = std::unique_ptr<AudioSystem>(dynamic_cast<AudioSystem*>(new _DummyAudioSystem(
+                std::string(client_name_hint), PROC_process
+            )));
+            break;
+        default:
+            throw std::runtime_error("Unimplemented backend type");
+        }
     }
     if (!g_audio_buffer_pool) {
         g_audio_buffer_pool = std::make_shared<AudioBufferPool>(
@@ -620,21 +645,23 @@ void initialize (const char* client_name_hint) {
 }
 
 void terminate() {
-    throw std::runtime_error("terminate() not implemented");
-}
-
-jack_client_t *get_jack_client_handle() {
-    if (!g_audio_system) {
-        throw std::runtime_error("get_jack_client_handle() called before intialization");
+    if (g_audio_system) {
+        g_audio_system->close();
     }
-    return (jack_client_t*)g_audio_system->get_client();
 }
 
-const char *get_jack_client_name() {
+jack_client_t *maybe_jack_client_handle() {
+    if (!g_audio_system || !dynamic_cast<JackAudioSystem*>(g_audio_system.get())) {
+        return nullptr;
+    }
+    return (jack_client_t*)g_audio_system->maybe_client_handle();
+}
+
+const char *get_client_name() {
     if (!g_audio_system) {
         throw std::runtime_error("get_jack_client_name() called before intialization");
     }
-    return g_audio_system->get_client_name();
+    return g_audio_system->client_name();
 }
 
 unsigned get_sample_rate() {
@@ -1175,9 +1202,3 @@ void destroy_shoopdaloop_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *
 void destroy_loop_state_info(loop_state_info_t *state) {
     free(state);
 }
-
-#ifdef QT_TEST_BACKEND
-void* get_qt_proxy_audio_system() {
-    return (void*)g_audio_system.get();
-}
-#endif

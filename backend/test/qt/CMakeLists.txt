@@ -1,5 +1,3 @@
-find_package(Qt6 REQUIRED COMPONENTS QuickTest)
-
 add_library(qml_tests SHARED qml_tests.cpp)
 target_link_libraries(qml_tests PRIVATE Qt6::QuickTest)
 

@@ -4,6 +4,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED YES)
 set(CMAKE_CXX_EXTENSIONS NO)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}/cmake")
 
+find_package(Qt6 REQUIRED COMPONENTS Core QuickTest)
+qt_standard_project_setup()
+
 # Options
 option(ENABLE_PERFTOOLS "Link to pprof profiling library")
 if(ENABLE_PERFTOOLS)

@@ -64,7 +64,7 @@ public:
     }
 
     ~JackAudioSystem() override {
-        jack_client_close(m_client);
+        close();
         m_client = nullptr;
     }
 
@@ -92,11 +92,17 @@ public:
         return jack_get_sample_rate(m_client);
     }
 
-    jack_client_t* get_client() const {
-        return m_client;
+    void* maybe_client_handle() const override {
+        return (void*)m_client;
     }
 
-    const char* get_client_name() const {
+    const char* client_name() const override {
         return m_client_name.c_str();
+    }
+
+    void close() override {
+        if (m_client) {
+            jack_client_close(m_client);
+        }
     }
 };

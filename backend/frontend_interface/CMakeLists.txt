@@ -1,6 +1,3 @@
-find_package(Qt6 REQUIRED COMPONENTS Core)
-qt_standard_project_setup()
-
 # Backend lib
 add_library(shoopdaloop_backend SHARED shoopdaloop_backend.cpp)
 target_link_libraries(shoopdaloop_backend PRIVATE
@@ -9,23 +6,6 @@ target_link_libraries(shoopdaloop_backend PRIVATE
 target_include_directories(shoopdaloop_backend
                         PRIVATE
                         ${CMAKE_CURRENT_SOURCE_DIR}/..
-                        ${JACK_INCLUDE_DIRS}
-                        ${CMAKE_CURRENT_BINARY_DIR}
-                        ${BOOST_INCLUDE_DIRS}
-                        )
-
-# Backend lib with Qt test audio system
-add_library(shoopdaloop_qt_test_backend SHARED shoopdaloop_backend.cpp)
-target_link_libraries(shoopdaloop_qt_test_backend PRIVATE
-                      ${BOOST_LIBRARIES}
-                      ${JACK_LIBRARIES}
-                      Qt6::Core)
-target_compile_definitions(shoopdaloop_qt_test_backend PUBLIC -DQT_TEST_BACKEND)
-target_include_directories(shoopdaloop_qt_test_backend
-                        PRIVATE
-                        ${CMAKE_CURRENT_SOURCE_DIR}/..
-                        ${CMAKE_CURRENT_SOURCE_DIR}/../test/qt
-                        ${Qt6_INCLUDE_DIRS}
                         ${JACK_INCLUDE_DIRS}
                         ${CMAKE_CURRENT_BINARY_DIR}
                         ${BOOST_INCLUDE_DIRS}
@@ -54,18 +34,4 @@ add_custom_target(
   backend_c_bindings
   ALL
   DEPENDS shoopdaloop_backend.py
-  )
-
-
-# Generate C bindings
-add_custom_command(
-  OUTPUT shoopdaloop_qt_test_backend.py
-  COMMAND ctypesgen --no-macro-warnings -D QT_TEST_BACKEND -lshoopdaloop_qt_test_backend ${CMAKE_CURRENT_SOURCE_DIR}/shoopdaloop_backend.h ${CMAKE_CURRENT_SOURCE_DIR}/types.h -o shoopdaloop_qt_test_backend.py
-  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/shoopdaloop_backend.h
-  COMMENT "Generating C bindings for test back-end."
-  )
-add_custom_target(
-  test_backend_c_bindings
-  ALL
-  DEPENDS shoopdaloop_qt_test_backend.py
   )

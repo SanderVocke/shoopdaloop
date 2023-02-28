@@ -8,9 +8,8 @@ from PyQt6.QtQml import QQmlEngine
 from PyQt6.sip import unwrapinstance
 script_dir = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(script_dir + '/..')
-sys.path.append(script_dir + '/../build/backend/test/tools'
+sys.path.append(script_dir + '/../build/backend/test/qt'
 )
-
 from lib.qml_helpers import register_shoopdaloop_qml_classes
 from lib.q_objects.SchemaValidator import SchemaValidator
 import qml_tests
@@ -22,7 +21,6 @@ class Setup(QObject):
 
     @pyqtSlot(QQmlEngine)
     def qmlEngineAvailable(self, engine):
-        print ("YES")
         register_shoopdaloop_qml_classes()
         self._validator = SchemaValidator()
         engine.rootContext().setContextProperty("schema_validator", self._validator)

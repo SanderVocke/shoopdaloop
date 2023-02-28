@@ -5,6 +5,12 @@ extern "C" {
 
 typedef float audio_sample_t;
 
+// Audio systems.
+typedef enum {
+    Jack,
+    Dummy
+} audio_system_type_t;
+
 // Modes a loop can be in.
 typedef enum {
     Unknown,

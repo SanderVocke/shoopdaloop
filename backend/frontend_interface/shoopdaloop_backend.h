@@ -6,10 +6,10 @@ extern "C" {
 #endif
 
 // General
-void initialize (const char* client_name_hint);
+void initialize (audio_system_type_t audio_system_type, const char* client_name_hint);
 void terminate ();
-jack_client_t *get_jack_client_handle();
-const char    *get_jack_client_name();
+jack_client_t *maybe_jack_client_handle();
+const char *get_client_name();
 unsigned get_sample_rate();
 
 // Loops
@@ -96,10 +96,6 @@ void destroy_loop_state_info(loop_state_info_t *d);
 midi_event_t *alloc_midi_event(size_t data_bytes);
 midi_channel_data_t *alloc_midi_channel_data(size_t n_events);
 audio_channel_data_t *alloc_audio_channel_data(size_t n_samples);
-
-#ifdef QT_TEST_BACKEND
-void* get_qt_proxy_audio_system();
-#endif
 
 #ifdef __cplusplus
 }

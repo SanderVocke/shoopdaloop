@@ -34,6 +34,12 @@ public:
 
     virtual size_t get_sample_rate() const = 0;
 
+    virtual void* maybe_client_handle() const = 0;
+
+    virtual const char* client_name() const = 0;
+
+    virtual void close() = 0;
+
     AudioSystemInterface() {}
     virtual ~AudioSystemInterface() {}
 };

@@ -13,6 +13,7 @@ from dataclasses import dataclass
 import typing
 import copy
 from PyQt6.sip import wrapinstance
+from PyQt6.QtCore import QObject
 
 class PortDirection(Enum):
     Input = 0
@@ -31,6 +32,10 @@ class ChannelMode(Enum):
     Direct = backend.Direct
     Dry = backend.Dry
     Wet = backend.Wet
+
+class BackendType(Enum):
+    Jack = backend.Jack
+    Dummy = backend.Dummy
 
 @dataclass
 class LoopAudioChannelState:
@@ -264,14 +269,17 @@ class BackendMidiPort:
     def __del__(self):
         self.destroy()
 
-def init_backend(client_name_hint : str):
-    backend.initialize(client_name_hint.encode('ascii'))
+def init_backend(backend_type : Type[BackendType], client_name_hint : str):
+    backend.initialize(backend_type.value, client_name_hint.encode('ascii'))
+
+def close_backend():
+    backend.terminate()
 
 def get_pyjacklib_client_handle():
     return cast(backend.get_jack_client_handle(), POINTER(jacklib.jack_client_t))
 
-def get_shoop_jack_client_handle():
-    return backend.get_jack_client_handle()
+def maybe_shoop_jack_client_handle():
+    return backend.maybe_jack_client_handle()
 
 def get_client_name():
     return str(backend.get_jack_client_name().decode('ascii'))
@@ -298,9 +306,6 @@ def open_midi_port(name_hint : str, direction : 'PortDirection') -> 'BackendMidi
 
 def get_sample_rate():
     return int(backend.get_sample_rate())
-
-def maybe_backend_test_audio_system():
-    return wrapinstance(backend.get_qt_proxy_audio_interface(), QObject)
 
 def terminate():
     backend.terminate()

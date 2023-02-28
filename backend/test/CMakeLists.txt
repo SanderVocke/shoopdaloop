@@ -2,6 +2,7 @@
 add_subdirectory(unit)
 add_subdirectory(integration)
 add_subdirectory(tools)
+add_subdirectory(qt)
 
 # Test runner
 add_executable(test_runner

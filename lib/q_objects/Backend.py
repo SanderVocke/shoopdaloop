@@ -16,12 +16,14 @@ from lib.findChildItems import findChildItems
 
 # Wraps the back-end.
 class Backend(QQuickItem):
-    def __init__(self, client_name_hint : str, parent=None):
+    def __init__(self, parent=None):
         super(Backend, self).__init__(parent)
         self._update_interval_ms = 0
         self._timer = None
         self._initialized = False
-        self._client_name_hint = ""
+        self._client_name_hint = None
+        self._backend_type = None
+        self.destroyed.connect(self.close)
     
     update = pyqtSignal()
 
@@ -53,14 +55,28 @@ class Backend(QQuickItem):
     clientNameHintChanged = pyqtSignal(str)
     @pyqtProperty(str, notify=clientNameHintChanged)
     def client_name_hint(self):
-        return self._client_name_hint
+        return (self._client_name_hint if self._client_name_hint else "")
     @client_name_hint.setter
     def client_name_hint(self, n):
         if self._initialized:
             raise Exception("Back-end client name hint may only be set once.")
         self._client_name_hint = n
-        backend.init_backend(n)
-        self._initialized = True        
+        if self._client_name_hint != None and self._backend_type != None:
+            backend.init_backend(self._backend_type, self._client_name_hint)
+            self._initialized = True     
+
+    backendTypeChanged = pyqtSignal(int)
+    @pyqtProperty(int, notify=backendTypeChanged)
+    def backend_type(self):
+        return (self._backend_type.value if self._backend_type else backend.BackendType.Dummy)
+    @backend_type.setter
+    def backend_type(self, n):
+        if self._initialized:
+            raise Exception("Back-end type can only be set once.")
+        self._backend_type = backend.BackendType(n)
+        if self._backend_type != None and self._client_name_hint != None:
+            backend.init_backend(self._backend_type, self._client_name_hint)
+            self._initialized = True      
     
     ###########
     ## SLOTS
@@ -76,7 +92,8 @@ class Backend(QQuickItem):
     @pyqtSlot(result=int)
     def get_sample_rate(self):
         return backend.get_sample_rate()
-    
-    @pyqtSlot(result='QVariant')
-    def maybe_backend_test_audio_system(self):
-        return backend.maybe_backend_test_audio_system()
+
+    @pyqtSlot()
+    def close(self):
+        if self._initialized:
+            backend.close_backend()

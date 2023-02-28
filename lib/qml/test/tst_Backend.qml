@@ -1,8 +1,10 @@
 import QtQuick 2.3
 import QtTest 1.0
 
+
+import '../../../build/types.js' as Types
+
 TestCase {
-    TestCase {
     id: testcase
     name: "Backend"
 
@@ -13,11 +15,9 @@ TestCase {
 Backend {
     update_interval_ms: 30
     client_name_hint: 'ShoopDaLoop'
+    backend_type: ${Types.BackendType.Dummy}
 }
 `
         var item = createTemporaryQmlObject(qml, testcase);
-        var audiosys = item.maybe_backend_test_audio_system()
-        console.log(audiosys)
     }
-}
 }

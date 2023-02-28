@@ -53,7 +53,7 @@ int main(int argc, const char* argv[]) {
     }
 
     // Initialize the back-end.
-    initialize("shoopdaloop_backend");
+    initialize(Jack, "shoopdaloop_backend");
 
     size_t n_loops = vm["loops"].as<size_t>();
     size_t n_audio_channels = vm["audio-channels"].as<size_t>();
