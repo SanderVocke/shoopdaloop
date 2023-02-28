@@ -10,7 +10,7 @@ from typing import *
 import sys
 sys.path.append('../..')
 
-import lib.backend as backend
+import lib.backend_wrappers as backend
 from lib.mode_helpers import is_playing_mode
 from lib.sound_file_io import load_audio_file
 

@@ -10,7 +10,7 @@ from typing import *
 import sys
 sys.path.append('../..')
 
-import lib.backend as backend
+import lib.backend_wrappers as backend
 
 # Wraps a back-end port.
 class Port(QQuickItem):

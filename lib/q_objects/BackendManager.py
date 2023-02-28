@@ -7,7 +7,7 @@ from .NChannelAbstractLooperManager import NChannelAbstractLooperManager
 import sys
 sys.path.append('../..')
 
-import build.backend.frontend_interface.shoopdaloop_backend as backend
+import lib.backend_interface as backend
 from lib.StatesAndActions import *
 from lib.state_helpers import *
 from collections import OrderedDict

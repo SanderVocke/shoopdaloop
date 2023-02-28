@@ -4,7 +4,7 @@ sys.path.append(pwd + '/..')
 sys.path.append(pwd + '/../..')
 sys.path.append(pwd + '/../../build')
 
-from lib.backend import LoopMode, ChannelMode
+from lib.backend_interface import LoopMode, ChannelMode
 from pprint import *
 
 output_filename = sys.argv[1]

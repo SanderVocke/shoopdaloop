@@ -4,7 +4,7 @@ pwd = os.path.dirname(__file__)
 sys.path.append(pwd + '/..')
 sys.path.append(pwd + '/../build')
 
-from backend.frontend_interface import shoopdaloop_backend as backend
+import lib.backend_interface as backend
 
 class LoopMode(Enum):
     Stopped = backend.Stopped

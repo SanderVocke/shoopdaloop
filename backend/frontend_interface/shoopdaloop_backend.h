@@ -97,6 +97,10 @@ midi_event_t *alloc_midi_event(size_t data_bytes);
 midi_channel_data_t *alloc_midi_channel_data(size_t n_events);
 audio_channel_data_t *alloc_audio_channel_data(size_t n_samples);
 
+#ifdef QT_TEST_BACKEND
+void* get_qt_proxy_audio_system();
+#endif
+
 #ifdef __cplusplus
 }
 #endif

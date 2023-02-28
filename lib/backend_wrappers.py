@@ -3,10 +3,7 @@ import os
 sys.path.append(
     os.path.dirname(os.path.realpath(__file__)) + '/..'
 )
-sys.path.append(
-    os.path.dirname(os.path.realpath(__file__)) + '/../build/backend/frontend_interface'
-)
-import shoopdaloop_backend as backend
+import lib.backend_interface as backend
 from typing import *
 from third_party.pyjacklib import jacklib
 from ctypes import *
@@ -15,6 +12,7 @@ from enum import Enum
 from dataclasses import dataclass
 import typing
 import copy
+from PyQt6.sip import wrapinstance
 
 class PortDirection(Enum):
     Input = 0
@@ -300,6 +298,9 @@ def open_midi_port(name_hint : str, direction : 'PortDirection') -> 'BackendMidi
 
 def get_sample_rate():
     return int(backend.get_sample_rate())
+
+def maybe_backend_test_audio_system():
+    return wrapinstance(backend.get_qt_proxy_audio_interface(), QObject)
 
 def terminate():
     backend.terminate()

@@ -1175,3 +1175,9 @@ void destroy_shoopdaloop_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *
 void destroy_loop_state_info(loop_state_info_t *state) {
     free(state);
 }
+
+#ifdef QT_TEST_BACKEND
+void* get_qt_proxy_audio_system() {
+    return (void*)g_audio_system.get();
+}
+#endif

@@ -9,7 +9,7 @@ import json
 import sys
 sys.path.append('../..')
 
-import lib.backend as backend
+import lib.backend_wrappers as backend
 from lib.q_objects.AudioPort import AudioPort
 from lib.q_objects.MidiPort import MidiPort
 from lib.findChildItems import findChildItems
@@ -76,3 +76,7 @@ class Backend(QQuickItem):
     @pyqtSlot(result=int)
     def get_sample_rate(self):
         return backend.get_sample_rate()
+    
+    @pyqtSlot(result='QVariant')
+    def maybe_backend_test_audio_system(self):
+        return backend.maybe_backend_test_audio_system()

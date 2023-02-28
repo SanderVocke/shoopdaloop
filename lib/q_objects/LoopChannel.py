@@ -11,7 +11,7 @@ from typing import *
 import sys
 sys.path.append('../..')
 
-import lib.backend as backend
+import lib.backend_wrappers as backend
 from lib.findFirstParent import findFirstParent
 import lib.q_objects.Loop as Loop
 
