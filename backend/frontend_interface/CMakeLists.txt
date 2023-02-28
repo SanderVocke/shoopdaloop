@@ -1,3 +1,5 @@
+find_package(Qt6 REQUIRED COMPONENTS Core)
+
 # Backend lib
 add_library(shoopdaloop_backend SHARED shoopdaloop_backend.cpp)
 target_link_libraries(shoopdaloop_backend PRIVATE
@@ -6,6 +8,23 @@ target_link_libraries(shoopdaloop_backend PRIVATE
 target_include_directories(shoopdaloop_backend
                         PRIVATE
                         ${CMAKE_CURRENT_SOURCE_DIR}/..
+                        ${JACK_INCLUDE_DIRS}
+                        ${CMAKE_CURRENT_BINARY_DIR}
+                        ${BOOST_INCLUDE_DIRS}
+                        )
+
+# Backend lib with Qt test audio system
+add_library(shoopdaloop_qt_test_backend SHARED shoopdaloop_backend.cpp)
+target_link_libraries(shoopdaloop_qt_test_backend PRIVATE
+                      ${BOOST_LIBRARIES}
+                      ${JACK_LIBRARIES}
+                      Qt6::Core)
+target_compile_definitions(shoopdaloop_qt_test_backend PUBLIC -DQT_TEST_BACKEND)
+target_include_directories(shoopdaloop_qt_test_backend
+                        PRIVATE
+                        ${CMAKE_CURRENT_SOURCE_DIR}/..
+                        ${CMAKE_CURRENT_SOURCE_DIR}/../test/qt
+                        ${Qt6_INCLUDE_DIRS}
                         ${JACK_INCLUDE_DIRS}
                         ${CMAKE_CURRENT_BINARY_DIR}
                         ${BOOST_INCLUDE_DIRS}

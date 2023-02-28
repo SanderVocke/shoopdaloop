@@ -1,0 +1,7 @@
+# Clangd does not detect these includes properly for all header files
+CompileFlags:
+  Add: 
+    - -isystem
+    - /usr/include/qt6
+    - -isystem
+    - /usr/include/qt6/QtCore

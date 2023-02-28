@@ -26,6 +26,11 @@
 #include <stdexcept>
 #include <map>
 
+// Qt test backend
+#ifdef QT_TEST_BACKEND
+#include "QtProxyAudioSystem.h"
+#endif
+
 // CONSTANTS
 namespace {
 constexpr size_t gc_initial_max_loops = 512;
@@ -51,7 +56,11 @@ struct ChannelInfo;
 // TYPE ALIASES
 using DefaultAudioBuffer = AudioBuffer<audio_sample_t>;
 using AudioBufferPool = ObjectPool<DefaultAudioBuffer>;
+#ifdef QT_TEST_BACKEND
+using AudioSystem = QtProxyAudioSystem<audio_sample_t>;
+#else
 using AudioSystem = JackAudioSystem;
+#endif
 using Time = uint32_t;
 using Size = uint16_t;
 using Loop = AudioMidiLoop;
@@ -584,7 +593,7 @@ void PROC_process(size_t n_frames) {
 
 void initialize (const char* client_name_hint) {
     if (!g_audio_system) {
-        g_audio_system = std::make_unique<JackAudioSystem>(std::string(client_name_hint), PROC_process);
+        g_audio_system = std::make_unique<AudioSystem>(std::string(client_name_hint), PROC_process);
     }
     if (!g_audio_buffer_pool) {
         g_audio_buffer_pool = std::make_shared<AudioBufferPool>(
@@ -618,7 +627,7 @@ jack_client_t *get_jack_client_handle() {
     if (!g_audio_system) {
         throw std::runtime_error("get_jack_client_handle() called before intialization");
     }
-    return g_audio_system->get_client();
+    return (jack_client_t*)g_audio_system->get_client();
 }
 
 const char *get_jack_client_name() {
