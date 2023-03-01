@@ -195,6 +195,8 @@ public:
 
     void close() override {
         m_finish = true;
-        m_proc_thread.join();
+        if (m_proc_thread.joinable()) {
+            m_proc_thread.join();
+        }
     }
 };

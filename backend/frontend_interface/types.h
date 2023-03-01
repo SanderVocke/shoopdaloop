@@ -77,6 +77,7 @@ typedef struct _shoopdaloop_loop_midi_channel   shoopdaloop_loop_midi_channel_t;
 typedef struct _shoopdaloop_audio_port          shoopdaloop_audio_port_t;
 typedef struct _shoopdaloop_midi_port           shoopdaloop_midi_port_t;
 typedef struct _shoopdaloop_decoupled_midi_port shoopdaloop_decoupled_midi_port_t;
+typedef struct _shoopdaloop_backend_instance    shoopdaloop_backend_instance_t;
 
 typedef struct {
     loop_mode_t mode;

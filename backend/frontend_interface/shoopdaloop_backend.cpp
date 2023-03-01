@@ -598,6 +598,7 @@ std::optional<audio_system_type_t> audio_system_type(AudioSystem *sys) {
 // API FUNCTIONS
 
 void initialize (audio_system_type_t audio_system, const char* client_name_hint) {
+    std::cout << "INITIALIZE" << std::endl;
     auto _audio_system_type = audio_system_type(g_audio_system.get());
     if (_audio_system_type.has_value() && _audio_system_type != audio_system) {
         g_audio_system->close();
@@ -645,8 +646,10 @@ void initialize (audio_system_type_t audio_system, const char* client_name_hint)
 }
 
 void terminate() {
+    std::cout << "TERMINATE" << std::endl;
     if (g_audio_system) {
         g_audio_system->close();
+        g_audio_system.reset(nullptr);
     }
 }
 

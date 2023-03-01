@@ -14,9 +14,12 @@ from lib.q_objects.AudioPort import AudioPort
 from lib.q_objects.MidiPort import MidiPort
 from lib.findChildItems import findChildItems
 
+the_backend = None
+
 # Wraps the back-end.
 class Backend(QQuickItem):
     def __init__(self, parent=None):
+        print("CREATE")
         super(Backend, self).__init__(parent)
         self._update_interval_ms = 0
         self._timer = None
@@ -62,8 +65,7 @@ class Backend(QQuickItem):
             raise Exception("Back-end client name hint may only be set once.")
         self._client_name_hint = n
         if self._client_name_hint != None and self._backend_type != None:
-            backend.init_backend(self._backend_type, self._client_name_hint)
-            self._initialized = True     
+            self.init()
 
     backendTypeChanged = pyqtSignal(int)
     @pyqtProperty(int, notify=backendTypeChanged)
@@ -75,8 +77,7 @@ class Backend(QQuickItem):
             raise Exception("Back-end type can only be set once.")
         self._backend_type = backend.BackendType(n)
         if self._backend_type != None and self._client_name_hint != None:
-            backend.init_backend(self._backend_type, self._client_name_hint)
-            self._initialized = True      
+            self.init()
     
     ###########
     ## SLOTS
@@ -95,5 +96,23 @@ class Backend(QQuickItem):
 
     @pyqtSlot()
     def close(self):
+        print("CLOSE")
+        global the_backend
         if self._initialized:
             backend.close_backend()
+        self._initialized = False
+        the_backend = None
+    
+    ################
+    ## INTERNAL METHODS
+    ################
+
+    def init(self):
+        print("INITIO")
+        global the_backend
+        if self._initialized or the_backend:
+            raise Exception("May not initialize more than one back-end at a time.")
+        backend.init_backend(self._backend_type, self._client_name_hint)
+        self._initialized = True
+        the_backend = self
+        

@@ -6,14 +6,14 @@ extern "C" {
 #endif
 
 // General
-void initialize (audio_system_type_t audio_system_type, const char* client_name_hint);
-void terminate ();
-jack_client_t *maybe_jack_client_handle();
-const char *get_client_name();
-unsigned get_sample_rate();
+shoopdaloop_backend_instance_t *initialize (audio_system_type_t audio_system_type, const char* client_name_hint);
+void terminate (shoopdaloop_backend_instance_t *backend);
+jack_client_t *maybe_jack_client_handle(shoopdaloop_backend_instance_t *backend);
+const char *get_client_name(shoopdaloop_backend_instance_t *backend);
+unsigned get_sample_rate(shoopdaloop_backend_instance_t *backend);
 
 // Loops
-shoopdaloop_loop_t *create_loop();
+shoopdaloop_loop_t *create_loop(shoopdaloop_backend_instance_t *backend);
 shoopdaloop_loop_audio_channel_t *add_audio_channel (shoopdaloop_loop_t *loop, channel_mode_t mode);
 shoopdaloop_loop_midi_channel_t  *add_midi_channel  (shoopdaloop_loop_t *loop, channel_mode_t mode);
 shoopdaloop_loop_audio_channel_t *get_audio_channel (shoopdaloop_loop_t *loop, size_t idx);
@@ -28,7 +28,7 @@ void              set_loop_sync_source     (shoopdaloop_loop_t *loop, shoopdaloo
 
 // Loop channels
 void                   clear_audio_channel      (shoopdaloop_loop_audio_channel_t *channel);
-void                   clear_midi_channel       (shoopdaloop_loop_midi_channel_t *channel);
+void                   clear_midi_channel       (shoopdaloop_loop_midi_channel_t  *channel);
 void                   connect_audio_output     (shoopdaloop_loop_audio_channel_t *channel, shoopdaloop_audio_port_t *port);
 void                   connect_midi_output      (shoopdaloop_loop_midi_channel_t  *channel, shoopdaloop_midi_port_t *port);
 void                   connect_audio_input      (shoopdaloop_loop_audio_channel_t *channel, shoopdaloop_audio_port_t *port);
@@ -61,17 +61,17 @@ void loops_transition(unsigned int n_loops,
                       unsigned wait_for_sync);
 
 // Audio ports
-shoopdaloop_audio_port_t *open_audio_port (const char* name_hint, port_direction_t direction);
+shoopdaloop_audio_port_t *open_audio_port (shoopdaloop_backend_instance_t *backend, const char* name_hint, port_direction_t direction);
 jack_port_t *get_audio_port_jack_handle(shoopdaloop_audio_port_t *port);
 audio_port_state_info_t *get_audio_port_state(shoopdaloop_audio_port_t *port);
 
 // Midi ports
-shoopdaloop_midi_port_t *open_midi_port (const char* name_hint, port_direction_t direction);
+shoopdaloop_midi_port_t *open_midi_port (shoopdaloop_backend_instance_t *backend, const char* name_hint, port_direction_t direction);
 jack_port_t *get_midi_port_jack_handle(shoopdaloop_midi_port_t *port);
 midi_port_state_info_t *get_midi_port_state(shoopdaloop_midi_port_t *port);
 
 // Decoupled midi ports
-shoopdaloop_decoupled_midi_port_t *open_decoupled_midi_port(const char* name_hint, port_direction_t direction);
+shoopdaloop_decoupled_midi_port_t *open_decoupled_midi_port(shoopdaloop_backend_instance_t *backend, const char* name_hint, port_direction_t direction);
 midi_event_t *maybe_next_message(shoopdaloop_decoupled_midi_port_t *port);
 void send_decoupled_midi(shoopdaloop_decoupled_midi_port_t *port, unsigned length, unsigned char *data);
 
