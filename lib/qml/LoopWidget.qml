@@ -10,12 +10,12 @@ import '../mode_helpers.js' as ModeHelpers
 Item {
     id: widget
 
-    property var descriptor : null
+    property var initial_descriptor : null
     property Registry objects_registry : null
     property Registry state_registry : null
 
     SchemaCheck {
-        descriptor: widget.descriptor
+        descriptor: widget.initial_descriptor
         schema: 'loop.1'
     }
 
@@ -24,8 +24,8 @@ Item {
     readonly property string name: ''
     property LoopWidget master_loop : null
     property LoopWidget targeted_loop : null
-    readonly property var audio_channel_descriptors: descriptor.channels.filter(c => c.type == 'audio')
-    readonly property var midi_channel_descriptors: descriptor.channels.filter(c => c.type == 'midi')
+    readonly property var audio_channel_descriptors: initial_descriptor.channels.filter(c => c.type == 'audio')
+    readonly property var midi_channel_descriptors: initial_descriptor.channels.filter(c => c.type == 'midi')
 
     function update_master_and_targeted() {
         widget.master_loop = state_registry.has('master_loop') ?
@@ -39,8 +39,8 @@ Item {
         function onContentsChanged() { update_master_and_targeted() }
     }
     Component.onCompleted: {
-        objects_registry.register(descriptor.id, this)
-        if(descriptor.is_master) { state_registry.register('master_loop', this) }
+        objects_registry.register(initial_descriptor.id, this)
+        if(initial_descriptor.is_master) { state_registry.register('master_loop', this) }
         update_master_and_targeted()
     }
 
@@ -76,7 +76,7 @@ Item {
         if (emit) { onClear(length) }
     }
     function qml_close() {
-        objects_registry.unregister(descriptor.id)
+        objects_registry.unregister(initial_descriptor.id)
         for(var i=0; i<audio_channels.model; i++) {
             audio_channels.itemAt(i).qml_close();
         }

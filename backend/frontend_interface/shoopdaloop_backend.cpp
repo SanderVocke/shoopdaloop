@@ -55,8 +55,8 @@ using DefaultAudioBuffer = AudioBuffer<audio_sample_t>;
 using AudioBufferPool = ObjectPool<DefaultAudioBuffer>;
 using Time = uint32_t;
 using Size = uint16_t;
-using AudioSystem = AudioSystemInterface<Time, Size>;
-using _DummyAudioSystem = DummyAudioSystem<Time, Size>;
+using AudioSystem = AudioSystemInterface<jack_nframes_t, size_t>;
+using _DummyAudioSystem = DummyAudioSystem<jack_nframes_t, size_t>;
 using Loop = AudioMidiLoop;
 using SharedLoop = std::shared_ptr<Loop>;
 using SharedLoopChannel = std::shared_ptr<ChannelInterface>;
@@ -604,7 +604,7 @@ void initialize (audio_system_type_t audio_system, const char* client_name_hint)
         g_audio_system.reset(nullptr);
         _audio_system_type = std::nullopt;
     }
-    if (!g_audio_system) {
+    if (!g_audio_system.get()) {
         switch (audio_system) {
         case Jack:
             g_audio_system = std::unique_ptr<AudioSystem>(dynamic_cast<AudioSystem*>(new JackAudioSystem(

@@ -2,64 +2,149 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
 
-// The tracks widget displays the state of a number of tracks.
-Item {
-    id: tracks
-    width: childrenRect.width
-    height: childrenRect.height
+import "../generate_session.js" as GenerateSession
 
-    property int slots_per_track
-    property int n_tracks
-    property LoopWidget master_loop
-    property LoopWidget targeted_loop
+ScrollView {
+    ScrollBar.horizontal.policy: ScrollBar.AsNeeded
+    ScrollBar.vertical.policy: ScrollBar.AlwaysOff
+    ScrollBar.horizontal.height: 10
+    contentWidth: tracks_view.width
+    property int scroll_offset : ScrollBar.horizontal.position * contentWidth
 
-    property list<LoopWidget> loops_of_selected_scene: []
-    property list<LoopWidget> loops_of_hovered_scene: []
+    id: root
 
-    signal loop_created(int track_index, int loop_index, LoopWidget loop)
+    property var initial_track_descriptors : null
+    property Registry objects_registry : null
+    property Registry state_registry : null
 
-    // signal request_toggle_loop_in_scene(int track, int loop)
-    // signal request_rename(int track, string name)
-    // signal request_select_loop(int track, int loop)
-    // signal request_rename_loop(int track, int loop, string name)
-    // signal request_clear_loop(int track, int loop)
-    // signal request_toggle_loop_selected(int track, int loop)
-    // signal request_set_targeted_loop(int track, int loop)
+    property alias tracks : tracks_row.children
 
-    Rectangle {
-        property int x_spacing: 0
-        property int y_spacing: 0
+    readonly property var factory : Qt.createComponent("TrackWidget.qml")
 
-        width: childrenRect.width + x_spacing
-        height: childrenRect.height + y_spacing
+    function add_track(properties) {
+        if (factory.status == Component.Error) {
+            throw new Error("TracksWidget: Failed to load track factory: " + factory.errorString())
+        } else if (factory.status != Component.Ready) {
+            throw new Error("TracksWidget: Track factory not ready")
+        } else {
+            var track = factory.createObject(root, properties);
+            root.tracks.push(track)
+        }
+    }
+
+    Component.onCompleted: {
+        // Instantiate initial tracks
+        root.initial_track_descriptors.forEach(desc => {
+            root.add_track({
+                initial_descriptor: desc,
+                objects_registry: root.objects_registry,
+                state_registry: root.state_registry
+            });
+        })
+    }
+
+    ScrollView {
+        id: tracks_view
+        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+        ScrollBar.vertical.policy: ScrollBar.AsNeeded
+        ScrollBar.vertical.width: 10
+        ScrollBar.vertical.x: root.width-ScrollBar.vertical.width+root.scroll_offset
+
+        anchors.left: parent.left
         anchors.top: parent.top
-        color: Material.background
+        anchors.bottom: track_controls_row.top
+        width: tracks_row.width
 
-        Item {
+        Row {
+            spacing: 3
+            id: tracks_row
             width: childrenRect.width
-            height: childrenRect.height
-            x: parent.x_spacing/2
-            y: parent.y_spacing/2
 
-            Row {
-                spacing: 3
+            // Note: tracks injected here
+        }
+    }
 
-                Repeater {
-                    model: tracks.n_tracks
-                    id: tracks_repeater
+    Row {
+        id: track_controls_row
+        spacing: tracks_row.spacing
+        width: tracks_view.width
+        anchors.left: tracks_view.left
+        anchors.bottom: parent.bottom
 
-                    TrackWidget {
-                        num_slots: tracks.slots_per_track
+        Repeater {
+            model: tracks_row.children.length
 
-                        master_loop: tracks.master_loop
-                        targeted_loop: tracks.targeted_loop
+            Item {
+                width: tracks_row.children[index].width
+                height: 50
 
-                        name: 'Track ' + (index + 1).toString()
-                        port_name_prefix: 'track_' + (index+1).toString() + '_'
-
-                        onLoop_created: (loop_index, loop) => tracks.loop_created(index, loop_index, loop)
-                    }
+                TrackControlWidget {
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.horizontalCenter: parent.horizontalCenter
                 }
+            }
+        }
+    }
+
+    Row {
+        id: rectangles_row
+        z: -1
+        spacing: tracks_row.spacing
+        width: tracks_view.width
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+
+        Repeater {
+            model: tracks_row.children.length
+
+            Rectangle {
+                width: tracks_row.children[index].width
+                height: rectangles_row.height
+                y: 0
+                color: "#555555"
+            }
+        }
+    }
+
+
+    // Buttons for add / clear
+    Column {
+        spacing: 3
+
+        Button {
+            width: 30
+            height: 40
+            MaterialDesignIcon {
+                size: 20
+                name: 'plus'
+                color: Material.foreground
+                anchors.centerIn: parent
+            }
+            onClicked: {
+                var idx = (root.tracks.length).toString()
+                var track_descriptor = GenerateSession.generate_default_track("Track " + idx, 1, 'track_' + idx)
+                root.add_track({
+                    initial_descriptor: track_descriptor,
+                    objects_registry: root.objects_registry,
+                    state_registry: root.state_registry
+                })
+            }
+        }
+
+        Button {
+            width: 30
+            height: 40
+            MaterialDesignIcon {
+                size: 20
+                name: 'close'
+                color: Material.foreground
+                anchors.centerIn: parent
+            }
+            onClicked: {
+                for(var i=root.tracks.length-1; i>0; i--) {
+                    root.tracks[i].qml_close()
+                }
+                root.tracks.length = 1;
             }
         }
     }

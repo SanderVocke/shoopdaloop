@@ -10,10 +10,8 @@ ApplicationWindow {
     visible: true
     width: 1050
     height: 550
-    maximumWidth: width
-    maximumHeight: height
-    minimumWidth: width
-    minimumHeight: height
+    minimumWidth: 500
+    minimumHeight: 350
     title: "ShoopDaLoop"
     id: appWindow
 
@@ -28,6 +26,7 @@ ApplicationWindow {
     }
 
     Session {
+        anchors.fill: parent
         initial_descriptor: GenerateSession.generate_default_session()
     }
 }

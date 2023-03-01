@@ -9,30 +9,30 @@ import '../../build/types.js' as Types
 Item {
     id: track
 
-    property var descriptor : null
+    property var initial_descriptor : null
     property Registry objects_registry : null
     property Registry state_registry : null
 
     SchemaCheck {
-        descriptor: track.descriptor
+        descriptor: track.initial_descriptor
         schema: 'track.1'
     }
-    Component.onCompleted: if(objects_registry) { objects_registry.register(descriptor.id, this) }
+    Component.onCompleted: if(objects_registry) { objects_registry.register(initial_descriptor.id, this) }
     function qml_close() {
-        objects_registry.unregister(descriptor.id)
+        objects_registry.unregister(initial_descriptor.id)
         all_ports().forEach(p => p.qml_close())
         for(var i=0; i<loops.model; i++) {
             loops.itemAt(i).qml_close();
         }
     }
     
-    readonly property int num_slots : descriptor.loops.length
-    property string name: descriptor.name
+    readonly property int num_slots : initial_descriptor.loops.length
+    property string name: initial_descriptor.name
     readonly property bool name_editable: true
     readonly property string port_name_prefix: ''
-    readonly property var audio_port_descriptors : descriptor.ports.filter(p => p.schema == 'audioport.1')
-    readonly property var midi_port_descriptors : descriptor.ports.filter(p => p.schema == 'midiport.1')
-    readonly property var loop_descriptors : descriptor.loops
+    readonly property var audio_port_descriptors : initial_descriptor.ports.filter(p => p.schema == 'audioport.1')
+    readonly property var midi_port_descriptors : initial_descriptor.ports.filter(p => p.schema == 'midiport.1')
+    readonly property var loop_descriptors : initial_descriptor.loops
 
     width: childrenRect.width
     height: childrenRect.height
@@ -89,13 +89,12 @@ Item {
         ]
     }
 
-    Rectangle {
+    Item {
         property int x_spacing: 8
         property int y_spacing: 4
 
         width: childrenRect.width + x_spacing
         height: childrenRect.height + y_spacing
-        color: "#555555"
 
         Item {
             width: childrenRect.width
@@ -125,7 +124,7 @@ Item {
                     height: childrenRect.height
 
                     LoopWidget {
-                        descriptor : track.loop_descriptors[index]
+                        initial_descriptor : track.loop_descriptors[index]
                         objects_registry : track.objects_registry
                         state_registry : track.state_registry
 
@@ -147,18 +146,6 @@ Item {
                         //onRequest_toggle_selected: () => { track.request_toggle_loop_selected(index) }
                         //onRequest_set_as_targeted: () => { track.request_set_targeted_loop(index) }
                     }
-                }
-
-                Item {
-                    height: 5
-                    width: 10
-                }
-
-                TrackControlWidget {
-                    id: trackctlwidget
-
-                    //muted: track.active_loop_state === StatesAndActions.LoopMode.Muted
-                    //ports_manager: track.ports_manager
                 }
             }
         }
