@@ -132,7 +132,7 @@ public:
         std::function<void(size_t)> process_cb
     ) : AudioSystemInterface<Time, Size>(client_name, process_cb),
         m_process_cb(process_cb),
-        mc_buffer_size(1024),
+        mc_buffer_size(256),
         mc_sample_rate(48000),
         m_finish(false),
         m_client_name(client_name),

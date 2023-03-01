@@ -13,11 +13,20 @@ Item {
     property Registry objects_registry : null
     property Registry state_registry : null
 
+    property bool loaded : false // TODO
+
     SchemaCheck {
         descriptor: track.initial_descriptor
         schema: 'track.1'
     }
-    Component.onCompleted: if(objects_registry) { objects_registry.register(initial_descriptor.id, this) }
+    Component.onCompleted: {
+        console.log("TRACK COMPLETED")
+        if(objects_registry) { objects_registry.register(initial_descriptor.id, this) }
+        loaded = true // TODO
+    }
+
+    onLoadedChanged: console.log("LOADEDCHANGED")
+
     function qml_close() {
         objects_registry.unregister(initial_descriptor.id)
         all_ports().forEach(p => p.qml_close())
@@ -87,6 +96,9 @@ Item {
             ...Array.from(Array(audio_ports_repeater.model).keys()).map(i => audio_ports_repeater.itemAt(i)),
             ...Array.from(Array(midi_ports_repeater.model).keys()).map(i => midi_ports_repeater.itemAt(i))
         ]
+    }
+    function all_loops() {
+        return Array.from(Array(loops.model).keys()).map(i => loops.itemAt(i))
     }
 
     Item {

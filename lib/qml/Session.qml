@@ -29,8 +29,12 @@ Item {
 
     // State registry stores the following optional states:
     // - "master_loop" -> LoopWidget which holds the master loop
-// - "targeted_loop" -> LoopWidget which is currently targeted
+    // - "targeted_loop" -> LoopWidget which is currently targeted
     property Registry state_registry: Registry { verbose: false }
+
+    // For (test) access
+    property alias tracks: tracks_widget.tracks
+    property bool loaded : tracks_widget.loaded
 
     Backend {
         update_interval_ms: 30

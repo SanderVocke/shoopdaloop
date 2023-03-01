@@ -17,6 +17,9 @@ ScrollView {
     property Registry objects_registry : null
     property Registry state_registry : null
 
+    property bool loaded : false
+    property int n_loaded : 0
+
     property alias tracks : tracks_row.children
 
     readonly property var factory : Qt.createComponent("TrackWidget.qml")
@@ -29,19 +32,33 @@ ScrollView {
         } else {
             var track = factory.createObject(root, properties);
             root.tracks.push(track)
+            return track
         }
     }
 
-    Component.onCompleted: {
+    function load() {
+        loaded = false
+        n_loaded = 0
+        console.log("LOAD TRACKS")
         // Instantiate initial tracks
         root.initial_track_descriptors.forEach(desc => {
-            root.add_track({
+            var track = root.add_track({
                 initial_descriptor: desc,
                 objects_registry: root.objects_registry,
                 state_registry: root.state_registry
             });
+            track.onLoadedChanged.connect( () => {
+                console.log("LOAD TRACK");
+                root.n_loaded += 1;
+                if(root.n_loaded >= initial_track_descriptors.length) {
+                    root.loaded=true;
+                }
+            } )
         })
+        //loaded = Qt.binding(function() { n_loaded >= initial_track_descriptors.length })
     }
+
+    Component.onCompleted: load()
 
     ScrollView {
         id: tracks_view
