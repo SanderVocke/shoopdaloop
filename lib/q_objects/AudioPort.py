@@ -62,4 +62,4 @@ class AudioPort(Port):
     ## INTERNAL MEMBERS
     ##########
     def maybe_initialize_impl(self, name_hint, direction):
-        self._backend_obj = backend.open_audio_port(name_hint, direction)
+        self._backend_obj = self.backend.get_backend_obj().open_audio_port(name_hint, direction)

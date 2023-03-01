@@ -51,5 +51,5 @@ class MidiPort(Port):
     ##########
     def maybe_initialize_impl(self, name_hint, direction):
         print("OPENING MIDI {}".format(name_hint))
-        self._backend_obj = backend.open_midi_port(name_hint, direction)
+        self._backend_obj = self.backend.get_backend_obj().open_midi_port(name_hint, direction)
         print("OPENED")

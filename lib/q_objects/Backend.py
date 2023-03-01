@@ -10,22 +10,18 @@ import sys
 sys.path.append('../..')
 
 import lib.backend_wrappers as backend
-from lib.q_objects.AudioPort import AudioPort
-from lib.q_objects.MidiPort import MidiPort
 from lib.findChildItems import findChildItems
-
-the_backend = None
 
 # Wraps the back-end.
 class Backend(QQuickItem):
     def __init__(self, parent=None):
-        print("CREATE")
         super(Backend, self).__init__(parent)
         self._update_interval_ms = 0
         self._timer = None
         self._initialized = False
         self._client_name_hint = None
         self._backend_type = None
+        self._backend_obj = None
         self.destroyed.connect(self.close)
     
     update = pyqtSignal()
@@ -92,27 +88,26 @@ class Backend(QQuickItem):
     
     @pyqtSlot(result=int)
     def get_sample_rate(self):
-        return backend.get_sample_rate()
+        return self._backend_obj.get_sample_rate()
 
     @pyqtSlot()
     def close(self):
-        print("CLOSE")
-        global the_backend
         if self._initialized:
-            backend.close_backend()
+            self._backend_obj.terminate()
         self._initialized = False
-        the_backend = None
+    
+    # Get the wrapped back-end object.
+    @pyqtSlot(result='QVariant')
+    def get_backend_obj(self):
+        return self._backend_obj
     
     ################
     ## INTERNAL METHODS
     ################
 
     def init(self):
-        print("INITIO")
-        global the_backend
-        if self._initialized or the_backend:
+        if self._initialized:
             raise Exception("May not initialize more than one back-end at a time.")
-        backend.init_backend(self._backend_type, self._client_name_hint)
+        self._backend_obj = backend.init_backend(self._backend_type, self._client_name_hint)
         self._initialized = True
-        the_backend = self
         

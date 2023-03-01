@@ -11,6 +11,8 @@ import sys
 sys.path.append('../..')
 
 import lib.backend_wrappers as backend
+from lib.q_objects.Backend import Backend
+from lib.findFirstParent import findFirstParent
 
 # Wraps a back-end port.
 class Port(QQuickItem):
@@ -21,10 +23,28 @@ class Port(QQuickItem):
         self._direction = ''
         self._name = ''
         self._initialized = False
+        self._backend = None
+
+        self.rescan_parents()
+        if not self._backend:
+            self.parentChanged.connect(self.rescan_parents)
 
     ######################
     # PROPERTIES
     ######################
+
+    # backend
+    backendChanged = pyqtSignal(Backend)
+    @pyqtProperty(Backend, notify=backendChanged)
+    def backend(self):
+        return self._backend
+    @backend.setter
+    def backend(self, l):
+        if l and l != self._backend:
+            if self._backend or self._backend_obj:
+                raise Exception('May not change backend of existing port')
+            self._backend = l
+            self.maybe_initialize()
 
     # initialized
     initializedChanged = pyqtSignal(bool)
@@ -91,6 +111,12 @@ class Port(QQuickItem):
         if self._backend_obj:
             self._backend_obj.destroy()
             self._backend_obj = None
+    
+    @pyqtSlot()
+    def rescan_parents(self):
+        maybe_backend = findFirstParent(self, lambda p: p and isinstance(p, QObject) and p.inherits('Backend') and self._backend == None)
+        if maybe_backend:
+            self._backend = maybe_backend
 
     ##########
     ## INTERNAL MEMBERS
@@ -99,7 +125,7 @@ class Port(QQuickItem):
         raise Exception('Unimplemented in base class')
 
     def maybe_initialize(self):
-        if self._name_hint != '' and self._direction != '' and not self._backend_obj:
+        if self._name_hint != '' and self._direction != '' and self._backend and not self._backend_obj:
             direction = None
             if self._direction == 'input':
                 direction = backend.PortDirection.Input
@@ -107,8 +133,7 @@ class Port(QQuickItem):
                 direction = backend.PortDirection.Output
             if not direction:
                 raise Exception("Invalid direction.")
-            if self._name_hint != '' and not self._backend_obj:
-                self.maybe_initialize_impl(self._name_hint, direction)
-                if self._backend_obj:
-                    self._initialized = True
-                    self.initializedChanged.emit(True)
+            self.maybe_initialize_impl(self._name_hint, direction)
+            if self._backend_obj:
+                self._initialized = True
+                self.initializedChanged.emit(True)

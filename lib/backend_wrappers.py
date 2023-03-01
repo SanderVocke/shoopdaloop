@@ -269,43 +269,46 @@ class BackendMidiPort:
     def __del__(self):
         self.destroy()
 
+class Backend:
+    def __init__(self, c_handle : 'POINTER(backend.shoopdaloop_backend_instance_t)'):
+        self._c_handle = c_handle
+
+    def get_pyjacklib_client_handle(self):
+        return cast(backend.get_jack_client_handle(self._c_handle), POINTER(jacklib.jack_client_t))
+
+    def maybe_shoop_jack_client_handle(self):
+        return backend.maybe_jack_client_handle(self._c_handle)
+
+    def get_client_name(self):
+        return str(backend.get_jack_client_name(self._c_handle).decode('ascii'))
+
+    def get_sample_rate(self):
+        return int(backend.get_sample_rate(self._c_handle))
+
+    def create_loop(self) -> Type['BackendLoop']:
+        handle = backend.create_loop(self._c_handle)
+        rval = BackendLoop(handle)
+        return rval
+
+    def open_audio_port(self, name_hint : str, direction : 'PortDirection') -> 'BackendAudioPort':
+        _dir = (backend.Input if direction == PortDirection.Input else backend.Output)
+        handle = backend.open_audio_port(self._c_handle, name_hint.encode('ascii'), _dir)
+        port = BackendAudioPort(handle, direction)
+        return port
+
+    def open_midi_port(self, name_hint : str, direction : 'PortDirection') -> 'BackendMidiPort':
+        _dir = (backend.Input if direction == PortDirection.Input else backend.Output)
+        handle = backend.open_midi_port(self._c_handle, name_hint.encode('ascii'), _dir)
+        port = BackendMidiPort(handle, direction)
+        return port
+
+    def get_sample_rate(self):
+        return int(backend.get_sample_rate(self._c_handle))
+
+    def terminate(self):
+        backend.terminate(self._c_handle)
+
 def init_backend(backend_type : Type[BackendType], client_name_hint : str):
-    backend.initialize(backend_type.value, client_name_hint.encode('ascii'))
-
-def close_backend():
-    backend.terminate()
-
-def get_pyjacklib_client_handle():
-    return cast(backend.get_jack_client_handle(), POINTER(jacklib.jack_client_t))
-
-def maybe_shoop_jack_client_handle():
-    return backend.maybe_jack_client_handle()
-
-def get_client_name():
-    return str(backend.get_jack_client_name().decode('ascii'))
-
-def get_sample_rate():
-    return int(backend.get_sample_rate())
-
-def create_loop() -> Type['BackendLoop']:
-    handle = backend.create_loop()
-    rval = BackendLoop(handle)
-    return rval
-
-def open_audio_port(name_hint : str, direction : 'PortDirection') -> 'BackendAudioPort':
-    _dir = (backend.Input if direction == PortDirection.Input else backend.Output)
-    handle = backend.open_audio_port(name_hint.encode('ascii'), _dir)
-    port = BackendAudioPort(handle, direction)
-    return port
-
-def open_midi_port(name_hint : str, direction : 'PortDirection') -> 'BackendMidiPort':
-    _dir = (backend.Input if direction == PortDirection.Input else backend.Output)
-    handle = backend.open_midi_port(name_hint.encode('ascii'), _dir)
-    port = BackendMidiPort(handle, direction)
-    return port
-
-def get_sample_rate():
-    return int(backend.get_sample_rate())
-
-def terminate():
-    backend.terminate()
+    _ptr = backend.initialize(backend_type.value, client_name_hint.encode('ascii'))
+    b = Backend(_ptr)
+    return b
