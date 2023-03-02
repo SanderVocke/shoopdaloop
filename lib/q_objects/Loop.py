@@ -10,9 +10,11 @@ from typing import *
 import sys
 sys.path.append('../..')
 
-import lib.backend_wrappers as backend
+import lib.backend_wrappers as backend_wrappers
 from lib.mode_helpers import is_playing_mode
 from lib.sound_file_io import load_audio_file
+from lib.q_objects.Backend import Backend
+from lib.findFirstParent import findFirstParent
 
 # Wraps a back-end loop.
 class Loop(QQuickItem):
@@ -22,18 +24,42 @@ class Loop(QQuickItem):
 
     def __init__(self, parent=None):
         super(Loop, self).__init__(parent)
-        self._backend_loop = backend.create_loop()
         self._position = 0
-        self._mode = backend.LoopMode.Unknown.value
-        self._next_mode = backend.LoopMode.Unknown.value
+        self._mode = backend_wrappers.LoopMode.Unknown.value
+        self._next_mode = backend_wrappers.LoopMode.Unknown.value
         self._next_transition_delay = -1
         self._length = 0
         self._sync_source = None
-        self.update()
+        self._initialized = False
+        self._backend = None
+        self._backend_loop = None
+
+        self.rescan_parents()
+        if not self._backend:
+            self.parentChanged.connect(self.rescan_parents)
 
     ######################
     # PROPERTIES
     ######################
+    
+    # backend
+    backendChanged = pyqtSignal(Backend)
+    @pyqtProperty(Backend, notify=backendChanged)
+    def backend(self):
+        return self._backend
+    @backend.setter
+    def backend(self, l):
+        if l and l != self._backend:
+            if self._backend or self._backend_loop:
+                raise Exception('May not change backend of existing port')
+            self._backend = l
+            self.maybe_initialize()
+    
+    # initialized
+    initializedChanged = pyqtSignal(bool)
+    @pyqtProperty(bool, notify=initializedChanged)
+    def initialized(self):
+        return self._initialized
 
     # mode
     modeChanged = pyqtSignal(int)
@@ -150,11 +176,11 @@ class Loop(QQuickItem):
     def clear(self, length):
         self._backend_loop.clear(length)
     
-    @pyqtSlot(result=backend.BackendLoopMidiChannel)
+    @pyqtSlot(result=backend_wrappers.BackendLoopMidiChannel)
     def add_audio_channel(self, mode):
         return self._backend_loop.add_audio_channel(mode)
     
-    @pyqtSlot(result=backend.BackendLoopMidiChannel)
+    @pyqtSlot(result=backend_wrappers.BackendLoopMidiChannel)
     def add_midi_channel(self, mode):
         return self._backend_loop.add_midi_channel(mode)
     
@@ -176,3 +202,23 @@ class Loop(QQuickItem):
                                          backend.get_sample_rate(),
                                         (forced_length if force_length else None))
         self.load_audio_data(sound_channels)
+    
+    @pyqtSlot()
+    def close(self):
+        if self._backend_loop:
+            self._backend_loop.destroy()
+            self._backend_loop = None
+    
+    @pyqtSlot()
+    def rescan_parents(self):
+        maybe_backend = findFirstParent(self, lambda p: p and isinstance(p, QObject) and p.inherits('Backend') and self._backend == None)
+        if maybe_backend:
+            self.backend = maybe_backend
+    
+    def maybe_initialize(self):
+        if self._backend and not self._backend_loop:
+            self._backend_loop = self._backend.get_backend_obj().create_loop()
+            if self._backend_loop:
+                self._initialized = True
+                self.update()
+                self.initializedChanged.emit(True)

@@ -13,19 +13,15 @@ Item {
     property Registry objects_registry : null
     property Registry state_registry : null
 
-    property bool loaded : false // TODO
+    property bool loaded : audio_ports_repeater.loaded && midi_ports_repeater.loaded && loops.loaded
 
     SchemaCheck {
         descriptor: track.initial_descriptor
         schema: 'track.1'
     }
     Component.onCompleted: {
-        console.log("TRACK COMPLETED")
         if(objects_registry) { objects_registry.register(initial_descriptor.id, this) }
-        loaded = true // TODO
     }
-
-    onLoadedChanged: console.log("LOADEDCHANGED")
 
     function qml_close() {
         objects_registry.unregister(initial_descriptor.id)
@@ -71,7 +67,7 @@ Item {
     // TODO: apparently the order in which these are instantiated will make
     // Patchance group the pairs or not. Quite confusing...
 
-    Repeater {
+    RepeaterWithLoadedDetection {
         id : audio_ports_repeater
         model : track.audio_port_descriptors.length
 
@@ -81,7 +77,7 @@ Item {
             state_registry: track.state_registry
         }
     }
-    Repeater {
+    RepeaterWithLoadedDetection {
         id : midi_ports_repeater
         model : track.midi_port_descriptors.length
 
@@ -93,12 +89,12 @@ Item {
     }
     function all_ports() {
         return [
-            ...Array.from(Array(audio_ports_repeater.model).keys()).map(i => audio_ports_repeater.itemAt(i)),
-            ...Array.from(Array(midi_ports_repeater.model).keys()).map(i => midi_ports_repeater.itemAt(i))
+            ...audio_ports_repeater.all_items(),
+            ...midi_ports_repeater.all_items()
         ]
     }
     function all_loops() {
-        return Array.from(Array(loops.model).keys()).map(i => loops.itemAt(i))
+        return loops.all_items()
     }
 
     Item {
@@ -129,7 +125,7 @@ Item {
                                        }
                 }
 
-                Repeater {
+                RepeaterWithLoadedDetection {
                     model: track.num_slots
                     id: loops
                     width: childrenRect.width

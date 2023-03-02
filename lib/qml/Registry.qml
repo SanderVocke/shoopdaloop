@@ -16,7 +16,7 @@ QtObject {
         }
         if(verbose && !(id in data)) {
             console.log("REGISTRY: Registered:", id, " => ", object)
-             data[id] = object
+            data[id] = object
             itemAdded(id, object)
         } else if(verbose && overwrite && (id in data)) {
             console.log("REGISTRY: Overwrite: ", id, ":", data[id], " => ", object)

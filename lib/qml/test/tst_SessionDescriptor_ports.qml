@@ -13,6 +13,7 @@ Backend {
     backend_type: Types.BackendType.Dummy
 
     Session {
+        id: session
         anchors.fill: parent
         initial_descriptor: ({
             'schema': 'session.1',

@@ -107,7 +107,6 @@ class Port(QQuickItem):
     
     @pyqtSlot()
     def close(self):
-        print("PORT CLOSE")
         if self._backend_obj:
             self._backend_obj.destroy()
             self._backend_obj = None
@@ -116,7 +115,7 @@ class Port(QQuickItem):
     def rescan_parents(self):
         maybe_backend = findFirstParent(self, lambda p: p and isinstance(p, QObject) and p.inherits('Backend') and self._backend == None)
         if maybe_backend:
-            self._backend = maybe_backend
+            self.backend = maybe_backend
 
     ##########
     ## INTERNAL MEMBERS

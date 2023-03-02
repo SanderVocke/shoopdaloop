@@ -26,6 +26,7 @@ Item {
     property LoopWidget targeted_loop : null
     readonly property var audio_channel_descriptors: initial_descriptor.channels.filter(c => c.type == 'audio')
     readonly property var midi_channel_descriptors: initial_descriptor.channels.filter(c => c.type == 'midi')
+    property bool loaded : false
 
     function update_master_and_targeted() {
         widget.master_loop = state_registry.has('master_loop') ?
@@ -39,9 +40,11 @@ Item {
         function onContentsChanged() { update_master_and_targeted() }
     }
     Component.onCompleted: {
+        console.log("LOOP COMPLETED")
         objects_registry.register(initial_descriptor.id, this)
-        if(initial_descriptor.is_master) { state_registry.register('master_loop', this) }
+        if(initial_descriptor.is_master) { console.log("REGISTER MASTER"); state_registry.register('master_loop', this); console.log(JSON.stringify(state_registry)) }
         update_master_and_targeted()
+        loaded = true
     }
 
     // property list<var> direct_port_pairs // List of ***PortPair

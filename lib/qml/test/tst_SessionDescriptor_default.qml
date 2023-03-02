@@ -18,7 +18,16 @@ Backend {
         initial_descriptor: GenerateSession.generate_default_session()
 
         TestCase {
-            when: session.loaded
+            Timer {
+                id: timer
+                running: session.loaded
+                interval: 10
+                repeat: false
+                property bool done : false
+                onTriggered: done = true
+            }
+
+            when: timer.done
 
             function test_session_descriptor_default() {
                 verify(backend.initialized, "backend not initialized")

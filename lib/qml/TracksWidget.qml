@@ -36,10 +36,17 @@ ScrollView {
         }
     }
 
+    function track_loaded_changed(track) {
+        if(track.loaded) {
+            n_loaded = n_loaded + 1;
+        } else {
+            n_loaded = n_loaded - 1;
+        }
+    }
+
     function load() {
         loaded = false
-        n_loaded = 0
-        console.log("LOAD TRACKS")
+        var _n_loaded = 0
         // Instantiate initial tracks
         root.initial_track_descriptors.forEach(desc => {
             var track = root.add_track({
@@ -47,15 +54,11 @@ ScrollView {
                 objects_registry: root.objects_registry,
                 state_registry: root.state_registry
             });
-            track.onLoadedChanged.connect( () => {
-                console.log("LOAD TRACK");
-                root.n_loaded += 1;
-                if(root.n_loaded >= initial_track_descriptors.length) {
-                    root.loaded=true;
-                }
-            } )
+            track.onLoadedChanged.connect(() => track_loaded_changed(track))
+            if (track.loaded) { _n_loaded += 1 }
         })
-        //loaded = Qt.binding(function() { n_loaded >= initial_track_descriptors.length })
+        n_loaded = _n_loaded
+        loaded = Qt.binding(() => { return n_loaded >= initial_track_descriptors.length })
     }
 
     Component.onCompleted: load()
