@@ -6,7 +6,9 @@ MidiPort {
     property var descriptor : null
     property Registry objects_registry : null
     property Registry state_registry : null
-    property bool loaded : false
+    property bool loaded : initialized
+
+    onLoadedChanged: if(loaded) { console.log("LOADED: MidiPort") }
 
     SchemaCheck {
         descriptor: port.descriptor
@@ -14,7 +16,6 @@ MidiPort {
     }
     Component.onCompleted: {
         if(objects_registry) { objects_registry.register(descriptor.id, this) }
-        loaded = true
     }
     function qml_close() {
         objects_registry.unregister(descriptor.id)

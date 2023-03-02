@@ -28,6 +28,8 @@ Item {
     readonly property var midi_channel_descriptors: initial_descriptor.channels.filter(c => c.type == 'midi')
     property bool loaded : false
 
+    onLoadedChanged: if(loaded) { console.log("LOADED: LoopWidget") }
+
     function update_master_and_targeted() {
         widget.master_loop = state_registry.has('master_loop') ?
                 state_registry.get('master_loop') : null;
@@ -44,7 +46,7 @@ Item {
         objects_registry.register(initial_descriptor.id, this)
         if(initial_descriptor.is_master) { console.log("REGISTER MASTER"); state_registry.register('master_loop', this); console.log(JSON.stringify(state_registry)) }
         update_master_and_targeted()
-        loaded = true
+        loaded = Qt.binding(() => { return maybe_loop.loaded })
     }
 
     // property list<var> direct_port_pairs // List of ***PortPair

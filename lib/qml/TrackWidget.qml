@@ -15,6 +15,8 @@ Item {
 
     property bool loaded : audio_ports_repeater.loaded && midi_ports_repeater.loaded && loops.loaded
 
+    onLoadedChanged: if(loaded) { console.log("LOADED: TrackWidget")}
+
     SchemaCheck {
         descriptor: track.initial_descriptor
         schema: 'track.1'

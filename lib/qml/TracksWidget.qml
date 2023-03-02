@@ -20,6 +20,8 @@ ScrollView {
     property bool loaded : false
     property int n_loaded : 0
 
+    onLoadedChanged: if(loaded) { console.log("LOADED: TracksWidget") }
+
     property alias tracks : tracks_row.children
 
     readonly property var factory : Qt.createComponent("TrackWidget.qml")

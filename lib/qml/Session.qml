@@ -36,6 +36,8 @@ Item {
     property alias tracks: tracks_widget.tracks
     property bool loaded : tracks_widget.loaded
 
+    onLoadedChanged: if(loaded) { console.log("LOADED: Session") }
+
     Backend {
         update_interval_ms: 30
         client_name_hint: 'ShoopDaLoop'

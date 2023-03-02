@@ -15,8 +15,8 @@ Item {
     readonly property int next_transition_delay : ready ? loader.item.next_transition_delay : -1
     readonly property var maybe_loop : loader.item
     default property alias contents : children_holder.children
-
     property bool force_load : false
+    property bool loaded : !loader.active || (ready && loader.item.loaded)
 
     // Careful: these bindings work only one-way (updating the internal loop).
     // If the value of the loop property changes, it will not be reflected back.
