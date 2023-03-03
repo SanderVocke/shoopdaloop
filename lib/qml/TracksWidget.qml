@@ -5,10 +5,10 @@ import QtQuick.Controls.Material 2.15
 import "../generate_session.js" as GenerateSession
 
 ScrollView {
-    ScrollBar.horizontal.policy: ScrollBar.AsNeeded
+    ScrollBar.horizontal.policy: ScrollBar.horizontal.size < 1.0 ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
     ScrollBar.vertical.policy: ScrollBar.AlwaysOff
     ScrollBar.horizontal.height: 10
-    contentWidth: tracks_view.width
+    contentWidth: buttons_column.x + buttons_column.width
     property int scroll_offset : ScrollBar.horizontal.position * contentWidth
 
     id: root
@@ -33,6 +33,8 @@ ScrollView {
             throw new Error("TracksWidget: Track factory not ready")
         } else {
             var track = factory.createObject(root, properties);
+            track.onLoadedChanged.connect(() => track_loaded_changed(track))
+            track.onRowAdded.connect(() => handle_row_added(track))
             root.tracks.push(track)
             return track
         }
@@ -46,7 +48,27 @@ ScrollView {
         }
     }
 
-    function load() {
+    function max_slots() {
+        var max = 0
+        for (var i=0; i<tracks.length; i++) {
+            max = Math.max(max, tracks[i].num_slots)
+        }
+        return max
+    }
+
+    function handle_row_added(track) {
+        // If a row is added to a track which has the highest amount of rows,
+        // also add one to the other tracks with the same amount
+        var max = max_slots()
+        if (track.num_slots == max) {
+            var prev = track.num_slots - 1
+            for (var i=0; i<tracks.length; i++) {
+                if(tracks[i].num_slots == prev) { tracks[i].add_row() }
+            }
+        }
+    }
+
+    Component.onCompleted: {
         loaded = false
         var _n_loaded = 0
         // Instantiate initial tracks
@@ -56,21 +78,18 @@ ScrollView {
                 objects_registry: root.objects_registry,
                 state_registry: root.state_registry
             });
-            track.onLoadedChanged.connect(() => track_loaded_changed(track))
             if (track.loaded) { _n_loaded += 1 }
         })
         n_loaded = _n_loaded
-        loaded = Qt.binding(() => { return n_loaded >= initial_track_descriptors.length })
+        loaded = Qt.binding(() => { return n_loaded >= tracks.length })
     }
-
-    Component.onCompleted: load()
 
     ScrollView {
         id: tracks_view
         ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-        ScrollBar.vertical.policy: ScrollBar.AsNeeded
+        ScrollBar.vertical.policy: ScrollBar.vertical.size < 1.0 ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff;
         ScrollBar.vertical.width: 10
-        ScrollBar.vertical.x: root.width-ScrollBar.vertical.width+root.scroll_offset
+        ScrollBar.vertical.x: Math.min(root.width-ScrollBar.vertical.width+root.scroll_offset, root.contentWidth)
 
         anchors.left: parent.left
         anchors.top: parent.top
@@ -131,7 +150,14 @@ ScrollView {
 
     // Buttons for add / clear
     Column {
+        id : buttons_column
         spacing: 3
+
+        anchors {
+            top: parent.top
+            left: rectangles_row.right
+            leftMargin: 6
+        }
 
         Button {
             width: 30
@@ -144,29 +170,12 @@ ScrollView {
             }
             onClicked: {
                 var idx = (root.tracks.length).toString()
-                var track_descriptor = GenerateSession.generate_default_track("Track " + idx, 1, 'track_' + idx)
+                var track_descriptor = GenerateSession.generate_default_track("Track " + idx, root.max_slots(), 'track_' + idx)
                 root.add_track({
                     initial_descriptor: track_descriptor,
                     objects_registry: root.objects_registry,
                     state_registry: root.state_registry
                 })
-            }
-        }
-
-        Button {
-            width: 30
-            height: 40
-            MaterialDesignIcon {
-                size: 20
-                name: 'close'
-                color: Material.foreground
-                anchors.centerIn: parent
-            }
-            onClicked: {
-                for(var i=root.tracks.length-1; i>0; i--) {
-                    root.tracks[i].qml_close()
-                }
-                root.tracks.length = 1;
             }
         }
     }

@@ -170,7 +170,7 @@ class Loop(QQuickItem):
     
     @pyqtSlot(int, int, bool)
     def transition(self, mode, delay, wait_for_sync):
-        self._backend_loop.transition(backend.LoopMode(mode), delay, wait_for_sync)
+        self._backend_loop.transition(backend_wrappers.LoopMode(mode), delay, wait_for_sync)
 
     @pyqtSlot(int)
     def clear(self, length):

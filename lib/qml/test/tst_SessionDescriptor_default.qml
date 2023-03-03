@@ -35,7 +35,7 @@ Backend {
                 var master_loops = session.tracks[0].all_loops()
                 compare(master_loops.length, 1)
                 console.log("HELLOWORLD", session.state_registry)
-                compare(master_loops[0].is_master, true, JSON.stringify(session.state_registry))
+                compare(master_loops[0].is_master, true)
             }
 
             function cleanupTestCase() { backend.close() }

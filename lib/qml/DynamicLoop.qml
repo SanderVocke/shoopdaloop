@@ -5,7 +5,7 @@ import '../../build/types.js' as Types
 
 // Wrap a Loop that may be dynamically loaded by a Loader in a just-in-time way.
 Item {
-    id: item
+    id: root
 
     readonly property bool ready : loader.status == Loader.Ready
     readonly property int mode : ready ? loader.item.mode : Types.LoopMode.Stopped
@@ -16,7 +16,9 @@ Item {
     readonly property var maybe_loop : loader.item
     default property alias contents : children_holder.children
     property bool force_load : false
-    property bool loaded : !loader.active || (ready && loader.item.loaded)
+    property alias loaded : loader.loaded
+
+    onLoadedChanged: if(loaded) {console.log("LOADED: DynamicLoop")}
 
     // Careful: these bindings work only one-way (updating the internal loop).
     // If the value of the loop property changes, it will not be reflected back.
@@ -78,8 +80,16 @@ Item {
 
     Loader {
         id: loader
-        active: item.force_load
+        active: root.force_load
         source: "Loop.qml"
+        property bool loaded : !active || (ready && item.loaded)
+        // property bool loaded : !active
+        // onStatusChanged: if(status == Loader.Ready) {
+        //     loaded = Qt.binding(function() { return !active || (status == Loader.Ready && item.loaded) });
+        //     item.onLoadedChanged.connect(() => console.log("ITEM"))
+        //     console.log("STATUS READY, ITEM LOADED", item.loaded, "LOADED", loaded);
+        // }
+        onLoadedChanged: if(loaded) { console.log("LOADED: Loop loader (active", active, ")") } else { console.log("UNLOADED: Loop loader (active", active, ")") }
     }
 
     // This will hold any children (typically Loop...Channels)
@@ -91,7 +101,7 @@ Item {
         target: loader
         function onLoaded() {
             loader.item.sync_source = Qt.binding(() => {
-                return item.sync_source
+                return root.sync_source
             })
         }
     }

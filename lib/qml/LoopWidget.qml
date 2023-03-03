@@ -30,23 +30,32 @@ Item {
 
     onLoadedChanged: if(loaded) { console.log("LOADED: LoopWidget") }
 
-    function update_master_and_targeted() {
-        widget.master_loop = state_registry.has('master_loop') ?
-                state_registry.get('master_loop') : null;
+    function update_targeted() {
         widget.targeted_loop = state_registry.has('targeted_loop') ?
                 state_registry.get('targeted_loop') : null;
+        if(targeted && state_registry.get('targeted_loop') != this) { targeted = false; }
+    }
+
+    function update_master() {
+        widget.master_loop = state_registry.has('master_loop') ?
+                state_registry.get('master_loop') : null;
     }
 
     Connections {
         target: state_registry
-        function onContentsChanged() { update_master_and_targeted() }
+        function onItemModified(id, item) {
+            if (id == 'targeted_loop') { update_targeted() }
+            if (id == 'master_loop') { update_master() }
+        }
     }
+
     Component.onCompleted: {
         console.log("LOOP COMPLETED")
         objects_registry.register(initial_descriptor.id, this)
-        if(initial_descriptor.is_master) { console.log("REGISTER MASTER"); state_registry.register('master_loop', this); console.log(JSON.stringify(state_registry)) }
-        update_master_and_targeted()
-        loaded = Qt.binding(() => { return maybe_loop.loaded })
+        if(initial_descriptor.is_master) { console.log("REGISTER MASTER"); state_registry.register('master_loop', this); }
+        update_master()
+        update_targeted()
+        loaded = Qt.binding(function() { return maybe_loop.loaded} )
     }
 
     // property list<var> direct_port_pairs // List of ***PortPair
@@ -90,12 +99,25 @@ Item {
         }
         dynamic_loop.qml_close();
     }
-    function select() { targeted = false; selected = true }
-    function deselect() { selected = false }
+    function select() { targeted = false; selected = true; publish_targeted_selected() }
+    function deselect() { selected = false; publish_selected() }
     function toggle_selected() { if (selected) { deselect() } else { select() } }
-    function target() { selected = false; targeted = true;  }
-    function untarget() { targeted = false }
+    function target() { console.log("TARGET"); selected = false; targeted = true; publish_targeted_selected()  }
+    function untarget() { targeted = false; publish_targeted() }
     function toggle_targeted() { if (targeted) { untarget() } else { target() } }
+    function publish_targeted() {
+        if (!state_registry.has('targeted_loop')) { state_registry.register('targeted_loop', null) }
+
+        if (targeted && state_registry.get('targeted_loop') != this) { console.log("PUBLISH TARGET"); state_registry.replace('targeted_loop', this) }
+        else if(!targeted && state_registry.get('targeted_loop') == this) { state_registry.replace('targeted_loop', null) }
+    }
+    function publish_selected() {
+        if (!state_registry.has('selected_loops')) { state_registry.register('selected_loops', new Set()) }
+
+        if (selected && !state_registry.get('selected_loops').has(this)) { state_registry.mutate('selected_loops', (loops) => { loops.add(this) } )}
+        else if (!selected && state_registry.get('selected_loops').has(this)) { state_registry.mutate('selected_loops', (loops) => { loops.delete(this) })}
+    }
+    function publish_targeted_selected() { publish_selected(); publish_targeted() }
 
     // signal selected() //directly selected by the user to be activated.
     // signal toggle_in_current_scene() //selected by the user to be added/removed to/from the current scene.
@@ -585,7 +607,7 @@ Item {
                                             var n_cycles_delay = 0
                                             var n_cycles_record = 1
                                             n_cycles_record = Math.ceil(widget.targeted_loop.length / widget.master_loop.length)
-                                            if (State_helpers.is_playing_state(widget.targeted_loop.mode)) {
+                                            if (ModeHelpers.is_playing_state(widget.targeted_loop.mode)) {
                                                 var current_cycle = Math.floor(widget.targeted_loop.position / widget.master_loop.length)
                                                 n_cycles_delay = Math.max(0, n_cycles_record - current_cycle - 1)
                                             }

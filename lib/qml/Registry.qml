@@ -52,11 +52,21 @@ QtObject {
         return id in data;
     }
 
-    function modify(id, fn) {
+    function replace(id, val) {
+        if(data[id] == val) { return; }
         if(verbose) {
-            console.log("REGISTRY: Modifying:", id)
+            console.log("REGISTRY: Replacing:", id, val)
         }
+        data[id] = val
+        itemModified(id, data[id])
+        contentsChanged()
+    }
+
+    function mutate(id, fn, val) {
         fn(data[id])
+        if(verbose) {
+            console.log("REGISTRY: Mutating:", id, " => ", data[id])
+        }
         itemModified(id, data[id])
         contentsChanged()
     }

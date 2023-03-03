@@ -13,7 +13,11 @@ Item {
     property Registry objects_registry : null
     property Registry state_registry : null
 
-    property bool loaded : audio_ports_repeater.loaded && midi_ports_repeater.loaded && loops.loaded
+    property bool loaded : false
+    property int n_loops_loaded : 0
+    //audio_ports_repeater.loaded && midi_ports_repeater.loaded && loops.loaded
+
+    signal rowAdded()
 
     onLoadedChanged: if(loaded) { console.log("LOADED: TrackWidget")}
 
@@ -21,28 +25,92 @@ Item {
         descriptor: track.initial_descriptor
         schema: 'track.1'
     }
-    Component.onCompleted: {
-        if(objects_registry) { objects_registry.register(initial_descriptor.id, this) }
-    }
 
     function qml_close() {
         objects_registry.unregister(initial_descriptor.id)
         all_ports().forEach(p => p.qml_close())
-        for(var i=0; i<loops.model; i++) {
-            loops.itemAt(i).qml_close();
+        for(var i=0; i<loops.length; i++) {
+            loops[i].qml_close();
         }
     }
     
-    readonly property int num_slots : initial_descriptor.loops.length
+    readonly property int num_slots : loops.length
     property string name: initial_descriptor.name
+    property int max_slots
     readonly property bool name_editable: true
     readonly property string port_name_prefix: ''
     readonly property var audio_port_descriptors : initial_descriptor.ports.filter(p => p.schema == 'audioport.1')
     readonly property var midi_port_descriptors : initial_descriptor.ports.filter(p => p.schema == 'midiport.1')
     readonly property var loop_descriptors : initial_descriptor.loops
 
+    readonly property var loop_factory : Qt.createComponent("LoopWidget.qml")
+    property alias loops : loops_column.children
+
+    function add_loop(properties) {
+        if (loop_factory.status == Component.Error) {
+            throw new Error("TrackWidget: Failed to load loop factory: " + loop_factory.errorString())
+        } else if (loop_factory.status != Component.Ready) {
+            throw new Error("TrackWidget: Loop factory not ready")
+        } else {
+            var loop = loop_factory.createObject(loops_column, properties);
+            loop.onLoadedChanged.connect(() => loop_loaded_changed(loop))
+            return loop
+        }
+    }
+
+    Component.onCompleted: {
+        if(objects_registry) { objects_registry.register(initial_descriptor.id, this) }
+        loaded = false
+        var _n_loops_loaded = 0
+        // Instantiate initial loops
+        track.loop_descriptors.forEach(desc => {
+            var loop = track.add_loop({
+                initial_descriptor: desc,
+                objects_registry: track.objects_registry,
+                state_registry: track.state_registry
+            });
+            if (loop.loaded) { _n_loops_loaded += 1 }
+        })
+        n_loops_loaded = _n_loops_loaded
+        loaded = Qt.binding(() => { return n_loops_loaded >= num_slots })
+    }
+
+    function loop_loaded_changed(loop) {
+        if(loop.loaded) {
+            n_loops_loaded = n_loops_loaded + 1;
+        } else {
+            n_loops_loaded = n_loops_loaded - 1;
+        }
+    }
+
     width: childrenRect.width
     height: childrenRect.height
+
+    function add_row() {
+        var id = track.initial_descriptor + '_loop_0';
+        if (track.loops.length > 0) {
+            // Automatically determine loop id based on the previous ones
+            var prev_loop = track.loops[track.loops.length - 1]
+            var id_parts = prev_loop.initial_descriptor.id.split("_")
+            var prev_id = parseInt(id_parts[id_parts.length - 1])
+            var id_base = id_parts.slice(0, id_parts.length - 1).join("_")
+            id = id_base + "_" + (prev_id+1).toString()
+        }
+
+        track.add_loop({
+            initial_descriptor: ({
+                'schema': 'loop.1',
+                'id': id,
+                'length': 0,
+                'is_master': false,
+                'channels': [] //FIXME
+            }),
+            objects_registry: track.objects_registry,
+            state_registry: track.state_registry
+        });
+
+        rowAdded()
+    }
 
     // signal toggle_loop_in_scene(var loop)
     // signal renamed(string name)
@@ -95,9 +163,6 @@ Item {
             ...midi_ports_repeater.all_items()
         ]
     }
-    function all_loops() {
-        return loops.all_items()
-    }
 
     Item {
         property int x_spacing: 8
@@ -113,6 +178,7 @@ Item {
             y: parent.y_spacing/2
 
             Column {
+                id: track_column
                 spacing: 2
 
                 TextField {
@@ -127,35 +193,39 @@ Item {
                                        }
                 }
 
-                RepeaterWithLoadedDetection {
-                    model: track.num_slots
-                    id: loops
-                    width: childrenRect.width
+                Column {
+                    spacing: 2
+                    id: loops_column
                     height: childrenRect.height
+                    width: childrenRect.width
 
-                    LoopWidget {
-                        initial_descriptor : track.loop_descriptors[index]
-                        objects_registry : track.objects_registry
-                        state_registry : track.state_registry
+                    // Note: loops injected here
+                }
 
-                        // id: lwidget
-                        // //name: track.loop_names[index]
-                        // //is_in_selected_scene: track.loops_of_selected_scene.includes(index)
-                        // //is_in_hovered_scene: track.loops_of_hovered_scene.includes(index)
-                        // name: 'Loop ' + (index+1).toString()
-                        // master_loop: track.master_loop
-                        // targeted_loop: track.targeted_loop
+                // RepeaterWithLoadedDetection {
+                //     model: track.num_slots
+                //     id: loops
+                //     width: childrenRect.width
+                //     height: childrenRect.height
 
-                        // direct_port_pairs: []
-                        // dry_port_pairs: [ dry_audio_l, dry_audio_r, dry_midi ]
-                        // wet_port_pairs: [ wet_audio_l, wet_audio_r ]
+                //     LoopWidget {
+                //         initial_descriptor : track.loop_descriptors[index]
+                //         objects_registry : track.objects_registry
+                //         state_registry : track.state_registry
+                //     }
+                // }
 
-                        //onToggle_in_current_scene: () => { track.toggle_loop_in_scene(index) }
-                        //onRequest_rename: (name) => { track.request_rename_loop(index, name) }
-                        //onRequest_clear: () => { track.request_clear_loop(index) }
-                        //onRequest_toggle_selected: () => { track.request_toggle_loop_selected(index) }
-                        //onRequest_set_as_targeted: () => { track.request_set_targeted_loop(index) }
+                Button {
+                    width: 100
+                    height: 30
+                    MaterialDesignIcon {
+                        size: 20
+                        name: 'plus'
+                        color: Material.foreground
+                        anchors.centerIn: parent
                     }
+
+                    onClicked: track.add_row()
                 }
             }
         }
