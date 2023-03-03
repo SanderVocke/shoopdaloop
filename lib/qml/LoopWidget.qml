@@ -28,8 +28,6 @@ Item {
     readonly property var midi_channel_descriptors: initial_descriptor.channels.filter(c => c.type == 'midi')
     property bool loaded : false
 
-    onLoadedChanged: if(loaded) { console.log("LOADED: LoopWidget") }
-
     function update_targeted() {
         widget.targeted_loop = state_registry.has('targeted_loop') ?
                 state_registry.get('targeted_loop') : null;

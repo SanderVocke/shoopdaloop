@@ -18,8 +18,6 @@ Item {
     property bool force_load : false
     property alias loaded : loader.loaded
 
-    onLoadedChanged: if(loaded) {console.log("LOADED: DynamicLoop")}
-
     // Careful: these bindings work only one-way (updating the internal loop).
     // If the value of the loop property changes, it will not be reflected back.
     property var sync_source : null
@@ -89,7 +87,6 @@ Item {
         //     item.onLoadedChanged.connect(() => console.log("ITEM"))
         //     console.log("STATUS READY, ITEM LOADED", item.loaded, "LOADED", loaded);
         // }
-        onLoadedChanged: if(loaded) { console.log("LOADED: Loop loader (active", active, ")") } else { console.log("UNLOADED: Loop loader (active", active, ")") }
     }
 
     // This will hold any children (typically Loop...Channels)
@@ -103,6 +100,9 @@ Item {
             loader.item.sync_source = Qt.binding(() => {
                 return root.sync_source
             })
+            // Reparent channels to the actual loop
+            console.log("REPARENT")
+            children_holder.parent = loader.item
         }
     }
     onSync_sourceChanged: if(ready) { loader.item.sync_source = sync_source }

@@ -25,7 +25,7 @@ Item {
     }
 
     // Objects registry just stores object ids -> objects.
-    property Registry objects_registry: Registry { verbose: false }
+    property Registry objects_registry: Registry { verbose: true }
 
     // State registry stores the following optional states:
     // - "master_loop" -> LoopWidget which holds the master loop
@@ -35,8 +35,6 @@ Item {
     // For (test) access
     property alias tracks: tracks_widget.tracks
     property bool loaded : tracks_widget.loaded
-
-    onLoadedChanged: if(loaded) { console.log("LOADED: Session") }
 
     Backend {
         update_interval_ms: 30

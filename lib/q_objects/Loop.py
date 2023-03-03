@@ -211,7 +211,7 @@ class Loop(QQuickItem):
     
     @pyqtSlot()
     def rescan_parents(self):
-        maybe_backend = findFirstParent(self, lambda p: p and isinstance(p, QObject) and p.inherits('Backend') and self._backend == None)
+        maybe_backend = findFirstParent(self, lambda p: p and isinstance(p, QQuickItem) and p.inherits('Backend') and self._backend == None)
         if maybe_backend:
             self.backend = maybe_backend
     

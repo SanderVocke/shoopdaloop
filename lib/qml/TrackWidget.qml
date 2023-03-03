@@ -19,8 +19,6 @@ Item {
 
     signal rowAdded()
 
-    onLoadedChanged: if(loaded) { console.log("LOADED: TrackWidget")}
-
     SchemaCheck {
         descriptor: track.initial_descriptor
         schema: 'track.1'
@@ -58,6 +56,13 @@ Item {
         }
     }
 
+    function update_loop_port_connections() {
+        for(var i=0; i<track.loops.length; i++) {
+            var loop = track.loops[i]
+
+        }
+    }
+
     Component.onCompleted: {
         if(objects_registry) { objects_registry.register(initial_descriptor.id, this) }
         loaded = false
@@ -87,24 +92,37 @@ Item {
     height: childrenRect.height
 
     function add_row() {
-        var id = track.initial_descriptor + '_loop_0';
-        if (track.loops.length > 0) {
-            // Automatically determine loop id based on the previous ones
-            var prev_loop = track.loops[track.loops.length - 1]
-            var id_parts = prev_loop.initial_descriptor.id.split("_")
-            var prev_id = parseInt(id_parts[id_parts.length - 1])
-            var id_base = id_parts.slice(0, id_parts.length - 1).join("_")
-            id = id_base + "_" + (prev_id+1).toString()
+        // Descriptor is automatically determined from the previous loop...
+        var prev_loop = track.loops[track.loops.length - 1]
+        var prev_desc = prev_loop.initial_descriptor
+        // ...id
+        var prev_id = prev_desc.id
+        var id_parts = prev_id.split("_")
+        var prev_idx = parseInt(id_parts[id_parts.length - 1])
+        var id_base = id_parts.slice(0, id_parts.length - 1).join("_")
+        var id = id_base + "_" + (prev_idx+1).toString()
+        // ...channels
+        var channel_descriptors = []
+        for(var i=0; i<prev_desc.channels.length; i++) {
+            var prev_chan = prev_desc.channels[i]
+            var chan = JSON.parse(JSON.stringify(prev_chan))
+            // Note: assuming loop ID is always in the channel IDs
+            chan.id = prev_chan.id.replace(prev_id, id)
+            if (chan.id == prev_chan.id) { throw new Error("Did not find loop ID in channel ID") }
+            channel_descriptors.push(chan)
+        }
+        var loop_descriptor = {
+            'schema': 'loop.1',
+            'id': id,
+            'length': 0,
+            'is_master': false,
+            'channels': channel_descriptors
         }
 
+        console.log("DESCRIPTOR", JSON.stringify(loop_descriptor))
+
         track.add_loop({
-            initial_descriptor: ({
-                'schema': 'loop.1',
-                'id': id,
-                'length': 0,
-                'is_master': false,
-                'channels': [] //FIXME
-            }),
+            initial_descriptor: loop_descriptor,
             objects_registry: track.objects_registry,
             state_registry: track.state_registry
         });
@@ -201,19 +219,6 @@ Item {
 
                     // Note: loops injected here
                 }
-
-                // RepeaterWithLoadedDetection {
-                //     model: track.num_slots
-                //     id: loops
-                //     width: childrenRect.width
-                //     height: childrenRect.height
-
-                //     LoopWidget {
-                //         initial_descriptor : track.loop_descriptors[index]
-                //         objects_registry : track.objects_registry
-                //         state_registry : track.state_registry
-                //     }
-                // }
 
                 Button {
                     width: 100

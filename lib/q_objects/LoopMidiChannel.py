@@ -23,6 +23,7 @@ class LoopMidiChannel(LoopChannel):
         self._n_events_triggered = 0
     
     def maybe_initialize(self):
+        print ("INIT MIDI")
         if self._loop and not self._backend_obj:
             self._backend_obj = self._loop.add_midi_channel(self.mode)
             self.initializedChanged.emit(True)

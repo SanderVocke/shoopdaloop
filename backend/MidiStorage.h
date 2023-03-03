@@ -91,6 +91,7 @@ public:
         // If we reached here, we reached the end. Reset to an invalid
         // cursor.
         reset();
+        return n_processed;
     }
 
 };

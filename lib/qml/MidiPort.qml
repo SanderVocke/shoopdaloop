@@ -8,8 +8,6 @@ MidiPort {
     property Registry state_registry : null
     property bool loaded : initialized
 
-    onLoadedChanged: if(loaded) { console.log("LOADED: MidiPort") }
-
     SchemaCheck {
         descriptor: port.descriptor
         schema: 'midiport.1'

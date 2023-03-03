@@ -8,8 +8,6 @@ AudioPort {
     property Registry state_registry : null
     property bool loaded : initialized
 
-    onLoadedChanged: if(loaded) { console.log("LOADED: AudioPort") }
-
     SchemaCheck {
         descriptor: port.descriptor
         schema: 'audioport.1'

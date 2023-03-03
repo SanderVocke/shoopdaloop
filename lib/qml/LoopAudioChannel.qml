@@ -24,13 +24,19 @@ LoopAudioChannel {
         }
     }
     onInitial_modeChanged: set_mode(initial_mode)
-    ports: descriptor.connected_port_ids
+    ports: get_ports()
+
+    function get_ports() {
+        return descriptor.connected_port_ids
                     .filter(id => objects_registry.has(id))
                     .map(id => objects_registry.get(id))
-    
+    }
+    function update_ports() { chan.ports = get_ports() }
+
     Component.onCompleted: {
         set_mode(initial_mode)
         if(objects_registry) { objects_registry.register(descriptor.id, this) }
+        update_ports()
     }
     function qml_close() {
         objects_registry.unregister(descriptor.id)
@@ -40,9 +46,7 @@ LoopAudioChannel {
         target: objects_registry
         // React to ports being instantiated later than channels
         function onItemAdded(id, obj) {
-            if(descriptor.connected_port_ids.includes(id) && !ports.includes(obj)) {
-                ports.push(obj)
-            }
+            update_ports()
         }
     }
 }

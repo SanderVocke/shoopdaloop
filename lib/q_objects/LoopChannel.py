@@ -106,6 +106,7 @@ class LoopChannel(QQuickItem):
         elif not port.initialized:
             port.initializedChanged.connect(lambda: self.connect(port))
         elif port not in self._connected_ports:
+            print ("CONNECTING!")
             backend_channel = self._backend_obj
             backend_port = port.get_backend_obj()
             backend_channel.connect(backend_port)
@@ -137,6 +138,6 @@ class LoopChannel(QQuickItem):
     
     @pyqtSlot()
     def rescan_parents(self):
-        maybe_loop = findFirstParent(self, lambda p: p and isinstance(p, QObject) and p.inherits('Loop') and self._loop == None)
+        maybe_loop = findFirstParent(self, lambda p: p and isinstance(p, QQuickItem) and p.inherits('Loop') and self._loop == None)
         if maybe_loop:
             self.loop = maybe_loop
