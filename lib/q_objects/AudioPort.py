@@ -19,6 +19,7 @@ class AudioPort(Port):
         super(AudioPort, self).__init__(parent)
         self._peak = 0.0
         self._volume = 1.0
+        self._passthrough_volume = 1.0
 
     ######################
     # PROPERTIES
@@ -46,6 +47,17 @@ class AudioPort(Port):
             self._volume = s
             self.volumeChanged.emit(s)
     
+    # passthrough volume
+    passthroughVolumeChanged = pyqtSignal(float)
+    @pyqtProperty(float, notify=passthroughVolumeChanged)
+    def passthrough_volume(self):
+        return self._passthrough_volume
+    @passthrough_volume.setter
+    def passthrough_volume(self, s):
+        if self._passthrough_volume != s:
+            self._passthrough_volume = s
+            self.passthroughVolumeChanged.emit(s)
+    
     ###########
     ## SLOTS
     ###########
@@ -56,7 +68,10 @@ class AudioPort(Port):
         state = self._backend_obj.get_state()
         self.peak = state.peak
         self.volume = state.volume
-        self.name = state.name
+        self.passthrough_volume = state.passthrough_volume
+        #self.name = state.name
+        #self.muted = state.muted
+        #self.passthrough_muted = state.muted
     
     ##########
     ## INTERNAL MEMBERS

@@ -37,10 +37,10 @@ public:
             auto n = buf->PROC_get_n_events();
             for(size_t idx=0; idx < n; idx++) {
                 Message m;
-                uint8_t *data;
+                const uint8_t *data;
                 uint32_t time;
                 uint32_t size;
-                buf->PROC_get_event(idx, size, time, data);
+                buf->PROC_get_event_reference(idx).get(size, time, data);
                 m.size = size;
                 m.data = std::vector<uint8_t>(m.size);
                 memcpy((void*)m.data.data(), (void*)data, m.size);
@@ -50,7 +50,7 @@ public:
             auto buf = port->PROC_get_write_buffer(n_frames);
             Message m;
             while(ma_queue.pop(m)) {
-                buf->PROC_write_event(m.size, 0, m.data.data());
+                buf->PROC_write_event_value(m.size, 0, m.data.data());
             }
         }
     }

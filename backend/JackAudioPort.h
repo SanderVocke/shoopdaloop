@@ -45,8 +45,8 @@ public:
         return rval;
     }
 
-    std::string name() const override {
-        return m_name;
+    const char* name() const override {
+        return m_name.c_str();
     }
 
     PortDirection direction() const override {

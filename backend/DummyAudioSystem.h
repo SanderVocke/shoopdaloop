@@ -30,8 +30,8 @@ public:
         return rval;
     }
 
-    std::string name() const override {
-        return m_name;
+    const char* name() const override {
+        return m_name.c_str();
     }
 
     PortDirection direction() const override {
@@ -59,12 +59,9 @@ public:
         DummyMidiReadBuf(void* buf) : buf(buf) {}
 
         size_t PROC_get_n_events() const override { return 0; }
-        void PROC_get_event(size_t idx,
-                       uint32_t &size_out,
-                       uint32_t &time_out,
-                       uint8_t* &data_out) const override
+        virtual MidiSortableMessageInterface &PROC_get_event_reference(size_t idx) const override
         {
-            throw std::runtime_error("Qt proxy midi port cannot read messages");
+            throw std::runtime_error("Dummy midi port cannot read messages");
         }
     };
 
@@ -72,10 +69,13 @@ public:
         void* buf;
         DummyMidiWriteBuf(void* buf) : buf(buf) {}
 
-        void PROC_write_event(uint32_t size,
+        void PROC_write_event_value(uint32_t size,
                          uint32_t time,
-                         uint8_t* data)
+                         const uint8_t* data) override
         {}
+        void PROC_write_event_reference(MidiSortableMessageInterface const& m) override {}
+        bool write_by_reference_supported() const override { return true; }
+        bool write_by_value_supported() const override { return true; }
     };
 
     DummyMidiPort(
@@ -84,8 +84,8 @@ public:
     ) : MidiPortInterface(name, direction),
         m_direction(direction), m_name(name) {}
 
-    std::string name() const override {
-        return m_name;
+    const char* name() const override {
+        return m_name.c_str();
     }
 
     PortDirection direction() const override {

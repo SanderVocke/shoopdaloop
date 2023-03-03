@@ -11,7 +11,7 @@ public:
 
     virtual void close() = 0;
     virtual PortDirection direction() const = 0;
-    virtual std::string name() const = 0;
+    virtual const char* name() const = 0;
 
     PortInterface() {}
     virtual ~PortInterface() {};

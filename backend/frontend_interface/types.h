@@ -61,16 +61,6 @@ typedef enum {
     CHANNEL_MODE_INVALID
 } channel_mode_t;
 
-// typedef enum {
-//     DoMute,
-//     DoUnmute,
-//     DoMuteInput,
-//     DoUnmuteInput,
-//     SetPortVolume,
-//     SetPortPassthrough,
-//     PORT_ACTION_INVALID
-// } port_action_t;
-
 typedef struct _shoopdaloop_loop                shoopdaloop_loop_t;
 typedef struct _shoopdaloop_loop_audio_channel  shoopdaloop_loop_audio_channel_t;
 typedef struct _shoopdaloop_loop_midi_channel   shoopdaloop_loop_midi_channel_t;
@@ -90,11 +80,16 @@ typedef struct {
 typedef struct {
     float peak;
     float volume;
+    float passthrough_volume;
+    unsigned muted;
+    unsigned passthrough_muted;
     const char* name;
 } audio_port_state_info_t;
 
 typedef struct {
     unsigned n_events_triggered;
+    unsigned muted;
+    unsigned passthrough_muted;
     const char* name;
 } midi_port_state_info_t;
 

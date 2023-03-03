@@ -54,9 +54,9 @@ suite AudioMidiLoop_midi_tests = []() {
         expect(eq(loop.get_position() , 0));
 
         auto source_buf = MidiTestBuffer();
-        source_buf.read.push_back({.time = 10, .size = 3, .data = { 0x01, 0x02, 0x03 }});
-        source_buf.read.push_back({.time = 19, .size = 2, .data = { 0x01, 0x02 }});
-        source_buf.read.push_back({.time = 20, .size = 1, .data = { 0x01 }});
+        source_buf.read.push_back(Msg(10, 3, { 0x01, 0x02, 0x03 }));
+        source_buf.read.push_back(Msg(19, 2, { 0x01, 0x02 }));
+        source_buf.read.push_back(Msg(20, 1, { 0x01 }));
         
         loop.plan_transition(Recording);
         channel.PROC_set_recording_buffer(&source_buf, 512);
@@ -92,9 +92,9 @@ suite AudioMidiLoop_midi_tests = []() {
         loop.set_mode(Recording, false);
         loop.set_length(100);
         auto source_buf = MidiTestBuffer();
-        source_buf.read.push_back({.time = 10, .size = 3, .data =  { 0x01, 0x02, 0x03 }});
-        source_buf.read.push_back({.time = 9,  .size = 2, .data = { 0x01, 0x02 }});
-        source_buf.read.push_back({.time = 11, .size = 1, .data =  { 0x01 }});
+        source_buf.read.push_back(Msg(10, 3,  { 0x01, 0x02, 0x03 }));
+        source_buf.read.push_back(Msg(9,  2,  { 0x01, 0x02 }));
+        source_buf.read.push_back(Msg(11, 1,  { 0x01 }));
         channel.PROC_set_recording_buffer(&source_buf, 512);
         loop.PROC_update_poi();
         expect(eq(loop.get_mode() , Recording));
@@ -128,16 +128,16 @@ suite AudioMidiLoop_midi_tests = []() {
         expect(eq(loop.get_position() , 0));
 
         std::vector<MidiTestBuffer> source_bufs = { MidiTestBuffer(), MidiTestBuffer(), MidiTestBuffer() };
-        source_bufs[0].read.push_back({.time = 10, .size = 3, .data = { 0x01, 0x02, 0x03 }});
-        source_bufs[0].read.push_back({.time = 19, .size = 2, .data = { 0x01, 0x02 }});
-        source_bufs[0].read.push_back({.time = 20, .size = 1, .data = { 0x01 }});
-        source_bufs[1].read.push_back({.time = 21-21, .size = 3, .data = { 0x01, 0x02, 0x03 }});
-        source_bufs[1].read.push_back({.time = 26-21, .size = 2, .data = { 0x01, 0x02 }});
-        source_bufs[1].read.push_back({.time = 29-21, .size = 1, .data = { 0x01 }});
-        source_bufs[2].read.push_back({.time = 30-21-9, .size = 3, .data = { 0x01, 0x02, 0x03 }});
-        source_bufs[2].read.push_back({.time = 30-21-9, .size = 2, .data = { 0x01, 0x02 }});
-        source_bufs[2].read.push_back({.time = 31-21-9, .size = 1, .data = { 0x01 }});
-        source_bufs[2].read.push_back({.time = 40-21-9, .size = 1, .data = { 0x01 }});
+        source_bufs[0].read.push_back(Msg(10, 3, { 0x01, 0x02, 0x03 }));
+        source_bufs[0].read.push_back(Msg(19, 2, { 0x01, 0x02 }));
+        source_bufs[0].read.push_back(Msg(20, 1, { 0x01 }));
+        source_bufs[1].read.push_back(Msg(21-21, 3, { 0x01, 0x02, 0x03 }));
+        source_bufs[1].read.push_back(Msg(26-21, 2, { 0x01, 0x02 }));
+        source_bufs[1].read.push_back(Msg(29-21, 1, { 0x01 }));
+        source_bufs[2].read.push_back(Msg(30-21-9, 3, { 0x01, 0x02, 0x03 }));
+        source_bufs[2].read.push_back(Msg(30-21-9, 2, { 0x01, 0x02 }));
+        source_bufs[2].read.push_back(Msg(31-21-9, 1, { 0x01 }));
+        source_bufs[2].read.push_back(Msg(40-21-9, 1, { 0x01 }));
         
         loop.plan_transition(Recording);
         channel.PROC_set_recording_buffer(&source_bufs[0], 21);
@@ -204,11 +204,11 @@ suite AudioMidiLoop_midi_tests = []() {
         auto &channel = *loop.midi_channel<uint32_t, uint16_t>(0);
         using Message = MidiChannel<uint32_t, uint16_t>::Message;
         std::vector<Message> contents = {
-            Message{.time = 0,  .size = 1, .data = { 0x01 }},
-            Message{.time = 10,  .size = 1, .data = { 0x02 }},
-            Message{.time = 21,  .size = 1, .data = { 0x03 }},
-            Message{.time = 30,  .size = 1, .data = { 0x02 }},
-            Message{.time = 50,  .size = 1, .data = { 0x03 }},
+            Message(0,  1, { 0x01 }),
+            Message(10, 1, { 0x02 }),
+            Message(21, 1, { 0x03 }),
+            Message(30, 1, { 0x02 }),
+            Message(50, 1, { 0x03 }),
         };
         channel.set_contents(contents);
         loop.set_mode(Recording, false);
@@ -220,9 +220,9 @@ suite AudioMidiLoop_midi_tests = []() {
         expect(eq(loop.get_position() , 0));
 
         auto source_buf = MidiTestBuffer();
-        source_buf.read.push_back({.time = 1, .size = 3, .data = { 0x01, 0x02, 0x03 }});
-        source_buf.read.push_back({.time = 2, .size = 2, .data = { 0x01, 0x02 }});
-        source_buf.read.push_back({.time = 3, .size = 1, .data = { 0x01 }});
+        source_buf.read.push_back(Msg(1, 3, { 0x01, 0x02, 0x03 }));
+        source_buf.read.push_back(Msg(2, 2, { 0x01, 0x02 }));
+        source_buf.read.push_back(Msg(3, 1, { 0x01 }));
         channel.PROC_set_recording_buffer(&source_buf, 512);
         
         loop.PROC_trigger();
@@ -251,9 +251,9 @@ suite AudioMidiLoop_midi_tests = []() {
         auto &channel = *loop.midi_channel<uint32_t, uint16_t>(0);
         using Message = MidiChannel<uint32_t, uint16_t>::Message;
         std::vector<Message> contents = {
-            Message{.time = 0,  .size = 1, .data = { 0x01 }},
-            Message{.time = 10,  .size = 1, .data = { 0x02 }},
-            Message{.time = 21,  .size = 1, .data = { 0x03 }},
+            Message(0,  1, { 0x01 }),
+            Message(10, 1, { 0x02 }),
+            Message(21, 1, { 0x03 }),
         };
         channel.set_contents(contents, false);
         loop.set_length(100);

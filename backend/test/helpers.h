@@ -48,26 +48,20 @@ public:
         return read.size();
     }
 
-    void   PROC_get_event(size_t idx,
-                             uint32_t &size_out,
-                             uint32_t &time_out,
-                             uint8_t* &data_out) const override
+    MidiSortableMessageInterface const& PROC_get_event_reference(size_t idx) const override
     {
-        size_out = read[idx].size;
-        time_out = read[idx].time;
-        data_out = (uint8_t*)read[idx].data.data();
+        return *dynamic_cast<const MidiSortableMessageInterface*>(&read.at(idx));
     }
 
-    void PROC_write_event(uint32_t size,
-                             uint32_t time,
-                             uint8_t* data) override
+    void PROC_write_event_value(uint32_t size,
+                                uint32_t time,
+                                const uint8_t* data) override
     {
-        written.push_back(Msg{
-            .time = time,
-            .size = size,
-            .data = std::vector<uint8_t>(size)
-        });
-
+        written.push_back(Msg(time, size, std::vector<uint8_t>(size)));
         memcpy((void*)written.back().data.data(), (void*) data, size);
     }
+
+    bool write_by_value_supported() const override { return true; }
+    bool write_by_reference_supported() const override { return false; }
+    void PROC_write_event_reference(MidiSortableMessageInterface const& m) override {}
 };

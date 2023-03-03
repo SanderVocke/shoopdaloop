@@ -1,4 +1,5 @@
 #pragma once
+#include "MidiPortInterface.h"
 #include <cstdint>
 #include <vector>
 #include <stdio.h>
@@ -101,7 +102,7 @@ class MidiStorage : public std::enable_shared_from_this<MidiStorage<TimeType, Si
 public:
     // Note: variable-sized C-style structs are useful
     // here, but dangerous in general. Careful!
-    struct Elem {
+    struct Elem : public MidiSortableMessageInterface {
         TimeType time;
         SizeType size;
         uint8_t  data[];
@@ -109,6 +110,15 @@ public:
         static size_t size_of(Elem const& e) {
             return sizeof(time) + sizeof(size) + e.size;
         }
+
+        uint32_t get_time() const override { return time; }
+        void get(uint32_t &size_out,
+                 uint32_t &time_out,
+                 const uint8_t* &data_out) const override {
+                    size_out = size;
+                    time_out = time;
+                    data_out = data;
+                 }
     };
 
     typedef MidiStorage<TimeType, SizeType> MyType;

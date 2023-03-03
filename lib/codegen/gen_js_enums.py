@@ -4,7 +4,7 @@ sys.path.append(pwd + '/..')
 sys.path.append(pwd + '/../..')
 sys.path.append(pwd + '/../../build')
 
-from lib.backend_wrappers import LoopMode, ChannelMode, BackendType
+from lib.backend_wrappers import LoopMode, ChannelMode, BackendType, PortDirection
 from pprint import *
 
 output_filename = sys.argv[1]
@@ -35,3 +35,4 @@ with open(output_filename, 'w') as f:
     write_enum(f, 'LoopMode', LoopMode)
     write_enum(f, 'ChannelMode', ChannelMode)
     write_enum(f, 'BackendType', BackendType)
+    write_enum(f, 'PortDirection', PortDirection)

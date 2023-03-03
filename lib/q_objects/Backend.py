@@ -82,8 +82,11 @@ class Backend(QQuickItem):
     @pyqtSlot()
     def doUpdate(self):
         from lib.q_objects.Loop import Loop
+        from lib.q_objects.Port import Port
         for loop in findChildItems(self, lambda c: isinstance(c, Loop)):
             loop.update()
+        for port in findChildItems(self, lambda c: isinstance(c, Port)):
+            port.update()
         self.update.emit()
     
     @pyqtSlot(result=int)

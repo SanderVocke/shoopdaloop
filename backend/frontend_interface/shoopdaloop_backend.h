@@ -64,11 +64,19 @@ void loops_transition(unsigned int n_loops,
 shoopdaloop_audio_port_t *open_audio_port (shoopdaloop_backend_instance_t *backend, const char* name_hint, port_direction_t direction);
 jack_port_t *get_audio_port_jack_handle(shoopdaloop_audio_port_t *port);
 audio_port_state_info_t *get_audio_port_state(shoopdaloop_audio_port_t *port);
+void set_audio_port_volume(shoopdaloop_audio_port_t *port, float volume);
+void set_audio_port_passthroughVolume(shoopdaloop_audio_port_t *port, float volume);
+void set_audio_port_muted(shoopdaloop_audio_port_t *port, unsigned muted);
+void set_audio_port_passthroughMuted(shoopdaloop_audio_port_t *port, unsigned muted);
+void add_audio_port_passthrough(shoopdaloop_audio_port_t *from, shoopdaloop_audio_port_t *to);
 
 // Midi ports
 shoopdaloop_midi_port_t *open_midi_port (shoopdaloop_backend_instance_t *backend, const char* name_hint, port_direction_t direction);
 jack_port_t *get_midi_port_jack_handle(shoopdaloop_midi_port_t *port);
 midi_port_state_info_t *get_midi_port_state(shoopdaloop_midi_port_t *port);
+void set_midi_port_muted(shoopdaloop_midi_port_t *port, unsigned muted);
+void set_midi_port_passthroughMuted(shoopdaloop_midi_port_t *port, unsigned muted);
+void add_midi_port_passthrough(shoopdaloop_midi_port_t *from, shoopdaloop_midi_port_t *to);
 
 // Decoupled midi ports
 shoopdaloop_decoupled_midi_port_t *open_decoupled_midi_port(shoopdaloop_backend_instance_t *backend, const char* name_hint, port_direction_t direction);

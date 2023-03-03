@@ -121,8 +121,8 @@ public:
         {
             uint32_t t;
             uint32_t s;
-            uint8_t *d;
-            recbuf.buf->PROC_get_event(idx, s, t, d);
+            const uint8_t *d;
+            recbuf.buf->PROC_get_event_reference(idx).get(s, t, d);
             if (t >= record_end) {
                 break;
             }
@@ -163,7 +163,13 @@ public:
                 break;
             }
             if (!muted) {
-                buf.buf->PROC_write_event(event->size, event_time, event->data);
+                if (buf.buf->write_by_reference_supported()) {
+                    buf.buf->PROC_write_event_reference(*event);
+                } else if (buf.buf->write_by_value_supported()) {
+                    buf.buf->PROC_write_event_value(event->size, event_time, event->data);
+                } else {
+                    throw std::runtime_error("Midi write buffer does not support any write methods");
+                }
             }
             buf.n_events_processed++;
             mp_playback_cursor->next();
@@ -207,7 +213,7 @@ public:
 
         std::vector<Message> r;
         s->for_each_msg([&r](TimeType time, SizeType size, uint8_t*data) {
-            r.push_back({.time = time, .size = size, .data = std::vector<uint8_t>(size)});
+            r.push_back(Message(time, size, std::vector<uint8_t>(size)));
             memcpy((void*)r.back().data.data(), (void*)data, size);
         });
         return r;

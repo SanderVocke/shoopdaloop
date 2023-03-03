@@ -2,6 +2,8 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
 
+import '../../build/types.js' as Types
+
 // The track control widget displays control buttons to control the
 // (loops within a) track.
 Item {
@@ -15,8 +17,26 @@ Item {
     property alias passthrough_dB: passthrough_slider.value
     property alias volume_dB_min: volume_slider.from
     property alias passthrough_dB_min: passthrough_slider.from
-    property bool muted: false //ports_manager.muted
-    property bool passthroughMuted: false //ports_manager.passthroughMuted
+
+    property bool muted: false
+    property bool passthroughMuted: false
+
+    property list<AudioPort> audio_ports : []
+    property list<MidiPort> midi_ports : []
+
+    function find_nth(array, n, fn) {
+        var _n=0
+        for(var i=0; i<array.length; i++) {
+            var match = fn(array[i])
+            if (match && _n >= n) { return array[i] }
+            if (match) { _n++ }
+        }
+        return null;
+    }
+
+    readonly property AudioPort audio_in_l : find_nth(audio_ports, 0, (p) => p.direction == Types.PortDirection.Input)
+    readonly property AudioPort audio_in_r : find_nth(audio_ports, 1, (p) => p.direction == Types.PortDirection.Input)
+    readonly property MidiPort midi_in : find_nth(midi_ports, 0, (p) => p.direction == Types.PortDirection.Input)
 
     LinearDbConversion {
         id: convert_volume
@@ -113,8 +133,7 @@ Item {
                     id: output_peak_meter_l
                     max_dt: 0.1
 
-                    input: 0.0
-                    //input: trackctl.ports_manager.port_managers[1].port_managers[0].outputPeak
+                    input: trackctl.audio_in_l ? trackctl.audio_in_l.peak : 0.0
                 }
 
                 background: Rectangle {
@@ -155,7 +174,7 @@ Item {
                     id: output_peak_meter_r
                     max_dt: 0.1
 
-                    input: 0.0 //trackctl.ports_manager.port_managers[1].port_managers[1].outputPeak
+                    input: trackctl.audio_in_r ? trackctl.audio_in_r.peak : 0.0
                 }
 
                 background: Rectangle {

@@ -71,6 +71,36 @@ class LoopState:
         self.mode = backend_loop_state.mode
         self.maybe_next_mode =  (None if backend_loop_state.maybe_next_mode == backend.LOOP_MODE_INVALID else backend_loop_state.maybe_next_mode)
         self.maybe_next_delay = (None if backend_loop_state.maybe_next_mode == backend.LOOP_MODE_INVALID else backend_loop_state.maybe_next_mode_delay)
+
+@dataclass
+class AudioPortState:
+    peak: float
+    volume: float
+    passthrough_volume: float
+    muted: bool
+    passthrough_muted: bool
+    name: str
+
+    def __init__(self, backend_state : 'backend.audio_port_state_info_t'):
+        self.peak = backend_state.peak
+        self.volume = backend_state.volume
+        self.passthrough_volume = backend_state.passthrough_volume
+        self.muted = bool(backend_state.muted)
+        self.passthrough_muted = bool(backend_state.passthrough_muted)
+        self.name = str(backend_state.name)
+
+@dataclass
+class MidiPortState:
+    n_events_triggered: int
+    muted: bool
+    passthrough_muted: bool
+    name: str
+
+    def __init__(self, backend_state : 'backend.audio_port_state_info_t'):
+        self.n_events_triggered = backend_state.n_events_triggered
+        self.muted = bool(backend_state.muted)
+        self.passthrough_muted = bool(backend_state.passthrough_muted)
+        self.name = str(backend_state.name)
     
 # Wraps the Shoopdaloop backend with more Python-friendly wrappers
 @dataclass
@@ -230,15 +260,18 @@ class BackendAudioPort:
         return self._c_handle
     
     def name(self):
-        state = backend.get_audio_port_state(self._c_handle)
-        name = str(state[0].name.decode('ascii'))
-        backend.destroy_audio_port_state(state)
-        return name
+        return self.get_state().name
     
     def destroy(self):
         if self._c_handle:
             backend.destroy_audio_port(self._c_handle)
             self._c_handle = None
+    
+    def get_state(self):
+        state = backend.get_audio_port_state(self._c_handle)
+        rval = AudioPortState(state[0])
+        backend.destroy_audio_port_state_info(state)
+        return rval
 
     def __del__(self):
         self.destroy()
@@ -256,15 +289,18 @@ class BackendMidiPort:
         return self._c_handle
     
     def name(self):
-        state = backend.get_audio_port_state(self._c_handle)
-        name = str(state[0].name.decode('ascii'))
-        backend.destroy_midi_port_state(state[0])
-        return name
+        return self.get_state().name
     
     def destroy(self):
         if self._c_handle:
             backend.destroy_midi_port(self._c_handle)
             self._c_handle = None
+    
+    def get_state(self):
+        state = backend.get_midi_port_state(self._c_handle)
+        rval = MidiPortState(state[0])
+        backend.destroy_midi_port_state_info(state)
+        return rval
 
     def __del__(self):
         self.destroy()

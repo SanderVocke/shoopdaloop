@@ -24,6 +24,8 @@ class Port(QQuickItem):
         self._name = ''
         self._initialized = False
         self._backend = None
+        self._muted = False
+        self._passthrough_muted = False
 
         self.rescan_parents()
         if not self._backend:
@@ -90,6 +92,28 @@ class Port(QQuickItem):
         if self._name != s:
             self._name = s
             self.nameChanged.emit(s)
+
+    # muted
+    mutedChanged = pyqtSignal(bool)
+    @pyqtProperty(bool, notify=mutedChanged)
+    def muted(self):
+        return self._muted
+    @muted.setter
+    def volume(self, s):
+        if self._muted != s:
+            self._muted = s
+            self.mutedChanged.emit(s)
+    
+    # passthrough_muted
+    passthroughMutedChanged = pyqtSignal(bool)
+    @pyqtProperty(bool, notify=passthroughMutedChanged)
+    def passthrough_muted(self):
+        return self._passthrough_muted
+    @passthrough_muted.setter
+    def volume(self, s):
+        if self._passthrough_muted != s:
+            self._passthrough_muted = s
+            self.passthroughMutedChanged.emit(s)
     
     ###########
     ## SLOTS

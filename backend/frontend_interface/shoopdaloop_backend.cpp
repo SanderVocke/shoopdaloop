@@ -12,6 +12,7 @@
 #include "MidiChannel.h"
 #include "MidiMessage.h"
 #include "MidiPortInterface.h"
+#include "MidiMergingBuffer.h"
 #include "ObjectPool.h"
 #include "PortInterface.h"
 #include "ChannelInterface.h"
@@ -146,27 +147,58 @@ struct DecoupledMidiPortInfo : public std::enable_shared_from_this<DecoupledMidi
 
     DecoupledMidiPortInfo(std::shared_ptr<_DecoupledMidiPort> port, SharedBackend backend) :
         port(port), backend(backend) {}
-    
+
     Backend &get_backend();
 };
 
 struct PortInfo : public std::enable_shared_from_this<PortInfo> {
     const SharedPort port;
     WeakBackend backend;
-    audio_sample_t *maybe_audio_buffer;
+
+    std::vector<WeakPortInfo> mp_passthrough_to;
+
+    // Audio only
+    audio_sample_t* maybe_audio_buffer;
+    std::atomic<float> volume;
+    std::atomic<float> passthrough_volume;
+    std::atomic<float> peak;
+
+    // Midi only
     std::shared_ptr<MidiReadableBufferInterface> maybe_midi_input_buffer;
     std::shared_ptr<MidiWriteableBufferInterface> maybe_midi_output_buffer;
+    std::shared_ptr<MidiMergingBuffer> maybe_midi_output_merging_buffer;
+    std::atomic<size_t> n_events_processed;
+
+    // Both
+    std::atomic<bool> muted;
+    std::atomic<bool> passthrough_muted;
 
     PortInfo (SharedPort const& port, SharedBackend const& backend) : port(port),
         maybe_audio_buffer(nullptr),
         maybe_midi_input_buffer(nullptr),
         maybe_midi_output_buffer(nullptr),
-        backend(backend) {}
+        volume(1.0f),
+        passthrough_volume(1.0f),
+        muted(false),
+        passthrough_muted(false),
+        backend(backend),
+        peak(0.0f),
+        n_events_processed(0) {
+        if (auto m = dynamic_cast<MidiPort*>(port.get())) {
+            if(m->direction() == PortDirection::Output) {
+                maybe_midi_output_merging_buffer = std::make_shared<MidiMergingBuffer>();
+            }
+        }
+    }
 
     void PROC_reset_buffers();
-    void PROC_update_audio_buffer_if_none(size_t n_frames);
-    void PROC_update_midi_input_buffer_if_none(size_t n_frames);
-    void PROC_update_midi_output_buffer_if_none(size_t n_frames);
+    void PROC_ensure_buffer(size_t n_frames);
+    void PROC_passthrough(size_t n_frames);
+    void PROC_passthrough_audio(size_t n_frames, PortInfo &to);
+    void PROC_passthrough_midi(size_t n_frames, PortInfo &to);
+    void PROC_check_buffer();
+    void PROC_finalize_process(size_t n_frames);
+
     AudioPort &audio();
     MidiPort &midi();
     Backend &get_backend();
@@ -235,32 +267,6 @@ struct LoopInfo : public std::enable_shared_from_this<LoopInfo> {
     void PROC_prepare_process(size_t n_frames);
     void PROC_finalize_process();
     Backend &get_backend();
-
-    // SharedLoopAudioChannel find_audio_channel(
-    //                                       shoopdaloop_loop_audio_channel_t *channel,
-    //                                       size_t &found_idx_out) {
-    //     for (size_t idx=0; idx < loop->n_audio_channels(); idx++) {
-    //         SharedLoopAudioChannel chan = loop->audio_channel<float>(idx);
-    //         if ((shoopdaloop_loop_audio_channel_t*)chan.get() == channel) {
-    //             found_idx_out = idx;
-    //             return chan;
-    //         }
-    //     }
-    //     throw std::runtime_error("Attempting to find non-existent audio channel.");
-    // }
-
-    // SharedLoopMidiChannel find_midi_channel(
-    //                                         shoopdaloop_loop_midi_channel_t *channel,
-    //                                         size_t &found_idx_out) {
-    //     for (size_t idx=0; idx < loop->n_midi_channels(); idx++) {
-    //         SharedLoopMidiChannel chan = loop->midi_channel<Time, Size>(idx);
-    //         if ((shoopdaloop_loop_midi_channel_t*)chan.get() == channel) {
-    //             found_idx_out = idx;
-    //             return chan;
-    //         }
-    //     }
-    //     throw std::runtime_error("Attempting to find non-existent midi channel.");
-    // }
 };
 
 // MEMBER FUNCTIONS
@@ -272,9 +278,19 @@ void Backend::PROC_process (jack_nframes_t nframes) {
     PROC_process_decoupled_midi_ports(nframes);
 
     // Prepare:
-    // Get and connect port buffers to loop channels
-    for (size_t idx=0; idx < loops.size(); idx++) {
-        loops[idx]->PROC_prepare_process(nframes);
+    // Get buffers and process passthrough
+    for (auto & port: ports) {
+        port->PROC_reset_buffers();
+        port->PROC_ensure_buffer(nframes);
+    }
+    for (auto & port: ports) {
+        port->PROC_passthrough(nframes);
+    }
+
+    // Prepare:
+    // Connect port buffers to loop channels
+    for (auto & loop: loops) {
+        loop->PROC_prepare_process(nframes);
     }
     
     // Process the loops.
@@ -282,8 +298,11 @@ void Backend::PROC_process (jack_nframes_t nframes) {
         (loops, [](LoopInfo &l) { return (LoopInterface*)l.loop.get(); }, nframes);
 
     // Prepare state for next round.
-    for (size_t idx=0; idx < loops.size(); idx++) {
-        loops[idx]->PROC_finalize_process();
+    for (auto &port : ports) {
+        port->PROC_finalize_process(nframes);
+    }
+    for (auto &loop : loops) {
+        loop->PROC_finalize_process();
     }
 }
 
@@ -335,31 +354,109 @@ void PortInfo::PROC_reset_buffers() {
     maybe_midi_output_buffer = nullptr;
 }
 
-void PortInfo::PROC_update_audio_buffer_if_none(size_t n_frames) {
-    if (maybe_audio_buffer) { return; } // Only get a buffer if we don't have one yet
-    auto _port = dynamic_cast<AudioPort*>(port.get());
-    if (!_port) {
-        throw std::runtime_error("Attempting to get audio buffer for non-audio port");
+void PortInfo::PROC_ensure_buffer(size_t n_frames) {
+    auto maybe_midi = dynamic_cast<MidiPort*>(port.get());
+    auto maybe_audio = dynamic_cast<AudioPort*>(port.get());
+
+    if (maybe_midi) {
+        if(maybe_midi->direction() == PortDirection::Input) {
+            if (maybe_midi_input_buffer) { return; } // already there
+            maybe_midi_input_buffer = maybe_midi->PROC_get_read_buffer(n_frames);
+            n_events_processed += maybe_midi_input_buffer->PROC_get_n_events();
+        } else {
+            if (maybe_midi_output_buffer) { return; } // already there
+            maybe_midi_output_buffer = maybe_midi->PROC_get_write_buffer(n_frames);
+        }
+    } else if (maybe_audio) {
+        if (maybe_audio_buffer) { return; } // already there
+        maybe_audio_buffer = maybe_audio->PROC_get_buffer(n_frames);
+    } else {
+        throw std::runtime_error("Invalid port");
     }
-    maybe_audio_buffer = _port->PROC_get_buffer(n_frames);
 }
 
-void PortInfo::PROC_update_midi_input_buffer_if_none(size_t n_frames) {
-    if (maybe_midi_input_buffer) { return; } // Only get a buffer if we don't have one yet
-    auto _port = dynamic_cast<MidiPort*>(port.get());
-    if (!_port) {
-        throw std::runtime_error("Attempting to get MIDI input buffer for non-MIDI port");
+void PortInfo::PROC_check_buffer() {
+    auto maybe_midi = dynamic_cast<MidiPort*>(port.get());
+    auto maybe_audio = dynamic_cast<AudioPort*>(port.get());
+    bool result;
+
+    if (maybe_midi) {
+        if(maybe_midi->direction() == PortDirection::Input) {
+            result = (bool) maybe_midi_input_buffer;
+        } else {
+            result = (bool) maybe_midi_output_buffer;
+        }
+    } else if (maybe_audio) {
+        result = (maybe_audio_buffer != nullptr);
+    } else {
+        throw std::runtime_error("Invalid port");
     }
-    maybe_midi_input_buffer = _port->PROC_get_read_buffer(n_frames);
+
+    if (!result) {
+        throw std::runtime_error("No buffer available.");
+    }
 }
 
-void PortInfo::PROC_update_midi_output_buffer_if_none(size_t n_frames) {
-    if (maybe_midi_output_buffer) { return; } // Only get a buffer if we don't have one yet
-    auto _port = dynamic_cast<MidiPort*>(port.get());
-    if (!_port) {
-        throw std::runtime_error("Attempting to get MIDI output buffer for non-MIDI port");
+void PortInfo::PROC_passthrough(size_t n_frames) {
+    if (port->direction() == PortDirection::Input) {
+        for(auto & other : mp_passthrough_to) {
+            auto o = other.lock();
+            if(o) {
+                if (o->port->direction() != PortDirection::Output) {
+                    throw std::runtime_error("Cannot passthrough to input");
+                }
+                o->PROC_check_buffer();
+                if (dynamic_cast<AudioPort*>(port.get())) { PROC_passthrough_audio(n_frames, *o); }
+                else if (dynamic_cast<MidiPort*>(port.get())) { PROC_passthrough_midi(n_frames, *o); }
+                else { throw std::runtime_error("Invalid port"); }
+            }
+        }
     }
-    maybe_midi_output_buffer = _port->PROC_get_write_buffer(n_frames);
+}
+
+void PortInfo::PROC_passthrough_audio(size_t n_frames, PortInfo &to) {
+    if (!muted && !passthrough_muted) {
+        for (size_t i=0; i<n_frames; i++) {
+            to.maybe_audio_buffer[i] += volume /*input volume*/ * passthrough_volume * maybe_audio_buffer[i];
+        }
+    }
+}
+
+void PortInfo::PROC_passthrough_midi(size_t n_frames, PortInfo &to) {
+    if(!muted && !passthrough_muted) {
+        for(size_t i=0; i<maybe_midi_input_buffer->PROC_get_n_events(); i++) {
+            to.maybe_midi_output_buffer->PROC_write_event_reference(
+                maybe_midi_input_buffer->PROC_get_event_reference(i)
+                );
+        }
+    }
+}
+
+void PortInfo::PROC_finalize_process(size_t n_frames) {
+    if (auto a = dynamic_cast<AudioPort*>(port.get())) {
+        if (a->direction() == PortDirection::Output) {
+            float max = 0.0f;
+            for (size_t i=0; i<n_frames; i++) {
+                maybe_audio_buffer[i] *= muted.load() ? volume.load() : 0.0f;
+                max = std::max(maybe_audio_buffer[i], max);
+            }
+            peak = std::max(peak.load(), max);
+        }
+    } else if (auto m = dynamic_cast<MidiPort*>(port.get())) {
+        if (m->direction() == PortDirection::Output) {
+            if (!muted) {
+                maybe_midi_output_merging_buffer->PROC_sort();
+                size_t n_events = maybe_midi_output_merging_buffer->PROC_get_n_events();
+                for(size_t i=0; i<n_events; i++) {
+                    uint32_t size, time;
+                    const uint8_t* data;
+                    maybe_midi_output_merging_buffer->PROC_get_event_reference(i).get(size, time, data);
+                    maybe_midi_output_buffer->PROC_write_event_value(size, time, data);
+                }
+                n_events_processed += n_events;
+            }
+        }
+    }
 }
 
 AudioPort &PortInfo::audio() {
@@ -454,7 +551,6 @@ void ChannelInfo::disconnect_input_port(bool thread_safe) {
 void ChannelInfo::PROC_prepare_process_audio(size_t n_frames) {
     auto in_locked = mp_input_port_mapping.lock();
     if (in_locked) {
-        in_locked->PROC_update_audio_buffer_if_none(n_frames);
         auto chan = dynamic_cast<LoopAudioChannel*>(channel.get());
         chan->PROC_set_recording_buffer(in_locked->maybe_audio_buffer, n_frames);
     } else {
@@ -469,7 +565,6 @@ void ChannelInfo::PROC_prepare_process_audio(size_t n_frames) {
     for (auto &port : mp_output_port_mappings) {
         auto locked = port.lock();
         if (locked) {
-            locked->PROC_update_audio_buffer_if_none(n_frames);
             auto chan = dynamic_cast<LoopAudioChannel*>(channel.get());
             chan->PROC_set_playback_buffer(locked->maybe_audio_buffer, n_frames);
             n_outputs_mapped++;
@@ -500,7 +595,6 @@ void ChannelInfo::PROC_finalize_process_audio() {
 void ChannelInfo::PROC_prepare_process_midi(size_t n_frames) {
     auto in_locked = mp_input_port_mapping.lock();
     if (in_locked) {
-        in_locked->PROC_update_midi_input_buffer_if_none(n_frames);
         auto chan = dynamic_cast<LoopMidiChannel*>(channel.get());
         chan->PROC_set_recording_buffer(in_locked->maybe_midi_input_buffer.get(), n_frames);
     } else {
@@ -512,7 +606,6 @@ void ChannelInfo::PROC_prepare_process_midi(size_t n_frames) {
         auto locked = port.lock();
         auto chan = dynamic_cast<LoopMidiChannel*>(channel.get());
         if (locked) {
-            locked->PROC_update_midi_output_buffer_if_none(n_frames);
             chan->PROC_set_playback_buffer(locked->maybe_midi_output_buffer.get(), n_frames);
         }
     }
@@ -709,10 +802,10 @@ std::vector<float> internal_audio_data(audio_channel_data_t const& d) {
 std::vector<_MidiMessage> internal_midi_data(midi_channel_data_t const& d) {
     auto r = std::vector<_MidiMessage>(d.n_events);
     for (size_t idx=0; idx < d.n_events; idx++) {
-        _MidiMessage m;
-        m.size = d.events[idx]->size;
-        m.time = d.events[idx]->time;
-        m.data = std::vector<uint8_t>(m.size);
+        _MidiMessage m(
+            d.events[idx]->size,
+            d.events[idx]->time,
+            std::vector<uint8_t>(m.size));
         memcpy((void*)m.data.data(), (void*)d.events[idx]->data, m.size);
         r[idx] = m;
     }
@@ -1185,16 +1278,25 @@ void set_midi_channel_mode (shoopdaloop_loop_midi_channel_t * channel, channel_m
 
 audio_port_state_info_t *get_audio_port_state(shoopdaloop_audio_port_t *port) {
     auto r = new audio_port_state_info_t;
-    r->peak = 0.0;
-    r->volume = 0.0;
-    r->name = "UNIMPLEMENTED";
+    auto p = internal_audio_port(port);
+    r->peak = p->peak;
+    r->volume = p->volume;
+    r->passthrough_volume = p->passthrough_volume;
+    r->muted = p->muted;
+    r->passthrough_muted = p->passthrough_muted;
+    r->name = p->port->name();
+    p->peak = 0.0f;
     return r;
 }
 
 midi_port_state_info_t *get_midi_port_state(shoopdaloop_midi_port_t *port) {
     auto r = new midi_port_state_info_t;
-    r->n_events_triggered = 0;
-    r->name = "UNIMPLEMENTED";
+    auto p = internal_midi_port(port);
+    r->n_events_triggered = p->n_events_processed;
+    r->muted = p->muted;
+    r->passthrough_muted = p->passthrough_muted;
+    r->name = p->port->name();
+    p->n_events_processed = 0;
     return r;
 }
 
