@@ -175,11 +175,16 @@ Item {
             state_registry: track.state_registry
         }
     }
+    function audio_ports() {
+        return audio_ports_repeater.all_items();
+    }
+
+    function midi_ports() {
+        return audio_ports_repeater.all_items();
+    }
+
     function all_ports() {
-        return [
-            ...audio_ports_repeater.all_items(),
-            ...midi_ports_repeater.all_items()
-        ]
+        return [...audio_ports(), ...midi_ports()];
     }
 
     Item {

@@ -120,6 +120,9 @@ ScrollView {
                 TrackControlWidget {
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.horizontalCenter: parent.horizontalCenter
+                    initial_track_descriptor: root.initial_track_descriptors[index]
+                    objects_registry: root.objects_registry
+                    state_registry: root.state_registry
                 }
             }
         }

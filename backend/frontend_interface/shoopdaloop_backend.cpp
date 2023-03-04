@@ -24,6 +24,7 @@
 
 // System
 #include <boost/lockfree/spsc_queue.hpp>
+#include <cmath>
 #include <jack/types.h>
 #include <math.h>
 #include <memory>
@@ -370,6 +371,11 @@ void PortInfo::PROC_ensure_buffer(size_t n_frames) {
     } else if (maybe_audio) {
         if (maybe_audio_buffer) { return; } // already there
         maybe_audio_buffer = maybe_audio->PROC_get_buffer(n_frames);
+        float max = 0.0f;
+        for(size_t i=0; i<n_frames; i++) {
+            max = std::max(max, abs(maybe_audio_buffer[i]));
+        }
+        peak = std::max(peak.load(), max);
     } else {
         throw std::runtime_error("Invalid port");
     }
@@ -438,7 +444,7 @@ void PortInfo::PROC_finalize_process(size_t n_frames) {
             float max = 0.0f;
             for (size_t i=0; i<n_frames; i++) {
                 maybe_audio_buffer[i] *= muted.load() ? volume.load() : 0.0f;
-                max = std::max(maybe_audio_buffer[i], max);
+                max = std::max(abs(maybe_audio_buffer[i]), max);
             }
             peak = std::max(peak.load(), max);
         }
