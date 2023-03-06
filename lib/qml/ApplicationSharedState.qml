@@ -564,7 +564,7 @@ Item {
                 var n_cycles_delay = 0
                 var n_cycles_record = 1
                 n_cycles_record = Math.ceil(targeted_loop_manager.length / master_loop_manager.length)
-                if (State_helpers.is_playing_state(targeted_loop_manager.mode)) {
+                if (State_helpers.is_playing_mode(targeted_loop_manager.mode)) {
                     var current_cycle = Math.floor(targeted_loop_manager.position / master_loop_manager.length)
                     n_cycles_delay = Math.max(0, n_cycles_record - current_cycle - 1)
                 }

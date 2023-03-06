@@ -216,7 +216,7 @@ public:
         
         // Some definitions
         auto is_running_state = [](Expr mode) { return mode == Playing || mode == Recording; };
-        auto is_playing_state = [](Expr mode) { return mode == Playing; };
+        auto is_playing_mode = [](Expr mode) { return mode == Playing; };
         auto clamp_to_storage = [&](Expr var) { return clamp(var, loop_storage_in.dim(0).min(), loop_storage_in.dim(0).max()); };
 
         // Latency buffer operations
@@ -260,14 +260,14 @@ public:
         Expr is_soft_synced = 0 <= _soft_sync_map(loop) && _soft_sync_map(loop) <= states_in.dim(0).max();
         Expr is_soft_synced_to_other = is_soft_synced && _soft_sync_map(loop) != loop;
         Expr my_master_loop = _soft_sync_map(loop);
-        Expr is_starting_to_play = is_playing_state(_states_in(loop)) && _positions_in(loop) == 0;
-        Expr will_play_to_end = is_playing_state(_states_in(loop)) && (_loop_lengths_in(loop) - _positions_in(loop)) <= n_samples;
-        Expr will_play_beyond_end = is_playing_state(_states_in(loop)) && (_loop_lengths_in(loop) - _positions_in(loop)) < n_samples;
+        Expr is_starting_to_play = is_playing_mode(_states_in(loop)) && _positions_in(loop) == 0;
+        Expr will_play_to_end = is_playing_mode(_states_in(loop)) && (_loop_lengths_in(loop) - _positions_in(loop)) <= n_samples;
+        Expr will_play_beyond_end = is_playing_mode(_states_in(loop)) && (_loop_lengths_in(loop) - _positions_in(loop)) < n_samples;
         Expr will_play_beyond_end_from = (_loop_lengths_in(loop) - _positions_in(loop));
         Expr is_transitioning_immediately =
             is_starting_to_play ||
             (_states_in(loop) != _next_modes_in(0, loop) && // TODO: is this correct for all loops, or just master?
-             !is_playing_state(_states_in(loop)) &&
+             !is_playing_mode(_states_in(loop)) &&
              !is_soft_synced_to_other);
         
         // Debug prints
@@ -520,7 +520,7 @@ public:
         samples_out(x, port) = _samples_in(x, port) * port_passthrough_levels(port);
         RDom l2p(0, n_samples, ports_map.dim(0).min(), ports_map.dim(0).extent());
         // No need to mix in looper samples for non-playing loopers
-        l2p.where(is_playing_state(_states_in(l2p.y)) || is_playing_state(new_state(l2p.y)));
+        l2p.where(is_playing_mode(_states_in(l2p.y)) || is_playing_mode(new_state(l2p.y)));
         samples_out(l2p.x, clamp(
             ports_map(l2p.y),
             samples_out.dim(1).min(),
@@ -560,7 +560,7 @@ public:
             rr_playback_index
         ) % loop_lengths_out(loop);                               
         positions_out(loop) = Halide::Internal::substitute(rr.y, loop, select(
-            is_playing_state(states_out(loop)),
+            is_playing_mode(states_out(loop)),
             next_position_if_was_playing,
             select(
                 states_out(loop) == Stopped,

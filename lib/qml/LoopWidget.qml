@@ -72,8 +72,8 @@ Item {
     property var additional_context_menu_options : null // dict of option name -> functor
 
     // Internally controlled
-    property DynamicLoop maybe_loop : dynamic_loop
-    property Loop maybe_loaded_loop : dynamic_loop.maybe_loop
+    readonly property DynamicLoop maybe_loop : dynamic_loop
+    readonly property Loop maybe_loaded_loop : dynamic_loop.maybe_loop
     property bool selected : false
     property bool targeted : false
     readonly property bool is_master: master_loop && master_loop == this
@@ -85,12 +85,10 @@ Item {
 
     // Signals
     signal onClear(int length)
-    signal onTransition(int mode, int delay, bool wait_for_sync)
 
     // Methods
     function transition(mode, delay, wait_for_sync, emit=true) {
         dynamic_loop.transition(mode, delay, wait_for_sync);
-        if (emit) { onTransition(mode, delay, wait_for_sync) }
     }
     function clear(length, emit=true) {
         dynamic_loop.clear(length);
@@ -144,6 +142,9 @@ Item {
     height: childrenRect.height
     clip: true
 
+    property alias length : dynamic_loop.length
+    property alias position : dynamic_loop.position
+    property alias mode : dynamic_loop.mode
     DynamicLoop {
         id: dynamic_loop
         force_load : is_master // Master loop should always be there to sync to
@@ -608,6 +609,7 @@ Item {
                                     }
 
                                     function execute(delay, n_cycles) {
+                                        console.log("RECORD N: ", delay, n_cycles)
                                         widget.transition(Types.LoopMode.Recording, delay, true)
                                         widget.transition(Types.LoopMode.Playing, delay + n_cycles, true)
                                     }
@@ -621,7 +623,7 @@ Item {
                                             var n_cycles_delay = 0
                                             var n_cycles_record = 1
                                             n_cycles_record = Math.ceil(widget.targeted_loop.length / widget.master_loop.length)
-                                            if (ModeHelpers.is_playing_state(widget.targeted_loop.mode)) {
+                                            if (ModeHelpers.is_playing_mode(widget.targeted_loop.mode)) {
                                                 var current_cycle = Math.floor(widget.targeted_loop.position / widget.master_loop.length)
                                                 n_cycles_delay = Math.max(0, n_cycles_record - current_cycle - 1)
                                             }
@@ -1152,13 +1154,13 @@ Item {
                         // TODO the triggering
                         function maybe_update() {
                             if (window.visible &&
-                                !ModeHelpers.is_recording_state(loop.mode)) {
+                                !ModeHelpers.is_recording_mode(loop.mode)) {
                                     waveform.update_data()
                                 }
                         }
                         function onStateChanged() {
                             maybe_update()
-                            waveform.recording = ModeHelpers.is_recording_state(loop.mode)
+                            waveform.recording = ModeHelpers.is_recording_mode(loop.mode)
                         }
                         function onLengthChanged() { maybe_update() }
                     }
