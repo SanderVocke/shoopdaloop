@@ -1,11 +1,12 @@
 {
     "type": "object",
     "properties": {
-        "schema":       { "const": "audioport.1" },
-        "id":           { "type": "string"  },
-        "name_parts":   { "type": "array", "items": { "type": "string" } },
-        "direction":    { "enum": ["input", "output"] },
-        "volume":       { "type": "number" }
+        "schema":         { "const": "audioport.1" },
+        "id":             { "type": "string"  },
+        "name_parts":     { "type": "array", "items": { "type": "string" } },
+        "direction":      { "enum": ["input", "output"] },
+        "volume":         { "type": "number" },
+        "passthrough_to": { "type": "array", "items": { "type": "string" } }
     },
-    "required": ["schema", "id", "name_parts", "direction", "volume"]
+    "required": ["schema", "id", "name_parts", "direction", "volume", "passthrough_to"]
 }

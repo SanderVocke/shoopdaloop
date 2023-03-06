@@ -272,6 +272,9 @@ class BackendAudioPort:
         rval = AudioPortState(state[0])
         backend.destroy_audio_port_state_info(state)
         return rval
+    
+    def connect_passthrough(self, other):
+        backend.add_audio_port_passthrough(self._c_handle, other.c_handle())
 
     def __del__(self):
         self.destroy()
@@ -301,6 +304,9 @@ class BackendMidiPort:
         rval = MidiPortState(state[0])
         backend.destroy_midi_port_state_info(state)
         return rval
+    
+    def connect_passthrough(self, other):
+        backend.add_audio_port_passthrough(self._c_handle, other.c_handle())
 
     def __del__(self):
         self.destroy()

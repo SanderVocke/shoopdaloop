@@ -200,6 +200,8 @@ struct PortInfo : public std::enable_shared_from_this<PortInfo> {
     void PROC_check_buffer();
     void PROC_finalize_process(size_t n_frames);
 
+    void connect_passthrough(SharedPortInfo const& other);
+
     AudioPort &audio();
     MidiPort &midi();
     Backend &get_backend();
@@ -479,6 +481,17 @@ Backend &PortInfo::get_backend() {
         throw std::runtime_error("Back-end no longer exists");
     }
     return *b;
+}
+
+void PortInfo::connect_passthrough(const SharedPortInfo &other) {
+    get_backend().cmd_queue.queue([=]() {
+        for (auto &_other : mp_passthrough_to) {
+            if(auto __other = _other.lock()) {
+                if (__other.get() == other.get()) { return; } // already connected
+            }
+        }
+        mp_passthrough_to.push_back(other);
+    });
 }
 
 Backend &DecoupledMidiPortInfo::get_backend() {
@@ -1177,6 +1190,18 @@ jack_port_t *get_midi_port_jack_handle(shoopdaloop_midi_port_t *port) {
     auto pi = internal_midi_port(port);
     auto pp = &pi->midi();
     return dynamic_cast<JackMidiPort*>(pp)->get_jack_port();
+}
+
+void add_audio_port_passthrough(shoopdaloop_audio_port_t *from, shoopdaloop_audio_port_t *to) {
+    auto _from = internal_audio_port(from);
+    auto _to = internal_audio_port(to);
+    _from->connect_passthrough(_to);
+}
+
+void add_midi_port_passthrough(shoopdaloop_midi_port_t *from, shoopdaloop_midi_port_t *to) {
+    auto _from = internal_midi_port(from);
+    auto _to = internal_midi_port(to);
+    _from->connect_passthrough(_to);
 }
 
 shoopdaloop_decoupled_midi_port_t *open_decoupled_midi_port(shoopdaloop_backend_instance_t *backend, const char* name_hint, port_direction_t direction) {

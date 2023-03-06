@@ -4,7 +4,8 @@
         "schema":       { "const": "midiport.1" },
         "id":           { "type": "string"  },
         "name_parts":   { "type": "array", "items": { "type": "string" } },
-        "direction":    { "enum": ["input", "output"] }
+        "direction":    { "enum": ["input", "output"] },
+        "passthrough_to": { "type": "array", "items": { "type": "string" } }
     },
     "required": ["schema", "id", "name_parts", "direction"]
 }

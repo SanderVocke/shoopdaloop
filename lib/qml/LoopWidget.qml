@@ -22,37 +22,47 @@ Item {
     property bool is_in_selected_scene: false
     property bool is_in_hovered_scene:  false
     readonly property string name: ''
-    property LoopWidget master_loop : null
-    property LoopWidget targeted_loop : null
     readonly property var audio_channel_descriptors: initial_descriptor.channels.filter(c => c.type == 'audio')
     readonly property var midi_channel_descriptors: initial_descriptor.channels.filter(c => c.type == 'midi')
     property bool loaded : false
 
-    function update_targeted() {
-        widget.targeted_loop = state_registry.has('targeted_loop') ?
-                state_registry.get('targeted_loop') : null;
-        if(targeted && state_registry.get('targeted_loop') != this) { targeted = false; }
+    RegistryLookup {
+        id: master_loop_lookup
+        registry: objects_registry
+        key: 'master_loop'
     }
+    property alias master_loop : master_loop_lookup.object
 
-    function update_master() {
-        widget.master_loop = state_registry.has('master_loop') ?
-                state_registry.get('master_loop') : null;
+    RegistryLookup {
+        id: targeted_loop_lookup
+        registry: objects_registry
+        key: 'targeted_loop'
     }
+    property alias targeted_loop : targeted_loop_lookup.object
 
-    Connections {
-        target: state_registry
-        function onItemModified(id, item) {
-            if (id == 'targeted_loop') { update_targeted() }
-            if (id == 'master_loop') { update_master() }
-        }
-    }
+    // function update_targeted() {
+    //     widget.targeted_loop = state_registry.has('targeted_loop') ?
+    //             state_registry.get('targeted_loop') : null;
+    //     if(targeted && state_registry.get('targeted_loop') != this) { targeted = false; }
+    // }
+
+    // function update_master() {
+    //     widget.master_loop = state_registry.has('master_loop') ?
+    //             state_registry.get('master_loop') : null;
+    // }
+
+    // Connections {
+    //     target: state_registry
+    //     function onItemModified(id, item) {
+    //         if (id == 'targeted_loop') { update_targeted() }
+    //         if (id == 'master_loop') { update_master() }
+    //     }
+    // }
 
     Component.onCompleted: {
         console.log("LOOP COMPLETED")
         objects_registry.register(initial_descriptor.id, this)
         if(initial_descriptor.is_master) { console.log("REGISTER MASTER"); state_registry.register('master_loop', this); }
-        update_master()
-        update_targeted()
         loaded = Qt.binding(function() { return maybe_loop.loaded} )
     }
 

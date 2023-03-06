@@ -8,6 +8,14 @@ AudioPort {
     property Registry state_registry : null
     property bool loaded : initialized
 
+    passthrough_to : lookup_passthrough_to.objects
+
+    RegistryLookups {
+        id: lookup_passthrough_to
+        registry: objects_registry
+        keys: descriptor.passthrough_to
+    }
+
     SchemaCheck {
         descriptor: port.descriptor
         schema: 'audioport.1'

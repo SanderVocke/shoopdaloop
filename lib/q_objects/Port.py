@@ -26,10 +26,14 @@ class Port(QQuickItem):
         self._backend = None
         self._muted = False
         self._passthrough_muted = False
+        self._passthrough_to = []
+        self._passthrough_connected_to = []
 
         self.rescan_parents()
         if not self._backend:
             self.parentChanged.connect(self.rescan_parents)
+        
+        self.initializedChanged.connect(self.update_passthrough_connections)
 
     ######################
     # PROPERTIES
@@ -115,6 +119,18 @@ class Port(QQuickItem):
             self._passthrough_muted = s
             self.passthroughMutedChanged.emit(s)
     
+    # passthrough_to : ports to which to passthrough
+    passthroughToChanged = pyqtSignal(list)
+    @pyqtProperty(list, notify=passthroughToChanged)
+    def passthrough_to(self):
+        return self._passthrough_to
+    @passthrough_to.setter
+    def passthrough_to(self, s):
+        if self._passthrough_to != s:
+            self._passthrough_to = s
+            self.update_passthrough_connections()
+            self.passthroughToChanged.emit(s)
+    
     ###########
     ## SLOTS
     ###########
@@ -160,3 +176,17 @@ class Port(QQuickItem):
             if self._backend_obj:
                 self._initialized = True
                 self.initializedChanged.emit(True)
+    
+    def connect_passthrough_impl(self, other):
+        raise Exception('Unimplemented in base class')
+    
+    def maybe_connect_passthrough(self, other):
+        if other.initialized and self.initialized and other not in self._passthrough_connected_to:
+            self.connect_passthrough_impl(other)
+    
+    def update_passthrough_connections(self):
+        for other in self._passthrough_to:
+            if other.initialized and self.initialized and other not in self._passthrough_connected_to:
+                self.connect_passthrough_impl(other)
+            else:
+                other.initializedChanged.connect(lambda: self.maybe_connect_passthrough(other))

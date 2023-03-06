@@ -23,30 +23,21 @@ LoopAudioChannel {
             case "wet" : return Types.ChannelMode.Wet;
         }
     }
-    onInitial_modeChanged: set_mode(initial_mode)
-    ports: get_ports()
+onInitial_modeChanged: set_mode(initial_mode)
+    ports: lookup_connected_ports.objects
 
-    function get_ports() {
-        return descriptor.connected_port_ids
-                    .filter(id => objects_registry.has(id))
-                    .map(id => objects_registry.get(id))
+    RegistryLookups {
+        id: lookup_connected_ports
+        registry: objects_registry
+        keys: descriptor.connected_port_ids
     }
-    function update_ports() { chan.ports = get_ports() }
 
     Component.onCompleted: {
         set_mode(initial_mode)
         if(objects_registry) { objects_registry.register(descriptor.id, this) }
-        update_ports()
     }
     function qml_close() {
         objects_registry.unregister(descriptor.id)
         close()
-    }
-    Connections {
-        target: objects_registry
-        // React to ports being instantiated later than channels
-        function onItemAdded(id, obj) {
-            update_ports()
-        }
     }
 }
