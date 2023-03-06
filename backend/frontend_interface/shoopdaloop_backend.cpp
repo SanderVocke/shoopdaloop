@@ -365,7 +365,9 @@ void PortInfo::PROC_ensure_buffer(size_t n_frames) {
         if(maybe_midi->direction() == PortDirection::Input) {
             if (maybe_midi_input_buffer) { return; } // already there
             maybe_midi_input_buffer = maybe_midi->PROC_get_read_buffer(n_frames);
-            n_events_processed += maybe_midi_input_buffer->PROC_get_n_events();
+            if (!muted) {
+                n_events_processed += maybe_midi_input_buffer->PROC_get_n_events();
+            }
         } else {
             if (maybe_midi_output_buffer) { return; } // already there
             maybe_midi_output_buffer = maybe_midi->PROC_get_write_buffer(n_frames);
@@ -373,11 +375,15 @@ void PortInfo::PROC_ensure_buffer(size_t n_frames) {
     } else if (maybe_audio) {
         if (maybe_audio_buffer) { return; } // already there
         maybe_audio_buffer = maybe_audio->PROC_get_buffer(n_frames);
-        float max = 0.0f;
-        for(size_t i=0; i<n_frames; i++) {
-            max = std::max(max, abs(maybe_audio_buffer[i]));
+        if (port->direction() == PortDirection::Input) {
+            float max = 0.0f;
+            for(size_t i=0; i<n_frames; i++) {
+                // TODO: allowed to write to input buffer? test it
+                maybe_audio_buffer[i] *= muted.load() ? 0.0f : volume.load();
+                max = std::max(max, abs(maybe_audio_buffer[i]));
+            }
+            peak = std::max(peak.load(), max);
         }
-        peak = std::max(peak.load(), max);
     } else {
         throw std::runtime_error("Invalid port");
     }
@@ -425,7 +431,7 @@ void PortInfo::PROC_passthrough(size_t n_frames) {
 void PortInfo::PROC_passthrough_audio(size_t n_frames, PortInfo &to) {
     if (!muted && !passthrough_muted) {
         for (size_t i=0; i<n_frames; i++) {
-            to.maybe_audio_buffer[i] += volume /*input volume*/ * passthrough_volume * maybe_audio_buffer[i];
+            to.maybe_audio_buffer[i] += passthrough_volume * maybe_audio_buffer[i];
         }
     }
 }
@@ -445,7 +451,7 @@ void PortInfo::PROC_finalize_process(size_t n_frames) {
         if (a->direction() == PortDirection::Output) {
             float max = 0.0f;
             for (size_t i=0; i<n_frames; i++) {
-                maybe_audio_buffer[i] *= muted.load() ? volume.load() : 0.0f;
+                maybe_audio_buffer[i] *= muted.load() ? 0.0f : volume.load();
                 max = std::max(abs(maybe_audio_buffer[i]), max);
             }
             peak = std::max(peak.load(), max);
@@ -1202,6 +1208,30 @@ void add_midi_port_passthrough(shoopdaloop_midi_port_t *from, shoopdaloop_midi_p
     auto _from = internal_midi_port(from);
     auto _to = internal_midi_port(to);
     _from->connect_passthrough(_to);
+}
+
+void set_audio_port_muted(shoopdaloop_audio_port_t *port, unsigned int muted) {
+    internal_audio_port(port)->muted = (bool)muted;
+}
+
+void set_audio_port_passthroughMuted(shoopdaloop_audio_port_t *port, unsigned int muted) {
+    internal_audio_port(port)->passthrough_muted = (bool)muted;
+}
+
+void set_audio_port_volume(shoopdaloop_audio_port_t *port, float volume) {
+    internal_audio_port(port)->volume = volume;
+}
+
+void set_audio_port_passthroughVolume(shoopdaloop_audio_port_t *port, float passthroughVolume) {
+    internal_audio_port(port)->passthrough_volume = passthroughVolume;
+}
+
+void set_midi_port_muted(shoopdaloop_midi_port_t *port, unsigned int muted) {
+    internal_midi_port(port)->muted = (bool)muted;
+}
+
+void set_midi_port_passthroughMuted(shoopdaloop_midi_port_t *port, unsigned int muted) {
+    internal_midi_port(port)->passthrough_muted = (bool)muted;
 }
 
 shoopdaloop_decoupled_midi_port_t *open_decoupled_midi_port(shoopdaloop_backend_instance_t *backend, const char* name_hint, port_direction_t direction) {

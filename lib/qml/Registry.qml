@@ -14,17 +14,21 @@ QtObject {
         if(id in data && !overwrite) {
             throw new Error("attempting to re-register existing key: " + id)
         }
-        if(verbose && !(id in data)) {
-            console.log("REGISTRY: Registered:", id, " => ", object)
+        if(!(id in data)) {
+            if (verbose) {
+                console.log("REGISTRY: Registered:", id, " => ", object)
+            }
             data[id] = object
             itemAdded(id, object)
-        } else if(verbose && overwrite && (id in data)) {
-            console.log("REGISTRY: Overwrite: ", id, ":", data[id], " => ", object)
+            contentsChanged()
+        } else if(overwrite && (id in data)) {
+            if (verbose) {
+                console.log("REGISTRY: Overwrite: ", id, ":", data[id], " => ", object)
+            }
             data[id] = object
             itemModified(id, object)
+            contentsChanged()
         }
-       
-        contentsChanged()
     }
 
     function unregister(id) {

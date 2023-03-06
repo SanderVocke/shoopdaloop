@@ -25,12 +25,12 @@ Item {
     }
 
     // Objects registry just stores object ids -> objects.
-    property Registry objects_registry: Registry { verbose: true }
+    property Registry objects_registry: Registry { verbose: false }
 
     // State registry stores the following optional states:
     // - "master_loop" -> LoopWidget which holds the master loop
     // - "targeted_loop" -> LoopWidget which is currently targeted
-    property Registry state_registry: Registry { verbose: true }
+    property Registry state_registry: Registry { verbose: false }
 
     // For (test) access
     property alias tracks: tracks_widget.tracks

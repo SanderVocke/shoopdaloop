@@ -20,15 +20,15 @@ class Port(QQuickItem):
         super(Port, self).__init__(parent)
         self._name_hint = ''
         self._backend_obj = None
-        self._direction = ''
-        self._name = ''
+        self._direction = None
         self._initialized = False
         self._backend = None
-        self._muted = False
-        self._passthrough_muted = False
         self._passthrough_to = []
         self._passthrough_connected_to = []
-
+        self._name = ''
+        self._muted = False
+        self._passthrough_muted = False
+        
         self.rescan_parents()
         if not self._backend:
             self.parentChanged.connect(self.rescan_parents)
@@ -72,17 +72,15 @@ class Port(QQuickItem):
             self.maybe_initialize()
     
     # direction
-    directionChanged = pyqtSignal(str)
-    @pyqtProperty(str, notify=directionChanged)
+    directionChanged = pyqtSignal(int)
+    @pyqtProperty(int, notify=directionChanged)
     def direction(self):
         return self._direction
     @direction.setter
     def direction(self, d):
         if d != self._direction:
-            if self._direction != '':
+            if self._direction != None:
                 raise Exception('Port direction may only be set once.')
-            if d not in ['input', 'output']:
-                raise Exception('Port direction may only be "input" or "output"')
             self._direction = d
             self.maybe_initialize()
     
@@ -92,9 +90,8 @@ class Port(QQuickItem):
     def name(self):
         return self._name
     @name.setter
-    def volume(self, s):
+    def name(self, s):
         if self._name != s:
-            self._name = s
             self.nameChanged.emit(s)
 
     # muted
@@ -103,7 +100,7 @@ class Port(QQuickItem):
     def muted(self):
         return self._muted
     @muted.setter
-    def volume(self, s):
+    def muted(self, s):
         if self._muted != s:
             self._muted = s
             self.mutedChanged.emit(s)
@@ -114,7 +111,7 @@ class Port(QQuickItem):
     def passthrough_muted(self):
         return self._passthrough_muted
     @passthrough_muted.setter
-    def volume(self, s):
+    def passthrough_muted(self, s):
         if self._passthrough_muted != s:
             self._passthrough_muted = s
             self.passthroughMutedChanged.emit(s)
@@ -156,6 +153,16 @@ class Port(QQuickItem):
         maybe_backend = findFirstParent(self, lambda p: p and isinstance(p, QQuickItem) and p.inherits('Backend') and self._backend == None)
         if maybe_backend:
             self.backend = maybe_backend
+    
+    @pyqtSlot(bool)
+    def set_backend_muted(self, muted):
+        if self._backend_obj:
+            self._backend_obj.set_muted(muted)
+    
+    @pyqtSlot(bool)
+    def set_backend_passthrough_muted(self, muted):
+        if self._backend_obj:
+            self._backend_obj.set_passthrough_muted(muted)
 
     ##########
     ## INTERNAL MEMBERS
@@ -164,15 +171,8 @@ class Port(QQuickItem):
         raise Exception('Unimplemented in base class')
 
     def maybe_initialize(self):
-        if self._name_hint != '' and self._direction != '' and self._backend and not self._backend_obj:
-            direction = None
-            if self._direction == 'input':
-                direction = backend.PortDirection.Input
-            elif self._direction == 'output':
-                direction = backend.PortDirection.Output
-            if not direction:
-                raise Exception("Invalid direction.")
-            self.maybe_initialize_impl(self._name_hint, direction)
+        if self._name_hint != '' and self._direction != None and self._backend and not self._backend_obj:
+            self.maybe_initialize_impl(self._name_hint, self._direction)
             if self._backend_obj:
                 self._initialized = True
                 self.initializedChanged.emit(True)

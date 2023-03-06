@@ -16,12 +16,24 @@ Item {
     property alias volume_dB_min: volume_slider.from
     property alias passthrough_dB_min: passthrough_slider.from
 
-    property bool muted: false
-    property bool passthroughMuted: false
+    property bool muted: audio_out_ports.length > 0 ? audio_out_ports[0].muted : false
+    property bool passthroughMuted: audio_in_ports.length > 0 ? audio_in_ports[0].muted : false
 
     property var initial_track_descriptor : null
     property Registry objects_registry : null
     property Registry state_registry : null
+
+    RegistryLookups {
+        id: lookup_ports
+        registry: trackctl.objects_registry
+        keys: initial_track_descriptor ? initial_track_descriptor.ports.map((p) => p.id) : []
+    }
+
+    property alias ports : lookup_ports.objects
+    property var audio_in_ports : ports.filter((p) => p instanceof AudioPort && p.direction == Types.PortDirection.Input)
+    property var audio_out_ports : ports.filter((p) => p instanceof AudioPort && p.direction == Types.PortDirection.Output)
+    property var midi_in_ports : ports.filter((p) => p instanceof MidiPort && p.direction == Types.PortDirection.Input)
+    property var midi_out_ports : ports.filter((p) => p instanceof MidiPort && p.direction == Types.PortDirection.Output)
 
     function find_nth(array, n, fn) {
         var _n=0
@@ -31,64 +43,6 @@ Item {
             if (match) { _n++ }
         }
         return null;
-    }
-
-    property list<var> audio_in_port_descs : []
-    property list<var> audio_out_port_descs : []
-    property list<var> midi_in_port_descs : []
-    property list<var> midi_out_port_descs : []
-
-    property list<AudioPort> audio_in_ports : []
-    property list<AudioPort> audio_out_ports : []
-    property list<MidiPort> midi_in_ports : []
-    property list<MidiPort> midi_out_ports : []
-
-    function get_ports_for(descs) {
-        return descs.map((d) => {
-            if (objects_registry.has(d.id)) {
-                return objects_registry.get(d.id)
-            } else {
-                return null
-            }
-        }).filter((e) => e != null)
-    }
-
-    function update_ports() {
-        audio_in_ports = get_ports_for(audio_in_port_descs, audio_in_ports)
-        audio_out_ports = get_ports_for(audio_out_port_descs, audio_out_ports)
-        midi_in_ports = get_ports_for(midi_in_port_descs, midi_in_ports)
-        midi_out_ports = get_ports_for(midi_out_port_descs, midi_out_ports)
-    }
-
-    function update_port_descs() {
-        var audio_in = []
-        var audio_out = []
-        var midi_in = []
-        var midi_out = []
-        for(var i=0; i<initial_track_descriptor.ports.length; i++) {
-            var port = initial_track_descriptor.ports[i];
-            if (port.schema == "audioport.1") {
-                if (port.direction == "input") { audio_in.push(port) }
-                else if (port.direction == "output") { audio_out.push(port) }
-            } else if (port.schema == "midiport.1") {
-                if (port.direction == "input") { midi_in.push(port) }
-                else if (port.direction == "output") { midi_out.push(port) }
-            }
-        }
-        audio_in_port_descs = audio_in
-        audio_out_port_descs = audio_out
-        midi_in_port_descs = midi_in
-        midi_out_port_descs = midi_out
-    }
-
-    Component.onCompleted: {
-        update_port_descs()
-        update_ports()
-    }
-
-    Connections {
-        target: objects_registry
-        function onContentsChanged() { update_ports() }
     }
 
     LinearDbConversion {
@@ -102,21 +56,15 @@ Item {
     function push_volume(target) {
         convert_volume.dB = volume_dB
         var v = convert_volume.linear
-        if (target && target.volume != v) { target.volume = v }
-    }
-
-    function push_passthrough(target) {
-        convert_passthrough.dB = passthrough_dB
-        var v = convert_passthrough.linear
-        if (target && target.passthrough != v) { target.passthrough = v }
+        if (target && target.volume != v) { target.set_backend_volume(v) }
     }
 
     onVolume_dBChanged: {
-        push_volume(ports_manager)
+        trackctl.audio_out_ports.forEach((p) => push_volume(p))
     }
 
     onPassthrough_dBChanged: {
-        push_passthrough(ports_manager)
+        audio_in_ports.forEach((p) => push_volume(p))
     }
 
     // Connections {
@@ -143,15 +91,15 @@ Item {
     // }
 
     function toggle_muted() {
-        var n = !ports_manager.muted
-        ports_manager.muted = n
-        ports_manager.muted = n
+        var n = !muted
+        audio_out_ports.forEach((p) => p.set_backend_muted(n))
+        midi_out_ports.forEach((p) => p.set_backend_muted(n))
     }
 
     function toggle_passthroughMuted() {
-        var n = !ports_manager.passthroughMuted
-        ports_manager.passthroughMuted = n
-        ports_manager.passthroughMuted = n
+        var n = !passthroughMuted
+        audio_in_ports.forEach((p) => p.set_backend_muted(n))
+        midi_in_ports.forEach((p) => p.set_backend_muted(n))
     }
 
     signal mute()
@@ -186,7 +134,7 @@ Item {
                     id: output_peak_meter_l
                     max_dt: 0.1
 
-                    input: trackctl.audio_in_ports.length > 0 ? trackctl.audio_in_ports[0].peak : 0.0
+                    input: trackctl.audio_out_ports.length > 0 ? trackctl.audio_out_ports[0].peak : 0.0
                 }
 
                 background: Rectangle {
@@ -227,7 +175,7 @@ Item {
                     id: output_peak_meter_r
                     max_dt: 0.1
 
-                    input: trackctl.audio_in_ports.length > 1 ? trackctl.audio_in_ports[1].peak : 0.0
+                    input: trackctl.audio_out_ports.length > 1 ? trackctl.audio_out_ports[1].peak : 0.0
                 }
 
                 background: Rectangle {
@@ -329,8 +277,7 @@ Item {
                     id: input_peak_meter_l
                     max_dt: 0.1
 
-                    // Dig into the wet manager, then the left-side manager
-                    input: 0.0 //trackctl.ports_manager.port_managers[1].port_managers[0].inputPeak
+                    input: trackctl.audio_in_ports.length > 0 ? trackctl.audio_in_ports[0].peak : 0.0
                 }
 
                 background: Rectangle {
@@ -371,8 +318,7 @@ Item {
                     id: input_peak_meter_r
                     max_dt: 0.1
 
-                    // Dig into the wet manager, then the right-side manager
-                    input: 0.0 //trackctl.ports_manager.port_managers[1].port_managers[1].inputPeak
+                    input: trackctl.audio_in_ports.length > 1 ? trackctl.audio_in_ports[1].peak : 0.0
                 }
 
                 background: Rectangle {

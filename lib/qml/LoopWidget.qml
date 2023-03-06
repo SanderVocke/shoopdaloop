@@ -28,14 +28,14 @@ Item {
 
     RegistryLookup {
         id: master_loop_lookup
-        registry: objects_registry
+        registry: state_registry
         key: 'master_loop'
     }
     property alias master_loop : master_loop_lookup.object
 
     RegistryLookup {
         id: targeted_loop_lookup
-        registry: objects_registry
+        registry: state_registry
         key: 'targeted_loop'
     }
     property alias targeted_loop : targeted_loop_lookup.object
@@ -60,9 +60,8 @@ Item {
     // }
 
     Component.onCompleted: {
-        console.log("LOOP COMPLETED")
         objects_registry.register(initial_descriptor.id, this)
-        if(initial_descriptor.is_master) { console.log("REGISTER MASTER"); state_registry.register('master_loop', this); }
+        if(initial_descriptor.is_master) { state_registry.register('master_loop', this); }
         loaded = Qt.binding(function() { return maybe_loop.loaded} )
     }
 

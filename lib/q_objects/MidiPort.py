@@ -43,14 +43,14 @@ class MidiPort(Port):
     def update(self):
         state = self._backend_obj.get_state()
         self.n_events_triggered = state.n_events_triggered
-        #self.name = state.name
-        #self.muted = state.muted
-        #self.passthrough_muted = state.muted
+        self.name = state.name
+        self.muted = state.muted
+        self.passthrough_muted = state.muted
     
     ##########
     ## INTERNAL MEMBERS
     ##########
-    def get_backend_obj():
+    def get_backend_obj(self):
         return self._backend_obj
 
     def maybe_initialize_impl(self, name_hint, direction):

@@ -69,14 +69,24 @@ class AudioPort(Port):
         self.peak = state.peak
         self.volume = state.volume
         self.passthrough_volume = state.passthrough_volume
-        #self.name = state.name
-        #self.muted = state.muted
-        #self.passthrough_muted = state.muted
+        self.name = state.name
+        self.muted = state.muted
+        self.passthrough_muted = state.muted
     
+    @pyqtSlot(float)
+    def set_backend_volume(self, volume):
+        if self._backend_obj:
+            self._backend_obj.set_volume(volume)
+    
+    @pyqtSlot(float)
+    def set_backend_passthrough_volume(self, passthrough_volume):
+        if self._backend_obj:
+            self._backend_obj.set_passthrough_volume(passthrough_volume)
+
     ##########
     ## INTERNAL MEMBERS
     ##########
-    def get_backend_obj():
+    def get_backend_obj(self):
         return self._backend_obj
         
     def maybe_initialize_impl(self, name_hint, direction):

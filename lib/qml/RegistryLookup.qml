@@ -12,10 +12,11 @@ Item {
     }
 
     Component.onCompleted: update()
+    onRegistryChanged: update()
     Connections {
         target: registry
-        function onItemAdded : (id, val) => if(id == key) { object = val }
-        function onItemModified : (id, val) => if(id == key) { object = val }
-        function onItemRemoved : (id) => if(id == key) { object = null }
+        function onItemAdded (id, val) { if(id == key) { object = val } }
+        function onItemModified (id, val) { if(id == key) { object = val } }
+        function onItemRemoved (id) { if(id == key) { object = null } }
     }
 }

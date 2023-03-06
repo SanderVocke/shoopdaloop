@@ -1,6 +1,8 @@
 import AudioPort
 import QtQuick 2.15
 
+import '../../build/types.js' as Types
+
 AudioPort {
     id: port
     property var descriptor : null
@@ -29,6 +31,8 @@ AudioPort {
     }
     property list<string> name_parts : descriptor.name_parts
     name_hint : name_parts.join('')
-    direction : descriptor.direction
+    direction : descriptor.direction == 'input' ? Types.PortDirection.Input :
+                descriptor.direction == 'output' ? Types.PortDirection.Output :
+                undefined
     volume : descriptor.volume
 }

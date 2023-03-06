@@ -30,10 +30,11 @@ Item {
     }
 
     Component.onCompleted: update()
+    onRegistryChanged: update()
     Connections {
         target: registry
-        function onItemAdded(key, item) { if (keys.contains(key)) { update() } }
-        function onItemRemoved(key) { if (keys.contains(key) { update() } }
-        function onItemModified(key, item) { if (keys.contains(key)) { update() } }
+        function onItemAdded(key, item) { if (keys.includes(key)) { update() } }
+        function onItemRemoved(key) { if (keys.includes(key)) { update() } }
+        function onItemModified(key, item) { if (keys.includes(key)) { update() } }
     }
 }

@@ -249,8 +249,8 @@ class BackendLoop:
 
 class BackendAudioPort:
     def __init__(self, c_handle : 'POINTER(backend.shoopdaloop_audio_port_t)',
-                 direction : 'PortDirection'):
-        self._direction = direction
+                 direction : int):
+        self._direction = PortDirection(direction)
         self._c_handle = c_handle
     
     def direction(self) -> Type['PortDirection']:
@@ -273,6 +273,22 @@ class BackendAudioPort:
         backend.destroy_audio_port_state_info(state)
         return rval
     
+    def set_volume(self, volume):
+        if self._c_handle:
+            backend.set_audio_port_volume(self._c_handle, volume)
+    
+    def set_passthrough_volume(self, passthrough_volume):
+        if self._c_handle:
+            backend.set_audio_port_passthroughVolume(self._c_handle, passthrough_volume)
+    
+    def set_muted(self, muted):
+        if self._c_handle:
+            backend.set_audio_port_muted(self._c_handle, (1 if muted else 0))
+    
+    def set_passthrough_muted(self, muted):
+        if self._c_handle:
+            backend.set_audio_port_passthroughMuted(self._c_handle, (1 if muted else 0))
+    
     def connect_passthrough(self, other):
         backend.add_audio_port_passthrough(self._c_handle, other.c_handle())
 
@@ -281,8 +297,8 @@ class BackendAudioPort:
 
 class BackendMidiPort:
     def __init__(self, c_handle : 'POINTER(backend.shoopdaloop_midi_port_t)',
-                 direction : 'PortDirection'):
-        self._direction = direction
+                 direction : int):
+        self._direction = PortDirection(direction)
         self._c_handle = c_handle
     
     def direction(self) -> Type['PortDirection']:
@@ -305,8 +321,16 @@ class BackendMidiPort:
         backend.destroy_midi_port_state_info(state)
         return rval
     
+    def set_muted(self, muted):
+        if self._c_handle:
+            backend.set_midi_port_muted(self._c_handle, (1 if muted else 0))
+    
+    def set_passthrough_muted(self, muted):
+        if self._c_handle:
+            backend.set_midi_port_passthroughMuted(self._c_handle, (1 if muted else 0))
+    
     def connect_passthrough(self, other):
-        backend.add_audio_port_passthrough(self._c_handle, other.c_handle())
+        backend.add_midi_port_passthrough(self._c_handle, other.c_handle())
 
     def __del__(self):
         self.destroy()
@@ -332,14 +356,14 @@ class Backend:
         rval = BackendLoop(handle)
         return rval
 
-    def open_audio_port(self, name_hint : str, direction : 'PortDirection') -> 'BackendAudioPort':
-        _dir = (backend.Input if direction == PortDirection.Input else backend.Output)
+    def open_audio_port(self, name_hint : str, direction : int) -> 'BackendAudioPort':
+        _dir = (backend.Input if direction == PortDirection.Input.value else backend.Output)
         handle = backend.open_audio_port(self._c_handle, name_hint.encode('ascii'), _dir)
         port = BackendAudioPort(handle, direction)
         return port
 
-    def open_midi_port(self, name_hint : str, direction : 'PortDirection') -> 'BackendMidiPort':
-        _dir = (backend.Input if direction == PortDirection.Input else backend.Output)
+    def open_midi_port(self, name_hint : str, direction : int) -> 'BackendMidiPort':
+        _dir = (backend.Input if direction == PortDirection.Input.value else backend.Output)
         handle = backend.open_midi_port(self._c_handle, name_hint.encode('ascii'), _dir)
         port = BackendMidiPort(handle, direction)
         return port

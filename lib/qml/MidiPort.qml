@@ -1,6 +1,8 @@
 import MidiPort
 import QtQuick 2.15
 
+import '../../build/types.js' as Types
+
 MidiPort {
     id: port
     property var descriptor : null
@@ -30,5 +32,7 @@ MidiPort {
 
     property list<string> name_parts : descriptor.name_parts
     name_hint : name_parts.join('')
-    direction : descriptor.direction
+    direction : descriptor.direction == 'input' ? Types.PortDirection.Input :
+                descriptor.direction == 'output' ? Types.PortDirection.Output :
+                undefined
 }
