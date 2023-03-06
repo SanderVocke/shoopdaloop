@@ -21,6 +21,7 @@ ScrollView {
     property int n_loaded : 0
 
     property alias tracks : tracks_row.children
+    property var track_initial_descriptors : []
 
     readonly property var factory : Qt.createComponent("TrackWidget.qml")
 
@@ -33,6 +34,7 @@ ScrollView {
             var track = factory.createObject(root, properties);
             track.onLoadedChanged.connect(() => track_loaded_changed(track))
             track.onRowAdded.connect(() => handle_row_added(track))
+            root.track_initial_descriptors.push(properties.initial_descriptor)
             root.tracks.push(track)
             return track
         }
@@ -120,7 +122,7 @@ ScrollView {
                 TrackControlWidget {
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.horizontalCenter: parent.horizontalCenter
-                    initial_track_descriptor: root.initial_track_descriptors[index]
+                    initial_track_descriptor: root.track_initial_descriptors[index]
                     objects_registry: root.objects_registry
                     state_registry: root.state_registry
                 }
