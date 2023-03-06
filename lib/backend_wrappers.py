@@ -155,6 +155,10 @@ class BackendLoopAudioChannel:
         backend.destroy_audio_channel_state_info(state)
         return rval
     
+    def set_volume(self, volume):
+        if self.shoop_c_handle:
+            backend.set_audio_channel_volume(self.shoop_c_handle, volume)
+    
     def set_mode(self, mode : Type['ChannelMode']):
         backend.set_audio_channel_mode(self.shoop_c_handle, mode.value)
     

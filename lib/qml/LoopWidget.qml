@@ -126,6 +126,13 @@ Item {
     }
     function publish_targeted_selected() { publish_selected(); publish_targeted() }
 
+    function push_volume(volume) {
+        var chans = Array.from(Array(audio_channels.model).keys()).map((i) => audio_channels.itemAt(i))
+        for(var i=0; i<chans.length; i++) {
+            chans[i].set_backend_volume(volume)
+        }
+    }
+
     // signal selected() //directly selected by the user to be activated.
     // signal toggle_in_current_scene() //selected by the user to be added/removed to/from the current scene.
     // signal request_rename(string name)
@@ -742,7 +749,7 @@ Item {
 
                     onMoved: {
                         convert_volume.dB = volume_dial.value
-                        statusrect.loop.volume = convert_volume.linear
+                        push_volume(convert_volume.linear)
                     }
 
                     // Connections {

@@ -1304,12 +1304,18 @@ audio_channel_data_t *alloc_audio_channel_data(size_t n_samples) {
     return r;
 }
 
+void set_audio_channel_volume (shoopdaloop_loop_audio_channel_t *channel, float volume) {
+    auto r = new audio_channel_state_info_t;
+    auto &_channel = *dynamic_cast<LoopAudioChannel*>(internal_audio_channel(channel)->channel.get());
+    _channel.set_volume(volume);
+}
+
 #warning state getters incomplete
 audio_channel_state_info_t *get_audio_channel_state (shoopdaloop_loop_audio_channel_t *channel) {
     auto r = new audio_channel_state_info_t;
     auto &_channel = *dynamic_cast<LoopAudioChannel*>(internal_audio_channel(channel)->channel.get());
     r->output_peak = _channel.get_output_peak();
-    r->volume = 0.0;
+    r->volume = _channel.get_volume();
     r->mode = _channel.get_mode();
     _channel.reset_output_peak();
     return r;

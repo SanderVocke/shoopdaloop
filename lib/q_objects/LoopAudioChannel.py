@@ -24,7 +24,6 @@ class LoopAudioChannel(LoopChannel):
         self._volume = 0.0
     
     def maybe_initialize(self):
-        print ("INIT AUDIO")
         if self._loop and not self._backend_obj:
             self._backend_obj = self._loop.add_audio_channel(self.mode)
             self.initializedChanged.emit(True)
@@ -62,6 +61,11 @@ class LoopAudioChannel(LoopChannel):
             raise Exception("Attempting to load data into an invalid audio channel.")
         backend_channel = self._backend_obj
         backend_channel.load_data(data)
+    
+    @pyqtSlot(float)
+    def set_backend_volume(self, volume):
+        if self._backend_obj:
+            self._backend_obj.set_volume(volume)
     
     @pyqtSlot()
     def update(self):

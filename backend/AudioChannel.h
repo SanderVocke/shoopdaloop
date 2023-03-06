@@ -31,6 +31,7 @@ private:
     const size_t ma_buffer_size;
     std::atomic<size_t> ma_data_length;
     std::atomic<float> ma_output_peak;
+    std::atomic<float> ma_volume;
     std::atomic<channel_mode_t> ma_mode;
 
     // Members which may be accessed from the process thread only (mp prefix)
@@ -54,7 +55,8 @@ public:
         mp_playback_target_buffer_size(0),
         mp_recording_source_buffer_size(0),
         ma_output_peak(0),
-        ma_mode(mode)
+        ma_mode(mode),
+        ma_volume(1.0f)
     {
         mp_buffers.reserve(initial_max_buffers);
         mp_buffers.push_back(get_new_buffer()); // Initial recording buffer
@@ -76,6 +78,7 @@ public:
         mp_recording_source_buffer = other.mp_recording_source_buffer;
         mp_recording_source_buffer_size = other.mp_recording_source_buffer_size;
         ma_mode = other.ma_mode;
+        ma_volume = other.ma_volume;
         return *this;
     }
 
@@ -262,8 +265,9 @@ public:
 
             if (!muted) {
                 for(size_t idx=0; idx < n; idx++) {
-                    to[idx] += from[idx];
-                    ma_output_peak = std::max((float)ma_output_peak.load(), (float)std::abs(from[idx]));
+                    float sample = from[idx] * ma_volume;
+                    to[idx] += sample;
+                    ma_output_peak = std::max((float)ma_output_peak.load(), (float)std::abs(sample));
                 }
             }
 
@@ -331,6 +335,14 @@ public:
 
     channel_mode_t get_mode() const override {
         return ma_mode;
+    }
+
+    void set_volume(float volume) {
+        ma_volume = volume;
+    }
+
+    float get_volume() {
+        return ma_volume;
     }
 
 protected:
