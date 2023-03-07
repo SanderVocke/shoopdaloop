@@ -100,8 +100,12 @@ public:
 template<typename TimeType, typename SizeType>
 class MidiStorage : public std::enable_shared_from_this<MidiStorage<TimeType, SizeType>>{
 public:
-    // Note: variable-sized C-style structs are useful
-    // here, but dangerous in general. Careful!
+    // We need a variable-sized struct that also supports interface inheritance.
+    // This cannot really be done in C++, so instead we just make a fixed-size
+    // struct that is designed with the knowledge that its data bytes will always
+    // be stored directly following it in the buffer.
+    // Some convenience functions are added for total size calculation and
+    // access to the data "member".
     struct Elem : public MidiSortableMessageInterface {
         TimeType time;
         SizeType size;
