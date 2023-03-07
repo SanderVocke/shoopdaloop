@@ -105,10 +105,13 @@ public:
     struct Elem : public MidiSortableMessageInterface {
         TimeType time;
         SizeType size;
-        uint8_t  data[];
 
-        static size_t size_of(Elem const& e) {
-            return sizeof(time) + sizeof(size) + e.size;
+        static size_t total_size_of(size_t size) {
+            return sizeof(Elem) + size;
+        }
+
+        uint8_t* data() const {
+            return ((uint8_t*)this) + sizeof(Elem);
         }
 
         uint32_t get_time() const override { return time; }
@@ -117,7 +120,7 @@ public:
                  const uint8_t* &data_out) const override {
                     size_out = size;
                     time_out = time;
-                    data_out = data;
+                    data_out = data();
                  }
     };
 
@@ -145,7 +148,7 @@ private:
     std::optional<size_t> maybe_next_elem_offset(Elem *e) const {
         if (!e) { return std::nullopt; }
         size_t m_data_offset = (uint8_t*)e - (uint8_t*)m_data.data();
-        size_t next_m_data_offset = (m_data_offset + Elem::size_of(*e)) % m_data.size();
+        size_t next_m_data_offset = (m_data_offset + Elem::total_size_of(e->size)) % m_data.size();
         
         if (!valid_elem_at(next_m_data_offset)) { return std::nullopt; }
         return next_m_data_offset;
@@ -163,9 +166,11 @@ private:
 
     void store_unsafe(size_t offset, TimeType t, SizeType s, const uint8_t* d) {
         uint8_t* to = &(m_data.at(offset));
-        memcpy((void*)to, &t, sizeof(t));
-        memcpy((void*)(to + sizeof(t)), &s, sizeof(s));
-        memcpy((void*)(to + sizeof(t) + sizeof(s)), d, s);
+        Elem* to_elem = (Elem*) to;
+        to_elem->time = t;
+        to_elem->size = s;
+        void* data_ptr = to + sizeof(Elem);
+        memcpy(data_ptr, d, s);
     }
 
 public:
@@ -255,7 +260,7 @@ public:
     size_t n_events() const { return m_n_events; }
 
     bool append(TimeType time, SizeType size,  const uint8_t* data) {
-        size_t sz = sizeof(time) + sizeof(size) + size;
+        size_t sz = Elem::total_size_of(size);
         if (sz > bytes_free()) {
             std::cerr << "Ignoring store of MIDI message: buffer full." << std::endl;
             return false;
@@ -300,7 +305,7 @@ public:
             auto cursor = std::make_shared<Cursor>(self);
             for(cursor->reset(); cursor->valid(); cursor->next()) {           
                 auto *elem = cursor->get();
-                cb(elem->time, elem->size, elem->data);
+                cb(elem->time, elem->size, elem->data());
             }
             cursor = nullptr;
         } else {

@@ -166,7 +166,7 @@ public:
                 if (buf.buf->write_by_reference_supported()) {
                     buf.buf->PROC_write_event_reference(*event);
                 } else if (buf.buf->write_by_value_supported()) {
-                    buf.buf->PROC_write_event_value(event->size, event_time, event->data);
+                    buf.buf->PROC_write_event_value(event->size, event_time, event->data());
                 } else {
                     throw std::runtime_error("Midi write buffer does not support any write methods");
                 }
