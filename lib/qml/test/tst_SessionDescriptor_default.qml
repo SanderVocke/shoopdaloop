@@ -32,7 +32,7 @@ Backend {
             function test_session_descriptor_default() {
                 verify(backend.initialized, "backend not initialized")
                 compare(session.tracks.length, 2)
-                var master_loops = session.tracks[0].all_loops()
+                var master_loops = session.tracks[0].loops
                 compare(master_loops.length, 1)
                 console.log("HELLOWORLD", session.state_registry)
                 compare(master_loops[0].is_master, true)

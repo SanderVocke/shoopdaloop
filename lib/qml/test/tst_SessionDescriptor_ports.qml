@@ -24,27 +24,31 @@ Backend {
                     'id': 'an_audio_input',
                     'name_parts': ['audio_', 'input'],
                     'direction': 'input',
-                    'volume': 1.0
+                    'volume': 1.0,
+                    'passthrough_to': ['an_audio_output']
                 },
                 {
                     'schema': 'audioport.1',
                     'id': 'an_audio_output',
                     'name_parts': ['audio_', 'output'],
                     'direction': 'output',
-                    'volume': 1.0
+                    'volume': 1.0,
+                    'passthrough_to': []
                 },
                 {
                     'schema': 'midiport.1',
                     'id': 'a_midi_input',
                     'name_parts': ['midi_', 'input'],
-                    'direction': 'input'
+                    'direction': 'input',
+                    'passthrough_to': ['a_midi_output']
                 },
                 {
                     'schema': 'midiport.1',
                     'id': 'a_midi_output',
                     'name_parts': ['midi_', 'output'],
                     'direction': 'output',
-                    'volume': 1.0
+                    'volume': 1.0,
+                    'passthrough_to': []
                 },
             ]
         })
