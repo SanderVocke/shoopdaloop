@@ -52,6 +52,13 @@ QtObject {
         return data[id]
     }
 
+    function maybe_get(id, fallback) {
+        if(!(id in data)) {
+            return fallback
+        }
+        return data[id]
+    }
+
     function has(id) {
         return id in data;
     }

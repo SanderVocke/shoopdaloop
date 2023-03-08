@@ -89,6 +89,11 @@ Item {
     // Methods
     function transition(mode, delay, wait_for_sync, emit=true) {
         dynamic_loop.transition(mode, delay, wait_for_sync);
+        state_registry.maybe_get('selected_loops', []).forEach((loop) => {
+            if(loop != this) {
+                loop.maybe_loop.transition(mode, delay, wait_for_sync)
+            }
+        })
     }
     function clear(length, emit=true) {
         dynamic_loop.clear(length);
@@ -107,7 +112,7 @@ Item {
     function select() { targeted = false; selected = true; publish_targeted_selected() }
     function deselect() { selected = false; publish_selected() }
     function toggle_selected() { if (selected) { deselect() } else { select() } }
-    function target() { console.log("TARGET"); selected = false; targeted = true; publish_targeted_selected()  }
+    function target() { selected = false; targeted = true; publish_targeted_selected()  }
     function untarget() { targeted = false; publish_targeted() }
     function toggle_targeted() { if (targeted) { untarget() } else { target() } }
     function publish_targeted() {
