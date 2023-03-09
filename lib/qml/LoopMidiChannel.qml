@@ -28,7 +28,7 @@ LoopMidiChannel {
             'connected_port_ids': initialized ? connected_ports.map((c) => c.obj_id) : descriptor.connected_port_ids
         }
         
-        if (do_save_data_files) {
+        if (do_save_data_files && data_length > 0) {
             var filename = obj_id + '.mid'
             var full_filename = data_files_dir + '/' + filename;
             save_data(full_filename)

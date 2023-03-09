@@ -44,6 +44,12 @@ Item {
         };
     }
 
+    function save_session(directory) {
+        var descriptor = actual_session_descriptor(true, directory)
+        var filename = directory + '/session.json'
+        file_io.write_file(filename, JSON.stringify(descriptor, null, 2))
+    }
+
     Backend {
         update_interval_ms: 30
         client_name_hint: 'ShoopDaLoop'

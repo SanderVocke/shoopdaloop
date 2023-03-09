@@ -13,6 +13,7 @@ sys.path.append(script_dir + '/../build/backend/test/qt')
 from lib.backend_interface import terminate as terminate_backend
 from lib.qml_helpers import register_shoopdaloop_qml_classes
 from lib.q_objects.SchemaValidator import SchemaValidator
+from lib.q_objects.FileIO import FileIO
 import qml_tests
 from ctypes import *
 
@@ -24,7 +25,9 @@ class Setup(QObject):
     def qmlEngineAvailable(self, engine):
         register_shoopdaloop_qml_classes()
         self._validator = SchemaValidator()
+        self._file_io = FileIO()
         engine.rootContext().setContextProperty("schema_validator", self._validator)
+        engine.rootContext().setContextProperty("file_io", self._file_io)
 
 argv = (POINTER(c_char) * len(sys.argv))()
 for idx, arg in enumerate(sys.argv):
