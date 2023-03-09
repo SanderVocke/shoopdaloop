@@ -18,6 +18,8 @@ Item {
         'tracks': [],
         'ports': []
     })
+    property bool loading: false
+    property bool saving: false
 
     SchemaCheck {
         descriptor: session.initial_descriptor
@@ -44,10 +46,19 @@ Item {
         };
     }
 
-    function save_session(directory) {
-        var descriptor = actual_session_descriptor(true, directory)
-        var filename = directory + '/session.json'
-        file_io.write_file(filename, JSON.stringify(descriptor, null, 2))
+    function save_session(filename) {
+        saving = true
+        var tempdir = file_io.create_temporary_folder()
+        try {
+            var descriptor = actual_session_descriptor(true, tempdir)
+            var session_filename = tempdir + '/session.json'
+            file_io.write_file(session_filename, JSON.stringify(descriptor, null, 2))
+            file_io.make_tarfile(filename, tempdir, false)
+            console.log("Session written to: ", filename)
+        } finally {
+            file_io.delete_recursive(tempdir)
+            saving = false
+        }
     }
 
     Backend {
@@ -102,6 +113,26 @@ Item {
             initial_track_descriptors: session.initial_descriptor.tracks
             objects_registry: session.objects_registry
             state_registry: session.state_registry
+        }
+
+        AppControls {
+            id: app_controls
+
+            anchors {
+                top: scenes_widget.bottom
+                left: parent.left
+                bottom: parent.bottom
+                right: scripting_widget.left
+                margins: 4
+            }
+
+            loading_session: session.loading
+            saving_session: session.saving
+
+            onLoadSession: (filename) => {
+                console.log("UNIMPLEMENTED")
+            }
+            onSaveSession: (filename) => session.save_session(filename)
         }
     }
 }

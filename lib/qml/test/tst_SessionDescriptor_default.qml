@@ -37,6 +37,18 @@ Backend {
                 var reference = session.initial_descriptor
                 var actual = session.actual_session_descriptor(false, '')
                 verify(TestDeepEqual.testDeepEqual(reference, actual))
+
+                var dir = file_io.create_temporary_folder()
+
+                try {
+                    session.save_session(dir)
+                    console.log("Session saved to", dir)
+
+                    var readback = JSON.parse(file_io.read_file(dir + '/session.json'))
+                    verify(TestDeepEqual.testDeepEqual(reference, readback))
+                } finally {
+                    file_io.delete_recursive(dir)
+                }
             }
 
             function cleanupTestCase() { backend.close() }
