@@ -15,6 +15,7 @@ from lib.mode_helpers import is_playing_mode
 from lib.sound_file_io import load_audio_file
 from lib.q_objects.Backend import Backend
 from lib.findFirstParent import findFirstParent
+from lib.findChildItems import findChildItems
 
 # Wraps a back-end loop.
 class Loop(QQuickItem):
@@ -122,12 +123,12 @@ class Loop(QQuickItem):
     @pyqtSlot(result=list)
     def audio_channels(self):
         import lib.q_objects.LoopAudioChannel as LoopAudioChannel
-        return self.findChildren(LoopAudioChannel.LoopAudioChannel)
+        return findChildItems(self, lambda c: isinstance(c, LoopAudioChannel.LoopAudioChannel))
     
     @pyqtSlot(result=list)
     def midi_channels(self):
         import lib.q_objects.LoopMidiChannel as LoopMidiChannel
-        return self.findChildren(LoopMidiChannel.LoopMidiChannel)
+        return findChildItems(self, lambda c: isinstance(c, LoopMidiChannel.LoopMidiChannel))
 
     # Update mode from the back-end.
     @pyqtSlot()
@@ -176,13 +177,13 @@ class Loop(QQuickItem):
     def clear(self, length):
         self._backend_loop.clear(length)
     
-    @pyqtSlot(result=backend_wrappers.BackendLoopMidiChannel)
+    @pyqtSlot(int, result=backend_wrappers.BackendLoopMidiChannel)
     def add_audio_channel(self, mode):
-        return self._backend_loop.add_audio_channel(mode)
+        return self._backend_loop.add_audio_channel(backend_wrappers.ChannelMode(mode))
     
-    @pyqtSlot(result=backend_wrappers.BackendLoopMidiChannel)
+    @pyqtSlot(int, result=backend_wrappers.BackendLoopMidiChannel)
     def add_midi_channel(self, mode):
-        return self._backend_loop.add_midi_channel(mode)
+        return self._backend_loop.add_midi_channel(backend_wrappers.ChannelMode(mode))
     
     @pyqtSlot(list)
     def load_audio_data(self, sound_channels):

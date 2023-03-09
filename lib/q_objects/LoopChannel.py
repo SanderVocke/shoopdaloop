@@ -24,6 +24,7 @@ class LoopChannel(QQuickItem):
         self._mode = backend.ChannelMode.Disabled
         self._connected_ports = []
         self._ports = []
+        self._data_length = 0
 
         self.rescan_parents()
         if not self._loop:
@@ -59,7 +60,7 @@ class LoopChannel(QQuickItem):
     modeChanged = pyqtSignal(int)
     @pyqtProperty(int, notify=modeChanged)
     def mode(self):
-        return self._mode
+        return self._mode.value
     # indirect setter via back-end
     @pyqtSlot(int)
     def set_mode(self, mode):
@@ -69,6 +70,12 @@ class LoopChannel(QQuickItem):
                 self._backend_obj.set_mode(_mode)
             else:
                 self.initializedChanged.connect(lambda: self.set_mode(_mode))
+    
+    # data length
+    dataLengthChanged = pyqtSignal(int)
+    @pyqtProperty(int, notify=dataLengthChanged)
+    def data_length(self):
+        return self._data_length
 
     # connected ports
     connectedPortsChanged = pyqtSignal(list)
@@ -106,7 +113,6 @@ class LoopChannel(QQuickItem):
         elif not port.initialized:
             port.initializedChanged.connect(lambda: self.connect(port))
         elif port not in self._connected_ports:
-            print ("CONNECTING!")
             backend_channel = self._backend_obj
             backend_port = port.get_backend_obj()
             backend_channel.connect(backend_port)
@@ -125,10 +131,25 @@ class LoopChannel(QQuickItem):
             backend_channel.disconnect(backend_port)
             self._connected_ports.remove(port)
             self.connectedPortsChanged.emit(self._connected_ports)
+
+    @pyqtSlot()
+    def update_impl(self, state):
+        raise Exception("Not implemented in base class")
     
     @pyqtSlot()
     def update(self):
-        raise Exception("Unimplemented for base class")
+        if not self._backend_obj:
+            return
+        state = self._backend_obj.get_state()
+
+        if state.length != self._data_length:
+            self._data_length = state.length
+            self.dataLengthChanged.emit(self._data_length)
+        if state.mode != self._mode:
+            self._mode = state.mode
+            self.modeChanged.emit(self._mode.value)
+        
+        self.update_impl(state)
     
     @pyqtSlot()
     def close(self):

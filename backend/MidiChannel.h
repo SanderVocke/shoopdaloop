@@ -47,6 +47,7 @@ private:
 
     // Any thread access
     std::atomic<channel_mode_t> ma_mode;
+    std::atomic<size_t> ma_data_length; // Length in samples
 
 public:
     MidiChannel(size_t data_size, channel_mode_t mode) :
@@ -55,7 +56,8 @@ public:
         mp_recording_source_buffer(nullptr),
         mp_storage(std::make_shared<Storage>(data_size)),
         mp_playback_cursor(nullptr),
-        ma_mode(mode)
+        ma_mode(mode),
+        ma_data_length(0)
     {
         mp_playback_cursor = mp_storage->create_cursor();
     }
@@ -68,6 +70,12 @@ public:
         mp_playback_cursor = other.mp_playback_cursor;
         ma_mode = other.ma_mode;
         return *this;
+    }
+
+    size_t get_length() const override { return ma_data_length; }
+    void PROC_set_length(size_t length) override {
+        mp_storage->truncate(length);
+        ma_data_length = length;
     }
 
 #warning Replace use-case not covered for MIDI.
@@ -109,7 +117,7 @@ public:
         }
 
         // Truncate buffer if necessary
-        mp_storage->truncate(our_length);
+        PROC_set_length(our_length);
         
         // Record any incoming events
         size_t record_end = recbuf.n_frames_processed + n_samples;
@@ -131,12 +139,14 @@ public:
         }
         
         recbuf.n_frames_processed += n_samples;
+        ma_data_length += n_samples;
     }
 
     void clear(bool thread_safe=true) {
         auto fn = [this]() {
             mp_storage->clear();
             mp_playback_cursor.reset();
+            PROC_set_length(0);
         };
         if (thread_safe) { exec_process_thread_command(fn); }
         else { fn(); }
@@ -219,15 +229,16 @@ public:
         return r;
     }
 
-    void set_contents(std::vector<Message> contents, bool thread_safe = true) {
+    void set_contents(std::vector<Message> contents, size_t length_samples, bool thread_safe = true) {
         auto s = std::make_shared<Storage>(mp_storage->bytes_capacity());
         for(auto const& elem : contents) {
             s->append(elem.time, elem.size, elem.data.data());
         }
 
-        auto fn = [this, &s]() {
+        auto fn = [this, &s, length_samples]() {
             mp_storage = s;
             mp_playback_cursor = mp_storage->create_cursor();
+            PROC_set_length(length_samples);
         };
 
         if (thread_safe) { exec_process_thread_command(fn); }

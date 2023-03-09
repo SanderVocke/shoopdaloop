@@ -36,6 +36,14 @@ Item {
     property alias tracks: tracks_widget.tracks
     property bool loaded : tracks_widget.loaded
 
+    function actual_session_descriptor(do_save_data_files, data_files_dir) {
+        return {
+            'schema': 'session.1',
+            'ports': [],
+            'tracks': tracks_widget.actual_session_descriptor(do_save_data_files, data_files_dir)
+        };
+    }
+
     Backend {
         update_interval_ms: 30
         client_name_hint: 'ShoopDaLoop'

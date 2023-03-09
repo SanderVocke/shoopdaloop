@@ -16,7 +16,7 @@ from lib.findChildItems import findChildItems
 class Backend(QQuickItem):
     def __init__(self, parent=None):
         super(Backend, self).__init__(parent)
-        self._update_interval_ms = 0
+        self._update_interval_ms = 50
         self._timer = None
         self._initialized = False
         self._client_name_hint = None
@@ -38,13 +38,7 @@ class Backend(QQuickItem):
     def update_interval_ms(self, u):
         if u != self._update_interval_ms:
             self._update_interval_ms = u
-            if self._timer:
-                self._timer.destroy()
-                self._timer = None
-            self._timer = QTimer(self)
-            self._timer.setSingleShot(False)
-            self._timer.timeout.connect(self.doUpdate)
-            self._timer.start(self._update_interval_ms)
+            self.init_timer()
     
     initializedChanged = pyqtSignal(bool)
     @pyqtProperty(bool, notify=initializedChanged)
@@ -60,8 +54,7 @@ class Backend(QQuickItem):
         if self._initialized:
             raise Exception("Back-end client name hint may only be set once.")
         self._client_name_hint = n
-        if self._client_name_hint != None and self._backend_type != None:
-            self.init()
+        self.maybe_init()
 
     backendTypeChanged = pyqtSignal(int)
     @pyqtProperty(int, notify=backendTypeChanged)
@@ -72,8 +65,7 @@ class Backend(QQuickItem):
         if self._initialized:
             raise Exception("Back-end type can only be set once.")
         self._backend_type = backend.BackendType(n)
-        if self._backend_type != None and self._client_name_hint != None:
-            self.init()
+        self.maybe_init()
     
     ###########
     ## SLOTS
@@ -104,6 +96,11 @@ class Backend(QQuickItem):
     def get_backend_obj(self):
         return self._backend_obj
     
+    @pyqtSlot()
+    def maybe_init(self):
+        if not self._initialized and self._client_name_hint != None and self._backend_type != None:
+            self.init()
+    
     ################
     ## INTERNAL METHODS
     ################
@@ -113,4 +110,14 @@ class Backend(QQuickItem):
             raise Exception("May not initialize more than one back-end at a time.")
         self._backend_obj = backend.init_backend(self._backend_type, self._client_name_hint)
         self._initialized = True
-        
+        self.init_timer()
+    
+    def init_timer(self):
+        if self._timer:
+            self._timer.active = False
+            self._timer = None
+        self._timer = QTimer(self)
+        self._timer.setSingleShot(False)
+        self._timer.timeout.connect(self.doUpdate)
+        self._timer.start(self._update_interval_ms)
+    

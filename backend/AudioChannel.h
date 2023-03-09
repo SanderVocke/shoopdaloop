@@ -235,7 +235,8 @@ public:
         }
     }
 
-    size_t data_length() const { return ma_data_length; }
+    size_t get_length() const override { return ma_data_length; }
+    void PROC_set_length(size_t length) override { ma_data_length = length; }
 
     SampleT const& PROC_at(size_t position) const {
         return mp_buffers[position / ma_buffer_size]->at(position % mp_buffers.front()->size());

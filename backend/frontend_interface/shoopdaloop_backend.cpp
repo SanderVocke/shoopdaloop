@@ -1073,7 +1073,7 @@ void load_audio_channel_data  (shoopdaloop_loop_audio_channel_t *channel, audio_
 
 void load_midi_channel_data (shoopdaloop_loop_midi_channel_t  *channel, midi_channel_data_t  *data) {
     auto &chan = *internal_midi_channel(channel);
-    chan.midi().set_contents(internal_midi_data(*data));
+    chan.midi().set_contents(internal_midi_data(*data), data->length_samples);
 }
 
 void loop_transition(shoopdaloop_loop_t *loop,
@@ -1317,6 +1317,7 @@ audio_channel_state_info_t *get_audio_channel_state (shoopdaloop_loop_audio_chan
     r->output_peak = _channel.get_output_peak();
     r->volume = _channel.get_volume();
     r->mode = _channel.get_mode();
+    r->length = _channel.get_length();
     _channel.reset_output_peak();
     return r;
 }
@@ -1326,6 +1327,7 @@ midi_channel_state_info_t *get_midi_channel_state   (shoopdaloop_loop_midi_chann
     auto &_channel = *dynamic_cast<LoopMidiChannel*>(internal_midi_channel(channel)->channel.get());
     r->n_events_triggered = 0;
     r->mode = _channel.get_mode();
+    r->length = _channel.get_length();
     return r;
 }
 

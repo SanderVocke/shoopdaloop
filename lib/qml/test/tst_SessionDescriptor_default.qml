@@ -2,6 +2,7 @@ import QtQuick 2.3
 import QtTest 1.0
 import Backend
 
+import './testDeepEqual.js' as TestDeepEqual
 import '../../../build/types.js' as Types
 import '../../generate_session.js' as GenerateSession
 import '..'
@@ -21,7 +22,7 @@ Backend {
             Timer {
                 id: timer
                 running: session.loaded
-                interval: 10
+                interval: 100
                 repeat: false
                 property bool done : false
                 onTriggered: done = true
@@ -31,11 +32,11 @@ Backend {
 
             function test_session_descriptor_default() {
                 verify(backend.initialized, "backend not initialized")
-                compare(session.tracks.length, 2)
-                var master_loops = session.tracks[0].loops
-                compare(master_loops.length, 1)
-                console.log("HELLOWORLD", session.state_registry)
-                compare(master_loops[0].is_master, true)
+                backend.doUpdate()
+
+                var reference = session.initial_descriptor
+                var actual = session.actual_session_descriptor(false, '')
+                verify(TestDeepEqual.testDeepEqual(reference, actual))
             }
 
             function cleanupTestCase() { backend.close() }

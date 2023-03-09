@@ -62,17 +62,22 @@ class LoopAudioChannel(LoopChannel):
         backend_channel = self._backend_obj
         backend_channel.load_data(data)
     
+    @pyqtSlot(str)
+    def save_data(self, filename):
+        # TODO implement
+        with open(filename, 'w') as file:
+            file.write('Hello world!')
+    
     @pyqtSlot(float)
     def set_backend_volume(self, volume):
         if self._backend_obj:
             self._backend_obj.set_volume(volume)
     
     @pyqtSlot()
-    def update(self):
-        if not self._backend_obj:
-            return
-        state = self._backend_obj.get_state()
-
+    def update_impl(self, state):
         if state.output_peak != self._output_peak:
             self._output_peak = state.output_peak
             self.outputPeakChanged.emit(self._output_peak)
+        if state.volume != self._volume:
+            self._volume = state.volume
+            self.volumeChanged.emit(self._volume)

@@ -39,6 +39,10 @@ public:
     virtual void set_mode(channel_mode_t mode) = 0;
     virtual channel_mode_t get_mode() const = 0;
 
+    // Set/get the channel length
+    virtual void PROC_set_length(size_t length) = 0;
+    virtual size_t get_length() const = 0;
+
     ChannelInterface() = default;
     virtual ~ChannelInterface() {}
 };

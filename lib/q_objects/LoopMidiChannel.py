@@ -23,7 +23,6 @@ class LoopMidiChannel(LoopChannel):
         self._n_events_triggered = 0
     
     def maybe_initialize(self):
-        print ("INIT MIDI")
         if self._loop and not self._backend_obj:
             self._backend_obj = self._loop.add_midi_channel(self.mode)
             self.initializedChanged.emit(True)
@@ -41,13 +40,15 @@ class LoopMidiChannel(LoopChannel):
     #######################
     ## SLOTS
     #######################
-    
-    @pyqtSlot()
-    def update(self):
-        if not self._backend_obj:
-            return
-        state = self._backend_obj.get_state()
 
+    @pyqtSlot(str)
+    def save_data(self, filename):
+        # TODO implement
+        with open(filename, 'w') as file:
+            file.write('Hello world!')
+
+    @pyqtSlot()
+    def update_impl(self, state):
         if state.n_events_triggered != self._n_events_triggered:
             self._n_events_triggered = state.n_events_triggered
             self.nEventsTriggeredChanged.emit(self._n_events_triggered)

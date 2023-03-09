@@ -42,20 +42,24 @@ class LoopAudioChannelState:
     mode : Type[ChannelMode]
     output_peak : float
     volume : float
+    length : int
 
     def __init__(self, backend_state : 'backend.loop_audio_channel_state_t'):
         self.output_peak = backend_state.output_peak
         self.volume = backend_state.volume
-        self.mode = backend_state.mode
+        self.mode = ChannelMode(backend_state.mode)
+        self.length = backend_state.length
 
 @dataclass
 class LoopMidiChannelState:
     mode: Type[ChannelMode]
     n_events_triggered : int
+    length: int
 
     def __init__(self, backend_state : 'backend.loop_midi_channel_state_t'):
         self.n_events_triggered = backend_state.n_events_triggered
-        self.mode = backend_state.mode
+        self.mode = ChannelMode(backend_state.mode)
+        self.length = backend_state.length
 
 @dataclass
 class LoopState:

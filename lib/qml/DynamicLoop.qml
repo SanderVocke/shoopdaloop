@@ -101,7 +101,6 @@ Item {
                 return root.sync_source
             })
             // Reparent channels to the actual loop
-            console.log("REPARENT")
             children_holder.parent = loader.item
         }
     }

@@ -10,7 +10,20 @@ AudioPort {
     property Registry state_registry : null
     property bool loaded : initialized
 
+    readonly property string obj_id : descriptor.id
+
     passthrough_to : lookup_passthrough_to.objects
+
+    function actual_session_descriptor(do_save_data_files, data_files_dir) {
+        return {
+            'schema': 'audioport.1',
+            'id': descriptor.id,
+            'name_parts': descriptor.name_parts,
+            'direction': descriptor.direction,
+            'volume': volume,
+            'passthrough_to': descriptor.passthrough_to // TODO test properly
+        }
+    }
 
     RegistryLookups {
         id: lookup_passthrough_to

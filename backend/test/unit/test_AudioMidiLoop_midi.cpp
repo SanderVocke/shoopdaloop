@@ -210,7 +210,7 @@ suite AudioMidiLoop_midi_tests = []() {
             Message(30, 1, { 0x02 }),
             Message(50, 1, { 0x03 }),
         };
-        channel.set_contents(contents);
+        channel.set_contents(contents, 100, false);
         loop.set_mode(Recording, false);
         loop.set_length(25, false);
 
@@ -255,7 +255,7 @@ suite AudioMidiLoop_midi_tests = []() {
             Message(10, 1, { 0x02 }),
             Message(21, 1, { 0x03 }),
         };
-        channel.set_contents(contents, false);
+        channel.set_contents(contents, 100, false);
         loop.set_length(100);
 
         expect(eq(loop.get_mode() , Stopped));

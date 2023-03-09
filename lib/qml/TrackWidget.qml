@@ -13,6 +13,8 @@ Item {
     property Registry objects_registry : null
     property Registry state_registry : null
 
+    readonly property string obj_id : initial_descriptor.id
+
     property bool loaded : false
     property int n_loops_loaded : 0
     //audio_ports_repeater.loaded && midi_ports_repeater.loaded && loops.loaded
@@ -22,6 +24,17 @@ Item {
     SchemaCheck {
         descriptor: track.initial_descriptor
         schema: 'track.1'
+    }
+
+    function actual_session_descriptor(do_save_data_files, data_files_dir) {
+        var all_loops = Array.from(Array(loops.length).keys()).map((i) => loops[i])
+        return {
+            'schema': 'track.1',
+            'id': obj_id,
+            'name': name,
+            'ports': all_ports().map((p) => p.actual_session_descriptor(do_save_data_files, data_files_dir)),
+            'loops': all_loops.map((l) => l.actual_session_descriptor(do_save_data_files, data_files_dir))
+        }
     }
 
     function qml_close() {
@@ -64,7 +77,7 @@ Item {
     }
 
     Component.onCompleted: {
-        if(objects_registry) { objects_registry.register(initial_descriptor.id, this) }
+        if(objects_registry) { objects_registry.register(obj_id, this) }
         loaded = false
         var _n_loops_loaded = 0
         // Instantiate initial loops
@@ -180,7 +193,7 @@ Item {
     }
 
     function midi_ports() {
-        return audio_ports_repeater.all_items();
+        return midi_ports_repeater.all_items();
     }
 
     function all_ports() {

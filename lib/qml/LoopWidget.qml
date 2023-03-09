@@ -14,9 +14,21 @@ Item {
     property Registry objects_registry : null
     property Registry state_registry : null
 
+    readonly property string obj_id: initial_descriptor.id
+
     SchemaCheck {
         descriptor: widget.initial_descriptor
         schema: 'loop.1'
+    }
+
+    function actual_session_descriptor(do_save_data_files, data_files_dir) {
+        return {
+            'schema': 'loop.1',
+            'id': obj_id,
+            'length': maybe_loop.length,
+            'is_master': is_master,
+            'channels': all_channels().map((c) => c.actual_session_descriptor(do_save_data_files, data_files_dir))
+        }
     }
 
     property bool is_in_selected_scene: false
@@ -60,7 +72,7 @@ Item {
     // }
 
     Component.onCompleted: {
-        objects_registry.register(initial_descriptor.id, this)
+        objects_registry.register(obj_id, this)
         if(initial_descriptor.is_master) { state_registry.register('master_loop', this); }
         loaded = Qt.binding(function() { return maybe_loop.loaded} )
     }
@@ -177,6 +189,17 @@ Item {
                 state_registry: widget.state_registry
             }
         }
+    }
+    function get_audio_channels() {
+        return Array.from(Array(audio_channels.model).keys()).map((i) => audio_channels.itemAt(i))
+    }
+    function get_midi_channels() {
+        return Array.from(Array(midi_channels.model).keys()).map((i) => midi_channels.itemAt(i))
+    }
+    function all_channels() {
+        var audio = get_audio_channels()
+        var midi = get_midi_channels()
+        return audio.concat(midi)
     }
 
     // UI

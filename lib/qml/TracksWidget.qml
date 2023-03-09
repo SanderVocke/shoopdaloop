@@ -25,6 +25,14 @@ ScrollView {
 
     readonly property var factory : Qt.createComponent("TrackWidget.qml")
 
+    function actual_session_descriptor(do_save_data_files, data_files_dir) {
+        var r = []
+        for(var i=0; i<root.tracks.length; i++) {
+            r.push(tracks[i].actual_session_descriptor(do_save_data_files, data_files_dir))
+        }
+        return r;
+    }
+
     function add_track(properties) {
         if (factory.status == Component.Error) {
             throw new Error("TracksWidget: Failed to load track factory: " + factory.errorString())
@@ -36,6 +44,7 @@ ScrollView {
             track.onRowAdded.connect(() => handle_row_added(track))
             root.track_initial_descriptors.push(properties.initial_descriptor)
             root.tracks.push(track)
+
             return track
         }
     }

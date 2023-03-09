@@ -99,11 +99,13 @@ typedef struct {
     channel_mode_t mode;
     float volume;
     float output_peak;
+    unsigned length;
 } audio_channel_state_info_t;
 
 typedef struct {
     channel_mode_t mode;
     unsigned int n_events_triggered;
+    unsigned length;
 } midi_channel_state_info_t;
 
 typedef struct {
@@ -120,6 +122,7 @@ typedef struct {
 typedef struct {
     unsigned int n_events;
     midi_event_t **events;
+    unsigned length_samples;
 } midi_channel_data_t;
 
 #ifdef __cplusplus
