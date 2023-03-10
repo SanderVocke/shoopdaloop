@@ -126,12 +126,6 @@ class BackendLoopAudioChannel:
         self.loop_shoop_c_handle = loop.c_handle()
         self.shoop_c_handle = c_handle
     
-    def get_data(self) -> list[float]:
-        r = backend.get_audio_channel_data(self.shoop_c_handle)
-        data = [float(r[0].data[i]) for i in range(r[0].n_samples)]
-        backend.free_audio_channel_data(r)
-        return data
-    
     def connect(self, port : 'BackendAudioPort'):
         if port.direction() == PortDirection.Input:
             backend.connect_audio_input(self.shoop_c_handle, port.c_handle())
@@ -152,6 +146,12 @@ class BackendLoopAudioChannel:
             backend_data[0].data[i] = data[i]
         backend.load_audio_channel_data(self.shoop_c_handle, backend_data)
         backend.destroy_audio_channel_data(backend_data)
+    
+    def get_data(self) -> list[float]:
+        r = backend.get_audio_channel_data(self.shoop_c_handle)
+        data = [float(r[0].data[i]) for i in range(r[0].n_samples)]
+        backend.destroy_audio_channel_data(r)
+        return data
     
     def get_state(self):
         state = backend.get_audio_channel_state(self.shoop_c_handle)

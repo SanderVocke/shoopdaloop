@@ -1,6 +1,7 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
+import QtQuick.Dialogs
 
 import "../generate_session.js" as GenerateSession
 import "../../build/types.js" as Types
@@ -18,12 +19,50 @@ Item {
         'tracks': [],
         'ports': []
     })
-    property bool loading: false
-    property bool saving: false
 
     SchemaCheck {
         descriptor: session.initial_descriptor
         schema: 'session.1'
+    }
+
+    RegistryLookup {
+        id: saving_lookup
+        registry: state_registry
+        key: 'n_saving_actions_active'
+    }
+    RegistryLookup {
+        id: loading_lookup
+        registry: state_registry
+        key: 'n_loading_actions_active'
+    }
+    readonly property bool saving : saving_lookup.object != null && saving_lookup.object > 0
+    readonly property bool loading : loading_lookup.object != null && loading_lookup.object > 0
+    readonly property bool doing_io : saving || loading
+    Connections {
+        target: file_io
+        function onStartSavingWav() { state_registry.mutate('n_saving_actions_active', (n) => n+1) }
+        function onDoneSavingWav() { state_registry.mutate('n_saving_actions_active', (n) => n-1) }
+    }
+
+    Popup {
+        visible: saving
+        modal: true
+        anchors.centerIn: parent
+        parent: Overlay.overlay
+        Text {
+            color: Material.foreground
+            text: "Saving..."
+        }
+    }
+    Popup {
+        visible: loading
+        modal: true
+        anchors.centerIn: parent
+        parent: Overlay.overlay
+        Text {
+            color: Material.foreground
+            text: "Loading..."
+        }
     }
 
     // Objects registry just stores object ids -> objects.
@@ -32,7 +71,7 @@ Item {
     // State registry stores the following optional states:
     // - "master_loop" -> LoopWidget which holds the master loop
     // - "targeted_loop" -> LoopWidget which is currently targeted
-    property Registry state_registry: Registry { verbose: false }
+    property Registry state_registry: StateRegistry { verbose: true }
 
     // For (test) access
     property alias tracks: tracks_widget.tracks
@@ -47,7 +86,7 @@ Item {
     }
 
     function save_session(filename) {
-        saving = true
+        state_registry.mutate('n_saving_actions_active', (n) => n + 1)
         var tempdir = file_io.create_temporary_folder()
         try {
             var descriptor = actual_session_descriptor(true, tempdir)
@@ -57,7 +96,7 @@ Item {
             console.log("Session written to: ", filename)
         } finally {
             file_io.delete_recursive(tempdir)
-            saving = false
+            state_registry.mutate('n_saving_actions_active', (n) => n - 1)
         }
     }
 

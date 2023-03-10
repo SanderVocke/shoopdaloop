@@ -992,31 +992,28 @@ Item {
             //    onClicked: () => clicktrackdialog.open()
             //}
             MenuItem {
-                text: "Save dry to file..."
-                onClicked: () => { 
-                    console.log("unimplemented")
-                    //savedialog.save_wet = false; savedialog.open()
-                }
+                text: "Save audio..."
+                onClicked: presavedialog.open()
             }
-            MenuItem {
-                text: "Save wet to file..."
-                onClicked: () => {
-                    console.log('unimplemented')
-                    //savedialog.save_wet = true; savedialog.open()
-                }
-            }
-            MenuItem {
-                text: "Load audio file..."
-                onClicked: () => loaddialog.open()
-            }
-            MenuItem {
-                text: "Save MIDI to file..."
-                onClicked: () => midisavedialog.open()
-            }
-            MenuItem {
-                text: "Load MIDI file..."
-                onClicked: () => midiloaddialog.open()
-            }
+            // MenuItem {
+            //     text: "Save wet to file..."
+            //     onClicked: () => {
+            //         console.log('unimplemented')
+            //         //savedialog.save_wet = true; savedialog.open()
+            //     }
+            // }
+            // MenuItem {
+            //     text: "Load audio file..."
+            //     onClicked: () => loaddialog.open()
+            // }
+            // MenuItem {
+            //     text: "Save MIDI to file..."
+            //     onClicked: () => midisavedialog.open()
+            // }
+            // MenuItem {
+            //     text: "Load MIDI file..."
+            //     onClicked: () => midiloaddialog.open()
+            // }
             MenuItem {
                 text: "Clear"
                 onClicked: () => {
@@ -1031,17 +1028,89 @@ Item {
             }
         }
 
+        Dialog {
+            id: presavedialog
+            standardButtons: Dialog.Save | Dialog.Cancel
+            parent: Overlay.overlay
+            x: (parent.width - width) / 2
+            y: (parent.height - height) / 2
+            modal: true
+            property int n_channels: 0
+            property var channels: []
+
+            width: 300
+            height: 200
+
+            function update() {
+                var chans = widget.get_audio_channels()
+                channels = chans.filter(select_channels.currentValue)
+                n_channels = channels.length
+                footer.standardButton(Dialog.Save).enabled = n_channels > 0;
+                savedialog.channels = channels
+            }
+
+            onAccepted: { close(); savedialog.open() }
+
+            Column {
+                Row {
+                    Label {
+                        text: "Include channels:"
+                        anchors.verticalCenter: select_channels.verticalCenter
+                    }
+                    ComboBox {
+                        id: select_channels
+                        textRole: "text"
+                        valueRole: "value"
+                        model: [
+                            { value: (chan) => true, text: "All" },
+                            { value: (chan) => chan.mode == Types.ChannelMode.Direct, text: "Regular" },
+                            { value: (chan) => chan.mode == Types.ChannelMode.Dry, text: "Dry" },
+                            { value: (chan) => chan.mode == Types.ChannelMode.Wet, text: "Wet" }
+                        ]
+                        Component.onCompleted: presavedialog.update()
+                        onActivated: presavedialog.update()
+                    }
+                }
+                Label {
+                    text: {
+                        switch(presavedialog.n_channels) {
+                            case 0:
+                                return 'No channels match the selected filter.'
+                            case 1:
+                                return 'Format: mono audio'
+                            case 2:
+                                return 'Format: stereo audio'
+                            default:
+                                return 'Format: ' + presavedialog.n_channels.toString() + '-channel audio'
+                        }
+                    }
+                }
+            }
+        }
+
         FileDialog {
             id: savedialog
             fileMode: FileDialog.SaveFile
+            options: FileDialog.DontUseNativeDialog
+            flags: Qt.Widget
+            modality: Qt.WindowModal
             acceptLabel: 'Save'
-            nameFilters: ["WAV files (*.wav)"]
-            defaultSuffix: 'wav'
-            property bool save_wet: true
+            nameFilters: Object.entries(file_io.get_soundfile_formats()).map((e) => {
+                var extension = e[0]
+                var description = e[1].replace('(', '- ').replace(')', '')
+                return description + ' (*.' + extension + ')';
+            })
+            //defaultSuffix: 'wav'
+            property var channels: []
             onAccepted: {
-                var filename = selectedFile.toString().replace('file://', '');
-                if (savedialog.save_wet) { widget.maybe_loop.doSaveWetToSoundFile(filename) }
-                else { widget.maybe_loop.doSaveDryToSoundFile(filename) }
+                if (!widget.maybe_loaded_loop) { 
+                    console.log("Cannot save: loop not loaded")
+                    return;
+                }
+                close()
+                var filename = selectedFile.toString().replace('file://', '') + '.' + selectedNameFilter.extensions[0].toLowerCase()
+                var samplerate = widget.maybe_loaded_loop.backend.get_sample_rate()
+                file_io.save_channels_to_soundfile(filename, samplerate, channels)
             }
         }
 
@@ -1052,8 +1121,13 @@ Item {
             nameFilters: ["MIDI files (*.mid)"]
             defaultSuffix: 'mid'
             onAccepted: {
-                var filename = selectedFile.toString().replace('file://', '');
-                widget.maybe_loop.doSaveMidiFile(filename)
+                widget.state_registry.mutate('n_saving_actions_active', (n) => n + 1)
+                try {
+                    var filename = selectedFile.toString().replace('file://', '');
+                    widget.maybe_loop.doSaveMidiFile(filename)
+                } finally {
+                    widget.state_registry.mutate('n_saving_actions_active', (n) => n - 1)
+                }
             }
         }
 

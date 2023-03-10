@@ -7,6 +7,7 @@ import time
 import os
 import tempfile
 import json
+import time
 from typing import *
 
 import sys
@@ -61,6 +62,12 @@ class LoopAudioChannel(LoopChannel):
             raise Exception("Attempting to load data into an invalid audio channel.")
         backend_channel = self._backend_obj
         backend_channel.load_data(data)
+    
+    @pyqtSlot(result=list)
+    def get_data(self):
+        if not self._backend_obj:
+            raise Exception("Attempting to get data of an invalid audio channel.")
+        return self._backend_obj.get_data()
     
     @pyqtSlot(str)
     def save_data(self, filename):

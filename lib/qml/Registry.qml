@@ -74,7 +74,7 @@ QtObject {
     }
 
     function mutate(id, fn, val) {
-        fn(data[id])
+        data[id] = fn(data[id])
         if(verbose) {
             console.log("REGISTRY: Mutating:", id, " => ", data[id])
         }
