@@ -29,9 +29,9 @@ LoopAudioChannel {
         }
 
         if (do_save_data_files && data_length > 0) {
-            var filename = obj_id + '.wav'
+            var filename = obj_id + '.flac'
             var full_filename = data_files_dir + '/' + filename;
-            save_data(full_filename)
+            file_io.save_channels_to_soundfile(full_filename, loop.backend.get_sample_rate(), [this])
             rval['data_file'] = filename
         }
         return rval

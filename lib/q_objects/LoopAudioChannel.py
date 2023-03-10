@@ -69,12 +69,6 @@ class LoopAudioChannel(LoopChannel):
             raise Exception("Attempting to get data of an invalid audio channel.")
         return self._backend_obj.get_data()
     
-    @pyqtSlot(str)
-    def save_data(self, filename):
-        # TODO implement
-        with open(filename, 'w') as file:
-            file.write('Hello world!')
-    
     @pyqtSlot(float)
     def set_backend_volume(self, volume):
         if self._backend_obj:

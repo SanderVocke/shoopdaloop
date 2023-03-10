@@ -19,7 +19,7 @@ import lib.q_objects.Loop as Loop
 class LoopChannel(QQuickItem):
     def __init__(self, parent=None):
         super(LoopChannel, self).__init__(parent)
-        self._backend_obj = None        
+        self._backend_obj = None
         self._loop = None
         self._mode = backend.ChannelMode.Disabled
         self._connected_ports = []
