@@ -18,7 +18,7 @@ LoopAudioChannel {
         schema: 'channel.1'
     }
 
-    function actual_session_descriptor(do_save_data_files, data_files_dir) {
+    function actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) {
         var rval = {
             'schema': 'channel.1',
             'id': obj_id,
@@ -31,7 +31,8 @@ LoopAudioChannel {
         if (do_save_data_files && data_length > 0) {
             var filename = obj_id + '.flac'
             var full_filename = data_files_dir + '/' + filename;
-            file_io.save_channels_to_soundfile(full_filename, loop.backend.get_sample_rate(), [this])
+            var task = file_io.save_channels_to_soundfile_async(full_filename, loop.backend.get_sample_rate(), [this])
+            add_tasks_to.add_task(task)
             rval['data_file'] = filename
         }
         return rval

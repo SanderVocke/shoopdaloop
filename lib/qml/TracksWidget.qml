@@ -25,10 +25,10 @@ ScrollView {
 
     readonly property var factory : Qt.createComponent("TrackWidget.qml")
 
-    function actual_session_descriptor(do_save_data_files, data_files_dir) {
+    function actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) {
         var r = []
         for(var i=0; i<root.tracks.length; i++) {
-            r.push(tracks[i].actual_session_descriptor(do_save_data_files, data_files_dir))
+            r.push(tracks[i].actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to))
         }
         return r;
     }

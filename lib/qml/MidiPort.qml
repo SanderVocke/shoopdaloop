@@ -14,7 +14,7 @@ MidiPort {
 
     passthrough_to : lookup_passthrough_to.objects
 
-    function actual_session_descriptor(do_save_data_files, data_files_dir) {
+    function actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) {
         return {
             'schema': 'midiport.1',
             'id': descriptor.id,

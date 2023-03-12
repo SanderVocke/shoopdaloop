@@ -2,6 +2,7 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
 import QtQuick.Dialogs
+import Tasks
 
 import "../generate_session.js" as GenerateSession
 import "../../build/types.js" as Types
@@ -77,11 +78,11 @@ Item {
     property alias tracks: tracks_widget.tracks
     property bool loaded : tracks_widget.loaded
 
-    function actual_session_descriptor(do_save_data_files, data_files_dir) {
+    function actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) {
         return {
             'schema': 'session.1',
             'ports': [],
-            'tracks': tracks_widget.actual_session_descriptor(do_save_data_files, data_files_dir)
+            'tracks': tracks_widget.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to)
         };
     }
 
@@ -89,14 +90,40 @@ Item {
         state_registry.mutate('n_saving_actions_active', (n) => n + 1)
         var tempdir = file_io.create_temporary_folder()
         try {
-            var descriptor = actual_session_descriptor(true, tempdir)
+            var tasks = Qt.createQmlObject(`
+                import QtQuick 2.0
+                import Tasks
+
+                Tasks {
+                }
+                `,
+                this
+            );
+
+            var descriptor = actual_session_descriptor(true, tempdir, tasks)
             var session_filename = tempdir + '/session.json'
+
+            // TODO Async
             file_io.write_file(session_filename, JSON.stringify(descriptor, null, 2))
-            file_io.make_tarfile(filename, tempdir, false)
-            console.log("Session written to: ", filename)
+
+            var on_done = () => {
+                try {
+                    // TODO Async
+                    file_io.make_tarfile(filename, tempdir, false)
+                    console.log("Session written to: ", filename)
+                } finally {
+                    state_registry.mutate('n_saving_actions_active', (n) => n - 1)
+                    file_io.delete_recursive(tempdir)
+                }
+            }
+
+            if (!tasks.anything_to_do) { on_done(); }
+            else {
+                tasks.anythingToDoChanged.connect(on_done)
+            }
         } finally {
-            file_io.delete_recursive(tempdir)
-            state_registry.mutate('n_saving_actions_active', (n) => n - 1)
+            // TODO
+            console.log("Dispatched session save")
         }
     }
 

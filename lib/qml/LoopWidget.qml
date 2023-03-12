@@ -21,13 +21,13 @@ Item {
         schema: 'loop.1'
     }
 
-    function actual_session_descriptor(do_save_data_files, data_files_dir) {
+    function actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) {
         return {
             'schema': 'loop.1',
             'id': obj_id,
             'length': maybe_loop.length,
             'is_master': is_master,
-            'channels': all_channels().map((c) => c.actual_session_descriptor(do_save_data_files, data_files_dir))
+            'channels': all_channels().map((c) => c.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to))
         }
     }
 

@@ -18,7 +18,7 @@ LoopMidiChannel {
         schema: 'channel.1'
     }
 
-    function actual_session_descriptor(do_save_data_files, data_files_dir) {
+    function actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) {
         var rval = {
             'schema': 'channel.1',
             'id': obj_id,
@@ -32,6 +32,7 @@ LoopMidiChannel {
             var filename = obj_id + '.mid'
             var full_filename = data_files_dir + '/' + filename;
             save_data(full_filename)
+            // TODO task
             rval['data_file'] = filename
         }
         return rval

@@ -35,7 +35,7 @@ Backend {
                 backend.doUpdate()
 
                 var reference = session.initial_descriptor
-                var actual = session.actual_session_descriptor(false, '')
+                var actual = session.actual_session_descriptor(false, '', null)
                 verify(TestDeepEqual.testDeepEqual(reference, actual))
 
                 var dir = file_io.create_temporary_folder()

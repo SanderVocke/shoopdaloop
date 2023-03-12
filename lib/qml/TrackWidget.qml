@@ -26,14 +26,14 @@ Item {
         schema: 'track.1'
     }
 
-    function actual_session_descriptor(do_save_data_files, data_files_dir) {
+    function actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) {
         var all_loops = Array.from(Array(loops.length).keys()).map((i) => loops[i])
         return {
             'schema': 'track.1',
             'id': obj_id,
             'name': name,
-            'ports': all_ports().map((p) => p.actual_session_descriptor(do_save_data_files, data_files_dir)),
-            'loops': all_loops.map((l) => l.actual_session_descriptor(do_save_data_files, data_files_dir))
+            'ports': all_ports().map((p) => p.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to)),
+            'loops': all_loops.map((l) => l.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to))
         }
     }
 

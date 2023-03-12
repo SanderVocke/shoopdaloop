@@ -1,4 +1,7 @@
-from PyQt6.QtCore import QObject, pyqtSlot, pyqtSignal
+from PyQt6.QtCore import QObject, pyqtSlot, pyqtSignal, QThread
+
+from .Task import Task
+from .Tasks import Tasks
 
 import os
 import shutil
@@ -10,10 +13,12 @@ import soundfile as sf
 import numpy as np
 import resampy
 
-# Allow text file I/O from QML
+# Allow filesystem operations from QML
 class FileIO(QObject):
     def __init__(self, parent=None):
         super(FileIO, self).__init__(parent)
+        self._thread = QThread()
+        self.moveToThread(self._thread)
 
     startSavingSoundfile = pyqtSignal()
     doneSavingSoundfile = pyqtSignal()
@@ -57,23 +62,32 @@ class FileIO(QObject):
     @pyqtSlot(str, int, list)
     def save_channels_to_soundfile(self, filename, sample_rate, channels):
         self.startSavingSoundfile.emit()
+        try:
+            datas = [c.get_data() for c in channels]
+            lengths = set()
+            for d in datas:
+                lengths.add(len(d))
+            if len(lengths) > 1:
+                raise Exception('Cannot save audio: channel lengths are not equal ({})'.format(list(lengths)))
+            # Soundfile wants NcxNs, not NsxNc
+            data = np.swapaxes(datas, 0, 1)
+            sf.write(filename, data, sample_rate)
+            print("Saved {}-channel audio to {}".format(len(channels), filename))
+        finally:
+            self.doneSavingSoundfile.emit()
+    
+    @pyqtSlot(str, int, list, result=Task)
+    def save_channels_to_soundfile_async(self, filename, sample_rate, channels):
+        task = Task()
         def do_save():
             try:
-                datas = [c.get_data() for c in channels]
-                lengths = set()
-                for d in datas:
-                    lengths.add(len(d))
-                if len(lengths) > 1:
-                    raise Exception('Cannot save audio: channel lengths are not equal ({})'.format(list(lengths)))
-                # Soundfile wants NcxNs, not NsxNc
-                data = np.swapaxes(datas, 0, 1)
-                sf.write(filename, data, sample_rate)
-                print("Saved {}-channel audio to {}".format(len(channels), filename))
+                self.save_channels_to_soundfile(filename, sample_rate, channels)
             finally:
-                self.doneSavingSoundfile.emit()
+                task.done()
         
         t = Thread(target=do_save)
         t.start()
+        return task
     
     @pyqtSlot(str, int, 'QVariant')
     def load_soundfile_to_channels(self, filename, target_sample_rate, map_file_channels_to_lists_of_loop_channels):
