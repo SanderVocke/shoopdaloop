@@ -38,9 +38,9 @@ LoopAudioChannel {
         return rval
     }
     function queue_load_tasks(data_files_dir, add_tasks_to) {
-        if (initial_descriptor.data_file) {
+        if (Object.keys(descriptor).includes("data_file")) {
             add_tasks_to.add_task(
-                file_io.load_channels_from_soundfile_async(data_files_dir + '/' + initial_descriptor.data_file, get_backend().get_sample_rate(), { "0": [this] })
+                file_io.load_soundfile_to_channels_async(data_files_dir + '/' + descriptor.data_file, get_backend().get_sample_rate(), descriptor.data_length, [[this]])
             )
         }
     }

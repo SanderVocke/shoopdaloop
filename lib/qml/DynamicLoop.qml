@@ -18,6 +18,8 @@ Item {
     property bool force_load : false
     property alias loaded : loader.loaded
 
+    signal backendLoopLoaded();
+
     // Careful: these bindings work only one-way (updating the internal loop).
     // If the value of the loop property changes, it will not be reflected back.
     property var sync_source : null
@@ -76,13 +78,17 @@ Item {
         if (ready) { loader.item.update() }
     }
 
+    function set_length(length) {
+        load()
+        loader.item.set_length(length)
+    }
+
     Loader {
         id: loader
         active: root.force_load
         source: "Loop.qml"
         property bool loaded : !active || (ready && item.loaded)
         // property bool loaded : !active
-        // onStatusChanged: if(status == Loader.Ready) {
         //     loaded = Qt.binding(function() { return !active || (status == Loader.Ready && item.loaded) });
         //     item.onLoadedChanged.connect(() => console.log("ITEM"))
         //     console.log("STATUS READY, ITEM LOADED", item.loaded, "LOADED", loaded);
@@ -102,6 +108,7 @@ Item {
             })
             // Reparent channels to the actual loop
             children_holder.parent = loader.item
+            root.backendLoopLoaded()
         }
     }
     onSync_sourceChanged: if(ready) { loader.item.sync_source = sync_source }

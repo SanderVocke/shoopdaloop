@@ -30,6 +30,8 @@ class LoopChannel(QQuickItem):
         if not self._loop:
             self.parentChanged.connect(self.rescan_parents)
     
+    requestBackendInit = pyqtSignal() # This signal requests the loop to be instantiated in the backend
+
     def maybe_initialize(self):
         raise Exception("Unimplemented for base class")
 

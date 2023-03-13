@@ -58,10 +58,13 @@ class LoopAudioChannel(LoopChannel):
     
     @pyqtSlot(list)
     def load_data(self, data):
-        if not self._backend_obj:
-            raise Exception("Attempting to load data into an invalid audio channel.")
-        backend_channel = self._backend_obj
-        backend_channel.load_data(data)
+        self.requestBackendInit.emit()
+        if self._backend_obj:
+            print("LOAD IMMEDIATELY {}".format(data))
+            self._backend_obj.load_data(data)
+        else:
+            self.initializedChanged.connect(lambda: print("LOAD LATER {}".format(data)))
+            self.initializedChanged.connect(lambda: self._backend_obj.load_data(data))
     
     @pyqtSlot(result=list)
     def get_data(self):

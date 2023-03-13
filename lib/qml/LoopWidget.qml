@@ -169,6 +169,7 @@ Item {
         id: dynamic_loop
         force_load : is_master // Master loop should always be there to sync to
         sync_source : widget.master_loop && !widget.is_master ? widget.master_loop.maybe_loaded_loop : null;
+        onBackendLoopLoaded: set_length(initial_descriptor.length)
 
         Repeater {
             id: audio_channels
@@ -179,6 +180,7 @@ Item {
                 descriptor: widget.audio_channel_descriptors[index]
                 objects_registry: widget.objects_registry
                 state_registry: widget.state_registry
+                onRequestBackendInit: dynamic_loop.force_load = true
             }
         }
         Repeater {
@@ -190,6 +192,7 @@ Item {
                 descriptor: widget.midi_channel_descriptors[index]
                 objects_registry: widget.objects_registry
                 state_registry: widget.state_registry
+                onRequestBackendInit: dynamic_loop.force_load = true
             }
         }
     }

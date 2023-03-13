@@ -80,6 +80,7 @@ class Loop(QQuickItem):
     # Indirect setter via back-end
     @pyqtSlot(int)
     def set_length(self, length):
+        print("SETTING LOOP LENGTH {}".format(length))
         self._backend_loop.set_length(length)
 
     # position: loop playback position in samples
@@ -111,10 +112,15 @@ class Loop(QQuickItem):
         return self._sync_source
     @sync_source.setter
     def sync_source(self, loop):
-        if loop != self._sync_source:
-            self._sync_source = loop
-            self._backend_loop.set_sync_source(loop._backend_loop)
-            self.syncSourceChanged.emit(loop)
+        def do_set():
+            if loop != self._sync_source:
+                self._sync_source = loop
+                self._backend_loop.set_sync_source(loop._backend_loop)
+                self.syncSourceChanged.emit(loop)
+        if self.initialized:
+            do_set()
+        else:
+            self.initializedChanged.connect(do_set)
     
     ###########
     ## SLOTS
@@ -215,6 +221,8 @@ class Loop(QQuickItem):
         if self._backend_loop:
             self._backend_loop.destroy()
             self._backend_loop = None
+            self._initialized = False
+            self.initializedChanged.emit(False)
     
     @pyqtSlot()
     def rescan_parents(self):

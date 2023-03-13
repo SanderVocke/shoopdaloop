@@ -96,8 +96,8 @@ class FileIO(QObject):
         t.start()
         return task
     
-    @pyqtSlot(str, int, 'QVariant')
-    def load_soundfile_to_channels(self, filename, target_sample_rate, map_file_channels_to_lists_of_loop_channels):
+    @pyqtSlot(str, int, int, list)
+    def load_soundfile_to_channels(self, filename, target_sample_rate, maybe_target_data_length, channels_to_loop_channels):
         self.startLoadingSoundfile.emit()
         try:
             data, file_sample_rate = sf.read(filename, dtype='float32')
@@ -116,28 +116,30 @@ class FileIO(QObject):
             if target_sample_rate != file_sample_rate:
                 resampled = resampy.resample(data, file_sample_rate, target_sample_rate)
             
-            n_channels_needed = 0
-            for chan_idx in map_file_channels_to_lists_of_loop_channels.keys():
-                n_channels_needed = max(n_channels_needed, int(chan_idx)+1)
-            if n_channels_needed > len(data):
-                raise Exception("Need {} channels, but loaded file only has {}".format(n_channels_needed, len(data)))
+            if len(channels_to_loop_channels) > len(data):
+                raise Exception("Need {} channels, but loaded file only has {}".format(len(channels_to_loop_channels), len(data)))
 
-            for (data_channel, idx) in enumerate(data):
-                channels = map_file_channels_to_lists_of_loop_channels[str(idx)]
+            for d in data:
+                if maybe_target_data_length != None and len(d) > maybe_target_data_length:
+                    del d[maybe_target_data_length:]
+                while maybe_target_data_length != None and len(d) < maybe_target_data_length:
+                    d.append(d[len(d)-1])
+
+            for idx, data_channel in enumerate(data):
+                channels = channels_to_loop_channels[idx]
                 for channel in channels:
-                    print("Load channel ", channel.obj_id)
                     channel.load_data(data_channel)
 
             print("Loaded {}-channel audio from {}".format(len(data), filename))
         finally:
             self.doneLoadingSoundfile.emit()
     
-    @pyqtSlot(str, int, 'QVariant')
-    def load_soundfile_to_channels_async(self, filename, target_sample_rate, map_file_channels_to_lists_of_loop_channels):
+    @pyqtSlot(str, int, int, list, result=Task)
+    def load_soundfile_to_channels_async(self, filename, target_sample_rate, target_data_length, channels_to_loop_channels):
         task = Task()
         def do_load():
             try:
-                self.load_soundfile_to_channels(filename, target_sample_rate, map_file_channels_to_lists_of_loop_channels)
+                self.load_soundfile_to_channels(filename, target_sample_rate, target_data_length, channels_to_loop_channels)
             finally:
                 task.done()
         
