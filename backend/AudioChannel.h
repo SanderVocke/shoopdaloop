@@ -247,9 +247,6 @@ public:
         if (mp_playback_target_buffer_size < n_samples) {
             throw std::runtime_error("Attempting to play out of bounds of target buffer");
         }
-        if (ma_data_length == 0) {
-            throw std::runtime_error("Attempting to play from empty channel");
-        }
         
         if (position < ma_data_length) {
             // We have something to play.
