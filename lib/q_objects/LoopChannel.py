@@ -119,6 +119,13 @@ class LoopChannel(QQuickItem):
             self._connected_ports.append(port)
             self.connectedPortsChanged.emit(self._connected_ports)
     
+    @pyqtSlot(result='QVariant')
+    def get_backend(self):
+        maybe_backend = findFirstParent(self, lambda p: p and isinstance(p, QQuickItem) and p.inherits('Backend'))
+        if maybe_backend:
+            return maybe_backend
+        raise Exception("Could not find backend!")
+    
     @pyqtSlot('QVariant')
     def disconnect(self, port):
         if not self._backend_obj:

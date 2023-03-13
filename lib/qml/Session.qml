@@ -120,12 +120,14 @@ Item {
         }
     }
 
-    onLoadedChanged: if(loaded) reload()
-
     function reload() {
-        state_registry.clear()
+        state_registry.clear(["n_loading_actions_active", "n_saving_actions_active"])
         objects_registry.clear()
         tracks_widget.reload()
+    }
+
+    function queue_load_tasks(data_files_directory, add_tasks_to) {
+        tracks_widget.queue_load_tasks(data_files_directory, add_tasks_to)
     }
 
     function load_session(filename) {

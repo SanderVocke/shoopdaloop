@@ -92,14 +92,16 @@ QtObject {
         return r
     }
 
-    function clear() {
+    function clear(except_keys=[]) {
+        var replace = {}
+        for(const key of except_keys) { replace[key] = data[key] }
         if(verbose) {
             console.log("REGISTRY: Clearing")
         }
         for(var key of Object.keys(data)) {
             itemRemoved(key)
         }
-        data = {}
+        data = replace
         contentsChanged()  
     }
 }
