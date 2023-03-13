@@ -41,6 +41,8 @@ class MidiPort(Port):
     # Update mode from the back-end.
     @pyqtSlot()
     def update(self):
+        if not self.initialized:
+            return
         state = self._backend_obj.get_state()
         self.n_events_triggered = state.n_events_triggered
         self.name = state.name

@@ -30,6 +30,9 @@ Item {
             'channels': all_channels().map((c) => c.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to))
         }
     }
+    function queue_load_tasks(data_files_dir, add_tasks_to) {
+        all_channels().forEach((c) => c.queue_load_tasks(data_files_dir, add_tasks_to))
+    }
 
     property bool is_in_selected_scene: false
     property bool is_in_hovered_scene:  false

@@ -171,7 +171,7 @@ class Port(QQuickItem):
         raise Exception('Unimplemented in base class')
 
     def maybe_initialize(self):
-        if self._name_hint != '' and self._direction != None and self._backend and not self._backend_obj:
+        if self._name_hint != '' and self._direction != None and self._backend and self._backend.initialized and not self._backend_obj:
             self.maybe_initialize_impl(self._name_hint, self._direction)
             if self._backend_obj:
                 self._initialized = True

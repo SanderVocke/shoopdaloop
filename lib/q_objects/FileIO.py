@@ -57,7 +57,14 @@ class FileIO(QObject):
     def make_tarfile(self, filename, source_dir, compress):
         flags = ("w:gz" if compress else "w")
         with tarfile.open(filename, flags) as tar:
-            tar.add(source_dir, arcname=source_dir)
+            tar.add(source_dir, arcname='/')
+    
+    @pyqtSlot(str, str)
+    def extract_tarfile(self, filename, target_dir):
+        flags = "r:*"
+        with tarfile.open(filename, flags) as tar:
+            tar.extractall(target_dir)
+
     
     @pyqtSlot(str, int, list)
     def save_channels_to_soundfile(self, filename, sample_rate, channels):
@@ -92,35 +99,51 @@ class FileIO(QObject):
     @pyqtSlot(str, int, 'QVariant')
     def load_soundfile_to_channels(self, filename, target_sample_rate, map_file_channels_to_lists_of_loop_channels):
         self.startLoadingSoundfile.emit()
+        try:
+            data, file_sample_rate = sf.read(filename, dtype='float32')
+            if data.ndim == 1:
+                # Mono
+                data = [data]
+            else:
+                # Sf gives NcxNs, we want NsxNc
+                data = np.swapaxes(data, 0, 1)
+            n_file_samples = len(data[0])
+            n_target_samples = int(float(n_file_samples) / float(file_sample_rate) * float(target_sample_rate))
+
+            target_sample_rate = int(target_sample_rate)
+            file_sample_rate = int(file_sample_rate)
+            resampled = data
+            if target_sample_rate != file_sample_rate:
+                resampled = resampy.resample(data, file_sample_rate, target_sample_rate)
+            
+            n_channels_needed = 0
+            for chan_idx in map_file_channels_to_lists_of_loop_channels.keys():
+                n_channels_needed = max(n_channels_needed, int(chan_idx)+1)
+            if n_channels_needed > len(data):
+                raise Exception("Need {} channels, but loaded file only has {}".format(n_channels_needed, len(data)))
+
+            for (data_channel, idx) in enumerate(data):
+                channels = map_file_channels_to_lists_of_loop_channels[str(idx)]
+                for channel in channels:
+                    print("Load channel ", channel.obj_id)
+                    channel.load_data(data_channel)
+
+            print("Loaded {}-channel audio from {}".format(len(data), filename))
+        finally:
+            self.doneLoadingSoundfile.emit()
+    
+    @pyqtSlot(str, int, 'QVariant')
+    def load_soundfile_to_channels_async(self, filename, target_sample_rate, map_file_channels_to_lists_of_loop_channels):
+        task = Task()
         def do_load():
             try:
-                data, file_sample_rate = sf.read(filename, dtype='float32')
-                if data.ndim == 1:
-                    # Mono
-                    data = [data]
-                else:
-                    # Sf gives NcxNs, we want NsxNc
-                    data = np.swapaxes(data, 0, 1)
-                n_file_samples = len(data[0])
-                n_target_samples = int(float(n_file_samples) / float(file_sample_rate) * float(target_sample_rate))
-
-                target_sample_rate = int(target_sample_rate)
-                file_sample_rate = int(file_sample_rate)
-                resampled = data
-                if target_sample_rate != file_sample_rate:
-                    resampled = resampy.resample(data, file_sample_rate, target_sample_rate)
-                
-                for (data_channel, idx) in enumerate(data):
-                    channels = map_file_channels_to_lists_of_loop_channels[idx]
-                    for channel in channels:
-                        channel.load_data(data_channel)
-
-                print("Loaded {}-channel audio from {}".format(len(data), filename))
+                self.load_soundfile_to_channels(filename, target_sample_rate, map_file_channels_to_lists_of_loop_channels)
             finally:
-                self.doneLoadingSoundfile.emit()
+                task.done()
         
-        t = Thread(target=do_save)
+        t = Thread(target=do_load)
         t.start()
+        return task
     
     @pyqtSlot(str, result='QVariant')
     def get_soundfile_info(self, filename):

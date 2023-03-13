@@ -132,6 +132,12 @@ class BackendLoopAudioChannel:
         else:
             backend.connect_audio_output(self.shoop_c_handle, port.c_handle())
     
+    def disconnect(self, port : 'BackendAudioPort'):
+        if port.direction() == PortDirection.Input:
+            backend.disconnect_audio_input(self.shoop_c_handle, port.c_handle())
+        else:
+            backend.disconnect_audio_output(self.shoop_c_handle, port.c_handle())
+    
     def get_rms_data(self, from_sample, to_sample, samples_per_bin):
         data = backend.get_audio_rms_data (self.shoop_c_handle, from_sample, to_sample, samples_per_bin)
         result = [float(data[0].data[i]) for i in range(data[0].n_samples)]
@@ -190,6 +196,12 @@ class BackendLoopMidiChannel:
             backend.connect_midi_input(self.shoop_c_handle, port.c_handle())
         else:
             backend.connect_midi_output(self.shoop_c_handle, port.c_handle())
+        
+    def disconnect(self, port : 'BackendMidiPort'):
+        if port.direction() == PortDirection.Input:
+            backend.disconnect_midi_input(self.shoop_c_handle, port.c_handle())
+        else:
+            backend.disconnect_midi_output(self.shoop_c_handle, port.c_handle())
     
     def get_state(self):
         state = backend.get_midi_channel_state(self.shoop_c_handle)

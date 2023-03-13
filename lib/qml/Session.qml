@@ -24,6 +24,7 @@ Item {
     SchemaCheck {
         descriptor: session.initial_descriptor
         schema: 'session.1'
+        id: validator
     }
 
     RegistryLookup {
@@ -39,11 +40,13 @@ Item {
     readonly property bool saving : saving_lookup.object != null && saving_lookup.object > 0
     readonly property bool loading : loading_lookup.object != null && loading_lookup.object > 0
     readonly property bool doing_io : saving || loading
-    Connections {
-        target: file_io
-        function onStartSavingWav() { state_registry.mutate('n_saving_actions_active', (n) => { return n+1 }) }
-        function onDoneSavingWav() { state_registry.mutate('n_saving_actions_active', (n) => { return n-1 }) }
-    }
+    // Connections {
+    //     target: file_io
+    //     function onStartSavingSoundfile() { state_registry.mutate('n_saving_actions_active', (n) => { return n+1 }) }
+    //     function onDoneSavingSoundfile() { state_registry.mutate('n_saving_actions_active', (n) => { return n-1 }) }
+    //     function onStartLoadingSoundfile() { state_registry.mutate('n_loading_actions_active', (n) => { return n+1 }) }
+    //     function onDoneLoadingSoundfile() { state_registry.mutate('n_loading_actions_active', (n) => { return n-1 }) }
+    // }
 
     Popup {
         visible: saving
@@ -86,34 +89,62 @@ Item {
         };
     }
 
+    TasksFactory { id: tasks_factory }
+
     function save_session(filename) {
         state_registry.mutate('n_saving_actions_active', (n) => { return n + 1 })
         var tempdir = file_io.create_temporary_folder()
+        var tasks = tasks_factory.create_tasks_obj(this)
+
+        var descriptor = actual_session_descriptor(true, tempdir, tasks)
+        var session_filename = tempdir + '/session.json'
+
+        // TODO make this step asynchronous
+        file_io.write_file(session_filename, JSON.stringify(descriptor, null, 2))
+
+        var on_done = () => {
+            try {
+                // TODO make this step asynchronous
+                file_io.make_tarfile(filename, tempdir, false)
+                console.log("Session written to: ", filename)
+            } finally {
+                state_registry.mutate('n_saving_actions_active', (n) => { return n - 1 } )
+                file_io.delete_recursive(tempdir)
+                tasks.destroy()
+            }
+        }
+
+        if (!tasks.anything_to_do) { on_done(); }
+        else {
+            tasks.anythingToDoChanged.connect(on_done)
+        }
+    }
+
+    function load_session(filename) {
+        state_registry.mutate('n_loading_actions_active', (n) => { return n + 1 })
+        var tempdir = file_io.create_temporary_folder()
+
         try {
-            var tasks = Qt.createQmlObject(`
-                import QtQuick 2.0
-                import Tasks
+            var tasks = tasks_factory.create_tasks_obj(this)
 
-                Tasks {
-                }
-                `,
-                this
-            );
+            file_io.extract_tarfile(filename, tempdir)
+            console.log("Extracted to ", tempdir)
 
-            var descriptor = actual_session_descriptor(true, tempdir, tasks)
             var session_filename = tempdir + '/session.json'
+            var session_file_contents = file_io.read_file(session_filename)
+            var descriptor = JSON.parse(session_file_contents)
 
-            // TODO Async
-            file_io.write_file(session_filename, JSON.stringify(descriptor, null, 2))
+            schema_validator.validate_schema(descriptor, validator.schema)
+            session.initial_descriptor = descriptor
+            tracks_widget.reload()
+
+            queue_load_tasks(tempdir, tasks)
 
             var on_done = () => {
                 try {
-                    // TODO Async
-                    file_io.make_tarfile(filename, tempdir, false)
-                    console.log("Session written to: ", filename)
-                } finally {
-                    state_registry.mutate('n_saving_actions_active', (n) => { return n - 1 } )
                     file_io.delete_recursive(tempdir)
+                } finally {
+                    state_registry.mutate('n_loading_actions_active', (n) => { return n - 1 } )
                 }
             }
 
@@ -121,9 +152,9 @@ Item {
             else {
                 tasks.anythingToDoChanged.connect(on_done)
             }
-        } finally {
-            // TODO
-            console.log("Dispatched session save")
+        } catch(e) {
+            file_io.delete_recursive(tempdir)
+            throw e;
         }
     }
 
@@ -195,9 +226,7 @@ Item {
             loading_session: session.loading
             saving_session: session.saving
 
-            onLoadSession: (filename) => {
-                console.log("UNIMPLEMENTED")
-            }
+            onLoadSession: (filename) => session.load_session(filename)
             onSaveSession: (filename) => session.save_session(filename)
         }
     }

@@ -36,6 +36,11 @@ Item {
             'loops': all_loops.map((l) => l.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to))
         }
     }
+    function queue_load_tasks(data_files_dir, add_tasks_to) {
+        var all_loops = Array.from(Array(loops.length).keys()).map((i) => loops[i])
+        all_loops.forEach((loop) => loop.queue_load_tasks(data_files_dir, add_tasks_to))
+        all_ports().forEach((port) => port.queue_load_tasks(data_files_dir, add_tasks_to))
+    }
 
     function qml_close() {
         objects_registry.unregister(initial_descriptor.id)

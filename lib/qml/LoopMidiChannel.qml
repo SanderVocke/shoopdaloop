@@ -37,6 +37,13 @@ LoopMidiChannel {
         }
         return rval
     }
+    function queue_load_tasks(data_files_dir, add_tasks_to) {
+        if (initial_descriptor.data_file) {
+            add_tasks_to.add_task(
+                file_io.load_channels_from_soundfile_async(data_files_dir + '/' + initial_descriptor.data_file)
+            )
+        }
+    }
 
     property int initial_mode : Conversions.parse_channel_mode(descriptor.mode)
     onInitial_modeChanged: set_mode(initial_mode)

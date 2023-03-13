@@ -24,6 +24,7 @@ AudioPort {
             'passthrough_to': descriptor.passthrough_to // TODO test properly
         }
     }
+    function queue_load_tasks(data_files_dir, add_tasks_to) {}
 
     RegistryLookups {
         id: lookup_passthrough_to

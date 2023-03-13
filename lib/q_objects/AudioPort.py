@@ -65,6 +65,8 @@ class AudioPort(Port):
     # Update mode from the back-end.
     @pyqtSlot()
     def update(self):
+        if not self.initialized:
+            return
         state = self._backend_obj.get_state()
         self.peak = state.peak
         self.volume = state.volume

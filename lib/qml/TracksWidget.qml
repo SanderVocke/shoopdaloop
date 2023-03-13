@@ -33,6 +33,12 @@ ScrollView {
         return r;
     }
 
+    function queue_load_tasks(data_files_dir, add_tasks_to) {
+        for(var i=0; i<root.tracks.length; i++) {
+            tracks[i].queue_load_tasks(data_files_dir, add_tasks_to)
+        }
+    }
+
     function add_track(properties) {
         if (factory.status == Component.Error) {
             throw new Error("TracksWidget: Failed to load track factory: " + factory.errorString())
@@ -47,6 +53,13 @@ ScrollView {
 
             return track
         }
+    }
+
+    function clear_tracks() {
+        for(var i=0; i<root.tracks.length; i++) {
+            root.tracks[i].qml_close()
+        }
+        root.tracks = []
     }
 
     function track_loaded_changed(track) {
@@ -77,8 +90,9 @@ ScrollView {
         }
     }
 
-    Component.onCompleted: {
+    function initialize() {
         loaded = false
+        root.clear_tracks()
         var _n_loaded = 0
         // Instantiate initial tracks
         root.initial_track_descriptors.forEach(desc => {
@@ -92,6 +106,9 @@ ScrollView {
         n_loaded = _n_loaded
         loaded = Qt.binding(() => { return n_loaded >= tracks.length })
     }
+
+    Component.onCompleted: initialize()
+    function reload() { initialize() }
 
     ScrollView {
         id: tracks_view

@@ -240,7 +240,7 @@ struct ChannelInfo : public std::enable_shared_from_this<ChannelInfo> {
     void disconnect_output_port(SharedPortInfo port, bool thread_safe=true);
     void disconnect_output_ports(bool thread_safe=true);
     void disconnect_input_port(SharedPortInfo port, bool thread_safe=true);
-    void disconnect_input_port(bool thread_safe=true);
+    void disconnect_input_ports(bool thread_safe=true);
     void PROC_prepare_process_audio(size_t n_frames);
     void PROC_prepare_process_midi(size_t n_frames);
     void PROC_finalize_process_audio();
@@ -564,7 +564,7 @@ void ChannelInfo::disconnect_input_port(SharedPortInfo port, bool thread_safe) {
     else { fn(); }
 }
 
-void ChannelInfo::disconnect_input_port(bool thread_safe) {
+void ChannelInfo::disconnect_input_ports(bool thread_safe) {
     auto fn = [this]() {
         mp_input_port_mapping.reset();
     };
@@ -1030,6 +1030,36 @@ void disconnect_midi_outputs  (shoopdaloop_loop_midi_channel_t  *channel) {
     internal_midi_channel(channel)->get_backend().cmd_queue.queue([=]() {
         auto _channel = internal_midi_channel(channel);
         _channel->disconnect_output_ports(false);
+    });
+}
+
+void disconnect_audio_input (shoopdaloop_loop_audio_channel_t *channel, shoopdaloop_audio_port_t* port) {
+    internal_audio_channel(channel)->get_backend().cmd_queue.queue([=]() {
+        auto _port = internal_audio_port(port);
+        auto _channel = internal_audio_channel(channel);
+        _channel->disconnect_input_port(_port, false);
+    });
+}
+
+void disconnect_midi_input (shoopdaloop_loop_midi_channel_t  *channel, shoopdaloop_midi_port_t* port) {
+    internal_midi_channel(channel)->get_backend().cmd_queue.queue([=]() {
+        auto _port = internal_midi_port(port);
+        auto _channel = internal_midi_channel(channel);
+        _channel->disconnect_input_port(_port, false);
+    });
+}
+
+void disconnect_audio_inputs (shoopdaloop_loop_audio_channel_t *channel) {
+    internal_audio_channel(channel)->get_backend().cmd_queue.queue([=]() {
+        auto _channel = internal_audio_channel(channel);
+        _channel->disconnect_input_ports(false);
+    });
+}
+
+void disconnect_midi_inputs  (shoopdaloop_loop_midi_channel_t  *channel) {
+    internal_midi_channel(channel)->get_backend().cmd_queue.queue([=]() {
+        auto _channel = internal_midi_channel(channel);
+        _channel->disconnect_input_ports(false);
     });
 }
 

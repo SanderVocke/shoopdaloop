@@ -133,6 +133,8 @@ class Loop(QQuickItem):
     # Update mode from the back-end.
     @pyqtSlot()
     def update(self):
+        if not self.initialized:
+            return
         for channel in self.audio_channels():
             channel.update()
         for channel in self.midi_channels():
@@ -171,19 +173,23 @@ class Loop(QQuickItem):
     
     @pyqtSlot(int, int, bool)
     def transition(self, mode, delay, wait_for_sync):
-        self._backend_loop.transition(backend_wrappers.LoopMode(mode), delay, wait_for_sync)
+        if self.initialized:
+            self._backend_loop.transition(backend_wrappers.LoopMode(mode), delay, wait_for_sync)
 
     @pyqtSlot(int)
     def clear(self, length):
-        self._backend_loop.clear(length)
+        if self.initialized:
+            self._backend_loop.clear(length)
     
     @pyqtSlot(int, result=backend_wrappers.BackendLoopMidiChannel)
     def add_audio_channel(self, mode):
-        return self._backend_loop.add_audio_channel(backend_wrappers.ChannelMode(mode))
+        if self.initialized:
+            return self._backend_loop.add_audio_channel(backend_wrappers.ChannelMode(mode))
     
     @pyqtSlot(int, result=backend_wrappers.BackendLoopMidiChannel)
     def add_midi_channel(self, mode):
-        return self._backend_loop.add_midi_channel(backend_wrappers.ChannelMode(mode))
+        if self.initialized:
+            return self._backend_loop.add_midi_channel(backend_wrappers.ChannelMode(mode))
     
     @pyqtSlot(list)
     def load_audio_data(self, sound_channels):
@@ -217,7 +223,7 @@ class Loop(QQuickItem):
             self.backend = maybe_backend
     
     def maybe_initialize(self):
-        if self._backend and not self._backend_loop:
+        if self._backend and self._backend.initialized and not self._backend_loop:
             self._backend_loop = self._backend.get_backend_obj().create_loop()
             if self._backend_loop:
                 self._initialized = True
