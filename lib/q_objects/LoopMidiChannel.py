@@ -41,14 +41,15 @@ class LoopMidiChannel(LoopChannel):
     ## SLOTS
     #######################
 
-    @pyqtSlot(str)
-    def save_data(self, filename):
-        # TODO implement
-        with open(filename, 'w') as file:
-            file.write('Hello world!')
-
     @pyqtSlot()
     def update_impl(self, state):
         if state.n_events_triggered != self._n_events_triggered:
             self._n_events_triggered = state.n_events_triggered
             self.nEventsTriggeredChanged.emit(self._n_events_triggered)
+    
+    @pyqtSlot(result=list)
+    def get_data(self):
+        if self._backend_obj:
+            return self._backend_obj.get_data()
+        else:
+            raise Exception("Getting data of un-loaded MIDI channel")

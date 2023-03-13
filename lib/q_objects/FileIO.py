@@ -2,6 +2,7 @@ from PyQt6.QtCore import QObject, pyqtSlot, pyqtSignal, QThread
 
 from .Task import Task
 from .Tasks import Tasks
+from ..backend_wrappers import BackendMidiMessage
 
 import os
 import shutil
@@ -12,6 +13,7 @@ from threading import Thread
 import soundfile as sf
 import numpy as np
 import resampy
+import mido
 
 # Allow filesystem operations from QML
 class FileIO(QObject):
@@ -20,10 +22,10 @@ class FileIO(QObject):
         self._thread = QThread()
         self.moveToThread(self._thread)
 
-    startSavingSoundfile = pyqtSignal()
-    doneSavingSoundfile = pyqtSignal()
-    startLoadingSoundfile = pyqtSignal()
-    doneLoadingSoundfile = pyqtSignal()
+    startSavingFile = pyqtSignal()
+    doneSavingFile = pyqtSignal()
+    startLoadingFile = pyqtSignal()
+    doneLoadingFile = pyqtSignal()
     
     ######################
     # SLOTS
@@ -68,7 +70,7 @@ class FileIO(QObject):
     
     @pyqtSlot(str, int, list)
     def save_channels_to_soundfile(self, filename, sample_rate, channels):
-        self.startSavingSoundfile.emit()
+        self.startSavingFile.emit()
         try:
             datas = [c.get_data() for c in channels]
             lengths = set()
@@ -81,7 +83,36 @@ class FileIO(QObject):
             sf.write(filename, data, sample_rate)
             print("Saved {}-channel audio to {}".format(len(channels), filename))
         finally:
-            self.doneSavingSoundfile.emit()
+            self.doneSavingFile.emit()
+    
+    @pyqtSlot(str, int, 'QVariant')
+    def save_channel_to_midi(self, filename, sample_rate, channel):
+        self.startSavingFile.emit()
+        try:
+            msgs = channel.get_data()
+            length = channel.data_length
+            mido_track = mido.MidiTrack()
+            mido_file = mido.MidiFile()
+            mido_file.tracks.append(mido_track)
+            current_tick = 0
+
+            def to_mido_msg(msg):
+                beat_length_s = mido.bpm2tempo(120) / 1000000.0
+                abstime_s = msg.time / float(sample_rate)
+                abstime_ticks = int(abstime_s / beat_length_s * mido_file.ticks_per_beat)
+                d_ticks = abstime_ticks - current_tick
+                mido_msg = mido.Message.from_bytes(msg.data)
+                mido_msg.time = d_ticks
+                current_tick += d_ticks
+                return mido_msg
+
+            for m in msgs:
+                mido_track.append(to_mido_msg(m))
+            
+            mido_file.save(filename)
+            print("Saved MIDI channel to {}".format(filename))
+        finally:
+            self.doneSavingFile.emit()
     
     @pyqtSlot(str, int, list, result=Task)
     def save_channels_to_soundfile_async(self, filename, sample_rate, channels):
@@ -95,10 +126,23 @@ class FileIO(QObject):
         t = Thread(target=do_save)
         t.start()
         return task
+
+    @pyqtSlot(str, int, 'QVariant', result=Task)
+    def save_channel_to_midi_async(self, filename, sample_rate, channel):
+        task = Task()
+        def do_save():
+            try:
+                self.save_channel_to_midi(filename, sample_rate, channel)
+            finally:
+                task.done()
+        
+        t = Thread(target=do_save)
+        t.start()
+        return task
     
     @pyqtSlot(str, int, int, list)
     def load_soundfile_to_channels(self, filename, target_sample_rate, maybe_target_data_length, channels_to_loop_channels):
-        self.startLoadingSoundfile.emit()
+        self.startLoadingFile.emit()
         try:
             data, file_sample_rate = sf.read(filename, dtype='float32')
             if data.ndim == 1:
@@ -132,7 +176,7 @@ class FileIO(QObject):
 
             print("Loaded {}-channel audio from {}".format(len(data), filename))
         finally:
-            self.doneLoadingSoundfile.emit()
+            self.doneLoadingFile.emit()
     
     @pyqtSlot(str, int, int, list, result=Task)
     def load_soundfile_to_channels_async(self, filename, target_sample_rate, target_data_length, channels_to_loop_channels):
