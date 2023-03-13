@@ -136,8 +136,8 @@ Item {
     function publish_selected() {
         if (!state_registry.has('selected_loops')) { state_registry.register('selected_loops', new Set()) }
 
-        if (selected && !state_registry.get('selected_loops').has(this)) { state_registry.mutate('selected_loops', (loops) => { loops.add(this) } )}
-        else if (!selected && state_registry.get('selected_loops').has(this)) { state_registry.mutate('selected_loops', (loops) => { loops.delete(this) })}
+        if (selected && !state_registry.get('selected_loops').has(this)) { state_registry.mutate('selected_loops', (loops) => { loops.add(this); return loops } )}
+        else if (!selected && state_registry.get('selected_loops').has(this)) { state_registry.mutate('selected_loops', (loops) => { loops.delete(this); return loops })}
     }
     function publish_targeted_selected() { publish_selected(); publish_targeted() }
 
@@ -1121,12 +1121,12 @@ Item {
             nameFilters: ["MIDI files (*.mid)"]
             defaultSuffix: 'mid'
             onAccepted: {
-                widget.state_registry.mutate('n_saving_actions_active', (n) => n + 1)
+                widget.state_registry.mutate('n_saving_actions_active', (n) => { return n + 1; })
                 try {
                     var filename = selectedFile.toString().replace('file://', '');
                     widget.maybe_loop.doSaveMidiFile(filename)
                 } finally {
-                    widget.state_registry.mutate('n_saving_actions_active', (n) => n - 1)
+                    widget.state_registry.mutate('n_saving_actions_active', (n) => { return n - 1 })
                 }
             }
         }

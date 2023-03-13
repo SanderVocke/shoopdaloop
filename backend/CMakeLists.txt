@@ -7,6 +7,8 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAK
 find_package(Qt6 REQUIRED COMPONENTS Core QuickTest)
 qt_standard_project_setup()
 
+set(RUN_CMD_PREFIX "")
+
 # Options
 option(ENABLE_PERFTOOLS "Link to pprof profiling library")
 if(ENABLE_PERFTOOLS)
@@ -14,6 +16,15 @@ if(ENABLE_PERFTOOLS)
     find_package(Gperftools REQUIRED COMPONENTS profiler)
     link_libraries(${GPERFTOOLS_LIBRARIES})
     include_directories(${GPERFTOOLS_INCLUDES})
+endif()
+option(ENABLE_ASAN "Enable address sanitizer")
+if(ENABLE_ASAN)
+    add_compile_options(-fsanitize=address -shared-libasan)
+    add_link_options(-fsanitize=address -shared-libasan)
+    if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+        execute_process(COMMAND clang -print-file-name=libclang_rt.asan-x86_64.so OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE ASAN_DSO)
+        set(RUN_CMD_PREFIX LD_PRELOAD=${ASAN_DSO} ASAN_OPTIONS=detect_leaks=0 ${RUN_CMD_PREFIX})
+    endif()
 endif()
 
 # Find pkgs

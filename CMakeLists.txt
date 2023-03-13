@@ -14,17 +14,3 @@ add_custom_target(
     ALL
     DEPENDS __init__.py
     )
-
-# Generate javascript copy of enums
-add_custom_command(
-  OUTPUT types.js
-  COMMAND python ${CMAKE_CURRENT_SOURCE_DIR}/lib/codegen/gen_js_enums.py ${CMAKE_CURRENT_BINARY_DIR}/types.js
-  COMMENT "Generating Javascript types."
-  DEPENDS backend_c_bindings build_python_module shoopdaloop_backend
-  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-  )
-add_custom_target(
-  javascript_types
-  ALL
-  DEPENDS types.js
-  )

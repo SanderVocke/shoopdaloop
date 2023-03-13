@@ -41,8 +41,8 @@ Item {
     readonly property bool doing_io : saving || loading
     Connections {
         target: file_io
-        function onStartSavingWav() { state_registry.mutate('n_saving_actions_active', (n) => n+1) }
-        function onDoneSavingWav() { state_registry.mutate('n_saving_actions_active', (n) => n-1) }
+        function onStartSavingWav() { state_registry.mutate('n_saving_actions_active', (n) => { return n+1 }) }
+        function onDoneSavingWav() { state_registry.mutate('n_saving_actions_active', (n) => { return n-1 }) }
     }
 
     Popup {
@@ -87,7 +87,7 @@ Item {
     }
 
     function save_session(filename) {
-        state_registry.mutate('n_saving_actions_active', (n) => n + 1)
+        state_registry.mutate('n_saving_actions_active', (n) => { return n + 1 })
         var tempdir = file_io.create_temporary_folder()
         try {
             var tasks = Qt.createQmlObject(`
@@ -112,7 +112,7 @@ Item {
                     file_io.make_tarfile(filename, tempdir, false)
                     console.log("Session written to: ", filename)
                 } finally {
-                    state_registry.mutate('n_saving_actions_active', (n) => n - 1)
+                    state_registry.mutate('n_saving_actions_active', (n) => { return n - 1 } )
                     file_io.delete_recursive(tempdir)
                 }
             }

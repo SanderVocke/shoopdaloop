@@ -1397,7 +1397,7 @@ void set_loop_sync_source (shoopdaloop_loop_t *loop, shoopdaloop_loop_t *sync_so
 
 void destroy_midi_event(midi_event_t *e) {
     free(e->data);
-    free(e);
+    delete e;
 }
 
 void destroy_midi_channel_data(midi_channel_data_t *d) {
@@ -1405,20 +1405,20 @@ void destroy_midi_channel_data(midi_channel_data_t *d) {
         destroy_midi_event(d->events[idx]);
     }
     free(d->events);
-    free(d);
+    delete d;
 }
 
 void destroy_audio_channel_data(audio_channel_data_t *d) {
     free(d->data);
-    free(d);
+    delete d;
 }
 
 void destroy_audio_channel_state_info(audio_channel_state_info_t *d) {
-    free(d);
+    delete d;
 }
 
 void destroy_midi_channel_state_info(midi_channel_state_info_t *d) {
-    free(d);
+    delete d;
 }
 
 void destroy_loop(shoopdaloop_loop_t *d) {
@@ -1460,11 +1460,11 @@ void destroy_midi_port(shoopdaloop_midi_port_t *d) {
 }
 
 void destroy_midi_port_state_info(midi_port_state_info_t *d) {
-    free(d);
+    delete d;
 }
 
 void destroy_audio_port_state_info(audio_port_state_info_t *d) {
-    free(d);
+    delete d;
 }
 
 void destroy_audio_channel(shoopdaloop_loop_audio_channel_t *d) {
@@ -1480,5 +1480,5 @@ void destroy_shoopdaloop_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *
 }
 
 void destroy_loop_state_info(loop_state_info_t *state) {
-    free(state);
+    delete state;
 }
