@@ -214,7 +214,7 @@ class BackendLoopMidiChannel:
     
     def destroy(self):
         if self.shoop_c_handle:
-            backend.destroy_audio_channel(self.shoop_c_handle)
+            backend.destroy_midi_channel(self.shoop_c_handle)
             self.shoop_c_handle = None
 
     def __del__(self):
@@ -263,9 +263,14 @@ class BackendLoop:
             backend.set_loop_sync_source(self.shoop_c_handle, loop.shoop_c_handle)
         else:
             backend.set_loop_sync_source(self.shoop_c_handle, None)
+
+    def destroy(self):
+        if self.shoop_c_handle:
+            backend.destroy_loop(self.shoop_c_handle)
+            self.shoop_c_handle = None
     
     def __del__(self):
-        backend.destroy_loop(self.shoop_c_handle)
+        self.destroy()
 
 class BackendAudioPort:
     def __init__(self, c_handle : 'POINTER(backend.shoopdaloop_audio_port_t)',

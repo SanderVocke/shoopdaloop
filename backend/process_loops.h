@@ -25,21 +25,29 @@ void process_loops(std::vector<std::shared_ptr<Loop>> const& loops_access,
 
     // Gather up all POIs.
     for(size_t i=0; i<loops_access.size(); i++) {
-        size_t poi = lg(*loops_access[i])->PROC_get_next_poi().value_or(n_samples);
-        process_until = std::min(process_until, poi);
+        if(loops_access[i]) {
+            size_t poi = lg(*loops_access[i])->PROC_get_next_poi().value_or(n_samples);
+            process_until = std::min(process_until, poi);
+        }
     }
 
     // Process until the first POI, then handle POIs and triggers.
     for(size_t i=0; i<loops_access.size(); i++) {
-        if (process_until > 0) {
-            lg(*loops_access[i].get())->PROC_process(process_until);
+        if(loops_access[i]) {
+            if (process_until > 0) {
+                lg(*loops_access[i].get())->PROC_process(process_until);
+            }
         }
     }
     for(size_t i=0; i<loops_access.size(); i++) {
-        lg(*loops_access[i].get())->PROC_handle_poi();
+        if(loops_access[i]) {
+            lg(*loops_access[i].get())->PROC_handle_poi();
+        }
     }
     for(size_t i=0; i<loops_access.size(); i++) {
-        lg(*loops_access[i].get())->PROC_handle_sync();
+        if(loops_access[i]) {
+            lg(*loops_access[i].get())->PROC_handle_sync();
+        }
     }
 
     // If we didn't process the whole thing, keep going.

@@ -120,6 +120,14 @@ Item {
         }
     }
 
+    onLoadedChanged: if(loaded) reload()
+
+    function reload() {
+        state_registry.clear()
+        objects_registry.clear()
+        tracks_widget.reload()
+    }
+
     function load_session(filename) {
         state_registry.mutate('n_loading_actions_active', (n) => { return n + 1 })
         var tempdir = file_io.create_temporary_folder()
@@ -136,7 +144,7 @@ Item {
 
             schema_validator.validate_schema(descriptor, validator.schema)
             session.initial_descriptor = descriptor
-            tracks_widget.reload()
+            reload()
 
             queue_load_tasks(tempdir, tasks)
 

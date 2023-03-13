@@ -147,6 +147,8 @@ class Port(QQuickItem):
         if self._backend_obj:
             self._backend_obj.destroy()
             self._backend_obj = None
+            self._initialized = False
+            self.initializedChanged.emit(False)
     
     @pyqtSlot()
     def rescan_parents(self):

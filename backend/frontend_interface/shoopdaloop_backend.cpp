@@ -272,6 +272,7 @@ struct LoopInfo : public std::enable_shared_from_this<LoopInfo> {
     Backend &get_backend();
 };
 
+#warning delete destroyed ports
 // MEMBER FUNCTIONS
 void Backend::PROC_process (jack_nframes_t nframes) {
     // Execute queued commands
@@ -283,17 +284,23 @@ void Backend::PROC_process (jack_nframes_t nframes) {
     // Prepare:
     // Get buffers and process passthrough
     for (auto & port: ports) {
-        port->PROC_reset_buffers();
-        port->PROC_ensure_buffer(nframes);
+        if (port) {
+            port->PROC_reset_buffers();
+            port->PROC_ensure_buffer(nframes);
+        }
     }
     for (auto & port: ports) {
-        port->PROC_passthrough(nframes);
+        if (port) {
+            port->PROC_passthrough(nframes);
+        }
     }
 
     // Prepare:
     // Connect port buffers to loop channels
     for (auto & loop: loops) {
-        loop->PROC_prepare_process(nframes);
+        if (loop) {
+            loop->PROC_prepare_process(nframes);
+        }
     }
     
     // Process the loops.
@@ -302,10 +309,14 @@ void Backend::PROC_process (jack_nframes_t nframes) {
 
     // Prepare state for next round.
     for (auto &port : ports) {
-        port->PROC_finalize_process(nframes);
+        if (port) {
+            port->PROC_finalize_process(nframes);
+        }
     }
     for (auto &loop : loops) {
-        loop->PROC_finalize_process();
+        if (loop) {
+            loop->PROC_finalize_process();
+        }
     }
 }
 

@@ -33,7 +33,7 @@ QtObject {
 
     function unregister(id) {
         if(!(id in data)) {
-            throw new Error("attempting to unregister non-existent key: " + id)
+            return;
         }
         if(verbose) {
             console.log("REGISTRY: Unregistered:", id)
@@ -90,5 +90,16 @@ QtObject {
             }
         }
         return r
+    }
+
+    function clear() {
+        if(verbose) {
+            console.log("REGISTRY: Clearing")
+        }
+        for(var key of Object.keys(data)) {
+            itemRemoved(key)
+        }
+        data = {}
+        contentsChanged()  
     }
 }
