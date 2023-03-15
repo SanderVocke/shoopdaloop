@@ -838,11 +838,12 @@ std::vector<float> internal_audio_data(audio_channel_data_t const& d) {
 std::vector<_MidiMessage> internal_midi_data(midi_channel_data_t const& d) {
     auto r = std::vector<_MidiMessage>(d.n_events);
     for (size_t idx=0; idx < d.n_events; idx++) {
+        auto &from = *d.events[idx];
         _MidiMessage m(
-            d.events[idx]->size,
-            d.events[idx]->time,
-            std::vector<uint8_t>(m.size));
-        memcpy((void*)m.data.data(), (void*)d.events[idx]->data, m.size);
+            from.time,
+            from.size,
+            std::vector<uint8_t>(from.size));
+        memcpy((void*)m.data.data(), (void*)from.data, from.size);
         r[idx] = m;
     }
     return r;

@@ -97,7 +97,7 @@ class FileIO(QObject):
             mido_file.tracks.append(mido_track)
             current_tick = 0
 
-            def to_mido_msg(msg):
+            for msg in msgs:
                 beat_length_s = mido.bpm2tempo(120) / 1000000.0
                 abstime_s = msg.time / float(sample_rate)
                 abstime_ticks = int(abstime_s / beat_length_s * mido_file.ticks_per_beat)
@@ -105,10 +105,7 @@ class FileIO(QObject):
                 mido_msg = mido.Message.from_bytes(msg.data)
                 mido_msg.time = d_ticks
                 current_tick += d_ticks
-                return mido_msg
-
-            for m in msgs:
-                mido_track.append(to_mido_msg(m))
+                mido_track.append(mido_msg)
             
             # TODO: append an End-Of-Track message to determine the length
             

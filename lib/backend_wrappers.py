@@ -112,16 +112,14 @@ class BackendMidiMessage:
     time: int
     data: bytes
 
-    def __init__(self, backend_msg : 'backend.midi_event_t'):
-        time = msg.time
-        array_type = (c_ubyte * size)
-        array = cast(msg.data, array_type)
-        data = bytes(array)
-        self.time = time
-        self.data = data
-    
     def __init__(self):
-        self.time = 0
+        pass
+
+    def from_backend(self, backend_msg : 'backend.midi_event_t'):
+        self.time = backend_msg.time
+        d = [int(backend_msg.data[i]) for i in range(backend_msg.size)]
+        self.data = bytes(d)
+        return self
     
     def create_backend_msg(self):
         m = backend.alloc_midi_event(len(self.data))
@@ -197,7 +195,7 @@ class BackendLoopMidiChannel:
     
     def get_data(self) -> list['BackendMidiMessage']:
         r = backend.get_midi_channel_data(self.shoop_c_handle)
-        msgs = [BackendMidiMessage(r[0].events[i]) for i in range(r[0].n_events)]
+        msgs = [BackendMidiMessage().from_backend(r[0].events[i][0]) for i in range(r[0].n_events)]
         backend.destroy_midi_channel_data(r)
         return msgs
     
