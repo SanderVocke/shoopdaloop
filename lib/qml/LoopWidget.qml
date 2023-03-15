@@ -973,6 +973,14 @@ Item {
         Menu {
             id: menu
             title: 'Record'
+            property int n_audio_channels: 0
+            property int n_midi_channels: 0
+
+            onAboutToShow: {
+                n_audio_channels = widget.get_audio_channels().length
+                n_midi_channels = widget.get_midi_channels().length
+            }
+
             MenuItem {
                 Row {
                     anchors.fill: parent
@@ -1000,6 +1008,34 @@ Item {
             MenuItem {
                 text: "Save audio..."
                 onClicked: presavedialog.open()
+                visible: menu.n_audio_channels > 0
+            }
+            MenuItem {
+                text: "Load audio..."
+                onClicked: loaddialog.open()
+                visible: menu.n_audio_channels > 0
+            }
+            MenuItem {
+                text: "Load MIDI..."
+                visible: menu.n_midi_channels > 0
+                onClicked: {
+                    var chans = widget.get_midi_channels()
+                    if (chans.length == 0) { throw new Error("No MIDI channels to load"); }
+                    if (chans.length > 1) { throw new Error("Cannot load into more than 1 MIDI channel"); }
+                    midiloaddialog.channel = chans[0]
+                    midiloaddialog.open()
+                }
+            }
+            MenuItem {
+                text: "Save MIDI..."
+                visible: menu.n_midi_channels > 0
+                onClicked: {
+                    var chans = widget.get_midi_channels()
+                    if (chans.length == 0) { throw new Error("No MIDI channels to save"); }
+                    if (chans.length > 1) { throw new Error("Cannot save more than 1 MIDI channel"); }
+                    midisavedialog.channel = chans[0]
+                    midisavedialog.open()
+                }
             }
             // MenuItem {
             //     text: "Save wet to file..."
@@ -1011,10 +1047,6 @@ Item {
             // MenuItem {
             //     text: "Load audio file..."
             //     onClicked: () => loaddialog.open()
-            // }
-            // MenuItem {
-            //     text: "Save MIDI to file..."
-            //     onClicked: () => midisavedialog.open()
             // }
             // MenuItem {
             //     text: "Load MIDI file..."
@@ -1123,23 +1155,30 @@ Item {
         FileDialog {
             id: midisavedialog
             fileMode: FileDialog.SaveFile
+            options: FileDialog.DontUseNativeDialog
+            flags: Qt.Widget
+            modality: Qt.WindowModal
             acceptLabel: 'Save'
             nameFilters: ["MIDI files (*.mid)"]
-            defaultSuffix: 'mid'
+            property var channel: null
             onAccepted: {
-                widget.state_registry.mutate('n_saving_actions_active', (n) => { return n + 1; })
-                try {
-                    var filename = selectedFile.toString().replace('file://', '');
-                    widget.maybe_loop.doSaveMidiFile(filename)
-                } finally {
-                    widget.state_registry.mutate('n_saving_actions_active', (n) => { return n - 1 })
+                if (!widget.maybe_loaded_loop) { 
+                    console.log("Cannot save: loop not loaded")
+                    return;
                 }
+                close()
+                var filename = selectedFile.toString().replace('file://', '') + '.' + selectedNameFilter.extensions[0].toLowerCase()
+                var samplerate = widget.maybe_loaded_loop.backend.get_sample_rate()
+                file_io.save_channel_to_midi(filename, samplerate, channel)
             }
         }
 
         FileDialog {
             id: loaddialog
             fileMode: FileDialog.OpenFile
+            options: FileDialog.DontUseNativeDialog
+            modality: Qt.WindowModal
+            flags: Qt.Widget
             acceptLabel: 'Load'
             nameFilters: ["WAV files (*.wav)"]
             onAccepted: {
@@ -1151,11 +1190,17 @@ Item {
         FileDialog {
             id: midiloaddialog
             fileMode: FileDialog.OpenFile
+            options: FileDialog.DontUseNativeDialog
+            modality: Qt.WindowModal
+            flags: Qt.Widget
             acceptLabel: 'Load'
             nameFilters: ["Midi files (*.mid)"]
+            property var channel: null
             onAccepted: {
+                dynamic_loop.force_load = true
                 var filename = selectedFile.toString().replace('file://', '');
-                widget.maybe_loop.doLoadMidiFile(filename)
+                var samplerate = widget.maybe_loaded_loop.backend.get_sample_rate()
+                file_io.load_midi_to_channel(filename, samplerate, channel)
             }
         }
 

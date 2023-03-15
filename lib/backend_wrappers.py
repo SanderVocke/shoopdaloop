@@ -114,12 +114,22 @@ class BackendMidiMessage:
 
     def __init__(self, backend_msg : 'backend.midi_event_t'):
         time = msg.time
-        size = msg.size
         array_type = (c_ubyte * size)
         array = cast(msg.data, array_type)
         data = bytes(array)
         self.time = time
         self.data = data
+    
+    def __init__(self):
+        self.time = 0
+    
+    def create_backend_msg(self):
+        m = backend.alloc_midi_event(len(self.data))
+        m[0].time = self.time
+        m[0].size = len(self.data)
+        for i in range(len(self.data)):
+            m[0].data[i] = self.data[i]
+        return m
 
 class BackendLoopAudioChannel:
     def __init__(self, loop, c_handle : 'POINTER(backend.shoopdaloop_loop_audio_channel)'):
@@ -190,6 +200,14 @@ class BackendLoopMidiChannel:
         msgs = [BackendMidiMessage(r[0].events[i]) for i in range(r[0].n_events)]
         backend.destroy_midi_channel_data(r)
         return msgs
+    
+    def load_data(self, msgs : list['BackendMidiMessage']):
+        d = backend.alloc_midi_channel_data(len(msgs))
+        d.length_samples = msgs[len(msgs)-1].time + 1
+        for idx, m in enumerate(msgs):
+            d[0].events[idx] = m.create_backend_msg()
+        backend.load_midi_channel_data(self.shoop_c_handle, d)
+        backend.destroy_midi_channel_data(d)
     
     def connect(self, port : 'BackendMidiPort'):
         if port.direction() == PortDirection.Input:

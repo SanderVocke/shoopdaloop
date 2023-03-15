@@ -31,16 +31,16 @@ LoopMidiChannel {
         if (do_save_data_files && data_length > 0) {
             var filename = obj_id + '.mid'
             var full_filename = data_files_dir + '/' + filename;
-            save_data(full_filename)
-            // TODO task
+            var task = file_io.save_channel_to_midi_async(full_filename, get_backend().get_sample_rate(), this)
+            add_tasks_to.add_task(task)
             rval['data_file'] = filename
         }
         return rval
     }
     function queue_load_tasks(data_files_dir, add_tasks_to) {
-        if (initial_descriptor.data_file) {
+        if (Object.keys(descriptor).includes("data_file")) {
             add_tasks_to.add_task(
-                file_io.load_channels_from_soundfile_async(data_files_dir + '/' + initial_descriptor.data_file)
+                file_io.load_midi_to_channel_async(data_files_dir + '/' + descriptor.data_file, get_backend().get_sample_rate(), descriptor.data_length, this)
             )
         }
     }

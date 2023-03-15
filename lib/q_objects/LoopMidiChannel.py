@@ -53,3 +53,13 @@ class LoopMidiChannel(LoopChannel):
             return self._backend_obj.get_data()
         else:
             raise Exception("Getting data of un-loaded MIDI channel")
+
+    @pyqtSlot(list)
+    def load_data(self, data):
+        self.requestBackendInit.emit()
+        if self._backend_obj:
+            print("LOAD MIDI IMMEDIATELY {}".format(data))
+            self._backend_obj.load_data(data)
+        else:
+            self.initializedChanged.connect(lambda: print("LOAD MIDI LATER {}".format(data)))
+            self.initializedChanged.connect(lambda: self._backend_obj.load_data(data))

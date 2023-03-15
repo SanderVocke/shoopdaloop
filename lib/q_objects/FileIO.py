@@ -14,6 +14,7 @@ import soundfile as sf
 import numpy as np
 import resampy
 import mido
+import math
 
 # Allow filesystem operations from QML
 class FileIO(QObject):
@@ -109,10 +110,66 @@ class FileIO(QObject):
             for m in msgs:
                 mido_track.append(to_mido_msg(m))
             
+            # TODO: append an End-Of-Track message to determine the length
+            
             mido_file.save(filename)
             print("Saved MIDI channel to {}".format(filename))
         finally:
             self.doneSavingFile.emit()
+    
+    @pyqtSlot(str, int, 'QVariant', result=Task)
+    def save_channel_to_midi_async(self, filename, sample_rate, channel):
+        task = Task()
+        def do_save():
+            try:
+                self.save_channel_to_midi(filename, sample_rate, channel)
+            finally:
+                task.done()
+        
+        t = Thread(target=do_save)
+        t.start()
+        return task
+    
+    @pyqtSlot(str, int, 'QVariant')
+    def load_midi_to_channel(self, filename, sample_rate, channel):
+        self.startLoadingFile.emit()
+        try:
+            mido_file = mido.MidiFile(filename)
+            mido_msgs = [msg for msg in mido_file]
+            length = int(math.ceil(mido_file.length * sample_rate))
+            total_time = 0.0
+            backend_msgs = []
+            
+            for msg in mido_msgs:
+                msg_bytes = msg.bytes()
+                total_time += msg.time
+
+                if msg.is_meta or msg.bytes()[0] == 0xFF:
+                    continue
+                    
+                sample_time = int(total_time * sample_rate)
+                bm = BackendMidiMessage()
+                bm.time = sample_time
+                bm.data = msg_bytes
+                backend_msgs.append(bm)
+            
+            channel.load_data(backend_msgs)
+            print("Loaded MIDI from {} into channel ({} messages)".format(filename, len(backend_msgs)))
+        finally:
+            self.doneLoadingFile.emit()
+    
+    @pyqtSlot(str, int, 'QVariant', result=Task)
+    def load_midi_to_channel_async(self, filename, sample_rate, channel):
+        task = Task()
+        def do_load():
+            try:
+                self.load_midi_to_channel(filename, sample_rate, channel)
+            finally:
+                task.done()
+        
+        t = Thread(target=do_load)
+        t.start()
+        return task
     
     @pyqtSlot(str, int, list, result=Task)
     def save_channels_to_soundfile_async(self, filename, sample_rate, channels):
