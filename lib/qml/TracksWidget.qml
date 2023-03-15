@@ -48,11 +48,21 @@ ScrollView {
             var track = factory.createObject(root, properties);
             track.onLoadedChanged.connect(() => track_loaded_changed(track))
             track.onRowAdded.connect(() => handle_row_added(track))
+            track.onRequestDelete.connect(() => delete_track(track))
             root.track_initial_descriptors.push(properties.initial_descriptor)
             root.tracks.push(track)
 
             return track
         }
+    }
+
+    function delete_track(track) {
+        var new_tracks = []
+        for(var i=0; i<root.tracks.length; i++) {
+            if (root.tracks[i] != track) { new_tracks.push(root.tracks[i]) }
+        }
+        track.qml_close()
+        root.tracks = new_tracks
     }
 
     function clear_tracks() {
@@ -199,7 +209,7 @@ ScrollView {
             }
             onClicked: {
                 var idx = (root.tracks.length).toString()
-                var track_descriptor = GenerateSession.generate_default_track("Track " + idx, root.max_slots(), 'track_' + idx)
+                var track_descriptor = GenerateSession.generate_default_track("Track " + idx, Math.max(8, root.max_slots()), 'track_' + idx)
                 root.add_track({
                     initial_descriptor: track_descriptor,
                     objects_registry: root.objects_registry,

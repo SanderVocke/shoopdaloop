@@ -20,6 +20,7 @@ Item {
     //audio_ports_repeater.loaded && midi_ports_repeater.loaded && loops.loaded
 
     signal rowAdded()
+    signal requestDelete()
 
     SchemaCheck {
         descriptor: track.initial_descriptor
@@ -222,16 +223,56 @@ Item {
                 id: track_column
                 spacing: 2
 
-                TextField {
-                    text: track.name
-                    width: 90
-                    font.pixelSize: 13
-                    readOnly: !track.name_editable
+                Item {
+                    anchors {
+                        left: parent.left
+                        right: parent.right
+                    }
+                    height: childrenRect.height
 
-                    onEditingFinished: () => {
-                                           background_focus.forceActiveFocus()
-                                           track.name = text
-                                       }
+                    TextField {
+                        anchors {
+                            top: parent.top
+                            left: parent.left
+                            right: menubutton.left
+                        }
+
+                        text: track.name
+                        font.pixelSize: 13
+                        readOnly: !track.name_editable
+
+                        onEditingFinished: () => {
+                                            background_focus.forceActiveFocus()
+                                            track.name = text
+                                        }
+                    }
+        
+                    Button {
+                        id: menubutton
+                        anchors {
+                            top: parent.top
+                            right: parent.right
+                        }
+
+                        width: 18
+                        height: 28
+                        MaterialDesignIcon {
+                            size: 18
+                            name: 'dots-vertical'
+                            color: Material.foreground
+                            anchors.centerIn: parent
+                        }
+                        onClicked: menu.open()
+
+                        Menu {
+                            id: menu
+
+                            MenuItem {
+                                text: "Delete"
+                                onClicked: { track.requestDelete() }
+                            }
+                        }
+                    }
                 }
 
                 Column {
