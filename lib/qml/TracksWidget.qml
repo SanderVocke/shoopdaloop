@@ -186,8 +186,7 @@ ScrollView {
         }
     }
 
-
-    // Buttons for add / clear
+    // Button for add track
     Column {
         id : buttons_column
         spacing: 3
@@ -207,15 +206,19 @@ ScrollView {
                 color: Material.foreground
                 anchors.centerIn: parent
             }
-            onClicked: {
-                var idx = (root.tracks.length).toString()
-                var track_descriptor = GenerateSession.generate_default_track("Track " + idx, Math.max(8, root.max_slots()), 'track_' + idx)
-                root.add_track({
-                    initial_descriptor: track_descriptor,
-                    objects_registry: root.objects_registry,
-                    state_registry: root.state_registry
-                })
-            }
+            onClicked: newtrackdialog.open_for_new_track()
+        }
+    }
+
+    // Dialog for adding a new track
+    NewTrackDialog {
+        id: newtrackdialog
+        onAddTrackDescriptor: (desc) => {
+            root.add_track({
+                initial_descriptor: desc,
+                objects_registry: root.objects_registry,
+                state_registry: root.state_registry
+            })
         }
     }
 }
