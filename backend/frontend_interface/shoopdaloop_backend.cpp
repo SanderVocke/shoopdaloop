@@ -9,6 +9,7 @@
 #include "JackAudioPort.h"
 #include "JackAudioSystem.h"
 #include "DummyAudioSystem.h"
+#include "JackMidiPort.h"
 #include "MidiChannel.h"
 #include "MidiMessage.h"
 #include "MidiPortInterface.h"
@@ -202,8 +203,8 @@ struct PortInfo : public std::enable_shared_from_this<PortInfo> {
 
     void connect_passthrough(SharedPortInfo const& other);
 
-    AudioPort &audio();
-    MidiPort &midi();
+    AudioPort *maybe_audio();
+    MidiPort *maybe_midi();
     Backend &get_backend();
 };
 
@@ -245,8 +246,8 @@ struct ChannelInfo : public std::enable_shared_from_this<ChannelInfo> {
     void PROC_prepare_process_midi(size_t n_frames);
     void PROC_finalize_process_audio();
     void PROC_finalize_process_midi();
-    LoopAudioChannel &audio();
-    LoopMidiChannel &midi();
+    LoopAudioChannel *maybe_audio();
+    LoopMidiChannel *maybe_midi();
     Backend &get_backend();
 };
 
@@ -484,12 +485,12 @@ void PortInfo::PROC_finalize_process(size_t n_frames) {
     }
 }
 
-AudioPort &PortInfo::audio() {
-    return *dynamic_cast<AudioPort*>(port.get());
+AudioPort *PortInfo::maybe_audio() {
+    return dynamic_cast<AudioPort*>(port.get());
 }
 
-MidiPort &PortInfo::midi() {
-    return *dynamic_cast<MidiPort*>(port.get());
+MidiPort *PortInfo::maybe_midi() {
+    return dynamic_cast<MidiPort*>(port.get());
 }
 
 Backend &PortInfo::get_backend() {
@@ -665,14 +666,12 @@ void ChannelInfo::PROC_finalize_process_midi() {
     }
 }
 
-LoopAudioChannel &ChannelInfo::audio() {
-    auto _chan = dynamic_cast<LoopAudioChannel*>(channel.get());
-    return *_chan;
+LoopAudioChannel *ChannelInfo::maybe_audio() {
+    return dynamic_cast<LoopAudioChannel*>(channel.get());
 }
 
-LoopMidiChannel &ChannelInfo::midi() {
-    auto _chan = dynamic_cast<LoopMidiChannel*>(channel.get());
-    return *_chan;
+LoopMidiChannel *ChannelInfo::maybe_midi() {
+    return dynamic_cast<LoopMidiChannel*>(channel.get());
 }
 
 Backend &ChannelInfo::get_backend() {
@@ -870,6 +869,22 @@ std::optional<audio_system_type_t> audio_system_type(AudioSystem *sys) {
         return Dummy;
     } else {
         throw std::runtime_error("Unimplemented");
+    }
+}
+
+// A lot of the API functions queue operations to be executed in the process thread.
+// That means that in turn, other APIs cannot always rely on members of structures
+// to already be fully initialized.
+// This helper is useful for getting a result if it is ready, or if it is not,
+// waiting for one process iteration and then getting it.
+// The use-case is if you think some result may already be there to use, but
+// if it isn't, you are sure it will be there after the next process thread iteration.
+template<typename RType>
+RType evaluate_before_or_after_process(std::function<RType()> fn, bool predicate, CommandQueue &queue) {
+    if (predicate) { return fn(); }
+    else {
+        queue.queue_and_wait([](){});
+        return fn();
     }
 }
 
@@ -1077,7 +1092,10 @@ void disconnect_midi_inputs  (shoopdaloop_loop_midi_channel_t  *channel) {
 
 audio_channel_data_t *get_audio_channel_data (shoopdaloop_loop_audio_channel_t *channel) {
     auto &chan = *internal_audio_channel(channel);
-    return external_audio_data(chan.audio().get_data());
+    return evaluate_before_or_after_process<audio_channel_data_t*>(
+        [&chan]() { return external_audio_data(chan.maybe_audio()->get_data()); },
+        chan.maybe_audio(),
+        chan.backend.lock()->cmd_queue);
 }
 
 audio_channel_data_t *get_audio_rms_data (shoopdaloop_loop_audio_channel_t *channel,
@@ -1085,7 +1103,10 @@ audio_channel_data_t *get_audio_rms_data (shoopdaloop_loop_audio_channel_t *chan
                                         unsigned to_sample,
                                         unsigned samples_per_bin) {
     auto &chan = *internal_audio_channel(channel);
-    auto data = chan.audio().get_data();
+    auto data = evaluate_before_or_after_process<std::vector<float>>(
+        [&chan]() { return chan.maybe_audio()->get_data(); },
+        chan.maybe_audio(),
+        chan.backend.lock()->cmd_queue);
     auto n_samples = to_sample - from_sample;
     if (n_samples == 0) {
         return external_audio_data(std::vector<audio_sample_t>(0));
@@ -1105,17 +1126,29 @@ audio_channel_data_t *get_audio_rms_data (shoopdaloop_loop_audio_channel_t *chan
 
 midi_channel_data_t *get_midi_channel_data (shoopdaloop_loop_midi_channel_t  *channel) {
     auto &chan = *internal_midi_channel(channel);
-    return external_midi_data(chan.midi().retrieve_contents());
+    auto data = evaluate_before_or_after_process<std::vector<_MidiMessage>>(
+        [&chan]() { return chan.maybe_midi()->retrieve_contents(); },
+        chan.maybe_midi(),
+        chan.backend.lock()->cmd_queue);
+
+    return external_midi_data(data);
 }
 
 void load_audio_channel_data  (shoopdaloop_loop_audio_channel_t *channel, audio_channel_data_t *data) {
     auto &chan = *internal_audio_channel(channel);
-    chan.audio().load_data(data->data, data->n_samples);
+    evaluate_before_or_after_process<void>(
+        [&chan, &data]() { chan.maybe_audio()->load_data(data->data, data->n_samples); },
+        chan.maybe_audio(),
+        chan.backend.lock()->cmd_queue);
 }
 
 void load_midi_channel_data (shoopdaloop_loop_midi_channel_t  *channel, midi_channel_data_t  *data) {
     auto &chan = *internal_midi_channel(channel);
-    chan.midi().set_contents(internal_midi_data(*data), data->length_samples);
+    auto _data = internal_midi_data(*data);
+    evaluate_before_or_after_process<void>(
+        [&]() { chan.maybe_midi()->set_contents(_data, data->length_samples); },
+        chan.maybe_midi(),
+        chan.backend.lock()->cmd_queue);
 }
 
 void loop_transition(shoopdaloop_loop_t *loop,
@@ -1145,10 +1178,10 @@ void clear_loop (shoopdaloop_loop_t *loop, size_t length) {
     internal_loop(loop)->get_backend().cmd_queue.queue([=]() {
         auto &_loop = *internal_loop(loop);
         for (auto &chan : _loop.mp_audio_channels) {
-            chan->audio().PROC_clear(length);
+            chan->maybe_audio()->PROC_clear(length);
         }
         for (auto &chan : _loop.mp_midi_channels) {
-            chan->midi().PROC_clear();
+            chan->maybe_midi()->PROC_clear();
         }
         _loop.loop->set_length(length, false);
     });
@@ -1170,13 +1203,13 @@ void set_loop_position (shoopdaloop_loop_t *loop, size_t position) {
 
 void clear_audio_channel (shoopdaloop_loop_audio_channel_t *channel, size_t length) {
     internal_audio_channel(channel)->get_backend().cmd_queue.queue([=]() {
-        internal_audio_channel(channel)->audio().PROC_clear(length);
+        internal_audio_channel(channel)->maybe_audio()->PROC_clear(length);
     });
 }
 
 void clear_midi_channel (shoopdaloop_loop_midi_channel_t *channel) {
     internal_midi_channel(channel)->get_backend().cmd_queue.queue([=]() {
-        internal_midi_channel(channel)->midi().PROC_clear();
+        internal_midi_channel(channel)->maybe_midi()->PROC_clear();
     });
 }
 
@@ -1207,8 +1240,10 @@ void close_audio_port (shoopdaloop_backend_instance_t *backend, shoopdaloop_audi
 
 jack_port_t *get_audio_port_jack_handle(shoopdaloop_audio_port_t *port) {
     auto pi = internal_audio_port(port);
-    auto pp = &pi->audio();
-    return dynamic_cast<JackAudioPort*>(pp)->get_jack_port();
+    return evaluate_before_or_after_process<jack_port_t*>(
+        [pi]() { return dynamic_cast<JackAudioPort*>(pi->maybe_audio())->get_jack_port(); },
+        pi->maybe_audio(),
+        pi->backend.lock()->cmd_queue);
 }
 
 shoopdaloop_midi_port_t *open_midi_port (shoopdaloop_backend_instance_t *backend, const char* name_hint, port_direction_t direction) {
@@ -1236,8 +1271,10 @@ void close_midi_port (shoopdaloop_midi_port_t *port) {
 }
 jack_port_t *get_midi_port_jack_handle(shoopdaloop_midi_port_t *port) {
     auto pi = internal_midi_port(port);
-    auto pp = &pi->midi();
-    return dynamic_cast<JackMidiPort*>(pp)->get_jack_port();
+    return evaluate_before_or_after_process<jack_port_t*>(
+        [pi]() { return dynamic_cast<JackMidiPort*>(pi->maybe_midi())->get_jack_port(); },
+        pi->maybe_midi(),
+        pi->backend.lock()->cmd_queue);
 }
 
 void add_audio_port_passthrough(shoopdaloop_audio_port_t *from, shoopdaloop_audio_port_t *to) {

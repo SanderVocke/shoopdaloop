@@ -110,7 +110,7 @@ class FileIO(QObject):
             # TODO: append an End-Of-Track message to determine the length
             
             mido_file.save(filename)
-            print("Saved MIDI channel to {}".format(filename))
+            print("Saved MIDI channel to {} ({} messages)".format(filename, len(msgs)))
         finally:
             self.doneSavingFile.emit()
     
