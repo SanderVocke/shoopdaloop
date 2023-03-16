@@ -451,9 +451,11 @@ void PortInfo::PROC_passthrough_audio(size_t n_frames, PortInfo &to) {
 void PortInfo::PROC_passthrough_midi(size_t n_frames, PortInfo &to) {
     if(!muted && !passthrough_muted) {
         for(size_t i=0; i<maybe_midi_input_buffer->PROC_get_n_events(); i++) {
-            to.maybe_midi_output_buffer->PROC_write_event_reference(
-                maybe_midi_input_buffer->PROC_get_event_reference(i)
-                );
+            auto &msg = maybe_midi_input_buffer->PROC_get_event_reference(i);
+            uint32_t size, time;
+            const uint8_t *data;
+            msg.get(size, time, data);
+            to.maybe_midi_output_buffer->PROC_write_event_value(size, time, data);
         }
     }
 }
@@ -1392,21 +1394,29 @@ void set_audio_channel_volume (shoopdaloop_loop_audio_channel_t *channel, float 
 #warning state getters incomplete
 audio_channel_state_info_t *get_audio_channel_state (shoopdaloop_loop_audio_channel_t *channel) {
     auto r = new audio_channel_state_info_t;
-    auto &_channel = *dynamic_cast<LoopAudioChannel*>(internal_audio_channel(channel)->channel.get());
-    r->output_peak = _channel.get_output_peak();
-    r->volume = _channel.get_volume();
-    r->mode = _channel.get_mode();
-    r->length = _channel.get_length();
-    _channel.reset_output_peak();
+    auto chan = internal_audio_channel(channel);
+    auto audio = evaluate_before_or_after_process<LoopAudioChannel*>(
+        [&]() { return chan->maybe_audio(); },
+        chan->maybe_audio(),
+        chan->backend.lock()->cmd_queue);
+    r->output_peak = audio->get_output_peak();
+    r->volume = audio->get_volume();
+    r->mode = audio->get_mode();
+    r->length = audio->get_length();
+    audio->reset_output_peak();
     return r;
 }
 
 midi_channel_state_info_t *get_midi_channel_state   (shoopdaloop_loop_midi_channel_t  *channel) {
     auto r = new midi_channel_state_info_t;
-    auto &_channel = *dynamic_cast<LoopMidiChannel*>(internal_midi_channel(channel)->channel.get());
+    auto chan = internal_midi_channel(channel);
+    auto midi = evaluate_before_or_after_process<LoopMidiChannel*>(
+        [&]() { return chan->maybe_midi(); },
+        chan->maybe_midi(),
+        chan->backend.lock()->cmd_queue);
     r->n_events_triggered = 0;
-    r->mode = _channel.get_mode();
-    r->length = _channel.get_length();
+    r->mode = midi->get_mode();
+    r->length = midi->get_length();
     return r;
 }
 
@@ -1507,7 +1517,7 @@ void destroy_loop(shoopdaloop_loop_t *d) {
 void destroy_audio_port(shoopdaloop_audio_port_t *d) {
     auto port = internal_audio_port(d);
     auto backend = port->backend.lock();
-    backend->cmd_queue.queue([port, backend]() {
+    backend->cmd_queue.queue_and_wait([port, backend]() {
         // Remove port, which should stop anything from accessing it
         bool found = false;
         for(auto &elem : backend->ports) {
@@ -1516,15 +1526,15 @@ void destroy_audio_port(shoopdaloop_audio_port_t *d) {
         if (!found) {
             throw std::runtime_error("Did not find audio port to destroy");
         }
-        // Now also close the port for the audio back-end
-        port->port->close();
     });
+    // Now also close the port for the audio back-end
+    port->port->close();
 }
 
 void destroy_midi_port(shoopdaloop_midi_port_t *d) {
     auto port = internal_midi_port(d);
     auto backend = port->backend.lock();
-    backend->cmd_queue.queue([port, backend]() {
+    backend->cmd_queue.queue_and_wait([port, backend]() {
         // Remove port, which should stop anything from accessing it
         bool found = false;
         for(auto &elem : backend->ports) {
@@ -1533,9 +1543,9 @@ void destroy_midi_port(shoopdaloop_midi_port_t *d) {
         if (!found) {
             throw std::runtime_error("Did not find audio port to destroy");
         }
-        // Now also close the port for the audio back-end
-        port->port->close();
     });
+    // Now also close the port for the audio back-end
+    port->port->close();
 }
 
 void destroy_midi_port_state_info(midi_port_state_info_t *d) {

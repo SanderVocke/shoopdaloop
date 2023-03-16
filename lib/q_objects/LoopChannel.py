@@ -152,6 +152,7 @@ class LoopChannel(QQuickItem):
         state = self._backend_obj.get_state()
 
         if state.length != self._data_length:
+            print("length {} -> {}".format(self._data_length, state.length))
             self._data_length = state.length
             self.dataLengthChanged.emit(self._data_length)
         if state.mode != self._mode:

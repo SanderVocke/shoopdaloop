@@ -155,7 +155,6 @@ class BackendLoopAudioChannel:
     
     def load_data(self, data):
         backend_data = backend.alloc_audio_channel_data(len(data))
-        print(data)
         for i in range(len(data)):
             backend_data[0].data[i] = data[i]
         backend.load_audio_channel_data(self.shoop_c_handle, backend_data)

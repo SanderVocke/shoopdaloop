@@ -122,7 +122,9 @@ public:
     }
 
     std::unique_ptr<MidiWriteableBufferInterface> PROC_get_write_buffer (size_t n_frames) override {
-        return std::make_unique<JackWriteMidiBuf>(jack_port_get_buffer(m_port, n_frames));
+        auto buf = jack_port_get_buffer(m_port, n_frames);
+        jack_midi_clear_buffer(buf);
+        return std::make_unique<JackWriteMidiBuf>(buf);
     }
 
     ~JackMidiPort() override {

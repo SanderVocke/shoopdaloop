@@ -133,7 +133,7 @@ public:
         auto cmd = [=]() {
             mp_buffers = *buffers;
             ma_data_length = len;
-            std::cout << "C++: loaded " << ma_data_length << " sapmles.\n";
+            std::cout << "C++: loaded " << ma_data_length << " samples.\n";
         };
 
         if (thread_safe) {

@@ -194,8 +194,8 @@ class FileIO(QObject):
         t.start()
         return task
     
-    @pyqtSlot(str, int, int, list)
-    def load_soundfile_to_channels(self, filename, target_sample_rate, maybe_target_data_length, channels_to_loop_channels):
+    @pyqtSlot(str, int, 'QVariant', list, 'QVariant')
+    def load_soundfile_to_channels(self, filename, target_sample_rate, maybe_target_data_length, channels_to_loop_channels, maybe_loop_set_length):
         self.startLoadingFile.emit()
         try:
             data, file_sample_rate = sf.read(filename, dtype='float32')
@@ -227,17 +227,21 @@ class FileIO(QObject):
                 channels = channels_to_loop_channels[idx]
                 for channel in channels:
                     channel.load_data(data_channel)
+            
+            if maybe_loop_set_length:
+                print("Set loop length to {}".format(len(data[0])))
+                maybe_loop_set_length.set_length(len(data[0]))
 
             print("Loaded {}-channel audio from {}".format(len(data), filename))
         finally:
             self.doneLoadingFile.emit()
     
-    @pyqtSlot(str, int, int, list, result=Task)
-    def load_soundfile_to_channels_async(self, filename, target_sample_rate, target_data_length, channels_to_loop_channels):
+    @pyqtSlot(str, int, 'QVariant', list, 'QVariant', result=Task)
+    def load_soundfile_to_channels_async(self, filename, target_sample_rate, target_data_length, channels_to_loop_channels, maybe_loop_set_length):
         task = Task()
         def do_load():
             try:
-                self.load_soundfile_to_channels(filename, target_sample_rate, target_data_length, channels_to_loop_channels)
+                self.load_soundfile_to_channels(filename, target_sample_rate, target_data_length, channels_to_loop_channels, maybe_loop_set_length)
             finally:
                 task.done()
         
