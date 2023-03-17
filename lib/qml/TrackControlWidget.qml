@@ -35,6 +35,21 @@ Item {
     property var midi_in_ports : ports.filter((p) => p instanceof MidiPort && p.direction == Types.PortDirection.Input)
     property var midi_out_ports : ports.filter((p) => p instanceof MidiPort && p.direction == Types.PortDirection.Output)
 
+    property int n_midi_events_in : 0
+    property int n_midi_events_out : 0
+    function aggregate_midi_events(ports) {
+        var events_per_port = ports.map((p) => p.n_events_triggered)
+        return Math.max(events_per_port)
+    }
+    function update_midi() {
+        n_midi_events_in = aggregate_midi_events(midi_in_ports)
+        n_midi_events_out = aggregate_midi_events(midi_out_ports)
+    }
+    onMidi_in_portsChanged: {
+        midi_in_ports.forEach((m) => m.nEventsTriggeredChanged.connect(update_midi))
+        midi_out_ports.forEach((m) => m.nEventsTriggeredChanged.connect(update_midi))
+    }
+
     function find_nth(array, n, fn) {
         var _n=0
         for(var i=0; i<array.length; i++) {
@@ -197,6 +212,18 @@ Item {
                     }
                 }
             }
+            Rectangle {
+                id: output_midi_indicator
+                anchors {
+                    right: output_peak_bar_r.right
+                    top: output_peak_bar_r.top
+                    bottom: output_peak_bar_r.bottom
+                }
+                width: 8
+                radius: 2
+                color: '#00BBFF'
+                visible: trackctl.n_midi_events_out > 0
+            }
             Row {
                 spacing: -2
                 id: volume_row
@@ -339,6 +366,18 @@ Item {
                         color: 'grey'
                     }
                 }
+            }
+            Rectangle {
+                id: input_midi_indicator
+                anchors {
+                    right: input_peak_r_bar.right
+                    top: input_peak_r_bar.top
+                    bottom: input_peak_r_bar.bottom
+                }
+                width: 8
+                radius: 2
+                color: '#00BBFF'
+                visible: trackctl.n_midi_events_in > 0
             }
             Row {
                 id: passthrough_row

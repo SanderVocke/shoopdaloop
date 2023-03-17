@@ -34,6 +34,7 @@ class Loop(QQuickItem):
         self._initialized = False
         self._backend = None
         self._backend_loop = None
+        self._display_peak = 0.0
 
         self.rescan_parents()
         if not self._backend:
@@ -122,6 +123,12 @@ class Loop(QQuickItem):
         else:
             self.initializedChanged.connect(do_set)
     
+    # display_peak : overall audio peak of the loop
+    displayPeakChanged = pyqtSignal(float)
+    @pyqtProperty(float, notify=displayPeakChanged)
+    def display_peak(self):
+        return self._display_peak
+    
     ###########
     ## SLOTS
     ###########
@@ -152,6 +159,7 @@ class Loop(QQuickItem):
         prev_length = self._length
         prev_next_mode = self._next_mode
         prev_next_delay = self._next_transition_delay
+        prev_display_peak = self._display_peak
 
         state = self._backend_loop.get_state()
         self._mode = state.mode
@@ -159,6 +167,7 @@ class Loop(QQuickItem):
         self._position = state.position
         self._next_mode = (state.maybe_next_mode if state.maybe_next_mode != None else state.mode)
         self._next_transition_delay = (state.maybe_next_delay if state.maybe_next_delay != None else -1)
+        self._display_peak = (max([c.output_peak for c in self.audio_channels()]) if len(self.audio_channels()) > 0 else 0.0)
 
         if prev_mode != self._mode:
             self.modeChanged.emit(self._mode)
@@ -170,6 +179,8 @@ class Loop(QQuickItem):
             self.nextModeChanged.emit(self._next_mode)
         if prev_next_delay != self._next_transition_delay:
             self.nextTransitionDelayChanged.emit(self._next_transition_delay)
+        if prev_display_peak != self._display_peak:
+            self.displayPeakChanged.emit(self._display_peak)
 
         after_halfway = (self.length > 0 and self.position >= self.length/2)
         if (after_halfway and prev_before_halway):

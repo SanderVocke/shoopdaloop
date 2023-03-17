@@ -287,12 +287,7 @@ Item {
             AudioLevelMeterModel {
                 id: output_peak_meter_l
                 max_dt: 0.1
-                input: {
-                    if (statusrect.loop && statusrect.loop.audio_channels.length >= 1) {
-                        return statusrect.loop.audio_channels[0].output_peak
-                    }
-                    return 0.0
-                }
+                input: widget.maybe_loop.display_peak
             }
 
             from: -30.0
@@ -326,14 +321,7 @@ Item {
             AudioLevelMeterModel {
                 id: output_peak_meter_r
                 max_dt: 0.1
-                input: 0.0
-                // input: {
-                //     if (statusrect.loop && statusrect.loop.audio_channels.length >= 2) {
-                //         return statusrect.loop.audio_channels[1].output_peak
-                //     }
-                //     console.log('Unimplemented')
-                //     return 0.0
-                // }
+                input: widget.maybe_loop.display_peak
             }
 
             from: -30.0
@@ -856,6 +844,17 @@ Item {
                     return default_color;
                 }
             }
+        }
+
+        Rectangle {
+            anchors {
+                right: parent.right
+                top: parent.top
+                bottom: parent.bottom
+            }
+            width: 8
+
+            color: '#00BBFF'
         }
     }
 
