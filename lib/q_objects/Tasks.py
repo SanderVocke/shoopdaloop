@@ -40,3 +40,18 @@ class Tasks(QObject):
         if prev_all_done != cur_all_done:
             self.anythingToDoChanged.emit(not cur_all_done)
     
+    @pyqtSlot('QVariant')
+    def when_finished(self, fn):
+        def exec_fn():
+            if callable(fn):
+                print("exec callable")
+                fn()
+            elif isinstance(fn, QJSValue):
+                print("exec qjsvalue")
+                fn.call()
+        
+        if not self._anything_to_do:
+            exec_fn()
+        else:
+            self.anythingToDoChanged.connect(lambda: exec_fn())
+    

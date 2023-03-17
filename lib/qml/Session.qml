@@ -2,7 +2,6 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
 import QtQuick.Dialogs
-import Tasks
 
 import "../generate_session.js" as GenerateSession
 import "../../build/types.js" as Types
@@ -27,26 +26,9 @@ Item {
         id: validator
     }
 
-    RegistryLookup {
-        id: saving_lookup
-        registry: state_registry
-        key: 'n_saving_actions_active'
-    }
-    RegistryLookup {
-        id: loading_lookup
-        registry: state_registry
-        key: 'n_loading_actions_active'
-    }
-    readonly property bool saving : saving_lookup.object != null && saving_lookup.object > 0
-    readonly property bool loading : loading_lookup.object != null && loading_lookup.object > 0
+    readonly property bool saving : state_registry.n_saving_actions_active > 0
+    readonly property bool loading : state_registry.n_loading_actions_active > 0
     readonly property bool doing_io : saving || loading
-    // Connections {
-    //     target: file_io
-    //     function onStartSavingSoundfile() { state_registry.mutate('n_saving_actions_active', (n) => { return n+1 }) }
-    //     function onDoneSavingSoundfile() { state_registry.mutate('n_saving_actions_active', (n) => { return n-1 }) }
-    //     function onStartLoadingSoundfile() { state_registry.mutate('n_loading_actions_active', (n) => { return n+1 }) }
-    //     function onDoneLoadingSoundfile() { state_registry.mutate('n_loading_actions_active', (n) => { return n-1 }) }
-    // }
 
     Popup {
         visible: saving
@@ -75,7 +57,9 @@ Item {
     // State registry stores the following optional states:
     // - "master_loop" -> LoopWidget which holds the master loop
     // - "targeted_loop" -> LoopWidget which is currently targeted
-    property Registry state_registry: StateRegistry { verbose: true }
+    property Registry state_registry: StateRegistry {
+        verbose: true
+    }
 
     // For (test) access
     property alias tracks: tracks_widget.tracks
@@ -92,7 +76,7 @@ Item {
     TasksFactory { id: tasks_factory }
 
     function save_session(filename) {
-        state_registry.mutate('n_saving_actions_active', (n) => { return n + 1 })
+        state_registry.save_action_started()
         var tempdir = file_io.create_temporary_folder()
         var tasks = tasks_factory.create_tasks_obj(this)
 
@@ -102,26 +86,21 @@ Item {
         // TODO make this step asynchronous
         file_io.write_file(session_filename, JSON.stringify(descriptor, null, 2))
 
-        var on_done = () => {
+        tasks.when_finished(() => {
             try {
                 // TODO make this step asynchronous
                 file_io.make_tarfile(filename, tempdir, false)
                 console.log("Session written to: ", filename)
             } finally {
-                state_registry.mutate('n_saving_actions_active', (n) => { return n - 1 } )
-                file_io.delete_recursive(tempdir)
+                state_registry.save_action_finished()
+                ile_io.delete_recursive(tempdir)
                 tasks.destroy()
             }
-        }
-
-        if (!tasks.anything_to_do) { on_done(); }
-        else {
-            tasks.anythingToDoChanged.connect(on_done)
-        }
+        })
     }
 
     function reload() {
-        state_registry.clear(["n_loading_actions_active", "n_saving_actions_active"])
+        state_registry.reset_saving_loading()
         objects_registry.clear()
         tracks_widget.reload()
     }
@@ -131,7 +110,7 @@ Item {
     }
 
     function load_session(filename) {
-        state_registry.mutate('n_loading_actions_active', (n) => { return n + 1 })
+        state_registry.load_action_started()
         var tempdir = file_io.create_temporary_folder()
 
         try {
@@ -150,18 +129,14 @@ Item {
 
             queue_load_tasks(tempdir, tasks)
 
-            var on_done = () => {
+            tasks.when_finished(() => {
                 try {
                     file_io.delete_recursive(tempdir)
                 } finally {
-                    state_registry.mutate('n_loading_actions_active', (n) => { return n - 1 } )
+                    state_registry.load_action_finished()
                 }
-            }
-
-            if (!tasks.anything_to_do) { on_done(); }
-            else {
-                tasks.anythingToDoChanged.connect(on_done)
-            }
+            })
+            
         } catch(e) {
             file_io.delete_recursive(tempdir)
             throw e;

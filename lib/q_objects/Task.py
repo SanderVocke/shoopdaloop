@@ -1,4 +1,5 @@
 from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot, QTimer
+from PyQt6.QtQml import QJSValue
 
 # Simple object that keeps track of an asynchronous task's execution.
 class Task(QObject):
@@ -20,3 +21,19 @@ class Task(QObject):
     @pyqtSlot()
     def done(self):
         self.anything_to_do = False
+
+    @pyqtSlot('QVariant')
+    def when_finished(self, fn):
+        def exec_fn():
+            if callable(fn):
+                print("exec callable")
+                fn()
+            elif isinstance(fn, QJSValue):
+                print("exec qjsvalue")
+                fn.call()
+        
+        if not self._anything_to_do:
+            exec_fn()
+        else:
+            self.anythingToDoChanged.connect(lambda: exec_fn())
+

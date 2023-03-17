@@ -116,7 +116,7 @@ class FileIO(QObject):
     
     @pyqtSlot(str, int, 'QVariant', result=Task)
     def save_channel_to_midi_async(self, filename, sample_rate, channel):
-        task = Task()
+        task = Task(parent=self)
         def do_save():
             try:
                 self.save_channel_to_midi(filename, sample_rate, channel)
@@ -127,14 +127,15 @@ class FileIO(QObject):
         t.start()
         return task
     
-    @pyqtSlot(str, int, 'QVariant')
-    def load_midi_to_channel(self, filename, sample_rate, channel):
+    @pyqtSlot(str, int, 'QVariant', 'QVariant')
+    def load_midi_to_channel(self, filename, sample_rate, channel, maybe_loop_set_length):
         self.startLoadingFile.emit()
         try:
             mido_file = mido.MidiFile(filename)
             mido_msgs = [msg for msg in mido_file]
             length = int(math.ceil(mido_file.length * sample_rate))
             total_time = 0.0
+            total_sample_time = 0
             backend_msgs = []
             
             for msg in mido_msgs:
@@ -144,23 +145,27 @@ class FileIO(QObject):
                 if msg.is_meta or msg.bytes()[0] == 0xFF:
                     continue
                     
-                sample_time = int(total_time * sample_rate)
+                total_sample_time = int(total_time * sample_rate)
                 bm = BackendMidiMessage()
-                bm.time = sample_time
+                bm.time = total_sample_time
                 bm.data = msg_bytes
                 backend_msgs.append(bm)
             
             channel.load_data(backend_msgs)
+            if maybe_loop_set_length:
+                print("Set loop length to {}".format(total_sample_time))
+                maybe_loop_set_length.set_length(total_sample_time)
+            
             print("Loaded MIDI from {} into channel ({} messages)".format(filename, len(backend_msgs)))
         finally:
             self.doneLoadingFile.emit()
     
-    @pyqtSlot(str, int, 'QVariant', result=Task)
-    def load_midi_to_channel_async(self, filename, sample_rate, channel):
-        task = Task()
+    @pyqtSlot(str, int, 'QVariant', 'QVariant', result=Task)
+    def load_midi_to_channel_async(self, filename, sample_rate, channel, maybe_loop_set_length):
+        task = Task(parent=self)
         def do_load():
             try:
-                self.load_midi_to_channel(filename, sample_rate, channel)
+                self.load_midi_to_channel(filename, sample_rate, channel, maybe_loop_set_length)
             finally:
                 task.done()
         
@@ -170,7 +175,7 @@ class FileIO(QObject):
     
     @pyqtSlot(str, int, list, result=Task)
     def save_channels_to_soundfile_async(self, filename, sample_rate, channels):
-        task = Task()
+        task = Task(parent=self)
         def do_save():
             try:
                 self.save_channels_to_soundfile(filename, sample_rate, channels)
@@ -183,7 +188,7 @@ class FileIO(QObject):
 
     @pyqtSlot(str, int, 'QVariant', result=Task)
     def save_channel_to_midi_async(self, filename, sample_rate, channel):
-        task = Task()
+        task = Task(parent=self)
         def do_save():
             try:
                 self.save_channel_to_midi(filename, sample_rate, channel)
@@ -198,7 +203,9 @@ class FileIO(QObject):
     def load_soundfile_to_channels(self, filename, target_sample_rate, maybe_target_data_length, channels_to_loop_channels, maybe_loop_set_length):
         self.startLoadingFile.emit()
         try:
+            print("sf read")
             data, file_sample_rate = sf.read(filename, dtype='float32')
+            print("swap")
             if data.ndim == 1:
                 # Mono
                 data = [data]
@@ -211,18 +218,21 @@ class FileIO(QObject):
             target_sample_rate = int(target_sample_rate)
             file_sample_rate = int(file_sample_rate)
             resampled = data
+            print("resample")
             if target_sample_rate != file_sample_rate:
                 resampled = resampy.resample(data, file_sample_rate, target_sample_rate)
             
             if len(channels_to_loop_channels) > len(data):
                 raise Exception("Need {} channels, but loaded file only has {}".format(len(channels_to_loop_channels), len(data)))
 
+            print("truncate")
             for d in data:
                 if maybe_target_data_length != None and len(d) > maybe_target_data_length:
                     del d[maybe_target_data_length:]
                 while maybe_target_data_length != None and len(d) < maybe_target_data_length:
                     d.append(d[len(d)-1])
 
+            print("load")
             for idx, data_channel in enumerate(data):
                 channels = channels_to_loop_channels[idx]
                 for channel in channels:
@@ -238,7 +248,7 @@ class FileIO(QObject):
     
     @pyqtSlot(str, int, 'QVariant', list, 'QVariant', result=Task)
     def load_soundfile_to_channels_async(self, filename, target_sample_rate, target_data_length, channels_to_loop_channels, maybe_loop_set_length):
-        task = Task()
+        task = Task(parent=self)
         def do_load():
             try:
                 self.load_soundfile_to_channels(filename, target_sample_rate, target_data_length, channels_to_loop_channels, maybe_loop_set_length)

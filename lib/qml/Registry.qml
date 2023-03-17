@@ -1,8 +1,8 @@
 import QtQuick 2.15
 
 // A registry is a simple key-value store which can be shared by reference
-QtObject {
-    property var data: ({})
+Item {
+    property var registry_data: ({})
     property var verbose: false
 
     signal contentsChanged()
@@ -11,80 +11,80 @@ QtObject {
     signal itemRemoved(var id)
 
     function register(id, object, overwrite=false) {
-        if(id in data && !overwrite) {
+        if(id in registry_data && !overwrite) {
             throw new Error("attempting to re-register existing key: " + id)
         }
-        if(!(id in data)) {
+        if(!(id in registry_data)) {
             if (verbose) {
                 console.log("REGISTRY: Registered:", id, " => ", object)
             }
-            data[id] = object
+            registry_data[id] = object
             itemAdded(id, object)
             contentsChanged()
-        } else if(overwrite && (id in data)) {
+        } else if(overwrite && (id in registry_data)) {
             if (verbose) {
-                console.log("REGISTRY: Overwrite: ", id, ":", data[id], " => ", object)
+                console.log("REGISTRY: Overwrite: ", id, ":", registry_data[id], " => ", object)
             }
-            data[id] = object
+            registry_data[id] = object
             itemModified(id, object)
             contentsChanged()
         }
     }
 
     function unregister(id) {
-        if(!(id in data)) {
+        if(!(id in registry_data)) {
             return;
         }
         if(verbose) {
             console.log("REGISTRY: Unregistered:", id)
         }
-        console.log('before', data[id])
-        delete data[id]
-        console.log('after', data[id])
+        console.log('before', registry_data[id])
+        delete registry_data[id]
+        console.log('after', registry_data[id])
         itemRemoved(id)
         contentsChanged()
     }
 
     function get(id) {
-        if(!(id in data)) {
+        if(!(id in registry_data)) {
             throw new Error("attempting to get non-existing key: " + id)
         }
-        return data[id]
+        return registry_data[id]
     }
 
     function maybe_get(id, fallback) {
-        if(!(id in data)) {
+        if(!(id in registry_data)) {
             return fallback
         }
-        return data[id]
+        return registry_data[id]
     }
 
     function has(id) {
-        return id in data;
+        return id in registry_data;
     }
 
     function replace(id, val) {
-        if(data[id] == val) { return; }
+        if(registry_data[id] == val) { return; }
         if(verbose) {
             console.log("REGISTRY: Replacing:", id, val)
         }
-        data[id] = val
-        itemModified(id, data[id])
+        registry_data[id] = val
+        itemModified(id, registry_data[id])
         contentsChanged()
     }
 
     function mutate(id, fn, val) {
-        data[id] = fn(data[id])
+        registry_data[id] = fn(registry_data[id])
         if(verbose) {
-            console.log("REGISTRY: Mutating:", id, " => ", data[id])
+            console.log("REGISTRY: Mutating:", id, " => ", registry_data[id])
         }
-        itemModified(id, data[id])
+        itemModified(id, registry_data[id])
         contentsChanged()
     }
 
     function select(fn) {
         var r = []
-        for (const [key, value] of Object.entries(data)) {
+        for (const [key, value] of Object.entries(registry_data)) {
             if(fn(value)) {
                 r.push([key, value])
             }
@@ -94,14 +94,14 @@ QtObject {
 
     function clear(except_keys=[]) {
         var replace = {}
-        for(const key of except_keys) { replace[key] = data[key] }
+        for(const key of except_keys) { replace[key] = registry_data[key] }
         if(verbose) {
             console.log("REGISTRY: Clearing")
         }
-        for(var key of Object.keys(data)) {
+        for(var key of Object.keys(registry_data)) {
             itemRemoved(key)
         }
-        data = replace
+        registry_data = replace
         contentsChanged()  
     }
 }

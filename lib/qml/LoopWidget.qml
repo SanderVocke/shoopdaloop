@@ -1025,7 +1025,7 @@ Item {
                     var chans = widget.get_midi_channels()
                     if (chans.length == 0) { throw new Error("No MIDI channels to load"); }
                     if (chans.length > 1) { throw new Error("Cannot load into more than 1 MIDI channel"); }
-                    midiloaddialog.channel = chans[0]
+                    midiloadoptionsdialog.channel = chans[0]
                     midiloaddialog.open()
                 }
             }
@@ -1132,9 +1132,16 @@ Item {
                     return;
                 }
                 close()
-                var filename = selectedFile.toString().replace('file://', '')
-                var samplerate = widget.maybe_loaded_loop.backend.get_sample_rate()
-                file_io.save_channels_to_soundfile_async(filename, samplerate, channels)
+                widget.state_registry.save_action_started()
+                try {
+                    var filename = selectedFile.toString().replace('file://', '')
+                    var samplerate = widget.maybe_loaded_loop.backend.get_sample_rate()
+                    var task = file_io.save_channels_to_soundfile_async(filename, samplerate, channels)
+                    task.when_finished(() => widget.state_registry.save_action_finished())
+                } catch (e) {
+                    widget.state_registry.save_action_finished()
+                    throw e;
+                }
             }
         }
 
@@ -1177,15 +1184,6 @@ Item {
                 dynamic_loop.force_load = true
                 loadoptionsdialog.update()
                 loadoptionsdialog.open()
-
-                // if (!widget.maybe_loaded_loop) { 
-                //     console.log("Cannot save: loop not loaded")
-                //     return;
-                // }
-                // close()
-                // var filename = selectedFile.toString().replace('file://', '')
-                // var samplerate = widget.maybe_loaded_loop.backend.get_sample_rate()
-                // file_io.save_channels_to_soundfile(filename, samplerate, channels)
             }
         }
 
@@ -1203,13 +1201,17 @@ Item {
             property var wet_audio_channels : []
             readonly property int n_channels : channels_to_load.length
             property int n_file_channels : 0
+            property int file_sample_rate : 0
+            property int backend_sample_rate : widget.maybe_loaded_loop ? widget.maybe_loaded_loop.backend.get_sample_rate() : 0
+            property bool will_resample : file_sample_rate != backend_sample_rate
 
             width: 300
-            height: 200
+            height: 400
 
             onFilenameChanged: {
                 var props = file_io.get_soundfile_info(filename)
                 n_file_channels = props['channels']
+                file_sample_rate = props['samplerate']
             }
 
             function update() {
@@ -1227,7 +1229,7 @@ Item {
             }
 
             // TODO: there has to be a better way
-            Timer {
+            Timer {                                                                                                                                                                                 
                 interval: 100
                 running: loadoptionsdialog.opened
                 onTriggered: loadoptionsdialog.update()
@@ -1238,66 +1240,82 @@ Item {
                     console.log("Cannot load: loop not loaded")
                     return;
                 }
-                close()
-                var samplerate = widget.maybe_loaded_loop.backend.get_sample_rate()
-                // Distribute file channels round-robin over loop channels.
-                // TODO: provide other options
-                var mapping = Array.from(Array(n_file_channels).keys()).map(v => [])
-                var fidx=0;
-                for(var cidx = 0; cidx < n_channels; cidx++) {
-                    mapping[fidx].push(channels_to_load[cidx])
-                    fidx = (fidx + 1) % n_file_channels
+                widget.state_registry.load_action_started()
+                try {
+                    close()
+                    var samplerate = widget.maybe_loaded_loop.backend.get_sample_rate()
+                    // Distribute file channels round-robin over loop channels.
+                    // TODO: provide other options
+                    var mapping = Array.from(Array(n_file_channels).keys()).map(v => [])
+                    var fidx=0;
+                    for(var cidx = 0; cidx < n_channels; cidx++) {
+                        mapping[fidx].push(channels_to_load[cidx])
+                        fidx = (fidx + 1) % n_file_channels
+                    }
+                    var task = file_io.load_soundfile_to_channels_async(filename, samplerate, null, mapping, 
+                        update_audio_length_checkbox.checked ? widget.maybe_loaded_loop : null)
+                    task.when_finished( () => widget.state_registry.load_action_finished() )
+                } catch(e) {
+                    widget.state_registry.load_action_finished()
+                    throw e
                 }
-                file_io.load_soundfile_to_channels_async(filename, samplerate, null, mapping, 
-                    update_audio_length_checkbox.checked ? widget.maybe_loaded_loop : null)
             }
 
-            Grid {
-                columns: 2
-                verticalItemAlignment: Grid.AlignVCenter
-                columnSpacing: 10
+            Column {
+                Grid {
+                    columns: 2
+                    verticalItemAlignment: Grid.AlignVCenter
+                    columnSpacing: 10
+
+                    Label {
+                        text: "To direct channel(s):"
+                        visible: loadoptionsdialog.direct_audio_channels.length > 0
+                    }
+                    CheckBox {
+                        id: direct_load_checkbox
+                        visible: loadoptionsdialog.direct_audio_channels.length > 0
+                        checked: true
+                        onCheckedChanged: loadoptionsdialog.update()
+                    }
+
+                    Label {
+                        text: "To dry channel(s):"
+                        visible: loadoptionsdialog.dry_audio_channels.length > 0
+                    }
+                    CheckBox {
+                        id: dry_load_checkbox
+                        visible: loadoptionsdialog.dry_audio_channels.length > 0
+                        checked: true
+                        onCheckedChanged: loadoptionsdialog.update()
+                    }
+
+                    Label {
+                        text: "To wet channel(s):"
+                        visible: loadoptionsdialog.wet_audio_channels.length > 0
+                    }
+                    CheckBox {
+                        id: wet_load_checkbox
+                        visible: loadoptionsdialog.wet_audio_channels.length > 0
+                        checked: true
+                        onCheckedChanged: loadoptionsdialog.update()
+                    }
+
+                    Label {
+                        text: "Update loop length:"
+                    }
+                    CheckBox {
+                        id: update_audio_length_checkbox
+                        checked: true
+                    }
+                }
 
                 Label {
-                    text: "To direct channel(s):"
-                    visible: loadoptionsdialog.direct_audio_channels.length > 0
+                    visible: loadoptionsdialog.will_resample
+                    wrapMode: Text.WordWrap
+                    width: loadoptionsdialog.width - 50
+                    text: "Warning: the file to load will be resampled. This may take a long time."
                 }
-                CheckBox {
-                    id: direct_load_checkbox
-                    visible: loadoptionsdialog.direct_audio_channels.length > 0
-                    checked: true
-                    onCheckedChanged: loadoptionsdialog.update()
-                }
-
-                Label {
-                    text: "To dry channel(s):"
-                    visible: loadoptionsdialog.dry_audio_channels.length > 0
-                }
-                CheckBox {
-                    id: dry_load_checkbox
-                    visible: loadoptionsdialog.dry_audio_channels.length > 0
-                    checked: true
-                    onCheckedChanged: loadoptionsdialog.update()
-                }
-
-                Label {
-                    text: "To wet channel(s):"
-                    visible: loadoptionsdialog.wet_audio_channels.length > 0
-                }
-                CheckBox {
-                    id: wet_load_checkbox
-                    visible: loadoptionsdialog.wet_audio_channels.length > 0
-                    checked: true
-                    onCheckedChanged: loadoptionsdialog.update()
-                }
-
-                Label {
-                    text: "Update loop length:"
-                }
-                CheckBox {
-                    id: update_audio_length_checkbox
-                    checked: true
-                }
-            }            
+            }
         }
 
         FileDialog {
@@ -1308,13 +1326,27 @@ Item {
             flags: Qt.Widget
             acceptLabel: 'Load'
             nameFilters: ["Midi files (*.mid)"]
-            property var channel: null
             onAccepted: {
-                dynamic_loop.force_load = true
-                var filename = selectedFile.toString().replace('file://', '');
-                var samplerate = widget.maybe_loaded_loop.backend.get_sample_rate()
-                file_io.load_midi_to_channel_async(filename, samplerate, channel)
+                midiloadoptionsdialog.filename = selectedFile.toString().replace('file://', '');
+                midiloadoptionsdialog.open()
             }
+        }
+
+        Dialog {
+            id: midiloadoptionsdialog
+            standardButtons: Dialog.Yes | Dialog.No
+            Label { text: "Update loop length to loaded data length?" }
+            property string filename
+            property var channel : null
+            function doLoad(update_loop_length) {
+                dynamic_loop.force_load = true
+                var samplerate = widget.maybe_loaded_loop.backend.get_sample_rate()
+                file_io.load_midi_to_channel_async(filename, samplerate, channel, update_loop_length ?
+                    widget.maybe_loaded_loop : null)
+            }
+
+            onAccepted: doLoad(true)
+            onRejected: doLoad(false)
         }
 
         function popup () {
