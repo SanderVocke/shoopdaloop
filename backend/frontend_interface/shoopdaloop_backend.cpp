@@ -20,6 +20,7 @@
 #include "DecoupledMidiPort.h"
 #include "CommandQueue.h"
 #include "DummyMidiBufs.h"
+#include "MidiNotesState.h"
 #include "process_loops.h"
 #include "types.h"
 
@@ -170,6 +171,7 @@ struct PortInfo : public std::enable_shared_from_this<PortInfo> {
     std::shared_ptr<MidiWriteableBufferInterface> maybe_midi_output_buffer;
     std::shared_ptr<MidiMergingBuffer> maybe_midi_output_merging_buffer;
     std::atomic<size_t> n_events_processed;
+    std::unique_ptr<MidiNotesState> maybe_midi_notes_state;
 
     // Both
     std::atomic<bool> muted;
@@ -179,6 +181,7 @@ struct PortInfo : public std::enable_shared_from_this<PortInfo> {
         maybe_audio_buffer(nullptr),
         maybe_midi_input_buffer(nullptr),
         maybe_midi_output_buffer(nullptr),
+        maybe_midi_notes_state(nullptr),
         volume(1.0f),
         passthrough_volume(1.0f),
         muted(false),
@@ -187,6 +190,7 @@ struct PortInfo : public std::enable_shared_from_this<PortInfo> {
         peak(0.0f),
         n_events_processed(0) {
         if (auto m = dynamic_cast<MidiPort*>(port.get())) {
+            maybe_midi_notes_state = std::make_unique<MidiNotesState>();
             if(m->direction() == PortDirection::Output) {
                 maybe_midi_output_merging_buffer = std::make_shared<MidiMergingBuffer>();
             }
@@ -379,8 +383,16 @@ void PortInfo::PROC_ensure_buffer(size_t n_frames) {
             maybe_midi_input_buffer = maybe_midi->PROC_get_read_buffer(n_frames);
             if (!muted) {
                 n_events_processed += maybe_midi_input_buffer->PROC_get_n_events();
+                for(size_t i=0; i<maybe_midi_input_buffer->PROC_get_n_events(); i++) {
+                    auto &msg = maybe_midi_input_buffer->PROC_get_event_reference(i);
+                    uint32_t size, time;
+                    const uint8_t *data;
+                    msg.get(size, time, data);
+                    maybe_midi_notes_state->process_msg(data);
+                }
             }
         } else {
+            maybe_midi_output_merging_buffer->PROC_clear();
             if (maybe_midi_output_buffer) { return; } // already there
             maybe_midi_output_buffer = maybe_midi->PROC_get_write_buffer(n_frames);
         }
@@ -452,10 +464,7 @@ void PortInfo::PROC_passthrough_midi(size_t n_frames, PortInfo &to) {
     if(!muted && !passthrough_muted) {
         for(size_t i=0; i<maybe_midi_input_buffer->PROC_get_n_events(); i++) {
             auto &msg = maybe_midi_input_buffer->PROC_get_event_reference(i);
-            uint32_t size, time;
-            const uint8_t *data;
-            msg.get(size, time, data);
-            to.maybe_midi_output_buffer->PROC_write_event_value(size, time, data);
+            to.maybe_midi_output_merging_buffer->PROC_write_event_reference(msg);
         }
     }
 }
@@ -480,6 +489,7 @@ void PortInfo::PROC_finalize_process(size_t n_frames) {
                     const uint8_t* data;
                     maybe_midi_output_merging_buffer->PROC_get_event_reference(i).get(size, time, data);
                     maybe_midi_output_buffer->PROC_write_event_value(size, time, data);
+                    maybe_midi_notes_state->process_msg(data);
                 }
                 n_events_processed += n_events;
             }
@@ -1451,6 +1461,7 @@ midi_port_state_info_t *get_midi_port_state(shoopdaloop_midi_port_t *port) {
     auto r = new midi_port_state_info_t;
     auto p = internal_midi_port(port);
     r->n_events_triggered = p->n_events_processed;
+    r->n_notes_active = p->maybe_midi_notes_state->n_notes_active();
     r->muted = p->muted;
     r->passthrough_muted = p->passthrough_muted;
     r->name = p->port->name();

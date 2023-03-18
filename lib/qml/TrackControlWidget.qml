@@ -35,19 +35,19 @@ Item {
     property var midi_in_ports : ports.filter((p) => p instanceof MidiPort && p.direction == Types.PortDirection.Input)
     property var midi_out_ports : ports.filter((p) => p instanceof MidiPort && p.direction == Types.PortDirection.Output)
 
-    property int n_midi_events_in : 0
-    property int n_midi_events_out : 0
-    function aggregate_midi_events(ports) {
-        var events_per_port = ports.map((p) => p.n_events_triggered)
-        return Math.max(events_per_port)
+    property int n_midi_notes_active_in : 0
+    property int n_midi_notes_active_out : 0
+    function aggregate_midi_notes(ports) {
+        var notes_per_port = ports.map((p) => p.n_notes_active)
+        return Math.max(notes_per_port)
     }
     function update_midi() {
-        n_midi_events_in = aggregate_midi_events(midi_in_ports)
-        n_midi_events_out = aggregate_midi_events(midi_out_ports)
+        n_midi_notes_active_in = aggregate_midi_notes(midi_in_ports)
+        n_midi_notes_active_out = aggregate_midi_notes(midi_out_ports)
     }
     onMidi_in_portsChanged: {
-        midi_in_ports.forEach((m) => m.nEventsTriggeredChanged.connect(update_midi))
-        midi_out_ports.forEach((m) => m.nEventsTriggeredChanged.connect(update_midi))
+        midi_in_ports.forEach((m) => m.nNotesActiveChanged.connect(update_midi))
+        midi_out_ports.forEach((m) => m.nNotesActiveChanged.connect(update_midi))
     }
 
     function find_nth(array, n, fn) {
@@ -222,7 +222,7 @@ Item {
                 width: 8
                 radius: 2
                 color: '#00BBFF'
-                visible: trackctl.n_midi_events_out > 0
+                visible: trackctl.n_midi_notes_active_out > 0
             }
             Row {
                 spacing: -2
@@ -377,7 +377,7 @@ Item {
                 width: 8
                 radius: 2
                 color: '#00BBFF'
-                visible: trackctl.n_midi_events_in > 0
+                visible: trackctl.n_midi_notes_active_in > 0
             }
             Row {
                 id: passthrough_row

@@ -54,10 +54,12 @@ class LoopAudioChannelState:
 class LoopMidiChannelState:
     mode: Type[ChannelMode]
     n_events_triggered : int
+    n_notes_active : int
     length: int
 
     def __init__(self, backend_state : 'backend.loop_midi_channel_state_t'):
         self.n_events_triggered = backend_state.n_events_triggered
+        self.n_notes_active = backend_state.n_notes_active
         self.mode = ChannelMode(backend_state.mode)
         self.length = backend_state.length
 
@@ -96,12 +98,14 @@ class AudioPortState:
 @dataclass
 class MidiPortState:
     n_events_triggered: int
+    n_notes_active : int
     muted: bool
     passthrough_muted: bool
     name: str
 
     def __init__(self, backend_state : 'backend.audio_port_state_info_t'):
         self.n_events_triggered = backend_state.n_events_triggered
+        self.n_notes_active = backend_state.n_notes_active
         self.muted = bool(backend_state.muted)
         self.passthrough_muted = bool(backend_state.passthrough_muted)
         self.name = str(backend_state.name)

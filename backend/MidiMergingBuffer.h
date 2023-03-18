@@ -39,6 +39,11 @@ public:
         }
     }
 
+    void PROC_clear() {
+        references.clear();
+        dirty = false;
+    }
+
     bool write_by_value_supported() const override { return false; }
     bool write_by_reference_supported() const override { return true; }
 

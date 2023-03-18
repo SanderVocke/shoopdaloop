@@ -18,6 +18,7 @@ class MidiPort(Port):
     def __init__(self, parent=None):
         super(MidiPort, self).__init__(parent)
         self._n_events_triggered = 0
+        self._n_notes_active = 0
 
     ######################
     # PROPERTIES
@@ -25,7 +26,7 @@ class MidiPort(Port):
 
     # Number of events triggered since last update
     nEventsTriggeredChanged = pyqtSignal(int)
-    @pyqtProperty(float, notify=nEventsTriggeredChanged)
+    @pyqtProperty(int, notify=nEventsTriggeredChanged)
     def n_events_triggered(self):
         return self._n_events_triggered
     @n_events_triggered.setter
@@ -33,6 +34,17 @@ class MidiPort(Port):
         if self._n_events_triggered != s:
             self._n_events_triggered = s
             self.nEventsTriggeredChanged.emit(s)
+    
+    # Number of notes currently being played
+    nNotesActiveChanged = pyqtSignal(int)
+    @pyqtProperty(int, notify=nNotesActiveChanged)
+    def n_notes_active(self):
+        return self._n_notes_active
+    @n_notes_active.setter
+    def n_notes_active(self, s):
+        if self._n_notes_active != s:
+            self._n_notes_active = s
+            self.nNotesActiveChanged.emit(s)
     
     ###########
     ## SLOTS
@@ -45,6 +57,7 @@ class MidiPort(Port):
             return
         state = self._backend_obj.get_state()
         self.n_events_triggered = state.n_events_triggered
+        self.n_notes_active = state.n_notes_active
         self.name = state.name
         self.muted = state.muted
         self.passthrough_muted = state.muted

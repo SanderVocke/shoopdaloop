@@ -88,6 +88,7 @@ typedef struct {
 
 typedef struct {
     unsigned n_events_triggered;
+    unsigned n_notes_active;
     unsigned muted;
     unsigned passthrough_muted;
     const char* name;
@@ -105,6 +106,7 @@ typedef struct {
 typedef struct {
     channel_mode_t mode;
     unsigned int n_events_triggered;
+    unsigned n_notes_active;
     unsigned length;
 } midi_channel_state_info_t;
 
