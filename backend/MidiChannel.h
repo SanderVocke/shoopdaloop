@@ -176,20 +176,17 @@ public:
         while(mp_playback_cursor->valid())
         {
             auto *event = mp_playback_cursor->get();
-            size_t event_time = event->time - our_pos;
-            if (event_time >= n_samples) {
+            event->proc_time = event->storage_time - our_pos;
+            if (event->proc_time >= n_samples) {
                 // Future event
                 break;
             }
             if (!muted) {
                 if (buf.buf->write_by_reference_supported()) {
                     buf.buf->PROC_write_event_reference(*event);
-                    uint32_t time,size;
-                    const uint8_t *data;
-                    event->get(time, size, data);
-                    mp_output_notes_state->process_msg(data);
+                    mp_output_notes_state->process_msg(event->data());
                 } else if (buf.buf->write_by_value_supported()) {
-                    buf.buf->PROC_write_event_value(event->size, event_time, event->data());
+                    buf.buf->PROC_write_event_value(event->size, event->proc_time, event->data());
                     mp_output_notes_state->process_msg(event->data());
                 } else {
                     throw std::runtime_error("Midi write buffer does not support any write methods");

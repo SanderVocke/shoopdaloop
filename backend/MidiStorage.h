@@ -81,7 +81,7 @@ public:
              n_processed++)
         {
             Elem* next_elem = m_storage->unsafe_at(next_offset.value());
-            if (next_elem->time >= time) {
+            if (next_elem->storage_time >= time) {
                 // Found
                 m_offset = next_offset;
                 m_prev_offset = prev;
@@ -107,7 +107,8 @@ public:
     // Some convenience functions are added for total size calculation and
     // access to the data "member".
     struct Elem : public MidiSortableMessageInterface {
-        TimeType time;
+        TimeType storage_time; // Overall time in the loop storage
+        TimeType proc_time;    // time w.r.t. some reference point (position in this process iteration)
         SizeType size;
 
         static size_t total_size_of(size_t size) {
@@ -118,12 +119,12 @@ public:
             return ((uint8_t*)this) + sizeof(Elem);
         }
 
-        uint32_t get_time() const override { return time; }
+        uint32_t get_time() const override { return proc_time; }
         void get(uint32_t &size_out,
                  uint32_t &time_out,
                  const uint8_t* &data_out) const override {
                     size_out = size;
-                    time_out = time;
+                    time_out = proc_time;
                     data_out = data();
                  }
     };
@@ -171,7 +172,7 @@ private:
     void store_unsafe(size_t offset, TimeType t, SizeType s, const uint8_t* d) {
         uint8_t* to = &(m_data.at(offset));
         Elem* to_elem = (Elem*) to;
-        to_elem->time = t;
+        to_elem->storage_time = t;
         to_elem->size = s;
         void* data_ptr = to + sizeof(Elem);
         memcpy(data_ptr, d, s);
@@ -212,7 +213,7 @@ public:
     // Note: should only be used if caller knows that "bytes" is exactly
     // at a boundary between messages
     void truncate(TimeType time) {
-        if (m_n_events > 0 && unsafe_at(m_head_start)->time > time) {
+        if (m_n_events > 0 && unsafe_at(m_head_start)->storage_time > time) {
             auto cursor = create_cursor();
             if (cursor->valid()) {
                 m_n_events = cursor->find_time_forward(time);
@@ -269,7 +270,7 @@ public:
             std::cerr << "Ignoring store of MIDI message: buffer full." << std::endl;
             return false;
         }
-        if (m_n_events > 0 && unsafe_at(m_head_start)->time > time) {
+        if (m_n_events > 0 && unsafe_at(m_head_start)->storage_time > time) {
             // Don't store out-of-order messages
             std::cerr << "Ignoring store of out-of-order MIDI message." << std::endl;
             return false;
@@ -309,7 +310,7 @@ public:
             auto cursor = std::make_shared<Cursor>(self);
             for(cursor->reset(); cursor->valid(); cursor->next()) {           
                 auto *elem = cursor->get();
-                cb(elem->time, elem->size, elem->data());
+                cb(elem->storage_time, elem->size, elem->data());
             }
             cursor = nullptr;
         } else {

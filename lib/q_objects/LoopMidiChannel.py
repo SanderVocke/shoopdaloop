@@ -54,7 +54,7 @@ class LoopMidiChannel(LoopChannel):
             self._n_events_triggered = state.n_events_triggered
             self.nEventsTriggeredChanged.emit(self._n_events_triggered)
         if state.n_notes_active != self._n_notes_active:
-            self._n_notes_active = state._n_notes_active
+            self._n_notes_active = state.n_notes_active
             self.nNotesActiveChanged.emit(self._n_notes_active)
     
     @pyqtSlot(result=list)
