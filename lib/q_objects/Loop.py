@@ -35,6 +35,7 @@ class Loop(QQuickItem):
         self._backend = None
         self._backend_loop = None
         self._display_peak = 0.0
+        self._display_midi_notes_active = 0
 
         self.rescan_parents()
         if not self._backend:
@@ -81,7 +82,6 @@ class Loop(QQuickItem):
     # Indirect setter via back-end
     @pyqtSlot(int)
     def set_length(self, length):
-        print("SETTING LOOP LENGTH {}".format(length))
         self._backend_loop.set_length(length)
 
     # position: loop playback position in samples
@@ -128,7 +128,13 @@ class Loop(QQuickItem):
     @pyqtProperty(float, notify=displayPeakChanged)
     def display_peak(self):
         return self._display_peak
-    
+
+    # display_midi_notes_active : sum of notes active in midi channels
+    displayMidiNotesActiveChanged = pyqtSignal(int)
+    @pyqtProperty(int, notify=displayMidiNotesActiveChanged)
+    def display_midi_notes_active(self):
+        return self._display_midi_notes_active
+
     ###########
     ## SLOTS
     ###########
@@ -160,6 +166,7 @@ class Loop(QQuickItem):
         prev_next_mode = self._next_mode
         prev_next_delay = self._next_transition_delay
         prev_display_peak = self._display_peak
+        prev_display_midi_notes_active = self._display_midi_notes_active
 
         state = self._backend_loop.get_state()
         self._mode = state.mode
@@ -168,6 +175,7 @@ class Loop(QQuickItem):
         self._next_mode = (state.maybe_next_mode if state.maybe_next_mode != None else state.mode)
         self._next_transition_delay = (state.maybe_next_delay if state.maybe_next_delay != None else -1)
         self._display_peak = (max([c.output_peak for c in self.audio_channels()]) if len(self.audio_channels()) > 0 else 0.0)
+        self._display_midi_notes_active = (sum([c.n_notes_active for c in self.midi_channels()]) if len(self.midi_channels()) > 0 else 0)
 
         if prev_mode != self._mode:
             self.modeChanged.emit(self._mode)
@@ -181,6 +189,8 @@ class Loop(QQuickItem):
             self.nextTransitionDelayChanged.emit(self._next_transition_delay)
         if prev_display_peak != self._display_peak:
             self.displayPeakChanged.emit(self._display_peak)
+        if prev_display_midi_notes_active != self._display_midi_notes_active:
+            self.displayMidiNotesActiveChanged.emit(self._display_midi_notes_active)
 
         after_halfway = (self.length > 0 and self.position >= self.length/2)
         if (after_halfway and prev_before_halway):

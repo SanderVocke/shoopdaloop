@@ -4,6 +4,7 @@
 #include "ChannelInterface.h"
 #include "WithCommandQueue.h"
 #include "MidiMessage.h"
+#include "MidiNotesState.h"
 #include "modified_loop_mode_for_channel.h"
 #include <optional>
 #include <functional>
@@ -44,10 +45,12 @@ private:
     std::optional<ExternalBuf<MidiReadableBufferInterface *>> mp_recording_source_buffer;
     std::shared_ptr<Storage>       mp_storage;
     std::shared_ptr<StorageCursor> mp_playback_cursor;
+    std::unique_ptr<MidiNotesState> mp_output_notes_state;
 
     // Any thread access
     std::atomic<channel_mode_t> ma_mode;
     std::atomic<size_t> ma_data_length; // Length in samples
+    std::atomic<size_t> ma_n_events_triggered;
 
 public:
     MidiChannel(size_t data_size, channel_mode_t mode) :
@@ -57,7 +60,9 @@ public:
         mp_storage(std::make_shared<Storage>(data_size)),
         mp_playback_cursor(nullptr),
         ma_mode(mode),
-        ma_data_length(0)
+        ma_data_length(0),
+        mp_output_notes_state(std::make_unique<MidiNotesState>()),
+        ma_n_events_triggered(0)
     {
         mp_playback_cursor = mp_storage->create_cursor();
     }
@@ -69,6 +74,8 @@ public:
         mp_storage = other.mp_storage;
         mp_playback_cursor = other.mp_playback_cursor;
         ma_mode = other.ma_mode;
+        ma_n_events_triggered = other.ma_n_events_triggered;
+        mp_output_notes_state = other.mp_output_notes_state;
         return *this;
     }
 
@@ -146,6 +153,8 @@ public:
         auto fn = [this]() {
             mp_storage->clear();
             mp_playback_cursor.reset();
+            mp_output_notes_state->clear();
+            ma_n_events_triggered = 0;
             PROC_set_length(0);
         };
         if (thread_safe) { exec_process_thread_command(fn); }
@@ -175,11 +184,17 @@ public:
             if (!muted) {
                 if (buf.buf->write_by_reference_supported()) {
                     buf.buf->PROC_write_event_reference(*event);
+                    uint32_t time,size;
+                    const uint8_t *data;
+                    event->get(time, size, data);
+                    mp_output_notes_state->process_msg(data);
                 } else if (buf.buf->write_by_value_supported()) {
                     buf.buf->PROC_write_event_value(event->size, event_time, event->data());
+                    mp_output_notes_state->process_msg(event->data());
                 } else {
                     throw std::runtime_error("Midi write buffer does not support any write methods");
                 }
+                ma_n_events_triggered++;
             }
             buf.n_events_processed++;
             mp_playback_cursor->next();
@@ -248,11 +263,6 @@ public:
     void PROC_handle_poi(loop_mode_t mode,
                     size_t length,
                     size_t position) override {}
-    
-    void PROC_clear() {
-        mp_storage->clear();
-        mp_playback_cursor->reset();
-    }
 
     void set_mode(channel_mode_t mode) override {
         ma_mode = mode;
@@ -260,5 +270,15 @@ public:
 
     channel_mode_t get_mode() const override {
         return ma_mode;
+    }
+
+    size_t get_n_notes_active() const {
+        return mp_output_notes_state->n_notes_active();
+    }
+
+    size_t get_n_events_triggered() {
+        auto rval = ma_n_events_triggered.load();
+        ma_n_events_triggered = 0;
+        return rval;
     }
 };

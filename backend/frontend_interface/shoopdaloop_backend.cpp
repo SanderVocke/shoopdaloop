@@ -1193,7 +1193,7 @@ void clear_loop (shoopdaloop_loop_t *loop, size_t length) {
             chan->maybe_audio()->PROC_clear(length);
         }
         for (auto &chan : _loop.mp_midi_channels) {
-            chan->maybe_midi()->PROC_clear();
+            chan->maybe_midi()->clear(false);
         }
         _loop.loop->set_length(length, false);
     });
@@ -1221,7 +1221,7 @@ void clear_audio_channel (shoopdaloop_loop_audio_channel_t *channel, size_t leng
 
 void clear_midi_channel (shoopdaloop_loop_midi_channel_t *channel) {
     internal_midi_channel(channel)->get_backend().cmd_queue.queue([=]() {
-        internal_midi_channel(channel)->maybe_midi()->PROC_clear();
+        internal_midi_channel(channel)->maybe_midi()->clear(false);
     });
 }
 
@@ -1424,7 +1424,8 @@ midi_channel_state_info_t *get_midi_channel_state   (shoopdaloop_loop_midi_chann
         [&]() { return chan->maybe_midi(); },
         chan->maybe_midi(),
         chan->backend.lock()->cmd_queue);
-    r->n_events_triggered = 0;
+    r->n_events_triggered = midi->get_n_events_triggered();
+    r->n_notes_active = midi->get_n_notes_active();
     r->mode = midi->get_mode();
     r->length = midi->get_length();
     return r;

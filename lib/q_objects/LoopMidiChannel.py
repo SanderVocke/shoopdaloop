@@ -21,6 +21,7 @@ class LoopMidiChannel(LoopChannel):
     def __init__(self, parent=None):
         super(LoopMidiChannel, self).__init__(parent)
         self._n_events_triggered = 0
+        self._n_notes_active = 0
     
     def maybe_initialize(self):
         if self._loop and self._loop.initialized and not self._backend_obj:
@@ -37,6 +38,12 @@ class LoopMidiChannel(LoopChannel):
     def n_events_triggered(self):
         return self._n_events_triggered
     
+    # # number of notes currently being played
+    nNotesActiveChanged = pyqtSignal(int)
+    @pyqtProperty(int, notify=nNotesActiveChanged)
+    def n_notes_active(self):
+        return self._n_notes_active
+    
     #######################
     ## SLOTS
     #######################
@@ -46,6 +53,9 @@ class LoopMidiChannel(LoopChannel):
         if state.n_events_triggered != self._n_events_triggered:
             self._n_events_triggered = state.n_events_triggered
             self.nEventsTriggeredChanged.emit(self._n_events_triggered)
+        if state.n_notes_active != self._n_notes_active:
+            self._n_notes_active = state._n_notes_active
+            self.nNotesActiveChanged.emit(self._n_notes_active)
     
     @pyqtSlot(result=list)
     def get_data(self):

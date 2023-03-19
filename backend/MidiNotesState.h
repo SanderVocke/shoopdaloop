@@ -5,38 +5,38 @@
 #include <optional>
 #include <atomic>
 
-size_t channel(const uint8_t *msg_data) {
+inline size_t channel(const uint8_t *msg_data) {
     return msg_data[0] & 0x0F;
 }
 
-size_t note (const uint8_t *msg_data) {
+inline size_t note (const uint8_t *msg_data) {
     return msg_data[1];
 }
 
-size_t velocity (const uint8_t *msg_data) {
+inline size_t velocity (const uint8_t *msg_data) {
     return msg_data[2];
 }
 
-bool is_noteOn(const uint8_t *msg_data) {
+inline bool is_noteOn(const uint8_t *msg_data) {
     return (msg_data[0] & 0xF0) == 0x90;
 }
 
-bool is_noteOff(const uint8_t *msg_data) {
+inline bool is_noteOff(const uint8_t *msg_data) {
     return (msg_data[0] & 0xF0) == 0x80;
 }
 
-bool is_cc(const uint8_t *msg_data) {
+inline bool is_cc(const uint8_t *msg_data) {
     return (msg_data[0] & 0xF0) == 0xB0;
 }
 
-std::optional<size_t> is_all_notes_off_for_channel(const uint8_t *msg_data) {
+inline std::optional<size_t> is_all_notes_off_for_channel(const uint8_t *msg_data) {
     if (is_cc(msg_data) && msg_data[1] == 123) {
         return channel(msg_data);
     }
     return std::nullopt;
 }
 
-std::optional<size_t> is_all_sound_off_for_channel(const uint8_t *msg_data) {
+inline std::optional<size_t> is_all_sound_off_for_channel(const uint8_t *msg_data) {
     if (is_cc(msg_data) && msg_data[1] == 120) {
         return channel(msg_data);
     }
@@ -55,6 +55,13 @@ struct MidiNotesState {
                 m_notes_active[i] = false;
             }
         }
+
+    void clear() {
+        for(size_t i=0; i<m_notes_active.size(); i++) {
+            m_notes_active[i] = false;
+        }
+        m_n_notes_active = 0;
+    }
 
     void process_noteOn(size_t channel, size_t note) {
         auto idx = channel * 128 + note;

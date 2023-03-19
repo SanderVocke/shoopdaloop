@@ -847,6 +847,7 @@ Item {
         }
 
         Rectangle {
+            visible: widget.maybe_loop.display_midi_notes_active > 0
             anchors {
                 right: parent.right
                 top: parent.top
