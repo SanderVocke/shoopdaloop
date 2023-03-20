@@ -655,7 +655,8 @@ void ChannelInfo::PROC_prepare_process_midi(size_t n_frames) {
         auto locked = port.lock();
         auto chan = dynamic_cast<LoopMidiChannel*>(channel.get());
         if (locked) {
-            chan->PROC_set_playback_buffer(locked->maybe_midi_output_buffer.get(), n_frames);
+            chan->PROC_set_playback_buffer(locked->maybe_midi_output_merging_buffer.get(), n_frames);
+            n_outputs_mapped++;
         }
     }
     if (n_outputs_mapped == 0) {
