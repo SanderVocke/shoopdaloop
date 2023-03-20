@@ -36,6 +36,7 @@ class Loop(QQuickItem):
         self._backend_loop = None
         self._display_peak = 0.0
         self._display_midi_notes_active = 0
+        self._display_midi_events_triggered = 0
 
         self.rescan_parents()
         if not self._backend:
@@ -134,7 +135,13 @@ class Loop(QQuickItem):
     @pyqtProperty(int, notify=displayMidiNotesActiveChanged)
     def display_midi_notes_active(self):
         return self._display_midi_notes_active
-
+    
+    # display_midi_events_triggered : sum of events now processed in channels
+    displayMidiEventsTriggeredChanged = pyqtSignal(int)
+    @pyqtProperty(int, notify=displayMidiEventsTriggeredChanged)
+    def display_midi_events_triggered(self):
+        return self._display_midi_events_triggered
+    
     ###########
     ## SLOTS
     ###########
@@ -167,6 +174,7 @@ class Loop(QQuickItem):
         prev_next_delay = self._next_transition_delay
         prev_display_peak = self._display_peak
         prev_display_midi_notes_active = self._display_midi_notes_active
+        prev_display_midi_events_triggered = self._display_midi_events_triggered
 
         state = self._backend_loop.get_state()
         self._mode = state.mode
@@ -176,6 +184,7 @@ class Loop(QQuickItem):
         self._next_transition_delay = (state.maybe_next_delay if state.maybe_next_delay != None else -1)
         self._display_peak = (max([c.output_peak for c in self.audio_channels()]) if len(self.audio_channels()) > 0 else 0.0)
         self._display_midi_notes_active = (sum([c.n_notes_active for c in self.midi_channels()]) if len(self.midi_channels()) > 0 else 0)
+        self._display_midi_events_triggered = (sum([c.n_events_triggered for c in self.midi_channels()]) if len(self.midi_channels()) > 0 else 0)
 
         if prev_mode != self._mode:
             self.modeChanged.emit(self._mode)
@@ -191,6 +200,8 @@ class Loop(QQuickItem):
             self.displayPeakChanged.emit(self._display_peak)
         if prev_display_midi_notes_active != self._display_midi_notes_active:
             self.displayMidiNotesActiveChanged.emit(self._display_midi_notes_active)
+        if prev_display_midi_events_triggered != self._display_midi_events_triggered:
+            self.displayMidiEventsTriggeredChanged.emit(self._display_midi_events_triggered)
 
         after_halfway = (self.length > 0 and self.position >= self.length/2)
         if (after_halfway and prev_before_halway):

@@ -181,6 +181,7 @@ public:
         if (buf.frames_left() < 1) {
             throw std::runtime_error("Attempting to play back out of bounds");
         }
+        std::cout << "All Sound Off" << std::endl;
         PROC_send_message(*buf.buf, all_sound_off_message_channel_0);
     }
 

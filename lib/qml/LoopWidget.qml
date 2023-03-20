@@ -847,11 +847,7 @@ Item {
         }
 
         Rectangle {
-            visible: {
-                var r = widget.maybe_loop.display_midi_notes_active > 0
-                console.log(widget.maybe_loop.display_midi_notes_active)
-                return r
-            }
+            visible: widget.maybe_loop.display_midi_notes_active > 0
             anchors {
                 right: parent.right
                 top: parent.top
@@ -860,6 +856,18 @@ Item {
             width: 8
 
             color: '#00BBFF'
+        }
+
+        Rectangle {
+            visible: widget.maybe_loop.display_midi_events_triggered > 0
+            anchors {
+                right: parent.right
+                top: parent.top
+                bottom: parent.bottom
+            }
+            width: 8
+
+            color: '#00FFFF'
         }
     }
 
