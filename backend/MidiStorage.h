@@ -97,41 +97,50 @@ public:
 
 };
 
+// We need a variable-sized struct that also supports interface inheritance.
+// This cannot really be done in C++, so instead we just make a fixed-size
+// struct that is designed with the knowledge that its data bytes will always
+// be stored directly following it in the buffer.
+// Some convenience functions are added for total size calculation and
+// access to the data "member".
+template<typename TimeType, typename SizeType>
+struct MidiStorageElem : public MidiSortableMessageInterface {
+    TimeType storage_time; // Overall time in the loop storage
+    TimeType proc_time;    // time w.r.t. some reference point (position in this process iteration)
+    SizeType size;
+
+    static size_t total_size_of(size_t size) {
+        return sizeof(MidiStorageElem<TimeType, SizeType>) + size;
+    }
+
+    uint8_t* data() const {
+        return ((uint8_t*)this) + sizeof(MidiStorageElem<TimeType, SizeType>);
+    }
+
+    const uint8_t* get_data() const override {
+        auto rval = ((uint8_t*)this) + sizeof(MidiStorageElem<TimeType, SizeType>);
+        std::cout << rval << std::endl;
+        return rval;
+    }
+
+    uint32_t get_time() const override { return proc_time; }
+    uint32_t get_size() const override { return size; }
+    void get(uint32_t &size_out,
+                uint32_t &time_out,
+                const uint8_t* &data_out) const override {
+                size_out = size;
+                time_out = proc_time;
+                data_out = data();
+                }
+};
+
 template<typename TimeType, typename SizeType>
 class MidiStorage : public std::enable_shared_from_this<MidiStorage<TimeType, SizeType>>{
 public:
-    // We need a variable-sized struct that also supports interface inheritance.
-    // This cannot really be done in C++, so instead we just make a fixed-size
-    // struct that is designed with the knowledge that its data bytes will always
-    // be stored directly following it in the buffer.
-    // Some convenience functions are added for total size calculation and
-    // access to the data "member".
-    struct Elem : public MidiSortableMessageInterface {
-        TimeType storage_time; // Overall time in the loop storage
-        TimeType proc_time;    // time w.r.t. some reference point (position in this process iteration)
-        SizeType size;
-
-        static size_t total_size_of(size_t size) {
-            return sizeof(Elem) + size;
-        }
-
-        uint8_t* data() const {
-            return ((uint8_t*)this) + sizeof(Elem);
-        }
-
-        uint32_t get_time() const override { return proc_time; }
-        void get(uint32_t &size_out,
-                 uint32_t &time_out,
-                 const uint8_t* &data_out) const override {
-                    size_out = size;
-                    time_out = proc_time;
-                    data_out = data();
-                 }
-    };
-
     typedef MidiStorage<TimeType, SizeType> MyType;
     typedef MidiStorageCursor<MyType> Cursor;
     typedef std::shared_ptr<Cursor> SharedCursor;
+    typedef MidiStorageElem<TimeType, SizeType> Elem;
     friend class MidiStorageCursor<MyType>;
 
 private:

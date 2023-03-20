@@ -26,8 +26,7 @@ public:
 
     // Process. The channel may alter the after state.
     virtual void PROC_process(
-        loop_mode_t mode_before,
-        loop_mode_t mode_after,
+        loop_mode_t mode,
         size_t n_samples,
         size_t pos_before,
         size_t pos_after,

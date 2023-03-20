@@ -94,21 +94,20 @@ public:
     }
 
     void PROC_process_channels(
-        loop_mode_t mode_before,
-        loop_mode_t mode_after,
+        loop_mode_t mode,
         size_t n_samples,
         size_t pos_before,
         size_t pos_after,
         size_t length_before,
         size_t length_after
         ) override {
-        BasicLoop::PROC_process_channels(mode_before, mode_after, n_samples, pos_before, pos_after, length_before, length_after);
+        BasicLoop::PROC_process_channels(mode, n_samples, pos_before, pos_after, length_before, length_after);
 
         for(auto &aloop : mp_audio_channels) {
-            aloop->PROC_process(mode_before, mode_after, n_samples, pos_before, pos_after, length_before, length_after);
+            aloop->PROC_process(mode, n_samples, pos_before, pos_after, length_before, length_after);
         }
         for(auto &mloop : mp_midi_channels) {
-            mloop->PROC_process(mode_before, mode_after, n_samples, pos_before, pos_after, length_before, length_after);
+            mloop->PROC_process(mode, n_samples, pos_before, pos_after, length_before, length_after);
         }
     }
 

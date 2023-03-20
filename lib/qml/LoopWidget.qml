@@ -847,7 +847,11 @@ Item {
         }
 
         Rectangle {
-            visible: widget.maybe_loop.display_midi_notes_active > 0
+            visible: {
+                var r = widget.maybe_loop.display_midi_notes_active > 0
+                console.log(widget.maybe_loop.display_midi_notes_active)
+                return r
+            }
             anchors {
                 right: parent.right
                 top: parent.top
@@ -1341,6 +1345,7 @@ Item {
             function doLoad(update_loop_length) {
                 dynamic_loop.force_load = true
                 var samplerate = widget.maybe_loaded_loop.backend.get_sample_rate()
+                console.log("load")
                 file_io.load_midi_to_channel_async(filename, samplerate, channel, update_loop_length ?
                     widget.maybe_loaded_loop : null)
             }

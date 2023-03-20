@@ -86,8 +86,7 @@ public:
     ~AudioChannel() override {}
 
     void PROC_process(
-        loop_mode_t mode_before,
-        loop_mode_t mode_after,
+        loop_mode_t mode,
         size_t n_samples,
         size_t pos_before,
         size_t pos_after,
@@ -97,7 +96,7 @@ public:
         // Execute any commands queued from other threads.
         PROC_handle_command_queue();
 
-        loop_mode_t modified_mode = modified_loop_mode_for_channel(mode_before, ma_mode);
+        loop_mode_t modified_mode = modified_loop_mode_for_channel(mode, ma_mode);
 
         switch (modified_mode) {
             case Playing:

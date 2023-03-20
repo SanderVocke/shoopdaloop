@@ -52,6 +52,8 @@ private:
     std::atomic<size_t> ma_data_length; // Length in samples
     std::atomic<size_t> ma_n_events_triggered;
 
+    const Message all_sound_off_message_channel_0 = Message(0, 3, {0xB0, 120, 0});
+
 public:
     MidiChannel(size_t data_size, channel_mode_t mode) :
         WithCommandQueue<10, 1000, 1000>(),
@@ -87,8 +89,7 @@ public:
 
 #warning Replace use-case not covered for MIDI.
     void PROC_process(
-        loop_mode_t mode_before,
-        loop_mode_t mode_after,
+        loop_mode_t mode,
         size_t n_samples,
         size_t pos_before,
         size_t pos_after,
@@ -96,8 +97,19 @@ public:
         size_t length_after
         ) override {
         PROC_handle_command_queue();
+        static loop_mode_t prev_mode = Stopped;
+        static size_t prev_pos = 0;
 
-        loop_mode_t modified_mode = modified_loop_mode_for_channel(mode_before, ma_mode);
+        loop_mode_t modified_mode = modified_loop_mode_for_channel(mode, ma_mode);
+
+        // If we were playing back and anything other than forward playback is happening
+        // (e.g. mode switch, position set, ...), send an All Sound Off.
+        if (prev_mode == Playing && (
+            modified_mode != Playing ||
+            pos_before != prev_pos
+        )) {
+            PROC_send_all_sound_off();
+        }
 
         switch (modified_mode) {
             case Playing:
@@ -112,6 +124,9 @@ public:
             default:
                 break;
         }
+
+        prev_pos = pos_after;
+        prev_mode = modified_mode;
     }
 
     void PROC_process_record(size_t our_length, size_t n_samples) {
@@ -161,6 +176,27 @@ public:
         else { fn(); }
     }
 
+    void PROC_send_all_sound_off() {
+        auto &buf = mp_playback_target_buffer.value();
+        if (buf.frames_left() < 1) {
+            throw std::runtime_error("Attempting to play back out of bounds");
+        }
+        PROC_send_message(*buf.buf, all_sound_off_message_channel_0);
+    }
+
+    template<typename Buf, typename Event>
+    void PROC_send_message(Buf &buf, Event &event) {
+        if (buf.write_by_reference_supported()) {
+            buf.PROC_write_event_reference(event);
+            mp_output_notes_state->process_msg(event.get_data());
+        } else if (buf.write_by_value_supported()) {
+            buf.PROC_write_event_value(event.size, event.get_time(), event.get_data());
+            mp_output_notes_state->process_msg(event.get_data());
+        } else {
+            throw std::runtime_error("Midi write buffer does not support any write methods");
+        }
+    }
+
     void PROC_process_playback(size_t our_pos, size_t our_length, size_t n_samples, bool muted) {
         if (!mp_playback_target_buffer.has_value()) {
             throw std::runtime_error("Playing without target buffer");
@@ -182,15 +218,7 @@ public:
                 break;
             }
             if (!muted) {
-                if (buf.buf->write_by_reference_supported()) {
-                    buf.buf->PROC_write_event_reference(*event);
-                    mp_output_notes_state->process_msg(event->data());
-                } else if (buf.buf->write_by_value_supported()) {
-                    buf.buf->PROC_write_event_value(event->size, event->proc_time, event->data());
-                    mp_output_notes_state->process_msg(event->data());
-                } else {
-                    throw std::runtime_error("Midi write buffer does not support any write methods");
-                }
+                PROC_send_message(*buf.buf, *event);
                 ma_n_events_triggered++;
             }
             buf.n_events_processed++;

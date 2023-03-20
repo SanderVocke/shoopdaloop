@@ -16,6 +16,12 @@ struct MidiMessage : public MidiSortableMessageInterface {
     uint32_t get_time() const override {
         return time;
     }
+    uint32_t get_size() const override {
+        return size;
+    }
+    const uint8_t* get_data() const override {
+        return data.data();
+    }
     void     get(uint32_t &size_out,
                          uint32_t &time_out,
                          const uint8_t* &data_out) const override {

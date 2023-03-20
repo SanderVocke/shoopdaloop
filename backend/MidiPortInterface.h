@@ -8,6 +8,8 @@
 class MidiSortableMessageInterface {
 public:
     virtual uint32_t get_time() const = 0;
+    virtual const uint8_t* get_data() const = 0;
+    virtual uint32_t get_size() const = 0;
     virtual void     get(uint32_t &size_out,
                          uint32_t &time_out,
                          const uint8_t* &data_out) const = 0;
