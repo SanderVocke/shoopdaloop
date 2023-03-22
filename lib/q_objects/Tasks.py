@@ -1,4 +1,5 @@
 from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot, QTimer
+from PyQt6.QtQml import QJSValue
 
 # Keep track of a set of tasks.
 # Can itself also be used as a Task.
@@ -50,7 +51,7 @@ class Tasks(QObject):
                 print("exec qjsvalue")
                 fn.call()
         
-        if not self._anything_to_do:
+        if not self.anything_to_do:
             exec_fn()
         else:
             self.anythingToDoChanged.connect(lambda: exec_fn())

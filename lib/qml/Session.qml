@@ -8,6 +8,7 @@ import "../../build/types.js" as Types
 
 Item {
     id: session
+    objectName: 'session'
 
     // The descriptor is an object matching the ShoopDaLoop session JSON
     // schema. The Session object will manage an actual session (consisting)
@@ -78,7 +79,7 @@ Item {
     function save_session(filename) {
         state_registry.save_action_started()
         var tempdir = file_io.create_temporary_folder()
-        var tasks = tasks_factory.create_tasks_obj(this)
+        var tasks = tasks_factory.create_tasks_obj(session)
 
         var descriptor = actual_session_descriptor(true, tempdir, tasks)
         var session_filename = tempdir + '/session.json'
@@ -93,7 +94,7 @@ Item {
                 console.log("Session written to: ", filename)
             } finally {
                 state_registry.save_action_finished()
-                ile_io.delete_recursive(tempdir)
+                file_io.delete_recursive(tempdir)
                 tasks.destroy()
             }
         })
@@ -114,7 +115,7 @@ Item {
         var tempdir = file_io.create_temporary_folder()
 
         try {
-            var tasks = tasks_factory.create_tasks_obj(this)
+            var tasks = tasks_factory.create_tasks_obj(session)
 
             file_io.extract_tarfile(filename, tempdir)
             console.log("Extracted to ", tempdir)

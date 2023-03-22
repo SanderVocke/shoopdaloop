@@ -31,7 +31,7 @@ LoopAudioChannel {
         if (do_save_data_files && data_length > 0) {
             var filename = obj_id + '.flac'
             var full_filename = data_files_dir + '/' + filename;
-            var task = file_io.save_channels_to_soundfile_async(full_filename, get_backend().get_sample_rate(), [this])
+            var task = file_io.save_channels_to_soundfile_async(full_filename, get_backend().get_sample_rate(), [chan])
             add_tasks_to.add_task(task)
             rval['data_file'] = filename
         }
@@ -40,7 +40,7 @@ LoopAudioChannel {
     function queue_load_tasks(data_files_dir, add_tasks_to) {
         if (Object.keys(descriptor).includes("data_file")) {
             add_tasks_to.add_task(
-                file_io.load_soundfile_to_channels_async(data_files_dir + '/' + descriptor.data_file, get_backend().get_sample_rate(), descriptor.data_length, [[this]])
+                file_io.load_soundfile_to_channels_async(data_files_dir + '/' + descriptor.data_file, get_backend().get_sample_rate(), descriptor.data_length, [[chan]], null)
             )
         }
     }
@@ -57,7 +57,7 @@ LoopAudioChannel {
 
     Component.onCompleted: {
         set_mode(initial_mode)
-        if(objects_registry) { objects_registry.register(descriptor.id, this) }
+        if(objects_registry) { objects_registry.register(descriptor.id, chan) }
     }
     function qml_close() {
         objects_registry.unregister(descriptor.id)

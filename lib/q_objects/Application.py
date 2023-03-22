@@ -8,9 +8,9 @@ pynsm = importlib.import_module('third_party.new-session-manager.extras.pynsm.ns
 script_pwd = os.path.dirname(__file__)
 
 from lib.qml_helpers import register_shoopdaloop_qml_classes
-from PyQt6.QtQml import QQmlApplicationEngine
+from PyQt6.QtQml import QQmlApplicationEngine, QJSValue
 from PyQt6.QtGui import QGuiApplication
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import QTimer, QObject, Q_ARG, QMetaObject, Qt
 from lib.q_objects.SchemaValidator import SchemaValidator
 from lib.q_objects.FileIO import FileIO
 import time
@@ -23,19 +23,6 @@ class Application(QGuiApplication):
         signal.signal(signal.SIGINT, self.exit_signal_handler)
         signal.signal(signal.SIGQUIT, self.exit_signal_handler)
         signal.signal(signal.SIGTERM, self.exit_signal_handler)
-
-        try:
-            self.nsm_client = pynsm.NSMClient(
-                prettyName = title,
-                supportsSaveStatus = False,
-                saveCallback = lambda path, session, client: self.save_session_handler(path, session, client),
-                openOrNewCallback = lambda path, session, client: self.load_session_handler(path, session, client),
-                exitProgramCallback = lambda path, session, client: self.nsm_exit_handler(),
-                loggingLevel = 'info'
-            )
-            self.title = self.nsm_client.ourClientNameUnderNSM
-        except pynsm.NSMNotRunningError as e:
-            pass
         
         self.nsmtimer = QTimer()
         self.nsmtimer.start(100)
@@ -51,6 +38,19 @@ class Application(QGuiApplication):
         self.engine.rootContext().setContextProperty("file_io", self.file_io)
         if main_qml:
             self.engine.load(main_qml)
+        
+        try:
+            self.nsm_client = pynsm.NSMClient(
+                prettyName = title,
+                supportsSaveStatus = False,
+                saveCallback = lambda path, session, client: self.save_session_handler(path, session, client),
+                openOrNewCallback = lambda path, session, client: self.load_session_handler(path, session, client),
+                exitProgramCallback = lambda path, session, client: self.nsm_exit_handler(),
+                loggingLevel = 'info'
+            )
+            self.title = self.nsm_client.ourClientNameUnderNSM
+        except pynsm.NSMNotRunningError as e:
+            pass
     
     def exit(self, retcode):
         if self.nsm_client:
@@ -76,8 +76,8 @@ class Application(QGuiApplication):
         # for child in children:
         #     print('Send signal {} => {}'.format(sig, child.pid))
         #     os.kill(child.pid, sig)
-        if engine:
-            QMetaObject.invokeMethod(engine, 'quit')
+        if self.engine:
+            QMetaObject.invokeMethod(self.engine, 'quit')
     
     # The following ensures the Python interpreter has a chance to run, which
     # would not happen otherwise once the Qt event loop starts - and this 
@@ -97,11 +97,19 @@ class Application(QGuiApplication):
             self.really_exit()
 
     def really_exit(self, retcode):
-        super.exit(retcode)
+        super(Application, self).exit(retcode)
     
     def nsm_save_session(self, path):
         print("NSM: save session {}".format(path))
-        time.sleep(10.0)
+        session = self.engine.rootObjects()[0].findChild(QObject, 'session')
+        if session:
+            QMetaObject.invokeMethod(session, "save_session", Qt.ConnectionType.DirectConnection, Q_ARG('QVariant', path))
+            while session.property("saving"):
+                time.sleep(0.01)
+                self.processEvents()
+        else:
+            print("No active session object found, ignoring save session.")
+        # time.sleep(10.0)
         # counter = backend_mgr.session_save_counter
         # failed_counter = backend_mgr.session_save_failed_counter
         # qml_app_state.save_session(path, True)
@@ -114,7 +122,14 @@ class Application(QGuiApplication):
     
     def nsm_load_session(self, path):
         print("NSM: load session {}".format(path))
-        time.sleep(10.0)
+        session = self.engine.rootObjects()[0].findChild(QObject, 'session')
+        if session:
+            QMetaObject.invokeMethod(session, "load_session", Qt.ConnectionType.DirectConnection, Q_ARG('QVariant', path))
+            while session.property("loading"):
+                time.sleep(0.01)
+                self.processEvents()
+        else:
+            print("No active session object found, ignoring load session.")
         # counter = backend_mgr.session_load_counter
         # failed_counter = backend_mgr.session_load_failed_counter
         # qml_app_state.load_session(path)
