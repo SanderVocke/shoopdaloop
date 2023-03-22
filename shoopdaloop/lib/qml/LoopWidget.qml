@@ -974,16 +974,20 @@ Item {
         property alias opened: menu.opened
         visible: menu.visible
 
-        // ClickTrackDialog {
-        //     id: clicktrackdialog
-        //     parent: Overlay.overlay
-        //     x: (parent.width-width) / 2
-        //     y: (parent.height-height) / 2
+        ClickTrackDialog {
+            id: clicktrackdialog
+            parent: Overlay.overlay
+            x: (parent.width-width) / 2
+            y: (parent.height-height) / 2
 
-        //     onAcceptedClickTrack: (filename) => {
-        //                             widget.maybe_loop.load_audio_file(filename)
-        //                           }
-        // }
+            onAcceptedClickTrack: (filename) => {
+                                    loadoptionsdialog.filename = filename
+                                    close()
+                                    dynamic_loop.force_load = true
+                                    loadoptionsdialog.update()
+                                    loadoptionsdialog.open()
+                                  }
+        }
 
         Menu {
             id: menu
@@ -1016,10 +1020,10 @@ Item {
                     }
                 }
             }
-            //MenuItem {
-            //    text: "Generate click loop..."
-            //    onClicked: () => clicktrackdialog.open()
-            //}
+            MenuItem {
+               text: "Generate click loop..."
+               onClicked: () => clicktrackdialog.open()
+            }
             MenuItem {
                 text: "Save audio..."
                 onClicked: presavedialog.open()

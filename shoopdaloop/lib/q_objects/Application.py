@@ -13,6 +13,7 @@ from ..qml_helpers import register_shoopdaloop_qml_classes
 
 from .SchemaValidator import SchemaValidator
 from .FileIO import FileIO
+from .ClickTrackGenerator import ClickTrackGenerator
 
 class Application(QGuiApplication):
     def __init__(self, title, main_qml):
@@ -32,9 +33,11 @@ class Application(QGuiApplication):
         self.engine.quit.connect(self.quit)
 
         self.file_io = FileIO()
-        self.schema_validator = SchemaValidator()
+        self.schema_validator = SchemaValidator(parent=self)
+        self.click_track_generator = ClickTrackGenerator(parent=self)
         self.engine.rootContext().setContextProperty("schema_validator", self.schema_validator)
         self.engine.rootContext().setContextProperty("file_io", self.file_io)
+        self.engine.rootContext().setContextProperty("click_track_generator", self.click_track_generator)
         if main_qml:
             self.engine.load(main_qml)
         

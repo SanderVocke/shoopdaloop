@@ -46,5 +46,6 @@ setup(name='shoopdaloop',
           'third_party/QtMaterialDesignIcons/qml/*',
           'third_party/QtMaterialDesignIcons/resources/*',
           'third_party/QtMaterialDesignIcons/sources/*',
+          'resources/*'
         ]
       })

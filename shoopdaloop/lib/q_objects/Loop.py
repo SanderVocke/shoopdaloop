@@ -11,7 +11,6 @@ from PyQt6.QtQuick import QQuickItem
 
 from ..backend_wrappers import *
 from ..mode_helpers import is_playing_mode
-from ..sound_file_io import load_audio_file
 from ..q_objects.Backend import Backend
 from ..findFirstParent import findFirstParent
 from ..findChildItems import findChildItems
@@ -239,13 +238,6 @@ class Loop(QQuickItem):
             for idx in range(len(self.audio_channels())):
                 self.audio_channels()[idx].load_data(sound_channels[idx % len(sound_channels)])
             self.set_length(len(sound_channels[0]))
-    
-    @pyqtSlot(str, bool, int)
-    def load_audio_file(self, filename, force_length, forced_length):
-        sound_channels = load_audio_file(filename,
-                                         backend.get_sample_rate(),
-                                        (forced_length if force_length else None))
-        self.load_audio_data(sound_channels)
     
     @pyqtSlot()
     def close(self):

@@ -17,11 +17,9 @@ from .Tasks import Tasks
 from ..backend_wrappers import BackendMidiMessage
 
 # Allow filesystem operations from QML
-class FileIO(QObject):
+class FileIO(QThread):
     def __init__(self, parent=None):
         super(FileIO, self).__init__(parent)
-        self._thread = QThread()
-        self.moveToThread(self._thread)
 
     startSavingFile = pyqtSignal()
     doneSavingFile = pyqtSignal()

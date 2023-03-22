@@ -61,11 +61,6 @@ Item {
         loader.item.load_audio_data(sound_channels)
     }
 
-    function load_audio_file(filename, force_length, forced_length) {
-        load()
-        loader.item.load_audio_file(filename, force_length, forced_length)
-    }
-
     function clear(length) {
         load()
         loader.item.clear(length)
