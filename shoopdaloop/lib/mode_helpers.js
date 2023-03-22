@@ -1,4 +1,4 @@
-.import '../build/types.js' as Types
+.import 'backend/frontend_interface/types.js' as Types
 
 function is_playing_mode(mode) {
     return [Types.LoopMode.Playing, Types.LoopMode.PlayingDryThroughWet].includes(mode)

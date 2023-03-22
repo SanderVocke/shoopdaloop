@@ -1,4 +1,4 @@
-.import '../../build/types.js' as Types
+.import '../backend/frontend_interface/types.js' as Types
 
 const channel_modes = {
     'direct': Types.ChannelMode.Direct,

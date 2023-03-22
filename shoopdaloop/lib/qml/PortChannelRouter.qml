@@ -1,6 +1,6 @@
 import QtQuick 2.15
 
-import '../../build/types.js' as Types
+import '../backend/frontend_interface/types.js' as Types
 
 // Instantiates loop channels to match a given set of ports and port pairs.
 Item {

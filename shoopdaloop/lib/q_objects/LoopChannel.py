@@ -12,10 +12,10 @@ from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot, QTimer
 from PyQt6.QtQuick import QQuickItem
 
 from .AudioPort import AudioPort
+from .Loop import Loop
 
 from ..backend_wrappers import *
 from ..findFirstParent import findFirstParent
-from ..Loop import Loop
 
 # Wraps a back-end loop channel.
 class LoopChannel(QQuickItem):

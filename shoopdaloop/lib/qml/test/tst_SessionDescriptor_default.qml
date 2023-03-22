@@ -3,7 +3,7 @@ import QtTest 1.0
 import Backend
 
 import './testDeepEqual.js' as TestDeepEqual
-import '../../../build/types.js' as Types
+import '../../backend/frontend_interface/types.js' as Types
 import '../../generate_session.js' as GenerateSession
 import '..'
 

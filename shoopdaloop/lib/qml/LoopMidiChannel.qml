@@ -1,7 +1,7 @@
 import LoopMidiChannel
 import QtQuick 2.15
 
-import '../../build/types.js' as Types
+import '../backend/frontend_interface/types.js' as Types
 import '../session_schemas/conversions.js' as Conversions
 
 LoopMidiChannel {

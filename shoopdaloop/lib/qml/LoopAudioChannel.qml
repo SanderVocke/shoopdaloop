@@ -2,7 +2,7 @@ import LoopAudioChannel
 import QtQuick 2.15
 
 import '../session_schemas/conversions.js' as Conversions
-import '../../build/types.js' as Types
+import '../backend/frontend_interface/types.js' as Types
 
 LoopAudioChannel {
     id: chan

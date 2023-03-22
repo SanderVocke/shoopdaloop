@@ -4,7 +4,7 @@ import QtQuick.Controls.Material 2.15
 import QtQuick.Dialogs
 
 import "../generate_session.js" as GenerateSession
-import "../../build/types.js" as Types
+import "../backend/frontend_interface/types.js" as Types
 
 Item {
     id: session

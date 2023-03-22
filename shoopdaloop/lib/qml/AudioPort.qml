@@ -1,7 +1,7 @@
 import AudioPort
 import QtQuick 2.15
 
-import '../../build/types.js' as Types
+import '../backend/frontend_interface/types.js' as Types
 
 AudioPort {
     id: port

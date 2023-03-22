@@ -7,7 +7,7 @@ from PyQt6.QtQml import QQmlApplicationEngine, QJSValue
 from PyQt6.QtGui import QGuiApplication
 from PyQt6.QtCore import QTimer, QObject, Q_ARG, QMetaObject, Qt
 
-from ...third_party.pynsm.nsmclient import NSMClient
+from ...third_party.pynsm.nsmclient import NSMClient, NSMNotRunningError
 
 from ..qml_helpers import register_shoopdaloop_qml_classes
 
@@ -39,7 +39,7 @@ class Application(QGuiApplication):
             self.engine.load(main_qml)
         
         try:
-            self.nsm_client = pynsm.NSMClient(
+            self.nsm_client = NSMClient(
                 prettyName = title,
                 supportsSaveStatus = False,
                 saveCallback = lambda path, session, client: self.save_session_handler(path, session, client),
@@ -48,7 +48,7 @@ class Application(QGuiApplication):
                 loggingLevel = 'info'
             )
             self.title = self.nsm_client.ourClientNameUnderNSM
-        except pynsm.NSMNotRunningError as e:
+        except NSMNotRunningError as e:
             pass
     
     def exit(self, retcode):
@@ -70,11 +70,6 @@ class Application(QGuiApplication):
         self.exit_handler()
     
     def exit_handler(self):
-        # current_process = psutil.Process()
-        # children = current_process.children(recursive=False)
-        # for child in children:
-        #     print('Send signal {} => {}'.format(sig, child.pid))
-        #     os.kill(child.pid, sig)
         if self.engine:
             QMetaObject.invokeMethod(self.engine, 'quit')
     
@@ -108,15 +103,6 @@ class Application(QGuiApplication):
                 self.processEvents()
         else:
             print("No active session object found, ignoring save session.")
-        # time.sleep(10.0)
-        # counter = backend_mgr.session_save_counter
-        # failed_counter = backend_mgr.session_save_failed_counter
-        # qml_app_state.save_session(path, True)
-        # while backend_mgr.session_save_counter == counter:
-        #     time.sleep(0.01)
-        #     app.processEvents() # We are on the GUI thread, ensure we stay responsive
-        # if backend_mgr.session_save_failed_counter > failed_counter:
-        #     raise Exception('NSM session save failed.')
         print("NSM: save session finished.")
     
     def nsm_load_session(self, path):
@@ -129,24 +115,14 @@ class Application(QGuiApplication):
                 self.processEvents()
         else:
             print("No active session object found, ignoring load session.")
-        # counter = backend_mgr.session_load_counter
-        # failed_counter = backend_mgr.session_load_failed_counter
-        # qml_app_state.load_session(path)
-        # while backend_mgr.session_load_counter == counter:
-        #     time.sleep(0.01)
-        #     app.processEvents() # We are on the GUI thread, ensure we stay responsive
-        # if backend_mgr.session_load_failed_counter > failed_counter:
-        #     raise Exception('NSM session load failed.')
         print("NSM: load session finished.")
 
     def save_session_handler(self, path, session, client):
         print ('save_session_handler')
-        #initialize_app_if_not_already(client)
         self.nsm_save_session(path)
 
     def load_session_handler(self, path, session, client):
         print ('load_session_handler')
-        #initialize_app_if_not_already(client)
         if os.path.isfile(path):
             print("NSM: load session {}".format(path))
             self.nsm_load_session(path)
@@ -157,8 +133,6 @@ class Application(QGuiApplication):
     def nsm_exit_handler(self):
         print('nsm_exit_handler')
         print('Exiting due to NSM request.')
-        #if backend_mgr:
-        #    backend_mgr.terminate()
         self.exit_handler()
         print("Exiting.")
         sys.exit(0)

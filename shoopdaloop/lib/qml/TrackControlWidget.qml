@@ -2,7 +2,7 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
 
-import '../../build/types.js' as Types
+import '../backend/frontend_interface/types.js' as Types
 
 // The track control widget displays control buttons to control the
 // (loops within a) track.

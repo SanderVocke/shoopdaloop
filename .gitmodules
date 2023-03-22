@@ -13,3 +13,6 @@
 [submodule "third_party/newsessionmanager"]
 	path = third_party/newsessionmanager
 	url = https://github.com/jackaudio/new-session-manager.git
+[submodule "shoopdaloop/third_party/QtMaterialDesignIcons"]
+	path = shoopdaloop/third_party/QtMaterialDesignIcons
+	url = https://github.com/sthlm58/QtMaterialDesignIcons.git

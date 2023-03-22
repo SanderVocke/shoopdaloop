@@ -2,7 +2,7 @@ import QtQuick 2.3
 import QtTest 1.0
 import Backend
 
-import '../../../build/types.js' as Types
+import '../../backend/frontend_interface/types.js' as Types
 
 Backend {
     id: backend

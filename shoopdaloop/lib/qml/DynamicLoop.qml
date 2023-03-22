@@ -1,7 +1,7 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 
-import '../../build/types.js' as Types
+import '../backend/frontend_interface/types.js' as Types
 
 // Wrap a Loop that may be dynamically loaded by a Loader in a just-in-time way.
 Item {
