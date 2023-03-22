@@ -10,3 +10,6 @@
 [submodule "third_party/new-session-manager"]
 	path = third_party/new-session-manager
 	url = https://github.com/jackaudio/new-session-manager.git
+[submodule "third_party/newsessionmanager"]
+	path = third_party/newsessionmanager
+	url = https://github.com/jackaudio/new-session-manager.git

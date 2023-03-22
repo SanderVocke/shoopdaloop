@@ -11,18 +11,6 @@ target_include_directories(shoopdaloop_backend
                         ${BOOST_INCLUDE_DIRS}
                         )
 
-# Autogen Python bindings
-add_custom_command(
-    OUTPUT __init__.py
-    COMMAND touch __init__.py
-    COMMENT "Generating __init__.py in frontend_interface folder"
-    )
-add_custom_target(
-    frontend_python_module
-    ALL
-    DEPENDS __init__.py
-    )
-
 # Generate C bindings
 add_custom_command(
   OUTPUT shoopdaloop_backend.py
@@ -39,10 +27,10 @@ add_custom_target(
 # Generate javascript copy of enums
 add_custom_command(
   OUTPUT types.js
-  COMMAND ${RUN_CMD_PREFIX} python ${CMAKE_SOURCE_DIR}/lib/codegen/gen_js_enums.py ${CMAKE_CURRENT_BINARY_DIR}/types.js
+  COMMAND ${RUN_CMD_PREFIX} python gen_js_enums.py ${CMAKE_CURRENT_BINARY_DIR}/types.js
   COMMENT "Generating Javascript types."
-  DEPENDS backend_c_bindings build_python_module shoopdaloop_backend
-  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  DEPENDS backend_c_bindings shoopdaloop_backend
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/codegen
   )
 add_custom_target(
   javascript_types
