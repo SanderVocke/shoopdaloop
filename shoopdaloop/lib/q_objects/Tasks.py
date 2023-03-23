@@ -1,5 +1,5 @@
-from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot, QTimer
-from PyQt6.QtQml import QJSValue
+from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
+from PySide6.QtQml import QJSValue
 
 # Keep track of a set of tasks.
 # Can itself also be used as a Task.
@@ -13,12 +13,12 @@ class Tasks(QObject):
         return self._n_done >= len(self._tasks)
 
     # anything_to_do
-    anythingToDoChanged = pyqtSignal(bool)
-    @pyqtProperty(bool, notify=anythingToDoChanged)
+    anythingToDoChanged = Signal(bool)
+    @Property(bool, notify=anythingToDoChanged)
     def anything_to_do(self):
         return not self.calc_all_done()
     
-    @pyqtSlot('QVariant')
+    @Slot('QVariant')
     def add_task(self, task):
         prev_all_done = self.calc_all_done()
         self._tasks.append(task)
@@ -30,7 +30,7 @@ class Tasks(QObject):
         
         task.anythingToDoChanged.connect(self.task_changed)
     
-    @pyqtSlot(bool)
+    @Slot(bool)
     def task_changed(self, anything_to_do):
         prev_all_done = self.calc_all_done()
         if not anything_to_do:
@@ -41,7 +41,7 @@ class Tasks(QObject):
         if prev_all_done != cur_all_done:
             self.anythingToDoChanged.emit(not cur_all_done)
     
-    @pyqtSlot('QVariant')
+    @Slot('QVariant')
     def when_finished(self, fn):
         def exec_fn():
             if callable(fn):

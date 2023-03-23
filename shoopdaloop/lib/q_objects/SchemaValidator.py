@@ -1,8 +1,8 @@
 from typing import *
 import sys
 
-from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot, QTimer
-from PyQt6.QtQml import QJSValue
+from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
+from PySide6.QtQml import QJSValue
 
 from ..session_schemas.session_schemas import validate_session_object
 
@@ -16,7 +16,7 @@ class SchemaValidator(QObject):
     ###########
 
     # Validate a schema. Throws if wrong.
-    @pyqtSlot('QVariant', str)
+    @Slot('QVariant', str)
     def validate_schema(self, obj, schemaname):
         _obj = obj
         if isinstance(obj, QJSValue):

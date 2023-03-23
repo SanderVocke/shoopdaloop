@@ -6,8 +6,8 @@ import traceback
 script_dir = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(script_dir + '/..')
 
-from PyQt6.QtGui import QGuiApplication
-from PyQt6.QtQml import QQmlApplicationEngine
+from PySide6.QtGui import QGuiApplication
+from PySide6.QtQml import QQmlApplicationEngine
 from lib.qml_helpers import register_shoopdaloop_qml_classes
 
 print ("Starting two loops with stereo audio and MIDI, one synced to the other.")

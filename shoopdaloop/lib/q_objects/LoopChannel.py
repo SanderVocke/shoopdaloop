@@ -8,8 +8,8 @@ import json
 from typing import *
 import sys
 
-from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot, QTimer
-from PyQt6.QtQuick import QQuickItem
+from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
+from PySide6.QtQuick import QQuickItem
 
 from .AudioPort import AudioPort
 from .Loop import Loop
@@ -32,7 +32,7 @@ class LoopChannel(QQuickItem):
         if not self._loop:
             self.parentChanged.connect(self.rescan_parents)
     
-    requestBackendInit = pyqtSignal() # This signal requests the loop to be instantiated in the backend
+    requestBackendInit = Signal() # This signal requests the loop to be instantiated in the backend
 
     def maybe_initialize(self):
         raise Exception("Unimplemented for base class")
@@ -42,14 +42,14 @@ class LoopChannel(QQuickItem):
     ######################
 
     # initialized
-    initializedChanged = pyqtSignal(bool)
-    @pyqtProperty(bool, notify=initializedChanged)
+    initializedChanged = Signal(bool)
+    @Property(bool, notify=initializedChanged)
     def initialized(self):
         return bool(self._backend_obj)
 
     # loop
-    loopChanged = pyqtSignal(Loop)
-    @pyqtProperty(Loop, notify=loopChanged)
+    loopChanged = Signal(Loop)
+    @Property(Loop, notify=loopChanged)
     def loop(self):
         return self._loop
     @loop.setter
@@ -61,12 +61,12 @@ class LoopChannel(QQuickItem):
             self.maybe_initialize()
 
     # mode
-    modeChanged = pyqtSignal(int)
-    @pyqtProperty(int, notify=modeChanged)
+    modeChanged = Signal(int)
+    @Property(int, notify=modeChanged)
     def mode(self):
         return self._mode.value
     # indirect setter via back-end
-    @pyqtSlot(int)
+    @Slot(int)
     def set_mode(self, mode):
         _mode = ChannelMode(mode)
         if _mode != self._mode:
@@ -76,20 +76,20 @@ class LoopChannel(QQuickItem):
                 self.initializedChanged.connect(lambda: self.set_mode(_mode))
     
     # data length
-    dataLengthChanged = pyqtSignal(int)
-    @pyqtProperty(int, notify=dataLengthChanged)
+    dataLengthChanged = Signal(int)
+    @Property(int, notify=dataLengthChanged)
     def data_length(self):
         return self._data_length
 
     # connected ports
-    connectedPortsChanged = pyqtSignal(list)
-    @pyqtProperty(list, notify=connectedPortsChanged)
+    connectedPortsChanged = Signal(list)
+    @Property(list, notify=connectedPortsChanged)
     def connected_ports(self):
         return self._connected_ports
     
     # ports to connect
-    portsChanged = pyqtSignal(list)
-    @pyqtProperty(list, notify=portsChanged)
+    portsChanged = Signal(list)
+    @Property(list, notify=portsChanged)
     def ports(self):
         return self._ports
     @ports.setter
@@ -99,23 +99,23 @@ class LoopChannel(QQuickItem):
                 self.disconnect(port)
         for port in p:
             if not port in self._connected_ports:
-                self.connect(port)
+                self.connect_port(port)
         self._ports = p
     
     ######################
     # SLOTS
     ######################
 
-    @pyqtSlot()
+    @Slot()
     def initialize(self):
         self.maybe_initialize()
 
-    @pyqtSlot('QVariant')
-    def connect(self, port):
+    @Slot('QVariant')
+    def connect_port(self, port):
         if not self._backend_obj:
-            self.initializedChanged.connect(lambda: self.connect(port))
+            self.initializedChanged.connect(lambda: self.connect_port(port))
         elif not port.initialized:
-            port.initializedChanged.connect(lambda: self.connect(port))
+            port.initializedChanged.connect(lambda: self.connect_port(port))
         elif port not in self._connected_ports:
             backend_channel = self._backend_obj
             backend_port = port.get_backend_obj()
@@ -123,14 +123,14 @@ class LoopChannel(QQuickItem):
             self._connected_ports.append(port)
             self.connectedPortsChanged.emit(self._connected_ports)
     
-    @pyqtSlot(result='QVariant')
+    @Slot(result='QVariant')
     def get_backend(self):
         maybe_backend = findFirstParent(self, lambda p: p and isinstance(p, QQuickItem) and p.inherits('Backend'))
         if maybe_backend:
             return maybe_backend
         raise Exception("Could not find backend!")
     
-    @pyqtSlot('QVariant')
+    @Slot('QVariant')
     def disconnect(self, port):
         if not self._backend_obj:
             self.initializedChanged.connect(lambda: self.disconnect(port))
@@ -143,11 +143,11 @@ class LoopChannel(QQuickItem):
             self._connected_ports.remove(port)
             self.connectedPortsChanged.emit(self._connected_ports)
 
-    @pyqtSlot()
+    @Slot()
     def update_impl(self, state):
         raise Exception("Not implemented in base class")
     
-    @pyqtSlot()
+    @Slot()
     def update(self):
         if not self._backend_obj:
             return
@@ -162,13 +162,13 @@ class LoopChannel(QQuickItem):
         
         self.update_impl(state)
     
-    @pyqtSlot()
+    @Slot()
     def close(self):
         if self._backend_obj:
             self._backend_obj.destroy()
             self._backend_obj = None
     
-    @pyqtSlot()
+    @Slot()
     def rescan_parents(self):
         maybe_loop = findFirstParent(self, lambda p: p and isinstance(p, QQuickItem) and p.inherits('Loop') and self._loop == None)
         if maybe_loop:

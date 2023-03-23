@@ -1,4 +1,4 @@
-from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot, pyqtProperty, QMetaObject, Qt
+from PySide6.QtCore import QObject, Signal, Slot, Property, QMetaObject, Qt
 
 class MIDIControlInputRule(QObject):
     def __init__(self, parent=None):
@@ -9,8 +9,8 @@ class MIDIControlInputRule(QObject):
     # This is a map of string -> string. Any occurrence of the
     # key string in any of the formulas used in this dialect
     # are replaced by their substitution.
-    substitutionsChanged = pyqtSignal('QVariantMap')
-    @pyqtProperty('QVariantMap', notify=substitutionsChanged)
+    substitutionsChanged = Signal('QVariantMap')
+    @Property('QVariantMap', notify=substitutionsChanged)
     def substitutions(self):
         return self._substitutions
     @substitutions.setter

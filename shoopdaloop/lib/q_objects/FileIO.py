@@ -10,7 +10,7 @@ import resampy
 import mido
 import math
 
-from PyQt6.QtCore import QObject, pyqtSlot, pyqtSignal, QThread
+from PySide6.QtCore import QObject, Slot, Signal, QThread
 
 from .Task import Task
 from .Tasks import Tasks
@@ -21,53 +21,53 @@ class FileIO(QThread):
     def __init__(self, parent=None):
         super(FileIO, self).__init__(parent)
 
-    startSavingFile = pyqtSignal()
-    doneSavingFile = pyqtSignal()
-    startLoadingFile = pyqtSignal()
-    doneLoadingFile = pyqtSignal()
+    startSavingFile = Signal()
+    doneSavingFile = Signal()
+    startLoadingFile = Signal()
+    doneLoadingFile = Signal()
     
     ######################
     # SLOTS
     ######################
 
-    @pyqtSlot(str, str)
+    @Slot(str, str)
     def write_file(self, filename, content):
         with open(filename, 'w') as file:
             file.write(content)
 
-    @pyqtSlot(str, result=str)
+    @Slot(str, result=str)
     def read_file(self, filename):
         r = None
         with open(filename, 'r') as file:
             r = file.read()
         return r
     
-    @pyqtSlot(result=str)
+    @Slot(result=str)
     def create_temporary_folder(self):
         return tempfile.mkdtemp()
     
-    @pyqtSlot(result=str)
+    @Slot(result=str)
     def create_temporary_file(self):
         return tempfile.mkstemp()[1]
 
-    @pyqtSlot(str)
+    @Slot(str)
     def delete_recursive(self, folder):
         shutil.rmtree(folder)
 
-    @pyqtSlot(str, str, bool)
+    @Slot(str, str, bool)
     def make_tarfile(self, filename, source_dir, compress):
         flags = ("w:gz" if compress else "w")
         with tarfile.open(filename, flags) as tar:
             tar.add(source_dir, arcname='/')
     
-    @pyqtSlot(str, str)
+    @Slot(str, str)
     def extract_tarfile(self, filename, target_dir):
         flags = "r:*"
         with tarfile.open(filename, flags) as tar:
             tar.extractall(target_dir)
 
     
-    @pyqtSlot(str, int, list)
+    @Slot(str, int, list)
     def save_channels_to_soundfile(self, filename, sample_rate, channels):
         self.startSavingFile.emit()
         try:
@@ -84,7 +84,7 @@ class FileIO(QThread):
         finally:
             self.doneSavingFile.emit()
     
-    @pyqtSlot(str, int, 'QVariant')
+    @Slot(str, int, 'QVariant')
     def save_channel_to_midi(self, filename, sample_rate, channel):
         self.startSavingFile.emit()
         try:
@@ -112,7 +112,7 @@ class FileIO(QThread):
         finally:
             self.doneSavingFile.emit()
     
-    @pyqtSlot(str, int, 'QVariant', result=Task)
+    @Slot(str, int, 'QVariant', result=Task)
     def save_channel_to_midi_async(self, filename, sample_rate, channel):
         task = Task()
         def do_save():
@@ -125,7 +125,7 @@ class FileIO(QThread):
         t.start()
         return task
     
-    @pyqtSlot(str, int, 'QVariant', 'QVariant')
+    @Slot(str, int, 'QVariant', 'QVariant')
     def load_midi_to_channel(self, filename, sample_rate, channel, maybe_loop_set_length):
         self.startLoadingFile.emit()
         try:
@@ -158,7 +158,7 @@ class FileIO(QThread):
         finally:
             self.doneLoadingFile.emit()
     
-    @pyqtSlot(str, int, 'QVariant', 'QVariant', result=Task)
+    @Slot(str, int, 'QVariant', 'QVariant', result=Task)
     def load_midi_to_channel_async(self, filename, sample_rate, channel, maybe_loop_set_length):
         task = Task()
         def do_load():
@@ -171,7 +171,7 @@ class FileIO(QThread):
         t.start()
         return task
     
-    @pyqtSlot(str, int, list, result=Task)
+    @Slot(str, int, list, result=Task)
     def save_channels_to_soundfile_async(self, filename, sample_rate, channels):
         task = Task()
         def do_save():
@@ -184,7 +184,7 @@ class FileIO(QThread):
         t.start()
         return task
 
-    @pyqtSlot(str, int, 'QVariant', result=Task)
+    @Slot(str, int, 'QVariant', result=Task)
     def save_channel_to_midi_async(self, filename, sample_rate, channel):
         task = Task()
         def do_save():
@@ -197,7 +197,7 @@ class FileIO(QThread):
         t.start()
         return task
     
-    @pyqtSlot(str, int, 'QVariant', list, 'QVariant')
+    @Slot(str, int, 'QVariant', list, 'QVariant')
     def load_soundfile_to_channels(self, filename, target_sample_rate, maybe_target_data_length, channels_to_loop_channels, maybe_loop_set_length):
         self.startLoadingFile.emit()
         try:
@@ -244,7 +244,7 @@ class FileIO(QThread):
         finally:
             self.doneLoadingFile.emit()
     
-    @pyqtSlot(str, int, 'QVariant', list, 'QVariant', result=Task)
+    @Slot(str, int, 'QVariant', list, 'QVariant', result=Task)
     def load_soundfile_to_channels_async(self, filename, target_sample_rate, target_data_length, channels_to_loop_channels, maybe_loop_set_length):
         task = Task()
         def do_load():
@@ -257,7 +257,7 @@ class FileIO(QThread):
         t.start()
         return task
     
-    @pyqtSlot(str, result='QVariant')
+    @Slot(str, result='QVariant')
     def get_soundfile_info(self, filename):
         info = sf.info(filename)
         return {
@@ -266,6 +266,6 @@ class FileIO(QThread):
             'frames': info.frames
         }
     
-    @pyqtSlot(result='QVariant')
+    @Slot(result='QVariant')
     def get_soundfile_formats(self):
         return dict(sf.available_formats())

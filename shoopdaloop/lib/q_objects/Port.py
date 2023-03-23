@@ -7,8 +7,8 @@ import json
 from typing import *
 import sys
 
-from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot, QTimer
-from PyQt6.QtQuick import QQuickItem
+from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
+from PySide6.QtQuick import QQuickItem
 
 from .Backend import Backend
 
@@ -40,8 +40,8 @@ class Port(QQuickItem):
     ######################
 
     # backend
-    backendChanged = pyqtSignal(Backend)
-    @pyqtProperty(Backend, notify=backendChanged)
+    backendChanged = Signal(Backend)
+    @Property(Backend, notify=backendChanged)
     def backend(self):
         return self._backend
     @backend.setter
@@ -53,14 +53,14 @@ class Port(QQuickItem):
             self.maybe_initialize()
 
     # initialized
-    initializedChanged = pyqtSignal(bool)
-    @pyqtProperty(bool, notify=initializedChanged)
+    initializedChanged = Signal(bool)
+    @Property(bool, notify=initializedChanged)
     def initialized(self):
         return self._initialized
 
     # name hint
-    nameHintChanged = pyqtSignal(str)
-    @pyqtProperty(str, notify=nameHintChanged)
+    nameHintChanged = Signal(str)
+    @Property(str, notify=nameHintChanged)
     def name_hint(self):
         return self._name_hint
     @name_hint.setter
@@ -72,8 +72,8 @@ class Port(QQuickItem):
             self.maybe_initialize()
     
     # direction
-    directionChanged = pyqtSignal(int)
-    @pyqtProperty(int, notify=directionChanged)
+    directionChanged = Signal(int)
+    @Property(int, notify=directionChanged)
     def direction(self):
         return self._direction
     @direction.setter
@@ -85,8 +85,8 @@ class Port(QQuickItem):
             self.maybe_initialize()
     
     # name
-    nameChanged = pyqtSignal(str)
-    @pyqtProperty(str, notify=nameChanged)
+    nameChanged = Signal(str)
+    @Property(str, notify=nameChanged)
     def name(self):
         return self._name
     @name.setter
@@ -95,8 +95,8 @@ class Port(QQuickItem):
             self.nameChanged.emit(s)
 
     # muted
-    mutedChanged = pyqtSignal(bool)
-    @pyqtProperty(bool, notify=mutedChanged)
+    mutedChanged = Signal(bool)
+    @Property(bool, notify=mutedChanged)
     def muted(self):
         return self._muted
     @muted.setter
@@ -106,8 +106,8 @@ class Port(QQuickItem):
             self.mutedChanged.emit(s)
     
     # passthrough_muted
-    passthroughMutedChanged = pyqtSignal(bool)
-    @pyqtProperty(bool, notify=passthroughMutedChanged)
+    passthroughMutedChanged = Signal(bool)
+    @Property(bool, notify=passthroughMutedChanged)
     def passthrough_muted(self):
         return self._passthrough_muted
     @passthrough_muted.setter
@@ -117,8 +117,8 @@ class Port(QQuickItem):
             self.passthroughMutedChanged.emit(s)
     
     # passthrough_to : ports to which to passthrough
-    passthroughToChanged = pyqtSignal(list)
-    @pyqtProperty(list, notify=passthroughToChanged)
+    passthroughToChanged = Signal(list)
+    @Property(list, notify=passthroughToChanged)
     def passthrough_to(self):
         return self._passthrough_to
     @passthrough_to.setter
@@ -133,16 +133,16 @@ class Port(QQuickItem):
     ###########
 
     # Update mode from the back-end.
-    @pyqtSlot()
+    @Slot()
     def update(self):
         raise Exception('Unimplemented in base class')
     
     # Get the wrapped back-end object.
-    @pyqtSlot(result='QVariant')
+    @Slot(result='QVariant')
     def get_backend_obj(self):
         return self._backend_obj
     
-    @pyqtSlot()
+    @Slot()
     def close(self):
         if self._backend_obj:
             self._backend_obj.destroy()
@@ -150,18 +150,18 @@ class Port(QQuickItem):
             self._initialized = False
             self.initializedChanged.emit(False)
     
-    @pyqtSlot()
+    @Slot()
     def rescan_parents(self):
         maybe_backend = findFirstParent(self, lambda p: p and isinstance(p, QQuickItem) and p.inherits('Backend') and self._backend == None)
         if maybe_backend:
             self.backend = maybe_backend
     
-    @pyqtSlot(bool)
+    @Slot(bool)
     def set_backend_muted(self, muted):
         if self._backend_obj:
             self._backend_obj.set_muted(muted)
     
-    @pyqtSlot(bool)
+    @Slot(bool)
     def set_backend_passthrough_muted(self, muted):
         if self._backend_obj:
             self._backend_obj.set_passthrough_muted(muted)

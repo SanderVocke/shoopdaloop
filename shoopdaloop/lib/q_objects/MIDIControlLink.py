@@ -8,7 +8,7 @@ from threading import Thread
 import traceback
 import time
 
-from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot, QMetaObject, Qt
+from PySide6.QtCore import QObject, Signal, Slot, QMetaObject, Qt
 
 from .BackendManager import BackendManager, SlowMidiCallback
 
@@ -21,7 +21,7 @@ from third_party.pyjacklib.jacklib import helpers
 # and providing signals and slots for MIDI communication over that
 # specific pair.
 class MIDIControlLink(QObject):
-    received = pyqtSignal(list) # List of MIDI bytes in the message
+    received = Signal(list) # List of MIDI bytes in the message
 
     def __init__(self, parent, maybe_output_port_name, maybe_input_port_name, jack_client, backend_mgr):
         super(MIDIControlLink, self).__init__(parent)
@@ -61,12 +61,12 @@ class MIDIControlLink(QObject):
             return jacklib.connect(self._jack_client, other_name, jacklib.port_name(self._jack_input_port))
     
     # List of MIDI bytes to send as a message
-    @pyqtSlot(list)
+    @Slot(list)
     def send(self, msg):
         if self._backend_output_port:
             self._backend_mgr.send_slow_midi(self._backend_output_port, msg)
     
-    @pyqtSlot()
+    @Slot()
     def destroy(self):
         self._ready = False
         if self._backend_input_port:
@@ -85,8 +85,8 @@ class AutoconnectRule:
 
 class MIDIControlLinkManager(QObject):
     # TODO for loop parameter specifically
-    link_created = pyqtSignal(AutoconnectRule, MIDIControlLink)
-    link_destroyed = pyqtSignal(AutoconnectRule)
+    link_created = Signal(AutoconnectRule, MIDIControlLink)
+    link_destroyed = Signal(AutoconnectRule)
 
     def __init__(self, parent, jack_client, backend_mgr):
         super(MIDIControlLinkManager, self).__init__(parent)
@@ -105,14 +105,14 @@ class MIDIControlLinkManager(QObject):
             self._backend_mgr.process_slow_midi()
             time.sleep(0.01)
     
-    @pyqtSlot(list)
+    @Slot(list)
     def set_rules(self, rules : set[Type[AutoconnectRule]]):
         with self._lock:
             if rules != self._rules:
                 self._rules = rules
                 QMetaObject.invokeMethod(self, "update", Qt.ConnectionType.QueuedConnection)
 
-    @pyqtSlot()
+    @Slot()
     def update(self):
         try:
             for rule in self._rules:

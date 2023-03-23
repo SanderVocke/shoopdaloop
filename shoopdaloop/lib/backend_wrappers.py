@@ -9,8 +9,7 @@ import copy
 
 import jacklib
 import mido
-from PyQt6.sip import wrapinstance
-from PyQt6.QtCore import QObject
+from PySide6.QtCore import QObject
 
 from .backend_interface import *
 

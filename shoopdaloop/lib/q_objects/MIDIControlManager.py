@@ -1,4 +1,4 @@
-from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot, QTimer
+from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
 
 from ..StatesAndActions import LoopMode, MIDIMessageFilterType
 from ..MidiScripting import *
@@ -201,10 +201,10 @@ class MIDIController(QObject):
         self._vars = dialect.variables
         self._notes_currently_on = set()
     
-    sendMidi = pyqtSignal(list) # list of byte values
-    loopAction = pyqtSignal(int, int, int, list) # track idx, loop idx, LoopActionType value, args
-    setPan = pyqtSignal(int, float)
-    setVolume = pyqtSignal(int, float)
+    sendMidi = Signal(list) # list of byte values
+    loopAction = Signal(int, int, int, list) # track idx, loop idx, LoopActionType value, args
+    setPan = Signal(int, float)
+    setVolume = Signal(int, float)
 
     def set_var(self, name, value):
         if name not in self._vars.keys():
@@ -230,7 +230,7 @@ class MIDIController(QObject):
             elif isinstance(action, SetVolume):
                 self.setVolume.emit(action.track_idx, action.value)
     
-    @pyqtSlot(list)
+    @Slot(list)
     def receiveMidi(self, _bytes):
         if len(_bytes) < 1:
             return
@@ -274,7 +274,7 @@ class MIDIController(QObject):
             ) for f in formulas_to_execute])
         self.trigger_actions(actions)
     
-    @pyqtSlot(int, int, int, bool, bool)
+    @Slot(int, int, int, bool, bool)
     def loop_state_changed(self, track, index, mode, selected, targeted):
         substitutions = {
             'track': track,
@@ -306,15 +306,15 @@ class MIDIController(QObject):
                 }
                 ))
 
-    @pyqtSlot(int)
+    @Slot(int)
     def active_sripting_section_changed(self, idx):
         raise NotImplementedError()
     
-    @pyqtSlot(int)
+    @Slot(int)
     def active_scene_changed(self, idx):        
         raise NotImplementedError()
     
-    @pyqtSlot()
+    @Slot()
     def reset(self):
         if self._dialect.reset_output_formula:
             self.send_midi_messages(eval_formula(
@@ -367,15 +367,15 @@ class MIDIControlManager(QObject):
 
         self._targeted_loop = None
 
-    loopAction = pyqtSignal(int, int, int, list) # track idx, loop idx, LoopActionType value, args
-    setPan = pyqtSignal(int, float)
-    setVolume = pyqtSignal(int, float)
+    loopAction = Signal(int, int, int, list) # track idx, loop idx, LoopActionType value, args
+    setPan = Signal(int, float)
+    setVolume = Signal(int, float)
     
-    @pyqtSlot(int, int, int, list)
+    @Slot(int, int, int, list)
     def do_loop_action(self, track, loop, action, args):
         self.loopAction.emit(track, loop, action, args)
 
-    @pyqtSlot(AutoconnectRule, MIDIControlLink)
+    @Slot(AutoconnectRule, MIDIControlLink)
     def new_link(self, rule, link):
         controller = MIDIController(self._autoconnect_rules[rule], self)
         self._controllers[rule] = controller
@@ -395,12 +395,12 @@ class MIDIControlManager(QObject):
         for ((track, loop), (mode, selected, targeted)) in self._loop_states_cache.items():
             controller.loop_state_changed(track, loop, mode, selected, targeted)
 
-    @pyqtSlot()
+    @Slot()
     def update_link_mgr(self):
         link_rules = self._autoconnect_rules.keys()
         self._link_manager.set_rules(link_rules)
     
-    @pyqtSlot(int, int, int, bool, bool)
+    @Slot(int, int, int, bool, bool)
     def loop_state_changed(self, track, index, mode, selected, targeted):
         if (track,index) in self._loop_states_cache and \
             self._loop_states_cache[(track,index)] == (mode, selected, targeted):
@@ -411,7 +411,7 @@ class MIDIControlManager(QObject):
             c.loop_state_changed(track, index, mode, selected, targeted)
         self._loop_states_cache[(track, index)] = (mode, selected, targeted)
 
-    @pyqtSlot(int)
+    @Slot(int)
     def active_scripting_section_changed(self, idx):
         if self._active_scene_cache == idx:
             # Already sent this
@@ -421,7 +421,7 @@ class MIDIControlManager(QObject):
             c.active_sripting_section_changed(track, index, mode)
         self._active_scene_cache = idx
     
-    @pyqtSlot(int)
+    @Slot(int)
     def active_scene_changed(self, idx):
         if self._scripting_section_cache == idx:
             # Already sent this

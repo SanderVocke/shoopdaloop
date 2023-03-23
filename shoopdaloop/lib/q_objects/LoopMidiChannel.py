@@ -7,8 +7,8 @@ import json
 from typing import *
 import sys
 
-from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot, QTimer
-from PyQt6.QtQuick import QQuickItem
+from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
+from PySide6.QtQuick import QQuickItem
 
 from .MidiPort import MidiPort
 from .LoopChannel import LoopChannel
@@ -31,14 +31,14 @@ class LoopMidiChannel(LoopChannel):
     ######################
 
     # # of events triggered since last update
-    nEventsTriggeredChanged = pyqtSignal(int)
-    @pyqtProperty(int, notify=nEventsTriggeredChanged)
+    nEventsTriggeredChanged = Signal(int)
+    @Property(int, notify=nEventsTriggeredChanged)
     def n_events_triggered(self):
         return self._n_events_triggered
     
     # # number of notes currently being played
-    nNotesActiveChanged = pyqtSignal(int)
-    @pyqtProperty(int, notify=nNotesActiveChanged)
+    nNotesActiveChanged = Signal(int)
+    @Property(int, notify=nNotesActiveChanged)
     def n_notes_active(self):
         return self._n_notes_active
     
@@ -46,7 +46,7 @@ class LoopMidiChannel(LoopChannel):
     ## SLOTS
     #######################
 
-    @pyqtSlot()
+    @Slot()
     def update_impl(self, state):
         if state.n_events_triggered != self._n_events_triggered:
             self._n_events_triggered = state.n_events_triggered
@@ -55,14 +55,14 @@ class LoopMidiChannel(LoopChannel):
             self._n_notes_active = state.n_notes_active
             self.nNotesActiveChanged.emit(self._n_notes_active)
     
-    @pyqtSlot(result=list)
+    @Slot(result=list)
     def get_data(self):
         if self._backend_obj:
             return self._backend_obj.get_data()
         else:
             raise Exception("Getting data of un-loaded MIDI channel")
 
-    @pyqtSlot(list)
+    @Slot(list)
     def load_data(self, data):
         self.requestBackendInit.emit()
         if self._backend_obj:

@@ -5,8 +5,8 @@ import tempfile
 import json
 import sys
 
-from PyQt6.QtCore import Qt, QObject, pyqtSignal, pyqtProperty, pyqtSlot, QTimer
-from PyQt6.QtQuick import QQuickItem
+from PySide6.QtCore import Qt, QObject, Signal, Property, Slot, QTimer
+from PySide6.QtQuick import QQuickItem
 
 from ..backend_wrappers import *
 from ..findChildItems import findChildItems
@@ -23,14 +23,14 @@ class Backend(QQuickItem):
         self._backend_obj = None
         self.destroyed.connect(self.close)
     
-    update = pyqtSignal()
+    update = Signal()
 
     ######################
     # PROPERTIES
     ######################
 
-    updateIntervalMsChanged = pyqtSignal(int)
-    @pyqtProperty(int, notify=updateIntervalMsChanged)
+    updateIntervalMsChanged = Signal(int)
+    @Property(int, notify=updateIntervalMsChanged)
     def update_interval_ms(self):
         return self._update_interval_ms
     @update_interval_ms.setter
@@ -39,13 +39,13 @@ class Backend(QQuickItem):
             self._update_interval_ms = u
             self.init_timer()
     
-    initializedChanged = pyqtSignal(bool)
-    @pyqtProperty(bool, notify=initializedChanged)
+    initializedChanged = Signal(bool)
+    @Property(bool, notify=initializedChanged)
     def initialized(self):
         return self._initialized
     
-    clientNameHintChanged = pyqtSignal(str)
-    @pyqtProperty(str, notify=clientNameHintChanged)
+    clientNameHintChanged = Signal(str)
+    @Property(str, notify=clientNameHintChanged)
     def client_name_hint(self):
         return (self._client_name_hint if self._client_name_hint else "")
     @client_name_hint.setter
@@ -55,8 +55,8 @@ class Backend(QQuickItem):
         self._client_name_hint = n
         self.maybe_init()
 
-    backendTypeChanged = pyqtSignal(int)
-    @pyqtProperty(int, notify=backendTypeChanged)
+    backendTypeChanged = Signal(int)
+    @Property(int, notify=backendTypeChanged)
     def backend_type(self):
         return (self._backend_type.value if self._backend_type else BackendType.Dummy)
     @backend_type.setter
@@ -70,7 +70,7 @@ class Backend(QQuickItem):
     ## SLOTS
     ###########
 
-    @pyqtSlot()
+    @Slot()
     def doUpdate(self):
         from lib.q_objects.Loop import Loop
         from lib.q_objects.Port import Port
@@ -80,22 +80,22 @@ class Backend(QQuickItem):
             port.update()
         self.update.emit()
     
-    @pyqtSlot(result=int)
+    @Slot(result=int)
     def get_sample_rate(self):
         return self._backend_obj.get_sample_rate()
 
-    @pyqtSlot()
+    @Slot()
     def close(self):
         if self._initialized:
             self._backend_obj.terminate()
         self._initialized = False
     
     # Get the wrapped back-end object.
-    @pyqtSlot(result='QVariant')
+    @Slot(result='QVariant')
     def get_backend_obj(self):
         return self._backend_obj
     
-    @pyqtSlot()
+    @Slot()
     def maybe_init(self):
         if not self._initialized and self._client_name_hint != None and self._backend_type != None:
             self.init()

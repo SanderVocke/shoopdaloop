@@ -1,4 +1,4 @@
-from PyQt6.QtQuick import QQuickItem
+from PySide6.QtQuick import QQuickItem
 
 # Regular findChildren does not traverse the complete QML
 # tree. This function traverses the visual tree instead.

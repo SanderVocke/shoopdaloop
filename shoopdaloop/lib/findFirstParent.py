@@ -1,4 +1,4 @@
-from PyQt6.QtQuick import QQuickItem
+from PySide6.QtQuick import QQuickItem
 
 # Traverse up the parent tree to find an item.
 def findFirstParent(base_item, predicate):

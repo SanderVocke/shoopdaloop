@@ -6,8 +6,8 @@ import json
 from typing import *
 import sys
 
-from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot, QTimer
-from PyQt6.QtQuick import QQuickItem
+from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
+from PySide6.QtQuick import QQuickItem
 
 from .Port import Port
 
@@ -23,8 +23,8 @@ class MidiPort(Port):
     ######################
 
     # Number of events triggered since last update
-    nEventsTriggeredChanged = pyqtSignal(int)
-    @pyqtProperty(int, notify=nEventsTriggeredChanged)
+    nEventsTriggeredChanged = Signal(int)
+    @Property(int, notify=nEventsTriggeredChanged)
     def n_events_triggered(self):
         return self._n_events_triggered
     @n_events_triggered.setter
@@ -34,8 +34,8 @@ class MidiPort(Port):
             self.nEventsTriggeredChanged.emit(s)
     
     # Number of notes currently being played
-    nNotesActiveChanged = pyqtSignal(int)
-    @pyqtProperty(int, notify=nNotesActiveChanged)
+    nNotesActiveChanged = Signal(int)
+    @Property(int, notify=nNotesActiveChanged)
     def n_notes_active(self):
         return self._n_notes_active
     @n_notes_active.setter
@@ -49,7 +49,7 @@ class MidiPort(Port):
     ###########
 
     # Update mode from the back-end.
-    @pyqtSlot()
+    @Slot()
     def update(self):
         if not self.initialized:
             return

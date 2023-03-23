@@ -4,7 +4,7 @@ import os
 import tempfile
 import json
 
-from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot, QTimer
+from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
 
 from ..StatesAndActions import LoopMode, LoopActionType
 
@@ -12,19 +12,19 @@ from ..StatesAndActions import LoopMode, LoopActionType
 class LooperState(QObject):
 
     # mode change notifications
-    lengthChanged = pyqtSignal(float)
-    posChanged = pyqtSignal(float)
-    modeChanged = pyqtSignal(int)
-    nextModeChanged = pyqtSignal(int)
-    nextModeCountdownChanged = pyqtSignal(int)
-    volumeChanged = pyqtSignal(float)
-    outputPeakChanged = pyqtSignal(float)
-    selectedChanged = pyqtSignal(bool)
-    targetedChanged = pyqtSignal(bool)
+    lengthChanged = Signal(float)
+    posChanged = Signal(float)
+    modeChanged = Signal(int)
+    nextModeChanged = Signal(int)
+    nextModeCountdownChanged = Signal(int)
+    volumeChanged = Signal(float)
+    outputPeakChanged = Signal(float)
+    selectedChanged = Signal(bool)
+    targetedChanged = Signal(bool)
 
     # Other signals
-    cycled = pyqtSignal()
-    passed_halfway = pyqtSignal()
+    cycled = Signal()
+    passed_halfway = Signal()
 
     def __init__(self, parent=None):
         super(LooperState, self).__init__(parent)
@@ -45,8 +45,8 @@ class LooperState(QObject):
     ######################
 
     # mode
-    modeChanged = pyqtSignal(int)
-    @pyqtProperty(int, notify=modeChanged)
+    modeChanged = Signal(int)
+    @Property(int, notify=modeChanged)
     def mode(self):
         return self._mode
     @mode.setter
@@ -56,8 +56,8 @@ class LooperState(QObject):
             self.modeChanged.emit(s)
     
     # next mode
-    nextModeChanged = pyqtSignal(int)
-    @pyqtProperty(int, notify=nextModeChanged)
+    nextModeChanged = Signal(int)
+    @Property(int, notify=nextModeChanged)
     def next_mode(self):
         return self._next_mode
     @next_mode.setter
@@ -68,8 +68,8 @@ class LooperState(QObject):
     
     # next mode countdown. Decrements on every trigger
     # until at 0, the next mode is transitioned to
-    nextModeCountdownChanged = pyqtSignal(int)
-    @pyqtProperty(int, notify=nextModeCountdownChanged)
+    nextModeCountdownChanged = Signal(int)
+    @Property(int, notify=nextModeCountdownChanged)
     def next_mode_countdown(self):
         return self._next_mode_countdown
     @next_mode_countdown.setter
@@ -79,8 +79,8 @@ class LooperState(QObject):
             self.nextModeCountdownChanged.emit(s)
 
     # length: loop length in seconds
-    lengthChanged = pyqtSignal(float)
-    @pyqtProperty(float, notify=lengthChanged)
+    lengthChanged = Signal(float)
+    @Property(float, notify=lengthChanged)
     def length(self):
         return self._length
     @length.setter
@@ -90,8 +90,8 @@ class LooperState(QObject):
             self.lengthChanged.emit(l)
 
     # position: loop playback position in seconds
-    posChanged = pyqtSignal(float)
-    @pyqtProperty(float, notify=posChanged)
+    posChanged = Signal(float)
+    @Property(float, notify=posChanged)
     def position(self):
         return self._pos
     @position.setter
@@ -101,7 +101,7 @@ class LooperState(QObject):
             self.posChanged.emit(p)
     
     # Volume: volume of playback in 0.0-1.0
-    @pyqtProperty(float, notify=volumeChanged)
+    @Property(float, notify=volumeChanged)
     def volume(self):
         return self._volume
     
@@ -112,7 +112,7 @@ class LooperState(QObject):
             self.volumeChanged.emit(p)
     
     # Output peak: amplitude value of 0.0-...
-    @pyqtProperty(float, notify=outputPeakChanged)
+    @Property(float, notify=outputPeakChanged)
     def outputPeak(self):
         return self._output_peak
     
@@ -124,8 +124,8 @@ class LooperState(QObject):
 
     # selected: whether the loop is in the current selection.
     # this is not something known to the back-end.
-    selectedChanged = pyqtSignal(bool)
-    @pyqtProperty(bool, notify=selectedChanged)
+    selectedChanged = Signal(bool)
+    @Property(bool, notify=selectedChanged)
     def selected(self):
         return self._selected
     @selected.setter
@@ -136,8 +136,8 @@ class LooperState(QObject):
     
     # targeted: whether the loop is the current "target".
     # this is not something known to the back-end.
-    targetedChanged = pyqtSignal(bool)
-    @pyqtProperty(bool, notify=targetedChanged)
+    targetedChanged = Signal(bool)
+    @Property(bool, notify=targetedChanged)
     def targeted(self):
         return self._targeted
     @targeted.setter
@@ -146,7 +146,7 @@ class LooperState(QObject):
             self._targeted = p
             self.targetedChanged.emit(p)
 
-    @pyqtSlot(result=str)
+    @Slot(result=str)
     def serialize_session_state(self):
         d = {
             'volume' : self.volume,
@@ -154,7 +154,7 @@ class LooperState(QObject):
         }
         return json.dumps(d)
     
-    @pyqtSlot(str)
+    @Slot(str)
     def deserialize_session_state(self, data):
         d = json.loads(data)
         self.volume = d['volume']
@@ -166,10 +166,10 @@ class LooperState(QObject):
     def set_get_midi_fn(self, fn):
         self._get_midi_fn = fn
     
-    @pyqtSlot(int, int, int, result='QVariant')
+    @Slot(int, int, int, result='QVariant')
     def get_waveforms(self, from_sample, to_sample, samples_per_bin):
         return self._get_waveforms_fn (from_sample, to_sample, samples_per_bin)
     
-    @pyqtSlot(result=list)
+    @Slot(result=list)
     def get_midi(self):
         return self._get_midi_fn()

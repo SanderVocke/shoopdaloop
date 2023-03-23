@@ -3,9 +3,9 @@
 import os
 import sys
 
-from PyQt6.QtCore import QObject, pyqtSlot
-from PyQt6.QtQml import QQmlEngine
-from PyQt6.sip import unwrapinstance
+from PySide6.QtCore import QObject, Slot
+from PySide6.QtQml import QQmlEngine
+from PySide6.sip import unwrapinstance
 script_dir = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(script_dir + '/..')
 sys.path.append(script_dir + '/../build/backend/test/qt')
@@ -21,7 +21,7 @@ class Setup(QObject):
     def __init__(self, parent=None):
         super(Setup, self).__init__(parent)
 
-    @pyqtSlot(QQmlEngine)
+    @Slot(QQmlEngine)
     def qmlEngineAvailable(self, engine):
         register_shoopdaloop_qml_classes()
         self._validator = SchemaValidator()

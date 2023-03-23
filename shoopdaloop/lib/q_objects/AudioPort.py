@@ -6,8 +6,8 @@ import json
 from typing import *
 import sys
 
-from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot, QTimer
-from PyQt6.QtQuick import QQuickItem
+from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
+from PySide6.QtQuick import QQuickItem
 
 from .Port import Port
 
@@ -24,8 +24,8 @@ class AudioPort(Port):
     ######################
 
     # peak
-    peakChanged = pyqtSignal(float)
-    @pyqtProperty(float, notify=peakChanged)
+    peakChanged = Signal(float)
+    @Property(float, notify=peakChanged)
     def peak(self):
         return self._peak
     @peak.setter
@@ -35,8 +35,8 @@ class AudioPort(Port):
             self.peakChanged.emit(s)
     
     # volume
-    volumeChanged = pyqtSignal(float)
-    @pyqtProperty(float, notify=volumeChanged)
+    volumeChanged = Signal(float)
+    @Property(float, notify=volumeChanged)
     def volume(self):
         return self._volume
     @volume.setter
@@ -46,8 +46,8 @@ class AudioPort(Port):
             self.volumeChanged.emit(s)
     
     # passthrough volume
-    passthroughVolumeChanged = pyqtSignal(float)
-    @pyqtProperty(float, notify=passthroughVolumeChanged)
+    passthroughVolumeChanged = Signal(float)
+    @Property(float, notify=passthroughVolumeChanged)
     def passthrough_volume(self):
         return self._passthrough_volume
     @passthrough_volume.setter
@@ -61,7 +61,7 @@ class AudioPort(Port):
     ###########
 
     # Update mode from the back-end.
-    @pyqtSlot()
+    @Slot()
     def update(self):
         if not self.initialized:
             return
@@ -73,12 +73,12 @@ class AudioPort(Port):
         self.muted = state.muted
         self.passthrough_muted = state.muted
     
-    @pyqtSlot(float)
+    @Slot(float)
     def set_backend_volume(self, volume):
         if self._backend_obj:
             self._backend_obj.set_volume(volume)
     
-    @pyqtSlot(float)
+    @Slot(float)
     def set_backend_passthrough_volume(self, passthrough_volume):
         if self._backend_obj:
             self._backend_obj.set_passthrough_volume(passthrough_volume)

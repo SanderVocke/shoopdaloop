@@ -3,7 +3,7 @@ import time
 import os
 import tempfile
 
-from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot, QTimer, Qt
+from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, Qt
 
 from .PortManager import PortManager
 
@@ -45,16 +45,16 @@ class PortsManager(PortManager):
     # PROPERTIES
     ######################
 
-    port_managersChanged = pyqtSignal(list)
-    @pyqtProperty(list, notify=port_managersChanged)
+    port_managersChanged = Signal(list)
+    @Property(list, notify=port_managersChanged)
     def port_managers(self):
         return self._port_managers
     
     # Override setters to redirect them to our "children".
     # We will not update our own property - we expect that to happen
     # after a round-trip to the back-end.
-    volumeChanged = pyqtSignal(float)
-    @pyqtProperty(float, notify=volumeChanged)
+    volumeChanged = Signal(float)
+    @Property(float, notify=volumeChanged)
     def volume(self):
         return self._volume
     @volume.setter
@@ -67,8 +67,8 @@ class PortsManager(PortManager):
             self.volumeChanged.emit(v)
     
     # passthrough
-    passthroughChanged = pyqtSignal(float)
-    @pyqtProperty(float, notify=passthroughChanged)
+    passthroughChanged = Signal(float)
+    @Property(float, notify=passthroughChanged)
     def passthrough(self):
         return self._passthrough
     @passthrough.setter
@@ -81,8 +81,8 @@ class PortsManager(PortManager):
             self.passthroughChanged.emit(l)
     
     # muted
-    mutedChanged = pyqtSignal(bool)
-    @pyqtProperty(bool, notify=mutedChanged)
+    mutedChanged = Signal(bool)
+    @Property(bool, notify=mutedChanged)
     def muted(self):
         return self._muted
     @muted.setter
@@ -95,8 +95,8 @@ class PortsManager(PortManager):
             self.mutedChanged.emit(l)
     
     # passthroughMuted
-    passthroughMutedChanged = pyqtSignal(bool)
-    @pyqtProperty(bool, notify=passthroughMutedChanged)
+    passthroughMutedChanged = Signal(bool)
+    @Property(bool, notify=passthroughMutedChanged)
     def passthroughMuted(self):
         return self._passthroughMuted
     @passthroughMuted.setter
@@ -109,8 +109,8 @@ class PortsManager(PortManager):
             self.passthroughMutedChanged.emit(l)
     
     # recording latency
-    recordingLatencyChanged = pyqtSignal(float)
-    @pyqtProperty(float, notify=recordingLatencyChanged)
+    recordingLatencyChanged = Signal(float)
+    @Property(float, notify=recordingLatencyChanged)
     def recordingLatency(self):
         return self._recordingLatency
     def set_recordingLatency_direct(self, l):
@@ -122,7 +122,7 @@ class PortsManager(PortManager):
     # SLOTS
     ##################
     
-    @pyqtSlot(int)
+    @Slot(int)
     def doPortAction(self, action_id, arg):
         for p in self._port_managers:
             p.doPortAction(action_id, arg)

@@ -3,9 +3,9 @@
 import sys
 import os
 
-from PyQt6.QtGui import QGuiApplication
-from PyQt6.QtQml import QQmlApplicationEngine, qmlRegisterType
-from PyQt6.QtCore import QTimer, QMetaObject, Qt, QObject
+from PySide6.QtGui import QGuiApplication
+from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterType
+from PySide6.QtCore import QTimer, QMetaObject, Qt, QObject
 
 from lib.q_objects.LooperState import LooperState
 from lib.q_objects.NChannelAbstractLooperManager import NChannelAbstractLooperManager

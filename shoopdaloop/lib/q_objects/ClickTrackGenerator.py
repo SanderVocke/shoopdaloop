@@ -2,7 +2,7 @@ import os
 import tempfile
 import playsound
 
-from PyQt6.QtCore import QObject, pyqtSlot
+from PySide6.QtCore import QObject, Slot
 
 from ..GenClickTrack import gen_click_track
 
@@ -15,11 +15,11 @@ class ClickTrackGenerator(QObject):
         'shaker_secondary': script_dir + '/../../resources/shaker_secondary.wav'
     }
 
-    @pyqtSlot(result=list)
+    @Slot(result=list)
     def get_possible_clicks(self):
         return list(self.clicks.keys())
 
-    @pyqtSlot(list, int, int, int, result=str)
+    @Slot(list, int, int, int, result=str)
     def generate(self, click_names, bpm, n_beats, alt_click_delay_percent):
         click_filenames = [self.clicks[name] for name in click_names]
         out = tempfile.mkstemp()[1]
@@ -27,7 +27,7 @@ class ClickTrackGenerator(QObject):
         gen_click_track(click_filenames, out, bpm, n_beats, alt_click_delay_percent)
         return out
 
-    @pyqtSlot(str)
+    @Slot(str)
     def preview(self, wav_filename):
         playsound.playsound(wav_filename)
 

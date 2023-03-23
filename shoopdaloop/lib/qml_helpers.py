@@ -1,4 +1,4 @@
-from PyQt6.QtQml import qmlRegisterType
+from PySide6.QtQml import qmlRegisterType
 
 import sys
 import os

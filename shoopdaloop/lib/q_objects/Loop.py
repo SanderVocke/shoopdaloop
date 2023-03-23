@@ -6,8 +6,8 @@ import json
 from typing import *
 import sys
 
-from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot, QTimer
-from PyQt6.QtQuick import QQuickItem
+from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
+from PySide6.QtQuick import QQuickItem
 
 from ..backend_wrappers import *
 from ..mode_helpers import is_playing_mode
@@ -18,8 +18,8 @@ from ..findChildItems import findChildItems
 # Wraps a back-end loop.
 class Loop(QQuickItem):
     # Other signals
-    cycled = pyqtSignal()
-    passed_halfway = pyqtSignal()
+    cycled = Signal()
+    passed_halfway = Signal()
 
     def __init__(self, parent=None):
         super(Loop, self).__init__(parent)
@@ -45,8 +45,8 @@ class Loop(QQuickItem):
     ######################
     
     # backend
-    backendChanged = pyqtSignal(Backend)
-    @pyqtProperty(Backend, notify=backendChanged)
+    backendChanged = Signal(Backend)
+    @Property(Backend, notify=backendChanged)
     def backend(self):
         return self._backend
     @backend.setter
@@ -58,56 +58,56 @@ class Loop(QQuickItem):
             self.maybe_initialize()
     
     # initialized
-    initializedChanged = pyqtSignal(bool)
-    @pyqtProperty(bool, notify=initializedChanged)
+    initializedChanged = Signal(bool)
+    @Property(bool, notify=initializedChanged)
     def initialized(self):
         return self._initialized
 
     # mode
-    modeChanged = pyqtSignal(int)
-    @pyqtProperty(int, notify=modeChanged)
+    modeChanged = Signal(int)
+    @Property(int, notify=modeChanged)
     def mode(self):
         return self._mode
     # Indirect setter via back-end
-    @pyqtSlot(int)
+    @Slot(int)
     def set_mode(self, mode):
         self._backend_loop.set_mode(mode)
 
     # length: loop length in samples
-    lengthChanged = pyqtSignal(int)
-    @pyqtProperty(int, notify=lengthChanged)
+    lengthChanged = Signal(int)
+    @Property(int, notify=lengthChanged)
     def length(self):
         return self._length
     # Indirect setter via back-end
-    @pyqtSlot(int)
+    @Slot(int)
     def set_length(self, length):
         self._backend_loop.set_length(length)
 
     # position: loop playback position in samples
-    positionChanged = pyqtSignal(int)
-    @pyqtProperty(int, notify=positionChanged)
+    positionChanged = Signal(int)
+    @Property(int, notify=positionChanged)
     def position(self):
         return self._position
     # Indirect setter via back-end
-    @pyqtSlot(int)
+    @Slot(int)
     def set_position(self, position):
         self._backend_loop.set_position(position)
 
     # next_mode: first upcoming mode change
-    nextModeChanged = pyqtSignal(int)
-    @pyqtProperty(int, notify=nextModeChanged)
+    nextModeChanged = Signal(int)
+    @Property(int, notify=nextModeChanged)
     def next_mode(self):
         return self._next_mode
     
     # next_mode: first upcoming mode change
-    nextTransitionDelayChanged = pyqtSignal(int)
-    @pyqtProperty(int, notify=nextTransitionDelayChanged)
+    nextTransitionDelayChanged = Signal(int)
+    @Property(int, notify=nextTransitionDelayChanged)
     def next_transition_delay(self):
         return self._next_transition_delay
     
     # synchronization source loop
-    syncSourceChanged = pyqtSignal('QVariant')
-    @pyqtProperty('QVariant', notify=syncSourceChanged)
+    syncSourceChanged = Signal('QVariant')
+    @Property('QVariant', notify=syncSourceChanged)
     def sync_source(self):
         return self._sync_source
     @sync_source.setter
@@ -123,20 +123,20 @@ class Loop(QQuickItem):
             self.initializedChanged.connect(do_set)
     
     # display_peak : overall audio peak of the loop
-    displayPeakChanged = pyqtSignal(float)
-    @pyqtProperty(float, notify=displayPeakChanged)
+    displayPeakChanged = Signal(float)
+    @Property(float, notify=displayPeakChanged)
     def display_peak(self):
         return self._display_peak
 
     # display_midi_notes_active : sum of notes active in midi channels
-    displayMidiNotesActiveChanged = pyqtSignal(int)
-    @pyqtProperty(int, notify=displayMidiNotesActiveChanged)
+    displayMidiNotesActiveChanged = Signal(int)
+    @Property(int, notify=displayMidiNotesActiveChanged)
     def display_midi_notes_active(self):
         return self._display_midi_notes_active
     
     # display_midi_events_triggered : sum of events now processed in channels
-    displayMidiEventsTriggeredChanged = pyqtSignal(int)
-    @pyqtProperty(int, notify=displayMidiEventsTriggeredChanged)
+    displayMidiEventsTriggeredChanged = Signal(int)
+    @Property(int, notify=displayMidiEventsTriggeredChanged)
     def display_midi_events_triggered(self):
         return self._display_midi_events_triggered
     
@@ -144,18 +144,18 @@ class Loop(QQuickItem):
     ## SLOTS
     ###########
 
-    @pyqtSlot(result=list)
+    @Slot(result=list)
     def audio_channels(self):
         import lib.q_objects.LoopAudioChannel as LoopAudioChannel
         return findChildItems(self, lambda c: isinstance(c, LoopAudioChannel.LoopAudioChannel))
     
-    @pyqtSlot(result=list)
+    @Slot(result=list)
     def midi_channels(self):
         import lib.q_objects.LoopMidiChannel as LoopMidiChannel
         return findChildItems(self, lambda c: isinstance(c, LoopMidiChannel.LoopMidiChannel))
 
     # Update mode from the back-end.
-    @pyqtSlot()
+    @Slot()
     def update(self):
         if not self.initialized:
             return
@@ -207,27 +207,27 @@ class Loop(QQuickItem):
         if (self.position < prev_position and is_playing_mode(prev_mode) and is_playing_mode(self.mode)):
             self.cycled.emit()
     
-    @pyqtSlot(int, int, bool)
+    @Slot(int, int, bool)
     def transition(self, mode, delay, wait_for_sync):
         if self.initialized:
             self._backend_loop.transition(LoopMode(mode), delay, wait_for_sync)
 
-    @pyqtSlot(int)
+    @Slot(int)
     def clear(self, length):
         if self.initialized:
             self._backend_loop.clear(length)
     
-    @pyqtSlot(int, result=BackendLoopMidiChannel)
+    @Slot(int, result=BackendLoopMidiChannel)
     def add_audio_channel(self, mode):
         if self.initialized:
             return self._backend_loop.add_audio_channel(ChannelMode(mode))
     
-    @pyqtSlot(int, result=BackendLoopMidiChannel)
+    @Slot(int, result=BackendLoopMidiChannel)
     def add_midi_channel(self, mode):
         if self.initialized:
             return self._backend_loop.add_midi_channel(ChannelMode(mode))
     
-    @pyqtSlot(list)
+    @Slot(list)
     def load_audio_data(self, sound_channels):
         if sound_channels is not None:
             self.stop(0, False)
@@ -239,7 +239,7 @@ class Loop(QQuickItem):
                 self.audio_channels()[idx].load_data(sound_channels[idx % len(sound_channels)])
             self.set_length(len(sound_channels[0]))
     
-    @pyqtSlot()
+    @Slot()
     def close(self):
         if self._backend_loop:
             self._backend_loop.destroy()
@@ -247,7 +247,7 @@ class Loop(QQuickItem):
             self._initialized = False
             self.initializedChanged.emit(False)
     
-    @pyqtSlot()
+    @Slot()
     def rescan_parents(self):
         maybe_backend = findFirstParent(self, lambda p: p and isinstance(p, QQuickItem) and p.inherits('Backend') and self._backend == None)
         if maybe_backend:

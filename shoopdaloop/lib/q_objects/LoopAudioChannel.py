@@ -7,8 +7,8 @@ import time
 from typing import *
 import sys
 
-from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot, QTimer
-from PyQt6.QtQuick import QQuickItem
+from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
+from PySide6.QtQuick import QQuickItem
 
 from .AudioPort import AudioPort
 from .LoopChannel import LoopChannel
@@ -31,14 +31,14 @@ class LoopAudioChannel(LoopChannel):
     ######################
 
     # output peak
-    outputPeakChanged = pyqtSignal(float)
-    @pyqtProperty(float, notify=outputPeakChanged)
+    outputPeakChanged = Signal(float)
+    @Property(float, notify=outputPeakChanged)
     def output_peak(self):
         return self._output_peak
     
     # volume
-    volumeChanged = pyqtSignal(float)
-    @pyqtProperty(float, notify=volumeChanged)
+    volumeChanged = Signal(float)
+    @Property(float, notify=volumeChanged)
     def volume(self):
         return self._volume
     
@@ -46,14 +46,14 @@ class LoopAudioChannel(LoopChannel):
     # SLOTS
     ######################
     
-    @pyqtSlot(int, int, int, result=list)
+    @Slot(int, int, int, result=list)
     def get_rms_data(self, from_sample, to_sample, samples_per_bin):
         if not self._backend_obj:
             raise Exception("Attempting to get data of an invalid audio channel.")
         backend_channel = self._backend_obj
         return backend_channel.get_rms_data(from_sample, to_sample, samples_per_bin)
     
-    @pyqtSlot(list)
+    @Slot(list)
     def load_data(self, data):
         self.requestBackendInit.emit()
         if self._backend_obj:
@@ -63,18 +63,18 @@ class LoopAudioChannel(LoopChannel):
             self.initializedChanged.connect(lambda: print("LOAD LATER {}".format(data)))
             self.initializedChanged.connect(lambda: self._backend_obj.load_data(data))
     
-    @pyqtSlot(result=list)
+    @Slot(result=list)
     def get_data(self):
         if not self._backend_obj:
             raise Exception("Attempting to get data of an invalid audio channel.")
         return self._backend_obj.get_data()
     
-    @pyqtSlot(float)
+    @Slot(float)
     def set_backend_volume(self, volume):
         if self._backend_obj:
             self._backend_obj.set_volume(volume)
     
-    @pyqtSlot()
+    @Slot()
     def update_impl(self, state):
         if state.output_peak != self._output_peak:
             self._output_peak = state.output_peak
