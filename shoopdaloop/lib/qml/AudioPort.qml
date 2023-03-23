@@ -38,6 +38,12 @@ AudioPort {
     }
     Component.onCompleted: {
         if(objects_registry) { objects_registry.register(descriptor.id, this) }
+        if(descriptor) {
+            switch(descriptor.direction) {
+                case 'input': direction = Types.PortDirection.Input; break;
+                case 'output': direction = Types.PortDirection.Output; break;
+            }
+        }
     }
     function qml_close() {
         objects_registry.unregister(descriptor.id)
@@ -45,8 +51,5 @@ AudioPort {
     }
     property list<string> name_parts : descriptor.name_parts
     name_hint : name_parts.join('')
-    direction : descriptor.direction == 'input' ? Types.PortDirection.Input :
-                descriptor.direction == 'output' ? Types.PortDirection.Output :
-                undefined
     volume : descriptor.volume
 }
