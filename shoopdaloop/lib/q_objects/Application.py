@@ -41,18 +41,21 @@ class Application(QGuiApplication):
         if main_qml:
             self.engine.load(main_qml)
         
-        try:
-            self.nsm_client = NSMClient(
-                prettyName = title,
-                supportsSaveStatus = False,
-                saveCallback = lambda path, session, client: self.save_session_handler(path, session, client),
-                openOrNewCallback = lambda path, session, client: self.load_session_handler(path, session, client),
-                exitProgramCallback = lambda path, session, client: self.nsm_exit_handler(),
-                loggingLevel = 'info'
-            )
-            self.title = self.nsm_client.ourClientNameUnderNSM
-        except NSMNotRunningError as e:
-            pass
+        def start_nsm():
+            try:
+                self.nsm_client = NSMClient(
+                    prettyName = title,
+                    supportsSaveStatus = False,
+                    saveCallback = lambda path, session, client: self.save_session_handler(path, session, client),
+                    openOrNewCallback = lambda path, session, client: self.load_session_handler(path, session, client),
+                    exitProgramCallback = lambda path, session, client: self.nsm_exit_handler(),
+                    loggingLevel = 'info'
+                )
+                self.title = self.nsm_client.ourClientNameUnderNSM
+            except NSMNotRunningError as e:
+                pass
+        
+        self.engine.rootObjects()[0].sceneGraphInitialized.connect(start_nsm)
     
     def exit(self, retcode):
         if self.nsm_client:
