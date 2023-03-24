@@ -19,7 +19,7 @@ setup(name='shoopdaloop',
       ],
       entry_points={
         'console_scripts': [
-            'shoopdaloop = shoopdaloop.entry_points:main'
+            'shoopdaloop = shoopdaloop.__main__:main'
         ]
       },
       package_data={

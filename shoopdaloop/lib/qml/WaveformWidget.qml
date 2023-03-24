@@ -32,6 +32,7 @@ Canvas {
     onLength_samplesChanged: dirty = true
     
     onPaint: {
+        console.log("Paint data", waveform_data.length, waveform_data)
         var ctx = getContext("2d");
         ctx.reset()
         ctx.fillStyle = Qt.rgba(0, 0, 0, 1);

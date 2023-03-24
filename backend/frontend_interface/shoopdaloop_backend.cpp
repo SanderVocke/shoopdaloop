@@ -1124,11 +1124,11 @@ audio_channel_data_t *get_audio_rms_data (shoopdaloop_loop_audio_channel_t *chan
     if (n_samples == 0) {
         return external_audio_data(std::vector<audio_sample_t>(0));
     } else {
-        std::vector<audio_sample_t> bins (std::ceil((float)n_samples / (float)(samples_per_bin)));
+        std::vector<audio_sample_t> bins ((size_t)std::ceil((float)n_samples / (float)(samples_per_bin)));
         for (size_t idx = 0; idx < bins.size(); idx++) {
             bins[idx] = 0.0;
             size_t from = from_sample + samples_per_bin*idx;
-            size_t to = std::min(from_sample + samples_per_bin, to_sample);
+            size_t to = std::min(from + samples_per_bin, (size_t)to_sample);
             for (size_t di = from; di < to; di++) {
                 bins[idx] += sqrtf(data[di] * data[di]);
             }

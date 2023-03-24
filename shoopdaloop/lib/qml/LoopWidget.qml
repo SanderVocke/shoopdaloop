@@ -216,8 +216,9 @@ Item {
         id: statusrect
         loop: widget.maybe_loop
 
-        DetailsWindow {
+        LoopDetailsWindow {
             id: detailswindow
+            title: widget.initial_descriptor.id + " details"
             loop: statusrect.loop
         }
 
@@ -1368,119 +1369,6 @@ Item {
 
         function popup () {
             menu.popup()
-        }
-    }
-
-    component LooperManagerDetails : Item {
-        id: looper_details
-        property var loop
-        property string title
-
-        width: childrenRect.width
-        height: childrenRect.height
-
-        default property alias content: children_placeholder.children
-
-        GroupBox {
-            Column {
-                spacing: 5
-
-                Text { text: looper_details.title; color: Material.foreground }
-                Row {
-                    spacing: 5
-                    StatusRect {
-                        loop: looper_details.loop
-                    }
-                    Grid {
-                        columns: 4
-                        spacing: 3
-                        horizontalItemAlignment: Grid.AlignRight
-                        Text { text: 'vol:'; color: Material.foreground }
-                        Text { text:  'unimplemented' /*loop ? looper_details.loop.volume.toFixed(2) : ""*/; color: Material.foreground }
-                    }
-                    Item {
-                        id: children_placeholder
-                        width: childrenRect.width
-                        height: childrenRect.height
-                    }
-                }
-            }
-        }
-    }
-
-    component DryWetPairAbstractLooperManagerDetails : LooperManagerDetails {
-    }
-        
-
-    component BackendLooperManagerDetails : LooperManagerDetails {
-
-    }
-
-    component DetailsWindow : ApplicationWindow {
-        property var loop
-        id: window
-        title: widget.internal_name + ' details'
-
-        width: 500
-        height: 400
-        minimumWidth: width
-        maximumWidth: width
-        minimumHeight: height
-        maximumHeight: height
-        
-        Material.theme: Material.Dark
-
-        Column {
-            anchors.margins: 5
-            anchors.centerIn: parent
-            spacing: 5
-            anchors.fill: parent
-
-            BackendLooperManagerDetails {
-                title: "Overall loop"
-                loop: window.loop
-            }
-
-            Item {
-                anchors.left: parent.left
-                anchors.right: parent.right
-                height: 100
-                id: item
-
-                LoopContentWidget {
-                    id: waveform
-                    waveform_data_max: 1.0
-                    min_db: -50.0
-                    backend_loop: window.loop
-                    samples_per_waveform_pixel: loop.length / width
-                    length_samples: loop.length
-                    anchors.fill: parent
-
-                    Connections {
-                        target: window
-                        function onVisibleChanged (visible) {
-                            if (visible) { waveform.update_data() }
-                        }
-                    }
-
-                    Connections {
-                        target: loop
-                        
-                        // TODO the triggering
-                        function maybe_update() {
-                            if (window.visible &&
-                                !ModeHelpers.is_recording_mode(loop.mode)) {
-                                    waveform.update_data()
-                                }
-                        }
-                        function onStateChanged() {
-                            maybe_update()
-                            waveform.recording = ModeHelpers.is_recording_mode(loop.mode)
-                        }
-                        function onLengthChanged() { maybe_update() }
-                    }
-                }
-            }
         }
     }
 }

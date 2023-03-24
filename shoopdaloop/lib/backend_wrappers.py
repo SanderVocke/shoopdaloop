@@ -151,8 +151,8 @@ class BackendLoopAudioChannel:
     def get_rms_data(self, from_sample, to_sample, samples_per_bin):
         data = get_audio_rms_data (self.shoop_c_handle, from_sample, to_sample, samples_per_bin)
         result = [float(data[0].data[i]) for i in range(data[0].n_samples)]
-        array = None
         destroy_audio_channel_data(data)
+        print("Got RMS data: {} {} {} {}".format(from_sample, to_sample, samples_per_bin, result))
         return result
     
     def load_data(self, data):
