@@ -255,13 +255,17 @@ public:
         if (mp_playback_target_buffer_size < n_samples) {
             throw std::runtime_error("Attempting to play out of bounds of target buffer");
         }
+
+        auto data_length = ma_data_length.load();
+        auto start_offset = ma_start_offset.load();
+        auto data_position = position + start_offset;
         
-        if (position < ma_data_length) {
+        if (data_position < data_length) {
             // We have something to play.
-            size_t buffer_idx = position / ma_buffer_size;
-            size_t pos_in_buffer = position % ma_buffer_size;
+            size_t buffer_idx = data_position / ma_buffer_size;
+            size_t pos_in_buffer = data_position % ma_buffer_size;
             size_t buf_head = (buffer_idx == mp_buffers.size()-1) ?
-                ma_data_length - (buffer_idx * ma_buffer_size) :
+                data_position - (buffer_idx * ma_buffer_size) :
                 ma_buffer_size;
             size_t samples_left = length - position;
             auto  &from_buf = mp_buffers[buffer_idx];
@@ -326,6 +330,7 @@ public:
             memset((void*)b->data(), 0, sizeof(SampleT) * b->size());
         }
         ma_data_length = length;
+        ma_start_offset = 0;
     }
 
     float get_output_peak() const {
