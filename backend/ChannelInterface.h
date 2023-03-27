@@ -42,6 +42,10 @@ public:
     virtual void PROC_set_length(size_t length) = 0;
     virtual size_t get_length() const = 0;
 
+    // Set/get the playback start offset
+    virtual void set_start_offset(size_t offset) = 0;
+    virtual size_t get_start_offset() const = 0;
+
     ChannelInterface() = default;
     virtual ~ChannelInterface() {}
 };

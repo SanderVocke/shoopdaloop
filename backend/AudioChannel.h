@@ -30,6 +30,7 @@ private:
     std::shared_ptr<BufferPool> ma_buffer_pool;
     const size_t ma_buffer_size;
     std::atomic<size_t> ma_data_length;
+    std::atomic<size_t> ma_start_offset;
     std::atomic<float> ma_output_peak;
     std::atomic<float> ma_volume;
     std::atomic<channel_mode_t> ma_mode;
@@ -56,7 +57,8 @@ public:
         mp_recording_source_buffer_size(0),
         ma_output_peak(0),
         ma_mode(mode),
-        ma_volume(1.0f)
+        ma_volume(1.0f),
+        ma_start_offset(0)
     {
         mp_buffers.reserve(initial_max_buffers);
         mp_buffers.push_back(get_new_buffer()); // Initial recording buffer
@@ -72,6 +74,7 @@ public:
         }
         ma_buffer_pool = other.ma_buffer_pool;
         ma_data_length = other.ma_data_length.load();
+        ma_start_offset = other.ma_start_offset.load();
         mp_buffers = other.mp_buffers;
         mp_playback_target_buffer = other.mp_playback_target_buffer;
         mp_playback_target_buffer_size = other.mp_playback_target_buffer_size;
@@ -132,7 +135,7 @@ public:
         auto cmd = [=]() {
             mp_buffers = *buffers;
             ma_data_length = len;
-            std::cout << "C++: loaded " << ma_data_length << " samples.\n";
+            ma_start_offset = 0;
         };
 
         if (thread_safe) {
@@ -169,10 +172,12 @@ public:
         if (mp_recording_source_buffer_size < n_samples) {
             throw std::runtime_error("Attempting to record out of bounds");
         }
+        auto start_offset = ma_start_offset.load();
+        auto data_length = ma_data_length.load();
 
         auto &from = mp_recording_source_buffer;
-        auto buf_idx = length_before / ma_buffer_size;
-        auto buf_head = length_before % ma_buffer_size;
+        auto buf_idx = (length_before + start_offset) / ma_buffer_size;
+        auto buf_head = (length_before + start_offset) % ma_buffer_size;
         auto buf_space = ma_buffer_size - buf_head;
         while (mp_buffers.size() <= buf_idx) {
             mp_buffers.push_back(get_new_buffer());
@@ -187,7 +192,7 @@ public:
 
         mp_recording_source_buffer += n;
         mp_recording_source_buffer_size -= n;
-        ma_data_length = std::max(ma_data_length.load(), length_before + n);
+        ma_data_length = std::max(data_length, length_before + start_offset + n);
 
         // If we reached the end, add another buffer
         // and record the rest.
@@ -201,22 +206,26 @@ public:
         if (mp_recording_source_buffer_size < n_samples) {
             throw std::runtime_error("Attempting to replace out of bounds of recording buffer");
         }
-        if (ma_data_length == 0) {
+        auto data_length = ma_data_length.load();
+        auto start_offset = ma_start_offset.load();
+        auto data_position = position + start_offset;
+
+        if (data_length == 0) {
             throw std::runtime_error("Attempting to replace empty channel");
         }
         
-        if (position < ma_data_length) {
+        if (data_position < data_length) {
             // We have something to replace.
-            size_t buffer_idx = position / ma_buffer_size;
-            size_t pos_in_buffer = position % ma_buffer_size;
+            size_t buffer_idx = data_position / ma_buffer_size;
+            size_t pos_in_buffer = data_position % ma_buffer_size;
             size_t buf_head = (buffer_idx == mp_buffers.size()-1) ?
-                ma_data_length - (buffer_idx * ma_buffer_size) :
+                data_length - (buffer_idx * ma_buffer_size) :
                 ma_buffer_size;
-            size_t samples_left_in_data = length - position;
+            size_t samples_left = length - position;
             auto  &to_buf = mp_buffers[buffer_idx];
             SampleT* to = &to_buf->at(pos_in_buffer);
             SampleT* &from = mp_recording_source_buffer;
-            auto n = std::min({buf_head - pos_in_buffer, samples_left_in_data, n_samples});
+            auto n = std::min({buf_head - pos_in_buffer, samples_left, n_samples});
             auto rest = n_samples - n;
 
             memcpy((void*)to, (void*)from, sizeof(SampleT) * n);
@@ -254,11 +263,11 @@ public:
             size_t buf_head = (buffer_idx == mp_buffers.size()-1) ?
                 ma_data_length - (buffer_idx * ma_buffer_size) :
                 ma_buffer_size;
-            size_t samples_left_in_data = length - position;
+            size_t samples_left = length - position;
             auto  &from_buf = mp_buffers[buffer_idx];
             SampleT* from = &from_buf->at(pos_in_buffer);
             SampleT* &to = mp_playback_target_buffer;
-            auto n = std::min({buf_head - pos_in_buffer, samples_left_in_data, n_samples});
+            auto n = std::min({buf_head - pos_in_buffer, samples_left, n_samples});
             auto rest = n_samples - n;
 
             if (!muted) {
@@ -341,6 +350,14 @@ public:
 
     float get_volume() {
         return ma_volume;
+    }
+    
+    void set_start_offset(size_t offset) override {
+        ma_start_offset = offset;
+    }
+
+    size_t get_start_offset() const override {
+        return ma_start_offset;
     }
 
 protected:
