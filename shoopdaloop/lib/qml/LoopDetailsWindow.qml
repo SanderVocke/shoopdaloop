@@ -34,7 +34,6 @@ ApplicationWindow {
                     min_db: -50.0
                     loop: window.loop
                     samples_per_waveform_pixel: loop.length / width
-                    length_samples: loop.length
                     anchors.fill: parent
 
                     Connections {
