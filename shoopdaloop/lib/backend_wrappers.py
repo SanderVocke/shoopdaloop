@@ -41,12 +41,14 @@ class LoopAudioChannelState:
     output_peak : float
     volume : float
     length : int
+    start_offset : int
 
     def __init__(self, backend_state : 'loop_audio_channel_state_t'):
         self.output_peak = backend_state.output_peak
         self.volume = backend_state.volume
         self.mode = ChannelMode(backend_state.mode)
         self.length = backend_state.length
+        self.start_offset = backend_state.start_offset
 
 @dataclass
 class LoopMidiChannelState:
@@ -54,12 +56,14 @@ class LoopMidiChannelState:
     n_events_triggered : int
     n_notes_active : int
     length: int
+    start_offset: int
 
     def __init__(self, backend_state : 'loop_midi_channel_state_t'):
         self.n_events_triggered = backend_state.n_events_triggered
         self.n_notes_active = backend_state.n_notes_active
         self.mode = ChannelMode(backend_state.mode)
         self.length = backend_state.length
+        self.start_offset = backend_state.start_offset
 
 @dataclass
 class LoopState:
@@ -152,7 +156,6 @@ class BackendLoopAudioChannel:
         data = get_audio_rms_data (self.shoop_c_handle, from_sample, to_sample, samples_per_bin)
         result = [float(data[0].data[i]) for i in range(data[0].n_samples)]
         destroy_audio_channel_data(data)
-        print("Got RMS data: {} {} {} {}".format(from_sample, to_sample, samples_per_bin, result))
         return result
     
     def load_data(self, data):
@@ -180,6 +183,10 @@ class BackendLoopAudioChannel:
     
     def set_mode(self, mode : Type['ChannelMode']):
         set_audio_channel_mode(self.shoop_c_handle, mode.value)
+    
+    def set_start_offset(self, offset):
+        if self.shoop_c_handle:
+            set_audio_channel_start_offset(self.shoop_c_handle, offset)
     
     def destroy(self):
         if self.shoop_c_handle:
@@ -228,6 +235,10 @@ class BackendLoopMidiChannel:
     
     def set_mode(self, mode : Type['ChannelMode']):
         set_midi_channel_mode(self.shoop_c_handle, mode.value)
+    
+    def set_start_offset(self, offset):
+        if self.shoop_c_handle:
+            set_audio_channel_start_offset(self.shoop_c_handle, offset)
     
     def destroy(self):
         if self.shoop_c_handle:

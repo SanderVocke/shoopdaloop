@@ -27,6 +27,7 @@ class LoopChannel(QQuickItem):
         self._connected_ports = []
         self._ports = []
         self._data_length = 0
+        self._start_offset = 0
 
         self.rescan_parents()
         if not self._loop:
@@ -80,6 +81,20 @@ class LoopChannel(QQuickItem):
     @Property(int, notify=dataLengthChanged)
     def data_length(self):
         return self._data_length
+    
+    # start offset
+    startOffsetChanged = Signal(int)
+    @Property(int, notify=startOffsetChanged)
+    def start_offset(self):
+        return self._start_offset
+    # indirect setter via back-end
+    @Slot(int)
+    def set_start_offset(self, offset):
+        if offset != self._start_offset:
+            if self._backend_obj:
+                self._backend_obj.set_start_offset(offset)
+            else:
+                self.initializedChanged.connect(lambda: self.set_start_offset(offset))
 
     # connected ports
     connectedPortsChanged = Signal(list)
@@ -156,6 +171,9 @@ class LoopChannel(QQuickItem):
         if state.length != self._data_length:
             self._data_length = state.length
             self.dataLengthChanged.emit(self._data_length)
+        if state.start_offset != self._start_offset:
+            self._start_offset = state.start_offset
+            self.startOffsetChanged.emit(self._start_offset)
         if state.mode != self._mode:
             self._mode = state.mode
             self.modeChanged.emit(self._mode.value)

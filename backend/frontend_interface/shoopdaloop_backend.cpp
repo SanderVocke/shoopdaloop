@@ -1402,7 +1402,6 @@ void set_audio_channel_volume (shoopdaloop_loop_audio_channel_t *channel, float 
     _channel.set_volume(volume);
 }
 
-#warning state getters incomplete
 audio_channel_state_info_t *get_audio_channel_state (shoopdaloop_loop_audio_channel_t *channel) {
     auto r = new audio_channel_state_info_t;
     auto chan = internal_audio_channel(channel);
@@ -1414,6 +1413,7 @@ audio_channel_state_info_t *get_audio_channel_state (shoopdaloop_loop_audio_chan
     r->volume = audio->get_volume();
     r->mode = audio->get_mode();
     r->length = audio->get_length();
+    r->start_offset = audio->get_start_offset();
     audio->reset_output_peak();
     return r;
 }
@@ -1429,6 +1429,7 @@ midi_channel_state_info_t *get_midi_channel_state   (shoopdaloop_loop_midi_chann
     r->n_notes_active = midi->get_n_notes_active();
     r->mode = midi->get_mode();
     r->length = midi->get_length();
+    r->start_offset = midi->get_start_offset();
     return r;
 }
 
@@ -1443,6 +1444,20 @@ void set_midi_channel_mode (shoopdaloop_loop_midi_channel_t * channel, channel_m
     internal_midi_channel(channel)->backend.lock()->cmd_queue.queue([=]() {
         auto _channel = internal_midi_channel(channel);
         _channel->channel->set_mode(mode);
+    });
+}
+
+void set_audio_channel_start_offset (shoopdaloop_loop_audio_channel_t * channel, unsigned start_offset) {
+    internal_audio_channel(channel)->backend.lock()->cmd_queue.queue([=]() {
+        auto _channel = internal_audio_channel(channel);
+        _channel->channel->set_start_offset(start_offset);
+    });
+}
+
+void set_midi_channel_start_offset (shoopdaloop_loop_midi_channel_t * channel, unsigned start_offset) {
+    internal_midi_channel(channel)->backend.lock()->cmd_queue.queue([=]() {
+        auto _channel = internal_midi_channel(channel);
+        _channel->channel->set_start_offset(start_offset);
     });
 }
 

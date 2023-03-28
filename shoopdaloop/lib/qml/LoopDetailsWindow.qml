@@ -26,12 +26,11 @@ ApplicationWindow {
             Item {
                 anchors.left: parent.left
                 anchors.right: parent.right
-                height: 100
+                height: 400
                 id: item
 
                 LoopContentWidget {
                     id: waveform
-                    waveform_data_max: 1.0
                     min_db: -50.0
                     loop: window.loop
                     samples_per_waveform_pixel: loop.length / width

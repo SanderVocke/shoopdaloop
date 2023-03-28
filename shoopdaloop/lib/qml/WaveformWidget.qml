@@ -7,7 +7,7 @@ Canvas {
     property var waveform_data: []
     property var midi_data: []
     property int length_samples
-    property real waveform_data_max
+    property real waveform_data_max : 1.0
     property real min_db: -60.0
     property real max_db: 0.0
     property bool dirty: false
@@ -32,7 +32,6 @@ Canvas {
     onLength_samplesChanged: dirty = true
     
     onPaint: {
-        console.log("Paint data", waveform_data.length, waveform_data)
         var ctx = getContext("2d");
         ctx.reset()
         ctx.fillStyle = Qt.rgba(0, 0, 0, 1);

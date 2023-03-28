@@ -265,7 +265,7 @@ public:
             size_t buffer_idx = data_position / ma_buffer_size;
             size_t pos_in_buffer = data_position % ma_buffer_size;
             size_t buf_head = (buffer_idx == mp_buffers.size()-1) ?
-                data_position - (buffer_idx * ma_buffer_size) :
+                data_length - (buffer_idx * ma_buffer_size) :
                 ma_buffer_size;
             size_t samples_left = length - position;
             auto  &from_buf = mp_buffers[buffer_idx];

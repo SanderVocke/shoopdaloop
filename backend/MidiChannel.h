@@ -50,6 +50,7 @@ private:
     // Any thread access
     std::atomic<channel_mode_t> ma_mode;
     std::atomic<size_t> ma_data_length; // Length in samples
+    std::atomic<size_t> ma_start_offset;
     std::atomic<size_t> ma_n_events_triggered;
 
     const Message all_sound_off_message_channel_0 = Message(0, 3, {0xB0, 120, 0});
@@ -64,7 +65,8 @@ public:
         ma_mode(mode),
         ma_data_length(0),
         mp_output_notes_state(std::make_unique<MidiNotesState>()),
-        ma_n_events_triggered(0)
+        ma_n_events_triggered(0),
+        ma_start_offset(0)
     {
         mp_playback_cursor = mp_storage->create_cursor();
     }
@@ -78,6 +80,8 @@ public:
         ma_mode = other.ma_mode;
         ma_n_events_triggered = other.ma_n_events_triggered;
         mp_output_notes_state = other.mp_output_notes_state;
+        ma_start_offset = other.ma_start_offset.load();
+        ma_data_length = other.ma_data_length.load();
         return *this;
     }
 
@@ -139,7 +143,7 @@ public:
         }
 
         // Truncate buffer if necessary
-        PROC_set_length(our_length);
+        PROC_set_length(our_length + ma_start_offset);
         
         // Record any incoming events
         size_t record_end = recbuf.n_frames_processed + n_samples;
@@ -171,6 +175,7 @@ public:
             mp_output_notes_state->clear();
             ma_n_events_triggered = 0;
             PROC_set_length(0);
+            ma_start_offset = 0;
         };
         if (thread_safe) { exec_process_thread_command(fn); }
         else { fn(); }
@@ -205,14 +210,15 @@ public:
         if (buf.frames_left() < n_samples) {
             throw std::runtime_error("Attempting to play back out of bounds");
         }
+        auto _pos = our_pos + ma_start_offset;
 
         // Playback any events
         size_t end = buf.n_frames_processed + n_samples;
-        mp_playback_cursor->find_time_forward(our_pos);
+        mp_playback_cursor->find_time_forward(_pos);
         while(mp_playback_cursor->valid())
         {
             auto *event = mp_playback_cursor->get();
-            event->proc_time = event->storage_time - our_pos;
+            event->proc_time = event->storage_time - _pos;
             if (event->proc_time >= n_samples) {
                 // Future event
                 break;
@@ -305,5 +311,13 @@ public:
         auto rval = ma_n_events_triggered.load();
         ma_n_events_triggered = 0;
         return rval;
+    }
+
+    void set_start_offset(size_t offset) override {
+        ma_start_offset = offset;
+    }
+
+    size_t get_start_offset() const override {
+        return ma_start_offset;
     }
 };
