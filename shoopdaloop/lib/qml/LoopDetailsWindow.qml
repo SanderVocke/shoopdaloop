@@ -10,10 +10,8 @@ ApplicationWindow {
 
         width: 500
         height: 400
-        minimumWidth: width
-        maximumWidth: width
-        minimumHeight: height
-        maximumHeight: height
+        minimumWidth: 200
+        minimumHeight: 50
         
         Material.theme: Material.Dark
 
@@ -33,7 +31,6 @@ ApplicationWindow {
                     id: waveform
                     min_db: -50.0
                     loop: window.loop
-                    samples_per_waveform_pixel: loop.length / width
                     anchors.fill: parent
 
                     Connections {

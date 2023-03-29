@@ -15,6 +15,8 @@ Canvas {
 
     function makeDirty() { dirty = true }
 
+    signal clicked (var mouse)
+
     onVisibleChanged: {
         if (visible && dirty) { requestPaint() }
     }
@@ -40,15 +42,15 @@ Canvas {
 
         ctx.fillStyle = Qt.rgba(1, 0, 0, 1);
         ctx.fillRect(0, height/2, width, 1);
-        var start_offset_px = (start_offset * width) / length_samples
+        var start_offset_px = Math.round((start_offset * width) / length_samples)
         for(var idx=0; idx < waveform_data.length; idx++) {
             var db = 20.0 * Math.log(waveform_data[idx] / waveform_data_max) / Math.log(10.0)
             var normalized = (Math.max(Math.min(db, max_db), min_db) - min_db) / (max_db - min_db)
             ctx.fillRect(
                 start_offset_px + idx,
-                (1.0-normalized)/2*height,
+                Math.round((1.0-normalized)/2*height),
                 1,
-                normalized*height
+                Math.round(normalized*height)
             )
         }
 
@@ -63,5 +65,10 @@ Canvas {
         }
 
         dirty=false
+    }
+
+    MouseArea {
+        anchors.fill: parent
+        onClicked: (event) => cnv.clicked(event)
     }
 }
