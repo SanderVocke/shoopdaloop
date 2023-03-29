@@ -38,11 +38,12 @@ Item {
             var data = chan.get_rms_data(0, loop.length, samples_per_waveform_pixel)
             min_pos = Math.min(min_pos, -chan.start_offset)
             max_pos = Math.max(max_pos, chan.data_length)
-
+        }
+        for (var idx=0; idx < audio_channels.length; idx++) {
             var key = 'audio channel ' + (idx+1).toString()
             audio_data[key] = {}
             audio_data[key]['data'] = data
-            audio_data[key]['start_offset'] = chan.start_offset
+            audio_data[key]['pixel_offset'] = (chan.start_offset - min_pos) / samples_per_waveform_pixel
         }
         console.log("warning: midi content data unimplemented")
         midi_data = {}
@@ -104,8 +105,8 @@ Item {
 
                     property var _waveform_data : (widget.waveform_data && Object.entries(widget.waveform_data).length > index) ?
                             Object.values(widget.waveform_data)[index]['data'] : []
-                    property int _start_offset : (widget.waveform_data && Object.entries(widget.waveform_data).length > index) ?
-                            Object.values(widget.waveform_data)[index]['start_offset'] : 0
+                    property int _pixel_offset : (widget.waveform_data && Object.entries(widget.waveform_data).length > index) ?
+                            Object.values(widget.waveform_data)[index]['pixel_offset'] : 0
                     property int display_length : widget.length_samples
 
                     function normalize(pos) {
@@ -122,7 +123,7 @@ Item {
                         
                         waveform_data: parent._waveform_data
                         length_samples: parent.display_length
-                        start_offset: parent._start_offset
+                        pixel_offset: parent._pixel_offset
                         min_db : widget.min_db
                         max_db : widget.max_db
 
