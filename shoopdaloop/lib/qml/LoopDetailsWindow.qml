@@ -8,55 +8,41 @@ ApplicationWindow {
         property var loop
         id: window
 
-        width: 500
-        height: 400
+        width: 800
+        height: 250
         minimumWidth: 200
         minimumHeight: 50
         
         Material.theme: Material.Dark
 
-        Column {
-            anchors.margins: 5
-            anchors.centerIn: parent
-            spacing: 5
+        LoopContentWidget {
+            id: waveform
             anchors.fill: parent
+            //min_db: -50.0
+            loop: window.loop
 
-            Item {
-                anchors.left: parent.left
-                anchors.right: parent.right
-                height: 400
-                id: item
+            // Connections {
+            //     target: window
+            //     function onVisibleChanged (visible) {
+            //         if (visible) { waveform.update_data() }
+            //     }
+            // }
 
-                LoopContentWidget {
-                    id: waveform
-                    min_db: -50.0
-                    loop: window.loop
-                    anchors.fill: parent
-
-                    Connections {
-                        target: window
-                        function onVisibleChanged (visible) {
-                            if (visible) { waveform.update_data() }
-                        }
-                    }
-
-                    Connections {
-                        target: loop
-                        
-                        // TODO the triggering
-                        function maybe_update() {
-                            if (window.visible &&
-                                !ModeHelpers.is_recording_mode(loop.mode)) {
-                                    waveform.update_data()
-                                }
-                        }
-                        function onStateChanged() {
-                            maybe_update()
-                            waveform.recording = ModeHelpers.is_recording_mode(loop.mode)
-                        }
-                        function onLengthChanged() { maybe_update() }
-                    }
-                }
-            }
+            // Connections {
+            //     target: loop
+                
+            //     // TODO the triggering
+            //     function maybe_update() {
+            //         if (window.visible &&
+            //             !ModeHelpers.is_recording_mode(loop.mode)) {
+            //                 waveform.update_data()
+            //             }
+            //     }
+            //     function onStateChanged() {
+            //         maybe_update()
+            //         waveform.recording = ModeHelpers.is_recording_mode(loop.mode)
+            //     }
+            //     function onLengthChanged() { maybe_update() }
+            // }
         }
     }

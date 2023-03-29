@@ -3,11 +3,9 @@ import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
 
 Item {
-    id: cnv
+    id: root
     property var waveform_data: []
     property var midi_data: []
-    property int length_samples
-    property int pixel_offset
     property real waveform_data_max : 1.0
     property real min_db: -60.0
     property real max_db: 0.0
@@ -34,7 +32,7 @@ Item {
     onMax_dbChanged: dirty = true
     onWidthChanged: dirty = true
     onHeightChanged: dirty = true
-    onLength_samplesChanged: dirty = true
+    // onLength_samplesChanged: dirty = true
 
     Row {
         anchors.fill: parent
@@ -44,7 +42,7 @@ Item {
         // which renders blurry if a canvas is too large.
         // Therefore, we render multiple canvases if needed.
         Repeater {
-            model: Math.ceil(length_samples / max_canvas_width)
+            model: Math.ceil(root.waveform_data.length / max_canvas_width)
             anchors {
                 top: parent.top
                 bottom: parent.bottom
@@ -55,12 +53,12 @@ Item {
                     top: parent.top
                     bottom: parent.bottom
                 }
-                width: cnv.max_canvas_width
+                width: root.max_canvas_width
 
                 renderStrategy: Canvas.Threaded
 
                 Connections {
-                    target: cnv
+                    target: root
                     function onRequestPaint() { requestPaint() }
                 }
                 onPaint: {
@@ -73,12 +71,12 @@ Item {
                     ctx.fillRect(0, height/2, width, 1);
 
                     var first_pixel =
-                        (cnv.max_canvas_width * index) - cnv.pixel_offset;
+                        (root.max_canvas_width * index);
                     for(var idx=0; idx < width; idx++) {
                         var pidx = idx + first_pixel
                         var db = (pidx >= 0 && pidx < waveform_data.length) ?
                             20.0 * Math.log(waveform_data[pidx] / waveform_data_max) / Math.log(10.0) :
-                            0.0
+                            min_db
                         var normalized = (Math.max(Math.min(db, max_db), min_db) - min_db) / (max_db - min_db)
                         ctx.fillRect(
                             idx,
@@ -88,15 +86,15 @@ Item {
                         )
                     }
 
-                    ctx.fillStyle = Qt.rgba(0, 1, 1, 1);
-                    for(var idx=0; idx < midi_data.length; idx++) {
-                        ctx.fillRect(
-                            midi_data[idx]['time'] / length_samples * width,
-                            0,
-                            1,
-                            height
-                        )
-                    }
+                    // ctx.fillStyle = Qt.rgba(0, 1, 1, 1);
+                    // for(var idx=0; idx < midi_data.length; idx++) {
+                    //     ctx.fillRect(
+                    //         midi_data[idx]['time'] / length_samples * width,
+                    //         0,
+                    //         1,
+                    //         height
+                    //     )
+                    // }
 
                     dirty=false
                 }
@@ -106,6 +104,6 @@ Item {
 
     MouseArea {
         anchors.fill: parent
-        onClicked: (event) => cnv.clicked(event)
+        onClicked: (event) => root.clicked(event)
     }
 }
