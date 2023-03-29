@@ -20,8 +20,8 @@ Item {
     property bool recording
     property bool updating: false
 
-    function on_waveform_clicked(waveform, x, y) {
-        console.log("Waveform clicked @ ", x, ",", y)
+    function on_waveform_clicked(waveform, event, sample) {
+        console.log("Waveform clicked @ ", event.x, " (sample ", sample, ")")
     }
 
     onSamples_per_waveform_pixelChanged: update_data()
@@ -43,7 +43,7 @@ Item {
             var key = 'audio channel ' + (idx+1).toString()
             audio_data[key] = {}
             audio_data[key]['data'] = data
-            audio_data[key]['pixel_offset'] = (chan.start_offset - min_pos) / samples_per_waveform_pixel
+            audio_data[key]['pixel_offset'] = (chan.start_offset - min_pos) / zoomed_out_samples_per_waveform_pixel
         }
         console.log("warning: midi content data unimplemented")
         midi_data = {}
@@ -128,7 +128,8 @@ Item {
                         max_db : widget.max_db
 
                         onClicked: (event) => {
-                            widget.on_waveform_clicked(this, event.x, event.y)
+                            var sample = (event.x - pixel_offset) * widget.samples_per_waveform_pixel
+                            widget.on_waveform_clicked(this, event, sample)
                         }
                     }
 
