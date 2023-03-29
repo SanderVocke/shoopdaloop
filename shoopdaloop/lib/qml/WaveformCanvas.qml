@@ -40,6 +40,9 @@ Item {
         anchors.fill: parent
         spacing: 0
 
+        // At the time of writing this, there is a bug in Qt (https://bugreports.qt.io/browse/QTBUG-51530)
+        // which renders blurry if a canvas is too large.
+        // Therefore, we render multiple canvases if needed.
         Repeater {
             model: Math.ceil(length_samples / max_canvas_width)
             anchors {
