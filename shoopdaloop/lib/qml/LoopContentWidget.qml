@@ -2,6 +2,8 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
 
+import '../mode_helpers.js' as ModeHelpers
+
 Item {
     id: root
     property var loop
@@ -22,6 +24,20 @@ Item {
     onChannels_dataChanged: console.log("Got reply!")
     onLast_requested_reqidChanged: console.log("Sent request!")
 
+    enum Tool {
+        SetStartOffset,
+        SetLength
+    }
+
+    Connections {
+        target: loop
+        function onLengthChanged() {
+            if (!ModeHelpers.is_recording_mode(loop.mode)) {
+                request_update_data()
+            }
+        }
+    }
+
     function request_update_data() {
         last_requested_reqid++;
         var input_data = {
@@ -36,6 +52,7 @@ Item {
             channel_name = 'audio channel ' + (chan_idx + 1).toString()
             channel_audio_data = chan.get_data()
             channel_start_offset = chan.start_offset
+            console.log("channel so: ", channel_start_offset)
 
             input_data['channels_data'].push([
                 channel_name,
@@ -55,13 +72,9 @@ Item {
 
         onMessage: (output_data) => {
             root.channels_data = output_data
+            root.channels_dataChanged()
         }
     }
-
-
-
-
-
 
     // readonly property real zoomed_out_samples_per_waveform_pixel : length_samples / width
     // property int samples_per_waveform_pixel : Math.max(zoomed_out_samples_per_waveform_pixel * (1.0 - zoom_slider.value), 1)
@@ -78,9 +91,30 @@ Item {
     // property bool recording
     // property bool updating: false
 
-    // function on_waveform_clicked(waveform, event, sample) {
-    //     console.log("Waveform clicked @ ", event.x, " (sample ", sample, ")")
-    // }
+    function on_waveform_clicked(waveform, channel, event, sample) {
+        console.log("Waveform clicked @ ", event.x, " (sample ", sample, ")")
+        var channels = loop.audio_channels()
+        switch (tool_combo.currentValue) {
+            case LoopContentWidget.Tool.SetStartOffset:
+                for(var chan_idx =0; chan_idx < channels.length; chan_idx++) {
+                    var chan_sample = sample - channels_data['channels_data'][chan_idx][1]['pre_padding']
+                    channels[chan_idx].set_start_offset(chan_sample)
+                }
+                break;
+            case LoopContentWidget.Tool.SetLength:
+                for(var chan_idx = 0; chan_idx < channels.length; chan_idx++) {
+                    var chan = channels[chan_idx];
+                    if (chan == channel) {
+                        var chan_sample = sample - channels_data['channels_data'][chan_idx][1]['pre_padding']
+                        var chan_len = chan_sample - chan.start_offset
+                        if (chan_len >= 0) {
+                            root.loop.set_length (chan_len)
+                        }
+                    }
+                }
+                break;
+        }
+    }
 
     // onSamples_per_waveform_pixelChanged: update_data()
 
@@ -138,6 +172,7 @@ Item {
         ComboBox {
             id: zoom_combo
             model: ['1', '2', '4', '8', '16', '32', '64', '128', '256', '512', '1024', '2048', '4096']
+            currentIndex: 8
         }
 
         Label {
@@ -148,7 +183,13 @@ Item {
         ComboBox {
             id: tool_combo
             anchors.verticalCenter: zoom_combo.verticalCenter
-            model: ['Set start pos']
+            textRole: "text"
+            valueRole: "value"
+
+            model: [
+                { value: LoopContentWidget.Tool.SetStartOffset, text: "set start" },
+                { value: LoopContentWidget.Tool.SetLength, text: "set length" }
+            ]
         }
     }    
 
@@ -177,6 +218,11 @@ Item {
                     height: 80
                     width: waveforms.width
 
+                    Connections {
+                        target: root.loop.audio_channels()[index]
+                        function onStart_offsetChanged() {root.request_update_data()}
+                    }
+
                     WaveformCanvas {
                         id: waveform
                         anchors {
@@ -189,45 +235,51 @@ Item {
                         // min_db : widget.min_db
                         // max_db : widget.max_db
 
-                        // onClicked: (event) => {
-                        //     var sample = (event.x - pixel_offset) * widget.samples_per_waveform_pixel
-                        //     widget.on_waveform_clicked(this, event, sample)
-                        // }
+                        onClicked: (event) => {
+                            var sample = event.x * root.channels_data['samples_per_bin']
+                            root.on_waveform_clicked(this, root.loop.audio_channels()[index], event, sample)
+                        }
                     }
 
-                    // Rectangle {
-                    //     color: 'blue'
-                    //     width: 2
-                    //     height: parent.height
-                    //     x: widget.loop ? parent.normalize(parent._start_offset) : 0
-                    //     y: 0
-                    // }
+                    Rectangle {
+                        id: data_window_rect
+                        color: 'blue'
+                        width: root.loop.length / root.channels_data['samples_per_bin']
+                        height: parent.height
+                        opacity: 0.3
+                        x: root.channels_data ? root.channels_data['start_offset'] / root.channels_data['samples_per_bin'] : 0
+                        y: 0
+                    }
 
-                    // Rectangle {
-                    //     color: 'green'
-                    //     width: 2
-                    //     height: parent.height
-                    //     x: widget.loop ? parent.normalize(widget.loop.position + parent._start_offset) : 0
-                    //     y: 0
-                    // }
-
-                    // Rectangle {
-                    //     color: 'blue'
-                    //     anchors.fill: parent
-                    //     visible: updating
-                    // }
-
-                    // Label {
-                    //     anchors.fill: parent
-                    //     background: Rectangle { color: 'black' }
-                    //     visible: recording
-                    //     color: Material.foreground
-                    //     text: "Recording..."
-                    //     horizontalAlignment: Text.AlignHCenter
-                    //     verticalAlignment: Text.AlignVCenter
-                    // }
+                    Rectangle {
+                        color: 'green'
+                        width: 2
+                        height: parent.height
+                        x: root.channels_data ? (root.loop.position + root.channels_data['start_offset']) / root.channels_data['samples_per_bin'] : 0
+                        y: 0
+                    }
                 }
             }
         }
+    }
+
+    // Label {
+    //     anchors.fill: scroll
+    //     background: Rectangle { color: 'black' }
+    //     visible: !root.data_ready
+    //     color: Material.foreground
+    //     text: "Updating..."
+    //     horizontalAlignment: Text.AlignHCenter
+    //     verticalAlignment: Text.AlignVCenter
+    // }
+
+    Label {
+        anchors.fill: scroll
+        background: Rectangle { color: 'black' }
+        visible: ModeHelpers.is_recording_mode(root.loop.mode)
+        color: Material.foreground
+        text: "Recording..."
+        horizontalAlignment: Text.AlignHCenter
+        verticalAlignment: Text.AlignVCenter
     }
 }

@@ -85,9 +85,9 @@ WorkerScript.onMessage = function(input_data) {
                 rms += Math.sqrt(sample * sample)
             }
             rms /= samples_per_bin
-            transients_positive.push (transient_positive)
-            transients_negative.push (transient_negative)
-            rmss.push (rms)
+            transients_positive[bin_idx] = transient_positive
+            transients_negative[bin_idx] = transient_negative
+            rmss[bin_idx] = rms
         }
 
         output_datas.push([
