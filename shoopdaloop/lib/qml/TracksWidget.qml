@@ -148,11 +148,11 @@ ScrollView {
         anchors.left: tracks_view.left
         anchors.bottom: parent.bottom
 
-        Repeater {
-            model: tracks_row.children.length
+        Mapper {
+            model: tracks_row.children
 
             Item {
-                width: tracks_row.children[index].width
+                width: mapped_item.width
                 height: 50
 
                 TrackControlWidget {
@@ -174,11 +174,11 @@ ScrollView {
         anchors.top: parent.top
         anchors.bottom: parent.bottom
 
-        Repeater {
-            model: tracks_row.children.length
+        Mapper {
+            model: tracks_row.children
 
             Rectangle {
-                width: tracks_row.children[index].width
+                width: mapped_item.width
                 height: rectangles_row.height
                 y: 0
                 color: "#555555"

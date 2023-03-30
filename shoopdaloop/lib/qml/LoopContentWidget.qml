@@ -205,13 +205,18 @@ Item {
         Column {
             spacing: 4
 
-            Repeater {
+            Mapper {
                 id: waveforms
-                model : root.channels_data ? root.channels_data['channels_data'].length : 0
+                //model : root.channels_data ? root.channels_data['channels_data'].length : 0
+                model : root.channels_data ? root.channels_data['channels_data'] : []
                 width : root.channels_data && root.channels_data['channels_data'].length > 0 ?
                     root.channels_data['channels_data'][0][1]['audio']['rms'].length : 0
 
                 Item {
+                    id: delegate
+                    property int index
+                    property var mapped_item
+
                     anchors {
                         left: parent.left
                     }
@@ -219,7 +224,7 @@ Item {
                     width: waveforms.width
 
                     Connections {
-                        target: root.loop.audio_channels()[index]
+                        target: root.loop.audio_channels()[delegate.index]
                         function onStart_offsetChanged() {root.request_update_data()}
                     }
 
@@ -231,13 +236,13 @@ Item {
                         width: waveforms.width
                         height: 80
                         
-                        waveform_data: root.channels_data['channels_data'][index][1]['audio']['rms']
+                        waveform_data: delegate.mapped_item[1]['audio']['rms']
                         // min_db : widget.min_db
                         // max_db : widget.max_db
 
                         onClicked: (event) => {
                             var sample = event.x * root.channels_data['samples_per_bin']
-                            root.on_waveform_clicked(this, root.loop.audio_channels()[index], event, sample)
+                            root.on_waveform_clicked(this, root.loop.audio_channels()[delegate.index], event, sample)
                         }
                     }
 
