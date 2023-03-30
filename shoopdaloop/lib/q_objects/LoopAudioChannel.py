@@ -46,13 +46,6 @@ class LoopAudioChannel(LoopChannel):
     # SLOTS
     ######################
     
-    @Slot(int, int, int, result=list)
-    def get_rms_data(self, from_sample, to_sample, samples_per_bin):
-        if not self._backend_obj:
-            raise Exception("Attempting to get data of an invalid audio channel.")
-        backend_channel = self._backend_obj
-        return backend_channel.get_rms_data(from_sample, to_sample, samples_per_bin)
-    
     @Slot(list)
     def load_data(self, data):
         self.requestBackendInit.emit()

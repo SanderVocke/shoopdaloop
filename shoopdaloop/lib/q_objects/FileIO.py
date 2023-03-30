@@ -14,7 +14,6 @@ from PySide6.QtCore import QObject, Slot, Signal, QThread
 
 from .Task import Task
 from .Tasks import Tasks
-from ..backend_wrappers import BackendMidiMessage
 
 # Allow filesystem operations from QML
 class FileIO(QThread):
@@ -97,10 +96,10 @@ class FileIO(QThread):
 
             for msg in msgs:
                 beat_length_s = mido.bpm2tempo(120) / 1000000.0
-                abstime_s = msg.time / float(sample_rate)
+                abstime_s = msg['time'] / float(sample_rate)
                 abstime_ticks = int(abstime_s / beat_length_s * mido_file.ticks_per_beat)
                 d_ticks = abstime_ticks - current_tick
-                mido_msg = mido.Message.from_bytes(msg.data)
+                mido_msg = mido.Message.from_bytes(bytes(msg['data']))
                 mido_msg.time = d_ticks
                 current_tick += d_ticks
                 mido_track.append(mido_msg)
@@ -144,10 +143,10 @@ class FileIO(QThread):
                     continue
                     
                 total_sample_time = int(total_time * sample_rate)
-                bm = BackendMidiMessage()
-                bm.time = total_sample_time
-                bm.data = msg_bytes
-                backend_msgs.append(bm)
+                backend_msgs.append({
+                    'time': total_sample_time,
+                    'data': [int(byte) for b in msg_bytes]
+                })
             
             channel.load_data(backend_msgs)
             if maybe_loop_set_length:

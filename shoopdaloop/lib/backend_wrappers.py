@@ -111,30 +111,20 @@ class MidiPortState:
         self.muted = bool(backend_state.muted)
         self.passthrough_muted = bool(backend_state.passthrough_muted)
         self.name = str(backend_state.name)
-    
-# Wraps the Shoopdaloop backend with more Python-friendly wrappers
-@dataclass
-class BackendMidiMessage:
-    time: int
-    data: bytes
 
-    def __init__(self):
-        pass
+def backend_midi_message_to_dict(backend_msg: 'midi_event_t'):
+    r = dict()
+    r['time'] = backend_msg.time
+    r['data'] = [int(backend_msg.data[i]) for i in range(backend_msg.size)]
+    return r
 
-    def from_backend(self, backend_msg : 'midi_event_t'):
-        self.time = backend_msg.time
-        d = [int(backend_msg.data[i]) for i in range(backend_msg.size)]
-        self.data = bytes(d)
-        return self
-    
-    def create_backend_msg(self):
-        m = alloc_midi_event(len(self.data))
-        m[0].time = self.time
-        m[0].size = len(self.data)
-        for i in range(len(self.data)):
-            m[0].data[i] = self.data[i]
-        return m
-
+def midi_message_dict_to_backend(msg):
+    m = alloc_midi_event(len(msg['data']))
+    m[0].time = msg['time']
+    m[0].size = len(msg['data'])
+    for i in range(len(msg['data'])):
+        m[0].data[i] = msg['data'][i]
+    return m
 class BackendLoopAudioChannel:
     def __init__(self, loop, c_handle : 'POINTER(shoopdaloop_loop_audio_channel)'):
         self.loop_shoop_c_handle = loop.c_handle()
@@ -151,12 +141,6 @@ class BackendLoopAudioChannel:
             disconnect_audio_input(self.shoop_c_handle, port.c_handle())
         else:
             disconnect_audio_output(self.shoop_c_handle, port.c_handle())
-    
-    def get_rms_data(self, from_sample, to_sample, samples_per_bin):
-        data = get_audio_rms_data (self.shoop_c_handle, from_sample, to_sample, samples_per_bin)
-        result = [float(data[0].data[i]) for i in range(data[0].n_samples)]
-        destroy_audio_channel_data(data)
-        return result
     
     def load_data(self, data):
         backend_data = alloc_audio_channel_data(len(data))
@@ -201,17 +185,17 @@ class BackendLoopMidiChannel:
         self.loop_shoop_c_handle = loop.c_handle()
         self.shoop_c_handle = c_handle
     
-    def get_data(self) -> list['BackendMidiMessage']:
+    def get_data(self):
         r = get_midi_channel_data(self.shoop_c_handle)
-        msgs = [BackendMidiMessage().from_backend(r[0].events[i][0]) for i in range(r[0].n_events)]
+        msgs = [backend_midi_message_to_dict(r[0].events[i][0]) for i in range(r[0].n_events)]
         destroy_midi_channel_data(r)
         return msgs
     
-    def load_data(self, msgs : list['BackendMidiMessage']):
+    def load_data(self, msgs):
         d = alloc_midi_channel_data(len(msgs))
-        d.length_samples = msgs[len(msgs)-1].time + 1
+        d.length_samples = msgs[len(msgs)-1]['time'] + 1
         for idx, m in enumerate(msgs):
-            d[0].events[idx] = m.create_backend_msg()
+            d[0].events[idx] = midi_message_dict_to_backend(m)
         load_midi_channel_data(self.shoop_c_handle, d)
         destroy_midi_channel_data(d)
     

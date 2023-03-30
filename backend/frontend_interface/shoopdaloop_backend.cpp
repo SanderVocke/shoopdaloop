@@ -1111,32 +1111,6 @@ audio_channel_data_t *get_audio_channel_data (shoopdaloop_loop_audio_channel_t *
         chan.backend.lock()->cmd_queue);
 }
 
-audio_channel_data_t *get_audio_rms_data (shoopdaloop_loop_audio_channel_t *channel,
-                                        unsigned from_sample,
-                                        unsigned to_sample,
-                                        unsigned samples_per_bin) {
-    auto &chan = *internal_audio_channel(channel);
-    auto data = evaluate_before_or_after_process<std::vector<float>>(
-        [&chan]() { return chan.maybe_audio()->get_data(); },
-        chan.maybe_audio(),
-        chan.backend.lock()->cmd_queue);
-    auto n_samples = to_sample - from_sample;
-    if (n_samples == 0) {
-        return external_audio_data(std::vector<audio_sample_t>(0));
-    } else {
-        std::vector<audio_sample_t> bins ((size_t)std::ceil((float)n_samples / (float)(samples_per_bin)));
-        for (size_t idx = 0; idx < bins.size(); idx++) {
-            bins[idx] = 0.0;
-            size_t from = from_sample + samples_per_bin*idx;
-            size_t to = std::min(from + samples_per_bin, (size_t)to_sample);
-            for (size_t di = from; di < to; di++) {
-                bins[idx] += sqrtf(data[di] * data[di]);
-            }
-        }
-        return external_audio_data(bins);
-    }
-}
-
 midi_channel_data_t *get_midi_channel_data (shoopdaloop_loop_midi_channel_t  *channel) {
     auto &chan = *internal_midi_channel(channel);
     auto data = evaluate_before_or_after_process<std::vector<_MidiMessage>>(

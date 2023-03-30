@@ -42,10 +42,6 @@ void                   disconnect_midi_inputs  (shoopdaloop_loop_midi_channel_t 
 void                   disconnect_audio_input  (shoopdaloop_loop_audio_channel_t *channel, shoopdaloop_audio_port_t* port);
 void                   disconnect_midi_input   (shoopdaloop_loop_midi_channel_t  *channel, shoopdaloop_midi_port_t* port);
 audio_channel_data_t  *get_audio_channel_data   (shoopdaloop_loop_audio_channel_t *channel);
-audio_channel_data_t  *get_audio_rms_data       (shoopdaloop_loop_audio_channel_t *channel,
-                                                unsigned from_sample,
-                                                unsigned to_sample,
-                                                unsigned samples_per_bin);
 midi_channel_data_t   *get_midi_channel_data    (shoopdaloop_loop_midi_channel_t  *channel);
 void                   load_audio_channel_data  (shoopdaloop_loop_audio_channel_t *channel, audio_channel_data_t *data);
 void                   load_midi_channel_data   (shoopdaloop_loop_midi_channel_t  *channel, midi_channel_data_t  *data);

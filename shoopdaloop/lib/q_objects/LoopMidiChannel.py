@@ -13,6 +13,8 @@ from PySide6.QtQuick import QQuickItem
 from .MidiPort import MidiPort
 from .LoopChannel import LoopChannel
 
+from ..midi_helpers import msgs_to_notes
+
 # Wraps a back-end loop midi channel.
 class LoopMidiChannel(LoopChannel):
 
@@ -56,11 +58,15 @@ class LoopMidiChannel(LoopChannel):
             self.nNotesActiveChanged.emit(self._n_notes_active)
     
     @Slot(result=list)
-    def get_data(self):
+    def get_msgs(self):
         if self._backend_obj:
             return self._backend_obj.get_data()
         else:
             raise Exception("Getting data of un-loaded MIDI channel")
+
+    @Slot(result=list)
+    def get_notes(self):
+        return msgs_to_notes(self.get_msgs())
 
     @Slot(list)
     def load_data(self, data):
