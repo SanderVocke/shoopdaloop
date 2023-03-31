@@ -5,12 +5,22 @@ import QtQuick.Controls.Material 2.15
 Item {
     id: root
     property var waveform_data: []
-    property var midi_data: []
+    property var midi_notes: []
+    readonly property int length_timesteps : {
+        var audio = waveform_data ? waveform_data.length * timesteps_per_pixel : 0
+        var midi = midi_notes && midi_notes.length > 0 ? midi_notes[midi_notes.length - 1]['end'] : 0
+        return Math.max(audio, midi)
+    }
+    readonly property int length_pixels : length_timesteps / timesteps_per_pixel
+    width: length_pixels
+    property int timesteps_per_pixel
     property real waveform_data_max : 1.0
     property real min_db: -60.0
     property real max_db: 0.0
     property bool dirty: false
     readonly property int max_canvas_width: 8192
+
+    Component.onCompleted: console.log("canvas", waveform_data, midi_notes)
 
     signal requestPaint()
     function makeDirty() { dirty = true }
@@ -26,13 +36,12 @@ Item {
     }
 
     onWaveform_dataChanged: dirty = true
-    onMidi_dataChanged: dirty = true
+    onMidi_notesChanged: dirty = true
     onWaveform_data_maxChanged: dirty = true
     onMin_dbChanged: dirty = true
     onMax_dbChanged: dirty = true
     onWidthChanged: dirty = true
     onHeightChanged: dirty = true
-    // onLength_samplesChanged: dirty = true
 
     Row {
         anchors.fill: parent
@@ -42,7 +51,7 @@ Item {
         // which renders blurry if a canvas is too large.
         // Therefore, we render multiple canvases if needed.
         Repeater {
-            model: Math.ceil(root.waveform_data.length / max_canvas_width)
+            model: Math.ceil(root.length_pixels / max_canvas_width)
             anchors {
                 top: parent.top
                 bottom: parent.bottom
@@ -61,17 +70,30 @@ Item {
                     target: root
                     function onRequestPaint() { requestPaint() }
                 }
+
+                function clamp(x, min, max) {
+                    return Math.max(Math.min(x, max), min)
+                }
+
                 onPaint: {
                     var ctx = getContext("2d");
                     ctx.reset()
                     ctx.fillStyle = Qt.rgba(0, 0, 0, 1);
                     ctx.fillRect(0, 0, width, height);
 
-                    ctx.fillStyle = Qt.rgba(1, 0, 0, 1);
-                    ctx.fillRect(0, height/2, width, 1);
+                    if (waveform_data && waveform_data.length > 0) {
+                        ctx.fillStyle = Qt.rgba(1, 0, 0, 1);
+                        ctx.fillRect(0, height/2, width, 1);
+                    }
 
                     var first_pixel =
                         (root.max_canvas_width * index);
+                    var last_pixel =
+                        first_pixel + root.max_canvas_width
+                    var first_time = first_pixel * timesteps_per_pixel
+                    var last_time = last_pixel * timesteps_per_pixel
+
+                    // Draw audio waveform data
                     for(var idx=0; idx < width; idx++) {
                         var pidx = idx + first_pixel
                         var db = (pidx >= 0 && pidx < waveform_data.length) ?
@@ -86,15 +108,24 @@ Item {
                         )
                     }
 
-                    // ctx.fillStyle = Qt.rgba(0, 1, 1, 1);
-                    // for(var idx=0; idx < midi_data.length; idx++) {
-                    //     ctx.fillRect(
-                    //         midi_data[idx]['time'] / length_samples * width,
-                    //         0,
-                    //         1,
-                    //         height
-                    //     )
-                    // }
+                    // Draw MIDI data
+                    ctx.fillStyle = Qt.rgba(1, 1, 1, 1);
+                    var note_height = (height * 4) / 128;
+                    for(var note of midi_notes) {
+                        if (note.start < last_time || note.end >= first_time) {
+                            var x_start = clamp(note.start / timesteps_per_pixel, first_pixel, last_pixel - 1)
+                            var x_end = clamp(note.end / timesteps_per_pixel, first_pixel, last_pixel - 1)
+                            var note_width = x_end - x_start
+                            var y = (note_height/2) + ((height - note_height) / 128) * note.note
+
+                            ctx.fillRect(
+                                x_start,
+                                note_width,
+                                y,
+                                note_height
+                            )
+                        }
+                    }
 
                     dirty=false
                 }

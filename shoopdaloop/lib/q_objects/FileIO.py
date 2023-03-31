@@ -145,7 +145,7 @@ class FileIO(QThread):
                 total_sample_time = int(total_time * sample_rate)
                 backend_msgs.append({
                     'time': total_sample_time,
-                    'data': [int(byte) for b in msg_bytes]
+                    'data': [int(byte) for byte in msg_bytes]
                 })
             
             channel.load_data(backend_msgs)

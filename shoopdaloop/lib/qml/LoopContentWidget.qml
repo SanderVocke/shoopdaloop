@@ -46,18 +46,32 @@ Item {
             'channels_data': []
         }
         var audio_channels = loop.audio_channels()
-        var channel_audio_data, channel_name, channel_start_offset, chan
+        var midi_channels = loop.midi_channels()
+        var channel_audio_data, channel_midi_notes, channel_id, channel_start_offset, chan
         for (var chan_idx = 0; chan_idx < audio_channels.length; chan_idx++) {
             chan = audio_channels[chan_idx]
-            channel_name = 'audio channel ' + (chan_idx + 1).toString()
+            channel_id = chan.obj_id
             channel_audio_data = chan.get_data()
             channel_start_offset = chan.start_offset
-            console.log("channel so: ", channel_start_offset)
 
             input_data['channels_data'].push([
-                channel_name,
+                channel_id,
                 {
                     "audio": channel_audio_data,
+                    "start_offset": channel_start_offset
+                }
+            ])
+        }
+        for (var chan_idx = 0; chan_idx < midi_channels.length; chan_idx++) {
+            chan = midi_channels[chan_idx]
+            channel_id = chan.obj_id
+            channel_midi_notes = chan.get_notes()
+            channel_start_offset = chan.start_offset
+
+            input_data['channels_data'].push([
+                channel_id,
+                {
+                    "midi_notes": channel_midi_notes,
                     "start_offset": channel_start_offset
                 }
             ])
@@ -209,22 +223,23 @@ Item {
                 id: waveforms
                 //model : root.channels_data ? root.channels_data['channels_data'].length : 0
                 model : root.channels_data ? root.channels_data['channels_data'] : []
-                width : root.channels_data && root.channels_data['channels_data'].length > 0 ?
-                    root.channels_data['channels_data'][0][1]['audio']['rms'].length : 0
+                width : childrenRect.width
 
                 Item {
                     id: delegate
                     property int index
                     property var mapped_item
 
-                    anchors {
-                        left: parent.left
-                    }
+                    function has_audio() { return ('audio' in mapped_item[1])}
+                    function has_midi() { return ('midi_notes' in mapped_item[1])}
+                    
+                    readonly property var channel: [...loop.audio_channels(), ...loop.midi_channels()].find(c => c.obj_id == mapped_item[0])
+
                     height: 80
-                    width: waveforms.width
+                    width: waveform.width
 
                     Connections {
-                        target: root.loop.audio_channels()[delegate.index]
+                        target: delegate.channel
                         function onStart_offsetChanged() {root.request_update_data()}
                     }
 
@@ -233,16 +248,17 @@ Item {
                         anchors {
                             left: parent.left
                         }
-                        width: waveforms.width
                         height: 80
                         
-                        waveform_data: delegate.mapped_item[1]['audio']['rms']
+                        waveform_data: delegate.has_audio() ? delegate.mapped_item[1]['audio']['rms'] : []
+                        midi_notes: delegate.has_midi() ? delegate.mapped_item[1]['midi_notes'] : []
+                        timesteps_per_pixel : root.samples_per_pixel
                         // min_db : widget.min_db
                         // max_db : widget.max_db
 
                         onClicked: (event) => {
                             var sample = event.x * root.channels_data['samples_per_bin']
-                            root.on_waveform_clicked(this, root.loop.audio_channels()[delegate.index], event, sample)
+                            root.on_waveform_clicked(this, delegate.channel, event, sample)
                         }
                     }
 

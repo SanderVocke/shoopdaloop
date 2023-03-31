@@ -27,7 +27,7 @@ def msgs_to_notes(msgs):
     notes = []
 
     def note_idx(msg):
-        return channel[msg] * 128 + note(msg)
+        return channel(msg) * 128 + note(msg)
 
     def is_note_active(msg):
         return active_note_times[note_idx(msg)] != None
@@ -64,11 +64,13 @@ def msgs_to_notes(msgs):
         if is_noteOn(msg) and not is_note_active(msg):
             active_note_times[note_idx(msg)] = msg['time']
         elif is_noteOff(msg) and is_note_active(msg):
-            terminate_note(msg)
+            terminate_note_by_msg(msg)
         elif is_all_notes_off(msg):
             terminate_channel_notes(channel(msg), msg['time'])
         elif is_all_sound_off(msg):
             terminate_channel_notes(channel(msg), msg['time'])
+    
+    print("Parsed {} notes.".format(len(notes)))
     
     return notes
         
