@@ -152,6 +152,12 @@ Item {
         }
     }
 
+    function set_length(length) {
+        if (maybe_loaded_loop) {
+            maybe_loaded_loop.set_length(length)
+        }
+    }
+
     // signal selected() //directly selected by the user to be activated.
     // signal toggle_in_current_scene() //selected by the user to be added/removed to/from the current scene.
     // signal request_rename(string name)
@@ -210,6 +216,14 @@ Item {
         var midi = get_midi_channels()
         return audio.concat(midi)
     }
+
+    RegistryLookup {
+        id: lookup_sync_active
+        registry: widget.state_registry
+        key: 'sync_active'
+    }
+    property alias sync_active: lookup_sync_active.object
+    onSync_activeChanged: console.log("CHANGED", sync_active)
 
     // UI
     StatusRect {
@@ -466,7 +480,7 @@ Item {
                         color: 'green'
                     }
 
-                    onClicked: widget.transition(Types.LoopMode.Playing, 0, true)
+                    onClicked: widget.transition(Types.LoopMode.Playing, 0, widget.sync_active)
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
@@ -548,7 +562,7 @@ Item {
                                         text_color: Material.foreground
                                         text: "FX"
                                     }
-                                    onClicked: widget.transition(Types.LoopMode.PlayingDryThroughWet, 0, true)
+                                    onClicked: widget.transition(Types.LoopMode.PlayingDryThroughWet, 0, widget.sync_active)
 
                                     ToolTip.delay: 1000
                                     ToolTip.timeout: 5000
@@ -571,7 +585,7 @@ Item {
                         color: 'red'
                     }
 
-                    onClicked: widget.transition(Types.LoopMode.Recording, 0, true)
+                    onClicked: widget.transition(Types.LoopMode.Recording, 0, widget.sync_active)
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
@@ -1055,6 +1069,12 @@ Item {
                     if (chans.length > 1) { throw new Error("Cannot save more than 1 MIDI channel"); }
                     midisavedialog.channel = chans[0]
                     midisavedialog.open()
+                }
+            }
+            MenuItem {
+                text: "Push Master Loop Length"
+                onClicked: {
+                    if (master_loop) { master_loop.set_length(widget.length) }
                 }
             }
             MenuItem {

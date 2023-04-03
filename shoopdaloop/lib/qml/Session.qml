@@ -214,6 +214,9 @@ Item {
 
             onLoadSession: (filename) => session.load_session(filename)
             onSaveSession: (filename) => session.save_session(filename)
+
+            state_registry: session.state_registry
+            objects_registry: session.objects_registry
         }
     }
 }

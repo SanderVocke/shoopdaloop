@@ -104,4 +104,9 @@ Item {
         registry_data = replace
         contentsChanged()  
     }
+
+    function value_or(id, val) {
+        if (has(id)) { return registry_data[id] }
+        return val;
+    }
 }

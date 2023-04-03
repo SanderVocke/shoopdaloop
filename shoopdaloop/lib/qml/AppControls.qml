@@ -12,9 +12,19 @@ Item {
 
     property bool loading_session : false
     property bool saving_session : false
+    property Registry state_registry
+    property Registry objects_registry
+    property alias sync_active : sync_active_button.sync_active
+
+    function update() {
+        state_registry.replace('sync_active', sync_active)
+    }
+
+    onSync_activeChanged: update()
+    Component.onCompleted: update()
 
     Row {
-        spacing: 0
+        spacing: 10
         anchors.fill: parent
 
         Button {
@@ -22,6 +32,7 @@ Item {
                 top: parent.top
             }
             height: 35
+            width: 30
             onClicked: mainmenu.popup()
 
             MaterialDesignIcon {
@@ -101,12 +112,31 @@ Item {
                 top: parent.top
             }
             height: 35
+            width: 30
             onClicked: root.stopAllExceptMaster()
 
             MaterialDesignIcon {
                 size: Math.min(parent.width, parent.height) - 10
                 anchors.centerIn: parent
                 name: 'stop'
+                color: Material.foreground
+            }
+        }
+
+        Button {
+            id: sync_active_button
+            anchors {
+                top: parent.top
+            }
+            height: 35
+            width: 30
+            property bool sync_active: true
+            onClicked: sync_active = !sync_active
+
+            MaterialDesignIcon {
+                size: Math.min(parent.width, parent.height) - 10
+                anchors.centerIn: parent
+                name: parent.sync_active ? 'timer-sand' : 'exclamation';
                 color: Material.foreground
             }
         }
