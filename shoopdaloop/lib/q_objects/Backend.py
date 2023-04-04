@@ -4,6 +4,7 @@ import os
 import tempfile
 import json
 import sys
+import weakref
 
 from PySide6.QtCore import Qt, QObject, Signal, Property, Slot, QTimer
 from PySide6.QtQuick import QQuickItem
@@ -21,6 +22,7 @@ class Backend(QQuickItem):
         self._client_name_hint = None
         self._backend_type = None
         self._backend_obj = None
+        self._backend_child_objects = set()
         self.destroyed.connect(self.close)
     
     update = Signal()
@@ -70,14 +72,21 @@ class Backend(QQuickItem):
     ## SLOTS
     ###########
 
+    @Slot('QVariant')
+    def registerBackendObject(self, obj):
+        self._backend_child_objects.add(weakref.ref(obj))
+
     @Slot()
     def doUpdate(self):
-        from lib.q_objects.Loop import Loop
-        from lib.q_objects.Port import Port
-        for loop in findChildItems(self, lambda c: isinstance(c, Loop)):
-            loop.update()
-        for port in findChildItems(self, lambda c: isinstance(c, Port)):
-            port.update()
+        toRemove = []
+        for obj in self._backend_child_objects:
+            _obj = obj()
+            if not _obj:
+                toRemove.append(obj)
+            else:
+                _obj.update()
+        for r in toRemove:
+            self._backend_child_objects.remove(r)
         self.update.emit()
     
     @Slot(result=int)

@@ -259,4 +259,5 @@ class Loop(QQuickItem):
             if self._backend_loop:
                 self._initialized = True
                 self.update()
+                self._backend.registerBackendObject(self)
                 self.initializedChanged.emit(True)

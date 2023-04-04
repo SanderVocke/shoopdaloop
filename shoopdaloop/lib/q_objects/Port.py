@@ -177,6 +177,7 @@ class Port(QQuickItem):
             self.maybe_initialize_impl(self._name_hint, self._direction)
             if self._backend_obj:
                 self._initialized = True
+                self._backend.registerBackendObject(self)
                 self.initializedChanged.emit(True)
     
     def connect_passthrough_impl(self, other):
