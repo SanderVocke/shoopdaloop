@@ -472,14 +472,14 @@ suite AudioMidiLoop_audio_tests = []() {
         loop.PROC_update_poi();
 
         expect(eq(loop.get_mode() , Replacing));
-        expect(loop.PROC_get_next_poi() == 64) << loop.PROC_get_next_poi().value_or(0); // end of buffer
+        expect(eq(loop.PROC_get_next_poi().value_or(0), 64-16)); // end of loop
         expect(eq(loop.get_position() , 16));
         expect(eq(loop.get_length() , 64));
 
         loop.PROC_process(32);
 
         expect(eq(loop.get_mode() , Replacing));
-        expect(loop.PROC_get_next_poi() == 64-32) << loop.PROC_get_next_poi().value_or(0); // end of buffer
+        expect(eq(loop.PROC_get_next_poi().value_or(0), 64-32-16)); // end of loop
         expect(eq(loop.get_length(), 64));
         expect(eq(loop.get_position(), 16+32));
         for (auto &channel : channels) {
@@ -513,20 +513,26 @@ suite AudioMidiLoop_audio_tests = []() {
         loop.PROC_update_poi();
 
         expect(eq(loop.get_mode() , Replacing));
-        expect(loop.PROC_get_next_poi() == 64) << loop.PROC_get_next_poi().value_or(0); // end of buffer
+        expect(eq(loop.PROC_get_next_poi().value_or(0), 64-48)); // end of loop
         expect(eq(loop.get_position() , 48));
         expect(eq(loop.get_length() , 64));
 
-        loop.PROC_process(32);
+        loop.PROC_process(16);
+        loop.PROC_handle_poi();
+        loop.PROC_update_poi();
+        loop.PROC_process(16);
 
         expect(eq(loop.get_mode() , Replacing));
         expect(loop.PROC_get_next_poi() == 32) << loop.PROC_get_next_poi().value_or(0); // end of buffer
-        expect(eq(loop.get_length(), 64+16)); // Partly lengthened the loop
-        expect(eq(loop.get_position(), 48+32));
+        expect(eq(loop.get_length(), 64)); // Wrapped around
+        expect(eq(loop.get_position(), 16));
         for_channel_elems<AudioChannel<int>, int>(
             channel, 
             [&](size_t position, int const& val) {
-                if(position < 48) {
+                if(position < 16) {
+                    // last part of replace
+                    expect(eq(val, input_buf[position+16])) << "@ position " << position;
+                } else if(position < 48) {
                     //untouched
                     expect(eq(val, data[position])) << "@ position " << position;
                 } else {

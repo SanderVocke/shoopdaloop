@@ -67,10 +67,15 @@ public:
         return mp_next_poi.has_value() ? mp_next_poi.value().when : (std::optional<size_t>)std::nullopt;
     }
 
+    static inline bool is_playing_mode(loop_mode_t mode) {
+        return mode == Playing ||
+               mode == Replacing ||
+               mode == PlayingDryThroughWet ||
+               mode == RecordingDryIntoWet;
+    }
+
     virtual void PROC_update_poi() {
-        if((ma_mode == Playing ||
-            ma_mode == PlayingDryThroughWet ||
-            ma_mode == RecordingDryIntoWet) && 
+        if(is_playing_mode(ma_mode) && 
            ma_length == 0) {
             PROC_handle_transition(Stopped);
         }
@@ -83,9 +88,7 @@ public:
         }
 
         std::optional<PointOfInterest> loop_end_poi;
-        if (ma_mode == Playing ||
-            ma_mode == PlayingDryThroughWet ||
-            ma_mode == RecordingDryIntoWet) {
+        if (is_playing_mode(ma_mode) && ma_position < ma_length) {
             std::optional<PointOfInterest> loop_end_poi = PointOfInterest {
                 .when = ma_length - ma_position,
                 .type_flags = LoopEnd
@@ -105,10 +108,10 @@ public:
             mp_next_poi->type_flags &= ~(Trigger);
         }
         if (mp_next_poi->type_flags & LoopEnd) {
-            ma_position = 0;
-            ma_triggering_now = true; // Emit a trigger on restart
-            PROC_trigger();
             mp_next_poi->type_flags &= !(LoopEnd);
+            if (!mp_sync_source) {
+                PROC_trigger();
+            }
         }
 
         if (mp_next_poi->type_flags == 0) {
@@ -152,6 +155,8 @@ public:
         size_t length_before = ma_length;
         size_t length_after = ma_length;
 
+        loop_mode_t process_channel_mode = ma_mode;
+
         switch(ma_mode) {
             case Recording:
                 length_after += n_samples;
@@ -163,13 +168,16 @@ public:
             case Playing:
             case PlayingDryThroughWet:
             case RecordingDryIntoWet:
-                pos_after += n_samples;
+                pos_after = std::min(pos_after + n_samples, length_after);
+                if (pos_after == pos_before) {
+                    process_channel_mode = Stopped;
+                }
                 break;
             default:
                 break;
         }
 
-        PROC_process_channels(ma_mode, n_samples, pos_before, pos_after,
+        PROC_process_channels(process_channel_mode, n_samples, pos_before, pos_after,
             length_before, length_after);
 
         if (mp_next_poi) { mp_next_poi.value().when -= n_samples; }
@@ -210,6 +218,10 @@ public:
             ma_triggering_now = true;
         }
 
+        if (is_playing_mode(ma_mode) && ma_position >= ma_length) {
+            ma_position = 0;
+        }
+
         for (auto &elem: mp_planned_state_countdowns) {
             elem--;
         }
@@ -240,7 +252,7 @@ public:
                 throw std::runtime_error ("Invalid mode");
             }
             if (ma_mode == Stopped) { ma_position = 0; }
-            if ((ma_mode == Playing) &&
+            if (is_playing_mode(ma_mode) &&
                 ma_position == 0) {
                     ma_triggering_now = true;
                 }
