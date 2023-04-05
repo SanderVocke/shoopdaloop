@@ -47,12 +47,13 @@ Item {
         actual_scene_descriptorsChanged()
     }
 
-    function select_scene(actual_descriptor) { selected_scene_id = actual_descriptor ? actual_descriptor.id : null }
+    function select_scene(actual_descriptor) {
+        selected_scene_id = actual_descriptor ? actual_descriptor.id : null
+        if (actual_descriptor) {
+            state_registry.replace ('selected_loops', actual_descriptor.loop_ids )
+        }
+    }
     function hover_scene(actual_descriptor) { hovered_scene_id = actual_descriptor ? actual_descriptor.id : null }
-
-    // signal request_select_scene(int idx)
-    // signal request_hover_scene(int idx)
-    // signal request_play_scene(int idx)
 
     Rectangle {
         width: parent.width
@@ -133,7 +134,9 @@ Item {
                                 property bool is_hovered: root.hovered_scene_id == mapped_item.id
 
                                 Connections {
-                                    function onLeftClicked() { root.select_scene (is_selected ? null : mapped_item) }
+                                    function onLeftClicked() {
+                                        root.select_scene (is_selected ? null : mapped_item)
+                                    }
                                     function onHoverEntered() { root.hover_scene(mapped_item) }
                                     function onHoverExited() { 
                                         if (is_hovered) {
@@ -144,7 +147,6 @@ Item {
                                         mapped_item.name = name;
                                         root.scene_changed(mapped_item)
                                     }
-                                    //function onPlay() { root.request_play_scene(index) }
                                 }
                             }
                         }
@@ -180,13 +182,7 @@ Item {
                         anchors.centerIn: parent
                     }
                     onClicked: () => {
-                        // if(root.selected_scene >= 0) {
-                        //     // Remove the currently selected scene
-                        //     request_remove_scene(root.selected_scene)
-                        // } else if (root.scenes.length > 0) {
-                        //     // Remove the last scene in the list
-                        //     request_remove_scene(root.scenes.length - 1)
-                        // }
+                        console.log("TODO")
                     }
                 }
             }
@@ -207,7 +203,6 @@ Item {
         signal hoverEntered()
         signal hoverExited()
         signal nameEntered(string name)
-        signal play()
 
         color: is_selected ? 'grey' : Material.background
         border.color: marea.containsMouse && is_selected ? 'red' :
@@ -231,23 +226,6 @@ Item {
             }
             onEntered: hoverEntered()
             onExited: hoverExited()
-        }
-
-        Button {
-            width: 20
-            height: 30
-            anchors {
-                left: parent.left
-                verticalCenter: parent.verticalCenter
-                leftMargin: 5
-            }
-            MaterialDesignIcon {
-                size: 15
-                name: 'play'
-                color: 'green'
-                anchors.centerIn: parent
-            }
-            onClicked: scenewidget.play()
         }
 
         TextField {
