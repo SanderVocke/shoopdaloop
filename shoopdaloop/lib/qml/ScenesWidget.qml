@@ -2,19 +2,57 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
 
+import "../generate_session.js" as GenerateSession
+
 Item {
-    id: sceneswidget
+    id: root
 
     property var scenes: []
-    property int selected_scene: -1
-    property int hovered_scene: -1
+    property string selected_scene_id: null
+    property string hovered_scene_id: null
 
-    signal request_rename_scene(int idx, string new_name)
-    signal request_add_scene()
-    signal request_remove_scene(int idx)
-    signal request_select_scene(int idx)
-    signal request_hover_scene(int idx)
-    signal request_play_scene(int idx)
+    property var initial_scene_descriptors: []
+    property Registry objects_registry: null
+    property Registry state_registry: null
+
+    property var actual_scene_descriptors: initial_scene_descriptors
+
+    function scene_changed(actual_descriptor) {
+        var id = actual_descriptor.id
+        for(var i=0; i<actual_scene_descriptors.length; i++) {
+            if (actual_scene_descriptors[i].id == id) {
+                actual_scene_descriptors[i] = actual_descriptor
+            }
+        }
+        actual_scene_descriptorsChanged()
+    }
+
+    function add_scene() {
+        function generate_scene_id(n) {
+            return "scene_" + n.toString()
+        }
+        var existing_ids = actual_scene_descriptors.map(d => d.id)
+
+        var n = 1
+        var id = generate_scene_id(n)
+        while(existing_ids.includes(id)) { n++; id = generate_scene_id(n) }
+
+        var descriptor = GenerateSession.generate_scene(id, "New Scene", [])
+        actual_scene_descriptors.push(descriptor)
+        actual_scene_descriptorsChanged()
+    }
+
+    function remove_scene(actual_descriptor) {
+        actual_scene_descriptors = actual_scene_descriptors.filter(d => d.id != actual_descriptor.id)
+        actual_scene_descriptorsChanged()
+    }
+
+    function select_scene(actual_descriptor) { selected_scene_id = actual_descriptor ? actual_descriptor.id : null }
+    function hover_scene(actual_descriptor) { hovered_scene_id = actual_descriptor ? actual_descriptor.id : null }
+
+    // signal request_select_scene(int idx)
+    // signal request_hover_scene(int idx)
+    // signal request_play_scene(int idx)
 
     Rectangle {
         width: parent.width
@@ -71,39 +109,42 @@ Item {
                     ScrollBar.vertical.policy: ScrollBar.AsNeeded
 
                     Column {
+                        id: column
                         spacing: 1
                         anchors.fill: parent
 
-                        Repeater {
-                            model: sceneswidget.scenes.length
-                            anchors.fill: parent
+                        Mapper {
+                            model: root.actual_scene_descriptors
 
                             SceneWidget {
+                                property var mapped_item
+                                property int index
+
+                                onParentChanged: console.log("parent:", parent)
+
                                 anchors {
-                                    right: parent.right
-                                    left: parent.left
+                                    right: column.right
+                                    left: column.left
                                 }
 
                                 height: 40
-                                name: sceneswidget.scenes[index].name
-                                is_selected: index === sceneswidget.selected_scene
+                                name: mapped_item.name
+                                is_selected: root.selected_scene_id == mapped_item.id
+                                property bool is_hovered: root.hovered_scene_id == mapped_item.id
 
                                 Connections {
-                                    function onLeftClicked() {
-                                        if (sceneswidget.selected_scene === index) {
-                                            sceneswidget.request_select_scene(-1)
-                                        } else {
-                                            sceneswidget.request_select_scene(index)
+                                    function onLeftClicked() { root.select_scene (is_selected ? null : mapped_item) }
+                                    function onHoverEntered() { root.hover_scene(mapped_item) }
+                                    function onHoverExited() { 
+                                        if (is_hovered) {
+                                            root.hover_scene(null);
                                         }
                                     }
-                                    function onHoverEntered() { sceneswidget.request_hover_scene(index) }
-                                    function onHoverExited() { if (sceneswidget.hovered_scene === index) {
-                                            sceneswidget.request_hover_scene(-1);
-                                        }}
                                     function onNameEntered(name) {
-                                        sceneswidget.request_rename_scene(index, name)
+                                        mapped_item.name = name;
+                                        root.scene_changed(mapped_item)
                                     }
-                                    function onPlay() { sceneswidget.request_play_scene(index) }
+                                    //function onPlay() { root.request_play_scene(index) }
                                 }
                             }
                         }
@@ -127,7 +168,7 @@ Item {
                         color: Material.foreground
                         anchors.centerIn: parent
                     }
-                    onClicked: sceneswidget.request_add_scene()
+                    onClicked: root.add_scene()
                 }
                 Button {
                     width: 30
@@ -139,14 +180,14 @@ Item {
                         anchors.centerIn: parent
                     }
                     onClicked: () => {
-                                   if(sceneswidget.selected_scene >= 0) {
-                                       // Remove the currently selected scene
-                                       request_remove_scene(sceneswidget.selected_scene)
-                                   } else if (sceneswidget.scenes.length > 0) {
-                                       // Remove the last scene in the list
-                                       request_remove_scene(sceneswidget.scenes.length - 1)
-                                   }
-                               }
+                        // if(root.selected_scene >= 0) {
+                        //     // Remove the currently selected scene
+                        //     request_remove_scene(root.selected_scene)
+                        // } else if (root.scenes.length > 0) {
+                        //     // Remove the last scene in the list
+                        //     request_remove_scene(root.scenes.length - 1)
+                        // }
+                    }
                 }
             }
         }

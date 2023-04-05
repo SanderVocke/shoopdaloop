@@ -1,0 +1,15 @@
+{
+    "type": "object",
+    "properties": {
+        "schema":       { "const": "script_elem.1" },
+        "start_cycle":  { "type": "integer" },
+        "actions": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": { "schema": { "const": "script_action.1", "$comment": "see script_action.1 schema" } }
+            }
+        }
+    },
+    "required": ["schema", "start_cycle", "actions"]
+}

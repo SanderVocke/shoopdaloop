@@ -50,11 +50,21 @@ function generate_track(id, name, loops, ports) {
     }
 }
 
-function generate_session(tracks, ports) {
+function generate_session(tracks, ports, scenes) {
     return {
         'schema': 'session.1',
         'tracks': tracks,
-        'ports': ports
+        'ports': ports,
+        'scenes': scenes
+    }
+}
+
+function generate_scene(id, name, loop_ids) {
+    return {
+        'schema': 'scene.1',
+        'id': id,
+        'name': name,
+        'loop_ids': loop_ids
     }
 }
 
@@ -166,7 +176,7 @@ function generate_default_track(
 
 function generate_default_session() {
     var master_track = generate_default_track("Master", 1, 'master', true, 'master_loop', 0, 0, 1, false, false)
-    var session = generate_session([master_track], []);
+    var session = generate_session([master_track], [], []);
 
     return session;    
 }

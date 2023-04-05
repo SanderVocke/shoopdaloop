@@ -20,7 +20,16 @@
                 },
                 "required": ["schema"]
             }
+        },
+        "scenes": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "schema": { "const": "scene.1", "$comment": "see scene.1 schema" }
+                }
+            }
         }
     },
-    "required": ["schema", "tracks", "ports"]
+    "required": ["schema", "tracks", "ports", "scenes"]
 }

@@ -70,7 +70,8 @@ Item {
         return {
             'schema': 'session.1',
             'ports': [],
-            'tracks': tracks_widget.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to)
+            'tracks': tracks_widget.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to),
+            'scenes': scenes_widget.actual_scene_descriptors
         };
     }
 
@@ -157,6 +158,10 @@ Item {
 
         ScenesWidget {
             id: scenes_widget
+
+            initial_scene_descriptors: session.initial_descriptor.scenes
+            objects_registry: session.objects_registry
+            state_registry: session.state_registry
             
             width: 140
             anchors {

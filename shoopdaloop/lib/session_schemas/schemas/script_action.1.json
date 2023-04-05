@@ -1,0 +1,24 @@
+{
+    "type": "object",
+    "properties": {
+        "schema":       { "const": "script_action.1" },
+        "target_ids":   {
+            "type": "array",
+            "items": { "type": "string" }
+        },
+        "action": {
+            "enum": [
+                "stop",
+                "play",
+                "record",
+                "recordN",
+                "replace",
+                "playDryThroughWet",
+                "recordDryIntoWet"
+            ]
+        },
+        "delay_cycles": { "type": "integer" },
+        "args":         { "type": "array" }
+    },
+    "required": ["schema", "action", "delay_cycles"]
+}
