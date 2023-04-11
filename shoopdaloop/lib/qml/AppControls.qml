@@ -23,14 +23,12 @@ Item {
     onSync_activeChanged: update()
     Component.onCompleted: update()
 
-    Row {
+    Grid {
+        columns: 3
         spacing: 10
         anchors.fill: parent
 
         Button {
-            anchors {
-                top: parent.top
-            }
             height: 35
             width: 30
             onClicked: mainmenu.popup()
@@ -108,9 +106,6 @@ Item {
         // }
 
         Button {
-            anchors {
-                top: parent.top
-            }
             height: 35
             width: 30
             onClicked: root.stopAllExceptMaster()
@@ -125,9 +120,6 @@ Item {
 
         Button {
             id: sync_active_button
-            anchors {
-                top: parent.top
-            }
             height: 35
             width: 30
             property bool sync_active: true
@@ -137,6 +129,20 @@ Item {
                 size: Math.min(parent.width, parent.height) - 10
                 anchors.centerIn: parent
                 name: parent.sync_active ? 'timer-sand' : 'exclamation';
+                color: Material.foreground
+            }
+        }
+
+        Button {
+            id: deselect_button
+            height: 35
+            width: 30
+            onClicked: root.state_registry.clear_set('selected_loop_ids')
+
+            MaterialDesignIcon {
+                size: Math.min(parent.width, parent.height) - 10
+                anchors.centerIn: parent
+                name: 'border-none-variant'
                 color: Material.foreground
             }
         }

@@ -61,7 +61,6 @@ Item {
     }
     property alias hovered_scene_loop_ids : hovered_scene_loops_lookup.object
     property bool is_in_hovered_scene : hovered_scene_loop_ids && hovered_scene_loop_ids.has(obj_id)
-    onHovered_scene_loop_idsChanged: console.log("hovered scene:", [...hovered_scene_loop_ids])
 
     RegistryLookup {
         id: selected_scene_loops_lookup
@@ -122,7 +121,7 @@ Item {
     // Methods
     function transition(mode, delay, wait_for_sync, emit=true) {
         dynamic_loop.transition(mode, delay, wait_for_sync);
-        state_registry.maybe_get('selected_loop_ids', Set()).forEach((loop_id) => {
+        state_registry.maybe_get('selected_loop_ids', new Set()).forEach((loop_id) => {
             var loop = objects_registry.maybe_get(loop_id, null)
             if(loop != this) {
                 loop.maybe_loop.transition(mode, delay, wait_for_sync)

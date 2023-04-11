@@ -54,14 +54,16 @@ Item {
     function select_scene(actual_descriptor) {
         selected_scene_id = actual_descriptor ? actual_descriptor.id : null
         state_registry.replace ('selected_scene_loop_ids', actual_descriptor ? new Set(actual_descriptor.loop_ids) : new Set())
+    }
+
+    function select_scene_loops(actual_descriptor) {
+        selected_scene_id = actual_descriptor ? actual_descriptor.id : null
         state_registry.replace ('selected_loop_ids', actual_descriptor ? new Set(actual_descriptor.loop_ids) : new Set())
-        console.log("scn selected:", [...state_registry.get('selected_scene_loop_ids')])
     }
 
     function hover_scene(actual_descriptor) {
         hovered_scene_id = actual_descriptor ? actual_descriptor.id : null
         state_registry.replace ('hovered_scene_loop_ids', actual_descriptor ? new Set(actual_descriptor.loop_ids) : new Set())
-        console.log("scn hovered:", [...state_registry.get('hovered_scene_loop_ids')])
     }
 
     function selected_scene() {
@@ -70,14 +72,13 @@ Item {
 
     function toggle_loop_in_current_scene(loop_id) {
         var scn = selected_scene()
-        console.log('selected scene', scn)
         if (scn) {
             if (scn.loop_ids.includes(loop_id)) {
                 scn.loop_ids = scn.loop_ids.filter(i => i != loop_id)
             } else {
                 scn.loop_ids.push(loop_id)
+                select_scene(scn)
             }
-            console.log("included", [...scn.loop_ids])
             actual_scene_descriptorsChanged()
         }
     }
@@ -162,7 +163,9 @@ Item {
 
                                 Connections {
                                     function onLeftClicked() {
-                                        root.select_scene (is_selected ? null : mapped_item)
+                                        var to_select = is_selected ? null : mapped_item
+                                        root.select_scene (to_select)
+                                        if (to_select) { root.select_scene_loops (to_select) }
                                     }
                                     function onHoverEntered() { root.hover_scene(mapped_item) }
                                     function onHoverExited() { 

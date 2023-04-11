@@ -110,6 +110,10 @@ Item {
         }
     }
 
+    function clear_set(id) {
+        replace(id, new Set())
+    }
+
     function mutate(id, fn, val) {
         registry_data[id] = fn(registry_data[id])
         if(verbose) {
