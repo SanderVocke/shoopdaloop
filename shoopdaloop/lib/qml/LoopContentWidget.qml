@@ -21,9 +21,6 @@ Item {
     readonly property int samples_per_pixel : parseInt(zoom_combo.currentValue)
     onSamples_per_pixelChanged: request_update_data()
 
-    onChannels_dataChanged: console.log("Got reply!")
-    onLast_requested_reqidChanged: console.log("Sent request!")
-
     enum Tool {
         SetStartOffset,
         SetLength

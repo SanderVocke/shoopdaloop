@@ -69,7 +69,6 @@ Item {
     }
     property alias selected_scene_loop_ids : selected_scene_loops_lookup.object
     property bool is_in_selected_scene : selected_scene_loop_ids && selected_scene_loop_ids.has(obj_id)
-    onSelected_scene_loop_idsChanged: console.log("selected scene:", selected_scene_loop_ids)
 
     RegistryLookup {
         id: scenes_widget_lookup
@@ -84,7 +83,7 @@ Item {
         key: 'selected_loop_ids'
     }
     property alias selected_loop_ids : selected_loops_lookup.object
-    property bool selected : { console.log("selected:", [...selected_loop_ids]); return selected_loop_ids ? selected_loop_ids.has(obj_id) : false }
+    property bool selected : selected_loop_ids ? selected_loop_ids.has(obj_id) : false
 
     function toggle_in_current_scene() {
         if (scenes_widget) {
@@ -235,7 +234,6 @@ Item {
         key: 'sync_active'
     }
     property alias sync_active: lookup_sync_active.object
-    onSync_activeChanged: console.log("CHANGED", sync_active)
 
     // UI
     StatusRect {

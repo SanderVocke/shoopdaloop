@@ -59,8 +59,6 @@ Item {
             new_instances[idx].index = idx;
         }
 
-        console.log("REPARENT")
         root.parent.children=new_parent_children;
-        console.log("END REPARENT")
     }
 }

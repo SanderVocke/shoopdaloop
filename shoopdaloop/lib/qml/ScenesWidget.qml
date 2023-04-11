@@ -8,8 +8,8 @@ Item {
     id: root
 
     property var scenes: []
-    property string selected_scene_id: null
-    property string hovered_scene_id: null
+    property var selected_scene_id: null
+    property var hovered_scene_id: null
 
     property var initial_scene_descriptors: []
     property Registry objects_registry: null
