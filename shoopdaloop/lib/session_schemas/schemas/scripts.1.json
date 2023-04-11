@@ -1,0 +1,18 @@
+{
+    "type": "object",
+    "properties": {
+        "schema":            { "const": "scripts.1" },
+        "id":                { "type": "string" },
+        "active_script_id":  { "type": "string" },
+        "scripts": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "schema": { "const": "script.1", "$comment": "see script.1 schema" }
+                }
+            }
+        }
+    },
+    "required": ["schema", "id", "name", "length_cycles", "elements"]
+}

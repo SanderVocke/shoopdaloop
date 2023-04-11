@@ -59,54 +59,61 @@ Rectangle {
                 verticalAlignment: Text.AlignTop
             }
 
+            ComboBox {
+                model: ["script 1", "script 2", "script 3"]
+            }
+
             Label {
                 color: Material.foreground
                 text: widget.script_current_cycle.toString() + '/' + widget.script_length.toString()
             }
 
-            Button {
-                width: 30
-                height: 40
-                MaterialDesignIcon {
-                    size: 20
-                    name: 'plus'
-                    color: Material.foreground
-                    anchors.centerIn: parent
+            Row {
+                spacing: 5
+                Button {
+                    width: 24
+                    height: 34
+                    MaterialDesignIcon {
+                        size: 20
+                        name: 'plus'
+                        color: Material.foreground
+                        anchors.centerIn: parent
+                    }
+                    onClicked: widget.request_add_section()
                 }
-                onClicked: widget.request_add_section()
-            }
-            Button {
-                width: 30
-                height: 40
-                MaterialDesignIcon {
-                    size: 20
-                    name: 'play'
-                    color: Material.foreground
-                    anchors.centerIn: parent
+                Button {
+                    width: 24
+                    height: 34
+                    MaterialDesignIcon {
+                        size: 20
+                        name: 'play'
+                        color: Material.foreground
+                        anchors.centerIn: parent
+                    }
+                    onClicked: widget.play()
                 }
-                onClicked: widget.play()
-            }
-            Button {
-                width: 30
-                height: 40
-                MaterialDesignIcon {
-                    size: 20
-                    name: 'pause'
-                    color: Material.foreground
-                    anchors.centerIn: parent
+                Button {
+                    width: 24
+                    height: 34
+                    MaterialDesignIcon {
+                        size: 20
+                        name: 'pause'
+                        color: Material.foreground
+                        anchors.centerIn: parent
+                    }
+                    onClicked: widget.stop()
                 }
-                onClicked: widget.stop()
-            }
-            Button {
-                width: 30
-                height: 40
-                MaterialDesignIcon {
-                    size: 20
-                    name: 'rotate-left'
-                    color: Material.foreground
-                    anchors.centerIn: parent
+                Button {
+                    width: 24
+                    height: 34
+                    MaterialDesignIcon {
+                        size: 20
+                        name: 'rotate-left'
+                        color: Material.foreground
+                        anchors.centerIn: parent
+                    }
+                    onClicked: widget.set_cycle(0)
                 }
-                onClicked: widget.set_cycle(0)
             }
         }
 
