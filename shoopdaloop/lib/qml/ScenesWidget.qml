@@ -17,6 +17,10 @@ Item {
 
     property var actual_scene_descriptors: initial_scene_descriptors
 
+    Component.onCompleted: {
+        state_registry.register('scenes_widget', root)
+    }
+
     function scene_changed(actual_descriptor) {
         var id = actual_descriptor.id
         for(var i=0; i<actual_scene_descriptors.length; i++) {
@@ -49,11 +53,34 @@ Item {
 
     function select_scene(actual_descriptor) {
         selected_scene_id = actual_descriptor ? actual_descriptor.id : null
-        if (actual_descriptor) {
-            state_registry.replace ('selected_loops', actual_descriptor.loop_ids )
+        state_registry.replace ('selected_scene_loop_ids', actual_descriptor ? new Set(actual_descriptor.loop_ids) : new Set())
+        state_registry.replace ('selected_loop_ids', actual_descriptor ? new Set(actual_descriptor.loop_ids) : new Set())
+        console.log("scn selected:", [...state_registry.get('selected_scene_loop_ids')])
+    }
+
+    function hover_scene(actual_descriptor) {
+        hovered_scene_id = actual_descriptor ? actual_descriptor.id : null
+        state_registry.replace ('hovered_scene_loop_ids', actual_descriptor ? new Set(actual_descriptor.loop_ids) : new Set())
+        console.log("scn hovered:", [...state_registry.get('hovered_scene_loop_ids')])
+    }
+
+    function selected_scene() {
+        return selected_scene_id ? actual_scene_descriptors.find(d => d.id == selected_scene_id) : null
+    }
+
+    function toggle_loop_in_current_scene(loop_id) {
+        var scn = selected_scene()
+        console.log('selected scene', scn)
+        if (scn) {
+            if (scn.loop_ids.includes(loop_id)) {
+                scn.loop_ids = scn.loop_ids.filter(i => i != loop_id)
+            } else {
+                scn.loop_ids.push(loop_id)
+            }
+            console.log("included", [...scn.loop_ids])
+            actual_scene_descriptorsChanged()
         }
     }
-    function hover_scene(actual_descriptor) { hovered_scene_id = actual_descriptor ? actual_descriptor.id : null }
 
     Rectangle {
         width: parent.width

@@ -73,6 +73,43 @@ Item {
         contentsChanged()
     }
 
+    function multi_replace(dict) {
+        if(verbose) {
+            console.log("REGISTRY: Multi replace:", Object.keys(dict))
+        }
+        var n_changed = 0;
+        for (const [key, val] of Object.entries(dict)) {
+            if (registry_data[key] != val) {
+                registry_data[key] = val
+                itemModified(key, val)
+                n_changed++
+            }
+        }
+        if (n_changed > 0) {
+            contentsChanged()
+        }
+    }
+
+    function add_to_set(id, val) {
+        var item = has(id) ? registry_data[id] : new Set()
+        if (!item.has(val)) {
+            item.add(val)
+            registry_data[id] = item
+            itemModified(id, item)
+            contentsChanged()
+        }
+    }
+
+    function remove_from_set(id, val) {
+        var item = has(id) ? registry_data[id] : new Set()
+        if (item.has(val)) {
+            item.delete(val)
+            registry_data[id] = item
+            itemModified(id, item)
+            contentsChanged()
+        }
+    }
+
     function mutate(id, fn, val) {
         registry_data[id] = fn(registry_data[id])
         if(verbose) {

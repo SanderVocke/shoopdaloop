@@ -34,8 +34,6 @@ Item {
         all_channels().forEach((c) => c.queue_load_tasks(data_files_dir, add_tasks_to))
     }
 
-    property bool is_in_selected_scene: false
-    property bool is_in_hovered_scene:  false
     readonly property string name: ''
     readonly property var audio_channel_descriptors: initial_descriptor.channels.filter(c => c.type == 'audio')
     readonly property var midi_channel_descriptors: initial_descriptor.channels.filter(c => c.type == 'midi')
@@ -54,25 +52,46 @@ Item {
         key: 'targeted_loop'
     }
     property alias targeted_loop : targeted_loop_lookup.object
+    property bool targeted : targeted_loop == widget
 
-    // function update_targeted() {
-    //     widget.targeted_loop = state_registry.has('targeted_loop') ?
-    //             state_registry.get('targeted_loop') : null;
-    //     if(targeted && state_registry.get('targeted_loop') != this) { targeted = false; }
-    // }
+    RegistryLookup {
+        id: hovered_scene_loops_lookup
+        registry: state_registry
+        key: 'hovered_scene_loop_ids'
+    }
+    property alias hovered_scene_loop_ids : hovered_scene_loops_lookup.object
+    property bool is_in_hovered_scene : hovered_scene_loop_ids && hovered_scene_loop_ids.has(obj_id)
+    onHovered_scene_loop_idsChanged: console.log("hovered scene:", [...hovered_scene_loop_ids])
 
-    // function update_master() {
-    //     widget.master_loop = state_registry.has('master_loop') ?
-    //             state_registry.get('master_loop') : null;
-    // }
+    RegistryLookup {
+        id: selected_scene_loops_lookup
+        registry: state_registry
+        key: 'selected_scene_loop_ids'
+    }
+    property alias selected_scene_loop_ids : selected_scene_loops_lookup.object
+    property bool is_in_selected_scene : selected_scene_loop_ids && selected_scene_loop_ids.has(obj_id)
+    onSelected_scene_loop_idsChanged: console.log("selected scene:", selected_scene_loop_ids)
 
-    // Connections {
-    //     target: state_registry
-    //     function onItemModified(id, item) {
-    //         if (id == 'targeted_loop') { update_targeted() }
-    //         if (id == 'master_loop') { update_master() }
-    //     }
-    // }
+    RegistryLookup {
+        id: scenes_widget_lookup
+        registry: state_registry
+        key: 'scenes_widget'
+    }
+    property alias scenes_widget : scenes_widget_lookup.object
+
+    RegistryLookup {
+        id: selected_loops_lookup
+        registry: state_registry
+        key: 'selected_loop_ids'
+    }
+    property alias selected_loop_ids : selected_loops_lookup.object
+    property bool selected : { console.log("selected:", [...selected_loop_ids]); return selected_loop_ids ? selected_loop_ids.has(obj_id) : false }
+
+    function toggle_in_current_scene() {
+        if (scenes_widget) {
+            scenes_widget.toggle_loop_in_current_scene (obj_id)
+        }
+    }
 
     Component.onCompleted: {
         objects_registry.register(obj_id, this)
@@ -89,8 +108,6 @@ Item {
     // Internally controlled
     readonly property DynamicLoop maybe_loop : dynamic_loop
     readonly property Loop maybe_loaded_loop : dynamic_loop.maybe_loop
-    property bool selected : false
-    property bool targeted : false
     readonly property bool is_master: master_loop && master_loop == this
 
     property int n_multiples_of_master_length: master_loop ?
@@ -105,7 +122,8 @@ Item {
     // Methods
     function transition(mode, delay, wait_for_sync, emit=true) {
         dynamic_loop.transition(mode, delay, wait_for_sync);
-        state_registry.maybe_get('selected_loops', []).forEach((loop) => {
+        state_registry.maybe_get('selected_loop_ids', Set()).forEach((loop_id) => {
+            var loop = objects_registry.maybe_get(loop_id, null)
             if(loop != this) {
                 loop.maybe_loop.transition(mode, delay, wait_for_sync)
             }
@@ -125,25 +143,27 @@ Item {
         }
         dynamic_loop.qml_close();
     }
-    function select() { targeted = false; selected = true; publish_targeted_selected() }
-    function deselect() { selected = false; publish_selected() }
-    function toggle_selected() { if (selected) { deselect() } else { select() } }
-    function target() { selected = false; targeted = true; publish_targeted_selected()  }
-    function untarget() { targeted = false; publish_targeted() }
-    function toggle_targeted() { if (targeted) { untarget() } else { target() } }
-    function publish_targeted() {
-        if (!state_registry.has('targeted_loop')) { state_registry.register('targeted_loop', null) }
 
-        if (targeted && state_registry.get('targeted_loop') != this) { console.log("PUBLISH TARGET"); state_registry.replace('targeted_loop', this) }
-        else if(!targeted && state_registry.get('targeted_loop') == this) { state_registry.replace('targeted_loop', null) }
+    function select() {
+        untarget()
+        state_registry.add_to_set('selected_loop_ids', obj_id)
     }
-    function publish_selected() {
-        if (!state_registry.has('selected_loops')) { state_registry.register('selected_loops', new Set()) }
-
-        if (selected && !state_registry.get('selected_loops').has(this)) { state_registry.mutate('selected_loops', (loops) => { loops.add(this); return loops } )}
-        else if (!selected && state_registry.get('selected_loops').has(this)) { state_registry.mutate('selected_loops', (loops) => { loops.delete(this); return loops })}
+    function deselect() {
+        state_registry.remove_from_set('selected_loop_ids', obj_id)
     }
-    function publish_targeted_selected() { publish_selected(); publish_targeted() }
+    function target() {
+        deselect()
+        state_registry.replace('targeted_loop', widget)
+    }
+    function untarget() {
+        state_registry.replace('targeted_loop', null)
+    }
+    function toggle_selected() {
+        if (selected) { deselect() } else { select() }
+    }
+    function toggle_targeted() {
+        if (targeted) { untarget() } else { target() }
+    }
 
     function push_volume(volume) {
         var chans = Array.from(Array(audio_channels.model).keys()).map((i) => audio_channels.itemAt(i))
@@ -157,13 +177,6 @@ Item {
             maybe_loaded_loop.set_length(length)
         }
     }
-
-    // signal selected() //directly selected by the user to be activated.
-    // signal toggle_in_current_scene() //selected by the user to be added/removed to/from the current scene.
-    // signal request_rename(string name)
-    // signal request_clear()
-    // signal request_toggle_selected()
-    // signal request_set_as_targeted()
 
     width: childrenRect.width
     height: childrenRect.height
@@ -418,7 +431,7 @@ Item {
                         }
                     onClicked: (event) => {
                             if (event.button === Qt.LeftButton) { widget.toggle_selected() }
-                            else if (event.button === Qt.MiddleButton) { widget.toggle_in_current_scene() }
+                            else if (event.button === Qt.MiddleButton) { console.log("toggle"); widget.toggle_in_current_scene() }
                             else if (event.button === Qt.RightButton) { contextmenu.popup() }
                         }
                 }
