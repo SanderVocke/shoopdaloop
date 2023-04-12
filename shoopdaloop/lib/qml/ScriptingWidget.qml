@@ -3,33 +3,45 @@ import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
 
 Rectangle {
-    id: widget
+    id: root
     color: "#555555"
 
-    property var sections : []
-    property var scene_names: []
-    property var track_names: []
-    property var loop_names: []
+    property var initial_descriptor
+    property Registry objects_registry: null
+    property Registry state_registry: null
 
-    property bool script_playing
-    property int script_current_cycle
-    property var section_starts
-    property int script_length
-    property int current_section_idx
-    property int cycle_in_current_section
+    property var descriptor: initial_descriptor
+
+    // property var sections : []
+    // property var scene_names: []
+    // property var track_names: []
+    // property var loop_names: []
+
+    // property bool script_playing
+    // property int script_current_cycle
+    // property var section_starts
+    // property int script_length
+    // property int current_section_idx
+    // property int cycle_in_current_section
 
     // Section mgmt
-    signal request_rename_section(int section_idx, string name)
-    signal request_delete_section(int section_idx)
-    signal request_add_section()
-    signal request_add_action(int section_idx, var action)
-    signal request_remove_action(int section_idx, int action_idx)
-    signal request_set_section_duration(int section_idx, int duration)
+    // signal request_rename_section(int section_idx, string name)
+    // signal request_delete_section(int section_idx)
+    // signal request_add_section()
+    // signal request_add_action(int section_idx, var action)
+    // signal request_remove_action(int section_idx, int action_idx)
+    // signal request_set_section_duration(int section_idx, int duration)
 
     // Transport
-    signal play()
-    signal stop()
-    signal set_cycle(int cycle)
+    // signal play()
+    // signal stop()
+    // signal set_cycle(int cycle)
+
+    SchemaCheck {
+        descriptor: root.initial_descriptor
+        schema: 'scripts.1'
+        id: validator
+    }
 
     Item {
         anchors.fill: parent
@@ -59,13 +71,37 @@ Rectangle {
                 verticalAlignment: Text.AlignTop
             }
 
+            Row {
+                spacing: 5
+                Button {
+                    width: 24
+                    height: 34
+                    MaterialDesignIcon {
+                        size: 20
+                        name: 'plus'
+                        color: Material.foreground
+                        anchors.centerIn: parent
+                    }
+                }
+                Button {
+                    width: 24
+                    height: 34
+                    MaterialDesignIcon {
+                        size: 20
+                        name: 'delete'
+                        color: Material.foreground
+                        anchors.centerIn: parent
+                    }
+                }
+            }
+
             ComboBox {
-                model: ["script 1", "script 2", "script 3"]
+                model: root.descriptor.scripts.map(s => s.name)
             }
 
             Label {
                 color: Material.foreground
-                text: widget.script_current_cycle.toString() + '/' + widget.script_length.toString()
+                text: root.script_current_cycle.toString() + '/' + root.script_length.toString()
             }
 
             Row {
@@ -79,7 +115,7 @@ Rectangle {
                         color: Material.foreground
                         anchors.centerIn: parent
                     }
-                    onClicked: widget.request_add_section()
+                    onClicked: root.request_add_section()
                 }
                 Button {
                     width: 24
@@ -90,7 +126,7 @@ Rectangle {
                         color: Material.foreground
                         anchors.centerIn: parent
                     }
-                    onClicked: widget.play()
+                    onClicked: root.play()
                 }
                 Button {
                     width: 24
@@ -101,7 +137,7 @@ Rectangle {
                         color: Material.foreground
                         anchors.centerIn: parent
                     }
-                    onClicked: widget.stop()
+                    onClicked: root.stop()
                 }
                 Button {
                     width: 24
@@ -112,7 +148,7 @@ Rectangle {
                         color: Material.foreground
                         anchors.centerIn: parent
                     }
-                    onClicked: widget.set_cycle(0)
+                    onClicked: root.set_cycle(0)
                 }
             }
         }
@@ -144,27 +180,27 @@ Rectangle {
                     spacing: 1
 
                     Repeater {
-                        model: widget.sections ? widget.sections.length : 0
+                        model: root.sections ? root.sections.length : 0
                         anchors.top: parent.top
                         anchors.bottom: parent.bottom
 
                         ScriptItemWidget {
-                            name: widget.sections[index].name
-                            available_scene_names: widget.scene_names
-                            track_names: widget.track_names
-                            actions: widget.sections[index].actions
-                            duration: widget.sections[index].duration
-                            start_cycle: index < widget.section_starts.length ? widget.section_starts[index] : -1
+                            name: root.sections[index].name
+                            available_scene_names: root.scene_names
+                            track_names: root.track_names
+                            actions: root.sections[index].actions
+                            duration: root.sections[index].duration
+                            start_cycle: index < root.section_starts.length ? root.section_starts[index] : -1
 
                             height: scriptitems_scroll.height
                             width: 150
 
                             Connections {
-                                function onRequest_rename(name) { widget.request_rename_section(index, name) }
-                                function onRequest_delete() { widget.request_delete_section(index) }
-                                function onRequest_add_action(type, track_idx) { widget.request_add_action(index, type, track_idx) }
-                                function onRequest_remove_action(type, track_idx) { widget.request_remove_action(index, type, track_idx) }
-                                function onRequest_set_duration(duration) { widget.request_set_section_duration(index, duration) }
+                                function onRequest_rename(name) { root.request_rename_section(index, name) }
+                                function onRequest_delete() { root.request_delete_section(index) }
+                                function onRequest_add_action(type, track_idx) { root.request_add_action(index, type, track_idx) }
+                                function onRequest_remove_action(type, track_idx) { root.request_remove_action(index, type, track_idx) }
+                                function onRequest_set_duration(duration) { root.request_set_section_duration(index, duration) }
                             }
                             Connections {
                                 target: shared
@@ -179,13 +215,13 @@ Rectangle {
         }
     }
 
-    // A widget to represent a single section item on the sequencing timeline.
+    // A root to represent a single section item on the sequencing timeline.
     component ScriptItemWidget : Rectangle {
         id: scriptitem
 
-        property bool active: widget.script_playing &&
-                              widget.script_current_cycle >= start_cycle &&
-                              widget.script_current_cycle < (start_cycle + duration)
+        property bool active: root.script_playing &&
+                              root.script_current_cycle >= start_cycle &&
+                              root.script_current_cycle < (start_cycle + duration)
         property string name
         property var available_scene_names
         property var track_names
@@ -376,12 +412,12 @@ Rectangle {
                             font.pixelSize: 12
 
                             text: {
-                                var scene_name = 'scene' in action_item.action ? widget.scene_names[action_item.action['scene']] : ''
+                                var scene_name = 'scene' in action_item.action ? root.scene_names[action_item.action['scene']] : ''
                                 var loop_exists = 'track' in action_item.action &&
                                                       'loop' in action_item.action &&
-                                                      widget.loop_names.length > action_item.action['track'] &&
-                                                      widget.loop_names[action_item.action['track']].length > action_item.action['loop']
-                                var loop_name = loop_exists ? widget.loop_names[action_item.action['track']][action_item.action['loop']] : ''
+                                                      root.loop_names.length > action_item.action['track'] &&
+                                                      root.loop_names[action_item.action['track']].length > action_item.action['loop']
+                                var loop_name = loop_exists ? root.loop_names[action_item.action['track']][action_item.action['loop']] : ''
                                 if (loop_exists && loop_name == '') {
                                     loop_name = '(' + (action_item.action['track']).toString() + ', ' + (1+action_item.action['loop']).toString() + ')'
                                 } else {
@@ -633,14 +669,14 @@ Rectangle {
                 id: scene_combo
                 label: 'Scene:'
                 setting: 'scene'
-                model: create_enumeration(widget.scene_names)
+                model: create_enumeration(root.scene_names)
                 visible: action_type_combo.currentValue == 'scene'
             }
             ScriptActionPopupCombo {
                 id: track_combo
                 label: 'Track:'
                 setting: 'track'
-                model: create_enumeration(widget.track_names)
+                model: create_enumeration(root.track_names)
                 visible: action_type_combo.currentValue == 'loop'
             }
             ScriptActionPopupCombo {
@@ -648,9 +684,9 @@ Rectangle {
                 label: 'Loop:'
                 setting: 'loop'
                 property var track: track_combo.currentValue
-                model: widget.loop_names.length > track ?
+                model: root.loop_names.length > track ?
                         create_enumeration(
-                            widget.loop_names[track].map((name, idx) => {
+                            root.loop_names[track].map((name, idx) => {
                                 if (name == '') { return '(' + track.toString() + ', ' + (idx+1).toString() + ')' }
                                 return name
                             })

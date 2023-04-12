@@ -176,6 +176,10 @@ Item {
         ScriptingWidget {
             id: scripting_widget
 
+            initial_descriptor: session.initial_descriptor.scenes
+            objects_registry: session.objects_registry
+            state_registry: session.state_registry
+
             height: 160
             anchors {
                 bottom: parent.bottom
