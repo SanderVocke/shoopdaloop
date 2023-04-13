@@ -108,5 +108,5 @@ Item {
             root.backendLoopLoaded()
         }
     }
-    onSync_sourceChanged: if(ready) { loader.item.sync_source = sync_source }
+    onSync_sourceChanged: if(ready && loader.item) { loader.item.sync_source = sync_source }
 }

@@ -87,7 +87,7 @@ class FileIO(QThread):
     def save_channel_to_midi(self, filename, sample_rate, channel):
         self.startSavingFile.emit()
         try:
-            msgs = channel.get_data()
+            msgs = channel.get_msgs()
             length = channel.data_length
             mido_track = mido.MidiTrack()
             mido_file = mido.MidiFile()

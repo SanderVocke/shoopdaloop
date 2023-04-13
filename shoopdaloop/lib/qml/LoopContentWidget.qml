@@ -36,6 +36,11 @@ Item {
     }
 
     function request_update_data() {
+        if (!data_worker.ready) {
+            data_worker.readyChanged.connect(() => { root.request_update_data() })
+            return;
+        }
+
         last_requested_reqid++;
         var input_data = {
             'request_id': last_requested_reqid,
@@ -218,8 +223,9 @@ Item {
 
             Mapper {
                 id: waveforms
-                //model : root.channels_data ? root.channels_data['channels_data'].length : 0
                 model : root.channels_data ? root.channels_data['channels_data'] : []
+                onModelChanged: { console.log("loop content model changed!", model.length) }
+                onInstancesChanged: { console.log("loop content instances changed!", instances.length); parent.childrenChanged(); parent.forceLayout() }
                 width : childrenRect.width
 
                 Item {
