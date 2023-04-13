@@ -1162,9 +1162,6 @@ Item {
         FileDialog {
             id: savedialog
             fileMode: FileDialog.SaveFile
-            options: FileDialog.DontUseNativeDialog
-            flags: Qt.Widget
-            modality: Qt.WindowModal
             acceptLabel: 'Save'
             nameFilters: Object.entries(file_io.get_soundfile_formats()).map((e) => {
                 var extension = e[0]
@@ -1194,9 +1191,6 @@ Item {
         FileDialog {
             id: midisavedialog
             fileMode: FileDialog.SaveFile
-            options: FileDialog.DontUseNativeDialog
-            flags: Qt.Widget
-            modality: Qt.WindowModal
             acceptLabel: 'Save'
             nameFilters: ["MIDI files (*.mid)"]
             property var channel: null
@@ -1215,9 +1209,6 @@ Item {
         FileDialog {
             id: loaddialog
             fileMode: FileDialog.SaveFile
-            options: FileDialog.DontUseNativeDialog
-            flags: Qt.Widget
-            modality: Qt.WindowModal
             acceptLabel: 'Load'
             nameFilters: [
                 'Supported sound files ('
@@ -1367,9 +1358,6 @@ Item {
         FileDialog {
             id: midiloaddialog
             fileMode: FileDialog.OpenFile
-            options: FileDialog.DontUseNativeDialog
-            modality: Qt.WindowModal
-            flags: Qt.Widget
             acceptLabel: 'Load'
             nameFilters: ["Midi files (*.mid)"]
             onAccepted: {

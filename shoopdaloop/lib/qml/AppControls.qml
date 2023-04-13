@@ -56,8 +56,6 @@ Item {
             FileDialog {
                 id: savesessiondialog
                 fileMode: FileDialog.SaveFile
-                options: FileDialog.DontUseNativeDialog
-                modality: Qt.WindowModal
                 acceptLabel: 'Save'
                 nameFilters: ["ShoopDaLoop session files (*.shl)(*.shl)"]
                 defaultSuffix: 'shl'
@@ -70,8 +68,6 @@ Item {
             FileDialog {
                 id: loadsessiondialog
                 fileMode: FileDialog.OpenFile
-                options: FileDialog.DontUseNativeDialog
-                modality: Qt.WindowModal
                 acceptLabel: 'Load'
                 nameFilters: ["ShoopDaLoop session files (*.shl)(*.shl)", "All files (*)"]
                 onAccepted: {
