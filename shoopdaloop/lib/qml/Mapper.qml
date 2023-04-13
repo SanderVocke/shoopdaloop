@@ -23,7 +23,6 @@ Item {
     }
 
     onModelChanged: {
-        console.log("CHANGED3")
         var old_instances = [...instances]
         var new_instances = []
 

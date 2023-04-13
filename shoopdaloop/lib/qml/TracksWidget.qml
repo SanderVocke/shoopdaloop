@@ -23,8 +23,6 @@ ScrollView {
     property list<var> tracks : []
     property var track_initial_descriptors : []
 
-    onTracksChanged: console.log("CHANGED1")
-
     readonly property var factory : Qt.createComponent("TrackWidget.qml")
 
     function actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) {
@@ -139,7 +137,19 @@ ScrollView {
             spacing: 3
             id: tracks_row
             width: childrenRect.width
-            children: root.tracks
+            
+            Mapper {
+                model: root.tracks
+
+                Item {
+                    property var mapped_item
+                    property int index
+
+                    children: [mapped_item]
+                    width: childrenRect.width
+                    height: childrenRect.height
+                }
+            }
         }
     }
 
@@ -152,17 +162,6 @@ ScrollView {
 
         Mapper {
             model: root.tracks
-
-            onModelChanged: console.log("CHANGED4")
-            
-            // TODO why is this needed?
-            Connections {
-                target: root
-                function onTracksChanged() {
-                    console.log("CHANGED2")
-                    parent.modelChanged()
-                }
-            }
 
             Item {
                 id: a_track

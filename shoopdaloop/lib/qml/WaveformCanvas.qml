@@ -20,8 +20,6 @@ Item {
     property bool dirty: false
     readonly property int max_canvas_width: 8192
 
-    Component.onCompleted: console.log("canvas", waveform_data, midi_notes)
-
     signal requestPaint()
     function makeDirty() { dirty = true }
 

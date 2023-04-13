@@ -659,7 +659,6 @@ Item {
                                     }
 
                                     function execute(delay, n_cycles) {
-                                        console.log("RECORD N: ", delay, n_cycles)
                                         widget.transition(Types.LoopMode.Recording, delay, true)
                                         widget.transition(Types.LoopMode.Playing, delay + n_cycles, true)
                                     }
@@ -764,7 +763,7 @@ Item {
                         color: Material.foreground
                     }
 
-                    onClicked: widget.transition(Types.LoopMode.Stopped, 0, true)
+                    onClicked: widget.transition(Types.LoopMode.Stopped, 0, widget.sync_active)
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
