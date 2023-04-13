@@ -171,6 +171,19 @@ Item {
         height: 40
         spacing: 5
 
+        Button {
+            height: 35
+            width: 30
+            onClicked: root.request_update_data()
+
+            MaterialDesignIcon {
+                size: Math.min(parent.width, parent.height) - 10
+                anchors.centerIn: parent
+                name: 'refresh'
+                color: Material.foreground
+            }
+        }
+
         Label {
             anchors.verticalCenter: zoom_combo.verticalCenter
             text: "Samples/pixel:"
@@ -224,8 +237,6 @@ Item {
             Mapper {
                 id: waveforms
                 model : root.channels_data ? root.channels_data['channels_data'] : []
-                onModelChanged: { console.log("loop content model changed!", model.length) }
-                onInstancesChanged: { console.log("loop content instances changed!", instances.length); parent.childrenChanged(); parent.forceLayout() }
                 width : childrenRect.width
 
                 Item {

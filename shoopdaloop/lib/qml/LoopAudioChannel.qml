@@ -38,11 +38,14 @@ LoopAudioChannel {
         return rval
     }
     function queue_load_tasks(data_files_dir, add_tasks_to) {
-        if (Object.keys(descriptor).includes("data_file")) {
+        if (has_data_file()) {
             add_tasks_to.add_task(
                 file_io.load_soundfile_to_channels_async(data_files_dir + '/' + descriptor.data_file, get_backend().get_sample_rate(), descriptor.data_length, [[chan]], null)
             )
         }
+    }
+    function has_data_file() {
+        return Object.keys(descriptor).includes("data_file")
     }
 
     property int initial_mode : Conversions.parse_channel_mode(descriptor.mode)

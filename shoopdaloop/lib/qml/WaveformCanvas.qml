@@ -12,7 +12,7 @@ Item {
         return Math.max(audio, midi)
     }
     readonly property int length_pixels : length_timesteps / timesteps_per_pixel
-    width: length_pixels
+    width: Math.max(1, length_pixels)
     property int timesteps_per_pixel
     property real waveform_data_max : 1.0
     property real min_db: -60.0

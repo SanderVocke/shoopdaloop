@@ -21,6 +21,10 @@ Item {
         schema: 'loop.1'
     }
 
+    function force_load_backend() {
+        dynamic_loop.force_load = true
+    }
+
     function actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) {
         return {
             'schema': 'loop.1',
@@ -31,7 +35,12 @@ Item {
         }
     }
     function queue_load_tasks(data_files_dir, add_tasks_to) {
-        all_channels().forEach((c) => c.queue_load_tasks(data_files_dir, add_tasks_to))
+        var channels = all_channels()
+        var have_data_files = channels.map(c => c.has_data_file())
+        if (have_data_files.filter(d => d == true).length > 0) {
+            force_load_backend()
+            channels.forEach((c) => c.queue_load_tasks(data_files_dir, add_tasks_to))
+        }
     }
 
     readonly property string name: ''
@@ -198,7 +207,7 @@ Item {
                 descriptor: widget.audio_channel_descriptors[index]
                 objects_registry: widget.objects_registry
                 state_registry: widget.state_registry
-                onRequestBackendInit: dynamic_loop.force_load = true
+                onRequestBackendInit: widget.force_load_backend()
                 onInitializedChanged: widget.channelInitializedChanged()
             }
         }
@@ -211,7 +220,7 @@ Item {
                 descriptor: widget.midi_channel_descriptors[index]
                 objects_registry: widget.objects_registry
                 state_registry: widget.state_registry
-                onRequestBackendInit: dynamic_loop.force_load = true
+                onRequestBackendInit: widget.force_load_backend()
                 onInitializedChanged: widget.channelInitializedChanged()
             }
         }
@@ -1000,6 +1009,7 @@ Item {
 
         ClickTrackDialog {
             id: clicktrackdialog
+            loop: widget
             parent: Overlay.overlay
             x: (parent.width-width) / 2
             y: (parent.height-height) / 2
@@ -1007,7 +1017,7 @@ Item {
             onAcceptedClickTrack: (filename) => {
                                     loadoptionsdialog.filename = filename
                                     close()
-                                    dynamic_loop.force_load = true
+                                    widget.force_load_backend()
                                     loadoptionsdialog.update()
                                     loadoptionsdialog.open()
                                   }
@@ -1218,7 +1228,7 @@ Item {
             onAccepted: {
                 loadoptionsdialog.filename = selectedFile.toString().replace('file://', '')
                 close()
-                dynamic_loop.force_load = true
+                widget.force_load_backend()
                 loadoptionsdialog.update()
                 loadoptionsdialog.open()
             }
@@ -1373,7 +1383,7 @@ Item {
             property string filename
             property var channel : null
             function doLoad(update_loop_length) {
-                dynamic_loop.force_load = true
+                widget.force_load_backend()
                 var samplerate = widget.maybe_loaded_loop.backend.get_sample_rate()
                 console.log("load")
                 file_io.load_midi_to_channel_async(filename, samplerate, channel, update_loop_length ?

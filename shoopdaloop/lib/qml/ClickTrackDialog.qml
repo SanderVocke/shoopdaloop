@@ -12,6 +12,8 @@ Dialog {
     width: 400
     height: 450
 
+    property var loop : null
+
     property alias primary_click: primary_click_combo.currentText
     property alias secondary_click: secondary_click_combo.currentText
     property alias bpm_text: bpm_field.text
@@ -31,6 +33,10 @@ Dialog {
         return []
     }
 
+    property real bpm: parseFloat(bpm_text)
+    property int n_beats: parseInt(n_beats_text)
+    property int alternate_delay_percent: parseInt(alternate_delay_percent_text)
+
     function generate() {
         var clicks = [primary_click]
         if (secondary_click != 'None') {
@@ -39,7 +45,7 @@ Dialog {
             }
         }
 
-        return click_track_generator.generate(clicks, parseInt(bpm_text), parseInt(n_beats_text), parseInt(alternate_delay_percent_text));
+        return click_track_generator.generate(clicks, bpm, n_beats, alternate_delay_percent);
     }
 
     signal acceptedClickTrack(filename: string)
@@ -69,7 +75,7 @@ Dialog {
         TextField {
             id: bpm_field
             text: "100"
-            validator: IntValidator { bottom: 1 }
+            validator: DoubleValidator { bottom: 1.0 }
         }
 
         Text {
@@ -114,6 +120,18 @@ Dialog {
             id: secondary_clicks_per_primary_field
             text: "3"
             validator: IntValidator { bottom: 0 }
+        }
+
+        Button {
+            text: "From loop length"
+            onClicked: () => {
+                if (dialog.loop) {
+                    dialog.loop.force_load_backend()
+                    var srate = dialog.loop.maybe_loaded_loop.get_backend().get_sample_rate()
+                    var _bpm = n_beats / (dialog.loop.length / srate / 60.0)
+                    bpm_field.text = _bpm.toFixed(2)
+                }
+            }
         }
 
         Button {

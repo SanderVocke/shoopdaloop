@@ -174,7 +174,6 @@ class LoopChannel(QQuickItem):
             self.dataLengthChanged.emit(self._data_length)
         if state.start_offset != self._start_offset:
             self._start_offset = state.start_offset
-            print('start offset changed: {}'.format(self._start_offset))
             self.startOffsetChanged.emit(self._start_offset)
         if state.mode != self._mode:
             self._mode = state.mode

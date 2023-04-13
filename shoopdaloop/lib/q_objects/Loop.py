@@ -253,6 +253,13 @@ class Loop(QQuickItem):
         if maybe_backend:
             self.backend = maybe_backend
     
+    @Slot(result='QVariant')
+    def get_backend(self):
+        maybe_backend = findFirstParent(self, lambda p: p and isinstance(p, QQuickItem) and p.inherits('Backend'))
+        if maybe_backend:
+            return maybe_backend
+        raise Exception("Could not find backend!")
+    
     def maybe_initialize(self):
         if self._backend and self._backend.initialized and not self._backend_loop:
             self._backend_loop = self._backend.get_backend_obj().create_loop()

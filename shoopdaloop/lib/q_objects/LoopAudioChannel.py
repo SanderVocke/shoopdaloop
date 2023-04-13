@@ -50,10 +50,8 @@ class LoopAudioChannel(LoopChannel):
     def load_data(self, data):
         self.requestBackendInit.emit()
         if self._backend_obj:
-            print("LOAD IMMEDIATELY {}".format(data))
             self._backend_obj.load_data(data)
         else:
-            self.initializedChanged.connect(lambda: print("LOAD LATER {}".format(data)))
             self.initializedChanged.connect(lambda: self._backend_obj.load_data(data))
     
     @Slot(result=list)

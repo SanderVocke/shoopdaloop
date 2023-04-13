@@ -44,10 +44,14 @@ Item {
         var old_parent_children = []
         for(var idx=0; idx<root.parent.children.length; idx++) { old_parent_children.push(root.parent.children[idx]) }
         for(var cidx = 0; cidx < root.parent.children.length; cidx++) {
-            if (old_instances.find(e => e == root.parent.children[cidx]) == undefined) {
+            var child = root.parent.children[cidx]
+            // filter to get only children that had nothing to do with this mapper
+            if (old_instances.find(e => e == child) == undefined &&
+                new_instances.find(e => e == child) == undefined) {
                 filtered_parent_children.push (root.parent.children[cidx]);
             }
         }
+        // Now re-insert our instances
         for(var cidx = 0; cidx < filtered_parent_children.length; cidx++) {
             new_parent_children.push(filtered_parent_children[cidx])
             if (filtered_parent_children[cidx] == this) {

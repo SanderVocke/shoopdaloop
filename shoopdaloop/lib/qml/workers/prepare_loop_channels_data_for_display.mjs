@@ -109,12 +109,12 @@ WorkerScript.onMessage = function(input_data) {
             }
         }
         pre_padding = first_sample_pos + chan_start_offset
-        padded_midi_notes = chan_midi_notes ?
-            chan_midi_notes.map(n => {
-                var m = n
-                m['start'] += pre_padding
-                m['end'] += pre_padding
-                return m}) : undefined
+        // padded_midi_notes = chan_midi_notes ?
+        //     chan_midi_notes.map(n => {
+        //         var m = n
+        //         m['start'] += pre_padding
+        //         m['end'] += pre_padding
+        //         return m}) : undefined
         
         var d = {
             'pre_padding': pre_padding
@@ -126,8 +126,8 @@ WorkerScript.onMessage = function(input_data) {
                 "rms": rmss
             }
         }
-        if (padded_midi_notes) {
-            d['midi_notes'] = padded_midi_notes
+        if (chan_midi_notes) {
+            d['midi_notes'] = chan_midi_notes
         }
 
         output_datas.push([
