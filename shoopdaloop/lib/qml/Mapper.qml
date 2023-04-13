@@ -16,7 +16,6 @@ Item {
     property list<var> instances : []
 
     function instantiate_delegate(model_elem, index) {
-        console.log("CREATE", root.parent)
         return delegate.createObject(root.parent, {
             mapped_item : model_elem,
             index : index
@@ -24,6 +23,7 @@ Item {
     }
 
     onModelChanged: {
+        console.log("CHANGED3")
         var old_instances = [...instances]
         var new_instances = []
 

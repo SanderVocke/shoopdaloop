@@ -20,8 +20,10 @@ ScrollView {
     property bool loaded : false
     property int n_loaded : 0
 
-    property alias tracks : tracks_row.children
+    property list<var> tracks : []
     property var track_initial_descriptors : []
+
+    onTracksChanged: console.log("CHANGED1")
 
     readonly property var factory : Qt.createComponent("TrackWidget.qml")
 
@@ -51,6 +53,7 @@ ScrollView {
             track.onRequestDelete.connect(() => delete_track(track))
             root.track_initial_descriptors.push(properties.initial_descriptor)
             root.tracks.push(track)
+            root.tracksChanged()
 
             return track
         }
@@ -136,8 +139,7 @@ ScrollView {
             spacing: 3
             id: tracks_row
             width: childrenRect.width
-
-            // Note: tracks injected here
+            children: root.tracks
         }
     }
 
@@ -149,16 +151,31 @@ ScrollView {
         anchors.bottom: parent.bottom
 
         Mapper {
-            model: tracks_row.children
+            model: root.tracks
+
+            onModelChanged: console.log("CHANGED4")
+            
+            // TODO why is this needed?
+            Connections {
+                target: root
+                function onTracksChanged() {
+                    console.log("CHANGED2")
+                    parent.modelChanged()
+                }
+            }
 
             Item {
+                id: a_track
+                property var mapped_item
+                property int index
+
                 width: mapped_item.width
                 height: 50
 
                 TrackControlWidget {
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.horizontalCenter: parent.horizontalCenter
-                    initial_track_descriptor: root.track_initial_descriptors[index]
+                    initial_track_descriptor: root.track_initial_descriptors[a_track.index]
                     objects_registry: root.objects_registry
                     state_registry: root.state_registry
                 }
@@ -175,9 +192,12 @@ ScrollView {
         anchors.bottom: parent.bottom
 
         Mapper {
-            model: tracks_row.children
+            model: root.tracks
 
             Rectangle {
+                property var mapped_item
+                property int index
+
                 width: mapped_item.width
                 height: rectangles_row.height
                 y: 0
