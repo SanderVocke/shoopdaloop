@@ -48,7 +48,7 @@ Item {
             // filter to get only children that had nothing to do with this mapper
             if (old_instances.find(e => e == child) == undefined &&
                 new_instances.find(e => e == child) == undefined) {
-                filtered_parent_children.push (root.parent.children[cidx]);
+                filtered_parent_children.push (child);
             }
         }
         // Now re-insert our instances
@@ -62,6 +62,10 @@ Item {
             new_instances[idx].index = idx;
         }
 
-        root.parent.children=new_parent_children;
+        root.parent.children=new_parent_children
+
+        old_parent_children.forEach(c => {
+            if (new_parent_children.find(e => e == c) == undefined) { c.destroy() }
+        })
     }
 }

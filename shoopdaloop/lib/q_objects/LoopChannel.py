@@ -90,7 +90,6 @@ class LoopChannel(QQuickItem):
     # indirect setter via back-end
     @Slot(int)
     def set_start_offset(self, offset):
-        print ('set offset {}'.format(offset))
         if offset != self._start_offset:
             if self._backend_obj:
                 self._backend_obj.set_start_offset(offset)

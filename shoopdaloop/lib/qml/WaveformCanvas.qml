@@ -23,8 +23,6 @@ Item {
     signal requestPaint()
     function makeDirty() { dirty = true }
 
-    signal clicked (var mouse)
-
     onVisibleChanged: {
         if (visible && dirty) { requestPaint() }
     }
@@ -114,7 +112,7 @@ Item {
                             var x_start = clamp(note.start / timesteps_per_pixel, first_pixel, last_pixel - 1)
                             var x_end = clamp(note.end / timesteps_per_pixel, first_pixel, last_pixel - 1)
                             var note_width = x_end - x_start
-                            var y = (note_height/2) + ((height - note_height) / 128) * note.note
+                            var y = (height-note_height) - (((height-2*note_height) / 128) * note.note)
 
                             ctx.fillRect(
                                 x_start,
@@ -129,10 +127,5 @@ Item {
                 }
             }
         }
-    }
-
-    MouseArea {
-        anchors.fill: parent
-        onClicked: (event) => root.clicked(event)
     }
 }

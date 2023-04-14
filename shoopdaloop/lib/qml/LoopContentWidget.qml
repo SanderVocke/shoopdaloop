@@ -14,7 +14,7 @@ Item {
     property bool data_needs_update : true
 
     onData_needs_updateChanged: { if(visible && data_needs_update) { request_update_data() } }
-    onVisibleChanged: {  console.log("VISIBLE", visible); if(visible && data_needs_update) { request_update_data() } }
+    onVisibleChanged: { if(visible && data_needs_update) { request_update_data() } }
 
     // For layout of this data, see the worker script. Its reply is stored in here directly.
     property var channels_data : null
@@ -23,7 +23,7 @@ Item {
     property int last_completed_reqid : channels_data ? channels_data.request_id : -1
 
     readonly property int samples_per_pixel : parseInt(zoom_combo.currentValue)
-    onSamples_per_pixelChanged: data_needs_update = true
+    onSamples_per_pixelChanged: {data_needs_update = true}
 
     enum Tool {
         SetStartOffset,
@@ -41,10 +41,27 @@ Item {
 
     function request_update_data() {
         if (!data_worker.ready) {
-            data_worker.readyChanged.connect(() => { root.request_update_data() })
+            var do_once = function() {
+                data_worker.readyChanged.disconnect(do_once);
+                root.request_update_data();
+            }
+            data_worker.readyChanged.connect(do_once)
             return;
         }
 
+        // Queue the actual request for the next event loop cycle,
+        // because triggering events usually come in for all channels
+        // at the same time. This prevents running the request multiple times.
+        request_update_data_delayer.restart()
+    }
+
+    Timer {
+        id: request_update_data_delayer
+        interval: 1
+        onTriggered: do_request_update_data()
+    }
+
+    function do_request_update_data() {
         last_requested_reqid++;
         var input_data = {
             'request_id': last_requested_reqid,
@@ -234,15 +251,16 @@ Item {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         ScrollBar.horizontal.policy: ScrollBar.AlwaysOn
-        contentWidth: waveforms.width
+        contentWidth: waveforms_column.width
     
         Column {
+            id: waveforms_column
             spacing: 4
+            width : childrenRect.width
 
             Mapper {
                 id: waveforms
                 model : root.channels_data ? root.channels_data['channels_data'] : []
-                width : childrenRect.width
 
                 Item {
                     id: delegate
@@ -256,6 +274,17 @@ Item {
 
                     height: 80
                     width: waveform.width
+
+                    MouseArea {
+                        x: 0
+                        y: 0
+                        height: parent.height
+                        width: Math.max(parent.width, scroll.width)
+                        onClicked: (event) => {
+                            var sample = event.x * root.channels_data['samples_per_bin']
+                            root.on_waveform_clicked(this, delegate.channel, event, sample)
+                        }
+                    }
 
                     Connections {
                         target: delegate.channel
@@ -274,11 +303,6 @@ Item {
                         timesteps_per_pixel : root.samples_per_pixel
                         // min_db : widget.min_db
                         // max_db : widget.max_db
-
-                        onClicked: (event) => {
-                            var sample = event.x * root.channels_data['samples_per_bin']
-                            root.on_waveform_clicked(this, delegate.channel, event, sample)
-                        }
                     }
 
                     Rectangle {
