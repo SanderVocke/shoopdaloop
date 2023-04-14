@@ -193,7 +193,7 @@ class BackendLoopMidiChannel:
     
     def load_data(self, msgs):
         d = alloc_midi_channel_data(len(msgs))
-        d.length_samples = msgs[len(msgs)-1]['time'] + 1
+        d[0].length_samples = msgs[len(msgs)-1]['time'] + 1
         for idx, m in enumerate(msgs):
             d[0].events[idx] = midi_message_dict_to_backend(m)
         load_midi_channel_data(self.shoop_c_handle, d)

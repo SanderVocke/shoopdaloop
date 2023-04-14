@@ -18,7 +18,7 @@ def gen_click_track(click_wav_filenames, output_filename, bpm, n_beats, alt_clic
             wav_bytes = wav.readframes(params.nframes)
             wavs[filename] = dict()
             wavs[filename]['frames'] = [int.from_bytes(wav_bytes[idx*params.sampwidth : (idx+1)*params.sampwidth], 'little')
-                                        for idx in range(params.nframes)]
+                                        for idx in range(params.nframes * params.nchannels)]
             wavs[filename]['params'] = params
 
     # Check that shared parameters are equal for all input wavs
@@ -44,9 +44,11 @@ def gen_click_track(click_wav_filenames, output_filename, bpm, n_beats, alt_clic
                 # Off beats only
                 beat_starts_frames[idx] += int(seconds_per_beat * reference_params.framerate * alt_click_delay_percent / 100.0)
 
-    # Calculate output frames
-    output_frames = [0] * output_nframes
+    # Calculate output frames (interlaced)
+    output_frames = [0] * output_nframes * reference_params.nchannels
     current_beat = 0
+    # Note: framenr here is in each time frame (1 / samplerate). However, the input data
+    # is in interlaced format with the channels mixed.
     for framenr in range(output_nframes):
         # Determine the current beat
         while current_beat < (n_beats-1) and beat_starts_frames[current_beat+1] <= framenr:
@@ -55,8 +57,9 @@ def gen_click_track(click_wav_filenames, output_filename, bpm, n_beats, alt_clic
         # Determine the sample
         wav = wavs[click_wav_filenames[current_beat % len(click_wav_filenames)]]
         click_frame = framenr - beat_starts_frames[current_beat]
-        if click_frame < wav['params'].nframes:
-            output_frames[framenr] = wav['frames'][click_frame]
+        if click_frame < (wav['params'].nframes / wav['params'].nchannels):
+            for chan in range(wav['params'].nchannels):
+                output_frames[framenr * wav['params'].nchannels + chan] = wav['frames'][click_frame * wav['params'].nchannels + chan]
     output_frames_bytes = b"".join([frame.to_bytes(reference_params.sampwidth, 'little') for frame in output_frames])
 
     # Write output frames

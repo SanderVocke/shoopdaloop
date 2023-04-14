@@ -108,11 +108,13 @@ public:
 
         // If we were playing back and anything other than forward playback is happening
         // (e.g. mode switch, position set, ...), send an All Sound Off.
+        // Also reset the playback cursor in that case.
         if (prev_mode == Playing && (
-            modified_mode != Playing ||
+            modified_mode != prev_mode ||
             pos_before != prev_pos
         )) {
             PROC_send_all_sound_off();
+            mp_playback_cursor->reset();
         }
 
         switch (modified_mode) {
@@ -171,7 +173,7 @@ public:
     void clear(bool thread_safe=true) {
         auto fn = [this]() {
             mp_storage->clear();
-            mp_playback_cursor.reset();
+            mp_playback_cursor->reset();
             mp_output_notes_state->clear();
             ma_n_events_triggered = 0;
             PROC_set_length(0);
@@ -218,17 +220,20 @@ public:
         while(mp_playback_cursor->valid())
         {
             auto *event = mp_playback_cursor->get();
-            event->proc_time = event->storage_time - _pos;
-            if (event->proc_time >= n_samples) {
+            if (event->storage_time >= (_pos + n_samples)) {
                 // Future event
                 break;
             }
-            if (!muted) {
+            if (!muted && event->storage_time >= _pos) {
+                event->proc_time = event->storage_time - _pos;
                 PROC_send_message(*buf.buf, *event);
                 ma_n_events_triggered++;
             }
             buf.n_events_processed++;
             mp_playback_cursor->next();
+            if (mp_playback_cursor->valid()) {
+                std::cout << mp_playback_cursor->get()->storage_time << " vs " << _pos << std::endl;
+            }
         }
         
         buf.n_frames_processed += n_samples;
