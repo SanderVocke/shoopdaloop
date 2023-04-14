@@ -123,7 +123,7 @@ Dialog {
         }
 
         Button {
-            text: "From loop length"
+            text: "Fill loop length"
             onClicked: () => {
                 if (dialog.loop) {
                     dialog.loop.force_load_backend()

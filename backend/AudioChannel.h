@@ -170,7 +170,7 @@ public:
 
     void PROC_process_record(size_t n_samples, size_t length_before) {
         if (mp_recording_source_buffer_size < n_samples) {
-            throw std::runtime_error("Attempting to record out of bounds");
+            throw std::runtime_error("Attempting to record out of bounds of input buffer");
         }
         auto start_offset = ma_start_offset.load();
         auto data_length = ma_data_length.load();
@@ -210,37 +210,33 @@ public:
         auto start_offset = ma_start_offset.load();
         auto data_position = position + start_offset;
 
-        if (data_length == 0) {
-            throw std::runtime_error("Attempting to replace empty channel");
+        while (data_length < (data_position + n_samples)) {
+            // In replacement, we lengthen the buffer as needed.
+            mp_buffers.push_back(get_new_buffer());
+            ma_data_length += mp_buffers.back()->size();
+            data_length = ma_data_length;
         }
-        
-        if (data_position < data_length) {
-            // We have something to replace.
-            size_t buffer_idx = data_position / ma_buffer_size;
-            size_t pos_in_buffer = data_position % ma_buffer_size;
-            size_t buf_head = (buffer_idx == mp_buffers.size()-1) ?
-                data_length - (buffer_idx * ma_buffer_size) :
-                ma_buffer_size;
-            size_t samples_left = length - position;
-            auto  &to_buf = mp_buffers[buffer_idx];
-            SampleT* to = &to_buf->at(pos_in_buffer);
-            SampleT* &from = mp_recording_source_buffer;
-            auto n = std::min({buf_head - pos_in_buffer, samples_left, n_samples});
-            auto rest = n_samples - n;
 
-            memcpy((void*)to, (void*)from, sizeof(SampleT) * n);
+        size_t buffer_idx = data_position / ma_buffer_size;
+        size_t pos_in_buffer = data_position % ma_buffer_size;
+        size_t buf_head = (buffer_idx == mp_buffers.size()-1) ?
+            data_length - (buffer_idx * ma_buffer_size) :
+            ma_buffer_size;
+        size_t samples_left = length - position;
+        auto  &to_buf = mp_buffers[buffer_idx];
+        SampleT* to = &to_buf->at(pos_in_buffer);
+        SampleT* &from = mp_recording_source_buffer;
+        auto n = std::min({buf_head - pos_in_buffer, samples_left, n_samples});
+        auto rest = n_samples - n;
 
-            mp_recording_source_buffer += n;
-            mp_recording_source_buffer_size -= n;
+        memcpy((void*)to, (void*)from, sizeof(SampleT) * n);
 
-            // If we didn't replace all yet, go to next buffer and continue
-            if(rest > 0) {
-                PROC_process_replace(position + n, length, rest);
-            }
-        } else {
-            // We have nothing to replace. Just leave the buffer as-is.
-            mp_recording_source_buffer += n_samples;
-            mp_recording_source_buffer_size -= n_samples;
+        mp_recording_source_buffer += n;
+        mp_recording_source_buffer_size -= n;
+
+        // If we didn't replace all yet, go to next buffer and continue
+        if(rest > 0) {
+            PROC_process_replace(position + n, length, rest);
         }
     }
 

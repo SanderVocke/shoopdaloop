@@ -16,6 +16,7 @@ ApplicationWindow {
         Material.theme: Material.Dark
 
         LoopContentWidget {
+            visible: window.visible
             id: waveform
             anchors.fill: parent
             //min_db: -50.0

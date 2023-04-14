@@ -172,6 +172,9 @@ ScrollView {
                 height: 50
 
                 TrackControlWidget {
+                    Component.onCompleted: {
+                        console.log("Control widget @ ", a_track.index, JSON.stringify(initial_track_descriptor))
+                    }
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.horizontalCenter: parent.horizontalCenter
                     initial_track_descriptor: root.track_initial_descriptors[a_track.index]

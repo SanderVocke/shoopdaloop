@@ -11,15 +11,19 @@ Item {
     // INTERNAL
 
     property bool data_ready : last_requested_reqid == last_completed_reqid
+    property bool data_needs_update : true
+
+    onData_needs_updateChanged: { if(visible && data_needs_update) { request_update_data() } }
+    onVisibleChanged: {  console.log("VISIBLE", visible); if(visible && data_needs_update) { request_update_data() } }
 
     // For layout of this data, see the worker script. Its reply is stored in here directly.
     property var channels_data : null
 
     property int last_requested_reqid : 0
-    property int last_completed_reqid : -1
+    property int last_completed_reqid : channels_data ? channels_data.request_id : -1
 
     readonly property int samples_per_pixel : parseInt(zoom_combo.currentValue)
-    onSamples_per_pixelChanged: request_update_data()
+    onSamples_per_pixelChanged: data_needs_update = true
 
     enum Tool {
         SetStartOffset,
@@ -30,7 +34,7 @@ Item {
         target: loop
         function onLengthChanged() {
             if (!ModeHelpers.is_recording_mode(loop.mode)) {
-                request_update_data()
+                data_needs_update = true
             }
         }
     }
@@ -79,7 +83,8 @@ Item {
             ])
         }
 
-        data_worker.sendMessage(input_data)        
+        data_needs_update = false
+        data_worker.sendMessage(input_data)   
     }
 
     WorkerScript {
@@ -254,7 +259,7 @@ Item {
 
                     Connections {
                         target: delegate.channel
-                        function onStart_offsetChanged() {root.request_update_data()}
+                        function onStart_offsetChanged() { root.data_needs_update = true }
                     }
 
                     WaveformCanvas {
@@ -298,15 +303,15 @@ Item {
         }
     }
 
-    // Label {
-    //     anchors.fill: scroll
-    //     background: Rectangle { color: 'black' }
-    //     visible: !root.data_ready
-    //     color: Material.foreground
-    //     text: "Updating..."
-    //     horizontalAlignment: Text.AlignHCenter
-    //     verticalAlignment: Text.AlignVCenter
-    // }
+    Label {
+        anchors.fill: scroll
+        background: Rectangle { color: 'black' }
+        visible: !root.data_ready || root.data_needs_update
+        color: Material.foreground
+        text: "Updating..."
+        horizontalAlignment: Text.AlignHCenter
+        verticalAlignment: Text.AlignVCenter
+    }
 
     Label {
         anchors.fill: scroll

@@ -50,6 +50,7 @@ where:
 - pre_padding per channel indicates how many samples of padding were added for that channel.
 */
 WorkerScript.onMessage = function(input_data) {
+    console.time("update display data")
     var samples_per_bin = input_data['samples_per_bin']
     var rval = {}
 
@@ -73,7 +74,7 @@ WorkerScript.onMessage = function(input_data) {
     var output_datas = []
     var id, chan_start_offset, chan_audio_data, chan_midi_notes, transients_positive, transients_negative, rmss
     var transient_positive, transient_negative, rms, sample
-    var pre_padding, padded_midi_notes
+    var pre_padding
     for (var channel_data of input_data['channels_data']) {
         id = channel_data[0]
         chan_start_offset = channel_data[1]['start_offset']
@@ -109,12 +110,6 @@ WorkerScript.onMessage = function(input_data) {
             }
         }
         pre_padding = first_sample_pos + chan_start_offset
-        // padded_midi_notes = chan_midi_notes ?
-        //     chan_midi_notes.map(n => {
-        //         var m = n
-        //         m['start'] += pre_padding
-        //         m['end'] += pre_padding
-        //         return m}) : undefined
         
         var d = {
             'pre_padding': pre_padding
@@ -143,5 +138,6 @@ WorkerScript.onMessage = function(input_data) {
         'channels_data': output_datas
     }
     
+    console.timeEnd("update display data")
     WorkerScript.sendMessage(rval)
 }
