@@ -1421,14 +1421,14 @@ void set_midi_channel_mode (shoopdaloop_loop_midi_channel_t * channel, channel_m
     });
 }
 
-void set_audio_channel_start_offset (shoopdaloop_loop_audio_channel_t * channel, unsigned start_offset) {
+void set_audio_channel_start_offset (shoopdaloop_loop_audio_channel_t * channel, int start_offset) {
     internal_audio_channel(channel)->backend.lock()->cmd_queue.queue([=]() {
         auto _channel = internal_audio_channel(channel);
         _channel->channel->set_start_offset(start_offset);
     });
 }
 
-void set_midi_channel_start_offset (shoopdaloop_loop_midi_channel_t * channel, unsigned start_offset) {
+void set_midi_channel_start_offset (shoopdaloop_loop_midi_channel_t * channel, int start_offset) {
     internal_midi_channel(channel)->backend.lock()->cmd_queue.queue([=]() {
         auto _channel = internal_midi_channel(channel);
         _channel->channel->set_start_offset(start_offset);

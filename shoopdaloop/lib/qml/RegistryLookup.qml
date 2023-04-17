@@ -7,12 +7,14 @@ Item {
     property var object : null
 
     function update() {
+        if (key == 'sync_active') console.log("UPDATE", registry, key, registry.has(key))
         object = (registry && registry.has(key)) ?
             registry.get(key) : null; 
     }
 
     Component.onCompleted: update()
     onRegistryChanged: update()
+    onKeyChanged: update()
     Connections {
         target: registry
         function onItemAdded (id, val) { if(id == key) { object = val } }

@@ -64,12 +64,13 @@ Item {
     }
 
     function replace(id, val) {
-        if(registry_data[id] == val) { return; }
+        const d = registry_data[id]
+        if(d == val) { return; }
         if(verbose) {
-            console.log("REGISTRY: Replacing:", id, val)
+            console.log("REGISTRY: Replacing ", id, ":", d, " => ", val)
         }
         registry_data[id] = val
-        itemModified(id, registry_data[id])
+        itemModified(id, val)
         contentsChanged()
     }
 
@@ -115,10 +116,11 @@ Item {
     }
 
     function mutate(id, fn, val) {
-        registry_data[id] = fn(registry_data[id])
+        const mutated = fn(registry_data[id])
         if(verbose) {
-            console.log("REGISTRY: Mutating:", id, " => ", registry_data[id])
+            console.log("REGISTRY: Mutating:", id, registry_data[id], " => ", mutated)
         }
+        registry_data[id] = mutated
         itemModified(id, registry_data[id])
         contentsChanged()
     }

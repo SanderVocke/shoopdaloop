@@ -234,7 +234,13 @@ Item {
     function all_channels() {
         var audio = get_audio_channels()
         var midi = get_midi_channels()
-        return audio.concat(midi)
+        return initial_descriptor.channels.map(d => {
+            var _audio = audio.find(a => a.obj_id == d.id)
+            var _midi = midi.find(a => a.obj_id == d.id)
+            return _audio ? _audio :
+                   _midi ? _midi :
+                   undefined
+        })
     }
 
     RegistryLookup {
@@ -247,7 +253,7 @@ Item {
     // UI
     StatusRect {
         id: statusrect
-        loop: widget.maybe_loop
+        loop: widget
 
         LoopDetailsWindow {
             id: detailswindow

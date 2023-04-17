@@ -50,7 +50,7 @@ private:
     // Any thread access
     std::atomic<channel_mode_t> ma_mode;
     std::atomic<size_t> ma_data_length; // Length in samples
-    std::atomic<size_t> ma_start_offset;
+    std::atomic<int> ma_start_offset;
     std::atomic<size_t> ma_n_events_triggered;
 
     const Message all_sound_off_message_channel_0 = Message(0, 3, {0xB0, 120, 0});
@@ -145,7 +145,7 @@ public:
         }
 
         // Truncate buffer if necessary
-        PROC_set_length(our_length + ma_start_offset);
+        PROC_set_length(std::max(0, (int)our_length + ma_start_offset));
         
         // Record any incoming events
         size_t record_end = recbuf.n_frames_processed + n_samples;
@@ -212,28 +212,25 @@ public:
         if (buf.frames_left() < n_samples) {
             throw std::runtime_error("Attempting to play back out of bounds");
         }
-        auto _pos = our_pos + ma_start_offset;
+        auto _pos = (int)our_pos + ma_start_offset;
 
         // Playback any events
         size_t end = buf.n_frames_processed + n_samples;
-        mp_playback_cursor->find_time_forward(_pos);
+        mp_playback_cursor->find_time_forward(std::max(0, _pos));
         while(mp_playback_cursor->valid())
         {
             auto *event = mp_playback_cursor->get();
-            if (event->storage_time >= (_pos + n_samples)) {
+            if ((int)event->storage_time >= (_pos + (int)n_samples)) {
                 // Future event
                 break;
             }
-            if (!muted && event->storage_time >= _pos) {
-                event->proc_time = event->storage_time - _pos;
+            if (!muted && (int)event->storage_time >= _pos) {
+                event->proc_time = (int)event->storage_time - _pos;
                 PROC_send_message(*buf.buf, *event);
                 ma_n_events_triggered++;
             }
             buf.n_events_processed++;
             mp_playback_cursor->next();
-            if (mp_playback_cursor->valid()) {
-                std::cout << mp_playback_cursor->get()->storage_time << " vs " << _pos << std::endl;
-            }
         }
         
         buf.n_frames_processed += n_samples;
@@ -318,11 +315,11 @@ public:
         return rval;
     }
 
-    void set_start_offset(size_t offset) override {
+    void set_start_offset(int offset) override {
         ma_start_offset = offset;
     }
 
-    size_t get_start_offset() const override {
+    int get_start_offset() const override {
         return ma_start_offset;
     }
 };

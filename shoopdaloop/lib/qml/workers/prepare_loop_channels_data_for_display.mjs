@@ -2,7 +2,7 @@
 input data layout:
 {
     "request_id": 1,
-    "samples_per_bin": 16,
+    "timesteps_per_bin": 16,
     "channels_data": [
         ["channel_1_id", {
             "audio": [0, 1, 2, 3, ...]
@@ -17,14 +17,14 @@ input data layout:
 }
 
 where:
-- samples_per_bin is the desired samples per bin
+- timesteps_per_bin is the desired samples per bin
 - the audio data arrays are the raw data arrays as stored in the channels (lengths may differ)
 - the start offsets are in samples, not bins
 
 output data (callback message) layout:
 {
     "request_id": 1,
-    "samples_per_bin": 16,
+    "timesteps_per_bin": 16,
     "start_offset": 256,
     "channels_data": [
         ["channel_1_id", {
@@ -44,75 +44,91 @@ output data (callback message) layout:
 }
 
 where:
-- samples_per_bin is what was requested originally
+- timesteps_per_bin is what was requested originally
 - the audio data arrays are all equal in length and padded such that their start positions align
 - the start_offset in samples is the same for each array because of the padding.
 - pre_padding per channel indicates how many samples of padding were added for that channel.
 */
 WorkerScript.onMessage = function(input_data) {
     console.time("update display data")
-    var samples_per_bin = input_data['samples_per_bin']
+    var timesteps_per_bin = input_data['samples_per_bin']
     var rval = {}
 
-    // A "pos" refers to the index of a sample w.r.t. the loop start
-    var first_sample_pos = 0
-    var last_sample_pos = 0
-    var chan_first_sample_pos, chan_last_sample_pos
-    var chan_last_audio_sample_pos, chan_last_midi_sample_pos
-    for (var channel_data of input_data['channels_data']) {
-        chan_first_sample_pos = -channel_data[1]['start_offset']
-        chan_last_audio_sample_pos = ('audio' in channel_data[1]) ? chan_first_sample_pos + channel_data[1]['audio'].length : 0
-        chan_last_midi_sample_pos = ('midi_notes' in channel_data[1] && channel_data[1]['midi_notes'].length > 0) ? 
-            chan_first_sample_pos + channel_data[1]['midi_notes'][channel_data[1]['midi_notes'].length - 1]['end'] : 0
-        chan_last_sample_pos = Math.max(chan_last_audio_sample_pos, chan_last_midi_sample_pos)
-        first_sample_pos = Math.min(first_sample_pos, chan_first_sample_pos)
-        last_sample_pos = Math.max(last_sample_pos, chan_last_sample_pos)
-    }
-    var n_samples = last_sample_pos - first_sample_pos;
-    var n_bins = Math.ceil(n_samples / samples_per_bin)
+    // A "pos" / "position" in this function refers to the index of a sample w.r.t. the loop start
+
+    // Add some space to the beginning of the loop, just so that the user can e.g. shift the start offset forward.
+    // Note: 50 pixels worth of space.
+    const extra_pre_padding = 50*timesteps_per_bin
+
+    const chan_data_start_positions = 
+        input_data['channels_data'].map(chan_data => -chan_data[1]['start_offset'])
+    const chan_data_end_positions =
+        input_data['channels_data'].map((chan_data, idx) => {
+            if ('audio' in chan_data[1]) { return chan_data_start_positions[idx] + chan_data[1]['audio'].length }
+            else if ('midi_notes' in chan_data[1]) {
+                const l = chan_data[1]['midi_notes'].length
+                return (l > 0) ?
+                    chan_data_start_positions[idx] + chan_data[1]['midi_notes'][l-1]['end'] :
+                    0;
+            }
+            else { return 0; }
+        })
+    
+
+    const render_start_pos = Math.min.apply(null, chan_data_start_positions) - extra_pre_padding
+    const render_end_pos = Math.max.apply(null, chan_data_end_positions)
+
+    const render_n_timesteps = render_end_pos - render_start_pos;
+    var render_n_bins = Math.ceil(render_n_timesteps / timesteps_per_bin)
 
     var output_datas = []
-    var id, chan_start_offset, chan_audio_data, chan_midi_notes, transients_positive, transients_negative, rmss
-    var transient_positive, transient_negative, rms, sample
-    var pre_padding
-    for (var channel_data of input_data['channels_data']) {
-        id = channel_data[0]
-        chan_start_offset = channel_data[1]['start_offset']
-        chan_audio_data = ('audio' in channel_data[1]) ? channel_data[1]['audio'] : undefined
-        chan_midi_notes = ('midi_notes' in channel_data[1]) ? channel_data[1]['midi_notes'] : undefined
-        chan_first_sample_pos = -channel_data[1]['start_offset']
-        chan_last_audio_sample_pos = ('audio' in channel_data[1]) ? chan_first_sample_pos + channel_data[1]['audio'].length : 0
-        chan_last_midi_sample_pos = (chan_midi_notes && chan_midi_notes.length > 0) ? 
-            chan_first_sample_pos + chan_midi_notes[chan_midi_notes.length - 1]['end'] : 0
-        chan_last_sample_pos = Math.max(chan_last_audio_sample_pos, chan_last_midi_sample_pos)
+    input_data['channels_data'].forEach((channel_data, channel_idx) => {
+        const chan_id = channel_data[0]
+        const chan_start_offset = channel_data[1]['start_offset']
+        const chan_audio_data = ('audio' in channel_data[1]) ? channel_data[1]['audio'] : undefined
+        const chan_midi_notes = ('midi_notes' in channel_data[1]) ? channel_data[1]['midi_notes'] : undefined
+        const chan_data_start_pos = chan_data_start_positions[channel_idx]
+        const chan_data_end_pos = chan_data_end_positions[channel_idx]
+
+        var transients_negative = []
+        var transients_positive = []
+        var rmss = []
         if (chan_audio_data) {
-            transients_positive = Array(n_bins)
-            transients_negative = Array(n_bins)
-            rmss = Array(n_bins)
-            for (var bin_idx = 0; bin_idx < n_bins; bin_idx++) {
-                transient_negative = 0.0
-                transient_positive = 0.0
-                rms = 0.0
-                for (var sample_pos = first_sample_pos + (bin_idx * samples_per_bin);
-                    sample_pos < first_sample_pos + (((bin_idx+1) * samples_per_bin));
-                    sample_pos++)
+            transients_positive = Array(render_n_bins)
+            transients_negative = Array(render_n_bins)
+            rmss = Array(render_n_bins)
+            for (var bin_idx = 0; bin_idx < render_n_bins; bin_idx++) {
+                var bin_transient_negative = 0.0
+                var bin_transient_positive = 0.0
+                var bin_rms = 0.0
+                for (var render_pos = render_start_pos + (bin_idx * timesteps_per_bin);
+                    render_pos < render_start_pos + (((bin_idx+1) * timesteps_per_bin));
+                    render_pos++)
                 {
-                    sample = (sample_pos >= chan_first_sample_pos && sample_pos < chan_last_sample_pos) ?
-                        chan_audio_data[sample_pos - chan_first_sample_pos] : 0.0
-                    if (sample > 0.0) { transient_positive = Math.max(transient_positive, sample) }
-                    else { transient_negative = Math.min(transient_negative, sample) }
-                    rms += Math.sqrt(sample * sample)
+                    const sample = (render_pos >= chan_data_start_pos && render_pos < chan_data_end_pos) ?
+                        chan_audio_data[render_pos - chan_data_start_pos] : 0.0
+                    if (sample > 0.0) { bin_transient_positive = Math.max(bin_transient_positive, sample) }
+                    else { bin_transient_negative = Math.min(bin_transient_negative, sample) }
+                    bin_rms += Math.sqrt(sample * sample)
                 }
-                rms /= samples_per_bin
-                transients_positive[bin_idx] = transient_positive
-                transients_negative[bin_idx] = transient_negative
-                rmss[bin_idx] = rms
+                bin_rms /= timesteps_per_bin
+                transients_positive[bin_idx] = bin_transient_positive
+                transients_negative[bin_idx] = bin_transient_negative
+                rmss[bin_idx] = bin_rms
             }
         }
-        pre_padding = first_sample_pos + chan_start_offset
+        const chan_pre_padding = chan_data_start_pos - render_start_pos
+
+        // Re-scale and offset the MIDI notes.
+        var rescaled_midi_notes = chan_midi_notes ? chan_midi_notes.map(n => {
+            var r = n
+            r['start'] = (r['start'] + chan_pre_padding) / timesteps_per_bin
+            r['end'] = (r['end'] + chan_pre_padding) / timesteps_per_bin
+            return r
+        }) : undefined
         
         var d = {
-            'pre_padding': pre_padding
+            'included_pre_padding': chan_pre_padding
         }
         if (chan_audio_data) {
             d['audio'] = {
@@ -121,20 +137,23 @@ WorkerScript.onMessage = function(input_data) {
                 "rms": rmss
             }
         }
-        if (chan_midi_notes) {
-            d['midi_notes'] = chan_midi_notes
+        if (rescaled_midi_notes) {
+            if(rescaled_midi_notes.length > 0) {
+                console.log("First padded note @ ", rescaled_midi_notes[0]['start'], chan_pre_padding, chan_data_start_pos, render_start_pos, chan_start_offset)
+            }
+            d['midi_notes'] = rescaled_midi_notes
         }
 
         output_datas.push([
-            id, d
+            chan_id, d
         ])
-    }
+    })
 
     // Construct return value
     rval = {
         'request_id': input_data['request_id'],
-        'samples_per_bin': samples_per_bin,
-        'start_offset': -first_sample_pos,
+        'samples_per_bin': timesteps_per_bin,
+        'render_start_pos': render_start_pos,
         'channels_data': output_datas
     }
     

@@ -17,6 +17,7 @@ Item {
     property alias sync_active : sync_active_button.sync_active
 
     function update() {
+        console.log("SYNC ACTIVE:", sync_active)
         state_registry.replace('sync_active', sync_active)
     }
 
@@ -124,7 +125,7 @@ Item {
             MaterialDesignIcon {
                 size: Math.min(parent.width, parent.height) - 10
                 anchors.centerIn: parent
-                name: parent.sync_active ? 'timer-sand' : 'exclamation';
+                name: sync_active_button.sync_active ? 'timer-sand' : 'exclamation';
                 color: Material.foreground
             }
         }

@@ -50,8 +50,8 @@ void                   set_audio_channel_volume (shoopdaloop_loop_audio_channel_
 midi_channel_state_info_t  *get_midi_channel_state   (shoopdaloop_loop_midi_channel_t  *channel);
 void                   set_audio_channel_mode   (shoopdaloop_loop_audio_channel_t * channel, channel_mode_t mode);
 void                   set_midi_channel_mode    (shoopdaloop_loop_midi_channel_t * channel, channel_mode_t mode);
-void                   set_audio_channel_start_offset (shoopdaloop_loop_audio_channel_t *channel, unsigned offset);
-void                   set_midi_channel_start_offset  (shoopdaloop_loop_midi_channel_t *channel, unsigned offset);
+void                   set_audio_channel_start_offset (shoopdaloop_loop_audio_channel_t *channel, int offset);
+void                   set_midi_channel_start_offset  (shoopdaloop_loop_midi_channel_t *channel, int offset);
 
 void loop_transition(shoopdaloop_loop_t *loop,
                       loop_mode_t mode,

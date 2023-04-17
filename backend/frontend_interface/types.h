@@ -101,7 +101,7 @@ typedef struct {
     float volume;
     float output_peak;
     unsigned length;
-    unsigned start_offset;
+    int start_offset;
 } audio_channel_state_info_t;
 
 typedef struct {
@@ -109,7 +109,7 @@ typedef struct {
     unsigned int n_events_triggered;
     unsigned n_notes_active;
     unsigned length;
-    unsigned start_offset;
+    int start_offset;
 } midi_channel_state_info_t;
 
 typedef struct {

@@ -30,7 +30,7 @@ private:
     std::shared_ptr<BufferPool> ma_buffer_pool;
     const size_t ma_buffer_size;
     std::atomic<size_t> ma_data_length;
-    std::atomic<size_t> ma_start_offset;
+    std::atomic<int> ma_start_offset;
     std::atomic<float> ma_output_peak;
     std::atomic<float> ma_volume;
     std::atomic<channel_mode_t> ma_mode;
@@ -62,9 +62,6 @@ public:
     {
         mp_buffers.reserve(initial_max_buffers);
         mp_buffers.push_back(get_new_buffer()); // Initial recording buffer
-
-        // TODO
-        std::cerr << "Warning: AudioChannel should have a way to increase its buffers capacity outside of the processing thread. Also atomic access. Also atomic planning of transitions." << std::endl;
     }
 
     // NOTE: only use on process thread!
@@ -176,8 +173,8 @@ public:
         auto data_length = ma_data_length.load();
 
         auto &from = mp_recording_source_buffer;
-        auto buf_idx = (length_before + start_offset) / ma_buffer_size;
-        auto buf_head = (length_before + start_offset) % ma_buffer_size;
+        auto buf_idx = std::max(((int)length_before + start_offset), 0) / ma_buffer_size;
+        auto buf_head = std::max(((int)length_before + start_offset), 0) % ma_buffer_size;
         auto buf_space = ma_buffer_size - buf_head;
         while (mp_buffers.size() <= buf_idx) {
             mp_buffers.push_back(get_new_buffer());
@@ -208,7 +205,16 @@ public:
         }
         auto data_length = ma_data_length.load();
         auto start_offset = ma_start_offset.load();
-        auto data_position = position + start_offset;
+        auto data_position = (int)position + start_offset;
+
+        if (data_position < 0) {
+            // skip ahead to the part that is in range
+            const int skip = -data_position;
+            position += skip;
+            n_samples = std::max((int)n_samples - skip, 0);
+            mp_recording_source_buffer += std::min(skip, (int)mp_recording_source_buffer_size);
+            mp_recording_source_buffer_size = std::max((int)mp_recording_source_buffer_size - skip, 0);
+        }
 
         while (data_length < (data_position + n_samples)) {
             // In replacement, we lengthen the buffer as needed.
@@ -254,7 +260,16 @@ public:
 
         auto data_length = ma_data_length.load();
         auto start_offset = ma_start_offset.load();
-        auto data_position = position + start_offset;
+        auto data_position = (int)position + start_offset;
+
+        if (data_position < 0) {
+            // skip ahead to the part that is in range
+            const int skip = -data_position;
+            position += skip;
+            n_samples = std::max((int)n_samples - skip, 0);
+            mp_recording_source_buffer += std::min(skip, (int)mp_recording_source_buffer_size);
+            mp_recording_source_buffer_size = std::max((int)mp_recording_source_buffer_size - skip, 0);
+        }
         
         if (data_position < data_length) {
             // We have something to play.
@@ -353,11 +368,11 @@ public:
         return ma_volume;
     }
     
-    void set_start_offset(size_t offset) override {
+    void set_start_offset(int offset) override {
         ma_start_offset = offset;
     }
 
-    size_t get_start_offset() const override {
+    int get_start_offset() const override {
         return ma_start_offset;
     }
 

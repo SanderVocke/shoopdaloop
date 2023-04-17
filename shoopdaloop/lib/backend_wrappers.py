@@ -222,7 +222,7 @@ class BackendLoopMidiChannel:
     
     def set_start_offset(self, offset):
         if self.shoop_c_handle:
-            set_audio_channel_start_offset(self.shoop_c_handle, offset)
+            set_midi_channel_start_offset(self.shoop_c_handle, offset)
     
     def destroy(self):
         if self.shoop_c_handle:

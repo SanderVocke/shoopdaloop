@@ -53,7 +53,9 @@ Item {
     }
 
     // Objects registry just stores object ids -> objects.
-    property Registry objects_registry: Registry { verbose: false }
+    property Registry objects_registry: Registry {
+        verbose: false
+    }
 
     // State registry stores the following optional states:
     // - "master_loop" -> LoopWidget which holds the master loop
@@ -102,6 +104,9 @@ Item {
     }
 
     function reload() {
+        state_registry.clear([
+            'sync_active'
+        ])
         state_registry.reset_saving_loading()
         objects_registry.clear()
         tracks_widget.reload()
@@ -173,12 +178,12 @@ Item {
             }
         }
 
-        ScriptingWidget {
+        Item {
             id: scripting_widget
 
-            initial_descriptor: session.initial_descriptor.scenes
-            objects_registry: session.objects_registry
-            state_registry: session.state_registry
+            // initial_descriptor: session.initial_descriptor.scenes
+            // objects_registry: session.objects_registry
+            // state_registry: session.state_registry
 
             height: 160
             anchors {

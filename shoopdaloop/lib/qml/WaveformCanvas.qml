@@ -6,19 +6,19 @@ Item {
     id: root
     property var waveform_data: []
     property var midi_notes: []
-    readonly property int length_timesteps : {
-        var audio = waveform_data ? waveform_data.length * timesteps_per_pixel : 0
+    readonly property int data_length : {
+        var audio = waveform_data ? waveform_data.length : 0
         var midi = midi_notes && midi_notes.length > 0 ? midi_notes[midi_notes.length - 1]['end'] : 0
         return Math.max(audio, midi)
     }
-    readonly property int length_pixels : length_timesteps / timesteps_per_pixel
-    width: Math.max(1, length_pixels)
-    property int timesteps_per_pixel
+    width: Math.max(1, data_length)
     property real waveform_data_max : 1.0
     property real min_db: -60.0
     property real max_db: 0.0
     property bool dirty: false
     readonly property int max_canvas_width: 8192
+
+    clip: true
 
     signal requestPaint()
     function makeDirty() { dirty = true }
@@ -47,7 +47,7 @@ Item {
         // which renders blurry if a canvas is too large.
         // Therefore, we render multiple canvases if needed.
         Repeater {
-            model: Math.ceil(root.length_pixels / max_canvas_width)
+            model: Math.ceil(root.data_length / max_canvas_width)
             anchors {
                 top: parent.top
                 bottom: parent.bottom
@@ -74,8 +74,6 @@ Item {
                 onPaint: {
                     var ctx = getContext("2d");
                     ctx.reset()
-                    ctx.fillStyle = Qt.rgba(0, 0, 0, 1);
-                    ctx.fillRect(0, 0, width, height);
 
                     if (waveform_data && waveform_data.length > 0) {
                         ctx.fillStyle = Qt.rgba(1, 0, 0, 1);
@@ -86,8 +84,6 @@ Item {
                         (root.max_canvas_width * index);
                     var last_pixel =
                         first_pixel + root.max_canvas_width
-                    var first_time = first_pixel * timesteps_per_pixel
-                    var last_time = last_pixel * timesteps_per_pixel
 
                     // Draw audio waveform data
                     for(var idx=0; idx < width; idx++) {
@@ -108,16 +104,16 @@ Item {
                     ctx.fillStyle = Qt.rgba(1, 1, 1, 1);
                     var note_height = (height * 4) / 128;
                     for(var note of midi_notes) {
-                        if (note.start < last_time || note.end >= first_time) {
-                            var x_start = clamp(note.start / timesteps_per_pixel, first_pixel, last_pixel - 1)
-                            var x_end = clamp(note.end / timesteps_per_pixel, first_pixel, last_pixel - 1)
+                        if (note.start < last_pixel || note.end >= first_pixel) {
+                            var x_start = clamp(note.start - first_pixel, first_pixel, root.max_canvas_width - 1)
+                            var x_end = clamp(note.end - first_pixel, first_pixel, root.max_canvas_width - 1)
                             var note_width = x_end - x_start
                             var y = (height-note_height) - (((height-2*note_height) / 128) * note.note)
 
                             ctx.fillRect(
                                 x_start,
-                                note_width,
                                 y,
+                                note_width,
                                 note_height
                             )
                         }

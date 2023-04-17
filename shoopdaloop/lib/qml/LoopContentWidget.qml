@@ -7,6 +7,7 @@ import '../mode_helpers.js' as ModeHelpers
 Item {
     id: root
     property var loop
+    property var master_loop
 
     // INTERNAL
 
@@ -15,6 +16,19 @@ Item {
 
     onData_needs_updateChanged: { if(visible && data_needs_update) { request_update_data() } }
     onVisibleChanged: { if(visible && data_needs_update) { request_update_data() } }
+
+    onLoopChanged: { data_needs_update = true }
+    Connections {
+        target: root.loop
+        property var prev_mode : null
+        function onModeChanged() {
+            if (prev_mode && ModeHelpers.is_recording_mode(prev_mode) &&
+                !ModeHelpers.is_recording_mode(root.loop.mode)) {
+                    data_needs_update = true
+                }
+            prev_mode = root.loop.mode
+        }
+    }
 
     // For layout of this data, see the worker script. Its reply is stored in here directly.
     property var channels_data : null
@@ -26,7 +40,8 @@ Item {
     onSamples_per_pixelChanged: {data_needs_update = true}
 
     enum Tool {
-        SetStartOffset,
+        SetStartOffsetAll,
+        SetStartOffsetSingle,
         SetLength
     }
 
@@ -68,8 +83,8 @@ Item {
             'samples_per_bin': samples_per_pixel,
             'channels_data': []
         }
-        var audio_channels = loop.audio_channels()
-        var midi_channels = loop.midi_channels()
+        var audio_channels = loop.get_audio_channels()
+        var midi_channels = loop.get_midi_channels()
         var channel_audio_data, channel_midi_notes, channel_id, channel_start_offset, chan
         for (var chan_idx = 0; chan_idx < audio_channels.length; chan_idx++) {
             chan = audio_channels[chan_idx]
@@ -131,19 +146,24 @@ Item {
 
     function on_waveform_clicked(waveform, channel, event, sample) {
         console.log("Waveform clicked @ ", event.x, " (sample ", sample, ")")
-        var channels = loop.audio_channels()
+        var channels = loop.all_channels()
+        const clicked_chan_idx = channels.findIndex(c => c == channel)
+        const clicked_pre_padding = channels_data['channels_data'][clicked_chan_idx][1]['included_pre_padding']
         switch (tool_combo.currentValue) {
-            case LoopContentWidget.Tool.SetStartOffset:
-                for(var chan_idx =0; chan_idx < channels.length; chan_idx++) {
-                    var chan_sample = sample - channels_data['channels_data'][chan_idx][1]['pre_padding']
-                    channels[chan_idx].set_start_offset(chan_sample)
-                }
+            case LoopContentWidget.Tool.SetStartOffsetAll:
+                var chan_sample = sample - clicked_pre_padding
+                channels.forEach(c => { console.log(c, 'set start', chan_sample); c.set_start_offset(chan_sample) })
+                break;
+            case LoopContentWidget.Tool.SetStartOffsetSingle:
+                var chan_sample = sample - clicked_pre_padding
+                channels[clicked_chan_idx].set_start_offset(chan_sample)
                 break;
             case LoopContentWidget.Tool.SetLength:
                 for(var chan_idx = 0; chan_idx < channels.length; chan_idx++) {
                     var chan = channels[chan_idx];
                     if (chan == channel) {
-                        var chan_sample = sample - channels_data['channels_data'][chan_idx][1]['pre_padding']
+                        const pre_padding = channels_data['channels_data'][chan_idx][1]['included_pre_padding']
+                        var chan_sample = sample - pre_padding
                         var chan_len = chan_sample - chan.start_offset
                         if (chan_len >= 0) {
                             root.loop.set_length (chan_len)
@@ -236,9 +256,11 @@ Item {
             anchors.verticalCenter: zoom_combo.verticalCenter
             textRole: "text"
             valueRole: "value"
+            width: 300
 
             model: [
-                { value: LoopContentWidget.Tool.SetStartOffset, text: "set start" },
+                { value: LoopContentWidget.Tool.SetStartOffsetAll, text: "set start (all)" },
+                { value: LoopContentWidget.Tool.SetStartOffsetSingle, text: "set start (single)" },
                 { value: LoopContentWidget.Tool.SetLength, text: "set length" }
             ]
         }
@@ -269,11 +291,16 @@ Item {
 
                     function has_audio() { return ('audio' in mapped_item[1])}
                     function has_midi() { return ('midi_notes' in mapped_item[1])}
+
+                    width: Math.max(scroll.width, waveform.data_length, 1)
                     
-                    readonly property var channel: [...loop.audio_channels(), ...loop.midi_channels()].find(c => c.obj_id == mapped_item[0])
+                    readonly property var channel: {
+                        console.log( loop.all_channels(), mapped_item[0] )
+
+                        return loop.all_channels().find(c => c.obj_id == mapped_item[0])
+                    }
 
                     height: 80
-                    width: waveform.width
 
                     MouseArea {
                         x: 0
@@ -291,18 +318,10 @@ Item {
                         function onStart_offsetChanged() { root.data_needs_update = true }
                     }
 
-                    WaveformCanvas {
-                        id: waveform
-                        anchors {
-                            left: parent.left
-                        }
-                        height: 80
-                        
-                        waveform_data: delegate.has_audio() ? delegate.mapped_item[1]['audio']['rms'] : []
-                        midi_notes: delegate.has_midi() ? delegate.mapped_item[1]['midi_notes'] : []
-                        timesteps_per_pixel : root.samples_per_pixel
-                        // min_db : widget.min_db
-                        // max_db : widget.max_db
+                    Rectangle {
+                        id: background_rect
+                        color: 'black'
+                        anchors.fill: parent
                     }
 
                     Rectangle {
@@ -311,15 +330,29 @@ Item {
                         width: root.loop.length / root.channels_data['samples_per_bin']
                         height: parent.height
                         opacity: 0.3
-                        x: root.channels_data ? root.channels_data['start_offset'] / root.channels_data['samples_per_bin'] : 0
+                        x: root.channels_data ? -root.channels_data['render_start_pos'] / root.channels_data['samples_per_bin'] : 0
                         y: 0
+                    }
+
+                    WaveformCanvas {
+                        id: waveform
+                        anchors {
+                            left: parent.left
+                        }
+                        height: 80
+                        width: parent.width
+                        
+                        waveform_data: delegate.has_audio() ? delegate.mapped_item[1]['audio']['rms'] : []
+                        midi_notes: delegate.has_midi() ? delegate.mapped_item[1]['midi_notes'] : []
+                        // min_db : widget.min_db
+                        // max_db : widget.max_db
                     }
 
                     Rectangle {
                         color: 'green'
                         width: 2
                         height: parent.height
-                        x: root.channels_data ? (root.loop.position + root.channels_data['start_offset']) / root.channels_data['samples_per_bin'] : 0
+                        x: root.channels_data ? (root.loop.position - root.channels_data['render_start_pos']) / root.channels_data['samples_per_bin'] : 0
                         y: 0
                     }
                 }
