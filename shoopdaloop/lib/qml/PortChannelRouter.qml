@@ -10,7 +10,6 @@ Item {
     property list<var> direct_port_pairs // List of ***PortPair
     property var maybe_mixed_wet_audio_output_port  // AudioPort
     property var loop
-    onLoopChanged: () => console.log(loop)
 
     readonly property var audio_channel_descriptors: {
         var r = []
@@ -45,7 +44,6 @@ Item {
                 })
             }
         }
-        console.log('ports per audio', r)
         return r
     }
 
@@ -78,7 +76,6 @@ Item {
                 })
             }
         }
-        console.log('ports per midi', r)
         return r
     }
 
@@ -86,7 +83,7 @@ Item {
         model: audio_channel_descriptors.length
         LoopAudioChannel {
             ports : audio_channel_descriptors[index]['ports']
-            initial_mode : { console.log(audio_channel_descriptors[index]['mode']); return audio_channel_descriptors[index]['mode'] }
+            initial_mode : audio_channel_descriptors[index]['mode']
             loop: router.loop
         }
     }

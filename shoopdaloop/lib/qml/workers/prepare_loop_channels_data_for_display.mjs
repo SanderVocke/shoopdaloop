@@ -138,9 +138,6 @@ WorkerScript.onMessage = function(input_data) {
             }
         }
         if (rescaled_midi_notes) {
-            if(rescaled_midi_notes.length > 0) {
-                console.log("First padded note @ ", rescaled_midi_notes[0]['start'], chan_pre_padding, chan_data_start_pos, render_start_pos, chan_start_offset)
-            }
             d['midi_notes'] = rescaled_midi_notes
         }
 

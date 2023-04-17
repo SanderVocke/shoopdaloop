@@ -17,7 +17,6 @@ Item {
     property alias sync_active : sync_active_button.sync_active
 
     function update() {
-        console.log("SYNC ACTIVE:", sync_active)
         state_registry.replace('sync_active', sync_active)
     }
 

@@ -45,10 +45,8 @@ class Tasks(QObject):
     def when_finished(self, fn):
         def exec_fn():
             if callable(fn):
-                print("exec callable")
                 fn()
             elif isinstance(fn, QJSValue):
-                print("exec qjsvalue")
                 fn.call()
         
         if not self.anything_to_do:

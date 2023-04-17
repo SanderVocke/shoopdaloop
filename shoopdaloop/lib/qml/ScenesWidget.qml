@@ -149,8 +149,6 @@ Item {
                                 property var mapped_item
                                 property int index
 
-                                onParentChanged: console.log("parent:", parent)
-
                                 anchors {
                                     right: column.right
                                     left: column.left

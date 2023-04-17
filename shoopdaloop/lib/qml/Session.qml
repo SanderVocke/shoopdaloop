@@ -61,7 +61,7 @@ Item {
     // - "master_loop" -> LoopWidget which holds the master loop
     // - "targeted_loop" -> LoopWidget which is currently targeted
     property Registry state_registry: StateRegistry {
-        verbose: true
+        verbose: false
     }
 
     // For (test) access
@@ -124,7 +124,6 @@ Item {
             var tasks = tasks_factory.create_tasks_obj(session)
 
             file_io.extract_tarfile(filename, tempdir)
-            console.log("Extracted to ", tempdir)
 
             var session_filename = tempdir + '/session.json'
             var session_file_contents = file_io.read_file(session_filename)

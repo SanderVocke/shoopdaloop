@@ -38,9 +38,7 @@ Item {
         if(verbose) {
             console.log("REGISTRY: Unregistered:", id)
         }
-        console.log('before', registry_data[id])
         delete registry_data[id]
-        console.log('after', registry_data[id])
         itemRemoved(id)
         contentsChanged()
     }

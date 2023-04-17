@@ -7,7 +7,6 @@ Item {
     property var object : null
 
     function update() {
-        if (key == 'sync_active') console.log("UPDATE", registry, key, registry.has(key))
         object = (registry && registry.has(key)) ?
             registry.get(key) : null; 
     }

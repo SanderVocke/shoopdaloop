@@ -753,7 +753,6 @@ Item {
                                         var n = widget.n_multiples_of_master_length
                                         var delay = widget.n_multiples_of_master_length - widget.current_cycle - 1
                                         var prev_mode = statusrect.loop.mode
-                                        console.log('n', n, 'delay', delay)
                                         widget.transition(Types.LoopMode.RecordingDryIntoWet, delay, true)
                                         statusrect.loop.transition(prev_mode, delay + n, true)
                                     }
@@ -1273,7 +1272,6 @@ Item {
                 direct_audio_channels = chans.filter(c => c.mode == Types.ChannelMode.Direct)
                 dry_audio_channels = chans.filter(c => c.mode == Types.ChannelMode.Dry)
                 wet_audio_channels = chans.filter(c => c.mode == Types.ChannelMode.Wet)
-                console.log(direct_audio_channels, wet_audio_channels, dry_audio_channels)
                 var to_load = []
                 if (direct_load_checkbox.checked) { to_load = to_load.concat(direct_audio_channels) }
                 if (dry_load_checkbox.checked) { to_load = to_load.concat(dry_audio_channels) }
@@ -1392,7 +1390,6 @@ Item {
             function doLoad(update_loop_length) {
                 widget.force_load_backend()
                 var samplerate = widget.maybe_loaded_loop.backend.get_sample_rate()
-                console.log("load")
                 file_io.load_midi_to_channel_async(filename, samplerate, channel, update_loop_length ?
                     widget.maybe_loaded_loop : null)
             }

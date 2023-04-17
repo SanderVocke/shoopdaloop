@@ -152,7 +152,7 @@ Item {
         switch (tool_combo.currentValue) {
             case LoopContentWidget.Tool.SetStartOffsetAll:
                 var chan_sample = sample - clicked_pre_padding
-                channels.forEach(c => { console.log(c, 'set start', chan_sample); c.set_start_offset(chan_sample) })
+                channels.forEach(c => c.set_start_offset(chan_sample))
                 break;
             case LoopContentWidget.Tool.SetStartOffsetSingle:
                 var chan_sample = sample - clicked_pre_padding
@@ -318,11 +318,7 @@ Item {
 
                     width: Math.max(scroll.width, waveform.data_length, 1)
                     
-                    readonly property var channel: {
-                        console.log( loop.all_channels(), mapped_item[0] )
-
-                        return loop.all_channels().find(c => c.obj_id == mapped_item[0])
-                    }
+                    readonly property var channel: loop.all_channels().find(c => c.obj_id == mapped_item[0])
 
                     height: 80
 
