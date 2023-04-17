@@ -205,7 +205,7 @@ Item {
     // }
 
     Row {
-        id: toolbar
+        id: toolbar_1
         anchors {
             top: parent.top
             left: parent.left
@@ -256,7 +256,7 @@ Item {
             anchors.verticalCenter: zoom_combo.verticalCenter
             textRole: "text"
             valueRole: "value"
-            width: 300
+            width: 120
 
             model: [
                 { value: LoopContentWidget.Tool.SetStartOffsetAll, text: "set start (all)" },
@@ -276,7 +276,7 @@ Item {
             textRole: "text"
             valueRole: "value"
             currentIndex : 5
-            width: 150
+            width: 120
 
             model: [
                 { value: undefined, text: "None" },
@@ -288,11 +288,51 @@ Item {
                 { value: 16, text: "Master / 16" },
             ]
         }
-    }    
+    }
+
+    Row {
+        id: toolbar_2
+        anchors {
+            top: toolbar_1.bottom
+            left: parent.left
+        }
+        height: 40
+        spacing: toolbar_1.spacing
+
+        Label {
+            text: "length:"
+            anchors.verticalCenter: length_field.verticalCenter
+        }
+
+        TextField {
+            id: length_field
+            validator: IntValidator {}
+            text: root.loop.length.toString()
+            onEditingFinished: {
+                root.loop.set_length(parseInt(text))
+                text = Qt.binding(() => root.loop.length.toString())
+            }
+        }
+
+        Button {
+            height: 35
+            width: 30
+            onClicked: {}
+
+            anchors.verticalCenter: length_field.verticalCenter
+
+            MaterialDesignIcon {
+                size: Math.min(parent.width, parent.height) - 10
+                anchors.centerIn: parent
+                name: 'dots-vertical'
+                color: Material.foreground
+            }
+        }
+    }
 
     ScrollView {
         id: scroll
-        anchors.top: toolbar.bottom
+        anchors.top: toolbar_2.bottom
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom

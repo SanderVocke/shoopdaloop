@@ -20,6 +20,7 @@ ApplicationWindow {
             visible: window.visible
             id: waveform
             anchors.fill: parent
+            anchors.margins: 5
             //min_db: -50.0
             loop: window.loop
             master_loop: window.master_loop

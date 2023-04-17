@@ -15,6 +15,9 @@ Item {
 
     property list<var> instances : []
 
+    width: childrenRect.width
+    height: childrenRect.height
+
     function instantiate_delegate(model_elem, index) {
         return delegate.createObject(root.parent, {
             mapped_item : model_elem,
