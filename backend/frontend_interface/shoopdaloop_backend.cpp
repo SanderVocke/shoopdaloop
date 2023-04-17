@@ -932,7 +932,9 @@ unsigned get_sample_rate(shoopdaloop_backend_instance_t *backend) {
 }
 
 shoopdaloop_loop_t *create_loop(shoopdaloop_backend_instance_t *backend) {
-    return external_loop(internal_backend(backend)->create_loop());
+    auto rval = external_loop(internal_backend(backend)->create_loop());
+    std::cout << "CREATE LOOP @ " << rval << std::endl;
+    return rval;
 }
 
 shoopdaloop_loop_audio_channel_t *add_audio_channel (shoopdaloop_loop_t *loop, channel_mode_t mode) {
@@ -1155,8 +1157,13 @@ void loops_transition(unsigned int n_loops,
                       unsigned wait_for_sync) {
     internal_loop(loops[0])->get_backend().cmd_queue.queue([=]() {
         for (size_t idx=0; idx<n_loops; idx++) {
+            std::cout << "TRANSITION LOOP @ " << loops[idx] << std::endl;
             auto &loop_info = *internal_loop(loops[idx]);
             loop_info.loop->plan_transition(mode, delay, wait_for_sync, false);
+        }
+        for (size_t idx=0; idx<n_loops; idx++) {
+            auto &loop_info = *internal_loop(loops[idx]);
+            loop_info.loop->PROC_handle_sync();
         }
     });
 }

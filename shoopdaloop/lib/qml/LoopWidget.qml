@@ -128,13 +128,20 @@ Item {
 
     // Methods
     function transition(mode, delay, wait_for_sync, emit=true) {
-        dynamic_loop.transition(mode, delay, wait_for_sync);
-        state_registry.maybe_get('selected_loop_ids', new Set()).forEach((loop_id) => {
-            var loop = objects_registry.maybe_get(loop_id, null)
-            if(loop != this) {
-                loop.maybe_loop.transition(mode, delay, wait_for_sync)
+        // Do the transition for this loop and all selected loops, if any
+        var selected_ids = state_registry.maybe_get('selected_loop_ids', new Set())
+        selected_ids.add(obj_id)
+        var objects = []
+        selected_ids.forEach(id => {
+            var obj = objects_registry.maybe_get(id, undefined)
+            if (obj) {
+                // Force to load all loops involved
+                obj.force_load_backend()
+                objects.push(obj)
             }
         })
+        var backend_loops = objects.map(o => o.maybe_loaded_loop)
+        backend_loops[0].transition_multiple(backend_loops, mode, delay, wait_for_sync)
     }
     function clear(length, emit=true) {
         dynamic_loop.clear(length);

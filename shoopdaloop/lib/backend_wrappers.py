@@ -6,6 +6,8 @@ from enum import Enum
 from dataclasses import dataclass
 import typing
 import copy
+import threading
+import time
 
 import jacklib
 import mido
@@ -125,6 +127,7 @@ def midi_message_dict_to_backend(msg):
     for i in range(len(msg['data'])):
         m[0].data[i] = msg['data'][i]
     return m
+
 class BackendLoopAudioChannel:
     def __init__(self, loop, c_handle : 'POINTER(shoopdaloop_loop_audio_channel)'):
         self.loop_shoop_c_handle = loop.c_handle()
@@ -235,6 +238,15 @@ class BackendLoopMidiChannel:
 class BackendLoop:
     def __init__(self, c_handle : 'POINTER(shoopdaloop_loop_t)'):
         self.shoop_c_handle = c_handle
+        print("EXIST {}".format(self))
+
+        def monitor():
+            while True:
+                time.sleep(1.0)
+                print("MONITOR {} {}".format(self.shoop_c_handle, self.shoop_c_handle.contents))
+
+        self.t = threading.Thread(target=monitor)
+        self.t.start()
     
     def c_handle(self):
         return self.shoop_c_handle
@@ -254,6 +266,22 @@ class BackendLoop:
                                 to_state.value,
                                 cycles_delay,
                                 wait_for_sync)
+    
+    # Static version for multiple loops
+    def transition_multiple(loops, to_state : Type['LoopMode'],
+                   cycles_delay : int, wait_for_sync : bool):
+        print('transition {} loops: {}, {}, {}'.format(len(loops), to_state, cycles_delay, wait_for_sync))
+        HandleType = POINTER(shoopdaloop_loop_t)
+        handles = (HandleType * len(loops))()
+        for idx,l in enumerate(loops):
+            handles[idx] = l.c_handle()
+            print("loop {}: {}: {} => {}".format(idx, l, handles[idx], handles[idx].contents))
+        loops_transition(len(loops),
+                                handles,
+                                to_state.value,
+                                cycles_delay,
+                                wait_for_sync)
+        del handles
     
     def get_state(self):
         state = get_loop_state(self.shoop_c_handle)
@@ -390,6 +418,7 @@ class Backend:
 
     def create_loop(self) -> Type['BackendLoop']:
         handle = create_loop(self._c_handle)
+        print("created: {} => {}".format(handle, handle.contents))
         rval = BackendLoop(handle)
         return rval
 

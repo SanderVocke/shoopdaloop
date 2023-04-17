@@ -211,6 +211,12 @@ class Loop(QQuickItem):
     def transition(self, mode, delay, wait_for_sync):
         if self.initialized:
             self._backend_loop.transition(LoopMode(mode), delay, wait_for_sync)
+    
+    @Slot(list, int, int, bool)
+    def transition_multiple(self, loops, mode, delay, wait_for_sync):
+        if self.initialized:
+            backend_loops = [l._backend_loop for l in loops]
+            BackendLoop.transition_multiple(backend_loops, LoopMode(mode), delay, wait_for_sync)
 
     @Slot(int)
     def clear(self, length):
