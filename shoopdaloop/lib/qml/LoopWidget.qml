@@ -259,6 +259,7 @@ Item {
             id: detailswindow
             title: widget.initial_descriptor.id + " details"
             loop: statusrect.loop
+            master_loop: widget.master_loop
         }
 
         ContextMenu {

@@ -6,6 +6,7 @@ import '../mode_helpers.js' as ModeHelpers
 
 ApplicationWindow {
         property var loop
+        property var master_loop
         id: window
 
         width: 800
@@ -21,6 +22,7 @@ ApplicationWindow {
             anchors.fill: parent
             //min_db: -50.0
             loop: window.loop
+            master_loop: window.master_loop
 
             // Connections {
             //     target: window

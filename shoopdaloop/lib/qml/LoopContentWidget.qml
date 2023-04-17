@@ -264,6 +264,30 @@ Item {
                 { value: LoopContentWidget.Tool.SetLength, text: "set length" }
             ]
         }
+
+        Label {
+            anchors.verticalCenter: zoom_combo.verticalCenter
+            text: "Grid:"
+        }
+
+        ComboBox {
+            id: minor_grid_divider
+            anchors.verticalCenter: zoom_combo.verticalCenter
+            textRole: "text"
+            valueRole: "value"
+            currentIndex : 5
+            width: 150
+
+            model: [
+                { value: undefined, text: "None" },
+                { value: 2, text: "Master / 2" },
+                { value: 3, text: "Master / 3" },
+                { value: 4, text: "Master / 4" },
+                { value: 6, text: "Master / 6" },
+                { value: 8, text: "Master / 8" },
+                { value: 16, text: "Master / 16" },
+            ]
+        }
     }    
 
     ScrollView {
@@ -332,6 +356,72 @@ Item {
                         opacity: 0.3
                         x: root.channels_data ? -root.channels_data['render_start_pos'] / root.channels_data['samples_per_bin'] : 0
                         y: 0
+                    }
+
+                    Repeater {
+                        id: minor_grid_lines
+                        anchors.fill: parent
+
+                        property real start : data_window_rect.x
+                        property real interval : minor_grid_divider.currentValue ? major_grid_lines.interval / minor_grid_divider.currentValue : undefined
+                        property var positions : {
+                            if (interval && interval > 0 && parent.width / interval < 1000) {
+                                var r = []
+                                function pos(offset) {
+                                    return Math.round(start + offset*interval)
+                                }
+                                var off =  - Math.floor(start / interval)
+                                for(; pos(off) < parent.width; off++) {
+                                    r.push(pos(off))
+                                }
+                                return r
+                            } else {
+                                return []
+                            }
+                        }
+
+                        model: positions.length
+
+                        Rectangle {
+                            color: 'grey'
+                            width: 1
+                            height: parent.height
+                            x: minor_grid_lines.positions[index] - 1
+                            y: 0
+                        }
+                    }
+
+                    Repeater {
+                        id: major_grid_lines
+                        anchors.fill: parent
+
+                        property real start : data_window_rect.x
+                        property real interval : data_window_rect.width
+                        property var positions : {
+                            if (interval && interval > 0 && parent.width / interval < 1000) {
+                                var r = []
+                                function pos(offset) {
+                                    return Math.round(start + offset*interval)
+                                }
+                                var off =  - Math.floor(start / interval)
+                                for(; pos(off) < parent.width; off++) {
+                                    r.push(pos(off))
+                                }
+                                return r
+                            } else {
+                                return []
+                            }
+                        }
+
+                        model: positions.length
+
+                        Rectangle {
+                            color: 'white'
+                            width: 1
+                            height: parent.height
+                            x: major_grid_lines.positions[index] - 1
+                            y: 0
+                        }
                     }
 
                     WaveformCanvas {
