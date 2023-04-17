@@ -238,15 +238,6 @@ class BackendLoopMidiChannel:
 class BackendLoop:
     def __init__(self, c_handle : 'POINTER(shoopdaloop_loop_t)'):
         self.shoop_c_handle = c_handle
-        print("EXIST {}".format(self))
-
-        def monitor():
-            while True:
-                time.sleep(1.0)
-                print("MONITOR {} {}".format(self.shoop_c_handle, self.shoop_c_handle.contents))
-
-        self.t = threading.Thread(target=monitor)
-        self.t.start()
     
     def c_handle(self):
         return self.shoop_c_handle
@@ -275,7 +266,6 @@ class BackendLoop:
         handles = (HandleType * len(loops))()
         for idx,l in enumerate(loops):
             handles[idx] = l.c_handle()
-            print("loop {}: {}: {} => {}".format(idx, l, handles[idx], handles[idx].contents))
         loops_transition(len(loops),
                                 handles,
                                 to_state.value,
@@ -418,7 +408,6 @@ class Backend:
 
     def create_loop(self) -> Type['BackendLoop']:
         handle = create_loop(self._c_handle)
-        print("created: {} => {}".format(handle, handle.contents))
         rval = BackendLoop(handle)
         return rval
 

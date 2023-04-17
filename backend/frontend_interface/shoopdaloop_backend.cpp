@@ -933,7 +933,6 @@ unsigned get_sample_rate(shoopdaloop_backend_instance_t *backend) {
 
 shoopdaloop_loop_t *create_loop(shoopdaloop_backend_instance_t *backend) {
     auto rval = external_loop(internal_backend(backend)->create_loop());
-    std::cout << "CREATE LOOP @ " << rval << std::endl;
     return rval;
 }
 
@@ -1125,6 +1124,7 @@ midi_channel_data_t *get_midi_channel_data (shoopdaloop_loop_midi_channel_t  *ch
 
 void load_audio_channel_data  (shoopdaloop_loop_audio_channel_t *channel, audio_channel_data_t *data) {
     auto &chan = *internal_audio_channel(channel);
+    std::cout << "BACKEND: loading " << data->n_samples << " samples\n";
     evaluate_before_or_after_process<void>(
         [&chan, &data]() { chan.maybe_audio()->load_data(data->data, data->n_samples); },
         chan.maybe_audio(),
@@ -1155,14 +1155,18 @@ void loops_transition(unsigned int n_loops,
                       loop_mode_t mode,
                       size_t delay, // In # of triggers
                       unsigned wait_for_sync) {
+    auto internal_loops = std::make_shared<std::vector<SharedLoopInfo>>(n_loops);
+    for(size_t idx=0; idx<n_loops; idx++) {
+        (*internal_loops)[idx] = internal_loop(loops[idx]);
+    }
     internal_loop(loops[0])->get_backend().cmd_queue.queue([=]() {
         for (size_t idx=0; idx<n_loops; idx++) {
-            std::cout << "TRANSITION LOOP @ " << loops[idx] << std::endl;
-            auto &loop_info = *internal_loop(loops[idx]);
+            auto &loop_info = *(*internal_loops)[idx];
             loop_info.loop->plan_transition(mode, delay, wait_for_sync, false);
         }
+        // Ensure that sync is fully propagated
         for (size_t idx=0; idx<n_loops; idx++) {
-            auto &loop_info = *internal_loop(loops[idx]);
+            auto &loop_info = *(*internal_loops)[idx];
             loop_info.loop->PROC_handle_sync();
         }
     });
