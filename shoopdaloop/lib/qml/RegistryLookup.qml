@@ -8,7 +8,7 @@ Item {
 
     function update() {
         object = (registry && registry.has(key)) ?
-            registry.get(key) : null; 
+            registry.get(key) : null;
     }
 
     Component.onCompleted: update()

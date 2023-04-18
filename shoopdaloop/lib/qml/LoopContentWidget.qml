@@ -67,13 +67,12 @@ Item {
         // Queue the actual request for the next event loop cycle,
         // because triggering events usually come in for all channels
         // at the same time. This prevents running the request multiple times.
-        request_update_data_delayer.restart()
+        request_update_data_delayer.trigger()
     }
 
-    Timer {
+    ExecuteNextCycle {
         id: request_update_data_delayer
-        interval: 1
-        onTriggered: do_request_update_data()
+        onExecute: do_request_update_data()
     }
 
     function do_request_update_data() {

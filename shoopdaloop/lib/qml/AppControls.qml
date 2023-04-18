@@ -60,6 +60,7 @@ Item {
                 nameFilters: ["ShoopDaLoop session files (*.shl)(*.shl)"]
                 defaultSuffix: 'shl'
                 onAccepted: {
+                    close()
                     var filename = selectedFile.toString().replace('file://', '');
                     root.saveSession(filename)
                 }
@@ -71,6 +72,7 @@ Item {
                 acceptLabel: 'Load'
                 nameFilters: ["ShoopDaLoop session files (*.shl)(*.shl)", "All files (*)"]
                 onAccepted: {
+                    close()
                     var filename = selectedFile.toString().replace('file://', '');
                     root.loadSession(filename)
                 }

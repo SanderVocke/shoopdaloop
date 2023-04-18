@@ -129,7 +129,7 @@ Item {
     // Methods
     function transition(mode, delay, wait_for_sync, emit=true) {
         // Do the transition for this loop and all selected loops, if any
-        var selected_ids = state_registry.maybe_get('selected_loop_ids', new Set())
+        var selected_ids = new Set(state_registry.maybe_get('selected_loop_ids', new Set()))
         selected_ids.add(obj_id)
         var objects = []
         selected_ids.forEach(id => {
@@ -1386,6 +1386,7 @@ Item {
             acceptLabel: 'Load'
             nameFilters: ["Midi files (*.mid)"]
             onAccepted: {
+                close()
                 midiloadoptionsdialog.filename = selectedFile.toString().replace('file://', '');
                 midiloadoptionsdialog.open()
             }
