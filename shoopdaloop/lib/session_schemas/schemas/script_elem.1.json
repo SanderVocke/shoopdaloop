@@ -2,7 +2,7 @@
     "type": "object",
     "properties": {
         "schema":       { "const": "script_elem.1" },
-        "delay_cycles": { "type": "integer" },
+        "duration":     { "type": "integer" },
         "actions": {
             "type": "array",
             "items": {

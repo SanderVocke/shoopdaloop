@@ -249,12 +249,15 @@ Rectangle {
                         }
 
                         ScriptElementWidget {
-                            name: mapped_item
+                            property var mapped_item
+                            property int index
+
+                            name: "Hi"
+                            script_descriptor: root.script_descriptors[index]
+
                             available_scene_names: []
                             track_names: []
                             actions: []
-                            duration: 1
-                            delay_cycles: 0
                             
                             height: scriptelems_scroll.height
                             width: 150
@@ -299,18 +302,28 @@ Rectangle {
 
     // A root to represent a single section item on the sequencing timeline.
     component ScriptElementWidget : Rectangle {
-        id: scriptitem
+        id: scriptelem
 
-        // TODO fix
+        property var script_descriptor
+        property int index
+
+        readonly property var descriptor: script_descriptor.elements[index]
+        readonly property var duration: descriptor.duration
+        readonly property int start_cycle : {
+            var r=0
+            for(var i=0; i<=index; i++) {
+                if (i>0) { r += script_descriptor.elements[i-1].duration}
+            }
+            return r;
+        }
+
         property bool active: root.script_playing &&
-                              root.script_current_cycle >= delay_cycles &&
-                              root.script_current_cycle < (delay_cycles + duration)
+                              root.script_current_cycle >= start_cycle &&
+                              root.script_current_cycle < (start_cycle + duration)
         property string name
         property var available_scene_names
         property var track_names
         property var actions
-        property int duration
-        property int delay_cycles
 
         signal clicked()
         signal request_rename(string name)
@@ -327,7 +340,7 @@ Rectangle {
         MouseArea {
             id: marea
             anchors.fill: parent
-            onClicked: scriptitem.clicked()
+            onClicked: scriptelem.clicked()
         }
 
         Column {
@@ -347,7 +360,7 @@ Rectangle {
                 text: name
                 font.pixelSize: 12
 
-                onEditingFinished: () => { scriptitem.request_rename(displayText); background_focus.forceActiveFocus() }
+                onEditingFinished: () => { scriptelem.request_rename(displayText); background_focus.forceActiveFocus() }
             }
 
             Item {
@@ -364,9 +377,9 @@ Rectangle {
                 }
                 SpinBox {
                     id: spin
-                    property int watchedValue: scriptitem.duration
+                    property int watchedValue: scriptelem.duration
                     onWatchedValueChanged: value = watchedValue
-                    onValueChanged: scriptitem.request_set_duration(value)
+                    onValueChanged: scriptelem.request_set_duration(value)
                     value: watchedValue
                     from: 1
                     anchors {
@@ -433,7 +446,7 @@ Rectangle {
                 spacing: 2
 
                 Repeater {
-                    model: scriptitem.actions.length
+                    model: scriptelem.actions.length
                     anchors.left: parent.left
                     anchors.right: parent.right
 
@@ -441,7 +454,7 @@ Rectangle {
                         id: action_item
                         anchors.left: parent.left
                         anchors.right: parent.right
-                        property var action: scriptitem.actions[index]
+                        property var action: scriptelem.actions[index]
                         property var passive_color: '#444444'
                         property var active_color: ('action' in action && action['action'] == 'record') ? 'red' : 'green'
                         height: 20
@@ -450,7 +463,7 @@ Rectangle {
 
                         // Flash when the action is executed
                         Connections {
-                            target: scriptitem
+                            target: scriptelem
                             function onAction_executed(idx) {
                                 if (idx == index) { flash_animation.start() }
                             }
@@ -538,8 +551,8 @@ Rectangle {
                                     Connections {
                                         target: menu_action_popup
                                         function onAccepted_action(action) {
-                                            scriptitem.actions[index] = action
-                                            scriptitem.actionsChanged()
+                                            scriptelem.actions[index] = action
+                                            scriptelem.actionsChanged()
                                         }
                                     }
                                 }
@@ -547,35 +560,35 @@ Rectangle {
                             MenuItem {
                                 text: "Execute"
                                 onClicked: {
-                                    shared.execute_action(scriptitem.actions[index])
+                                    shared.execute_action(scriptelem.actions[index])
                                 }
                             }
                             MenuItem {
                                 text: "Delete"
                                 onClicked: {
-                                    scriptitem.actions.splice(index, 1)
-                                    scriptitem.actionsChanged()
+                                    scriptelem.actions.splice(index, 1)
+                                    scriptelem.actionsChanged()
                                 }
                             }
                             MenuItem {
                                 text: "Move Up"
                                 onClicked: {
                                     if (index > 0) {
-                                        var tmp = scriptitem.actions[index-1]
-                                        scriptitem.actions[index-1] = scriptitem.actions[index]
-                                        scriptitem.actions[index] = tmp
-                                        scriptitem.actionsChanged()
+                                        var tmp = scriptelem.actions[index-1]
+                                        scriptelem.actions[index-1] = scriptelem.actions[index]
+                                        scriptelem.actions[index] = tmp
+                                        scriptelem.actionsChanged()
                                     }
                                 }
                             }
                             MenuItem {
                                 text: "Move Down"
                                 onClicked: {
-                                    if (index < scriptitem.actions.length - 1) {
-                                        var tmp = scriptitem.actions[index+1]
-                                        scriptitem.actions[index+1] = scriptitem.actions[index]
-                                        scriptitem.actions[index] = tmp
-                                        scriptitem.actionsChanged()
+                                    if (index < scriptelem.actions.length - 1) {
+                                        var tmp = scriptelem.actions[index+1]
+                                        scriptelem.actions[index+1] = scriptelem.actions[index]
+                                        scriptelem.actions[index] = tmp
+                                        scriptelem.actionsChanged()
                                     }
                                 }
                             }
@@ -591,8 +604,8 @@ Rectangle {
             Connections {
                 target: action_popup
                 function onAccepted_action(action) {
-                    scriptitem.actions.push(action)
-                    scriptitem.actionsChanged()
+                    scriptelem.actions.push(action)
+                    scriptelem.actionsChanged()
                 }
             }
         }
@@ -606,12 +619,12 @@ Rectangle {
 
             onAccepted: {
                 close()
-                scriptitem.request_delete()
+                scriptelem.request_delete()
             }
 
             Text {
                 color: Material.foreground
-                text: 'Are you sure you want to delete section "' + scriptitem.name + '" from the script?'
+                text: 'Are you sure you want to delete section "' + scriptelem.name + '" from the script?'
             }
         }
     }

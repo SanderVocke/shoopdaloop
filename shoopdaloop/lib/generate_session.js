@@ -87,10 +87,10 @@ function generate_script(id, name, length_cycles, elements) {
     }
 }
 
-function generate_script_element(delay_cycles, actions) {
+function generate_script_element(duration, actions) {
     return {
         'schema': 'script_elem.1',
-        'delay_cycles': delay_cycles,
+        'duration': duration,
         'actions': actions
     }
 }
