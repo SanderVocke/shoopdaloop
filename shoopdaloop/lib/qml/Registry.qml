@@ -90,22 +90,18 @@ Item {
     }
 
     function add_to_set(id, val) {
-        var item = has(id) ? registry_data[id] : new Set()
-        if (!item.has(val)) {
-            item.add(val)
-            registry_data[id] = item
-            itemModified(id, item)
-            contentsChanged()
+        if (!has(id)) { registry_data[id] = new Set() }
+        mutate(id, s => { s.add(val); return s } )
+        if (verbose) {
+            console.log("REGISTRY: set contents after add: ", ...registry_data[id])
         }
     }
 
     function remove_from_set(id, val) {
-        var item = has(id) ? registry_data[id] : new Set()
-        if (item.has(val)) {
-            item.delete(val)
-            registry_data[id] = item
-            itemModified(id, item)
-            contentsChanged()
+        if (!has(id)) { registry_data[id] = new Set() }
+        mutate(id, s => { s.delete(val); return s } )
+        if (verbose) {
+            console.log("REGISTRY: set contents after remove: ", ...registry_data[id])
         }
     }
 
@@ -113,7 +109,7 @@ Item {
         replace(id, new Set())
     }
 
-    function mutate(id, fn, val) {
+    function mutate(id, fn) {
         const mutated = fn(registry_data[id])
         if(verbose) {
             console.log("REGISTRY: Mutating:", id, registry_data[id], " => ", mutated)

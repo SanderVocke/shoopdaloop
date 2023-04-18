@@ -260,12 +260,12 @@ Item {
     // UI
     StatusRect {
         id: statusrect
-        loop: widget
+        loop: widget.maybe_loop
 
         LoopDetailsWindow {
             id: detailswindow
             title: widget.initial_descriptor.id + " details"
-            loop: statusrect.loop
+            loop: widget
             master_loop: widget.master_loop
         }
 
@@ -430,7 +430,7 @@ Item {
                 x: 0
 
                 property bool show_next_mode: 
-                    statusrect.loop && 
+                    statusrect.loop &&
                         statusrect.loop.next_mode != null &&
                         statusrect.loop.mode != statusrect.loop.next_mode
 
@@ -450,8 +450,11 @@ Item {
                             if (event.button === Qt.LeftButton) { widget.target() }
                         }
                     onClicked: (event) => {
-                            if (event.button === Qt.LeftButton) { widget.toggle_selected() }
-                            else if (event.button === Qt.MiddleButton) { console.log("toggle"); widget.toggle_in_current_scene() }
+                            if (event.button === Qt.LeftButton) { 
+                                if (widget.targeted) { widget.untarget(); widget.deselect() }
+                                else { widget.toggle_selected() }
+                            }
+                            else if (event.button === Qt.MiddleButton) { widget.toggle_in_current_scene() }
                             else if (event.button === Qt.RightButton) { contextmenu.popup() }
                         }
                 }

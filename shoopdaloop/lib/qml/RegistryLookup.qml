@@ -16,8 +16,8 @@ Item {
     onKeyChanged: update()
     Connections {
         target: registry
-        function onItemAdded (id, val) { if(id == key) { object = val } }
-        function onItemModified (id, val) { if(id == key) { object = val } }
-        function onItemRemoved (id) { if(id == key) { object = null } }
+        function onItemAdded (id, val) { if(id == key) { object = val; objectChanged() } }
+        function onItemModified (id, val) { if(id == key) { object = val; objectChanged() } }
+        function onItemRemoved (id) { if(id == key) { object = null; objectChanged() } }
     }
 }
