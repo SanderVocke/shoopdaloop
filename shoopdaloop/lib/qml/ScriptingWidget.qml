@@ -2,6 +2,8 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
 
+import "../generate_session.js" as GenerateSession
+
 Rectangle {
     id: root
     color: "#555555"
@@ -10,7 +12,52 @@ Rectangle {
     property Registry objects_registry: null
     property Registry state_registry: null
 
-    property var descriptor: initial_descriptor
+    property string active_script_id: initial_descriptor.active_script_id
+    property var script_descriptors: initial_descriptor.scripts
+
+    readonly property var actual_descriptor: GenerateSession.generate_scripts(script_descriptors, active_script_id)
+
+    property var script_names: script_descriptors.map(s => s.name)
+
+    function add_script(name) {
+        // Generate a unique ID
+        var script_ids = script_descriptors.map(s => s.id)
+        var i = 0;
+        for(; script_ids.includes(name + "_" + i.toString()); i++) {}
+        var id = name + "_" + i.toString()
+
+        var script = GenerateSession.generate_script(
+            id, name, 0, []
+        );
+        script_descriptors.push(script)
+        script_descriptorsChanged()
+    }
+
+    function delete_script_by_index(index) {
+        script_descriptors = script_descriptors.filter((s,idx) => idx != index)
+        if(!script_descriptors.map(s => s.id).includes(active_script_id)) {
+            active_script_id = script_descriptors.length > 0 ?
+                script_descriptors[0] : ""
+        }
+        script_descriptorsChanged()
+    }
+
+    function set_active_script_by_index(index) {
+        if (index >= 0) {
+            active_script_id = script_descriptors[index].id
+        } else {
+            active_script_id = ""
+        }
+    }
+
+    function active_script_descriptor() { return script_descriptors.find(d => d.id == active_script_id) }
+
+    function add_element() {
+        if (active_script_id == "") { return; }
+        var desc = active_script_descriptor()
+        desc.elements.push(GenerateSession.generate_script_element(0, []))
+        script_descriptorsChanged()
+    }
 
     // property var sections : []
     // property var scene_names: []
@@ -82,6 +129,15 @@ Rectangle {
                         color: Material.foreground
                         anchors.centerIn: parent
                     }
+
+                    onClicked: new_script_dialog.open()
+
+                    InputDialog {
+                        id: new_script_dialog
+                        title: "New script name"
+                        default_value: "script"
+                        onAcceptedInput: name => root.add_script(name)
+                    }
                 }
                 Button {
                     width: 24
@@ -92,11 +148,15 @@ Rectangle {
                         color: Material.foreground
                         anchors.centerIn: parent
                     }
+
+                    onClicked: root.delete_script_by_index(current_script_combo.currentIndex)
                 }
             }
 
             ComboBox {
-                model: root.descriptor.scripts.map(s => s.name)
+                id: current_script_combo
+                model: root.script_descriptors.map(s => s.name)
+                onCurrentIndexChanged: { root.set_active_script_by_index(currentIndex) }
             }
 
             Label {
@@ -115,7 +175,7 @@ Rectangle {
                         color: Material.foreground
                         anchors.centerIn: parent
                     }
-                    onClicked: root.request_add_section()
+                    onClicked: root.add_element()
                 }
                 Button {
                     width: 24
@@ -171,7 +231,7 @@ Rectangle {
                     fill: parent
                     margins: parent.border.width + 1
                 }
-                id: scriptitems_scroll
+                id: scriptelems_scroll
 
                 ScrollBar.horizontal.policy: ScrollBar.AsNeeded
                 ScrollBar.vertical.policy: ScrollBar.AlwaysOff
@@ -179,55 +239,78 @@ Rectangle {
                 Row {
                     spacing: 1
 
-                    Repeater {
-                        model: root.sections ? root.sections.length : 0
-                        anchors.top: parent.top
-                        anchors.bottom: parent.bottom
+                    Mapper {
+                        id: mapper
+                        property var model_input: root.active_script_descriptor()
+                        model: model_input ? model_input.elements : []
+                        Connections {
+                            target: root
+                            function onScript_descriptorsChanged() { mapper.model_input = root.active_script_descriptor() }
+                        }
 
-                        ScriptItemWidget {
-                            name: root.sections[index].name
-                            available_scene_names: root.scene_names
-                            track_names: root.track_names
-                            actions: root.sections[index].actions
-                            duration: root.sections[index].duration
-                            start_cycle: index < root.section_starts.length ? root.section_starts[index] : -1
-
-                            height: scriptitems_scroll.height
+                        ScriptElementWidget {
+                            name: mapped_item
+                            available_scene_names: []
+                            track_names: []
+                            actions: []
+                            duration: 1
+                            delay_cycles: 0
+                            
+                            height: scriptelems_scroll.height
                             width: 150
-
-                            Connections {
-                                function onRequest_rename(name) { root.request_rename_section(index, name) }
-                                function onRequest_delete() { root.request_delete_section(index) }
-                                function onRequest_add_action(type, track_idx) { root.request_add_action(index, type, track_idx) }
-                                function onRequest_remove_action(type, track_idx) { root.request_remove_action(index, type, track_idx) }
-                                function onRequest_set_duration(duration) { root.request_set_section_duration(index, duration) }
-                            }
-                            Connections {
-                                target: shared
-                                function onAction_executed(section, action) {
-                                    if (section == index) { action_executed(action) }
-                                }
-                            }
                         }
                     }
+
+                    // Repeater {
+                    //     model: root.sections ? root.sections.length : 0
+                    //     anchors.top: parent.top
+                    //     anchors.bottom: parent.bottom
+
+                    //     ScriptElementWidget {
+                    //         name: root.sections[index].name
+                    //         available_scene_names: root.scene_names
+                    //         track_names: root.track_names
+                    //         actions: root.sections[index].actions
+                    //         duration: root.sections[index].duration
+                    //         start_cycle: index < root.section_starts.length ? root.section_starts[index] : -1
+
+                    //         height: scriptitems_scroll.height
+                    //         width: 150
+
+                    //         Connections {
+                    //             function onRequest_rename(name) { root.request_rename_section(index, name) }
+                    //             function onRequest_delete() { root.request_delete_section(index) }
+                    //             function onRequest_add_action(type, track_idx) { root.request_add_action(index, type, track_idx) }
+                    //             function onRequest_remove_action(type, track_idx) { root.request_remove_action(index, type, track_idx) }
+                    //             function onRequest_set_duration(duration) { root.request_set_section_duration(index, duration) }
+                    //         }
+                    //         Connections {
+                    //             target: shared
+                    //             function onAction_executed(section, action) {
+                    //                 if (section == index) { action_executed(action) }
+                    //             }
+                    //         }
+                    //     }
+                    // }
                 }
             }
         }
     }
 
     // A root to represent a single section item on the sequencing timeline.
-    component ScriptItemWidget : Rectangle {
+    component ScriptElementWidget : Rectangle {
         id: scriptitem
 
+        // TODO fix
         property bool active: root.script_playing &&
-                              root.script_current_cycle >= start_cycle &&
-                              root.script_current_cycle < (start_cycle + duration)
+                              root.script_current_cycle >= delay_cycles &&
+                              root.script_current_cycle < (delay_cycles + duration)
         property string name
         property var available_scene_names
         property var track_names
         property var actions
         property int duration
-        property int start_cycle
+        property int delay_cycles
 
         signal clicked()
         signal request_rename(string name)

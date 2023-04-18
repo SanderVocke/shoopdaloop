@@ -5,6 +5,11 @@ QtObject {
     property string schema
 
     Component.onCompleted: {
-        schema_validator.validate_schema(descriptor, schema)
+        try {
+            schema_validator.validate_schema(descriptor, schema)
+        } catch(err) {
+            console.log("Failed session schema validation for object of type ", schema, ":\n",
+                        "\nobject:\n", descriptor, "\nerror:\n", err.message)
+        }
     }
 }

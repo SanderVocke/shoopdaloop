@@ -14,12 +14,17 @@ Item {
     // schema. The Session object will manage an actual session (consisting)
     // of loops, tracks, etc.) to match the loaded descriptor.
     // The descriptor may not be directly modified and is only used at initialization.
-    // To get an up-to-date descriptor of the current state, call generate_descriptor().
-    property var initial_descriptor : ({
-        'schema': 'session.1',
-        'tracks': [],
-        'ports': []
-    })
+    // The actual descriptor can be retrieved with actual_session_descriptor().
+    property var initial_descriptor : GenerateSession.generate_session([], [], [], [])
+
+    function actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) {
+        return GenerateSession.generate_session(
+            tracks_widget.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to),
+            [],
+            scenes_widget.actual_scene_descriptors,
+            scripting_widget.actual_session_descriptor()
+        );
+    }
 
     SchemaCheck {
         descriptor: session.initial_descriptor
@@ -67,15 +72,6 @@ Item {
     // For (test) access
     property alias tracks: tracks_widget.tracks
     property bool loaded : tracks_widget.loaded
-
-    function actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) {
-        return {
-            'schema': 'session.1',
-            'ports': [],
-            'tracks': tracks_widget.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to),
-            'scenes': scenes_widget.actual_scene_descriptors
-        };
-    }
 
     TasksFactory { id: tasks_factory }
 
@@ -160,6 +156,27 @@ Item {
             margins: 6
         }
 
+        AppControls {
+            id: app_controls
+
+            anchors {
+                top: parent.top
+                left: parent.left
+                margins: 4
+            }
+
+            height: 40
+
+            loading_session: session.loading
+            saving_session: session.saving
+
+            onLoadSession: (filename) => session.load_session(filename)
+            onSaveSession: (filename) => session.save_session(filename)
+
+            state_registry: session.state_registry
+            objects_registry: session.objects_registry
+        }
+
         ScenesWidget {
             id: scenes_widget
 
@@ -169,20 +186,19 @@ Item {
             
             width: 140
             anchors {
-                top: parent.top
+                top: app_controls.bottom
                 left: parent.left
                 bottom: tracks_widget.bottom
                 rightMargin: 6
-                bottomMargin: 4
             }
         }
 
-        Item {
+        ScriptingWidget {
             id: scripting_widget
 
-            // initial_descriptor: session.initial_descriptor.scenes
-            // objects_registry: session.objects_registry
-            // state_registry: session.state_registry
+            initial_descriptor: session.initial_descriptor.scripts
+            objects_registry: session.objects_registry
+            state_registry: session.state_registry
 
             height: 160
             anchors {
@@ -190,7 +206,7 @@ Item {
                 left: scenes_widget.right
                 right: parent.right
                 topMargin: 4
-                leftMargin: 6
+                leftMargin: 4
             }
         }
 
@@ -198,7 +214,7 @@ Item {
             id: tracks_widget
 
             anchors {
-                top: parent.top
+                top: app_controls.bottom
                 left: scenes_widget.right
                 bottom: scripting_widget.top
                 right: parent.right
@@ -211,25 +227,54 @@ Item {
             state_registry: session.state_registry
         }
 
-        AppControls {
-            id: app_controls
+        Item {
+            id: logo_menu_area
 
             anchors {
                 top: scenes_widget.bottom
-                left: parent.left
                 bottom: parent.bottom
                 right: scripting_widget.left
-                margins: 4
             }
 
-            loading_session: session.loading
-            saving_session: session.saving
+            width: 160
 
-            onLoadSession: (filename) => session.load_session(filename)
-            onSaveSession: (filename) => session.save_session(filename)
+            Item {
+                width: childrenRect.width
+                height: childrenRect.height
 
-            state_registry: session.state_registry
-            objects_registry: session.objects_registry
+                anchors {
+                    horizontalCenter: parent.horizontalCenter
+                    verticalCenter: parent.verticalCenter
+                }
+
+                Image {
+                    id: logo
+                    anchors {
+                        top: parent.top
+                        topMargin: 6
+                    }
+
+                    height: 60
+                    width: height / sourceSize.height * sourceSize.width
+                    source: '../../resources/logo-small.png'
+                    smooth: true
+                }
+
+                Text {
+                    id: versiontext
+                    anchors {
+                        top: logo.bottom
+                        horizontalCenter: logo.horizontalCenter
+                        topMargin: 6
+                    }
+                    text: 'ShoopDaLoop v0.1' // TODO
+                    onLinkActivated: Qt.openUrlExternally(link)
+                    color: Material.foreground
+                    font.pixelSize: 12
+                    linkColor: 'red'
+                }
+
+            }
         }
     }
 }

@@ -50,12 +50,21 @@ function generate_track(id, name, loops, ports) {
     }
 }
 
-function generate_session(tracks, ports, scenes) {
+function generate_scripts(scripts, active_script_id) {
+    return {
+        'schema': 'scripts.1',
+        'scripts': scripts,
+        'active_script_id': active_script_id
+    }
+}
+
+function generate_session(tracks, ports, scenes, scripts) {
     return {
         'schema': 'session.1',
         'tracks': tracks,
         'ports': ports,
-        'scenes': scenes
+        'scenes': scenes,
+        'scripts': generate_scripts(scripts, scripts.length > 0 ? scripts[0].id : "")
     }
 }
 
@@ -65,6 +74,24 @@ function generate_scene(id, name, loop_ids) {
         'id': id,
         'name': name,
         'loop_ids': loop_ids
+    }
+}
+
+function generate_script(id, name, length_cycles, elements) {
+    return {
+        'schema': 'script.1',
+        'id': id,
+        'name': name,
+        'length_cycles': length_cycles,
+        'elements': elements
+    }
+}
+
+function generate_script_element(delay_cycles, actions) {
+    return {
+        'schema': 'script_elem.1',
+        'delay_cycles': delay_cycles,
+        'actions': actions
     }
 }
 
@@ -176,7 +203,7 @@ function generate_default_track(
 
 function generate_default_session() {
     var master_track = generate_default_track("Master", 1, 'master', true, 'master_loop', 0, 0, 1, false, false)
-    var session = generate_session([master_track], [], []);
+    var session = generate_session([master_track], [], [], []);
 
     return session;    
 }

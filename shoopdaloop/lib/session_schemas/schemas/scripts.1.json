@@ -2,7 +2,6 @@
     "type": "object",
     "properties": {
         "schema":            { "const": "scripts.1" },
-        "id":                { "type": "string" },
         "active_script_id":  { "type": "string" },
         "scripts": {
             "type": "array",
@@ -14,5 +13,5 @@
             }
         }
     },
-    "required": ["schema", "id", "name", "length_cycles", "elements"]
+    "required": ["schema", "scripts", "active_script_id"]
 }

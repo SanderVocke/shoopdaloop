@@ -23,9 +23,8 @@ Item {
     onSync_activeChanged: update()
     Component.onCompleted: update()
 
-    Grid {
-        columns: 3
-        spacing: 10
+    Row {
+        spacing: 6
         anchors.fill: parent
 
         Button {
