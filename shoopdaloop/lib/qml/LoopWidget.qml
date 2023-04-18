@@ -117,6 +117,31 @@ Item {
     readonly property DynamicLoop maybe_loop : dynamic_loop
     readonly property Loop maybe_loaded_loop : dynamic_loop.maybe_loop
     readonly property bool is_master: master_loop && master_loop == this
+    readonly property var delay_for_targeted : {
+        // This property is used for synchronizing to the targeted loop.
+        // If:
+        // - A targeted loop is active, and
+        // - The targeted loop is doing playback
+        // then this property will hold the amount of master loop cycles
+        // to delay in order to transition in sync with the targeted loop.
+        // Otherwise, it will be 0.
+        if (targeted_loop) {
+            var to_transition = undefined
+            if (targeted_loop.next_transition_delay >= 0 && targeted_loop.next_mode >= 0) {
+                to_transition = targeted_loop.next_transition_delay
+            }
+            var to_end = undefined
+            if (ModeHelpers.is_mode_with_predictable_end(targeted_loop.mode)) {
+                to_end = Math.floor((targeted_loop.length - targeted_loop.position) / master_loop.length)
+            }
+            if (to_transition == undefined && to_end == undefined) { return undefined }
+            else if (to_transition != undefined && to_end != undefined) { return Math.min(to_transition, to_end) }
+            else if (to_transition != undefined) { return to_transition }
+            else return to_end
+        }
+        return undefined
+    }
+    readonly property int use_delay : delay_for_targeted != undefined ? delay_for_targeted : 0
 
     property int n_multiples_of_master_length: master_loop ?
         Math.ceil(dynamic_loop.length / master_loop.maybe_loop.length) : 1
@@ -158,8 +183,8 @@ Item {
         })
         var _other_loops = _all_track_loops.filter(l => !_selected_loops.includes(l))
         // Do the transitions
-        transition_loops(_other_loops, Types.LoopMode.Stopped, 0, widget.sync_active)
-        transition_loops(_selected_loops, Types.LoopMode.Playing, 0, widget.sync_active)
+        transition_loops(_other_loops, Types.LoopMode.Stopped, use_delay, widget.sync_active)
+        transition_loops(_selected_loops, Types.LoopMode.Playing, use_delay, widget.sync_active)
     }
     function clear(length, emit=true) {
         dynamic_loop.clear(length);
@@ -217,6 +242,8 @@ Item {
     property alias length : dynamic_loop.length
     property alias position : dynamic_loop.position
     property alias mode : dynamic_loop.mode
+    property alias next_mode : dynamic_loop.next_mode
+    property alias next_transition_delay : dynamic_loop.next_transition_delay
     DynamicLoop {
         id: dynamic_loop
         force_load : is_master // Master loop should always be there to sync to
@@ -527,14 +554,16 @@ Item {
                     id : play
                     width: buttongrid.button_width
                     height: buttongrid.button_height
-                    MaterialDesignIcon {
+                    IconWithText {
                         size: parent.width
                         anchors.centerIn: parent
                         name: 'play'
                         color: 'green'
+                        text_color: Material.foreground
+                        text: widget.delay_for_targeted != undefined ? ">" : ""
                     }
 
-                    onClicked: widget.transition(Types.LoopMode.Playing, 0, widget.sync_active)
+                    onClicked: widget.transition(Types.LoopMode.Playing, widget.use_delay, widget.sync_active)
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
@@ -592,7 +621,7 @@ Item {
                                         name: 'play'
                                         color: 'green'
                                         text_color: Material.foreground
-                                        text: "S"
+                                        text: widget.delay_for_targeted != undefined ? ">S" : "S"
                                     }
                                     onClicked: { if(statusrect.loop) {
                                         widget.play_solo_in_track()
@@ -613,9 +642,9 @@ Item {
                                         name: 'play'
                                         color: 'orange'
                                         text_color: Material.foreground
-                                        text: "FX"
+                                        text: widget.delay_for_targeted != undefined ? ">" : ""
                                     }
-                                    onClicked: widget.transition(Types.LoopMode.PlayingDryThroughWet, 0, widget.sync_active)
+                                    onClicked: widget.transition(Types.LoopMode.PlayingDryThroughWet, widget.use_delay, widget.sync_active)
 
                                     ToolTip.delay: 1000
                                     ToolTip.timeout: 5000
@@ -631,14 +660,16 @@ Item {
                     id : record
                     width: buttongrid.button_width
                     height: buttongrid.button_height
-                    MaterialDesignIcon {
+                    IconWithText {
                         size: parent.width
                         anchors.centerIn: parent
                         name: 'record'
                         color: 'red'
+                        text_color: Material.foreground
+                        text: widget.delay_for_targeted != undefined ? ">" : ""
                     }
 
-                    onClicked: widget.transition(Types.LoopMode.Recording, 0, widget.sync_active)
+                    onClicked: widget.transition(Types.LoopMode.Recording, widget.use_delay, widget.sync_active)
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
@@ -697,7 +728,7 @@ Item {
                                         name: 'record'
                                         color: 'red'
                                         text_color: Material.foreground
-                                        text: (widget.targeted_loop !== undefined && widget.targeted_loop !== null) ? "->" : recordN.n.toString()
+                                        text: (widget.targeted_loop !== undefined && widget.targeted_loop !== null) ? "><" : recordN.n.toString()
                                         font.pixelSize: size / 2.0
                                     }
 
@@ -774,11 +805,14 @@ Item {
                                         name: 'record'
                                         color: 'orange'
                                         text_color: Material.foreground
-                                        text: "FX"
+                                        text: widget.delay_for_targeted != undefined ? ">" : ""
                                     }
                                     onClicked: {
                                         var n = widget.n_multiples_of_master_length
-                                        var delay = widget.n_multiples_of_master_length - widget.current_cycle - 1
+                                        var delay = 
+                                            widget.delay_for_targeted != undefined ? 
+                                                widget.use_delay : // delay to other
+                                                widget.n_multiples_of_master_length - widget.current_cycle - 1 // delay to self
                                         var prev_mode = statusrect.loop.mode
                                         widget.transition(Types.LoopMode.RecordingDryIntoWet, delay, true)
                                         statusrect.loop.transition(prev_mode, delay + n, true)
@@ -798,14 +832,16 @@ Item {
                     id : stop
                     width: buttongrid.button_width
                     height: buttongrid.button_height
-                    MaterialDesignIcon {
+                    IconWithText {
                         size: parent.width
                         anchors.centerIn: parent
                         name: 'stop'
                         color: Material.foreground
+                        text_color: Material.foreground
+                        text: widget.delay_for_targeted != undefined ? ">" : ""
                     }
 
-                    onClicked: widget.transition(Types.LoopMode.Stopped, 0, widget.sync_active)
+                    onClicked: widget.transition(Types.LoopMode.Stopped, widget.use_delay, widget.sync_active)
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
