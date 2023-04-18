@@ -9,6 +9,7 @@ import '../mode_helpers.js' as ModeHelpers
 // The loop widget allows manipulating a single loop within a track.
 Item {
     id: widget
+    property var track_widget
 
     property var initial_descriptor : null
     property Registry objects_registry : null
@@ -127,21 +128,38 @@ Item {
     signal channelInitializedChanged()
 
     // Methods
-    function transition(mode, delay, wait_for_sync, emit=true) {
+    function transition_loops(loops, mode, delay, wait_for_sync) {
+        loops.forEach(loop => {
+            // Force to load all loops involved
+            loop.force_load_backend()
+        })
+        var backend_loops = loops.map(o => o.maybe_loaded_loop)
+        backend_loops[0].transition_multiple(backend_loops, mode, delay, wait_for_sync)
+    }
+    function transition(mode, delay, wait_for_sync) {
         // Do the transition for this loop and all selected loops, if any
         var selected_ids = new Set(state_registry.maybe_get('selected_loop_ids', new Set()))
         selected_ids.add(obj_id)
-        var objects = []
-        selected_ids.forEach(id => {
-            var obj = objects_registry.maybe_get(id, undefined)
-            if (obj) {
-                // Force to load all loops involved
-                obj.force_load_backend()
-                objects.push(obj)
+        var objects = Array.from(selected_ids).map(id => objects_registry.maybe_get(id, undefined)).filter(v => v != undefined)
+        transition_loops(objects, mode, delay, wait_for_sync)
+    }
+    function play_solo_in_track() {
+        // Gather all selected loops
+        var _selected_ids = new Set(state_registry.maybe_get('selected_loop_ids', new Set()))
+        _selected_ids.add(obj_id)
+        // Gather all other loops that are in the same track(s)
+        var _selected_loops = []
+        _selected_ids.forEach(id => _selected_loops.push(objects_registry.get(id)))
+        var _all_track_loops = []
+        _selected_loops.forEach(loop => {
+            for(var i=0; i<loop.track_widget.loops.length; i++) {
+                _all_track_loops.push(loop.track_widget.loops[i])
             }
         })
-        var backend_loops = objects.map(o => o.maybe_loaded_loop)
-        backend_loops[0].transition_multiple(backend_loops, mode, delay, wait_for_sync)
+        var _other_loops = _all_track_loops.filter(l => !_selected_loops.includes(l))
+        // Do the transitions
+        transition_loops(_other_loops, Types.LoopMode.Stopped, 0, widget.sync_active)
+        transition_loops(_selected_loops, Types.LoopMode.Playing, 0, widget.sync_active)
     }
     function clear(length, emit=true) {
         dynamic_loop.clear(length);
@@ -576,9 +594,8 @@ Item {
                                         text_color: Material.foreground
                                         text: "S"
                                     }
-                                    onClicked: { if(statusrect.loop) { 
-                                        console.log('unimplemented!')
-                                        //statusrect.loop.doLoopAction(StatesAndActions.LoopActionType.DoPlaySoloInTrack, [0.0], true, true)
+                                    onClicked: { if(statusrect.loop) {
+                                        widget.play_solo_in_track()
                                         }}
 
                                     ToolTip.delay: 1000

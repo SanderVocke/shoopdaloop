@@ -91,7 +91,8 @@ Item {
             var loop = track.add_loop({
                 initial_descriptor: desc,
                 objects_registry: track.objects_registry,
-                state_registry: track.state_registry
+                state_registry: track.state_registry,
+                track_widget: track
             });
             if (loop.loaded) { _n_loops_loaded += 1 }
         })
@@ -137,8 +138,6 @@ Item {
             'is_master': false,
             'channels': channel_descriptors
         }
-
-        console.log("DESCRIPTOR", JSON.stringify(loop_descriptor))
 
         track.add_loop({
             initial_descriptor: loop_descriptor,
