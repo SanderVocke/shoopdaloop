@@ -58,7 +58,7 @@ Item {
     }
 
     // Objects registry just stores object ids -> objects.
-    property Registry objects_registry: Registry {
+    property Registry objects_registry: ObjectsRegistry {
         verbose: false
     }
 

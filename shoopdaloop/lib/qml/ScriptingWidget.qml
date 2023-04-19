@@ -17,6 +17,14 @@ Rectangle {
 
     readonly property var actual_descriptor: GenerateSession.generate_scripts(script_descriptors, active_script_id)
 
+    readonly property int active_script_index : script_descriptors.findIndex(d => d.id == active_script_id)
+
+    property var active_script_descriptor
+    Binding on active_script_descriptor {
+        value: script_descriptors.find(d => d.id == active_script_id)
+        delayed: true
+    }
+
     property var script_names: script_descriptors.map(s => s.name)
 
     function add_script(name) {
@@ -50,12 +58,9 @@ Rectangle {
         }
     }
 
-    function active_script_descriptor() { return script_descriptors.find(d => d.id == active_script_id) }
-
     function add_element() {
         if (active_script_id == "") { return; }
-        var desc = active_script_descriptor()
-        desc.elements.push(GenerateSession.generate_script_element(0, []))
+        script_descriptors[active_script_index].elements.push(GenerateSession.generate_script_element('', 0, []))
         script_descriptorsChanged()
     }
 
@@ -64,8 +69,8 @@ Rectangle {
     // property var track_names: []
     // property var loop_names: []
 
-    // property bool script_playing
-    // property int script_current_cycle
+    property bool script_playing
+    property int script_current_cycle
     // property var section_starts
     // property int script_length
     // property int current_section_idx
@@ -239,25 +244,19 @@ Rectangle {
                 Row {
                     spacing: 1
 
-                    Mapper {
-                        id: mapper
-                        property var model_input: root.active_script_descriptor()
-                        model: model_input ? model_input.elements : []
-                        Connections {
-                            target: root
-                            function onScript_descriptorsChanged() { mapper.model_input = root.active_script_descriptor() }
-                        }
+                    Repeater {
+                        id: script_elements
+                        property var model_input: root.active_script_descriptor
+                        property int script_index: root.active_script_index
+
+                        model: model_input ? model_input.elements.length : 0
 
                         ScriptElementWidget {
-                            property var mapped_item
-                            property int index
-
-                            name: "Hi"
-                            script_descriptor: root.script_descriptors[index]
+                            script_index : script_elements.script_index
+                            elem_index: index
 
                             available_scene_names: []
                             track_names: []
-                            actions: []
                             
                             height: scriptelems_scroll.height
                             width: 150
@@ -304,10 +303,12 @@ Rectangle {
     component ScriptElementWidget : Rectangle {
         id: scriptelem
 
-        property var script_descriptor
-        property int index
+        property int script_index
+        property int elem_index
 
-        readonly property var descriptor: script_descriptor.elements[index]
+        readonly property var script_descriptor: root.script_descriptors[script_index]
+        readonly property var descriptor: script_descriptor.elements[elem_index]
+
         readonly property var duration: descriptor.duration
         readonly property int start_cycle : {
             var r=0
@@ -320,18 +321,28 @@ Rectangle {
         property bool active: root.script_playing &&
                               root.script_current_cycle >= start_cycle &&
                               root.script_current_cycle < (start_cycle + duration)
-        property string name
+        property string name: descriptor.name
         property var available_scene_names
         property var track_names
-        property var actions
+        property var actions: descriptor.actions
 
-        signal clicked()
-        signal request_rename(string name)
-        signal request_delete()
-        signal request_add_action(string type, int track)
-        signal request_remove_action(string type, int track)
-        signal request_set_duration(int duration)
-        signal action_executed(int idx)
+        function rename(name) {
+            root.script_descriptors[script_index].elements[elem_index].name = name
+            root.script_descriptorsChanged()
+        }
+
+        function set_duration(value) {
+            root.script_descriptors[script_index].elements[elem_index].duration = duration
+            root.script_descriptorsChanged()
+        }
+
+        // signal clicked()
+        // signal request_rename(string name)
+        // signal request_delete()
+        // signal request_add_action(string type, int track)
+        // signal request_remove_action(string type, int track)
+        // signal request_set_duration(int duration)
+        // signal action_executed(int idx)
 
         color: Material.background
         border.color: active ? 'green' : 'grey'
@@ -351,16 +362,19 @@ Rectangle {
             anchors.rightMargin: 5
 
             TextField {
-                id: section_name
+                id: elem_name
 
                 anchors {
                     left: parent.left
                     right: parent.right
                 }
-                text: name
+                text: scriptelem.name
                 font.pixelSize: 12
 
-                onEditingFinished: () => { scriptelem.request_rename(displayText); background_focus.forceActiveFocus() }
+                onEditingFinished: {
+                    scriptelem.rename(displayText)
+                    background_focus.forceActiveFocus()
+                }
             }
 
             Item {
@@ -379,7 +393,7 @@ Rectangle {
                     id: spin
                     property int watchedValue: scriptelem.duration
                     onWatchedValueChanged: value = watchedValue
-                    onValueChanged: scriptelem.request_set_duration(value)
+                    onValueChanged: scriptelem.set_duration(value)
                     value: watchedValue
                     from: 1
                     anchors {
@@ -725,26 +739,34 @@ Rectangle {
                     'Loop': 'loop',
                     'Scene': 'scene',
                     'Track': 'track',
+                    'Global': 'global'
                 }
             }
             ScriptActionPopupCombo {
                 id: action_combo
                 label: 'Action:'
                 setting: 'action'
+                property var global_model: {
+                    'Stop All': 'stopAll'
+                }
                 property var scene_model: {
                     'Play': 'play'
                 }
                 property var loop_model: {
                     'Play': 'play',
                     'Record': 'record',
-                    'Stop': 'stop'
+                    'Record N': 'recordN',
+                    'Stop': 'stop',
+                    'Replace': 'replace',
+                    'PlayFX': 'playDryThroughWet',
+                    'RecordFX': 'recordDryIntoWet'
                 }
                 property var track_model: {
-                    'Stop all loops': 'stop_all_loops',
+                    'Stop all loops': 'stopAll',
                     'Mute': 'mute',
                     'Unmute': 'unmute',
-                    'Mute Passthrough': 'mute_passthrough',
-                    'Unmute Passthrough': 'unmute_passthrough'
+                    'Mute Passthrough': 'mutePassthrough',
+                    'Unmute Passthrough': 'unmutePassthrough'
                 }
 
                 model: {
@@ -755,6 +777,8 @@ Rectangle {
                         return loop_model
                     case 'track':
                         return track_model
+                    case 'global':
+                        return global_model
                     }
                 }
             }

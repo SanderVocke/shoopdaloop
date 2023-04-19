@@ -2,12 +2,18 @@
     "type": "object",
     "properties": {
         "schema":       { "const": "script_elem.1" },
+        "name":         { "type": "string" },
         "duration":     { "type": "integer" },
         "actions": {
             "type": "array",
             "items": {
                 "type": "object",
-                "properties": { "schema": { "const": "script_action.1", "$comment": "see script_action.1 schema" } }
+                "properties": { "schema": { "enum": [
+                    "script_loop_action.1",
+                    "script_track_action.1",
+                    "script_scene_action.1",
+                    "script_global_action.1"
+                ], "$comment": "see the referenced schemas" } }
             }
         }
     },

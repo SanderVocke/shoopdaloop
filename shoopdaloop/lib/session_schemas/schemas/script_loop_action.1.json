@@ -1,7 +1,7 @@
 {
     "type": "object",
     "properties": {
-        "schema":       { "const": "script_action.1" },
+        "schema":       { "const": "script_loop_action.1" },
         "target_ids":   {
             "type": "array",
             "items": { "type": "string" }
@@ -18,7 +18,7 @@
             ]
         },
         "delay_cycles": { "type": "integer" },
-        "args":         { "type": "array" }
+        "args":         { "type": "object" }
     },
     "required": ["schema", "action", "delay_cycles"]
 }
