@@ -3,6 +3,7 @@
     "properties": {
         "schema":       { "const": "loop.1" },
         "id":           { "type": "string"  },
+        "name":         { "type": "string"  },
         "length":       { "type": "integer" },
         "is_master":    { "type": "boolean" },
         "channels": {
@@ -14,5 +15,5 @@
             }
         }
     },
-    "required": ["schema", "id", "length", "channels", "is_master"]
+    "required": ["schema", "id", "name", "length", "channels", "is_master"]
 }

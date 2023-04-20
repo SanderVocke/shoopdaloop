@@ -16,6 +16,7 @@ Item {
     property Registry state_registry : null
 
     readonly property string obj_id: initial_descriptor.id
+    property string name: initial_descriptor.name
 
     SchemaCheck {
         descriptor: widget.initial_descriptor
@@ -30,6 +31,7 @@ Item {
         return {
             'schema': 'loop.1',
             'id': obj_id,
+            'name': name,
             'length': maybe_loop.length,
             'is_master': is_master,
             'channels': all_channels().map((c) => c.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to))
@@ -44,7 +46,6 @@ Item {
         }
     }
 
-    readonly property string name: ''
     readonly property var audio_channel_descriptors: initial_descriptor.channels.filter(c => c.type == 'audio')
     readonly property var midi_channel_descriptors: initial_descriptor.channels.filter(c => c.type == 'midi')
     property bool loaded : false
@@ -1115,9 +1116,10 @@ Item {
                     }
                     TextField {
                         id: name_field
+                        text: widget.name
                         font.pixelSize: 12
                         onEditingFinished: {
-                            widget.request_rename(text)
+                            widget.name = text
                             background_focus.forceActiveFocus();
                         }
                     }

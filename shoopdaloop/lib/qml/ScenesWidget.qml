@@ -72,13 +72,17 @@ Item {
 
     function toggle_loop_in_current_scene(loop_id) {
         var scn = selected_scene()
+        console.log("A", scn)
         if (scn) {
             if (scn.loop_ids.includes(loop_id)) {
+                console.log("B")
                 scn.loop_ids = scn.loop_ids.filter(i => i != loop_id)
             } else {
+                console.log("C")
                 scn.loop_ids.push(loop_id)
                 select_scene(scn)
             }
+            console.log(scn.loop_ids)
             actual_scene_descriptorsChanged()
         }
     }

@@ -22,7 +22,7 @@ Item {
             tracks_widget.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to),
             [],
             scenes_widget.actual_scene_descriptors,
-            scripting_widget.actual_session_descriptor()
+            scripting_widget.actual_session_descriptor
         );
     }
 
