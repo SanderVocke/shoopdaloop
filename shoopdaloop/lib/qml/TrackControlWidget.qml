@@ -30,10 +30,20 @@ Item {
     }
 
     property alias ports : lookup_ports.objects
-    property var audio_in_ports : ports.filter((p) => p instanceof AudioPort && p.direction == Types.PortDirection.Input)
-    property var audio_out_ports : ports.filter((p) => p instanceof AudioPort && p.direction == Types.PortDirection.Output)
-    property var midi_in_ports : ports.filter((p) => p instanceof MidiPort && p.direction == Types.PortDirection.Input)
-    property var midi_out_ports : ports.filter((p) => p instanceof MidiPort && p.direction == Types.PortDirection.Output)
+
+    function is_audio(p) { return p instanceof AudioPort; }
+    function is_midi(p)  { return p instanceof MidiPort;  }
+    function is_in(p)    { return p.direction == Types.PortDirection.Input && p.obj_id.match(/.*_in(?:_[0-9]*)?$/); }
+    function is_out(p)   { return p.direction == Types.PortDirection.Output && p.obj_id.match(/.*_out(?:_[0-9]*)?$/); }
+
+    property var audio_in_ports : ports.filter((p) => is_audio(p) && is_in(p))
+    property var audio_out_ports : ports.filter((p) => is_audio(p) && is_out(p))
+    property var midi_in_ports : ports.filter((p) => is_midi(p) && is_in(p))
+    property var midi_out_ports : ports.filter((p) => is_midi(p) && is_out(p))
+
+    Component.onCompleted: {
+        console.log("TRACK CONTROL ON: ", audio_in_ports.map(p => p.obj_id), audio_out_ports.map(p => p.obj_id), midi_in_ports.map(p => p.obj_id), midi_out_ports.map(p => p.obj_id))
+    }
 
     property int n_midi_notes_active_in : 0
     property int n_midi_notes_active_out : 0

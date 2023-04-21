@@ -214,7 +214,9 @@ Item {
         state_registry.replace('targeted_loop', widget)
     }
     function untarget() {
-        state_registry.replace('targeted_loop', null)
+        if (targeted) {
+            state_registry.replace('targeted_loop', null)
+        }
     }
     function toggle_selected() {
         if (selected) { deselect() } else { select() }
@@ -529,7 +531,7 @@ Item {
 
             Text {
                 text: statusrect.name
-                color: /\([0-9]+, [0-9]+\)/.test(statusrect.name) ? 'grey' : Material.foreground
+                color: /\([0-9]+\)/.test(statusrect.name) ? 'grey' : Material.foreground
                 font.pixelSize: 11
                 verticalAlignment: Text.AlignVCenter
                 horizontalAlignment: Text.AlignLeft

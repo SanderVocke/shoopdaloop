@@ -33,6 +33,7 @@ function generate_loop_channel(id, mode, type, data_length, connected_port_ids) 
 function generate_loop(id, name, length, is_master, channels) {
     return {
         'id': id,
+        'name': name,
         'schema': 'loop.1',
         'length': length,
         'is_master': is_master,
@@ -191,7 +192,7 @@ function generate_default_track(
                 id + '_loop_' + ii + "_audio_wet_" + idx.toString(), 'wet', 'audio', 0, pair.map(p => p.id)
             ))
         })
-        var loop = generate_loop(id+'_loop_'+ii, "Loop", 0, (first_loop_is_master && i==0) ? true : false, channels);
+        var loop = generate_loop(id+'_loop_'+ii, "(" + ii + ")", 0, (first_loop_is_master && i==0) ? true : false, channels);
         loops.push(loop);
     }
     var all_ports = [];
@@ -204,6 +205,7 @@ function generate_default_track(
 
 function generate_default_session() {
     var master_track = generate_default_track("Master", 1, 'master', true, 'master_loop', 0, 0, 1, false, false)
+    master_track.loops[0].name = "master"
     var session = generate_session([master_track], [], [], generate_scripts([], ""));
 
     return session;    
