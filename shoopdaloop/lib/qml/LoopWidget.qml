@@ -18,6 +18,13 @@ Item {
     readonly property string obj_id: initial_descriptor.id
     property string name: initial_descriptor.name
 
+    readonly property real initial_volume: {
+        var volumes = initial_descriptor.channels
+            .map(c => ('volume' in c) ? c.volume : undefined)
+            .filter(c => c != undefined)
+        return volumes.length > 0 ? Math.min(...volumes) : 1.0
+    }
+
     SchemaCheck {
         descriptor: widget.initial_descriptor
         schema: 'loop.1'
@@ -108,10 +115,6 @@ Item {
         loaded = Qt.binding(function() { return maybe_loop.loaded} )
     }
 
-    // property list<var> direct_port_pairs // List of ***PortPair
-    // property list<var> dry_port_pairs   // List of ***PortPair
-    // property list<var> wet_port_pairs   // List of ***PortPair
-    // property var mixed_wet_output_port  // AudioPort
     property var additional_context_menu_options : null // dict of option name -> functor
 
     // Internally controlled
@@ -225,11 +228,17 @@ Item {
         if (targeted) { untarget() } else { target() }
     }
 
-    function push_volume(volume) {
+    function get_audio_output_channels() {
         var chans = Array.from(Array(audio_channels.model).keys()).map((i) => audio_channels.itemAt(i))
-        for(var i=0; i<chans.length; i++) {
-            chans[i].set_backend_volume(volume)
-        }
+        return chans.filter(c => c && c.obj_id.match(/.*_(?:wet|direct)(?:_[0-9]+)?$/))
+    }
+
+    function push_volume(volume) {
+        // Only set the volume on audio output channels:
+        // - Volume not supported on MIDI
+        // - Send should always have the original recorded volume of the dry signal
+        // TODO: have our dial react to volume changes of the individual channels
+        get_audio_output_channels().forEach(c => c.set_volume(volume))
     }
 
     function set_length(length) {
@@ -873,6 +882,9 @@ Item {
                     from: -30.0
                     to:   20.0
                     value: 0.0
+                    property real initial_linear_value: widget.initial_volume
+                    onInitial_linear_valueChanged: set_from_linear(initial_linear_value)
+                    Component.onCompleted: set_from_linear(initial_linear_value)
 
                     LinearDbConversion {
                         dB_threshold: parent.from
@@ -883,14 +895,10 @@ Item {
                         convert_volume.dB = volume_dial.value
                         push_volume(convert_volume.linear)
                     }
-
-                    // Connections {
-                    //     target: statusrect.loop
-                    //     function onVolumeChanged() {
-                    //         convert_volume.linear = statusrect.loop.volume
-                    //         volume_dial.value = convert_volume.dB
-                    //     }
-                    // }
+                    function set_from_linear(val) {
+                        convert_volume.linear = val
+                        value = convert_volume.dB
+                    }
 
                     inputMode: Dial.Vertical
 

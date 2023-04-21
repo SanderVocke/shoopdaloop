@@ -74,7 +74,7 @@ class AudioPort(Port):
         self.passthrough_muted = state.muted
     
     @Slot(float)
-    def set_backend_volume(self, volume):
+    def set_volume(self, volume):
         if self._backend_obj:
             self._backend_obj.set_volume(volume)
     

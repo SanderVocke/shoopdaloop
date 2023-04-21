@@ -25,6 +25,7 @@ LoopAudioChannel {
             'mode': initialized ? Conversions.stringify_channel_mode(mode) : descriptor.mode,
             'type': 'audio',
             'data_length': data_length,
+            'volume': volume,
             'connected_port_ids': initialized ? connected_ports.map((c) => c.obj_id) : descriptor.connected_port_ids
         }
 
@@ -48,8 +49,11 @@ LoopAudioChannel {
         return Object.keys(descriptor).includes("data_file")
     }
 
-    property int initial_mode : Conversions.parse_channel_mode(descriptor.mode)
+    readonly property int initial_mode : Conversions.parse_channel_mode(descriptor.mode)
+    readonly property real initial_volume : ('volume' in descriptor) ? descriptor.volume : 1.0
+
     onInitial_modeChanged: set_mode(initial_mode)
+    onInitial_volumeChanged: set_volume(initial_volume)
     ports: lookup_connected_ports.objects
 
     RegistryLookups {
@@ -60,6 +64,7 @@ LoopAudioChannel {
 
     Component.onCompleted: {
         set_mode(initial_mode)
+        set_volume(initial_volume)
         if(objects_registry) { objects_registry.register(descriptor.id, chan) }
     }
     function qml_close() {

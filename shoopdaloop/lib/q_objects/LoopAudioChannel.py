@@ -19,11 +19,16 @@ class LoopAudioChannel(LoopChannel):
     def __init__(self, parent=None):
         super(LoopAudioChannel, self).__init__(parent)
         self._output_peak = 0.0
-        self._volume = 0.0
+        self._volume = 1.0
+        self._initial_volume_pushed = False
     
     def maybe_initialize(self):
         if self._loop and self._loop.initialized and not self._backend_obj:
             self._backend_obj = self._loop.add_audio_channel(self.mode)
+            # TODO: this is a workaround for the fact that immediately after channel creation,
+            # we get a placeholder handle because the back-end is still setting it up.
+            # We will push the initial volume on the first update call.
+            self._initial_volume_pushed = False
             self.initializedChanged.emit(True)
 
     ######################
@@ -61,15 +66,22 @@ class LoopAudioChannel(LoopChannel):
         return self._backend_obj.get_data()
     
     @Slot(float)
-    def set_backend_volume(self, volume):
+    def set_volume(self, volume):
         if self._backend_obj:
             self._backend_obj.set_volume(volume)
+        else:
+            self._volume = volume
+            self.volumeChanged.emit(volume)
     
     @Slot()
     def update_impl(self, state):
         if state.output_peak != self._output_peak:
             self._output_peak = state.output_peak
             self.outputPeakChanged.emit(self._output_peak)
-        if state.volume != self._volume:
-            self._volume = state.volume
-            self.volumeChanged.emit(self._volume)
+        if not self._initial_volume_pushed:
+            self.set_volume(self._volume)
+            self._initial_volume_pushed = True
+        else:
+            if state.volume != self._volume:
+                self._volume = state.volume
+                self.volumeChanged.emit(self._volume)

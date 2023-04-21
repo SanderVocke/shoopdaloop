@@ -41,10 +41,6 @@ Item {
     property var midi_in_ports : ports.filter((p) => is_midi(p) && is_in(p))
     property var midi_out_ports : ports.filter((p) => is_midi(p) && is_out(p))
 
-    Component.onCompleted: {
-        console.log("TRACK CONTROL ON: ", audio_in_ports.map(p => p.obj_id), audio_out_ports.map(p => p.obj_id), midi_in_ports.map(p => p.obj_id), midi_out_ports.map(p => p.obj_id))
-    }
-
     property int n_midi_notes_active_in : 0
     property int n_midi_notes_active_out : 0
     property int n_midi_events_in : 0
@@ -91,7 +87,7 @@ Item {
     function push_volume(target) {
         convert_volume.dB = volume_dB
         var v = convert_volume.linear
-        if (target && target.volume != v) { target.set_backend_volume(v) }
+        if (target && target.volume != v) { target.set_volume(v) }
     }
 
     onVolume_dBChanged: {
