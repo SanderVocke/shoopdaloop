@@ -16,6 +16,31 @@ Item {
     property alias volume_dB_min: volume_slider.from
     property alias passthrough_dB_min: passthrough_slider.from
 
+    property real initial_volume: {
+        var volumes = initial_track_descriptor.ports
+            .filter(p => is_out(p))
+            .map(p => ('volume' in p) ? p.volume : undefined)
+            .filter(p => p != undefined)
+        return volumes.length > 0 ? Math.min(...volumes) : 1.0
+    }
+    property real initial_passthrough_volume: {
+        var volumes = initial_track_descriptor.ports
+            .filter(p => is_in(p))
+            .map(p => ('volume' in p) ? p.volume : undefined)
+            .filter(p => p != undefined)
+        return volumes.length > 0 ? Math.min(...volumes) : 1.0
+    }
+    property real initial_volume_dB: 0.0
+    onInitial_volumeChanged: {
+        convert_volume.linear = initial_volume
+        initial_volume_dB = convert_volume.dB
+    }
+    property real initial_passthrough_volume_dB: 0.0
+    onInitial_passthrough_volumeChanged: {
+        convert_passthrough.linear = initial_passthrough_volume
+        initial_passthrough_volume_dB = convert_passthrough.dB
+    }
+
     property bool muted: audio_out_ports.length > 0 ? audio_out_ports[0].muted : false
     property bool passthroughMuted: {
         var in_ports = [...audio_in_ports, ...midi_in_ports]
@@ -34,15 +59,15 @@ Item {
 
     property alias ports : lookup_ports.objects
 
-    function is_audio(p) { return p instanceof AudioPort; }
-    function is_midi(p)  { return p instanceof MidiPort;  }
-    function is_in(p)    { return p.direction == Types.PortDirection.Input && p.obj_id.match(/.*_in(?:_[0-9]*)?$/); }
-    function is_out(p)   { return p.direction == Types.PortDirection.Output && p.obj_id.match(/.*_out(?:_[0-9]*)?$/); }
+    function is_audio(p) { return p.schema.match(/audioport\.[0-9]+/) }
+    function is_midi(p)  { return p.schema.match(/midiport\.[0-9]+/)  }
+    function is_in(p)    { return p.direction == "input" && p.id.match(/.*_(?:in|direct)(?:_[0-9]*)?$/); }
+    function is_out(p)   { return p.direction == "output" && p.id.match(/.*_(?:out|direct)(?:_[0-9]*)?$/); }
 
-    property var audio_in_ports : ports.filter((p) => is_audio(p) && is_in(p))
-    property var audio_out_ports : ports.filter((p) => is_audio(p) && is_out(p))
-    property var midi_in_ports : ports.filter((p) => is_midi(p) && is_in(p))
-    property var midi_out_ports : ports.filter((p) => is_midi(p) && is_out(p))
+    property var audio_in_ports : ports.filter((p) => is_audio(p.descriptor) && is_in(p.descriptor))
+    property var audio_out_ports : ports.filter((p) => is_audio(p.descriptor) && is_out(p.descriptor))
+    property var midi_in_ports : ports.filter((p) => is_midi(p.descriptor) && is_in(p.descriptor))
+    property var midi_out_ports : ports.filter((p) => is_midi(p.descriptor) && is_out(p.descriptor))
 
     property int n_midi_notes_active_in : 0
     property int n_midi_notes_active_out : 0
@@ -87,18 +112,18 @@ Item {
         id: convert_passthrough
     }
 
-    function push_volume(target) {
-        convert_volume.dB = volume_dB
+    function push_volume(volume, target) {
+        convert_volume.dB = volume
         var v = convert_volume.linear
         if (target && target.volume != v) { target.set_volume(v) }
     }
 
     onVolume_dBChanged: {
-        trackctl.audio_out_ports.forEach((p) => push_volume(p))
+        audio_out_ports.forEach((p) => push_volume(volume_dB, p))
     }
 
     onPassthrough_dBChanged: {
-        audio_in_ports.forEach((p) => push_volume(p))
+        audio_in_ports.forEach((p) => push_volume(passthrough_dB, p))
     }
 
     // Connections {
@@ -295,6 +320,10 @@ Item {
                     to: 20.0
                     value: 0.0
 
+                    property real initial_value_dB: trackctl.initial_volume_dB
+                    onInitial_value_dBChanged: value = initial_value_dB
+                    Component.onCompleted: value = initial_value_dB
+
                     ToolTip {
                         delay: 1000
                         visible: volume_ma.containsMouse
@@ -461,6 +490,10 @@ Item {
                     from: -30.0
                     to: 20.0
                     value: 0.0
+
+                    property real initial_value_dB: trackctl.initial_passthrough_volume_dB
+                    onInitial_value_dBChanged: value = initial_value_dB
+                    Component.onCompleted: value = initial_value_dB
 
                     ToolTip {
                         delay: 1000
