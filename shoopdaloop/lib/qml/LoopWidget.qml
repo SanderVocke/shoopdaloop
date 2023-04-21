@@ -104,7 +104,9 @@ Item {
     property bool selected : selected_loop_ids ? selected_loop_ids.has(obj_id) : false
 
     function toggle_in_current_scene() {
+        console.log("A")
         if (scenes_widget) {
+            console.log("B")
             scenes_widget.toggle_loop_in_current_scene (obj_id)
         }
     }

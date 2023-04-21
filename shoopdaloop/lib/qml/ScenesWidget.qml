@@ -72,18 +72,15 @@ Item {
 
     function toggle_loop_in_current_scene(loop_id) {
         var scn = selected_scene()
-        console.log("A", scn)
         if (scn) {
             if (scn.loop_ids.includes(loop_id)) {
-                console.log("B")
                 scn.loop_ids = scn.loop_ids.filter(i => i != loop_id)
             } else {
-                console.log("C")
                 scn.loop_ids.push(loop_id)
                 select_scene(scn)
             }
-            console.log(scn.loop_ids)
             actual_scene_descriptorsChanged()
+            select_scene(scn)
         }
     }
 
@@ -261,9 +258,11 @@ Item {
         }
 
         TextField {
-            width: parent.width - 40
+            width: parent.width - 25
+            height: parent.height - 6
             anchors.horizontalCenter: parent.horizontalCenter
-            anchors.horizontalCenterOffset: 18
+            anchors.horizontalCenterOffset: 5
+            font.pixelSize: 11
 
             text: name
             color: is_selected ? Material.background : Material.foreground

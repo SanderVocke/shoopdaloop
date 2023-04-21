@@ -101,7 +101,8 @@ Item {
 
     function reload() {
         state_registry.clear([
-            'sync_active'
+            'sync_active',
+            'scenes_widget'
         ])
         state_registry.reset_saving_loading()
         objects_registry.clear()
