@@ -3,6 +3,7 @@ import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
 
 import '../backend/frontend_interface/types.js' as Types
+import "../generate_session.js" as GenerateSession
 
 // The track widget displays the state of a track (collection of
 // loopers with shared settings/control).
@@ -131,13 +132,8 @@ Item {
             if (chan.id == prev_chan.id) { throw new Error("Did not find loop ID in channel ID") }
             channel_descriptors.push(chan)
         }
-        var loop_descriptor = {
-            'schema': 'loop.1',
-            'id': id,
-            'length': 0,
-            'is_master': false,
-            'channels': channel_descriptors
-        }
+        var name = "(" + (track.loops.length).toString() + ")"
+        var loop_descriptor = GenerateSession.generate_loop(id, name, 0, false, channel_descriptors)
 
         track.add_loop({
             initial_descriptor: loop_descriptor,
