@@ -174,9 +174,16 @@ ScrollView {
                 TrackControlWidget {
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.horizontalCenter: parent.horizontalCenter
-                    initial_track_descriptor: root.track_initial_descriptors[a_track.index]
+                    initial_track_descriptor: a_track.mapped_item.initial_descriptor
                     objects_registry: root.objects_registry
                     state_registry: root.state_registry
+
+                    Component.onCompleted: {
+                        console.log("Track control widget finished.",
+                            "\nidx:", a_track.index,
+                            "\ntrack:", a_track.mapped_item.obj_id,
+                            "\nout:", audio_out_ports.map(p => p.obj_id))
+                    }
                 }
             }
         }

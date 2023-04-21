@@ -20,6 +20,7 @@ MidiPort {
             'id': descriptor.id,
             'name_parts': descriptor.name_parts,
             'direction': descriptor.direction,
+            'muted': descriptor.muted,
             'passthrough_to': descriptor.passthrough_to // TODO test properly
         }
     }
@@ -51,4 +52,5 @@ MidiPort {
 
     property list<string> name_parts : descriptor.name_parts
     name_hint : name_parts.join('')
+    muted: descriptor.muted
 }

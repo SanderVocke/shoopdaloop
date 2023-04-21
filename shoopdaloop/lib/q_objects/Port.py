@@ -157,12 +157,12 @@ class Port(QQuickItem):
             self.backend = maybe_backend
     
     @Slot(bool)
-    def set_backend_muted(self, muted):
+    def set_muted(self, muted):
         if self._backend_obj:
             self._backend_obj.set_muted(muted)
     
     @Slot(bool)
-    def set_backend_passthrough_muted(self, muted):
+    def set_passthrough_muted(self, muted):
         if self._backend_obj:
             self._backend_obj.set_passthrough_muted(muted)
 

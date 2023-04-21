@@ -6,7 +6,8 @@
         "name_parts":     { "type": "array", "items": { "type": "string" } },
         "direction":      { "enum": ["input", "output"] },
         "volume":         { "type": "number" },
+        "muted":          { "type": "boolean" },
         "passthrough_to": { "type": "array", "items": { "type": "string" } }
     },
-    "required": ["schema", "id", "name_parts", "direction", "volume", "passthrough_to"]
+    "required": ["schema", "id", "name_parts", "direction", "volume", "muted", "passthrough_to"]
 }

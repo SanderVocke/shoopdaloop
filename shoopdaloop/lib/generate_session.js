@@ -1,21 +1,23 @@
-function generate_audio_port(id, passthrough_to_ids, name_parts, direction, volume) {
+function generate_audio_port(id, passthrough_to_ids, name_parts, direction, volume, muted) {
     return {
         'id': id,
         'passthrough_to': passthrough_to_ids,
         'schema': 'audioport.1',
         'name_parts': name_parts,
         'direction': direction,
-        'volume': volume
+        'volume': volume,
+        'muted': muted
     };
 }
 
-function generate_midi_port(id, passthrough_to_ids, name_parts, direction) {
+function generate_midi_port(id, passthrough_to_ids, name_parts, direction, muted) {
     return {
         'id': id,
         'passthrough_to': passthrough_to_ids,
         'schema': 'midiport.1',
         'name_parts': name_parts,
         'direction': direction,
+        'muted': muted
     };
 }
 
@@ -117,8 +119,8 @@ function generate_default_track(
         var in_id = id + in_id_post;
         var out_id = id + out_id_post;
         return [
-            generate_audio_port(in_id, [out_id], [port_name_base, in_id_post], 'input', 1.0),
-            generate_audio_port(out_id, [], [port_name_base, out_id_post], 'output', 1.0),
+            generate_audio_port(in_id, [out_id], [port_name_base, in_id_post], 'input', 1.0, false),
+            generate_audio_port(out_id, [], [port_name_base, out_id_post], 'output', 1.0, false),
         ]
     })
     var audio_wet_port_pairs = Array.from(Array(n_audio_wet).keys()).map((idx) => {
@@ -128,8 +130,8 @@ function generate_default_track(
         var in_id = id + in_id_post;
         var out_id = id + out_id_post;
         return [
-            generate_audio_port(in_id, [out_id], [port_name_base, in_id_post], 'input', 1.0),
-            generate_audio_port(out_id, [], [port_name_base, out_id_post], 'output', 1.0),
+            generate_audio_port(in_id, [out_id], [port_name_base, in_id_post], 'input', 1.0, false),
+            generate_audio_port(out_id, [], [port_name_base, out_id_post], 'output', 1.0, false),
         ]
     })
     var audio_direct_port_pairs = Array.from(Array(n_audio_direct).keys()).map((idx) => {
@@ -139,8 +141,8 @@ function generate_default_track(
         var in_id = id + in_id_post;
         var out_id = id + out_id_post;
         return [
-            generate_audio_port(in_id, [out_id], [port_name_base, in_id_post], 'input', 1.0),
-            generate_audio_port(out_id, [], [port_name_base, out_id_post], 'output', 1.0),
+            generate_audio_port(in_id, [out_id], [port_name_base, in_id_post], 'input', 1.0, false),
+            generate_audio_port(out_id, [], [port_name_base, out_id_post], 'output', 1.0, false),
         ]
     })
     var midi_direct_port_pairs = have_midi_direct ? (() => {
@@ -149,8 +151,8 @@ function generate_default_track(
         var in_id = id + in_id_post;
         var out_id = id + out_id_post;
         return [[
-            generate_midi_port(in_id, [out_id], [port_name_base, in_id_post], 'input'),
-            generate_midi_port(out_id, [], [port_name_base, out_id_post], 'output'),
+            generate_midi_port(in_id, [out_id], [port_name_base, in_id_post], 'input', false),
+            generate_midi_port(out_id, [], [port_name_base, out_id_post], 'output', false),
         ]]
     })() : [];
     var midi_dry_port_pairs = have_midi_dry ? (() => {
@@ -159,8 +161,8 @@ function generate_default_track(
         var in_id = id + in_id_post;
         var out_id = id + out_id_post;
         return [[
-            generate_midi_port(in_id, [out_id], [port_name_base, in_id_post], 'input'),
-            generate_midi_port(out_id, [], [port_name_base, out_id_post], 'output'),
+            generate_midi_port(in_id, [out_id], [port_name_base, in_id_post], 'input', false),
+            generate_midi_port(out_id, [], [port_name_base, out_id_post], 'output', false),
         ]]
     })() : [];
 

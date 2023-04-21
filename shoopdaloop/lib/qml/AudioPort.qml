@@ -21,6 +21,7 @@ AudioPort {
             'name_parts': descriptor.name_parts,
             'direction': descriptor.direction,
             'volume': volume,
+            'muted': muted,
             'passthrough_to': descriptor.passthrough_to // TODO test properly
         }
     }
@@ -52,4 +53,5 @@ AudioPort {
     property list<string> name_parts : descriptor.name_parts
     name_hint : name_parts.join('')
     volume : descriptor.volume
+    muted : descriptor.muted
 }

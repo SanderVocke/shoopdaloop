@@ -17,7 +17,10 @@ Item {
     property alias passthrough_dB_min: passthrough_slider.from
 
     property bool muted: audio_out_ports.length > 0 ? audio_out_ports[0].muted : false
-    property bool passthroughMuted: audio_in_ports.length > 0 ? audio_in_ports[0].muted : false
+    property bool passthroughMuted: {
+        var in_ports = [...audio_in_ports, ...midi_in_ports]
+        return in_ports.length > 0 ? in_ports[0].muted : false
+    }
 
     property var initial_track_descriptor : null
     property Registry objects_registry : null
@@ -123,14 +126,14 @@ Item {
 
     function toggle_muted() {
         var n = !muted
-        audio_out_ports.forEach((p) => p.set_backend_muted(n))
-        midi_out_ports.forEach((p) => p.set_backend_muted(n))
+        audio_out_ports.forEach((p) => p.set_muted(n))
+        midi_out_ports.forEach((p) => p.set_muted(n))
     }
 
     function toggle_passthroughMuted() {
         var n = !passthroughMuted
-        audio_in_ports.forEach((p) => p.set_backend_muted(n))
-        midi_in_ports.forEach((p) => p.set_backend_muted(n))
+        audio_in_ports.forEach((p) => p.set_muted(n))
+        midi_in_ports.forEach((p) => p.set_muted(n))
     }
 
     signal mute()

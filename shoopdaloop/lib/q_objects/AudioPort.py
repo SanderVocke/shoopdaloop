@@ -18,6 +18,7 @@ class AudioPort(Port):
         self._peak = 0.0
         self._volume = 1.0
         self._passthrough_volume = 1.0
+        self._pushed_initial_values = False
 
     ######################
     # PROPERTIES
@@ -67,11 +68,19 @@ class AudioPort(Port):
             return
         state = self._backend_obj.get_state()
         self.peak = state.peak
-        self.volume = state.volume
-        self.passthrough_volume = state.passthrough_volume
         self.name = state.name
-        self.muted = state.muted
-        self.passthrough_muted = state.muted
+
+        if self._pushed_initial_values:
+            self.volume = state.volume
+            self.passthrough_volume = state.passthrough_volume
+            self.muted = state.muted
+            self.passthrough_muted = state.muted
+        else:
+            self.set_volume(self.volume)
+            self.set_passthrough_volume(self.passthrough_volume)
+            self.set_muted(self.muted)
+            self.set_passthrough_muted(self.passthrough_muted)
+            self._pushed_initial_values = True
     
     @Slot(float)
     def set_volume(self, volume):
@@ -79,7 +88,7 @@ class AudioPort(Port):
             self._backend_obj.set_volume(volume)
     
     @Slot(float)
-    def set_backend_passthrough_volume(self, passthrough_volume):
+    def set_passthrough_volume(self, passthrough_volume):
         if self._backend_obj:
             self._backend_obj.set_passthrough_volume(passthrough_volume)
 
@@ -90,6 +99,7 @@ class AudioPort(Port):
         return self._backend_obj
         
     def maybe_initialize_impl(self, name_hint, direction):
+        self._pushed_initial_values = False
         self._backend_obj = self.backend.get_backend_obj().open_audio_port(name_hint, direction)
 
     def connect_passthrough_impl(self, other):

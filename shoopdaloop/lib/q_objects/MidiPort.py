@@ -17,6 +17,7 @@ class MidiPort(Port):
         super(MidiPort, self).__init__(parent)
         self._n_events_triggered = 0
         self._n_notes_active = 0
+        self._pushed_initial_values = False
 
     ######################
     # PROPERTIES
@@ -57,8 +58,14 @@ class MidiPort(Port):
         self.n_events_triggered = state.n_events_triggered
         self.n_notes_active = state.n_notes_active
         self.name = state.name
-        self.muted = state.muted
-        self.passthrough_muted = state.muted
+
+        if self._pushed_initial_values:
+            self.muted = state.muted
+            self.passthrough_muted = state.muted
+        else:
+            self.set_muted(self.muted)
+            self.set_passthrough_muted(self.passthrough_muted)
+            self._pushed_initial_values = True
     
     ##########
     ## INTERNAL MEMBERS
@@ -67,6 +74,7 @@ class MidiPort(Port):
         return self._backend_obj
 
     def maybe_initialize_impl(self, name_hint, direction):
+        self._pushed_initial_values = False
         self._backend_obj = self.backend.get_backend_obj().open_midi_port(name_hint, direction)
 
     def connect_passthrough_impl(self, other):
