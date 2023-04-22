@@ -17,7 +17,7 @@ Item {
     }
 
     function unregister() {
-        if (registered_key != undefined) {
+        if (registered_key != undefined && registered_registry) {
             registered_registry.unregister(registered_key)
             registered_key = undefined
             registered_object = undefined
@@ -26,10 +26,12 @@ Item {
     }
 
     function replace_object() {
-        registry.replace(key, object)
-        registered_key = key
-        registered_object = object
-        registered_registry = registry
+        if (registry) {
+            registry.replace(key, object)
+            registered_key = key
+            registered_object = object
+            registered_registry = registry
+        }
     }
 
     function update() {

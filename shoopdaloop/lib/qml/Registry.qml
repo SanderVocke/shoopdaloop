@@ -129,6 +129,16 @@ Item {
         return r
     }
 
+    function select_values(fn) {
+        var r = []
+        for (const [key, value] of Object.entries(registry_data)) {
+            if(fn(value)) {
+                r.push(value)
+            }
+        }
+        return r
+    }
+
     function clear(except_keys=[]) {
         var replace = {}
         for(const key of except_keys) { replace[key] = registry_data[key] }

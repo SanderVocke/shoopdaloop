@@ -319,6 +319,17 @@ Rectangle {
                               root.script_current_cycle >= start_cycle &&
                               root.script_current_cycle < (start_cycle + duration)
         property string name: descriptor.name
+
+        RegistrySelects {
+            id: lookup_scenes
+            registry: root.objects_registry
+            select_fn: (o) => ('descriptor' in o) && (o.descriptor.schema == 'scene.1')
+            values_only: true
+        }
+        property alias scenes : lookup_scenes.objects
+
+        onScenesChanged: console.log("Scenes:", scenes)
+
         property var available_scene_names
         property var track_names
         property var actions: descriptor.actions

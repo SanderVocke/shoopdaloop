@@ -153,6 +153,8 @@ Item {
                                 property var mapped_item
                                 property int index
 
+                                descriptor: mapped_item
+
                                 RegisterInRegistry {
                                     registry: root.objects_registry
                                     key: mapped_item.id
@@ -232,6 +234,7 @@ Item {
 
         property bool is_selected
         property string name
+        property var descriptor
 
         //Array of [track, loop]
         property var referenced_loops: []
