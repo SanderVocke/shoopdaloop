@@ -804,27 +804,30 @@ Rectangle {
                 setting: 'scene'
                 model: create_enumeration(root.scene_descriptors.map(s => s.name))
                 visible: action_type_combo.currentValue == 'scene'
-                onModelChanged: console.log("SCENES MODEL", JSON.stringify(model))
             }
             ScriptActionPopupCombo {
                 id: track_combo
                 label: 'Track:'
                 setting: 'track'
-                model: create_enumeration(root.track_descriptors.map(t => t.name))
+                model: {
+                    var obj = {}
+                    root.track_descriptors.forEach(t => obj[t.name] = t)
+                    return obj
+                }
                 visible: action_type_combo.currentValue == 'loop'
+                onCurrentValueChanged: console.log("TRACKVALUE", JSON.stringify(currentValue.id))
             }
             ScriptActionPopupCombo {
                 id: loop_combo
                 label: 'Loop:'
                 setting: 'loop'
                 property var track: track_combo.currentValue
-                model: root.loop_names.length > track ?
-                        create_enumeration(
-                            root.loop_names[track].map((name, idx) => {
-                                if (name == '') { return '(' + track.toString() + ', ' + (idx+1).toString() + ')' }
-                                return name
-                            })
-                        ) : []
+                model: {
+                    if (!track) { return {} }
+                    var obj = {}
+                    track.loops.forEach(l => obj[l.name] = l)
+                    return obj
+                }
                 visible: action_type_combo.currentValue == 'loop'
             }
             ScriptActionPopupCombo {
