@@ -62,13 +62,19 @@ LoopAudioChannel {
         keys: descriptor.connected_port_ids
     }
 
+    RegisterInRegistry {
+        id: reg_entry
+        object: chan
+        key: chan.descriptor.id
+        registry: chan.objects_registry
+    }
+
     Component.onCompleted: {
         set_mode(initial_mode)
         set_volume(initial_volume)
-        if(objects_registry) { objects_registry.register(descriptor.id, chan) }
     }
     function qml_close() {
-        objects_registry.unregister(descriptor.id)
+        reg_entry.close()
         close()
     }
 }

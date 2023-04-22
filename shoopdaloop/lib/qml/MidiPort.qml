@@ -36,8 +36,15 @@ MidiPort {
         descriptor: port.descriptor
         schema: 'midiport.1'
     }
+
+    RegisterInRegistry {
+        id: reg_entry
+        registry: port.objects_registry
+        key: port.descriptor.id
+        object: port
+    }
+
     Component.onCompleted: {
-        if(objects_registry) { objects_registry.register(descriptor.id, this) }
         if(descriptor) {
             switch(descriptor.direction) {
                 case 'input': direction = Types.PortDirection.Input; break;
@@ -46,7 +53,7 @@ MidiPort {
         }
     }
     function qml_close() {
-        objects_registry.unregister(descriptor.id)
+        reg_entry.close()
         close()
     }
 

@@ -58,12 +58,18 @@ LoopMidiChannel {
         keys: descriptor.connected_port_ids
     }
 
+    RegisterInRegistry {
+        id: reg_entry
+        registry: chan.objects_registry
+        key: chan.descriptor.id
+        object: chan
+    }
+
     Component.onCompleted: {
         set_mode(initial_mode)
-        if(objects_registry) { objects_registry.register(descriptor.id, chan) }
     }
     function qml_close() {
-        objects_registry.unregister(descriptor.id)
+        reg_entry.close()
         close()
     }
 }

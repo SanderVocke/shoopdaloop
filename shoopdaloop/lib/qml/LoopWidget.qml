@@ -111,9 +111,22 @@ Item {
         }
     }
 
+    RegisterInRegistry {
+        id: obj_reg_entry
+        object: widget
+        key: obj_id
+        registry: widget.objects_registry
+    }
+
+    RegisterInRegistry {
+        id: master_reg_entry
+        enabled: initial_descriptor.is_master
+        registry: widget.state_registry
+        key: 'master_loop'
+        object: widget
+    }
+
     Component.onCompleted: {
-        objects_registry.register(obj_id, this)
-        if(initial_descriptor.is_master) { state_registry.register('master_loop', this); }
         loaded = Qt.binding(function() { return maybe_loop.loaded} )
     }
 
@@ -197,7 +210,8 @@ Item {
         if (emit) { onClear(length) }
     }
     function qml_close() {
-        objects_registry.unregister(initial_descriptor.id)
+        obj_reg_entry.close()
+        master_reg_entry.close()
         for(var i=0; i<audio_channels.model; i++) {
             audio_channels.itemAt(i).qml_close();
         }

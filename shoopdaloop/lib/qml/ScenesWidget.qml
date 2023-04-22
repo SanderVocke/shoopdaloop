@@ -17,8 +17,11 @@ Item {
 
     property var actual_scene_descriptors: initial_scene_descriptors
 
-    Component.onCompleted: {
-        state_registry.register('scenes_widget', root)
+    RegisterInRegistry {
+        id: reg_entry
+        registry: root.state_registry
+        key: 'scenes_widget'
+        object: root
     }
 
     function scene_changed(actual_descriptor) {
@@ -149,6 +152,12 @@ Item {
                             SceneWidget {
                                 property var mapped_item
                                 property int index
+
+                                RegisterInRegistry {
+                                    registry: root.objects_registry
+                                    key: mapped_item.id
+                                    object: parent
+                                }
 
                                 anchors {
                                     right: column.right

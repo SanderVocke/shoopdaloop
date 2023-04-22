@@ -254,9 +254,6 @@ Rectangle {
                         ScriptElementWidget {
                             script_index : script_elements.script_index
                             elem_index: index
-
-                            available_scene_names: []
-                            track_names: []
                             
                             height: scriptelems_scroll.height
                             width: 150

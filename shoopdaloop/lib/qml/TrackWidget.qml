@@ -45,7 +45,7 @@ Item {
     }
 
     function qml_close() {
-        objects_registry.unregister(initial_descriptor.id)
+        reg_entry.close()
         all_ports().forEach(p => p.qml_close())
         for(var i=0; i<loops.length; i++) {
             loops[i].qml_close();
@@ -83,8 +83,14 @@ Item {
         }
     }
 
+    RegisterInRegistry {
+        id: reg_entry
+        registry: track.objects_registry
+        object: track
+        key: track.obj_id
+    }
+
     Component.onCompleted: {
-        if(objects_registry) { objects_registry.register(obj_id, this) }
         loaded = false
         var _n_loops_loaded = 0
         // Instantiate initial loops
