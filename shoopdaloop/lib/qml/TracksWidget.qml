@@ -13,7 +13,7 @@ ScrollView {
 
     id: root
 
-    property var initial_track_descriptors : null
+    property var initial_track_descriptors : []
     property Registry objects_registry : null
     property Registry state_registry : null
 
@@ -22,6 +22,12 @@ ScrollView {
 
     property list<var> tracks : []
     property var track_initial_descriptors : []
+
+    RegisterInRegistry {
+        registry: root.state_registry
+        key: 'track_descriptors'
+        object: track_initial_descriptors
+    }
 
     readonly property var factory : Qt.createComponent("TrackWidget.qml")
 

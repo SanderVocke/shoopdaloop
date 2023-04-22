@@ -63,7 +63,10 @@ Item {
 
     function replace(id, val) {
         const d = registry_data[id]
-        if(d == val) { return; }
+        if(d == val) {
+            if (typeof d === 'object') { itemModified(id, val) }
+            return;
+        }
         if(verbose) {
             console.log("REGISTRY: Replacing ", id, ":", d, " => ", val)
         }
@@ -82,6 +85,8 @@ Item {
                 registry_data[key] = val
                 itemModified(key, val)
                 n_changed++
+            } else if (typeof val === 'object') {
+                itemModified(key, val)
             }
         }
         if (n_changed > 0) {

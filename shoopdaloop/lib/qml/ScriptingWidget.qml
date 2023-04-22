@@ -27,6 +27,20 @@ Rectangle {
 
     property var script_names: script_descriptors.map(s => s.name)
 
+    RegistryLookup {
+        id: lookup_scene_descriptors
+        registry: root.state_registry
+        key: 'scene_descriptors'
+    }
+    property alias scene_descriptors : lookup_scene_descriptors.object
+
+    RegistryLookup {
+        id: lookup_track_descriptors
+        registry: root.state_registry
+        key: 'track_descriptors'
+    }
+    property alias track_descriptors : lookup_track_descriptors.object
+
     function add_script(name) {
         // Generate a unique ID
         var script_ids = script_descriptors.map(s => s.id)
@@ -166,7 +180,8 @@ Rectangle {
 
             Label {
                 color: Material.foreground
-                text: root.script_current_cycle.toString() + '/' + root.script_length.toString()
+                text: "TODO cycle"
+                //text: root.script_current_cycle.toString() + '/' + root.script_length.toString()
             }
 
             Row {
@@ -319,16 +334,6 @@ Rectangle {
                               root.script_current_cycle >= start_cycle &&
                               root.script_current_cycle < (start_cycle + duration)
         property string name: descriptor.name
-
-        RegistrySelects {
-            id: lookup_scenes
-            registry: root.objects_registry
-            select_fn: (o) => ('descriptor' in o) && (o.descriptor.schema == 'scene.1')
-            values_only: true
-        }
-        property alias scenes : lookup_scenes.objects
-
-        onScenesChanged: console.log("Scenes:", scenes)
 
         property var available_scene_names
         property var track_names
@@ -797,14 +802,15 @@ Rectangle {
                 id: scene_combo
                 label: 'Scene:'
                 setting: 'scene'
-                model: create_enumeration(root.scene_names)
+                model: create_enumeration(root.scene_descriptors.map(s => s.name))
                 visible: action_type_combo.currentValue == 'scene'
+                onModelChanged: console.log("SCENES MODEL", JSON.stringify(model))
             }
             ScriptActionPopupCombo {
                 id: track_combo
                 label: 'Track:'
                 setting: 'track'
-                model: create_enumeration(root.track_names)
+                model: create_enumeration(root.track_descriptors.map(t => t.name))
                 visible: action_type_combo.currentValue == 'loop'
             }
             ScriptActionPopupCombo {

@@ -24,6 +24,12 @@ Item {
         object: root
     }
 
+    RegisterInRegistry {
+        registry: root.state_registry
+        key: "scene_descriptors"
+        object: root.actual_scene_descriptors
+    }
+
     function scene_changed(actual_descriptor) {
         var id = actual_descriptor.id
         for(var i=0; i<actual_scene_descriptors.length; i++) {
@@ -155,37 +161,31 @@ Item {
 
                                 descriptor: mapped_item
 
-                                RegisterInRegistry {
-                                    registry: root.objects_registry
-                                    key: mapped_item.id
-                                    object: parent
-                                }
-
                                 anchors {
                                     right: column.right
                                     left: column.left
                                 }
 
                                 height: 40
-                                name: mapped_item.name
-                                is_selected: root.selected_scene_id == mapped_item.id
-                                property bool is_hovered: root.hovered_scene_id == mapped_item.id
+                                name: descriptor.name
+                                is_selected: root.selected_scene_id == descriptor.id
+                                property bool is_hovered: root.hovered_scene_id == descriptor.id
 
                                 Connections {
                                     function onLeftClicked() {
-                                        var to_select = is_selected ? null : mapped_item
+                                        var to_select = is_selected ? null : descriptor
                                         root.select_scene (to_select)
                                         if (to_select) { root.select_scene_loops (to_select) }
                                     }
-                                    function onHoverEntered() { root.hover_scene(mapped_item) }
+                                    function onHoverEntered() { root.hover_scene(descriptor) }
                                     function onHoverExited() { 
                                         if (is_hovered) {
                                             root.hover_scene(null);
                                         }
                                     }
                                     function onNameEntered(name) {
-                                        mapped_item.name = name;
-                                        root.scene_changed(mapped_item)
+                                        descriptor.name = name;
+                                        root.scene_changed(descriptor)
                                     }
                                 }
                             }
