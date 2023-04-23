@@ -518,10 +518,14 @@ Rectangle {
                             name: {
                                 switch (action_item.action["action"]) {
                                     case 'play':
+                                    case 'playDryThroughWet':
                                         return 'play'
                                     case 'record':
+                                    case 'recordN':
+                                    case 'recordDryIntoWet':
                                         return 'record'
                                     case 'stop':
+                                    case 'stopAll':
                                         return 'stop'
                                 }
                                 return ''
@@ -537,25 +541,27 @@ Rectangle {
                             font.pixelSize: 12
 
                             text: {
-                                var scene_name = 'scene' in action_item.action ? root.scene_names[action_item.action['scene']] : ''
-                                var loop_exists = 'track' in action_item.action &&
-                                                      'loop' in action_item.action &&
-                                                      root.loop_names.length > action_item.action['track'] &&
-                                                      root.loop_names[action_item.action['track']].length > action_item.action['loop']
-                                var loop_name = loop_exists ? root.loop_names[action_item.action['track']][action_item.action['loop']] : ''
-                                if (loop_exists && loop_name == '') {
-                                    loop_name = '(' + (action_item.action['track']).toString() + ', ' + (1+action_item.action['loop']).toString() + ')'
-                                } else {
-                                    loop_name = '"' + loop_name + '"'
-                                }
 
-                                switch(action_item.action["action_type"]) {
-                                    case "scene":
-                                        return 'Scn "' + scene_name + '"'
-                                    case "loop":
-                                        return 'Loop ' + loop_name + ''
-                                }
-                                return ''
+
+                                // var scene_name = 'scene' in action_item.action ? root.scene_names[action_item.action['scene']] : ''
+                                // var loop_exists = 'track' in action_item.action &&
+                                //                       'loop' in action_item.action &&
+                                //                       root.loop_names.length > action_item.action['track'] &&
+                                //                       root.loop_names[action_item.action['track']].length > action_item.action['loop']
+                                // var loop_name = loop_exists ? root.loop_names[action_item.action['track']][action_item.action['loop']] : ''
+                                // if (loop_exists && loop_name == '') {
+                                //     loop_name = '(' + (action_item.action['track']).toString() + ', ' + (1+action_item.action['loop']).toString() + ')'
+                                // } else {
+                                //     loop_name = '"' + loop_name + '"'
+                                // }
+
+                                // switch(action_item.action["action_type"]) {
+                                //     case "scene":
+                                //         return 'Scn "' + scene_name + '"'
+                                //     case "loop":
+                                //         return 'Loop ' + loop_name + ''
+                                // }
+                                // return ''
                             }
                         }
 
