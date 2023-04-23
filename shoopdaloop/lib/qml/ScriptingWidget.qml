@@ -14,8 +14,7 @@ Rectangle {
 
     property string active_script_id: initial_descriptor.active_script_id
     property var script_descriptors: initial_descriptor.scripts
-
-    onScript_descriptorsChanged: console.log("SCRIPTS:", console.log(JSON.stringify(script_descriptors)))
+    onScript_descriptorsChanged: console.log('script_descriptors')
 
     readonly property var actual_descriptor: GenerateSession.generate_scripts(script_descriptors, active_script_id)
 
@@ -505,7 +504,7 @@ Rectangle {
 
                         Label {
                             color: Material.foreground
-                            text: action_item.action['on_cycle']
+                            text: action_item.action['delay_cycles']
                             anchors.verticalCenter: parent.verticalCenter
                             id: on_cycle_label
                         }
@@ -541,7 +540,35 @@ Rectangle {
                             font.pixelSize: 12
 
                             text: {
+                                const act = action_item.action
+                                switch(act.schema) {
+                                    case 'script_loop_action.1':
+                                        if (act.target_ids.length > 1) { return "Loops..." }
+                                        else if (act.target_ids.length == 1) {
+                                            const maybe_loop = root.objects_registry.maybe_get(act.target_ids[0], undefined)
+                                            return maybe_loop ? "Lp " + maybe_loop.name : "Unknown Lp"
+                                        }
+                                        break
+                                    case 'script_scene_action.1':
+                                        if (act.target_ids.length > 1) { return "Scenes..." }
+                                        else if (act.target_ids.length == 1) {
+                                            const maybe_scene = root.scene_descriptors.find(s => s.id == act.target_ids[0])
+                                            return maybe_scene ? "Scn " + maybe_scene.name : "Unknown Scn"
+                                        }
+                                        break
+                                    case 'script_track_action.1':
+                                        if (act.target_ids.length > 1) { return "Tracks..." }
+                                        else if (act.target_ids.length == 1) {
+                                            const maybe_track = root.track_descriptors.find(s => s.id == act.target_ids[0])
+                                            return maybe_track ? "Trk " + maybe_track.name : "Unknown Trk"
+                                        }
+                                        break
+                                    case 'script_global_action.1':
+                                        return "All"
+                                        break
+                                }
 
+                                return ""
 
                                 // var scene_name = 'scene' in action_item.action ? root.scene_names[action_item.action['scene']] : ''
                                 // var loop_exists = 'track' in action_item.action &&
