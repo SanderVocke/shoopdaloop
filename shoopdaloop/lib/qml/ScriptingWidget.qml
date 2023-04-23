@@ -732,15 +732,40 @@ Rectangle {
         }
 
         function adopt_action(action) {
-            var combos = [action_type_combo, action_combo, scene_combo, track_combo, loop_combo, stop_others_combo]
-            for (var c of combos) {
-                if (c.setting in action) {
-                    c.currentIndex = c.indexOfValue(action[c.setting])
-                } else {
-                    c.currentIndex = -1
-                }
+            on_cycle.text = action['delay_cycles'].toString()
+            switch(action.schema) {
+                case 'script_loop_action.1':
+                    action_type_combo.currentIndex = action_type_combo.indexOfValue('loop')
+                    var loop_id = action.target_ids[0]
+                    var loop_track = root.track_descriptors.find(t => t.loops.map(l => l.id).includes(loop_id))
+                    track_combo.currentIndex = track_combo.indexOfValue(loop_track.id)
+                    loop_combo.currentIndex = loop_combo.indexOfValue(loop_id)
+                    action_combo.currentIndex = action_combo.indexOfValue(action.action)
+                    break
+                case 'script_track_action.1':
+                    action_type_combo.currentIndex = action_type_combo.indexOfValue('track')
+                    track_combo.currentIndex = track_combo.indexOfValue(action.target_ids[0])
+                    action_combo.currentIndex = action_combo.indexOfValue(action.action)
+                    break
+                case 'script_scene_action.1':
+                    action_type_combo.currentIndex = action_type_combo.indexOfValue('scene')
+                    scene_combo.currentIndex = scene_combo.indexOfValue(action.target_ids[0])
+                    action_combo.currentIndex = action_combo.indexOfValue(action.action)
+                    break
+                case 'script_global_action.1':
+                    action_type_combo.currentIndex = action_type_combo.indexOfValue('global')
+                    action_combo.currentIndex = action_combo.indexOfValue(action.action)
+                    break
             }
-            on_cycle.text = action['on_cycle'].toString()
+            // var combos = [action_type_combo, action_combo, scene_combo, track_combo, loop_combo, stop_others_combo]
+            // for (var c of combos) {
+            //     if (c.setting in action) {
+            //         c.currentIndex = c.indexOfValue(action[c.setting])
+            //     } else {
+            //         c.currentIndex = -1
+            //     }
+            // }
+            // on_cycle.text = action['on_cycle'].toString()
         }
 
         function create_enumeration(lst) {
