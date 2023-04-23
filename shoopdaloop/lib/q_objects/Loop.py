@@ -19,7 +19,6 @@ from ..findChildItems import findChildItems
 class Loop(QQuickItem):
     # Other signals
     cycled = Signal()
-    passed_halfway = Signal()
 
     def __init__(self, parent=None):
         super(Loop, self).__init__(parent)
@@ -201,9 +200,6 @@ class Loop(QQuickItem):
         if prev_display_midi_events_triggered != self._display_midi_events_triggered:
             self.displayMidiEventsTriggeredChanged.emit(self._display_midi_events_triggered)
 
-        after_halfway = (self.length > 0 and self.position >= self.length/2)
-        if (after_halfway and prev_before_halway):
-            self.passed_halfway.emit()
         if (self.position < prev_position and is_playing_mode(prev_mode) and is_playing_mode(self.mode)):
             self.cycled.emit()
     

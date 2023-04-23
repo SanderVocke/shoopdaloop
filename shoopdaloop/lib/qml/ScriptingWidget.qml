@@ -42,6 +42,13 @@ Rectangle {
     }
     property alias track_descriptors : lookup_track_descriptors.object
 
+    RegistryLookup {
+        id: lookup_master_loop
+        registry: root.state_registry
+        key: 'master_loop'
+    }
+    property alias master_loop : lookup_master_loop.object
+
     function add_script(name) {
         // Generate a unique ID
         var script_ids = script_descriptors.map(s => s.id)

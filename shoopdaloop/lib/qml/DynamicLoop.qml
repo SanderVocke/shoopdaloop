@@ -21,6 +21,7 @@ Item {
     property alias loaded : loader.loaded
 
     signal backendLoopLoaded();
+    signal cycled();
 
     // Careful: these bindings work only one-way (updating the internal loop).
     // If the value of the loop property changes, it will not be reflected back.
@@ -107,6 +108,10 @@ Item {
             children_holder.parent = loader.item
             root.backendLoopLoaded()
         }
+    }
+    Connections {
+        target: loader.item
+        onCycled: root.cycled()
     }
     onSync_sourceChanged: if(ready && loader.item) { loader.item.sync_source = sync_source }
 }

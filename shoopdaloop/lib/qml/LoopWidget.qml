@@ -168,8 +168,8 @@ Item {
         Math.floor(dynamic_loop.position / master_loop.maybe_loop.length) : 0
 
     // Signals
-    signal onClear(int length)
     signal channelInitializedChanged()
+    signal cycled
 
     // Methods
     function transition_loops(loops, mode, delay, wait_for_sync) {
@@ -207,7 +207,6 @@ Item {
     }
     function clear(length, emit=true) {
         dynamic_loop.clear(length);
-        if (emit) { onClear(length) }
     }
     function qml_close() {
         obj_reg_entry.close()
@@ -277,6 +276,7 @@ Item {
         force_load : is_master // Master loop should always be there to sync to
         sync_source : widget.master_loop && !widget.is_master ? widget.master_loop.maybe_loaded_loop : null;
         onBackendLoopLoaded: set_length(initial_descriptor.length)
+        onCycled: widget.cycled()
 
         Repeater {
             id: audio_channels
