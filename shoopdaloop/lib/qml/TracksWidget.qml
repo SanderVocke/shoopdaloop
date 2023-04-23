@@ -58,6 +58,7 @@ ScrollView {
             root.track_initial_descriptors.push(properties.initial_descriptor)
             root.tracks.push(track)
             root.tracksChanged()
+            root.track_initial_descriptorsChanged()
 
             return track
         }

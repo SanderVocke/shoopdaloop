@@ -729,6 +729,7 @@ Rectangle {
             flow: Grid.TopToBottom
 
             Row {
+                spacing: 5
                 Text {
                     horizontalAlignment: Text.AlignRight
                     width: action_popup_component.labels_width
@@ -798,7 +799,6 @@ Rectangle {
 
     
             ScriptActionPopupCombo {
-                width: 100
                 id: scene_combo
                 label: 'Scene:'
                 setting: 'scene'
@@ -814,8 +814,7 @@ Rectangle {
                     root.track_descriptors.forEach(t => obj[t.name] = t)
                     return obj
                 }
-                visible: action_type_combo.currentValue == 'loop'
-                onCurrentValueChanged: console.log("TRACKVALUE", JSON.stringify(currentValue.id))
+                visible: ['loop', 'track'].includes(action_type_combo.currentValue)
             }
             ScriptActionPopupCombo {
                 id: loop_combo
