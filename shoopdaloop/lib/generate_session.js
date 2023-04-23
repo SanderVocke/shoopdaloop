@@ -100,6 +100,45 @@ function generate_script_element(name, duration, actions) {
     }
 }
 
+function generate_script_loop_action(target_ids, action, delay_cycles, args) {
+    return {
+        'schema': 'script_loop_action.1',
+        'target_ids': target_ids,
+        'action': action,
+        'delay_cycles': delay_cycles,
+        'args': args
+    }
+}
+
+function generate_script_scene_action(target_ids, action, delay_cycles, args) {
+    return {
+        'schema': 'script_scene_action.1',
+        'target_ids': target_ids,
+        'action': action,
+        'delay_cycles': delay_cycles,
+        'args': args
+    }
+}
+
+function generate_script_track_action(target_ids, action, delay_cycles, args) {
+    return {
+        'schema': 'script_track_action.1',
+        'target_ids': target_ids,
+        'action': action,
+        'delay_cycles': delay_cycles,
+        'args': args
+    }
+}
+
+function generate_script_global_action(action, delay_cycles, args) {
+    return {
+        'schema': 'script_global_action.1',
+        'action': action,
+        'delay_cycles': delay_cycles,
+        'args': args
+    }
+}
+
 function generate_default_track(
     name,
     n_loops,

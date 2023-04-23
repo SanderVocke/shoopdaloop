@@ -688,13 +688,39 @@ Rectangle {
         onClosed: reset_action()
         
         function create_action() {
-            var r = {}
-            var combos = [action_type_combo, action_combo, scene_combo, track_combo, loop_combo, stop_others_combo]
-            for (const c of combos) {
-                if(c.visible) { r[c.setting] = c.currentValue }
+            var r
+            var delay_cycles = parseInt(on_cycle.text)
+            switch(action_type_combo.currentValue) {
+                case "loop":
+                    r = GenerateSession.generate_script_loop_action(
+                        [loop_combo.currentValue.id], action_combo.currentValue, delay_cycles, {} 
+                    )
+                    break
+                case "scene":
+                    r = GenerateSession.generate_script_scene_action(
+                        [scene_combo.currentValue.id], action_combo.currentValue, delay_cycles, {} 
+                    )
+                    break
+                case "track":
+                    r = GenerateSession.generate_script_track_action(
+                        [track_combo.currentValue.id], action_combo.currentValue, delay_cycles, {} 
+                    )
+                    break
+                case "global":
+                    r = GenerateSession.generate_script_global_action(
+                        action_combo.currentValue, delay_cycles, {} 
+                    )
+                    break
             }
-            r['on_cycle'] = parseInt(on_cycle.text)
+            console.log("Created action:", JSON.stringify(r))
             return r
+            // var r = {}
+            // var combos = [action_type_combo, action_combo, scene_combo, track_combo, loop_combo, stop_others_combo]
+            // for (const c of combos) {
+            //     if(c.visible) { r[c.setting] = c.currentValue }
+            // }
+            // r['on_cycle'] = parseInt(on_cycle.text)
+            // return r
         }
         
         function reset_action() {
