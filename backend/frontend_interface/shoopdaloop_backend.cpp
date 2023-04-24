@@ -23,6 +23,7 @@
 #include "MidiNotesState.h"
 #include "process_loops.h"
 #include "types.h"
+#include "LV2.h"
 
 // System
 #include <boost/lockfree/spsc_queue.hpp>
@@ -95,6 +96,7 @@ std::vector<audio_sample_t> g_dummy_audio_output_buffer (gc_default_audio_dummy_
 std::shared_ptr<DummyReadMidiBuf> g_dummy_midi_input_buffer = std::make_shared<DummyReadMidiBuf>();
 std::shared_ptr<DummyWriteMidiBuf> g_dummy_midi_output_buffer = std::make_shared<DummyWriteMidiBuf>();
 std::set<SharedBackend> g_active_backends;
+LV2 g_lv2;
 }
 
 // TYPES
@@ -909,6 +911,12 @@ shoopdaloop_backend_instance_t *initialize (
     
     auto backend = std::make_shared<Backend>(audio_system, client_name_hint);
     g_active_backends.insert(backend);
+
+    auto carla = g_lv2.create_carla_chain<Time, Size>(
+        CarlaProcessingChainType::Rack,
+        backend->get_sample_rate()
+    );
+    //carla.process(100);
 
     return external_backend(backend);
 }

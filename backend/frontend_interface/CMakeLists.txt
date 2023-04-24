@@ -1,5 +1,6 @@
 # Backend lib
 add_library(shoopdaloop_backend SHARED shoopdaloop_backend.cpp)
+message(INFO "Lilv ${LILV_LIBRARIES}")
 target_link_libraries(shoopdaloop_backend PRIVATE
                       ${BOOST_LIBRARIES}
                       ${JACK_LIBRARIES}

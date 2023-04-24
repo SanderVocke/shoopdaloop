@@ -36,5 +36,5 @@ find_library(JACK_LIBRARIES NAMES jack HINTS ${PC_JACK_LIBRARY_DIRS})
 set(JACK_DEFINITIONS ${PC_JACK_CFLAGS_OTHER})
 
 include(FindPackageHandleStandardArgs)
-find_package_handle_standard_args(jack DEFAULT_MSG JACK_LIBRARIES JACK_INCLUDE_DIRS)
+find_package_handle_standard_args(Jack DEFAULT_MSG JACK_LIBRARIES JACK_INCLUDE_DIRS)
 mark_as_advanced(JACK_LIBRARIES JACK_INCLUDE_DIRS JACK_DEFINITIONS)
