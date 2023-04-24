@@ -2,13 +2,17 @@
 add_library(shoopdaloop_backend SHARED shoopdaloop_backend.cpp)
 target_link_libraries(shoopdaloop_backend PRIVATE
                       ${BOOST_LIBRARIES}
-                      ${JACK_LIBRARIES})
+                      ${JACK_LIBRARIES}
+                      ${LV2_LIBRARIES}
+                      ${LILV_LIBRARIES})
 target_include_directories(shoopdaloop_backend
                         PRIVATE
                         ${CMAKE_CURRENT_SOURCE_DIR}/..
                         ${JACK_INCLUDE_DIRS}
                         ${CMAKE_CURRENT_BINARY_DIR}
                         ${BOOST_INCLUDE_DIRS}
+                        ${LV2_INCLUDE_DIRS}
+                        ${LILV_INCLUDE_DIRS}
                         )
 
 # Generate C bindings

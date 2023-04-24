@@ -29,6 +29,8 @@ endif()
 
 # Find pkgs
 find_package(Jack REQUIRED)
+find_package(LV2 REQUIRED)
+find_package(Lilv REQUIRED)
 find_package(Boost COMPONENTS ALL REQUIRED)
 
 # Includes
