@@ -40,10 +40,6 @@ public:
 
     void close() override {}
 
-    void *get_jack_port() const {
-        return nullptr;
-    }
-
     ~DummyAudioPort() override {
         close();
     }
@@ -93,10 +89,6 @@ public:
     }
 
     void close() override {}
-
-    void *get_jack_port() const {
-        return nullptr;
-    }
 
     std::unique_ptr<MidiReadableBufferInterface> PROC_get_read_buffer (size_t n_frames) override {
         return std::make_unique<DummyMidiReadBuf>(nullptr);
