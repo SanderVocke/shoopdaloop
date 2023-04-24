@@ -91,8 +91,6 @@ Rectangle {
     // property var track_names: []
     // property var loop_names: []
 
-    property bool script_playing
-    property int script_current_cycle
     // property var section_starts
     // property int script_length
     // property int current_section_idx
@@ -110,6 +108,21 @@ Rectangle {
     // signal play()
     // signal stop()
     // signal set_cycle(int cycle)
+
+    ScriptTransport {
+        id: transport
+
+        RegisterInRegistry {
+            registry: root.state_registry
+            key: 'script_transport'
+            object: transport
+        }
+
+        Connections {
+            target: root.master_loop
+            function onCycled() { transport.tick() }
+        }
+    }
 
     SchemaCheck {
         descriptor: root.initial_descriptor
@@ -188,8 +201,7 @@ Rectangle {
 
             Label {
                 color: Material.foreground
-                text: "TODO cycle"
-                //text: root.script_current_cycle.toString() + '/' + root.script_length.toString()
+                text: transport.cycle.toString() + '/' + transport.total_cycles.toString()
             }
 
             Row {
