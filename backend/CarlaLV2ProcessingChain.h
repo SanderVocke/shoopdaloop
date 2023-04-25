@@ -1,5 +1,6 @@
 #pragma once
 #include "ProcessingChainInterface.h"
+#include <chrono>
 #include <lilv/lilv.h>
 #include <lv2/core/lv2.h>
 #include <lv2/urid/urid.h>
@@ -9,6 +10,7 @@
 #include <lv2_external_ui.h>
 #include <iostream>
 #include <dlfcn.h>
+#include <thread>
 
 enum class CarlaProcessingChainType {
     Rack,
@@ -25,7 +27,9 @@ public:
 private:
     const LilvPlugin * m_plugin = nullptr;
     LilvInstance * m_instance = nullptr;
-    LV2_External_UI_Widget * m_ui_handle = nullptr;
+    LV2UI_Handle m_ui_handle = nullptr;
+    LV2_External_UI_Widget * m_ui_widget;
+
     const LV2UI_Descriptor * m_ui_descriptor = nullptr;
 
     std::vector<SharedAudioPort> m_input_audio_ports;
@@ -162,7 +166,7 @@ public:
             LV2UI_Widget ui_widget;
             const char *ui_bundle_path = lilv_node_get_path(lilv_ui_get_bundle_uri(ui), nullptr);
             const LV2_Feature* const ui_features[] = { &instance_access_feature, &external_ui_host_feature, nullptr };
-            m_ui_handle = (LV2_External_UI_Widget*)m_ui_descriptor->instantiate(
+            m_ui_handle = m_ui_descriptor->instantiate(
                 m_ui_descriptor,
                 plugin_uri.c_str(),
                 ui_bundle_path,
@@ -171,13 +175,25 @@ public:
                 &ui_widget,
                 ui_features
             );
+            m_ui_widget = (LV2_External_UI_Widget*) ui_widget;
             if(!m_ui_handle) {
                 throw std::runtime_error("Could not instantiate Carla UI.");
             }
-
-            m_ui_handle->show(m_ui_handle);
-            m_ui_handle->run(m_ui_handle);
         }
+
+        show();
+        while(true) {
+            m_ui_widget->run(m_ui_widget);
+            std::this_thread::sleep_for(std::chrono::milliseconds(30));
+        }
+    }
+
+    void show() {
+        m_ui_widget->show(m_ui_widget);
+    }
+
+    void hide() {
+        m_ui_widget->hide(m_ui_widget);
     }
 
     void process(size_t frames) override {
