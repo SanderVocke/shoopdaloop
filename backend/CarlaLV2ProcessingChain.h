@@ -5,6 +5,7 @@
 #include <lv2/urid/urid.h>
 #include <lv2/options/options.h>
 #include <lv2/ui/ui.h>
+#include <lv2/instance-access/instance-access.h>
 #include <lv2_external_ui.h>
 #include <iostream>
 #include <dlfcn.h>
@@ -24,6 +25,9 @@ public:
 private:
     const LilvPlugin * m_plugin = nullptr;
     LilvInstance * m_instance = nullptr;
+    LV2_External_UI_Widget * m_ui_handle = nullptr;
+    const LV2UI_Descriptor * m_ui_descriptor = nullptr;
+
     std::vector<SharedAudioPort> m_input_audio_ports;
     std::vector<SharedAudioPort> m_output_audio_ports;
     std::vector<SharedMidiPort> m_input_midi_ports;
@@ -38,17 +42,27 @@ private:
         (*urid_map)[uri] = rval;
         return rval;
     }
+
     static void static_ui_write_fn(LV2UI_Controller controller,
                                    uint32_t port_index,
                                    uint32_t buffer_size,
                                    uint32_t port_protocol,
                                    const void* buffer) 
     {
-        std::cout << "WRITE" << std::endl;
         auto &instance = *((CarlaLV2ProcessingChain<TimeType, SizeType>*)controller);
         instance.ui_write_fn(port_index, buffer_size, port_protocol, buffer);
     }
+
     void ui_write_fn(uint32_t port_index, uint32_t buffer_size, uint32_t port_protocol, const void* buffer) {
+        // TODO
+    }
+
+    static void static_ui_closed_fn(LV2UI_Controller controller) {
+        auto &instance = *((CarlaLV2ProcessingChain<TimeType, SizeType>*)controller);
+        instance.ui_closed_fn();
+    }
+
+    void ui_closed_fn() {
         // TODO
     }
 
@@ -132,23 +146,37 @@ public:
                 throw std::runtime_error("Could not load UI descriptor entry point.");
             }
 
-            const LV2UI_Descriptor* ui_descriptor = _get_ui_descriptor(0);
-
+            m_ui_descriptor = _get_ui_descriptor(0);
+            LV2_Feature instance_access_feature {
+                .URI = LV2_INSTANCE_ACCESS_URI,
+                .data = (void*) lilv_instance_get_handle(m_instance)
+            };
+            LV2_External_UI_Host ui_host {
+                .ui_closed = static_ui_closed_fn,
+                .plugin_human_id = nullptr
+            };
+            LV2_Feature external_ui_host_feature {
+                .URI = LV2_EXTERNAL_UI__Host,
+                .data = (void*)&ui_host
+            };
             LV2UI_Widget ui_widget;
             const char *ui_bundle_path = lilv_node_get_path(lilv_ui_get_bundle_uri(ui), nullptr);
-            const LV2_Feature* dummy_feature = nullptr;
-            LV2UI_Handle ui_handle = ui_descriptor->instantiate(
-                ui_descriptor,
+            const LV2_Feature* const ui_features[] = { &instance_access_feature, &external_ui_host_feature, nullptr };
+            m_ui_handle = (LV2_External_UI_Widget*)m_ui_descriptor->instantiate(
+                m_ui_descriptor,
                 plugin_uri.c_str(),
                 ui_bundle_path,
                 (LV2UI_Write_Function) static_ui_write_fn,
                 (LV2UI_Controller) this,
                 &ui_widget,
-                &dummy_feature // const LV2_Feature* const*
+                ui_features
             );
-            if(!ui_handle) {
+            if(!m_ui_handle) {
                 throw std::runtime_error("Could not instantiate Carla UI.");
             }
+
+            m_ui_handle->show(m_ui_handle);
+            m_ui_handle->run(m_ui_handle);
         }
     }
 
