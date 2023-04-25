@@ -1,9 +1,13 @@
 #pragma once
 #include "ProcessingChainInterface.h"
 #include <lilv/lilv.h>
+#include <lv2/core/lv2.h>
 #include <lv2/urid/urid.h>
 #include <lv2/options/options.h>
+#include <lv2/ui/ui.h>
+#include <lv2_external_ui.h>
 #include <iostream>
+#include <dlfcn.h>
 
 enum class CarlaProcessingChainType {
     Rack,
@@ -29,11 +33,23 @@ private:
     UridMap m_urid_map;
 
     static LV2_URID map_urid(LV2_URID_Map_Handle handle, const char* uri) {
-        std::cout << "Map URI: " << uri << std::endl;
         auto urid_map = (UridMap*)handle;
         LV2_URID rval = urid_map->size();
         (*urid_map)[uri] = rval;
         return rval;
+    }
+    static void static_ui_write_fn(LV2UI_Controller controller,
+                                   uint32_t port_index,
+                                   uint32_t buffer_size,
+                                   uint32_t port_protocol,
+                                   const void* buffer) 
+    {
+        std::cout << "WRITE" << std::endl;
+        auto &instance = *((CarlaLV2ProcessingChain<TimeType, SizeType>*)controller);
+        instance.ui_write_fn(port_index, buffer_size, port_protocol, buffer);
+    }
+    void ui_write_fn(uint32_t port_index, uint32_t buffer_size, uint32_t port_protocol, const void* buffer) {
+        // TODO
     }
 
 public:
@@ -42,20 +58,23 @@ public:
         CarlaProcessingChainType type,
         size_t sample_rate
     ) {
+        // URIs for the Carla plugins we want to support.
         static const std::map<CarlaProcessingChainType, std::string> plugin_uris = {
             { CarlaProcessingChainType::Rack, "http://kxstudio.sf.net/carla/plugins/carlarack" },
             { CarlaProcessingChainType::Patchbay2, "http://kxstudio.sf.net/carla/plugins/carlapatchbay" },
             { CarlaProcessingChainType::Patchbay16, "http://kxstudio.sf.net/carla/plugins/carlapatchbay16" }
         };
+        auto plugin_uri = plugin_uris.at(type);
 
+        // Find our plugin.
         const LilvPlugins* all_plugins = lilv_world_get_all_plugins(lilv_world);
-        LilvNode *uri = lilv_new_uri(lilv_world, plugin_uris.at(type).c_str());
-        
+        LilvNode *uri = lilv_new_uri(lilv_world, plugin_uri.c_str());
         m_plugin = lilv_plugins_get_by_uri(all_plugins, uri);
         if (!m_plugin) {
-            throw std::runtime_error("Plugin " + plugin_uris.at(type) + " not found.");
+            throw std::runtime_error("Plugin " + plugin_uri + " not found.");
         }
 
+        // Set up required features.
         // Options feature
         LV2_Options_Option end {
             LV2_OPTIONS_INSTANCE,
@@ -83,12 +102,54 @@ public:
 
         std::vector<LV2_Feature*> features = { &options_feature, &urid_feature, nullptr };
 
+        // Make a plugin instance.
         m_instance = lilv_plugin_instantiate(m_plugin, (double)sample_rate, features.data());
         if (!m_instance) {
-            throw std::runtime_error("Plugin " + plugin_uris.at(type) + " failed to instantiate.");
+            throw std::runtime_error("Plugin " + plugin_uri + " failed to instantiate.");
         }
 
+        // TODO ports
         size_t n_ports = lilv_plugin_get_num_ports(m_plugin);
+
+        // Set up the UI.
+        {
+            LilvUIs* uis = lilv_plugin_get_uis(m_plugin);
+            if (lilv_uis_size(uis) != 1) {
+                throw std::runtime_error("Expected 1 UI for plugin " + plugin_uri);
+            }
+
+            const LilvUI *ui = lilv_uis_get(uis, lilv_uis_begin(uis));
+            const LilvNode *external_ui_uri = lilv_new_uri(lilv_world, "http://kxstudio.sf.net/ns/lv2ext/external-ui#Widget");
+            if (!lilv_ui_is_a(ui, external_ui_uri)) {
+                throw std::runtime_error("Expected Carla UI to be of class 'external-ui'");
+            }
+
+            const LilvNode *ui_binary_uri = lilv_ui_get_binary_uri(ui);
+            const char *ui_binary_path = lilv_node_get_path(ui_binary_uri, nullptr);
+            void * ui_lib_handle = dlopen(ui_binary_path, RTLD_LAZY);
+            LV2UI_DescriptorFunction _get_ui_descriptor = (LV2UI_DescriptorFunction)dlsym(ui_lib_handle, "lv2ui_descriptor");
+            if (!_get_ui_descriptor) {
+                throw std::runtime_error("Could not load UI descriptor entry point.");
+            }
+
+            const LV2UI_Descriptor* ui_descriptor = _get_ui_descriptor(0);
+
+            LV2UI_Widget ui_widget;
+            const char *ui_bundle_path = lilv_node_get_path(lilv_ui_get_bundle_uri(ui), nullptr);
+            const LV2_Feature* dummy_feature = nullptr;
+            LV2UI_Handle ui_handle = ui_descriptor->instantiate(
+                ui_descriptor,
+                plugin_uri.c_str(),
+                ui_bundle_path,
+                (LV2UI_Write_Function) static_ui_write_fn,
+                (LV2UI_Controller) this,
+                &ui_widget,
+                &dummy_feature // const LV2_Feature* const*
+            );
+            if(!ui_handle) {
+                throw std::runtime_error("Could not instantiate Carla UI.");
+            }
+        }
     }
 
     void process(size_t frames) override {

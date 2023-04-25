@@ -20,5 +20,5 @@ target_include_directories(test_runner
                         ${BOOST_INCLUDE_DIRS}
                         ${CMAKE_CURRENT_SOURCE_DIR}
                         ${CMAKE_CURRENT_SOURCE_DIR}/..
-                        ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/ut/include
+                        ${CMAKE_SOURCE_DIR}/third_party/ut/include
                         )
