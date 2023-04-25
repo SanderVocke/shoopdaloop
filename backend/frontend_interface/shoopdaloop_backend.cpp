@@ -6,6 +6,7 @@
 #include "AudioMidiLoop.h"
 #include "AudioPortInterface.h"
 #include "AudioSystemInterface.h"
+#include "CarlaLV2ProcessingChain.h"
 #include "JackAudioPort.h"
 #include "JackAudioSystem.h"
 #include "DummyAudioSystem.h"
@@ -34,6 +35,7 @@
 #include <stdexcept>
 #include <map>
 #include <set>
+#include <thread>
 
 // CONSTANTS
 namespace {
@@ -97,6 +99,7 @@ std::shared_ptr<DummyReadMidiBuf> g_dummy_midi_input_buffer = std::make_shared<D
 std::shared_ptr<DummyWriteMidiBuf> g_dummy_midi_output_buffer = std::make_shared<DummyWriteMidiBuf>();
 std::set<SharedBackend> g_active_backends;
 LV2 g_lv2;
+std::shared_ptr<CarlaLV2ProcessingChain<Time, Size>> g_carla;
 }
 
 // TYPES
@@ -912,11 +915,11 @@ shoopdaloop_backend_instance_t *initialize (
     auto backend = std::make_shared<Backend>(audio_system, client_name_hint);
     g_active_backends.insert(backend);
 
-    auto carla = g_lv2.create_carla_chain<Time, Size>(
+    g_carla = g_lv2.create_carla_chain<Time, Size>(
         CarlaProcessingChainType::Rack,
         backend->get_sample_rate()
     );
-    //carla.process(100);
+    g_carla->show();
 
     return external_backend(backend);
 }

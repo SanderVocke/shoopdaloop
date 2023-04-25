@@ -1,5 +1,6 @@
 #pragma once
 #include "ProcessingChainInterface.h"
+#include <atomic>
 #include <chrono>
 #include <lilv/lilv.h>
 #include <lv2/core/lv2.h>
@@ -29,6 +30,8 @@ private:
     LilvInstance * m_instance = nullptr;
     LV2UI_Handle m_ui_handle = nullptr;
     LV2_External_UI_Widget * m_ui_widget;
+    std::atomic<bool> m_finish = false;
+    std::thread m_ui_thread;
 
     const LV2UI_Descriptor * m_ui_descriptor = nullptr;
 
@@ -58,7 +61,7 @@ private:
     }
 
     void ui_write_fn(uint32_t port_index, uint32_t buffer_size, uint32_t port_protocol, const void* buffer) {
-        // TODO
+        std::cerr << "WARNING: UI write fn not implemented" << std::endl;
     }
 
     static void static_ui_closed_fn(LV2UI_Controller controller) {
@@ -67,7 +70,7 @@ private:
     }
 
     void ui_closed_fn() {
-        // TODO
+        stop();
     }
 
 public:
@@ -157,7 +160,7 @@ public:
             };
             LV2_External_UI_Host ui_host {
                 .ui_closed = static_ui_closed_fn,
-                .plugin_human_id = nullptr
+                .plugin_human_id = "shoopdaloop"
             };
             LV2_Feature external_ui_host_feature {
                 .URI = LV2_EXTERNAL_UI__Host,
@@ -181,11 +184,17 @@ public:
             }
         }
 
-        show();
-        while(true) {
-            m_ui_widget->run(m_ui_widget);
-            std::this_thread::sleep_for(std::chrono::milliseconds(30));
-        }
+        // Create and start UI thread
+        m_ui_thread = std::thread([this]() {
+            while(!m_finish) {
+                auto t = std::chrono::high_resolution_clock::now();
+                m_ui_widget->run(m_ui_widget);
+                while (t < std::chrono::high_resolution_clock::now()) {
+                    t += std::chrono::milliseconds(30);
+                }
+                std::this_thread::sleep_until(t);
+            }
+        });
     }
 
     void show() {
@@ -195,6 +204,17 @@ public:
     void hide() {
         m_ui_widget->hide(m_ui_widget);
     }
+
+    void stop() {
+        std::cout << "Carla instance stopping." << std::endl;
+        m_finish = true;
+        if(m_ui_thread.joinable()) {
+            m_ui_thread.join();
+        }
+        if(m_instance) { lilv_instance_free(m_instance); m_instance = nullptr; }
+    }
+
+    bool running() const { return !m_finish && m_ui_thread.joinable(); }
 
     void process(size_t frames) override {
         lilv_instance_activate(m_instance);
@@ -225,7 +245,7 @@ public:
     virtual void set_freewheeling(bool enabled) override {}
 
     virtual ~CarlaLV2ProcessingChain() {
-        if(m_instance) { lilv_instance_free(m_instance); m_instance = nullptr; }
+        stop();
     }
 
 };

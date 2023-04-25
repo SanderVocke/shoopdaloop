@@ -1,6 +1,7 @@
 #pragma once
 #include "CarlaLV2ProcessingChain.h"
 #include <lilv/lilv.h>
+#include <memory>
 
 class LV2 {
     LilvWorld *m_world;
@@ -16,11 +17,11 @@ public:
     }
 
     template<typename TimeType, typename SizeType>
-    CarlaLV2ProcessingChain<TimeType, SizeType> create_carla_chain(
+    std::shared_ptr<CarlaLV2ProcessingChain<TimeType, SizeType>> create_carla_chain(
         CarlaProcessingChainType type,
         size_t sample_rate
     ) {
-        CarlaLV2ProcessingChain<TimeType, SizeType> chain(m_world, type, sample_rate);
-        return chain;
+        return std::make_shared<CarlaLV2ProcessingChain<TimeType, SizeType>>
+            (m_world, type, sample_rate);
     }
 };
