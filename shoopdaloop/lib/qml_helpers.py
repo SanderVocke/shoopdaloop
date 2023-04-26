@@ -14,6 +14,7 @@ from lib.q_objects.Backend import Backend
 from lib.q_objects.ClickTrackGenerator import ClickTrackGenerator
 from lib.q_objects.Task import Task
 from lib.q_objects.Tasks import Tasks
+from lib.q_objects.FXChain import FXChain
 #from lib.q_objects.MIDIControlManager import MIDIControlManager
 #from lib.q_objects.MIDIControlLink import MIDIControlLink
 #from lib.q_objects.MIDIControlDialect import MIDIControlDialect
@@ -26,6 +27,7 @@ def register_shoopdaloop_qml_classes():
     register_qml_class(AudioPort, 'AudioPort')
     register_qml_class(MidiPort, 'MidiPort')
     register_qml_class(Loop, 'Loop')
+    register_qml_class(FXChain, 'FXChain')
     register_qml_class(LoopAudioChannel, 'LoopAudioChannel')
     register_qml_class(LoopMidiChannel, 'LoopMidiChannel')
     register_qml_class(ClickTrackGenerator, 'ClickTrackGenerator')

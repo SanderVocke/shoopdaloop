@@ -75,7 +75,7 @@ class MidiPort(Port):
 
     def maybe_initialize_impl(self, name_hint, direction):
         self._pushed_initial_values = False
-        self._backend_obj = self.backend.get_backend_obj().open_midi_port(name_hint, direction)
+        self._backend_obj = self.backend.get_backend_obj().open_jack_midi_port(name_hint, direction)
 
     def connect_passthrough_impl(self, other):
         self._backend_obj.connect_passthrough(other.get_backend_obj())

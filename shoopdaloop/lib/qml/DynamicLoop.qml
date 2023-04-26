@@ -111,7 +111,7 @@ Item {
     }
     Connections {
         target: loader.item
-        onCycled: root.cycled()
+        function onCycled() { root.cycled() }
     }
     onSync_sourceChanged: if(ready && loader.item) { loader.item.sync_source = sync_source }
 }

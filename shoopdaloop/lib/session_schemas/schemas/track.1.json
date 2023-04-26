@@ -25,7 +25,18 @@
                 },
                 "required": ["schema"]
             }
+        },
+        "fx_chains": {
+            "$comment": "FX chains associated with this track",
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "schema": { "const": "fx_chain.1", "$comment": "See fx_chain.1 schema" }
+                },
+                "required": ["schema"]
+            }
         }
     },
-    "required": ["schema", "id", "name", "loops", "ports"]
+    "required": ["schema", "id", "name", "loops", "ports", "fx_chains"]
 }

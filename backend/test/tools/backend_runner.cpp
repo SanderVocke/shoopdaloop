@@ -87,22 +87,22 @@ int main(int argc, const char* argv[]) {
     std::cout << "Creating " << n_audio_inputs << " audio inputs." << std::endl;
     for(size_t idx=0; idx < n_audio_inputs; idx++) {
         std::string name = "audio_in_" + std::to_string(idx+1);
-        g_audio_input_ports.push_back(open_audio_port(backend, name.c_str(), Input));
+        g_audio_input_ports.push_back(open_jack_audio_port(backend, name.c_str(), Input));
     }
     std::cout << "Creating " << n_audio_outputs << " audio outputs." << std::endl;
     for(size_t idx=0; idx < n_audio_outputs; idx++) {
         std::string name = "audio_out_" + std::to_string(idx+1);
-        g_audio_output_ports.push_back(open_audio_port(backend, name.c_str(), Output));
+        g_audio_output_ports.push_back(open_jack_audio_port(backend, name.c_str(), Output));
     }
     std::cout << "Creating " << n_midi_inputs << " MIDI inputs." << std::endl;
     for(size_t idx=0; idx < n_midi_inputs; idx++) {
         std::string name = "midi_in_" + std::to_string(idx+1);
-        g_midi_input_ports.push_back(open_midi_port(backend, name.c_str(), Input));
+        g_midi_input_ports.push_back(open_jack_midi_port(backend, name.c_str(), Input));
     }
     std::cout << "Creating " << n_midi_outputs << " MIDI outputs." << std::endl;
     for(size_t idx=0; idx < n_midi_outputs; idx++) {
         std::string name = "midi_out_" + std::to_string(idx+1);
-        g_midi_output_ports.push_back(open_midi_port(backend, name.c_str(), Output));
+        g_midi_output_ports.push_back(open_jack_midi_port(backend, name.c_str(), Output));
     }
 
     std::cout << "Connecting ports in round-robin fashion." << std::endl;

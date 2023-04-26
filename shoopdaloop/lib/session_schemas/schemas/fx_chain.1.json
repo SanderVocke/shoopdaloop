@@ -1,0 +1,21 @@
+{
+    "type": "object",
+    "properties": {
+        "schema":       { "const": "fx_chain.1" },
+        "id":           { "type": "string"  },
+        "type":         { "enum": ["carla_rack", "carla_patchbay", "carla_patchbay_16"] },
+        "ports": {
+            "$comment": "describes internal ports offered by this chain",
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "schema": { "enum": ["audioport.1", "midiport.1"],
+                                "$comment": "See audioport.1, midiport.1 schemas" }
+                },
+                "required": ["schema"]
+            }
+        }
+    },
+    "required": ["schema", "id", "type", "ports"]
+}

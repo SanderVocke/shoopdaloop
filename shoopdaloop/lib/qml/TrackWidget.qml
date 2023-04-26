@@ -59,6 +59,7 @@ Item {
     readonly property string port_name_prefix: ''
     readonly property var audio_port_descriptors : initial_descriptor.ports.filter(p => p.schema == 'audioport.1')
     readonly property var midi_port_descriptors : initial_descriptor.ports.filter(p => p.schema == 'midiport.1')
+    readonly property var fx_chain_descriptors : initial_descriptor.fx_chains
     readonly property var loop_descriptors : initial_descriptor.loops
 
     readonly property var loop_factory : Qt.createComponent("LoopWidget.qml")
@@ -205,6 +206,21 @@ Item {
 
     function all_ports() {
         return [...audio_ports(), ...midi_ports()];
+    }
+
+    RepeaterWithLoadedDetection {
+        id: fx_chains_repeater
+        model: track.fx_chain_descriptors.length
+
+        FXChain {
+            descriptor: track.fx_chain_descriptors[index]
+            objects_registry: track.objects_registry
+            state_registry: track.state_registry
+        }
+    }
+
+    function fx_chains() {
+        return fx_chains_repeater.all_items();
     }
 
     Item {

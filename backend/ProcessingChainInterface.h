@@ -6,28 +6,30 @@
 #include <string>
 #include <map>
 #include "AudioPortInterface.h"
+#include "InternalAudioPort.h"
 #include <functional>
 
 template<typename TimeType, typename SizeType>
 class ProcessingChainInterface {
 public:
-    using SharedAudioPort = std::shared_ptr<AudioPortInterface<float>>;
+    using _InternalAudioPort = InternalAudioPort<float>;
+    using SharedInternalAudioPort = std::shared_ptr<InternalAudioPort<float>>;
     using SharedMidiPort = std::shared_ptr<MidiPortInterface>;
 
     ProcessingChainInterface() {}
     virtual ~ProcessingChainInterface() {}
 
     virtual
-    std::vector<SharedAudioPort> input_audio_ports() const = 0;
+    std::vector<SharedInternalAudioPort> const& input_audio_ports() const = 0;
 
     virtual
-    std::vector<SharedAudioPort> output_audio_ports() const = 0;
+    std::vector<SharedInternalAudioPort> const& output_audio_ports() const = 0;
 
     virtual
-    std::vector<SharedMidiPort> input_midi_ports() const = 0;
+    std::vector<SharedMidiPort> const& input_midi_ports() const = 0;
 
     virtual
-    std::vector<SharedMidiPort> output_midi_ports() const = 0;
+    std::vector<SharedMidiPort> const& output_midi_ports() const = 0;
 
     virtual bool is_freewheeling() const = 0;
     virtual void set_freewheeling(bool enabled) = 0;

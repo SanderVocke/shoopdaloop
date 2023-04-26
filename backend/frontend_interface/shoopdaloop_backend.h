@@ -63,23 +63,34 @@ void loops_transition(unsigned int n_loops,
                       size_t delay, // In # of triggers
                       unsigned wait_for_sync);
 
+// FX chains
+shoopdaloop_fx_chain_t *create_fx_chain(shoopdaloop_backend_instance_t *backend, fx_chain_type_t type);
+void fx_chain_set_ui_visible(shoopdaloop_fx_chain_t *chain, unsigned visible);
+fx_chain_state_info_t *get_fx_chain_state(shoopdaloop_fx_chain_t *chain);
+shoopdaloop_audio_port_t **fx_chain_audio_input_ports(shoopdaloop_fx_chain_t *chain, unsigned int *n_out);
+shoopdaloop_audio_port_t **fx_chain_audio_output_ports(shoopdaloop_fx_chain_t *chain, unsigned int *n_out);
+shoopdaloop_midi_port_t **fx_chain_midi_input_ports(shoopdaloop_fx_chain_t *chain, unsigned int *n_out);
+shoopdaloop_midi_port_t **fx_chain_midi_output_ports(shoopdaloop_fx_chain_t *chain, unsigned int *n_out);
+
 // Audio ports
-shoopdaloop_audio_port_t *open_audio_port (shoopdaloop_backend_instance_t *backend, const char* name_hint, port_direction_t direction);
-jack_port_t *get_audio_port_jack_handle(shoopdaloop_audio_port_t *port);
-audio_port_state_info_t *get_audio_port_state(shoopdaloop_audio_port_t *port);
 void set_audio_port_volume(shoopdaloop_audio_port_t *port, float volume);
 void set_audio_port_passthroughVolume(shoopdaloop_audio_port_t *port, float volume);
 void set_audio_port_muted(shoopdaloop_audio_port_t *port, unsigned muted);
 void set_audio_port_passthroughMuted(shoopdaloop_audio_port_t *port, unsigned muted);
 void add_audio_port_passthrough(shoopdaloop_audio_port_t *from, shoopdaloop_audio_port_t *to);
+audio_port_state_info_t *get_audio_port_state(shoopdaloop_audio_port_t *port);
+// For JACK audio ports only
+shoopdaloop_audio_port_t *open_jack_audio_port (shoopdaloop_backend_instance_t *backend, const char* name_hint, port_direction_t direction);
+jack_port_t *get_audio_port_jack_handle(shoopdaloop_audio_port_t *port);
 
 // Midi ports
-shoopdaloop_midi_port_t *open_midi_port (shoopdaloop_backend_instance_t *backend, const char* name_hint, port_direction_t direction);
-jack_port_t *get_midi_port_jack_handle(shoopdaloop_midi_port_t *port);
 midi_port_state_info_t *get_midi_port_state(shoopdaloop_midi_port_t *port);
 void set_midi_port_muted(shoopdaloop_midi_port_t *port, unsigned muted);
 void set_midi_port_passthroughMuted(shoopdaloop_midi_port_t *port, unsigned muted);
 void add_midi_port_passthrough(shoopdaloop_midi_port_t *from, shoopdaloop_midi_port_t *to);
+// For JACK midi ports only
+shoopdaloop_midi_port_t *open_jack_midi_port (shoopdaloop_backend_instance_t *backend, const char* name_hint, port_direction_t direction);
+jack_port_t *get_midi_port_jack_handle(shoopdaloop_midi_port_t *port);
 
 // Decoupled midi ports
 shoopdaloop_decoupled_midi_port_t *open_decoupled_midi_port(shoopdaloop_backend_instance_t *backend, const char* name_hint, port_direction_t direction);
@@ -102,6 +113,8 @@ void destroy_audio_channel(shoopdaloop_loop_audio_channel_t *d);
 void destroy_midi_channel(shoopdaloop_loop_midi_channel_t *d);
 void destroy_shoopdaloop_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *d);
 void destroy_loop_state_info(loop_state_info_t *d);
+void destroy_fx_chain(shoopdaloop_fx_chain_t *d);
+void destroy_fx_chain_state(fx_chain_state_info_t *d);
 
 // Helpers for allocating data objects
 midi_event_t *alloc_midi_event(size_t data_bytes);

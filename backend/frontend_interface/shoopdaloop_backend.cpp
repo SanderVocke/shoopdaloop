@@ -41,6 +41,7 @@
 namespace {
 constexpr size_t gc_initial_max_loops = 512;
 constexpr size_t gc_initial_max_ports = 1024;
+constexpr size_t gc_initial_max_fx_chains = 128;
 constexpr size_t gc_initial_max_decoupled_midi_ports = 512;
 constexpr size_t gc_n_buffers_in_pool = 128;
 constexpr size_t gc_audio_buffer_size = 32768;
@@ -58,6 +59,7 @@ constexpr size_t gc_default_audio_dummy_buffer_size = 16384;
 struct LoopInfo;
 struct PortInfo;
 struct ChannelInfo;
+struct FXChainInfo;
 struct Backend;
 struct DecoupledMidiPortInfo;
 
@@ -82,6 +84,7 @@ using SharedPortInfo = std::shared_ptr<PortInfo>;
 using SharedLoopInfo = std::shared_ptr<LoopInfo>;
 using WeakPortInfo = std::weak_ptr<PortInfo>;
 using WeakLoopInfo = std::weak_ptr<LoopInfo>;
+using SharedFXChainInfo = std::shared_ptr<FXChainInfo>;
 using SharedChannelInfo = std::shared_ptr<ChannelInfo>;
 using Command = std::function<void()>;
 using _MidiMessage = MidiMessage<Time, Size>;
@@ -90,6 +93,7 @@ using SharedDecoupledMidiPort = std::shared_ptr<_DecoupledMidiPort>;
 using SharedDecoupledMidiPortInfo = std::shared_ptr<DecoupledMidiPortInfo>;
 using SharedBackend = std::shared_ptr<Backend>;
 using WeakBackend = std::weak_ptr<Backend>;
+using SharedFXChain = std::shared_ptr<CarlaLV2ProcessingChain<Time, Size>>;
 
 // GLOBALS
 namespace {
@@ -99,7 +103,6 @@ std::shared_ptr<DummyReadMidiBuf> g_dummy_midi_input_buffer = std::make_shared<D
 std::shared_ptr<DummyWriteMidiBuf> g_dummy_midi_output_buffer = std::make_shared<DummyWriteMidiBuf>();
 std::set<SharedBackend> g_active_backends;
 LV2 g_lv2;
-std::shared_ptr<CarlaLV2ProcessingChain<Time, Size>> g_carla;
 }
 
 // TYPES
@@ -107,6 +110,7 @@ struct Backend : public std::enable_shared_from_this<Backend> {
 
     std::vector<SharedLoopInfo> loops;
     std::vector<SharedPortInfo> ports;
+    std::vector<SharedFXChainInfo> fx_chains;
     std::vector<SharedDecoupledMidiPortInfo> decoupled_midi_ports;
     CommandQueue cmd_queue;
     std::shared_ptr<AudioBufferPool> audio_buffer_pool;
@@ -136,6 +140,7 @@ struct Backend : public std::enable_shared_from_this<Backend> {
         audio_buffer_pool = std::make_shared<AudioBufferPool>(gc_n_buffers_in_pool, gc_audio_buffer_size);
         loops.reserve(gc_initial_max_loops);
         ports.reserve(gc_initial_max_ports);
+        fx_chains.reserve(gc_initial_max_fx_chains);
         decoupled_midi_ports.reserve(gc_initial_max_decoupled_midi_ports);
         audio_system->start();
     }
@@ -146,7 +151,8 @@ struct Backend : public std::enable_shared_from_this<Backend> {
     jack_client_t *maybe_jack_client_handle();
     const char* get_client_name();
     unsigned get_sample_rate();
-    std::shared_ptr<LoopInfo> create_loop();
+    SharedLoopInfo create_loop();
+    SharedFXChainInfo create_fx_chain(fx_chain_type_t type);
 };
 
 struct DecoupledMidiPortInfo : public std::enable_shared_from_this<DecoupledMidiPortInfo> {
@@ -282,6 +288,28 @@ struct LoopInfo : public std::enable_shared_from_this<LoopInfo> {
     Backend &get_backend();
 };
 
+struct FXChainInfo : public std::enable_shared_from_this<FXChainInfo> {
+    const SharedFXChain chain;
+    WeakBackend backend;
+
+    std::vector<SharedPortInfo> mc_audio_input_ports;
+    std::vector<SharedPortInfo> mc_audio_output_ports;
+
+    FXChainInfo(SharedFXChain chain, SharedBackend backend) :
+        chain(chain), backend(backend) {
+        for (auto const& port : chain->input_audio_ports()) {
+            mc_audio_input_ports.push_back(std::make_shared<PortInfo>(port, backend));
+        }
+        for (auto const& port : chain->output_audio_ports()) {
+            mc_audio_output_ports.push_back(std::make_shared<PortInfo>(port, backend));
+        }
+    }
+
+    Backend &get_backend();
+    decltype(mc_audio_input_ports) const& audio_input_ports() const { return mc_audio_input_ports; }
+    decltype(mc_audio_output_ports) const& audio_output_ports() const { return mc_audio_output_ports; }
+};
+
 #warning delete destroyed ports
 // MEMBER FUNCTIONS
 void Backend::PROC_process (jack_nframes_t nframes) {
@@ -316,6 +344,13 @@ void Backend::PROC_process (jack_nframes_t nframes) {
     // Process the loops.
     process_loops<LoopInfo>
         (loops, [](LoopInfo &l) { return (LoopInterface*)l.loop.get(); }, nframes);
+
+    // Process the FX chains.
+    // TODO: refactor so that there is no latency introduced between
+    // channels before and after the FX chain.
+    for (auto & chain: fx_chains) {
+        chain->chain->process(nframes);
+    }
 
     // Prepare state for next round.
     for (auto &port : ports) {
@@ -364,12 +399,23 @@ unsigned Backend::get_sample_rate() {
     return audio_system->get_sample_rate();
 }
 
-std::shared_ptr<LoopInfo> Backend::create_loop() {
+SharedLoopInfo Backend::create_loop() {
     auto r = std::make_shared<LoopInfo>(shared_from_this());
     cmd_queue.queue([this, r]() {
         loops.push_back(r);
     });
     return r;
+}
+
+SharedFXChainInfo Backend::create_fx_chain(fx_chain_type_t type) {
+    auto chain = g_lv2.create_carla_chain<Time, Size>(
+        type, get_sample_rate()
+    );
+    auto info = std::make_shared<FXChainInfo>(chain, shared_from_this());
+    cmd_queue.queue([this, info]() {
+        fx_chains.push_back(info);
+    });
+    return info;
 }
 
 void PortInfo::PROC_reset_buffers() {
@@ -774,6 +820,14 @@ Backend &LoopInfo::get_backend() {
     return *b;
 }
 
+Backend &FXChainInfo::get_backend() {
+    auto b = backend.lock();
+    if(!b) {
+        throw std::runtime_error("Back-end no longer exists");
+    }
+    return *b;
+}
+
 // HELPER FUNCTIONS
 SharedBackend internal_backend(shoopdaloop_backend_instance_t *backend) {
     return ((Backend*)backend)->shared_from_this();
@@ -800,6 +854,10 @@ SharedLoopInfo internal_loop(shoopdaloop_loop_t *loop) {
     return ((LoopInfo*)loop)->shared_from_this();
 }
 
+SharedFXChainInfo internal_fx_chain(shoopdaloop_fx_chain_t *chain) {
+    return ((FXChainInfo*)chain)->shared_from_this();
+}
+
 shoopdaloop_backend_instance_t *external_backend(SharedBackend backend) {
     return (shoopdaloop_backend_instance_t*) backend.get();
 }
@@ -822,6 +880,10 @@ shoopdaloop_loop_midi_channel_t* external_midi_channel(SharedChannelInfo port) {
 
 shoopdaloop_loop_t* external_loop(SharedLoopInfo loop) {
     return (shoopdaloop_loop_t*)loop.get();
+}
+
+shoopdaloop_fx_chain_t* external_fx_chain(SharedFXChainInfo chain) {
+    return (shoopdaloop_fx_chain_t*)chain.get();
 }
 
 audio_channel_data_t *external_audio_data(std::vector<audio_sample_t> f) {
@@ -914,12 +976,6 @@ shoopdaloop_backend_instance_t *initialize (
     
     auto backend = std::make_shared<Backend>(audio_system, client_name_hint);
     g_active_backends.insert(backend);
-
-    g_carla = g_lv2.create_carla_chain<Time, Size>(
-        CarlaProcessingChainType::Rack,
-        backend->get_sample_rate()
-    );
-    g_carla->show();
 
     return external_backend(backend);
 }
@@ -1222,7 +1278,7 @@ void clear_midi_channel (shoopdaloop_loop_midi_channel_t *channel) {
     });
 }
 
-shoopdaloop_audio_port_t *open_audio_port (shoopdaloop_backend_instance_t *backend, const char* name_hint, port_direction_t direction) {
+shoopdaloop_audio_port_t *open_jack_audio_port (shoopdaloop_backend_instance_t *backend, const char* name_hint, port_direction_t direction) {
     auto _backend = internal_backend(backend);
     auto port = _backend->audio_system->open_audio_port
         (name_hint, internal_port_direction(direction));
@@ -1255,7 +1311,7 @@ jack_port_t *get_audio_port_jack_handle(shoopdaloop_audio_port_t *port) {
         pi->backend.lock()->cmd_queue);
 }
 
-shoopdaloop_midi_port_t *open_midi_port (shoopdaloop_backend_instance_t *backend, const char* name_hint, port_direction_t direction) {
+shoopdaloop_midi_port_t *open_jack_midi_port (shoopdaloop_backend_instance_t *backend, const char* name_hint, port_direction_t direction) {
     auto _backend = internal_backend(backend);
     auto port = _backend->audio_system->open_midi_port(name_hint, internal_port_direction(direction));
     auto pi = std::make_shared<PortInfo>(port, _backend);
@@ -1507,6 +1563,62 @@ void set_loop_sync_source (shoopdaloop_loop_t *loop, shoopdaloop_loop_t *sync_so
     });
 }
 
+shoopdaloop_fx_chain_t *create_fx_chain(shoopdaloop_backend_instance_t *backend, fx_chain_type_t type) {
+    return external_fx_chain(internal_backend(backend)->create_fx_chain(type));
+}
+
+void fx_chain_set_ui_visible(shoopdaloop_fx_chain_t *chain, unsigned visible) {
+    if(visible) {
+        internal_fx_chain(chain)->chain->show();
+    } else {
+        internal_fx_chain(chain)->chain->hide();
+    }
+}
+
+fx_chain_state_info_t *get_fx_chain_state(shoopdaloop_fx_chain_t *chain) {
+    auto r = new fx_chain_state_info_t;
+    auto c = internal_fx_chain(chain);
+    r->running = (unsigned) c->chain->running();
+    r->visible = (unsigned) c->chain->visible();
+    return r;
+}
+
+shoopdaloop_audio_port_t **fx_chain_audio_input_ports(shoopdaloop_fx_chain_t *chain, unsigned int *n_out) {
+    auto _chain = internal_fx_chain(chain);
+    auto const& ports = _chain->audio_input_ports();
+    shoopdaloop_audio_port_t **rval = (shoopdaloop_audio_port_t**) malloc(sizeof(shoopdaloop_audio_port_t*) * ports.size());
+    for (size_t i=0; i<ports.size(); i++) {
+        rval[i] = external_audio_port(ports[i]);
+    }
+    *n_out = ports.size();
+    return rval;
+}
+
+shoopdaloop_audio_port_t **fx_chain_audio_output_ports(shoopdaloop_fx_chain_t *chain, unsigned int *n_out) {
+    auto _chain = internal_fx_chain(chain);
+    auto const& ports = _chain->audio_output_ports();
+    shoopdaloop_audio_port_t **rval = (shoopdaloop_audio_port_t**) malloc(sizeof(shoopdaloop_audio_port_t*) * ports.size());
+    for (size_t i=0; i<ports.size(); i++) {
+        rval[i] = external_audio_port(ports[i]);
+    }
+    *n_out = ports.size();
+    return rval;
+}
+
+shoopdaloop_midi_port_t **fx_chain_midi_input_ports(shoopdaloop_fx_chain_t *chain, unsigned int *n_out) {
+    *n_out = 0;
+    std::cerr << "getting chain ports unimplemented" << std::endl;
+    return nullptr;
+}
+
+shoopdaloop_midi_port_t **fx_chain_midi_output_ports(shoopdaloop_fx_chain_t *chain, unsigned int *n_out) {
+    *n_out = 0;
+    std::cerr << "getting chain ports unimplemented" << std::endl;
+    return nullptr;
+}
+
+
+
 void destroy_midi_event(midi_event_t *e) {
     free(e->data);
     delete e;
@@ -1593,4 +1705,13 @@ void destroy_shoopdaloop_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *
 
 void destroy_loop_state_info(loop_state_info_t *state) {
     delete state;
+}
+
+void destroy_fx_chain(shoopdaloop_fx_chain_t *chain) {
+    std::cerr << "Warning: destroying FX chains is unimplemented. Stopping only." << std::endl;
+    internal_fx_chain(chain)->chain->stop();
+}
+
+void destroy_fx_chain_state(fx_chain_state_info_t *d) {
+    delete d;
 }

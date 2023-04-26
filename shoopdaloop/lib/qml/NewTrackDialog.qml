@@ -19,6 +19,9 @@ Dialog {
 
     property alias track_name : name_field.text
     property alias is_drywet : select_type.is_drywet
+    property alias is_drywet_carla : select_processing_kind.is_carla
+    property alias drywet_carla_type : select_processing_kind.carla_type
+    property alias is_drywet_jack : select_processing_kind.is_jack
     readonly property int n_direct_audio_channels : is_drywet ? 0 : custom_direct_audio_channels.value
     readonly property int n_dry_audio_channels : is_drywet ? custom_dry_audio_channels.value : 0
     readonly property int n_wet_audio_channels : is_drywet ? custom_wet_audio_channels.value : 0
@@ -45,7 +48,9 @@ Dialog {
             n_wet_audio_channels,
             n_direct_audio_channels,
             has_dry_midi,
-            has_direct_midi
+            has_direct_midi,
+            is_drywet && is_drywet_jack,
+            (is_drywet && is_drywet_carla) ? drywet_carla_type : undefined
         )
         addTrackDescriptor(track_descriptor)
     }
@@ -112,6 +117,26 @@ Dialog {
         }
 
         // START CONTROLS FOR DRY/WET LOOP TYPE
+
+        Label {
+            text: "Processing Kind:"
+            visible: is_drywet
+        }
+        ComboBox {
+            id: select_processing_kind
+            visible: is_drywet
+            textRole: "text"
+            valueRole: "value"
+            model: [
+                { value: 'jack', text: "External (JACK)" },
+                { value: 'carla_rack', text: "Carla (Rack)" },
+                { value: 'carla_patchbay', text: "Carla (Patchbay)" },
+                { value: 'carla_patchbay_16', text: "Carla (Patchbay 16x)" }
+            ]
+            property bool is_carla : ['carla_rack', 'carla_patchbay', 'carla_patchbay_16'].includes(currentValue)
+            property bool is_jack : currentValue == 'jack'
+            property var carla_type : is_carla ? currentValue : undefined
+        }
 
         Label {
             text: "Dry audio:"

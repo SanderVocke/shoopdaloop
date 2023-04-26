@@ -37,6 +37,20 @@ class BackendType(Enum):
     Jack = Jack
     Dummy = Dummy
 
+class FXChainType(Enum):
+    Carla_Rack = Carla_Rack
+    Carla_Patchbay = Carla_Patchbay
+    Carla_Patchbay_16x = Carla_Patchbay_16x
+
+@dataclass
+class FXChainState:
+    visible : bool
+    running : bool
+
+    def __init__(self, backend_state : "fx_chain_state_info_t"):
+        self.visible = backend_state.visible
+        self.running = backend_state.running
+
 @dataclass
 class LoopAudioChannelState:
     mode : Type[ChannelMode]
@@ -390,6 +404,27 @@ class BackendMidiPort:
     def __del__(self):
         self.destroy()
 
+class BackendFXChain:
+    def __init__(self, c_handle : "POINTER(shoopdaloop_fx_chain_t)", chain_type: FXChainType):
+        self._type = chain_type
+        self._c_handle = c_handle
+    
+    def chain_type(self) -> Type['FXChainType']:
+        return self._type
+    
+    def c_handle(self):
+        return self._c_handle
+    
+    def set_visible(self, visible):
+        if self._c_handle:
+            fx_chain_set_ui_visible(self._c_handle, int(visible))
+    
+    def get_state(self):
+        state = get_fx_chain_state(self._c_handle)
+        rval = FXChainState(state[0])
+        destroy_fx_chain_state(state)
+        return rval
+
 class Backend:
     def __init__(self, c_handle : 'POINTER(shoopdaloop_backend_instance_t)'):
         self._c_handle = c_handle
@@ -410,16 +445,21 @@ class Backend:
         handle = create_loop(self._c_handle)
         rval = BackendLoop(handle)
         return rval
+    
+    def create_fx_chain(self, chain_type : Type['FXChainType']) -> Type['BackendFXChain']:
+        handle = create_fx_chain(self._c_handle, chain_type.value)
+        rval = BackendFXChain(handle, chain_type)
+        return rval
 
-    def open_audio_port(self, name_hint : str, direction : int) -> 'BackendAudioPort':
+    def open_jack_audio_port(self, name_hint : str, direction : int) -> 'BackendAudioPort':
         _dir = (Input if direction == PortDirection.Input.value else Output)
-        handle = open_audio_port(self._c_handle, name_hint.encode('ascii'), _dir)
+        handle = open_jack_audio_port(self._c_handle, name_hint.encode('ascii'), _dir)
         port = BackendAudioPort(handle, direction)
         return port
 
-    def open_midi_port(self, name_hint : str, direction : int) -> 'BackendMidiPort':
+    def open_jack_midi_port(self, name_hint : str, direction : int) -> 'BackendMidiPort':
         _dir = (Input if direction == PortDirection.Input.value else Output)
-        handle = open_midi_port(self._c_handle, name_hint.encode('ascii'), _dir)
+        handle = open_jack_midi_port(self._c_handle, name_hint.encode('ascii'), _dir)
         port = BackendMidiPort(handle, direction)
         return port
 

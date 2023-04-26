@@ -1,5 +1,10 @@
 #pragma once
 #include "ProcessingChainInterface.h"
+#include "InternalAudioPort.h"
+
+#include <string>
+#include <types.h>
+
 #include <atomic>
 #include <chrono>
 #include <lilv/lilv.h>
@@ -13,16 +18,12 @@
 #include <dlfcn.h>
 #include <thread>
 
-enum class CarlaProcessingChainType {
-    Rack,
-    Patchbay2,
-    Patchbay16
-};
 
 template<typename TimeType, typename SizeType>
 class CarlaLV2ProcessingChain : public ProcessingChainInterface<TimeType, SizeType> {
 public:
-    using SharedAudioPort = typename ProcessingChainInterface<TimeType, SizeType>::SharedAudioPort;
+    using _InternalAudioPort = typename ProcessingChainInterface<TimeType, SizeType>::_InternalAudioPort;
+    using SharedInternalAudioPort = typename ProcessingChainInterface<TimeType, SizeType>::SharedInternalAudioPort;
     using SharedMidiPort = typename ProcessingChainInterface<TimeType, SizeType>::SharedMidiPort;
 
 private:
@@ -32,11 +33,15 @@ private:
     LV2_External_UI_Widget * m_ui_widget;
     std::atomic<bool> m_finish = false;
     std::thread m_ui_thread;
+    bool m_visible = false;
+    std::vector<const LilvPort*> m_audio_in_lilv_ports, m_audio_out_lilv_ports;
+    std::vector<uint32_t> m_audio_in_port_indices, m_audio_out_port_indices;
+    size_t m_internal_buffers_size;
 
     const LV2UI_Descriptor * m_ui_descriptor = nullptr;
 
-    std::vector<SharedAudioPort> m_input_audio_ports;
-    std::vector<SharedAudioPort> m_output_audio_ports;
+    std::vector<SharedInternalAudioPort> m_input_audio_ports;
+    std::vector<SharedInternalAudioPort> m_output_audio_ports;
     std::vector<SharedMidiPort> m_input_midi_ports;
     std::vector<SharedMidiPort> m_output_midi_ports;
     
@@ -69,6 +74,15 @@ private:
         instance.ui_closed_fn();
     }
 
+    void reconnect_ports() {
+        for(size_t i=0; i<m_input_audio_ports.size(); i++) {
+            lilv_instance_connect_port(m_instance, m_audio_in_port_indices[i], m_input_audio_ports[i]->PROC_get_buffer(m_internal_buffers_size));
+        }
+        for(size_t i=0; i<m_output_audio_ports.size(); i++) {
+            lilv_instance_connect_port(m_instance, m_audio_out_port_indices[i], m_output_audio_ports[i]->PROC_get_buffer(m_internal_buffers_size));
+        }
+    }
+
     void ui_closed_fn() {
         stop();
     }
@@ -76,14 +90,16 @@ private:
 public:
     CarlaLV2ProcessingChain(
         LilvWorld *lilv_world,
-        CarlaProcessingChainType type,
+        fx_chain_type_t type,
         size_t sample_rate
-    ) {
+    ) :
+        m_internal_buffers_size(0)
+    {
         // URIs for the Carla plugins we want to support.
-        static const std::map<CarlaProcessingChainType, std::string> plugin_uris = {
-            { CarlaProcessingChainType::Rack, "http://kxstudio.sf.net/carla/plugins/carlarack" },
-            { CarlaProcessingChainType::Patchbay2, "http://kxstudio.sf.net/carla/plugins/carlapatchbay" },
-            { CarlaProcessingChainType::Patchbay16, "http://kxstudio.sf.net/carla/plugins/carlapatchbay16" }
+        static const std::map<fx_chain_type_t, std::string> plugin_uris = {
+            { Carla_Rack, "http://kxstudio.sf.net/carla/plugins/carlarack" },
+            { Carla_Patchbay, "http://kxstudio.sf.net/carla/plugins/carlapatchbay" },
+            { Carla_Patchbay_16x, "http://kxstudio.sf.net/carla/plugins/carlapatchbay16" }
         };
         auto plugin_uri = plugin_uris.at(type);
 
@@ -129,8 +145,36 @@ public:
             throw std::runtime_error("Plugin " + plugin_uri + " failed to instantiate.");
         }
 
-        // TODO ports
-        size_t n_ports = lilv_plugin_get_num_ports(m_plugin);
+        // Set up the plugin ports
+        {
+            std::vector<std::string> audio_in_port_symbols, audio_out_port_symbols, midi_in_port_symbols, midi_out_port_symbols;
+            size_t n_audio =
+                (type == Carla_Rack || type == Carla_Patchbay) ? 2 :
+                (type == Carla_Patchbay_16x) ? 16 :
+                0;
+            for (size_t i=0; i<n_audio; i++) {
+                audio_in_port_symbols.push_back("lv2_audio_in_" + std::to_string(i+1));
+                audio_out_port_symbols.push_back("lv2_audio_out_" + std::to_string(i+1));
+            }
+
+            for (auto const& sym : audio_in_port_symbols) {
+                auto p = lilv_plugin_get_port_by_symbol(m_plugin, lilv_new_string(lilv_world, sym.c_str()));
+                if (!p) { throw std::runtime_error ("Could not find port '" + sym + "' on plugin."); }
+                m_audio_in_lilv_ports.push_back(p);
+                m_audio_in_port_indices.push_back(lilv_port_get_index(m_plugin, p));
+                auto internal = std::make_shared<_InternalAudioPort>(sym, PortDirection::Input, m_internal_buffers_size);
+                m_input_audio_ports.push_back(internal);
+            }
+            for (auto const& sym : audio_out_port_symbols) {
+                auto p = lilv_plugin_get_port_by_symbol(m_plugin, lilv_new_string(lilv_world, sym.c_str()));
+                if (!p) { throw std::runtime_error ("Could not find port '" + sym + "' on plugin."); }
+                m_audio_out_lilv_ports.push_back(p);
+                m_audio_out_port_indices.push_back(lilv_port_get_index(m_plugin, p));
+                auto internal = std::make_shared<_InternalAudioPort>(sym, PortDirection::Output, m_internal_buffers_size);
+                m_output_audio_ports.push_back(internal);
+            }
+            reconnect_ports();
+        }
 
         // Set up the UI.
         {
@@ -197,12 +241,18 @@ public:
         });
     }
 
+    bool visible() {
+        return m_visible;
+    }
+
     void show() {
         m_ui_widget->show(m_ui_widget);
+        m_visible = true;
     }
 
     void hide() {
         m_ui_widget->hide(m_ui_widget);
+        m_visible = false;
     }
 
     void stop() {
@@ -222,29 +272,47 @@ public:
         lilv_instance_deactivate(m_instance);
     }
 
-    std::vector<SharedAudioPort> input_audio_ports() const override {
+    std::vector<SharedInternalAudioPort> const& input_audio_ports() const override {
         return m_input_audio_ports;
     }
 
-    std::vector<SharedAudioPort> output_audio_ports() const override {
+    std::vector<SharedInternalAudioPort> const& output_audio_ports() const override {
         return m_output_audio_ports;
     }
 
-    std::vector<SharedMidiPort> input_midi_ports() const override {
+    std::vector<SharedMidiPort> const& input_midi_ports() const override {
         return m_input_midi_ports;
     }
 
-    std::vector<SharedMidiPort> output_midi_ports() const override {
+    std::vector<SharedMidiPort> const& output_midi_ports() const override {
         return m_output_midi_ports;
     }
 
-    virtual bool is_freewheeling() const override {
+    bool is_freewheeling() const override {
         return false;
     }
 
-    virtual void set_freewheeling(bool enabled) override {}
+    void set_freewheeling(bool enabled) override {}
+
+    void ensure_buffers(size_t size) {
+        if (size > m_internal_buffers_size) {
+            for (auto &port : m_input_audio_ports) {
+                port->reallocate_buffer(size);
+            }
+            for (auto &port : m_output_audio_ports) {
+                port->reallocate_buffer(size);
+            }
+            reconnect_ports();
+            m_internal_buffers_size = size;
+        }
+    }
+
+    size_t buffers_size() const {
+        throw std::runtime_error("Buffer size getting not yet implemented");
+    }
 
     virtual ~CarlaLV2ProcessingChain() {
+        std::cout << "Destroying Carla processing chain." << std::endl;
         stop();
     }
 

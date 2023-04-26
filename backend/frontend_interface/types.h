@@ -61,6 +61,12 @@ typedef enum {
     CHANNEL_MODE_INVALID
 } channel_mode_t;
 
+typedef enum {
+    Carla_Rack, // Carla Rack (1x MIDI, stereo audio w/ fixed internal connections)
+    Carla_Patchbay, // Carla Patchbay (1x MIDI, stereo audio w/ flexible internal connections)
+    Carla_Patchbay_16x, // Carla Patchbay (1x MIDI, 16x audio w/ flexible internal connections)
+} fx_chain_type_t;
+
 typedef struct _shoopdaloop_loop                shoopdaloop_loop_t;
 typedef struct _shoopdaloop_loop_audio_channel  shoopdaloop_loop_audio_channel_t;
 typedef struct _shoopdaloop_loop_midi_channel   shoopdaloop_loop_midi_channel_t;
@@ -68,6 +74,7 @@ typedef struct _shoopdaloop_audio_port          shoopdaloop_audio_port_t;
 typedef struct _shoopdaloop_midi_port           shoopdaloop_midi_port_t;
 typedef struct _shoopdaloop_decoupled_midi_port shoopdaloop_decoupled_midi_port_t;
 typedef struct _shoopdaloop_backend_instance    shoopdaloop_backend_instance_t;
+typedef struct _shoopdaloop_fx_chain            shoopdaloop_fx_chain_t;
 
 typedef struct {
     loop_mode_t mode;
@@ -93,6 +100,11 @@ typedef struct {
     unsigned passthrough_muted;
     const char* name;
 } midi_port_state_info_t;
+
+typedef struct {
+    unsigned running;
+    unsigned visible;
+} fx_chain_state_info_t;
 
 typedef enum { Input, Output } port_direction_t;
 
