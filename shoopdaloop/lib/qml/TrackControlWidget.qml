@@ -51,12 +51,13 @@ Item {
     property Registry objects_registry : null
     property Registry state_registry : null
 
+    property bool has_fx_chain : initial_track_descriptor.fx_chains.length == 1
+
     RegistryLookups {
         id: lookup_ports
         registry: trackctl.objects_registry
         keys: initial_track_descriptor ? initial_track_descriptor.ports.map((p) => p.id) : []
     }
-
     property alias ports : lookup_ports.objects
 
     function is_audio(p) { return p.schema.match(/audioport\.[0-9]+/) }

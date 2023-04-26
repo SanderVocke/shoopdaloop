@@ -252,6 +252,7 @@ Item {
                             top: parent.top
                             left: parent.left
                             right: menubutton.left
+                            rightMargin: 3
                         }
 
                         text: track.name
@@ -290,6 +291,34 @@ Item {
                             }
                         }
                     }
+
+                    Button {
+                        id: fxuibutton
+                        visible: track.initial_descriptor.fx_chains.length == 1
+                        anchors {
+                            top: menubutton.bottom
+                            topMargin: -6
+                            right: parent.right
+                        }
+
+                        width: 18
+                        height: 28
+                        Label { text: "FX"
+                            font.pixelSize: 10
+                            anchors {
+                                verticalCenter: parent.verticalCenter
+                                horizontalCenter: parent.horizontalCenter
+                            }
+                        }
+
+                        onClicked: {
+                            var chains = track.fx_chains()
+                            if (chains.length == 1) {
+                                chains[0].set_ui_visible(true)
+                            }
+                        }
+                    }
+                    
                 }
 
                 Column {

@@ -34,7 +34,7 @@ private:
     const LilvPlugin * m_plugin = nullptr;
     LilvInstance * m_instance = nullptr;
     LV2UI_Handle m_ui_handle = nullptr;
-    LV2_External_UI_Widget * m_ui_widget;
+    LV2_External_UI_Widget * m_ui_widget = nullptr;
     std::atomic<bool> m_finish = false;
     std::thread m_ui_thread;
     bool m_visible = false;
@@ -42,6 +42,9 @@ private:
     std::vector<uint32_t> m_audio_in_port_indices, m_audio_out_port_indices, m_midi_in_port_indices, m_midi_out_port_indices;
     size_t m_internal_buffers_size;
     LV2_URID m_midi_event_type, m_atom_chunk_type, m_atom_sequence_type;
+    LV2_External_UI_Host m_ui_host;
+    const LilvUI *m_ui;
+    std::string m_plugin_uri;
 
     const LV2UI_Descriptor * m_ui_descriptor = nullptr;
 
@@ -110,7 +113,11 @@ private:
     }
 
     void ui_closed_fn() {
-        stop();
+        m_finish = true;
+        if (m_ui_thread.joinable()) { m_ui_thread.join(); }
+        m_ui_descriptor->cleanup(m_ui_handle);
+        m_ui_handle = nullptr;
+        m_ui_widget = nullptr;
     }
 
 public:
@@ -127,14 +134,14 @@ public:
             { Carla_Patchbay, "http://kxstudio.sf.net/carla/plugins/carlapatchbay" },
             { Carla_Patchbay_16x, "http://kxstudio.sf.net/carla/plugins/carlapatchbay16" }
         };
-        auto plugin_uri = plugin_uris.at(type);
+        m_plugin_uri = plugin_uris.at(type);
 
         // Find our plugin.
         const LilvPlugins* all_plugins = lilv_world_get_all_plugins(lilv_world);
-        LilvNode *uri = lilv_new_uri(lilv_world, plugin_uri.c_str());
+        LilvNode *uri = lilv_new_uri(lilv_world, m_plugin_uri.c_str());
         m_plugin = lilv_plugins_get_by_uri(all_plugins, uri);
         if (!m_plugin) {
-            throw std::runtime_error("Plugin " + plugin_uri + " not found.");
+            throw std::runtime_error("Plugin " + m_plugin_uri + " not found.");
         }
 
         // Set up required features.
@@ -173,7 +180,7 @@ public:
         // Make a plugin instance.
         m_instance = lilv_plugin_instantiate(m_plugin, (double)sample_rate, features.data());
         if (!m_instance) {
-            throw std::runtime_error("Plugin " + plugin_uri + " failed to instantiate.");
+            throw std::runtime_error("Plugin " + m_plugin_uri + " failed to instantiate.");
         }
 
         // Set up the plugin ports
@@ -229,16 +236,16 @@ public:
         {
             LilvUIs* uis = lilv_plugin_get_uis(m_plugin);
             if (lilv_uis_size(uis) != 1) {
-                throw std::runtime_error("Expected 1 UI for plugin " + plugin_uri);
+                throw std::runtime_error("Expected 1 UI for plugin " + m_plugin_uri);
             }
 
-            const LilvUI *ui = lilv_uis_get(uis, lilv_uis_begin(uis));
+            m_ui = lilv_uis_get(uis, lilv_uis_begin(uis));
             const LilvNode *external_ui_uri = lilv_new_uri(lilv_world, "http://kxstudio.sf.net/ns/lv2ext/external-ui#Widget");
-            if (!lilv_ui_is_a(ui, external_ui_uri)) {
+            if (!lilv_ui_is_a(m_ui, external_ui_uri)) {
                 throw std::runtime_error("Expected Carla UI to be of class 'external-ui'");
             }
 
-            const LilvNode *ui_binary_uri = lilv_ui_get_binary_uri(ui);
+            const LilvNode *ui_binary_uri = lilv_ui_get_binary_uri(m_ui);
             const char *ui_binary_path = lilv_node_get_path(ui_binary_uri, nullptr);
             void * ui_lib_handle = dlopen(ui_binary_path, RTLD_LAZY);
             LV2UI_DescriptorFunction _get_ui_descriptor = (LV2UI_DescriptorFunction)dlsym(ui_lib_handle, "lv2ui_descriptor");
@@ -247,47 +254,11 @@ public:
             }
 
             m_ui_descriptor = _get_ui_descriptor(0);
-            LV2_Feature instance_access_feature {
-                .URI = LV2_INSTANCE_ACCESS_URI,
-                .data = (void*) lilv_instance_get_handle(m_instance)
-            };
-            LV2_External_UI_Host ui_host {
+            m_ui_host = {
                 .ui_closed = static_ui_closed_fn,
                 .plugin_human_id = "shoopdaloop"
             };
-            LV2_Feature external_ui_host_feature {
-                .URI = LV2_EXTERNAL_UI__Host,
-                .data = (void*)&ui_host
-            };
-            LV2UI_Widget ui_widget;
-            const char *ui_bundle_path = lilv_node_get_path(lilv_ui_get_bundle_uri(ui), nullptr);
-            const LV2_Feature* const ui_features[] = { &instance_access_feature, &external_ui_host_feature, nullptr };
-            m_ui_handle = m_ui_descriptor->instantiate(
-                m_ui_descriptor,
-                plugin_uri.c_str(),
-                ui_bundle_path,
-                (LV2UI_Write_Function) static_ui_write_fn,
-                (LV2UI_Controller) this,
-                &ui_widget,
-                ui_features
-            );
-            m_ui_widget = (LV2_External_UI_Widget*) ui_widget;
-            if(!m_ui_handle) {
-                throw std::runtime_error("Could not instantiate Carla UI.");
-            }
         }
-
-        // Create and start UI thread
-        m_ui_thread = std::thread([this]() {
-            while(!m_finish) {
-                auto t = std::chrono::high_resolution_clock::now();
-                m_ui_widget->run(m_ui_widget);
-                while (t < std::chrono::high_resolution_clock::now()) {
-                    t += std::chrono::milliseconds(30);
-                }
-                std::this_thread::sleep_until(t);
-            }
-        });
     }
 
     bool visible() {
@@ -295,12 +266,52 @@ public:
     }
 
     void show() {
+        if (!m_ui_widget) {
+            LV2_Feature instance_access_feature {
+                .URI = LV2_INSTANCE_ACCESS_URI,
+                .data = (void*) lilv_instance_get_handle(m_instance)
+            };
+            LV2_Feature external_ui_host_feature {
+                .URI = LV2_EXTERNAL_UI__Host,
+                .data = (void*)&m_ui_host
+            };
+            LV2UI_Widget ui_widget;
+            const char *ui_bundle_path = lilv_node_get_path(lilv_ui_get_bundle_uri(m_ui), nullptr);
+            const LV2_Feature* const ui_features[] = { &instance_access_feature, &external_ui_host_feature, nullptr };
+            m_ui_handle = m_ui_descriptor->instantiate(
+                m_ui_descriptor,
+                m_plugin_uri.c_str(),
+                ui_bundle_path,
+                (LV2UI_Write_Function) static_ui_write_fn,
+                (LV2UI_Controller) this,
+                &ui_widget,
+                ui_features
+            );
+            m_ui_widget = (LV2_External_UI_Widget*) ui_widget;
+            if(!m_ui_widget) {
+                throw std::runtime_error("Could not instantiate Carla UI.");
+            }
+
+            // Create and start UI thread
+            m_ui_thread = std::thread([&]() {
+                while(!m_finish) {
+                    auto t = std::chrono::high_resolution_clock::now();
+                    m_ui_widget->run(m_ui_widget);
+                    while (t < std::chrono::high_resolution_clock::now()) {
+                        t += std::chrono::milliseconds(30);
+                    }
+                    std::this_thread::sleep_until(t);
+                }
+            });
+        }
         m_ui_widget->show(m_ui_widget);
         m_visible = true;
     }
 
     void hide() {
-        m_ui_widget->hide(m_ui_widget);
+        if(m_ui_widget) {
+            m_ui_widget->hide(m_ui_widget);
+        }
         m_visible = false;
     }
 

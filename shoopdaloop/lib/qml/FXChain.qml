@@ -38,7 +38,6 @@ FXChain {
                 case "carla_patchbay_16x": chain_type = Types.FXChainType.Carla_Patchbay_16x; break;
             }
             console.log("FXChain.qml: type", descriptor.type, chain_type)
-            set_ui_visible(true)
         } else {
             throw new Error("Completed an FX chain object but no descriptor")
         }
