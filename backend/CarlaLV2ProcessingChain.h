@@ -1,6 +1,5 @@
 #pragma once
 #include "ProcessingChainInterface.h"
-#include "InternalAudioPort.h"
 
 #include <string>
 #include <types.h>
@@ -14,9 +13,14 @@
 #include <lv2/ui/ui.h>
 #include <lv2/instance-access/instance-access.h>
 #include <lv2_external_ui.h>
+#include <lv2_evbuf.h>
+#include <lv2/midi/midi.h>
+#include <lv2/atom/atom.h>
 #include <iostream>
 #include <dlfcn.h>
 #include <thread>
+
+#include "DummyAudioSystem.h"
 
 
 template<typename TimeType, typename SizeType>
@@ -34,9 +38,10 @@ private:
     std::atomic<bool> m_finish = false;
     std::thread m_ui_thread;
     bool m_visible = false;
-    std::vector<const LilvPort*> m_audio_in_lilv_ports, m_audio_out_lilv_ports;
-    std::vector<uint32_t> m_audio_in_port_indices, m_audio_out_port_indices;
+    std::vector<const LilvPort*> m_audio_in_lilv_ports, m_audio_out_lilv_ports, m_midi_in_lilv_ports, m_midi_out_lilv_ports;
+    std::vector<uint32_t> m_audio_in_port_indices, m_audio_out_port_indices, m_midi_in_port_indices, m_midi_out_port_indices;
     size_t m_internal_buffers_size;
+    LV2_URID m_midi_event_type, m_atom_chunk_type, m_atom_sequence_type;
 
     const LV2UI_Descriptor * m_ui_descriptor = nullptr;
 
@@ -49,9 +54,19 @@ private:
     UridMap m_urid_map;
 
     static LV2_URID map_urid(LV2_URID_Map_Handle handle, const char* uri) {
-        auto urid_map = (UridMap*)handle;
-        LV2_URID rval = urid_map->size();
-        (*urid_map)[uri] = rval;
+        auto &instance = *((CarlaLV2ProcessingChain<TimeType, SizeType>*)handle);
+        return instance.map_urid(uri);
+    }
+
+    LV2_URID map_urid(const char* uri) {
+        auto f = m_urid_map.find(uri);
+        if (f != m_urid_map.end()) {
+            return f->second;
+        }
+
+        // Map new URID
+        LV2_URID rval = m_urid_map.size();
+        m_urid_map[uri] = rval;
         return rval;
     }
 
@@ -80,6 +95,17 @@ private:
         }
         for(size_t i=0; i<m_output_audio_ports.size(); i++) {
             lilv_instance_connect_port(m_instance, m_audio_out_port_indices[i], m_output_audio_ports[i]->PROC_get_buffer(m_internal_buffers_size));
+        }
+        std::cerr << "WARNING: MIDI ports unimplemented in LV2" << std::endl;
+        for(size_t i=0; i<m_input_midi_ports.size(); i++) {
+            auto midi_in = lv2_evbuf_new(128, m_atom_chunk_type, m_atom_sequence_type);
+            lv2_evbuf_reset(midi_in, true);
+            lilv_instance_connect_port(m_instance, m_midi_in_port_indices[i], lv2_evbuf_get_buffer(midi_in));
+        }
+        for(size_t i=0; i<m_output_midi_ports.size(); i++) {
+            auto midi_out = lv2_evbuf_new(128, m_atom_chunk_type, m_atom_sequence_type);
+            lv2_evbuf_reset(midi_out, false);
+            lilv_instance_connect_port(m_instance, m_midi_out_port_indices[i], lv2_evbuf_get_buffer(midi_out));
         }
     }
 
@@ -128,8 +154,13 @@ public:
 
         // URID mapping feature
         m_urid_map.clear();
+        // Map URIs we know we will need
+        m_midi_event_type = map_urid(LV2_MIDI__MidiEvent);
+        m_atom_chunk_type = map_urid(LV2_ATOM__Chunk);
+        m_atom_sequence_type = map_urid(LV2_ATOM__Sequence);
+
         LV2_URID_Map map {
-            .handle = (LV2_URID_Map_Handle)&m_urid_map,
+            .handle = (LV2_URID_Map_Handle)this,
             .map = CarlaLV2ProcessingChain<TimeType, SizeType>::map_urid
         };
         LV2_Feature urid_feature {
@@ -156,6 +187,8 @@ public:
                 audio_in_port_symbols.push_back("lv2_audio_in_" + std::to_string(i+1));
                 audio_out_port_symbols.push_back("lv2_audio_out_" + std::to_string(i+1));
             }
+            midi_in_port_symbols.push_back("lv2_events_in");
+            midi_out_port_symbols.push_back("lv2_events_out");
 
             for (auto const& sym : audio_in_port_symbols) {
                 auto p = lilv_plugin_get_port_by_symbol(m_plugin, lilv_new_string(lilv_world, sym.c_str()));
@@ -172,6 +205,22 @@ public:
                 m_audio_out_port_indices.push_back(lilv_port_get_index(m_plugin, p));
                 auto internal = std::make_shared<_InternalAudioPort>(sym, PortDirection::Output, m_internal_buffers_size);
                 m_output_audio_ports.push_back(internal);
+            }
+            for (auto const& sym : midi_in_port_symbols) {
+                auto p = lilv_plugin_get_port_by_symbol(m_plugin, lilv_new_string(lilv_world, sym.c_str()));
+                if (!p) { throw std::runtime_error ("Could not find port '" + sym + "' on plugin."); }
+                m_midi_in_lilv_ports.push_back(p);
+                m_midi_in_port_indices.push_back(lilv_port_get_index(m_plugin, p));
+                auto internal = std::make_shared<DummyMidiPort>("dummy_in", PortDirection::Input);
+                m_input_midi_ports.push_back(internal);
+            }
+            for (auto const& sym : midi_out_port_symbols) {
+                auto p = lilv_plugin_get_port_by_symbol(m_plugin, lilv_new_string(lilv_world, sym.c_str()));
+                if (!p) { throw std::runtime_error ("Could not find port '" + sym + "' on plugin."); }
+                m_midi_out_lilv_ports.push_back(p);
+                m_midi_out_port_indices.push_back(lilv_port_get_index(m_plugin, p));
+                auto internal = std::make_shared<DummyMidiPort>("dummy_out", PortDirection::Input);
+                m_output_midi_ports.push_back(internal);
             }
             reconnect_ports();
         }

@@ -37,5 +37,6 @@ find_package(Boost COMPONENTS ALL REQUIRED)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/frontend_interface)
 
 # Subdirs
+add_subdirectory(${CMAKE_SOURCE_DIR}/third_party/lv2_evbuf lv2_evbuf)
 add_subdirectory(test)
 add_subdirectory(frontend_interface)

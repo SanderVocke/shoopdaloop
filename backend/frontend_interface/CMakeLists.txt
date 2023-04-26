@@ -2,6 +2,7 @@
 add_library(shoopdaloop_backend SHARED shoopdaloop_backend.cpp)
 message(INFO "Lilv ${LILV_LIBRARIES}")
 target_link_libraries(shoopdaloop_backend PRIVATE
+                      lv2_evbuf
                       ${BOOST_LIBRARIES}
                       ${JACK_LIBRARIES}
                       ${LV2_LIBRARIES}
@@ -9,12 +10,13 @@ target_link_libraries(shoopdaloop_backend PRIVATE
 target_include_directories(shoopdaloop_backend
                         PRIVATE
                         ${CMAKE_CURRENT_SOURCE_DIR}/..
+                        ${CMAKE_SOURCE_DIR}/third_party/lv2_evbuf
                         ${JACK_INCLUDE_DIRS}
                         ${CMAKE_CURRENT_BINARY_DIR}
                         ${BOOST_INCLUDE_DIRS}
                         ${LV2_INCLUDE_DIRS}
                         ${LILV_INCLUDE_DIRS}
-                        ${CMAKE_SOURCE_DIR}/third_party
+                        ${CMAKE_SOURCE_DIR}/third_party/lv2_external_ui
                         )
 
 # Generate C bindings
