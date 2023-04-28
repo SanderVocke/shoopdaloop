@@ -177,6 +177,10 @@ public:
         return mc_sample_rate;
     }
 
+    size_t get_buffer_size() const override {
+        return mc_buffer_size;
+    }
+
     void* maybe_client_handle() const override {
         return (void*)this;
     }

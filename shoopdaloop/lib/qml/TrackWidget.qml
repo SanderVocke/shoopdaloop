@@ -314,7 +314,7 @@ Item {
                         onClicked: {
                             var chains = track.fx_chains()
                             if (chains.length == 1) {
-                                chains[0].set_ui_visible(true)
+                                chains[0].set_ui_visible(!chains[0].ui_visible)
                             }
                         }
                     }

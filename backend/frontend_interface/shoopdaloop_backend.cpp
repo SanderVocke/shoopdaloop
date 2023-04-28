@@ -151,6 +151,7 @@ struct Backend : public std::enable_shared_from_this<Backend> {
     jack_client_t *maybe_jack_client_handle();
     const char* get_client_name();
     unsigned get_sample_rate();
+    unsigned get_buffer_size();
     SharedLoopInfo create_loop();
     SharedFXChainInfo create_fx_chain(fx_chain_type_t type);
 };
@@ -399,6 +400,13 @@ unsigned Backend::get_sample_rate() {
     return audio_system->get_sample_rate();
 }
 
+unsigned Backend::get_buffer_size() {
+    if (!audio_system) {
+        throw std::runtime_error("get_buffer_size() called before initialization");
+    }
+    return audio_system->get_buffer_size();
+}
+
 SharedLoopInfo Backend::create_loop() {
     auto r = std::make_shared<LoopInfo>(shared_from_this());
     cmd_queue.queue([this, r]() {
@@ -411,6 +419,7 @@ SharedFXChainInfo Backend::create_fx_chain(fx_chain_type_t type) {
     auto chain = g_lv2.create_carla_chain<Time, Size>(
         type, get_sample_rate()
     );
+    chain->ensure_buffers(get_buffer_size());
     auto info = std::make_shared<FXChainInfo>(chain, shared_from_this());
     cmd_queue.queue([this, info]() {
         fx_chains.push_back(info);

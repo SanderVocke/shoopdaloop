@@ -35,7 +35,7 @@ private:
     LilvInstance * m_instance = nullptr;
     LV2UI_Handle m_ui_handle = nullptr;
     LV2_External_UI_Widget * m_ui_widget = nullptr;
-    std::atomic<bool> m_finish = false;
+    std::atomic<bool> m_ui_stop = false;
     std::thread m_ui_thread;
     bool m_visible = false;
     std::vector<const LilvPort*> m_audio_in_lilv_ports, m_audio_out_lilv_ports, m_midi_in_lilv_ports, m_midi_out_lilv_ports;
@@ -113,11 +113,17 @@ private:
     }
 
     void ui_closed_fn() {
-        m_finish = true;
-        if (m_ui_thread.joinable()) { m_ui_thread.join(); }
-        m_ui_descriptor->cleanup(m_ui_handle);
-        m_ui_handle = nullptr;
-        m_ui_widget = nullptr;
+        m_ui_stop = true;
+    }
+
+    void maybe_cleanup_ui() {
+        if (m_ui_thread.joinable()) { 
+            m_ui_thread.join();
+            m_ui_descriptor->cleanup(m_ui_handle);
+            m_ui_handle = nullptr;
+            m_ui_widget = nullptr;
+            m_ui_stop = false;
+        }
     }
 
 public:
@@ -266,6 +272,7 @@ public:
     }
 
     void show() {
+        maybe_cleanup_ui();
         if (!m_ui_widget) {
             LV2_Feature instance_access_feature {
                 .URI = LV2_INSTANCE_ACCESS_URI,
@@ -293,8 +300,8 @@ public:
             }
 
             // Create and start UI thread
-            m_ui_thread = std::thread([&]() {
-                while(!m_finish) {
+            m_ui_thread = std::thread([this]() {
+                while(!m_ui_stop.load()) {
                     auto t = std::chrono::high_resolution_clock::now();
                     m_ui_widget->run(m_ui_widget);
                     while (t < std::chrono::high_resolution_clock::now()) {
@@ -317,16 +324,19 @@ public:
 
     void stop() {
         std::cout << "Carla instance stopping." << std::endl;
-        m_finish = true;
+        m_ui_stop = true;
         if(m_ui_thread.joinable()) {
             m_ui_thread.join();
         }
         if(m_instance) { lilv_instance_free(m_instance); m_instance = nullptr; }
     }
 
-    bool running() const { return !m_finish && m_ui_thread.joinable(); }
+    bool running() const { return !m_ui_stop && m_ui_thread.joinable(); }
 
     void process(size_t frames) override {
+        if (frames > m_internal_buffers_size) {
+            throw std::runtime_error("Carla processing chain: requesting to process more than buffer size.");
+        }
         lilv_instance_activate(m_instance);
         lilv_instance_run(m_instance, frames);
         lilv_instance_deactivate(m_instance);

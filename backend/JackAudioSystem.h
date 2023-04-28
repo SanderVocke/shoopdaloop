@@ -92,6 +92,10 @@ public:
         return jack_get_sample_rate(m_client);
     }
 
+    size_t get_buffer_size() const override {
+        return jack_get_buffer_size(m_client);
+    }
+
     void* maybe_client_handle() const override {
         return (void*)m_client;
     }
