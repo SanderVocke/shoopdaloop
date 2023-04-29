@@ -16,6 +16,7 @@
 #include <lv2_evbuf.h>
 #include <lv2/midi/midi.h>
 #include <lv2/atom/atom.h>
+#include <lv2/state/state.h>
 #include <iostream>
 #include <dlfcn.h>
 #include <thread>
