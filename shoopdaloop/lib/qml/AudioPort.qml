@@ -60,6 +60,4 @@ AudioPort {
     name_hint : name_parts.join('')
     volume : descriptor.volume
     muted : descriptor.muted
-
-    Component.onCompleted: maybe_initialize()
 }

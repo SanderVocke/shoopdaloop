@@ -32,9 +32,9 @@ class Port(QQuickItem):
         
         self.rescan_parents()
         if not self._backend:
-            self.parentChanged.connect(self.rescan_parents)
+            self.parentChanged.connect(lambda: self.rescan_parents())
         
-        self.initializedChanged.connect(self.update_passthrough_connections)
+        self.initializedChanged.connect(lambda: self.update_passthrough_connections())
 
     ######################
     # PROPERTIES
@@ -159,6 +159,7 @@ class Port(QQuickItem):
     @Slot()
     def close(self):
         if self._backend_obj:
+            print("PORT CLOSE: {} {}".format(self, self._backend_obj))
             self._backend_obj.destroy()
             self._backend_obj = None
             self._initialized = False
@@ -182,9 +183,6 @@ class Port(QQuickItem):
     
     @Slot()
     def maybe_initialize(self):
-        print("PORT INIT...")
-        if self._is_internal:
-            print("INTERNAL PORT INIT...")
         if self._name_hint != '' and \
             self._direction != None and \
             self._is_internal != None and \
@@ -207,13 +205,13 @@ class Port(QQuickItem):
     def connect_passthrough_impl(self, other):
         raise Exception('Unimplemented in base class')
     
-    def maybe_connect_passthrough(self, other):
-        if other.initialized and self.initialized and other not in self._passthrough_connected_to:
-            self.connect_passthrough_impl(other)
-    
     def update_passthrough_connections(self):
+        print("UPDATE CONNECTIONS {}".format(self))
         for other in self._passthrough_to:
-            if other.initialized and self.initialized and other not in self._passthrough_connected_to:
+            if other and other.initialized and self.initialized and other not in self._passthrough_connected_to:
                 self.connect_passthrough_impl(other)
-            else:
-                other.initializedChanged.connect(lambda: self.maybe_connect_passthrough(other))
+            elif other and not other.initialized:
+                other.initializedChanged.connect(lambda: self.update_passthrough_connections())
+            elif not self.initialized:
+                print("SELF NOT INITIALIZED {} {}".format(self, self.is_internal, other.is_internal))
+                self.initializedChanged.connect(lambda: print("SELF FINALLY INITIALIZED {}".format(self)))

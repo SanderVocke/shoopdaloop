@@ -208,7 +208,7 @@ public:
                 if (!p) { throw std::runtime_error ("Could not find port '" + sym + "' on plugin."); }
                 m_audio_in_lilv_ports.push_back(p);
                 m_audio_in_port_indices.push_back(lilv_port_get_index(m_plugin, p));
-                auto internal = std::make_shared<_InternalAudioPort>(sym, PortDirection::Input, m_internal_buffers_size);
+                auto internal = std::make_shared<_InternalAudioPort>(sym, PortDirection::Output, m_internal_buffers_size);
                 m_input_audio_ports.push_back(internal);
             }
             for (auto const& sym : audio_out_port_symbols) {
@@ -216,7 +216,7 @@ public:
                 if (!p) { throw std::runtime_error ("Could not find port '" + sym + "' on plugin."); }
                 m_audio_out_lilv_ports.push_back(p);
                 m_audio_out_port_indices.push_back(lilv_port_get_index(m_plugin, p));
-                auto internal = std::make_shared<_InternalAudioPort>(sym, PortDirection::Output, m_internal_buffers_size);
+                auto internal = std::make_shared<_InternalAudioPort>(sym, PortDirection::Input, m_internal_buffers_size);
                 m_output_audio_ports.push_back(internal);
             }
             for (auto const& sym : midi_in_port_symbols) {
@@ -224,7 +224,7 @@ public:
                 if (!p) { throw std::runtime_error ("Could not find port '" + sym + "' on plugin."); }
                 m_midi_in_lilv_ports.push_back(p);
                 m_midi_in_port_indices.push_back(lilv_port_get_index(m_plugin, p));
-                auto internal = std::make_shared<DummyMidiPort>("dummy_in", PortDirection::Input);
+                auto internal = std::make_shared<DummyMidiPort>("dummy_in", PortDirection::Output);
                 m_input_midi_ports.push_back(internal);
             }
             for (auto const& sym : midi_out_port_symbols) {

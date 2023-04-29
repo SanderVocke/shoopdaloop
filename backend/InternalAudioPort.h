@@ -14,12 +14,9 @@ class InternalAudioPort : public AudioPortInterface<SampleT> {
     std::vector<SampleT> m_buffer;
 
 public:
-    // In ShoopDaLoop, complex internal processing graphs are not supported.
-    // Internal ports have a direction, which means:
-    // - input ports are meant to receive data from external sources
-    // - output ports are meant to provide data for outputting to external sinks.
-    // This helps guide the assumptions about which external ports to connect them
-    // to internally.
+    // Note that the port direction for internal ports are defined w.r.t. ShoopDaLoop.
+    // That is to say, the inputs of a plugin effect are regarded as output ports to
+    // ShoopDaLoop.
     InternalAudioPort(
         std::string name,
         PortDirection direction,
@@ -32,6 +29,9 @@ public:
     float *PROC_get_buffer(size_t n_frames) override {
         if(n_frames > m_buffer.size()) {
             throw std::runtime_error("Requesting oversized buffer from internal port");
+        }
+        if (m_direction == PortDirection::Output) {
+            memset((void*)m_buffer.data(), 0, sizeof(float) * n_frames);
         }
         return m_buffer.data();
     }

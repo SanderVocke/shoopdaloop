@@ -59,6 +59,4 @@ MidiPort {
     property list<string> name_parts : descriptor.name_parts
     name_hint : name_parts.join('')
     muted: descriptor.muted
-
-    Component.onCompleted: maybe_initialize()
 }

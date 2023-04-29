@@ -35,14 +35,12 @@ FXChain {
     }
 
     Component.onCompleted: {
-        console.log("FXChain.qml: completed")
         if (descriptor) {
             switch(descriptor.type) {
                 case "carla_rack": chain_type = Types.FXChainType.Carla_Rack; break;
                 case "carla_patchbay": chain_type = Types.FXChainType.Carla_Patchbay; break;
                 case "carla_patchbay_16x": chain_type = Types.FXChainType.Carla_Patchbay_16x; break;
             }
-            console.log("FXChain.qml: type", descriptor.type, chain_type)
         } else {
             throw new Error("Completed an FX chain object but no descriptor")
         }
@@ -65,14 +63,8 @@ FXChain {
             state_registry: root.state_registry
             is_internal: true
 
-
-
-            Component.onCompleted: console.log("FX PORT:", JSON.stringify(descriptor, null, 2), is_internal, passthrough_to, backend, name_hint, direction)
-            onPassthrough_toChanged: console.log("FX PORT PASSTHROUGH TO", passthrough_to)
-            onBackendChanged: console.log("FX PORT BACKEND ", backend)
-            onName_hintChanged: console.log("FX PORT NAME HINT", name_hint)
-            onDirectionChanged: console.log("FX PORT DIRECTION", direction)
-            onInitializedChanged: console.log("FX PORT INITIALIZED IN QML")
+            onInitializedChanged: console.log("FX AUDIO PORT INITIALIZED: ", initialized)
+            Component.onCompleted: console.log("FX AUDIO PORT COMPLETED. INITIALIZED:", initialized, direction, is_internal, backend)
         }
     }
     // TODO MIDI ports

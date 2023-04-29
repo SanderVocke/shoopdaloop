@@ -329,6 +329,12 @@ void Backend::PROC_process (jack_nframes_t nframes) {
             port->PROC_ensure_buffer(nframes);
         }
     }
+    // Do the same for internal ports
+    // TODO; this should be refactored
+    for (auto & chain : fx_chains) {
+        for (auto & p : chain->mc_audio_input_ports) { p->PROC_reset_buffers(); p->PROC_ensure_buffer(nframes); }
+        for (auto & p : chain->mc_audio_output_ports){ p->PROC_reset_buffers(); p->PROC_ensure_buffer(nframes); }
+    }
     for (auto & port: ports) {
         if (port) {
             port->PROC_passthrough(nframes);
@@ -507,9 +513,6 @@ void PortInfo::PROC_passthrough(size_t n_frames) {
         for(auto & other : mp_passthrough_to) {
             auto o = other.lock();
             if(o) {
-                if (o->port->direction() != PortDirection::Output) {
-                    throw std::runtime_error("Cannot passthrough to input");
-                }
                 o->PROC_check_buffer();
                 if (dynamic_cast<AudioPort*>(port.get())) { PROC_passthrough_audio(n_frames, *o); }
                 else if (dynamic_cast<MidiPort*>(port.get())) { PROC_passthrough_midi(n_frames, *o); }
@@ -582,7 +585,10 @@ Backend &PortInfo::get_backend() {
 
 void PortInfo::connect_passthrough(const SharedPortInfo &other) {
     if(dynamic_cast<InternalAudioPort<float>*>(port.get())) {
-        std::cout << "FX port passthrough connect in back-end!\n";
+        std::cout << "From FX port passthrough connect in back-end!\n";
+    }
+    if(dynamic_cast<InternalAudioPort<float>*>(other->port.get())) {
+        std::cout << "To FX port passthrough connect in back-end!\n";
     }
     get_backend().cmd_queue.queue([=]() {
         for (auto &_other : mp_passthrough_to) {

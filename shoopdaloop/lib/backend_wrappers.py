@@ -362,6 +362,8 @@ class BackendAudioPort:
         add_audio_port_passthrough(self._c_handle, other.c_handle())
 
     def __del__(self):
+        print("BACKEND AUDIO PORT DESTROY BY __del__: {}".format(self))
+        raise Exception("Nope")
         self.destroy()
 
 class BackendMidiPort:

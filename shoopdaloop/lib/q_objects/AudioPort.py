@@ -105,12 +105,10 @@ class AudioPort(Port):
     def maybe_initialize_internal(self, name_hint, direction):
         # Internal ports are owned by FX chains.
         maybe_fx_chain = findFirstParent(self, lambda p: p and isinstance(p, QQuickItem) and p.inherits('FXChain'))
-        if maybe_fx_chain:
+        if maybe_fx_chain and not self._backend_obj:
             if not maybe_fx_chain.initialized:
-                print("DEFER INITIALIZATION OF AUDIO PORT ON FX CHAIN")
-                maybe_fx_chain.initializedChanged.connect(lambda: self.maybe_initialize_internal(name_hint, direction))
+                maybe_fx_chain.initializedChanged.connect(lambda: self.maybe_initialize())
             else:
-                print ("START INITIALIZATION OF INTERNAL PORT")
                 # Determine our index in the FX chain
                 def find_index():
                     idx = 0
@@ -129,13 +127,11 @@ class AudioPort(Port):
                         maybe_fx_chain.get_backend_obj(),
                         idx
                     )
-                    print ("INITIALIZED INTERNAL INPUT: {}".format(self._backend_obj))
                 else:
                     self._backend_obj = self.backend.get_backend_obj().get_fx_chain_audio_output_port(
                         maybe_fx_chain.get_backend_obj(),
                         idx
                     )
-                    print ("INITIALIZED INTERNAL OUTPUT: {}".format(self._backend_obj))
 
     def maybe_initialize_external(self, name_hint, direction):
         self._backend_obj = self.backend.get_backend_obj().open_jack_audio_port(name_hint, direction)
@@ -143,12 +139,9 @@ class AudioPort(Port):
     def maybe_initialize_impl(self, name_hint, direction, is_internal):
         self._pushed_initial_values = False
         if is_internal:
-            print ("MAYBE_INITIALIZE_IMPL AUDIO PORT INTERNAL")
             self.maybe_initialize_internal(name_hint, direction)
         else:
             self.maybe_initialize_external(name_hint, direction)
 
     def connect_passthrough_impl(self, other):
-        if self._is_internal:
-            print("CONNECT INTERNAL PORT PASSTHROUGH: {}, {}".format(self, other))
         self._backend_obj.connect_passthrough(other.get_backend_obj())
