@@ -7,6 +7,7 @@
 #include "AudioPortInterface.h"
 #include "AudioSystemInterface.h"
 #include "CarlaLV2ProcessingChain.h"
+#include "InternalAudioPort.h"
 #include "JackAudioPort.h"
 #include "JackAudioSystem.h"
 #include "DummyAudioSystem.h"
@@ -333,6 +334,12 @@ void Backend::PROC_process (jack_nframes_t nframes) {
             port->PROC_passthrough(nframes);
         }
     }
+    // Do the same for internal ports
+    // TODO; this should be refactored
+    for (auto & chain : fx_chains) {
+        for (auto & p : chain->mc_audio_input_ports) { p->PROC_passthrough(nframes); }
+        for (auto & p : chain->mc_audio_output_ports){ p->PROC_passthrough(nframes); }
+    }
 
     // Prepare:
     // Connect port buffers to loop channels
@@ -574,6 +581,9 @@ Backend &PortInfo::get_backend() {
 }
 
 void PortInfo::connect_passthrough(const SharedPortInfo &other) {
+    if(dynamic_cast<InternalAudioPort<float>*>(port.get())) {
+        std::cout << "FX port passthrough connect in back-end!\n";
+    }
     get_backend().cmd_queue.queue([=]() {
         for (auto &_other : mp_passthrough_to) {
             if(auto __other = _other.lock()) {

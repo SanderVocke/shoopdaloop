@@ -13,9 +13,14 @@ FXChain {
 
     readonly property string obj_id : descriptor.id
 
-    onChain_typeChanged: console.log("chain type", chain_type)
-    onBackendChanged: console.log("backend", backend)
-    onInitializedChanged: console.log("FX chain initialized")
+    function actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) {
+        return {
+            'schema': 'fx_chain.1',
+            'id': obj_id,
+            'type': descriptor.type,
+            'ports': ports_mapper.instances.map(i => i.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to))
+        }
+    }
 
     SchemaCheck {
         descriptor: root.descriptor
@@ -47,4 +52,28 @@ FXChain {
         reg_entry.close()
         close()
     }
+
+    Mapper {
+        id: ports_mapper
+        model: descriptor.ports.filter(p => p.schema == 'audioport.1')
+        
+        AudioPort {
+            property var mapped_item
+            property int index
+            descriptor: mapped_item
+            objects_registry: root.objects_registry
+            state_registry: root.state_registry
+            is_internal: true
+
+
+
+            Component.onCompleted: console.log("FX PORT:", JSON.stringify(descriptor, null, 2), is_internal, passthrough_to, backend, name_hint, direction)
+            onPassthrough_toChanged: console.log("FX PORT PASSTHROUGH TO", passthrough_to)
+            onBackendChanged: console.log("FX PORT BACKEND ", backend)
+            onName_hintChanged: console.log("FX PORT NAME HINT", name_hint)
+            onDirectionChanged: console.log("FX PORT DIRECTION", direction)
+            onInitializedChanged: console.log("FX PORT INITIALIZED IN QML")
+        }
+    }
+    // TODO MIDI ports
 }

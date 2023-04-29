@@ -124,6 +124,10 @@ class FXChain(QQuickItem):
             return maybe_backend
         raise Exception("Could not find backend!")
     
+    @Slot(result='QVariant')
+    def get_backend_obj(self):
+        return self._backend_object
+    
     def maybe_initialize(self):
         if self._backend and self._backend.initialized and self._chain_type != None and not self._backend_object:
             self._backend_object = self._backend.get_backend_obj().create_fx_chain(FXChainType(self._chain_type))

@@ -28,6 +28,7 @@ class Port(QQuickItem):
         self._name = ''
         self._muted = False
         self._passthrough_muted = False
+        self._is_internal = None
         
         self.rescan_parents()
         if not self._backend:
@@ -82,6 +83,19 @@ class Port(QQuickItem):
             if self._direction != None:
                 raise Exception('Port direction may only be set once.')
             self._direction = d
+            self.maybe_initialize()
+    
+    # is_internal
+    isInternalChanged = Signal(bool)
+    @Property(bool, notify=isInternalChanged)
+    def is_internal(self):
+        return (self._is_internal if self._is_internal != None else False)
+    @is_internal.setter
+    def is_internal(self, d):
+        if d != self._is_internal:
+            if self._is_internal != None:
+                raise Exception('Port internal-ness may only be set once.')
+            self._is_internal = d
             self.maybe_initialize()
     
     # name
@@ -165,20 +179,30 @@ class Port(QQuickItem):
     def set_passthrough_muted(self, muted):
         if self._backend_obj:
             self._backend_obj.set_passthrough_muted(muted)
-
-    ##########
-    ## INTERNAL MEMBERS
-    ##########
-    def maybe_initialize_impl():
-        raise Exception('Unimplemented in base class')
-
+    
+    @Slot()
     def maybe_initialize(self):
-        if self._name_hint != '' and self._direction != None and self._backend and self._backend.initialized and not self._backend_obj:
-            self.maybe_initialize_impl(self._name_hint, self._direction)
+        print("PORT INIT...")
+        if self._is_internal:
+            print("INTERNAL PORT INIT...")
+        if self._name_hint != '' and \
+            self._direction != None and \
+            self._is_internal != None and \
+            self._backend and \
+            self._backend.initialized and \
+            not self._backend_obj:
+            
+            self.maybe_initialize_impl(self._name_hint, self._direction, self._is_internal)
             if self._backend_obj:
                 self._initialized = True
                 self._backend.registerBackendObject(self)
                 self.initializedChanged.emit(True)
+
+    ##########
+    ## INTERNAL MEMBERS
+    ##########
+    def maybe_initialize_impl(self, name_hint, direction, is_internal):
+        raise Exception('Unimplemented in base class')
     
     def connect_passthrough_impl(self, other):
         raise Exception('Unimplemented in base class')

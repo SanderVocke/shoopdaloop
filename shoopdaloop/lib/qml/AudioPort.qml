@@ -9,6 +9,13 @@ AudioPort {
     property Registry objects_registry : null
     property Registry state_registry : null
     property bool loaded : initialized
+    direction: {
+        switch(descriptor.direction) {
+            case 'input': return Types.PortDirection.Input;
+            case 'output': return Types.PortDirection.Output;
+        }
+        throw new Error("No direction for audio port")
+    }
 
     readonly property string obj_id : descriptor.id
 
@@ -45,14 +52,6 @@ AudioPort {
         object: port
     }
 
-    Component.onCompleted: {
-        if(descriptor) {
-            switch(descriptor.direction) {
-                case 'input': direction = Types.PortDirection.Input; break;
-                case 'output': direction = Types.PortDirection.Output; break;
-            }
-        }
-    }
     function qml_close() {
         reg_entry.close()
         close()
@@ -61,4 +60,6 @@ AudioPort {
     name_hint : name_parts.join('')
     volume : descriptor.volume
     muted : descriptor.muted
+
+    Component.onCompleted: maybe_initialize()
 }

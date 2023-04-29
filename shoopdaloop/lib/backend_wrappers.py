@@ -462,7 +462,26 @@ class Backend:
         handle = open_jack_midi_port(self._c_handle, name_hint.encode('ascii'), _dir)
         port = BackendMidiPort(handle, direction)
         return port
-
+    
+    def _fx_chain_ports_get(self, get_fn, fx_chain, idx):
+        n_ports = c_uint()
+        ports = get_fn(fx_chain.c_handle(), byref(n_ports))
+        if idx >= n_ports.value:
+            raise Exception('Trying to get port {} of {} ports'.format(idx, int(n_ports)))
+        return ports[idx]
+    
+    def get_fx_chain_audio_input_port(self, fx_chain : Type['BackendFXChain'], idx : int):
+        return BackendAudioPort(self._fx_chain_ports_get(fx_chain_audio_input_ports, fx_chain, idx), PortDirection.Input.value)
+    
+    def get_fx_chain_audio_output_port(self, fx_chain : Type['BackendFXChain'], idx : int):
+        return BackendAudioPort(self._fx_chain_ports_get(fx_chain_audio_output_ports, fx_chain, idx), PortDirection.Output.value)
+    
+    def get_fx_chain_midi_port(self, fx_chain : Type['BackendFXChain'], idx : int):
+        return BackendMidiPort(self._fx_chain_ports_get(fx_chain_midi_input_ports, fx_chain, idx), PortDirection.Input.value)
+        
+    def get_fx_chain_midi_port(self, fx_chain : Type['BackendFXChain'], idx : int):
+        return BackendMidiPort(self._fx_chain_ports_get(fx_chain_midi_output_ports, fx_chain, idx), PortDirection.Output.value)
+    
     def get_sample_rate(self):
         return int(get_sample_rate(self._c_handle))
 

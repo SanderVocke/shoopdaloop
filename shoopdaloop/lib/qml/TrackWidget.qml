@@ -35,7 +35,8 @@ Item {
             'id': obj_id,
             'name': name,
             'ports': all_ports().map((p) => p.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to)),
-            'loops': all_loops.map((l) => l.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to))
+            'loops': all_loops.map((l) => l.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to)),
+            'fx_chains': fx_chains().map((f) => f.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to))
         }
     }
     function queue_load_tasks(data_files_dir, add_tasks_to) {
@@ -184,6 +185,7 @@ Item {
             descriptor: track.audio_port_descriptors[index]
             objects_registry: track.objects_registry
             state_registry: track.state_registry
+            is_internal: false
         }
     }
     RepeaterWithLoadedDetection {
@@ -194,6 +196,7 @@ Item {
             descriptor: track.midi_port_descriptors[index]
             objects_registry: track.objects_registry
             state_registry: track.state_registry
+            is_internal: false
         }
     }
     function audio_ports() {
