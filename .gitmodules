@@ -16,3 +16,6 @@
 [submodule "shoopdaloop/third_party/QtMaterialDesignIcons"]
 	path = shoopdaloop/third_party/QtMaterialDesignIcons
 	url = https://github.com/sthlm58/QtMaterialDesignIcons.git
+[submodule "third_party/base64"]
+	path = third_party/base64
+	url = https://github.com/tobiaslocker/base64.git

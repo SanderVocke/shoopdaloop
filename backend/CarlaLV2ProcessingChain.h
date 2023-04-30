@@ -4,7 +4,9 @@
 
 #include <cstring>
 #include <memory>
+#include <nlohmann/json_fwd.hpp>
 #include <string>
+#include <tuple>
 #include <types.h>
 
 #include <atomic>
@@ -26,8 +28,123 @@
 #include <dlfcn.h>
 #include <thread>
 
-#include "DummyAudioSystem.h"
+#include <nlohmann/json.hpp>
+#include <base64.hpp>
 
+class LV2StateString {
+    // map of key => (type, value)
+    std::map<std::string, std::pair<std::string, std::vector<uint8_t>>> data;
+    void * chain;
+    LV2_URID (*map_urid)(LV2_URID_Map_Handle handle, const char* uri);
+    const char* (*unmap_urid)(LV2_URID_Unmap_Handle handle, LV2_URID urid);
+
+    LV2_URID do_map_urid(const char* uri) {
+        return map_urid((LV2_URID_Map_Handle)chain, uri);
+    }
+
+    const char* do_unmap_urid(LV2_URID urid) {
+        return unmap_urid((LV2_URID_Unmap_Handle)chain, urid);
+    }
+    
+public:
+    LV2StateString(
+        decltype(chain) _chain,
+        decltype(map_urid) _map_urid,
+        decltype(unmap_urid) _unmap_urid) :
+        chain(_chain), map_urid(_map_urid), unmap_urid(_unmap_urid) {}
+
+    static LV2_State_Status store(LV2_State_Handle handle,
+                                    uint32_t key,
+                                    const void *value,
+                                    size_t size,
+                                    uint32_t type,
+                                    uint32_t flags)
+    {
+        LV2StateString &instance = *((LV2StateString *)handle);
+        std::string keystr(instance.do_unmap_urid(key));
+        std::string typestr(instance.do_unmap_urid(type));
+        return instance._store(keystr, value, size, typestr, flags);
+    }
+
+    LV2_State_Status _store(std::string key_uri,
+                        const void* value,
+                        size_t size,
+                        std::string type_uri,
+                        uint32_t flags)
+    {
+        if (!(flags & LV2_STATE_IS_POD) || !(flags & LV2_STATE_IS_PORTABLE)) {
+            return LV2_STATE_ERR_BAD_FLAGS;
+        }
+        std::vector<uint8_t> _data(size);
+        memcpy((void*)_data.data(), value, size);
+        data[key_uri] = std::make_pair(
+            type_uri,
+            _data
+        );
+        return LV2_STATE_SUCCESS;
+    }
+
+    static const void* retrieve(LV2_State_Handle handle,
+                                        uint32_t key,
+                                        size_t *size,
+                                        uint32_t *type,
+                                        uint32_t *flags)
+    {
+        LV2StateString &instance = *((LV2StateString *)handle);
+        std::string typestr;
+        auto rval = instance._retrieve(
+            instance.do_unmap_urid(key),
+            *size,
+            typestr,
+            *flags);
+        *type = instance.do_map_urid(typestr.c_str());
+        return rval;
+    }
+
+    const void *_retrieve(std::string key_uri,
+                        size_t &size_out,
+                        std::string &type_uri_out,
+                        uint32_t &flags_out)
+    {
+        auto f = data.find(key_uri);
+        if (f != data.end()) {
+            size_out = f->second.second.size();
+            type_uri_out = f->second.first;
+            flags_out = LV2_STATE_SUCCESS;
+            return f->second.second.data();
+        } else {
+            flags_out = LV2_STATE_ERR_NO_PROPERTY;
+            return nullptr;
+        }
+    }
+
+    std::string serialize() const {
+        nlohmann::json obj;
+        for (auto &pair : data) {
+            std::string str(pair.second.second.size(), '_');
+            for (size_t i=0; i<pair.second.second.size(); i++) {str[i] = (char)pair.second.second[i];}
+            obj[pair.first] = {
+                    {"type", pair.second.first},
+                    {"value", base64::to_base64(str)},
+                };
+        }
+        return obj.dump(2);
+    }
+
+    void deserialize(std::string str) {
+        decltype(data) _data;
+        nlohmann::json obj = nlohmann::json::parse(str);
+        for(auto it = obj.begin(); it != obj.end(); it++) {
+            auto key = it.key();
+            auto valuestr = base64::from_base64(it.value()["value"]);
+            std::vector<uint8_t> value(valuestr.size());
+            memcpy((void*)value.data(), (void*)valuestr.data(), valuestr.size());
+            auto type = it.value()["type"];
+            _data[key] = std::make_pair(type, value);
+        }
+        data = _data;
+    }
+};
 
 template<typename TimeType, typename SizeType>
 class CarlaLV2ProcessingChain : public ProcessingChainInterface<TimeType, SizeType> {
@@ -52,9 +169,12 @@ private:
     size_t m_internal_buffers_size;
     LV2_URID m_midi_event_type, m_atom_chunk_type, m_atom_sequence_type;
     LV2_External_UI_Host m_ui_host;
+    LV2_State_Interface *m_state_iface;
     const LilvUI *m_ui;
     std::string m_plugin_uri;
     const size_t mc_midi_buf_capacities = 8192;
+    LV2_URID_Map m_map_handle;
+    LV2_URID_Unmap m_unmap_handle;
 
     const LV2UI_Descriptor * m_ui_descriptor = nullptr;
 
@@ -194,22 +314,22 @@ public:
         m_atom_chunk_type = map_urid(LV2_ATOM__Chunk);
         m_atom_sequence_type = map_urid(LV2_ATOM__Sequence);
 
-        LV2_URID_Map map {
+        m_map_handle = {
             .handle = (LV2_URID_Map_Handle)this,
             .map = CarlaLV2ProcessingChain<TimeType, SizeType>::map_urid
         };
         LV2_Feature urid_map_feature {
             .URI = LV2_URID__map,
-            .data = &map
+            .data = &m_map_handle
         };
 
-        LV2_URID_Unmap unmap {
+        m_unmap_handle = {
             .handle = (LV2_URID_Unmap_Handle)this,
             .unmap = CarlaLV2ProcessingChain<TimeType, SizeType>::unmap_urid
         };
         LV2_Feature urid_unmap_feature {
             .URI = LV2_URID__unmap,
-            .data = &unmap
+            .data = &m_unmap_handle
         };
 
         std::vector<LV2_Feature*> features = {
@@ -224,6 +344,9 @@ public:
         if (!m_instance) {
             throw std::runtime_error("Plugin " + m_plugin_uri + " failed to instantiate.");
         }
+
+        // Set up state mgmt
+        m_state_iface = (LV2_State_Interface*) lilv_instance_get_extension_data(m_instance, LV2_STATE__interface);
 
         // Set up the plugin ports
         {
@@ -419,4 +542,23 @@ public:
         stop();
     }
 
+    void restore_state(std::string str) {
+        if (!m_state_iface) {
+            throw std::runtime_error("No state interface for Carla chain");
+        }
+        LV2StateString s(this, CarlaLV2ProcessingChain<TimeType, SizeType>::map_urid, CarlaLV2ProcessingChain<TimeType, SizeType>::unmap_urid);
+        static const LV2_Feature* features[] = { nullptr };
+        s.deserialize(str);
+        m_state_iface->restore(lilv_instance_get_handle(m_instance), LV2StateString::retrieve, (LV2_State_Handle)&s, LV2_STATE_IS_POD | LV2_STATE_IS_PORTABLE, features);
+    }
+
+    std::string get_state() {
+        if (!m_state_iface) {
+            throw std::runtime_error("No state interface for Carla chain");
+        }
+        LV2StateString s(this, CarlaLV2ProcessingChain<TimeType, SizeType>::map_urid, CarlaLV2ProcessingChain<TimeType, SizeType>::unmap_urid);
+        static const LV2_Feature* features[] = { nullptr };
+        m_state_iface->save(lilv_instance_get_handle(m_instance), LV2StateString::store, (LV2_State_Handle)&s, LV2_STATE_IS_POD | LV2_STATE_IS_PORTABLE, features);
+        return s.serialize();
+    }
 };

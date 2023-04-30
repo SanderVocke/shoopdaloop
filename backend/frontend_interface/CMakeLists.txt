@@ -11,6 +11,7 @@ target_include_directories(shoopdaloop_backend
                         PRIVATE
                         ${CMAKE_CURRENT_SOURCE_DIR}/..
                         ${CMAKE_SOURCE_DIR}/third_party/lv2_evbuf
+                        ${CMAKE_SOURCE_DIR}/third_party/base64/include
                         ${JACK_INCLUDE_DIRS}
                         ${CMAKE_CURRENT_BINARY_DIR}
                         ${BOOST_INCLUDE_DIRS}

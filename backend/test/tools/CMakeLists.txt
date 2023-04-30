@@ -16,4 +16,5 @@ target_include_directories(backend_runner
                         ${JACK_INCLUDE_DIRS}
                         ${LV2_INCLUDE_DIRS}
                         ${LILV_INCLUDE_DIRS}
+                        ${CMAKE_SOURCE_DIR}/third_party/base64/include
                         )

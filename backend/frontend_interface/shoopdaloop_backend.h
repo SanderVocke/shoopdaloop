@@ -67,6 +67,8 @@ void loops_transition(unsigned int n_loops,
 shoopdaloop_fx_chain_t *create_fx_chain(shoopdaloop_backend_instance_t *backend, fx_chain_type_t type);
 void fx_chain_set_ui_visible(shoopdaloop_fx_chain_t *chain, unsigned visible);
 fx_chain_state_info_t *get_fx_chain_state(shoopdaloop_fx_chain_t *chain);
+const char *get_fx_chain_internal_state(shoopdaloop_fx_chain_t *chain);
+void restore_fx_chain_internal_state(shoopdaloop_fx_chain_t *chain, const char* state);
 shoopdaloop_audio_port_t **fx_chain_audio_input_ports(shoopdaloop_fx_chain_t *chain, unsigned int *n_out);
 shoopdaloop_audio_port_t **fx_chain_audio_output_ports(shoopdaloop_fx_chain_t *chain, unsigned int *n_out);
 shoopdaloop_midi_port_t **fx_chain_midi_input_ports(shoopdaloop_fx_chain_t *chain, unsigned int *n_out);
@@ -114,6 +116,7 @@ void destroy_shoopdaloop_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *
 void destroy_loop_state_info(loop_state_info_t *d);
 void destroy_fx_chain(shoopdaloop_fx_chain_t *d);
 void destroy_fx_chain_state(fx_chain_state_info_t *d);
+void destroy_string(const char* s);
 
 // Helpers for allocating data objects
 midi_event_t *alloc_midi_event(size_t data_bytes);

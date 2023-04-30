@@ -15,7 +15,8 @@
                 },
                 "required": ["schema"]
             }
-        }
+        },
+        "internal_state": { "type": "string" }
     },
     "required": ["schema", "id", "type", "ports"]
 }

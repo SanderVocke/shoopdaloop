@@ -18,7 +18,8 @@ FXChain {
             'schema': 'fx_chain.1',
             'id': obj_id,
             'type': descriptor.type,
-            'ports': all_ports().map(i => i.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to))
+            'ports': all_ports().map(i => i.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to)),
+            'internal_state': get_internal_state()
         }
     }
 
@@ -41,6 +42,15 @@ FXChain {
                 case "carla_patchbay": chain_type = Types.FXChainType.Carla_Patchbay; break;
                 case "carla_patchbay_16x": chain_type = Types.FXChainType.Carla_Patchbay_16x; break;
             }
+
+            if ('internal_state' in descriptor) {
+                var restore = function() {
+                    root.restore_internal_state(descriptor.internal_state)
+                }
+                if (initialized) { restore() }
+                else { root.initializedChanged.connect(restore) }
+            }
+
         } else {
             throw new Error("Completed an FX chain object but no descriptor")
         }

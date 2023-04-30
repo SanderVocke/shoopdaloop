@@ -1619,6 +1619,20 @@ fx_chain_state_info_t *get_fx_chain_state(shoopdaloop_fx_chain_t *chain) {
     return r;
 }
 
+const char* get_fx_chain_internal_state(shoopdaloop_fx_chain_t *chain) {
+    auto c = internal_fx_chain(chain);
+    auto str = c->chain->get_state();
+    char * rval = (char*) malloc(str.size() + 1);
+    memcpy((void*)rval, str.data(), str.size());
+    rval[str.size()] = 0;
+    return rval;
+}
+
+void restore_fx_chain_internal_state(shoopdaloop_fx_chain_t *chain, const char* state) {
+    auto c = internal_fx_chain(chain);
+    c->chain->restore_state(std::string(state));
+}
+
 shoopdaloop_audio_port_t **fx_chain_audio_input_ports(shoopdaloop_fx_chain_t *chain, unsigned int *n_out) {
     auto _chain = internal_fx_chain(chain);
     auto const& ports = _chain->audio_input_ports();
@@ -1748,4 +1762,8 @@ void destroy_fx_chain(shoopdaloop_fx_chain_t *chain) {
 
 void destroy_fx_chain_state(fx_chain_state_info_t *d) {
     delete d;
+}
+
+void destroy_string(const char* s) {
+    free((void*)s);
 }
