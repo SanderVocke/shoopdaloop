@@ -98,10 +98,7 @@ class AudioPort(Port):
 
     ##########
     ## INTERNAL MEMBERS
-    ##########
-    def get_backend_obj(self):
-        return self._backend_obj
-    
+    ##########    
     def maybe_initialize_internal(self, name_hint, direction):
         # Internal ports are owned by FX chains.
         maybe_fx_chain = findFirstParent(self, lambda p: p and isinstance(p, QQuickItem) and p.inherits('FXChain'))
@@ -123,12 +120,12 @@ class AudioPort(Port):
                     raise Exception('Could not find self in FX chain')
                 # Now request our backend object.
                 if self.direction == PortDirection.Input.value:
-                    self._backend_obj = self.backend.get_backend_obj().get_fx_chain_audio_input_port(
+                    self._backend_obj = self.backend.get_backend_obj().get_fx_chain_audio_output_port(
                         maybe_fx_chain.get_backend_obj(),
                         idx
                     )
                 else:
-                    self._backend_obj = self.backend.get_backend_obj().get_fx_chain_audio_output_port(
+                    self._backend_obj = self.backend.get_backend_obj().get_fx_chain_audio_input_port(
                         maybe_fx_chain.get_backend_obj(),
                         idx
                     )
@@ -142,6 +139,3 @@ class AudioPort(Port):
             self.maybe_initialize_internal(name_hint, direction)
         else:
             self.maybe_initialize_external(name_hint, direction)
-
-    def connect_passthrough_impl(self, other):
-        self._backend_obj.connect_passthrough(other.get_backend_obj())

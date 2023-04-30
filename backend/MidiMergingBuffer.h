@@ -25,7 +25,7 @@ public:
         return references.size();
     }
 
-    MidiSortableMessageInterface const & PROC_get_event_reference(size_t idx) const {
+    MidiSortableMessageInterface const & PROC_get_event_reference(size_t idx) {
         if (dirty) {
             throw std::runtime_error("Access in merging buffer which is unsorted");
         }

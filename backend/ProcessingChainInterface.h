@@ -14,7 +14,8 @@ class ProcessingChainInterface {
 public:
     using _InternalAudioPort = InternalAudioPort<float>;
     using SharedInternalAudioPort = std::shared_ptr<InternalAudioPort<float>>;
-    using SharedMidiPort = std::shared_ptr<MidiPortInterface>;
+    using MidiPort = MidiPortInterface;
+    using SharedMidiPort = std::shared_ptr<MidiPort>;
 
     ProcessingChainInterface() {}
     virtual ~ProcessingChainInterface() {}
@@ -28,8 +29,7 @@ public:
     virtual
     std::vector<SharedMidiPort> const& input_midi_ports() const = 0;
 
-    virtual
-    std::vector<SharedMidiPort> const& output_midi_ports() const = 0;
+    // TODO: support MIDI output.
 
     virtual bool is_freewheeling() const = 0;
     virtual void set_freewheeling(bool enabled) = 0;

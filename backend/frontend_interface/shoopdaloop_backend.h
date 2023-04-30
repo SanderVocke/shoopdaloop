@@ -70,7 +70,6 @@ fx_chain_state_info_t *get_fx_chain_state(shoopdaloop_fx_chain_t *chain);
 shoopdaloop_audio_port_t **fx_chain_audio_input_ports(shoopdaloop_fx_chain_t *chain, unsigned int *n_out);
 shoopdaloop_audio_port_t **fx_chain_audio_output_ports(shoopdaloop_fx_chain_t *chain, unsigned int *n_out);
 shoopdaloop_midi_port_t **fx_chain_midi_input_ports(shoopdaloop_fx_chain_t *chain, unsigned int *n_out);
-shoopdaloop_midi_port_t **fx_chain_midi_output_ports(shoopdaloop_fx_chain_t *chain, unsigned int *n_out);
 
 // Audio ports
 void set_audio_port_volume(shoopdaloop_audio_port_t *port, float volume);

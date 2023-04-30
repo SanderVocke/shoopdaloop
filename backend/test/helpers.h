@@ -48,7 +48,7 @@ public:
         return read.size();
     }
 
-    MidiSortableMessageInterface const& PROC_get_event_reference(size_t idx) const override
+    MidiSortableMessageInterface const& PROC_get_event_reference(size_t idx) override
     {
         return *dynamic_cast<const MidiSortableMessageInterface*>(&read.at(idx));
     }

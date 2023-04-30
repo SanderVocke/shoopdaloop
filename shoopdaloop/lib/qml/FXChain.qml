@@ -18,7 +18,7 @@ FXChain {
             'schema': 'fx_chain.1',
             'id': obj_id,
             'type': descriptor.type,
-            'ports': ports_mapper.instances.map(i => i.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to))
+            'ports': all_ports().map(i => i.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to))
         }
     }
 
@@ -51,8 +51,12 @@ FXChain {
         close()
     }
 
+    function all_ports() {
+        return [...audio_ports_mapper.instances, ...midi_ports_mapper.instances]
+    }
+
     Mapper {
-        id: ports_mapper
+        id: audio_ports_mapper
         model: descriptor.ports.filter(p => p.schema == 'audioport.1')
         
         AudioPort {
@@ -62,10 +66,19 @@ FXChain {
             objects_registry: root.objects_registry
             state_registry: root.state_registry
             is_internal: true
-
-            onInitializedChanged: console.log("FX AUDIO PORT INITIALIZED: ", initialized)
-            Component.onCompleted: console.log("FX AUDIO PORT COMPLETED. INITIALIZED:", initialized, direction, is_internal, backend)
         }
     }
-    // TODO MIDI ports
+    Mapper {
+        id: midi_ports_mapper
+        model: descriptor.ports.filter(p => p.schema == 'midiport.1')
+        
+        MidiPort {
+            property var mapped_item
+            property int index
+            descriptor: mapped_item
+            objects_registry: root.objects_registry
+            state_registry: root.state_registry
+            is_internal: true
+        }
+    }
 }

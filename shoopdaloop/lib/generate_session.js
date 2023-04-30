@@ -164,7 +164,11 @@ function generate_default_track(
     drywet_carla_type = undefined
     ) {
     function fx_chain_port_id_part(typestr, inoutstr, idx) {
-        return "_fx_chain_" + typestr + "_" + inoutstr + "_" + (idx+1).toString()
+        var r = "_fx_chain_" + typestr + "_" + inoutstr;
+        if(idx != undefined) {
+            r = r + "_" + (idx+1).toString()
+        }
+        return r
     }
     function external_port_id_part(typestr, inoutstr, idx) {
         return "_" + typestr + "_" + inoutstr + "_" + (idx+1).toString()
@@ -178,8 +182,7 @@ function generate_default_track(
             drywet_carla_type == 'carla_patchbay_16' ? 16 :
             0
         var n_audio_outputs = n_audio_inputs
-        var n_midi_inputs = 0 // TODO
-        var n_midi_outputs = 0 // TODO
+        var n_midi_inputs = 1
         var ports = []
         for (var i=0; i<n_audio_inputs; i++) {
             var id_post = fx_chain_port_id_part("audio", "in", i)
@@ -187,7 +190,7 @@ function generate_default_track(
                 id + id_post,
                 [],
                 [port_name_base, id_post],
-                'input',
+                'output',
                 1.0,
                 false
             ))
@@ -198,12 +201,21 @@ function generate_default_track(
                 id + id_post,
                 [id + external_port_id_part("audio", "out", i)],
                 [port_name_base, id_post],
-                'output',
+                'input',
                 1.0,
                 false
             ))
         }
-        // TODO MIDI
+        for (var i=0; i<n_midi_inputs; i++) {
+            var id_post = fx_chain_port_id_part("midi", "in", i)
+            ports.push(generate_midi_port(
+                id + id_post,
+                [],
+                [port_name_base, id_post],
+                'output',
+                false
+            ))
+        }
         
         fx_chains.push(generate_fx_chain(
             id + '_fx_chain',
@@ -266,9 +278,10 @@ function generate_default_track(
         var in_id = id + in_id_post;
         var out_id_post = "_midi_send";
         var out_id = id + out_id_post;
+        var fx_in_id = id + fx_chain_port_id_part("midi", "in", undefined);
 
-        var rval = [generate_midi_port(in_id, true/*have_drywet_jack_ports*/ ? [out_id] : [], [port_name_base, in_id_post], 'input', false)]
-        if (true) { //have_drywet_jack_ports) {
+        var rval = [generate_midi_port(in_id, have_drywet_jack_ports ? [out_id] : [fx_in_id], [port_name_base, in_id_post], 'input', false)]
+        if (have_drywet_jack_ports) {
             rval.push(generate_midi_port(out_id, [], [port_name_base, out_id_post], 'output', false))
         }
 

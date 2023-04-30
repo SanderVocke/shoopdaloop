@@ -8,7 +8,7 @@
 
 struct DummyReadMidiBuf : public MidiReadableBufferInterface {
     size_t PROC_get_n_events() const override { return 0; }
-    MidiSortableMessageInterface &PROC_get_event_reference(size_t idx) const override
+    MidiSortableMessageInterface &PROC_get_event_reference(size_t idx) override
     { throw std::runtime_error("Attempt to read from dummy buffer");}
 };
 

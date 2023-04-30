@@ -8,11 +8,13 @@
 #include <stdexcept>
 #include <vector>
 
-class JackMidiPort : public MidiPortInterface {
+class JackMidiPort : public MidiPortInterface, public MidiReadableBufferInterface, public MidiWriteableBufferInterface {
     jack_port_t* m_port;
     jack_client_t* m_client;
     std::string m_name;
     PortDirection m_direction;
+    void * m_jack_read_buf;
+    void * m_jack_write_buf;
     static constexpr size_t n_event_storage = 1024;
     
     struct ReadMessage : public MidiSortableMessageInterface {
@@ -47,40 +49,30 @@ class JackMidiPort : public MidiPortInterface {
 
     friend class JackReadMidiBuf;
 public:
-    struct JackReadMidiBuf : public MidiReadableBufferInterface {
-        void* jack_buf;
-        JackMidiPort *port;
 
-        JackReadMidiBuf(void* buf, JackMidiPort *port) : jack_buf(buf), port(port) {}
+    size_t PROC_get_n_events() const override { return jack_midi_get_event_count(m_jack_read_buf); }
+    
+    MidiSortableMessageInterface &PROC_get_event_reference(size_t idx) override
+    {
+        jack_midi_event_t evt;
+        jack_midi_event_get(&evt, m_jack_read_buf, idx);
+        m_temp_midi_storage.push_back(ReadMessage(evt));
+        return m_temp_midi_storage.back();
+    }
 
-        size_t PROC_get_n_events() const override { return jack_midi_get_event_count(jack_buf); }
-        MidiSortableMessageInterface &PROC_get_event_reference(size_t idx) const override
-        {
-            jack_midi_event_t evt;
-            jack_midi_event_get(&evt, jack_buf, idx);
-            port->m_temp_midi_storage.push_back(ReadMessage(evt));
-            return port->m_temp_midi_storage.back();
-        }
-    };
+    void PROC_write_event_value(uint32_t size,
+                        uint32_t time,
+                        const uint8_t* data) override
+    {
+        jack_midi_event_write(m_jack_write_buf, time, (uint8_t*) data, size);
+    }
 
-    struct JackWriteMidiBuf : public MidiWriteableBufferInterface {
-        void* jack_buf;
-        JackWriteMidiBuf(void* buf) : jack_buf(buf) {}
+    void PROC_write_event_reference(MidiSortableMessageInterface const& m) override {
+        throw std::runtime_error("Write by reference not supported");
+    }
 
-        void PROC_write_event_value(uint32_t size,
-                         uint32_t time,
-                         const uint8_t* data) override
-        {
-            jack_midi_event_write(jack_buf, time, (uint8_t*) data, size);
-        }
-
-        void PROC_write_event_reference(MidiSortableMessageInterface const& m) override {
-            throw std::runtime_error("Write by reference not supported");
-        }
-
-        bool write_by_reference_supported() const override { return false; }
-        bool write_by_value_supported() const override { return true; }
-    };
+    bool write_by_reference_supported() const override { return false; }
+    bool write_by_value_supported() const override { return true; }
 
     JackMidiPort(
         std::string name,
@@ -122,15 +114,16 @@ public:
         return m_port;
     }
 
-    std::unique_ptr<MidiReadableBufferInterface> PROC_get_read_buffer (size_t n_frames) override {
+    MidiReadableBufferInterface &PROC_get_read_buffer (size_t n_frames) override {
         m_temp_midi_storage.clear();
-        return std::make_unique<JackReadMidiBuf>(jack_port_get_buffer(m_port, n_frames), this);
+        m_jack_read_buf = jack_port_get_buffer(m_port, n_frames);
+        return *(static_cast<MidiReadableBufferInterface*>(this));
     }
 
-    std::unique_ptr<MidiWriteableBufferInterface> PROC_get_write_buffer (size_t n_frames) override {
-        auto buf = jack_port_get_buffer(m_port, n_frames);
-        jack_midi_clear_buffer(buf);
-        return std::make_unique<JackWriteMidiBuf>(buf);
+    MidiWriteableBufferInterface &PROC_get_write_buffer (size_t n_frames) override {
+        m_jack_write_buf = jack_port_get_buffer(m_port, n_frames);
+        jack_midi_clear_buffer(m_jack_write_buf);
+        return *(static_cast<MidiWriteableBufferInterface*>(this));
     }
 
     ~JackMidiPort() override {

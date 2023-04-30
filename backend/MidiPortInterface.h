@@ -18,7 +18,7 @@ public:
 class MidiReadableBufferInterface {
 public:
     virtual size_t PROC_get_n_events() const = 0;
-    virtual MidiSortableMessageInterface const& PROC_get_event_reference(size_t idx) const = 0;
+    virtual MidiSortableMessageInterface const& PROC_get_event_reference(size_t idx) = 0;
     
     MidiReadableBufferInterface() {}
     virtual ~MidiReadableBufferInterface() {};
@@ -45,8 +45,8 @@ MidiPortInterface(
         PortDirection direction
     ) : PortInterface() {}
 
-    virtual std::unique_ptr<MidiReadableBufferInterface>  PROC_get_read_buffer  (size_t n_frames) = 0;
-    virtual std::unique_ptr<MidiWriteableBufferInterface> PROC_get_write_buffer (size_t n_frames) = 0;
+    virtual MidiReadableBufferInterface &PROC_get_read_buffer  (size_t n_frames) = 0;
+    virtual MidiWriteableBufferInterface &PROC_get_write_buffer (size_t n_frames) = 0;
 
     MidiPortInterface() {}
     virtual ~MidiPortInterface() {};

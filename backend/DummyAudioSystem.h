@@ -45,34 +45,25 @@ public:
     }
 };
 
-class DummyMidiPort : public MidiPortInterface {
+class DummyMidiPort : public MidiPortInterface, public MidiReadableBufferInterface, public MidiWriteableBufferInterface {
     std::string m_name;
     PortDirection m_direction;
 
 public:
-    struct DummyMidiReadBuf : public MidiReadableBufferInterface {
-        void* buf;
-        DummyMidiReadBuf(void* buf) : buf(buf) {}
 
-        size_t PROC_get_n_events() const override { return 0; }
-        virtual MidiSortableMessageInterface &PROC_get_event_reference(size_t idx) const override
-        {
-            throw std::runtime_error("Dummy midi port cannot read messages");
-        }
-    };
+    size_t PROC_get_n_events() const override { return 0; }
+    virtual MidiSortableMessageInterface &PROC_get_event_reference(size_t idx) override
+    {
+        throw std::runtime_error("Dummy midi port cannot read messages");
+    }
 
-    struct DummyMidiWriteBuf : public MidiWriteableBufferInterface {
-        void* buf;
-        DummyMidiWriteBuf(void* buf) : buf(buf) {}
-
-        void PROC_write_event_value(uint32_t size,
-                         uint32_t time,
-                         const uint8_t* data) override
-        {}
-        void PROC_write_event_reference(MidiSortableMessageInterface const& m) override {}
-        bool write_by_reference_supported() const override { return true; }
-        bool write_by_value_supported() const override { return true; }
-    };
+    void PROC_write_event_value(uint32_t size,
+                        uint32_t time,
+                        const uint8_t* data) override
+    {}
+    void PROC_write_event_reference(MidiSortableMessageInterface const& m) override {}
+    bool write_by_reference_supported() const override { return true; }
+    bool write_by_value_supported() const override { return true; }
 
     DummyMidiPort(
         std::string name,
@@ -90,12 +81,12 @@ public:
 
     void close() override {}
 
-    std::unique_ptr<MidiReadableBufferInterface> PROC_get_read_buffer (size_t n_frames) override {
-        return std::make_unique<DummyMidiReadBuf>(nullptr);
+    MidiReadableBufferInterface &PROC_get_read_buffer (size_t n_frames) override {
+        return *(static_cast<MidiReadableBufferInterface*>(this));
     }
 
-    std::unique_ptr<MidiWriteableBufferInterface> PROC_get_write_buffer (size_t n_frames) override {
-        return std::make_unique<DummyMidiWriteBuf>(nullptr);
+    MidiWriteableBufferInterface &PROC_get_write_buffer (size_t n_frames) override {
+        return *(static_cast<MidiWriteableBufferInterface*>(this));
     }
 
     ~DummyMidiPort() override {

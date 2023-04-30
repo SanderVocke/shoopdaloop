@@ -1,6 +1,8 @@
 #pragma once
+#include "InternalLV2MidiOutputPort.h"
 #include "ProcessingChainInterface.h"
 
+#include <memory>
 #include <string>
 #include <types.h>
 
@@ -17,6 +19,8 @@
 #include <lv2/midi/midi.h>
 #include <lv2/atom/atom.h>
 #include <lv2/state/state.h>
+#include <lv2/event/event.h>
+#include <lv2/event/event-helpers.h>
 #include <iostream>
 #include <dlfcn.h>
 #include <thread>
@@ -29,6 +33,9 @@ class CarlaLV2ProcessingChain : public ProcessingChainInterface<TimeType, SizeTy
 public:
     using _InternalAudioPort = typename ProcessingChainInterface<TimeType, SizeType>::_InternalAudioPort;
     using SharedInternalAudioPort = typename ProcessingChainInterface<TimeType, SizeType>::SharedInternalAudioPort;
+    using MidiOutputPort = InternalLV2MidiOutputPort;
+    using SharedMidiOutputPort = std::shared_ptr<MidiOutputPort>;
+    using MidiPort = typename ProcessingChainInterface<TimeType, SizeType>::MidiPort;
     using SharedMidiPort = typename ProcessingChainInterface<TimeType, SizeType>::SharedMidiPort;
 
 private:
@@ -46,13 +53,15 @@ private:
     LV2_External_UI_Host m_ui_host;
     const LilvUI *m_ui;
     std::string m_plugin_uri;
+    const size_t mc_midi_buf_capacities = 8192;
 
     const LV2UI_Descriptor * m_ui_descriptor = nullptr;
 
     std::vector<SharedInternalAudioPort> m_input_audio_ports;
     std::vector<SharedInternalAudioPort> m_output_audio_ports;
-    std::vector<SharedMidiPort> m_input_midi_ports;
-    std::vector<SharedMidiPort> m_output_midi_ports;
+    std::vector<SharedMidiOutputPort> m_input_midi_ports;
+    std::vector<SharedMidiPort> m_generic_input_midi_ports;
+    std::vector<LV2_Evbuf*> m_output_midi_ports; // Note that these will not be used. Only there to satisfy the plugin.
     
     using UridMap = std::map<const char*, LV2_URID>;
     UridMap m_urid_map;
@@ -100,14 +109,13 @@ private:
         for(size_t i=0; i<m_output_audio_ports.size(); i++) {
             lilv_instance_connect_port(m_instance, m_audio_out_port_indices[i], m_output_audio_ports[i]->PROC_get_buffer(m_internal_buffers_size));
         }
-        std::cerr << "WARNING: MIDI ports unimplemented in LV2" << std::endl;
         for(size_t i=0; i<m_input_midi_ports.size(); i++) {
-            auto midi_in = lv2_evbuf_new(128, m_atom_chunk_type, m_atom_sequence_type);
-            lv2_evbuf_reset(midi_in, true);
-            lilv_instance_connect_port(m_instance, m_midi_in_port_indices[i], lv2_evbuf_get_buffer(midi_in));
+            auto &midi_in = *m_input_midi_ports[i];
+            auto &buf = midi_in.PROC_get_write_buffer(m_internal_buffers_size);
+            lilv_instance_connect_port(m_instance, m_midi_in_port_indices[i], lv2_evbuf_get_buffer(midi_in.internal_evbuf()));
         }
         for(size_t i=0; i<m_output_midi_ports.size(); i++) {
-            auto midi_out = lv2_evbuf_new(128, m_atom_chunk_type, m_atom_sequence_type);
+            auto midi_out = m_output_midi_ports[i];
             lv2_evbuf_reset(midi_out, false);
             lilv_instance_connect_port(m_instance, m_midi_out_port_indices[i], lv2_evbuf_get_buffer(midi_out));
         }
@@ -225,15 +233,16 @@ public:
                 if (!p) { throw std::runtime_error ("Could not find port '" + sym + "' on plugin."); }
                 m_midi_in_lilv_ports.push_back(p);
                 m_midi_in_port_indices.push_back(lilv_port_get_index(m_plugin, p));
-                auto internal = std::make_shared<DummyMidiPort>("dummy_in", PortDirection::Output);
+                auto internal = std::make_shared<InternalLV2MidiOutputPort>(sym, PortDirection::Output, mc_midi_buf_capacities, m_atom_chunk_type, m_atom_sequence_type, m_midi_event_type);
                 m_input_midi_ports.push_back(internal);
+                m_generic_input_midi_ports.push_back(std::static_pointer_cast<MidiPort>(internal));
             }
             for (auto const& sym : midi_out_port_symbols) {
                 auto p = lilv_plugin_get_port_by_symbol(m_plugin, lilv_new_string(lilv_world, sym.c_str()));
                 if (!p) { throw std::runtime_error ("Could not find port '" + sym + "' on plugin."); }
                 m_midi_out_lilv_ports.push_back(p);
                 m_midi_out_port_indices.push_back(lilv_port_get_index(m_plugin, p));
-                auto internal = std::make_shared<DummyMidiPort>("dummy_out", PortDirection::Input);
+                auto internal = lv2_evbuf_new(mc_midi_buf_capacities, m_atom_chunk_type, m_atom_sequence_type);
                 m_output_midi_ports.push_back(internal);
             }
             reconnect_ports();
@@ -352,11 +361,7 @@ public:
     }
 
     std::vector<SharedMidiPort> const& input_midi_ports() const override {
-        return m_input_midi_ports;
-    }
-
-    std::vector<SharedMidiPort> const& output_midi_ports() const override {
-        return m_output_midi_ports;
+        return m_generic_input_midi_ports;
     }
 
     bool is_freewheeling() const override {

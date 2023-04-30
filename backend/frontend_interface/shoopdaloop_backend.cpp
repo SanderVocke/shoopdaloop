@@ -8,6 +8,7 @@
 #include "AudioSystemInterface.h"
 #include "CarlaLV2ProcessingChain.h"
 #include "InternalAudioPort.h"
+#include "InternalLV2MidiOutputPort.h"
 #include "JackAudioPort.h"
 #include "JackAudioSystem.h"
 #include "DummyAudioSystem.h"
@@ -180,8 +181,8 @@ struct PortInfo : public std::enable_shared_from_this<PortInfo> {
     std::atomic<float> peak;
 
     // Midi only
-    std::shared_ptr<MidiReadableBufferInterface> maybe_midi_input_buffer;
-    std::shared_ptr<MidiWriteableBufferInterface> maybe_midi_output_buffer;
+    MidiReadableBufferInterface *maybe_midi_input_buffer;
+    MidiWriteableBufferInterface *maybe_midi_output_buffer;
     std::shared_ptr<MidiMergingBuffer> maybe_midi_output_merging_buffer;
     std::atomic<size_t> n_events_processed;
     std::unique_ptr<MidiNotesState> maybe_midi_notes_state;
@@ -296,6 +297,7 @@ struct FXChainInfo : public std::enable_shared_from_this<FXChainInfo> {
 
     std::vector<SharedPortInfo> mc_audio_input_ports;
     std::vector<SharedPortInfo> mc_audio_output_ports;
+    std::vector<SharedPortInfo> mc_midi_input_ports;
 
     FXChainInfo(SharedFXChain chain, SharedBackend backend) :
         chain(chain), backend(backend) {
@@ -305,11 +307,15 @@ struct FXChainInfo : public std::enable_shared_from_this<FXChainInfo> {
         for (auto const& port : chain->output_audio_ports()) {
             mc_audio_output_ports.push_back(std::make_shared<PortInfo>(port, backend));
         }
+        for (auto const& port : chain->input_midi_ports()) {
+            mc_midi_input_ports.push_back(std::make_shared<PortInfo>(port, backend));
+        }
     }
 
     Backend &get_backend();
     decltype(mc_audio_input_ports) const& audio_input_ports() const { return mc_audio_input_ports; }
     decltype(mc_audio_output_ports) const& audio_output_ports() const { return mc_audio_output_ports; }
+    decltype(mc_midi_input_ports) const& midi_input_ports() const { return mc_midi_input_ports; }
 };
 
 #warning delete destroyed ports
@@ -334,6 +340,7 @@ void Backend::PROC_process (jack_nframes_t nframes) {
     for (auto & chain : fx_chains) {
         for (auto & p : chain->mc_audio_input_ports) { p->PROC_reset_buffers(); p->PROC_ensure_buffer(nframes); }
         for (auto & p : chain->mc_audio_output_ports){ p->PROC_reset_buffers(); p->PROC_ensure_buffer(nframes); }
+        for (auto & p : chain->mc_midi_input_ports)  { p->PROC_reset_buffers(); p->PROC_ensure_buffer(nframes); }
     }
     for (auto & port: ports) {
         if (port) {
@@ -345,6 +352,7 @@ void Backend::PROC_process (jack_nframes_t nframes) {
     for (auto & chain : fx_chains) {
         for (auto & p : chain->mc_audio_input_ports) { p->PROC_passthrough(nframes); }
         for (auto & p : chain->mc_audio_output_ports){ p->PROC_passthrough(nframes); }
+        for (auto & p : chain->mc_midi_input_ports)  { p->PROC_passthrough(nframes); }
     }
 
     // Prepare:
@@ -453,7 +461,7 @@ void PortInfo::PROC_ensure_buffer(size_t n_frames) {
     if (maybe_midi) {
         if(maybe_midi->direction() == PortDirection::Input) {
             if (maybe_midi_input_buffer) { return; } // already there
-            maybe_midi_input_buffer = maybe_midi->PROC_get_read_buffer(n_frames);
+            maybe_midi_input_buffer = &maybe_midi->PROC_get_read_buffer(n_frames);
             if (!muted) {
                 n_events_processed += maybe_midi_input_buffer->PROC_get_n_events();
                 for(size_t i=0; i<maybe_midi_input_buffer->PROC_get_n_events(); i++) {
@@ -467,7 +475,7 @@ void PortInfo::PROC_ensure_buffer(size_t n_frames) {
         } else {
             maybe_midi_output_merging_buffer->PROC_clear();
             if (maybe_midi_output_buffer) { return; } // already there
-            maybe_midi_output_buffer = maybe_midi->PROC_get_write_buffer(n_frames);
+            maybe_midi_output_buffer = &maybe_midi->PROC_get_write_buffer(n_frames);
         }
     } else if (maybe_audio) {
         if (maybe_audio_buffer) { return; } // already there
@@ -585,10 +593,13 @@ Backend &PortInfo::get_backend() {
 
 void PortInfo::connect_passthrough(const SharedPortInfo &other) {
     if(dynamic_cast<InternalAudioPort<float>*>(port.get())) {
-        std::cout << "From FX port passthrough connect in back-end!\n";
+        std::cout << "From FX audio port passthrough connect in back-end!\n";
     }
     if(dynamic_cast<InternalAudioPort<float>*>(other->port.get())) {
-        std::cout << "To FX port passthrough connect in back-end!\n";
+        std::cout << "To FX audio port passthrough connect in back-end!\n";
+    }
+    if(dynamic_cast<InternalLV2MidiOutputPort*>(other->port.get())) {
+        std::cout << "To FX MIDI port passthrough connect in back-end!\n";
     }
     get_backend().cmd_queue.queue([=]() {
         for (auto &_other : mp_passthrough_to) {
@@ -721,7 +732,7 @@ void ChannelInfo::PROC_prepare_process_midi(size_t n_frames) {
     auto in_locked = mp_input_port_mapping.lock();
     if (in_locked) {
         auto chan = dynamic_cast<LoopMidiChannel*>(channel.get());
-        chan->PROC_set_recording_buffer(in_locked->maybe_midi_input_buffer.get(), n_frames);
+        chan->PROC_set_recording_buffer(in_locked->maybe_midi_input_buffer, n_frames);
     } else {
         auto chan = dynamic_cast<LoopMidiChannel*>(channel.get());
         chan->PROC_set_recording_buffer(g_dummy_midi_input_buffer.get(), n_frames);
@@ -1631,18 +1642,16 @@ shoopdaloop_audio_port_t **fx_chain_audio_output_ports(shoopdaloop_fx_chain_t *c
 }
 
 shoopdaloop_midi_port_t **fx_chain_midi_input_ports(shoopdaloop_fx_chain_t *chain, unsigned int *n_out) {
-    *n_out = 0;
-    std::cerr << "getting chain ports unimplemented" << std::endl;
-    return nullptr;
+    auto _chain = internal_fx_chain(chain);
+    auto const& ports = _chain->midi_input_ports();
+    shoopdaloop_midi_port_t **rval = (shoopdaloop_midi_port_t**) malloc(sizeof(shoopdaloop_midi_port_t*) * ports.size());
+    for (size_t i=0; i<ports.size(); i++) {
+        rval[i] = external_midi_port(ports[i]);
+    }
+    *n_out = ports.size();
+    std::cout << "Found " << *n_out << " MIDI input ports for FX chain." << std::endl;
+    return rval;
 }
-
-shoopdaloop_midi_port_t **fx_chain_midi_output_ports(shoopdaloop_fx_chain_t *chain, unsigned int *n_out) {
-    *n_out = 0;
-    std::cerr << "getting chain ports unimplemented" << std::endl;
-    return nullptr;
-}
-
-
 
 void destroy_midi_event(midi_event_t *e) {
     free(e->data);
