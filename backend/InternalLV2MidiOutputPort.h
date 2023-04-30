@@ -1,4 +1,5 @@
 #pragma once
+#include <lv2/atom/forge.h>
 #include <string>
 #include "MidiPortInterface.h"
 #include "PortInterface.h"
@@ -14,6 +15,7 @@ class InternalLV2MidiOutputPort : public MidiPortInterface, public MidiWriteable
     LV2_Evbuf *m_evbuf;
     uint32_t m_midi_event_type_urid;
     LV2_Evbuf_Iterator m_iter;
+    
 public:
     // Note that the port direction for internal ports are defined w.r.t. ShoopDaLoop.
     // That is to say, the inputs of a plugin effect are regarded as output ports to
@@ -55,9 +57,6 @@ public:
                          uint32_t time,
                          const uint8_t* data) override
     {
-        if (!lv2_evbuf_is_valid(m_iter)) {
-            throw std::runtime_error("LV2 EvBuf iterator not valid");
-        }
         bool result = lv2_evbuf_write(
             &m_iter,
             time,

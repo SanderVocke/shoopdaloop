@@ -2,6 +2,7 @@
 #include "InternalLV2MidiOutputPort.h"
 #include "ProcessingChainInterface.h"
 
+#include <cstring>
 #include <memory>
 #include <string>
 #include <types.h>
@@ -72,15 +73,27 @@ private:
     }
 
     LV2_URID map_urid(const char* uri) {
-        auto f = m_urid_map.find(uri);
+        auto f = std::find_if(m_urid_map.begin(), m_urid_map.end(), [&](auto &it) { return strcmp(it.first, uri) == 0; });
         if (f != m_urid_map.end()) {
             return f->second;
         }
 
         // Map new URID
-        LV2_URID rval = m_urid_map.size();
+        LV2_URID rval = m_urid_map.size()+1;
         m_urid_map[uri] = rval;
         return rval;
+    }
+
+    static const char* unmap_urid(LV2_URID_Unmap_Handle handle, LV2_URID urid) {
+        auto &instance = *((CarlaLV2ProcessingChain<TimeType, SizeType>*)handle);
+        return instance.unmap_urid(urid);
+    }
+
+    const char* unmap_urid(LV2_URID urid) {
+        auto f = std::find_if(m_urid_map.begin(), m_urid_map.end(), [&](auto &it) { return it.second == urid; });
+        return (f == m_urid_map.end()) ?
+            nullptr :
+            f->first;
     }
 
     static void static_ui_write_fn(LV2UI_Controller controller,
@@ -185,12 +198,26 @@ public:
             .handle = (LV2_URID_Map_Handle)this,
             .map = CarlaLV2ProcessingChain<TimeType, SizeType>::map_urid
         };
-        LV2_Feature urid_feature {
+        LV2_Feature urid_map_feature {
             .URI = LV2_URID__map,
             .data = &map
         };
 
-        std::vector<LV2_Feature*> features = { &options_feature, &urid_feature, nullptr };
+        LV2_URID_Unmap unmap {
+            .handle = (LV2_URID_Unmap_Handle)this,
+            .unmap = CarlaLV2ProcessingChain<TimeType, SizeType>::unmap_urid
+        };
+        LV2_Feature urid_unmap_feature {
+            .URI = LV2_URID__unmap,
+            .data = &unmap
+        };
+
+        std::vector<LV2_Feature*> features = {
+            &options_feature,
+            &urid_map_feature,
+            &urid_unmap_feature,
+            nullptr
+        };
 
         // Make a plugin instance.
         m_instance = lilv_plugin_instantiate(m_plugin, (double)sample_rate, features.data());

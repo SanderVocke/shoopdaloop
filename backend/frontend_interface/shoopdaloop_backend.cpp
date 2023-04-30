@@ -352,7 +352,7 @@ void Backend::PROC_process (jack_nframes_t nframes) {
     for (auto & chain : fx_chains) {
         for (auto & p : chain->mc_audio_input_ports) { p->PROC_passthrough(nframes); }
         for (auto & p : chain->mc_audio_output_ports){ p->PROC_passthrough(nframes); }
-        for (auto & p : chain->mc_midi_input_ports)  { p->PROC_passthrough(nframes); }
+        for (auto & p : chain->mc_midi_input_ports)  { p->PROC_passthrough(nframes); p->PROC_finalize_process(nframes); }
     }
 
     // Prepare:

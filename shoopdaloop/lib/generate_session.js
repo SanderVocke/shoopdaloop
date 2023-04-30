@@ -278,7 +278,7 @@ function generate_default_track(
         var in_id = id + in_id_post;
         var out_id_post = "_midi_send";
         var out_id = id + out_id_post;
-        var fx_in_id = id + fx_chain_port_id_part("midi", "in", undefined);
+        var fx_in_id = id + fx_chain_port_id_part("midi", "in", 0);
 
         var rval = [generate_midi_port(in_id, have_drywet_jack_ports ? [out_id] : [fx_in_id], [port_name_base, in_id_post], 'input', false)]
         if (have_drywet_jack_ports) {
