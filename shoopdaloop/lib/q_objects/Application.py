@@ -4,7 +4,7 @@ import signal
 import time
 
 from PySide6.QtQml import QQmlApplicationEngine, QJSValue
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtGui import QGuiApplication, QIcon
 from PySide6.QtCore import QTimer, QObject, Q_ARG, QMetaObject, Qt
 
 from ...third_party.pynsm.nsmclient import NSMClient, NSMNotRunningError
