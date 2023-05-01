@@ -20,9 +20,10 @@ public:
     template<typename TimeType, typename SizeType>
     std::shared_ptr<CarlaLV2ProcessingChain<TimeType, SizeType>> create_carla_chain(
         fx_chain_type_t type,
-        size_t sample_rate
+        size_t sample_rate,
+        std::string title
     ) {
         return std::make_shared<CarlaLV2ProcessingChain<TimeType, SizeType>>
-            (m_world, type, sample_rate);
+            (m_world, type, sample_rate, title);
     }
 };

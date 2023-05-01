@@ -25,6 +25,7 @@ class FXChain(QQuickItem):
         self._backend = None
         self._backend_object = None
         self._chain_type = None
+        self._title = ""
 
         self.rescan_parents()
         if not self._backend:
@@ -65,6 +66,17 @@ class FXChain(QQuickItem):
             self._backend_object.set_visible(value)
         else:
             self.initializedChanged.connect(lambda: self._backend_object.set_visible(value))
+    
+    # title
+    titleChanged = Signal(str)
+    @Property(str, notify=titleChanged)
+    def title(self):
+        return self._title
+    @title.setter
+    def title(self, l):
+        if l and l != self._title:
+            self._title = l
+            self.titleChanged.emit(l)
     
     # running
     runningChanged = Signal(bool)
@@ -146,7 +158,7 @@ class FXChain(QQuickItem):
     
     def maybe_initialize(self):
         if self._backend and self._backend.initialized and self._chain_type != None and not self._backend_object:
-            self._backend_object = self._backend.get_backend_obj().create_fx_chain(FXChainType(self._chain_type))
+            self._backend_object = self._backend.get_backend_obj().create_fx_chain(FXChainType(self._chain_type), self._title)
             if self._backend_object:
                 self._initialized = True
                 self.update()

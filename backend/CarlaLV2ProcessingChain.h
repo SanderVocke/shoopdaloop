@@ -4,6 +4,7 @@
 
 #include <cstring>
 #include <memory>
+#include <mutex>
 #include <nlohmann/json_fwd.hpp>
 #include <string>
 #include <tuple>
@@ -161,7 +162,7 @@ private:
     LilvInstance * m_instance = nullptr;
     LV2UI_Handle m_ui_handle = nullptr;
     LV2_External_UI_Widget * m_ui_widget = nullptr;
-    std::atomic<bool> m_ui_stop = false;
+    std::recursive_mutex m_ui_mutex;
     std::thread m_ui_thread;
     bool m_visible = false;
     std::vector<const LilvPort*> m_audio_in_lilv_ports, m_audio_out_lilv_ports, m_midi_in_lilv_ports, m_midi_out_lilv_ports;
@@ -175,6 +176,7 @@ private:
     const size_t mc_midi_buf_capacities = 8192;
     LV2_URID_Map m_map_handle;
     LV2_URID_Unmap m_unmap_handle;
+    std::string m_human_name;
 
     const LV2UI_Descriptor * m_ui_descriptor = nullptr;
 
@@ -255,16 +257,19 @@ private:
     }
 
     void ui_closed_fn() {
-        m_ui_stop = true;
+        maybe_cleanup_ui();
     }
 
     void maybe_cleanup_ui() {
-        if (m_ui_thread.joinable()) { 
-            m_ui_thread.join();
-            m_ui_descriptor->cleanup(m_ui_handle);
+        {
+            std::cout << "Start cleanup!\n";
+            std::lock_guard<std::recursive_mutex> lock(m_ui_mutex);
+            if (m_ui_handle) {
+                m_ui_descriptor->cleanup(m_ui_handle);
+            }
             m_ui_handle = nullptr;
             m_ui_widget = nullptr;
-            m_ui_stop = false;
+            std::cout << "Finish cleanup!\n";
         }
     }
 
@@ -272,9 +277,11 @@ public:
     CarlaLV2ProcessingChain(
         LilvWorld *lilv_world,
         fx_chain_type_t type,
-        size_t sample_rate
+        size_t sample_rate,
+        std::string human_name
     ) :
-        m_internal_buffers_size(0)
+        m_internal_buffers_size(0),
+        m_human_name(human_name)
     {
         // URIs for the Carla plugins we want to support.
         static const std::map<fx_chain_type_t, std::string> plugin_uris = {
@@ -422,18 +429,20 @@ public:
             m_ui_descriptor = _get_ui_descriptor(0);
             m_ui_host = {
                 .ui_closed = static_ui_closed_fn,
-                .plugin_human_id = "shoopdaloop"
+                .plugin_human_id = m_human_name.c_str()
             };
         }
     }
 
-    bool visible() {
+    bool visible() const {
         return m_visible;
     }
 
     void show() {
-        maybe_cleanup_ui();
+        std::cout << "Show!\n";
         if (!m_ui_widget) {
+            std::cout << "Reinstantiate UI\n";
+            maybe_cleanup_ui();
             LV2_Feature instance_access_feature {
                 .URI = LV2_INSTANCE_ACCESS_URI,
                 .data = (void*) lilv_instance_get_handle(m_instance)
@@ -460,10 +469,19 @@ public:
             }
 
             // Create and start UI thread
+            // (also join the old UI thread if still alive)
+            if (m_ui_thread.joinable()) {
+                std::cout << "join!\n";
+                m_ui_thread.join();
+            }
             m_ui_thread = std::thread([this]() {
-                while(!m_ui_stop.load()) {
+                while (true) {
                     auto t = std::chrono::high_resolution_clock::now();
-                    m_ui_widget->run(m_ui_widget);
+                    {
+                        std::lock_guard<std::recursive_mutex> lock(m_ui_mutex);
+                        if (!m_ui_widget) { break; }
+                        m_ui_widget->run(m_ui_widget);
+                    }
                     while (t < std::chrono::high_resolution_clock::now()) {
                         t += std::chrono::milliseconds(30);
                     }
@@ -476,6 +494,7 @@ public:
     }
 
     void hide() {
+        std::cout << "Hide!\n";
         if(m_ui_widget) {
             m_ui_widget->hide(m_ui_widget);
         }
@@ -484,14 +503,14 @@ public:
 
     void stop() {
         std::cout << "Carla instance stopping." << std::endl;
-        m_ui_stop = true;
+        maybe_cleanup_ui();
         if(m_ui_thread.joinable()) {
             m_ui_thread.join();
         }
         if(m_instance) { lilv_instance_free(m_instance); m_instance = nullptr; }
     }
 
-    bool running() const { return !m_ui_stop && m_ui_thread.joinable(); }
+    bool running() const { return m_instance != nullptr; }
 
     void process(size_t frames) override {
         if (frames > m_internal_buffers_size) {

@@ -55,9 +55,10 @@ function generate_track(id, name, loops, ports, fx_chains) {
     }
 }
 
-function generate_fx_chain(id, type, ports) {
+function generate_fx_chain(id, title, type, ports) {
     return {
         'id': id,
+        'title': title,
         'schema': 'fx_chain.1',
         'type': type,
         'ports': ports
@@ -219,6 +220,7 @@ function generate_default_track(
         
         fx_chains.push(generate_fx_chain(
             id + '_fx_chain',
+            name,
             drywet_carla_type,
             ports
         ))

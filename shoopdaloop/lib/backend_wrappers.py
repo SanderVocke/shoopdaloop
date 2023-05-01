@@ -456,8 +456,8 @@ class Backend:
         rval = BackendLoop(handle)
         return rval
     
-    def create_fx_chain(self, chain_type : Type['FXChainType']) -> Type['BackendFXChain']:
-        handle = create_fx_chain(self._c_handle, chain_type.value)
+    def create_fx_chain(self, chain_type : Type['FXChainType'], title: str) -> Type['BackendFXChain']:
+        handle = create_fx_chain(self._c_handle, chain_type.value, title.encode('ascii'))
         rval = BackendFXChain(handle, chain_type)
         return rval
 

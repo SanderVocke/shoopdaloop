@@ -12,11 +12,13 @@ FXChain {
     property Registry state_registry: null
 
     readonly property string obj_id : descriptor.id
+    title: descriptor.title
 
     function actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) {
         return {
             'schema': 'fx_chain.1',
             'id': obj_id,
+            'title': title,
             'type': descriptor.type,
             'ports': all_ports().map(i => i.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to)),
             'internal_state': get_internal_state()

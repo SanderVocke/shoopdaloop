@@ -64,7 +64,7 @@ void loops_transition(unsigned int n_loops,
                       unsigned wait_for_sync);
 
 // FX chains
-shoopdaloop_fx_chain_t *create_fx_chain(shoopdaloop_backend_instance_t *backend, fx_chain_type_t type);
+shoopdaloop_fx_chain_t *create_fx_chain(shoopdaloop_backend_instance_t *backend, fx_chain_type_t type, const char* title);
 void fx_chain_set_ui_visible(shoopdaloop_fx_chain_t *chain, unsigned visible);
 fx_chain_state_info_t *get_fx_chain_state(shoopdaloop_fx_chain_t *chain);
 const char *get_fx_chain_internal_state(shoopdaloop_fx_chain_t *chain);

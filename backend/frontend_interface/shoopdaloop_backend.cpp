@@ -155,7 +155,7 @@ struct Backend : public std::enable_shared_from_this<Backend> {
     unsigned get_sample_rate();
     unsigned get_buffer_size();
     SharedLoopInfo create_loop();
-    SharedFXChainInfo create_fx_chain(fx_chain_type_t type);
+    SharedFXChainInfo create_fx_chain(fx_chain_type_t type, const char* title);
 };
 
 struct DecoupledMidiPortInfo : public std::enable_shared_from_this<DecoupledMidiPortInfo> {
@@ -436,9 +436,9 @@ SharedLoopInfo Backend::create_loop() {
     return r;
 }
 
-SharedFXChainInfo Backend::create_fx_chain(fx_chain_type_t type) {
+SharedFXChainInfo Backend::create_fx_chain(fx_chain_type_t type, const char* title) {
     auto chain = g_lv2.create_carla_chain<Time, Size>(
-        type, get_sample_rate()
+        type, get_sample_rate(), std::string(title)
     );
     chain->ensure_buffers(get_buffer_size());
     auto info = std::make_shared<FXChainInfo>(chain, shared_from_this());
@@ -1599,8 +1599,8 @@ void set_loop_sync_source (shoopdaloop_loop_t *loop, shoopdaloop_loop_t *sync_so
     });
 }
 
-shoopdaloop_fx_chain_t *create_fx_chain(shoopdaloop_backend_instance_t *backend, fx_chain_type_t type) {
-    return external_fx_chain(internal_backend(backend)->create_fx_chain(type));
+shoopdaloop_fx_chain_t *create_fx_chain(shoopdaloop_backend_instance_t *backend, fx_chain_type_t type, const char* title) {
+    return external_fx_chain(internal_backend(backend)->create_fx_chain(type, title));
 }
 
 void fx_chain_set_ui_visible(shoopdaloop_fx_chain_t *chain, unsigned visible) {
