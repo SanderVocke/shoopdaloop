@@ -5,6 +5,7 @@
 #include "WithCommandQueue.h"
 #include "types.h"
 #include "modified_loop_mode_for_channel.h"
+#include <boost/lockfree/policies.hpp>
 #include <cmath>
 #include <cstring>
 #include <memory>
@@ -14,6 +15,7 @@
 #include <optional>
 #include <iostream>
 #include <chrono>
+#include <boost/lockfree/spsc_queue.hpp>
 
 using namespace std::chrono_literals;
 
@@ -41,6 +43,43 @@ private:
     size_t   mp_playback_target_buffer_size;
     SampleT *mp_recording_source_buffer;
     size_t   mp_recording_source_buffer_size;
+
+    enum class ProcessingCommandType {
+        RawCopy,
+        AdditiveCopy
+    };
+
+    struct RawCopyDetails {
+        void* src;
+        void* dst;
+        size_t sz;
+    };
+
+    struct AdditiveCopyDetails {
+        SampleT* src;
+        SampleT* dst;
+        float multiplier;
+        size_t n_elems;
+        bool update_absmax;
+    };
+
+    union ProcessingCommandDetails {
+        RawCopyDetails raw_copy_details;
+        AdditiveCopyDetails additive_copy_details;
+    };
+
+    struct ProcessingCommand {
+        ProcessingCommandType cmd_type;
+        ProcessingCommandDetails details;
+    };
+
+    using ProcessingQueue = boost::lockfree::spsc_queue<ProcessingCommand, boost::lockfree::capacity<16>>;
+    ProcessingQueue mp_proc_queue;
+
+    void throw_if_commands_queued() const {
+        if(mp_proc_queue.read_available()) { throw std::runtime_error("Illegal operation while audio channel commands are queued"); }
+    }
+
 public:
 
     AudioChannel(
@@ -66,6 +105,7 @@ public:
 
     // NOTE: only use on process thread!
     AudioChannel<SampleT>& operator= (AudioChannel<SampleT> const& other) {
+        throw_if_commands_queued();
         if (other.ma_buffer_size != ma_buffer_size) {
             throw std::runtime_error("Cannot copy audio channels with different buffer sizes.");
         }
@@ -79,6 +119,7 @@ public:
         mp_recording_source_buffer_size = other.mp_recording_source_buffer_size;
         ma_mode = other.ma_mode;
         ma_volume = other.ma_volume;
+        mp_proc_queue.reset();
         return *this;
     }
 
@@ -116,9 +157,61 @@ public:
         }
     }
 
+    void PROC_exec_cmd(ProcessingCommand cmd) {
+        auto const& rc = cmd.details.raw_copy_details;
+        auto const& ac = cmd.details.additive_copy_details;
+        switch (cmd.cmd_type) {
+        case ProcessingCommandType::RawCopy:
+            memcpy(rc.dst, rc.src, rc.sz);
+            break;
+        case ProcessingCommandType::AdditiveCopy:
+            for(size_t i=0; i<ac.n_elems; i++) {
+                auto sample = ac.dst[i] + ac.src[i] * ac.multiplier;
+                ac.dst[i] = sample;
+                if (ac.update_absmax) { ma_output_peak = std::max((float)ma_output_peak.load(), (float)std::abs(sample));}
+            }
+            break;
+        default:
+            throw std::runtime_error("Unknown processing command");
+        };
+    }
+
+    void PROC_queue_memcpy(void* dst, void* src, size_t sz) {
+        ProcessingCommand cmd;
+        cmd.cmd_type = ProcessingCommandType::RawCopy;
+        cmd.details.raw_copy_details = {
+            .src = src,
+            .dst = dst,
+            .sz = sz
+        };
+        mp_proc_queue.push(cmd);
+    }
+
+    void PROC_queue_additivecpy(SampleT* dst, SampleT* src, size_t n_elems, float mult, bool update_absmax) {
+        ProcessingCommand cmd;
+        cmd.cmd_type = ProcessingCommandType::AdditiveCopy;
+        cmd.details.additive_copy_details = {
+            .src = src,
+            .dst = dst,
+            .n_elems = n_elems,
+            .multiplier = mult,
+            .update_absmax = update_absmax
+        };
+        mp_proc_queue.push(cmd);
+    }
+
+    void PROC_finalize_process() override {
+        ProcessingCommand cmd;
+        while(mp_proc_queue.pop(cmd)) {
+            PROC_exec_cmd(cmd);
+        }
+    }
+
     // Load data into the loop. Should always be called outside
     // the processing thread.
     void load_data(SampleT* samples, size_t len, bool thread_safe = true) {
+        throw_if_commands_queued();
+
         // Convert to internal storage layout
         auto buffers = std::make_shared<std::vector<Buffer>>(std::ceil((float)len / (float)ma_buffer_size));
         for (size_t idx=0; idx < buffers->size(); idx++) {
@@ -145,6 +238,8 @@ public:
     // Get loop data. Should always be called outside
     // the processing thread.
     std::vector<SampleT> get_data(bool thread_safe = true) {
+        throw_if_commands_queued();
+
         std::vector<Buffer> buffers;
         size_t length;
         auto cmd = [this, &buffers, &length]() {
@@ -185,7 +280,9 @@ public:
         // comes first
         auto n = std::min(n_samples, buf_space);
         auto rest = n_samples - n;
-        memcpy((void*) &to_buf->at(buf_head), (void*)from, sizeof(SampleT)*n);
+
+        // Queue the actual copy for later.
+        PROC_queue_memcpy((void*) &to_buf->at(buf_head), (void*)from, sizeof(SampleT)*n);
 
         mp_recording_source_buffer += n;
         mp_recording_source_buffer_size -= n;
@@ -235,7 +332,8 @@ public:
         auto n = std::min({buf_head - pos_in_buffer, samples_left, n_samples});
         auto rest = n_samples - n;
 
-        memcpy((void*)to, (void*)from, sizeof(SampleT) * n);
+        // Queue the actual copy for later
+        PROC_queue_memcpy((void*)to, (void*)from, sizeof(SampleT) * n);
 
         mp_recording_source_buffer += n;
         mp_recording_source_buffer_size -= n;
@@ -286,11 +384,7 @@ public:
             auto rest = n_samples - n;
 
             if (!muted) {
-                for(size_t idx=0; idx < n; idx++) {
-                    float sample = from[idx] * ma_volume;
-                    to[idx] += sample;
-                    ma_output_peak = std::max((float)ma_output_peak.load(), (float)std::abs(sample));
-                }
+                PROC_queue_additivecpy(to, from, n, ma_volume, true);
             }
 
             mp_playback_target_buffer += n;
@@ -326,16 +420,19 @@ public:
 
 
     void PROC_set_playback_buffer(SampleT *buffer, size_t size) {
+        throw_if_commands_queued();
         mp_playback_target_buffer = buffer;
         mp_playback_target_buffer_size = size;
     }
 
     void PROC_set_recording_buffer(SampleT *buffer, size_t size) {
+        throw_if_commands_queued();
         mp_recording_source_buffer = buffer;
         mp_recording_source_buffer_size = size;
     }
 
     void PROC_clear(size_t length) {
+        throw_if_commands_queued();
         mp_buffers.resize(std::ceil((float)length / (float)ma_buffer_size));
         for (auto &b: mp_buffers) {
             memset((void*)b->data(), 0, sizeof(SampleT) * b->size());
@@ -345,10 +442,12 @@ public:
     }
 
     float get_output_peak() const {
+        throw_if_commands_queued();
         return ma_output_peak;
     }
 
     void reset_output_peak() {
+        throw_if_commands_queued();
         ma_output_peak = 0.0f;
     }
 

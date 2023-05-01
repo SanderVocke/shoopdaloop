@@ -108,6 +108,11 @@ LV2 g_lv2;
 }
 
 // TYPES
+enum class ProcessWhen {
+    BeforeFXChains, // Process before FX chains have processed.
+    AfterFXChains   // Process only after FX chains have processed.
+};
+
 struct Backend : public std::enable_shared_from_this<Backend> {
 
     std::vector<SharedLoopInfo> loops;
@@ -190,6 +195,7 @@ struct PortInfo : public std::enable_shared_from_this<PortInfo> {
     // Both
     std::atomic<bool> muted;
     std::atomic<bool> passthrough_muted;
+    ProcessWhen ma_process_when;
 
     PortInfo (SharedPort const& port, SharedBackend const& backend) : port(port),
         maybe_audio_buffer(nullptr),
@@ -203,6 +209,15 @@ struct PortInfo : public std::enable_shared_from_this<PortInfo> {
         backend(backend),
         peak(0.0f),
         n_events_processed(0) {
+
+        bool is_internal = (dynamic_cast<InternalAudioPort<float>*>(port.get()) ||
+                            dynamic_cast<InternalLV2MidiOutputPort*>(port.get()));
+        bool is_fx_in = is_internal && (port->direction() == PortDirection::Output);
+        bool is_ext_in = !is_internal && (port->direction() == PortDirection::Input);
+
+        ma_process_when = (is_ext_in || is_fx_in) ?
+            ProcessWhen::BeforeFXChains : ProcessWhen::AfterFXChains;
+
         if (auto m = dynamic_cast<MidiPort*>(port.get())) {
             maybe_midi_notes_state = std::make_unique<MidiNotesState>();
             if(m->direction() == PortDirection::Output) {
@@ -232,13 +247,15 @@ struct ChannelInfo : public std::enable_shared_from_this<ChannelInfo> {
     WeakPortInfo mp_input_port_mapping;
     WeakBackend backend;
     std::vector<WeakPortInfo> mp_output_port_mappings;
+    ProcessWhen ma_process_when;
 
     ChannelInfo(SharedLoopChannel chan,
                 SharedLoopInfo loop,
                 SharedBackend backend) :
         channel(chan),
         loop(loop),
-        backend(backend) {
+        backend(backend),
+        ma_process_when(ProcessWhen::BeforeFXChains) {
             mp_output_port_mappings.reserve(gc_default_max_port_mappings);
     }
 
@@ -327,51 +344,73 @@ void Backend::PROC_process (jack_nframes_t nframes) {
     // Send/receive decoupled midi
     PROC_process_decoupled_midi_ports(nframes);
 
-    // Prepare:
+    // Prepare ports:
     // Get buffers and process passthrough
-    for (auto & port: ports) {
-        if (port) {
-            port->PROC_reset_buffers();
-            port->PROC_ensure_buffer(nframes);
+    auto prepare_port_fn = [&](auto & p) {
+        if(p) {
+            p->PROC_reset_buffers();
+            p->PROC_ensure_buffer(nframes);
         }
-    }
-    // Do the same for internal ports
-    // TODO; this should be refactored
+    };
+    for (auto & port: ports) { prepare_port_fn(port); }
     for (auto & chain : fx_chains) {
-        for (auto & p : chain->mc_audio_input_ports) { p->PROC_reset_buffers(); p->PROC_ensure_buffer(nframes); }
-        for (auto & p : chain->mc_audio_output_ports){ p->PROC_reset_buffers(); p->PROC_ensure_buffer(nframes); }
-        for (auto & p : chain->mc_midi_input_ports)  { p->PROC_reset_buffers(); p->PROC_ensure_buffer(nframes); }
-    }
-    for (auto & port: ports) {
-        if (port) {
-            port->PROC_passthrough(nframes);
-        }
-    }
-    // Do the same for internal ports
-    // TODO; this should be refactored
-    for (auto & chain : fx_chains) {
-        for (auto & p : chain->mc_audio_input_ports) { p->PROC_passthrough(nframes); }
-        for (auto & p : chain->mc_audio_output_ports){ p->PROC_passthrough(nframes); }
-        for (auto & p : chain->mc_midi_input_ports)  { p->PROC_passthrough(nframes); p->PROC_finalize_process(nframes); }
+        for (auto & p : chain->mc_audio_input_ports) { prepare_port_fn(p); }
+        for (auto & p : chain->mc_audio_output_ports){ prepare_port_fn(p); }
+        for (auto & p : chain->mc_midi_input_ports)  { prepare_port_fn(p); }
     }
 
-    // Prepare:
+    // Prepare loops:
     // Connect port buffers to loop channels
     for (auto & loop: loops) {
         if (loop) {
             loop->PROC_prepare_process(nframes);
         }
     }
+
+    // Process passthrough on the input side (before FX chains)
+    auto before_fx_port_passthrough_fn = [&](auto &p) {
+        if (p && p->ma_process_when == ProcessWhen::BeforeFXChains) { p->PROC_passthrough(nframes); }
+    };
+    for (auto & port: ports) { before_fx_port_passthrough_fn(port); }
+    for (auto & chain : fx_chains) {
+        for (auto & p : chain->mc_audio_input_ports) { before_fx_port_passthrough_fn(p); }
+        for (auto & p : chain->mc_midi_input_ports)  { before_fx_port_passthrough_fn(p); }
+    }
     
-    // Process the loops.
+    // Process the loops. This queues deferred audio operations for post-FX channels.
     process_loops<LoopInfo>
         (loops, [](LoopInfo &l) { return (LoopInterface*)l.loop.get(); }, nframes);
+    
+    // Finish processing any channels that come before FX.
+    auto before_fx_channel_process = [&](auto &c) {
+        if (c->ma_process_when == ProcessWhen::BeforeFXChains) { c->channel->PROC_finalize_process(); }
+    };
+    for (auto & loop: loops) {
+        for (auto & channel: loop->mp_audio_channels) { before_fx_channel_process(channel); }
+        for (auto & channel: loop->mp_midi_channels)  { before_fx_channel_process(channel); }
+    }
 
     // Process the FX chains.
-    // TODO: refactor so that there is no latency introduced between
-    // channels before and after the FX chain.
     for (auto & chain: fx_chains) {
         chain->chain->process(nframes);
+    }
+
+    // Process passthrough on the output side (after FX chains)
+    auto after_fx_port_passthrough_fn = [&](auto &p) {
+        if (p && p->ma_process_when == ProcessWhen::AfterFXChains) { p->PROC_passthrough(nframes); }
+    };
+    for (auto & port: ports) { after_fx_port_passthrough_fn(port); }
+    for (auto & chain : fx_chains) {
+        for (auto & p : chain->mc_audio_output_ports) { after_fx_port_passthrough_fn(p); }
+    }
+
+    // Finish processing any channels that come after FX.
+    auto after_fx_channel_process = [&](auto &c) {
+        if (c->ma_process_when == ProcessWhen::AfterFXChains) { c->channel->PROC_finalize_process(); }
+    };
+    for (auto & loop: loops) {
+        for (auto & channel: loop->mp_audio_channels) { after_fx_channel_process(channel); }
+        for (auto & channel: loop->mp_midi_channels)  { after_fx_channel_process(channel); }
     }
 
     // Prepare state for next round.
@@ -625,6 +664,7 @@ void ChannelInfo::connect_output_port(SharedPortInfo port, bool thread_safe) {
             if (elem.lock() == port) { return; }
         }
         mp_output_port_mappings.push_back(port);
+        ma_process_when = port->ma_process_when; // Process in same phase as the connected port
     };
     if (thread_safe) { get_backend().cmd_queue.queue(fn); }
     else { fn(); }
@@ -633,6 +673,7 @@ void ChannelInfo::connect_output_port(SharedPortInfo port, bool thread_safe) {
 void ChannelInfo::connect_input_port(SharedPortInfo port, bool thread_safe) {
     auto fn = [this, port]() {
         mp_input_port_mapping = port;
+        ma_process_when = port->ma_process_when; // Process in same phase as the connected port
     };
     if (thread_safe) { get_backend().cmd_queue.queue(fn); }
     else { fn(); }

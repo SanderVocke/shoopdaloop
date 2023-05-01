@@ -24,7 +24,7 @@ public:
                             size_t length,
                             size_t position) = 0;
 
-    // Process. The channel may alter the after state.
+    // Process the channel according to the loop state.
     virtual void PROC_process(
         loop_mode_t mode,
         size_t n_samples,
@@ -33,6 +33,11 @@ public:
         size_t length_before,
         size_t length_after
     ) = 0;
+
+    // Finalize processing. For some channels, the processing step defers some
+    // actions for later. Channels which support deferred processing (state changes first,
+    // memory copies later) can use this to perform memory copies.
+    virtual void PROC_finalize_process() = 0;
 
     // Set/get the channel mode
     virtual void set_mode(channel_mode_t mode) = 0;

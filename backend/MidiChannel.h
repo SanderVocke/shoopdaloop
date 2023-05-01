@@ -91,6 +91,7 @@ public:
         ma_data_length = length;
     }
 
+    // MIDI channels process everything immediately. Deferred processing is not possible.
 #warning Replace use-case not covered for MIDI.
     void PROC_process(
         loop_mode_t mode,
@@ -134,6 +135,8 @@ public:
         prev_pos = pos_after;
         prev_mode = modified_mode;
     }
+
+    void PROC_finalize_process() override {}
 
     void PROC_process_record(size_t our_length, size_t n_samples) {
         if (!mp_recording_source_buffer.has_value()) {
