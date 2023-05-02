@@ -320,6 +320,9 @@ Item {
                     from: -30.0
                     to: 20.0
                     value: 0.0
+                    property var initial_accent
+
+                    Material.accent: trackctl.muted ? 'grey' : trackctl.Material.accent
 
                     property real initial_value_dB: trackctl.initial_volume_dB
                     onInitial_value_dBChanged: value = initial_value_dB
@@ -491,6 +494,9 @@ Item {
                     from: -30.0
                     to: 20.0
                     value: 0.0
+                    property var initial_accent
+
+                    Material.accent: trackctl.passthroughMuted ? 'grey' : trackctl.Material.accent
 
                     property real initial_value_dB: trackctl.initial_passthrough_volume_dB
                     onInitial_value_dBChanged: value = initial_value_dB

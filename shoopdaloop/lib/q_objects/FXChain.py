@@ -19,7 +19,8 @@ from ..findChildItems import findChildItems
 class FXChain(QQuickItem):
     def __init__(self, parent=None):
         super(FXChain, self).__init__(parent)
-        self._running = False
+        self._active = True
+        self._ready = False
         self._ui_visible = False
         self._initialized = False
         self._backend = None
@@ -78,11 +79,24 @@ class FXChain(QQuickItem):
             self._title = l
             self.titleChanged.emit(l)
     
-    # running
-    runningChanged = Signal(bool)
-    @Property(bool, notify=runningChanged)
-    def running(self):
-        return self._running
+    # ready
+    readyChanged = Signal(bool)
+    @Property(bool, notify=readyChanged)
+    def ready(self):
+        return self._ready
+    
+    # active
+    activeChanged = Signal(bool)
+    @Property(bool, notify=activeChanged)
+    def active(self):
+        return self._active
+    # Indirect setter via back-end
+    @Slot(bool)
+    def set_active(self, value):
+        if self._backend_object:
+            self._backend_object.set_active(value)
+        else:
+            self.initializedChanged.connect(lambda: self._backend_object.set_active(value))
     
     # chain type
     chainTypeChanged = Signal(int)
@@ -110,17 +124,21 @@ class FXChain(QQuickItem):
         if not self.initialized:
             return
         
-        prev_running = self._running
+        prev_active = self._active
+        prev_ready = self._ready
         prev_ui_visible = self._ui_visible
 
         state = self._backend_object.get_state()
-        self._running = state.running
+        self._ready = state.ready
         self._ui_visible = state.visible
+        self._active = state.active
 
+        if prev_ready != self._ready:
+            self.readyChanged.emit(self._ready)
         if prev_ui_visible != self._ui_visible:
             self.uiVisibleChanged.emit(self._ui_visible)
-        if prev_running != self._running:
-            self.runningChanged.emit(self._running)
+        if prev_active != self._active:
+            self.activeChanged.emit(self._active)
     
     @Slot()
     def rescan_parents(self):
@@ -161,6 +179,8 @@ class FXChain(QQuickItem):
             self._backend_object = self._backend.get_backend_obj().create_fx_chain(FXChainType(self._chain_type), self._title)
             if self._backend_object:
                 self._initialized = True
+                self.set_active(self._active)
+                self.set_ui_visible(self._ui_visible)
                 self.update()
                 self._backend.registerBackendObject(self)
                 self.initializedChanged.emit(True)

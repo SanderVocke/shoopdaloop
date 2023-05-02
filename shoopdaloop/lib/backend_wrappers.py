@@ -45,11 +45,13 @@ class FXChainType(Enum):
 @dataclass
 class FXChainState:
     visible : bool
-    running : bool
+    ready : bool
+    active : bool
 
     def __init__(self, backend_state : "fx_chain_state_info_t"):
         self.visible = backend_state.visible
-        self.running = backend_state.running
+        self.active = backend_state.active
+        self.ready = backend_state.ready
 
 @dataclass
 class LoopAudioChannelState:
@@ -420,6 +422,10 @@ class BackendFXChain:
     def set_visible(self, visible):
         if self._c_handle:
             fx_chain_set_ui_visible(self._c_handle, int(visible))
+    
+    def set_active(self, active):
+        if self._c_handle:
+            set_fx_chain_active(self._c_handle, int(active))
     
     def get_state(self):
         state = get_fx_chain_state(self._c_handle)

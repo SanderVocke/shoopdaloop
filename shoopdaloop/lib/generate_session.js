@@ -233,7 +233,7 @@ function generate_default_track(
         var out_id = id + out_id_post;
         var fx_in_id = id + fx_chain_port_id_part("audio", "in", idx);
 
-        var rval = [generate_audio_port(in_id, have_drywet_jack_ports ? [out_id] : [fx_in_id], [port_name_base, in_id_post], 'input', 1.0, false)]
+        var rval = [generate_audio_port(in_id, have_drywet_jack_ports ? [out_id] : [fx_in_id], [port_name_base, in_id_post], 'input', 1.0, true)]
         if (have_drywet_jack_ports) {
             rval.push(generate_audio_port(out_id, [], [port_name_base, out_id_post], 'output', 1.0, false))
         }
@@ -261,7 +261,7 @@ function generate_default_track(
         var in_id = id + in_id_post;
         var out_id = id + out_id_post;
         return [
-            generate_audio_port(in_id, [out_id], [port_name_base, in_id_post], 'input', 1.0, false),
+            generate_audio_port(in_id, [out_id], [port_name_base, in_id_post], 'input', 1.0, true),
             generate_audio_port(out_id, [], [port_name_base, out_id_post], 'output', 1.0, false),
         ]
     })
@@ -271,7 +271,7 @@ function generate_default_track(
         var in_id = id + in_id_post;
         var out_id = id + out_id_post;
         return [[
-            generate_midi_port(in_id, [out_id], [port_name_base, in_id_post], 'input', false),
+            generate_midi_port(in_id, [out_id], [port_name_base, in_id_post], 'input', true),
             generate_midi_port(out_id, [], [port_name_base, out_id_post], 'output', false),
         ]]
     })() : [];
@@ -282,7 +282,7 @@ function generate_default_track(
         var out_id = id + out_id_post;
         var fx_in_id = id + fx_chain_port_id_part("midi", "in", 0);
 
-        var rval = [generate_midi_port(in_id, have_drywet_jack_ports ? [out_id] : [fx_in_id], [port_name_base, in_id_post], 'input', false)]
+        var rval = [generate_midi_port(in_id, have_drywet_jack_ports ? [out_id] : [fx_in_id], [port_name_base, in_id_post], 'input', true)]
         if (have_drywet_jack_ports) {
             rval.push(generate_midi_port(out_id, [], [port_name_base, out_id_post], 'output', false))
         }

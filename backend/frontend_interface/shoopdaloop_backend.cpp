@@ -1655,9 +1655,14 @@ void fx_chain_set_ui_visible(shoopdaloop_fx_chain_t *chain, unsigned visible) {
 fx_chain_state_info_t *get_fx_chain_state(shoopdaloop_fx_chain_t *chain) {
     auto r = new fx_chain_state_info_t;
     auto c = internal_fx_chain(chain);
-    r->running = (unsigned) c->chain->running();
+    r->ready = (unsigned) c->chain->is_ready();
+    r->active = (unsigned) c->chain->is_active();
     r->visible = (unsigned) c->chain->visible();
     return r;
+}
+
+void set_fx_chain_active(shoopdaloop_fx_chain_t *chain, unsigned active) {
+    internal_fx_chain(chain)->chain->set_active(active);
 }
 
 const char* get_fx_chain_internal_state(shoopdaloop_fx_chain_t *chain) {

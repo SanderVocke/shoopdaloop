@@ -177,6 +177,8 @@ private:
     LV2_URID_Map m_map_handle;
     LV2_URID_Unmap m_unmap_handle;
     std::string m_human_name;
+    std::atomic<bool> m_active = false;
+    std::atomic<bool> m_state_restore_active = false;
 
     const LV2UI_Descriptor * m_ui_descriptor = nullptr;
 
@@ -269,6 +271,7 @@ private:
             }
             m_ui_handle = nullptr;
             m_ui_widget = nullptr;
+            m_visible = false;
             std::cout << "Finish cleanup!\n";
         }
     }
@@ -299,61 +302,12 @@ public:
             throw std::runtime_error("Plugin " + m_plugin_uri + " not found.");
         }
 
-        // Set up required features.
-        // Options feature
-        LV2_Options_Option end {
-            LV2_OPTIONS_INSTANCE,
-            0,
-            0,
-            0,
-            0,
-            nullptr
-        };
-        LV2_Feature options_feature {
-            .URI = LV2_OPTIONS__options,
-            .data = &end
-        };
-
-        // URID mapping feature
+        // Set up URID mapping feature and map some URIs we need.
         m_urid_map.clear();
         // Map URIs we know we will need
         m_midi_event_type = map_urid(LV2_MIDI__MidiEvent);
         m_atom_chunk_type = map_urid(LV2_ATOM__Chunk);
         m_atom_sequence_type = map_urid(LV2_ATOM__Sequence);
-
-        m_map_handle = {
-            .handle = (LV2_URID_Map_Handle)this,
-            .map = CarlaLV2ProcessingChain<TimeType, SizeType>::map_urid
-        };
-        LV2_Feature urid_map_feature {
-            .URI = LV2_URID__map,
-            .data = &m_map_handle
-        };
-
-        m_unmap_handle = {
-            .handle = (LV2_URID_Unmap_Handle)this,
-            .unmap = CarlaLV2ProcessingChain<TimeType, SizeType>::unmap_urid
-        };
-        LV2_Feature urid_unmap_feature {
-            .URI = LV2_URID__unmap,
-            .data = &m_unmap_handle
-        };
-
-        std::vector<LV2_Feature*> features = {
-            &options_feature,
-            &urid_map_feature,
-            &urid_unmap_feature,
-            nullptr
-        };
-
-        // Make a plugin instance.
-        m_instance = lilv_plugin_instantiate(m_plugin, (double)sample_rate, features.data());
-        if (!m_instance) {
-            throw std::runtime_error("Plugin " + m_plugin_uri + " failed to instantiate.");
-        }
-
-        // Set up state mgmt
-        m_state_iface = (LV2_State_Interface*) lilv_instance_get_extension_data(m_instance, LV2_STATE__interface);
 
         // Set up the plugin ports
         {
@@ -402,7 +356,6 @@ public:
                 auto internal = lv2_evbuf_new(mc_midi_buf_capacities, m_atom_chunk_type, m_atom_sequence_type);
                 m_output_midi_ports.push_back(internal);
             }
-            reconnect_ports();
         }
 
         // Set up the UI.
@@ -432,6 +385,72 @@ public:
                 .plugin_human_id = m_human_name.c_str()
             };
         }
+
+        // Start instantiation of the plugin.
+        instantiate(sample_rate);
+    }
+
+    void instantiate(size_t sample_rate) {
+        if (m_instance) {
+            throw std::runtime_error("Cannot re-instantiate plugin");
+        }
+
+        // Instantiate asynchronously.
+        std::thread instantiate_thread([this, sample_rate]() {
+            // Set up required features.
+            // Options feature
+            LV2_Options_Option end {
+                LV2_OPTIONS_INSTANCE,
+                0,
+                0,
+                0,
+                0,
+                nullptr
+            };
+            LV2_Feature options_feature {
+                .URI = LV2_OPTIONS__options,
+                .data = &end
+            };
+
+            m_map_handle = {
+                .handle = (LV2_URID_Map_Handle)this,
+                .map = CarlaLV2ProcessingChain<TimeType, SizeType>::map_urid
+            };
+            LV2_Feature urid_map_feature {
+                .URI = LV2_URID__map,
+                .data = &m_map_handle
+            };
+
+            m_unmap_handle = {
+                .handle = (LV2_URID_Unmap_Handle)this,
+                .unmap = CarlaLV2ProcessingChain<TimeType, SizeType>::unmap_urid
+            };
+            LV2_Feature urid_unmap_feature {
+                .URI = LV2_URID__unmap,
+                .data = &m_unmap_handle
+            };
+
+            std::vector<LV2_Feature*> features = {
+                &options_feature,
+                &urid_map_feature,
+                &urid_unmap_feature,
+                nullptr
+            };
+
+            // Make a plugin instance.
+            auto instance = lilv_plugin_instantiate(m_plugin, (double)sample_rate, features.data());
+            if (!instance) {
+                throw std::runtime_error("Plugin " + m_plugin_uri + " failed to instantiate.");
+            }
+
+            // Set up state mgmt
+            m_state_iface = (LV2_State_Interface*) lilv_instance_get_extension_data(instance, LV2_STATE__interface);
+
+            m_instance = instance;
+            // Connect ports.
+            reconnect_ports();
+        });
+        instantiate_thread.detach();
     }
 
     bool visible() const {
@@ -439,9 +458,9 @@ public:
     }
 
     void show() {
-        std::cout << "Show!\n";
+        if (!is_ready()) { return; }
+
         if (!m_ui_widget) {
-            std::cout << "Reinstantiate UI\n";
             maybe_cleanup_ui();
             LV2_Feature instance_access_feature {
                 .URI = LV2_INSTANCE_ACCESS_URI,
@@ -510,9 +529,15 @@ public:
         if(m_instance) { lilv_instance_free(m_instance); m_instance = nullptr; }
     }
 
-    bool running() const { return m_instance != nullptr; }
+    bool is_ready() const override { return m_instance != nullptr && !m_state_restore_active; }
+
+    bool is_active() const override { return m_active; }
+
+    void set_active(bool active) override { m_active = active; }
 
     void process(size_t frames) override {
+        if(!m_active || !m_instance) { return; }
+
         if (frames > m_internal_buffers_size) {
             throw std::runtime_error("Carla processing chain: requesting to process more than buffer size.");
         }
@@ -547,7 +572,9 @@ public:
             for (auto &port : m_output_audio_ports) {
                 port->reallocate_buffer(size);
             }
-            reconnect_ports();
+            if (m_instance) {
+                reconnect_ports();
+            }
             m_internal_buffers_size = size;
         }
     }
@@ -562,16 +589,32 @@ public:
     }
 
     void restore_state(std::string str) {
+        while (!is_ready()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
         if (!m_state_iface) {
             throw std::runtime_error("No state interface for Carla chain");
         }
-        LV2StateString s(this, CarlaLV2ProcessingChain<TimeType, SizeType>::map_urid, CarlaLV2ProcessingChain<TimeType, SizeType>::unmap_urid);
-        static const LV2_Feature* features[] = { nullptr };
-        s.deserialize(str);
-        m_state_iface->restore(lilv_instance_get_handle(m_instance), LV2StateString::retrieve, (LV2_State_Handle)&s, LV2_STATE_IS_POD | LV2_STATE_IS_PORTABLE, features);
+        m_state_restore_active = true;
+        std::thread restore_thread([this, str]() {
+            try {
+                LV2StateString s(this, CarlaLV2ProcessingChain<TimeType, SizeType>::map_urid, CarlaLV2ProcessingChain<TimeType, SizeType>::unmap_urid);
+                static const LV2_Feature* features[] = { nullptr };
+                s.deserialize(str);
+                m_state_iface->restore(lilv_instance_get_handle(m_instance), LV2StateString::retrieve, (LV2_State_Handle)&s, LV2_STATE_IS_POD | LV2_STATE_IS_PORTABLE, features);
+            } catch (...) {
+                std::cerr << "Failed to restore Carla state.";
+            }
+
+            m_state_restore_active = false;
+        });
+        restore_thread.detach();
     }
 
     std::string get_state() {
+        while (!is_ready()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
         if (!m_state_iface) {
             throw std::runtime_error("No state interface for Carla chain");
         }

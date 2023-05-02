@@ -9,7 +9,7 @@ The main intended use is for quickly expressing complex musical ideas without ne
 - **Fast**: ShoopDaLoop offers recording/playback of a large amount of loops efficiently.
 - **Tracks**: Loops are organized into tracks, which share input/output JACK ports. Typical use-case is one instrument per track. Effects/synthesis are also shared per track.
 - **MIDI and audio**: Loop MIDI and audio in the same application, possibly with synthesis in-between.
-- **FX and synthesis**: ShoopDaLoop loops and tracks can optionally be "Dry + Wet". If used, the loop will record audio+midi dry as it comes in, feed it through internal or external effects/synthesizers and simultaneously also record the wet signal coming out. This feature is inspired by [Luppp](http://openavproductions.com/luppp/) and has some advantages:
+- **FX and synthesis**: ShoopDaLoop loops and tracks can optionally be "Dry + Wet", similar to [Luppp](http://openavproductions.com/luppp/). If used, the loop will record audio+midi dry as it comes in, feed it through internal or external effects/synthesizers and simultaneously also record the wet signal coming out. This feature has some advantages:
 
    - **Live effects/synthesis**: The dry signal can be set to playback while the wet side just passes through the signal out of synth/fx. This way, you can adjust your synth/fx on-the-fly and listen to the results without re-recording.
    - **Re-record**: The wet signal can be re-recorded while the dry signal is played back, consolidating the changes you made to synth/fx.

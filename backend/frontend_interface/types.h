@@ -102,7 +102,8 @@ typedef struct {
 } midi_port_state_info_t;
 
 typedef struct {
-    unsigned running;
+    unsigned ready;
+    unsigned active;
     unsigned visible;
 } fx_chain_state_info_t;
 

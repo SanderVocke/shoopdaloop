@@ -22,7 +22,6 @@ class AudioPort(Port):
         self._peak = 0.0
         self._volume = 1.0
         self._passthrough_volume = 1.0
-        self._pushed_initial_values = False
 
     ######################
     # PROPERTIES
@@ -74,17 +73,10 @@ class AudioPort(Port):
         self.peak = state.peak
         self.name = state.name
 
-        if self._pushed_initial_values:
-            self.volume = state.volume
-            self.passthrough_volume = state.passthrough_volume
-            self.muted = state.muted
-            self.passthrough_muted = state.muted
-        else:
-            self.set_volume(self.volume)
-            self.set_passthrough_volume(self.passthrough_volume)
-            self.set_muted(self.muted)
-            self.set_passthrough_muted(self.passthrough_muted)
-            self._pushed_initial_values = True
+        self.volume = state.volume
+        self.passthrough_volume = state.passthrough_volume
+        self.muted = state.muted
+        self.passthrough_muted = state.muted
     
     @Slot(float)
     def set_volume(self, volume):
@@ -129,12 +121,19 @@ class AudioPort(Port):
                         maybe_fx_chain.get_backend_obj(),
                         idx
                     )
+                self.push_state()
 
     def maybe_initialize_external(self, name_hint, direction):
         self._backend_obj = self.backend.get_backend_obj().open_jack_audio_port(name_hint, direction)
+        self.push_state()
+
+    def push_state(self):
+        self.set_muted(self.muted)
+        self.set_passthrough_muted(self.passthrough_muted)
+        self.set_passthrough_volume(self.passthrough_volume)
+        self.set_volume(self.volume)
         
     def maybe_initialize_impl(self, name_hint, direction, is_internal):
-        self._pushed_initial_values = False
         if is_internal:
             self.maybe_initialize_internal(name_hint, direction)
         else:

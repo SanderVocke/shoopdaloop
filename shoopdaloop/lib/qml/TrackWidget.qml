@@ -34,7 +34,7 @@ Item {
             'schema': 'track.1',
             'id': obj_id,
             'name': name,
-            'ports': all_ports().map((p) => p.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to)),
+            'ports': ports.map((p) => p.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to)),
             'loops': all_loops.map((l) => l.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to)),
             'fx_chains': fx_chains().map((f) => f.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to))
         }
@@ -42,12 +42,12 @@ Item {
     function queue_load_tasks(data_files_dir, add_tasks_to) {
         var all_loops = Array.from(Array(loops.length).keys()).map((i) => loops[i])
         all_loops.forEach((loop) => loop.queue_load_tasks(data_files_dir, add_tasks_to))
-        all_ports().forEach((port) => port.queue_load_tasks(data_files_dir, add_tasks_to))
+        ports.forEach((port) => port.queue_load_tasks(data_files_dir, add_tasks_to))
     }
 
     function qml_close() {
         reg_entry.close()
-        all_ports().forEach(p => p.qml_close())
+        ports.forEach(p => p.qml_close())
         for(var i=0; i<loops.length; i++) {
             loops[i].qml_close();
         }
@@ -65,6 +65,9 @@ Item {
 
     readonly property var loop_factory : Qt.createComponent("LoopWidget.qml")
     property alias loops : loops_column.children
+
+    property bool fx_ready : false // Will be re-bound when FX instantiated
+    property bool fx_active : false // Will be re-bound when FX instantiated
 
     function add_loop(properties) {
         if (loop_factory.status == Component.Error) {
@@ -199,26 +202,47 @@ Item {
             is_internal: false
         }
     }
-    function audio_ports() {
-        return audio_ports_repeater.all_items();
-    }
 
-    function midi_ports() {
-        return midi_ports_repeater.all_items();
+    // Use registry lookup to find our ports back dynamically
+    RegistryLookups {
+        id: lookup_ports
+        registry: track.objects_registry
+        keys: track.initial_descriptor ? track.initial_descriptor.ports.map((p) => p.id) : []
     }
+    property alias ports : lookup_ports.objects
+    function is_audio(p) { return p.schema.match(/audioport\.[0-9]+/) }
+    function is_midi(p)  { return p.schema.match(/midiport\.[0-9]+/)  }
+    function is_in(p)    { return p.direction == "input" && p.id.match(/.*_(?:in|direct)(?:_[0-9]*)?$/); }
+    function is_out(p)   { return p.direction == "output" && p.id.match(/.*_(?:out|direct)(?:_[0-9]*)?$/); }
+    readonly property var audio_ports : ports.filter(p => is_audio(p.descriptor))
+    readonly property var midi_ports : ports.filter(p => is_midi(p.descriptor))
+    readonly property var input_ports : ports.filter(p => is_in(p.descriptor))
 
-    function all_ports() {
-        return [...audio_ports(), ...midi_ports()];
-    }
+    readonly property bool fx_input_muted : input_ports.length > 0 ?
+        (input_ports[0].muted || input_ports[0].passthrough_muted) : true
 
     RepeaterWithLoadedDetection {
         id: fx_chains_repeater
         model: track.fx_chain_descriptors.length
 
         FXChain {
+            id: chain
             descriptor: track.fx_chain_descriptors[index]
             objects_registry: track.objects_registry
             state_registry: track.state_registry
+
+            Component.onCompleted: {
+                if (index == 0) {
+                    track.fx_ready = Qt.binding(() => this.ready)
+                    track.fx_active = Qt.binding(() => this.active)
+                }
+                set_active(!track.fx_input_muted)
+            }
+
+            Connections {
+                target: track
+                function onFx_input_mutedChanged() { chain.set_active(!track.fx_input_muted) }
+            }
         }
     }
 
@@ -298,6 +322,7 @@ Item {
                     Button {
                         id: fxuibutton
                         visible: track.initial_descriptor.fx_chains.length == 1
+
                         anchors {
                             top: menubutton.bottom
                             topMargin: -6
@@ -306,8 +331,12 @@ Item {
 
                         width: 18
                         height: 28
-                        Label { text: "FX"
+                        Label {
+                            text: "FX"
                             font.pixelSize: 10
+                            color: (!track.fx_ready) ? "red" :
+                                   track.fx_active ? Material.foreground :
+                                   "grey"
                             anchors {
                                 verticalCenter: parent.verticalCenter
                                 horizontalCenter: parent.horizontalCenter

@@ -35,4 +35,15 @@ public:
     virtual void set_freewheeling(bool enabled) = 0;
 
     virtual void process(size_t frames) = 0;
+
+    // When a processing chain is instantiated, it may not immediately be
+    // ready to process.
+    // A non-ready processing chain already has valid ports but has undefined
+    // behaviour as to what will happen on those ports.
+    virtual bool is_ready() const = 0;
+
+    // A processing chain may be deactivated, in which case it will not produce
+    // any output. Typical use-case is for saving CPU.
+    virtual bool is_active() const = 0;
+    virtual void set_active(bool active) = 0;
 };
