@@ -1043,8 +1043,8 @@ Item {
                     bottomInset: 0
                     padding: 0
                     margins: 0
-                    x: 0
-                    y: parent.height + 2
+                    x: parent.width + 4
+                    y: 0
 
                     Dial {
                         id: balance_dial

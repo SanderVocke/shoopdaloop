@@ -16,6 +16,8 @@ Item {
     property alias volume_dB_min: volume_slider.from
     property alias passthrough_dB_min: passthrough_slider.from
 
+    readonly property bool is_stereo: audio_in_ports.length == 2
+
     property real initial_volume: {
         var volumes = initial_track_descriptor.ports
             .filter(p => is_out(p))
@@ -186,7 +188,7 @@ Item {
             }
             ProgressBar {
                 id: output_peak_bar_l
-                visible: trackctl.audio_out_ports.length == 2 // stereo
+                visible: trackctl.is_stereo
                 value: output_peak_meter_l.value
                 padding: 2
                 anchors {
@@ -228,7 +230,7 @@ Item {
             }
             ProgressBar {
                 id: output_peak_bar_r
-                visible: trackctl.audio_out_ports.length == 2 // stereo
+                visible: trackctl.is_stereo
                 value: output_peak_meter_r.value
                 padding: 2
                 anchors {
@@ -269,7 +271,7 @@ Item {
             }
             ProgressBar {
                 id: output_peak_bar_overall
-                visible: trackctl.audio_out_ports.length != 2 // not stereo
+                visible: !trackctl.is_stereo
                 value: output_peak_meter_overall.value
                 anchors {
                     left: output_peak_bar_l.left
@@ -333,7 +335,7 @@ Item {
                 visible: trackctl.n_midi_events_out > 0
             }
             Row {
-                spacing: -2
+                spacing: -4
                 id: volume_row
 
                 Item {
@@ -366,12 +368,14 @@ Item {
                 Slider {
                     id: volume_slider
                     orientation: Qt.Horizontal
-                    width: 85
+                    width: trackctl.is_stereo ? 70 : 85
                     height: 20
                     from: -30.0
                     to: 20.0
                     value: 0.0
                     property var initial_accent
+
+                    handle.width: 4
 
                     Material.accent: trackctl.muted ? 'grey' : trackctl.Material.accent
 
@@ -391,6 +395,44 @@ Item {
                         acceptedButtons: Qt.NoButton
                     }
                 }
+
+                Dial {
+                    id: output_balance_dial
+                    visible: trackctl.is_stereo
+                    from: -1.0
+                    to:   1.0
+                    value: 0.0
+
+                    width: 18
+                    height: 18
+
+                    anchors.verticalCenter: volume_slider.verticalCenter
+
+                    onMoved: {
+                        // TODO
+                    }
+
+                    inputMode: Dial.Vertical
+
+                    handle.width: 4
+                    handle.height: 4
+                    
+                    background: Rectangle {
+                        radius: width / 2.0
+                        width: parent.width
+                        color: '#222222'
+                        border.width: 1
+                        border.color: 'grey'
+                    }
+
+                    Label {
+                        text: 'B'
+                        font.pixelSize: 8
+                        color: 'grey'
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.horizontalCenter: parent.horizontalCenter
+                    }
+                }
             }
         }
 
@@ -403,7 +445,7 @@ Item {
             }
             ProgressBar {
                 id: input_peak_l_bar
-                visible: trackctl.audio_in_ports.length == 2 // stereo
+                visible: trackctl.is_stereo
                 value: input_peak_meter_l.value
                 padding: 2
                 anchors {
@@ -445,7 +487,7 @@ Item {
             }
             ProgressBar {
                 id: input_peak_r_bar
-                visible: trackctl.audio_in_ports.length == 2 // stereo
+                visible: trackctl.is_stereo
                 value: input_peak_meter_r.value
                 padding: 2
                 anchors {
@@ -486,7 +528,7 @@ Item {
             }
             ProgressBar {
                 id: input_peak_overall_bar
-                visible: trackctl.audio_in_ports.length != 2 // Not stereo
+                visible: !trackctl.is_stereo
                 value: input_peak_meter_overall.value
                 anchors {
                     left: input_peak_l_bar.left
@@ -551,7 +593,7 @@ Item {
             }
             Row {
                 id: passthrough_row
-                spacing: -2
+                spacing: -4
 
                 Item {
                     width: 18
@@ -583,12 +625,14 @@ Item {
                 Slider {
                     id: passthrough_slider
                     orientation: Qt.Horizontal
-                    width: 85
+                    width: trackctl.is_stereo ? 70 : 85
                     height: 20
                     from: -30.0
                     to: 20.0
                     value: 0.0
                     property var initial_accent
+                    
+                    handle.width: 4
 
                     Material.accent: trackctl.passthroughMuted ? 'grey' : trackctl.Material.accent
 
@@ -606,6 +650,44 @@ Item {
                         hoverEnabled: true
                         anchors.fill: parent
                         acceptedButtons: Qt.NoButton
+                    }
+                }
+
+                Dial {
+                    id: passthrough_balance_dial
+                    visible: trackctl.is_stereo
+                    from: -1.0
+                    to:   1.0
+                    value: 0.0
+
+                    width: 18
+                    height: 18
+
+                    anchors.verticalCenter: passthrough_slider.verticalCenter
+
+                    onMoved: {
+                        // TODO
+                    }
+
+                    inputMode: Dial.Vertical
+
+                    handle.width: 4
+                    handle.height: 4
+                    
+                    background: Rectangle {
+                        radius: width / 2.0
+                        width: parent.width
+                        color: '#222222'
+                        border.width: 1
+                        border.color: 'grey'
+                    }
+
+                    Label {
+                        text: 'B'
+                        font.pixelSize: 8
+                        color: 'grey'
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.horizontalCenter: parent.horizontalCenter
                     }
                 }
             }
