@@ -186,6 +186,7 @@ Item {
             }
             ProgressBar {
                 id: output_peak_bar_l
+                visible: trackctl.audio_out_ports.length == 2 // stereo
                 value: output_peak_meter_l.value
                 padding: 2
                 anchors {
@@ -227,6 +228,7 @@ Item {
             }
             ProgressBar {
                 id: output_peak_bar_r
+                visible: trackctl.audio_out_ports.length == 2 // stereo
                 value: output_peak_meter_r.value
                 padding: 2
                 anchors {
@@ -259,6 +261,47 @@ Item {
 
                     Rectangle {
                         width: output_peak_bar_r.visualPosition * parent.width
+                        height: parent.height
+                        radius: 2
+                        color: 'grey'
+                    }
+                }
+            }
+            ProgressBar {
+                id: output_peak_bar_overall
+                visible: trackctl.audio_out_ports.length != 2 // not stereo
+                value: output_peak_meter_overall.value
+                anchors {
+                    left: output_peak_bar_l.left
+                    right: output_peak_bar_r.right
+                    top: output_peak_bar_l.top
+                    bottom: output_peak_bar_l.bottom
+                }
+
+                // Note: dB
+                from: -30.0
+                to: 0.0
+
+                AudioLevelMeterModel {
+                    id: output_peak_meter_overall
+                    max_dt: 0.1
+
+                    input: trackctl.audio_out_ports.length > 0 ? Math.max(...trackctl.audio_out_ports.map(p => p.peak)) : 0.0
+                }
+
+                background: Rectangle {
+                    implicitWidth: 25
+                    implicitHeight: 16
+                    color: Material.background
+                    radius: 3
+                }
+
+                contentItem: Item {
+                    implicitWidth: 25
+                    implicitHeight: 16
+
+                    Rectangle {
+                        width: output_peak_bar_overall.visualPosition * parent.width
                         height: parent.height
                         radius: 2
                         color: 'grey'
@@ -360,6 +403,7 @@ Item {
             }
             ProgressBar {
                 id: input_peak_l_bar
+                visible: trackctl.audio_in_ports.length == 2 // stereo
                 value: input_peak_meter_l.value
                 padding: 2
                 anchors {
@@ -401,6 +445,7 @@ Item {
             }
             ProgressBar {
                 id: input_peak_r_bar
+                visible: trackctl.audio_in_ports.length == 2 // stereo
                 value: input_peak_meter_r.value
                 padding: 2
                 anchors {
@@ -433,6 +478,47 @@ Item {
 
                     Rectangle {
                         width: input_peak_r_bar.visualPosition * parent.width
+                        height: parent.height
+                        radius: 2
+                        color: 'grey'
+                    }
+                }
+            }
+            ProgressBar {
+                id: input_peak_overall_bar
+                visible: trackctl.audio_in_ports.length != 2 // Not stereo
+                value: input_peak_meter_overall.value
+                anchors {
+                    left: input_peak_l_bar.left
+                    right: input_peak_r_bar.right
+                    bottom: input_peak_l_bar.bottom
+                    top: input_peak_l_bar.top
+                }
+
+                // Note: dB
+                from: -30.0
+                to: 0.0
+
+                AudioLevelMeterModel {
+                    id: input_peak_meter_overall
+                    max_dt: 0.1
+
+                    input: trackctl.audio_in_ports.length > 0 ? Math.max(...trackctl.audio_in_ports.map(p => p.peak)) : 0.0
+                }
+
+                background: Rectangle {
+                    implicitWidth: 25
+                    implicitHeight: 16
+                    color: Material.background
+                    radius: 3
+                }
+
+                contentItem: Item {
+                    implicitWidth: 25
+                    implicitHeight: 16
+
+                    Rectangle {
+                        width: input_peak_overall_bar.visualPosition * parent.width
                         height: parent.height
                         radius: 2
                         color: 'grey'

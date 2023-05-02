@@ -35,10 +35,10 @@ Item {
     readonly property bool is_stereo: initial_descriptor.channels.filter(c => ['direct', 'wet'].includes(c.mode)).length == 2
     readonly property var initial_stereo_balance : {
         if (!is_stereo) { return undefined; }
-        // TODO: assumption is that id of left channel ends in "1", right in "2"
-        var left =  initial_descriptor.channels.filter(c => ['direct', 'wet'].includes(c.mode) && c.id.match(/.*1$/))
-        var right = initial_descriptor.channels.filter(c => ['direct', 'wet'].includes(c.mode) && c.id.match(/.*2$/))
-        return Stereo.balance(left, right)
+        var channels = initial_descriptor.channels.filter(c => ['direct', 'wet'].includes(c.mode) && c.type == "audio")
+        channels.sort((a,b) => a.id.localeCompare(b.id))
+        if (channels.length != 2) { throw new Error("Could not find stereo channels") }
+        return Stereo.balance(channels[0].volume, channels[1].volume)
     }
 
     SchemaCheck {
@@ -1024,7 +1024,7 @@ Item {
                 }
 
                 Popup {
-                    property bool visible_in: volume_dial_hover.hovered || volume_dial.pressed || balance_dial_hover.hovered
+                    property bool visible_in: root.is_stereo && (volume_dial_hover.hovered || volume_dial.pressed || balance_dial_hover.hovered)
                     Timer {
                         id: visible_off_timer
                         interval: 50

@@ -2,7 +2,7 @@ function balance(l_volume, r_volume) {
     var max = Math.max(l_volume, r_volume)
     var min = Math.min(l_volume, r_volume)
     var offset_ratio = 1.0 - min/max
-    var offset_sign = (l_volume < r_volume) ? -1.0 : 1.0
+    var offset_sign = (l_volume > r_volume) ? -1.0 : 1.0
     return offset_sign * offset_ratio
 }
 
