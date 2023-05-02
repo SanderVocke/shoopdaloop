@@ -1469,7 +1469,7 @@ Item {
 
         FileDialog {
             id: loaddialog
-            fileMode: FileDialog.SaveFile
+            fileMode: FileDialog.LoadFile
             acceptLabel: 'Load'
             nameFilters: [
                 'Supported sound files ('

@@ -536,7 +536,12 @@ public:
     void set_active(bool active) override { m_active = active; }
 
     void process(size_t frames) override {
-        if(!m_active || !m_instance) { return; }
+        if(!m_active || !m_instance) {
+            for (auto &port : m_output_audio_ports) {
+                port->zero();
+            }
+            return;
+        }
 
         if (frames > m_internal_buffers_size) {
             throw std::runtime_error("Carla processing chain: requesting to process more than buffer size.");

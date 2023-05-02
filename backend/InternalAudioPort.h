@@ -51,4 +51,6 @@ public:
     size_t buffer_size() const { return m_buffer.size(); }
 
     void close() override {}
+
+    void zero() { memset((void*)m_buffer.data(), 0, sizeof(float) * m_buffer.size()); }
 };
