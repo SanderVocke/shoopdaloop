@@ -14,7 +14,7 @@ Item {
     readonly property int next_mode : ready ? loader.item.next_mode : Types.LoopMode.Stopped
     readonly property int next_transition_delay : ready ? loader.item.next_transition_delay : -1
     readonly property var maybe_loop : loader.item
-    readonly property real display_peak : ready ? loader.item.display_peak : 0.0
+    readonly property var display_peaks : ready ? loader.item.display_peaks : []
     readonly property int display_midi_notes_active : ready ? loader.item.display_midi_notes_active : 0
     default property alias contents : children_holder.children
     property bool force_load : false

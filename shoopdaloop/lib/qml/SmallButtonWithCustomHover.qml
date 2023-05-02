@@ -4,11 +4,15 @@ import QtQuick.Controls.Material 2.15
 
 // Two reasons for this component:
 // - the built-in button acts strange in terms of sizing when small. This adds some offset so that things work
-// - no way to share mouse events between buttons and mouseareas apparently. so this has a mousearea instead
-//   of the Button's one.
+// - using the custom hover
 Rectangle {
     id: root
-    property bool hovered
+    property alias hovered: hoverdetect.hovered
+
+    CustomHoverDetection {
+        id: hoverdetect
+        anchors.fill: parent
+    }
 
     signal clicked()
     signal pressAndHold(var mouse)
@@ -20,13 +24,7 @@ Rectangle {
         onClicked: root.clicked()
         onPressAndHold: (mouse) => root.pressAndHold(mouse)
     }
-
-    function onMousePosition(_pt) {
-        var pt = mapFromGlobal(_pt.x, _pt.y)
-        var inside = pt.x >= 0.0 && pt.x <= width && pt.y >= 0.0 && pt.y <= height
-        root.hovered = inside
-    }
-    function onMouseExited() {
-        root.hovered = false
-    }
+    
+    function onMousePosition(_pt) { hoverdetect.onMousePosition(_pt) }
+    function onMouseExited() { hoverdetect.onMouseExited() }
 }

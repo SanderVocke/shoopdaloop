@@ -296,27 +296,27 @@ function generate_default_track(
         var channels = []
         audio_direct_port_pairs.forEach((pair, idx) => {
             channels.push(generate_loop_channel(
-                id + '_loop_' + ii + "_audio_direct_" + idx.toString(), 'direct', 'audio', 0, 1.0, pair.map(p => p.id)
+                id + '_loop_' + ii + "_audio_direct_" + (idx+1).toString(), 'direct', 'audio', 0, 1.0, pair.map(p => p.id)
             ))
         })
         midi_direct_port_pairs.forEach((pair, idx) => {
             channels.push(generate_loop_channel(
-                id + '_loop_' + ii + "_midi_direct_" + idx.toString(), 'direct', 'midi', 0, 1.0, pair.map(p => p.id)
+                id + '_loop_' + ii + "_midi_direct_" + (idx+1).toString(), 'direct', 'midi', 0, 1.0, pair.map(p => p.id)
             ))
         })
         audio_dry_port_pairs.forEach((pair, idx) => {
             channels.push(generate_loop_channel(
-                id + '_loop_' + ii + "_audio_dry_" + idx.toString(), 'dry', 'audio', 0, 1.0, pair.map(p => p.id)
+                id + '_loop_' + ii + "_audio_dry_" + (idx+1).toString(), 'dry', 'audio', 0, 1.0, pair.map(p => p.id)
             ))
         })
         midi_dry_port_pairs.forEach((pair, idx) => {
             channels.push(generate_loop_channel(
-                id + '_loop_' + ii + "_midi_dry_" + idx.toString(), 'dry', 'midi', 0, 1.0, pair.map(p => p.id)
+                id + '_loop_' + ii + "_midi_dry_" + (idx+1).toString(), 'dry', 'midi', 0, 1.0, pair.map(p => p.id)
             ))
         })
         audio_wet_port_pairs.forEach((pair, idx) => {
             channels.push(generate_loop_channel(
-                id + '_loop_' + ii + "_audio_wet_" + idx.toString(), 'wet', 'audio', 0, 1.0, pair.map(p => p.id)
+                id + '_loop_' + ii + "_audio_wet_" + (idx+1).toString(), 'wet', 'audio', 0, 1.0, pair.map(p => p.id)
             ))
         })
         var loop = generate_loop(id+'_loop_'+ii, "(" + ii + ")", 0, (first_loop_is_master && i==0) ? true : false, channels);

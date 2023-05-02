@@ -31,7 +31,7 @@ class Loop(QQuickItem):
         self._initialized = False
         self._backend = None
         self._backend_loop = None
-        self._display_peak = 0.0
+        self._display_peaks = []
         self._display_midi_notes_active = 0
         self._display_midi_events_triggered = 0
 
@@ -120,12 +120,12 @@ class Loop(QQuickItem):
             do_set()
         else:
             self.initializedChanged.connect(do_set)
-    
-    # display_peak : overall audio peak of the loop
-    displayPeakChanged = Signal(float)
-    @Property(float, notify=displayPeakChanged)
-    def display_peak(self):
-        return self._display_peak
+
+    # display_peaks : overall audio peaks of the loop
+    displayPeaksChanged = Signal(list)
+    @Property(list, notify=displayPeaksChanged)
+    def display_peaks(self):
+        return self._display_peaks
 
     # display_midi_notes_active : sum of notes active in midi channels
     displayMidiNotesActiveChanged = Signal(int)
@@ -169,7 +169,7 @@ class Loop(QQuickItem):
         prev_length = self._length
         prev_next_mode = self._next_mode
         prev_next_delay = self._next_transition_delay
-        prev_display_peak = self._display_peak
+        prev_display_peaks = self._display_peaks
         prev_display_midi_notes_active = self._display_midi_notes_active
         prev_display_midi_events_triggered = self._display_midi_events_triggered
 
@@ -179,7 +179,7 @@ class Loop(QQuickItem):
         self._position = state.position
         self._next_mode = (state.maybe_next_mode if state.maybe_next_mode != None else state.mode)
         self._next_transition_delay = (state.maybe_next_delay if state.maybe_next_delay != None else -1)
-        self._display_peak = (max([c.output_peak for c in self.audio_channels()]) if len(self.audio_channels()) > 0 else 0.0)
+        self._display_peaks = [c.output_peak for c in [a for a in self.audio_channels() if a.mode in [ChannelMode.Direct.value, ChannelMode.Wet.value]]]
         self._display_midi_notes_active = (sum([c.n_notes_active for c in self.midi_channels()]) if len(self.midi_channels()) > 0 else 0)
         self._display_midi_events_triggered = (sum([c.n_events_triggered for c in self.midi_channels()]) if len(self.midi_channels()) > 0 else 0)
 
@@ -193,8 +193,8 @@ class Loop(QQuickItem):
             self.nextModeChanged.emit(self._next_mode)
         if prev_next_delay != self._next_transition_delay:
             self.nextTransitionDelayChanged.emit(self._next_transition_delay)
-        if prev_display_peak != self._display_peak:
-            self.displayPeakChanged.emit(self._display_peak)
+        if prev_display_peaks != self._display_peaks:
+            self.displayPeaksChanged.emit(self._display_peaks)
         if prev_display_midi_notes_active != self._display_midi_notes_active:
             self.displayMidiNotesActiveChanged.emit(self._display_midi_notes_active)
         if prev_display_midi_events_triggered != self._display_midi_events_triggered:

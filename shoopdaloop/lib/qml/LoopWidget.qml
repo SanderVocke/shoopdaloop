@@ -5,10 +5,11 @@ import QtQuick.Dialogs
 
 import '../backend/frontend_interface/types.js' as Types
 import '../mode_helpers.js' as ModeHelpers
+import '../stereo.js' as Stereo
 
 // The loop widget allows manipulating a single loop within a track.
 Item {
-    id: widget
+    id: root
     property var track_widget
 
     property var initial_descriptor : null
@@ -18,15 +19,30 @@ Item {
     readonly property string obj_id: initial_descriptor.id
     property string name: initial_descriptor.name
 
+    // The "loop volume" refers to the output volume from the wet
+    // and/or direct channels. Volume of the dry channels is always
+    // at 1.
+    // Furthermore, for stereo signals we resolve the individual
+    // channel volumes to a "volume + balance" combination for the
+    // overall loop.
     readonly property real initial_volume: {
         var volumes = initial_descriptor.channels
+            .filter(c => ['direct', 'wet'].includes(c.mode))
             .map(c => ('volume' in c) ? c.volume : undefined)
             .filter(c => c != undefined)
-        return volumes.length > 0 ? Math.min(...volumes) : 1.0
+        return volumes.length > 0 ? Math.max(...volumes) : 1.0
+    }
+    readonly property bool is_stereo: initial_descriptor.channels.filter(c => ['direct', 'wet'].includes(c.mode)).length == 2
+    readonly property var initial_stereo_balance : {
+        if (!is_stereo) { return undefined; }
+        // TODO: assumption is that id of left channel ends in "1", right in "2"
+        var left =  initial_descriptor.channels.filter(c => ['direct', 'wet'].includes(c.mode) && c.id.match(/.*1$/))
+        var right = initial_descriptor.channels.filter(c => ['direct', 'wet'].includes(c.mode) && c.id.match(/.*2$/))
+        return Stereo.balance(left, right)
     }
 
     SchemaCheck {
-        descriptor: widget.initial_descriptor
+        descriptor: root.initial_descriptor
         schema: 'loop.1'
     }
 
@@ -70,7 +86,7 @@ Item {
         key: 'targeted_loop'
     }
     property alias targeted_loop : targeted_loop_lookup.object
-    property bool targeted : targeted_loop == widget
+    property bool targeted : targeted_loop == root
 
     RegistryLookup {
         id: hovered_scene_loops_lookup
@@ -113,17 +129,17 @@ Item {
 
     RegisterInRegistry {
         id: obj_reg_entry
-        object: widget
+        object: root
         key: obj_id
-        registry: widget.objects_registry
+        registry: root.objects_registry
     }
 
     RegisterInRegistry {
         id: master_reg_entry
         enabled: initial_descriptor.is_master
-        registry: widget.state_registry
+        registry: root.state_registry
         key: 'master_loop'
-        object: widget
+        object: root
     }
 
     Component.onCompleted: {
@@ -202,8 +218,8 @@ Item {
         })
         var _other_loops = _all_track_loops.filter(l => !_selected_loops.includes(l))
         // Do the transitions
-        transition_loops(_other_loops, Types.LoopMode.Stopped, use_delay, widget.sync_active)
-        transition_loops(_selected_loops, Types.LoopMode.Playing, use_delay, widget.sync_active)
+        transition_loops(_other_loops, Types.LoopMode.Stopped, use_delay, root.sync_active)
+        transition_loops(_selected_loops, Types.LoopMode.Playing, use_delay, root.sync_active)
     }
     function clear(length, emit=true) {
         dynamic_loop.clear(length);
@@ -229,7 +245,7 @@ Item {
     }
     function target() {
         deselect()
-        state_registry.replace('targeted_loop', widget)
+        state_registry.replace('targeted_loop', root)
     }
     function untarget() {
         if (targeted) {
@@ -248,12 +264,41 @@ Item {
         return chans.filter(c => c && c.obj_id.match(/.*_(?:wet|direct)(?:_[0-9]+)?$/))
     }
 
+    function get_stereo_audio_output_channels() {
+        var chans = get_audio_output_channels()
+        if (chans.length != 2) { throw new Error("attempting to get stereo channels, no stereo found") }
+        chans.sort((a, b) => a.obj_id.localeCompare(b.obj_id))
+        return chans
+    }
+
+    property real last_pushed_volume: initial_volume
+    property real last_pushed_stereo_balance: initial_stereo_balance ? initial_stereo_balance : 0.0
+
     function push_volume(volume) {
         // Only set the volume on audio output channels:
         // - Volume not supported on MIDI
-        // - Send should always have the original recorded volume of the dry signal
-        // TODO: have our dial react to volume changes of the individual channels
-        get_audio_output_channels().forEach(c => c.set_volume(volume))
+        // - Send should always have the original recorded volume of the dry signal.
+        // Also, volume + balance together make up the channel volumes in stereo mode.
+        if (root.is_stereo) {
+            var lr = get_stereo_audio_output_channels()
+            var volumes = Stereo.individual_volumes(volume, last_pushed_stereo_balance)
+            lr[0].set_volume(volumes[0])
+            lr[1].set_volume(volumes[1])
+        } else {
+            get_audio_output_channels().forEach(c => c.set_volume(volume))
+        }
+
+        last_pushed_volume = volume
+    }
+
+    function push_stereo_balance(balance) {
+        if (root.is_stereo) {
+            var lr = get_stereo_audio_output_channels()
+            var volumes = Stereo.individual_volumes(last_pushed_volume, balance)
+            lr[0].set_volume(volumes[0])
+            lr[1].set_volume(volumes[1])
+            last_pushed_stereo_balance = balance
+        }
     }
 
     function set_length(length) {
@@ -274,34 +319,34 @@ Item {
     DynamicLoop {
         id: dynamic_loop
         force_load : is_master // Master loop should always be there to sync to
-        sync_source : widget.master_loop && !widget.is_master ? widget.master_loop.maybe_loaded_loop : null;
+        sync_source : root.master_loop && !root.is_master ? root.master_loop.maybe_loaded_loop : null;
         onBackendLoopLoaded: set_length(initial_descriptor.length)
-        onCycled: widget.cycled()
+        onCycled: root.cycled()
 
         Repeater {
             id: audio_channels
-            model : widget.audio_channel_descriptors.length
+            model : root.audio_channel_descriptors.length
 
             LoopAudioChannel {
                 loop: dynamic_loop.maybe_loop
-                descriptor: widget.audio_channel_descriptors[index]
-                objects_registry: widget.objects_registry
-                state_registry: widget.state_registry
-                onRequestBackendInit: widget.force_load_backend()
-                onInitializedChanged: widget.channelInitializedChanged()
+                descriptor: root.audio_channel_descriptors[index]
+                objects_registry: root.objects_registry
+                state_registry: root.state_registry
+                onRequestBackendInit: root.force_load_backend()
+                onInitializedChanged: root.channelInitializedChanged()
             }
         }
         Repeater {
             id: midi_channels
-            model : widget.midi_channel_descriptors.length
+            model : root.midi_channel_descriptors.length
 
             LoopMidiChannel {
                 loop: dynamic_loop.maybe_loop
-                descriptor: widget.midi_channel_descriptors[index]
-                objects_registry: widget.objects_registry
-                state_registry: widget.state_registry
-                onRequestBackendInit: widget.force_load_backend()
-                onInitializedChanged: widget.channelInitializedChanged()
+                descriptor: root.midi_channel_descriptors[index]
+                objects_registry: root.objects_registry
+                state_registry: root.state_registry
+                onRequestBackendInit: root.force_load_backend()
+                onInitializedChanged: root.channelInitializedChanged()
             }
         }
     }
@@ -325,7 +370,7 @@ Item {
 
     RegistryLookup {
         id: lookup_sync_active
-        registry: widget.state_registry
+        registry: root.state_registry
         key: 'sync_active'
     }
     property alias sync_active: lookup_sync_active.object
@@ -333,13 +378,13 @@ Item {
     // UI
     StatusRect {
         id: statusrect
-        loop: widget.maybe_loop
+        loop: root.maybe_loop
 
         LoopDetailsWindow {
             id: detailswindow
-            title: widget.initial_descriptor.id + " details"
-            loop: widget
-            master_loop: widget.master_loop
+            title: root.initial_descriptor.id + " details"
+            loop: root
+            master_loop: root.master_loop
         }
 
         ContextMenu {
@@ -351,7 +396,7 @@ Item {
         id: statusrect
         property var loop
         property bool hovered : area.containsMouse
-        property string name : widget.name
+        property string name : root.name
 
         signal propagateMousePosition(var point)
         signal propagateMouseExited()
@@ -367,13 +412,13 @@ Item {
                 return default_color;
             }
 
-            if (widget.targeted) {
+            if (root.targeted) {
                 return "orange";
-            } if (widget.selected) {
+            } if (root.selected) {
                 return 'yellow';
-            } else if (widget.is_in_hovered_scene) {
+            } else if (root.is_in_hovered_scene) {
                 return 'blue';
-            } else if (widget.is_in_selected_scene) {
+            } else if (root.is_in_selected_scene) {
                 return 'red';
             }
 
@@ -397,6 +442,7 @@ Item {
 
         ProgressBar {
             id: peak_meter_l
+            visible: root.is_stereo
             anchors {
                 left: parent.left
                 right: parent.horizontalCenter
@@ -408,7 +454,7 @@ Item {
             AudioLevelMeterModel {
                 id: output_peak_meter_l
                 max_dt: 0.1
-                input: widget.maybe_loop.display_peak
+                input: root.maybe_loop.display_peaks.length >= 1 ? root.maybe_loop.display_peaks[0] : 0.0
             }
 
             from: -30.0
@@ -431,6 +477,7 @@ Item {
 
         ProgressBar {
             id: peak_meter_r
+            visible: root.is_stereo
             anchors {
                 left: parent.horizontalCenter
                 right: parent.right
@@ -442,7 +489,7 @@ Item {
             AudioLevelMeterModel {
                 id: output_peak_meter_r
                 max_dt: 0.1
-                input: widget.maybe_loop.display_peak
+                input: root.maybe_loop.display_peaks.length >= 2 ? root.maybe_loop.display_peaks[1] : 0.0
             }
 
             from: -30.0
@@ -457,6 +504,40 @@ Item {
                 Rectangle {
                     width: peak_meter_r.visualPosition * peak_meter_r.width
                     height: peak_meter_r.height
+                    color: Material.accent
+                }
+            }
+        }
+
+        ProgressBar {
+            id: peak_meter_overall
+            visible: !root.is_stereo
+            anchors {
+                left: peak_meter_l.left
+                right: peak_meter_r.right
+                bottom: peak_meter_l.bottom
+                top: peak_meter_l.top
+            }
+            height: 3
+
+            AudioLevelMeterModel {
+                id: output_peak_meter_overall
+                max_dt: 0.1
+                input: root.maybe_loop.display_peaks.length > 0 ? Math.max(...root.maybe_loop.display_peaks) : 0.0
+            }
+
+            from: -30.0
+            to: 0.0
+            value: output_peak_meter_overall.value
+
+            background: Item { anchors.fill: peak_meter_overall }
+            contentItem: Item {
+                implicitWidth: peak_meter_overall.width
+                implicitHeight: peak_meter_overall.height
+
+                Rectangle {
+                    width: peak_meter_overall.visualPosition * peak_meter_overall.width
+                    height: peak_meter_overall.height
                     color: Material.accent
                 }
             }
@@ -485,7 +566,7 @@ Item {
                 topMargin: 2
             }
 
-            visible: widget.is_master
+            visible: root.is_master
         }
 
         Item {
@@ -520,14 +601,14 @@ Item {
                     //muted: { console.log('unimplemented muted'); return false; }
                     empty: statusrect.loop.length == 0
                     onDoubleClicked: (event) => {
-                            if (event.button === Qt.LeftButton) { widget.target() }
+                            if (event.button === Qt.LeftButton) { root.target() }
                         }
                     onClicked: (event) => {
                             if (event.button === Qt.LeftButton) { 
-                                if (widget.targeted) { widget.untarget(); widget.deselect() }
-                                else { widget.toggle_selected() }
+                                if (root.targeted) { root.untarget(); root.deselect() }
+                                else { root.toggle_selected() }
                             }
-                            else if (event.button === Qt.MiddleButton) { widget.toggle_in_current_scene() }
+                            else if (event.button === Qt.MiddleButton) { root.toggle_in_current_scene() }
                             else if (event.button === Qt.RightButton) { contextmenu.popup() }
                         }
                 }
@@ -588,10 +669,10 @@ Item {
                         name: 'play'
                         color: 'green'
                         text_color: Material.foreground
-                        text: widget.delay_for_targeted != undefined ? ">" : ""
+                        text: root.delay_for_targeted != undefined ? ">" : ""
                     }
 
-                    onClicked: widget.transition(Types.LoopMode.Playing, widget.use_delay, widget.sync_active)
+                    onClicked: root.transition(Types.LoopMode.Playing, root.use_delay, root.sync_active)
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
@@ -649,10 +730,10 @@ Item {
                                         name: 'play'
                                         color: 'green'
                                         text_color: Material.foreground
-                                        text: widget.delay_for_targeted != undefined ? ">S" : "S"
+                                        text: root.delay_for_targeted != undefined ? ">S" : "S"
                                     }
                                     onClicked: { if(statusrect.loop) {
-                                        widget.play_solo_in_track()
+                                        root.play_solo_in_track()
                                         }}
 
                                     ToolTip.delay: 1000
@@ -670,9 +751,9 @@ Item {
                                         name: 'play'
                                         color: 'orange'
                                         text_color: Material.foreground
-                                        text: widget.delay_for_targeted != undefined ? ">" : ""
+                                        text: root.delay_for_targeted != undefined ? ">" : ""
                                     }
-                                    onClicked: widget.transition(Types.LoopMode.PlayingDryThroughWet, widget.use_delay, widget.sync_active)
+                                    onClicked: root.transition(Types.LoopMode.PlayingDryThroughWet, root.use_delay, root.sync_active)
 
                                     ToolTip.delay: 1000
                                     ToolTip.timeout: 5000
@@ -694,10 +775,10 @@ Item {
                         name: 'record'
                         color: 'red'
                         text_color: Material.foreground
-                        text: widget.delay_for_targeted != undefined ? ">" : ""
+                        text: root.delay_for_targeted != undefined ? ">" : ""
                     }
 
-                    onClicked: widget.transition(Types.LoopMode.Recording, widget.use_delay, widget.sync_active)
+                    onClicked: root.transition(Types.LoopMode.Recording, root.use_delay, root.sync_active)
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
@@ -756,26 +837,26 @@ Item {
                                         name: 'record'
                                         color: 'red'
                                         text_color: Material.foreground
-                                        text: (widget.targeted_loop !== undefined && widget.targeted_loop !== null) ? "><" : recordN.n.toString()
+                                        text: (root.targeted_loop !== undefined && root.targeted_loop !== null) ? "><" : recordN.n.toString()
                                         font.pixelSize: size / 2.0
                                     }
 
                                     function execute(delay, n_cycles) {
-                                        widget.transition(Types.LoopMode.Recording, delay, true)
-                                        widget.transition(Types.LoopMode.Playing, delay + n_cycles, true)
+                                        root.transition(Types.LoopMode.Recording, delay, true)
+                                        root.transition(Types.LoopMode.Playing, delay + n_cycles, true)
                                     }
 
                                     onClicked: {
-                                        if (widget.targeted_loop === undefined || widget.targeted_loop === null) {
+                                        if (root.targeted_loop === undefined || root.targeted_loop === null) {
                                             execute(0, recordN.n)
                                         } else {
                                             // A target loop is set. Do the "record together with" functionality.
                                             // TODO: code is duplicated in app shared state for MIDI source
                                             var n_cycles_delay = 0
                                             var n_cycles_record = 1
-                                            n_cycles_record = Math.ceil(widget.targeted_loop.length / widget.master_loop.length)
-                                            if (ModeHelpers.is_playing_mode(widget.targeted_loop.mode)) {
-                                                var current_cycle = Math.floor(widget.targeted_loop.position / widget.master_loop.length)
+                                            n_cycles_record = Math.ceil(root.targeted_loop.length / root.master_loop.length)
+                                            if (ModeHelpers.is_playing_mode(root.targeted_loop.mode)) {
+                                                var current_cycle = Math.floor(root.targeted_loop.position / root.master_loop.length)
                                                 n_cycles_delay = Math.max(0, n_cycles_record - current_cycle - 1)
                                             }
                                             execute(n_cycles_delay, n_cycles_record)
@@ -833,16 +914,16 @@ Item {
                                         name: 'record'
                                         color: 'orange'
                                         text_color: Material.foreground
-                                        text: widget.delay_for_targeted != undefined ? ">" : ""
+                                        text: root.delay_for_targeted != undefined ? ">" : ""
                                     }
                                     onClicked: {
-                                        var n = widget.n_multiples_of_master_length
+                                        var n = root.n_multiples_of_master_length
                                         var delay = 
-                                            widget.delay_for_targeted != undefined ? 
-                                                widget.use_delay : // delay to other
-                                                widget.n_multiples_of_master_length - widget.current_cycle - 1 // delay to self
+                                            root.delay_for_targeted != undefined ? 
+                                                root.use_delay : // delay to other
+                                                root.n_multiples_of_master_length - root.current_cycle - 1 // delay to self
                                         var prev_mode = statusrect.loop.mode
-                                        widget.transition(Types.LoopMode.RecordingDryIntoWet, delay, true)
+                                        root.transition(Types.LoopMode.RecordingDryIntoWet, delay, true)
                                         statusrect.loop.transition(prev_mode, delay + n, true)
                                     }
 
@@ -866,10 +947,10 @@ Item {
                         name: 'stop'
                         color: Material.foreground
                         text_color: Material.foreground
-                        text: widget.delay_for_targeted != undefined ? ">" : ""
+                        text: root.delay_for_targeted != undefined ? ">" : ""
                     }
 
-                    onClicked: widget.transition(Types.LoopMode.Stopped, widget.use_delay, widget.sync_active)
+                    onClicked: root.transition(Types.LoopMode.Stopped, root.use_delay, root.sync_active)
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
@@ -898,7 +979,7 @@ Item {
                     from: -30.0
                     to:   20.0
                     value: 0.0
-                    property real initial_linear_value: widget.initial_volume
+                    property real initial_linear_value: root.initial_volume
                     onInitial_linear_valueChanged: set_from_linear(initial_linear_value)
                     Component.onCompleted: set_from_linear(initial_linear_value)
 
@@ -929,7 +1010,80 @@ Item {
                         border.color: 'grey'
                     }
 
-                    
+                    Label {
+                        text: 'V'
+                        font.pixelSize: 8
+                        color: 'grey'
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.horizontalCenter: parent.horizontalCenter
+                    }
+
+                    HoverHandler {
+                        id: volume_dial_hover
+                    }
+                }
+
+                Popup {
+                    property bool visible_in: volume_dial_hover.hovered || volume_dial.pressed || balance_dial_hover.hovered
+                    Timer {
+                        id: visible_off_timer
+                        interval: 50
+                        repeat: false
+                    }
+                    onVisible_inChanged: { if (!visible_in) { visible_off_timer.restart(); } }
+                    visible: visible_in || visible_off_timer.running
+                    background: Rectangle { 
+                        width: balance_dial.width
+                        height: balance_dial.height
+                        color: Material.background
+                    }
+                    leftInset: 0
+                    rightInset: 0
+                    topInset: 0
+                    bottomInset: 0
+                    padding: 0
+                    margins: 0
+                    x: 0
+                    y: parent.height + 2
+
+                    Dial {
+                        id: balance_dial
+                        from: -1.0
+                        to:   1.0
+                        value: root.is_stereo ? root.initial_stereo_balance : 0.0
+
+                        width: volume_dial.width
+                        height: volume_dial.height
+
+                        onMoved: {
+                            push_stereo_balance(value)
+                        }
+
+                        inputMode: Dial.Vertical
+
+                        handle.width: 4
+                        handle.height: 4
+                        
+                        background: Rectangle {
+                            radius: width / 2.0
+                            width: parent.width
+                            color: '#222222'
+                            border.width: 1
+                            border.color: 'grey'
+                        }
+
+                        HoverHandler {
+                            id: balance_dial_hover
+                        }
+
+                        Label {
+                            text: 'B'
+                            font.pixelSize: 8
+                            color: 'grey'
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.horizontalCenter: parent.horizontalCenter
+                        }
+                    }
                 }
             }
         }
@@ -976,7 +1130,7 @@ Item {
         }
 
         Rectangle {
-            visible: widget.maybe_loop.display_midi_notes_active > 0
+            visible: root.maybe_loop.display_midi_notes_active > 0
             anchors {
                 right: parent.right
                 top: parent.top
@@ -988,7 +1142,7 @@ Item {
         }
 
         Rectangle {
-            visible: widget.maybe_loop.display_midi_events_triggered > 0
+            visible: root.maybe_loop.display_midi_events_triggered > 0
             anchors {
                 right: parent.right
                 top: parent.top
@@ -1105,7 +1259,7 @@ Item {
 
         ClickTrackDialog {
             id: clicktrackdialog
-            loop: widget
+            loop: root
             parent: Overlay.overlay
             x: (parent.width-width) / 2
             y: (parent.height-height) / 2
@@ -1113,7 +1267,7 @@ Item {
             onAcceptedClickTrack: (filename) => {
                                     loadoptionsdialog.filename = filename
                                     close()
-                                    widget.force_load_backend()
+                                    root.force_load_backend()
                                     loadoptionsdialog.update()
                                     loadoptionsdialog.open()
                                   }
@@ -1126,8 +1280,8 @@ Item {
             property int n_midi_channels: 0
 
             onAboutToShow: {
-                n_audio_channels = widget.get_audio_channels().length
-                n_midi_channels = widget.get_midi_channels().length
+                n_audio_channels = root.get_audio_channels().length
+                n_midi_channels = root.get_midi_channels().length
             }
 
             MenuItem {
@@ -1142,10 +1296,10 @@ Item {
                     }
                     TextField {
                         id: name_field
-                        text: widget.name
+                        text: root.name
                         font.pixelSize: 12
                         onEditingFinished: {
-                            widget.name = text
+                            root.name = text
                             background_focus.forceActiveFocus();
                         }
                     }
@@ -1169,7 +1323,7 @@ Item {
                 text: "Load MIDI..."
                 visible: menu.n_midi_channels > 0
                 onClicked: {
-                    var chans = widget.get_midi_channels()
+                    var chans = root.get_midi_channels()
                     if (chans.length == 0) { throw new Error("No MIDI channels to load"); }
                     if (chans.length > 1) { throw new Error("Cannot load into more than 1 MIDI channel"); }
                     midiloadoptionsdialog.channel = chans[0]
@@ -1180,7 +1334,7 @@ Item {
                 text: "Save MIDI..."
                 visible: menu.n_midi_channels > 0
                 onClicked: {
-                    var chans = widget.get_midi_channels()
+                    var chans = root.get_midi_channels()
                     if (chans.length == 0) { throw new Error("No MIDI channels to save"); }
                     if (chans.length > 1) { throw new Error("Cannot save more than 1 MIDI channel"); }
                     midisavedialog.channel = chans[0]
@@ -1190,14 +1344,14 @@ Item {
             MenuItem {
                 text: "Push Master Loop Length"
                 onClicked: {
-                    if (master_loop) { master_loop.set_length(widget.length) }
+                    if (master_loop) { master_loop.set_length(root.length) }
                 }
             }
             MenuItem {
                 text: "Clear"
                 onClicked: () => {
-                    if (widget.maybe_loop) {
-                        widget.maybe_loop.clear(0);
+                    if (root.maybe_loop) {
+                        root.maybe_loop.clear(0);
                     }
                 }
             }
@@ -1221,7 +1375,7 @@ Item {
             height: 200
 
             function update() {
-                var chans = widget.get_audio_channels()
+                var chans = root.get_audio_channels()
                 channels = chans.filter(select_channels.currentValue)
                 footer.standardButton(Dialog.Save).enabled = n_channels > 0;
                 savedialog.channels = channels
@@ -1277,19 +1431,19 @@ Item {
             })
             property var channels: []
             onAccepted: {
-                if (!widget.maybe_loaded_loop) { 
+                if (!root.maybe_loaded_loop) { 
                     console.log("Cannot save: loop not loaded")
                     return;
                 }
                 close()
-                widget.state_registry.save_action_started()
+                root.state_registry.save_action_started()
                 try {
                     var filename = selectedFile.toString().replace('file://', '')
-                    var samplerate = widget.maybe_loaded_loop.backend.get_sample_rate()
+                    var samplerate = root.maybe_loaded_loop.backend.get_sample_rate()
                     var task = file_io.save_channels_to_soundfile_async(filename, samplerate, channels)
-                    task.when_finished(() => widget.state_registry.save_action_finished())
+                    task.when_finished(() => root.state_registry.save_action_finished())
                 } catch (e) {
-                    widget.state_registry.save_action_finished()
+                    root.state_registry.save_action_finished()
                     throw e;
                 }
             }
@@ -1302,13 +1456,13 @@ Item {
             nameFilters: ["MIDI files (*.mid)"]
             property var channel: null
             onAccepted: {
-                if (!widget.maybe_loaded_loop) { 
+                if (!root.maybe_loaded_loop) { 
                     console.log("Cannot save: loop not loaded")
                     return;
                 }
                 close()
                 var filename = selectedFile.toString().replace('file://', '')
-                var samplerate = widget.maybe_loaded_loop.backend.get_sample_rate()
+                var samplerate = root.maybe_loaded_loop.backend.get_sample_rate()
                 file_io.save_channel_to_midi_async(filename, samplerate, channel)
             }
         }
@@ -1325,7 +1479,7 @@ Item {
             onAccepted: {
                 loadoptionsdialog.filename = selectedFile.toString().replace('file://', '')
                 close()
-                widget.force_load_backend()
+                root.force_load_backend()
                 loadoptionsdialog.update()
                 loadoptionsdialog.open()
             }
@@ -1346,7 +1500,7 @@ Item {
             readonly property int n_channels : channels_to_load.length
             property int n_file_channels : 0
             property int file_sample_rate : 0
-            property int backend_sample_rate : widget.maybe_loaded_loop ? widget.maybe_loaded_loop.backend.get_sample_rate() : 0
+            property int backend_sample_rate : root.maybe_loaded_loop ? root.maybe_loaded_loop.backend.get_sample_rate() : 0
             property bool will_resample : file_sample_rate != backend_sample_rate
 
             width: 300
@@ -1359,7 +1513,7 @@ Item {
             }
 
             function update() {
-                var chans = widget.get_audio_channels()
+                var chans = root.get_audio_channels()
                 direct_audio_channels = chans.filter(c => c.mode == Types.ChannelMode.Direct)
                 dry_audio_channels = chans.filter(c => c.mode == Types.ChannelMode.Dry)
                 wet_audio_channels = chans.filter(c => c.mode == Types.ChannelMode.Wet)
@@ -1379,14 +1533,14 @@ Item {
             }
 
             onAccepted: {
-                if (!widget.maybe_loaded_loop) { 
+                if (!root.maybe_loaded_loop) { 
                     console.log("Cannot load: loop not loaded")
                     return;
                 }
-                widget.state_registry.load_action_started()
+                root.state_registry.load_action_started()
                 try {
                     close()
-                    var samplerate = widget.maybe_loaded_loop.backend.get_sample_rate()
+                    var samplerate = root.maybe_loaded_loop.backend.get_sample_rate()
                     // Distribute file channels round-robin over loop channels.
                     // TODO: provide other options
                     var mapping = Array.from(Array(n_file_channels).keys()).map(v => [])
@@ -1396,10 +1550,10 @@ Item {
                         fidx = (fidx + 1) % n_file_channels
                     }
                     var task = file_io.load_soundfile_to_channels_async(filename, samplerate, null, mapping, 
-                        update_audio_length_checkbox.checked ? widget.maybe_loaded_loop : null)
-                    task.when_finished( () => widget.state_registry.load_action_finished() )
+                        update_audio_length_checkbox.checked ? root.maybe_loaded_loop : null)
+                    task.when_finished( () => root.state_registry.load_action_finished() )
                 } catch(e) {
-                    widget.state_registry.load_action_finished()
+                    root.state_registry.load_action_finished()
                     throw e
                 }
             }
@@ -1480,10 +1634,10 @@ Item {
             property string filename
             property var channel : null
             function doLoad(update_loop_length) {
-                widget.force_load_backend()
-                var samplerate = widget.maybe_loaded_loop.backend.get_sample_rate()
+                root.force_load_backend()
+                var samplerate = root.maybe_loaded_loop.backend.get_sample_rate()
                 file_io.load_midi_to_channel_async(filename, samplerate, channel, update_loop_length ?
-                    widget.maybe_loaded_loop : null)
+                    root.maybe_loaded_loop : null)
             }
 
             onAccepted: doLoad(true)

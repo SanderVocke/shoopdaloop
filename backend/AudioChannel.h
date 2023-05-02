@@ -442,12 +442,10 @@ public:
     }
 
     float get_output_peak() const {
-        throw_if_commands_queued();
         return ma_output_peak;
     }
 
     void reset_output_peak() {
-        throw_if_commands_queued();
         ma_output_peak = 0.0f;
     }
 
