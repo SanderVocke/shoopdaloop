@@ -105,7 +105,7 @@ public:
 
     // NOTE: only use on process thread!
     AudioChannel<SampleT>& operator= (AudioChannel<SampleT> const& other) {
-        throw_if_commands_queued();
+        mp_proc_queue.reset();
         if (other.ma_buffer_size != ma_buffer_size) {
             throw std::runtime_error("Cannot copy audio channels with different buffer sizes.");
         }
@@ -119,7 +119,6 @@ public:
         mp_recording_source_buffer_size = other.mp_recording_source_buffer_size;
         ma_mode = other.ma_mode;
         ma_volume = other.ma_volume;
-        mp_proc_queue.reset();
         return *this;
     }
 
@@ -210,8 +209,6 @@ public:
     // Load data into the loop. Should always be called outside
     // the processing thread.
     void load_data(SampleT* samples, size_t len, bool thread_safe = true) {
-        throw_if_commands_queued();
-
         // Convert to internal storage layout
         auto buffers = std::make_shared<std::vector<Buffer>>(std::ceil((float)len / (float)ma_buffer_size));
         for (size_t idx=0; idx < buffers->size(); idx++) {
@@ -238,8 +235,6 @@ public:
     // Get loop data. Should always be called outside
     // the processing thread.
     std::vector<SampleT> get_data(bool thread_safe = true) {
-        throw_if_commands_queued();
-
         std::vector<Buffer> buffers;
         size_t length;
         auto cmd = [this, &buffers, &length]() {

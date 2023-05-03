@@ -431,7 +431,7 @@ Item {
                         anchors.fill: parent
 
                         property real start : data_window_rect.x
-                        property real interval : data_window_rect.width
+                        property real interval : root.master_loop.length / root.channels_data['samples_per_bin']
                         property var positions : {
                             if (interval && interval > 0 && parent.width / interval < 1000) {
                                 var r = []

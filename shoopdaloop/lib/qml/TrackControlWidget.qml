@@ -16,7 +16,8 @@ Item {
     property alias volume_dB_min: volume_slider.from
     property alias passthrough_dB_min: passthrough_slider.from
 
-    readonly property bool is_stereo: audio_in_ports.length == 2
+    readonly property bool in_is_stereo: audio_in_ports.length == 2
+    readonly property bool out_is_stereo: audio_out_ports.length == 2
 
     property real initial_volume: {
         var volumes = initial_track_descriptor.ports
@@ -188,7 +189,7 @@ Item {
             }
             ProgressBar {
                 id: output_peak_bar_l
-                visible: trackctl.is_stereo
+                visible: trackctl.out_is_stereo
                 value: output_peak_meter_l.value
                 padding: 2
                 anchors {
@@ -230,7 +231,7 @@ Item {
             }
             ProgressBar {
                 id: output_peak_bar_r
-                visible: trackctl.is_stereo
+                visible: trackctl.out_is_stereo
                 value: output_peak_meter_r.value
                 padding: 2
                 anchors {
@@ -271,7 +272,7 @@ Item {
             }
             ProgressBar {
                 id: output_peak_bar_overall
-                visible: !trackctl.is_stereo
+                visible: !trackctl.out_is_stereo
                 value: output_peak_meter_overall.value
                 anchors {
                     left: output_peak_bar_l.left
@@ -368,7 +369,7 @@ Item {
                 Slider {
                     id: volume_slider
                     orientation: Qt.Horizontal
-                    width: trackctl.is_stereo ? 70 : 85
+                    width: trackctl.out_is_stereo ? 70 : 85
                     height: 20
                     from: -30.0
                     to: 20.0
@@ -398,7 +399,7 @@ Item {
 
                 Dial {
                     id: output_balance_dial
-                    visible: trackctl.is_stereo
+                    visible: trackctl.out_is_stereo
                     from: -1.0
                     to:   1.0
                     value: 0.0
@@ -445,7 +446,7 @@ Item {
             }
             ProgressBar {
                 id: input_peak_l_bar
-                visible: trackctl.is_stereo
+                visible: trackctl.in_is_stereo
                 value: input_peak_meter_l.value
                 padding: 2
                 anchors {
@@ -487,7 +488,7 @@ Item {
             }
             ProgressBar {
                 id: input_peak_r_bar
-                visible: trackctl.is_stereo
+                visible: trackctl.in_is_stereo
                 value: input_peak_meter_r.value
                 padding: 2
                 anchors {
@@ -528,7 +529,7 @@ Item {
             }
             ProgressBar {
                 id: input_peak_overall_bar
-                visible: !trackctl.is_stereo
+                visible: !trackctl.in_is_stereo
                 value: input_peak_meter_overall.value
                 anchors {
                     left: input_peak_l_bar.left
@@ -625,7 +626,7 @@ Item {
                 Slider {
                     id: passthrough_slider
                     orientation: Qt.Horizontal
-                    width: trackctl.is_stereo ? 70 : 85
+                    width: trackctl.in_is_stereo ? 70 : 85
                     height: 20
                     from: -30.0
                     to: 20.0
@@ -655,7 +656,7 @@ Item {
 
                 Dial {
                     id: passthrough_balance_dial
-                    visible: trackctl.is_stereo
+                    visible: trackctl.in_is_stereo
                     from: -1.0
                     to:   1.0
                     value: 0.0
