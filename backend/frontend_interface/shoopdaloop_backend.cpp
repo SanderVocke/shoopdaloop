@@ -631,15 +631,6 @@ Backend &PortInfo::get_backend() {
 }
 
 void PortInfo::connect_passthrough(const SharedPortInfo &other) {
-    if(dynamic_cast<InternalAudioPort<float>*>(port.get())) {
-        std::cout << "From FX audio port passthrough connect in back-end!\n";
-    }
-    if(dynamic_cast<InternalAudioPort<float>*>(other->port.get())) {
-        std::cout << "To FX audio port passthrough connect in back-end!\n";
-    }
-    if(dynamic_cast<InternalLV2MidiOutputPort*>(other->port.get())) {
-        std::cout << "To FX MIDI port passthrough connect in back-end!\n";
-    }
     get_backend().cmd_queue.queue([=]() {
         for (auto &_other : mp_passthrough_to) {
             if(auto __other = _other.lock()) {
@@ -1268,7 +1259,6 @@ midi_channel_data_t *get_midi_channel_data (shoopdaloop_loop_midi_channel_t  *ch
 
 void load_audio_channel_data  (shoopdaloop_loop_audio_channel_t *channel, audio_channel_data_t *data) {
     auto &chan = *internal_audio_channel(channel);
-    std::cout << "BACKEND: loading " << data->n_samples << " samples\n";
     evaluate_before_or_after_process<void>(
         [&chan, &data]() { chan.maybe_audio()->load_data(data->data, data->n_samples); },
         chan.maybe_audio(),
@@ -1709,7 +1699,6 @@ shoopdaloop_midi_port_t **fx_chain_midi_input_ports(shoopdaloop_fx_chain_t *chai
         rval[i] = external_midi_port(ports[i]);
     }
     *n_out = ports.size();
-    std::cout << "Found " << *n_out << " MIDI input ports for FX chain." << std::endl;
     return rval;
 }
 

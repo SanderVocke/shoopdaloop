@@ -176,16 +176,19 @@ function generate_default_track(
     }
 
     var fx_chains = []
+    var n_fx_audio_outputs = 0
+    var n_fx_audio_inputs = 0
+    var n_fx_midi_inputs = 0
     if (drywet_carla_type) {
-        var n_audio_inputs =
+        n_fx_audio_inputs =
             drywet_carla_type == 'carla_rack' ? 2 :
             drywet_carla_type == 'carla_patchbay' ? 2 :
             drywet_carla_type == 'carla_patchbay_16' ? 16 :
             0
-        var n_audio_outputs = n_audio_inputs
-        var n_midi_inputs = 1
+        n_fx_audio_outputs = n_fx_audio_inputs
+        n_fx_midi_inputs = 1
         var ports = []
-        for (var i=0; i<n_audio_inputs; i++) {
+        for (var i=0; i<n_fx_audio_inputs; i++) {
             var id_post = fx_chain_port_id_part("audio", "in", i)
             ports.push(generate_audio_port(
                 id + id_post,
@@ -196,7 +199,7 @@ function generate_default_track(
                 false
             ))
         }
-        for (var i=0; i<n_audio_outputs; i++) {
+        for (var i=0; i<n_fx_audio_outputs; i++) {
             var id_post = fx_chain_port_id_part("audio", "out", i)
             ports.push(generate_audio_port(
                 id + id_post,
@@ -207,7 +210,7 @@ function generate_default_track(
                 false
             ))
         }
-        for (var i=0; i<n_midi_inputs; i++) {
+        for (var i=0; i<n_fx_midi_inputs; i++) {
             var id_post = fx_chain_port_id_part("midi", "in", i)
             ports.push(generate_midi_port(
                 id + id_post,
@@ -305,18 +308,24 @@ function generate_default_track(
             ))
         })
         audio_dry_port_pairs.forEach((pair, idx) => {
+            var ports_to_connect = pair.map(p => p.id)
+            if (n_fx_audio_inputs > idx) { ports_to_connect.push(id + fx_chain_port_id_part("audio", "in", idx)) }
             channels.push(generate_loop_channel(
-                id + '_loop_' + ii + "_audio_dry_" + (idx+1).toString(), 'dry', 'audio', 0, 1.0, pair.map(p => p.id)
+                id + '_loop_' + ii + "_audio_dry_" + (idx+1).toString(), 'dry', 'audio', 0, 1.0, ports_to_connect
             ))
         })
         midi_dry_port_pairs.forEach((pair, idx) => {
+            var ports_to_connect = pair.map(p => p.id)
+            if (n_fx_midi_inputs > idx) { ports_to_connect.push(id + fx_chain_port_id_part("midi", "in", idx)) }
             channels.push(generate_loop_channel(
-                id + '_loop_' + ii + "_midi_dry_" + (idx+1).toString(), 'dry', 'midi', 0, 1.0, pair.map(p => p.id)
+                id + '_loop_' + ii + "_midi_dry_" + (idx+1).toString(), 'dry', 'midi', 0, 1.0, ports_to_connect
             ))
         })
         audio_wet_port_pairs.forEach((pair, idx) => {
+            var ports_to_connect = pair.map(p => p.id)
+            if (n_fx_audio_outputs > idx) { ports_to_connect.push(id + fx_chain_port_id_part("audio", "out", idx)) }
             channels.push(generate_loop_channel(
-                id + '_loop_' + ii + "_audio_wet_" + (idx+1).toString(), 'wet', 'audio', 0, 1.0, pair.map(p => p.id)
+                id + '_loop_' + ii + "_audio_wet_" + (idx+1).toString(), 'wet', 'audio', 0, 1.0, ports_to_connect
             ))
         })
         var loop = generate_loop(id+'_loop_'+ii, "(" + ii + ")", 0, (first_loop_is_master && i==0) ? true : false, channels);

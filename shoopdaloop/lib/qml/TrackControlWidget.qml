@@ -198,7 +198,7 @@ Item {
                 }
 
                 // Note: dB
-                from: -30.0
+                from: -50.0
                 to: 0.0
 
                 AudioLevelMeterModel {
@@ -240,7 +240,7 @@ Item {
                 }
 
                 // Note: dB
-                from: -30.0
+                from: -50.0
                 to: 0.0
 
                 AudioLevelMeterModel {
@@ -281,7 +281,7 @@ Item {
                 }
 
                 // Note: dB
-                from: -30.0
+                from: -50.0
                 to: 0.0
 
                 AudioLevelMeterModel {
@@ -455,7 +455,7 @@ Item {
                 }
 
                 // Note: dB
-                from: -30.0
+                from: -50.0
                 to: 0.0
 
                 AudioLevelMeterModel {
@@ -497,7 +497,7 @@ Item {
                 }
 
                 // Note: dB
-                from: -30.0
+                from: -50.0
                 to: 0.0
 
                 AudioLevelMeterModel {
@@ -538,7 +538,7 @@ Item {
                 }
 
                 // Note: dB
-                from: -30.0
+                from: -50.0
                 to: 0.0
 
                 AudioLevelMeterModel {

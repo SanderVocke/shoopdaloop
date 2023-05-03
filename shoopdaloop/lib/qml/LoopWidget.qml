@@ -457,7 +457,7 @@ Item {
                 input: root.maybe_loop.display_peaks.length >= 1 ? root.maybe_loop.display_peaks[0] : 0.0
             }
 
-            from: -30.0
+            from: -50.0
             to: 0.0
             value: output_peak_meter_l.value
 
@@ -492,7 +492,7 @@ Item {
                 input: root.maybe_loop.display_peaks.length >= 2 ? root.maybe_loop.display_peaks[1] : 0.0
             }
 
-            from: -30.0
+            from: -50.0
             to: 0.0
             value: output_peak_meter_r.value
 
@@ -1469,7 +1469,7 @@ Item {
 
         FileDialog {
             id: loaddialog
-            fileMode: FileDialog.LoadFile
+            fileMode: FileDialog.OpenFile
             acceptLabel: 'Load'
             nameFilters: [
                 'Supported sound files ('

@@ -52,5 +52,7 @@ public:
 
     void close() override {}
 
-    void zero() { memset((void*)m_buffer.data(), 0, sizeof(float) * m_buffer.size()); }
+    void zero() {
+        memset((void*)m_buffer.data(), 0, sizeof(float) * m_buffer.size());
+    }
 };
