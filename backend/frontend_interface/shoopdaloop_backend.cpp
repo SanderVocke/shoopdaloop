@@ -383,11 +383,21 @@ void Backend::PROC_process (jack_nframes_t nframes) {
     
     // Finish processing any channels that come before FX.
     auto before_fx_channel_process = [&](auto &c) {
-        if (c->ma_process_when == ProcessWhen::BeforeFXChains) { c->channel->PROC_finalize_process(); }
+        if (c && c->ma_process_when == ProcessWhen::BeforeFXChains) { c->channel->PROC_finalize_process(); }
     };
     for (auto & loop: loops) {
         for (auto & channel: loop->mp_audio_channels) { before_fx_channel_process(channel); }
         for (auto & channel: loop->mp_midi_channels)  { before_fx_channel_process(channel); }
+    }
+
+    // Finish processing any ports that come before FX.
+    auto before_fx_port_process = [&](auto &p) {
+        if (p && p->ma_process_when == ProcessWhen::BeforeFXChains) { p->PROC_finalize_process(nframes); }
+    };
+    for (auto &port : ports) { before_fx_port_process(port); }
+    for (auto & chain : fx_chains) {
+        for (auto & p : chain->mc_audio_input_ports) { before_fx_port_process(p); }
+        for (auto & p : chain->mc_midi_input_ports)  { before_fx_port_process(p); }
     }
 
     // Process the FX chains.
@@ -406,19 +416,23 @@ void Backend::PROC_process (jack_nframes_t nframes) {
 
     // Finish processing any channels that come after FX.
     auto after_fx_channel_process = [&](auto &c) {
-        if (c->ma_process_when == ProcessWhen::AfterFXChains) { c->channel->PROC_finalize_process(); }
+        if (c && c->ma_process_when == ProcessWhen::AfterFXChains) { c->channel->PROC_finalize_process(); }
     };
     for (auto & loop: loops) {
         for (auto & channel: loop->mp_audio_channels) { after_fx_channel_process(channel); }
         for (auto & channel: loop->mp_midi_channels)  { after_fx_channel_process(channel); }
     }
 
-    // Prepare state for next round.
-    for (auto &port : ports) {
-        if (port) {
-            port->PROC_finalize_process(nframes);
-        }
+    // Finish processing any ports that come after FX.
+    auto after_fx_port_process = [&](auto &p) {
+        if (p && p->ma_process_when == ProcessWhen::AfterFXChains) { p->PROC_finalize_process(nframes); }
+    };
+    for (auto &port : ports) { after_fx_port_process(port); }
+    for (auto & chain : fx_chains) {
+        for (auto & p : chain->mc_audio_output_ports) { after_fx_port_process(p); }
     }
+
+    // Finish processing loops.
     for (auto &loop : loops) {
         if (loop) {
             loop->PROC_finalize_process();

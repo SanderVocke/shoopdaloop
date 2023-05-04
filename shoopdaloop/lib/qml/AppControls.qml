@@ -79,29 +79,6 @@ Item {
             }
         }
 
-        // Button {
-        //     anchors {
-        //         left: parent.left
-        //         right: parent.right
-        //     }
-        //     height: 35
-        //     onClicked: settings.open()
-
-        //     MaterialDesignIcon {
-        //         size: parent.width - 10
-        //         anchors.centerIn: parent
-        //         name: 'settings'
-        //         color: Material.foreground
-        //     }
-
-        //     SettingsDialog {
-        //         id: settings
-        //         parent: Overlay.overlay
-        //         x: (parent.width - width) / 2
-        //         y: (parent.height - height) / 2
-        //     }
-        // }
-
         Button {
             height: 35
             width: 30
@@ -119,8 +96,9 @@ Item {
             id: sync_active_button
             height: 35
             width: 30
-            property bool sync_active: true
-            onClicked: sync_active = !sync_active
+            property bool sync_active_base: true
+            onClicked: sync_active_base = !sync_active_base
+            property bool sync_active : sync_active_base && !key_modifiers.control_pressed
 
             MaterialDesignIcon {
                 size: Math.min(parent.width, parent.height) - 10

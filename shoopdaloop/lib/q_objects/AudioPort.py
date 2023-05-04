@@ -76,7 +76,7 @@ class AudioPort(Port):
         self.volume = state.volume
         self.passthrough_volume = state.passthrough_volume
         self.muted = state.muted
-        self.passthrough_muted = state.muted
+        self.passthrough_muted = state.passthrough_muted
     
     @Slot(float)
     def set_volume(self, volume):

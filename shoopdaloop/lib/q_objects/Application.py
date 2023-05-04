@@ -5,7 +5,7 @@ import time
 
 from PySide6.QtQml import QQmlApplicationEngine, QJSValue
 from PySide6.QtGui import QGuiApplication, QIcon
-from PySide6.QtCore import QTimer, QObject, Q_ARG, QMetaObject, Qt
+from PySide6.QtCore import QTimer, QObject, Q_ARG, QMetaObject, Qt, QEvent
 
 from ...third_party.pynsm.nsmclient import NSMClient, NSMNotRunningError
 
@@ -14,6 +14,7 @@ from ..qml_helpers import register_shoopdaloop_qml_classes
 from .SchemaValidator import SchemaValidator
 from .FileIO import FileIO
 from .ClickTrackGenerator import ClickTrackGenerator
+from .KeyModifiers import KeyModifiers
 
 class Application(QGuiApplication):
     def __init__(self, title, main_qml):
@@ -35,9 +36,11 @@ class Application(QGuiApplication):
         self.file_io = FileIO()
         self.schema_validator = SchemaValidator(parent=self)
         self.click_track_generator = ClickTrackGenerator(parent=self)
+        self.key_modifiers = KeyModifiers(parent=self)
         self.engine.rootContext().setContextProperty("schema_validator", self.schema_validator)
         self.engine.rootContext().setContextProperty("file_io", self.file_io)
         self.engine.rootContext().setContextProperty("click_track_generator", self.click_track_generator)
+        self.engine.rootContext().setContextProperty("key_modifiers", self.key_modifiers)
         if main_qml:
             self.engine.load(main_qml)
         
@@ -56,6 +59,7 @@ class Application(QGuiApplication):
                 pass
         
         self.engine.rootObjects()[0].sceneGraphInitialized.connect(start_nsm)
+        self.installEventFilter(self)
     
     def exit(self, retcode):
         if self.nsm_client:
@@ -146,3 +150,8 @@ class Application(QGuiApplication):
     def exec(self):
         print("Entering Qt event loop.")
         return super(Application, self).exec()
+    
+    def eventFilter(self, source, event):
+        if event.type() in [QEvent.KeyPress, QEvent.KeyRelease]:
+            self.key_modifiers.process(event)
+        return False

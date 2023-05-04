@@ -47,7 +47,7 @@ Item {
     property bool muted: audio_out_ports.length > 0 ? audio_out_ports[0].muted : false
     property bool passthroughMuted: {
         var in_ports = [...audio_in_ports, ...midi_in_ports]
-        return in_ports.length > 0 ? in_ports[0].muted : false
+        return in_ports.length > 0 ? in_ports[0].passthrough_muted : false
     }
 
     property var initial_track_descriptor : null
@@ -138,29 +138,6 @@ Item {
         audio_in_ports.forEach((p) => push_volume(passthrough_dB, p))
     }
 
-    // Connections {
-    //     target: ports_manager || null
-    //     function onVolumeChanged() {
-    //         convert_volume.linear = ports_manager.volume
-    //         volume_dB = convert_volume.dB
-    //     }
-    //     function onPassthroughChanged() {
-    //         convert_passthrough.linear = ports_manager.passthrough
-    //         passthrough_dB = convert_passthrough.dB
-    //     }
-    // }
-
-    // Connections {
-    //     target: ports_manager
-    //     function onMutedChanged() { trackctl.muted = ports_manager.muted }
-    //     function onPassthroughMutedChanged() { trackctl.passthroughMuted = ports_manager.passthroughMuted }
-    // }
-
-    // Component.onCompleted: {
-    //     muted = ports_manager.muted
-    //     passthroughMuted = ports_manager.passthroughMuted
-    // }
-
     function toggle_muted() {
         var n = !muted
         audio_out_ports.forEach((p) => p.set_muted(n))
@@ -169,8 +146,8 @@ Item {
 
     function toggle_passthroughMuted() {
         var n = !passthroughMuted
-        audio_in_ports.forEach((p) => p.set_muted(n))
-        midi_in_ports.forEach((p) => p.set_muted(n))
+        audio_in_ports.forEach((p) => p.set_passthrough_muted(n))
+        midi_in_ports.forEach((p) => p.set_passthrough_muted(n))
     }
 
     signal mute()
@@ -224,7 +201,7 @@ Item {
                         width: output_peak_bar_l.visualPosition * parent.width
                         height: parent.height
                         radius: 2
-                        color: 'grey'
+                        color: '#555555'
                         x: (1.0 - output_peak_bar_l.visualPosition) * parent.width
                     }
                 }
@@ -266,7 +243,7 @@ Item {
                         width: output_peak_bar_r.visualPosition * parent.width
                         height: parent.height
                         radius: 2
-                        color: 'grey'
+                        color: '#555555'
                     }
                 }
             }
@@ -307,7 +284,7 @@ Item {
                         width: output_peak_bar_overall.visualPosition * parent.width
                         height: parent.height
                         radius: 2
-                        color: 'grey'
+                        color: '#555555'
                     }
                 }
             }
@@ -366,7 +343,7 @@ Item {
                         }
                     }
                 }
-                Slider {
+                AudioSlider {
                     id: volume_slider
                     orientation: Qt.Horizontal
                     width: trackctl.out_is_stereo ? 70 : 85
@@ -384,20 +361,12 @@ Item {
                     onInitial_value_dBChanged: value = initial_value_dB
                     Component.onCompleted: value = initial_value_dB
 
-                    ToolTip {
-                        delay: 1000
-                        visible: volume_ma.containsMouse
-                        text: 'Playback and monitoring volume.'
-                    }
-                    MouseArea {
-                        id: volume_ma
-                        hoverEnabled: true
-                        anchors.fill: parent
-                        acceptedButtons: Qt.NoButton
-                    }
+                    tooltip: 'Track volume. Double-click to reset.'
+                    value_tooltip_postfix: " dB"
+                    show_value_tooltip: true
                 }
 
-                Dial {
+                AudioDial {
                     id: output_balance_dial
                     visible: trackctl.out_is_stereo
                     from: -1.0
@@ -409,11 +378,14 @@ Item {
 
                     anchors.verticalCenter: volume_slider.verticalCenter
 
+                    tooltip: 'Track stereo balance. Double-click to reset.'
+                    label: 'B'
+
                     onMoved: {
                         // TODO
                     }
 
-                    inputMode: Dial.Vertical
+                    show_value_tooltip: true
 
                     handle.width: 4
                     handle.height: 4
@@ -424,14 +396,6 @@ Item {
                         color: '#222222'
                         border.width: 1
                         border.color: 'grey'
-                    }
-
-                    Label {
-                        text: 'B'
-                        font.pixelSize: 8
-                        color: 'grey'
-                        anchors.verticalCenter: parent.verticalCenter
-                        anchors.horizontalCenter: parent.horizontalCenter
                     }
                 }
             }
@@ -463,7 +427,7 @@ Item {
                     id: input_peak_meter_l
                     max_dt: 0.1
 
-                    input: trackctl.audio_in_ports.length > 0 ? trackctl.audio_in_ports[0].peak : 0.0
+                    input: trackctl.audio_in_ports.length > 0 ? trackctl.audio_in_ports[0].peak * trackctl.audio_in_ports[0].passthrough_volume : 0.0
                 }
 
                 background: Rectangle {
@@ -481,7 +445,7 @@ Item {
                         width: input_peak_l_bar.visualPosition * parent.width
                         height: parent.height
                         radius: 2
-                        color: 'grey'
+                        color: '#555555'
                         x: parent.width - input_peak_l_bar.visualPosition * parent.width
                     }
                 }
@@ -505,7 +469,7 @@ Item {
                     id: input_peak_meter_r
                     max_dt: 0.1
 
-                    input: trackctl.audio_in_ports.length > 1 ? trackctl.audio_in_ports[1].peak : 0.0
+                    input: trackctl.audio_in_ports.length > 1 ? trackctl.audio_in_ports[1].peak * trackctl.audio_in_ports[1].passthrough_volume : 0.0
                 }
 
                 background: Rectangle {
@@ -523,7 +487,7 @@ Item {
                         width: input_peak_r_bar.visualPosition * parent.width
                         height: parent.height
                         radius: 2
-                        color: 'grey'
+                        color: '#555555'
                     }
                 }
             }
@@ -546,7 +510,7 @@ Item {
                     id: input_peak_meter_overall
                     max_dt: 0.1
 
-                    input: trackctl.audio_in_ports.length > 0 ? Math.max(...trackctl.audio_in_ports.map(p => p.peak)) : 0.0
+                    input: trackctl.audio_in_ports.length > 0 ? Math.max(...trackctl.audio_in_ports.map(p => p.peak)) * Math.max(...trackctl.audio_in_ports.map(p => p.passthrough_volume)) : 0.0
                 }
 
                 background: Rectangle {
@@ -564,7 +528,7 @@ Item {
                         width: input_peak_overall_bar.visualPosition * parent.width
                         height: parent.height
                         radius: 2
-                        color: 'grey'
+                        color: '#555555'
                     }
                 }
             }
@@ -623,7 +587,7 @@ Item {
                         }
                     }
                 }
-                Slider {
+                AudioSlider {
                     id: passthrough_slider
                     orientation: Qt.Horizontal
                     width: trackctl.in_is_stereo ? 70 : 85
@@ -641,20 +605,12 @@ Item {
                     onInitial_value_dBChanged: value = initial_value_dB
                     Component.onCompleted: value = initial_value_dB
 
-                    ToolTip {
-                        delay: 1000
-                        visible: passthrough_ma.containsMouse
-                        text: 'Passthrough monitoring level.'
-                    }
-                    MouseArea {
-                        id: passthrough_ma
-                        hoverEnabled: true
-                        anchors.fill: parent
-                        acceptedButtons: Qt.NoButton
-                    }
+                    tooltip: 'Track input volume. Double-click to reset.'
+                    show_value_tooltip: true
+                    value_tooltip_postfix: " dB"
                 }
 
-                Dial {
+                AudioDial {
                     id: passthrough_balance_dial
                     visible: trackctl.in_is_stereo
                     from: -1.0
@@ -670,10 +626,10 @@ Item {
                         // TODO
                     }
 
-                    inputMode: Dial.Vertical
-
                     handle.width: 4
                     handle.height: 4
+
+                    show_value_tooltip: true
                     
                     background: Rectangle {
                         radius: width / 2.0
@@ -683,13 +639,8 @@ Item {
                         border.color: 'grey'
                     }
 
-                    Label {
-                        text: 'B'
-                        font.pixelSize: 8
-                        color: 'grey'
-                        anchors.verticalCenter: parent.verticalCenter
-                        anchors.horizontalCenter: parent.horizontalCenter
-                    }
+                    tooltip: 'Track input stereo balance. Double-click to reset.'
+                    label: 'B'
                 }
             }
         }

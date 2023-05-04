@@ -236,9 +236,13 @@ Item {
         dynamic_loop.qml_close();
     }
 
-    function select() {
+    function select(clear = false) {
         untarget()
-        state_registry.add_to_set('selected_loop_ids', obj_id)
+        if (key_modifiers.control_pressed) {
+            state_registry.add_to_set('selected_loop_ids', obj_id)
+        } else {
+            state_registry.replace('selected_loop_ids', new Set([obj_id]))
+        }
     }
     function deselect() {
         state_registry.remove_from_set('selected_loop_ids', obj_id)
@@ -252,8 +256,8 @@ Item {
             state_registry.replace('targeted_loop', null)
         }
     }
-    function toggle_selected() {
-        if (selected) { deselect() } else { select() }
+    function toggle_selected(clear_if_select = false) {
+        if (selected) { deselect() } else { select(clear_if_select) }
     }
     function toggle_targeted() {
         if (targeted) { untarget() } else { target() }
@@ -606,7 +610,7 @@ Item {
                     onClicked: (event) => {
                             if (event.button === Qt.LeftButton) { 
                                 if (root.targeted) { root.untarget(); root.deselect() }
-                                else { root.toggle_selected() }
+                                else { root.toggle_selected(!key_modifiers.control_pressed) }
                             }
                             else if (event.button === Qt.MiddleButton) { root.toggle_in_current_scene() }
                             else if (event.button === Qt.RightButton) { contextmenu.popup() }
@@ -973,7 +977,7 @@ Item {
                 anchors.rightMargin: 5
 
                 // Display the volume dial always
-                Dial {
+                AudioDial {
                     id: volume_dial
                     anchors.fill: parent
                     from: -30.0
@@ -988,6 +992,9 @@ Item {
                         id: convert_volume
                     }
 
+                    show_value_tooltip: true
+                    value_tooltip_postfix: ' dB'
+
                     onMoved: {
                         convert_volume.dB = volume_dial.value
                         push_volume(convert_volume.linear)
@@ -996,8 +1003,6 @@ Item {
                         convert_volume.linear = val
                         value = convert_volume.dB
                     }
-
-                    inputMode: Dial.Vertical
 
                     handle.width: 4
                     handle.height: 4
@@ -1010,13 +1015,8 @@ Item {
                         border.color: 'grey'
                     }
 
-                    Label {
-                        text: 'V'
-                        font.pixelSize: 8
-                        color: 'grey'
-                        anchors.verticalCenter: parent.verticalCenter
-                        anchors.horizontalCenter: parent.horizontalCenter
-                    }
+                    label: 'V'
+                    tooltip: 'Loop volume. Double-click to reset.'
 
                     HoverHandler {
                         id: volume_dial_hover
@@ -1046,7 +1046,7 @@ Item {
                     x: parent.width + 4
                     y: 0
 
-                    Dial {
+                    AudioDial {
                         id: balance_dial
                         from: -1.0
                         to:   1.0
@@ -1059,7 +1059,7 @@ Item {
                             push_stereo_balance(value)
                         }
 
-                        inputMode: Dial.Vertical
+                        show_value_tooltip: true
 
                         handle.width: 4
                         handle.height: 4
@@ -1076,13 +1076,8 @@ Item {
                             id: balance_dial_hover
                         }
 
-                        Label {
-                            text: 'B'
-                            font.pixelSize: 8
-                            color: 'grey'
-                            anchors.verticalCenter: parent.verticalCenter
-                            anchors.horizontalCenter: parent.horizontalCenter
-                        }
+                        label: 'B'
+                        tooltip: 'Loop stereo balance. Double-click to reset.'
                     }
                 }
             }

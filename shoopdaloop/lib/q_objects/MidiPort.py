@@ -62,7 +62,7 @@ class MidiPort(Port):
         self.n_notes_active = state.n_notes_active
         self.name = state.name
         self.muted = state.muted
-        self.passthrough_muted = state.muted
+        self.passthrough_muted = state.passthrough_muted
     
     ##########
     ## INTERNAL MEMBERS

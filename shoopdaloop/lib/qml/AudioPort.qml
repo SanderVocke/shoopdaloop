@@ -29,7 +29,8 @@ AudioPort {
             'direction': descriptor.direction,
             'volume': volume,
             'muted': muted,
-            'passthrough_to': descriptor.passthrough_to // TODO test properly
+            'passthrough_muted': passthrough_muted,
+            'passthrough_to': descriptor.passthrough_to
         }
     }
     function queue_load_tasks(data_files_dir, add_tasks_to) {}
@@ -60,4 +61,5 @@ AudioPort {
     name_hint : name_parts.join('')
     volume : descriptor.volume
     muted : descriptor.muted
+    passthrough_muted: descriptor.passthrough_muted
 }
