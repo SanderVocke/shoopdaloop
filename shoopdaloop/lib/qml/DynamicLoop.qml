@@ -86,11 +86,6 @@ Item {
         active: root.force_load
         source: "Loop.qml"
         property bool loaded : !active || (ready && item.loaded)
-        // property bool loaded : !active
-        //     loaded = Qt.binding(function() { return !active || (status == Loader.Ready && item.loaded) });
-        //     item.onLoadedChanged.connect(() => console.log("ITEM"))
-        //     console.log("STATUS READY, ITEM LOADED", item.loaded, "LOADED", loaded);
-        // }
     }
 
     // This will hold any children (typically Loop...Channels)

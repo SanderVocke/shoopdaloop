@@ -14,7 +14,6 @@ Rectangle {
 
     property string active_script_id: initial_descriptor.active_script_id
     property var script_descriptors: initial_descriptor.scripts
-    onScript_descriptorsChanged: console.log('script_descriptors')
 
     readonly property var actual_descriptor: GenerateSession.generate_scripts(script_descriptors, active_script_id)
 

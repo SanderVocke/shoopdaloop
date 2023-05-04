@@ -66,7 +66,7 @@ Item {
     // - "master_loop" -> LoopWidget which holds the master loop
     // - "targeted_loop" -> LoopWidget which is currently targeted
     property Registry state_registry: StateRegistry {
-        verbose: true
+        verbose: false
     }
 
     // For (test) access

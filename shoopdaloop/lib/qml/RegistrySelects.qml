@@ -10,7 +10,6 @@ Item {
     property list<var> objects : []
 
     function update() {
-        console.log("update")
         if (values_only) {
             objects = registry.select_values(select_fn)
         } else {

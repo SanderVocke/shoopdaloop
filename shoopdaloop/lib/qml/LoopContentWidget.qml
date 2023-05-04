@@ -144,7 +144,7 @@ Item {
     // property bool updating: false
 
     function on_waveform_clicked(waveform, channel, event, sample) {
-        console.log("Waveform clicked @ ", event.x, " (sample ", sample, ")")
+        //console.log("Waveform clicked @ ", event.x, " (sample ", sample, ")")
         var channels = loop.all_channels()
         const clicked_chan_idx = channels.findIndex(c => c == channel)
         const clicked_pre_padding = channels_data['channels_data'][clicked_chan_idx][1]['included_pre_padding']
@@ -172,36 +172,6 @@ Item {
                 break;
         }
     }
-
-    // onSamples_per_waveform_pixelChanged: update_data()
-
-    // function update_data() {
-    //     updating = true
-    //     var audio_data = {}
-    //     var audio_channels = loop.audio_channels()
-    //     var midi_channels = loop.midi_channels()
-    //     var min_pos = 0
-    //     var max_pos = loop.length
-    //     for (var idx=0; idx < audio_channels.length; idx++) {
-    //         var chan = audio_channels[idx]
-    //         var data = chan.get_rms_data(0, loop.length, samples_per_waveform_pixel)
-    //         min_pos = Math.min(min_pos, -chan.start_offset)
-    //         max_pos = Math.max(max_pos, chan.data_length)
-    //     }
-    //     for (var idx=0; idx < audio_channels.length; idx++) {
-    //         var key = 'audio channel ' + (idx+1).toString()
-    //         audio_data[key] = {}
-    //         audio_data[key]['data'] = data
-    //         audio_data[key]['pixel_offset'] = (chan.start_offset - min_pos) / zoomed_out_samples_per_waveform_pixel
-    //     }
-    //     console.log("warning: midi content data unimplemented")
-    //     midi_data = {}
-    //     start_idx = min_pos
-    //     length_samples = (max_pos - min_pos)
-    //     waveform_data = audio_data
-    //     updating = false
-    //     waveform_dataChanged()
-    // }
 
     Row {
         id: toolbar_1

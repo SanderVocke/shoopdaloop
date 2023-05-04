@@ -70,7 +70,7 @@ def msgs_to_notes(msgs):
         elif is_all_sound_off(msg):
             terminate_channel_notes(channel(msg), msg['time'])
     
-    print("Parsed {} notes.".format(len(notes)))
+    #print("Parsed {} notes.".format(len(notes)))
     
     return notes
         
