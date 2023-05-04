@@ -21,6 +21,14 @@ Tracks
 **ShoopDaLoop**'s loops are divided over **tracks**. Loops in the same **track** share their input/output port connections, volume/balance and effects/synthesis. Therefore, typically a track per instrument/part is used.
 
 
+Scenes
+-------
+
+Multiple loops can be grouped together into a **scene**. They don't have to be in the same row or column on the grid, and loops can be in multiple **scenes**.
+
+Loops of a scene can be easily selected together to perform the same action on them (e.g. play them back together).
+
+
 
 Effects / Synthesis
 ---------------------
@@ -39,3 +47,8 @@ In **dry/wet** mode, an effects and/or synthesis chain can be inserted for the t
 Scripting
 -----------
 
+In **ShoopDaLoop**, a **script** is a sequential automation of actions on loops. They can be used for turning a set of loops into a cohesive song.
+
+But there are more possibilities: recording can also be automated by scripts. So they also offer a way to set up a live looping performance where the sequence of instruments played is pre-scripted.
+
+A session can have more than one script.
