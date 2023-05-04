@@ -201,7 +201,8 @@ Item {
                 }
                 spacing: 4
 
-                Button {
+                ExtendedButton {
+                    tooltip: "Add a new scene."
                     width: 30
                     height: 40
                     MaterialDesignIcon {
@@ -212,7 +213,8 @@ Item {
                     }
                     onClicked: root.add_scene()
                 }
-                Button {
+                ExtendedButton {
+                    tooltip: "Delete current scene."
                     width: 30
                     height: 40
                     MaterialDesignIcon {

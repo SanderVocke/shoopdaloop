@@ -341,6 +341,17 @@ Item {
                             color: trackctl.muted ? 'grey' : Material.foreground
                             anchors.fill: parent
                         }
+                        ToolTip {
+                            delay: 1000
+                            visible: vol_ma.containsMouse
+                            text: 'Mute/unmute output.'
+                        }
+                        MouseArea {
+                            id: vol_ma
+                            hoverEnabled: true
+                            anchors.fill: parent
+                            acceptedButtons: Qt.NoButton
+                        }
                     }
                 }
                 AudioSlider {
@@ -585,6 +596,17 @@ Item {
                             color: trackctl.passthroughMuted ? 'grey' : Material.foreground
                             anchors.fill: parent
                         }
+                        ToolTip {
+                            delay: 1000
+                            visible: pt_ma.containsMouse
+                            text: 'Mute/unmute passthrough monitoring.'
+                        }
+                        MouseArea {
+                            id: pt_ma
+                            hoverEnabled: true
+                            anchors.fill: parent
+                            acceptedButtons: Qt.NoButton
+                        }
                     }
                 }
                 AudioSlider {
@@ -644,38 +666,5 @@ Item {
                 }
             }
         }
-
-        // TODO: reinstate panning
-        //Row {
-        //    spacing: -2
-
-        //    MaterialDesignIcon {
-        //        size: 15
-        //        name: 'unfold-more-vertical'
-        //        color: Material.foreground
-        //        anchors.verticalCenter: pan.verticalCenter
-        //    }
-        //    Slider {
-        //        id: pan
-        //        orientation: Qt.Horizontal
-        //        width: 90
-        //        height: 20
-        //        from: -1.0
-        //        to: 1.0
-        //        value: 0.0
-        //        ToolTip {
-        //            delay: 1000
-        //            visible: pan_ma.containsMouse
-        //            text: 'Pan control. Right-click to center.'
-        //        }
-        //        MouseArea {
-        //            id: pan_ma
-        //            hoverEnabled: true
-        //            anchors.fill: parent
-        //            acceptedButtons: Qt.RightButton
-        //            onClicked: (ev) => { pan.value = 0.0; }
-        //        }
-        //    }
-        //}
     }
 }

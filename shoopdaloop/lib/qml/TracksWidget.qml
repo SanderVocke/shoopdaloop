@@ -223,7 +223,8 @@ ScrollView {
             leftMargin: 6
         }
 
-        Button {
+        ExtendedButton {
+            tooltip: "Create a new track."
             width: 30
             height: 40
             MaterialDesignIcon {

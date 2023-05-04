@@ -301,7 +301,8 @@ Item {
                     value: backend.dsp_load
                 }
 
-                Button {
+                ExtendedButton {
+                    tooltip: "Reset reported Xruns to 0."
                     id: reset_xruns
                     Label { 
                         text: "Reset"

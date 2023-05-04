@@ -159,7 +159,8 @@ Rectangle {
 
             Row {
                 spacing: 5
-                Button {
+                ExtendedButton {
+                    tooltip: "Create a new script."
                     width: 24
                     height: 34
                     MaterialDesignIcon {
@@ -178,7 +179,8 @@ Rectangle {
                         onAcceptedInput: name => root.add_script(name)
                     }
                 }
-                Button {
+                ExtendedButton {
+                    tooltip: "Delete current script."
                     width: 24
                     height: 34
                     MaterialDesignIcon {
@@ -205,7 +207,8 @@ Rectangle {
 
             Row {
                 spacing: 5
-                Button {
+                ExtendedButton {
+                    tooltip: "Add a script section."
                     width: 24
                     height: 34
                     MaterialDesignIcon {
@@ -216,7 +219,8 @@ Rectangle {
                     }
                     onClicked: root.add_element()
                 }
-                Button {
+                ExtendedButton {
+                    tooltip: "Play the script."
                     width: 24
                     height: 34
                     MaterialDesignIcon {
@@ -227,7 +231,8 @@ Rectangle {
                     }
                     onClicked: root.play()
                 }
-                Button {
+                ExtendedButton {
+                    tooltip: "Pause the script."
                     width: 24
                     height: 34
                     MaterialDesignIcon {
@@ -238,7 +243,8 @@ Rectangle {
                     }
                     onClicked: root.stop()
                 }
-                Button {
+                ExtendedButton {
+                    tooltip: "Reset transport to start of script."
                     width: 24
                     height: 34
                     MaterialDesignIcon {
@@ -445,7 +451,8 @@ Rectangle {
                 }
                 spacing: 3
 
-                Button {
+                ExtendedButton {
+                    tooltip: "Add an action to the script section."
                     width: 60
                     height: 30
                     Row {
@@ -463,7 +470,8 @@ Rectangle {
                     }
                     onClicked: action_popup.open()
                 }
-                Button {
+                ExtendedButton {
+                    tooltip: "Delete script action."
                     width: 20
                     height: 30
                     MaterialDesignIcon {

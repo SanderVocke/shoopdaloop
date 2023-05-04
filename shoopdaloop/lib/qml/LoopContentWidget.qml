@@ -182,7 +182,8 @@ Item {
         height: 40
         spacing: 5
 
-        Button {
+        ExtendedButton {
+            tooltip: "Re-fetch and render loop data."
             height: 35
             width: 30
             onClicked: root.request_update_data()
@@ -283,10 +284,11 @@ Item {
             }
         }
 
-        Button {
+        ExtendedButton {
+            tooltip: "Additional options."
             height: 35
             width: 30
-            onClicked: {}
+            onClicked: { console.log ("Unimplemented") }
 
             anchors.verticalCenter: length_field.verticalCenter
 

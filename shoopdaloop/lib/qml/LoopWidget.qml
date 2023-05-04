@@ -243,7 +243,11 @@ Item {
         }
     }
     function deselect() {
-        state_registry.remove_from_set('selected_loop_ids', obj_id)
+        if (key_modifiers.control_pressed) {
+            state_registry.remove_from_set('selected_loop_ids', obj_id)
+        } else {
+            state_registry.replace('selected_loop_ids', new Set())
+        }
     }
     function target() {
         deselect()

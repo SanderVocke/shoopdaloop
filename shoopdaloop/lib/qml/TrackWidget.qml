@@ -292,7 +292,8 @@ Item {
                                         }
                     }
         
-                    Button {
+                    ExtendedButton {
+                        tooltip: "Track options."
                         id: menubutton
                         anchors {
                             top: parent.top
@@ -319,7 +320,8 @@ Item {
                         }
                     }
 
-                    Button {
+                    ExtendedButton {
+                        tooltip: "Open FX chain GUI if ready. Red = not ready. Grey = bypassed."
                         id: fxuibutton
                         visible: track.initial_descriptor.fx_chains.length == 1
 
@@ -362,7 +364,8 @@ Item {
                     // Note: loops injected here
                 }
 
-                Button {
+                ExtendedButton {
+                    tooltip: "Add a loop to track(s)."
                     width: 100
                     height: 30
                     MaterialDesignIcon {

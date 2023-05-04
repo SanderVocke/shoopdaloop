@@ -255,7 +255,8 @@ Dialog {
                                         anchors.rightMargin: 10
                                         text: modelData[1]
                                     }
-                                    Button {
+                                    ExtendedButton {
+                                        tooltip: "Delete substitution."
                                         id: deletebutton
                                         anchors {
                                             verticalCenter: tolabel.verticalCenter
@@ -284,7 +285,8 @@ Dialog {
                                 }
                             }
 
-                            Button {
+                            ExtendedButton {
+                                tooltip: "Add new substitution."
                                 text: 'Add'
                                 onClicked: {
                                     midi_settings.active_profile_entry.profile.substitutions[''] = ''
@@ -377,7 +379,8 @@ Dialog {
                                         anchors.verticalCenter: filterchoice.verticalCenter
                                         text: modelData['action']
                                     }
-                                    Button {
+                                    ExtendedButton {
+                                        tooltip: "Delete rule."
                                         id: deleterulebutton
                                         anchors {
                                             verticalCenter: filterchoice.verticalCenter
@@ -406,7 +409,8 @@ Dialog {
                                 }
                             }
 
-                            Button {
+                            ExtendedButton {
+                                tooltip: "Add rule"
                                 text: 'Add'
                                 onClicked: {
                                     midi_settings.active_profile_entry.profile.input_rules.push({
@@ -496,7 +500,8 @@ Dialog {
                                         anchors.verticalCenter: statechoice.verticalCenter
                                         text: modelData['action']
                                     }
-                                    Button {
+                                    ExtendedButton {
+                                        tooltip: 'Delete loop state change formula.'
                                         id: deletestateformula
                                         anchors {
                                             verticalCenter: statechoice.verticalCenter
@@ -525,7 +530,8 @@ Dialog {
                                 }
                             }
 
-                            Button {
+                            ExtendedButton {
+                                tooltip: "Add new loop state change formula."
                                 text: 'Add'
                                 onClicked: {
                                     midi_settings.active_profile_entry.profile.loop_state_change_formulas.push({

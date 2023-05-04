@@ -122,8 +122,9 @@ Dialog {
             validator: IntValidator { bottom: 0 }
         }
 
-        Button {
+        ExtendedButton {
             text: "Fill loop length"
+            tooltip: "Sets clicks per minute so that the chosen # of clicks fits the current loop length."
             onClicked: () => {
                 if (dialog.loop) {
                     dialog.loop.force_load_backend()
@@ -134,7 +135,8 @@ Dialog {
             }
         }
 
-        Button {
+        ExtendedButton {
+            tooltip: "Listen to a preview of the chosen click track."
             text: "Preview"
             onClicked: () => {
                            var out = generate()

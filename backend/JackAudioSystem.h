@@ -25,7 +25,6 @@ class JackAudioSystem : public AudioSystemInterface<jack_nframes_t, size_t> {
     }
 
     static int PROC_xrun_cb_static(void *arg) {
-        std::cout << "OTHER XRUN\n";
         auto &inst = *((JackAudioSystem *)arg);
         return inst.PROC_xrun_cb_inst();
     }
@@ -38,7 +37,6 @@ class JackAudioSystem : public AudioSystemInterface<jack_nframes_t, size_t> {
     }
 
     int PROC_xrun_cb_inst () {
-        std::cout << "XRUN\n";
         m_xruns++;
         return 0;
     }
