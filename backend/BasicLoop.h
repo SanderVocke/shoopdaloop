@@ -109,7 +109,8 @@ public:
         }
         if (mp_next_poi->type_flags & LoopEnd) {
             mp_next_poi->type_flags &= !(LoopEnd);
-            if (!mp_sync_source) {
+            if (!mp_sync_source || !is_playing_mode(mp_sync_source->get_mode())) {
+                // Trigger ourselves if sync source not active.
                 PROC_trigger();
             }
         }
@@ -241,7 +242,10 @@ public:
 
     void PROC_handle_transition(loop_mode_t new_state) {
         if (ma_mode != new_state) {
-            set_position(0, false);
+            bool from_playing_to_playing = is_playing_mode(ma_mode) && is_playing_mode(new_state);
+            if (!from_playing_to_playing) {
+                set_position(0, false);
+            }
             if (new_state == Recording) {
                 // Recording always resets the loop.
                 // Don't bother clearing the channels.
