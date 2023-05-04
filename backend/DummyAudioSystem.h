@@ -186,4 +186,7 @@ public:
             m_proc_thread.join();
         }
     }
+
+    size_t get_xruns() const override { return 0; }
+    void reset_xruns() override {};
 };

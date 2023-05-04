@@ -8,6 +8,7 @@
 #include <jack/types.h>
 #include <stdexcept>
 #include <memory>
+#include <atomic>
 
 class JackAudioSystem : public AudioSystemInterface<jack_nframes_t, size_t> {
     jack_client_t * m_client;
@@ -15,6 +16,7 @@ class JackAudioSystem : public AudioSystemInterface<jack_nframes_t, size_t> {
     size_t m_sample_rate;
     std::map<std::string, std::shared_ptr<PortInterface>> m_ports;
     std::function<void(size_t)> m_process_cb;
+    std::atomic<unsigned> m_xruns = 0;
 
     static int PROC_process_cb_static (jack_nframes_t nframes,
                                   void *arg) {
@@ -22,10 +24,22 @@ class JackAudioSystem : public AudioSystemInterface<jack_nframes_t, size_t> {
         return inst.PROC_process_cb_inst(nframes);
     }
 
+    static int PROC_xrun_cb_static(void *arg) {
+        std::cout << "OTHER XRUN\n";
+        auto &inst = *((JackAudioSystem *)arg);
+        return inst.PROC_xrun_cb_inst();
+    }
+
     int PROC_process_cb_inst (jack_nframes_t nframes) {
         if (m_process_cb) {
             m_process_cb((size_t) nframes);
         }
+        return 0;
+    }
+
+    int PROC_xrun_cb_inst () {
+        std::cout << "XRUN\n";
+        m_xruns++;
         return 0;
     }
 
@@ -55,6 +69,8 @@ public:
         jack_set_process_callback(m_client,
                                   JackAudioSystem::PROC_process_cb_static,
                                   (void*)this);
+        
+        jack_set_xrun_callback(m_client, JackAudioSystem::PROC_xrun_cb_static, (void*)this);
     }
 
     void start() override {
@@ -108,5 +124,13 @@ public:
         if (m_client) {
             jack_client_close(m_client);
         }
+    }
+
+    size_t get_xruns() const override {
+        return m_xruns;
+    }
+
+    void reset_xruns() override {
+        m_xruns = 0;
     }
 };

@@ -23,6 +23,8 @@ class Backend(QQuickItem):
         self._backend_type = None
         self._backend_obj = None
         self._backend_child_objects = set()
+        self._xruns = 0
+        self._dsp_load = 0.0
         self.destroyed.connect(self.close)
     
     update = Signal()
@@ -68,6 +70,26 @@ class Backend(QQuickItem):
         self._backend_type = BackendType(n)
         self.maybe_init()
     
+    xrunsChanged = Signal(int)
+    @Property(int, notify=xrunsChanged)
+    def xruns(self):
+        return self._xruns
+    @xruns.setter
+    def xruns(self, n):
+        if self._xruns != n:
+            self._xruns = n
+            self.xrunsChanged.emit(n)
+    
+    dspLoadChanged = Signal(float)
+    @Property(float, notify=dspLoadChanged)
+    def dsp_load(self):
+        return self._dsp_load
+    @dsp_load.setter
+    def dsp_load(self, n):
+        if self._dsp_load != n:
+            self._dsp_load = n
+            self.dspLoadChanged.emit(n)
+    
     ###########
     ## SLOTS
     ###########
@@ -81,6 +103,8 @@ class Backend(QQuickItem):
         if not self.initialized:
             return
         state = self._backend_obj.get_state()
+        self.dsp_load = state.dsp_load_percent
+        self.xruns += state.xruns_since_last
         
         toRemove = []
         for obj in self._backend_child_objects:

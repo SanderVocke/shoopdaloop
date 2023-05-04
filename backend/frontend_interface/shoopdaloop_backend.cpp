@@ -122,7 +122,6 @@ struct Backend : public std::enable_shared_from_this<Backend> {
     CommandQueue cmd_queue;
     std::shared_ptr<AudioBufferPool> audio_buffer_pool;
     std::unique_ptr<AudioSystem> audio_system;
-    std::atomic<unsigned> xruns_since_last_update = 0;
 
     Backend (audio_system_type_t audio_system_type,
              std::string client_name_hint) :
@@ -340,8 +339,8 @@ struct FXChainInfo : public std::enable_shared_from_this<FXChainInfo> {
 backend_state_info_t Backend::get_state() {
     backend_state_info_t rval;
     rval.dsp_load_percent = maybe_jack_client_handle() ? jack_cpu_load(maybe_jack_client_handle()) : 0.0f;
-    rval.xruns_since_last = xruns_since_last_update;
-    xruns_since_last_update = 0;
+    rval.xruns_since_last = audio_system->get_xruns();
+    audio_system->reset_xruns();
     return rval;
 }
 

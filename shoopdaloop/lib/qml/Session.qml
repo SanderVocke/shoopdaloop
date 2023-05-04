@@ -246,7 +246,8 @@ Item {
 
                 anchors {
                     horizontalCenter: parent.horizontalCenter
-                    verticalCenter: parent.verticalCenter
+                    top: parent.top
+                    topMargin: 10
                 }
 
                 Image {
@@ -274,6 +275,48 @@ Item {
                     color: Material.foreground
                     font.pixelSize: 12
                     linkColor: 'red'
+                }
+            }
+
+            Grid {
+                columns: 2
+                spacing: 1
+                horizontalItemAlignment: Grid.AlignHCenter
+                verticalItemAlignment: Grid.AlignVCenter
+
+                anchors {
+                    horizontalCenter: parent.horizontalCenter
+                    bottom: parent.bottom
+                }
+
+                Label {
+                    id: dsptxt
+                    text: "DSP:"
+                }
+
+                ProgressBar {
+                    width: 80
+                    from: 0.0
+                    to: 100.0
+                    value: backend.dsp_load
+                }
+
+                Button {
+                    id: reset_xruns
+                    Label { 
+                        text: "Reset"
+                        anchors {
+                            horizontalCenter: parent.horizontalCenter
+                            verticalCenter: parent.verticalCenter
+                        }
+                    }
+                    width: 40
+                    height: 26
+                    onClicked: backend.xruns = 0
+                }
+
+                Label { 
+                    text: "Xruns: " + backend.xruns.toString()
                 }
 
             }

@@ -42,6 +42,9 @@ public:
 
     virtual void close() = 0;
 
+    virtual size_t get_xruns() const = 0;
+    virtual void reset_xruns() = 0;
+
     AudioSystemInterface() {}
     virtual ~AudioSystemInterface() {}
 };
