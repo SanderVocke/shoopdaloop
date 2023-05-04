@@ -69,17 +69,17 @@ Item {
     function is_out(p)   { return p.direction == "output" && p.id.match(/.*_(?:out|direct)(?:_[0-9]*)?$/); }
 
     property var audio_in_ports : {
-        var r = ports.filter((p) => is_audio(p.descriptor) && is_in(p.descriptor))
+        var r = ports.filter((p) => p && is_audio(p.descriptor) && is_in(p.descriptor))
         r.sort((a,b) => a.obj_id.localeCompare(b.obj_id))
         return r
     }
     property var audio_out_ports : {
-        var r = ports.filter((p) => is_audio(p.descriptor) && is_out(p.descriptor))
+        var r = ports.filter((p) => p && is_audio(p.descriptor) && is_out(p.descriptor))
         r.sort((a,b) => a.obj_id.localeCompare(b.obj_id))
         return r
     }
-    property var midi_in_ports : ports.filter((p) => is_midi(p.descriptor) && is_in(p.descriptor))
-    property var midi_out_ports : ports.filter((p) => is_midi(p.descriptor) && is_out(p.descriptor))
+    property var midi_in_ports : ports.filter((p) => p && is_midi(p.descriptor) && is_in(p.descriptor))
+    property var midi_out_ports : ports.filter((p) => p && is_midi(p.descriptor) && is_out(p.descriptor))
 
     property int n_midi_notes_active_in : 0
     property int n_midi_notes_active_out : 0

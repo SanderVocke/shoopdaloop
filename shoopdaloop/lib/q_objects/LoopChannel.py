@@ -110,10 +110,10 @@ class LoopChannel(QQuickItem):
     @ports.setter
     def ports(self, p):
         for port in self._connected_ports:
-            if not port in p:
+            if p and port and not port in p:
                 self.disconnect(port)
         for port in p:
-            if not port in self._connected_ports:
+            if p and port and not port in self._connected_ports:
                 self.connect_port(port)
         self._ports = p
     

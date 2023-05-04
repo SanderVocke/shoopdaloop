@@ -1307,16 +1307,16 @@ Item {
             MenuItem {
                 text: "Save audio..."
                 onClicked: presavedialog.open()
-                visible: menu.n_audio_channels > 0
+                enabled: menu.n_audio_channels > 0
             }
             MenuItem {
                 text: "Load audio..."
                 onClicked: loaddialog.open()
-                visible: menu.n_audio_channels > 0
+                enabled: menu.n_audio_channels > 0
             }
             MenuItem {
                 text: "Load MIDI..."
-                visible: menu.n_midi_channels > 0
+                enabled: menu.n_midi_channels > 0
                 onClicked: {
                     var chans = root.get_midi_channels()
                     if (chans.length == 0) { throw new Error("No MIDI channels to load"); }
@@ -1327,7 +1327,7 @@ Item {
             }
             MenuItem {
                 text: "Save MIDI..."
-                visible: menu.n_midi_channels > 0
+                enabled: menu.n_midi_channels > 0
                 onClicked: {
                     var chans = root.get_midi_channels()
                     if (chans.length == 0) { throw new Error("No MIDI channels to save"); }
