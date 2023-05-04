@@ -15,10 +15,11 @@ Item {
     // of loops, tracks, etc.) to match the loaded descriptor.
     // The descriptor may not be directly modified and is only used at initialization.
     // The actual descriptor can be retrieved with actual_session_descriptor().
-    property var initial_descriptor : GenerateSession.generate_session([], [], [], [])
+    property var initial_descriptor : GenerateSession.generate_session(app_data.version_string, [], [], [], [])
 
     function actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) {
         return GenerateSession.generate_session(
+            app_data.version_string,
             tracks_widget.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to),
             [],
             scenes_widget.actual_scene_descriptors,
@@ -268,7 +269,7 @@ Item {
                         horizontalCenter: logo.horizontalCenter
                         topMargin: 6
                     }
-                    text: 'ShoopDaLoop v0.1' // TODO
+                    text: 'ShoopDaLoop v' + app_metadata.version_string
                     onLinkActivated: Qt.openUrlExternally(link)
                     color: Material.foreground
                     font.pixelSize: 12

@@ -78,6 +78,10 @@ class Backend(QQuickItem):
 
     @Slot()
     def doUpdate(self):
+        if not self.initialized:
+            return
+        state = self._backend_obj.get_state()
+        
         toRemove = []
         for obj in self._backend_child_objects:
             _obj = obj()

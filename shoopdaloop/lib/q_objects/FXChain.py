@@ -145,7 +145,6 @@ class FXChain(QQuickItem):
         maybe_backend = findFirstParent(self, lambda p: p and isinstance(p, QQuickItem) and p.inherits('Backend') and self._backend == None)
         if maybe_backend:
             self.backend = maybe_backend
-        print("FX chain: rescan parents, tp {}, result {}".format(self._chain_type, self._backend))
     
     @Slot(result='QVariant')
     def get_backend(self):
@@ -162,14 +161,12 @@ class FXChain(QQuickItem):
     def get_internal_state(self):
         if self._backend_object:
             rval = self._backend_object.get_internal_state()
-            print("Got internal state: {}".format(rval))
             return rval
         raise Exception("Getting internal state of uninitialized FX chain")
     
     @Slot(str)
     def restore_internal_state(self, state):
         if self._backend_object:
-            print("Restoring internal state: {}".format(state))
             self._backend_object.restore_internal_state(state)
         else:
             raise Exception("Restoring internal state of uninitialized FX chain")

@@ -16,7 +16,7 @@ Backend {
     Session {
         id: session
         anchors.fill: parent
-        initial_descriptor: GenerateSession.generate_default_session()
+        initial_descriptor: GenerateSession.generate_default_session(app_metadata.version_string)
 
         TestCase {
             Timer {

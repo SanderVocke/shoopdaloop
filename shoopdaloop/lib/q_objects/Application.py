@@ -15,7 +15,10 @@ from .SchemaValidator import SchemaValidator
 from .FileIO import FileIO
 from .ClickTrackGenerator import ClickTrackGenerator
 from .KeyModifiers import KeyModifiers
+from .ApplicationMetadata import ApplicationMetadata
 
+script_dir = os.path.dirname(os.path.realpath(__file__))
+version_file = script_dir + '/../../../version.txt'
 class Application(QGuiApplication):
     def __init__(self, title, main_qml):
         super(Application, self).__init__([])
@@ -37,10 +40,16 @@ class Application(QGuiApplication):
         self.schema_validator = SchemaValidator(parent=self)
         self.click_track_generator = ClickTrackGenerator(parent=self)
         self.key_modifiers = KeyModifiers(parent=self)
+        self.app_metadata = ApplicationMetadata(parent=self)
         self.engine.rootContext().setContextProperty("schema_validator", self.schema_validator)
         self.engine.rootContext().setContextProperty("file_io", self.file_io)
         self.engine.rootContext().setContextProperty("click_track_generator", self.click_track_generator)
         self.engine.rootContext().setContextProperty("key_modifiers", self.key_modifiers)
+        self.engine.rootContext().setContextProperty("app_metadata", self.app_metadata)
+
+        with open(version_file, 'r') as vf:
+            self.app_metadata.version_string = vf.read()
+
         if main_qml:
             self.engine.load(main_qml)
         
@@ -141,14 +150,12 @@ class Application(QGuiApplication):
             self.nsm_save_session(path)
     
     def nsm_exit_handler(self):
-        print('nsm_exit_handler')
         print('Exiting due to NSM request.')
         self.exit_handler()
         print("Exiting.")
         sys.exit(0)
     
     def exec(self):
-        print("Entering Qt event loop.")
         return super(Application, self).exec()
     
     def eventFilter(self, source, event):

@@ -11,6 +11,7 @@ void terminate (shoopdaloop_backend_instance_t *backend);
 jack_client_t *maybe_jack_client_handle(shoopdaloop_backend_instance_t *backend);
 const char *get_client_name(shoopdaloop_backend_instance_t *backend);
 unsigned get_sample_rate(shoopdaloop_backend_instance_t *backend);
+backend_state_info_t *get_backend_state(shoopdaloop_backend_instance_t *backend);
 
 // Loops
 shoopdaloop_loop_t *create_loop(shoopdaloop_backend_instance_t *backend);
@@ -106,6 +107,7 @@ void destroy_midi_channel_data(midi_channel_data_t *d);
 void destroy_audio_channel_data(audio_channel_data_t *d);
 void destroy_audio_channel_state_info(audio_channel_state_info_t *d);
 void destroy_midi_channel_state_info(midi_channel_state_info_t *d);
+void destroy_backend_state_info(backend_state_info_t *d);
 void destroy_loop(shoopdaloop_loop_t *d);
 void destroy_audio_port(shoopdaloop_audio_port_t *d);
 void destroy_midi_port(shoopdaloop_midi_port_t *d);

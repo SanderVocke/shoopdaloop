@@ -102,6 +102,11 @@ typedef struct {
 } midi_port_state_info_t;
 
 typedef struct {
+    float dsp_load_percent;
+    unsigned xruns_since_last;
+} backend_state_info_t;
+
+typedef struct {
     unsigned ready;
     unsigned active;
     unsigned visible;

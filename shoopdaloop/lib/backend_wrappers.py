@@ -130,6 +130,16 @@ class MidiPortState:
         self.passthrough_muted = bool(backend_state.passthrough_muted)
         self.name = str(backend_state.name)
 
+@dataclass
+class BackendState:
+    dsp_load_percent: float
+    xruns_since_last: int
+
+    def __init__(self, backend_state : 'backend_state_info_t'):
+        self.dsp_load_percent = float(backend_state.dsp_load_percent)
+        self.xruns_since_last = int(backend_state.xruns_since_last)
+
+
 def backend_midi_message_to_dict(backend_msg: 'midi_event_t'):
     r = dict()
     r['time'] = backend_msg.time
@@ -268,7 +278,7 @@ class BackendLoop:
 
     def transition(self, to_state : Type['LoopMode'],
                    cycles_delay : int, wait_for_sync : bool):
-        print('transition: {}, {}, {}'.format(to_state, cycles_delay, wait_for_sync))
+        #print('transition: {}, {}, {}'.format(to_state, cycles_delay, wait_for_sync))
         loop_transition(self.shoop_c_handle,
                                 to_state.value,
                                 cycles_delay,
@@ -277,7 +287,7 @@ class BackendLoop:
     # Static version for multiple loops
     def transition_multiple(loops, to_state : Type['LoopMode'],
                    cycles_delay : int, wait_for_sync : bool):
-        print('transition {} loops: {}, {}, {}'.format(len(loops), to_state, cycles_delay, wait_for_sync))
+        #print('transition {} loops: {}, {}, {}'.format(len(loops), to_state, cycles_delay, wait_for_sync))
         HandleType = POINTER(shoopdaloop_loop_t)
         handles = (HandleType * len(loops))()
         for idx,l in enumerate(loops):
@@ -364,7 +374,6 @@ class BackendAudioPort:
         add_audio_port_passthrough(self._c_handle, other.c_handle())
 
     def __del__(self):
-        print("BACKEND AUDIO PORT DESTROY BY __del__: {}".format(self))
         raise Exception("Nope")
         self.destroy()
 
@@ -456,6 +465,12 @@ class Backend:
 
     def get_sample_rate(self):
         return int(get_sample_rate(self._c_handle))
+    
+    def get_state(self):
+        state = get_backend_state(self._c_handle)
+        rval = BackendState(state[0])
+        destroy_backend_state_info(state)
+        return rval
 
     def create_loop(self) -> Type['BackendLoop']:
         handle = create_loop(self._c_handle)

@@ -2,6 +2,7 @@
     "type": "object",
     "properties": {
         "schema":       { "const": "session.1" },
+        "app_version":  { "const": "1.0.0" },
         "tracks": {
             "type": "array",
             "items": {

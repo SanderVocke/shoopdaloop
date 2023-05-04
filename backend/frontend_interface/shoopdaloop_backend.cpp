@@ -122,6 +122,7 @@ struct Backend : public std::enable_shared_from_this<Backend> {
     CommandQueue cmd_queue;
     std::shared_ptr<AudioBufferPool> audio_buffer_pool;
     std::unique_ptr<AudioSystem> audio_system;
+    std::atomic<unsigned> xruns_since_last_update = 0;
 
     Backend (audio_system_type_t audio_system_type,
              std::string client_name_hint) :
@@ -159,6 +160,7 @@ struct Backend : public std::enable_shared_from_this<Backend> {
     const char* get_client_name();
     unsigned get_sample_rate();
     unsigned get_buffer_size();
+    backend_state_info_t get_state();
     SharedLoopInfo create_loop();
     SharedFXChainInfo create_fx_chain(fx_chain_type_t type, const char* title);
 };
@@ -334,6 +336,14 @@ struct FXChainInfo : public std::enable_shared_from_this<FXChainInfo> {
     decltype(mc_audio_output_ports) const& audio_output_ports() const { return mc_audio_output_ports; }
     decltype(mc_midi_input_ports) const& midi_input_ports() const { return mc_midi_input_ports; }
 };
+
+backend_state_info_t Backend::get_state() {
+    backend_state_info_t rval;
+    rval.dsp_load_percent = maybe_jack_client_handle() ? jack_cpu_load(maybe_jack_client_handle()) : 0.0f;
+    rval.xruns_since_last = xruns_since_last_update;
+    xruns_since_last_update = 0;
+    return rval;
+}
 
 #warning delete destroyed ports
 // MEMBER FUNCTIONS
@@ -1080,6 +1090,13 @@ unsigned get_sample_rate(shoopdaloop_backend_instance_t *backend) {
     return internal_backend(backend)->get_sample_rate();
 }
 
+backend_state_info_t *get_backend_state(shoopdaloop_backend_instance_t *backend) {
+    auto val = internal_backend(backend)->get_state();
+    auto rval = new backend_state_info_t;
+    *rval = val;
+    return rval;
+}
+
 shoopdaloop_loop_t *create_loop(shoopdaloop_backend_instance_t *backend) {
     auto rval = external_loop(internal_backend(backend)->create_loop());
     return rval;
@@ -1815,4 +1832,8 @@ void destroy_fx_chain_state(fx_chain_state_info_t *d) {
 
 void destroy_string(const char* s) {
     free((void*)s);
+}
+
+void destroy_backend_state_info(backend_state_info_t *d) {
+    delete d;
 }
