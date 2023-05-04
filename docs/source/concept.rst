@@ -18,4 +18,24 @@ The master loop may itself hold audio and/or MIDI data. A typical use is a click
 Tracks
 -------
 
-**ShoopDaLoop**'s loops are divided over **tracks**. Loops in the same **track** share their input/output port connections and effects/synthesis. Therefore, typically a track per instrument/part is used.
+**ShoopDaLoop**'s loops are divided over **tracks**. Loops in the same **track** share their input/output port connections, volume/balance and effects/synthesis. Therefore, typically a track per instrument/part is used.
+
+
+
+Effects / Synthesis
+---------------------
+
+**ShoopDaLoop** supports two track port connection modes: **direct** and **dry/wet**.
+
+In **direct** mode, there is simply an input and an output.
+
+In **dry/wet** mode, an effects and/or synthesis chain can be inserted for the track. When recording loops, the dry and wet signals are simultaneously recorded. This enables tricks such as re-playing the dry loop through live effects, playing back the wet while disabling the effects for CPU savings and re-synthesizing with different virtual instruments.
+
+**Dry/wet** mode can be configured in two ways: using external JACK **send** and **return** ports or hosting plugins directly inside **ShoopDaLoop** via **Carla**. The latter has the advantage that the chain can be saved with the session and the chain setting can be remembered with individual loops.
+
+
+
+
+Scripting
+-----------
+

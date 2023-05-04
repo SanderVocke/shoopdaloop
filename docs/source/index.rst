@@ -1,9 +1,9 @@
 ShoopDaLoop
 =======================================
 
-**ShoopDaLoop** is a live looping application for Linux with a few DAW-like features.
+**ShoopDaLoop** is an audio+MIDI live looping application for Linux with some DAW-like features.
 
-The main intended use is for quickly expressing complex musical ideas without needing to record full end-to-end tracks for a whole song. It makes for a fun way to jam by oneself. Live performance could also be a good use-case, although it is not quite battle-tested enough to recommend that.
+The main intended use is for quickly expressing musical ideas without needing to record full end-to-end tracks for a whole song. It makes for a fun way to jam by oneself. Live performance could also be a good use-case, although at this point it is not quite battle-tested enough to recommend that (yet).
 
 .. toctree::
    :maxdepth: 2
