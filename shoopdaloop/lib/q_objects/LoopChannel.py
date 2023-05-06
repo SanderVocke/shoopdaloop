@@ -28,6 +28,7 @@ class LoopChannel(QQuickItem):
         self._ports = []
         self._data_length = 0
         self._start_offset = 0
+        self._wet_recording_started_at = None
 
         self.rescan_parents()
         if not self._loop:
@@ -60,6 +61,17 @@ class LoopChannel(QQuickItem):
                 raise Exception('May not change loop of existing channel')
             self._loop = l
             self.maybe_initialize()
+
+    # wet_recording_started_at
+    wetRecordingStartedAtChanged = Signal(str)
+    @Property(str, notify=wetRecordingStartedAtChanged)
+    def wet_recording_started_at(self):
+        return self._wet_recording_started_at
+    @wet_recording_started_at.setter
+    def wet_recording_started_at(self, l):
+        if l and l != self._wet_recording_started_at:
+            self._wet_recording_started_at = l
+            self.wetRecordingStartedAtChanged.emit(l)
 
     # mode
     modeChanged = Signal(int)

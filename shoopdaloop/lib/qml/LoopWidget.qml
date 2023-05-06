@@ -19,6 +19,14 @@ Item {
     readonly property string obj_id: initial_descriptor.id
     property string name: initial_descriptor.name
 
+    // TODO: kind of a bad place to put this.
+    // When the loop starts recording, ensure all wet channels have their
+    // "wet recording started at" updated and also our FX chain state is
+    // cached.
+    onModeChanged: {
+        throw new Error("Implement!")
+    }
+
     // The "loop volume" refers to the output volume from the wet
     // and/or direct channels. Volume of the dry channels is always
     // at 1.

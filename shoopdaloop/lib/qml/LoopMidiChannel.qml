@@ -51,6 +51,7 @@ LoopMidiChannel {
     property int initial_mode : Conversions.parse_channel_mode(descriptor.mode)
     onInitial_modeChanged: set_mode(initial_mode)
     ports: lookup_connected_ports.objects
+    wet_recording_started_at: descriptor.wet_recording_started_at
 
     RegistryLookups {
         id: lookup_connected_ports

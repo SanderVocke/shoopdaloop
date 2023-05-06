@@ -13,6 +13,12 @@
                 "properties": { "schema": { "const": "channel.1", "$comment": "see channel.1 schema" } },
                 "required": ["schema"]
             }
+        },
+        "recording_fx_chain": {
+            "type": "object",
+            "properties": { "schema": { "const": "fx_chain.1", "$comment": "see fx_chain.1 schema" } },
+            "required": ["schema"],
+            "$comment": "state of the FX chain at the time the wet recording was made."
         }
     },
     "required": ["schema", "id", "name", "length", "channels", "is_master"]

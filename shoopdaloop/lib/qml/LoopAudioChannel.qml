@@ -55,6 +55,7 @@ LoopAudioChannel {
     onInitial_modeChanged: set_mode(initial_mode)
     onInitial_volumeChanged: set_volume(initial_volume)
     ports: lookup_connected_ports.objects
+    wet_recording_started_at: descriptor.wet_recording_started_at
 
     RegistryLookups {
         id: lookup_connected_ports
