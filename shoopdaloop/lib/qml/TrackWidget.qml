@@ -28,16 +28,19 @@ Item {
         schema: 'track.1'
     }
 
+    property var maybe_fx_chain: fx_chain_loader.active && fx_chain_loader.status == Loader.Ready ? fx_chain_loader.item : undefined
+
     function actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) {
         var all_loops = Array.from(Array(loops.length).keys()).map((i) => loops[i])
-        return {
+        var rval = {
             'schema': 'track.1',
             'id': obj_id,
             'name': name,
             'ports': ports.map((p) => p.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to)),
             'loops': all_loops.map((l) => l.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to)),
-            'fx_chains': fx_chains().map((f) => f.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to))
         }
+        if (maybe_fx_chain) { rval['fx_chain'] = maybe_fx_chain.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) }
+        return rval
     }
     function queue_load_tasks(data_files_dir, add_tasks_to) {
         var all_loops = Array.from(Array(loops.length).keys()).map((i) => loops[i])
@@ -60,7 +63,7 @@ Item {
     readonly property string port_name_prefix: ''
     readonly property var audio_port_descriptors : initial_descriptor.ports.filter(p => p.schema == 'audioport.1')
     readonly property var midi_port_descriptors : initial_descriptor.ports.filter(p => p.schema == 'midiport.1')
-    readonly property var fx_chain_descriptors : initial_descriptor.fx_chains
+    readonly property var fx_chain_descriptor : 'fx_chain' in initial_descriptor ? initial_descriptor.fx_chain : undefined
     readonly property var loop_descriptors : initial_descriptor.loops
 
     readonly property var loop_factory : Qt.createComponent("LoopWidget.qml")
@@ -221,21 +224,21 @@ Item {
     readonly property bool fx_input_muted : input_ports.length > 0 ?
         (input_ports[0].muted || input_ports[0].passthrough_muted) : true
 
-    RepeaterWithLoadedDetection {
-        id: fx_chains_repeater
-        model: track.fx_chain_descriptors.length
-
+    Loader {
+        id: fx_chain_loader
+        active: track.fx_chain_descriptor != undefined
+        sourceComponent: fx_chain_component
+    }
+    Component {
+        id: fx_chain_component
         FXChain {
-            id: chain
-            descriptor: track.fx_chain_descriptors[index]
+            descriptor: track.fx_chain_descriptor
             objects_registry: track.objects_registry
             state_registry: track.state_registry
 
             Component.onCompleted: {
-                if (index == 0) {
-                    track.fx_ready = Qt.binding(() => this.ready)
-                    track.fx_active = Qt.binding(() => this.active)
-                }
+                track.fx_ready = Qt.binding(() => this.ready)
+                track.fx_active = Qt.binding(() => this.active)
                 set_active(!track.fx_input_muted)
             }
 
@@ -244,10 +247,6 @@ Item {
                 function onFx_input_mutedChanged() { chain.set_active(!track.fx_input_muted) }
             }
         }
-    }
-
-    function fx_chains() {
-        return fx_chains_repeater.all_items();
     }
 
     Item {
@@ -323,7 +322,7 @@ Item {
                     ExtendedButton {
                         tooltip: "Open FX chain GUI if ready. Red = not ready. Grey = bypassed."
                         id: fxuibutton
-                        visible: track.initial_descriptor.fx_chains.length == 1
+                        visible: track.initial_track_descriptor != undefined
 
                         anchors {
                             top: menubutton.bottom
@@ -345,12 +344,7 @@ Item {
                             }
                         }
 
-                        onClicked: {
-                            var chains = track.fx_chains()
-                            if (chains.length == 1) {
-                                chains[0].set_ui_visible(!chains[0].ui_visible)
-                            }
-                        }
+                        onClicked: { if (root.maybe_fx_chain) { root.maybe_fx_chain.set_ui_visible(!root.maybe_fx_chain.ui_visible) } }
                     }
                     
                 }

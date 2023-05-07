@@ -26,17 +26,14 @@
                 "required": ["schema"]
             }
         },
-        "fx_chains": {
-            "$comment": "FX chains associated with this track",
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "schema": { "const": "fx_chain.1", "$comment": "See fx_chain.1 schema" }
-                },
-                "required": ["schema"]
-            }
+        "fx_chain": {
+            "$comment": "FX chain associated with this track",
+            "type": "object",
+            "properties": {
+                "schema": { "const": "fx_chain.1", "$comment": "See fx_chain.1 schema" }
+            },
+            "required": ["schema"]
         }
     },
-    "required": ["schema", "id", "name", "loops", "ports", "fx_chains"]
+    "required": ["schema", "id", "name", "loops", "ports"]
 }

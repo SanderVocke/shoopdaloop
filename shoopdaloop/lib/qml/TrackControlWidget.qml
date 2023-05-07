@@ -54,7 +54,7 @@ Item {
     property Registry objects_registry : null
     property Registry state_registry : null
 
-    property bool has_fx_chain : initial_track_descriptor.fx_chains.length == 1
+    property bool has_fx_chain : initial_track_descriptor && 'fx_chain' in initial_track_descriptor
 
     RegistryLookups {
         id: lookup_ports

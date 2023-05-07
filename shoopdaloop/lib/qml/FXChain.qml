@@ -15,6 +15,7 @@ FXChain {
     title: descriptor.title
 
     function actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) {
+        if (!descriptor) { return null; }
         return {
             'schema': 'fx_chain.1',
             'id': obj_id,

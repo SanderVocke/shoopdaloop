@@ -12,6 +12,12 @@
         "connected_port_ids": {
             "type": "array",
             "items": { "type": "string" }
+        },
+        "recording_fx_chain": {
+            "type": "object",
+            "properties": { "schema": { "const": "fx_chain.1", "$comment": "see fx_chain.1 schema" } },
+            "required": ["schema"],
+            "$comment": "state of the FX chain at the time the recording was made (for wet channels only)."
         }
     },
     "required": ["schema", "id", "mode", "type", "data_length"]

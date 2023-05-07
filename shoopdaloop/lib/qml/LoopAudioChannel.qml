@@ -28,6 +28,8 @@ LoopAudioChannel {
             'volume': volume,
             'connected_port_ids': initialized ? connected_ports.map((c) => c.obj_id) : descriptor.connected_port_ids
         }
+        if (recording_started_at) { rval['recording_started_at'] = recording_started_at }
+        if (recording_fx_chain) { rval['recording_fx_chain'] = recording_fx_chain }
 
         if (do_save_data_files && data_length > 0) {
             var filename = obj_id + '.flac'
@@ -55,7 +57,8 @@ LoopAudioChannel {
     onInitial_modeChanged: set_mode(initial_mode)
     onInitial_volumeChanged: set_volume(initial_volume)
     ports: lookup_connected_ports.objects
-    wet_recording_started_at: descriptor.wet_recording_started_at
+    property var recording_fx_chain: ('recording_fx_chain' in descriptor) ? descriptor.recording_fx_chain : null
+    recording_started_at: 'recording_started_at' in descriptor ? descriptor.recording_started_at : null
 
     RegistryLookups {
         id: lookup_connected_ports

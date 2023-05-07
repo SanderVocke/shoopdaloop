@@ -46,15 +46,16 @@ function generate_loop(id, name, length, is_master, channels) {
     }
 }
 
-function generate_track(id, name, loops, ports, fx_chains) {
-    return {
+function generate_track(id, name, loops, ports, fx_chain) {
+    var rval = {
         'id': id,
         'schema': 'track.1',
         'name': name,
         'loops': loops,
-        'ports': ports,
-        'fx_chains': fx_chains
+        'ports': ports
     }
+    if (fx_chain) { rval.fx_chain = fx_chain }
+    return rval
 }
 
 function generate_fx_chain(id, title, type, ports) {
@@ -178,7 +179,7 @@ function generate_default_track(
         return "_" + typestr + "_" + inoutstr + "_" + (idx+1).toString()
     }
 
-    var fx_chains = []
+    var fx_chain = null
     var n_fx_audio_outputs = 0
     var n_fx_audio_inputs = 0
     var n_fx_midi_inputs = 0
@@ -227,12 +228,12 @@ function generate_default_track(
             ))
         }
         
-        fx_chains.push(generate_fx_chain(
+        fx_chain = generate_fx_chain(
             id + '_fx_chain',
             name,
             drywet_carla_type,
             ports
-        ))
+        )
     }
 
     var audio_dry_port_pairs = Array.from(Array(n_audio_dry).keys()).map((idx) => {
@@ -342,7 +343,7 @@ function generate_default_track(
         pairs.forEach(p => p.forEach(pp => all_ports.push(pp)))
     })
 
-    var track = generate_track(id, name, loops, all_ports, fx_chains);
+    var track = generate_track(id, name, loops, all_ports, fx_chain);
     return track;
 }
 

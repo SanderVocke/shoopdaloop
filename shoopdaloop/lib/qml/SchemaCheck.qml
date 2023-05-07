@@ -3,8 +3,14 @@ import QtQuick 2.15
 QtObject {
     property var descriptor
     property string schema
+    property bool enabled: true
 
-    Component.onCompleted: {
+    Component.onCompleted: maybe_check()
+    onEnabledChanged: maybe_check()
+    
+    function maybe_check() {
+        if (!enabled) { return; }
+
         try {
             schema_validator.validate_schema(descriptor, schema)
         } catch(err) {

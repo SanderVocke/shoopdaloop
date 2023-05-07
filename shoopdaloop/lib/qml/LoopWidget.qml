@@ -20,11 +20,25 @@ Item {
     property string name: initial_descriptor.name
 
     // TODO: kind of a bad place to put this.
-    // When the loop starts recording, ensure all wet channels have their
-    // "wet recording started at" updated and also our FX chain state is
-    // cached.
+    // When the loop starts recording, ensure all channels have their
+    // "recording started at" updated and also our FX chain state is
+    // cached for wet channels.
+    property var prev_mode: mode
     onModeChanged: {
-        throw new Error("Implement!")
+        if (prev_mode != mode) {
+            var now = (new Date()).toISOString()
+            all_channels().forEach(c => {
+                if (ModeHelpers.is_recording_mode_for(mode, c.mode)) {
+                    c.recording_started_at = now
+                    var fx_chain_desc = null
+                    if (c.mode == Types.ChannelMode.Wet && track_widget.maybe_fx_chain) {
+                        if (!fx_chain_desc) { fx_chain_desc = track_widget.maybe_fx_chain.actual_session_descriptor() }
+                        c.recording_fx_chain = fx_chain_desc
+                    }
+                }
+            })
+        }
+        prev_mode = mode
     }
 
     // The "loop volume" refers to the output volume from the wet
