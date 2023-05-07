@@ -76,14 +76,15 @@ function generate_scripts(scripts, active_script_id) {
     }
 }
 
-function generate_session(app_version, tracks, ports, scenes, scripts) {
+function generate_session(app_version, tracks, ports, scenes, scripts, fx_chain_states) {
     return {
         'schema': 'session.1',
         'app_version': app_version,
         'tracks': tracks,
         'ports': ports,
         'scenes': scenes,
-        'scripts': scripts
+        'scripts': scripts,
+        'fx_chain_states': fx_chain_states
     }
 }
 
@@ -351,7 +352,7 @@ function generate_default_session(app_version) {
     var master_track = generate_default_track("Master", 1, 'master', true, 'master_loop', 0, 0, 1, false, false, false, undefined)
     master_track.loops[0].name = "master"
     var session = generate_session(app_version, [master_track], [], [],
-        generate_scripts([generate_script("script", "Script", 0, [])], "script"));
+        generate_scripts([generate_script("script", "Script", 0, [])], "script"), []);
 
     return session;    
 }

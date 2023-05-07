@@ -144,6 +144,10 @@ Item {
         return r
     }
 
+    function all_values() {
+        return Object.values(registry_data)
+    }
+
     function clear(except_keys=[]) {
         var replace = {}
         for(const key of except_keys) { replace[key] = registry_data[key] }
@@ -160,5 +164,14 @@ Item {
     function value_or(id, val) {
         if (has(id)) { return registry_data[id] }
         return val;
+    }
+
+    function generate_id(prefix) {
+        for (var i = 0; ; i++) {
+            var candidate = prefix + "_" + i.toString()
+            if (!has(candidate)) {
+                return candidate
+            }
+        }
     }
 }

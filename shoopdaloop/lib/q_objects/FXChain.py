@@ -158,16 +158,16 @@ class FXChain(QQuickItem):
         return self._backend_object
     
     @Slot(result="QVariant")
-    def get_internal_state(self):
+    def get_state_str(self):
         if self._backend_object:
-            rval = self._backend_object.get_internal_state()
+            rval = self._backend_object.get_state_str()
             return rval
         raise Exception("Getting internal state of uninitialized FX chain")
     
     @Slot(str)
-    def restore_internal_state(self, state):
+    def restore_state(self, state_str):
         if self._backend_object:
-            self._backend_object.restore_internal_state(state)
+            self._backend_object.restore_state(state_str)
         else:
             raise Exception("Restoring internal state of uninitialized FX chain")
     

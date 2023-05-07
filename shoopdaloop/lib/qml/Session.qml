@@ -7,7 +7,7 @@ import "../generate_session.js" as GenerateSession
 import "../backend/frontend_interface/types.js" as Types
 
 Item {
-    id: session
+    id: root
     objectName: 'session'
 
     // The descriptor is an object matching the ShoopDaLoop session JSON
@@ -23,12 +23,13 @@ Item {
             tracks_widget.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to),
             [],
             scenes_widget.actual_scene_descriptors,
-            scripting_widget.actual_session_descriptor
+            scripting_widget.actual_session_descriptor,
+            fx_chain_states_registry.all_values()
         );
     }
 
     SchemaCheck {
-        descriptor: session.initial_descriptor
+        descriptor: root.initial_descriptor
         schema: 'session.1'
         id: validator
     }
@@ -58,16 +59,28 @@ Item {
         }
     }
 
-    // Objects registry just stores object ids -> objects.
+    // The main registry stores various important internal states.
+    // Examples of stuff stored in here:
+    // - selected / targeted / master loops
+    // - sub-registries, such as for cached FX chain states.
+    property Registry state_registry: StateRegistry {
+        verbose: false
+    }
+
+    // The objects registry is a simple map of widget ids (from the session descriptor)
+    // to objects representing those in the app (usually widgets.)
     property Registry objects_registry: ObjectsRegistry {
         verbose: false
     }
 
-    // State registry stores the following optional states:
-    // - "master_loop" -> LoopWidget which holds the master loop
-    // - "targeted_loop" -> LoopWidget which is currently targeted
-    property Registry state_registry: StateRegistry {
-        verbose: false
+    // Store a reference to ourselves in the state registry.
+    // Also make some sub-registries:
+    // - one to keep track of FX chain states caching
+    // - one to keep track of any important objects by ID.
+    property Registry fx_chain_states_registry: Registry { verbose: false }
+    Component.onCompleted: {
+        state_registry.register('session', root)
+        state_registry.register('fx_chain_states_registry', fx_chain_states_registry)
     }
 
     // For (test) access
@@ -79,7 +92,7 @@ Item {
     function save_session(filename) {
         state_registry.save_action_started()
         var tempdir = file_io.create_temporary_folder()
-        var tasks = tasks_factory.create_tasks_obj(session)
+        var tasks = tasks_factory.create_tasks_obj(root)
 
         var descriptor = actual_session_descriptor(true, tempdir, tasks)
         var session_filename = tempdir + '/session.json'
@@ -119,7 +132,7 @@ Item {
         var tempdir = file_io.create_temporary_folder()
 
         try {
-            var tasks = tasks_factory.create_tasks_obj(session)
+            var tasks = tasks_factory.create_tasks_obj(root)
 
             file_io.extract_tarfile(filename, tempdir)
 
@@ -128,7 +141,7 @@ Item {
             var descriptor = JSON.parse(session_file_contents)
 
             schema_validator.validate_schema(descriptor, validator.schema)
-            session.initial_descriptor = descriptor
+            root.initial_descriptor = descriptor
             reload()
 
             queue_load_tasks(tempdir, tasks)
@@ -169,22 +182,22 @@ Item {
 
             height: 40
 
-            loading_session: session.loading
-            saving_session: session.saving
+            loading_session: root.loading
+            saving_session: root.saving
 
-            onLoadSession: (filename) => session.load_session(filename)
-            onSaveSession: (filename) => session.save_session(filename)
+            onLoadSession: (filename) => root.load_session(filename)
+            onSaveSession: (filename) => root.save_session(filename)
 
-            state_registry: session.state_registry
-            objects_registry: session.objects_registry
+            state_registry: root.state_registry
+            objects_registry: root.objects_registry
         }
 
         ScenesWidget {
             id: scenes_widget
 
-            initial_scene_descriptors: session.initial_descriptor.scenes
-            objects_registry: session.objects_registry
-            state_registry: session.state_registry
+            initial_scene_descriptors: root.initial_descriptor.scenes
+            objects_registry: root.objects_registry
+            state_registry: root.state_registry
             
             width: 140
             anchors {
@@ -198,9 +211,9 @@ Item {
         ScriptingWidget {
             id: scripting_widget
 
-            initial_descriptor: session.initial_descriptor.scripts
-            objects_registry: session.objects_registry
-            state_registry: session.state_registry
+            initial_descriptor: root.initial_descriptor.scripts
+            objects_registry: root.objects_registry
+            state_registry: root.state_registry
 
             height: 160
             anchors {
@@ -224,9 +237,9 @@ Item {
                 leftMargin: 4
             }
 
-            initial_track_descriptors: session.initial_descriptor.tracks
-            objects_registry: session.objects_registry
-            state_registry: session.state_registry
+            initial_track_descriptors: root.initial_descriptor.tracks
+            objects_registry: root.objects_registry
+            state_registry: root.state_registry
         }
 
         Item {

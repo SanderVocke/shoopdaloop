@@ -7,7 +7,7 @@ import '../backend/frontend_interface/types.js' as Types
 // The track control widget displays control buttons to control the
 // (loops within a) track.
 Item {
-    id: trackctl
+    id: root
     width: childrenRect.width
     height: childrenRect.height
 
@@ -58,7 +58,7 @@ Item {
 
     RegistryLookups {
         id: lookup_ports
-        registry: trackctl.objects_registry
+        registry: root.objects_registry
         keys: initial_track_descriptor ? initial_track_descriptor.ports.map((p) => p.id) : []
     }
     property alias ports : lookup_ports.objects
@@ -166,7 +166,7 @@ Item {
             }
             ProgressBar {
                 id: output_peak_bar_l
-                visible: trackctl.out_is_stereo
+                visible: root.out_is_stereo
                 value: output_peak_meter_l.value
                 padding: 2
                 anchors {
@@ -183,7 +183,7 @@ Item {
                     id: output_peak_meter_l
                     max_dt: 0.1
 
-                    input: trackctl.audio_out_ports.length > 0 ? trackctl.audio_out_ports[0].peak : 0.0
+                    input: root.audio_out_ports.length > 0 ? root.audio_out_ports[0].peak : 0.0
                 }
 
                 background: Rectangle {
@@ -208,7 +208,7 @@ Item {
             }
             ProgressBar {
                 id: output_peak_bar_r
-                visible: trackctl.out_is_stereo
+                visible: root.out_is_stereo
                 value: output_peak_meter_r.value
                 padding: 2
                 anchors {
@@ -225,7 +225,7 @@ Item {
                     id: output_peak_meter_r
                     max_dt: 0.1
 
-                    input: trackctl.audio_out_ports.length > 1 ? trackctl.audio_out_ports[1].peak : 0.0
+                    input: root.audio_out_ports.length > 1 ? root.audio_out_ports[1].peak : 0.0
                 }
 
                 background: Rectangle {
@@ -249,7 +249,7 @@ Item {
             }
             ProgressBar {
                 id: output_peak_bar_overall
-                visible: !trackctl.out_is_stereo
+                visible: !root.out_is_stereo
                 value: output_peak_meter_overall.value
                 anchors {
                     left: output_peak_bar_l.left
@@ -266,7 +266,7 @@ Item {
                     id: output_peak_meter_overall
                     max_dt: 0.1
 
-                    input: trackctl.audio_out_ports.length > 0 ? Math.max(...trackctl.audio_out_ports.map(p => p.peak)) : 0.0
+                    input: root.audio_out_ports.length > 0 ? Math.max(...root.audio_out_ports.map(p => p.peak)) : 0.0
                 }
 
                 background: Rectangle {
@@ -298,7 +298,7 @@ Item {
                 width: 8
                 radius: 2
                 color: '#00BBFF'
-                visible: trackctl.n_midi_notes_active_out > 0
+                visible: root.n_midi_notes_active_out > 0
             }
             Rectangle {
                 id: output_midi_evts_indicator
@@ -310,7 +310,7 @@ Item {
                 width: 8
                 radius: 2
                 color: '#00FFFF'
-                visible: trackctl.n_midi_events_out > 0
+                visible: root.n_midi_events_out > 0
             }
             Row {
                 spacing: -4
@@ -333,12 +333,12 @@ Item {
                         acceptedButtons: Qt.LeftButton
                         hoverEnabled: true
 
-                        onClicked: trackctl.toggle_muted()
+                        onClicked: root.toggle_muted()
 
                         MaterialDesignIcon {
                             size: parent.width
-                            name: trackctl.muted ? 'volume-mute' : 'volume-high'
-                            color: trackctl.muted ? 'grey' : Material.foreground
+                            name: root.muted ? 'volume-mute' : 'volume-high'
+                            color: root.muted ? 'grey' : Material.foreground
                             anchors.fill: parent
                         }
                         ToolTip {
@@ -357,7 +357,7 @@ Item {
                 AudioSlider {
                     id: volume_slider
                     orientation: Qt.Horizontal
-                    width: trackctl.out_is_stereo ? 70 : 85
+                    width: root.out_is_stereo ? 70 : 85
                     height: 20
                     from: -30.0
                     to: 20.0
@@ -366,9 +366,9 @@ Item {
 
                     handle.width: 4
 
-                    Material.accent: trackctl.muted ? 'grey' : trackctl.Material.accent
+                    Material.accent: root.muted ? 'grey' : root.Material.accent
 
-                    property real initial_value_dB: trackctl.initial_volume_dB
+                    property real initial_value_dB: root.initial_volume_dB
                     onInitial_value_dBChanged: value = initial_value_dB
                     Component.onCompleted: value = initial_value_dB
 
@@ -379,7 +379,7 @@ Item {
 
                 AudioDial {
                     id: output_balance_dial
-                    visible: trackctl.out_is_stereo
+                    visible: root.out_is_stereo
                     from: -1.0
                     to:   1.0
                     value: 0.0
@@ -421,7 +421,7 @@ Item {
             }
             ProgressBar {
                 id: input_peak_l_bar
-                visible: trackctl.in_is_stereo
+                visible: root.in_is_stereo
                 value: input_peak_meter_l.value
                 padding: 2
                 anchors {
@@ -438,7 +438,7 @@ Item {
                     id: input_peak_meter_l
                     max_dt: 0.1
 
-                    input: trackctl.audio_in_ports.length > 0 ? trackctl.audio_in_ports[0].peak * trackctl.audio_in_ports[0].passthrough_volume : 0.0
+                    input: root.audio_in_ports.length > 0 ? root.audio_in_ports[0].peak * root.audio_in_ports[0].passthrough_volume : 0.0
                 }
 
                 background: Rectangle {
@@ -463,7 +463,7 @@ Item {
             }
             ProgressBar {
                 id: input_peak_r_bar
-                visible: trackctl.in_is_stereo
+                visible: root.in_is_stereo
                 value: input_peak_meter_r.value
                 padding: 2
                 anchors {
@@ -480,7 +480,7 @@ Item {
                     id: input_peak_meter_r
                     max_dt: 0.1
 
-                    input: trackctl.audio_in_ports.length > 1 ? trackctl.audio_in_ports[1].peak * trackctl.audio_in_ports[1].passthrough_volume : 0.0
+                    input: root.audio_in_ports.length > 1 ? root.audio_in_ports[1].peak * root.audio_in_ports[1].passthrough_volume : 0.0
                 }
 
                 background: Rectangle {
@@ -504,7 +504,7 @@ Item {
             }
             ProgressBar {
                 id: input_peak_overall_bar
-                visible: !trackctl.in_is_stereo
+                visible: !root.in_is_stereo
                 value: input_peak_meter_overall.value
                 anchors {
                     left: input_peak_l_bar.left
@@ -521,7 +521,7 @@ Item {
                     id: input_peak_meter_overall
                     max_dt: 0.1
 
-                    input: trackctl.audio_in_ports.length > 0 ? Math.max(...trackctl.audio_in_ports.map(p => p.peak)) * Math.max(...trackctl.audio_in_ports.map(p => p.passthrough_volume)) : 0.0
+                    input: root.audio_in_ports.length > 0 ? Math.max(...root.audio_in_ports.map(p => p.peak)) * Math.max(...root.audio_in_ports.map(p => p.passthrough_volume)) : 0.0
                 }
 
                 background: Rectangle {
@@ -553,7 +553,7 @@ Item {
                 width: 8
                 radius: 2
                 color: '#00BBFF'
-                visible: trackctl.n_midi_notes_active_in > 0
+                visible: root.n_midi_notes_active_in > 0
             }
             Rectangle {
                 id: input_midi_evts_indicator
@@ -565,7 +565,7 @@ Item {
                 width: 8
                 radius: 2
                 color: '#00FFFF'
-                visible: trackctl.n_midi_events_in > 0
+                visible: root.n_midi_events_in > 0
             }
             Row {
                 id: passthrough_row
@@ -588,12 +588,12 @@ Item {
                         acceptedButtons: Qt.LeftButton
                         hoverEnabled: true
 
-                        onClicked: trackctl.toggle_passthroughMuted()
+                        onClicked: root.toggle_passthroughMuted()
 
                         MaterialDesignIcon {
                             size: parent.width
                             name: 'ear-hearing'
-                            color: trackctl.passthroughMuted ? 'grey' : Material.foreground
+                            color: root.passthroughMuted ? 'grey' : Material.foreground
                             anchors.fill: parent
                         }
                         ToolTip {
@@ -612,7 +612,7 @@ Item {
                 AudioSlider {
                     id: passthrough_slider
                     orientation: Qt.Horizontal
-                    width: trackctl.in_is_stereo ? 70 : 85
+                    width: root.in_is_stereo ? 70 : 85
                     height: 20
                     from: -30.0
                     to: 20.0
@@ -621,9 +621,9 @@ Item {
                     
                     handle.width: 4
 
-                    Material.accent: trackctl.passthroughMuted ? 'grey' : trackctl.Material.accent
+                    Material.accent: root.passthroughMuted ? 'grey' : root.Material.accent
 
-                    property real initial_value_dB: trackctl.initial_passthrough_volume_dB
+                    property real initial_value_dB: root.initial_passthrough_volume_dB
                     onInitial_value_dBChanged: value = initial_value_dB
                     Component.onCompleted: value = initial_value_dB
 
@@ -634,7 +634,7 @@ Item {
 
                 AudioDial {
                     id: passthrough_balance_dial
-                    visible: trackctl.in_is_stereo
+                    visible: root.in_is_stereo
                     from: -1.0
                     to:   1.0
                     value: 0.0

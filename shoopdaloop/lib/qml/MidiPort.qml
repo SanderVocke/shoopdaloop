@@ -4,7 +4,7 @@ import QtQuick 2.15
 import '../backend/frontend_interface/types.js' as Types
 
 MidiPort {
-    id: port
+    id: root
     property var descriptor : null
     property Registry objects_registry : null
     property Registry state_registry : null
@@ -41,15 +41,15 @@ MidiPort {
     }
 
     SchemaCheck {
-        descriptor: port.descriptor
+        descriptor: root.descriptor
         schema: 'midiport.1'
     }
 
     RegisterInRegistry {
         id: reg_entry
-        registry: port.objects_registry
-        key: port.descriptor.id
-        object: port
+        registry: root.objects_registry
+        key: root.descriptor.id
+        object: root
     }
 
     function qml_close() {

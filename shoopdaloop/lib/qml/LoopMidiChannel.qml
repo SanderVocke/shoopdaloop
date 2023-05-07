@@ -5,7 +5,7 @@ import '../backend/frontend_interface/types.js' as Types
 import '../session_schemas/conversions.js' as Conversions
 
 LoopMidiChannel {
-    id: chan
+    id: root
 
     property var descriptor : null
     property Registry objects_registry : null
@@ -14,7 +14,7 @@ LoopMidiChannel {
     readonly property string obj_id : descriptor.id
 
     SchemaCheck {
-        descriptor: chan.descriptor
+        descriptor: root.descriptor
         schema: 'channel.1'
     }
 
@@ -28,12 +28,12 @@ LoopMidiChannel {
             'connected_port_ids': initialized ? connected_ports.map((c) => c.obj_id) : descriptor.connected_port_ids
         }
         if (recording_started_at) { rval['recording_started_at'] = recording_started_at }
-        if (recording_fx_chain) { rval['recording_fx_chain'] = recording_fx_chain }
+        if (recording_fx_chain_state_id) { rval['recording_fx_chain_state_id'] = recording_fx_chain_state_id }
 
         if (do_save_data_files && data_length > 0) {
             var filename = obj_id + '.mid'
             var full_filename = data_files_dir + '/' + filename;
-            var task = file_io.save_channel_to_midi_async(full_filename, get_backend().get_sample_rate(), chan)
+            var task = file_io.save_channel_to_midi_async(full_filename, get_backend().get_sample_rate(), root)
             add_tasks_to.add_task(task)
             rval['data_file'] = filename
         }
@@ -42,7 +42,7 @@ LoopMidiChannel {
     function queue_load_tasks(data_files_dir, add_tasks_to) {
         if (has_data_file()) {
             add_tasks_to.add_task(
-                file_io.load_midi_to_channel_async(data_files_dir + '/' + descriptor.data_file, get_backend().get_sample_rate(), chan, null)
+                file_io.load_midi_to_channel_async(data_files_dir + '/' + descriptor.data_file, get_backend().get_sample_rate(), root, null)
             )
         }
     }
@@ -53,7 +53,7 @@ LoopMidiChannel {
     property int initial_mode : Conversions.parse_channel_mode(descriptor.mode)
     onInitial_modeChanged: set_mode(initial_mode)
     ports: lookup_connected_ports.objects
-    property var recording_fx_chain: ('recording_fx_chain' in descriptor) ? descriptor.recording_fx_chain : null
+    property var recording_fx_chain_state_id: ('recording_fx_chain_state_id' in descriptor) ? descriptor.recording_fx_chain_state_id : null
     recording_started_at: 'recording_started_at' in descriptor ? descriptor.recording_started_at : null
 
     RegistryLookups {
@@ -64,9 +64,9 @@ LoopMidiChannel {
 
     RegisterInRegistry {
         id: reg_entry
-        registry: chan.objects_registry
-        key: chan.descriptor.id
-        object: chan
+        registry: root.objects_registry
+        key: root.descriptor.id
+        object: root
     }
 
     Component.onCompleted: {

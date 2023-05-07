@@ -8,7 +8,7 @@ import "../generate_session.js" as GenerateSession
 // The track widget displays the state of a track (collection of
 // loopers with shared settings/control).
 Item {
-    id: track
+    id: root
 
     property var initial_descriptor : null
     property Registry objects_registry : null
@@ -24,7 +24,7 @@ Item {
     signal requestDelete()
 
     SchemaCheck {
-        descriptor: track.initial_descriptor
+        descriptor: root.initial_descriptor
         schema: 'track.1'
     }
 
@@ -85,29 +85,29 @@ Item {
     }
 
     function update_loop_port_connections() {
-        for(var i=0; i<track.loops.length; i++) {
-            var loop = track.loops[i]
+        for(var i=0; i<root.loops.length; i++) {
+            var loop = root.loops[i]
 
         }
     }
 
     RegisterInRegistry {
         id: reg_entry
-        registry: track.objects_registry
-        object: track
-        key: track.obj_id
+        registry: root.objects_registry
+        object: root
+        key: root.obj_id
     }
 
     Component.onCompleted: {
         loaded = false
         var _n_loops_loaded = 0
         // Instantiate initial loops
-        track.loop_descriptors.forEach(desc => {
-            var loop = track.add_loop({
+        root.loop_descriptors.forEach(desc => {
+            var loop = root.add_loop({
                 initial_descriptor: desc,
-                objects_registry: track.objects_registry,
-                state_registry: track.state_registry,
-                track_widget: track
+                objects_registry: root.objects_registry,
+                state_registry: root.state_registry,
+                track_widget: root
             });
             if (loop.loaded) { _n_loops_loaded += 1 }
         })
@@ -128,7 +128,7 @@ Item {
 
     function add_row() {
         // Descriptor is automatically determined from the previous loop...
-        var prev_loop = track.loops[track.loops.length - 1]
+        var prev_loop = root.loops[root.loops.length - 1]
         var prev_desc = prev_loop.initial_descriptor
         // ...id
         var prev_id = prev_desc.id
@@ -146,13 +146,13 @@ Item {
             if (chan.id == prev_chan.id) { throw new Error("Did not find loop ID in channel ID") }
             channel_descriptors.push(chan)
         }
-        var name = "(" + (track.loops.length).toString() + ")"
+        var name = "(" + (root.loops.length).toString() + ")"
         var loop_descriptor = GenerateSession.generate_loop(id, name, 0, false, channel_descriptors)
 
-        track.add_loop({
+        root.add_loop({
             initial_descriptor: loop_descriptor,
-            objects_registry: track.objects_registry,
-            state_registry: track.state_registry
+            objects_registry: root.objects_registry,
+            state_registry: root.state_registry
         });
 
         rowAdded()
@@ -185,23 +185,23 @@ Item {
 
     RepeaterWithLoadedDetection {
         id : audio_ports_repeater
-        model : track.audio_port_descriptors.length
+        model : root.audio_port_descriptors.length
 
         AudioPort {
-            descriptor: track.audio_port_descriptors[index]
-            objects_registry: track.objects_registry
-            state_registry: track.state_registry
+            descriptor: root.audio_port_descriptors[index]
+            state_registry: root.state_registry
+            objects_registry: root.objects_registry
             is_internal: false
         }
     }
     RepeaterWithLoadedDetection {
         id : midi_ports_repeater
-        model : track.midi_port_descriptors.length
+        model : root.midi_port_descriptors.length
 
         MidiPort {
-            descriptor: track.midi_port_descriptors[index]
-            objects_registry: track.objects_registry
-            state_registry: track.state_registry
+            descriptor: root.midi_port_descriptors[index]
+            state_registry: root.state_registry
+            objects_registry: root.objects_registry
             is_internal: false
         }
     }
@@ -209,8 +209,8 @@ Item {
     // Use registry lookup to find our ports back dynamically
     RegistryLookups {
         id: lookup_ports
-        registry: track.objects_registry
-        keys: track.initial_descriptor ? track.initial_descriptor.ports.map((p) => p.id) : []
+        registry: root.objects_registry
+        keys: root.initial_descriptor ? root.initial_descriptor.ports.map((p) => p.id) : []
     }
     property alias ports : lookup_ports.objects
     function is_audio(p) { return p.schema.match(/audioport\.[0-9]+/) }
@@ -226,25 +226,25 @@ Item {
 
     Loader {
         id: fx_chain_loader
-        active: track.fx_chain_descriptor != undefined
+        active: root.fx_chain_descriptor != undefined
         sourceComponent: fx_chain_component
     }
     Component {
         id: fx_chain_component
         FXChain {
-            descriptor: track.fx_chain_descriptor
-            objects_registry: track.objects_registry
-            state_registry: track.state_registry
+            descriptor: root.fx_chain_descriptor
+            state_registry: root.state_registry
+            objects_registry: root.objects_registry
 
             Component.onCompleted: {
-                track.fx_ready = Qt.binding(() => this.ready)
-                track.fx_active = Qt.binding(() => this.active)
-                set_active(!track.fx_input_muted)
+                root.fx_ready = Qt.binding(() => this.ready)
+                root.fx_active = Qt.binding(() => this.active)
+                set_active(!root.fx_input_muted)
             }
 
             Connections {
-                target: track
-                function onFx_input_mutedChanged() { chain.set_active(!track.fx_input_muted) }
+                target: root
+                function onFx_input_mutedChanged() { chain.set_active(!root.fx_input_muted) }
             }
         }
     }
@@ -281,13 +281,13 @@ Item {
                             rightMargin: 3
                         }
 
-                        text: track.name
+                        text: root.name
                         font.pixelSize: 13
-                        readOnly: !track.name_editable
+                        readOnly: !root.name_editable
 
                         onEditingFinished: () => {
                                             background_focus.forceActiveFocus()
-                                            track.name = text
+                                            root.name = text
                                         }
                     }
         
@@ -314,7 +314,7 @@ Item {
 
                             MenuItem {
                                 text: "Delete"
-                                onClicked: { track.requestDelete() }
+                                onClicked: { root.requestDelete() }
                             }
                         }
                     }
@@ -322,7 +322,7 @@ Item {
                     ExtendedButton {
                         tooltip: "Open FX chain GUI if ready. Red = not ready. Grey = bypassed."
                         id: fxuibutton
-                        visible: track.initial_track_descriptor != undefined
+                        visible: root.initial_track_descriptor != undefined
 
                         anchors {
                             top: menubutton.bottom
@@ -335,8 +335,8 @@ Item {
                         Label {
                             text: "FX"
                             font.pixelSize: 10
-                            color: (!track.fx_ready) ? "red" :
-                                   track.fx_active ? Material.foreground :
+                            color: (!root.fx_ready) ? "red" :
+                                   root.fx_active ? Material.foreground :
                                    "grey"
                             anchors {
                                 verticalCenter: parent.verticalCenter
@@ -369,7 +369,7 @@ Item {
                         anchors.centerIn: parent
                     }
 
-                    onClicked: track.add_row()
+                    onClicked: root.add_row()
                 }
             }
         }

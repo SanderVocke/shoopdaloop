@@ -30,7 +30,16 @@
                     "schema": { "const": "scene.1", "$comment": "see scene.1 schema" }
                 }
             }
+        },
+        "fx_chain_states": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "schema": { "const": "fx_chain.1", "$comment": "see fx_chain.1 schema. Ports not needed here" }
+                }
+            }
         }
     },
-    "required": ["schema", "tracks", "ports", "scenes"]
+    "required": ["schema", "tracks", "ports", "scenes", "fx_chain_states"]
 }

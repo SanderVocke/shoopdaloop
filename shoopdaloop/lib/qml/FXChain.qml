@@ -22,7 +22,7 @@ FXChain {
             'title': title,
             'type': descriptor.type,
             'ports': all_ports().map(i => i.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to)),
-            'internal_state': get_internal_state()
+            'internal_state': get_state_str()
         }
     }
 
@@ -46,9 +46,9 @@ FXChain {
                 case "carla_patchbay_16x": chain_type = Types.FXChainType.Carla_Patchbay_16x; break;
             }
 
-            if ('internal_state' in descriptor) {
+            if ('state_str' in descriptor) {
                 var restore = function() {
-                    root.restore_internal_state(descriptor.internal_state)
+                    root.restore_state(descriptor.state_str)
                 }
                 if (initialized) { restore() }
                 else { root.initializedChanged.connect(restore) }

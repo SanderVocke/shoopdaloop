@@ -16,6 +16,13 @@ Item {
     property Registry objects_registry : null
     property Registry state_registry : null
 
+    RegistryLookup {
+        id: fx_chain_states_registry_lookup
+        registry: root.state_registry
+        key: 'fx_chain_states_registry'
+    }
+    property alias fx_chain_states_registry : fx_chain_states_registry_lookup.object
+
     readonly property string obj_id: initial_descriptor.id
     property string name: initial_descriptor.name
 
@@ -27,13 +34,19 @@ Item {
     onModeChanged: {
         if (prev_mode != mode) {
             var now = (new Date()).toISOString()
+            var fx_chain_desc_id = null
             all_channels().forEach(c => {
                 if (ModeHelpers.is_recording_mode_for(mode, c.mode)) {
                     c.recording_started_at = now
-                    var fx_chain_desc = null
                     if (c.mode == Types.ChannelMode.Wet && track_widget.maybe_fx_chain) {
-                        if (!fx_chain_desc) { fx_chain_desc = track_widget.maybe_fx_chain.actual_session_descriptor() }
-                        c.recording_fx_chain = fx_chain_desc
+                        if (!fx_chain_desc_id) {
+                            fx_chain_desc_id = fx_chain_states_registry.generate_id('fx_chain_state')
+                            var fx_chain_desc = track_widget.maybe_fx_chain.actual_session_descriptor()
+                            delete fx_chain_desc.ports // Port descriptions not needed for state caching, this is track-dependent
+                            fx_chain_desc.id = fx_chain_desc_id
+                            fx_chain_states_registry.register (fx_chain_desc_id, fx_chain_desc)
+                        }
+                        c.recording_fx_chain_state_id = fx_chain_desc_id
                     }
                 }
             })

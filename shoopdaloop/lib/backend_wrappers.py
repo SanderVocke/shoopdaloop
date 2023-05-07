@@ -442,13 +442,13 @@ class BackendFXChain:
         destroy_fx_chain_state(state)
         return rval
     
-    def get_internal_state(self):
+    def get_state_str(self):
         state = get_fx_chain_internal_state(self._c_handle)
         rval = state.decode('ascii')
         # TODO destroy_string(state)
         return rval
     
-    def restore_internal_state(self, state):
+    def restore_state(self, state_str):
         restore_fx_chain_internal_state(self._c_handle, c_char_p(bytes(state, 'ascii')))
 class Backend:
     def __init__(self, c_handle : 'POINTER(shoopdaloop_backend_instance_t)'):

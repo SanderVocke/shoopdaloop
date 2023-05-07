@@ -6,7 +6,7 @@
         "title":        { "type": "string" },
         "type":         { "enum": ["carla_rack", "carla_patchbay", "carla_patchbay_16"] },
         "ports": {
-            "$comment": "describes internal ports offered by this chain",
+            "$comment": "describes internal ports offered by this chain. Optional - if left out this object can describe a state for an FX chain without caring about the port configuration.",
             "type": "array",
             "items": {
                 "type": "object",
@@ -17,7 +17,7 @@
                 "required": ["schema"]
             }
         },
-        "internal_state": { "type": "string" }
+        "state_str": { "type": "string" }
     },
-    "required": ["schema", "id", "type", "ports"]
+    "required": ["schema", "id", "type"]
 }
