@@ -377,7 +377,7 @@ Item {
                     ExtendedButton {
                         tooltip: "Open FX chain GUI if ready. Red = not ready. Grey = bypassed."
                         id: fxuibutton
-                        visible: root.initial_track_descriptor != undefined
+                        visible: root.maybe_fx_chain != undefined
 
                         anchors {
                             top: menubutton.bottom
