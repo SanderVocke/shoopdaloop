@@ -14,6 +14,13 @@ Item {
     property Registry objects_registry : null
     property Registry state_registry : null
 
+    RegistryLookup {
+        id: fx_chain_states_registry_lookup
+        registry: root.state_registry
+        key: 'fx_chain_states_registry'
+    }
+    property alias fx_chain_states_registry : fx_chain_states_registry_lookup.object
+
     readonly property string obj_id : initial_descriptor.id
 
     property bool loaded : false
@@ -232,6 +239,7 @@ Item {
     Component {
         id: fx_chain_component
         FXChain {
+            id: chain
             descriptor: root.fx_chain_descriptor
             state_registry: root.state_registry
             objects_registry: root.objects_registry
@@ -313,8 +321,55 @@ Item {
                             id: menu
 
                             MenuItem {
-                                text: "Delete"
+                                text: "Delete Track"
                                 onClicked: { root.requestDelete() }
+                            }
+                            MenuItem {
+                                text: "Snapshot FX State"
+                                enabled: root.maybe_fx_chain != undefined
+                                onClicked: {
+                                    var snapshot = root.maybe_fx_chain.actual_session_descriptor()
+                                    delete snapshot.ports
+                                    snapshot_fx_state_dialog.data = snapshot
+                                    snapshot_fx_state_dialog.open()
+                                }
+
+                                InputDialog {
+                                    id: snapshot_fx_state_dialog
+                                    property var data
+                                    title: "Choose a name"
+                                    onAcceptedInput: name => {
+                                        var id = root.fx_chain_states_registry.generate_id("fx_chain_state")
+                                        data.title = name
+                                        root.fx_chain_states_registry.register(id, data)
+                                    }
+                                }
+                            }
+                            Menu {
+                                id: restore_submenu
+                                title: "Restore FX State"
+                                enabled: root.maybe_fx_chain != undefined && fx_states.length > 0
+
+                                RegistrySelects {
+                                    registry: root.fx_chain_states_registry
+                                    select_fn: r => true
+                                    values_only: true
+                                    id: all_chain_states
+                                }
+
+                                property list<var> fx_states: all_chain_states.objects
+                                    .filter(v => v.title != "")
+
+                                Repeater {
+                                    model: restore_submenu.fx_states.length
+
+                                    MenuItem {
+                                        property var mapped_item: restore_submenu.fx_states[index]
+                                        text: mapped_item.title
+                                        enabled: mapped_item.type == root.maybe_fx_chain.type
+                                        onClicked: root.maybe_fx_chain.restore_state(mapped_item.state_str)
+                                    }
+                                }
                             }
                         }
                     }
@@ -344,7 +399,7 @@ Item {
                             }
                         }
 
-                        onClicked: { if (root.maybe_fx_chain) { root.maybe_fx_chain.set_ui_visible(!root.maybe_fx_chain.ui_visible) } }
+                        onClicked: { if (root.maybe_fx_chain != undefined) { root.maybe_fx_chain.set_ui_visible(!root.maybe_fx_chain.ui_visible) } }
                     }
                     
                 }

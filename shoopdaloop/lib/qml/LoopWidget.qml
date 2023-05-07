@@ -43,6 +43,7 @@ Item {
                             fx_chain_desc_id = fx_chain_states_registry.generate_id('fx_chain_state')
                             var fx_chain_desc = track_widget.maybe_fx_chain.actual_session_descriptor()
                             delete fx_chain_desc.ports // Port descriptions not needed for state caching, this is track-dependent
+                            fx_chain_desc.title = ""   // No title indicates elsewhere that this is not a snapshot that the user can directly see in the list.
                             fx_chain_desc.id = fx_chain_desc_id
                             fx_chain_states_registry.register (fx_chain_desc_id, fx_chain_desc)
                         }
@@ -408,6 +409,13 @@ Item {
                    undefined
         })
     }
+
+    RegistryLookups {
+        keys: root.intial_descriptor ? root.initial_descriptor.channels.map(c => c.id) : []
+        registry: root.objects_registry
+        id: lookup_channels
+    }
+    property alias channels: lookup_channels.objects
 
     RegistryLookup {
         id: lookup_sync_active
@@ -1338,6 +1346,10 @@ Item {
                 }
             }
             MenuItem {
+                text: "Loop details window"
+                onClicked: () => { detailswindow.visible = true }
+            }
+            MenuItem {
                text: "Generate click loop..."
                onClicked: () => clicktrackdialog.open()
             }
@@ -1388,8 +1400,18 @@ Item {
                 }
             }
             MenuItem {
-                text: "Loop details window"
-                onClicked: () => { detailswindow.visible = true }
+                property var cached_fx_state: {
+                    if (!root.track_widget.maybe_fx_chain) { return undefined; }
+                    var channel_states = root.channels
+                        .filter(c => 'recording_fx_chain_state_id' in c && c.recording_fx_chain_state_id)
+                        .map(c => c.recording_fx_chain_state_id);
+                    return channel_states.length > 0 ? 
+                        root.fx_chain_states.registry.maybe_get(channel_states[0], undefined)
+                        : undefined
+                }
+                text: "Restore Recording FX State"
+                enabled: cached_fx_state ? true : false
+                onClicked: root.track_widget.restore_state(cached_fx_state.state_str)
             }
         }
 

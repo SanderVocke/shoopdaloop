@@ -77,7 +77,7 @@ Item {
     // Also make some sub-registries:
     // - one to keep track of FX chain states caching
     // - one to keep track of any important objects by ID.
-    property Registry fx_chain_states_registry: Registry { verbose: false }
+    property Registry fx_chain_states_registry: Registry { verbose: true }
     Component.onCompleted: {
         state_registry.register('session', root)
         state_registry.register('fx_chain_states_registry', fx_chain_states_registry)

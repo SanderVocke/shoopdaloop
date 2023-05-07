@@ -10,10 +10,12 @@ Item {
     property list<var> objects : []
 
     function update() {
-        if (values_only) {
-            objects = registry.select_values(select_fn)
-        } else {
-            objects = registry.select(select_fn)
+        if (registry) {
+            if (values_only) {
+                objects = registry.select_values(select_fn)
+            } else {
+                objects = registry.select(select_fn)
+            }
         }
     }
 
