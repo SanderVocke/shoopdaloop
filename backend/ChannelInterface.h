@@ -51,6 +51,10 @@ public:
     virtual void set_start_offset(int offset) = 0;
     virtual int get_start_offset() const = 0;
 
+    // Get a sequence number which increments whenever the content, of this channel changes.
+    // Can be used for e.g. "dirty" detection.
+    virtual unsigned get_data_seq_nr() const = 0;
+
     ChannelInterface() = default;
     virtual ~ChannelInterface() {}
 };

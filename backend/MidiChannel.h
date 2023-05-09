@@ -52,6 +52,7 @@ private:
     std::atomic<size_t> ma_data_length; // Length in samples
     std::atomic<int> ma_start_offset;
     std::atomic<size_t> ma_n_events_triggered;
+    std::atomic<unsigned> ma_data_seq_nr;
 
     const Message all_sound_off_message_channel_0 = Message(0, 3, {0xB0, 120, 0});
 
@@ -66,7 +67,8 @@ public:
         ma_data_length(0),
         mp_output_notes_state(std::make_unique<MidiNotesState>()),
         ma_n_events_triggered(0),
-        ma_start_offset(0)
+        ma_start_offset(0),
+        ma_data_seq_nr(0)
     {
         mp_playback_cursor = mp_storage->create_cursor();
     }
@@ -82,13 +84,21 @@ public:
         mp_output_notes_state = other.mp_output_notes_state;
         ma_start_offset = other.ma_start_offset.load();
         ma_data_length = other.ma_data_length.load();
+        data_changed();
         return *this;
     }
 
+    unsigned get_data_seq_nr() const override { return ma_data_seq_nr; }
+
+    void data_changed() { ma_data_seq_nr++; }
+
     size_t get_length() const override { return ma_data_length; }
     void PROC_set_length(size_t length) override {
-        mp_storage->truncate(length);
-        ma_data_length = length;
+        if (length != ma_data_length) {
+            mp_storage->truncate(length);
+            ma_data_length = length;
+            data_changed();
+        }
     }
 
     // MIDI channels process everything immediately. Deferred processing is not possible.
@@ -146,6 +156,7 @@ public:
         if (recbuf.frames_left() < n_samples) {
             throw std::runtime_error("Attempting to record out of bounds");
         }
+        bool changed = false;
 
         // Truncate buffer if necessary
         PROC_set_length(std::max(0, (int)our_length + ma_start_offset));
@@ -167,10 +178,12 @@ public:
             }
             mp_storage->append(our_length + (TimeType) t, (SizeType) s, d);
             recbuf.n_events_processed++;
+            changed = true;
         }
         
         recbuf.n_frames_processed += n_samples;
-        ma_data_length += n_samples;
+        PROC_set_length(ma_data_length + n_samples);
+        if (changed) { data_changed(); }
     }
 
     void clear(bool thread_safe=true) {
@@ -181,6 +194,7 @@ public:
             ma_n_events_triggered = 0;
             PROC_set_length(0);
             ma_start_offset = 0;
+            data_changed();
         };
         if (thread_safe) { exec_process_thread_command(fn); }
         else { fn(); }
@@ -290,6 +304,7 @@ public:
             mp_storage = s;
             mp_playback_cursor = mp_storage->create_cursor();
             PROC_set_length(length_samples);
+            data_changed();
         };
 
         if (thread_safe) { exec_process_thread_command(fn); }

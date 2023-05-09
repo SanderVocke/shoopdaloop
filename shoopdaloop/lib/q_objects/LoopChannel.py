@@ -29,6 +29,7 @@ class LoopChannel(QQuickItem):
         self._data_length = 0
         self._start_offset = 0
         self._recording_started_at = None
+        self._data_dirty = True
 
         self.rescan_parents()
         if not self._loop:
@@ -107,6 +108,19 @@ class LoopChannel(QQuickItem):
                 self._backend_obj.set_start_offset(offset)
             else:
                 self.initializedChanged.connect(lambda: self.set_start_offset(offset))
+
+    # start offset
+    dataDirtyChanged = Signal(bool)
+    @Property(int, notify=dataDirtyChanged)
+    def data_dirty(self):
+        return self._data_dirty
+    # indirect clear via back-end
+    @Slot()
+    def clear_data_dirty(self):
+        if self._backend_obj:
+            self._backend_obj.clear_data_dirty()
+        else:
+            self.initializedChanged.connect(lambda: self.clear_data_dirty())
 
     # connected ports
     connectedPortsChanged = Signal(list)
@@ -189,7 +203,11 @@ class LoopChannel(QQuickItem):
         if state.mode != self._mode:
             self._mode = state.mode
             self.modeChanged.emit(self._mode.value)
+        if state.data_dirty != self._data_dirty:
+            self._data_dirty = state.data_dirty
+            self.dataDirtyChanged.emit(self._data_dirty)
         
+        # Dispatch specialized update from subclasses
         self.update_impl(state)
     
     @Slot()

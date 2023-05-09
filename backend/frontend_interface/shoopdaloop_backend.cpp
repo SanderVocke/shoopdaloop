@@ -249,6 +249,7 @@ struct ChannelInfo : public std::enable_shared_from_this<ChannelInfo> {
     WeakBackend backend;
     std::vector<WeakPortInfo> mp_output_port_mappings;
     ProcessWhen ma_process_when;
+    std::atomic<unsigned> ma_data_sequence_nr;
 
     ChannelInfo(SharedLoopChannel chan,
                 SharedLoopInfo loop,
@@ -258,6 +259,7 @@ struct ChannelInfo : public std::enable_shared_from_this<ChannelInfo> {
         backend(backend),
         ma_process_when(ProcessWhen::BeforeFXChains) {
             mp_output_port_mappings.reserve(gc_default_max_port_mappings);
+        ma_data_sequence_nr = chan->get_data_seq_nr();
     }
 
     // NOTE: only use on process thread
@@ -285,6 +287,8 @@ struct ChannelInfo : public std::enable_shared_from_this<ChannelInfo> {
     LoopAudioChannel *maybe_audio();
     LoopMidiChannel *maybe_midi();
     Backend &get_backend();
+    void clear_data_dirty();
+    bool get_data_dirty() const;
 };
 
 struct LoopInfo : public std::enable_shared_from_this<LoopInfo> {
@@ -670,6 +674,14 @@ Backend &DecoupledMidiPortInfo::get_backend() {
         throw std::runtime_error("Back-end no longer exists");
     }
     return *b;
+}
+
+void ChannelInfo::clear_data_dirty() {
+    ma_data_sequence_nr = channel->get_data_seq_nr();
+}
+
+bool ChannelInfo::get_data_dirty() const {
+    return ma_data_sequence_nr != channel->get_data_seq_nr();
 }
 
 void ChannelInfo::connect_output_port(SharedPortInfo port, bool thread_safe) {
@@ -1304,6 +1316,16 @@ void load_midi_channel_data (shoopdaloop_loop_midi_channel_t  *channel, midi_cha
         chan.backend.lock()->cmd_queue);
 }
 
+void clear_audio_channel_data_dirty (shoopdaloop_loop_audio_channel_t * channel) {
+    auto &chan = *internal_audio_channel(channel);
+    chan.clear_data_dirty();
+}
+
+void clear_midi_channel_data_dirty (shoopdaloop_loop_midi_channel_t * channel) {
+    auto &chan = *internal_midi_channel(channel);
+    chan.clear_data_dirty();
+}
+
 void loop_transition(shoopdaloop_loop_t *loop,
                       loop_mode_t mode,
                       size_t delay, // In # of triggers
@@ -1562,6 +1584,7 @@ audio_channel_state_info_t *get_audio_channel_state (shoopdaloop_loop_audio_chan
     r->mode = audio->get_mode();
     r->length = audio->get_length();
     r->start_offset = audio->get_start_offset();
+    r->data_dirty = chan->get_data_dirty();
     audio->reset_output_peak();
     return r;
 }
@@ -1578,6 +1601,7 @@ midi_channel_state_info_t *get_midi_channel_state   (shoopdaloop_loop_midi_chann
     r->mode = midi->get_mode();
     r->length = midi->get_length();
     r->start_offset = midi->get_start_offset();
+    r->data_dirty = chan->get_data_dirty();
     return r;
 }
 

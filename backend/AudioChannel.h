@@ -36,6 +36,7 @@ private:
     std::atomic<float> ma_output_peak;
     std::atomic<float> ma_volume;
     std::atomic<channel_mode_t> ma_mode;
+    std::atomic<unsigned> ma_data_seq_nr;
 
     // Members which may be accessed from the process thread only (mp prefix)
     std::vector<Buffer> mp_buffers;
@@ -97,7 +98,8 @@ public:
         ma_output_peak(0),
         ma_mode(mode),
         ma_volume(1.0f),
-        ma_start_offset(0)
+        ma_start_offset(0),
+        ma_data_seq_nr(0)
     {
         mp_buffers.reserve(initial_max_buffers);
         mp_buffers.push_back(get_new_buffer()); // Initial recording buffer
@@ -119,11 +121,16 @@ public:
         mp_recording_source_buffer_size = other.mp_recording_source_buffer_size;
         ma_mode = other.ma_mode;
         ma_volume = other.ma_volume;
+        data_changed();
         return *this;
     }
 
     AudioChannel() = default;
     ~AudioChannel() override {}
+
+    void data_changed() {
+        ma_data_seq_nr++;
+    }
 
     void PROC_process(
         loop_mode_t mode,
@@ -223,6 +230,7 @@ public:
             mp_buffers = *buffers;
             ma_data_length = len;
             ma_start_offset = 0;
+            data_changed();
         };
 
         if (thread_safe) {
@@ -259,6 +267,7 @@ public:
         if (mp_recording_source_buffer_size < n_samples) {
             throw std::runtime_error("Attempting to record out of bounds of input buffer");
         }
+        bool changed = false;
         auto start_offset = ma_start_offset.load();
         auto data_length = ma_data_length.load();
 
@@ -268,6 +277,7 @@ public:
         auto buf_space = ma_buffer_size - buf_head;
         while (mp_buffers.size() <= buf_idx) {
             mp_buffers.push_back(get_new_buffer());
+            changed = true;
         }
         auto &to_buf = mp_buffers[buf_idx];
         
@@ -278,6 +288,7 @@ public:
 
         // Queue the actual copy for later.
         PROC_queue_memcpy((void*) &to_buf->at(buf_head), (void*)from, sizeof(SampleT)*n);
+        changed = changed || (n > 0);
 
         mp_recording_source_buffer += n;
         mp_recording_source_buffer_size -= n;
@@ -286,6 +297,7 @@ public:
         // If we reached the end, add another buffer
         // and record the rest.
         size_t length_before_next = length_before + n;
+        if (changed) { data_changed(); }
         if(rest > 0) {
             PROC_process_record(rest, length_before_next);
         }
@@ -298,6 +310,7 @@ public:
         auto data_length = ma_data_length.load();
         auto start_offset = ma_start_offset.load();
         auto data_position = (int)position + start_offset;
+        bool changed = false;
 
         if (data_position < 0) {
             // skip ahead to the part that is in range
@@ -313,6 +326,7 @@ public:
             mp_buffers.push_back(get_new_buffer());
             ma_data_length += mp_buffers.back()->size();
             data_length = ma_data_length;
+            changed = true;
         }
 
         size_t buffer_idx = data_position / ma_buffer_size;
@@ -329,9 +343,11 @@ public:
 
         // Queue the actual copy for later
         PROC_queue_memcpy((void*)to, (void*)from, sizeof(SampleT) * n);
+        changed = changed || (n>0);
 
         mp_recording_source_buffer += n;
         mp_recording_source_buffer_size -= n;
+        if (changed) { data_changed(); }
 
         // If we didn't replace all yet, go to next buffer and continue
         if(rest > 0) {
@@ -340,7 +356,10 @@ public:
     }
 
     size_t get_length() const override { return ma_data_length; }
-    void PROC_set_length(size_t length) override { ma_data_length = length; }
+    void PROC_set_length(size_t length) override { 
+        ma_data_length = length;
+        data_changed();
+    }
 
     SampleT const& PROC_at(size_t position) const {
         return mp_buffers[position / ma_buffer_size]->at(position % mp_buffers.front()->size());
@@ -434,6 +453,7 @@ public:
         }
         ma_data_length = length;
         ma_start_offset = 0;
+        data_changed();
     }
 
     float get_output_peak() const {
@@ -466,6 +486,10 @@ public:
 
     int get_start_offset() const override {
         return ma_start_offset;
+    }
+
+    unsigned get_data_seq_nr() const override {
+        return ma_data_seq_nr;
     }
 
 protected:

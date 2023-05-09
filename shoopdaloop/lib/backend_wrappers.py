@@ -60,6 +60,7 @@ class LoopAudioChannelState:
     volume : float
     length : int
     start_offset : int
+    data_dirty : bool
 
     def __init__(self, backend_state : 'loop_audio_channel_state_t'):
         self.output_peak = backend_state.output_peak
@@ -67,6 +68,7 @@ class LoopAudioChannelState:
         self.mode = ChannelMode(backend_state.mode)
         self.length = backend_state.length
         self.start_offset = backend_state.start_offset
+        self.data_dirty = bool(backend_state.data_dirty)
 
 @dataclass
 class LoopMidiChannelState:
@@ -75,6 +77,7 @@ class LoopMidiChannelState:
     n_notes_active : int
     length: int
     start_offset: int
+    data_dirty : bool
 
     def __init__(self, backend_state : 'loop_midi_channel_state_t'):
         self.n_events_triggered = backend_state.n_events_triggered
@@ -82,6 +85,7 @@ class LoopMidiChannelState:
         self.mode = ChannelMode(backend_state.mode)
         self.length = backend_state.length
         self.start_offset = backend_state.start_offset
+        self.data_dirty = bool(backend_state.data_dirty)
 
 @dataclass
 class LoopState:
@@ -205,6 +209,10 @@ class BackendLoopAudioChannel:
         if self.shoop_c_handle:
             destroy_audio_channel(self.shoop_c_handle)
             self.shoop_c_handle = None
+    
+    def clear_data_dirty(self):
+        if self.shoop_c_handle:
+            clear_audio_channel_data_dirty(self.shoop_c_handle)
 
     def __del__(self):
         self.destroy()
@@ -257,6 +265,10 @@ class BackendLoopMidiChannel:
         if self.shoop_c_handle:
             destroy_midi_channel(self.shoop_c_handle)
             self.shoop_c_handle = None
+    
+    def clear_data_dirty(self):
+        if self.shoop_c_handle:
+            clear_audio_channel_data_dirty(self.shoop_c_handle)
 
     def __del__(self):
         self.destroy()
