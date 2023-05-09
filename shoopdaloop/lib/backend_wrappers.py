@@ -461,7 +461,7 @@ class BackendFXChain:
         return rval
     
     def restore_state(self, state_str):
-        restore_fx_chain_internal_state(self._c_handle, c_char_p(bytes(state, 'ascii')))
+        restore_fx_chain_internal_state(self._c_handle, c_char_p(bytes(state_str, 'ascii')))
 class Backend:
     def __init__(self, c_handle : 'POINTER(shoopdaloop_backend_instance_t)'):
         self._c_handle = c_handle

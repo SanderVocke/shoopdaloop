@@ -259,7 +259,7 @@ struct ChannelInfo : public std::enable_shared_from_this<ChannelInfo> {
         backend(backend),
         ma_process_when(ProcessWhen::BeforeFXChains) {
             mp_output_port_mappings.reserve(gc_default_max_port_mappings);
-        ma_data_sequence_nr = chan->get_data_seq_nr();
+        ma_data_sequence_nr = 0;
     }
 
     // NOTE: only use on process thread

@@ -1400,18 +1400,24 @@ Item {
                 }
             }
             MenuItem {
-                property var cached_fx_state: {
-                    if (!root.track_widget.maybe_fx_chain) { return undefined; }
-                    var channel_states = root.channels
-                        .filter(c => 'recording_fx_chain_state_id' in c && c.recording_fx_chain_state_id)
+                id: restore_fx_state_button
+                onVisibleChanged: update()
+
+                property var cached_fx_state: undefined
+                Component.onCompleted: update()
+                
+                function update() {
+                    if (!root.track_widget || !root.track_widget.maybe_fx_chain) { return undefined; }
+                    var channel_states = root.all_channels()
+                        .filter(c => c.recording_fx_chain_state_id != undefined)
                         .map(c => c.recording_fx_chain_state_id);
-                    return channel_states.length > 0 ? 
-                        root.fx_chain_states.registry.maybe_get(channel_states[0], undefined)
+                    cached_fx_state = channel_states.length > 0 ? 
+                        root.fx_chain_states_registry.maybe_get(channel_states[0], undefined)
                         : undefined
                 }
                 text: "Restore Recording FX State"
                 enabled: cached_fx_state ? true : false
-                onClicked: root.track_widget.restore_state(cached_fx_state.state_str)
+                onClicked: root.track_widget.maybe_fx_chain.restore_state(cached_fx_state.internal_state)
             }
         }
 

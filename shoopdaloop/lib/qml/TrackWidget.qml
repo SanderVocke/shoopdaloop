@@ -341,7 +341,7 @@ Item {
                                     onAcceptedInput: name => {
                                         var id = root.fx_chain_states_registry.generate_id("fx_chain_state")
                                         data.title = name
-                                        root.fx_chain_states_registry.register(id, data)
+                                        root.fx_chain_states_registry.register(id, JSON.parse(JSON.stringify(data)))
                                     }
                                 }
                             }
@@ -366,8 +366,8 @@ Item {
                                     MenuItem {
                                         property var mapped_item: restore_submenu.fx_states[index]
                                         text: mapped_item.title
-                                        enabled: mapped_item.type == root.maybe_fx_chain.type
-                                        onClicked: root.maybe_fx_chain.restore_state(mapped_item.state_str)
+                                        enabled: root.fx_chain_descriptor && (mapped_item.type == root.fx_chain_descriptor.type)
+                                        onClicked: root.maybe_fx_chain.restore_state(mapped_item.internal_state)
                                     }
                                 }
                             }

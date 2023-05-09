@@ -607,8 +607,10 @@ public:
                 static const LV2_Feature* features[] = { nullptr };
                 s.deserialize(str);
                 m_state_iface->restore(lilv_instance_get_handle(m_instance), LV2StateString::retrieve, (LV2_State_Handle)&s, LV2_STATE_IS_POD | LV2_STATE_IS_PORTABLE, features);
+            } catch (const std::exception &exp) {
+                std::cerr << "Failed to restore Carla state: " << exp.what();
             } catch (...) {
-                std::cerr << "Failed to restore Carla state.";
+                std::cerr << "Failed to restore Carla state (unknown exception).";
             }
 
             m_state_restore_active = false;
