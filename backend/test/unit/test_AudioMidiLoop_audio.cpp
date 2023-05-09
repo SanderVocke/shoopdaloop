@@ -14,7 +14,7 @@ suite AudioMidiLoop_audio_tests = []() {
     "al_1_stop"_test = []() {
         auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 256);
         AudioMidiLoop loop;
-        loop.add_audio_channel<int>(pool, 10, Direct, false);
+        auto chan = loop.add_audio_channel<int>(pool, 10, Direct, false);
 
         expect(eq(loop.get_mode() , Stopped));
         expect(loop.PROC_get_next_poi() == std::nullopt);
@@ -22,6 +22,7 @@ suite AudioMidiLoop_audio_tests = []() {
         expect(eq(loop.get_position() , 0));
 
         loop.PROC_process(1000);
+        chan->PROC_finalize_process();
 
         expect(eq(loop.get_mode() , Stopped));
         expect(loop.PROC_get_next_poi() == std::nullopt);
@@ -40,9 +41,7 @@ suite AudioMidiLoop_audio_tests = []() {
 
         auto source_buf = create_audio_buf<int>(512, [](size_t position) { return position; }); 
         loop.plan_transition(Recording);
-        channels[0]->PROC_set_recording_buffer(source_buf.data(), source_buf.size());
-        channels[1]->PROC_set_recording_buffer(source_buf.data(), source_buf.size());
-        channels[2]->PROC_set_recording_buffer(source_buf.data(), source_buf.size());
+        for (auto &c: channels) { c->PROC_set_recording_buffer(source_buf.data(), source_buf.size()); }
         loop.PROC_trigger();
         loop.PROC_update_poi();
 
@@ -52,6 +51,7 @@ suite AudioMidiLoop_audio_tests = []() {
         expect(eq(loop.get_position(), 0));
 
         loop.PROC_process(20);
+        for (auto &c: channels) { c->PROC_finalize_process(); }
 
         expect(eq(loop.get_mode(), Recording));
         expect(eq(loop.PROC_get_next_poi().value_or(999), 492)) << loop.PROC_get_next_poi().value_or(0); // end of buffer
@@ -101,6 +101,7 @@ suite AudioMidiLoop_audio_tests = []() {
         expect(eq(loop.get_position() , 0));
 
         loop.PROC_process(512);
+        channel.PROC_finalize_process();
 
         expect(eq(loop.get_mode() , Recording));
         expect(loop.PROC_get_next_poi() == 0) << loop.PROC_get_next_poi().value_or(0); // end of buffer
@@ -133,6 +134,7 @@ suite AudioMidiLoop_audio_tests = []() {
 
         for(size_t samples_processed = 0; samples_processed < 512; ) {
             loop.PROC_process(32);
+            channel.PROC_finalize_process();
             samples_processed += 32;
             source_buf = create_audio_buf<int>(32, [&](size_t position) { return position + samples_processed; });
             channel.PROC_set_recording_buffer(source_buf.data(), source_buf.size());
@@ -173,6 +175,7 @@ suite AudioMidiLoop_audio_tests = []() {
         expect(eq(loop.get_position(), 0));
 
         loop.PROC_process(20);
+        channel.PROC_finalize_process();
 
         expect(eq(loop.get_mode(), Recording));
         expect(eq(loop.PROC_get_next_poi().value_or(999), 492)) << loop.PROC_get_next_poi().value_or(0); // end of buffer
@@ -228,6 +231,7 @@ suite AudioMidiLoop_audio_tests = []() {
         expect(eq(loop.get_position(), 0));
 
         loop.PROC_process(64);
+        channel.PROC_finalize_process();
 
         expect(eq(loop.get_mode(), Recording));
         expect(eq(loop.PROC_get_next_poi().value_or(999), 448)) << loop.PROC_get_next_poi().value_or(0); // end of buffer
@@ -279,6 +283,7 @@ suite AudioMidiLoop_audio_tests = []() {
         expect(eq(loop.get_length() , 64));
 
         loop.PROC_process(20);
+        for (auto &c: channels) { c->PROC_finalize_process(); }
 
         expect(eq(loop.get_mode() , Playing));
         expect(loop.PROC_get_next_poi() == 44) << loop.PROC_get_next_poi().value_or(0); // end of buffer
@@ -320,6 +325,7 @@ suite AudioMidiLoop_audio_tests = []() {
             expect(loop.PROC_get_next_poi() == 64) << loop.PROC_get_next_poi().value_or(0); // end of buffer
             loop.PROC_update_poi();
             loop.PROC_process(64);
+            channel.PROC_finalize_process();
         }
 
         for (size_t idx=0; idx<512; idx++) {
@@ -349,6 +355,7 @@ suite AudioMidiLoop_audio_tests = []() {
         expect(eq(loop.get_length() , 64));
 
         loop.PROC_process(62);
+        channel.PROC_finalize_process();
 
         expect(eq(loop.get_mode() , Playing));
         expect(loop.PROC_get_next_poi() == 2) << loop.PROC_get_next_poi().value_or(0); // end of buffer
@@ -386,6 +393,7 @@ suite AudioMidiLoop_audio_tests = []() {
 
         loop.PROC_process(16);
         loop.PROC_handle_poi();
+        channel.PROC_finalize_process();
 
         expect(eq(loop.get_mode() , Playing));
         expect(loop.PROC_get_next_poi() == 48) << loop.PROC_get_next_poi().value_or(0); // end of buffer
@@ -394,6 +402,7 @@ suite AudioMidiLoop_audio_tests = []() {
         
         loop.PROC_process(48);
         loop.PROC_handle_poi();
+        channel.PROC_finalize_process();
 
         expect(eq(loop.get_mode() , Playing));
         expect(loop.PROC_get_next_poi() == 0) << loop.PROC_get_next_poi().value_or(0); // end of buffer
@@ -431,6 +440,7 @@ suite AudioMidiLoop_audio_tests = []() {
 
         loop.PROC_process(16);
         loop.PROC_handle_poi();
+        channel.PROC_finalize_process();
 
         expect(eq(loop.get_mode() , Playing));
         expect(loop.PROC_get_next_poi() == 48) << loop.PROC_get_next_poi().value_or(0); // end of buffer
@@ -439,6 +449,7 @@ suite AudioMidiLoop_audio_tests = []() {
         
         loop.PROC_process(48);
         loop.PROC_handle_poi();
+        channel.PROC_finalize_process();
 
         expect(eq(loop.get_mode() , Playing));
         expect(loop.PROC_get_next_poi() == 0) << loop.PROC_get_next_poi().value_or(0); // end of buffer
@@ -477,6 +488,7 @@ suite AudioMidiLoop_audio_tests = []() {
         expect(eq(loop.get_length() , 64));
 
         loop.PROC_process(32);
+        for (auto &c: channels) { c->PROC_finalize_process(); }
 
         expect(eq(loop.get_mode() , Replacing));
         expect(eq(loop.PROC_get_next_poi().value_or(0), 64-32-16)); // end of loop
@@ -521,6 +533,7 @@ suite AudioMidiLoop_audio_tests = []() {
         loop.PROC_handle_poi();
         loop.PROC_update_poi();
         loop.PROC_process(16);
+        channel.PROC_finalize_process();
 
         expect(eq(loop.get_mode() , Replacing));
         expect(loop.PROC_get_next_poi() == 32) << loop.PROC_get_next_poi().value_or(0); // end of buffer
@@ -569,6 +582,7 @@ suite AudioMidiLoop_audio_tests = []() {
         expect(eq(loop.get_length() , 64));
 
         loop.PROC_process(20);
+        for (auto &c: channels) { c->PROC_finalize_process(); }
 
         expect(eq(loop.get_mode() , PlayingDryThroughWet));
         expect(loop.PROC_get_next_poi() == 44) << loop.PROC_get_next_poi().value_or(0); // end of buffer
@@ -613,6 +627,7 @@ suite AudioMidiLoop_audio_tests = []() {
         expect(eq(loop.get_length() , 64));
 
         loop.PROC_process(32);
+        for (auto &c: channels) { c->PROC_finalize_process(); }
 
         expect(eq(loop.get_mode() , RecordingDryIntoWet));
         expect(loop.PROC_get_next_poi() == 48-32) << loop.PROC_get_next_poi().value_or(0); // end of loop

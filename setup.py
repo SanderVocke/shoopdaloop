@@ -11,11 +11,13 @@ setup(name='shoopdaloop',
       zip_safe=False,
       install_requires=[
         'playsound',
+        'soundfile',
         'resampy',
         'mido',
         'jsonschema',
         'numpy',
-        'pyjacklib'
+        'pyjacklib',
+        'pyside6'
       ],
       entry_points={
         'console_scripts': [

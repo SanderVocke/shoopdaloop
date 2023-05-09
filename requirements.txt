@@ -4,3 +4,5 @@ mido
 jsonschema
 numpy
 scipy
+soundfile
+pyside6
