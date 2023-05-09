@@ -11,30 +11,30 @@ Item {
 
     // INTERNAL
 
-    property bool data_ready : last_requested_reqid == last_completed_reqid
-    property bool data_needs_update : true
 
-    onData_needs_updateChanged: { if(visible && data_needs_update) { request_update_data() } }
-    onVisibleChanged: { if(visible && data_needs_update) { request_update_data() } }
+    // property bool data_ready : last_requested_reqid == last_completed_reqid
+    // property bool data_needs_update : true
+    // onData_needs_updateChanged: { if(visible && data_needs_update) { request_update_data() } }
+    // onVisibleChanged: { if(visible && data_needs_update) { request_update_data() } }
+    // onLoopChanged: { data_needs_update = true }
 
-    onLoopChanged: { data_needs_update = true }
-    Connections {
-        target: root.loop
-        property var prev_mode : null
-        function onModeChanged() {
-            if (prev_mode && ModeHelpers.is_recording_mode(prev_mode) &&
-                !ModeHelpers.is_recording_mode(root.loop.mode)) {
-                    data_needs_update = true
-                }
-            prev_mode = root.loop.mode
-        }
-    }
+    // Connections {
+    //     target: root.loop
+    //     property var prev_mode : null
+    //     function onModeChanged() {
+    //         if (prev_mode && ModeHelpers.is_recording_mode(prev_mode) &&
+    //             !ModeHelpers.is_recording_mode(root.loop.mode)) {
+    //                 data_needs_update = true
+    //             }
+    //         prev_mode = root.loop.mode
+    //     }
+    // }
 
     // For layout of this data, see the worker script. Its reply is stored in here directly.
-    property var channels_data : null
+    // property var channels_data : null
 
-    property int last_requested_reqid : 0
-    property int last_completed_reqid : channels_data ? channels_data.request_id : -1
+    // property int last_requested_reqid : 0
+    // property int last_completed_reqid : channels_data ? channels_data.request_id : -1
 
     readonly property int samples_per_pixel : parseInt(zoom_combo.currentValue)
     onSamples_per_pixelChanged: {data_needs_update = true}
@@ -45,133 +45,118 @@ Item {
         SetLength
     }
 
-    Connections {
-        target: loop
-        function onLengthChanged() {
-            if (!ModeHelpers.is_recording_mode(loop.mode)) {
-                data_needs_update = true
-            }
-        }
-    }
+    // Connections {
+    //     target: loop
+    //     function onLengthChanged() {
+    //         if (!ModeHelpers.is_recording_mode(loop.mode)) {
+    //             data_needs_update = true
+    //         }
+    //     }
+    // }
 
-    function request_update_data() {
-        if (!data_worker.ready) {
-            var do_once = function() {
-                data_worker.readyChanged.disconnect(do_once);
-                root.request_update_data();
-            }
-            data_worker.readyChanged.connect(do_once)
-            return;
-        }
+    // function request_update_data() {
+    //     if (!data_worker.ready) {
+    //         var do_once = function() {
+    //             data_worker.readyChanged.disconnect(do_once);
+    //             root.request_update_data();
+    //         }
+    //         data_worker.readyChanged.connect(do_once)
+    //         return;
+    //     }
 
-        // Queue the actual request for the next event loop cycle,
-        // because triggering events usually come in for all channels
-        // at the same time. This prevents running the request multiple times.
-        request_update_data_delayer.trigger()
-    }
+    //     // Queue the actual request for the next event loop cycle,
+    //     // because triggering events usually come in for all channels
+    //     // at the same time. This prevents running the request multiple times.
+    //     request_update_data_delayer.trigger()
+    // }
 
-    ExecuteNextCycle {
-        id: request_update_data_delayer
-        onExecute: do_request_update_data()
-    }
+    // ExecuteNextCycle {
+    //     id: request_update_data_delayer
+    //     onExecute: do_request_update_data()
+    // }
 
-    function do_request_update_data() {
-        last_requested_reqid++;
-        var input_data = {
-            'request_id': last_requested_reqid,
-            'samples_per_bin': samples_per_pixel,
-            'channels_data': []
-        }
-        var audio_channels = loop.get_audio_channels()
-        var midi_channels = loop.get_midi_channels()
-        var channel_audio_data, channel_midi_notes, channel_id, channel_start_offset, chan
-        for (var chan_idx = 0; chan_idx < audio_channels.length; chan_idx++) {
-            chan = audio_channels[chan_idx]
-            channel_id = chan.obj_id
-            channel_audio_data = chan.get_data()
-            channel_start_offset = chan.start_offset
+    // function do_request_update_data() {
+    //     last_requested_reqid++;
+    //     var input_data = {
+    //         'request_id': last_requested_reqid,
+    //         'samples_per_bin': samples_per_pixel,
+    //         'channels_data': []
+    //     }
+    //     var audio_channels = loop.get_audio_channels()
+    //     var midi_channels = loop.get_midi_channels()
+    //     var channel_audio_data, channel_midi_notes, channel_id, channel_start_offset, chan
+    //     for (var chan_idx = 0; chan_idx < audio_channels.length; chan_idx++) {
+    //         chan = audio_channels[chan_idx]
+    //         channel_id = chan.obj_id
+    //         channel_audio_data = chan.get_data()
+    //         channel_start_offset = chan.start_offset
 
-            input_data['channels_data'].push([
-                channel_id,
-                {
-                    "audio": channel_audio_data,
-                    "start_offset": channel_start_offset
-                }
-            ])
-        }
-        for (var chan_idx = 0; chan_idx < midi_channels.length; chan_idx++) {
-            chan = midi_channels[chan_idx]
-            channel_id = chan.obj_id
-            channel_midi_notes = chan.get_notes()
-            channel_start_offset = chan.start_offset
+    //         input_data['channels_data'].push([
+    //             channel_id,
+    //             {
+    //                 "audio": channel_audio_data,
+    //                 "start_offset": channel_start_offset
+    //             }
+    //         ])
+    //     }
+    //     for (var chan_idx = 0; chan_idx < midi_channels.length; chan_idx++) {
+    //         chan = midi_channels[chan_idx]
+    //         channel_id = chan.obj_id
+    //         channel_midi_notes = chan.get_notes()
+    //         channel_start_offset = chan.start_offset
 
-            input_data['channels_data'].push([
-                channel_id,
-                {
-                    "midi_notes": channel_midi_notes,
-                    "start_offset": channel_start_offset
-                }
-            ])
-        }
+    //         input_data['channels_data'].push([
+    //             channel_id,
+    //             {
+    //                 "midi_notes": channel_midi_notes,
+    //                 "start_offset": channel_start_offset
+    //             }
+    //         ])
+    //     }
 
-        data_needs_update = false
-        data_worker.sendMessage(input_data)   
-    }
+    //     data_needs_update = false
+    //     data_worker.sendMessage(input_data)   
+    // }
 
-    WorkerScript {
-        id: data_worker
-        source: "workers/prepare_loop_channels_data_for_display.mjs"
+    // WorkerScript {
+    //     id: data_worker
+    //     source: "workers/prepare_loop_channels_data_for_display.mjs"
 
-        onMessage: (output_data) => {
-            root.channels_data = output_data
-            root.channels_dataChanged()
-        }
-    }
+    //     onMessage: (output_data) => {
+    //         root.channels_data = output_data
+    //         root.channels_dataChanged()
+    //     }
+    // }
 
-    // readonly property real zoomed_out_samples_per_waveform_pixel : length_samples / width
-    // property int samples_per_waveform_pixel : Math.max(zoomed_out_samples_per_waveform_pixel * (1.0 - zoom_slider.value), 1)
-    // property int length_samples: 0
-    // property int length_bins: length_samples / samples_per_waveform_pixel
-    // property int start_idx: 0
-    // property var waveform_data : {}
-    // property var midi_data : {}
-    // //property alias midi_data: waveform.midi_data
-    // property real min_db: 0.0
-    // property real max_db: 0.0
-    // //property real waveform_data_max: 0.0
-    // //property alias dirty: waveform.dirty
-    // property bool recording
-    // property bool updating: false
-
-    function on_waveform_clicked(waveform, channel, event, sample) {
-        //console.log("Waveform clicked @ ", event.x, " (sample ", sample, ")")
-        var channels = loop.all_channels()
-        const clicked_chan_idx = channels.findIndex(c => c == channel)
-        const clicked_pre_padding = channels_data['channels_data'][clicked_chan_idx][1]['included_pre_padding']
-        switch (tool_combo.currentValue) {
-            case LoopContentWidget.Tool.SetStartOffsetAll:
-                var chan_sample = sample - clicked_pre_padding
-                channels.forEach(c => c.set_start_offset(chan_sample))
-                break;
-            case LoopContentWidget.Tool.SetStartOffsetSingle:
-                var chan_sample = sample - clicked_pre_padding
-                channels[clicked_chan_idx].set_start_offset(chan_sample)
-                break;
-            case LoopContentWidget.Tool.SetLength:
-                for(var chan_idx = 0; chan_idx < channels.length; chan_idx++) {
-                    var chan = channels[chan_idx];
-                    if (chan == channel) {
-                        const pre_padding = channels_data['channels_data'][chan_idx][1]['included_pre_padding']
-                        var chan_sample = sample - pre_padding
-                        var chan_len = chan_sample - chan.start_offset
-                        if (chan_len >= 0) {
-                            root.loop.set_length (chan_len)
-                        }
-                    }
-                }
-                break;
-        }
-    }
+    function on_waveform_clicked(waveform, channel, event, sample) {}
+    //     //console.log("Waveform clicked @ ", event.x, " (sample ", sample, ")")
+    //     var channels = loop.all_channels()
+    //     const clicked_chan_idx = channels.findIndex(c => c == channel)
+    //     const clicked_pre_padding = channels_data['channels_data'][clicked_chan_idx][1]['included_pre_padding']
+    //     switch (tool_combo.currentValue) {
+    //         case LoopContentWidget.Tool.SetStartOffsetAll:
+    //             var chan_sample = sample - clicked_pre_padding
+    //             channels.forEach(c => c.set_start_offset(chan_sample))
+    //             break;
+    //         case LoopContentWidget.Tool.SetStartOffsetSingle:
+    //             var chan_sample = sample - clicked_pre_padding
+    //             channels[clicked_chan_idx].set_start_offset(chan_sample)
+    //             break;
+    //         case LoopContentWidget.Tool.SetLength:
+    //             for(var chan_idx = 0; chan_idx < channels.length; chan_idx++) {
+    //                 var chan = channels[chan_idx];
+    //                 if (chan == channel) {
+    //                     const pre_padding = channels_data['channels_data'][chan_idx][1]['included_pre_padding']
+    //                     var chan_sample = sample - pre_padding
+    //                     var chan_len = chan_sample - chan.start_offset
+    //                     if (chan_len >= 0) {
+    //                         root.loop.set_length (chan_len)
+    //                     }
+    //                 }
+    //             }
+    //             break;
+    //     }
+    // }
 
     Row {
         id: toolbar_1
