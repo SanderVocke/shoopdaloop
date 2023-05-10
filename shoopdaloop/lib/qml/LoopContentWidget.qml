@@ -170,9 +170,28 @@ Item {
                         anchors.fill: parent
                         color: 'red'
 
+                        Rectangle {
+                            id: gradient_rect
+                            width: 256
+                            height: 256
+                            gradient: Gradient {
+                                orientation: Gradient.Horizontal
+                                GradientStop { position: 0; color: "white" }
+                                GradientStop { position: 1; color: "black" }
+                            }
+                        }
+
+                        ShaderEffectSource {
+                            id: shader_source
+                            hideSource: true
+                            width: 256
+                            height: 256
+                            sourceItem: gradient_rect
+                        }
+
                         ShaderEffect {
                             anchors.fill: parent
-                            vertexShader: '../../../build/shoopdaloop/lib/qml/shaders/loop_channel.vert.qsb'
+                            property var audio: shader_source
                             fragmentShader: '../../../build/shoopdaloop/lib/qml/shaders/loop_channel.frag.qsb'
                         }
                     }
