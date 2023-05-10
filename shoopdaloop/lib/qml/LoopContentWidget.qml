@@ -1,6 +1,8 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
+import FetchChannelData
+import FloatsToImageString
 
 import '../mode_helpers.js' as ModeHelpers
 
@@ -157,6 +159,7 @@ Item {
                 model: loop.channels
 
                 Item {
+                    id: item
                     property int index
                     property var mapped_item
 
@@ -164,6 +167,20 @@ Item {
                     anchors {
                         left: parent.left
                         right: parent.right
+                    }
+                    
+                    FetchChannelData {
+                        channel: item.mapped_item
+                        active: true
+                        onChannelDataChanged: console.log('onChannelDataChanged', channel_data ? channel_data.length : 'None')
+
+                        FloatsToImageString {
+                            input: parent.channel_data
+
+                            Image {
+                                source: parent.output
+                            }
+                        }
                     }
 
                     Rectangle {

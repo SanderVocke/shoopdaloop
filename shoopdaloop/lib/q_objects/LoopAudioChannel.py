@@ -29,6 +29,7 @@ class LoopAudioChannel(LoopChannel):
             # we get a placeholder handle because the back-end is still setting it up.
             # We will push the initial volume on the first update call.
             self._initial_volume_pushed = False
+            print("Initialize channel!")
             self.initializedChanged.emit(True)
 
     ######################

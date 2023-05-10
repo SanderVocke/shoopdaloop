@@ -15,6 +15,8 @@ from lib.q_objects.ClickTrackGenerator import ClickTrackGenerator
 from lib.q_objects.Task import Task
 from lib.q_objects.Tasks import Tasks
 from lib.q_objects.FXChain import FXChain
+from lib.q_objects.FetchChannelData import FetchChannelData
+from lib.q_objects.FloatsToImageString import FloatsToImageString
 #from lib.q_objects.MIDIControlManager import MIDIControlManager
 #from lib.q_objects.MIDIControlLink import MIDIControlLink
 #from lib.q_objects.MIDIControlDialect import MIDIControlDialect
@@ -38,4 +40,6 @@ def register_shoopdaloop_qml_classes():
     register_qml_class(Backend, 'Backend')
     register_qml_class(Task, 'Task')
     register_qml_class(Tasks, 'Tasks')
+    register_qml_class(FetchChannelData, 'FetchChannelData')
+    register_qml_class(FloatsToImageString, 'FloatsToImageString')
 

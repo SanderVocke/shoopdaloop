@@ -61,7 +61,15 @@ class LoopChannel(QQuickItem):
             if self._loop or self._backend_obj:
                 raise Exception('May not change loop of existing channel')
             self._loop = l
+            self._loop.modeChanged.connect(self.loopModeChanged)
+            self.loopModeChanged.emit(self._loop.mode)
             self.maybe_initialize()
+    
+    # loop_mode
+    loopModeChanged = Signal(int)
+    @Property(int, notify=loopModeChanged)
+    def loop_mode(self):
+        return (self._loop.mode if self._loop else 0)
 
     # recording_started_at
     recordingStartedAtChanged = Signal('QVariant')
@@ -109,7 +117,7 @@ class LoopChannel(QQuickItem):
             else:
                 self.initializedChanged.connect(lambda: self.set_start_offset(offset))
 
-    # start offset
+    # data dirty
     dataDirtyChanged = Signal(bool)
     @Property(int, notify=dataDirtyChanged)
     def data_dirty(self):
