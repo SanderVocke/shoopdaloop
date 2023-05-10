@@ -17,6 +17,7 @@ class FloatsToImageString(QQuickItem):
         return self._input
     @input.setter
     def input(self, l):
+        print('set in: {}'.format(l))
         if l != self._input:
             self._input = l
             self.inputChanged.emit(l)
@@ -51,6 +52,7 @@ class FloatsToImageString(QQuickItem):
             buf = QBuffer(arr)
             print("buf {}".format(buf))
             buf.open(QIODeviceBase.OpenModeFlag.WriteOnly)
+            img.save(buf, 'JPEG')
             st = 'data:image/jpg;base64,' + buffer.toBase64().data()
             self._output = st
 
