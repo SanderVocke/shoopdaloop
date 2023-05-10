@@ -35,7 +35,7 @@ Item {
         if (prev_mode != mode) {
             var now = (new Date()).toISOString()
             var fx_chain_desc_id = null
-            all_channels().forEach(c => {
+            channels.forEach(c => {
                 if (ModeHelpers.is_recording_mode_for(mode, c.mode)) {
                     c.recording_started_at = now
                     if (c.mode == Types.ChannelMode.Wet && track_widget.maybe_fx_chain) {
@@ -93,11 +93,11 @@ Item {
             'name': name,
             'length': maybe_loop.length,
             'is_master': is_master,
-            'channels': all_channels().map((c) => c.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to))
+            'channels': channels.map((c) => c.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to))
         }
     }
     function queue_load_tasks(data_files_dir, add_tasks_to) {
-        var channels = all_channels()
+        var channels = channels
         var have_data_files = channels.map(c => c.has_data_file())
         if (have_data_files.filter(d => d == true).length > 0) {
             force_load_backend()
@@ -392,30 +392,15 @@ Item {
             }
         }
     }
-    function get_audio_channels() {
-        return Array.from(Array(audio_channels.model).keys()).map((i) => audio_channels.itemAt(i))
-    }
-    function get_midi_channels() {
-        return Array.from(Array(midi_channels.model).keys()).map((i) => midi_channels.itemAt(i))
-    }
-    function all_channels() {
-        var audio = get_audio_channels()
-        var midi = get_midi_channels()
-        return initial_descriptor.channels.map(d => {
-            var _audio = audio.find(a => a.obj_id == d.id)
-            var _midi = midi.find(a => a.obj_id == d.id)
-            return _audio ? _audio :
-                   _midi ? _midi :
-                   undefined
-        })
-    }
 
     RegistryLookups {
-        keys: root.intial_descriptor ? root.initial_descriptor.channels.map(c => c.id) : []
+        keys: root.initial_descriptor ? root.initial_descriptor.channels.map(c => c.id) : []
         registry: root.objects_registry
         id: lookup_channels
     }
     property alias channels: lookup_channels.objects
+    property var audio_channels: channels.filter(c => c.descriptor.type == 'audio')
+    property var midi_channels: channels.filter(c => c.descriptor.type == 'midi')
 
     RegistryLookup {
         id: lookup_sync_active
@@ -1320,8 +1305,8 @@ Item {
             property int n_midi_channels: 0
 
             onAboutToShow: {
-                n_audio_channels = root.get_audio_channels().length
-                n_midi_channels = root.get_midi_channels().length
+                n_audio_channels = root.audio_channels.length
+                n_midi_channels = root.midi_channels.length
             }
 
             MenuItem {
@@ -1367,7 +1352,7 @@ Item {
                 text: "Load MIDI..."
                 enabled: menu.n_midi_channels > 0
                 onClicked: {
-                    var chans = root.get_midi_channels()
+                    var chans = root.midi_channels
                     if (chans.length == 0) { throw new Error("No MIDI channels to load"); }
                     if (chans.length > 1) { throw new Error("Cannot load into more than 1 MIDI channel"); }
                     midiloadoptionsdialog.channel = chans[0]
@@ -1378,7 +1363,7 @@ Item {
                 text: "Save MIDI..."
                 enabled: menu.n_midi_channels > 0
                 onClicked: {
-                    var chans = root.get_midi_channels()
+                    var chans = root.midi_channels
                     if (chans.length == 0) { throw new Error("No MIDI channels to save"); }
                     if (chans.length > 1) { throw new Error("Cannot save more than 1 MIDI channel"); }
                     midisavedialog.channel = chans[0]
@@ -1401,20 +1386,17 @@ Item {
             }
             MenuItem {
                 id: restore_fx_state_button
-                onVisibleChanged: update()
 
-                property var cached_fx_state: undefined
-                Component.onCompleted: update()
-                
-                function update() {
+                property var cached_fx_state: {
                     if (!root.track_widget || !root.track_widget.maybe_fx_chain) { return undefined; }
-                    var channel_states = root.all_channels()
+                    var channel_states = root.channels
                         .filter(c => c.recording_fx_chain_state_id != undefined)
                         .map(c => c.recording_fx_chain_state_id);
-                    cached_fx_state = channel_states.length > 0 ? 
+                    return channel_states.length > 0 ? 
                         root.fx_chain_states_registry.maybe_get(channel_states[0], undefined)
                         : undefined
                 }
+
                 text: "Restore Recording FX State"
                 enabled: cached_fx_state ? true : false
                 onClicked: root.track_widget.maybe_fx_chain.restore_state(cached_fx_state.internal_state)
@@ -1435,7 +1417,7 @@ Item {
             height: 200
 
             function update() {
-                var chans = root.get_audio_channels()
+                var chans = root.audio_channels
                 channels = chans.filter(select_channels.currentValue)
                 footer.standardButton(Dialog.Save).enabled = n_channels > 0;
                 savedialog.channels = channels
@@ -1573,7 +1555,7 @@ Item {
             }
 
             function update() {
-                var chans = root.get_audio_channels()
+                var chans = root.audio_channels
                 direct_audio_channels = chans.filter(c => c.mode == Types.ChannelMode.Direct)
                 dry_audio_channels = chans.filter(c => c.mode == Types.ChannelMode.Dry)
                 wet_audio_channels = chans.filter(c => c.mode == Types.ChannelMode.Wet)
