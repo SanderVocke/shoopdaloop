@@ -172,8 +172,8 @@ Item {
 
                         ShaderEffect {
                             anchors.fill: parent
-                            vertexShader: '../../../build/shoopdaloop/lib/qml/shaders/loop_channel.vertex.qsb'
-                            fragmentShader: '../../../build/shoopdaloop/lib/qml/shaders/loop_channel.fragment.qsb'
+                            vertexShader: '../../../build/shoopdaloop/lib/qml/shaders/loop_channel.vert.qsb'
+                            fragmentShader: '../../../build/shoopdaloop/lib/qml/shaders/loop_channel.frag.qsb'
                         }
                     }
                 }

@@ -1,6 +1,6 @@
 find_program(QSB_EXEC qsb PATHS /usr PATH_SUFFIXES lib/qt6/bin REQUIRED)
 
-file(GLOB SHADERS *.vertex *.fragment)
+file(GLOB SHADERS *.vert *.frag *.comp)
 
 foreach(SHADER ${SHADERS})
     get_filename_component(TARGET ${SHADER} NAME)
