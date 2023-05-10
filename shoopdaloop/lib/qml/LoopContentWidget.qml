@@ -160,7 +160,7 @@ Item {
                     property int index
                     property var mapped_item
 
-                    height: 50
+                    height: 100
                     anchors {
                         left: parent.left
                         right: parent.right
