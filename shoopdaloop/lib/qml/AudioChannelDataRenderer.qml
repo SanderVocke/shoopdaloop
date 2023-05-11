@@ -17,7 +17,7 @@ Item {
         id: fetcher
         channel: root.channel
         active: true
-        //onData_as_qimageChanged: shader_source.scheduleUpdate()
+        onData_as_qimageChanged: shader_source.scheduleUpdate()
     }
 
     // Render, invisibly, the audio data mapped as a 2D image.
@@ -36,45 +36,39 @@ Item {
         height: audio_renderer.height
         sourceItem: audio_renderer
         format: ShaderEffectSource.RGBA8
-        live: true
+        live: false
     }
 
     // Render the shader.
-    ScrollView {
+    ShaderEffect {
         anchors.fill: parent
+        fragmentShader: '../../../build/shoopdaloop/lib/qml/shaders/loop_channel.frag.qsb'
+
+        // Shader inputs
+        property var audio: shader_source
+        property int samples_per_pixel: root.samples_per_pixel
+        property int samples_offset: fetcher.channel_data ? scroll.position * fetcher.channel_data.length : 0
+        property int pixels_offset: 0
+    }
+
+    // Render a scroll bar
+    ScrollBar {
         id: scroll
-
-        ScrollBar.horizontal.policy: ScrollBar.AlwaysOn
-
-        contentWidth: shader.width
-
-        Rectangle {
-            width: shader.width
-            height: 10
-            gradient: Gradient {
-                orientation: Gradient.Horizontal
-                GradientStop { position: 0.0; color: "red" }
-                GradientStop { position: 0.33; color: "yellow" }
-                GradientStop { position: 1.0; color: "green" }
-            }
+        anchors {
+            bottom: parent.bottom
+            left: parent.left
+            right: parent.right
         }
-
-        Item {
-            y: 10
-            height: scroll.height
-            width: fetcher.channel_data ? fetcher.channel_data.length / root.samples_per_pixel : 1
-
-            ShaderEffect {
-                id: shader
-                anchors.fill: parent
-                fragmentShader: '../../../build/shoopdaloop/lib/qml/shaders/loop_channel.frag.qsb'
-
-                // Shader inputs
-                property var audio: shader_source
-                property int samples_per_pixel: root.samples_per_pixel
-                property int samples_offset: 0
-                property int pixels_offset: 0
-            }
+        size: {
+            if(!fetcher.channel_data) { return 1.0 }
+            var window_in_samples = width * root.samples_per_pixel
+            return window_in_samples / fetcher.channel_data.length
         }
+        minimumSize: 0.05
+        onSizeChanged: console.log(size)
+        onWidthChanged: console.log("w", width)
+        orientation: Qt.Horizontal
+        policy: ScrollBar.AlwaysOn
+        visible: size < 1.0
     }
 }

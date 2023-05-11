@@ -36,10 +36,10 @@ void main() {
     float samp = get_audio_sample(int(gl_FragCoord.x + total_offset));
 
     // Do RMS + dB calculation
-    float db = 20.0 * log(abs(samp)) / log(10.0);
+    // float db = 20.0 * log(abs(samp)) / log(10.0);
     
     // Render as a waveform, extending up and down from center.
-    float db_in_0_1_range = max(1.0 - (-db) / 45.0, 0.0);
+    float db_in_0_1_range = samp; //max(1.0 - (-db) / 45.0, 0.0);
     float lower_thres = 0.5 - (db_in_0_1_range/2.0);
     float upper_thres = 0.5 + (db_in_0_1_range/2.0);
     bool is_on = (qt_TexCoord0.y >= lower_thres && qt_TexCoord0.y <= upper_thres);
