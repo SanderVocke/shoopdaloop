@@ -2,7 +2,7 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
 import FetchChannelData
-import FloatsToImageString
+import QImageRenderer
 
 import '../mode_helpers.js' as ModeHelpers
 
@@ -158,60 +158,18 @@ Item {
             Mapper {
                 model: loop.channels
 
-                Item {
-                    id: item
-                    property int index
-                    property var mapped_item
+                AudioChannelDataRenderer {
+                        property var mapped_item
+                        property int index
 
-                    height: 100
-                    anchors {
-                        left: parent.left
-                        right: parent.right
-                    }
-                    
-                    FetchChannelData {
-                        channel: item.mapped_item
-                        active: true
-                        onChannelDataChanged: console.log('onChannelDataChanged', channel_data ? channel_data.length : 'None')
-
-                        FloatsToImageString {
-                            input: parent.channel_data
-
-                            Image {
-                                source: parent.output
-                            }
-                        }
-                    }
-
-                    Rectangle {
-                        anchors.fill: parent
-                        color: 'red'
-
-                        Rectangle {
-                            id: gradient_rect
-                            width: 256
-                            height: 256
-                            gradient: Gradient {
-                                orientation: Gradient.Horizontal
-                                GradientStop { position: 0; color: "white" }
-                                GradientStop { position: 1; color: "black" }
-                            }
+                        height: 100
+                        anchors {
+                            left: parent.left
+                            right: parent.right
                         }
 
-                        ShaderEffectSource {
-                            id: shader_source
-                            hideSource: true
-                            width: 256
-                            height: 256
-                            sourceItem: gradient_rect
-                        }
-
-                        ShaderEffect {
-                            anchors.fill: parent
-                            property var audio: shader_source
-                            fragmentShader: '../../../build/shoopdaloop/lib/qml/shaders/loop_channel.frag.qsb'
-                        }
-                    }
+                        channel: mapped_item
+                        fetch_active: true
                 }
             }
         }
