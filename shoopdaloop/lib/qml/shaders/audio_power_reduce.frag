@@ -25,12 +25,12 @@ float get_waveform_sample(int sample_idx) {
     uint r = uint(in_pix.r * 255.0) << 16;
     uint g = uint(in_pix.g * 255.0) << 8;
     uint b = uint(in_pix.b * 255.0);
-    float samp = float(a | r | g | b) / float(pow(2, 32)) * 2.0 - 1.0;
+    float samp = float(a | r | g | b) / 4294967295.0 * 2.0 - 1.0;
     return samp;
 }
 
 vec4 to_32bit_argb(float s) {
-    uint bits = uint(s * 4294967295.0); // 32-bit max
+    uint bits = uint(((s + 1.0)/2.0) * 4294967295.0); // 0..32-bit max
     return vec4(
         (0xFF & (bits >> 16)) / 255.0,
         (0xFF & (bits >> 8 )) / 255.0,
@@ -43,8 +43,8 @@ void main() {
     // Calculate RMS
     vec2 texsize = textureSize(waveform, 0);
     vec2 pixsize = vec2(1.0, 1.0) / texsize;
-    int pos = int( (gl_FragCoord.x / pixsize.x) +
-                   (gl_FragCoord.y / pixsize.y) * texsize.x );
+    int pos = int( (qt_TexCoord0.x / pixsize.x) +
+                   (qt_TexCoord0.y / pixsize.y) * texsize.x );
     int start = int(pos * samples_per_pixel);
     float v = 0;
     for(int idx=start; idx<(start + samples_per_pixel); idx++) {
@@ -58,6 +58,5 @@ void main() {
     float db_in_0_1_range = max(1.0 - (-db) / 45.0, 0.0);
     
     // Convert back to color
-    // fragColor = to_32bit_argb(db_in_0_1_range);
-    fragColor = to_32bit_argb(get_waveform_sample(start));
+    fragColor = to_32bit_argb(db_in_0_1_range);
 }
