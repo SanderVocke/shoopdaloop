@@ -170,6 +170,7 @@ Item {
 
                         channel: mapped_item
                         fetch_active: true
+                        samples_per_pixel: zoom_combo.currentValue
                 }
             }
         }

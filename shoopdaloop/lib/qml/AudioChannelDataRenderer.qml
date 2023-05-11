@@ -39,17 +39,45 @@ Item {
         live: false
     }
 
-    // Render the shader.
+    // Reduce the audio input to the intended samples per pixel and calculate
+    // power in dB
     ShaderEffect {
-        anchors.fill: parent
-        fragmentShader: '../../../build/shoopdaloop/lib/qml/shaders/loop_channel.frag.qsb'
+        y: 200
+        id: reduce_shader
+        width: shader_source.width
+        property int n: shader_source.width * shader_source.height / root.samples_per_pixel
+        height: Math.ceil(n / width)
+        visible: false
+        fragmentShader: '../../../build/shoopdaloop/lib/qml/shaders/audio_power_reduce.frag.qsb'
+
+        onHeightChanged: console.log("reducer: ", width, height)
 
         // Shader inputs
-        property var audio: shader_source
+        property var waveform: shader_source
         property int samples_per_pixel: root.samples_per_pixel
-        property int samples_offset: fetcher.channel_data ? scroll.position * fetcher.channel_data.length : 0
-        property int pixels_offset: 0
     }
+
+    // // Provide the reduced audio waveform as an input to rendering shader
+    // ShaderEffectSource {
+    //     id: reduced_source
+    //     width: reduce_shader.width
+    //     height: reduce_shader.height
+    //     sourceItem: reduce_shader
+    //     format: ShaderEffectSource.RGBA8
+    //     live: true
+    // }
+
+    // // Render the reduced data.
+    // ShaderEffect {
+    //     anchors.fill: parent
+    //     fragmentShader: '../../../build/shoopdaloop/lib/qml/shaders/render_waveform.frag.qsb'
+
+    //     // Shader inputs
+    //     property var waveform: reduced_source
+    //     property int samples_per_pixel: root.samples_per_pixel
+    //     property int samples_offset: fetcher.channel_data ? scroll.position * fetcher.channel_data.length : 0
+    //     property int pixels_offset: 0
+    // }
 
     // Render a scroll bar
     ScrollBar {
