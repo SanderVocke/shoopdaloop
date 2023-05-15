@@ -17,6 +17,7 @@ from lib.q_objects.Tasks import Tasks
 from lib.q_objects.FXChain import FXChain
 from lib.q_objects.FetchChannelData import FetchChannelData
 from lib.q_objects.QImageRenderer import QImageRenderer
+from lib.q_objects.RenderAudioWaveform import RenderAudioWaveform
 #from lib.q_objects.MIDIControlManager import MIDIControlManager
 #from lib.q_objects.MIDIControlLink import MIDIControlLink
 #from lib.q_objects.MIDIControlDialect import MIDIControlDialect
@@ -42,3 +43,4 @@ def register_shoopdaloop_qml_classes():
     register_qml_class(Tasks, 'Tasks')
     register_qml_class(FetchChannelData, 'FetchChannelData')
     register_qml_class(QImageRenderer, 'QImageRenderer')
+    register_qml_class(RenderAudioWaveform, 'RenderAudioWaveform')
