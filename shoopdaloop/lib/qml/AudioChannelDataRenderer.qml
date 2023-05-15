@@ -24,6 +24,7 @@ Item {
     RenderAudioWaveform {
         id: render
         input_data: fetcher.channel_data ? fetcher.channel_data : []
+        samples_per_bin: root.samples_per_pixel
         anchors.fill: parent
     }
 
