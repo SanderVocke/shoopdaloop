@@ -23,6 +23,7 @@ class RenderAudioWaveform(QQuickPaintedItem):
         self._data = None
         self._precalc = None
         self._lines = None
+        self._offset_samples = 0
     
     ######################
     # PROPERTIES
@@ -40,7 +41,7 @@ class RenderAudioWaveform(QQuickPaintedItem):
             self._data = l
             self.inputDataChanged.emit(l)
             self.update_lines()
-            self.update()
+            self.update() # QQuickPaintedItem update triggers a render
     
 
     # samples_per_bin
@@ -53,23 +54,27 @@ class RenderAudioWaveform(QQuickPaintedItem):
         if l != self._samples_per_bin:
             self._samples_per_bin = l
             self.samplesPerBinChanged.emit(l)
-            self.update()
+            self.update() # QQuickPaintedItem update triggers a render
+    
+    # offset_samples
+    offsetSamplesChanged = Signal(int)
+    @Property(int, notify=offsetSamplesChanged)
+    def offset_samples(self):
+        return self._offset_samples
+    @offset_samples.setter
+    def offset_samples(self, l):
+        if l != self._offset_samples:
+            self._offset_samples = l
+            self.offsetSamplesChanged.emit(l)
+            self.update() # QQuickPaintedItem update triggers a render
     
     ######################
     # INTERNAL FUNCTIONS
     ######################
 
-    def generate_lines(self, samples_per_bin):
-        def avg(l):
-            return sum(l)/len(l)
-        
-        n = int(len(self._precalc) / samples_per_bin)
-        samples = [avg(self._precalc[x*samples_per_bin:x*samples_per_bin+samples_per_bin]) for x in range(n)]
-
-        return [QLine(x, (0.5 - f/2.0)*self.height(), x, (0.5 + f/2.0)*self.height()) for (x, f) in enumerate(samples)]
-
-
     def update_lines(self):
+        start = time.time()
+
         is_floats = len(self._data) > 0 and functools.reduce(lambda a,b: a and b, [isinstance(e, float) for e in self._data])
         if not is_floats:
             self.image = None
@@ -83,10 +88,35 @@ class RenderAudioWaveform(QQuickPaintedItem):
         # Put in 0-1 range for rendering
         self._precalc = [max(1.0 - (-f) / 45.0, 0.0) for f in power_db]
 
-        # Generate rendering lines to use with drawLines at different zoom levels
+        # Generate rendering lines to use with drawLines at different zoom levels.
         self._lines = {}
-        for level in [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048]:
-            self._lines[level] = self.generate_lines(level)
+
+        def generate_lines(samples):
+            print('generating... {}'.format(len(samples)))
+            lns = [QLine()] * len(samples)
+            for idx in range(len(lns)):
+                lns[idx].setLine(idx, (0.5 - samples[idx]/2.0)*self.height(), idx, (0.5 + samples[idx]/2.0)*self.height())
+            return lns
+            # return [QLine(x, (0.5 - f/2.0)*self.height(), x, (0.5 + f/2.0)*self.height()) for (x, f) in enumerate(samples)]
+        
+        def reduce_by_2(samples):
+            print('reducing... {}'.format(len(samples)))
+            if len(samples) < 2:
+                return []
+            return np.mean(samples.reshape(-1, 2), 1) # averaging reduction by 2
+            #return [(samples[x*2] + samples[x*2+1])/2.0 for x in range(int(len(samples)/2))]
+        
+        factor = 1
+        reduced = np.array(self._precalc)
+        # Ensure array size is a power of 2
+        reduced.resize(pow(2, int(math.ceil(math.log2(len(reduced))))))
+        while factor <= 2048:
+            self._lines[factor] = generate_lines(reduced)
+            factor *= 2
+            reduced = reduce_by_2(reduced)
+        
+        # For performance measuring
+        print("RenderAudioWaveform: pre-render time {}".format(time.time() - start))
     
     def paint(self, painter):
         if self._lines:
@@ -104,4 +134,6 @@ class RenderAudioWaveform(QQuickPaintedItem):
 
             # Horizonal line
             painter.drawLine(0, int(self.height()/2), int(self.width()), int(self.height()/2))
-            print("frame time: {}".format(time.time() - start))
+
+            # For performance measuring
+            # print("RenderAudioWaveform: frame time {}".format(time.time() - start))

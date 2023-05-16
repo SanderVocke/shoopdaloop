@@ -28,14 +28,6 @@ Item {
         anchors.fill: parent
     }
 
-    // Render, invisibly, the audio data mapped as a 2D image.
-    // QImageRenderer {
-    //     image: render.image ? render.image : null
-    //     id: audio_renderer
-    //     width: image ? image.width : 0
-    //     height: render.height
-    // }
-
     // // Render a scroll bar
     // ScrollBar {
     //     id: scroll

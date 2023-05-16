@@ -2,7 +2,6 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
 import FetchChannelData
-import QImageRenderer
 
 import '../mode_helpers.js' as ModeHelpers
 
