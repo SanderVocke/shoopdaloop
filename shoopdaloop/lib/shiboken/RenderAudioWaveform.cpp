@@ -23,7 +23,7 @@ void RenderAudioWaveform::paint(QPainter *painter) {
         for(size_t idx=0; idx < m_render_lines.size(); idx++) {
             float sample_idx = ((float)idx + ((float)m_samples_offset)/((float)m_samples_per_bin)) * (float)m_samples_per_bin / (float) subsampled_by;
             size_t nearest_idx = std::min(std::max(0, (int)std::round(sample_idx)), (int)samples.size());
-            float sample = samples[nearest_idx];
+            float sample = samples.size() > nearest_idx ? samples[nearest_idx] : 0.0f;
             if (true || subsampled_by >= 4) {
                 // Subsampled by such an amount that we do "abs display"
                 m_render_lines[idx].setLine(

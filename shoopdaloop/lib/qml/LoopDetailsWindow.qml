@@ -5,48 +5,23 @@ import QtQuick.Controls.Material 2.15
 import '../mode_helpers.js' as ModeHelpers
 
 ApplicationWindow {
-        property var loop
-        property var master_loop
-        id: window
+    property var loop
+    property var master_loop
+    id: window
 
-        width: 800
-        height: 250
-        minimumWidth: 200
-        minimumHeight: 50
-        
-        Material.theme: Material.Dark
+    width: 800
+    height: 250
+    minimumWidth: 200
+    minimumHeight: 50
+    
+    Material.theme: Material.Dark
 
-        LoopContentWidget {
-            visible: window.visible
-            id: waveform
-            anchors.fill: parent
-            anchors.margins: 5
-            //min_db: -50.0
-            loop: window.loop
-            master_loop: window.master_loop
-
-            // Connections {
-            //     target: window
-            //     function onVisibleChanged (visible) {
-            //         if (visible) { waveform.update_data() }
-            //     }
-            // }
-
-            // Connections {
-            //     target: loop
-                
-            //     // TODO the triggering
-            //     function maybe_update() {
-            //         if (window.visible &&
-            //             !ModeHelpers.is_recording_mode(loop.mode)) {
-            //                 waveform.update_data()
-            //             }
-            //     }
-            //     function onStateChanged() {
-            //         maybe_update()
-            //         waveform.recording = ModeHelpers.is_recording_mode(loop.mode)
-            //     }
-            //     function onLengthChanged() { maybe_update() }
-            // }
-        }
+    LoopContentWidget {
+        visible: window.visible
+        id: waveform
+        anchors.fill: parent
+        anchors.margins: 5
+        loop: window.loop
+        master_loop: window.master_loop
     }
+}

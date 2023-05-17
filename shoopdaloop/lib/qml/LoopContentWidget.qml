@@ -154,21 +154,40 @@ Item {
             Mapper {
                 model: loop.channels
 
-                AudioChannelDataRenderer {
-                        property var mapped_item
-                        property int index
+                ChannelDataRenderer {
+                    property var mapped_item
+                    property int index
 
-                        height: 100
-                        anchors {
-                            left: parent.left
-                            right: parent.right
-                        }
+                    height: 100
+                    anchors {
+                        left: parent.left
+                        right: parent.right
+                    }
 
-                        channel: mapped_item
-                        fetch_active: true
-                        samples_per_pixel: zoom_slider.samples_per_pixel
+                    channel: mapped_item
+                    fetch_active: true
+                    samples_per_pixel: zoom_slider.samples_per_pixel
                 }
             }
+        }
+
+        // Render a scroll bar
+        ScrollBar {
+            id: scroll
+            anchors {
+                bottom: parent.bottom
+                left: parent.left
+                right: parent.right
+            }
+            size: {
+                if(!fetcher.channel_data) { return 1.0 }
+                var window_in_samples = width * root.samples_per_pixel
+                return window_in_samples / fetcher.channel_data.length
+            }
+            minimumSize: 0.05
+            orientation: Qt.Horizontal
+            policy: ScrollBar.AlwaysOn
+            visible: size < 1.0
         }
     }    
 }
