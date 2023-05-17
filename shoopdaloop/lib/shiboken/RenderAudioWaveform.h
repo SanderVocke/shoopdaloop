@@ -18,9 +18,10 @@ class BINDINGS_API LIBSHOOPDALOOP_CPP_OBJECTS_EXPORT RenderAudioWaveform : publi
     QML_ELEMENT
 
     QVariant m_input_data;
-    int m_samples_per_bin;
+    float m_samples_per_bin;
     int m_samples_offset;
-    std::vector<QLine> m_lines;
+    std::vector<QLine> m_render_lines;
+    std::map<size_t, std::vector<float>> m_subsampling_pyramid;
 
 public:
     explicit RenderAudioWaveform(QQuickItem *parent = nullptr);
@@ -34,7 +35,7 @@ public:
     )
 
     Q_PROPERTY(
-        int samples_per_bin
+        float samples_per_bin
         MEMBER m_samples_per_bin
         NOTIFY samplesPerBinChanged
     )
@@ -46,6 +47,7 @@ public:
     )
 
 public slots:
+    void preprocess();
     void update_lines();
 
 signals:

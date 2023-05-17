@@ -40,33 +40,30 @@ Item {
         }
 
         Label {
-            anchors.verticalCenter: zoom_combo.verticalCenter
-            text: "Samples/pixel:"
+            anchors.verticalCenter: zoom_slider.verticalCenter
+            text: "Zoom:"
         }
 
-        // Slider {
-        //     id: zoom_slider
-        //     width: 150
-        //     value: 0.0
-        //     anchors {
-        //         verticalCenter: parent.verticalCenter
-        //     }
-        // }
-
-        ComboBox {
-            id: zoom_combo
-            model: ['1', '2', '4', '8', '16', '32', '64', '128', '256', '512', '1024', '2048', '4096']
-            currentIndex: 8
+        Slider {
+            id: zoom_slider
+            width: 150
+            value: 4.0
+            from: 10.0
+            to: 0.0
+            property real samples_per_pixel: Math.pow(2.0, value)
+            anchors {
+                verticalCenter: parent.verticalCenter
+            }
         }
 
         Label {
-            anchors.verticalCenter: zoom_combo.verticalCenter
+            anchors.verticalCenter: zoom_slider.verticalCenter
             text: "Tool:"
         }
 
         ComboBox {
             id: tool_combo
-            anchors.verticalCenter: zoom_combo.verticalCenter
+            anchors.verticalCenter: zoom_slider.verticalCenter
             textRole: "text"
             valueRole: "value"
             width: 120
@@ -79,13 +76,13 @@ Item {
         }
 
         Label {
-            anchors.verticalCenter: zoom_combo.verticalCenter
+            anchors.verticalCenter: zoom_slider.verticalCenter
             text: "Grid:"
         }
 
         ComboBox {
             id: minor_grid_divider
-            anchors.verticalCenter: zoom_combo.verticalCenter
+            anchors.verticalCenter: zoom_slider.verticalCenter
             textRole: "text"
             valueRole: "value"
             currentIndex : 5
@@ -169,7 +166,7 @@ Item {
 
                         channel: mapped_item
                         fetch_active: true
-                        samples_per_pixel: zoom_combo.currentValue
+                        samples_per_pixel: zoom_slider.samples_per_pixel
                 }
             }
         }
