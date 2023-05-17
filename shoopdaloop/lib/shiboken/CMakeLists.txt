@@ -1,8 +1,7 @@
 # Copyright (C) 2023 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
-# cmake_minimum_required(VERSION 3.18)
-# cmake_policy(VERSION 3.18)
+include(GenerateExportHeader)
 
 # # Enable policy to not use RPATH settings for install_name on macOS.
 # if(POLICY CMP0068)
@@ -126,6 +125,7 @@ set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 
 
 find_package(Qt6 REQUIRED COMPONENTS Quick Widgets)
+qt_standard_project_setup()
 
 # =============================== CMake target - source_library ===============================
 
@@ -134,7 +134,10 @@ find_package(Qt6 REQUIRED COMPONENTS Quick Widgets)
 set(${source_library}_sources RenderAudioWaveform.cpp)
 add_library(${source_library} SHARED ${${source_library}_sources})
 set_property(TARGET ${source_library} PROPERTY PREFIX "")
-target_link_libraries(${source_library} Qt6::Quick)
+target_link_libraries(${source_library} PUBLIC Qt6::Quick)
+target_include_directories(${source_library} PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
+generate_export_header(${source_library})
+set_target_properties(${source_library} PROPERTIES CXX_VISIBILITY_PRESET default)
 
 # Needed mostly on Windows to export symbols, and create a .lib file, otherwise the binding
 # library can't link to the sample library.
@@ -161,6 +164,7 @@ set(shiboken_options --generator-set=shiboken --enable-parent-ctor-heuristic
     ${qtquick_cflags}
     -T${CMAKE_SOURCE_DIR}
     -T${pyside_typesystem_dir}
+    -I${CMAKE_CURRENT_BINARY_DIR}
     --output-directory=${CMAKE_CURRENT_BINARY_DIR}
     --enable-pyside-extensions
     )
@@ -208,10 +212,11 @@ target_include_directories(${bindings_library} PRIVATE ${python_include_dir})
 target_include_directories(${bindings_library} PRIVATE ${shiboken_include_dir})
 target_include_directories(${bindings_library} PRIVATE ${CMAKE_SOURCE_DIR})
 target_include_directories(${bindings_library} PRIVATE ${pyside_include_subdirs})
+target_include_directories(${bindings_library} PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
 target_compile_options(${bindings_library} PRIVATE ${pyside_additional_cflags})
 target_compile_options(${bindings_library} PRIVATE ${shiboken_additional_cflags})
-target_compile_options(${bindings_library} PRIVATE ${pyside_link_libs})
+target_link_options(${bindings_library} PRIVATE ${pyside_link_libs})
 
 target_link_libraries(${bindings_library} PRIVATE ${shiboken_shared_libraries})
 target_link_libraries(${bindings_library} PRIVATE ${pyside_shared_libraries})
