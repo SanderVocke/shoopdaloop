@@ -42,8 +42,6 @@ Item {
             return window_in_samples / fetcher.channel_data.length
         }
         minimumSize: 0.05
-        onSizeChanged: console.log(size)
-        onWidthChanged: console.log("w", width)
         orientation: Qt.Horizontal
         policy: ScrollBar.AlwaysOn
         visible: size < 1.0

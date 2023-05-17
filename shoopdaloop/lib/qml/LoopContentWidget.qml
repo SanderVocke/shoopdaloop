@@ -47,8 +47,8 @@ Item {
         Slider {
             id: zoom_slider
             width: 150
-            value: 4.0
-            from: 10.0
+            value: 8.0
+            from: 16.0
             to: 0.0
             property real samples_per_pixel: Math.pow(2.0, value)
             anchors {
