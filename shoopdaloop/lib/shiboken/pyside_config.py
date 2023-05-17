@@ -83,6 +83,9 @@ options.append(("--shiboken-module-shared-libraries-cmake",
 options.append(("--shiboken-additional-cflags",
                 lambda: get_shiboken_pkgconfig_cflags(), pyside_error,
                 "Print Cflags for Shiboken as provided by pkg-config."))
+options.append(("--pyside-additional-cflags",
+                lambda: get_pyside_pkgconfig_cflags(), pyside_error,
+                "Print Cflags for PySide as provided by pkg-config."))
 
 options.append(("--pyside-shared-libraries-qmake",
                 lambda: get_shared_libraries_qmake(Package.PYSIDE_MODULE), pyside_libs_error,
@@ -340,6 +343,12 @@ def get_shiboken_pkgconfig_cflags():
     pkgconf = shutil.which('pkg-config')
     if pkgconf:
         return subprocess.check_output([pkgconf, '--cflags', 'shiboken6']).decode('ascii').strip()
+    return ''
+
+def get_pyside_pkgconfig_cflags():
+    pkgconf = shutil.which('pkg-config')
+    if pkgconf:
+        return subprocess.check_output([pkgconf, '--cflags', 'pyside6']).decode('ascii').strip()
     return ''
 
 print_all = option == "-a"

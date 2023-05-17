@@ -88,12 +88,16 @@ endmacro()
 pyside_config(--shiboken-module-path shiboken_module_path)
 pyside_config(--shiboken-generator-path shiboken_generator_path)
 pyside_config(--python-include-path python_include_dir)
+pyside_config(--pyside-include-path pyside_include_dir)
 pyside_config(--shiboken-generator-include-path shiboken_include_dir 1)
 pyside_config(--shiboken-module-shared-libraries-cmake shiboken_shared_libraries 0)
+pyside_config(--pyside-shared-libraries-cmake pyside_shared_libraries 0)
 pyside_config(--python-link-flags-cmake python_linking_data 0)
 pyside_config(--shiboken-additional-cflags shiboken_additional_cflags_str)
+pyside_config(--pyside-additional-cflags pyside_additional_cflags_str)
 
 string(REPLACE " " ";" shiboken_additional_cflags ${shiboken_additional_cflags_str})
+string(REPLACE " " ";" pyside_additional_cflags ${pyside_additional_cflags_str})
 
 set(shiboken_path "${shiboken_generator_path}/shiboken6${CMAKE_EXECUTABLE_SUFFIX}")
 if(NOT EXISTS ${shiboken_path})
@@ -121,7 +125,7 @@ set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 # =============================================================================================
 
 
-# find_package(Qt6 REQUIRED COMPONENTS Core)
+find_package(Qt6 REQUIRED COMPONENTS Quick Widgets)
 
 # =============================== CMake target - source_library ===============================
 
@@ -130,7 +134,7 @@ set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 set(${source_library}_sources RenderAudioWaveform.cpp)
 add_library(${source_library} SHARED ${${source_library}_sources})
 set_property(TARGET ${source_library} PROPERTY PREFIX "")
-# target_link_libraries(${source_library} Qt6::Core)
+target_link_libraries(${source_library} Qt6::Quick)
 
 # Needed mostly on Windows to export symbols, and create a .lib file, otherwise the binding
 # library can't link to the sample library.
@@ -139,14 +143,26 @@ target_compile_definitions(${source_library} PRIVATE BINDINGS_BUILD)
 
 # ====================== Shiboken target for generating binding C++ files  ====================
 
+# TODO: this is kind of ugly. How to add the includes to the generation command?
+exec_program(pkg-config ARGS --cflags-only-I Qt6Quick OUTPUT_VARIABLE qtquick_cflags_str)
+string(REPLACE " " ";" qtquick_cflags ${qtquick_cflags_str})
+exec_program(pkg-config ARGS --variable=typesystemdir pyside6 OUTPUT_VARIABLE pyside_typesystem_dir)
+exec_program(pkg-config ARGS --variable=includedir pyside6 OUTPUT_VARIABLE pyside_main_include_dir)
+exec_program(pkg-config ARGS --libs pyside6 OUTPUT_VARIABLE pyside_link_libs_str)
+string(REPLACE " " ";" pyside_link_libs ${pyside_link_libs_str})
 
 # Set up the options to pass to shiboken.
 set(shiboken_options --generator-set=shiboken --enable-parent-ctor-heuristic
     --enable-return-value-heuristic --use-isnull-as-nb_nonzero
     --avoid-protected-hack
     -I${CMAKE_SOURCE_DIR}
+    -I${pyside_include_dir}
+    ${pyside_additional_cflags}
+    ${qtquick_cflags}
     -T${CMAKE_SOURCE_DIR}
+    -T${pyside_typesystem_dir}
     --output-directory=${CMAKE_CURRENT_BINARY_DIR}
+    --enable-pyside-extensions
     )
 
 set(generated_sources_dependencies ${wrapped_header} ${typesystem_file}
@@ -174,15 +190,33 @@ set(${bindings_library}_sources ${generated_sources})
 add_library(${bindings_library} MODULE ${${bindings_library}_sources})
 add_dependencies(${bindings_library} shiboken_generated_sources)
 
+MACRO(SUBDIRLIST result curdir)
+  FILE(GLOB children ${curdir}/*)
+  SET(dirlist "")
+  FOREACH(child ${children})
+    IF(IS_DIRECTORY ${child})
+      LIST(APPEND dirlist ${child})
+    ENDIF()
+  ENDFOREACH()
+  SET(${result} ${dirlist})
+ENDMACRO()
+
+SUBDIRLIST(pyside_include_subdirs ${pyside_main_include_dir})
+
 # Apply relevant include and link flags.
 target_include_directories(${bindings_library} PRIVATE ${python_include_dir})
 target_include_directories(${bindings_library} PRIVATE ${shiboken_include_dir})
 target_include_directories(${bindings_library} PRIVATE ${CMAKE_SOURCE_DIR})
+target_include_directories(${bindings_library} PRIVATE ${pyside_include_subdirs})
 
+target_compile_options(${bindings_library} PRIVATE ${pyside_additional_cflags})
 target_compile_options(${bindings_library} PRIVATE ${shiboken_additional_cflags})
+target_compile_options(${bindings_library} PRIVATE ${pyside_link_libs})
 
 target_link_libraries(${bindings_library} PRIVATE ${shiboken_shared_libraries})
+target_link_libraries(${bindings_library} PRIVATE ${pyside_shared_libraries})
 target_link_libraries(${bindings_library} PRIVATE ${source_library})
+target_link_libraries(${bindings_library} PRIVATE Qt::Quick Qt::Widgets Qt::Gui)
 
 # Adjust the name of generated module.
 set_property(TARGET ${bindings_library} PROPERTY PREFIX "")
