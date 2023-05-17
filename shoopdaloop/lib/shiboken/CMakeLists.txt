@@ -121,7 +121,7 @@ set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 # =============================================================================================
 
 
-find_package(Qt6 REQUIRED COMPONENTS Core)
+# find_package(Qt6 REQUIRED COMPONENTS Core)
 
 # =============================== CMake target - source_library ===============================
 
@@ -130,7 +130,7 @@ find_package(Qt6 REQUIRED COMPONENTS Core)
 set(${source_library}_sources RenderAudioWaveform.cpp)
 add_library(${source_library} SHARED ${${source_library}_sources})
 set_property(TARGET ${source_library} PROPERTY PREFIX "")
-target_link_libraries(${source_library} Qt6::Core)
+# target_link_libraries(${source_library} Qt6::Core)
 
 # Needed mostly on Windows to export symbols, and create a .lib file, otherwise the binding
 # library can't link to the sample library.
@@ -149,7 +149,9 @@ set(shiboken_options --generator-set=shiboken --enable-parent-ctor-heuristic
     --output-directory=${CMAKE_CURRENT_BINARY_DIR}
     )
 
-set(generated_sources_dependencies ${wrapped_header} ${typesystem_file})
+set(generated_sources_dependencies ${wrapped_header} ${typesystem_file}
+    RenderAudioWaveform.h
+    )
 
 # Add custom target to run shiboken to generate the binding cpp files.
 add_custom_command(OUTPUT ${generated_sources}
@@ -159,6 +161,7 @@ add_custom_command(OUTPUT ${generated_sources}
                     IMPLICIT_DEPENDS CXX ${wrapped_header}
                     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
                     COMMENT "Running generator for ${typesystem_file}.")
+add_custom_target(shiboken_generated_sources ALL DEPENDS ${generated_sources})
 
 
 # =============================== CMake target - bindings_library =============================
@@ -169,6 +172,7 @@ set(${bindings_library}_sources ${generated_sources})
 
 # Define and build the bindings library.
 add_library(${bindings_library} MODULE ${${bindings_library}_sources})
+add_dependencies(${bindings_library} shiboken_generated_sources)
 
 # Apply relevant include and link flags.
 target_include_directories(${bindings_library} PRIVATE ${python_include_dir})
