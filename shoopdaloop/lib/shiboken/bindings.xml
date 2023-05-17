@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
-<typesystem package="shoopdaloop_shiboken">
-    <load-typesystem name="typesystem_widgets.xml" generate="no"/>
-    <load-typesystem name="typesystem_quickwidgets.xml" generate="no"/>
+<typesystem package="shoopdaloopcppobjects">
+    <!--<load-typesystem name="typesystem_widgets.xml" generate="no"/>
+    <load-typesystem name="typesystem_quickwidgets.xml" generate="no"/> -->
     <object-type name="RenderAudioWaveform"/>
 </typesystem>

@@ -23,7 +23,7 @@ set(source_library "libshoopdaloop_cpp_objects")
 
 # The name of the generated bindings module (as imported in Python). You can change the name
 # to something relevant for your project.
-set(bindings_library "ShoopdaloopCppObjects")
+set(bindings_library "shoopdaloopcppobjects")
 
 # The header file with all the types and functions for which bindings will be generated.
 # Usually it simply includes other headers of the library you are creating bindings for.
@@ -91,6 +91,9 @@ pyside_config(--python-include-path python_include_dir)
 pyside_config(--shiboken-generator-include-path shiboken_include_dir 1)
 pyside_config(--shiboken-module-shared-libraries-cmake shiboken_shared_libraries 0)
 pyside_config(--python-link-flags-cmake python_linking_data 0)
+pyside_config(--shiboken-additional-cflags shiboken_additional_cflags_str)
+
+string(REPLACE " " ";" shiboken_additional_cflags ${shiboken_additional_cflags_str})
 
 set(shiboken_path "${shiboken_generator_path}/shiboken6${CMAKE_EXECUTABLE_SUFFIX}")
 if(NOT EXISTS ${shiboken_path})
@@ -171,6 +174,8 @@ add_library(${bindings_library} MODULE ${${bindings_library}_sources})
 target_include_directories(${bindings_library} PRIVATE ${python_include_dir})
 target_include_directories(${bindings_library} PRIVATE ${shiboken_include_dir})
 target_include_directories(${bindings_library} PRIVATE ${CMAKE_SOURCE_DIR})
+
+target_compile_options(${bindings_library} PRIVATE ${shiboken_additional_cflags})
 
 target_link_libraries(${bindings_library} PRIVATE ${shiboken_shared_libraries})
 target_link_libraries(${bindings_library} PRIVATE ${source_library})

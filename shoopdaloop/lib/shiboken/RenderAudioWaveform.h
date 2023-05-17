@@ -1,7 +1,11 @@
 #pragma once
 
-#include <QtQuick/QQuickPaintedItem>
+// #include <QtQuick/QQuickPaintedItem>
 
-class RenderAudioWaveform : public QQuickPaintedItem {
+// class RenderAudioWaveform : public QQuickPaintedItem {
+
+// };
+
+class RenderAudioWaveform {
 
 };

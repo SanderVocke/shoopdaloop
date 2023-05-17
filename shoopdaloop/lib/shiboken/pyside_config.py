@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
@@ -7,6 +9,8 @@ import glob
 import os
 import re
 import sys
+import shutil
+import subprocess
 
 
 PYSIDE = 'pyside6'
@@ -75,6 +79,10 @@ options.append(("--shiboken-module-shared-libraries-qmake",
 options.append(("--shiboken-module-shared-libraries-cmake",
                 lambda: get_shared_libraries_cmake(Package.SHIBOKEN_MODULE), pyside_libs_error,
                 "Print paths of shiboken shared libraries (.so's, .dylib's, .dll's) for cmake"))
+
+options.append(("--shiboken-additional-cflags",
+                lambda: get_shiboken_pkgconfig_cflags(), pyside_error,
+                "Print Cflags for Shiboken as provided by pkg-config."))
 
 options.append(("--pyside-shared-libraries-qmake",
                 lambda: get_shared_libraries_qmake(Package.PYSIDE_MODULE), pyside_libs_error,
@@ -258,7 +266,6 @@ def python_link_data():
 
     return flags
 
-
 def get_package_include_path(which_package):
     package_path = find_package(which_package)
     if package_path is None:
@@ -329,6 +336,11 @@ def get_shared_libraries_cmake(which_package):
     result = ';'.join(libs)
     return result
 
+def get_shiboken_pkgconfig_cflags():
+    pkgconf = shutil.which('pkg-config')
+    if pkgconf:
+        return subprocess.check_output([pkgconf, '--cflags', 'shiboken6']).decode('ascii').strip()
+    return ''
 
 print_all = option == "-a"
 for argument, handler, error, _ in options:
