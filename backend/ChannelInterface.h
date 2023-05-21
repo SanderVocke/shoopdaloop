@@ -2,6 +2,7 @@
 #include <optional>
 #include <memory>
 #include <stdio.h>
+#include <utility>
 #include "types.h"
 
 // A generic channel is a class which can run as a dependent on an actual loop. It does
@@ -27,6 +28,7 @@ public:
     // Process the channel according to the loop state.
     virtual void PROC_process(
         loop_mode_t mode,
+        std::optional<std::pair<loop_mode_t, size_t>> maybe_next_mode,
         size_t n_samples,
         size_t pos_before,
         size_t pos_after,
@@ -47,9 +49,19 @@ public:
     virtual void PROC_set_length(size_t length) = 0;
     virtual size_t get_length() const = 0;
 
-    // Set/get the playback start offset
+    // Set/get the playback start offset.
+    // This offset is the sample # which starts playing at the moment
+    // a transition to playback or loop around happens.
     virtual void set_start_offset(int offset) = 0;
     virtual int get_start_offset() const = 0;
+
+    // Set/get the amount of pre-play samples.
+    // For context: when a change to recording mode is coming, the channel is
+    // silently already recording. This "pre-recording" can be used e.g. to
+    // play a fill or riff leading into the loop. When pre-play samples is >0,
+    // these pre-recorded samples will also be pre-played.
+    virtual void set_pre_play_samples(int offset) = 0;
+    virtual int get_pre_play_samples() const = 0;
 
     // Get a sequence number which increments whenever the content, of this channel changes.
     // Can be used for e.g. "dirty" detection.
