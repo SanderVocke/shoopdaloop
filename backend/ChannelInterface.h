@@ -60,8 +60,8 @@ public:
     // silently already recording. This "pre-recording" can be used e.g. to
     // play a fill or riff leading into the loop. When pre-play samples is >0,
     // these pre-recorded samples will also be pre-played.
-    virtual void set_pre_play_samples(int offset) = 0;
-    virtual int get_pre_play_samples() const = 0;
+    virtual void set_pre_play_samples(size_t samples) = 0;
+    virtual size_t get_pre_play_samples() const = 0;
 
     // Get a sequence number which increments whenever the content, of this channel changes.
     // Can be used for e.g. "dirty" detection.

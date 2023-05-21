@@ -14,7 +14,6 @@ typedef enum {
 struct channel_process_params {
     unsigned process_flags;
     int position;
-    size_t length;
 };
 
 inline unsigned loop_mode_to_channel_process_flags(
@@ -45,17 +44,16 @@ inline unsigned loop_mode_to_channel_process_flags(
     return loop_mode;
 }
 
-inline channel_process_params modified_process_inputs_for_channel(
+inline channel_process_params get_channel_process_params(
     loop_mode_t loop_mode,
     std::optional<std::pair<loop_mode_t, size_t>> maybe_next_mode,
     int position,
-    size_t length,
     size_t start_offset,
     channel_mode_t channel_mode
     ) {
     channel_process_params rval {
         loop_mode_to_channel_process_flags(loop_mode, channel_mode),
-        position, length };
+        position };
 
     // Now, check if we should be pre-playing or pre-recording, in which case
     // we map again to Playing / Recording
@@ -69,7 +67,6 @@ inline channel_process_params modified_process_inputs_for_channel(
                maybe_next_mode &&
                loop_mode_to_channel_process_flags(maybe_next_mode->first, channel_mode) & ChannelRecord) {
         rval.process_flags |= ChannelPreRecord;
-        ///?
     }
 
     return rval;

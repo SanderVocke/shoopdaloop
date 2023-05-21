@@ -5,6 +5,7 @@
 #include <cstring>
 #include <memory>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 #include <optional>
 #include <iostream>
@@ -132,6 +133,7 @@ public:
 
     virtual void PROC_process_channels(
         loop_mode_t mode,
+        std::optional<std::pair<loop_mode_t, size_t>> maybe_next_mode,
         size_t n_samples,
         size_t pos_before,
         size_t pos_after,
@@ -178,7 +180,9 @@ public:
                 break;
         }
 
-        PROC_process_channels(process_channel_mode, n_samples, pos_before, pos_after,
+        PROC_process_channels(process_channel_mode,
+            std::make_pair(ma_maybe_next_planned_mode.load(), (size_t)ma_maybe_next_planned_delay.load()),
+            n_samples, pos_before, pos_after,
             length_before, length_after);
 
         if (mp_next_poi) { mp_next_poi.value().when -= n_samples; }

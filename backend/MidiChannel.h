@@ -5,7 +5,7 @@
 #include "WithCommandQueue.h"
 #include "MidiMessage.h"
 #include "MidiNotesState.h"
-#include "modified_loop_mode_for_channel.h"
+#include "channel_mode_helpers.h"
 #include <optional>
 #include <functional>
 #include <chrono>
@@ -53,6 +53,7 @@ private:
     std::atomic<int> ma_start_offset;
     std::atomic<size_t> ma_n_events_triggered;
     std::atomic<unsigned> ma_data_seq_nr;
+    std::atomic<size_t> ma_pre_play_samples;
 
     const Message all_sound_off_message_channel_0 = Message(0, 3, {0xB0, 120, 0});
 
@@ -68,7 +69,8 @@ public:
         mp_output_notes_state(std::make_unique<MidiNotesState>()),
         ma_n_events_triggered(0),
         ma_start_offset(0),
-        ma_data_seq_nr(0)
+        ma_data_seq_nr(0),
+        ma_pre_play_samples(0)
     {
         mp_playback_cursor = mp_storage->create_cursor();
     }
@@ -101,10 +103,19 @@ public:
         }
     }
 
+    void set_pre_play_samples(size_t samples) override {
+        ma_pre_play_samples = samples;
+    }
+    
+    size_t get_pre_play_samples() const override {
+        return ma_pre_play_samples;
+    }
+
     // MIDI channels process everything immediately. Deferred processing is not possible.
 #warning Replace use-case not covered for MIDI.
     void PROC_process(
         loop_mode_t mode,
+        std::optional<std::pair<loop_mode_t, size_t>> maybe_next_mode,
         size_t n_samples,
         size_t pos_before,
         size_t pos_after,
@@ -112,38 +123,37 @@ public:
         size_t length_after
         ) override {
         PROC_handle_command_queue();
-        static loop_mode_t prev_mode = Stopped;
-        static size_t prev_pos = 0;
+        static channel_process_params prev_params;
+        static size_t prev_pos_after = 0;
 
-        loop_mode_t modified_mode = modified_loop_mode_for_channel(mode, ma_mode);
+        auto process_params = get_channel_process_params(
+            mode,
+            maybe_next_mode,
+            pos_before,
+            ma_start_offset,
+            ma_mode
+        );
 
         // If we were playing back and anything other than forward playback is happening
         // (e.g. mode switch, position set, ...), send an All Sound Off.
         // Also reset the playback cursor in that case.
-        if (prev_mode == Playing && (
-            modified_mode != prev_mode ||
-            pos_before != prev_pos
+        if ((prev_params.process_flags & ChannelPlayback) && (
+            (!process_params.process_flags & ChannelPlayback) ||
+            pos_before != prev_pos_after
         )) {
             PROC_send_all_sound_off();
             mp_playback_cursor->reset();
         }
 
-        switch (modified_mode) {
-            case Playing:
-                PROC_process_playback(pos_before, length_before, n_samples, false);
-                break;
-            case Recording:
-                PROC_process_record(length_before, n_samples);
-                break;
-            case Stopped:
-            case Replacing:
-                break;
-            default:
-                break;
+        if (process_params.process_flags & ChannelPlayback) {
+            PROC_process_playback(process_params.position, length_before, n_samples, false);
+        }
+        if (process_params.process_flags & ChannelRecord) {
+            PROC_process_record(length_before, n_samples);
         }
 
-        prev_pos = pos_after;
-        prev_mode = modified_mode;
+        prev_pos_after = pos_after;
+        prev_params = process_params;
     }
 
     void PROC_finalize_process() override {}

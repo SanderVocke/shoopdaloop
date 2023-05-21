@@ -4,7 +4,7 @@
 #include "AudioBuffer.h"
 #include "WithCommandQueue.h"
 #include "types.h"
-#include "modified_loop_mode_for_channel.h"
+#include "channel_mode_helpers.h"
 #include <boost/lockfree/policies.hpp>
 #include <cmath>
 #include <cstring>
@@ -33,6 +33,7 @@ private:
     const size_t ma_buffer_size;
     std::atomic<size_t> ma_data_length;
     std::atomic<int> ma_start_offset;
+    std::atomic<size_t> ma_pre_play_samples;
     std::atomic<float> ma_output_peak;
     std::atomic<float> ma_volume;
     std::atomic<channel_mode_t> ma_mode;
@@ -99,10 +100,19 @@ public:
         ma_mode(mode),
         ma_volume(1.0f),
         ma_start_offset(0),
-        ma_data_seq_nr(0)
+        ma_data_seq_nr(0),
+        ma_pre_play_samples(0)
     {
         mp_buffers.reserve(initial_max_buffers);
         mp_buffers.push_back(get_new_buffer()); // Initial recording buffer
+    }
+
+    virtual void set_pre_play_samples(size_t samples) override {
+        ma_pre_play_samples = samples;
+    }
+
+    virtual size_t get_pre_play_samples() const override {
+        return ma_pre_play_samples;
     }
 
     // NOTE: only use on process thread!
@@ -144,23 +154,25 @@ public:
         // Execute any commands queued from other threads.
         PROC_handle_command_queue();
 
-        loop_mode_t modified_mode = modified_loop_mode_for_channel(mode, ma_mode);
+        auto process_params = get_channel_process_params(
+            mode,
+            maybe_next_mode,
+            pos_before,
+            ma_start_offset,
+            ma_mode
+        );
 
-        switch (modified_mode) {
-            case Playing:
-                PROC_process_playback(pos_before, length_before, n_samples, false);
-                break;
-            case Recording:
-                PROC_process_record(n_samples, length_before);
-                break;
-            case Replacing:
-                PROC_process_replace(pos_before, length_before, n_samples);
-                break;
-            case Stopped:
-                break;
-            default:
-                throw std::runtime_error("Unhandled loop mode in channel");
-                break;
+        if (process_params.process_flags & ChannelPlayback) {
+            PROC_process_playback(process_params.position, length_before, n_samples, false);
+        }
+        if (process_params.process_flags & ChannelRecord) {
+            PROC_process_record(n_samples, length_before);
+        }
+        if (process_params.process_flags & ChannelReplace) {
+            PROC_process_replace(process_params.position, length_before, n_samples);
+        }
+        if (process_params.process_flags & ChannelPreRecord) {
+            // TODO
         }
     }
 
