@@ -28,10 +28,11 @@ public:
     typedef std::shared_ptr<BufferObj> Buffer;
     
 private:
+    struct Buffers;
+
     // Members which may be accessed from any thread (ma prefix)
     std::shared_ptr<BufferPool> ma_buffer_pool;
     const size_t ma_buffer_size;
-    std::atomic<size_t> ma_data_length;
     std::atomic<int> ma_start_offset;
     std::atomic<size_t> ma_pre_play_samples;
     std::atomic<float> ma_output_peak;
@@ -40,7 +41,11 @@ private:
     std::atomic<unsigned> ma_data_seq_nr;
 
     // Members which may be accessed from the process thread only (mp prefix)
-    std::vector<Buffer> mp_buffers;
+    Buffers mp_buffers; // Buffers holding main audio data
+    std::atomic<size_t> ma_buffers_data_length;
+    Buffers mp_secondary_buffers; // For temporarily holding pre-recorded data before fully entering record mode
+    std::atomic<size_t> ma_secondary_buffers_data_length;
+
     SampleT *mp_playback_target_buffer;
     size_t   mp_playback_target_buffer_size;
     SampleT *mp_recording_source_buffer;
@@ -63,6 +68,48 @@ private:
         float multiplier;
         size_t n_elems;
         bool update_absmax;
+    };
+
+    struct Buffers {
+        size_t buffers_size;
+        std::vector<Buffer> buffers;
+        std::shared_ptr<BufferPool> pool;
+
+        Buffers(std::shared_ptr<BufferPool> pool, size_t initial_max_buffers)
+            : pool(pool),
+              buffers_size(pool->object_size())
+        {
+            buffers.reserve(initial_max_buffers);
+            buffers.push_back(get_new_buffer());
+        }
+
+        SampleT &at(size_t offset) {
+            size_t idx = offset / buffers_size;
+            if (idx >= buffers.size()) { throw std::runtime_error("OOB buffers access"); }
+            size_t head = offset % buffers_size;
+            return buffers.at(idx)->at(head);
+        }
+
+        bool ensure_available(size_t offset) {
+            size_t idx = offset / buffers_size;
+            bool changed = false;
+            while(buffers.size() <= idx) {
+                buffers.push_back(get_new_buffer());
+                changed = true;
+            }
+            return changed;
+        }
+
+        Buffer get_new_buffer() const {
+            auto buf = Buffer(pool->get_object());
+            if (buf->size() != buffers_size) {
+                throw std::runtime_error("AudioChannel requires buffers of same length");
+            }
+            return buf;
+        }
+
+        size_t n_buffers() const { return buffers.size(); }
+        size_t n_samples() const { return n_buffers() * buffers_size; }
     };
 
     union ProcessingCommandDetails {
@@ -90,7 +137,8 @@ public:
             channel_mode_t mode) :
         WithCommandQueue<10, 1000, 1000>(),
         ma_buffer_pool(buffer_pool),
-        ma_data_length(0),
+        ma_buffers_data_length(0),
+        ma_secondary_buffers_data_length(0),
         ma_buffer_size(buffer_pool->object_size()),
         mp_recording_source_buffer(nullptr),
         mp_playback_target_buffer(nullptr),
@@ -101,11 +149,10 @@ public:
         ma_volume(1.0f),
         ma_start_offset(0),
         ma_data_seq_nr(0),
-        ma_pre_play_samples(0)
-    {
-        mp_buffers.reserve(initial_max_buffers);
-        mp_buffers.push_back(get_new_buffer()); // Initial recording buffer
-    }
+        ma_pre_play_samples(0),
+        mp_buffers(buffer_pool, initial_max_buffers),
+        mp_secondary_buffers(buffer_pool, initial_max_buffers)
+    {}
 
     virtual void set_pre_play_samples(size_t samples) override {
         ma_pre_play_samples = samples;
@@ -122,15 +169,18 @@ public:
             throw std::runtime_error("Cannot copy audio channels with different buffer sizes.");
         }
         ma_buffer_pool = other.ma_buffer_pool;
-        ma_data_length = other.ma_data_length.load();
+        ma_buffers_data_length = other.ma_buffers_data_length.load();
+        ma_secondary_buffers_data_length = other.ma_secondary_buffers_data_length.load();
         ma_start_offset = other.ma_start_offset.load();
         mp_buffers = other.mp_buffers;
+        mp_secondary_buffers = other.mp_secondary_buffers;
         mp_playback_target_buffer = other.mp_playback_target_buffer;
         mp_playback_target_buffer_size = other.mp_playback_target_buffer_size;
         mp_recording_source_buffer = other.mp_recording_source_buffer;
         mp_recording_source_buffer_size = other.mp_recording_source_buffer_size;
         ma_mode = other.ma_mode;
         ma_volume = other.ma_volume;
+        ma_pre_play_samples = other.ma_pre_play_samples;
         data_changed();
         return *this;
     }
@@ -166,13 +216,13 @@ public:
             PROC_process_playback(process_params.position, length_before, n_samples, false);
         }
         if (process_params.process_flags & ChannelRecord) {
-            PROC_process_record(n_samples, length_before);
+            PROC_process_record(n_samples, length_before, mp_buffers, ma_buffers_data_length);
         }
         if (process_params.process_flags & ChannelReplace) {
             PROC_process_replace(process_params.position, length_before, n_samples);
         }
         if (process_params.process_flags & ChannelPreRecord) {
-            // TODO
+            PROC_process_record(n_samples, length_before, mp_secondary_buffers, ma_secondary_buffers_data_length);
         }
     }
 
@@ -230,9 +280,10 @@ public:
     // the processing thread.
     void load_data(SampleT* samples, size_t len, bool thread_safe = true) {
         // Convert to internal storage layout
-        auto buffers = std::make_shared<std::vector<Buffer>>(std::ceil((float)len / (float)ma_buffer_size));
-        for (size_t idx=0; idx < buffers->size(); idx++) {
-            auto &buf = buffers->at(idx);
+        auto buffers = Buffers(ma_buffer_pool, std::ceil((float)len / (float)ma_buffer_size));
+
+        for (size_t idx=0; idx < buffers.n_buffers(); idx++) {
+            auto &buf = buffers.buffers.at(idx);
             buf = std::make_shared<AudioBuffer<SampleT>>(ma_buffer_size);
             size_t already_copied = idx*ma_buffer_size;
             size_t n_elems = std::min(ma_buffer_size, len - already_copied);
@@ -240,8 +291,9 @@ public:
         }
 
         auto cmd = [=]() {
-            mp_buffers = *buffers;
-            ma_data_length = len;
+            mp_buffers = buffers;
+            ma_buffers_data_length = len;
+            ma_secondary_buffers_data_length = 0;
             ma_start_offset = 0;
             data_changed();
         };
@@ -256,11 +308,11 @@ public:
     // Get loop data. Should always be called outside
     // the processing thread.
     std::vector<SampleT> get_data(bool thread_safe = true) {
-        std::vector<Buffer> buffers;
+        Buffers buffers(ma_buffer_pool, 0);
         size_t length;
         auto cmd = [this, &buffers, &length]() {
             buffers = mp_buffers;
-            length = ma_data_length;
+            length = ma_buffers_data_length;
         };
 
         if (thread_safe) {
@@ -271,28 +323,29 @@ public:
 
         std::vector<SampleT> rval(length);
         for(size_t idx=0; idx<length; idx++) {
-            rval[idx] = buffers.at(idx / ma_buffer_size)->at(idx % ma_buffer_size);
+            rval[idx] = buffers.at(idx);
         }
         return rval;
     }
 
-    void PROC_process_record(size_t n_samples, size_t length_before) {
+    void PROC_process_record(
+        size_t n_samples,
+        size_t length_before,
+        Buffers &buffers,
+        std::atomic<size_t> &buffers_data_length
+    ) {
         if (mp_recording_source_buffer_size < n_samples) {
             throw std::runtime_error("Attempting to record out of bounds of input buffer");
         }
         bool changed = false;
-        auto start_offset = ma_start_offset.load();
-        auto data_length = ma_data_length.load();
+        auto data_length = buffers_data_length.load();
 
         auto &from = mp_recording_source_buffer;
-        auto buf_idx = std::max(((int)length_before + start_offset), 0) / ma_buffer_size;
-        auto buf_head = std::max(((int)length_before + start_offset), 0) % ma_buffer_size;
-        auto buf_space = ma_buffer_size - buf_head;
-        while (mp_buffers.size() <= buf_idx) {
-            mp_buffers.push_back(get_new_buffer());
-            changed = true;
-        }
-        auto &to_buf = mp_buffers[buf_idx];
+
+        // Find the position in our sequence of buffers (buffer index and index in buffer)
+        buffers.ensure_available(buffers_data_length + n_samples);
+        SampleT *ptr = &buffers.at(buffers_data_length);
+        size_t buf_space = buffers.n_samples() - buffers_data_length;
         
         // Record all, or to the end of the current buffer, whichever
         // comes first
@@ -300,19 +353,19 @@ public:
         auto rest = n_samples - n;
 
         // Queue the actual copy for later.
-        PROC_queue_memcpy((void*) &to_buf->at(buf_head), (void*)from, sizeof(SampleT)*n);
+        PROC_queue_memcpy((void*) ptr, (void*)from, sizeof(SampleT)*n);
         changed = changed || (n > 0);
 
         mp_recording_source_buffer += n;
         mp_recording_source_buffer_size -= n;
-        ma_data_length = std::max(data_length, length_before + start_offset + n);
+        buffers_data_length += n;
 
         // If we reached the end, add another buffer
         // and record the rest.
         size_t length_before_next = length_before + n;
         if (changed) { data_changed(); }
         if(rest > 0) {
-            PROC_process_record(rest, length_before_next);
+            PROC_process_record(rest, length_before_next, buffers, buffers_data_length);
         }
     }
 
@@ -320,7 +373,7 @@ public:
         if (mp_recording_source_buffer_size < n_samples) {
             throw std::runtime_error("Attempting to replace out of bounds of recording buffer");
         }
-        auto data_length = ma_data_length.load();
+        auto data_length = ma_buffers_data_length.load();
         auto start_offset = ma_start_offset.load();
         auto data_position = (int)position + start_offset;
         bool changed = false;
@@ -334,24 +387,18 @@ public:
             mp_recording_source_buffer_size = std::max((int)mp_recording_source_buffer_size - skip, 0);
         }
 
-        while (data_length < (data_position + n_samples)) {
-            // In replacement, we lengthen the buffer as needed.
-            mp_buffers.push_back(get_new_buffer());
-            ma_data_length += mp_buffers.back()->size();
-            data_length = ma_data_length;
+        mp_buffers.ensure_available(data_position + n_samples);
+        ma_buffers_data_length += ma_buffer_pool->object_size();
+        if (data_length != ma_buffers_data_length) {
+            data_length = ma_buffers_data_length;
             changed = true;
         }
-
-        size_t buffer_idx = data_position / ma_buffer_size;
-        size_t pos_in_buffer = data_position % ma_buffer_size;
-        size_t buf_head = (buffer_idx == mp_buffers.size()-1) ?
-            data_length - (buffer_idx * ma_buffer_size) :
-            ma_buffer_size;
+        
         size_t samples_left = length - position;
-        auto  &to_buf = mp_buffers[buffer_idx];
-        SampleT* to = &to_buf->at(pos_in_buffer);
+        size_t buf_space = mp_buffers.n_samples() - data_position;
+        SampleT* to = &mp_buffers.at(data_position);
         SampleT* &from = mp_recording_source_buffer;
-        auto n = std::min({buf_head - pos_in_buffer, samples_left, n_samples});
+        auto n = std::min({buf_space, samples_left, n_samples});
         auto rest = n_samples - n;
 
         // Queue the actual copy for later
@@ -368,9 +415,9 @@ public:
         }
     }
 
-    size_t get_length() const override { return ma_data_length; }
+    size_t get_length() const override { return ma_buffers_data_length; }
     void PROC_set_length(size_t length) override { 
-        ma_data_length = length;
+        ma_buffers_data_length = length;
         data_changed();
     }
 
@@ -383,7 +430,7 @@ public:
             throw std::runtime_error("Attempting to play out of bounds of target buffer");
         }
 
-        auto data_length = ma_data_length.load();
+        auto data_length = ma_buffers_data_length.load();
         auto start_offset = ma_start_offset.load();
         auto data_position = (int)position + start_offset;
 
@@ -398,16 +445,11 @@ public:
         
         if (data_position < data_length) {
             // We have something to play.
-            size_t buffer_idx = data_position / ma_buffer_size;
-            size_t pos_in_buffer = data_position % ma_buffer_size;
-            size_t buf_head = (buffer_idx == mp_buffers.size()-1) ?
-                data_length - (buffer_idx * ma_buffer_size) :
-                ma_buffer_size;
             size_t samples_left = length - position;
-            auto  &from_buf = mp_buffers[buffer_idx];
-            SampleT* from = &from_buf->at(pos_in_buffer);
+            size_t buf_space = mp_buffers.n_samples() - data_position;
+            SampleT *from = &mp_buffers.at(data_position);
             SampleT* &to = mp_playback_target_buffer;
-            auto n = std::min({buf_head - pos_in_buffer, samples_left, n_samples});
+            auto n = std::min({buf_space, samples_left, n_samples});
             auto rest = n_samples - n;
 
             if (!muted) {
@@ -460,11 +502,8 @@ public:
 
     void PROC_clear(size_t length) {
         throw_if_commands_queued();
-        mp_buffers.resize(std::ceil((float)length / (float)ma_buffer_size));
-        for (auto &b: mp_buffers) {
-            memset((void*)b->data(), 0, sizeof(SampleT) * b->size());
-        }
-        ma_data_length = length;
+        mp_buffers.ensure_available(length);
+        ma_buffers_data_length = length;
         ma_start_offset = 0;
         data_changed();
     }

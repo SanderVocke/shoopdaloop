@@ -41,7 +41,19 @@ inline unsigned loop_mode_to_channel_process_flags(
         return ChannelReplace;
     }
 
-    return loop_mode;
+    // Special cases handled, now the straightforward ones
+    switch(loop_mode) {
+        case Stopped:
+            return 0;
+        case Playing:
+            return ChannelPlayback;
+        case Recording:
+            return ChannelRecord;
+        case Replacing:
+            return ChannelReplace;
+    }
+
+    return 0;
 }
 
 inline channel_process_params get_channel_process_params(
