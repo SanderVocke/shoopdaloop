@@ -6,11 +6,15 @@
 
 class LoopInterface {
 public:
-        // Get the next point of interest in ticks.
+    // Get the next point of interest in ticks.
     // A point of interest is the first point until when the loop can be processed
     // without updating its state.
     // Returning a nullopt_t indicates that the loop may be processed indefinitely.
     virtual std::optional<size_t> PROC_get_next_poi() const = 0;
+
+    // Predict the next upcoming trigger in ticks.
+    // If a sync source is set, the sync source is also queried.
+    virtual std::optional<size_t> PROC_predict_next_trigger() const = 0;
 
     // Handle the current point of interest, leading to any internal state change
     // necessary. If the loop is not currently exactly at a point of interest,

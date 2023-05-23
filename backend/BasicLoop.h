@@ -32,6 +32,7 @@ public:
 
 protected:
     std::optional<PointOfInterest> mp_next_poi;
+    std::optional<size_t> mp_next_trigger;
     std::shared_ptr<LoopInterface> mp_sync_source;
     std::deque<loop_mode_t> mp_planned_states;
     std::deque<int> mp_planned_state_countdowns;
@@ -51,6 +52,7 @@ public:
     BasicLoop() :
         WithCommandQueue<100, 1000, 1000>(),
         mp_next_poi(std::nullopt),
+        mp_next_trigger(std::nullopt),
         ma_mode(Stopped),
         mp_sync_source(nullptr),
         ma_triggering_now(false),
@@ -66,6 +68,16 @@ public:
     // made in the past. Simply return.
     std::optional<size_t> PROC_get_next_poi() const override {
         return mp_next_poi.has_value() ? mp_next_poi.value().when : (std::optional<size_t>)std::nullopt;
+    }
+
+    std::optional<size_t> PROC_predict_next_trigger() const override {
+        if (mp_sync_source) {
+            auto src = mp_sync_source->PROC_predict_next_trigger();
+            if (src.has_value()) {
+                return mp_next_trigger.has_value() ? std::min(mp_next_trigger.value(), src.value()) : src.value();
+            }
+        }
+        return mp_next_trigger;
     }
 
     static inline bool is_playing_mode(loop_mode_t mode) {
@@ -95,6 +107,9 @@ public:
                 .type_flags = LoopEnd
             };
             mp_next_poi = dominant_poi(mp_next_poi, loop_end_poi);
+            mp_next_trigger = loop_end_poi->when;
+        } else {
+            mp_next_trigger = std::nullopt;
         }
     }
 
@@ -192,9 +207,13 @@ public:
         PROC_update_poi();
     }
 
+    // Get the next mode coming up and the time in ticks until it will presumably happen.
+    // If the next transition time cannot be predicted, a nullopt is returned (even if a
+    // next mode is planned).
     std::optional<std::pair<loop_mode_t, size_t>> get_maybe_next_mode() const {
-        if (ma_maybe_next_planned_delay.load() >= 0) {
-            return std::make_pair(ma_maybe_next_planned_mode.load(), (size_t)ma_maybe_next_planned_delay.load());
+        auto maybe_when = PROC_predict_next_trigger();
+        if (ma_maybe_next_planned_delay.load() == 0 && maybe_when.has_value()) {
+            return std::make_pair(ma_maybe_next_planned_mode.load(), maybe_when.value());
         }
         return std::nullopt;
     }
@@ -372,6 +391,7 @@ public:
         auto fn = [=]() {
             if (position != ma_position) {
                 mp_next_poi = std::nullopt;
+                mp_next_trigger = std::nullopt;
                 ma_position = position;
                 PROC_update_poi();
             }
@@ -408,6 +428,7 @@ public:
                     set_position(len-1, false);
                 }
                 mp_next_poi = std::nullopt;
+                mp_next_trigger = std::nullopt;
                 PROC_update_poi();
             }
         };
