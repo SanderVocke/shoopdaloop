@@ -361,9 +361,10 @@ public:
         auto &from = mp_recording_source_buffer;
 
         // Find the position in our sequence of buffers (buffer index and index in buffer)
-        buffers.ensure_available(buffers_data_length + n_samples);
-        SampleT *ptr = &buffers.at(buffers_data_length);
-        size_t buf_space = buffers.buf_space_for_sample(buffers_data_length);
+        size_t record_from = ((int)length_before + ma_start_offset);
+        buffers.ensure_available(record_from + n_samples);
+        SampleT *ptr = &buffers.at(record_from);
+        size_t buf_space = buffers.buf_space_for_sample(record_from);
         
         // Record all, or to the end of the current buffer, whichever
         // comes first
@@ -376,8 +377,7 @@ public:
 
         mp_recording_source_buffer += n;
         mp_recording_source_buffer_size -= n;
-        buffers_data_length += n;
-        std::cout << buffers_data_length << std::endl;
+        buffers_data_length = record_from + n;
 
         // If we reached the end, add another buffer
         // and record the rest.
@@ -400,15 +400,13 @@ public:
         if (data_position < 0) {
             // skip ahead to the part that is in range
             const int skip = -data_position;
-            position += skip;
-            n_samples = std::max((int)n_samples - skip, 0);
+            const int n = (int)n_samples - skip;
             mp_recording_source_buffer += std::min(skip, (int)mp_recording_source_buffer_size);
             mp_recording_source_buffer_size = std::max((int)mp_recording_source_buffer_size - skip, 0);
+            return PROC_process_replace(position + skip, length, std::max((int)n_samples - skip, 0));
         }
 
-        mp_buffers.ensure_available(data_position + n_samples);
-        ma_buffers_data_length += ma_buffer_pool->object_size();
-        if (data_length != ma_buffers_data_length) {
+        if (mp_buffers.ensure_available(data_position + n_samples)) {
             data_length = ma_buffers_data_length;
             changed = true;
         }
