@@ -233,13 +233,13 @@ public:
             PROC_process_playback(process_params.position, length_before, n_samples, false);
         }
         if (process_params.process_flags & ChannelRecord) {
-            PROC_process_record(n_samples, length_before, mp_buffers, ma_buffers_data_length);
+            PROC_process_record(n_samples, ((int)length_before + ma_start_offset), mp_buffers, ma_buffers_data_length);
         }
         if (process_params.process_flags & ChannelReplace) {
             PROC_process_replace(process_params.position, length_before, n_samples);
         }
         if (process_params.process_flags & ChannelPreRecord) {
-            PROC_process_record(n_samples, length_before, mp_secondary_buffers, ma_secondary_buffers_data_length);
+            PROC_process_record(n_samples, ma_secondary_buffers_data_length, mp_secondary_buffers, ma_secondary_buffers_data_length);
         }
     }
 
@@ -348,7 +348,7 @@ public:
 
     void PROC_process_record(
         size_t n_samples,
-        size_t length_before,
+        size_t record_from,
         Buffers &buffers,
         std::atomic<size_t> &buffers_data_length
     ) {
@@ -361,7 +361,6 @@ public:
         auto &from = mp_recording_source_buffer;
 
         // Find the position in our sequence of buffers (buffer index and index in buffer)
-        size_t record_from = ((int)length_before + ma_start_offset);
         buffers.ensure_available(record_from + n_samples);
         SampleT *ptr = &buffers.at(record_from);
         size_t buf_space = buffers.buf_space_for_sample(record_from);
@@ -381,10 +380,10 @@ public:
 
         // If we reached the end, add another buffer
         // and record the rest.
-        size_t length_before_next = length_before + n;
+        size_t record_from_next = record_from + n;
         if (changed) { data_changed(); }
         if(rest > 0) {
-            PROC_process_record(rest, length_before_next, buffers, buffers_data_length);
+            PROC_process_record(rest, record_from_next, buffers, buffers_data_length);
         }
     }
 

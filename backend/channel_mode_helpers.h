@@ -51,6 +51,8 @@ inline unsigned loop_mode_to_channel_process_flags(
             return ChannelRecord;
         case Replacing:
             return ChannelReplace;
+        default:
+            break;
     }
 
     return 0;
