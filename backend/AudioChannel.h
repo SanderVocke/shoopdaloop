@@ -83,6 +83,8 @@ private:
             buffers.push_back(get_new_buffer());
         }
 
+        Buffers() {}
+
         SampleT &at(size_t offset) {
             size_t idx = offset / buffers_size;
             if (idx >= buffers.size()) { throw std::runtime_error("OOB buffers access"); }
@@ -90,17 +92,28 @@ private:
             return buffers.at(idx)->at(head);
         }
 
-        bool ensure_available(size_t offset) {
+        bool ensure_available(size_t offset, bool use_pool=true) {
             size_t idx = offset / buffers_size;
             bool changed = false;
             while(buffers.size() <= idx) {
-                buffers.push_back(get_new_buffer());
+                if (use_pool) {
+                    buffers.push_back(get_new_buffer());
+                } else {
+                    buffers.push_back(create_new_buffer());
+                }
                 changed = true;
             }
             return changed;
         }
 
+        Buffer create_new_buffer() const {
+            return std::make_shared<BufferObj>(buffers_size);
+        }
+
         Buffer get_new_buffer() const {
+            if (!pool) {
+                throw std::runtime_error("No pool for buffers allocation");
+            }
             auto buf = Buffer(pool->get_object());
             if (buf->size() != buffers_size) {
                 throw std::runtime_error("AudioChannel requires buffers of same length");
@@ -110,6 +123,10 @@ private:
 
         size_t n_buffers() const { return buffers.size(); }
         size_t n_samples() const { return n_buffers() * buffers_size; }
+        size_t buf_space_for_sample(size_t offset) const {
+            size_t off = offset % buffers_size;
+            return buffers_size - off;
+        }
     };
 
     union ProcessingCommandDetails {
@@ -281,6 +298,7 @@ public:
     void load_data(SampleT* samples, size_t len, bool thread_safe = true) {
         // Convert to internal storage layout
         auto buffers = Buffers(ma_buffer_pool, std::ceil((float)len / (float)ma_buffer_size));
+        buffers.ensure_available(len, false);
 
         for (size_t idx=0; idx < buffers.n_buffers(); idx++) {
             auto &buf = buffers.buffers.at(idx);
@@ -308,7 +326,7 @@ public:
     // Get loop data. Should always be called outside
     // the processing thread.
     std::vector<SampleT> get_data(bool thread_safe = true) {
-        Buffers buffers(ma_buffer_pool, 0);
+        Buffers buffers;
         size_t length;
         auto cmd = [this, &buffers, &length]() {
             buffers = mp_buffers;
@@ -345,7 +363,7 @@ public:
         // Find the position in our sequence of buffers (buffer index and index in buffer)
         buffers.ensure_available(buffers_data_length + n_samples);
         SampleT *ptr = &buffers.at(buffers_data_length);
-        size_t buf_space = buffers.n_samples() - buffers_data_length;
+        size_t buf_space = buffers.buf_space_for_sample(buffers_data_length);
         
         // Record all, or to the end of the current buffer, whichever
         // comes first
@@ -359,6 +377,7 @@ public:
         mp_recording_source_buffer += n;
         mp_recording_source_buffer_size -= n;
         buffers_data_length += n;
+        std::cout << buffers_data_length << std::endl;
 
         // If we reached the end, add another buffer
         // and record the rest.
@@ -395,7 +414,7 @@ public:
         }
         
         size_t samples_left = length - position;
-        size_t buf_space = mp_buffers.n_samples() - data_position;
+        size_t buf_space = mp_buffers.buf_space_for_sample(data_position);
         SampleT* to = &mp_buffers.at(data_position);
         SampleT* &from = mp_recording_source_buffer;
         auto n = std::min({buf_space, samples_left, n_samples});
@@ -446,7 +465,7 @@ public:
         if (data_position < data_length) {
             // We have something to play.
             size_t samples_left = length - position;
-            size_t buf_space = mp_buffers.n_samples() - data_position;
+            size_t buf_space = mp_buffers.buf_space_for_sample(data_position);
             SampleT *from = &mp_buffers.at(data_position);
             SampleT* &to = mp_playback_target_buffer;
             auto n = std::min({buf_space, samples_left, n_samples});
