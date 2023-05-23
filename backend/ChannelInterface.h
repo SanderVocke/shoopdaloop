@@ -15,6 +15,7 @@ public:
     // without updating its state.
     // Returning a nullopt_t indicates that the loop may be processed indefinitely.
     virtual std::optional<size_t> PROC_get_next_poi(loop_mode_t mode,
+                                               std::optional<std::pair<loop_mode_t, size_t>> maybe_next_mode,
                                                size_t length,
                                                size_t position) const = 0;
 

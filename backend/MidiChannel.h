@@ -46,6 +46,8 @@ private:
     std::shared_ptr<Storage>       mp_storage;
     std::shared_ptr<StorageCursor> mp_playback_cursor;
     std::unique_ptr<MidiNotesState> mp_output_notes_state;
+    channel_process_params mp_prev_process_params;
+    size_t mp_prev_pos_after;
 
     // Any thread access
     std::atomic<channel_mode_t> ma_mode;
@@ -70,7 +72,8 @@ public:
         ma_n_events_triggered(0),
         ma_start_offset(0),
         ma_data_seq_nr(0),
-        ma_pre_play_samples(0)
+        ma_pre_play_samples(0),
+        mp_prev_pos_after(0)
     {
         mp_playback_cursor = mp_storage->create_cursor();
     }
@@ -123,8 +126,6 @@ public:
         size_t length_after
         ) override {
         PROC_handle_command_queue();
-        static channel_process_params prev_params;
-        static size_t prev_pos_after = 0;
 
         auto process_params = get_channel_process_params(
             mode,
@@ -137,9 +138,9 @@ public:
         // If we were playing back and anything other than forward playback is happening
         // (e.g. mode switch, position set, ...), send an All Sound Off.
         // Also reset the playback cursor in that case.
-        if ((prev_params.process_flags & ChannelPlayback) && (
+        if ((mp_prev_process_params.process_flags & ChannelPlayback) && (
             (!process_params.process_flags & ChannelPlayback) ||
-            pos_before != prev_pos_after
+            pos_before != mp_prev_pos_after
         )) {
             PROC_send_all_sound_off();
             mp_playback_cursor->reset();
@@ -152,8 +153,8 @@ public:
             PROC_process_record(length_before, n_samples);
         }
 
-        prev_pos_after = pos_after;
-        prev_params = process_params;
+        mp_prev_pos_after = pos_after;
+        mp_prev_process_params = process_params;
     }
 
     void PROC_finalize_process() override {}
@@ -264,6 +265,7 @@ public:
     }
 
     std::optional<size_t> PROC_get_next_poi(loop_mode_t mode,
+                                               std::optional<std::pair<loop_mode_t, size_t>> maybe_next_mode,
                                                size_t length,
                                                size_t position) const override {
         if (ma_mode) {

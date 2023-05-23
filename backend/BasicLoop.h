@@ -181,7 +181,7 @@ public:
         }
 
         PROC_process_channels(process_channel_mode,
-            std::make_pair(ma_maybe_next_planned_mode.load(), (size_t)ma_maybe_next_planned_delay.load()),
+            get_maybe_next_mode(),
             n_samples, pos_before, pos_after,
             length_before, length_after);
 
@@ -190,6 +190,13 @@ public:
         ma_length = length_after;
         PROC_handle_poi();
         PROC_update_poi();
+    }
+
+    std::optional<std::pair<loop_mode_t, size_t>> get_maybe_next_mode() const {
+        if (ma_maybe_next_planned_delay.load() >= 0) {
+            return std::make_pair(ma_maybe_next_planned_mode.load(), (size_t)ma_maybe_next_planned_delay.load());
+        }
+        return std::nullopt;
     }
 
     void set_sync_source(std::shared_ptr<LoopInterface> const& src, bool thread_safe=true) override {

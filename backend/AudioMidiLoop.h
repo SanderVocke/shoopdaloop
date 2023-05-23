@@ -123,10 +123,10 @@ public:
         };
 
         for (auto &channel: mp_audio_channels) {
-            merge(channel->PROC_get_next_poi(get_mode(), get_length(), get_position()));
+            merge(channel->PROC_get_next_poi(get_mode(), get_maybe_next_mode(), get_length(), get_position()));
         }
         for (auto &channel: mp_midi_channels) {
-            merge(channel->PROC_get_next_poi(get_mode(), get_length(), get_position()));
+            merge(channel->PROC_get_next_poi(get_mode(), get_maybe_next_mode(), get_length(), get_position()));
         }
 
         return rval;

@@ -673,4 +673,56 @@ suite AudioMidiLoop_audio_tests = []() {
             });
         for(auto &elem : output_bufs[0]) { expect(eq(elem, 0)); }
     };
+
+    "al_7_prerecord"_test = []() {
+        auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
+        AudioMidiLoop loop;
+        auto sync_source = std::make_shared<AudioMidiLoop>();
+        loop.set_sync_source(sync_source); // Needed because otherwise will immediately transition
+        loop.add_audio_channel<int>(pool, 10, Direct, false);
+        loop.add_audio_channel<int>(pool, 10, Dry, false);
+        loop.add_audio_channel<int>(pool, 10, Wet, false);
+        std::vector<std::shared_ptr<AudioChannel<int>>> channels = 
+            {loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2) };
+
+        auto source_buf = create_audio_buf<int>(512, [](size_t position) { return position; }); 
+        loop.plan_transition(Recording); // Not triggered yet
+        for (auto &c: channels) { c->PROC_set_recording_buffer(source_buf.data(), source_buf.size()); }
+        loop.PROC_update_poi();
+
+        expect(eq(loop.get_mode(), Stopped));
+        expect(eq(loop.PROC_get_next_poi().value_or(999), 512)) << loop.PROC_get_next_poi().value_or(0); // end of buffer
+        expect(eq(loop.get_length(), 0));
+        expect(eq(loop.get_position(), 0));
+
+        loop.PROC_process(20);
+        for (auto &c: channels) { c->PROC_finalize_process(); }
+
+        // By now, we are still stopped but the channels should have pre-recorded since recording is planned.
+        expect(eq(loop.get_mode(), Stopped));
+        expect(eq(loop.PROC_get_next_poi().value_or(999), 492)) << loop.PROC_get_next_poi().value_or(0); // end of buffer
+        expect(eq(loop.get_length(), 0));
+        expect(eq(loop.get_position(), 0));
+
+        loop.PROC_trigger();
+        loop.PROC_update_poi();
+        loop.PROC_process(20);
+        for (auto &c: channels) { c->PROC_finalize_process(); }
+
+        expect(eq(loop.get_mode(), Recording));
+        expect(eq(loop.PROC_get_next_poi().value_or(999), 472)) << loop.PROC_get_next_poi().value_or(0); // end of buffer
+        expect(eq(loop.get_length(), 20));
+        expect(eq(loop.get_position(), 0));
+        for (auto &channel : channels) {
+            expect(eq(channel->get_start_offset(), 20));
+            for_channel_elems<AudioChannel<int>, int>(
+                *channel, 
+                [](size_t position, int const& val) {
+                    expect(eq(val, position)) << " @ position " << position;
+                },
+                0,
+                40 // Note: all 40 elements checked
+            );
+        }
+    };
 };

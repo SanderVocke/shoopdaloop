@@ -51,6 +51,8 @@ private:
     SampleT *mp_recording_source_buffer;
     size_t   mp_recording_source_buffer_size;
 
+    unsigned mp_prev_process_flags;
+
     enum class ProcessingCommandType {
         RawCopy,
         AdditiveCopy
@@ -80,6 +82,11 @@ private:
               buffers_size(pool->object_size())
         {
             buffers.reserve(initial_max_buffers);
+            reset();
+        }
+
+        void reset() {
+            buffers.clear();
             buffers.push_back(get_new_buffer());
         }
 
@@ -168,7 +175,8 @@ public:
         ma_data_seq_nr(0),
         ma_pre_play_samples(0),
         mp_buffers(buffer_pool, initial_max_buffers),
-        mp_secondary_buffers(buffer_pool, initial_max_buffers)
+        mp_secondary_buffers(buffer_pool, initial_max_buffers),
+        mp_prev_process_flags(0)
     {}
 
     virtual void set_pre_play_samples(size_t samples) override {
@@ -198,6 +206,7 @@ public:
         ma_mode = other.ma_mode;
         ma_volume = other.ma_volume;
         ma_pre_play_samples = other.ma_pre_play_samples;
+        mp_prev_process_flags = other.mp_prev_process_flags;
         data_changed();
         return *this;
     }
@@ -228,19 +237,36 @@ public:
             ma_start_offset,
             ma_mode
         );
+        auto const& process_flags = process_params.process_flags;
 
-        if (process_params.process_flags & ChannelPlayback) {
+        if (!(process_flags & ChannelPreRecord) &&
+             (mp_prev_process_flags & ChannelPreRecord))
+        {
+            // Ending pre-record. If transitioning to recording,
+            // make our pre-recorded buffers into our main buffers.
+            // Otherwise, just discard them.
+            if (process_flags & ChannelRecord) {
+                mp_buffers = mp_secondary_buffers;
+                ma_buffers_data_length = ma_start_offset = ma_secondary_buffers_data_length.load();
+            }
+            mp_secondary_buffers.reset();
+            ma_secondary_buffers_data_length = 0;
+        }
+
+        if (process_flags & ChannelPlayback) {
             PROC_process_playback(process_params.position, length_before, n_samples, false);
         }
-        if (process_params.process_flags & ChannelRecord) {
+        if (process_flags & ChannelRecord) {
             PROC_process_record(n_samples, ((int)length_before + ma_start_offset), mp_buffers, ma_buffers_data_length);
         }
-        if (process_params.process_flags & ChannelReplace) {
+        if (process_flags & ChannelReplace) {
             PROC_process_replace(process_params.position, length_before, n_samples);
         }
-        if (process_params.process_flags & ChannelPreRecord) {
+        if (process_flags & ChannelPreRecord) {
             PROC_process_record(n_samples, ma_secondary_buffers_data_length, mp_secondary_buffers, ma_secondary_buffers_data_length);
         }
+
+        mp_prev_process_flags = process_flags;
     }
 
     void PROC_exec_cmd(ProcessingCommand cmd) {
@@ -487,16 +513,31 @@ public:
     }
 
     std::optional<size_t> PROC_get_next_poi(loop_mode_t mode,
+                                       std::optional<std::pair<loop_mode_t, size_t>> maybe_next_mode,
                                        size_t length,
                                        size_t position) const override {
+        std::optional<size_t> rval = std::nullopt;
+        auto merge_poi = [&rval](size_t poi) {
+            rval = rval.has_value() ? std::min(rval.value(), poi) : poi;
+        };
+
+        auto process_params = get_channel_process_params(
+            mode,
+            maybe_next_mode,
+            position,
+            ma_start_offset,
+            ma_mode
+        );
+
         if (ma_mode) {
-            if (mode == Playing) {
-                return mp_playback_target_buffer_size;
-            } else if (mode == Recording || mode == Replacing) {
-                return mp_recording_source_buffer_size;
+            if (process_params.process_flags & ChannelPlayback) {
+                merge_poi(mp_playback_target_buffer_size);
+            }
+            if (process_params.process_flags & (ChannelRecord | ChannelPreRecord)) {
+                merge_poi(mp_recording_source_buffer_size);
             }
         }
-        return std::nullopt;
+        return rval;
     }
 
     void PROC_handle_poi(loop_mode_t mode,
