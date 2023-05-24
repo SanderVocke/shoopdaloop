@@ -309,8 +309,8 @@ public:
         cmd.details.additive_copy_details = {
             .src = src,
             .dst = dst,
-            .n_elems = n_elems,
             .multiplier = mult,
+            .n_elems = n_elems,
             .update_absmax = update_absmax
         };
         mp_proc_queue.push(cmd);

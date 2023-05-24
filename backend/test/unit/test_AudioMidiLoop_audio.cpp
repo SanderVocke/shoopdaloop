@@ -770,8 +770,44 @@ suite AudioMidiLoop_audio_tests = []() {
             channels[idx]->PROC_set_playback_buffer(play_bufs[idx].data(), play_bufs[idx].size());
         }
 
-        process_loop(dynamic_cast<LoopInterface*>(&loop), 128);
+        // Pre-play part
+        process_loop(dynamic_cast<LoopInterface*>(&loop), 99);
+        process_loop(dynamic_cast<LoopInterface*>(sync_source.get()), 99);
 
-        expect(eq(1, 0)); // TODO write proper test checks
+        expect(eq(sync_source->get_mode(), Playing));
+        expect(eq(loop.get_mode(), Stopped));
+
+        process_loop(dynamic_cast<LoopInterface*>(&loop), 1);
+        process_loop(dynamic_cast<LoopInterface*>(sync_source.get()), 1);
+
+        sync_source->PROC_handle_poi();
+        loop.PROC_handle_sync();
+        expect(eq(sync_source->get_mode(), Playing));
+        expect(eq(loop.get_mode(), Playing));
+
+        // Play part
+        process_loop(dynamic_cast<LoopInterface*>(&loop), 28);
+        process_loop(dynamic_cast<LoopInterface*>(sync_source.get()), 28);
+
+        expect(eq(sync_source->get_mode(), Playing));
+        expect(eq(loop.get_mode(), Playing));
+
+        for (size_t idx=0; idx < 3; idx++) {
+            auto &channel = channels[idx];
+            auto &buf = play_bufs[idx];
+            auto chan_mode = channel->get_mode();
+
+            for (size_t p=0; p<128; p++) {
+                if (chan_mode == Direct || chan_mode == Wet) {
+                    expect(eq(
+                        buf[p],
+                        p < 10  ? 0 : // First 10 samples: nothing because we are before the pre_play_samples param
+                        p + 20 // Rest: pre-played and normally played samples
+                    )) << " @ position " << p;
+                } else {
+                    expect(eq(buf[p], 0)); // Dry won't play back at all
+                }
+            }
+        }
     };
 };
