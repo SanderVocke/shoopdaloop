@@ -15,7 +15,8 @@
 enum BasicPointOfInterestFlags {
     Trigger = 1,
     LoopEnd = 2,
-    BasicPointOfInterestFlags_End = 4,
+    ChannelPOI = 4,
+    BasicPointOfInterestFlags_End = 8,
 };
 
 // The basic loop implements common semantics shared by all loop types.
@@ -94,7 +95,9 @@ public:
         }
 
         if(mp_next_poi) {
+            // Loop end an dhannel POIs will be re-calculated.
             mp_next_poi->type_flags &= ~(LoopEnd);
+            mp_next_poi->type_flags &= ~(ChannelPOI);
             if (mp_next_poi->type_flags == 0) {
                 mp_next_poi = std::nullopt;
             }
@@ -118,10 +121,12 @@ public:
         if (!mp_next_poi || mp_next_poi.value().when != 0) {
             return;
         }
+        bool changed = false;
 
         if (mp_next_poi->type_flags & Trigger) {
             PROC_trigger();
             mp_next_poi->type_flags &= ~(Trigger);
+            changed = true;
         }
         if (mp_next_poi->type_flags & LoopEnd) {
             mp_next_poi->type_flags &= !(LoopEnd);
@@ -129,12 +134,15 @@ public:
                 // Trigger ourselves if sync source not active.
                 PROC_trigger();
             }
+            changed = true;
         }
 
         if (mp_next_poi->type_flags == 0) {
             mp_next_poi = std::nullopt;
-            PROC_update_poi();
+            changed = true;
         }
+
+        if (changed) { PROC_update_poi(); }
     }
 
     bool PROC_is_triggering_now() override {
@@ -148,7 +156,9 @@ public:
 
     virtual void PROC_process_channels(
         loop_mode_t mode,
-        std::optional<std::pair<loop_mode_t, size_t>> maybe_next_mode,
+        std::optional<loop_mode_t> maybe_next_mode,
+        std::optional<size_t> maybe_next_mode_delay_cycles,
+        std::optional<size_t> maybe_next_mode_eta,
         size_t n_samples,
         size_t pos_before,
         size_t pos_after,
@@ -196,7 +206,9 @@ public:
         }
 
         PROC_process_channels(process_channel_mode,
-            get_maybe_next_mode(),
+            ma_maybe_next_planned_mode,
+            ma_maybe_next_planned_delay,
+            PROC_predict_next_trigger(),
             n_samples, pos_before, pos_after,
             length_before, length_after);
 
@@ -205,17 +217,6 @@ public:
         ma_length = length_after;
         PROC_handle_poi();
         PROC_update_poi();
-    }
-
-    // Get the next mode coming up and the time in ticks until it will presumably happen.
-    // If the next transition time cannot be predicted, a nullopt is returned (even if a
-    // next mode is planned).
-    std::optional<std::pair<loop_mode_t, size_t>> get_maybe_next_mode() const {
-        auto maybe_when = PROC_predict_next_trigger();
-        if (ma_maybe_next_planned_delay.load() == 0 && maybe_when.has_value()) {
-            return std::make_pair(ma_maybe_next_planned_mode.load(), maybe_when.value());
-        }
-        return std::nullopt;
     }
 
     void set_sync_source(std::shared_ptr<LoopInterface> const& src, bool thread_safe=true) override {

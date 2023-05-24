@@ -95,41 +95,51 @@ public:
 
     void PROC_process_channels(
         loop_mode_t mode,
-        std::optional<std::pair<loop_mode_t, size_t>> maybe_next_mode,
+        std::optional<loop_mode_t> maybe_next_mode,
+        std::optional<size_t> maybe_next_mode_delay_cycles,
+        std::optional<size_t> maybe_next_mode_eta,
         size_t n_samples,
         size_t pos_before,
         size_t pos_after,
         size_t length_before,
         size_t length_after
         ) override {
-        BasicLoop::PROC_process_channels(mode, maybe_next_mode, n_samples, pos_before, pos_after, length_before, length_after);
+        BasicLoop::PROC_process_channels(
+            mode,
+            maybe_next_mode,
+            maybe_next_mode_delay_cycles,
+            maybe_next_mode_eta,
+            n_samples,
+            pos_before,
+            pos_after,
+            length_before,
+            length_after
+        );
 
         for(auto &aloop : mp_audio_channels) {
-            aloop->PROC_process(mode, maybe_next_mode, n_samples, pos_before, pos_after, length_before, length_after);
+            aloop->PROC_process(mode, maybe_next_mode, maybe_next_mode_delay_cycles, maybe_next_mode_eta, n_samples, pos_before, pos_after, length_before, length_after);
         }
         for(auto &mloop : mp_midi_channels) {
-            mloop->PROC_process(mode, maybe_next_mode, n_samples, pos_before, pos_after, length_before, length_after);
+            mloop->PROC_process(mode, maybe_next_mode, maybe_next_mode_delay_cycles, maybe_next_mode_eta, n_samples, pos_before, pos_after, length_before, length_after);
         }
     }
 
-    std::optional<size_t> PROC_get_next_poi() const override {
-        auto rval = BasicLoop::PROC_get_next_poi();
+    void PROC_update_poi() override {
+        BasicLoop::PROC_update_poi(); // sets mp_next_poi, mp_next_trigger
 
-        auto merge = [&rval](std::optional<size_t> other) {
+        auto merge = [this](std::optional<size_t> other) {
             if (other.has_value() &&
-                (!rval.has_value() || other.value() < rval.value())) {
-                    rval = other;
+                (!mp_next_poi.has_value() || other.value() < mp_next_poi.value().when)) {
+                    mp_next_poi = { other.value(), ChannelPOI };
                 }
         };
 
         for (auto &channel: mp_audio_channels) {
-            merge(channel->PROC_get_next_poi(get_mode(), get_maybe_next_mode(), get_length(), get_position()));
+            merge(channel->PROC_get_next_poi(get_mode(), ma_maybe_next_planned_mode, ma_maybe_next_planned_delay, mp_next_trigger, get_length(), get_position()));
         }
         for (auto &channel: mp_midi_channels) {
-            merge(channel->PROC_get_next_poi(get_mode(), get_maybe_next_mode(), get_length(), get_position()));
+            merge(channel->PROC_get_next_poi(get_mode(), ma_maybe_next_planned_mode, ma_maybe_next_planned_delay, mp_next_trigger, get_length(), get_position()));
         }
-
-        return rval;
     }
 
     void PROC_handle_poi() override {

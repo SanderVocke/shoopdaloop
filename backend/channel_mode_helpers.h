@@ -60,7 +60,9 @@ inline unsigned loop_mode_to_channel_process_flags(
 
 inline channel_process_params get_channel_process_params(
     loop_mode_t loop_mode,
-    std::optional<std::pair<loop_mode_t, size_t>> maybe_next_mode,
+    std::optional<loop_mode_t> maybe_next_mode,
+    std::optional<size_t> maybe_next_mode_delay_cycles,
+    std::optional<size_t> maybe_next_mode_eta,
     int position,
     size_t start_offset,
     channel_mode_t channel_mode
@@ -72,14 +74,16 @@ inline channel_process_params get_channel_process_params(
     // Now, check if we should be pre-playing or pre-recording, in which case
     // we map again to Playing / Recording
     if (rval.process_flags == 0 && // Stopped
-        maybe_next_mode &&
-        loop_mode_to_channel_process_flags(maybe_next_mode->first, channel_mode) & ChannelPlayback) {
+        maybe_next_mode.has_value() &&
+        maybe_next_mode_eta.has_value() &&
+        loop_mode_to_channel_process_flags(maybe_next_mode.value(), channel_mode) & ChannelPlayback) {
         // Possibly pre-play samples.
-        rval.position = (int) start_offset - (int) maybe_next_mode->second;
+        rval.position = (int) start_offset - (int) maybe_next_mode_eta.value();
         rval.process_flags |= ChannelPlayback;
     } else if (!(rval.process_flags & ChannelRecord) && 
-               maybe_next_mode &&
-               loop_mode_to_channel_process_flags(maybe_next_mode->first, channel_mode) & ChannelRecord) {
+               maybe_next_mode.has_value() &&
+               maybe_next_mode_eta.has_value() &&
+               loop_mode_to_channel_process_flags(maybe_next_mode.value(), channel_mode) & ChannelRecord) {
         rval.process_flags |= ChannelPreRecord;
     }
 

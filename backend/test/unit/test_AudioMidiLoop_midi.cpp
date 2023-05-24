@@ -145,35 +145,37 @@ suite AudioMidiLoop_midi_tests = []() {
         loop.PROC_update_poi();
 
         expect(eq(loop.get_mode() , Recording));
-        expect(loop.PROC_get_next_poi() == 21) << loop.PROC_get_next_poi().value_or(0); // end of buffer
+        expect(eq(loop.PROC_get_next_poi().value_or(999), 21)); // end of buffer
         expect(eq(loop.get_length() , 0));
         expect(eq(loop.get_position() , 0));
 
         loop.PROC_process(21);
 
         expect(eq(loop.get_mode() , Recording));
-        expect(loop.PROC_get_next_poi() == 0) << loop.PROC_get_next_poi().value_or(0); // end of buffer
+        expect(eq(loop.PROC_get_next_poi().value_or(999), 0)); // end of buffer
         expect(eq(loop.get_length(), 21));
         expect(eq(loop.get_position(), 0));
 
         channel.PROC_set_recording_buffer(&source_bufs[1], 9);
+        loop.PROC_update_poi();
         
         expect(eq(loop.get_mode() , Recording));
-        expect(loop.PROC_get_next_poi() == 9) << loop.PROC_get_next_poi().value_or(0); // end of buffer
+        expect(eq(loop.PROC_get_next_poi().value_or(999), 9)); // end of buffer
         expect(eq(loop.get_length(), 21));
         expect(eq(loop.get_position(), 0));
 
         loop.PROC_process(9);
 
         expect(eq(loop.get_mode() , Recording));
-        expect(loop.PROC_get_next_poi() == 0) << loop.PROC_get_next_poi().value_or(0); // end of buffer
+        expect(eq(loop.PROC_get_next_poi().value_or(999), 0)); // end of buffer
         expect(eq(loop.get_length(), 30));
         expect(eq(loop.get_position(), 0));
 
         channel.PROC_set_recording_buffer(&source_bufs[2], 100);
+        loop.PROC_update_poi();
         
         expect(eq(loop.get_mode() , Recording));
-        expect(loop.PROC_get_next_poi() == 100) << loop.PROC_get_next_poi().value_or(0); // end of buffer
+        expect(eq(loop.PROC_get_next_poi().value_or(999), 100)); // end of buffer
         expect(eq(loop.get_length(), 30));
         expect(eq(loop.get_position(), 0));
 
@@ -181,7 +183,7 @@ suite AudioMidiLoop_midi_tests = []() {
         loop.PROC_process(5);
 
         expect(eq(loop.get_mode() , Recording));
-        expect(loop.PROC_get_next_poi() == 95) << loop.PROC_get_next_poi().value_or(0); // end of buffer
+        expect(eq(loop.PROC_get_next_poi().value_or(999), 95)); // end of buffer
         expect(eq(loop.get_length(), 35));
         expect(eq(loop.get_position(), 0));
 

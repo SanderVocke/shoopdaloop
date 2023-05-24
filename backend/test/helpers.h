@@ -2,6 +2,7 @@
 #include <vector>
 #include <stdio.h>
 #include <functional>
+#include "LoopInterface.h"
 #include "MidiPortInterface.h"
 #include "MidiMessage.h"
 #include <cstring>
@@ -33,6 +34,20 @@ void for_channel_elems(Channel &chan, std::function<void(size_t,S const&)> fn,
     for(size_t idx=start; idx < (start+n); idx++) {
         fn(idx, elems[idx]);
     }
+}
+
+inline void process_loop(LoopInterface *lp, size_t n_samples) {
+    size_t n_left = n_samples;
+    while (n_left > 0) {
+        lp->PROC_handle_sync();
+        lp->PROC_handle_poi();
+        size_t n = std::min(lp->PROC_get_next_poi().value_or(n_left), n_left);
+        if (n == 0) { throw std::runtime_error("0 proc in test"); }
+        lp->PROC_process(n);
+        n_left -= n;
+    }
+    lp->PROC_handle_sync();
+    lp->PROC_handle_poi();
 }
 
 typedef MidiMessage<uint32_t, uint32_t> Msg;
