@@ -220,7 +220,7 @@ public:
 
     void PROC_process(
         loop_mode_t mode,
-        std::optional<loop_mode_t> maybe_next_mode,
+    std::optional<loop_mode_t> maybe_next_mode,
         std::optional<size_t> maybe_next_mode_delay_cycles,
         std::optional<size_t> maybe_next_mode_eta,
         size_t n_samples,
@@ -246,10 +246,12 @@ public:
         if (!(process_flags & ChannelPreRecord) &&
              (mp_prev_process_flags & ChannelPreRecord))
         {
+            std::cout << "End prerecord!\n";
             // Ending pre-record. If transitioning to recording,
             // make our pre-recorded buffers into our main buffers.
             // Otherwise, just discard them.
             if (process_flags & ChannelRecord) {
+                std::cout << "... into record!\n";
                 mp_buffers = mp_secondary_buffers;
                 // TODO pre play samples controllable
                 ma_buffers_data_length = ma_start_offset = ma_pre_play_samples = ma_secondary_buffers_data_length.load();

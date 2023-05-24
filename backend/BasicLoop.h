@@ -82,6 +82,22 @@ public:
                mode == RecordingDryIntoWet;
     }
 
+    void PROC_update_trigger_eta() {
+        if (is_playing_mode(ma_mode) && ma_position < ma_length) {
+            mp_next_trigger = ma_length - ma_position;
+        } else {
+            mp_next_trigger = std::nullopt;
+        }
+
+        if (mp_sync_source) {
+            auto ss_next_trigger = mp_sync_source->PROC_predicted_next_trigger_eta();
+            if (ss_next_trigger.has_value()) {
+                mp_next_trigger = mp_next_trigger.has_value() ? std::min (mp_next_trigger.value(), ss_next_trigger.value()) : ss_next_trigger;
+            }
+            std::cout << this << " updated trigger: " << ss_next_trigger.value_or(999) << " " << mp_next_trigger.value_or(999) << std::endl;
+        }
+    }
+
     virtual void PROC_update_poi() {
         if(is_playing_mode(ma_mode) && 
            ma_length == 0) {
@@ -104,16 +120,6 @@ public:
                 .type_flags = LoopEnd
             };
             mp_next_poi = dominant_poi(mp_next_poi, loop_end_poi);
-            mp_next_trigger = loop_end_poi->when;
-        } else {
-            mp_next_trigger = std::nullopt;
-        }
-
-        if (mp_sync_source) {
-            auto ss_next_trigger = mp_sync_source->PROC_predicted_next_trigger_eta();
-            if (ss_next_trigger.has_value()) {
-                mp_next_trigger = mp_next_trigger.has_value() ? std::min (mp_next_trigger.value(), ss_next_trigger.value()) : ss_next_trigger;
-            }
         }
     }
 
@@ -211,7 +217,7 @@ public:
         PROC_process_channels(process_channel_mode,
             ma_maybe_next_planned_mode,
             ma_maybe_next_planned_delay,
-            PROC_predicted_next_trigger_eta(),
+            ma_maybe_next_planned_delay == 0 ? PROC_predicted_next_trigger_eta() : std::nullopt,
             n_samples, pos_before, pos_after,
             length_before, length_after);
 
@@ -222,6 +228,7 @@ public:
             mp_next_trigger = (size_t)(std::max(0, (int)mp_next_trigger.value() - (int)n_samples));
             if (mp_next_trigger.value() == 0) { mp_next_trigger = std::nullopt; }
         }
+        PROC_update_trigger_eta();
         PROC_handle_poi();
     }
 
