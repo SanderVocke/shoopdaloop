@@ -251,7 +251,8 @@ public:
             // Otherwise, just discard them.
             if (process_flags & ChannelRecord) {
                 mp_buffers = mp_secondary_buffers;
-                ma_buffers_data_length = ma_start_offset = ma_secondary_buffers_data_length.load();
+                // TODO pre play samples controllable
+                ma_buffers_data_length = ma_start_offset = ma_pre_play_samples = ma_secondary_buffers_data_length.load();
             }
             mp_secondary_buffers.reset();
             ma_secondary_buffers_data_length = 0;

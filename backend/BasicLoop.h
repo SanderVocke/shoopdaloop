@@ -124,13 +124,15 @@ public:
         }
         bool changed = false;
 
+        mp_next_poi->type_flags &= ~(ChannelPOI);
+
         if (mp_next_poi->type_flags & Trigger) {
             PROC_trigger();
             mp_next_poi->type_flags &= ~(Trigger);
             changed = true;
         }
         if (mp_next_poi->type_flags & LoopEnd) {
-            mp_next_poi->type_flags &= !(LoopEnd);
+            mp_next_poi->type_flags &= ~(LoopEnd);
             if (!mp_sync_source || !is_playing_mode(mp_sync_source->get_mode())) {
                 // Trigger ourselves if sync source not active.
                 PROC_trigger();
@@ -218,6 +220,7 @@ public:
         ma_length = length_after;
         if (mp_next_trigger.has_value()) {
             mp_next_trigger = (size_t)(std::max(0, (int)mp_next_trigger.value() - (int)n_samples));
+            if (mp_next_trigger.value() == 0) { mp_next_trigger = std::nullopt; }
         }
         PROC_handle_poi();
     }
