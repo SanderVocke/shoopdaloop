@@ -257,7 +257,7 @@ public:
         for (auto &elem: mp_planned_state_countdowns) {
             elem--;
         }
-        while (mp_planned_state_countdowns.front() < 0 && mp_planned_state_countdowns.size() > 0) {
+        while (mp_planned_state_countdowns.size() > 0 && mp_planned_state_countdowns.front() < 0) {
             PROC_handle_transition(mp_planned_states.front());
             mp_planned_state_countdowns.pop_front();
             mp_planned_states.pop_front();

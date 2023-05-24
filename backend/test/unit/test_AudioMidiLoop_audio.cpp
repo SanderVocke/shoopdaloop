@@ -771,14 +771,14 @@ suite AudioMidiLoop_audio_tests = []() {
         }
 
         // Pre-play part
-        process_loop(dynamic_cast<LoopInterface*>(&loop), 99);
         process_loop(dynamic_cast<LoopInterface*>(sync_source.get()), 99);
+        process_loop(dynamic_cast<LoopInterface*>(&loop), 99);
 
         expect(eq(sync_source->get_mode(), Playing));
         expect(eq(loop.get_mode(), Stopped));
 
-        process_loop(dynamic_cast<LoopInterface*>(&loop), 1);
         process_loop(dynamic_cast<LoopInterface*>(sync_source.get()), 1);
+        process_loop(dynamic_cast<LoopInterface*>(&loop), 1);
 
         sync_source->PROC_handle_poi();
         loop.PROC_handle_sync();
