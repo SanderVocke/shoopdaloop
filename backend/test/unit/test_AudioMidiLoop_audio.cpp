@@ -6,6 +6,7 @@
 #include "AudioMidiLoop.h"
 #include "helpers.h"
 #include "types.h"
+#include "process_loops.h"
 
 using namespace boost::ut;
 using namespace std::chrono_literals;
@@ -537,7 +538,7 @@ suite AudioMidiLoop_audio_tests = []() {
         channel.PROC_finalize_process();
 
         expect(eq(loop.get_mode() , Replacing));
-        expect(loop.PROC_get_next_poi() == 32) << loop.PROC_get_next_poi().value_or(0); // end of buffer
+        expect(eq(loop.PROC_get_next_poi().value_or(999), 48));
         expect(eq(loop.get_length(), 64)); // Wrapped around
         expect(eq(loop.get_position(), 16));
         for_channel_elems<AudioChannel<int>, int>(
@@ -623,7 +624,7 @@ suite AudioMidiLoop_audio_tests = []() {
         loop.PROC_update_poi();
 
         expect(eq(loop.get_mode() , RecordingDryIntoWet));
-        expect(loop.PROC_get_next_poi() == 48) << loop.PROC_get_next_poi().value_or(0); // end of loop
+        expect(eq(loop.PROC_get_next_poi().value_or(999), 32)); // end of playback buffer
         expect(eq(loop.get_position() , 16));
         expect(eq(loop.get_length() , 64));
 
@@ -631,7 +632,7 @@ suite AudioMidiLoop_audio_tests = []() {
         for (auto &c: channels) { c->PROC_finalize_process(); }
 
         expect(eq(loop.get_mode() , RecordingDryIntoWet));
-        expect(loop.PROC_get_next_poi() == 48-32) << loop.PROC_get_next_poi().value_or(0); // end of loop
+        expect(eq(loop.PROC_get_next_poi().value_or(999), 0)); // end of loop
         expect(eq(loop.get_length(), 64));
         expect(eq(loop.get_position(), 16+32));
         // Direct channel does replacement
@@ -681,11 +682,11 @@ suite AudioMidiLoop_audio_tests = []() {
         auto sync_source = std::make_shared<AudioMidiLoop>();
         sync_source->set_length(100);
         sync_source->plan_transition(Playing);
-        expect(eq(sync_source->PROC_predict_next_trigger().value_or(999), 100));
+        expect(eq(sync_source->PROC_predicted_next_trigger_eta().value_or(999), 100));
 
         loop.set_sync_source(sync_source); // Needed because otherwise will immediately transition
         loop.PROC_update_poi();
-        expect(eq(loop.PROC_predict_next_trigger().value_or(999), 100));
+        expect(eq(loop.PROC_predicted_next_trigger_eta().value_or(999), 100));
 
         loop.add_audio_channel<int>(pool, 10, Direct, false);
         loop.add_audio_channel<int>(pool, 10, Dry, false);
@@ -718,10 +719,10 @@ suite AudioMidiLoop_audio_tests = []() {
         for (auto &c: channels) { c->PROC_finalize_process(); }
 
         expect(eq(loop.get_mode(), Recording));
-        expect(eq(loop.PROC_get_next_poi().value_or(999), 472)) << loop.PROC_get_next_poi().value_or(0); // end of buffer
+        expect(eq(loop.PROC_get_next_poi().value_or(999), 472)); // end of buffer
         expect(eq(loop.get_length(), 20));
         expect(eq(loop.get_position(), 0));
-        expect(eq(loop.PROC_predict_next_trigger().value_or(999), 100));
+        expect(eq(loop.PROC_predicted_next_trigger_eta().value_or(999), 80));
 
         for (auto &channel : channels) {
             expect(eq(channel->get_start_offset(), 20));
@@ -736,20 +737,27 @@ suite AudioMidiLoop_audio_tests = []() {
         }
 
         sync_source->PROC_process(60);
-        expect(eq(loop.PROC_predict_next_trigger().value_or(999), 40));
+        loop.PROC_update_poi();
+        expect(eq(loop.PROC_predicted_next_trigger_eta().value_or(999), 40));
     };
 
     "al_8_preplay"_test = []() {
         auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
-        AudioMidiLoop loop;
+        auto loop_ptr = std::make_shared<AudioMidiLoop>();
+        auto &loop = *loop_ptr;
         auto sync_source = std::make_shared<AudioMidiLoop>();
+
+        auto process = [&](size_t n_samples) {
+            process_loops<AudioMidiLoop>({loop_ptr, sync_source}, n_samples);
+        };
+
         sync_source->set_length(100);
         sync_source->plan_transition(Playing);
-        expect(eq(sync_source->PROC_predict_next_trigger().value_or(999), 100));
+        expect(eq(sync_source->PROC_predicted_next_trigger_eta().value_or(999), 100));
 
         loop.set_sync_source(sync_source); // Needed because otherwise will immediately transition
         loop.PROC_update_poi();
-        expect(eq(loop.PROC_predict_next_trigger().value_or(999), 100));
+        expect(eq(loop.PROC_predicted_next_trigger_eta().value_or(999), 100));
 
         loop.add_audio_channel<int>(pool, 10, Direct, false);
         loop.add_audio_channel<int>(pool, 10, Dry, false);
@@ -757,12 +765,13 @@ suite AudioMidiLoop_audio_tests = []() {
         std::vector<std::shared_ptr<AudioChannel<int>>> channels = 
             {loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2) };
 
-        auto data = create_audio_buf<int>(128, [](size_t position) { return position; });
+        auto data = create_audio_buf<int>(256, [](size_t position) { return position; });
         for (auto &channel : channels) {
-            channel->load_data(data.data(), 128);
+            channel->load_data(data.data(), 256);
             channel->set_start_offset(110);
             channel->set_pre_play_samples(90);
         }
+        loop.set_length(128);
 
         std::vector<std::vector<int>> play_bufs = { std::vector<int>(128), std::vector<int>(128), std::vector<int>(128) };
         loop.plan_transition(Playing);
@@ -771,14 +780,12 @@ suite AudioMidiLoop_audio_tests = []() {
         }
 
         // Pre-play part
-        process_loop(dynamic_cast<LoopInterface*>(sync_source.get()), 99);
-        process_loop(dynamic_cast<LoopInterface*>(&loop), 99);
+        process(99);
 
         expect(eq(sync_source->get_mode(), Playing));
         expect(eq(loop.get_mode(), Stopped));
 
-        process_loop(dynamic_cast<LoopInterface*>(sync_source.get()), 1);
-        process_loop(dynamic_cast<LoopInterface*>(&loop), 1);
+        process(1);
 
         sync_source->PROC_handle_poi();
         loop.PROC_handle_sync();
@@ -786,11 +793,15 @@ suite AudioMidiLoop_audio_tests = []() {
         expect(eq(loop.get_mode(), Playing));
 
         // Play part
-        process_loop(dynamic_cast<LoopInterface*>(&loop), 28);
-        process_loop(dynamic_cast<LoopInterface*>(sync_source.get()), 28);
+        process(28);
 
         expect(eq(sync_source->get_mode(), Playing));
         expect(eq(loop.get_mode(), Playing));
+
+        // Process the channels' queued operations
+        for (auto &channel : channels) {
+            channel->PROC_finalize_process();
+        }
 
         for (size_t idx=0; idx < 3; idx++) {
             auto &channel = channels[idx];
@@ -798,11 +809,11 @@ suite AudioMidiLoop_audio_tests = []() {
             auto chan_mode = channel->get_mode();
 
             for (size_t p=0; p<128; p++) {
-                if (chan_mode == Direct || chan_mode == Wet) {
+                if (chan_mode != Dry) {
                     expect(eq(
                         buf[p],
                         p < 10  ? 0 : // First 10 samples: nothing because we are before the pre_play_samples param
-                        p + 20 // Rest: pre-played and normally played samples
+                        p + 10 // Rest: pre-played and normally played samples
                     )) << " @ position " << p;
                 } else {
                     expect(eq(buf[p], 0)); // Dry won't play back at all

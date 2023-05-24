@@ -392,7 +392,7 @@ void Backend::PROC_process (jack_nframes_t nframes) {
     
     // Process the loops. This queues deferred audio operations for post-FX channels.
     process_loops<LoopInfo>
-        (loops, [](LoopInfo &l) { return (LoopInterface*)l.loop.get(); }, nframes);
+        (loops, nframes, [](LoopInfo &l) { return (LoopInterface*)l.loop.get(); });
     
     // Finish processing any channels that come before FX.
     auto before_fx_channel_process = [&](auto &c) {

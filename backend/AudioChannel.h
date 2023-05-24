@@ -471,31 +471,29 @@ public:
         return mp_buffers[position / ma_buffer_size]->at(position % mp_buffers.front()->size());
     }
 
-    void PROC_process_playback(size_t position, size_t length, size_t n_samples, bool muted) {
+    void PROC_process_playback(int data_position, size_t length, size_t n_samples, bool muted) {
         if (mp_playback_target_buffer_size < n_samples) {
             throw std::runtime_error("Attempting to play out of bounds of target buffer");
         }
 
         auto data_length = ma_buffers_data_length.load();
         auto start_offset = ma_start_offset.load();
-        auto data_position = (int)position + start_offset;
 
-        if (data_position < 0) {
-            // skip ahead to the part that is in range
-            const int skip = -data_position;
-            position += skip;
+        const int starting_data_position = std::max(0, (int)ma_start_offset - (int)ma_pre_play_samples);
+        const int skip = std::max(0, starting_data_position - data_position);
+        if (skip > 0) {
+            data_position += skip;
             n_samples = std::max((int)n_samples - skip, 0);
-            mp_recording_source_buffer += std::min(skip, (int)mp_recording_source_buffer_size);
-            mp_recording_source_buffer_size = std::max((int)mp_recording_source_buffer_size - skip, 0);
+            mp_playback_target_buffer += std::min(skip, (int)mp_playback_target_buffer_size);
+            mp_playback_target_buffer_size = std::max((int)mp_playback_target_buffer_size - skip, 0);
         }
         
         if (data_position < data_length) {
             // We have something to play.
-            size_t samples_left = length - position;
             size_t buf_space = mp_buffers.buf_space_for_sample(data_position);
             SampleT *from = &mp_buffers.at(data_position);
             SampleT* &to = mp_playback_target_buffer;
-            auto n = std::min({buf_space, samples_left, n_samples});
+            auto n = std::min({buf_space, n_samples});
             auto rest = n_samples - n;
 
             if (!muted) {
@@ -507,7 +505,7 @@ public:
 
             // If we didn't play back all yet, go to next buffer and continue
             if(rest > 0) {
-                PROC_process_playback(position + n, length, rest, muted);
+                PROC_process_playback(data_position + n, length, rest, muted);
             }
         } else {
             // We have nothing to play. Just leave the output buffer as-is.

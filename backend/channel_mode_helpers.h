@@ -69,7 +69,7 @@ inline channel_process_params get_channel_process_params(
     ) {
     channel_process_params rval {
         loop_mode_to_channel_process_flags(loop_mode, channel_mode),
-        position };
+        position + (int) start_offset };
 
     // Now, check if we should be pre-playing or pre-recording, in which case
     // we map again to Playing / Recording

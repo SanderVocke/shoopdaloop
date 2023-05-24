@@ -244,7 +244,7 @@ public:
         if (buf.frames_left() < n_samples) {
             throw std::runtime_error("Attempting to play back out of bounds");
         }
-        auto _pos = (int)our_pos + ma_start_offset;
+        auto _pos = (int)our_pos;
 
         // Playback any events
         size_t end = buf.n_frames_processed + n_samples;

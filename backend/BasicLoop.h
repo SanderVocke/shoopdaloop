@@ -71,13 +71,7 @@ public:
         return mp_next_poi.has_value() ? mp_next_poi.value().when : (std::optional<size_t>)std::nullopt;
     }
 
-    std::optional<size_t> PROC_predict_next_trigger() const override {
-        if (mp_sync_source) {
-            auto src = mp_sync_source->PROC_predict_next_trigger();
-            if (src.has_value()) {
-                return mp_next_trigger.has_value() ? std::min(mp_next_trigger.value(), src.value()) : src.value();
-            }
-        }
+    std::optional<size_t> PROC_predicted_next_trigger_eta() const override {
         return mp_next_trigger;
     }
 
@@ -113,6 +107,13 @@ public:
             mp_next_trigger = loop_end_poi->when;
         } else {
             mp_next_trigger = std::nullopt;
+        }
+
+        if (mp_sync_source) {
+            auto ss_next_trigger = mp_sync_source->PROC_predicted_next_trigger_eta();
+            if (ss_next_trigger.has_value()) {
+                mp_next_trigger = mp_next_trigger.has_value() ? std::min (mp_next_trigger.value(), ss_next_trigger.value()) : ss_next_trigger;
+            }
         }
     }
 
@@ -208,15 +209,17 @@ public:
         PROC_process_channels(process_channel_mode,
             ma_maybe_next_planned_mode,
             ma_maybe_next_planned_delay,
-            PROC_predict_next_trigger(),
+            PROC_predicted_next_trigger_eta(),
             n_samples, pos_before, pos_after,
             length_before, length_after);
 
         if (mp_next_poi) { mp_next_poi.value().when -= n_samples; }
         ma_position = pos_after;
         ma_length = length_after;
+        if (mp_next_trigger.has_value()) {
+            mp_next_trigger = (size_t)(std::max(0, (int)mp_next_trigger.value() - (int)n_samples));
+        }
         PROC_handle_poi();
-        PROC_update_poi();
     }
 
     void set_sync_source(std::shared_ptr<LoopInterface> const& src, bool thread_safe=true) override {
