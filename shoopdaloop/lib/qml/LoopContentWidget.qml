@@ -14,7 +14,9 @@ Item {
         None,
         SetStartOffsetAll,
         SetStartOffsetSingle,
-        SetEnd
+        SetEnd,
+        SetPreplaySamplesAll,
+        SetPreplaySamplesSingle
     }
 
     function tool_clicked() {
@@ -29,6 +31,11 @@ Item {
                     case LoopContentWidget.Tool.SetStartOffsetAll:
                     case LoopContentWidget.Tool.SetStartOffsetSingle:
                         channel.set_start_offset(s);
+                        break;
+                    case LoopContentWidget.Tool.SetPreplaySamplesAll:
+                    case LoopContentWidget.Tool.SetPreplaySamplesSingle:
+                        var n = Math.max(0, channel.start_offset - s)
+                        channel.set_n_preplay_samples(n)
                         break;
                     case LoopContentWidget.Tool.SetEnd:
                         var len = s - channel.start_offset
@@ -98,7 +105,9 @@ Item {
                 { value: LoopContentWidget.Tool.None, text: "none", all: false },
                 { value: LoopContentWidget.Tool.SetStartOffsetAll, text: "set start (all)", all: true },
                 { value: LoopContentWidget.Tool.SetStartOffsetSingle, text: "set start (single)", all: false },
-                { value: LoopContentWidget.Tool.SetEnd, text: "set end (all)", all: true }
+                { value: LoopContentWidget.Tool.SetEnd, text: "set end (all)", all: true },
+                { value: LoopContentWidget.Tool.SetPreplaySamplesAll, text: "set pre-play (all)", all: true },
+                { value: LoopContentWidget.Tool.SetPreplaySamplesSingle, text: "set pre-play (single)", all: false },
             ]
 
             property bool is_for_all_channels: model[currentIndex].all

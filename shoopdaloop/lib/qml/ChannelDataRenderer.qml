@@ -47,6 +47,16 @@ Item {
             }
 
             Rectangle {
+                id: preplay_window_rect
+                color: 'yellow'
+                width: root.channel.n_preplay_samples / render.samples_per_bin
+                height: parent.height
+                opacity: 0.3
+                x: (root.channel.start_offset - render.samples_offset - root.channel.n_preplay_samples) / render.samples_per_bin
+                y: 0
+            }
+
+            Rectangle {
                 id: playback_cursor_rect
                 visible: root.channel.played_back_sample != null
                 color: 'green'
