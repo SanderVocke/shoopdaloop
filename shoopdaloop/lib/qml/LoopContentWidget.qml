@@ -17,6 +17,31 @@ Item {
         SetEnd
     }
 
+    function tool_clicked() {
+        for (var idx=0; idx < channel_mapper.instances.length; idx++) {
+            var c = channel_mapper.instances[idx]
+            var channel = c.mapped_item
+            var s = c.maybe_cursor_sample_idx
+            if (s) {
+                switch (tool_combo.currentValue) {
+                    case LoopContentWidget.Tool.None:
+                        break;
+                    case LoopContentWidget.Tool.SetStartOffsetAll:
+                    case LoopContentWidget.Tool.SetStartOffsetSingle:
+                        channel.set_start_offset(s);
+                        break;
+                    case LoopContentWidget.Tool.SetEnd:
+                        var len = s - channel.start_offset
+                        if (len >= 0) { channel.loop.set_length(len); }
+                        else { console.log("Desired end point is invalid: before start offset.") }
+                        break;
+                    default:
+                        throw new Error("unimplemented")
+                }
+            }
+        }
+    }
+
     Row {
         id: toolbar_1
         anchors {
@@ -204,6 +229,10 @@ Item {
                         return channel_mapper.maybe_cursor_display_x
                     }
 
+                    property var maybe_cursor_sample_idx: maybe_cursor_display_x ?
+                        samples_offset + maybe_cursor_display_x * samples_per_pixel :
+                        null
+
                     Rectangle {
                         width: 1
                         height: parent.height
@@ -231,6 +260,11 @@ Item {
                         onMouseXChanged: if(containsMouse &&
                                             tool_combo.is_for_all_channels) {
                             channel_mapper.maybe_cursor_display_x = mouseX
+                        }
+                        onContainsMouseChanged: if (!containsMouse) { channel_mapper.maybe_cursor_display_x = null; }
+
+                        onClicked: {
+                            root.tool_clicked()
                         }
                     }
                 }
