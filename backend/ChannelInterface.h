@@ -68,6 +68,9 @@ public:
     virtual void set_pre_play_samples(size_t samples) = 0;
     virtual size_t get_pre_play_samples() const = 0;
 
+    // Get the last played back sample, if any.
+    virtual std::optional<size_t> get_played_back_sample() const = 0;
+
     // Get a sequence number which increments whenever the content, of this channel changes.
     // Can be used for e.g. "dirty" detection.
     virtual unsigned get_data_seq_nr() const = 0;

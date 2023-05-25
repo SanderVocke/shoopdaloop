@@ -61,6 +61,8 @@ class LoopAudioChannelState:
     length : int
     start_offset : int
     data_dirty : bool
+    played_back_sample : Any
+    n_preplay_samples : int
 
     def __init__(self, backend_state : 'loop_audio_channel_state_t'):
         self.output_peak = backend_state.output_peak
@@ -69,6 +71,8 @@ class LoopAudioChannelState:
         self.length = backend_state.length
         self.start_offset = backend_state.start_offset
         self.data_dirty = bool(backend_state.data_dirty)
+        self.played_back_sample = (backend_state.played_back_sample if backend_state.played_back_sample >= 0 else None)
+        self.n_preplay_samples = backend_state.n_preplay_samples
 
 @dataclass
 class LoopMidiChannelState:
@@ -78,6 +82,8 @@ class LoopMidiChannelState:
     length: int
     start_offset: int
     data_dirty : bool
+    played_back_sample : Any
+    n_preplay_samples : int
 
     def __init__(self, backend_state : 'loop_midi_channel_state_t'):
         self.n_events_triggered = backend_state.n_events_triggered
@@ -86,6 +92,8 @@ class LoopMidiChannelState:
         self.length = backend_state.length
         self.start_offset = backend_state.start_offset
         self.data_dirty = bool(backend_state.data_dirty)
+        self.played_back_sample = (backend_state.played_back_sample if backend_state.played_back_sample >= 0 else None)
+        self.n_preplay_samples = backend_state.n_preplay_samples
 
 @dataclass
 class LoopState:

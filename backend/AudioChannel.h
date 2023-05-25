@@ -39,6 +39,7 @@ private:
     std::atomic<float> ma_volume;
     std::atomic<channel_mode_t> ma_mode;
     std::atomic<unsigned> ma_data_seq_nr;
+    std::atomic<int> ma_last_played_back_sample; // -1 is none
 
     // Members which may be accessed from the process thread only (mp prefix)
     Buffers mp_buffers; // Buffers holding main audio data
@@ -176,7 +177,8 @@ public:
         ma_pre_play_samples(0),
         mp_buffers(buffer_pool, initial_max_buffers),
         mp_secondary_buffers(buffer_pool, initial_max_buffers),
-        mp_prev_process_flags(0)
+        mp_prev_process_flags(0),
+        ma_last_played_back_sample(-1)
     {}
 
     virtual void set_pre_play_samples(size_t samples) override {
@@ -246,12 +248,10 @@ public:
         if (!(process_flags & ChannelPreRecord) &&
              (mp_prev_process_flags & ChannelPreRecord))
         {
-            std::cout << "End prerecord!\n";
             // Ending pre-record. If transitioning to recording,
             // make our pre-recorded buffers into our main buffers.
             // Otherwise, just discard them.
             if (process_flags & ChannelRecord) {
-                std::cout << "... into record!\n";
                 mp_buffers = mp_secondary_buffers;
                 // TODO pre play samples controllable
                 ma_buffers_data_length = ma_start_offset = ma_pre_play_samples = ma_secondary_buffers_data_length.load();
@@ -261,7 +261,10 @@ public:
         }
 
         if (process_flags & ChannelPlayback) {
+            ma_last_played_back_sample = process_params.position;
             PROC_process_playback(process_params.position, length_before, n_samples, false);
+        } else {
+            ma_last_played_back_sample = -1;
         }
         if (process_flags & ChannelRecord) {
             PROC_process_record(n_samples, ((int)length_before + ma_start_offset), mp_buffers, ma_buffers_data_length);
@@ -608,6 +611,12 @@ public:
 
     unsigned get_data_seq_nr() const override {
         return ma_data_seq_nr;
+    }
+
+    std::optional<size_t> get_played_back_sample() const override {
+        auto v = ma_last_played_back_sample.load();
+        if (v >= 0) { return v; }
+        return std::nullopt;
     }
 
 protected:

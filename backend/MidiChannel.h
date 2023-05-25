@@ -358,4 +358,8 @@ public:
     int get_start_offset() const override {
         return ma_start_offset;
     }
+
+    std::optional<size_t> get_played_back_sample() const override {
+        return std::nullopt;
+    }
 };

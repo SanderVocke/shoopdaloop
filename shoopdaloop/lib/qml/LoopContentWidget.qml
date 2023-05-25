@@ -149,6 +149,24 @@ Item {
             right: parent.right
         }
 
+        Item {
+            id: channels_combine_range
+            visible: false
+
+            property int padding: 0.2 * 48000
+            
+            // Overall data starting point, where 0 is each channel's start offset.
+            // That is to say: if three channels exist with start offsets 10, 20 and 30,
+            // the one with offset 30 dominates so that the overall data starting point
+            // becomes -30.
+            property int data_start : -Math.max(...loop.channels.map(c => c.start_offset)) - padding
+            
+            // Likewise for the end point.
+            property int data_end : Math.max(...loop.channels.map(c => c.data_length - c.start_offset)) + padding
+
+            property int data_length : data_end - data_start
+        }
+
         Column {
             anchors.fill: parent
             Mapper {
@@ -167,6 +185,25 @@ Item {
                     channel: mapped_item
                     fetch_active: true
                     samples_per_pixel: zoom_slider.samples_per_pixel
+
+                    property int first_pixel_sample: channel.start_offset + channels_combine_range.data_start
+
+                    samples_offset: scroll.position * channels_combine_range.data_length + first_pixel_sample
+                    loop_length: root.loop.length
+
+                    Rectangle {
+                        visible: hover_ma.containsMouse
+                        width: 1
+                        height: parent.height
+                        color: 'white'
+                        x : parent.width / 2
+                    }
+
+                    MouseArea {
+                        id: hover_ma
+                        anchors.fill: parent
+                        hoverEnabled: true
+                    }
                 }
             }
         }
@@ -180,9 +217,8 @@ Item {
                 right: parent.right
             }
             size: {
-                if(!fetcher.channel_data) { return 1.0 }
-                var window_in_samples = width * root.samples_per_pixel
-                return window_in_samples / fetcher.channel_data.length
+                var window_in_samples = width * zoom_slider.samples_per_pixel
+                return window_in_samples / channels_combine_range.data_length
             }
             minimumSize: 0.05
             orientation: Qt.Horizontal

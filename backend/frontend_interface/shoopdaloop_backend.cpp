@@ -1585,6 +1585,9 @@ audio_channel_state_info_t *get_audio_channel_state (shoopdaloop_loop_audio_chan
     r->length = audio->get_length();
     r->start_offset = audio->get_start_offset();
     r->data_dirty = chan->get_data_dirty();
+    r->n_preplay_samples = chan->channel->get_pre_play_samples();
+    auto p = chan->channel->get_played_back_sample();
+    if (p.has_value()) { r->played_back_sample = p.value(); } else { r->played_back_sample = -1; }
     audio->reset_output_peak();
     return r;
 }
@@ -1602,6 +1605,9 @@ midi_channel_state_info_t *get_midi_channel_state   (shoopdaloop_loop_midi_chann
     r->length = midi->get_length();
     r->start_offset = midi->get_start_offset();
     r->data_dirty = chan->get_data_dirty();
+    r->n_preplay_samples = chan->channel->get_pre_play_samples();
+    auto p = chan->channel->get_played_back_sample();
+    if (p.has_value()) { r->played_back_sample = p.value(); } else { r->played_back_sample = -1; }
     return r;
 }
 

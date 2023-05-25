@@ -30,6 +30,8 @@ class LoopChannel(QQuickItem):
         self._start_offset = 0
         self._recording_started_at = None
         self._data_dirty = True
+        self._n_preplay_samples = 0
+        self._played_back_sample = None
 
         self.rescan_parents()
         if not self._loop:
@@ -103,6 +105,12 @@ class LoopChannel(QQuickItem):
     def data_length(self):
         return self._data_length
     
+    # last played sample
+    playedBackSampleChanged = Signal('QVariant')
+    @Property('QVariant', notify=playedBackSampleChanged)
+    def played_back_sample(self):
+        return self._played_back_sample
+    
     # start offset
     startOffsetChanged = Signal(int)
     @Property(int, notify=startOffsetChanged)
@@ -116,6 +124,20 @@ class LoopChannel(QQuickItem):
                 self._backend_obj.set_start_offset(offset)
             else:
                 self.initializedChanged.connect(lambda: self.set_start_offset(offset))
+    
+    # n preplay samples
+    nPreplaySamplesChanged = Signal(int)
+    @Property(int, notify=nPreplaySamplesChanged)
+    def n_preplay_samples(self):
+        return self._n_preplay_samples
+    # indirect setter via back-end
+    @Slot(int)
+    def set_n_preplay_samples(self, n):
+        if n != self._n_preplay_samples:
+            if self._backend_obj:
+                self._backend_obj.set_n_preplay_samples(n)
+            else:
+                self.initializedChanged.connect(lambda: self.set_n_preplay_samples(n))
 
     # data dirty
     dataDirtyChanged = Signal(bool)
@@ -214,6 +236,12 @@ class LoopChannel(QQuickItem):
         if state.data_dirty != self._data_dirty:
             self._data_dirty = state.data_dirty
             self.dataDirtyChanged.emit(self._data_dirty)
+        if state.n_preplay_samples != self._n_preplay_samples:
+            self._n_preplay_samples = state.n_preplay_samples
+            self.nPreplaySamplesChanged.emit(self._n_preplay_samples)
+        if state.played_back_sample != self._played_back_sample:
+            self._played_back_sample = state.played_back_sample
+            self.playedBackSampleChanged.emit(self._played_back_sample)
         
         # Dispatch specialized update from subclasses
         self.update_impl(state)

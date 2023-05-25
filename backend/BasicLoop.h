@@ -94,7 +94,6 @@ public:
             if (ss_next_trigger.has_value()) {
                 mp_next_trigger = mp_next_trigger.has_value() ? std::min (mp_next_trigger.value(), ss_next_trigger.value()) : ss_next_trigger;
             }
-            std::cout << this << " updated trigger: " << ss_next_trigger.value_or(999) << " " << mp_next_trigger.value_or(999) << std::endl;
         }
     }
 

@@ -12,6 +12,7 @@ Item {
     property alias fetch_active: fetcher.active
     property real samples_per_pixel: 1.0
     property int samples_offset: 0.0
+    property int loop_length: 0
     readonly property int n_samples_shown: width * samples_per_pixel
     readonly property int n_samples: fetcher.channel_data ? fetcher.channel_data.length : 0
     
@@ -30,9 +31,30 @@ Item {
             id: render
             input_data: fetcher.channel_data ? fetcher.channel_data : []
             samples_per_bin: root.samples_per_pixel
-            samples_offset: scroll.position * input_data.length
+            samples_offset: root.samples_offset
             width: root.width
             height: root.height
+            clip: true
+
+            Rectangle {
+                id: data_window_rect
+                color: 'blue'
+                width: root.loop_length / render.samples_per_bin
+                height: parent.height
+                opacity: 0.3
+                x: (root.channel.start_offset - render.samples_offset) / render.samples_per_bin
+                y: 0
+            }
+
+            Rectangle {
+                id: playback_cursor_rect
+                visible: root.channel.played_back_sample != null
+                color: 'green'
+                width: 2
+                height: parent.height
+                x: (root.channel.played_back_sample - render.samples_offset) / render.samples_per_bin
+                y: 0
+            }
         }
     }
 }

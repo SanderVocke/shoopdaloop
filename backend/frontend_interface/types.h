@@ -120,6 +120,8 @@ typedef struct {
     float output_peak;
     unsigned length;
     int start_offset;
+    int played_back_sample; // -1 is none
+    unsigned n_preplay_samples;
     unsigned data_dirty;
 } audio_channel_state_info_t;
 
@@ -129,6 +131,8 @@ typedef struct {
     unsigned n_notes_active;
     unsigned length;
     int start_offset;
+    int played_back_sample; // -1 is none
+    unsigned n_preplay_samples;
     unsigned data_dirty;
 } midi_channel_state_info_t;
 
