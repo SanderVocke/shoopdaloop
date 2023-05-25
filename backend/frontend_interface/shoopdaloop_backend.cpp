@@ -1639,6 +1639,20 @@ void set_midi_channel_start_offset (shoopdaloop_loop_midi_channel_t * channel, i
     });
 }
 
+void set_audio_channel_n_preplay_samples (shoopdaloop_loop_audio_channel_t *channel, unsigned n) {
+    internal_audio_channel(channel)->backend.lock()->cmd_queue.queue([=]() {
+        auto _channel = internal_audio_channel(channel);
+        _channel->channel->set_pre_play_samples(n);
+    });
+}
+
+void set_midi_channel_n_preplay_samples  (shoopdaloop_loop_midi_channel_t *channel, unsigned n) {
+    internal_midi_channel(channel)->backend.lock()->cmd_queue.queue([=]() {
+        auto _channel = internal_midi_channel(channel);
+        _channel->channel->set_pre_play_samples(n);
+    });
+}
+
 audio_port_state_info_t *get_audio_port_state(shoopdaloop_audio_port_t *port) {
     auto r = new audio_port_state_info_t;
     auto p = internal_audio_port(port);

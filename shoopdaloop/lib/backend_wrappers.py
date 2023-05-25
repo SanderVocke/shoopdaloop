@@ -213,6 +213,10 @@ class BackendLoopAudioChannel:
         if self.shoop_c_handle:
             set_audio_channel_start_offset(self.shoop_c_handle, offset)
     
+    def set_n_preplay_samples(self, n):
+        if self.shoop_c_handle:
+            set_audio_channel_n_preplay_samples(self.shoop_c_handle, n)
+    
     def destroy(self):
         if self.shoop_c_handle:
             destroy_audio_channel(self.shoop_c_handle)
@@ -268,6 +272,10 @@ class BackendLoopMidiChannel:
     def set_start_offset(self, offset):
         if self.shoop_c_handle:
             set_midi_channel_start_offset(self.shoop_c_handle, offset)
+    
+    def set_n_preplay_samples(self, n):
+        if self.shoop_c_handle:
+            set_audio_channel_n_preplay_samples(self.shoop_c_handle, n)
     
     def destroy(self):
         if self.shoop_c_handle:

@@ -53,6 +53,8 @@ void                   set_audio_channel_mode   (shoopdaloop_loop_audio_channel_
 void                   set_midi_channel_mode    (shoopdaloop_loop_midi_channel_t * channel, channel_mode_t mode);
 void                   set_audio_channel_start_offset (shoopdaloop_loop_audio_channel_t *channel, int offset);
 void                   set_midi_channel_start_offset  (shoopdaloop_loop_midi_channel_t *channel, int offset);
+void                   set_audio_channel_n_preplay_samples (shoopdaloop_loop_audio_channel_t *channel, unsigned n);
+void                   set_midi_channel_n_preplay_samples  (shoopdaloop_loop_midi_channel_t *channel, unsigned n);
 void                   clear_audio_channel_data_dirty (shoopdaloop_loop_audio_channel_t * channel);
 void                   clear_midi_channel_data_dirty (shoopdaloop_loop_midi_channel_t * channel);
 

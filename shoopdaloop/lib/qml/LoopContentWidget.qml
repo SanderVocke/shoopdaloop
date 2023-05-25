@@ -212,7 +212,7 @@ Item {
                 id: channel_mapper
                 model: loop.channels
 
-                property var maybe_cursor_display_x: 0
+                property var maybe_cursor_display_x: null
 
                 ChannelDataRenderer {
                     property var mapped_item
