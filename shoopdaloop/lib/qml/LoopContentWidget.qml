@@ -11,9 +11,10 @@ Item {
     property var master_loop
 
     enum Tool {
+        None,
         SetStartOffsetAll,
         SetStartOffsetSingle,
-        SetLength
+        SetEnd
     }
 
     Row {
@@ -69,10 +70,13 @@ Item {
             width: 120
 
             model: [
-                { value: LoopContentWidget.Tool.SetStartOffsetAll, text: "set start (all)" },
-                { value: LoopContentWidget.Tool.SetStartOffsetSingle, text: "set start (single)" },
-                { value: LoopContentWidget.Tool.SetLength, text: "set length" }
+                { value: LoopContentWidget.Tool.None, text: "none", all: false },
+                { value: LoopContentWidget.Tool.SetStartOffsetAll, text: "set start (all)", all: true },
+                { value: LoopContentWidget.Tool.SetStartOffsetSingle, text: "set start (single)", all: false },
+                { value: LoopContentWidget.Tool.SetEnd, text: "set end (all)", all: true }
             ]
+
+            property bool is_for_all_channels: model[currentIndex].all
         }
 
         Label {
@@ -169,8 +173,12 @@ Item {
 
         Column {
             anchors.fill: parent
+
             Mapper {
+                id: channel_mapper
                 model: loop.channels
+
+                property var maybe_cursor_display_x: 0
 
                 ChannelDataRenderer {
                     property var mapped_item
@@ -191,18 +199,39 @@ Item {
                     samples_offset: scroll.position * channels_combine_range.data_length + first_pixel_sample
                     loop_length: root.loop.length
 
+                    property var maybe_cursor_display_x: {
+                        if (hover_ma.containsMouse) { return hover_ma.mouseX; }
+                        return channel_mapper.maybe_cursor_display_x
+                    }
+
                     Rectangle {
-                        visible: hover_ma.containsMouse
                         width: 1
                         height: parent.height
                         color: 'white'
-                        x : parent.width / 2
+                        x : parent.maybe_cursor_display_x
+                        visible: parent.maybe_cursor_display_x != null
+
+                        Label {
+                            anchors {
+                                left: parent.left
+                                top: parent.top
+                                margins: 3
+                            }
+                            text: tool_combo.currentText
+                        }
                     }
 
                     MouseArea {
                         id: hover_ma
+                        enabled: tool_combo.currentValue != LoopContentWidget.Tool.None
                         anchors.fill: parent
-                        hoverEnabled: true
+                        hoverEnabled: enabled
+                        cursorShape: enabled ? Qt.PointingHandCursor : null
+
+                        onMouseXChanged: if(containsMouse &&
+                                            tool_combo.is_for_all_channels) {
+                            channel_mapper.maybe_cursor_display_x = mouseX
+                        }
                     }
                 }
             }
