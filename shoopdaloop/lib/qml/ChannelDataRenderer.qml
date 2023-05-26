@@ -26,7 +26,7 @@ Item {
     }
 
     function map_sample_to_pixel(s) {
-        return Math.round((s - samples_offset) * samples_per_pixel);
+        return Math.round((s - samples_offset) / samples_per_pixel);
     }
 
     // Render audio
@@ -41,38 +41,7 @@ Item {
             border.color: 'grey'
             border.width: 1
 
-            Repeater {
-                id: major_grid_lines_repeater
-                anchors.fill: parent
-
-                property var at_pixels: {
-                    if (root.major_grid_lines_interval <= 0) { return [] }
-
-                    root.samples_offset;    // explicit dependency
-                    root.samples_per_pixel; // explicit dependency
-                    var rval = []
-                    var s = 0;
-                    while (map_sample_to_pixel(s) >= 0) { s -= root.major_grid_lines_interval }
-                    s += root.major_grid_lines_interval;
-                    for(; map_sample_to_pixel(s) < width; s += root.major_grid_lines_interval) {
-                        rval.push(map_sample_to_pixel(s))
-                    }
-
-                    console.log(rval)
-                    return rval
-                }
-
-                model: at_pixels.length
-
-                Rectangle {
-                    color: 'grey'
-                    width: 1
-                    height: parent.height
-                    x: parent.at_pixels ? parent.at_pixels[index] : 0
-                }
-            }
-
-            Repeater {
+            Mapper {
                 id: minor_grid_lines_repeater
                 anchors.fill: parent
 
@@ -81,25 +50,62 @@ Item {
 
                     root.samples_offset;    // explicit dependency
                     root.samples_per_pixel; // explicit dependency
+
                     var rval = []
-                    var s = 0;
+                    var s = root.channel.start_offset;
                     while (map_sample_to_pixel(s) >= 0) { s -= root.minor_grid_lines_interval }
-                    s += root.major_grid_lines_interval;
+                    s += root.minor_grid_lines_interval;
                     for(; map_sample_to_pixel(s) < width; s += root.minor_grid_lines_interval) {
                         rval.push(map_sample_to_pixel(s))
                     }
 
-                    console.log(rval)
                     return rval
                 }
 
-                model: at_pixels.length
+                model: at_pixels
 
                 Rectangle {
+                    property var mapped_item
+                    property int index
+
+                    color: 'grey'
+                    width: 1
+                    height: root.height
+                    x: mapped_item ? mapped_item : 0
+                }
+            }
+
+            Mapper {
+                id: major_grid_lines_repeater
+                anchors.fill: parent
+
+                property var at_pixels: {
+                    if (root.major_grid_lines_interval <= 0) { return [] }
+
+                    root.samples_offset;    // explicit dependency
+                    root.samples_per_pixel; // explicit dependency
+
+                    var rval = []
+                    var s = root.channel.start_offset;
+                    while (map_sample_to_pixel(s) >= 0) { s -= root.major_grid_lines_interval }
+                    s += root.major_grid_lines_interval;
+                    for(; map_sample_to_pixel(s) < width; s += root.major_grid_lines_interval) {
+                        rval.push(map_sample_to_pixel(s))
+                    }
+
+                    return rval
+                }
+
+                model: at_pixels
+
+                Rectangle {
+                    property var mapped_item
+                    property int index
+
                     color: 'white'
                     width: 1
-                    height: parent.height
-                    x: parent.at_pixels ? parent.at_pixels[index] : 0
+                    height: root.height
+                    x: mapped_item ? mapped_item : 0
                 }
             }
         }
