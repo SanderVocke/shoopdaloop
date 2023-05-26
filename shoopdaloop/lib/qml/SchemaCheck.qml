@@ -15,7 +15,7 @@ QtObject {
             schema_validator.validate_schema(descriptor, schema)
         } catch(err) {
             console.log("Failed session schema validation for object of type ", schema, ":\n",
-                        "\nobject:\n", descriptor, "\nerror:\n", err.message)
+                        "\nobject:\n", JSON.stringify(descriptor, 0, 2), "\nerror:\n", err.message)
         }
     }
 }
