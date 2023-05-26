@@ -243,9 +243,9 @@ Item {
                         samples_offset + maybe_cursor_display_x * samples_per_pixel :
                         null
                     
-                    major_grid_lines_interval: minor_grid_divider.currentValue ? root.master_loop.length : undefined
-                    minor_grid_lines_interval: minor_grid_divider.currentValue && minor_grid_divider > 1 ?
-                                                major_grid_lines_interval / minor_grid_divider.currentValue : undefined
+                    major_grid_lines_interval: minor_grid_divider.currentValue != undefined ? root.master_loop.length : -1
+                    minor_grid_lines_interval: minor_grid_divider.currentValue && minor_grid_divider.currentValue > 1 ?
+                                                major_grid_lines_interval / minor_grid_divider.currentValue : -1
 
                     Rectangle {
                         width: 1

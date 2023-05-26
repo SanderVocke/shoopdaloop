@@ -43,15 +43,23 @@ Item {
 
             Repeater {
                 id: major_grid_lines_repeater
-                property list<int> at_pixels: {
-                    // root.samples_offset;    // explicit dependency
-                    // root.samples_per_pixel; // explicit dependency
+                anchors.fill: parent
+
+                property var at_pixels: {
+                    if (root.major_grid_lines_interval <= 0) { return [] }
+
+                    root.samples_offset;    // explicit dependency
+                    root.samples_per_pixel; // explicit dependency
                     var rval = []
                     var s = 0;
                     while (map_sample_to_pixel(s) >= 0) { s -= root.major_grid_lines_interval }
-                    for(; map_sample_to_pixel(s) >= 0 && map_sample_to_pixel(s) < width; s += root.major_grid_lines_interval) {
+                    s += root.major_grid_lines_interval;
+                    for(; map_sample_to_pixel(s) < width; s += root.major_grid_lines_interval) {
                         rval.push(map_sample_to_pixel(s))
                     }
+
+                    console.log(rval)
+                    return rval
                 }
 
                 model: at_pixels.length
@@ -60,21 +68,29 @@ Item {
                     color: 'grey'
                     width: 1
                     height: parent.height
-                    x: at_pixels[index]
+                    x: parent.at_pixels ? parent.at_pixels[index] : 0
                 }
             }
 
             Repeater {
                 id: minor_grid_lines_repeater
-                property list<int> at_pixels: {
-                    // root.samples_offset;    // explicit dependency
-                    // root.samples_per_pixel; // explicit dependency
+                anchors.fill: parent
+
+                property var at_pixels: {
+                    if (root.minor_grid_lines_interval <= 0) { return [] }
+
+                    root.samples_offset;    // explicit dependency
+                    root.samples_per_pixel; // explicit dependency
                     var rval = []
                     var s = 0;
                     while (map_sample_to_pixel(s) >= 0) { s -= root.minor_grid_lines_interval }
-                    for(; map_sample_to_pixel(s) >= 0 && map_sample_to_pixel(s) < width; s += root.minor_grid_lines_interval) {
+                    s += root.major_grid_lines_interval;
+                    for(; map_sample_to_pixel(s) < width; s += root.minor_grid_lines_interval) {
                         rval.push(map_sample_to_pixel(s))
                     }
+
+                    console.log(rval)
+                    return rval
                 }
 
                 model: at_pixels.length
@@ -83,7 +99,7 @@ Item {
                     color: 'white'
                     width: 1
                     height: parent.height
-                    x: at_pixels[index]
+                    x: parent.at_pixels ? parent.at_pixels[index] : 0
                 }
             }
         }
