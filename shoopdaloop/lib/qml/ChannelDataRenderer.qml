@@ -44,6 +44,8 @@ Item {
             Repeater {
                 id: major_grid_lines_repeater
                 property list<int> at_pixels: {
+                    // root.samples_offset;    // explicit dependency
+                    // root.samples_per_pixel; // explicit dependency
                     var rval = []
                     var s = 0;
                     while (map_sample_to_pixel(s) >= 0) { s -= root.major_grid_lines_interval }
@@ -65,6 +67,8 @@ Item {
             Repeater {
                 id: minor_grid_lines_repeater
                 property list<int> at_pixels: {
+                    // root.samples_offset;    // explicit dependency
+                    // root.samples_per_pixel; // explicit dependency
                     var rval = []
                     var s = 0;
                     while (map_sample_to_pixel(s) >= 0) { s -= root.minor_grid_lines_interval }
