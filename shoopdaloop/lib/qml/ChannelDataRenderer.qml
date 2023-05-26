@@ -15,6 +15,8 @@ Item {
     property int loop_length: 0
     readonly property int n_samples_shown: width * samples_per_pixel
     readonly property int n_samples: fetcher.channel_data ? fetcher.channel_data.length : 0
+    property real major_grid_lines_interval
+    property real minor_grid_lines_interval
     
     // Will repeatedly fetch channel data when changed.
     FetchChannelData {
@@ -23,10 +25,65 @@ Item {
         active: true
     }
 
+    function map_sample_to_pixel(s) {
+        return Math.round((s - samples_offset) * samples_per_pixel);
+    }
+
     // Render audio
     Loader {
         active: root.channel.descriptor.type == 'audio'
 
+        Rectangle {
+            id: background_rect
+            width: root.width
+            height: root.height
+            color: 'black'
+            border.color: 'grey'
+            border.width: 1
+
+            Repeater {
+                id: major_grid_lines_repeater
+                property list<int> at_pixels: {
+                    var rval = []
+                    var s = 0;
+                    while (map_sample_to_pixel(s) >= 0) { s -= root.major_grid_lines_interval }
+                    for(; map_sample_to_pixel(s) >= 0 && map_sample_to_pixel(s) < width; s += root.major_grid_lines_interval) {
+                        rval.push(map_sample_to_pixel(s))
+                    }
+                }
+
+                model: at_pixels.length
+
+                Rectangle {
+                    color: 'grey'
+                    width: 1
+                    height: parent.height
+                    x: at_pixels[index]
+                }
+            }
+
+            Repeater {
+                id: minor_grid_lines_repeater
+                property list<int> at_pixels: {
+                    var rval = []
+                    var s = 0;
+                    while (map_sample_to_pixel(s) >= 0) { s -= root.minor_grid_lines_interval }
+                    for(; map_sample_to_pixel(s) >= 0 && map_sample_to_pixel(s) < width; s += root.minor_grid_lines_interval) {
+                        rval.push(map_sample_to_pixel(s))
+                    }
+                }
+
+                model: at_pixels.length
+
+                Rectangle {
+                    color: 'white'
+                    width: 1
+                    height: parent.height
+                    x: at_pixels[index]
+                }
+            }
+        }
+        
         RenderAudioWaveform {
             id: render
             input_data: fetcher.channel_data ? fetcher.channel_data : []

@@ -42,10 +42,7 @@ void RenderAudioWaveform::paint(QPainter *painter) {
         }
     }
 
-    // Background
-    painter->fillRect(0, 0, width(), height(), QColor("black"));
-
-    // Foreground
+    // Draw the waveform
     if (draw_lines) {
         painter->setPen(QPen("red"));
         painter->drawLines(m_render_lines.data(), m_render_lines.size());

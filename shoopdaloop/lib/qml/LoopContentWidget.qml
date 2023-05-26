@@ -99,7 +99,7 @@ Item {
             anchors.verticalCenter: zoom_slider.verticalCenter
             textRole: "text"
             valueRole: "value"
-            width: 120
+            width: 160
 
             model: [
                 { value: LoopContentWidget.Tool.None, text: "none", all: false },
@@ -123,11 +123,12 @@ Item {
             anchors.verticalCenter: zoom_slider.verticalCenter
             textRole: "text"
             valueRole: "value"
-            currentIndex : 5
+            currentIndex : 6
             width: 120
 
             model: [
                 { value: undefined, text: "None" },
+                { value: 1, text: "Master" },
                 { value: 2, text: "Master / 2" },
                 { value: 3, text: "Master / 3" },
                 { value: 4, text: "Master / 4" },
@@ -241,6 +242,10 @@ Item {
                     property var maybe_cursor_sample_idx: maybe_cursor_display_x ?
                         samples_offset + maybe_cursor_display_x * samples_per_pixel :
                         null
+                    
+                    major_grid_lines_interval: minor_grid_divider.currentValue ? root.master_loop.length : undefined
+                    minor_grid_lines_interval: minor_grid_divider.currentValue && minor_grid_divider > 1 ?
+                                                major_grid_lines_interval / minor_grid_divider.currentValue : undefined
 
                     Rectangle {
                         width: 1
