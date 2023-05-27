@@ -17,6 +17,18 @@ Item {
     readonly property int n_samples: fetcher.channel_data ? fetcher.channel_data.length : 0
     property real major_grid_lines_interval
     property real minor_grid_lines_interval
+
+    function snap_sample_to_grid(sample_idx) {
+        var interval = minor_grid_lines_interval ? minor_grid_lines_interval : major_grid_lines_interval
+        if (interval != undefined) {
+            var steps_from_start = Math.round((sample_idx - channel.start_offset) / interval)
+            return channel.start_offset + steps_from_start * interval
+        }
+    }
+
+    function snap_visual_to_grid(x) {
+        return map_sample_to_pixel(snap_sample_to_grid(map_pixel_to_sample(x)))
+    }
     
     // Will repeatedly fetch channel data when changed.
     FetchChannelData {
@@ -27,6 +39,10 @@ Item {
 
     function map_sample_to_pixel(s) {
         return Math.round((s - samples_offset) / samples_per_pixel);
+    }
+
+    function map_pixel_to_sample(p) {
+        return Math.round(p * samples_per_pixel + samples_offset)
     }
 
     // Render audio

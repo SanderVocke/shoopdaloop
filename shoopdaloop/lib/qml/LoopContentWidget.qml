@@ -137,6 +137,11 @@ Item {
                 { value: 16, text: "Master / 16" },
             ]
         }
+
+        Switch {
+            id: snap_switch
+            text: "Snap to grid:"
+        }
     }
 
     Row {
@@ -235,8 +240,14 @@ Item {
                     loop_length: root.loop.length
 
                     property var maybe_cursor_display_x: {
-                        if (hover_ma.containsMouse) { return hover_ma.mouseX; }
-                        return channel_mapper.maybe_cursor_display_x
+                        var r = hover_ma.containsMouse ? hover_ma.mouseX : channel_mapper.maybe_cursor_display_x
+
+                        if (r != undefined && r != null && snap_switch.checked) {
+                            // Snap to grid
+                            r = snap_visual_to_grid(r)                     
+                        }
+
+                        return r
                     }
 
                     property var maybe_cursor_sample_idx: maybe_cursor_display_x ?
