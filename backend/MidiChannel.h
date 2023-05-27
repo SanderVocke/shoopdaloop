@@ -200,11 +200,11 @@ public:
             if (t >= record_end) {
                 break;
             }
-            if (t < recbuf.n_frames_processed) { // May need to skip messages
+            if (t >= recbuf.n_frames_processed) { // May need to skip messages
                 mp_storage->append(our_length + (TimeType) t, (SizeType) s, d);
-                recbuf.n_events_processed++;
                 changed = true;
             }
+            recbuf.n_events_processed++;
         }
         
         PROC_set_length(ma_data_length + n_samples);

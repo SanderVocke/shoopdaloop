@@ -515,7 +515,7 @@ public:
             // We have something to play.
             size_t buf_space = mp_buffers.buf_space_for_sample(data_position);
             SampleT *from = &mp_buffers.at(data_position);
-            SampleT* &to = mp_playback_target_buffer;
+            SampleT* &to = playback_buffer;
             auto n = std::min({buf_space, n_samples});
             auto rest = n_samples - n;
 
@@ -523,12 +523,15 @@ public:
                 PROC_queue_additivecpy(to, from, n, ma_volume, true);
             }
 
-            playback_buffer += n;
-            playback_buffer_size -= n;
-
             // If we didn't play back all yet, go to next buffer and continue
             if(rest > 0) {
-                PROC_process_playback(data_position + n, length, rest, muted, playback_buffer, playback_buffer_size);
+                PROC_process_playback(data_position + n,
+                                      length,
+                                      rest,
+                                      muted,
+                                      playback_buffer + n,
+                                      playback_buffer_size - n
+                                      );
             }
         }
     }
