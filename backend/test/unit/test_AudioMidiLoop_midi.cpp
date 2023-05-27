@@ -6,6 +6,7 @@
 #include "MidiChannel.h"
 #include "helpers.h"
 #include "types.h"
+#include "process_loops.h"
 
 using namespace boost::ut;
 using namespace std::chrono_literals;
@@ -352,5 +353,70 @@ suite AudioMidiLoop_midi_tests = []() {
         sync_source->PROC_process(60);
         loop.PROC_update_poi();
         expect(eq(loop.PROC_predicted_next_trigger_eta().value_or(999), 40));
+    };
+
+    "ml_5_preplay"_test = []() {
+        auto loop_ptr = std::make_shared<AudioMidiLoop>();
+        auto &loop = *loop_ptr;
+        auto sync_source = std::make_shared<AudioMidiLoop>();
+
+        auto process = [&](size_t n_samples) {
+            process_loops<AudioMidiLoop>({loop_ptr, sync_source}, n_samples);
+        };
+
+        sync_source->set_length(100);
+        sync_source->plan_transition(Playing);
+        expect(eq(sync_source->PROC_predicted_next_trigger_eta().value_or(999), 100));
+
+        loop.set_sync_source(sync_source); // Needed because otherwise will immediately transition
+        loop.PROC_update_poi();
+        loop.PROC_update_trigger_eta();
+        expect(eq(loop.PROC_predicted_next_trigger_eta().value_or(999), 100));
+
+        loop.add_midi_channel<uint32_t, uint16_t>(512, Direct, false);
+        auto &chan = *loop.midi_channel<uint32_t, uint16_t>(0);
+
+        using Message = MidiChannel<uint32_t, uint16_t>::Message;
+        std::vector<Message> data;
+        for(size_t idx=0; idx<256; idx++) { data.push_back(Message{(unsigned)idx, 1, { (unsigned char)idx }}); }
+
+        chan.set_contents(data, 256);
+        chan.set_start_offset(110);
+        chan.set_pre_play_samples(90);
+        loop.set_length(128);
+
+        auto play_buf = MidiTestBuffer();
+        loop.plan_transition(Playing);
+        chan.PROC_set_playback_buffer(&play_buf, 256);
+
+        // Pre-play part
+        process(99);
+
+        expect(eq(sync_source->get_mode(), Playing));
+        expect(eq(loop.get_mode(), Stopped));
+
+        process(1);
+
+        sync_source->PROC_handle_poi();
+        loop.PROC_handle_sync();
+        expect(eq(sync_source->get_mode(), Playing));
+        expect(eq(loop.get_mode(), Playing));
+
+        // Play part
+        process(28);
+
+        expect(eq(sync_source->get_mode(), Playing));
+        expect(eq(loop.get_mode(), Playing));
+
+        // Process the channels' queued operations
+        chan.PROC_finalize_process();
+
+        // We expect the first 10 messages to be skipped, playback
+        // starting immediately from msg 10.
+        auto msgs = play_buf.written;
+        expect(eq(msgs.size(), 118));
+        for (size_t p=0; p<118; p++) {
+            check_msgs_equal(msgs.at(p), data.at(p + 10));
+        }
     };
 };
