@@ -44,8 +44,8 @@ private:
     // Members which may be accessed from the process thread only (mp prefix)
     Buffers mp_buffers; // Buffers holding main audio data
     std::atomic<size_t> ma_buffers_data_length;
-    Buffers mp_secondary_buffers; // For temporarily holding pre-recorded data before fully entering record mode
-    std::atomic<size_t> ma_secondary_buffers_data_length;
+    Buffers mp_prerecord_buffers; // For temporarily holding pre-recorded data before fully entering record mode
+    std::atomic<size_t> mp_prerecord_buffers_data_length;
 
     SampleT *mp_playback_target_buffer;
     size_t   mp_playback_target_buffer_size;
@@ -163,7 +163,7 @@ public:
         WithCommandQueue<10, 1000, 1000>(),
         ma_buffer_pool(buffer_pool),
         ma_buffers_data_length(0),
-        ma_secondary_buffers_data_length(0),
+        mp_prerecord_buffers_data_length(0),
         ma_buffer_size(buffer_pool->object_size()),
         mp_recording_source_buffer(nullptr),
         mp_playback_target_buffer(nullptr),
@@ -176,7 +176,7 @@ public:
         ma_data_seq_nr(0),
         ma_pre_play_samples(0),
         mp_buffers(buffer_pool, initial_max_buffers),
-        mp_secondary_buffers(buffer_pool, initial_max_buffers),
+        mp_prerecord_buffers(buffer_pool, initial_max_buffers),
         mp_prev_process_flags(0),
         ma_last_played_back_sample(-1)
     {}
@@ -197,10 +197,10 @@ public:
         }
         ma_buffer_pool = other.ma_buffer_pool;
         ma_buffers_data_length = other.ma_buffers_data_length.load();
-        ma_secondary_buffers_data_length = other.ma_secondary_buffers_data_length.load();
+        mp_prerecord_buffers_data_length = other.mp_prerecord_buffers_data_length.load();
         ma_start_offset = other.ma_start_offset.load();
         mp_buffers = other.mp_buffers;
-        mp_secondary_buffers = other.mp_secondary_buffers;
+        mp_prerecord_buffers = other.mp_prerecord_buffers;
         mp_playback_target_buffer = other.mp_playback_target_buffer;
         mp_playback_target_buffer_size = other.mp_playback_target_buffer_size;
         mp_recording_source_buffer = other.mp_recording_source_buffer;
@@ -252,11 +252,11 @@ public:
             // make our pre-recorded buffers into our main buffers.
             // Otherwise, just discard them.
             if (process_flags & ChannelRecord) {
-                mp_buffers = mp_secondary_buffers;
-                ma_buffers_data_length = ma_start_offset = ma_secondary_buffers_data_length.load();
+                mp_buffers = mp_prerecord_buffers;
+                ma_buffers_data_length = ma_start_offset = mp_prerecord_buffers_data_length.load();
             }
-            mp_secondary_buffers.reset();
-            ma_secondary_buffers_data_length = 0;
+            mp_prerecord_buffers.reset();
+            mp_prerecord_buffers_data_length = 0;
         }
 
         if (process_flags & ChannelPlayback) {
@@ -272,7 +272,7 @@ public:
             PROC_process_replace(process_params.position, length_before, n_samples, mp_recording_source_buffer, mp_recording_source_buffer_size);
         }
         if (process_flags & ChannelPreRecord) {
-            PROC_process_record(n_samples, ma_secondary_buffers_data_length, mp_secondary_buffers, ma_secondary_buffers_data_length, mp_recording_source_buffer, mp_recording_source_buffer_size);
+            PROC_process_record(n_samples, mp_prerecord_buffers_data_length, mp_prerecord_buffers, mp_prerecord_buffers_data_length, mp_recording_source_buffer, mp_recording_source_buffer_size);
         }
 
         mp_prev_process_flags = process_flags;
@@ -356,7 +356,7 @@ public:
         auto cmd = [=]() {
             mp_buffers = buffers;
             ma_buffers_data_length = len;
-            ma_secondary_buffers_data_length = 0;
+            mp_prerecord_buffers_data_length = 0;
             ma_start_offset = 0;
             data_changed();
         };

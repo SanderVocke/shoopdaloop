@@ -44,10 +44,11 @@ private:
     std::optional<ExternalBuf<MidiWriteableBufferInterface*>> mp_playback_target_buffer;
     std::optional<ExternalBuf<MidiReadableBufferInterface *>> mp_recording_source_buffer;
     std::shared_ptr<Storage>       mp_storage;
+    std::shared_ptr<Storage>       mp_prerecord_storage;
     std::shared_ptr<StorageCursor> mp_playback_cursor;
     std::unique_ptr<MidiNotesState> mp_output_notes_state;
-    channel_process_params mp_prev_process_params;
     size_t mp_prev_pos_after;
+    unsigned mp_prev_process_flags;
 
     // Any thread access
     std::atomic<channel_mode_t> ma_mode;
@@ -56,6 +57,7 @@ private:
     std::atomic<size_t> ma_n_events_triggered;
     std::atomic<unsigned> ma_data_seq_nr;
     std::atomic<size_t> ma_pre_play_samples;
+    std::atomic<int> ma_last_played_back_sample;
 
     const Message all_sound_off_message_channel_0 = Message(0, 3, {0xB0, 120, 0});
 
@@ -73,7 +75,9 @@ public:
         ma_start_offset(0),
         ma_data_seq_nr(0),
         ma_pre_play_samples(0),
-        mp_prev_pos_after(0)
+        mp_prev_pos_after(0),
+        mp_prev_process_flags(0),
+        ma_last_played_back_sample(0)
     {
         mp_playback_cursor = mp_storage->create_cursor();
     }
@@ -89,6 +93,7 @@ public:
         mp_output_notes_state = other.mp_output_notes_state;
         ma_start_offset = other.ma_start_offset.load();
         ma_data_length = other.ma_data_length.load();
+        mp_prev_process_flags = other.mp_prev_process_flags;
         data_changed();
         return *this;
     }
@@ -138,27 +143,47 @@ public:
             ma_start_offset,
             ma_mode
         );
+        auto const& process_flags = process_params.process_flags;
 
         // If we were playing back and anything other than forward playback is happening
         // (e.g. mode switch, position set, ...), send an All Sound Off.
         // Also reset the playback cursor in that case.
-        if ((mp_prev_process_params.process_flags & ChannelPlayback) && (
-            (!process_params.process_flags & ChannelPlayback) ||
+        if ((process_flags & ChannelPlayback) && (
+            (!process_flags & ChannelPlayback) ||
             pos_before != mp_prev_pos_after
         )) {
             PROC_send_all_sound_off();
             mp_playback_cursor->reset();
         }
 
-        if (process_params.process_flags & ChannelPlayback) {
-            PROC_process_playback(process_params.position, length_before, n_samples, false);
+        if (!(process_flags & ChannelPreRecord) &&
+             (mp_prev_process_flags & ChannelPreRecord))
+        {
+            // Ending pre-record. If transitioning to recording,
+            // make our pre-recorded buffers into our main buffers.
+            // Otherwise, just discard them.
+            if (process_flags & ChannelRecord) {
+                mp_storage = mp_prerecord_storage;
+            }
+            mp_prerecord_storage.reset();
         }
-        if (process_params.process_flags & ChannelRecord) {
+
+        if (process_flags & ChannelPlayback) {
+            ma_last_played_back_sample = process_params.position;
+            PROC_process_playback(process_params.position, length_before, n_samples, false);
+        } else {
+            ma_last_played_back_sample = -1;
+        }
+        if (process_flags & ChannelRecord) {
             PROC_process_record(length_before, n_samples);
+        }
+        if (process_flags & ChannelPreRecord) {
+            PROC_process_record(...)
         }
 
         mp_prev_pos_after = pos_after;
-        mp_prev_process_params = process_params;
+        mp_prev_process_flags = process_flags;
+
 
         // Update recording/playback buffers.
         if(mp_recording_source_buffer.has_value()) {
