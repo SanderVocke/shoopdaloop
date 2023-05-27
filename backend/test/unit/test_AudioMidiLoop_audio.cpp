@@ -686,6 +686,7 @@ suite AudioMidiLoop_audio_tests = []() {
 
         loop.set_sync_source(sync_source); // Needed because otherwise will immediately transition
         loop.PROC_update_poi();
+        loop.PROC_update_trigger_eta();
         expect(eq(loop.PROC_predicted_next_trigger_eta().value_or(999), 100));
 
         loop.add_audio_channel<int>(pool, 10, Direct, false);
@@ -715,6 +716,7 @@ suite AudioMidiLoop_audio_tests = []() {
 
         loop.PROC_trigger();
         loop.PROC_update_poi();
+        loop.PROC_update_trigger_eta();
         loop.PROC_process(20);
         for (auto &c: channels) { c->PROC_finalize_process(); }
 
@@ -738,6 +740,7 @@ suite AudioMidiLoop_audio_tests = []() {
 
         sync_source->PROC_process(60);
         loop.PROC_update_poi();
+        loop.PROC_update_trigger_eta();
         expect(eq(loop.PROC_predicted_next_trigger_eta().value_or(999), 40));
     };
 
@@ -757,6 +760,7 @@ suite AudioMidiLoop_audio_tests = []() {
 
         loop.set_sync_source(sync_source); // Needed because otherwise will immediately transition
         loop.PROC_update_poi();
+        loop.PROC_update_trigger_eta();
         expect(eq(loop.PROC_predicted_next_trigger_eta().value_or(999), 100));
 
         loop.add_audio_channel<int>(pool, 10, Direct, false);

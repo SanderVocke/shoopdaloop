@@ -289,4 +289,67 @@ suite AudioMidiLoop_midi_tests = []() {
         check_msgs_equal(msgs.at(0), contents.at(0));
         check_msgs_equal(msgs.at(1), contents.at(1));
     };
+
+    "ml_4_prerecord"_test = []() {
+        AudioMidiLoop loop;
+        auto sync_source = std::make_shared<AudioMidiLoop>();
+        sync_source->set_length(100);
+        sync_source->plan_transition(Playing);
+        expect(eq(sync_source->PROC_predicted_next_trigger_eta().value_or(999), 100));
+
+        loop.set_sync_source(sync_source); // Needed because otherwise will immediately transition
+        loop.PROC_update_poi();
+        expect(eq(loop.PROC_predicted_next_trigger_eta().value_or(999), 100));
+
+        loop.add_midi_channel<uint32_t, uint16_t>(512, Direct, false);
+        auto &chan = *loop.midi_channel<uint32_t, uint16_t>(0);
+
+        auto source_buf = MidiTestBuffer();
+        source_buf.read.push_back(Msg(1 , 3, { 0x01, 0x02, 0x03 }));
+        source_buf.read.push_back(Msg(10, 2, { 0x01, 0x02 }));
+        source_buf.read.push_back(Msg(21, 1,  { 0x01 }));
+        source_buf.read.push_back(Msg(39, 1,  { 0x02 }));
+
+        loop.plan_transition(Recording); // Not triggered yet
+        chan.PROC_set_recording_buffer(&source_buf, 256);
+        loop.PROC_update_poi();
+
+        expect(eq(loop.get_mode(), Stopped));
+        expect(eq(loop.PROC_get_next_poi().value_or(999), 512)) << loop.PROC_get_next_poi().value_or(0); // end of buffer
+        expect(eq(loop.get_length(), 0));
+        expect(eq(loop.get_position(), 0));
+
+        loop.PROC_process(20);
+        chan.PROC_finalize_process();
+
+        // By now, we are still stopped but the channels should have pre-recorded since recording is planned.
+        expect(eq(loop.get_mode(), Stopped));
+        expect(eq(loop.PROC_get_next_poi().value_or(999), 492)) << loop.PROC_get_next_poi().value_or(0); // end of buffer
+        expect(eq(loop.get_length(), 0));
+        expect(eq(loop.get_position(), 0));
+
+        loop.PROC_trigger();
+        loop.PROC_update_poi();
+        loop.PROC_process(20);
+        chan.PROC_finalize_process();
+
+        expect(eq(loop.get_mode(), Recording));
+        expect(eq(loop.PROC_get_next_poi().value_or(999), 472)); // end of buffer
+        expect(eq(loop.get_length(), 20));
+        expect(eq(loop.get_position(), 0));
+        expect(eq(loop.PROC_predicted_next_trigger_eta().value_or(999), 80));
+
+        // Due to prerecord, should have captured all the messages.
+        auto msgs = chan.retrieve_contents(false);
+        expect(eq(msgs.size(), 4));
+        expect(eq(chan.get_start_offset(), 20));
+        check_msgs_equal(msgs.at(0), source_buf.read.at(0));
+        check_msgs_equal(msgs.at(1), source_buf.read.at(1));
+        check_msgs_equal(msgs.at(2), source_buf.read.at(2));
+        check_msgs_equal(msgs.at(3), source_buf.read.at(3));
+
+        sync_source->PROC_process(60);
+        loop.PROC_update_poi();
+        expect(eq(loop.PROC_predicted_next_trigger_eta().value_or(999), 40));
+    };
 };

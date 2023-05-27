@@ -150,7 +150,10 @@ public:
             changed = true;
         }
 
-        if (changed) { PROC_update_poi(); }
+        if (changed) {
+            PROC_update_poi();
+            PROC_update_trigger_eta();
+        }
     }
 
     bool PROC_is_triggering_now() override {
@@ -227,7 +230,6 @@ public:
             mp_next_trigger = (size_t)(std::max(0, (int)mp_next_trigger.value() - (int)n_samples));
             if (mp_next_trigger.value() == 0) { mp_next_trigger = std::nullopt; }
         }
-        PROC_update_trigger_eta();
         PROC_handle_poi();
     }
 
@@ -305,6 +307,7 @@ public:
                 }
             mp_next_poi = std::nullopt;
             PROC_update_poi();
+            PROC_update_trigger_eta();
         }
     }
 
@@ -407,6 +410,7 @@ public:
                 mp_next_trigger = std::nullopt;
                 ma_position = position;
                 PROC_update_poi();
+                PROC_update_trigger_eta();
             }
         };
         if (thread_safe) { exec_process_thread_command(fn); }
@@ -443,6 +447,7 @@ public:
                 mp_next_poi = std::nullopt;
                 mp_next_trigger = std::nullopt;
                 PROC_update_poi();
+                PROC_update_trigger_eta();
             }
         };
         if (thread_safe) { exec_process_thread_command(fn); }
