@@ -818,7 +818,7 @@ suite AudioMidiLoop_audio_tests = []() {
                         buf[p],
                         p < 10  ? 0 : // First 10 samples: nothing because we are before the pre_play_samples param
                         p + 10 // Rest: pre-played and normally played samples
-                    )) << " @ position " << p;
+                    )) << " @ position " << p << ", channel mode " << chan_mode;
                 } else {
                     expect(eq(buf[p], 0)); // Dry won't play back at all
                 }

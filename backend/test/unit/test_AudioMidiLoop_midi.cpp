@@ -299,6 +299,7 @@ suite AudioMidiLoop_midi_tests = []() {
 
         loop.set_sync_source(sync_source); // Needed because otherwise will immediately transition
         loop.PROC_update_poi();
+        loop.PROC_update_trigger_eta();
         expect(eq(loop.PROC_predicted_next_trigger_eta().value_or(999), 100));
 
         loop.add_midi_channel<uint32_t, uint16_t>(512, Direct, false);
@@ -311,11 +312,11 @@ suite AudioMidiLoop_midi_tests = []() {
         source_buf.read.push_back(Msg(39, 1,  { 0x02 }));
 
         loop.plan_transition(Recording); // Not triggered yet
-        chan.PROC_set_recording_buffer(&source_buf, 256);
+        chan.PROC_set_recording_buffer(&source_buf, 512);
         loop.PROC_update_poi();
 
         expect(eq(loop.get_mode(), Stopped));
-        expect(eq(loop.PROC_get_next_poi().value_or(999), 512)) << loop.PROC_get_next_poi().value_or(0); // end of buffer
+        expect(eq(loop.PROC_get_next_poi().value_or(999), 512)); // end of buffer
         expect(eq(loop.get_length(), 0));
         expect(eq(loop.get_position(), 0));
 
@@ -324,7 +325,7 @@ suite AudioMidiLoop_midi_tests = []() {
 
         // By now, we are still stopped but the channels should have pre-recorded since recording is planned.
         expect(eq(loop.get_mode(), Stopped));
-        expect(eq(loop.PROC_get_next_poi().value_or(999), 492)) << loop.PROC_get_next_poi().value_or(0); // end of buffer
+        expect(eq(loop.PROC_get_next_poi().value_or(999), 492)); // end of buffer
         expect(eq(loop.get_length(), 0));
         expect(eq(loop.get_position(), 0));
 

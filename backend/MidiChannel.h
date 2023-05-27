@@ -159,11 +159,20 @@ public:
 
         mp_prev_pos_after = pos_after;
         mp_prev_process_params = process_params;
+
+        // Update recording/playback buffers.
+        if(mp_recording_source_buffer.has_value()) {
+            mp_recording_source_buffer->n_frames_processed += n_samples;
+        }
+        if(mp_playback_target_buffer.has_value()) {
+            mp_playback_target_buffer->n_frames_processed += n_samples;
+        }
     }
 
     void PROC_finalize_process() override {}
 
-    void PROC_process_record(size_t our_length, size_t n_samples) {
+    void PROC_process_record(size_t our_length,
+                             size_t n_samples) {
         if (!mp_recording_source_buffer.has_value()) {
             throw std::runtime_error("Recording without source buffer");
         }
@@ -191,12 +200,13 @@ public:
             if (t >= record_end) {
                 break;
             }
-            mp_storage->append(our_length + (TimeType) t, (SizeType) s, d);
-            recbuf.n_events_processed++;
-            changed = true;
+            if (t < recbuf.n_frames_processed) { // May need to skip messages
+                mp_storage->append(our_length + (TimeType) t, (SizeType) s, d);
+                recbuf.n_events_processed++;
+                changed = true;
+            }
         }
         
-        recbuf.n_frames_processed += n_samples;
         PROC_set_length(ma_data_length + n_samples);
         if (changed) { data_changed(); }
     }
@@ -264,8 +274,6 @@ public:
             buf.n_events_processed++;
             mp_playback_cursor->next();
         }
-        
-        buf.n_frames_processed += n_samples;
     }
 
     std::optional<size_t> PROC_get_next_poi(loop_mode_t mode,
@@ -274,15 +282,30 @@ public:
                                                std::optional<size_t> maybe_next_mode_eta,
                                                size_t length,
                                                size_t position) const override {
+        std::optional<size_t> rval = std::nullopt;
+        auto merge_poi = [&rval](size_t poi) {
+            rval = rval.has_value() ? std::min(rval.value(), poi) : poi;
+        };
+
+        auto process_params = get_channel_process_params(
+            mode,
+            maybe_next_mode,
+            maybe_next_mode_delay_cycles,
+            maybe_next_mode_eta,
+            position,
+            ma_start_offset,
+            ma_mode
+        );
+
         if (ma_mode) {
-            if (mode == Playing) {
-                return mp_playback_target_buffer.value().n_frames_total - mp_playback_target_buffer.value().n_frames_processed;
-            } else if (mode == Recording) {
-                return mp_recording_source_buffer.value().n_frames_total - mp_recording_source_buffer.value().n_frames_processed;
+            if (process_params.process_flags & ChannelPlayback) {
+                merge_poi(mp_playback_target_buffer.value().n_frames_total - mp_playback_target_buffer.value().n_frames_processed);
+            }
+            if (process_params.process_flags & (ChannelRecord | ChannelPreRecord)) {
+                merge_poi(mp_recording_source_buffer.value().n_frames_total - mp_recording_source_buffer.value().n_frames_processed);
             }
         }
-
-        return std::nullopt;
+        return rval;
     }
 
     void PROC_set_playback_buffer(MidiWriteableBufferInterface *buffer, size_t n_frames) {

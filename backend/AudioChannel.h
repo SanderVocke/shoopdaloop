@@ -261,21 +261,31 @@ public:
 
         if (process_flags & ChannelPlayback) {
             ma_last_played_back_sample = process_params.position;
-            PROC_process_playback(process_params.position, length_before, n_samples, false);
+            PROC_process_playback(process_params.position, length_before, n_samples, false, mp_playback_target_buffer, mp_playback_target_buffer_size);
         } else {
             ma_last_played_back_sample = -1;
         }
         if (process_flags & ChannelRecord) {
-            PROC_process_record(n_samples, ((int)length_before + ma_start_offset), mp_buffers, ma_buffers_data_length);
+            PROC_process_record(n_samples, ((int)length_before + ma_start_offset), mp_buffers, ma_buffers_data_length, mp_recording_source_buffer, mp_recording_source_buffer_size);
         }
         if (process_flags & ChannelReplace) {
-            PROC_process_replace(process_params.position, length_before, n_samples);
+            PROC_process_replace(process_params.position, length_before, n_samples, mp_recording_source_buffer, mp_recording_source_buffer_size);
         }
         if (process_flags & ChannelPreRecord) {
-            PROC_process_record(n_samples, ma_secondary_buffers_data_length, mp_secondary_buffers, ma_secondary_buffers_data_length);
+            PROC_process_record(n_samples, ma_secondary_buffers_data_length, mp_secondary_buffers, ma_secondary_buffers_data_length, mp_recording_source_buffer, mp_recording_source_buffer_size);
         }
 
         mp_prev_process_flags = process_flags;
+
+        // Update recording/playback buffers.
+        if(mp_recording_source_buffer) {
+            mp_recording_source_buffer += n_samples;
+            mp_recording_source_buffer_size -= n_samples;
+        }
+        if(mp_playback_target_buffer) {
+            mp_playback_target_buffer += n_samples;
+            mp_playback_target_buffer_size -= n_samples;
+        }
     }
 
     void PROC_exec_cmd(ProcessingCommand cmd) {
@@ -385,15 +395,17 @@ public:
         size_t n_samples,
         size_t record_from,
         Buffers &buffers,
-        std::atomic<size_t> &buffers_data_length
+        std::atomic<size_t> &buffers_data_length,
+        SampleT *record_buffer,
+        size_t record_buffer_size
     ) {
-        if (mp_recording_source_buffer_size < n_samples) {
+        if (record_buffer_size < n_samples) {
             throw std::runtime_error("Attempting to record out of bounds of input buffer");
         }
         bool changed = false;
         auto data_length = buffers_data_length.load();
 
-        auto &from = mp_recording_source_buffer;
+        auto &from = record_buffer;
 
         // Find the position in our sequence of buffers (buffer index and index in buffer)
         buffers.ensure_available(record_from + n_samples);
@@ -409,21 +421,24 @@ public:
         PROC_queue_memcpy((void*) ptr, (void*)from, sizeof(SampleT)*n);
         changed = changed || (n > 0);
 
-        mp_recording_source_buffer += n;
-        mp_recording_source_buffer_size -= n;
         buffers_data_length = record_from + n;
 
         // If we reached the end, add another buffer
         // and record the rest.
-        size_t record_from_next = record_from + n;
         if (changed) { data_changed(); }
         if(rest > 0) {
-            PROC_process_record(rest, record_from_next, buffers, buffers_data_length);
+            PROC_process_record(rest,
+                                record_from + n,
+                                buffers,
+                                buffers_data_length,
+                                record_buffer + n,
+                                record_buffer_size - n);
         }
     }
 
-    void PROC_process_replace(size_t position, size_t length, size_t n_samples) {
-        if (mp_recording_source_buffer_size < n_samples) {
+    void PROC_process_replace(size_t position, size_t length, size_t n_samples,
+                              SampleT *record_buffer, size_t record_buffer_size) {
+        if (record_buffer_size < n_samples) {
             throw std::runtime_error("Attempting to replace out of bounds of recording buffer");
         }
         auto data_length = ma_buffers_data_length.load();
@@ -435,9 +450,9 @@ public:
             // skip ahead to the part that is in range
             const int skip = -data_position;
             const int n = (int)n_samples - skip;
-            mp_recording_source_buffer += std::min(skip, (int)mp_recording_source_buffer_size);
-            mp_recording_source_buffer_size = std::max((int)mp_recording_source_buffer_size - skip, 0);
-            return PROC_process_replace(position + skip, length, std::max((int)n_samples - skip, 0));
+            record_buffer += std::min(skip, (int)record_buffer_size);
+            record_buffer_size = std::max((int)record_buffer_size - skip, 0);
+            return PROC_process_replace(position + skip, length, std::max((int)n_samples - skip, 0), record_buffer, record_buffer_size);
         }
 
         if (mp_buffers.ensure_available(data_position + n_samples)) {
@@ -448,7 +463,7 @@ public:
         size_t samples_left = length - position;
         size_t buf_space = mp_buffers.buf_space_for_sample(data_position);
         SampleT* to = &mp_buffers.at(data_position);
-        SampleT* &from = mp_recording_source_buffer;
+        SampleT* &from = record_buffer;
         auto n = std::min({buf_space, samples_left, n_samples});
         auto rest = n_samples - n;
 
@@ -456,13 +471,16 @@ public:
         PROC_queue_memcpy((void*)to, (void*)from, sizeof(SampleT) * n);
         changed = changed || (n>0);
 
-        mp_recording_source_buffer += n;
-        mp_recording_source_buffer_size -= n;
         if (changed) { data_changed(); }
 
         // If we didn't replace all yet, go to next buffer and continue
         if(rest > 0) {
-            PROC_process_replace(position + n, length, rest);
+            PROC_process_replace(
+                position + n,
+                length,
+                rest,
+                record_buffer + n,
+                record_buffer_size - n);
         }
     }
 
@@ -476,8 +494,8 @@ public:
         return mp_buffers[position / ma_buffer_size]->at(position % mp_buffers.front()->size());
     }
 
-    void PROC_process_playback(int data_position, size_t length, size_t n_samples, bool muted) {
-        if (mp_playback_target_buffer_size < n_samples) {
+    void PROC_process_playback(int data_position, size_t length, size_t n_samples, bool muted, SampleT *playback_buffer, size_t playback_buffer_size) {
+        if (playback_buffer_size < n_samples) {
             throw std::runtime_error("Attempting to play out of bounds of target buffer");
         }
 
@@ -489,8 +507,8 @@ public:
         if (skip > 0) {
             data_position += skip;
             n_samples = std::max((int)n_samples - skip, 0);
-            mp_playback_target_buffer += std::min(skip, (int)mp_playback_target_buffer_size);
-            mp_playback_target_buffer_size = std::max((int)mp_playback_target_buffer_size - skip, 0);
+            playback_buffer += std::min(skip, (int)playback_buffer_size);
+            playback_buffer_size = std::max((int)playback_buffer_size - skip, 0);
         }
         
         if (data_position < data_length) {
@@ -505,17 +523,13 @@ public:
                 PROC_queue_additivecpy(to, from, n, ma_volume, true);
             }
 
-            mp_playback_target_buffer += n;
-            mp_playback_target_buffer_size -= n;
+            playback_buffer += n;
+            playback_buffer_size -= n;
 
             // If we didn't play back all yet, go to next buffer and continue
             if(rest > 0) {
-                PROC_process_playback(data_position + n, length, rest, muted);
+                PROC_process_playback(data_position + n, length, rest, muted, playback_buffer, playback_buffer_size);
             }
-        } else {
-            // We have nothing to play. Just leave the output buffer as-is.
-            mp_playback_target_buffer += n_samples;
-            mp_playback_target_buffer_size -= n_samples;
         }
     }
 
