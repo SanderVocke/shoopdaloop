@@ -309,7 +309,7 @@ public:
                 break;
             }
             if (!muted && (int)event->storage_time >= valid_from) {
-                event->proc_time = (int)event->storage_time - _pos;
+                event->proc_time = (int)event->storage_time - _pos + buf.n_frames_processed;
                 PROC_send_message(*buf.buf, *event);
                 ma_n_events_triggered++;
             }

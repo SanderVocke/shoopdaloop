@@ -417,7 +417,7 @@ suite AudioMidiLoop_midi_tests = []() {
         auto msgs = play_buf.written;
         expect(eq(msgs.size(), 118));
 
-        size_t input_msg_idx = 0;
+        size_t input_msg_idx = 10;
         size_t output_msg_idx = 0;
         for (size_t t=0; t<128; t++) {
             if (t < 10) { input_msg_idx++; continue; }
