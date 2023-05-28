@@ -53,6 +53,7 @@ private:
     // Any thread access
     std::atomic<channel_mode_t> ma_mode;
     std::atomic<size_t> ma_data_length; // Length in samples
+    std::atomic<size_t> ma_prerecord_data_length;
     std::atomic<int> ma_start_offset;
     std::atomic<size_t> ma_n_events_triggered;
     std::atomic<unsigned> ma_data_seq_nr;
@@ -67,6 +68,7 @@ public:
         mp_playback_target_buffer(nullptr),
         mp_recording_source_buffer(nullptr),
         mp_storage(std::make_shared<Storage>(data_size)),
+        mp_prerecord_storage(std::make_shared<Storage>(data_size)),
         mp_playback_cursor(nullptr),
         ma_mode(mode),
         ma_data_length(0),
@@ -77,7 +79,8 @@ public:
         ma_pre_play_samples(0),
         mp_prev_pos_after(0),
         mp_prev_process_flags(0),
-        ma_last_played_back_sample(0)
+        ma_last_played_back_sample(0),
+        ma_prerecord_data_length(0)
     {
         mp_playback_cursor = mp_storage->create_cursor();
     }
@@ -94,6 +97,8 @@ public:
         ma_start_offset = other.ma_start_offset.load();
         ma_data_length = other.ma_data_length.load();
         mp_prev_process_flags = other.mp_prev_process_flags;
+        mp_prerecord_storage = other.mp_prerecord_storage;
+        ma_prerecord_data_length = other.ma_prerecord_data_length;
         data_changed();
         return *this;
     }
@@ -103,12 +108,17 @@ public:
     void data_changed() { ma_data_seq_nr++; }
 
     size_t get_length() const override { return ma_data_length; }
-    void PROC_set_length(size_t length) override {
-        if (length != ma_data_length) {
-            mp_storage->truncate(length);
-            ma_data_length = length;
+    
+    void PROC_set_length_impl(Storage &storage, std::atomic<size_t> &storage_length, size_t length) {
+        if (storage_length != length) {
+            storage.truncate(length);
+            storage_length = length;
             data_changed();
         }
+    }
+    
+    void PROC_set_length(size_t length) override {
+        PROC_set_length_impl(*mp_storage, ma_data_length, length);
     }
 
     void set_pre_play_samples(size_t samples) override {
@@ -164,8 +174,10 @@ public:
             // Otherwise, just discard them.
             if (process_flags & ChannelRecord) {
                 mp_storage = mp_prerecord_storage;
+                ma_data_length = ma_start_offset = ma_prerecord_data_length.load();
             }
-            mp_prerecord_storage.reset();
+            mp_prerecord_storage = std::make_shared<Storage>(mp_storage->bytes_capacity());
+            ma_prerecord_data_length = 0;
         }
 
         if (process_flags & ChannelPlayback) {
@@ -175,10 +187,10 @@ public:
             ma_last_played_back_sample = -1;
         }
         if (process_flags & ChannelRecord) {
-            PROC_process_record(length_before, n_samples);
+            PROC_process_record(*mp_storage, ma_data_length, length_before, n_samples);
         }
         if (process_flags & ChannelPreRecord) {
-            PROC_process_record(...)
+            PROC_process_record(*mp_prerecord_storage, ma_prerecord_data_length, ma_prerecord_data_length, n_samples);
         }
 
         mp_prev_pos_after = pos_after;
@@ -196,7 +208,9 @@ public:
 
     void PROC_finalize_process() override {}
 
-    void PROC_process_record(size_t our_length,
+    void PROC_process_record(Storage &storage,
+                             std::atomic<size_t> &storage_data_length,
+                             size_t record_from,
                              size_t n_samples) {
         if (!mp_recording_source_buffer.has_value()) {
             throw std::runtime_error("Recording without source buffer");
@@ -208,7 +222,7 @@ public:
         bool changed = false;
 
         // Truncate buffer if necessary
-        PROC_set_length(std::max(0, (int)our_length + ma_start_offset));
+        PROC_set_length_impl(storage, storage_data_length, std::max(0, (int)record_from + ma_start_offset));
         
         // Record any incoming events
         size_t record_end = recbuf.n_frames_processed + n_samples;
@@ -226,13 +240,13 @@ public:
                 break;
             }
             if (t >= recbuf.n_frames_processed) { // May need to skip messages
-                mp_storage->append(our_length + (TimeType) t, (SizeType) s, d);
+                storage.append(record_from + (TimeType) t, (SizeType) s, d);
                 changed = true;
             }
             recbuf.n_events_processed++;
         }
         
-        PROC_set_length(ma_data_length + n_samples);
+        PROC_set_length_impl(storage, storage_data_length, storage_data_length + n_samples);
         if (changed) { data_changed(); }
     }
 
@@ -284,14 +298,17 @@ public:
         // Playback any events
         size_t end = buf.n_frames_processed + n_samples;
         mp_playback_cursor->find_time_forward(std::max(0, _pos));
+
+        int valid_from = std::max(_pos, (int)ma_start_offset - (int)ma_pre_play_samples);
+        int valid_to = _pos + (int)n_samples;
         while(mp_playback_cursor->valid())
         {
             auto *event = mp_playback_cursor->get();
-            if ((int)event->storage_time >= (_pos + (int)n_samples)) {
+            if ((int)event->storage_time >= valid_to) {
                 // Future event
                 break;
             }
-            if (!muted && (int)event->storage_time >= _pos) {
+            if (!muted && (int)event->storage_time >= valid_from) {
                 event->proc_time = (int)event->storage_time - _pos;
                 PROC_send_message(*buf.buf, *event);
                 ma_n_events_triggered++;

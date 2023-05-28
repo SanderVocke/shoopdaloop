@@ -12,10 +12,10 @@ using namespace boost::ut;
 using namespace std::chrono_literals;
 
 template<typename MessageA, typename MessageB>
-inline void check_msgs_equal(MessageA const& a, MessageB const& b, int time_offset=0) {
-    expect(eq(a.time, b.time+time_offset));
-    expect(eq(a.size, b.size));
-    expect(eq(a.data, b.data));
+inline void check_msgs_equal(MessageA const& a, MessageB const& b, int time_offset=0, std::string info="") {
+    expect(eq(a.time, b.time+time_offset)) << info;
+    expect(eq(a.size, b.size)) << info;
+    expect(eq(a.data, b.data)) << info;
 }
 
 template<typename Message>
@@ -352,6 +352,7 @@ suite AudioMidiLoop_midi_tests = []() {
 
         sync_source->PROC_process(60);
         loop.PROC_update_poi();
+        loop.PROC_update_trigger_eta();
         expect(eq(loop.PROC_predicted_next_trigger_eta().value_or(999), 40));
     };
 
@@ -373,12 +374,12 @@ suite AudioMidiLoop_midi_tests = []() {
         loop.PROC_update_trigger_eta();
         expect(eq(loop.PROC_predicted_next_trigger_eta().value_or(999), 100));
 
-        loop.add_midi_channel<uint32_t, uint16_t>(512, Direct, false);
+        loop.add_midi_channel<uint32_t, uint16_t>(100000, Direct, false);
         auto &chan = *loop.midi_channel<uint32_t, uint16_t>(0);
 
         using Message = MidiChannel<uint32_t, uint16_t>::Message;
         std::vector<Message> data;
-        for(size_t idx=0; idx<256; idx++) { data.push_back(Message{(unsigned)idx, 1, { (unsigned char)idx }}); }
+        for(size_t idx=0; idx<256; idx++) { data.push_back(Message{(unsigned)idx, 1, { (unsigned char)'a' + (unsigned char) idx }}); }
 
         chan.set_contents(data, 256);
         chan.set_start_offset(110);
@@ -415,8 +416,14 @@ suite AudioMidiLoop_midi_tests = []() {
         // starting immediately from msg 10.
         auto msgs = play_buf.written;
         expect(eq(msgs.size(), 118));
-        for (size_t p=0; p<118; p++) {
-            check_msgs_equal(msgs.at(p), data.at(p + 10));
+
+        size_t input_msg_idx = 0;
+        size_t output_msg_idx = 0;
+        for (size_t t=0; t<128; t++) {
+            if (t < 10) { input_msg_idx++; continue; }
+            Message exp = data.at(input_msg_idx++);
+            exp.time = t;
+            check_msgs_equal(msgs.at(output_msg_idx++), exp, 0, std::to_string(t));
         }
     };
 };
