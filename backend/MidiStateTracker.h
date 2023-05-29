@@ -34,7 +34,7 @@ private:
     std::vector<uint8_t> m_programs;                       // Track Program values     (16)
     std::vector<uint8_t> m_pitch_wheel;                    // 16 channels
     std::vector<uint8_t> m_channel_pressure;               // 16 channels
-    std::set<std::shared_ptr<Subscriber>> m_subscribers;
+    std::set<std::weak_ptr<Subscriber>> m_subscribers;
 
 
     static size_t note_index (uint8_t channel, uint8_t note) { return (size_t)channel * 128 + (size_t)note; }
@@ -48,7 +48,7 @@ private:
             m_n_notes_active++;
         }
         if (m_notes_active_velocities.at(idx).value_or(255) != velocity) {
-            for (auto const& s : m_subscribers) { s->note_changed(this, channel, note, velocity); }
+            for (auto const& s : m_subscribers) { if(auto ss = s.lock()) { ss->note_changed(this, channel, note, velocity); } }
         }
         m_notes_active_velocities.at(idx) = velocity;
     }
@@ -59,7 +59,7 @@ private:
         auto idx = note_index(channel & 0x0F, note);
         if (m_notes_active_velocities.at(idx).has_value()) {
             m_n_notes_active = std::max(0, m_n_notes_active-1);
-            for (auto const& s : m_subscribers) { s->note_changed(this, channel, note, std::nullopt); }
+            for (auto const& s : m_subscribers) { if(auto ss = s.lock()) { ss->note_changed(this, channel, note, std::nullopt); } }
         }
         m_notes_active_velocities.at(idx).reset();
     }
@@ -69,7 +69,7 @@ private:
 
         auto idx = cc_index(channel & 0x0F, controller);
         if (m_controls.at(idx) != value) {
-            for (auto const& s : m_subscribers) { s->note_changed(this, channel, controller, value); }
+            for (auto const& s : m_subscribers) { if(auto ss = s.lock()) { ss->note_changed(this, channel, controller, value); } }
         }
         m_controls[idx] = (unsigned char) value;
     }
@@ -77,7 +77,7 @@ private:
     void process_program(uint8_t channel, uint8_t value) {
         if (m_programs.size() == 0) { return; }
         if (m_programs.at(channel & 0x0F) != value) {
-            for (auto const& s : m_subscribers) { s->program_changed(this, channel, value); }
+            for (auto const& s : m_subscribers) { if(auto ss = s.lock()) { ss->program_changed(this, channel, value); } }
         }
         m_programs[channel & 0x0F] = value;
     }
@@ -85,7 +85,7 @@ private:
     void process_pitch_wheel(uint8_t channel, uint8_t value) {
         if (m_pitch_wheel.size() == 0) { return; }
         if (m_pitch_wheel.at(channel & 0x0F) != value) {
-            for (auto const& s : m_subscribers) { s->pitch_wheel_changed(this, channel, value); }
+            for (auto const& s : m_subscribers) { if(auto ss = s.lock()) { ss->pitch_wheel_changed(this, channel, value); } }
         }
         m_pitch_wheel[channel & 0x0F] = value;
     }
@@ -93,7 +93,7 @@ private:
     void process_channel_pressure(uint8_t channel, uint8_t value) {
         if (m_channel_pressure.size() == 0) { return; }
         if (m_channel_pressure.at(channel & 0x0F) != value) {
-            for (auto const& s : m_subscribers) { s->channel_pressure_changed(this, channel, value); }
+            for (auto const& s : m_subscribers) { if(auto ss = s.lock()) { ss->channel_pressure_changed(this, channel, value); } }
         }
         m_channel_pressure[channel & 0x0F] = value;
     } 
@@ -111,6 +111,19 @@ public:
                 m_notes_active_velocities[i].reset();
             }
         }
+    
+    MidiStateTracker& operator= (MidiStateTracker const& other) {
+        m_n_notes_active = other.m_n_notes_active.load();
+        m_notes_active_velocities = other.m_notes_active_velocities;
+        m_controls = other.m_controls;
+        m_programs = other.m_programs;
+        m_pitch_wheel = other.m_pitch_wheel;
+        m_channel_pressure = other.m_channel_pressure;
+
+        // Leave subscribers unchanged: subscribers are not supposed to get
+        // additional signals from copies of the origin object.
+        return *this;
+    }
     
     void clear() {
         for(size_t i=0; i<m_notes_active_velocities.size(); i++) {

@@ -237,7 +237,8 @@ public:
     // "Resolve" the difference.
     // Will call the supplied MIDI message callback with the MIDI messages which would exactly negate the state
     // diffrerences between both states.
-    void resolve_to(MidiStateTracker *to, std::function<void(size_t size, uint8_t *data)> put_message_cb) {
+    void resolve_to(MidiStateTracker *to, std::function<void(size_t size, uint8_t *data)> put_message_cb,
+        bool notes=true, bool controls=true, bool programs=true) {
         if (to != m_a.get() && to != m_b.get()) { return; }
         if (!m_a || !m_b) { return; }
         auto &other =
@@ -251,44 +252,54 @@ public:
             switch(d[0] & 0xF0) {
                 case 0x80:
                 case 0x90:
-                    v = other->maybe_current_note_velocity(d[0], d[1]);
-                    data[0] = v.has_value() ? 0x90 | channel_part : 0x80 | channel_part;
-                    data[1] = d[1];
-                    data[2] = v.value_or(64);
-                    put_message_cb(3, data);
+                    if (notes) {
+                        v = other->maybe_current_note_velocity(d[0], d[1]);
+                        data[0] = v.has_value() ? 0x90 | channel_part : 0x80 | channel_part;
+                        data[1] = d[1];
+                        data[2] = v.value_or(64);
+                        put_message_cb(3, data);
+                    }
                     break;
                 case 0xB0:
-                    data[0] = d[1];
-                    data[1] = d[1];
-                    data[2] = other->cc_value(channel_part, d[1]);
-                    put_message_cb(3, data);
+                    if (controls) {
+                        data[0] = d[1];
+                        data[1] = d[1];
+                        data[2] = other->cc_value(channel_part, d[1]);
+                        put_message_cb(3, data);
+                    }
                     break;
                 case 0xC0:
-                    data[0] = d[0];
-                    data[1] = d[1];
-                    data[2] = other->program_value(channel_part);
-                    put_message_cb(3, data);
+                    if (programs) {
+                        data[0] = d[0];
+                        data[1] = d[1];
+                        data[2] = other->program_value(channel_part);
+                        put_message_cb(3, data);
+                    }
                     break;
                 case 0xD0:
-                    data[0] = d[0];
-                    data[1] = d[1];
-                    data[2] = other->channel_pressure_value(channel_part);
-                    put_message_cb(3, data);
+                    if (controls) {
+                        data[0] = d[0];
+                        data[1] = d[1];
+                        data[2] = other->channel_pressure_value(channel_part);
+                        put_message_cb(3, data);
+                    }
                     break;
                 case 0xE0:
-                    data[0] = d[0];
-                    data[1] = d[1];
-                    data[2] = other->pitch_wheel_value(channel_part);
-                    put_message_cb(3, data);
+                    if (controls) {
+                        data[0] = d[0];
+                        data[1] = d[1];
+                        data[2] = other->pitch_wheel_value(channel_part);
+                        put_message_cb(3, data);
+                    }
                     break;
             }
         }
     }
 
-    void resolve_to_a(std::function<void(size_t size, uint8_t *data)> put_message_cb) {
-        return resolve_to(m_a.get(), put_message_cb);
+    void resolve_to_a(std::function<void(size_t size, uint8_t *data)> put_message_cb, bool notes=true, bool controls=true, bool programs=true) {
+        return resolve_to(m_a.get(), put_message_cb, notes, controls, programs);
     }
-    void resolve_to_b(std::function<void(size_t size, uint8_t *data)> put_message_cb) {
-        return resolve_to(m_b.get(), put_message_cb);
+    void resolve_to_b(std::function<void(size_t size, uint8_t *data)> put_message_cb, bool notes=true, bool controls=true, bool programs=true) {
+        return resolve_to(m_b.get(), put_message_cb, notes, controls, programs);
     }
 };

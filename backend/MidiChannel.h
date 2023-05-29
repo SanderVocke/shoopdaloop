@@ -5,6 +5,7 @@
 #include "WithCommandQueue.h"
 #include "MidiMessage.h"
 #include "MidiStateTracker.h"
+#include "MidiStateDiffTracker.h"
 #include "channel_mode_helpers.h"
 #include <optional>
 #include <functional>
@@ -46,7 +47,9 @@ private:
     std::shared_ptr<Storage>       mp_storage;
     std::shared_ptr<Storage>       mp_prerecord_storage;
     std::shared_ptr<StorageCursor> mp_playback_cursor;
-    std::unique_ptr<MidiStateTracker> mp_output_notes_state;
+    std::shared_ptr<MidiStateTracker> mp_output_midi_state;
+    std::shared_ptr<MidiStateTracker> mp_midi_state_at_record_start;
+    std::shared_ptr<MidiStateDiffTracker> mp_midi_state_diff_wrt_record_start;
     size_t mp_prev_pos_after;
     unsigned mp_prev_process_flags;
 
@@ -72,7 +75,9 @@ public:
         mp_playback_cursor(nullptr),
         ma_mode(mode),
         ma_data_length(0),
-        mp_output_notes_state(std::make_unique<MidiStateTracker>(true, false, false)),
+        mp_output_midi_state(std::make_shared<MidiStateTracker>(true, true, true)),
+        mp_midi_state_at_record_start(std::make_shared<MidiStateTracker>(true, true, true)),
+        mp_midi_state_diff_wrt_record_start(std::make_shared<MidiStateDiffTracker>(mp_midi_state_at_record_start, mp_output_midi_state)),
         ma_n_events_triggered(0),
         ma_start_offset(0),
         ma_data_seq_nr(0),
@@ -93,7 +98,8 @@ public:
         mp_playback_cursor = other.mp_playback_cursor;
         ma_mode = other.ma_mode;
         ma_n_events_triggered = other.ma_n_events_triggered;
-        mp_output_notes_state = other.mp_output_notes_state;
+        mp_output_midi_state = other.mp_output_midi_state;
+        mp_midi_state_at_record_start = other.mp_midi_state_at_record_start;
         ma_start_offset = other.ma_start_offset.load();
         ma_data_length = other.ma_data_length.load();
         mp_prev_process_flags = other.mp_prev_process_flags;
@@ -254,7 +260,8 @@ public:
         auto fn = [this]() {
             mp_storage->clear();
             mp_playback_cursor->reset();
-            mp_output_notes_state->clear();
+            mp_output_midi_state->clear();
+            mp_midi_state_at_record_start->clear();
             ma_n_events_triggered = 0;
             PROC_set_length(0);
             ma_start_offset = 0;
@@ -276,10 +283,10 @@ public:
     void PROC_send_message(Buf &buf, Event &event) {
         if (buf.write_by_reference_supported()) {
             buf.PROC_write_event_reference(event);
-            mp_output_notes_state->process_msg(event.get_data());
+            mp_output_midi_state->process_msg(event.get_data());
         } else if (buf.write_by_value_supported()) {
             buf.PROC_write_event_value(event.size, event.get_time(), event.get_data());
-            mp_output_notes_state->process_msg(event.get_data());
+            mp_output_midi_state->process_msg(event.get_data());
         } else {
             throw std::runtime_error("Midi write buffer does not support any write methods");
         }
@@ -407,7 +414,7 @@ public:
     }
 
     size_t get_n_notes_active() const {
-        return mp_output_notes_state->n_notes_active();
+        return mp_output_midi_state->n_notes_active();
     }
 
     size_t get_n_events_triggered() {
