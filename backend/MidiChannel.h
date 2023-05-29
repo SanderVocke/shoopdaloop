@@ -4,7 +4,7 @@
 #include "ChannelInterface.h"
 #include "WithCommandQueue.h"
 #include "MidiMessage.h"
-#include "MidiNotesState.h"
+#include "MidiStateTracker.h"
 #include "channel_mode_helpers.h"
 #include <optional>
 #include <functional>
@@ -46,7 +46,7 @@ private:
     std::shared_ptr<Storage>       mp_storage;
     std::shared_ptr<Storage>       mp_prerecord_storage;
     std::shared_ptr<StorageCursor> mp_playback_cursor;
-    std::unique_ptr<MidiNotesState> mp_output_notes_state;
+    std::unique_ptr<MidiStateTracker> mp_output_notes_state;
     size_t mp_prev_pos_after;
     unsigned mp_prev_process_flags;
 
@@ -72,7 +72,7 @@ public:
         mp_playback_cursor(nullptr),
         ma_mode(mode),
         ma_data_length(0),
-        mp_output_notes_state(std::make_unique<MidiNotesState>()),
+        mp_output_notes_state(std::make_unique<MidiStateTracker>(true, false, false)),
         ma_n_events_triggered(0),
         ma_start_offset(0),
         ma_data_seq_nr(0),

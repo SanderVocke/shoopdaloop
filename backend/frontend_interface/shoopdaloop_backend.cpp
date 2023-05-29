@@ -23,7 +23,7 @@
 #include "DecoupledMidiPort.h"
 #include "CommandQueue.h"
 #include "DummyMidiBufs.h"
-#include "MidiNotesState.h"
+#include "MidiStateTracker.h"
 #include "process_loops.h"
 #include "types.h"
 #include "LV2.h"
@@ -191,7 +191,7 @@ struct PortInfo : public std::enable_shared_from_this<PortInfo> {
     MidiWriteableBufferInterface *maybe_midi_output_buffer;
     std::shared_ptr<MidiMergingBuffer> maybe_midi_output_merging_buffer;
     std::atomic<size_t> n_events_processed;
-    std::unique_ptr<MidiNotesState> maybe_midi_notes_state;
+    std::unique_ptr<MidiStateTracker> maybe_midi_notes_state;
 
     // Both
     std::atomic<bool> muted;
@@ -220,7 +220,7 @@ struct PortInfo : public std::enable_shared_from_this<PortInfo> {
             ProcessWhen::BeforeFXChains : ProcessWhen::AfterFXChains;
 
         if (auto m = dynamic_cast<MidiPort*>(port.get())) {
-            maybe_midi_notes_state = std::make_unique<MidiNotesState>();
+            maybe_midi_notes_state = std::make_unique<MidiStateTracker>(true, false, false);
             if(m->direction() == PortDirection::Output) {
                 maybe_midi_output_merging_buffer = std::make_shared<MidiMergingBuffer>();
             }
