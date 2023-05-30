@@ -263,7 +263,7 @@ public:
                 *mp_storage, 
                 ma_data_length,
                 mp_track_start_state,
-                length_before, 
+                length_before + ma_start_offset, 
                 n_samples);
         }
         if (process_flags & ChannelPreRecord) {
@@ -333,7 +333,7 @@ public:
                     }
                 }
  
-                storage.append(record_from + (TimeType) t, (SizeType) s, d);
+                storage.append(record_from + (TimeType) t - recbuf.n_frames_processed, (SizeType) s, d);
                 changed = true;
             }
             recbuf.n_events_processed++;
