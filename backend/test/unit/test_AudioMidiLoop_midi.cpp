@@ -426,4 +426,60 @@ suite AudioMidiLoop_midi_tests = []() {
             check_msgs_equal(msgs.at(output_msg_idx++), exp, 0, std::to_string(t));
         }
     };
+
+    "ml_6_state_tracking_record"_test = []() {
+            AudioMidiLoop loop;
+        loop.add_midi_channel<uint32_t, uint16_t>(512, Direct, false);
+        auto &channel = *loop.midi_channel<uint32_t, uint16_t>(0);
+        using Message = MidiChannel<uint32_t, uint16_t>::Message;
+
+        auto pitch_first_byte = [](size_t val) { return val & 0b1111111; };
+        auto pitch_second_byte = [](size_t val) { return (val >> 7) & 0b1111111; };
+
+        // Set up a sequence where notes are played every 10 ticks,
+        // with a linearly changing pitch wheel.
+        auto src = MidiTestBuffer();
+        for(size_t i=0; i<100; i++) {
+            src.read.push_back( Msg(i, 3, {0xE0, (uint8_t)pitch_first_byte(i), (uint8_t)pitch_second_byte(i)}));
+        }
+
+        // HERE
+
+        std::vector<Message> contents = {
+            Message(0,  1, { 0x01 }),
+            Message(10, 1, { 0x02 }),
+            Message(21, 1, { 0x03 }),
+        };
+        channel.set_contents(contents, 100, false);
+        loop.set_length(100);
+
+        expect(eq(loop.get_mode() , Stopped));
+        expect(loop.PROC_get_next_poi() == std::nullopt);
+        expect(eq(loop.get_length() , 100));
+        expect(eq(loop.get_position() , 0));
+
+        auto play_buf = MidiTestBuffer();
+        
+        loop.plan_transition(Playing);
+        channel.PROC_set_playback_buffer(&play_buf, 512);
+        loop.PROC_trigger();
+        loop.PROC_update_poi();
+
+        expect(eq(loop.get_mode() , Playing));
+        expect(loop.PROC_get_next_poi() == 100) << loop.PROC_get_next_poi().value_or(0); // end of loop
+        expect(eq(loop.get_length() , 100));
+        expect(eq(loop.get_position() , 0));
+
+        loop.PROC_process(20);
+
+        expect(eq(loop.get_mode() , Playing));
+        expect(loop.PROC_get_next_poi() == 80) << loop.PROC_get_next_poi().value_or(0); // end of loop
+        expect(eq(loop.get_length(), 100));
+        expect(eq(loop.get_position(), 20));
+
+        auto msgs = play_buf.written;
+        expect(eq(msgs.size(), 2));
+        check_msgs_equal(msgs.at(0), contents.at(0));
+        check_msgs_equal(msgs.at(1), contents.at(1));
+    };
 };
