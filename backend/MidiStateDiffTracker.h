@@ -103,7 +103,7 @@ public:
         m_diffs.reserve(default_diffs_size);
     }
 
-    MidiStateDiffTracker(SharedTracker a=nullptr, SharedTracker b=nullptr, StateDiffTrackerAction action=StateDiffTrackerAction::ScanDiff) {
+    MidiStateDiffTracker(SharedTracker a, SharedTracker b, StateDiffTrackerAction action=StateDiffTrackerAction::ScanDiff) {
         m_diffs.reserve(default_diffs_size);
         reset(a, b, action);
     }
@@ -302,4 +302,10 @@ public:
     void resolve_to_b(std::function<void(size_t size, uint8_t *data)> put_message_cb, bool notes=true, bool controls=true, bool programs=true) {
         return resolve_to(m_b.get(), put_message_cb, notes, controls, programs);
     }
+
+    void set_diff(DiffSet diff) {
+        m_diffs = diff;
+    }
+
+    DiffSet const& get_diff() const { return m_diffs; }
 };

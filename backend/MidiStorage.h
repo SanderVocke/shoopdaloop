@@ -212,6 +212,10 @@ public:
         m_prev_offset.reset();
     }
 
+    bool is_at_start() const {
+        return !m_prev_offset.has_value();
+    }
+
     void overwrite(size_t offset, size_t prev_offset) {
         m_offset = offset;
         m_prev_offset = prev_offset;
