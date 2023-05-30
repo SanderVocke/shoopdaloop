@@ -238,6 +238,10 @@ public:
         return  m_offset.has_value() ? get(m_offset.value()) : nullptr;
     }
 
+    Elem *get_prev() const {
+        return m_prev_offset.has_value() ? get(m_prev_offset.value()) : nullptr;
+    }
+
     void next() {
         auto next_offset = m_storage->maybe_next_elem_offset(get());
         if (next_offset.has_value()) {

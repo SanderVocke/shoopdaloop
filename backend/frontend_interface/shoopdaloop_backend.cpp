@@ -191,7 +191,7 @@ struct PortInfo : public std::enable_shared_from_this<PortInfo> {
     MidiWriteableBufferInterface *maybe_midi_output_buffer;
     std::shared_ptr<MidiMergingBuffer> maybe_midi_output_merging_buffer;
     std::atomic<size_t> n_events_processed;
-    std::unique_ptr<MidiStateTracker> maybe_midi_notes_state;
+    std::shared_ptr<MidiStateTracker> maybe_midi_state;
 
     // Both
     std::atomic<bool> muted;
@@ -202,7 +202,7 @@ struct PortInfo : public std::enable_shared_from_this<PortInfo> {
         maybe_audio_buffer(nullptr),
         maybe_midi_input_buffer(nullptr),
         maybe_midi_output_buffer(nullptr),
-        maybe_midi_notes_state(nullptr),
+        maybe_midi_state(nullptr),
         volume(1.0f),
         passthrough_volume(1.0f),
         muted(false),
@@ -220,7 +220,7 @@ struct PortInfo : public std::enable_shared_from_this<PortInfo> {
             ProcessWhen::BeforeFXChains : ProcessWhen::AfterFXChains;
 
         if (auto m = dynamic_cast<MidiPort*>(port.get())) {
-            maybe_midi_notes_state = std::make_unique<MidiStateTracker>(true, false, false);
+            maybe_midi_state = std::make_shared<MidiStateTracker>(true, true, true);
             if(m->direction() == PortDirection::Output) {
                 maybe_midi_output_merging_buffer = std::make_shared<MidiMergingBuffer>();
             }
@@ -535,7 +535,7 @@ void PortInfo::PROC_ensure_buffer(size_t n_frames) {
                     uint32_t size, time;
                     const uint8_t *data;
                     msg.get(size, time, data);
-                    maybe_midi_notes_state->process_msg(data);
+                    maybe_midi_state->process_msg(data);
                 }
             }
         } else {
@@ -633,7 +633,7 @@ void PortInfo::PROC_finalize_process(size_t n_frames) {
                     const uint8_t* data;
                     maybe_midi_output_merging_buffer->PROC_get_event_reference(i).get(size, time, data);
                     maybe_midi_output_buffer->PROC_write_event_value(size, time, data);
-                    maybe_midi_notes_state->process_msg(data);
+                    maybe_midi_state->process_msg(data);
                 }
                 n_events_processed += n_events;
             }
@@ -700,6 +700,9 @@ void ChannelInfo::connect_input_port(SharedPortInfo port, bool thread_safe) {
     auto fn = [this, port]() {
         mp_input_port_mapping = port;
         ma_process_when = port->ma_process_when; // Process in same phase as the connected port
+        if (port->maybe_midi_state && maybe_midi()) {
+            maybe_midi()->track_input_state(port->maybe_midi_state);
+        }
     };
     if (thread_safe) { get_backend().cmd_queue.queue(fn); }
     else { fn(); }
@@ -1670,7 +1673,7 @@ midi_port_state_info_t *get_midi_port_state(shoopdaloop_midi_port_t *port) {
     auto r = new midi_port_state_info_t;
     auto p = internal_midi_port(port);
     r->n_events_triggered = p->n_events_processed;
-    r->n_notes_active = p->maybe_midi_notes_state->n_notes_active();
+    r->n_notes_active = p->maybe_midi_state->n_notes_active();
     r->muted = p->muted;
     r->passthrough_muted = p->passthrough_muted;
     r->name = p->port->name();
