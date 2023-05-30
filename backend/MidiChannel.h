@@ -76,8 +76,8 @@ public:
         ma_mode(mode),
         ma_data_length(0),
         mp_output_midi_state(std::make_shared<MidiStateTracker>(true, true, true)),
-        mp_midi_state_at_record_start(std::make_shared<MidiStateTracker>(true, true, true)),
-        mp_midi_state_diff_wrt_record_start(std::make_shared<MidiStateDiffTracker>(mp_midi_state_at_record_start, mp_output_midi_state)),
+        mp_midi_state_at_record_start(std::make_shared<MidiStateTracker>()),
+        mp_midi_state_diff_wrt_record_start(std::make_shared<MidiStateDiffTracker>()),
         ma_n_events_triggered(0),
         ma_start_offset(0),
         ma_data_seq_nr(0),
@@ -100,6 +100,7 @@ public:
         ma_n_events_triggered = other.ma_n_events_triggered;
         mp_output_midi_state = other.mp_output_midi_state;
         mp_midi_state_at_record_start = other.mp_midi_state_at_record_start;
+        mp_midi_state_diff_wrt_record_start = other.mp_midi_state_diff_wrt_record_start;
         ma_start_offset = other.ma_start_offset.load();
         ma_data_length = other.ma_data_length.load();
         mp_prev_process_flags = other.mp_prev_process_flags;
@@ -228,7 +229,7 @@ public:
         bool changed = false;
 
         // Truncate buffer if necessary
-        PROC_set_length_impl(storage, storage_data_length, std::max(0, (int)record_from + ma_start_offset));
+        PROC_set_length_impl(storage, storage_data_length, record_from);
         
         // Record any incoming events
         size_t record_end = recbuf.n_frames_processed + n_samples;
@@ -246,6 +247,14 @@ public:
                 break;
             }
             if (t >= recbuf.n_frames_processed) { // May need to skip messages
+                // If here, we are about to record a message.
+                // If it is the first one, this is also the moment to cache the
+                // MIDI state (such as hold pedal, other CCs, pitch wheel, etc.)
+                if (storage.n_events() == 0) {
+                    *mp_midi_state_at_record_start = *mp_output_midi_state;
+                    mp_midi_state_diff_wrt_record_start->reset(mp_midi_state_at_record_start, mp_output_midi_state, StateDiffTrackerAction::ClearDiff);
+                }
+ 
                 storage.append(record_from + (TimeType) t, (SizeType) s, d);
                 changed = true;
             }

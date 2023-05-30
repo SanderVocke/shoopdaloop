@@ -99,7 +99,7 @@ private:
     } 
 
 public:
-    MidiStateTracker(bool track_notes=true, bool track_controls=true, bool track_programs=true) :
+    MidiStateTracker(bool track_notes=false, bool track_controls=false, bool track_programs=false) :
         m_n_notes_active(0),
         m_notes_active_velocities(track_notes ? 16*128 : 0),
         m_controls(track_controls ? 128*128 : 0),
@@ -166,6 +166,8 @@ public:
 
     bool tracking_programs() const { return m_programs.size() > 0; }
     uint8_t program_value (uint8_t channel) { return m_programs.at(channel & 0x0F); }
+
+    bool tracking_anything() const { return tracking_programs() || tracking_controls() || tracking_notes(); }
 
     void subscribe(std::shared_ptr<Subscriber> s) { m_subscribers.insert(s); }
     void unsubscribe(std::shared_ptr<Subscriber> s) { m_subscribers.erase(s); }
