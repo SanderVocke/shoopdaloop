@@ -60,6 +60,7 @@ private:
             m_valid = other.m_valid;
             state->copy_relevant_state(*other.state);
             diff->set_diff(other.diff->get_diff());
+            return *this;
         }
 
         void set_from(std::shared_ptr<MidiStateTracker> &t) {

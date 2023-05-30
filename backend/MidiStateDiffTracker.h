@@ -303,7 +303,7 @@ public:
         return resolve_to(m_b.get(), put_message_cb, notes, controls, programs);
     }
 
-    void set_diff(DiffSet diff) {
+    void set_diff(DiffSet const& diff) {
         m_diffs = diff;
     }
 
