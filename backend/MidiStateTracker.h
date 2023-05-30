@@ -34,7 +34,7 @@ private:
     std::vector<uint8_t> m_programs;                       // Track Program values     (16)
     std::vector<uint8_t> m_pitch_wheel;                    // 16 channels
     std::vector<uint8_t> m_channel_pressure;               // 16 channels
-    std::set<std::weak_ptr<Subscriber>> m_subscribers;
+    std::set<std::weak_ptr<Subscriber>, std::owner_less<std::weak_ptr<Subscriber>>> m_subscribers;
 
 
     static size_t note_index (uint8_t channel, uint8_t note) { return (size_t)channel * 128 + (size_t)note; }
@@ -123,6 +123,21 @@ public:
         // Leave subscribers unchanged: subscribers are not supposed to get
         // additional signals from copies of the origin object.
         return *this;
+    }
+
+    void copy_relevant_state(MidiStateTracker const& other) {
+        if (tracking_notes()) {
+            m_n_notes_active = other.m_n_notes_active.load();
+            m_notes_active_velocities = other.m_notes_active_velocities;
+        }
+        if (tracking_controls()) {
+            m_controls = other.m_controls;
+            m_pitch_wheel = other.m_pitch_wheel;
+            m_channel_pressure = other.m_channel_pressure;
+        }
+        if (tracking_programs()) {
+            m_programs = other.m_programs;
+        }
     }
     
     void clear() {

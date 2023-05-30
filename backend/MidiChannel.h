@@ -7,6 +7,7 @@
 #include "MidiStateTracker.h"
 #include "MidiStateDiffTracker.h"
 #include "channel_mode_helpers.h"
+#include <memory>
 #include <optional>
 #include <functional>
 #include <chrono>
@@ -41,15 +42,68 @@ private:
         size_t events_left() const { return n_events_total - n_events_processed; }
     };
 
+    // Tracks or remembers a MIDI state (controls, pedals, etc).
+    // Doesn't track notes.
+    // Also keeps track of the diff between that state and the tracked state on the
+    // MIDI out of the channel.
+    struct TrackedState {
+        bool m_valid = false;
+        std::shared_ptr<MidiStateTracker> state;
+        std::shared_ptr<MidiStateDiffTracker> diff;
+
+        TrackedState(bool notes=false, bool controls=false, bool programs=false) :
+            m_valid(false),
+            state(std::make_shared<MidiStateTracker>(notes, controls, programs)),
+            diff(std::make_shared<MidiStateDiffTracker>()) {}
+        
+        TrackedState& operator= (TrackedState const& other) {
+            m_valid = other.m_valid;
+            state->copy_relevant_state(*other.state);
+            diff->set_diff(other.diff->get_diff());
+            return *this;
+        }
+
+        void set_from(std::shared_ptr<MidiStateTracker> &t) {
+            state->copy_relevant_state(*t);
+            diff->reset(t, state, StateDiffTrackerAction::ClearDiff);
+            m_valid = true;
+        }
+
+        void reset() {
+            m_valid = false;
+        }
+
+        bool valid() const { return m_valid; }
+
+        void resolve_to_output(std::function<void(size_t size, uint8_t *data)> send_cb) {
+            if (m_valid) {
+                diff->resolve_to_a(send_cb);
+            }
+        }
+    };
+
     // Process thread access only (mp*)
     std::optional<ExternalBuf<MidiWriteableBufferInterface*>> mp_playback_target_buffer;
     std::optional<ExternalBuf<MidiReadableBufferInterface *>> mp_recording_source_buffer;
     std::shared_ptr<Storage>       mp_storage;
     std::shared_ptr<Storage>       mp_prerecord_storage;
     std::shared_ptr<StorageCursor> mp_playback_cursor;
+
+    // Track the MIDI state on the channel's output.
     std::shared_ptr<MidiStateTracker> mp_output_midi_state;
-    std::shared_ptr<MidiStateTracker> mp_midi_state_at_record_start;
-    std::shared_ptr<MidiStateDiffTracker> mp_midi_state_diff_wrt_record_start;
+
+    // Track the MIDI state on the channel's input.
+    // This state is managed externally, just a reference stored in the channel here
+    // for monitoring.
+    std::weak_ptr<MidiStateTracker> mp_input_midi_state;
+
+    // We need to track what the MIDI state was at multiple interesting points
+    // in order to restore that state quickly.
+    TrackedState mp_track_start_state;
+    TrackedState mp_track_prerecord_start_state;
+    TrackedState mp_track_start_offset_state;
+    TrackedState mp_track_first_preplay_sample_state;
+
     size_t mp_prev_pos_after;
     unsigned mp_prev_process_flags;
 
@@ -76,8 +130,10 @@ public:
         ma_mode(mode),
         ma_data_length(0),
         mp_output_midi_state(std::make_shared<MidiStateTracker>(true, true, true)),
-        mp_midi_state_at_record_start(std::make_shared<MidiStateTracker>()),
-        mp_midi_state_diff_wrt_record_start(std::make_shared<MidiStateDiffTracker>()),
+        mp_track_start_state(false, true, true),
+        mp_track_prerecord_start_state(false, true, true),
+        mp_track_first_preplay_sample_state(false, true, true),
+        mp_track_start_offset_state(false, true, true),
         ma_n_events_triggered(0),
         ma_start_offset(0),
         ma_data_seq_nr(0),
@@ -98,16 +154,23 @@ public:
         mp_playback_cursor = other.mp_playback_cursor;
         ma_mode = other.ma_mode;
         ma_n_events_triggered = other.ma_n_events_triggered;
-        mp_output_midi_state = other.mp_output_midi_state;
-        mp_midi_state_at_record_start = other.mp_midi_state_at_record_start;
-        mp_midi_state_diff_wrt_record_start = other.mp_midi_state_diff_wrt_record_start;
+        *mp_output_midi_state = *other.mp_output_midi_state;
+        *mp_track_start_state = *other.mp_track_start_state;
+        *mp_track_first_preplay_sample_state = *other.mp_track_first_preplay_sample_state;
+        *mp_track_start_offset_state = *other.mp_track_start_offset_state;
+        *mp_track_prerecord_start_state = *other.mp_track_prerecord_start_state;
         ma_start_offset = other.ma_start_offset.load();
         ma_data_length = other.ma_data_length.load();
         mp_prev_process_flags = other.mp_prev_process_flags;
-        mp_prerecord_storage = other.mp_prerecord_storage;
+        *mp_prerecord_storage = *other.mp_prerecord_storage;
         ma_prerecord_data_length = other.ma_prerecord_data_length;
+        mp_input_midi_state = other.mp_input_midi_state;
         data_changed();
         return *this;
+    }
+
+    void track_input_state(std::shared_ptr<MidiStateTracker> input_midi_state) {
+        mp_input_midi_state = input_midi_state;
     }
 
     unsigned get_data_seq_nr() const override { return ma_data_seq_nr; }
@@ -182,6 +245,8 @@ public:
             if (process_flags & ChannelRecord) {
                 mp_storage = mp_prerecord_storage;
                 ma_data_length = ma_start_offset = ma_prerecord_data_length.load();
+                mp_track_start_state = mp_track_prerecord_start_state;
+                mp_track_prerecord_start_state.reset();
             }
             mp_prerecord_storage = std::make_shared<Storage>(mp_storage->bytes_capacity());
             ma_prerecord_data_length = 0;
@@ -194,10 +259,20 @@ public:
             ma_last_played_back_sample = -1;
         }
         if (process_flags & ChannelRecord) {
-            PROC_process_record(*mp_storage, ma_data_length, length_before, n_samples);
+            PROC_process_record(
+                *mp_storage, 
+                ma_data_length,
+                mp_track_start_state,
+                length_before + ma_start_offset, 
+                n_samples);
         }
         if (process_flags & ChannelPreRecord) {
-            PROC_process_record(*mp_prerecord_storage, ma_prerecord_data_length, ma_prerecord_data_length, n_samples);
+            PROC_process_record(
+                *mp_prerecord_storage, 
+                ma_prerecord_data_length, 
+                mp_track_prerecord_start_state,
+                ma_prerecord_data_length, 
+                n_samples);
         }
 
         mp_prev_pos_after = pos_after;
@@ -217,6 +292,7 @@ public:
 
     void PROC_process_record(Storage &storage,
                              std::atomic<size_t> &storage_data_length,
+                             TrackedState &track_start_state,
                              size_t record_from,
                              size_t n_samples) {
         if (!mp_recording_source_buffer.has_value()) {
@@ -248,14 +324,16 @@ public:
             }
             if (t >= recbuf.n_frames_processed) { // May need to skip messages
                 // If here, we are about to record a message.
-                // If it is the first one, this is also the moment to cache the
-                // MIDI state (such as hold pedal, other CCs, pitch wheel, etc.)
+                // If it is the first recorded message, this is also the moment to cache the
+                // MIDI state on the input (such as hold pedal, other CCs, pitch wheel, etc.) so we can
+                // restore it later.
                 if (storage.n_events() == 0) {
-                    *mp_midi_state_at_record_start = *mp_output_midi_state;
-                    mp_midi_state_diff_wrt_record_start->reset(mp_midi_state_at_record_start, mp_output_midi_state, StateDiffTrackerAction::ClearDiff);
+                    if (auto state = mp_input_midi_state.lock()) {
+                        track_start_state.set_from(state);
+                    }
                 }
  
-                storage.append(record_from + (TimeType) t, (SizeType) s, d);
+                storage.append(record_from + (TimeType) t - recbuf.n_frames_processed, (SizeType) s, d);
                 changed = true;
             }
             recbuf.n_events_processed++;
@@ -270,7 +348,10 @@ public:
             mp_storage->clear();
             mp_playback_cursor->reset();
             mp_output_midi_state->clear();
-            mp_midi_state_at_record_start->clear();
+            mp_track_start_state.reset();
+            mp_track_prerecord_start_state.reset();
+            mp_track_start_offset_state.reset();
+            mp_track_first_preplay_sample_state.reset();
             ma_n_events_triggered = 0;
             PROC_set_length(0);
             ma_start_offset = 0;
@@ -285,11 +366,11 @@ public:
         if (buf.frames_left() < 1) {
             throw std::runtime_error("Attempting to play back out of bounds");
         }
-        PROC_send_message(*buf.buf, all_sound_off_message_channel_0);
+        PROC_send_message_ref(*buf.buf, all_sound_off_message_channel_0);
     }
 
     template<typename Buf, typename Event>
-    void PROC_send_message(Buf &buf, Event &event) {
+    void PROC_send_message_ref(Buf &buf, Event &event) {
         if (buf.write_by_reference_supported()) {
             buf.PROC_write_event_reference(event);
             mp_output_midi_state->process_msg(event.get_data());
@@ -299,6 +380,15 @@ public:
         } else {
             throw std::runtime_error("Midi write buffer does not support any write methods");
         }
+    }
+
+    template<typename Buf>
+    void PROC_send_message_value(Buf &buf, size_t time, size_t size, uint8_t *data) {
+        if (!buf.write_by_value_supported()) {
+            throw std::runtime_error("Midi write buffer does not support value write method");
+        }
+        buf.PROC_write_event_value(size, time, data);
+        mp_output_midi_state->process_msg(data);
     }
 
     void PROC_process_playback(size_t our_pos, size_t our_length, size_t n_samples, bool muted) {
@@ -325,8 +415,46 @@ public:
                 break;
             }
             if (!muted && (int)event->storage_time >= valid_from) {
-                event->proc_time = (int)event->storage_time - _pos + buf.n_frames_processed;
-                PROC_send_message(*buf.buf, *event);
+                // See if we need to restore any cached MIDI channel state by sending
+                // additional messages.
+                auto maybe_prev_event = mp_playback_cursor->get_prev();
+                auto proc_time = (int)event->storage_time - _pos + buf.n_frames_processed;
+                auto resolve_state_from_diff = [&](TrackedState &t) {
+                    t.resolve_to_output([&](size_t size, uint8_t * data) {
+                        // TODO start offset, preplay sample, ...
+                        std::cout << "Resolving msg";
+                        for (size_t i=0; i<size; i++) {
+                            std::cout << " " << data[i];
+                        }
+                        std::cout << std::endl;
+                        PROC_send_message_value(*buf.buf, proc_time, size, data);
+                    });
+                };
+                bool is_first_msg = mp_playback_cursor->is_at_start();
+                bool is_first_preplay_msg =
+                    event->storage_time >= valid_from &&
+                    maybe_prev_event &&
+                    maybe_prev_event->storage_time < valid_from;
+                bool is_first_start_offset_msg =
+                    event->storage_time >= ma_start_offset &&
+                    maybe_prev_event &&
+                    maybe_prev_event->storage_time < ma_start_offset;
+                
+                if (is_first_start_offset_msg) {
+                    std::cout << "Resolving MIDI playback state from start offset\n";
+                    resolve_state_from_diff(mp_track_start_offset_state);
+                }
+                else if (is_first_preplay_msg) {
+                    std::cout << "Resolving MIDI playback state from first preplay sample\n";
+                    resolve_state_from_diff(mp_track_first_preplay_sample_state);
+                }
+                else if (is_first_msg)         {
+                    std::cout << "Resolving MIDI playback state from start\n";
+                    resolve_state_from_diff(mp_track_start_state);
+                }
+
+                event->proc_time = proc_time;
+                PROC_send_message_ref(*buf.buf, *event);
                 ma_n_events_triggered++;
             }
             buf.n_events_processed++;
