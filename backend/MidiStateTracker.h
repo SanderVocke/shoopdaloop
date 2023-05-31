@@ -107,9 +107,7 @@ public:
         m_pitch_wheel(track_controls ? 16 : 0),
         m_channel_pressure(track_controls ? 16 : 0)
         {
-            for (size_t i=0; i<m_notes_active_velocities.size(); i++) {
-                m_notes_active_velocities[i].reset();
-            }
+            clear();
         }
     
     MidiStateTracker& operator= (MidiStateTracker const& other) {
@@ -145,6 +143,10 @@ public:
             m_notes_active_velocities[i].reset();
         }
         m_n_notes_active = 0;
+        for (auto &p : m_pitch_wheel) { p = 0x2000; }
+        for (auto &p : m_programs) { p = 0; }
+        for (auto &p : m_channel_pressure) { p = 0; }
+        for (auto &p : m_controls) { p = 0; }
     }
 
     void process_msg(const uint8_t *data) {

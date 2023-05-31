@@ -550,7 +550,7 @@ suite AudioMidiLoop_midi_tests = []() {
             });
         auto channel_0 = std::vector<Msg>(channel_0_view.begin(), channel_0_view.end());
         check_msg_vectors_equal(channel_0, std::vector<Msg>({
-            pitch_wheel(0, 0, 0),
+            pitch_wheel(0, 0, 0x2000),
             pitch_wheel(0, 0, 10),
             pitch_wheel(1, 0, 11),
             pitch_wheel(2, 0, 12),
