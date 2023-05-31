@@ -23,7 +23,7 @@ public:
         virtual void note_changed(MidiStateTracker *from, uint8_t channel, uint8_t note, std::optional<uint8_t> maybe_velocity) = 0;
         virtual void cc_changed(MidiStateTracker *from, uint8_t channel, uint8_t cc, uint8_t value) = 0;
         virtual void program_changed(MidiStateTracker *from, uint8_t channel, uint8_t program) = 0;
-        virtual void pitch_wheel_changed(MidiStateTracker *from, uint8_t channel, uint8_t pitch) = 0;
+        virtual void pitch_wheel_changed(MidiStateTracker *from, uint8_t channel, uint16_t pitch) = 0;
         virtual void channel_pressure_changed(MidiStateTracker *from, uint8_t channel, uint8_t pressure) = 0;
     };
 
@@ -32,7 +32,7 @@ private:
     std::vector<std::optional<uint8_t>> m_notes_active_velocities;        // Track Note On / Note Off (16*128)
     std::vector<uint8_t> m_controls;                       // Track CC values          (128*128)
     std::vector<uint8_t> m_programs;                       // Track Program values     (16)
-    std::vector<uint8_t> m_pitch_wheel;                    // 16 channels
+    std::vector<uint16_t> m_pitch_wheel;                    // 16 channels
     std::vector<uint8_t> m_channel_pressure;               // 16 channels
     std::set<std::weak_ptr<Subscriber>, std::owner_less<std::weak_ptr<Subscriber>>> m_subscribers;
 
@@ -82,7 +82,7 @@ private:
         m_programs[channel & 0x0F] = value;
     }
     
-    void process_pitch_wheel(uint8_t channel, uint8_t value) {
+    void process_pitch_wheel(uint8_t channel, uint16_t value) {
         if (m_pitch_wheel.size() == 0) { return; }
         if (m_pitch_wheel.at(channel & 0x0F) != value) {
             for (auto const& s : m_subscribers) { if(auto ss = s.lock()) { ss->pitch_wheel_changed(this, channel, value); } }
@@ -165,6 +165,15 @@ public:
             for(size_t i=0; i<128; i++) {
                 process_noteOff(*chan, i);
             }
+        } else if (is_pitch_wheel(data)) {
+            uint16_t value = (uint16_t)data[0] | ((uint16_t)data[1] << 7);
+            process_pitch_wheel(channel(data), value);
+        } else if (is_channel_pressure(data)) {
+            process_channel_pressure(channel(data), data[1]);
+        } else if (is_program(data)) {
+            process_program(channel(data), data[1]);
+        } else if (is_cc(data)) {
+            process_cc(channel(data), data[1], data[2]);
         }
     }
 
@@ -176,7 +185,7 @@ public:
 
     bool tracking_controls() const { return m_controls.size() > 0; }
     uint8_t cc_value (uint8_t channel, uint8_t controller) { return m_controls.at(cc_index(channel & 0x0F, controller)); }
-    uint8_t pitch_wheel_value (uint8_t channel) { return m_pitch_wheel.at(channel & 0x0F); }
+    uint16_t pitch_wheel_value (uint8_t channel) { return m_pitch_wheel.at(channel & 0x0F); }
     uint8_t channel_pressure_value (uint8_t channel) { return m_channel_pressure.at(channel & 0x0F); }
 
     bool tracking_programs() const { return m_programs.size() > 0; }

@@ -72,7 +72,7 @@ class MidiStateDiffTracker : public MidiStateTracker::Subscriber, public std::en
         }
     }
   
-    void pitch_wheel_changed(MidiStateTracker *tracker, uint8_t channel, uint8_t pitch) override {
+    void pitch_wheel_changed(MidiStateTracker *tracker, uint8_t channel, uint16_t pitch) override {
         if (tracker != m_a.get() && tracker != m_b.get()) { return; }
         auto &other =
             tracker == m_a.get() ? m_b :

@@ -4,18 +4,45 @@
 #include <numeric>
 #include "AudioMidiLoop.h"
 #include "MidiChannel.h"
+#include "MidiStateTracker.h"
 #include "helpers.h"
 #include "types.h"
 #include "process_loops.h"
+#include <ranges>
+#include <string>
+#include <valarray>
+#include "midi_helpers.h"
 
 using namespace boost::ut;
 using namespace std::chrono_literals;
 
 template<typename MessageA, typename MessageB>
-inline void check_msgs_equal(MessageA const& a, MessageB const& b, int time_offset=0, std::string info="") {
-    expect(eq(a.time, b.time+time_offset)) << info;
-    expect(eq(a.size, b.size)) << info;
-    expect(eq(a.data, b.data)) << info;
+inline void check_msgs_equal(
+    MessageA const& a,
+    MessageB const& b,
+    int time_offset=0,
+    std::string info="",
+    const boost::ut::reflection::source_location sl = boost::ut::reflection::source_location::current()
+    )
+{
+    expect(eq(a.time, b.time+time_offset), sl) << " (time) " << info;
+    expect(eq(a.size, b.size), sl) << " (size) " << info;
+    for (size_t i=0; i<a.size; i++) {
+        expect(eq(a.data[i], b.data[i]), sl) << " (data [" << i << "]) " << info;
+    }
+}
+
+template<typename MessageA, typename MessageB>
+inline void check_msg_vectors_equal(
+    std::vector<MessageA> const& a,
+    std::vector<MessageB> const& b,
+    std::string info = "",
+    const boost::ut::reflection::source_location sl = boost::ut::reflection::source_location::current())
+{
+    expect(eq(a.size(), b.size()), sl) << " (size) " << info;
+    for (size_t i=0; i<a.size(); i++) {
+        check_msgs_equal(a[i], b[i], 0, "(msg " + std::to_string(i) + ") " + info, sl);
+    }
 }
 
 template<typename Message>
@@ -427,59 +454,131 @@ suite AudioMidiLoop_midi_tests = []() {
         }
     };
 
-    "ml_6_state_tracking_record"_test = []() {
+    "ml_6_state_tracking"_test = []() {
             AudioMidiLoop loop;
-        loop.add_midi_channel<uint32_t, uint16_t>(512, Direct, false);
-        auto &channel = *loop.midi_channel<uint32_t, uint16_t>(0);
+        loop.add_midi_channel<uint32_t, uint16_t>(100000, Direct, false);
+        auto &chan = *loop.midi_channel<uint32_t, uint16_t>(0);
         using Message = MidiChannel<uint32_t, uint16_t>::Message;
 
-        auto pitch_first_byte = [](size_t val) { return val & 0b1111111; };
-        auto pitch_second_byte = [](size_t val) { return (val >> 7) & 0b1111111; };
+        auto pitch_wheel_bytes = [](uint8_t channel, uint16_t val) {
+            return std::vector<uint8_t>({
+                (uint8_t)(0xE0 | channel),
+                (uint8_t)(val & 0b1111111),
+                (uint8_t)((val >> 7) & 0b1111111)
+            });
+        };
+        auto pitch_wheel = [&](size_t time, uint8_t channel, uint16_t val) {
+            return Msg(time, 3, pitch_wheel_bytes(channel, val));
+        };
+        auto note_on = [](size_t time, uint8_t channel, uint8_t note, uint8_t velocity) {
+            return Msg(time, 3, {(uint8_t)(0x90 | channel), note, velocity});
+        };
+        auto note_off = [](size_t time, uint8_t channel, uint8_t note, uint8_t velocity) {
+            return Msg(time, 3, {(uint8_t)(0x80 | channel), note, velocity});
+        };
 
         // Set up a sequence where notes are played every 10 ticks,
         // with a linearly changing pitch wheel.
-        auto src = MidiTestBuffer();
-        for(size_t i=0; i<100; i++) {
-            src.read.push_back( Msg(i, 3, {0xE0, (uint8_t)pitch_first_byte(i), (uint8_t)pitch_second_byte(i)}));
+        // The sequence will be split up into multiple read buffers.
+        // Sequence:
+        // - pitch wheel goes up by 1 per tick, starting at 10
+        // - note on every 10 ticks @ offset 2
+        // - note off every 10 ticks @ offset 5
+        // - sequence divided over 10 buffers of 10 ticks each
+        std::vector<MidiTestBuffer> input_buffers;
+        for(size_t i=0; i<10; i++) {
+            input_buffers.push_back(MidiTestBuffer());
+            auto &buf = input_buffers.back();
+            for(size_t j=0; j<10; j++) {
+                buf.read.push_back( pitch_wheel(j, 0, 10 + i*10+j) );
+                if (j == 2) {
+                    buf.read.push_back( note_on(i, 0, 50, 100) );
+                }
+                if (j == 5) {
+                    buf.read.push_back( note_off(i, 0, 50, 100) );
+                }
+            }
         }
 
-        // HERE
-
-        std::vector<Message> contents = {
-            Message(0,  1, { 0x01 }),
-            Message(10, 1, { 0x02 }),
-            Message(21, 1, { 0x03 }),
-        };
-        channel.set_contents(contents, 100, false);
-        loop.set_length(100);
-
-        expect(eq(loop.get_mode() , Stopped));
-        expect(loop.PROC_get_next_poi() == std::nullopt);
-        expect(eq(loop.get_length() , 100));
-        expect(eq(loop.get_position() , 0));
-
-        auto play_buf = MidiTestBuffer();
-        
-        loop.plan_transition(Playing);
-        channel.PROC_set_playback_buffer(&play_buf, 512);
+        // Record the prepared data.
+        loop.plan_transition(Recording);
         loop.PROC_trigger();
         loop.PROC_update_poi();
-
-        expect(eq(loop.get_mode() , Playing));
-        expect(loop.PROC_get_next_poi() == 100) << loop.PROC_get_next_poi().value_or(0); // end of loop
-        expect(eq(loop.get_length() , 100));
-        expect(eq(loop.get_position() , 0));
-
-        loop.PROC_process(20);
-
-        expect(eq(loop.get_mode() , Playing));
-        expect(loop.PROC_get_next_poi() == 80) << loop.PROC_get_next_poi().value_or(0); // end of loop
+        expect(eq(loop.get_mode() , Recording));
+        for (auto &buf: input_buffers) {
+            chan.PROC_set_recording_buffer(&buf, 10);
+            loop.PROC_update_poi();
+            loop.PROC_process(10);
+        }
         expect(eq(loop.get_length(), 100));
-        expect(eq(loop.get_position(), 20));
 
-        auto msgs = play_buf.written;
-        expect(eq(msgs.size(), 2));
-        check_msgs_equal(msgs.at(0), contents.at(0));
-        check_msgs_equal(msgs.at(1), contents.at(1));
+        // Now, stop recording but also make some changes on the input.
+        loop.plan_transition(Stopped, 0, false, false);
+        loop.PROC_update_poi();
+        MidiTestBuffer another;
+        another.read.push_back(pitch_wheel(0, 0, 150));
+        // Also an unrelated pitch wheel change on other channel
+        another.read.push_back(pitch_wheel(0, 10, 100));
+        // Also press the hold pedal
+        another.read.push_back(Msg(0, 3, {0xB1, 64, 127 }));
+        expect(eq(loop.get_mode(), Stopped));
+        chan.PROC_set_recording_buffer(&another, 10);
+        loop.PROC_update_poi();
+        loop.PROC_process(10);
+
+        expect(eq(loop.get_length(), 100));
+
+        // Now, play back the first 10 samples.
+        MidiTestBuffer play_buf;
+        loop.plan_transition(Playing, 0, false, false);
+        chan.PROC_set_playback_buffer(&play_buf, 10);
+        loop.PROC_update_poi();
+        loop.PROC_process(10);
+
+        expect(eq(loop.get_position(), 10));
+        expect(eq(loop.get_mode(), Playing));
+
+        // In terms of pitch wheel changes, we expect:
+        // - first a message to revert the pitch back to the original state (0),
+        //   as part of state tracking/restore functionality
+        // - then subsequently the same sequence of pitch wheel changes we put in
+        //   (10 + position).
+        auto &msgs = play_buf.written;
+        auto channel_0_view = play_buf.written |
+            std::ranges::views::filter([](Msg &msg) {
+                return msg.size == 3 && channel(msg.data.data()) == 0;
+            });
+        auto channel_0 = std::vector<Msg>(channel_0_view.begin(), channel_0_view.end());
+        check_msg_vectors_equal(channel_0, std::vector<Msg>({
+            pitch_wheel(0, 0, 0),
+            pitch_wheel(0, 0, 10),
+            pitch_wheel(1, 0, 11),
+            pitch_wheel(2, 0, 12),
+            pitch_wheel(3, 0, 13),
+            pitch_wheel(4, 0, 14),
+            pitch_wheel(5, 0, 15),
+            pitch_wheel(6, 0, 16),
+            pitch_wheel(7, 0, 17),
+            pitch_wheel(8, 0, 18),
+            pitch_wheel(9, 0, 19)
+        }));
+
+        auto channel_10_view = play_buf.written |
+            std::ranges::views::filter([](Msg &msg) {
+                return msg.size == 3 && channel(msg.data.data()) == 10;
+            });
+        auto channel_10 = std::vector<Msg>(channel_10_view.begin(), channel_10_view.end());
+        check_msg_vectors_equal(channel_10, std::vector<Msg>({
+            pitch_wheel(0, 10, 0),
+        }));
+
+        auto channel_1_view = play_buf.written |
+            std::ranges::views::filter([](Msg &msg) {
+                return msg.size == 3 && channel(msg.data.data()) == 1;
+            });
+        auto channel_1 = std::vector<Msg>(channel_1_view.begin(), channel_1_view.end());
+        check_msg_vectors_equal(channel_1, std::vector<Msg>({
+            Msg(0, 3, {0xB1, 64, 0 })
+        }));
     };
 };

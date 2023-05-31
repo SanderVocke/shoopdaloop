@@ -700,9 +700,6 @@ void ChannelInfo::connect_input_port(SharedPortInfo port, bool thread_safe) {
     auto fn = [this, port]() {
         mp_input_port_mapping = port;
         ma_process_when = port->ma_process_when; // Process in same phase as the connected port
-        if (port->maybe_midi_state && maybe_midi()) {
-            maybe_midi()->track_input_state(port->maybe_midi_state);
-        }
     };
     if (thread_safe) { get_backend().cmd_queue.queue(fn); }
     else { fn(); }

@@ -93,9 +93,7 @@ private:
     std::shared_ptr<MidiStateTracker> mp_output_midi_state;
 
     // Track the MIDI state on the channel's input.
-    // This state is managed externally, just a reference stored in the channel here
-    // for monitoring.
-    std::weak_ptr<MidiStateTracker> mp_input_midi_state;
+    std::shared_ptr<MidiStateTracker> mp_input_midi_state;
 
     // We need to track what the MIDI state was at multiple interesting points
     // in order to restore that state quickly.
@@ -130,6 +128,7 @@ public:
         ma_mode(mode),
         ma_data_length(0),
         mp_output_midi_state(std::make_shared<MidiStateTracker>(true, true, true)),
+        mp_input_midi_state(std::make_shared<MidiStateTracker>(false, true, true)),
         mp_track_start_state(false, true, true),
         mp_track_prerecord_start_state(false, true, true),
         mp_track_first_preplay_sample_state(false, true, true),
@@ -164,13 +163,9 @@ public:
         mp_prev_process_flags = other.mp_prev_process_flags;
         *mp_prerecord_storage = *other.mp_prerecord_storage;
         ma_prerecord_data_length = other.ma_prerecord_data_length;
-        mp_input_midi_state = other.mp_input_midi_state;
+        *mp_input_midi_state = *other.mp_input_midi_state;
         data_changed();
         return *this;
-    }
-
-    void track_input_state(std::shared_ptr<MidiStateTracker> input_midi_state) {
-        mp_input_midi_state = input_midi_state;
     }
 
     unsigned get_data_seq_nr() const override { return ma_data_seq_nr; }
@@ -225,6 +220,11 @@ public:
         );
         auto const& process_flags = process_params.process_flags;
 
+        // We always need to process input messages to keep our input port state up-to-date.
+        // This is done inside the recording process function, but if we don't record,
+        // we need to do it here.
+        bool processed_input_messages = false;
+
         // If we were playing back and anything other than forward playback is happening
         // (e.g. mode switch, position set, ...), send an All Sound Off.
         // Also reset the playback cursor in that case.
@@ -265,19 +265,23 @@ public:
                 mp_track_start_state,
                 length_before + ma_start_offset, 
                 n_samples);
-        }
-        if (process_flags & ChannelPreRecord) {
+            processed_input_messages = true;
+        } else if (process_flags & ChannelPreRecord) {
             PROC_process_record(
                 *mp_prerecord_storage, 
                 ma_prerecord_data_length, 
                 mp_track_prerecord_start_state,
                 ma_prerecord_data_length, 
                 n_samples);
+            processed_input_messages = true;
         }
 
         mp_prev_pos_after = pos_after;
         mp_prev_process_flags = process_flags;
 
+        if (processed_input_messages) {
+            PROC_process_input_messages(n_samples);
+        }
 
         // Update recording/playback buffers.
         if(mp_recording_source_buffer.has_value()) {
@@ -289,6 +293,34 @@ public:
     }
 
     void PROC_finalize_process() override {}
+
+    void PROC_process_input_messages(size_t n_samples) {
+        auto &recbuf = mp_recording_source_buffer.value();
+        auto n = std::min(recbuf.frames_left(), n_samples);
+        if (n == 0) { return; }
+
+        size_t end = recbuf.n_frames_processed + n;
+        for(size_t idx=recbuf.n_events_processed
+            ;
+            idx < recbuf.n_events_total
+            ;
+            idx++)
+        {
+            uint32_t t;
+            uint32_t s;
+            const uint8_t *d;
+            recbuf.buf->PROC_get_event_reference(idx).get(s, t, d);
+            if (t >= end) {
+                // Will handle in a future process iteration
+                break;
+            } else {
+                // Regardless of whether we record or not, we need to keep the input
+                // port state up-to-date.
+                mp_input_midi_state->process_msg(d);
+                recbuf.n_events_processed++;
+            }
+        }
+    }
 
     void PROC_process_record(Storage &storage,
                              std::atomic<size_t> &storage_data_length,
@@ -320,23 +352,28 @@ public:
             const uint8_t *d;
             recbuf.buf->PROC_get_event_reference(idx).get(s, t, d);
             if (t >= record_end) {
+                // Will handle in a future process iteration
                 break;
-            }
-            if (t >= recbuf.n_frames_processed) { // May need to skip messages
-                // If here, we are about to record a message.
-                // If it is the first recorded message, this is also the moment to cache the
-                // MIDI state on the input (such as hold pedal, other CCs, pitch wheel, etc.) so we can
-                // restore it later.
-                if (storage.n_events() == 0) {
-                    if (auto state = mp_input_midi_state.lock()) {
-                        track_start_state.set_from(state);
+            } else {
+                if (t >= recbuf.n_frames_processed) { // Don't store any message that came before our process window
+                    // If here, we are about to record a message.
+                    // If it is the first recorded message, this is also the moment to cache the
+                    // MIDI state on the input (such as hold pedal, other CCs, pitch wheel, etc.) so we can
+                    // restore it later.
+                    if (storage.n_events() == 0) {
+                        track_start_state.set_from(mp_input_midi_state);
                     }
+    
+                    storage.append(record_from + (TimeType) t - recbuf.n_frames_processed, (SizeType) s, d);
+                    changed = true;
                 }
- 
-                storage.append(record_from + (TimeType) t - recbuf.n_frames_processed, (SizeType) s, d);
-                changed = true;
+
+                // Regardless of whether we record or not, we need to keep the input
+                // port state up-to-date.
+                mp_input_midi_state->process_msg(d);
+
+                recbuf.n_events_processed++;
             }
-            recbuf.n_events_processed++;
         }
         
         PROC_set_length_impl(storage, storage_data_length, storage_data_length + n_samples);
