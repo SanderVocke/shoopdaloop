@@ -40,7 +40,7 @@ inline void check_msg_vectors_equal(
     const boost::ut::reflection::source_location sl = boost::ut::reflection::source_location::current())
 {
     expect(eq(a.size(), b.size()), sl) << " (size) " << info;
-    for (size_t i=0; i<a.size(); i++) {
+    for (size_t i=0; i<a.size() && i < b.size(); i++) {
         check_msgs_equal(a[i], b[i], 0, "(msg " + std::to_string(i) + ") " + info, sl);
     }
 }
@@ -492,13 +492,30 @@ suite AudioMidiLoop_midi_tests = []() {
             for(size_t j=0; j<10; j++) {
                 buf.read.push_back( pitch_wheel(j, 0, 10 + i*10+j) );
                 if (j == 2) {
-                    buf.read.push_back( note_on(i, 0, 50, 100) );
+                    buf.read.push_back( note_on(j, 0, 50, 100) );
                 }
                 if (j == 5) {
-                    buf.read.push_back( note_off(i, 0, 50, 100) );
+                    buf.read.push_back( note_off(j, 0, 50, 100) );
                 }
             }
         }
+
+        auto get_expected_output_msgs = [&](
+            std::vector<Msg> prepend,
+            size_t from_time,
+            size_t to_time
+        ) {
+            std::vector<Msg> r = prepend;
+            for(size_t i=0; i<input_buffers.size(); i++) {
+                for(auto msg : input_buffers[i].read) {
+                    msg.time += 10*i;
+                    if (msg.time >= from_time && msg.time < to_time) {
+                        r.push_back(msg);
+                    }
+                }
+            }
+            return r;
+        };
 
         // Record the prepared data.
         loop.plan_transition(Recording);
@@ -533,9 +550,9 @@ suite AudioMidiLoop_midi_tests = []() {
         loop.plan_transition(Playing, 0, false, false);
         chan.PROC_set_playback_buffer(&play_buf, 100);
         loop.PROC_update_poi();
-        loop.PROC_process(100);
+        loop.PROC_process(99);
 
-        expect(eq(loop.get_position(), 10));
+        expect(eq(loop.get_position(), 99));
         expect(eq(loop.get_mode(), Playing));
 
         // In terms of pitch wheel changes, we expect:
@@ -549,19 +566,13 @@ suite AudioMidiLoop_midi_tests = []() {
                 return msg.size == 3 && channel(msg.data.data()) == 0;
             });
         auto channel_0 = std::vector<Msg>(channel_0_view.begin(), channel_0_view.end());
-        check_msg_vectors_equal(channel_0, std::vector<Msg>({
-            pitch_wheel(0, 0, 0x2000),
-            pitch_wheel(0, 0, 10),
-            pitch_wheel(1, 0, 11),
-            pitch_wheel(2, 0, 12),
-            pitch_wheel(3, 0, 13),
-            pitch_wheel(4, 0, 14),
-            pitch_wheel(5, 0, 15),
-            pitch_wheel(6, 0, 16),
-            pitch_wheel(7, 0, 17),
-            pitch_wheel(8, 0, 18),
-            pitch_wheel(9, 0, 19)
-        }));
+        check_msg_vectors_equal(
+            channel_0,
+            get_expected_output_msgs(
+                { pitch_wheel(0, 0, 0x2000) }, // State restore message
+                0,
+                99
+            ));
 
         auto channel_10_view = play_buf.written |
             std::ranges::views::filter([](Msg &msg) {
