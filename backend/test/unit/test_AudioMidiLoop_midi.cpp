@@ -531,9 +531,9 @@ suite AudioMidiLoop_midi_tests = []() {
         // Now, play back the first 10 samples.
         MidiTestBuffer play_buf;
         loop.plan_transition(Playing, 0, false, false);
-        chan.PROC_set_playback_buffer(&play_buf, 10);
+        chan.PROC_set_playback_buffer(&play_buf, 100);
         loop.PROC_update_poi();
-        loop.PROC_process(10);
+        loop.PROC_process(100);
 
         expect(eq(loop.get_position(), 10));
         expect(eq(loop.get_mode(), Playing));
