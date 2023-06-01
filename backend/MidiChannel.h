@@ -279,7 +279,7 @@ public:
         mp_prev_pos_after = pos_after;
         mp_prev_process_flags = process_flags;
 
-        if (processed_input_messages) {
+        if (!processed_input_messages) {
             PROC_process_input_messages(n_samples);
         }
 
@@ -459,10 +459,6 @@ public:
                 auto resolve_state_from_diff = [&](TrackedState &t) {
                     t.resolve_to_output([&](size_t size, uint8_t * data) {
                         // TODO start offset, preplay sample, ...
-                        std::cout << "Resolving msg";
-                        for (size_t i=0; i<size; i++) {
-                            std::cout << " " << data[i];
-                        }
                         std::cout << std::endl;
                         PROC_send_message_value(*buf.buf, proc_time, size, data);
                     });

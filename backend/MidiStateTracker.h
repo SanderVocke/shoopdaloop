@@ -69,7 +69,7 @@ private:
 
         auto idx = cc_index(channel & 0x0F, controller);
         if (m_controls.at(idx) != value) {
-            for (auto const& s : m_subscribers) { if(auto ss = s.lock()) { ss->note_changed(this, channel, controller, value); } }
+            for (auto const& s : m_subscribers) { if(auto ss = s.lock()) { ss->cc_changed(this, channel, controller, value); } }
         }
         m_controls[idx] = (unsigned char) value;
     }
@@ -168,7 +168,7 @@ public:
                 process_noteOff(*chan, i);
             }
         } else if (is_pitch_wheel(data)) {
-            uint16_t value = (uint16_t)data[0] | ((uint16_t)data[1] << 7);
+            uint16_t value = (uint16_t)data[1] | ((uint16_t)data[2] << 7);
             process_pitch_wheel(channel(data), value);
         } else if (is_channel_pressure(data)) {
             process_channel_pressure(channel(data), data[1]);

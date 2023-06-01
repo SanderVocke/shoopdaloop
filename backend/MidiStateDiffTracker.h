@@ -51,7 +51,7 @@ class MidiStateDiffTracker : public MidiStateTracker::Subscriber, public std::en
         auto &other =
             tracker == m_a.get() ? m_b :
             m_a;
-
+        
         if (other && other->tracking_controls() && other->cc_value(channel, cc) != value) {
             m_diffs.insert({ (uint8_t)(0xB0 | channel), cc });
         } else {
@@ -262,7 +262,7 @@ public:
                     break;
                 case 0xB0:
                     if (controls) {
-                        data[0] = d[1];
+                        data[0] = d[0];
                         data[1] = d[1];
                         data[2] = other->cc_value(channel_part, d[1]);
                         put_message_cb(3, data);
@@ -286,9 +286,10 @@ public:
                     break;
                 case 0xE0:
                     if (controls) {
+                        auto v = other->pitch_wheel_value(channel_part);
                         data[0] = d[0];
-                        data[1] = d[1];
-                        data[2] = other->pitch_wheel_value(channel_part);
+                        data[1] = v & 0b1111111;
+                        data[2] = (v >> 7) & 0b1111111;
                         put_message_cb(3, data);
                     }
                     break;

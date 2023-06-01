@@ -27,8 +27,8 @@ inline void check_msgs_equal(
 {
     expect(eq(a.time, b.time+time_offset), sl) << " (time) " << info;
     expect(eq(a.size, b.size), sl) << " (size) " << info;
-    for (size_t i=0; i<a.size; i++) {
-        expect(eq(a.data[i], b.data[i]), sl) << " (data [" << i << "]) " << info;
+    for (size_t i=0; i<a.size && i<b.size; i++) {
+        expect(eq((int)a.data[i], (int)b.data[i]), sl) << " (data [" << i << "]) " << info;
     }
 }
 
@@ -569,7 +569,7 @@ suite AudioMidiLoop_midi_tests = []() {
             });
         auto channel_10 = std::vector<Msg>(channel_10_view.begin(), channel_10_view.end());
         check_msg_vectors_equal(channel_10, std::vector<Msg>({
-            pitch_wheel(0, 10, 0),
+            pitch_wheel(0, 10, 0x2000),
         }));
 
         auto channel_1_view = play_buf.written |
