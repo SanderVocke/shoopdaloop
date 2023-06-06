@@ -478,9 +478,11 @@ suite AudioMidiLoop_midi_tests = []() {
     "ml_6_state_tracking"_test = [](auto args) {
         size_t playback_from = std::get<0>(args);
         size_t playback_to   = std::get<1>(args);
-        std::vector<Msg> expect_channel_0 = std::get<2>(args);
-        std::vector<Msg> expect_channel_1 = std::get<3>(args);
-        std::vector<Msg> expect_channel_10 = std::get<4>(args);
+        size_t start_offset  = std::get<2>(args);
+        size_t n_preplay_samples = std::get<3>(args);
+        std::vector<Msg> expect_channel_0 = std::get<4>(args);
+        std::vector<Msg> expect_channel_1 = std::get<5>(args);
+        std::vector<Msg> expect_channel_10 = std::get<6>(args);
 
         AudioMidiLoop loop;
         loop.add_midi_channel<uint32_t, uint16_t>(100000, Direct, false);
@@ -540,12 +542,16 @@ suite AudioMidiLoop_midi_tests = []() {
 
         // Now, play back the first 10 samples.
         MidiTestBuffer play_buf;
+        size_t n_samples = playback_to - playback_from;
         loop.plan_transition(Playing, 0, false, false);
-        chan.PROC_set_playback_buffer(&play_buf, 100);
+        chan.set_start_offset(start_offset);
+        chan.set_pre_play_samples(n_preplay_samples);
+        loop.set_position(playback_from, false);
+        chan.PROC_set_playback_buffer(&play_buf, n_samples);
         loop.PROC_update_poi();
-        loop.PROC_process(99);
+        loop.PROC_process(n_samples);
 
-        expect(eq(loop.get_position(), 99));
+        expect(eq(loop.get_position(), playback_to));
         expect(eq(loop.get_mode(), Playing));
 
         // In terms of pitch wheel changes, we expect:
@@ -581,10 +587,13 @@ suite AudioMidiLoop_midi_tests = []() {
         check_msg_vectors_equal(channel_1, expect_channel_1,
         "(samples " + std::to_string(playback_from) + " -> " + std::to_string(playback_to) + ")"
         );
-    } | std::vector<std::tuple<size_t, size_t, std::vector<Msg>, std::vector<Msg>, std::vector<Msg>>> {
+    } | std::vector<std::tuple<size_t, size_t, size_t, size_t, std::vector<Msg>, std::vector<Msg>, std::vector<Msg>>> {
     // Test case 1: playback from first sample.
     {
-        0, 99,
+        0,  // playback from
+        99, // playback to
+        0,  // start offset
+        0,  // n preplay samples
         {
             pitch_wheel_msg(0, 0, 0x2000), // Reset pitch on channel 0
             // Direct playback of input messages
