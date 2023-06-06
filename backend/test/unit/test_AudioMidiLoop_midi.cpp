@@ -52,6 +52,27 @@ inline Message with_time (Message const& msg, size_t time) {
     return m;
 }
 
+inline
+std::vector<uint8_t> pitch_wheel_bytes (uint8_t channel, uint16_t val) {
+    return std::vector<uint8_t>({
+        (uint8_t)(0xE0 | channel),
+        (uint8_t)(val & 0b1111111),
+        (uint8_t)((val >> 7) & 0b1111111)
+    });
+}
+
+inline
+Msg pitch_wheel_msg(size_t time, uint8_t channel, uint16_t val) {
+    return Msg(time, 3, pitch_wheel_bytes(channel, val));
+}
+
+inline Msg note_on_msg (size_t time, uint8_t channel, uint8_t note, uint8_t velocity) {
+    return Msg(time, 3, {(uint8_t)(0x90 | channel), note, velocity});
+}
+inline Msg note_off_msg (size_t time, uint8_t channel, uint8_t note, uint8_t velocity) {
+    return Msg(time, 3, {(uint8_t)(0x80 | channel), note, velocity});
+};
+
 suite AudioMidiLoop_midi_tests = []() {
     "ml_1_stop"_test = []() {
         AudioMidiLoop loop;
@@ -406,7 +427,7 @@ suite AudioMidiLoop_midi_tests = []() {
 
         using Message = MidiChannel<uint32_t, uint16_t>::Message;
         std::vector<Message> data;
-        for(size_t idx=0; idx<256; idx++) { data.push_back(Message{(unsigned)idx, 1, { (unsigned char)'a' + (unsigned char) idx }}); }
+        for(size_t idx=0; idx<256; idx++) { data.push_back(Message{(unsigned)idx, 1, { (unsigned char) ((unsigned char)'a' + (unsigned char) idx) }}); }
 
         chan.set_contents(data, 256);
         chan.set_start_offset(110);
@@ -454,28 +475,17 @@ suite AudioMidiLoop_midi_tests = []() {
         }
     };
 
-    "ml_6_state_tracking"_test = []() {
-            AudioMidiLoop loop;
+    "ml_6_state_tracking"_test = [](auto args) {
+        size_t playback_from = std::get<0>(args);
+        size_t playback_to   = std::get<1>(args);
+        std::vector<Msg> expect_channel_0 = std::get<2>(args);
+        std::vector<Msg> expect_channel_1 = std::get<3>(args);
+        std::vector<Msg> expect_channel_10 = std::get<4>(args);
+
+        AudioMidiLoop loop;
         loop.add_midi_channel<uint32_t, uint16_t>(100000, Direct, false);
         auto &chan = *loop.midi_channel<uint32_t, uint16_t>(0);
         using Message = MidiChannel<uint32_t, uint16_t>::Message;
-
-        auto pitch_wheel_bytes = [](uint8_t channel, uint16_t val) {
-            return std::vector<uint8_t>({
-                (uint8_t)(0xE0 | channel),
-                (uint8_t)(val & 0b1111111),
-                (uint8_t)((val >> 7) & 0b1111111)
-            });
-        };
-        auto pitch_wheel = [&](size_t time, uint8_t channel, uint16_t val) {
-            return Msg(time, 3, pitch_wheel_bytes(channel, val));
-        };
-        auto note_on = [](size_t time, uint8_t channel, uint8_t note, uint8_t velocity) {
-            return Msg(time, 3, {(uint8_t)(0x90 | channel), note, velocity});
-        };
-        auto note_off = [](size_t time, uint8_t channel, uint8_t note, uint8_t velocity) {
-            return Msg(time, 3, {(uint8_t)(0x80 | channel), note, velocity});
-        };
 
         // Set up a sequence where notes are played every 10 ticks,
         // with a linearly changing pitch wheel.
@@ -490,32 +500,15 @@ suite AudioMidiLoop_midi_tests = []() {
             input_buffers.push_back(MidiTestBuffer());
             auto &buf = input_buffers.back();
             for(size_t j=0; j<10; j++) {
-                buf.read.push_back( pitch_wheel(j, 0, 10 + i*10+j) );
+                buf.read.push_back( pitch_wheel_msg(j, 0, 10 + i*10+j) );
                 if (j == 2) {
-                    buf.read.push_back( note_on(j, 0, 50, 100) );
+                    buf.read.push_back( note_on_msg(j, 0, 50, 100) );
                 }
                 if (j == 5) {
-                    buf.read.push_back( note_off(j, 0, 50, 100) );
+                    buf.read.push_back( note_off_msg(j, 0, 50, 100) );
                 }
             }
         }
-
-        auto get_expected_output_msgs = [&](
-            std::vector<Msg> prepend,
-            size_t from_time,
-            size_t to_time
-        ) {
-            std::vector<Msg> r = prepend;
-            for(size_t i=0; i<input_buffers.size(); i++) {
-                for(auto msg : input_buffers[i].read) {
-                    msg.time += 10*i;
-                    if (msg.time >= from_time && msg.time < to_time) {
-                        r.push_back(msg);
-                    }
-                }
-            }
-            return r;
-        };
 
         // Record the prepared data.
         loop.plan_transition(Recording);
@@ -533,9 +526,9 @@ suite AudioMidiLoop_midi_tests = []() {
         loop.plan_transition(Stopped, 0, false, false);
         loop.PROC_update_poi();
         MidiTestBuffer another;
-        another.read.push_back(pitch_wheel(0, 0, 150));
+        another.read.push_back(pitch_wheel_msg(0, 0, 150));
         // Also an unrelated pitch wheel change on other channel
-        another.read.push_back(pitch_wheel(0, 10, 100));
+        another.read.push_back(pitch_wheel_msg(0, 10, 100));
         // Also press the hold pedal
         another.read.push_back(Msg(0, 3, {0xB1, 64, 127 }));
         expect(eq(loop.get_mode(), Stopped));
@@ -567,29 +560,158 @@ suite AudioMidiLoop_midi_tests = []() {
             });
         auto channel_0 = std::vector<Msg>(channel_0_view.begin(), channel_0_view.end());
         check_msg_vectors_equal(
-            channel_0,
-            get_expected_output_msgs(
-                { pitch_wheel(0, 0, 0x2000) }, // State restore message
-                0,
-                99
-            ));
+            channel_0, expect_channel_0,
+            "(samples " + std::to_string(playback_from) + " -> " + std::to_string(playback_to) + ")"
+            );
 
         auto channel_10_view = play_buf.written |
             std::ranges::views::filter([](Msg &msg) {
                 return msg.size == 3 && channel(msg.data.data()) == 10;
             });
         auto channel_10 = std::vector<Msg>(channel_10_view.begin(), channel_10_view.end());
-        check_msg_vectors_equal(channel_10, std::vector<Msg>({
-            pitch_wheel(0, 10, 0x2000),
-        }));
+        check_msg_vectors_equal(channel_10, expect_channel_10, 
+        "(samples " + std::to_string(playback_from) + " -> " + std::to_string(playback_to) + ")"
+        );
 
         auto channel_1_view = play_buf.written |
             std::ranges::views::filter([](Msg &msg) {
                 return msg.size == 3 && channel(msg.data.data()) == 1;
             });
         auto channel_1 = std::vector<Msg>(channel_1_view.begin(), channel_1_view.end());
-        check_msg_vectors_equal(channel_1, std::vector<Msg>({
-            Msg(0, 3, {0xB1, 64, 0 })
-        }));
-    };
+        check_msg_vectors_equal(channel_1, expect_channel_1,
+        "(samples " + std::to_string(playback_from) + " -> " + std::to_string(playback_to) + ")"
+        );
+    } | std::vector<std::tuple<size_t, size_t, std::vector<Msg>, std::vector<Msg>, std::vector<Msg>>> {
+    // Test case 1: playback from first sample.
+    {
+        0, 99,
+        {
+            pitch_wheel_msg(0, 0, 0x2000), // Reset pitch on channel 0
+            // Direct playback of input messages
+            pitch_wheel_msg(0, 0, 10),
+            pitch_wheel_msg(1, 0, 11),
+            pitch_wheel_msg(2, 0, 12),
+            note_on_msg(2, 0, 50, 100),
+            pitch_wheel_msg(3, 0, 13),
+            pitch_wheel_msg(4, 0, 14),
+            pitch_wheel_msg(5, 0, 15),
+            note_off_msg(5, 0, 50, 100),
+            pitch_wheel_msg(6, 0, 16),
+            pitch_wheel_msg(7, 0, 17),
+            pitch_wheel_msg(8, 0, 18),
+            pitch_wheel_msg(9, 0, 19),
+            pitch_wheel_msg(10, 0, 20),
+            pitch_wheel_msg(11, 0, 21),
+            pitch_wheel_msg(12, 0, 22),
+            note_on_msg(12, 0, 50, 100),
+            pitch_wheel_msg(13, 0, 23),
+            pitch_wheel_msg(14, 0, 24),
+            pitch_wheel_msg(15, 0, 25),
+            note_off_msg(15, 0, 50, 100),
+            pitch_wheel_msg(16, 0, 26),
+            pitch_wheel_msg(17, 0, 27),
+            pitch_wheel_msg(18, 0, 28),
+            pitch_wheel_msg(19, 0, 29),
+            pitch_wheel_msg(20, 0, 30),
+            pitch_wheel_msg(21, 0, 31),
+            pitch_wheel_msg(22, 0, 32),
+            note_on_msg(22, 0, 50, 100),
+            pitch_wheel_msg(23, 0, 33),
+            pitch_wheel_msg(24, 0, 34),
+            pitch_wheel_msg(25, 0, 35),
+            note_off_msg(25, 0, 50, 100),
+            pitch_wheel_msg(26, 0, 36),
+            pitch_wheel_msg(27, 0, 37),
+            pitch_wheel_msg(28, 0, 38),
+            pitch_wheel_msg(29, 0, 39),
+            pitch_wheel_msg(30, 0, 40),
+            pitch_wheel_msg(31, 0, 41),
+            pitch_wheel_msg(32, 0, 42),
+            note_on_msg(32, 0, 50, 100),
+            pitch_wheel_msg(33, 0, 43),
+            pitch_wheel_msg(34, 0, 44),
+            pitch_wheel_msg(35, 0, 45),
+            note_off_msg(35, 0, 50, 100),
+            pitch_wheel_msg(36, 0, 46),
+            pitch_wheel_msg(37, 0, 47),
+            pitch_wheel_msg(38, 0, 48),
+            pitch_wheel_msg(39, 0, 49),
+            pitch_wheel_msg(40, 0, 50),
+            pitch_wheel_msg(41, 0, 51),
+            pitch_wheel_msg(42, 0, 52),
+            note_on_msg(42, 0, 50, 100),
+            pitch_wheel_msg(43, 0, 53),
+            pitch_wheel_msg(44, 0, 54),
+            pitch_wheel_msg(45, 0, 55),
+            note_off_msg(45, 0, 50, 100),
+            pitch_wheel_msg(46, 0, 56),
+            pitch_wheel_msg(47, 0, 57),
+            pitch_wheel_msg(48, 0, 58),
+            pitch_wheel_msg(49, 0, 59),
+            pitch_wheel_msg(50, 0, 60),
+            pitch_wheel_msg(51, 0, 61),
+            pitch_wheel_msg(52, 0, 62),
+            note_on_msg(52, 0, 50, 100),
+            pitch_wheel_msg(53, 0, 63),
+            pitch_wheel_msg(54, 0, 64),
+            pitch_wheel_msg(55, 0, 65),
+            note_off_msg(55, 0, 50, 100),
+            pitch_wheel_msg(56, 0, 66),
+            pitch_wheel_msg(57, 0, 67),
+            pitch_wheel_msg(58, 0, 68),
+            pitch_wheel_msg(59, 0, 69),
+            pitch_wheel_msg(60, 0, 70),
+            pitch_wheel_msg(61, 0, 71),
+            pitch_wheel_msg(62, 0, 72),
+            note_on_msg(62, 0, 50, 100),
+            pitch_wheel_msg(63, 0, 73),
+            pitch_wheel_msg(64, 0, 74),
+            pitch_wheel_msg(65, 0, 75),
+            note_off_msg(65, 0, 50, 100),
+            pitch_wheel_msg(66, 0, 76),
+            pitch_wheel_msg(67, 0, 77),
+            pitch_wheel_msg(68, 0, 78),
+            pitch_wheel_msg(69, 0, 79),
+            pitch_wheel_msg(70, 0, 80),
+            pitch_wheel_msg(71, 0, 81),
+            pitch_wheel_msg(72, 0, 82),
+            note_on_msg(72, 0, 50, 100),
+            pitch_wheel_msg(73, 0, 83),
+            pitch_wheel_msg(74, 0, 84),
+            pitch_wheel_msg(75, 0, 85),
+            note_off_msg(75, 0, 50, 100),
+            pitch_wheel_msg(76, 0, 86),
+            pitch_wheel_msg(77, 0, 87),
+            pitch_wheel_msg(78, 0, 88),
+            pitch_wheel_msg(79, 0, 89),
+            pitch_wheel_msg(80, 0, 90),
+            pitch_wheel_msg(81, 0, 91),
+            pitch_wheel_msg(82, 0, 92),
+            note_on_msg(82, 0, 50, 100),
+            pitch_wheel_msg(83, 0, 93),
+            pitch_wheel_msg(84, 0, 94),
+            pitch_wheel_msg(85, 0, 95),
+            note_off_msg(85, 0, 50, 100),
+            pitch_wheel_msg(86, 0, 96),
+            pitch_wheel_msg(87, 0, 97),
+            pitch_wheel_msg(88, 0, 98),
+            pitch_wheel_msg(89, 0, 99),
+            pitch_wheel_msg(90, 0, 100),
+            pitch_wheel_msg(91, 0, 101),
+            pitch_wheel_msg(92, 0, 102),
+            note_on_msg(92, 0, 50, 100),
+            pitch_wheel_msg(93, 0, 103),
+            pitch_wheel_msg(94, 0, 104),
+            pitch_wheel_msg(95, 0, 105),
+            note_off_msg(95, 0, 50, 100),
+            pitch_wheel_msg(96, 0, 106),
+            pitch_wheel_msg(97, 0, 107),
+            pitch_wheel_msg(98, 0, 108)
+        },
+        { Msg(0, 3, {0xB1, 64, 0 }) }, // Reset hold pedal on channel 1
+        { pitch_wheel_msg(0, 10, 0x2000) } // Reset pitch on channel 10
+    },
+    // ...
+    }
+    ;
 };
