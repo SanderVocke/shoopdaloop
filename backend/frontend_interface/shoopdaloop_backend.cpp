@@ -663,7 +663,7 @@ Backend &PortInfo::get_backend() {
 }
 
 void PortInfo::connect_passthrough(const SharedPortInfo &other) {
-    get_backend().cmd_queue.queue([=]() {
+    get_backend().cmd_queue.queue([this, other]() {
         for (auto &_other : mp_passthrough_to) {
             if(auto __other = _other.lock()) {
                 if (__other.get() == other.get()) { return; } // already connected

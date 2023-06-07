@@ -353,7 +353,7 @@ public:
             memcpy(buf->data(), samples + (idx * ma_buffer_size), sizeof(SampleT)*n_elems);
         }
 
-        auto cmd = [=]() {
+        auto cmd = [this, buffers, len]() {
             mp_buffers = buffers;
             ma_buffers_data_length = len;
             mp_prerecord_buffers_data_length = 0;

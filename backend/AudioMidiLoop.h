@@ -23,7 +23,7 @@ public:
                       bool thread_safe=true) {
         auto channel = std::make_shared<AudioChannel<SampleT>>(
             buffer_pool, initial_max_buffers, mode);
-        auto fn = [=]() {
+        auto fn = [this, channel]() {
             mp_audio_channels.push_back(channel);
         };
         if (thread_safe) { exec_process_thread_command(fn); }

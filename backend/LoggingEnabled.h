@@ -8,7 +8,9 @@
 #ifndef MODULE_LOG_LEVEL
 #define MODULE_LOG_LEVEL LogLevel::debug
 #else
-#warning Using externally defined log level
+#define HELPER(x) #x
+#define STR(x) HELPER(x)
+#pragma message "Using externally defined log level " STR(MODULE_LOG_LEVEL)
 #endif
 
 auto constexpr ModuleLogLevel = MODULE_LOG_LEVEL;

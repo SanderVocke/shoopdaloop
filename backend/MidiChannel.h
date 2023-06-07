@@ -239,12 +239,14 @@ public:
                                     (!process_flags & ChannelPlayback) ||
                                     pos_before != mp_prev_pos_after);
         if (playback_interrupted) {
+            log<LogLevel::debug>("Playback interrupted -> All Sound Off");
             PROC_send_all_sound_off();
         }
 
         if (!(process_flags & ChannelPreRecord) &&
              (mp_prev_process_flags & ChannelPreRecord))
         {
+            log<LogLevel::debug>("Pre-record ended");
             // Ending pre-record. If transitioning to recording,
             // make our pre-recorded buffers into our main buffers.
             // Otherwise, just discard them.
@@ -388,6 +390,7 @@ public:
                     // If it is the first recorded message, this is also the moment to cache the
                     // MIDI state on the input (such as hold pedal, other CCs, pitch wheel, etc.) so we can
                     // restore it later.
+                    log<LogLevel::debug>("Caching port state for record");
                     if (storage.n_events() == 0) {
                         track_start_state.set_from(mp_input_midi_state);
                     }
@@ -502,7 +505,7 @@ public:
                 };
 
                 if (mp_pre_playback_state.valid()) {
-                    log<LogLevel::debug>("Resolving MIDI playback state @ sample {}", event->storage_time);
+                    log<LogLevel::debug>("Restoring port state for playback @ sample {}", event->storage_time);
                     resolve_state_from_diff(mp_pre_playback_state);
                     mp_pre_playback_state.set_valid(false);
                 }
