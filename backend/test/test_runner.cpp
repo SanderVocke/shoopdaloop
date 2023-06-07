@@ -1,16 +1,14 @@
 #include <boost/ut.hpp>
-
-#include <spdlog/spdlog.h>
+#include "LoggingBackend.h"
 
 using namespace boost::ut;
 
 void usage(std::string name) {
-    std::cout << "Usage: " << name << " [filter=FILTER]" << std::endl;
+    std::cout << "Usage: " << name << " [filter=\"FILTER\"] [-h | --help] [-t | --trace]" << std::endl;
 }
 
 int main(int argc, const char *argv[]) {
     std::string name(argv[0]);
-    spdlog::info("HELLO WORLD");
 
     for(size_t i = 1; i<(size_t) argc; i++) {
         std::string arg(argv[i]);
@@ -23,6 +21,8 @@ int main(int argc, const char *argv[]) {
         } else if (arg.substr(0, 2) == "-h" || arg.substr(0, 6) == "--help") {
             usage(std::string(argv[0]));
             abort();
+        } else if (arg == "-t" || arg == "--trace") {
+            set_filter_level(LogLevel::trace);
         } else {
             std::cerr << "Invalid argument." << std::endl;
             usage(std::string(argv[0]));

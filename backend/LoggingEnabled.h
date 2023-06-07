@@ -7,9 +7,11 @@
 
 #ifndef MODULE_LOG_LEVEL
 #define MODULE_LOG_LEVEL LogLevel::debug
+#else
+#warning Using externally defined log level
 #endif
 
-using LogLevel = spdlog::level::level_enum;
+auto constexpr ModuleLogLevel = MODULE_LOG_LEVEL;
 
 template<LogLevel LevelFilter>
 class LoggingEnabled {
@@ -46,4 +48,4 @@ public:
     }
 };
 
-using ModuleLoggingEnabled = LoggingEnabled<MODULE_LOG_LEVEL>;
+using ModuleLoggingEnabled = LoggingEnabled<ModuleLogLevel>;

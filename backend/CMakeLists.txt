@@ -32,10 +32,8 @@ find_package(Jack REQUIRED)
 find_package(LV2 REQUIRED)
 find_package(Lilv REQUIRED)
 find_package(Boost COMPONENTS ALL REQUIRED)
-set(CMAKE_FIND_DEBUG_MODE TRUE)
 find_package(spdlog REQUIRED)
 find_package(fmt REQUIRED)
-set(CMAKE_FIND_DEBUG_MODE FALSE)
 
 message("${SPDLOG_LIBRARIES} ${FMT_LIBRARIES}")
 

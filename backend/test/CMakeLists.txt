@@ -23,3 +23,4 @@ target_include_directories(test_runner
                         ${CMAKE_CURRENT_SOURCE_DIR}/..
                         ${CMAKE_SOURCE_DIR}/third_party/ut/include
                         )
+target_compile_definitions(test_runner PUBLIC -DMODULE_LOG_LEVEL=LOG_LEVEL_TRACE)
