@@ -13,6 +13,7 @@
 #include "JackAudioSystem.h"
 #include "DummyAudioSystem.h"
 #include "JackMidiPort.h"
+#include "LoggingEnabled.h"
 #include "MidiChannel.h"
 #include "MidiMessage.h"
 #include "MidiPortInterface.h"
@@ -113,7 +114,8 @@ enum class ProcessWhen {
     AfterFXChains   // Process only after FX chains have processed.
 };
 
-struct Backend : public std::enable_shared_from_this<Backend> {
+struct Backend : public std::enable_shared_from_this<Backend>,
+                 private ModuleLoggingEnabled {
 
     std::vector<SharedLoopInfo> loops;
     std::vector<SharedPortInfo> ports;
@@ -125,23 +127,26 @@ struct Backend : public std::enable_shared_from_this<Backend> {
 
     Backend (audio_system_type_t audio_system_type,
              std::string client_name_hint) :
+        ModuleLoggingEnabled("Backend"),
         cmd_queue (gc_command_queue_size, 1000, 1000) {
         
         using namespace std::placeholders;
 
         switch (audio_system_type) {
         case Jack:
+            log<LogLevel::debug>("Initializing JACK audio system.");
             audio_system = std::unique_ptr<AudioSystem>(dynamic_cast<AudioSystem*>(new JackAudioSystem(
                 std::string(client_name_hint), std::bind(&Backend::PROC_process, this, _1)
             )));
             break;
         case Dummy:
+            log<LogLevel::debug>("Initializing dummy audio system.");
             audio_system = std::unique_ptr<AudioSystem>(dynamic_cast<AudioSystem*>(new _DummyAudioSystem(
                 std::string(client_name_hint), std::bind(&Backend::PROC_process, this, _1)
             )));
             break;
         default:
-            throw std::runtime_error("Unimplemented backend type");
+            throw_error<std::runtime_error>("Unimplemented backend type");
         }
 
         audio_buffer_pool = std::make_shared<AudioBufferPool>(gc_n_buffers_in_pool, gc_audio_buffer_size);

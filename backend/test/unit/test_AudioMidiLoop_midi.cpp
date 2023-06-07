@@ -12,6 +12,7 @@
 #include <string>
 #include <valarray>
 #include "midi_helpers.h"
+#include "LoggingEnabled.h"
 
 using namespace boost::ut;
 using namespace std::chrono_literals;

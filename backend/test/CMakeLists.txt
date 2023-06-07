@@ -14,7 +14,8 @@ add_executable(test_runner
     integration/test_synced_BasicLoops.cpp
     )
 target_link_libraries(test_runner PRIVATE
-                      ${BOOST_LIBRARIES})
+                      ${BOOST_LIBRARIES}
+                      shoopdaloop_backend)
 target_include_directories(test_runner
                         PRIVATE
                         ${BOOST_INCLUDE_DIRS}

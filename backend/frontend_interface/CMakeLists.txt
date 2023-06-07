@@ -1,11 +1,13 @@
 # Backend lib
-add_library(shoopdaloop_backend SHARED shoopdaloop_backend.cpp)
-target_link_libraries(shoopdaloop_backend PRIVATE
+add_library(shoopdaloop_backend SHARED shoopdaloop_backend.cpp ../LoggingBackend.cpp)
+target_link_libraries(shoopdaloop_backend PUBLIC
                       lv2_evbuf
                       ${BOOST_LIBRARIES}
                       ${JACK_LIBRARIES}
                       ${LV2_LIBRARIES}
-                      ${LILV_LIBRARIES})
+                      ${LILV_LIBRARIES}
+                      ${SPDLOG_LIBRARIES}
+                      fmt::fmt)
 target_include_directories(shoopdaloop_backend
                         PRIVATE
                         ${CMAKE_CURRENT_SOURCE_DIR}/..

@@ -1,5 +1,7 @@
 #include <boost/ut.hpp>
 
+#include <spdlog/spdlog.h>
+
 using namespace boost::ut;
 
 void usage(std::string name) {
@@ -8,6 +10,7 @@ void usage(std::string name) {
 
 int main(int argc, const char *argv[]) {
     std::string name(argv[0]);
+    spdlog::info("HELLO WORLD");
 
     for(size_t i = 1; i<(size_t) argc; i++) {
         std::string arg(argv[i]);

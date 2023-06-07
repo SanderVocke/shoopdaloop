@@ -255,7 +255,7 @@ public:
     // Iterate a cursor to the point that it points to the
     // first event after a given time.
     // Returns the amount of events processed to get to that point.
-    size_t find_time_forward(size_t time) {
+    size_t find_time_forward(size_t time, std::function<void(Elem *)> maybe_skip_msg_callback = nullptr) {
         if (!valid()) { reset(); }
         if (!valid()) { return 0; }
         std::optional<size_t> prev = m_offset;
@@ -269,12 +269,18 @@ public:
              next_offset = m_storage->maybe_next_elem_offset(m_storage->unsafe_at(next_offset.value())),
              n_processed++)
         {
+            Elem* elem = m_storage->unsafe_at(m_offset.value());
             Elem* next_elem = m_storage->unsafe_at(next_offset.value());
             if (next_elem->storage_time >= time) {
                 // Found
                 m_offset = next_offset;
                 m_prev_offset = prev;
                 return n_processed;
+            } else {
+                // Not found yet
+                if (maybe_skip_msg_callback) {
+                    maybe_skip_msg_callback(elem);
+                }
             }
         }
 
