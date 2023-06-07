@@ -5,4 +5,4 @@
 using logger = spdlog::logger;
 
 // Get/create a logger.
-logger &get_logger(std::string name);
+logger & get_logger(std::string name);
