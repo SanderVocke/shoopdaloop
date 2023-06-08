@@ -152,6 +152,7 @@ public:
         ma_last_played_back_sample(0),
         ma_prerecord_data_length(0)
     {
+        log_init();
         log_trace();
         mp_playback_cursor = mp_storage->create_cursor();
     }
@@ -182,7 +183,10 @@ public:
 
     unsigned get_data_seq_nr() const override { return ma_data_seq_nr; }
 
-    void data_changed() { ma_data_seq_nr++; }
+    void data_changed() { 
+        log_trace();
+        ma_data_seq_nr++;
+    }
 
     size_t get_length() const override { return ma_data_length; }
     
@@ -252,15 +256,17 @@ public:
         if (!(process_flags & ChannelPreRecord) &&
              (mp_prev_process_flags & ChannelPreRecord))
         {
-            log<LogLevel::debug>("Pre-record ended");
             // Ending pre-record. If transitioning to recording,
             // make our pre-recorded buffers into our main buffers.
             // Otherwise, just discard them.
             if (process_flags & ChannelRecord) {
+                log<LogLevel::debug>("Pre-record ended -> carry over to record");
                 mp_storage = mp_prerecord_storage;
                 ma_data_length = ma_start_offset = ma_prerecord_data_length.load();
                 mp_track_start_state = mp_track_prerecord_start_state;
                 mp_track_prerecord_start_state.reset();
+            } else {
+                log<LogLevel::debug>("Pre-record ended -> discard");
             }
             mp_prerecord_storage = std::make_shared<Storage>(mp_storage->bytes_capacity());
             ma_prerecord_data_length = 0;

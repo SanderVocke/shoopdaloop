@@ -6,6 +6,7 @@
 #include "MidiPortInterface.h"
 #include "MidiMessage.h"
 #include <cstring>
+#include "LoggingBackend.h"
 
 template<typename S>
 std::vector<S> create_audio_buf(size_t size, std::function<S(size_t)> elem_fn) {

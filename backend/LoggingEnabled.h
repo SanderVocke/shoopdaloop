@@ -23,25 +23,29 @@ private:
     virtual std::string log_module_name() const = 0;
 
 protected:
+    void log_init() {
+        m_logger = &logging::get_logger(std::string(log_module_name()));
+    }
+
     template<logging::LogLevel Level, typename... Args>
-    void log(fmt::format_string<Args...> fmt, Args &&... args) {
+    void log(fmt::format_string<Args...> fmt, Args &&... args) const {
         if (Level >= LevelFilter) {
             m_logger->log(Level, fmt, std::forward<Args>(args)...);
         }
     }
 
     template<typename Exception, typename ...Args>
-    void throw_error(fmt::format_string<Args...> fmt, Args &&... args, spdlog::source_loc loc=spdlog::source_loc{}) {
+    void throw_error(fmt::format_string<Args...> fmt, Args &&... args, spdlog::source_loc loc=spdlog::source_loc{}) const {
         log<logging::LogLevel::err>(fmt, std::forward<Args>(args)...);
         throw Exception(loc.filename);
     }
 
-    void log_trace(std::source_location loc=std::source_location::current()) {
+    void log_trace(std::source_location loc=std::source_location::current()) const {
         log<logging::LogLevel::trace>("{} @ {}:{}", loc.function_name(), loc.file_name(), loc.line());
     }
 
 public:
-    LoggingEnabled() : m_logger(&logging::get_logger(std::string(log_module_name()))) {};
+    LoggingEnabled() {};
     virtual ~LoggingEnabled() {}
 };
 

@@ -93,6 +93,7 @@ private:
             : pool(pool),
               buffers_size(pool->object_size())
         {
+            log_init();
             log_trace();
             buffers.reserve(initial_max_buffers);
             reset();
@@ -104,11 +105,11 @@ private:
             buffers.push_back(get_new_buffer());
         }
 
-        Buffers() {}
+        Buffers() { log_init(); log_trace(); }
 
         SampleT &at(size_t offset) {
             size_t idx = offset / buffers_size;
-            if (idx >= buffers.size()) { throw std::runtime_error("OOB buffers access"); }
+            if (idx >= buffers.size()) { throw_error<std::runtime_error>("OOB buffers access"); }
             size_t head = offset % buffers_size;
             return buffers.at(idx)->at(head);
         }
@@ -137,11 +138,11 @@ private:
         Buffer get_new_buffer() const {
             log_trace();
             if (!pool) {
-                throw std::runtime_error("No pool for buffers allocation");
+                throw_error<std::runtime_error>("No pool for buffers allocation");
             }
             auto buf = Buffer(pool->get_object());
             if (buf->size() != buffers_size) {
-                throw std::runtime_error("AudioChannel requires buffers of same length");
+                throw_error<std::runtime_error>("AudioChannel requires buffers of same length");
             }
             return buf;
         }
@@ -168,7 +169,7 @@ private:
     ProcessingQueue mp_proc_queue;
 
     void throw_if_commands_queued() const {
-        if(mp_proc_queue.read_available()) { throw std::runtime_error("Illegal operation while audio channel commands are queued"); }
+        if(mp_proc_queue.read_available()) { throw_error<std::runtime_error>("Illegal operation while audio channel commands are queued"); }
     }
 
 public:
@@ -196,7 +197,10 @@ public:
         mp_prerecord_buffers(buffer_pool, initial_max_buffers),
         mp_prev_process_flags(0),
         ma_last_played_back_sample(-1)
-    { log_trace(); }
+    { 
+        log_init();
+        log_trace();
+    }
 
     virtual void set_pre_play_samples(size_t samples) override {
         ma_pre_play_samples = samples;
@@ -212,7 +216,7 @@ public:
 
         mp_proc_queue.reset();
         if (other.ma_buffer_size != ma_buffer_size) {
-            throw std::runtime_error("Cannot copy audio channels with different buffer sizes.");
+            throw_error<std::runtime_error>("Cannot copy audio channels with different buffer sizes.");
         }
         ma_buffer_pool = other.ma_buffer_pool;
         ma_buffers_data_length = other.ma_buffers_data_length.load();
@@ -251,6 +255,8 @@ public:
         size_t length_before,
         size_t length_after
     ) override {
+        log_trace();
+
         // Execute any commands queued from other threads.
         PROC_handle_command_queue();
 
@@ -272,8 +278,11 @@ public:
             // make our pre-recorded buffers into our main buffers.
             // Otherwise, just discard them.
             if (process_flags & ChannelRecord) {
+                log<LogLevel::debug>("Pre-record ended -> carry over to record");
                 mp_buffers = mp_prerecord_buffers;
                 ma_buffers_data_length = ma_start_offset = mp_prerecord_buffers_data_length.load();
+            } else {
+                log<LogLevel::debug>("Pre-record ended -> discard");
             }
             mp_prerecord_buffers.reset();
             mp_prerecord_buffers_data_length = 0;
@@ -323,7 +332,7 @@ public:
             }
             break;
         default:
-            throw std::runtime_error("Unknown processing command");
+            throw_error<std::runtime_error>("Unknown processing command");
         };
     }
 
@@ -352,6 +361,8 @@ public:
     }
 
     void PROC_finalize_process() override {
+        log_trace();
+
         ProcessingCommand cmd;
         while(mp_proc_queue.pop(cmd)) {
             PROC_exec_cmd(cmd);
@@ -361,6 +372,8 @@ public:
     // Load data into the loop. Should always be called outside
     // the processing thread.
     void load_data(SampleT* samples, size_t len, bool thread_safe = true) {
+        log_trace();
+
         // Convert to internal storage layout
         auto buffers = Buffers(ma_buffer_pool, std::ceil((float)len / (float)ma_buffer_size));
         buffers.ensure_available(len, false);
@@ -419,8 +432,10 @@ public:
         SampleT *record_buffer,
         size_t record_buffer_size
     ) {
+        log_trace();
+
         if (record_buffer_size < n_samples) {
-            throw std::runtime_error("Attempting to record out of bounds of input buffer");
+            throw_error<std::runtime_error>("Attempting to record out of bounds of input buffer");
         }
         bool changed = false;
         auto data_length = buffers_data_length.load();
@@ -458,8 +473,10 @@ public:
 
     void PROC_process_replace(size_t position, size_t length, size_t n_samples,
                               SampleT *record_buffer, size_t record_buffer_size) {
+        log_trace();
+
         if (record_buffer_size < n_samples) {
-            throw std::runtime_error("Attempting to replace out of bounds of recording buffer");
+            throw_error<std::runtime_error>("Attempting to replace out of bounds of recording buffer");
         }
         auto data_length = ma_buffers_data_length.load();
         auto start_offset = ma_start_offset.load();
@@ -506,6 +523,7 @@ public:
 
     size_t get_length() const override { return ma_buffers_data_length; }
     void PROC_set_length(size_t length) override { 
+        log_trace();
         ma_buffers_data_length = length;
         data_changed();
     }
@@ -515,8 +533,10 @@ public:
     }
 
     void PROC_process_playback(int data_position, size_t length, size_t n_samples, bool muted, SampleT *playback_buffer, size_t playback_buffer_size) {
+        log_trace();
+        
         if (playback_buffer_size < n_samples) {
-            throw std::runtime_error("Attempting to play out of bounds of target buffer");
+            throw_error<std::runtime_error>("Attempting to play out of bounds of target buffer");
         }
 
         auto data_length = ma_buffers_data_length.load();
@@ -594,18 +614,24 @@ public:
 
 
     void PROC_set_playback_buffer(SampleT *buffer, size_t size) {
+        log_trace();
+
         throw_if_commands_queued();
         mp_playback_target_buffer = buffer;
         mp_playback_target_buffer_size = size;
     }
 
     void PROC_set_recording_buffer(SampleT *buffer, size_t size) {
+        log_trace();
+
         throw_if_commands_queued();
         mp_recording_source_buffer = buffer;
         mp_recording_source_buffer_size = size;
     }
 
     void PROC_clear(size_t length) {
+        log_trace();
+
         throw_if_commands_queued();
         mp_buffers.ensure_available(length);
         ma_buffers_data_length = length;
@@ -659,7 +685,7 @@ protected:
     Buffer get_new_buffer() const {
         auto buf = Buffer(ma_buffer_pool->get_object());
         if (buf->size() != ma_buffer_size) {
-            throw std::runtime_error("AudioChannel requires buffers of same length");
+            throw_error<std::runtime_error>("AudioChannel requires buffers of same length");
         }
         return buf;
     }

@@ -112,7 +112,9 @@ public:
         // MIDI storage is tied to a channel. For log readability we use that name.
         m_head(0), m_tail(0), m_head_start(0), m_n_events(0),
         m_data(data_size)
-    {}
+    {
+        log_init();
+    }
 
     size_t bytes_capacity() const { return m_data.size(); }
 

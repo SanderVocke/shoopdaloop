@@ -134,6 +134,7 @@ struct Backend : public std::enable_shared_from_this<Backend>,
     Backend (audio_system_type_t audio_system_type,
              std::string client_name_hint) :
         cmd_queue (gc_command_queue_size, 1000, 1000) {
+        log_init();
         
         using namespace std::placeholders;
 
