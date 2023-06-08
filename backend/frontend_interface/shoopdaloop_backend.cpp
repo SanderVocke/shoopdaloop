@@ -1891,3 +1891,35 @@ void destroy_string(const char* s) {
 void destroy_backend_state_info(backend_state_info_t *d) {
     delete d;
 }
+
+shoopdaloop_logger_t *get_logger(const char* name) {
+    return (shoopdaloop_logger_t*) (&logging::get_logger(std::string(name)));
+}
+
+const std::map<log_level_t, logging::LogLevel> level_convert = {
+    {trace, logging::LogLevel::trace},
+    {debug, logging::LogLevel::debug},
+    {info, logging::LogLevel::info},
+    {warning, logging::LogLevel::warn},
+    {error, logging::LogLevel::err}
+};
+
+void set_global_logging_level(log_level_t level) {
+    logging::set_filter_level(level_convert.at(level));
+}
+
+void reset_logger_level_override(shoopdaloop_logger_t *logger) {
+    auto name = ((logging::logger*)logger)->name();
+    set_module_filter_level(name, std::nullopt);
+}
+
+void set_logger_level_override(shoopdaloop_logger_t *logger, log_level_t level) {
+    auto name = ((logging::logger*)logger)->name();
+    set_module_filter_level(name, level_convert.at(level));
+}
+
+void shoopdaloop_log(shoopdaloop_logger_t *logger, log_level_t level, const char *msg) {
+    ((logging::logger*)logger)->log(
+        level_convert.at(level), msg
+    );
+}

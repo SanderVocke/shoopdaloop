@@ -23,6 +23,14 @@ typedef enum {
     LOOP_MODE_INVALID
 } loop_mode_t;
 
+typedef enum {
+    trace,
+    debug,
+    info,
+    warning,
+    error
+} log_level_t;
+
 // Modes a channel can be in. They affect how the channel behaves w.r.t.
 // the mode its loop is in.
 typedef enum {
@@ -75,6 +83,7 @@ typedef struct _shoopdaloop_midi_port           shoopdaloop_midi_port_t;
 typedef struct _shoopdaloop_decoupled_midi_port shoopdaloop_decoupled_midi_port_t;
 typedef struct _shoopdaloop_backend_instance    shoopdaloop_backend_instance_t;
 typedef struct _shoopdaloop_fx_chain            shoopdaloop_fx_chain_t;
+typedef struct _shoopdaloop_logger              shoopdaloop_logger_t;
 
 typedef struct {
     loop_mode_t mode;

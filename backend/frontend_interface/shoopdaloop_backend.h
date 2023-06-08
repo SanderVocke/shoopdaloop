@@ -130,6 +130,13 @@ midi_event_t *alloc_midi_event(size_t data_bytes);
 midi_channel_data_t *alloc_midi_channel_data(size_t n_events);
 audio_channel_data_t *alloc_audio_channel_data(size_t n_samples);
 
+// Logging
+shoopdaloop_logger_t *get_logger(const char* name);
+void set_global_logging_level(log_level_t level);
+void set_logger_level_override(shoopdaloop_logger_t *logger, log_level_t level);
+void reset_logger_level_override(shoopdaloop_logger_t *logger);
+void shoopdaloop_log(shoopdaloop_logger_t *logger, log_level_t level, const char *msg);
+
 #ifdef __cplusplus
 }
 #endif
