@@ -15,6 +15,7 @@
 #include <thread>
 
 using namespace std::chrono_literals;
+using namespace logging;
 
 template<typename TimeType, typename SizeType>
 class MidiChannel : public ChannelInterface,
@@ -26,6 +27,10 @@ public:
     using Message = MidiMessage<TimeType, SizeType>;
 
 private:
+    std::string log_module_name() const override {
+        return "Backend.MidiChannel";
+    }
+
     template <typename Buf>
     struct ExternalBuf {
         Buf buf;
@@ -127,7 +132,6 @@ private:
 public:
     MidiChannel(size_t data_size, channel_mode_t mode) :
         WithCommandQueue<10, 1000, 1000>(),
-        ModuleLoggingEnabled("MidiChannel"),
         mp_playback_target_buffer(nullptr),
         mp_recording_source_buffer(nullptr),
         mp_storage(std::make_shared<Storage>(data_size)),
@@ -154,6 +158,8 @@ public:
 
     // NOTE: only use on process thread
     MidiChannel<TimeType, SizeType>& operator= (MidiChannel<TimeType, SizeType> const& other) {
+        log_trace();
+        
         mp_playback_target_buffer = other.mp_playback_target_buffer;
         mp_recording_source_buffer = other.mp_recording_source_buffer;
         mp_storage = other.mp_storage;
@@ -390,8 +396,8 @@ public:
                     // If it is the first recorded message, this is also the moment to cache the
                     // MIDI state on the input (such as hold pedal, other CCs, pitch wheel, etc.) so we can
                     // restore it later.
-                    log<LogLevel::debug>("Caching port state for record");
                     if (storage.n_events() == 0) {
+                        log<LogLevel::debug>("Caching port state for record");
                         track_start_state.set_from(mp_input_midi_state);
                     }
     

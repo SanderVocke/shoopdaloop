@@ -9,7 +9,9 @@
 #include <cstring>
 #include <iostream>
 #include <functional>
+#include "LoggingEnabled.h"
 
+using namespace logging;
 
 // We need a variable-sized struct that also supports interface inheritance.
 // This cannot really be done in C++, so instead we just make a fixed-size
@@ -50,7 +52,8 @@ template<typename TimeType, typename SizeType>
 class MidiStorageCursor;
 
 template<typename TimeType, typename SizeType>
-class MidiStorageBase : public std::enable_shared_from_this<MidiStorageBase<TimeType, SizeType>> {
+class MidiStorageBase : public std::enable_shared_from_this<MidiStorageBase<TimeType, SizeType>>,
+                        private ModuleLoggingEnabled {
 public:
     using Elem = MidiStorageElem<TimeType, SizeType>;
     Elem dummy_elem; // Prevents incomplete template type in debug build
@@ -100,8 +103,13 @@ protected:
         memcpy(data_ptr, d, s);
     }
 
+    std::string log_module_name() const override {
+        return "Backend.MidiChannel.Storage";
+    }
+
 public:
     MidiStorageBase(size_t data_size) :
+        // MIDI storage is tied to a channel. For log readability we use that name.
         m_head(0), m_tail(0), m_head_start(0), m_n_events(0),
         m_data(data_size)
     {}
@@ -132,12 +140,12 @@ public:
     bool append(TimeType time, SizeType size,  const uint8_t* data) {
         size_t sz = Elem::total_size_of(size);
         if (sz > bytes_free()) {
-            std::cerr << "Ignoring store of MIDI message: buffer full." << std::endl;
+            log<LogLevel::warn>("Ignoring store of MIDI message: buffer full.");
             return false;
         }
         if (m_n_events > 0 && unsafe_at(m_head_start)->storage_time > time) {
             // Don't store out-of-order messages
-            std::cerr << "Ignoring store of out-of-order MIDI message." << std::endl;
+            log<LogLevel::warn>("Ignoring store of out-of-order MIDI message.");
             return false;
         }
 
@@ -155,7 +163,7 @@ public:
         if (sz > bytes_free()) { return false; }
         if (m_n_events > 0 && unsafe_at(m_tail)->time < time) {
             // Don't store out-of-order messages
-            std::cerr << "Ignoring store of out-of-order MIDI message." << std::endl;
+            log<LogLevel::warn>("Ignoring store of out-of-order MIDI message.");
             return false;
         }
 

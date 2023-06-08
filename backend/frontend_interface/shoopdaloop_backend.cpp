@@ -98,6 +98,8 @@ using SharedBackend = std::shared_ptr<Backend>;
 using WeakBackend = std::weak_ptr<Backend>;
 using SharedFXChain = std::shared_ptr<CarlaLV2ProcessingChain<Time, Size>>;
 
+using namespace logging;
+
 // GLOBALS
 namespace {
 std::vector<audio_sample_t> g_dummy_audio_input_buffer (gc_default_audio_dummy_buffer_size);
@@ -125,9 +127,12 @@ struct Backend : public std::enable_shared_from_this<Backend>,
     std::shared_ptr<AudioBufferPool> audio_buffer_pool;
     std::unique_ptr<AudioSystem> audio_system;
 
+    std::string log_module_name() const override {
+        return "Backend";
+    }
+
     Backend (audio_system_type_t audio_system_type,
              std::string client_name_hint) :
-        ModuleLoggingEnabled("Backend"),
         cmd_queue (gc_command_queue_size, 1000, 1000) {
         
         using namespace std::placeholders;

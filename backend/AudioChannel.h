@@ -16,18 +16,25 @@
 #include <iostream>
 #include <chrono>
 #include <boost/lockfree/spsc_queue.hpp>
+#include "LoggingEnabled.h"
 
 using namespace std::chrono_literals;
+using namespace logging;
 
 template<typename SampleT>
 class AudioChannel : public ChannelInterface,
-                            private WithCommandQueue<10, 1000, 1000> {
+                            private WithCommandQueue<10, 1000, 1000>,
+                            private ModuleLoggingEnabled {
 public:
     typedef AudioBuffer<SampleT> BufferObj;
     typedef ObjectPool<BufferObj> BufferPool;
     typedef std::shared_ptr<BufferObj> Buffer;
     
 private:
+    std::string log_module_name() const override {
+        return "Backend.AudioChannel";
+    }
+
     struct Buffers;
 
     // Members which may be accessed from any thread (ma prefix)
@@ -73,7 +80,11 @@ private:
         bool update_absmax;
     };
 
-    struct Buffers {
+    struct Buffers : private ModuleLoggingEnabled {
+        std::string log_module_name() const override {
+            return "Backend.AudioChannel.Buffers";
+        }
+
         size_t buffers_size;
         std::vector<Buffer> buffers;
         std::shared_ptr<BufferPool> pool;
@@ -82,11 +93,13 @@ private:
             : pool(pool),
               buffers_size(pool->object_size())
         {
+            log_trace();
             buffers.reserve(initial_max_buffers);
             reset();
         }
 
         void reset() {
+            log_trace();
             buffers.clear();
             buffers.push_back(get_new_buffer());
         }
@@ -101,6 +114,8 @@ private:
         }
 
         bool ensure_available(size_t offset, bool use_pool=true) {
+            log_trace();
+
             size_t idx = offset / buffers_size;
             bool changed = false;
             while(buffers.size() <= idx) {
@@ -115,10 +130,12 @@ private:
         }
 
         Buffer create_new_buffer() const {
+            log_trace();
             return std::make_shared<BufferObj>(buffers_size);
         }
 
         Buffer get_new_buffer() const {
+            log_trace();
             if (!pool) {
                 throw std::runtime_error("No pool for buffers allocation");
             }
@@ -179,7 +196,7 @@ public:
         mp_prerecord_buffers(buffer_pool, initial_max_buffers),
         mp_prev_process_flags(0),
         ma_last_played_back_sample(-1)
-    {}
+    { log_trace(); }
 
     virtual void set_pre_play_samples(size_t samples) override {
         ma_pre_play_samples = samples;
@@ -191,6 +208,8 @@ public:
 
     // NOTE: only use on process thread!
     AudioChannel<SampleT>& operator= (AudioChannel<SampleT> const& other) {
+        log_trace();
+
         mp_proc_queue.reset();
         if (other.ma_buffer_size != ma_buffer_size) {
             throw std::runtime_error("Cannot copy audio channels with different buffer sizes.");
@@ -217,6 +236,7 @@ public:
     ~AudioChannel() override {}
 
     void data_changed() {
+        log_trace();
         ma_data_seq_nr++;
     }
 
