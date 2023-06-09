@@ -229,19 +229,14 @@ Item {
 
     // Methods
     function transition_loops(loops, mode, delay, wait_for_sync) {
-        root.logger.warning("Start load loops")
         loops.forEach(loop => {
             // Force to load all loops involved
             loop.force_load_backend()
         })
-        root.logger.warning("End load loops")
         var backend_loops = loops.map(o => o.maybe_loaded_loop)
-        root.logger.warning("Start transition backend")
         backend_loops[0].transition_multiple(backend_loops, mode, delay, wait_for_sync)
-        root.logger.warning("End transition backend")
     }
     function transition(mode, delay, wait_for_sync) {
-        root.logger.warning("LoopWidget.transition")
         // Do the transition for this loop and all selected loops, if any
         var selected_ids = new Set(state_registry.maybe_get('selected_loop_ids', new Set()))
         selected_ids.add(obj_id)

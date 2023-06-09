@@ -29,7 +29,7 @@ Item {
         anchors.fill: parent
 
         ExtendedButton {
-            height: 35
+            height: 40
             width: 30
             onClicked: mainmenu.popup()
 
@@ -85,7 +85,7 @@ Item {
         ExtendedButton {
             tooltip: "Stop all loops (respects sync active)"
 
-            height: 35
+            height: 40
             width: 30
             onClicked: {
                 var loops = root.objects_registry.select_values(o => o instanceof LoopWidget)
@@ -106,7 +106,7 @@ Item {
         ExtendedButton {
             tooltip: "Sync active. If off (exclamation point), requested actions happen instantly."
             id: sync_active_button
-            height: 35
+            height: 40
             width: 30
             property bool sync_active_base: true
             onClicked: sync_active_base = !sync_active_base
@@ -123,7 +123,7 @@ Item {
         ExtendedButton {
             tooltip: "Deselect all loops."
             id: deselect_button
-            height: 35
+            height: 40
             width: 30
             onClicked: root.state_registry.clear_set('selected_loop_ids')
 

@@ -57,11 +57,12 @@ Item {
             border.color: 'grey'
             border.width: 1
 
-            Mapper {
+            Repeater {
                 id: minor_grid_lines_repeater
                 anchors.fill: parent
 
                 property var at_pixels: {
+                    if (!root.visible) { return [] }
                     if (root.minor_grid_lines_interval <= 0) { return [] }
 
                     root.samples_offset;    // explicit dependency
@@ -87,15 +88,17 @@ Item {
                     color: 'grey'
                     width: 1
                     height: root.height
-                    x: mapped_item ? mapped_item : 0
+                    property var val : minor_grid_lines_repeater.at_pixels[index]
+                    x: val ? val : 0
                 }
             }
 
-            Mapper {
+            Repeater {
                 id: major_grid_lines_repeater
                 anchors.fill: parent
 
                 property var at_pixels: {
+                    if (!root.visible) { return [] }
                     if (root.major_grid_lines_interval <= 0) { return [] }
 
                     root.samples_offset;    // explicit dependency
@@ -112,16 +115,14 @@ Item {
                     return rval
                 }
 
-                model: at_pixels
+                model: at_pixels.length
 
                 Rectangle {
-                    property var mapped_item
-                    property int index
-
                     color: 'white'
                     width: 1
                     height: root.height
-                    x: mapped_item ? mapped_item : 0
+                    property var val : major_grid_lines_repeater.at_pixels[index]
+                    x: val ? val : 0
                 }
             }
         }

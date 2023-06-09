@@ -314,6 +314,10 @@ Item {
                     value: backend.dsp_load
                 }
 
+                Label { 
+                    text: "Xruns: " + backend.xruns.toString()
+                }
+
                 ExtendedButton {
                     tooltip: "Reset reported Xruns to 0."
                     id: reset_xruns
@@ -325,14 +329,9 @@ Item {
                         }
                     }
                     width: 40
-                    height: 26
+                    height: 30
                     onClicked: backend.xruns = 0
                 }
-
-                Label { 
-                    text: "Xruns: " + backend.xruns.toString()
-                }
-
             }
         }
     }
