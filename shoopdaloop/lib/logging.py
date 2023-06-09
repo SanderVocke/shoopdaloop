@@ -1,4 +1,5 @@
-from backend_interface import *
+from .backend_interface import get_logger, shoopdaloop_log
+from .backend_interface import trace as _trace, debug as _debug, info as _info, warning as _warning, error as _error
 
 class Logger:
     def __init__(self, module_name):
@@ -9,16 +10,16 @@ class Logger:
         return self._name
     
     def trace(self, msg):
-        shoopdaloop_log(self._backend_handle, backend_interface.trace, msg)
+        shoopdaloop_log(self._backend_handle, _trace, msg)
     
     def debug(self, msg):
-        shoopdaloop_log(self._backend_handle, backend_interface.debug, msg)
+        shoopdaloop_log(self._backend_handle, _debug, msg)
     
     def info(self, msg):
-        shoopdaloop_log(self._backend_handle, backend_interface.info, msg)
+        shoopdaloop_log(self._backend_handle, _info, msg)
     
     def warning(self, msg):
-        shoopdaloop_log(self._backend_handle, backend_interface.warning, msg)
+        shoopdaloop_log(self._backend_handle, _warning, msg)
     
     def error(self, msg):
-        shoopdaloop_log(self._backend_handle, backend_interface.error, msg)
+        shoopdaloop_log(self._backend_handle, _error, msg)

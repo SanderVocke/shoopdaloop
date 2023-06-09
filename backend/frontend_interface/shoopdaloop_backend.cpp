@@ -1893,6 +1893,11 @@ void destroy_backend_state_info(backend_state_info_t *d) {
 }
 
 shoopdaloop_logger_t *get_logger(const char* name) {
+    static bool first = true;
+    if (first) {
+        logging::parse_conf_from_env();
+        first = false;
+    }
     return (shoopdaloop_logger_t*) (&logging::get_logger(std::string(name)));
 }
 

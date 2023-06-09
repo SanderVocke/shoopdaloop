@@ -3,7 +3,7 @@ from PySide6.QtQuick import QQuickItem
 
 from ..logging import Logger as BaseLogger
 
-class Logger(QQuickItem):
+class Logger(QObject):
     def __init__(self, parent=None):
         super(Logger, self).__init__(parent)
         self._logger = BaseLogger("Frontend.Unknown")

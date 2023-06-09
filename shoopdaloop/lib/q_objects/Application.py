@@ -5,7 +5,7 @@ import time
 
 from PySide6.QtQml import QQmlApplicationEngine, QJSValue
 from PySide6.QtGui import QGuiApplication, QIcon
-from PySide6.QtCore import QTimer, QObject, Q_ARG, QMetaObject, Qt, QEvent
+from PySide6.QtCore import QTimer, QObject, Q_ARG, QMetaObject, Qt, QEvent, Slot
 
 from ...third_party.pynsm.nsmclient import NSMClient, NSMNotRunningError
 
@@ -16,6 +16,8 @@ from .FileIO import FileIO
 from .ClickTrackGenerator import ClickTrackGenerator
 from .KeyModifiers import KeyModifiers
 from .ApplicationMetadata import ApplicationMetadata
+
+from ..logging import *
 
 script_dir = os.path.dirname(os.path.realpath(__file__))
 class Application(QGuiApplication):
@@ -34,6 +36,10 @@ class Application(QGuiApplication):
         register_shoopdaloop_qml_classes()
         self.engine = QQmlApplicationEngine()
         self.engine.quit.connect(self.quit)
+
+        self.logger = Logger("Frontend.Qml.App")
+
+        self.engine.objectCreated.connect(self.onQmlObjectCreated)
 
         self.root_context_items = create_and_populate_root_context(self.engine, self)
 
@@ -149,3 +155,10 @@ class Application(QGuiApplication):
         if event.type() in [QEvent.KeyPress, QEvent.KeyRelease]:
             self.key_modifiers.process(event)
         return False
+    
+    @Slot('QVariant', 'QVariant')
+    def onQmlObjectCreated(self, obj, url):
+        if obj:
+            self.logger.debug("Created QML object: {}".format(url))
+        else:
+            self.logger.error("Failed to create QML object: {}".format(url))

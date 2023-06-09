@@ -20,6 +20,7 @@ from lib.q_objects.FileIO import FileIO
 from lib.q_objects.SchemaValidator import SchemaValidator
 from lib.q_objects.KeyModifiers import KeyModifiers
 from lib.q_objects.ApplicationMetadata import ApplicationMetadata
+from lib.q_objects.Logger import Logger
 from lib.cpp_imports import RenderAudioWaveform
 #from lib.q_objects.MIDIControlManager import MIDIControlManager
 #from lib.q_objects.MIDIControlLink import MIDIControlLink
@@ -53,6 +54,7 @@ def register_shoopdaloop_qml_classes():
     register_qml_class(SchemaValidator, 'SchemaValidator')
     register_qml_class(KeyModifiers, 'KeyModifiers')
     register_qml_class(ApplicationMetadata, 'ApplicationMetadata')
+    register_qml_class(Logger, 'Logger')
 
 def create_and_populate_root_context(engine, parent):
     items = {
@@ -60,8 +62,11 @@ def create_and_populate_root_context(engine, parent):
         'schema_validator': SchemaValidator(parent=parent),
         'click_track_generator': ClickTrackGenerator(parent=parent),
         'key_modifiers': KeyModifiers(parent=parent),
-        'app_metadata': ApplicationMetadata(parent=parent)
+        'app_metadata': ApplicationMetadata(parent=parent),
+        'default_logger': Logger(parent=parent)
     }
+
+    items['default_logger'].name = 'Frontend.Qml'
 
     with open(version_file, 'r') as vf:
         items['app_metadata'].version_string = vf.read()

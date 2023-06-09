@@ -2,6 +2,7 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
 import QtQuick.Dialogs
+import Logger
 
 import '../backend/frontend_interface/types.js' as Types
 import '../mode_helpers.js' as ModeHelpers
@@ -15,6 +16,8 @@ Item {
     property var initial_descriptor : null
     property Registry objects_registry : null
     property Registry state_registry : null
+
+    property Logger logger : Logger { name: default_logger.name + ".Loop" }
 
     RegistryLookup {
         id: fx_chain_states_registry_lookup
@@ -182,9 +185,12 @@ Item {
 
     property var additional_context_menu_options : null // dict of option name -> functor
 
+    onIs_loadedChanged: if(is_loaded) { root.logger.debug("Loaded back-end loop.") }
+
     // Internally controlled
     readonly property DynamicLoop maybe_loop : dynamic_loop
     readonly property Loop maybe_loaded_loop : dynamic_loop.maybe_loop
+    readonly property bool is_loaded : dynamic_loop.ready
     readonly property bool is_master: master_loop && master_loop == this
     readonly property var delay_for_targeted : {
         // This property is used for synchronizing to the targeted loop.
@@ -632,7 +638,6 @@ Item {
                     y: 0
                     anchors.horizontalCenter: iconitem.horizontalCenter
                     muted: false
-                    //muted: { console.log('unimplemented muted'); return false; }
                     empty: statusrect.loop.length == 0
                     onDoubleClicked: (event) => {
                             if (event.button === Qt.LeftButton) { root.target() }
@@ -1474,7 +1479,7 @@ Item {
             property var channels: []
             onAccepted: {
                 if (!root.maybe_loaded_loop) { 
-                    console.log("Cannot save: loop not loaded")
+                    root.logger.error("Cannot save: loop not loaded")
                     return;
                 }
                 close()
@@ -1499,7 +1504,7 @@ Item {
             property var channel: null
             onAccepted: {
                 if (!root.maybe_loaded_loop) { 
-                    console.log("Cannot save: loop not loaded")
+                    root.logger.error("Cannot save: loop not loaded")
                     return;
                 }
                 close()
@@ -1576,7 +1581,7 @@ Item {
 
             onAccepted: {
                 if (!root.maybe_loaded_loop) { 
-                    console.log("Cannot load: loop not loaded")
+                    root.logger.error("Cannot load: loop not loaded")
                     return;
                 }
                 root.state_registry.load_action_started()

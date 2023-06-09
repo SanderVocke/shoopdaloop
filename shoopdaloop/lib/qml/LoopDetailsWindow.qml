@@ -1,13 +1,17 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
+import Logger
 
 import '../mode_helpers.js' as ModeHelpers
 
 ApplicationWindow {
     property var loop
     property var master_loop
-    id: window
+
+    property Logger logger : Logger { name: default_logger.name + '.LoopDetails' }
+    
+    id: root
 
     width: 800
     height: 250
@@ -17,11 +21,12 @@ ApplicationWindow {
     Material.theme: Material.Dark
 
     LoopContentWidget {
-        visible: window.visible
+        visible: root.visible
         id: waveform
         anchors.fill: parent
         anchors.margins: 5
-        loop: window.loop
-        master_loop: window.master_loop
+        loop: root.loop
+        master_loop: root.master_loop
+        logger: root.logger
     }
 }

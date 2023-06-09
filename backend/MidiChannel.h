@@ -256,6 +256,7 @@ public:
         if (!(process_flags & ChannelPreRecord) &&
              (mp_prev_process_flags & ChannelPreRecord))
         {
+            log<LogLevel::debug>("Pre-record ended");
             // Ending pre-record. If transitioning to recording,
             // make our pre-recorded buffers into our main buffers.
             // Otherwise, just discard them.
@@ -402,6 +403,7 @@ public:
                     // If it is the first recorded message, this is also the moment to cache the
                     // MIDI state on the input (such as hold pedal, other CCs, pitch wheel, etc.) so we can
                     // restore it later.
+                    log<LogLevel::debug>("Caching port state for record");
                     if (storage.n_events() == 0) {
                         log<LogLevel::debug>("Caching port state for record");
                         track_start_state.set_from(mp_input_midi_state);

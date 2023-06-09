@@ -137,7 +137,10 @@ void parse_conf_string(std::string s) {
 }
 
 void parse_conf_from_env() {
-    parse_conf_string(std::getenv("SHOOP_LOG"));
+    auto e = std::getenv("SHOOP_LOG");
+    if (e) {
+        parse_conf_string(e);
+    }
 }
 
 }

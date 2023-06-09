@@ -2,6 +2,7 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
 import FetchChannelData
+import Logger
 
 import '../mode_helpers.js' as ModeHelpers
 
@@ -9,6 +10,8 @@ Item {
     id: root
     property var loop
     property var master_loop
+
+    property Logger logger : default_logger
 
     enum Tool {
         None,
@@ -40,10 +43,11 @@ Item {
                     case LoopContentWidget.Tool.SetEnd:
                         var len = s - channel.start_offset
                         if (len >= 0) { channel.loop.set_length(len); }
-                        else { console.log("Desired end point is invalid: before start offset.") }
+                        else { root.logger.error("Ignoring invalid end point: is before start offset.") }
                         break;
                     default:
-                        throw new Error("unimplemented")
+                        root.logger.error("Unimplemented tool.")
+                        throw new Error("Unimplemented")
                 }
             }
         }
@@ -172,7 +176,7 @@ Item {
             tooltip: "Additional options."
             height: 35
             width: 30
-            onClicked: { console.log ("Unimplemented") }
+            onClicked: { root.logger.error("Unimplemented") }
 
             anchors.verticalCenter: length_field.verticalCenter
 
