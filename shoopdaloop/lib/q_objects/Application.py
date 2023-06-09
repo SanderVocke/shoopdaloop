@@ -6,6 +6,7 @@ import time
 from PySide6.QtQml import QQmlApplicationEngine, QJSValue
 from PySide6.QtGui import QGuiApplication, QIcon
 from PySide6.QtCore import QTimer, QObject, Q_ARG, QMetaObject, Qt, QEvent, Slot, QtMsgType
+from PySide6.QtQml import QQmlDebuggingEnabler
 
 from ...third_party.pynsm.nsmclient import NSMClient, NSMNotRunningError
 
@@ -21,8 +22,11 @@ from ..logging import *
 
 script_dir = os.path.dirname(os.path.realpath(__file__))
 class Application(QGuiApplication):
-    def __init__(self, title, main_qml):
+    def __init__(self, title, main_qml, qml_debug_port=None, qml_debug_wait=False):
         super(Application, self).__init__([])
+
+        self.logger = Logger("Frontend.Qml.App")
+
         self.nsm_client = None
         self.title = title
         signal.signal(signal.SIGINT, self.exit_signal_handler)
@@ -33,11 +37,15 @@ class Application(QGuiApplication):
         self.nsmtimer.start(100)
         self.nsmtimer.timeout.connect(self.tick)
 
+        if qml_debug_port:
+            mode = QQmlDebuggingEnabler.StartMode.WaitForClient if qml_debug_wait else QQmlDebuggingEnabler.StartMode.DoNotWaitForClient
+            self.logger.info("Enabling QML debugging on port {}. Wait on connection: {}.".format(qml_debug_port, qml_debug_wait))
+            dbg = QQmlDebuggingEnabler(True)
+            QQmlDebuggingEnabler.startTcpDebugServer(qml_debug_port)
+
         register_shoopdaloop_qml_classes()
         self.engine = QQmlApplicationEngine()
         self.engine.quit.connect(self.quit)
-
-        self.logger = Logger("Frontend.Qml.App")
 
         self.engine.setOutputWarningsToStandardError(False)
         self.engine.objectCreated.connect(self.onQmlObjectCreated)
@@ -155,7 +163,7 @@ class Application(QGuiApplication):
     
     def eventFilter(self, source, event):
         if event.type() in [QEvent.KeyPress, QEvent.KeyRelease]:
-            self.key_modifiers.process(event)
+            self.root_context_items['key_modifiers'].process(event)
         return False
     
     @Slot('QVariant', 'QVariant')

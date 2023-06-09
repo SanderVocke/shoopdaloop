@@ -14,6 +14,7 @@ from ..mode_helpers import is_playing_mode
 from ..q_objects.Backend import Backend
 from ..findFirstParent import findFirstParent
 from ..findChildItems import findChildItems
+from ..logging import Logger
 
 # Wraps a back-end loop.
 class Loop(QQuickItem):
@@ -34,6 +35,7 @@ class Loop(QQuickItem):
         self._display_peaks = []
         self._display_midi_notes_active = 0
         self._display_midi_events_triggered = 0
+        self.logger = Logger("Frontend.Loop")
 
         self.rescan_parents()
         if not self._backend:
@@ -52,7 +54,7 @@ class Loop(QQuickItem):
     def backend(self, l):
         if l and l != self._backend:
             if self._backend or self._backend_loop:
-                raise Exception('May not change backend of existing port')
+                self.logger.throw_error('May not change backend of existing port')
             self._backend = l
             self.maybe_initialize()
     
