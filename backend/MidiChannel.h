@@ -66,7 +66,7 @@ private:
         TrackedState& operator= (TrackedState const& other) {
             m_valid = other.m_valid;
             state->copy_relevant_state(*other.state);
-            diff->set_diff(other.diff->get_diff());
+            diff = other.diff;
             return *this;
         }
 
@@ -512,15 +512,12 @@ public:
                 // See if we need to restore any cached MIDI channel state by sending
                 // additional messages.
                 auto proc_time = (int)event->storage_time - _pos + buf.n_frames_processed;
-                auto resolve_state_from_diff = [&](TrackedState &t) {
-                    t.resolve_to_output([&](size_t size, uint8_t * data) {
-                        PROC_send_message_value(*buf.buf, proc_time, size, data);
-                    });
-                };
 
                 if (mp_pre_playback_state.valid()) {
                     log<LogLevel::debug>("Restoring port state for playback @ sample {}", event->storage_time);
-                    resolve_state_from_diff(mp_pre_playback_state);
+                    mp_pre_playback_state.resolve_to_output([this ,&buf, &proc_time](size_t size, uint8_t * data) {
+                        PROC_send_message_value(*buf.buf, proc_time, size, data);
+                    });
                     mp_pre_playback_state.set_valid(false);
                 }
 

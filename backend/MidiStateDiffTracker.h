@@ -309,4 +309,11 @@ public:
     }
 
     DiffSet const& get_diff() const { return m_diffs; }
+
+    MidiStateDiffTracker& operator= (MidiStateDiffTracker const& other) {
+        m_a = other.m_a;
+        m_b = other.m_b;
+        set_diff(other.get_diff());
+        return *this;
+    }
 };

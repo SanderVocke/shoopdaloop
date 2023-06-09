@@ -4,21 +4,12 @@
 #include <spdlog/spdlog.h>
 #include <fmt/core.h>
 #include <source_location>
-
-#ifndef MODULE_LOG_LEVEL
-#define MODULE_LOG_LEVEL logging::LogLevel::debug
-#else
-#define HELPER(x) #x
-#define STR(x) HELPER(x)
-#pragma message "Using externally defined log level " STR(MODULE_LOG_LEVEL)
-#endif
-
-auto constexpr ModuleLogLevel = MODULE_LOG_LEVEL;
+#include <string_view>
 
 template<logging::LogLevel LevelFilter>
 class LoggingEnabled {
 private:
-    spdlog::logger *m_logger = nullptr;
+    logging::logger *m_logger = nullptr;
 
     virtual std::string log_module_name() const = 0;
 
@@ -40,8 +31,10 @@ protected:
         throw Exception(loc.filename);
     }
 
-    void log_trace(std::source_location loc=std::source_location::current()) const {
-        log<logging::LogLevel::trace>("{} @ {}:{}", loc.function_name(), loc.file_name(), loc.line());
+    void log_trace(const char* fn = std::source_location::current().function_name(),
+                   const char* fl = std::source_location::current().file_name(),
+                   uint32_t ln = std::source_location::current().line()) const {
+        log<logging::LogLevel::trace>("{}:{} - {}", fl, ln, fn);
     }
 
 public:
@@ -49,4 +42,4 @@ public:
     virtual ~LoggingEnabled() {}
 };
 
-using ModuleLoggingEnabled = LoggingEnabled<ModuleLogLevel>;
+using ModuleLoggingEnabled = LoggingEnabled<logging::CompileTimeLogLevel>;

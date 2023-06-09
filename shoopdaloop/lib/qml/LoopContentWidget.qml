@@ -284,7 +284,7 @@ Item {
                         enabled: tool_combo.currentValue != LoopContentWidget.Tool.None
                         anchors.fill: parent
                         hoverEnabled: enabled
-                        cursorShape: enabled ? Qt.PointingHandCursor : null
+                        cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
 
                         onMouseXChanged: if(containsMouse &&
                                             tool_combo.is_for_all_channels) {

@@ -15,10 +15,13 @@ from PySide6.QtCore import QObject, Slot, Signal, QThread
 from .Task import Task
 from .Tasks import Tasks
 
+from ..logging import Logger
+
 # Allow filesystem operations from QML
 class FileIO(QThread):
     def __init__(self, parent=None):
         super(FileIO, self).__init__(parent)
+        self.logger = Logger("FileIO")
 
     startSavingFile = Signal()
     doneSavingFile = Signal()
@@ -65,7 +68,7 @@ class FileIO(QThread):
         with tarfile.open(filename, flags) as tar:
             tar.extractall(target_dir)
 
-    
+
     @Slot(str, int, list)
     def save_channels_to_soundfile(self, filename, sample_rate, channels):
         self.startSavingFile.emit()
@@ -75,11 +78,12 @@ class FileIO(QThread):
             for d in datas:
                 lengths.add(len(d))
             if len(lengths) > 1:
-                raise Exception('Cannot save audio: channel lengths are not equal ({})'.format(list(lengths)))
+                self.logger.error('Cannot save audio: channel lengths are not equal ({})'.format(list(lengths)))
+                return
             # Soundfile wants NcxNs, not NsxNc
             data = np.swapaxes(datas, 0, 1)
             sf.write(filename, data, sample_rate)
-            print("Saved {}-channel audio to {} ({} samples)".format(len(channels), filename, len(datas[0])))
+            self.logger.info("Saved {}-channel audio to {} ({} samples)".format(len(channels), filename, len(datas[0])))
         finally:
             self.doneSavingFile.emit()
     
@@ -108,7 +112,7 @@ class FileIO(QThread):
             # TODO: append an End-Of-Track message to determine the length
             
             mido_file.save(filename)
-            print("Saved MIDI channel to {} ({} messages)".format(filename, len(msgs)))
+            self.logger.info("Saved MIDI channel to {} ({} messages)".format(filename, len(msgs)))
         finally:
             self.doneSavingFile.emit()
     
@@ -151,10 +155,10 @@ class FileIO(QThread):
             
             channel.load_data(backend_msgs)
             if maybe_loop_set_length:
-                print("Set loop length to {}".format(total_sample_time))
+                self.logger.debug("Set loop length to {}".format(total_sample_time))
                 maybe_loop_set_length.set_length(total_sample_time)
             
-            print("Loaded MIDI from {} into channel ({} messages)".format(filename, len(backend_msgs)))
+            self.logger.info("Loaded MIDI from {} into channel ({} messages, {} samples)".format(filename, len(backend_msgs), total_sample_time))
         finally:
             self.doneLoadingFile.emit()
     
@@ -218,7 +222,8 @@ class FileIO(QThread):
                 resampled = resampy.resample(data, file_sample_rate, target_sample_rate)
             
             if len(channels_to_loop_channels) > len(data):
-                raise Exception("Need {} channels, but loaded file only has {}".format(len(channels_to_loop_channels), len(data)))
+                self.logger.error("Need {} channels, but loaded file only has {}".format(len(channels_to_loop_channels), len(data)))
+                return
 
             for d in data:
                 if maybe_target_data_length != None and len(d) > maybe_target_data_length:
@@ -231,13 +236,13 @@ class FileIO(QThread):
                 for channel in channels:
                     channel.load_data(data_channel)
                     channel.update() # dbg
-                    print("load channel: {} samples, result {}".format(len(data_channel), channel.data_length))
+                    self.logger.debug("load channel: {} samples, result {}".format(len(data_channel), channel.data_length))
             
             if maybe_loop_set_length:
-                print("Set loop length to {}".format(len(data[0])))
+                self.logger.debug("Set loop length to {}".format(len(data[0])))
                 maybe_loop_set_length.set_length(len(data[0]))
 
-            print("Loaded {}-channel audio from {} ({} samples)".format(len(data), filename, len(data[0])))
+            self.logger.info("Loaded {}-channel audio from {} ({} samples)".format(len(data), filename, len(data[0])))
         finally:
             self.doneLoadingFile.emit()
     

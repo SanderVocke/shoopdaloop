@@ -5,7 +5,7 @@ import time
 
 from PySide6.QtQml import QQmlApplicationEngine, QJSValue
 from PySide6.QtGui import QGuiApplication, QIcon
-from PySide6.QtCore import QTimer, QObject, Q_ARG, QMetaObject, Qt, QEvent, Slot
+from PySide6.QtCore import QTimer, QObject, Q_ARG, QMetaObject, Qt, QEvent, Slot, QtMsgType
 
 from ...third_party.pynsm.nsmclient import NSMClient, NSMNotRunningError
 
@@ -39,7 +39,9 @@ class Application(QGuiApplication):
 
         self.logger = Logger("Frontend.Qml.App")
 
+        self.engine.setOutputWarningsToStandardError(False)
         self.engine.objectCreated.connect(self.onQmlObjectCreated)
+        self.engine.warnings.connect(self.onQmlWarnings)
 
         self.root_context_items = create_and_populate_root_context(self.engine, self)
 
@@ -65,10 +67,10 @@ class Application(QGuiApplication):
     
     def exit(self, retcode):
         if self.nsm_client:
-            print("Requesting exit from NSM.")
+            self.logger.debug("Requesting exit from NSM.")
             self.nsm_client.serverSendExitToSelf()
         else:
-            print("Exiting.")
+            self.logger.debug("Exiting.")
             self.really_exit()
 
     def really_exit(self, retcode):
@@ -77,8 +79,8 @@ class Application(QGuiApplication):
     # Ensure that we forward any terminating signals to our child
     # processes
     def exit_signal_handler(self, sig, frame):
-        print('Got signal {}.'.format(sig))    
-        print('Exiting due to signal.')
+        self.logger.debug('Got signal {}.'.format(sig))    
+        self.logger.info('Exiting due to signal.')
         self.exit_handler()
     
     def exit_handler(self):
@@ -96,17 +98,17 @@ class Application(QGuiApplication):
 
     def exit(self, retcode):
         if self.nsm_client:
-            print("Requesting exit from NSM.")
+            self.logger.info("Requesting exit from NSM.")
             self.nsm_client.serverSendExitToSelf()
         else:
-            print("Exiting.")
+            self.logger.info("Exiting.")
             self.really_exit()
 
     def really_exit(self, retcode):
         super(Application, self).exit(retcode)
     
     def nsm_save_session(self, path):
-        print("NSM: save session {}".format(path))
+        self.logger.info("NSM: save session {}".format(path))
         session = self.engine.rootObjects()[0].findChild(QObject, 'session')
         if session:
             QMetaObject.invokeMethod(session, "save_session", Qt.ConnectionType.DirectConnection, Q_ARG('QVariant', path))
@@ -114,11 +116,11 @@ class Application(QGuiApplication):
                 time.sleep(0.01)
                 self.processEvents()
         else:
-            print("No active session object found, ignoring save session.")
-        print("NSM: save session finished.")
+            self.logger.error("No active session object found, ignoring save session.")
+        self.logger.info("NSM: save session finished.")
     
     def nsm_load_session(self, path):
-        print("NSM: load session {}".format(path))
+        self.logger.info("NSM: load session {}".format(path))
         session = self.engine.rootObjects()[0].findChild(QObject, 'session')
         if session:
             QMetaObject.invokeMethod(session, "load_session", Qt.ConnectionType.DirectConnection, Q_ARG('QVariant', path))
@@ -126,26 +128,26 @@ class Application(QGuiApplication):
                 time.sleep(0.01)
                 self.processEvents()
         else:
-            print("No active session object found, ignoring load session.")
-        print("NSM: load session finished.")
+            self.logger.error("No active session object found, ignoring load session.")
+        self.logger.info("NSM: load session finished.")
 
     def save_session_handler(self, path, session, client):
-        print ('save_session_handler')
+        self.logger.debug('save_session_handler')
         self.nsm_save_session(path)
 
     def load_session_handler(self, path, session, client):
-        print ('load_session_handler')
+        self.logger.debug('load_session_handler')
         if os.path.isfile(path):
-            print("NSM: load session {}".format(path))
+            self.logger.info("NSM: load session {}".format(path))
             self.nsm_load_session(path)
         else:
-            print("NSM: create session {}".format(path))
+            self.logger.info("NSM: create session {}".format(path))
             self.nsm_save_session(path)
     
     def nsm_exit_handler(self):
-        print('Exiting due to NSM request.')
+        self.logger.info('Exiting due to NSM request.')
         self.exit_handler()
-        print("Exiting.")
+        self.logger.info("Exiting.")
         sys.exit(0)
     
     def exec(self):
@@ -162,3 +164,17 @@ class Application(QGuiApplication):
             self.logger.debug("Created QML object: {}".format(url))
         else:
             self.logger.error("Failed to create QML object: {}".format(url))
+    
+    @Slot('QVariant')
+    def onQmlWarnings(self, warnings):            
+        for warning in warnings:
+            msgtype = warning.messageType()
+            msg = warning.toString()
+            if msgtype in [QtMsgType.QtDebugMsg]:
+                self.logger.debug(msg)
+            elif msgtype in [QtMsgType.QtWarningMsg]:
+                self.logger.warning(msg)
+            elif msgtype in [QtMsgType.QtInfoMsg, QtMsgType.QtSystemMsg]:
+                self.logger.info(msg)
+            else:
+                self.logger.error(msg)

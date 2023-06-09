@@ -13,6 +13,8 @@ from PySide6.QtQuick import QQuickItem
 from .AudioPort import AudioPort
 from .LoopChannel import LoopChannel
 
+from ..logging import *
+
 # Wraps a back-end loop audio channel.
 class LoopAudioChannel(LoopChannel):
 
@@ -21,6 +23,7 @@ class LoopAudioChannel(LoopChannel):
         self._output_peak = 0.0
         self._volume = 1.0
         self._initial_volume_pushed = False
+        self.logger = Logger("Frontend.AudioChannel")
     
     def maybe_initialize(self):
         if self._loop and self._loop.initialized and not self._backend_obj:
@@ -29,7 +32,7 @@ class LoopAudioChannel(LoopChannel):
             # we get a placeholder handle because the back-end is still setting it up.
             # We will push the initial volume on the first update call.
             self._initial_volume_pushed = False
-            print("Initialize channel!")
+            self.logger.debug("Initialized back-end channel")
             self.initializedChanged.emit(True)
 
     ######################
@@ -63,7 +66,7 @@ class LoopAudioChannel(LoopChannel):
     @Slot(result=list)
     def get_data(self):
         if not self._backend_obj:
-            raise Exception("Attempting to get data of an invalid audio channel.")
+            self.logger.throw_error("Attempting to get data of an invalid audio channel.")
         return self._backend_obj.get_data()
     
     @Slot(float)

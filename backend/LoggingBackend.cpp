@@ -17,39 +17,39 @@ spdlog::level::level_enum g_loggers_level = spdlog::level::level_enum::info;
 std::map<std::string, LogLevel> g_maybe_module_levels;
 struct Logger {
     spdlog::sink_ptr stdout;
-    std::shared_ptr<spdlog::logger> logger;
+    std::shared_ptr<logger> m_logger;
 
     void update_level() {
-        auto maybe_override = g_maybe_module_levels.find(logger->name());
-        logger->set_level(
+        auto maybe_override = g_maybe_module_levels.find(m_logger->m_logger->name());
+        m_logger->m_logger->set_level(
             maybe_override != g_maybe_module_levels.end() ?
             maybe_override->second :
             g_loggers_level);
     }
 
     LogLevel get_level() const {
-        return logger->level();
+        return m_logger->m_logger->level();
     }
 };
 
 std::map<std::string, Logger> g_loggers;
-std::recursive_mutex g_loggers_mutex;
+std::recursive_mutex g_loggers_mutex, g_do_log_mutex;
 
 logger &get_logger_impl(std::string name) {
     std::lock_guard<std::recursive_mutex> guard(g_loggers_mutex);
 
     if (g_loggers.find(name) == g_loggers.end()) {
         spdlog::sink_ptr _stdout = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
-        g_loggers[name] = Logger{
+        g_loggers[name] = Logger {
             .stdout = _stdout,
-            .logger = std::make_shared<spdlog::logger>(name, _stdout)
+            .m_logger = std::make_shared<logger>(std::make_shared<spdlog::logger>(name, _stdout))
         };
         g_loggers.at(name).update_level();
 
-        logging_logger().debug("Register logger: {}, level {}", name, g_loggers.at(name).get_level());
+        //logging_logger().debug("Register logger: {}, level {}", name, g_loggers.at(name).get_level());
     }
 
-    auto rval = g_loggers.at(name).logger;
+    auto rval = g_loggers.at(name).m_logger;
     return *rval;
 };
 
@@ -65,6 +65,9 @@ void set_filter_level(LogLevel level) {
     std::lock_guard<std::recursive_mutex> guard(g_loggers_mutex);
 
     logging_logger().debug("Set global logging level to {}", level);
+    if (level < CompileTimeLogLevel) {
+        logging_logger().warn("Compile-time log filtering is set at {}. To get {} messages, please compile a debug version.", CompileTimeLogLevel, level);
+    }
 
     g_loggers_level = level;
     for (auto &l : g_loggers) {
@@ -77,6 +80,9 @@ void set_module_filter_level(std::string name, std::optional<LogLevel> level) {
 
     if (level.has_value()) {
         logging_logger().debug("Set logging level override of module {} to {}", name, level.value());
+        if (level.value() < CompileTimeLogLevel) {
+            logging_logger().warn("Compile-time log filtering is set at {}. To get {} messages, please compile a debug version.", CompileTimeLogLevel, level.value());
+        }
     } else {
         logging_logger().debug("Remove logging level override of module {}", name);
     }

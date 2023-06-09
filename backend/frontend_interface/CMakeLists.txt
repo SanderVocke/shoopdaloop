@@ -20,6 +20,12 @@ target_include_directories(shoopdaloop_backend
                         ${LILV_INCLUDE_DIRS}
                         ${CMAKE_SOURCE_DIR}/third_party/lv2_external_ui
                         )
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+  target_compile_definitions(shoopdaloop_backend PUBLIC -DCOMPILE_LOG_LEVEL=LOG_LEVEL_TRACE)
+else()
+  target_compile_definitions(shoopdaloop_backend PUBLIC -DCOMPILE_LOG_LEVEL=LOG_LEVEL_DEBUG)
+endif()
+
 
 # Generate C bindings
 add_custom_command(

@@ -23,3 +23,7 @@ class Logger:
     
     def error(self, msg):
         shoopdaloop_log(self._backend_handle, _error, msg)
+    
+    def throw_error(self, msg):
+        shoopdaloop_log(self._backend_handle, _error, msg)
+        raise Exception(msg)

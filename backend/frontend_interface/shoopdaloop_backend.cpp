@@ -1915,12 +1915,12 @@ void set_global_logging_level(log_level_t level) {
 
 void reset_logger_level_override(shoopdaloop_logger_t *logger) {
     auto name = ((logging::logger*)logger)->name();
-    set_module_filter_level(name, std::nullopt);
+    set_module_filter_level(std::string(name), std::nullopt);
 }
 
 void set_logger_level_override(shoopdaloop_logger_t *logger, log_level_t level) {
     auto name = ((logging::logger*)logger)->name();
-    set_module_filter_level(name, level_convert.at(level));
+    set_module_filter_level(std::string(name), level_convert.at(level));
 }
 
 void shoopdaloop_log(shoopdaloop_logger_t *logger, log_level_t level, const char *msg) {

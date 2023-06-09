@@ -1,6 +1,8 @@
 #pragma once
 #include "InternalLV2MidiOutputPort.h"
 #include "ProcessingChainInterface.h"
+#include "LoggingEnabled.h"
+#include "random_string.h"
 
 #include <cstring>
 #include <memory>
@@ -148,7 +150,8 @@ public:
 };
 
 template<typename TimeType, typename SizeType>
-class CarlaLV2ProcessingChain : public ProcessingChainInterface<TimeType, SizeType> {
+class CarlaLV2ProcessingChain : public ProcessingChainInterface<TimeType, SizeType>,
+                                public ModuleLoggingEnabled {
 public:
     using _InternalAudioPort = typename ProcessingChainInterface<TimeType, SizeType>::_InternalAudioPort;
     using SharedInternalAudioPort = typename ProcessingChainInterface<TimeType, SizeType>::SharedInternalAudioPort;
@@ -156,6 +159,10 @@ public:
     using SharedMidiOutputPort = std::shared_ptr<MidiOutputPort>;
     using MidiPort = typename ProcessingChainInterface<TimeType, SizeType>::MidiPort;
     using SharedMidiPort = typename ProcessingChainInterface<TimeType, SizeType>::SharedMidiPort;
+
+    std::string log_module_name() const override {
+        return "Backend.LV2";
+    }
 
 private:
     const LilvPlugin * m_plugin = nullptr;
@@ -177,6 +184,7 @@ private:
     LV2_URID_Map m_map_handle;
     LV2_URID_Unmap m_unmap_handle;
     std::string m_human_name;
+    std::string m_unique_name;
     std::atomic<bool> m_active = false;
     std::atomic<bool> m_state_restore_active = false;
 
@@ -284,8 +292,11 @@ public:
         std::string human_name
     ) :
         m_internal_buffers_size(0),
-        m_human_name(human_name)
+        m_human_name(human_name),
+        m_unique_name(human_name + "_" + random_string(6))
     {
+        log_trace();
+        
         // URIs for the Carla plugins we want to support.
         static const std::map<fx_chain_type_t, std::string> plugin_uris = {
             { Carla_Rack, "http://kxstudio.sf.net/carla/plugins/carlarack" },
