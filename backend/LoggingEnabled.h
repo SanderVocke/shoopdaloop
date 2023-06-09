@@ -26,9 +26,9 @@ protected:
     }
 
     template<typename Exception, typename ...Args>
-    void throw_error(fmt::format_string<Args...> fmt, Args &&... args, spdlog::source_loc loc=spdlog::source_loc{}) const {
+    void throw_error(fmt::format_string<Args...> fmt, Args &&... args) const {
         log<logging::LogLevel::err>(fmt, std::forward<Args>(args)...);
-        throw Exception(loc.filename);
+        throw Exception("Error");
     }
 
     void log_trace(const char* fn = std::source_location::current().function_name(),

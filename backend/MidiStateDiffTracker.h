@@ -5,6 +5,7 @@
 #include <boost/container/flat_set.hpp>
 #include <algorithm>
 #include <array>
+#include <iostream>
 
 #include "MidiStateTracker.h"
 
@@ -287,6 +288,7 @@ public:
                 case 0xE0:
                     if (controls) {
                         auto v = other->pitch_wheel_value(channel_part);
+                        std::cout << "pitch wheel diff @ " << channel_part <<  ": " << to->pitch_wheel_value(channel_part) << " vs " << other->pitch_wheel_value(channel_part) << std::endl;
                         data[0] = d[0];
                         data[1] = v & 0b1111111;
                         data[2] = (v >> 7) & 0b1111111;
@@ -309,11 +311,6 @@ public:
     }
 
     DiffSet const& get_diff() const { return m_diffs; }
-
-    MidiStateDiffTracker& operator= (MidiStateDiffTracker const& other) {
-        m_a = other.m_a;
-        m_b = other.m_b;
-        set_diff(other.get_diff());
-        return *this;
-    }
+    SharedTracker a() const { return m_a; }
+    SharedTracker b() const { return m_b; }
 };

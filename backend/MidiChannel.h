@@ -66,7 +66,8 @@ private:
         TrackedState& operator= (TrackedState const& other) {
             m_valid = other.m_valid;
             state->copy_relevant_state(*other.state);
-            diff = other.diff;
+            diff->set_diff(other.diff->get_diff());
+            diff->reset(other.diff->a(), state, StateDiffTrackerAction::None);
             return *this;
         }
 
@@ -496,7 +497,10 @@ public:
         // can restore correct control state when playing our first message.
         mp_playback_cursor->find_time_forward(
             std::max(0, _pos),
-            [&](typename Storage::Elem *e) { if (mp_pre_playback_state.valid()) { mp_pre_playback_state.state->process_msg(e->data()); } }
+            [&](typename Storage::Elem *e) { if (mp_pre_playback_state.valid()) {
+                log<LogLevel::warn>("Skip but process: {} {}", e->data()[1], e->data()[2]);
+                mp_pre_playback_state.state->process_msg(e->data()); 
+            } }
         );
 
         int valid_from = std::max(_pos, (int)ma_start_offset - (int)ma_pre_play_samples);

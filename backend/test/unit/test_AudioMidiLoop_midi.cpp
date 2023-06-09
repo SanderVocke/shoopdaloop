@@ -721,6 +721,30 @@ suite AudioMidiLoop_midi_tests = []() {
         { Msg(0, 3, {0xB1, 64, 0 }) }, // Reset hold pedal on channel 1
         { pitch_wheel_msg(0, 10, 0x2000) } // Reset pitch on channel 10
     },
+    // Test case 2: playback from 40th sample to 50th.
+    {
+        40,  // playback from
+        50, // playback to
+        0,  // start offset
+        0,  // n preplay samples
+        {
+            pitch_wheel_msg(0, 0, 49), // Reset pitch on channel 0
+            pitch_wheel_msg(0, 0, 50),
+            pitch_wheel_msg(1, 0, 51),
+            pitch_wheel_msg(2, 0, 52),
+            note_on_msg(2, 0, 50, 100),
+            pitch_wheel_msg(3, 0, 53),
+            pitch_wheel_msg(4, 0, 54),
+            pitch_wheel_msg(5, 0, 55),
+            note_off_msg(5, 0, 50, 100),
+            pitch_wheel_msg(6, 0, 56),
+            pitch_wheel_msg(7, 0, 57),
+            pitch_wheel_msg(8, 0, 58),
+            pitch_wheel_msg(9, 0, 59),
+        },
+        { Msg(0, 3, {0xB1, 64, 0 }) }, // Reset hold pedal on channel 1
+        { pitch_wheel_msg(0, 10, 0x2000) } // Reset pitch on channel 10
+    },
     // ...
     }
     ;

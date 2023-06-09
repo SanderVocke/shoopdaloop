@@ -279,7 +279,7 @@ public:
              next_offset = m_storage->maybe_next_elem_offset(m_storage->unsafe_at(next_offset.value())),
              n_processed++)
         {
-            Elem* elem = m_storage->unsafe_at(m_offset.value());
+            Elem* elem = prev.has_value() ? m_storage->unsafe_at(prev.value()) : nullptr;
             Elem* next_elem = m_storage->unsafe_at(next_offset.value());
             if (next_elem->storage_time >= time) {
                 // Found
@@ -288,7 +288,7 @@ public:
                 return n_processed;
             } else {
                 // Not found yet
-                if (maybe_skip_msg_callback) {
+                if (maybe_skip_msg_callback && elem) {
                     maybe_skip_msg_callback(elem);
                 }
             }

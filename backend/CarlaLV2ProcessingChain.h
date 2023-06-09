@@ -296,7 +296,7 @@ public:
         m_unique_name(human_name + "_" + random_string(6))
     {
         log_trace();
-        
+
         // URIs for the Carla plugins we want to support.
         static const std::map<fx_chain_type_t, std::string> plugin_uris = {
             { Carla_Rack, "http://kxstudio.sf.net/carla/plugins/carlarack" },
@@ -310,7 +310,7 @@ public:
         LilvNode *uri = lilv_new_uri(lilv_world, m_plugin_uri.c_str());
         m_plugin = lilv_plugins_get_by_uri(all_plugins, uri);
         if (!m_plugin) {
-            throw std::runtime_error("Plugin " + m_plugin_uri + " not found.");
+            throw_error<std::runtime_error>("Plugin {} not found.", m_plugin_uri);
         }
 
         // Set up URID mapping feature and map some URIs we need.
@@ -336,7 +336,7 @@ public:
 
             for (auto const& sym : audio_in_port_symbols) {
                 auto p = lilv_plugin_get_port_by_symbol(m_plugin, lilv_new_string(lilv_world, sym.c_str()));
-                if (!p) { throw std::runtime_error ("Could not find port '" + sym + "' on plugin."); }
+                if (!p) { throw_error<std::runtime_error>("Could not find port '{}' on plugin.", sym); }
                 m_audio_in_lilv_ports.push_back(p);
                 m_audio_in_port_indices.push_back(lilv_port_get_index(m_plugin, p));
                 auto internal = std::make_shared<_InternalAudioPort>(sym, PortDirection::Output, m_internal_buffers_size);
@@ -344,7 +344,7 @@ public:
             }
             for (auto const& sym : audio_out_port_symbols) {
                 auto p = lilv_plugin_get_port_by_symbol(m_plugin, lilv_new_string(lilv_world, sym.c_str()));
-                if (!p) { throw std::runtime_error ("Could not find port '" + sym + "' on plugin."); }
+                if (!p) { throw_error<std::runtime_error>("Could not find port '{}' on plugin.", sym); }
                 m_audio_out_lilv_ports.push_back(p);
                 m_audio_out_port_indices.push_back(lilv_port_get_index(m_plugin, p));
                 auto internal = std::make_shared<_InternalAudioPort>(sym, PortDirection::Input, m_internal_buffers_size);
@@ -352,7 +352,7 @@ public:
             }
             for (auto const& sym : midi_in_port_symbols) {
                 auto p = lilv_plugin_get_port_by_symbol(m_plugin, lilv_new_string(lilv_world, sym.c_str()));
-                if (!p) { throw std::runtime_error ("Could not find port '" + sym + "' on plugin."); }
+                if (!p) { throw_error<std::runtime_error>("Could not find port '{}' on plugin.", sym); }
                 m_midi_in_lilv_ports.push_back(p);
                 m_midi_in_port_indices.push_back(lilv_port_get_index(m_plugin, p));
                 auto internal = std::make_shared<InternalLV2MidiOutputPort>(sym, PortDirection::Output, mc_midi_buf_capacities, m_atom_chunk_type, m_atom_sequence_type, m_midi_event_type);
@@ -361,7 +361,7 @@ public:
             }
             for (auto const& sym : midi_out_port_symbols) {
                 auto p = lilv_plugin_get_port_by_symbol(m_plugin, lilv_new_string(lilv_world, sym.c_str()));
-                if (!p) { throw std::runtime_error ("Could not find port '" + sym + "' on plugin."); }
+                if (!p) { throw_error<std::runtime_error>("Could not find port '{}' on plugin.", sym); }
                 m_midi_out_lilv_ports.push_back(p);
                 m_midi_out_port_indices.push_back(lilv_port_get_index(m_plugin, p));
                 auto internal = lv2_evbuf_new(mc_midi_buf_capacities, m_atom_chunk_type, m_atom_sequence_type);
