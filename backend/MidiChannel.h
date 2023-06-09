@@ -64,6 +64,9 @@ private:
             diff(std::make_shared<MidiStateDiffTracker>()) {}
         
         TrackedState& operator= (TrackedState const& other) {
+            // We want to track the same source state, yet copy
+            // the cached state contents from the other tracker
+            // so that the diffs may diverge.
             m_valid = other.m_valid;
             state->copy_relevant_state(*other.state);
             diff->set_diff(other.diff->get_diff());
@@ -143,6 +146,7 @@ public:
         mp_output_midi_state(std::make_shared<MidiStateTracker>(true, true, true)),
         mp_input_midi_state(std::make_shared<MidiStateTracker>(false, true, true)),
         mp_track_start_state(false, true, true),
+        mp_pre_playback_state(false, true, true),
         mp_track_prerecord_start_state(false, true, true),
         ma_n_events_triggered(0),
         ma_start_offset(0),
@@ -498,7 +502,6 @@ public:
         mp_playback_cursor->find_time_forward(
             std::max(0, _pos),
             [&](typename Storage::Elem *e) { if (mp_pre_playback_state.valid()) {
-                log<LogLevel::warn>("Skip but process: {} {}", e->data()[1], e->data()[2]);
                 mp_pre_playback_state.state->process_msg(e->data()); 
             } }
         );

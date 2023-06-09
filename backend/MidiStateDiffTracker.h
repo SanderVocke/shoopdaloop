@@ -288,7 +288,6 @@ public:
                 case 0xE0:
                     if (controls) {
                         auto v = other->pitch_wheel_value(channel_part);
-                        std::cout << "pitch wheel diff @ " << channel_part <<  ": " << to->pitch_wheel_value(channel_part) << " vs " << other->pitch_wheel_value(channel_part) << std::endl;
                         data[0] = d[0];
                         data[1] = v & 0b1111111;
                         data[2] = (v >> 7) & 0b1111111;

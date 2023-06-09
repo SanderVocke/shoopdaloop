@@ -283,6 +283,9 @@ public:
             Elem* next_elem = m_storage->unsafe_at(next_offset.value());
             if (next_elem->storage_time >= time) {
                 // Found
+                if (maybe_skip_msg_callback && elem) {
+                    maybe_skip_msg_callback(elem);
+                }
                 m_offset = next_offset;
                 m_prev_offset = prev;
                 return n_processed;

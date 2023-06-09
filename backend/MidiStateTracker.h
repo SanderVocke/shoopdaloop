@@ -88,7 +88,6 @@ private:
         if (m_pitch_wheel.at(channel & 0x0F) != value) {
             for (auto const& s : m_subscribers) { if(auto ss = s.lock()) { ss->pitch_wheel_changed(this, channel, value); } }
         }
-        std::cout << "Tracker " << this << ": pitch " << (channel & 0x0F) << " -> " << value <<std::endl;
         m_pitch_wheel[channel & 0x0F] = value;
     }
 
