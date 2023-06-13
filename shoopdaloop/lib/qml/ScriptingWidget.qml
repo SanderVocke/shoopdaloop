@@ -15,7 +15,9 @@ Rectangle {
     property string active_script_id: initial_descriptor.active_script_id
     property var script_descriptors: initial_descriptor.scripts
 
-    readonly property var actual_descriptor: GenerateSession.generate_scripts(script_descriptors, active_script_id)
+    readonly property var actual_descriptor: {
+        GenerateSession.generate_scripts(script_descriptors, active_script_id)
+    }
 
     readonly property int active_script_index : script_descriptors.findIndex(d => d.id == active_script_id)
 

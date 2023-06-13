@@ -2,6 +2,7 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
 import QtQuick.Dialogs
+import Logger
 
 import "../generate_session.js" as GenerateSession
 import "../backend/frontend_interface/types.js" as Types
@@ -9,6 +10,8 @@ import "../backend/frontend_interface/types.js" as Types
 Item {
     id: root
     objectName: 'session'
+
+    property Logger logger : Logger { name: "Frontend.Session" }
 
     // The descriptor is an object matching the ShoopDaLoop session JSON
     // schema. The Session object will manage an actual session (consisting)
@@ -23,7 +26,7 @@ Item {
             tracks_widget.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to),
             [],
             scenes_widget.actual_scene_descriptors,
-            scripting_widget.actual_session_descriptor,
+            scripting_widget.actual_descriptor,
             fx_chain_states_registry.all_values()
         );
     }
@@ -93,18 +96,17 @@ Item {
         state_registry.save_action_started()
         var tempdir = file_io.create_temporary_folder()
         var tasks = tasks_factory.create_tasks_obj(root)
-
-        var descriptor = actual_session_descriptor(true, tempdir, tasks)
         var session_filename = tempdir + '/session.json'
 
         // TODO make this step asynchronous
+        var descriptor = actual_session_descriptor(true, tempdir, tasks)
         file_io.write_file(session_filename, JSON.stringify(descriptor, null, 2))
 
         tasks.when_finished(() => {
             try {
                 // TODO make this step asynchronous
                 file_io.make_tarfile(filename, tempdir, false)
-                console.log("Session written to: ", filename)
+                root.logger.info("Session written to: " + filename)
             } finally {
                 state_registry.save_action_finished()
                 file_io.delete_recursive(tempdir)

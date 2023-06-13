@@ -51,10 +51,18 @@ class FileIO(QThread):
     @Slot(result=str)
     def create_temporary_file(self):
         return tempfile.mkstemp()[1]
+    
+    @Slot(result=str)
+    def generate_temporary_filename(self):
+        return tempfile.gettempdir() + '/' + next(tempfile._get_candidate_names())
 
     @Slot(str)
     def delete_recursive(self, folder):
         shutil.rmtree(folder)
+    
+    @Slot(str)
+    def delete_file(self, filename):
+        os.remove(filename)
 
     @Slot(str, str, bool)
     def make_tarfile(self, filename, source_dir, compress):
