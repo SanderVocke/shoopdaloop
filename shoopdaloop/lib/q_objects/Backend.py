@@ -120,6 +120,10 @@ class Backend(QQuickItem):
     @Slot(result=int)
     def get_sample_rate(self):
         return self._backend_obj.get_sample_rate()
+    
+    @Slot(result=int)
+    def get_buffer_size(self):
+        return self._backend_obj.get_buffer_size()
 
     @Slot()
     def close(self):
@@ -136,6 +140,24 @@ class Backend(QQuickItem):
     def maybe_init(self):
         if not self._initialized and self._client_name_hint != None and self._backend_type != None:
             self.init()
+    
+    @Slot(result='QVariant')
+    def get_profiling_report(self):
+        def report_item_to_dict(item):
+            return {
+                'worst': item.worst,
+                'most_recent': item.most_recent,
+                'average': item.average,
+                'n_samples': item.n_samples,
+            }
+
+        if (self._backend_obj):
+            report = self._backend_obj.get_profiling_report()
+            dct = {}
+            for item in report.items:
+                dct[item.key] = report_item_to_dict(item)
+            return dct
+        return []
     
     ################
     ## INTERNAL METHODS

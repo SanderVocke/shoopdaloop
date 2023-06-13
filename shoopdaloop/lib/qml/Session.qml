@@ -176,6 +176,8 @@ Item {
         AppControls {
             id: app_controls
 
+            backend: backend
+
             anchors {
                 top: parent.top
                 left: parent.left

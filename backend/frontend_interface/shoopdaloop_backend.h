@@ -11,8 +11,9 @@ void terminate (shoopdaloop_backend_instance_t *backend);
 jack_client_t *maybe_jack_client_handle(shoopdaloop_backend_instance_t *backend);
 const char *get_client_name(shoopdaloop_backend_instance_t *backend);
 unsigned get_sample_rate(shoopdaloop_backend_instance_t *backend);
+unsigned get_buffer_size(shoopdaloop_backend_instance_t *backend);
 backend_state_info_t *get_backend_state(shoopdaloop_backend_instance_t *backend);
-profiling_report_t get_profiling_report(shoopdaloop_backend_instance_t *backend);
+profiling_report_t* get_profiling_report(shoopdaloop_backend_instance_t *backend);
 
 // Loops
 shoopdaloop_loop_t *create_loop(shoopdaloop_backend_instance_t *backend);
@@ -124,6 +125,7 @@ void destroy_shoopdaloop_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *
 void destroy_loop_state_info(loop_state_info_t *d);
 void destroy_fx_chain(shoopdaloop_fx_chain_t *d);
 void destroy_fx_chain_state(fx_chain_state_info_t *d);
+void destroy_profiling_report(profiling_report_t *d);
 void destroy_string(const char* s);
 
 // Helpers for allocating data objects

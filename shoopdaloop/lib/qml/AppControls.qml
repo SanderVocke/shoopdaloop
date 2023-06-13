@@ -16,6 +16,7 @@ Item {
     property Registry state_registry
     property Registry objects_registry
     property alias sync_active : sync_active_button.sync_active
+    property var backend : null
 
     function update() {
         state_registry.replace('sync_active', sync_active)
@@ -53,6 +54,10 @@ Item {
                     text: "Load session"
                     onClicked: loadsessiondialog.open()
                 }
+                MenuItem {
+                    text: "Profiling"
+                    onClicked: profilingwindow.visible = true
+                }
             }
 
             FileDialog {
@@ -79,6 +84,11 @@ Item {
                     root.loadSession(filename)
                 }
 
+            }
+
+            ProfilingWindow {
+                id: profilingwindow
+                backend: root.backend
             }
         }
 

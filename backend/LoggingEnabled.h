@@ -18,6 +18,7 @@ protected:
         m_logger = &logging::get_logger(std::string(log_module_name()));
     }
 
+public:
     template<logging::LogLevel Level, typename... Args>
     void log(fmt::format_string<Args...> fmt, Args &&... args) const {
         if (Level >= LevelFilter) {
@@ -37,7 +38,6 @@ protected:
         log<logging::LogLevel::trace>("{}:{} - {}", fl, ln, fn);
     }
 
-public:
     LoggingEnabled() {};
     virtual ~LoggingEnabled() {}
 };

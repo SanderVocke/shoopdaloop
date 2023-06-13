@@ -13,6 +13,7 @@
 #include "JackAudioSystem.h"
 #include "DummyAudioSystem.h"
 #include "JackMidiPort.h"
+#include "LoggingBackend.h"
 #include "LoggingEnabled.h"
 #include "MidiChannel.h"
 #include "MidiMessage.h"
@@ -119,7 +120,7 @@ enum class ProcessWhen {
 };
 
 struct Backend : public std::enable_shared_from_this<Backend>,
-                 private ModuleLoggingEnabled {
+                 public ModuleLoggingEnabled {
 
     std::vector<SharedLoopInfo> loops;
     std::vector<SharedPortInfo> ports;
@@ -1127,10 +1128,40 @@ unsigned get_sample_rate(shoopdaloop_backend_instance_t *backend) {
     return internal_backend(backend)->get_sample_rate();
 }
 
+unsigned get_buffer_size(shoopdaloop_backend_instance_t *backend) {
+    return internal_backend(backend)->get_buffer_size();
+}
+
 backend_state_info_t *get_backend_state(shoopdaloop_backend_instance_t *backend) {
     auto val = internal_backend(backend)->get_state();
     auto rval = new backend_state_info_t;
     *rval = val;
+    return rval;
+}
+
+profiling_report_t *get_profiling_report(shoopdaloop_backend_instance_t *backend) {
+    auto internal = internal_backend(backend);
+
+    if (!profiling::g_ProfilingEnabled) {
+        internal->log<logging::LogLevel::err>("Profiling support was disabled at compile-time.");
+    }
+
+    auto r = internal->profiler->report();    
+
+    auto rval = new profiling_report_t;
+    auto items = new profiling_report_item_t[r.size()];
+    for (size_t idx=0; idx<r.size(); idx++) {
+        auto name_str = (char*) malloc(r[idx].key.size() + 1);
+        strcpy(name_str, r[idx].key.c_str());
+        items[idx].key = name_str;
+        items[idx].average = r[idx].avg;
+        items[idx].most_recent = r[idx].most_recent;
+        items[idx].n_samples = r[idx].n_samples;
+        items[idx].worst = r[idx].worst;
+    }
+
+    rval->items = items;
+    rval->n_items = r.size();
     return rval;
 }
 
@@ -1905,6 +1936,14 @@ void destroy_string(const char* s) {
 
 void destroy_backend_state_info(backend_state_info_t *d) {
     delete d;
+}
+
+void destroy_profiling_report(profiling_report_t *d) {
+    for(size_t idx=0; idx < d->n_items; idx++) {
+        free ((void*)d->items[idx].key);
+    }
+    free(d->items);
+    free(d);
 }
 
 shoopdaloop_logger_t *get_logger(const char* name) {

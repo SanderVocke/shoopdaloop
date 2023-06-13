@@ -18,16 +18,17 @@ struct ProfilingItem {
 
     std::recursive_mutex mutex;
 
-    void reset(std::function<void(size_t, float, float, float)> report_cb) {
+    void reset(std::function<void(float, float, float, float)> report_cb) {
         std::lock_guard<std::recursive_mutex> g(mutex);
 
         if(report_cb) {
             report_cb(n_reported,
-                      n_reported ? summed / n_reported : -1.0f,
+                      n_reported >= 1.0f ? summed / n_reported : -1.0f,
                       worst.value_or(-1.0f),
                       most_recent.value_or(-1.0f));
         }
 
+        current_iteration = 0.0f;
         n_reported = 0.0f;
         summed = 0.0f;
         most_recent = std::nullopt;
@@ -48,6 +49,7 @@ struct ProfilingItem {
             worst = current_iteration;
         }
         summed += current_iteration;
+        current_iteration = 0.0f;
     }
 };
 

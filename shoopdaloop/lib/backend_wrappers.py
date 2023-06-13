@@ -151,6 +151,27 @@ class BackendState:
         self.dsp_load_percent = float(backend_state.dsp_load_percent)
         self.xruns_since_last = int(backend_state.xruns_since_last)
 
+@dataclass
+class ProfilingReportItem:
+    key : str
+    n_samples : float
+    worst : float
+    most_recent : float
+    average : float
+
+    def __init__(self, backend_obj : 'profiling_report_item_t'):
+        self.key = str(backend_obj.key)
+        self.n_samples = float(backend_obj.n_samples)
+        self.worst = float(backend_obj.worst)
+        self.most_recent = float(backend_obj.most_recent)
+        self.average = float(backend_obj.average)
+
+@dataclass
+class ProfilingReport:
+    items : list[ProfilingReportItem]
+
+    def __init__(self, backend_obj : 'profiling_report_t'):
+        self.items = [ProfilingReportItem(backend_obj.items[i]) for i in range(backend_obj.n_items)]
 
 def backend_midi_message_to_dict(backend_msg: 'midi_event_t'):
     r = dict()
@@ -540,6 +561,15 @@ class Backend:
         
     def get_sample_rate(self):
         return int(get_sample_rate(self._c_handle))
+    
+    def get_buffer_size(self):
+        return int(get_buffer_size(self._c_handle))
+    
+    def get_profiling_report(self):
+        state = get_profiling_report(self._c_handle)
+        rval = ProfilingReport(state[0])
+        destroy_profiling_report(state)
+        return rval
 
     def terminate(self):
         terminate(self._c_handle)
