@@ -408,7 +408,6 @@ public:
                     // If it is the first recorded message, this is also the moment to cache the
                     // MIDI state on the input (such as hold pedal, other CCs, pitch wheel, etc.) so we can
                     // restore it later.
-                    log<LogLevel::debug>("Caching port state for record");
                     if (storage.n_events() == 0) {
                         log<LogLevel::debug>("Caching port state for record");
                         track_start_state.set_from(mp_input_midi_state);
@@ -523,6 +522,7 @@ public:
                 if (mp_pre_playback_state.valid()) {
                     log<LogLevel::debug>("Restoring port state for playback @ sample {}", event->storage_time);
                     mp_pre_playback_state.resolve_to_output([this ,&buf, &proc_time](size_t size, uint8_t * data) {
+                        log<LogLevel::debug>("  - Restore msg: {} {} {}", data[0], data[1], data[2]);
                         PROC_send_message_value(*buf.buf, proc_time, size, data);
                     });
                     mp_pre_playback_state.set_valid(false);

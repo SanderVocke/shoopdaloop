@@ -23,7 +23,7 @@ target_include_directories(shoopdaloop_backend
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
   target_compile_definitions(shoopdaloop_backend PUBLIC -DCOMPILE_LOG_LEVEL=LOG_LEVEL_TRACE)
 else()
-  target_compile_definitions(shoopdaloop_backend PUBLIC -DCOMPILE_LOG_LEVEL=LOG_LEVEL_DEBUG)
+  target_compile_definitions(shoopdaloop_backend PUBLIC -DCOMPILE_LOG_LEVEL=LOG_LEVEL_INFO)
 endif()
 
 

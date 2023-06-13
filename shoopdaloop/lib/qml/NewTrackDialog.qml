@@ -15,7 +15,7 @@ Dialog {
     title: 'Add track'
 
     width: 400
-    height: 400
+    height: 550
 
     property alias track_name : name_field.text
     property alias is_drywet : select_type.is_drywet

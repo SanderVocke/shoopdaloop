@@ -12,7 +12,7 @@
 #define LOG_LEVEL_ERROR logging::LogLevel::err;
 
 #ifndef COMPILE_LOG_LEVEL
-#define COMPILE_LOG_LEVEL logging::LogLevel::debug
+#define COMPILE_LOG_LEVEL logging::LogLevel::info
 #else
 #define HELPER(x) #x
 #define STR(x) HELPER(x)
@@ -27,14 +27,14 @@ auto constexpr CompileTimeLogLevel = COMPILE_LOG_LEVEL;
 
 struct logger {
     std::shared_ptr<spdlog::logger> m_logger;
-    std::unique_ptr<std::recursive_mutex> m_mutex;
+    std::recursive_mutex m_mutex;
 
-    logger(std::shared_ptr<spdlog::logger> l) : m_logger(l), m_mutex(new std::recursive_mutex) {}
+    logger(std::shared_ptr<spdlog::logger> l) : m_logger(l) {}
 
     template<typename... Args>
     void log(spdlog::source_loc loc, spdlog::level::level_enum lvl, spdlog::format_string_t<Args...> fmt, Args &&... args) {
         if (lvl >= CompileTimeLogLevel) {
-            std::lock_guard<std::recursive_mutex> guard(*m_mutex);
+            std::lock_guard<std::recursive_mutex> guard(m_mutex);
             m_logger->log(loc, lvl, fmt, args...);
         }
     }
@@ -42,7 +42,7 @@ struct logger {
     template<typename... Args>
     void log(spdlog::level::level_enum lvl, spdlog::format_string_t<Args...> fmt, Args &&... args) {
         if (lvl >= CompileTimeLogLevel) {
-            std::lock_guard<std::recursive_mutex> guard(*m_mutex);
+            std::lock_guard<std::recursive_mutex> guard(m_mutex);
             m_logger->log(lvl, fmt, args...);
         }
     }
@@ -50,7 +50,7 @@ struct logger {
     template<typename T>
     void log(spdlog::level::level_enum lvl, const T &msg) {
         if (lvl >= CompileTimeLogLevel) {
-            std::lock_guard<std::recursive_mutex> guard(*m_mutex);
+            std::lock_guard<std::recursive_mutex> guard(m_mutex);
             m_logger->log(lvl, msg);
         }
     }
@@ -58,7 +58,7 @@ struct logger {
     template<class T, typename std::enable_if<!spdlog::is_convertible_to_any_format_string<const T &>::value, int>::type = 0>
     void log(spdlog::source_loc loc, spdlog::level::level_enum lvl, const T &msg) {
         if (lvl >= CompileTimeLogLevel) {
-            std::lock_guard<std::recursive_mutex> guard(*m_mutex);
+            std::lock_guard<std::recursive_mutex> guard(m_mutex);
             m_logger->log(loc, lvl, msg);
         }
     }
@@ -66,7 +66,7 @@ struct logger {
     template<typename... Args>
     void trace(spdlog::format_string_t<Args...> fmt, Args &&... args) {
         if (LogLevel::trace >= CompileTimeLogLevel) {
-            std::lock_guard<std::recursive_mutex> guard(*m_mutex);
+            std::lock_guard<std::recursive_mutex> guard(m_mutex);
             m_logger->trace(fmt, args...);
         }
     }
@@ -74,7 +74,7 @@ struct logger {
     template<typename... Args>
     void debug(spdlog::format_string_t<Args...> fmt, Args &&... args) {
         if (LogLevel::debug >= CompileTimeLogLevel) {
-            std::lock_guard<std::recursive_mutex> guard(*m_mutex);
+            std::lock_guard<std::recursive_mutex> guard(m_mutex);
             m_logger->debug(fmt, args...);
         }
     }
@@ -82,7 +82,7 @@ struct logger {
     template<typename... Args>
     void info(spdlog::format_string_t<Args...> fmt, Args &&... args) {
         if (LogLevel::info >= CompileTimeLogLevel) {
-            std::lock_guard<std::recursive_mutex> guard(*m_mutex);
+            std::lock_guard<std::recursive_mutex> guard(m_mutex);
             m_logger->info(fmt, args...);
         }
     }
@@ -90,7 +90,7 @@ struct logger {
     template<typename... Args>
     void warn(spdlog::format_string_t<Args...> fmt, Args &&... args) {
         if (LogLevel::warn >= CompileTimeLogLevel) {
-            std::lock_guard<std::recursive_mutex> guard(*m_mutex);
+            std::lock_guard<std::recursive_mutex> guard(m_mutex);
             m_logger->warn(fmt, args...);
         }
     }
@@ -98,7 +98,7 @@ struct logger {
     template<typename... Args>
     void error(spdlog::format_string_t<Args...> fmt, Args &&... args) {
         if (LogLevel::err >= CompileTimeLogLevel) {
-            std::lock_guard<std::recursive_mutex> guard(*m_mutex);
+            std::lock_guard<std::recursive_mutex> guard(m_mutex);
             m_logger->error(fmt, args...);
         }
     }

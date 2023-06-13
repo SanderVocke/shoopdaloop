@@ -295,8 +295,6 @@ public:
         m_human_name(human_name),
         m_unique_name(human_name + "_" + random_string(6))
     {
-        log_trace();
-
         // URIs for the Carla plugins we want to support.
         static const std::map<fx_chain_type_t, std::string> plugin_uris = {
             { Carla_Rack, "http://kxstudio.sf.net/carla/plugins/carlarack" },

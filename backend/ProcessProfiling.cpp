@@ -8,11 +8,13 @@
 namespace profiling {
 
 struct ProfilingItem {
-    size_t n_reported = 0;
+    float n_reported = 0.0f;
 
     float summed = 0.0f;
     std::optional<float> most_recent;
     std::optional<float> worst;
+
+    float current_iteration = 0.0f;
 
     std::recursive_mutex mutex;
 
@@ -32,21 +34,28 @@ struct ProfilingItem {
         worst = std::nullopt;
     }
 
-    void spent(float time) {
+    void log_time(float t) {
+        std::lock_guard<std::recursive_mutex> g(mutex);
+        current_iteration += t;
+    }
+
+    void next_iteration() {
         std::lock_guard<std::recursive_mutex> g(mutex);
 
-        n_reported++;
-        most_recent = time;
-        if(worst.value_or(0.0f) < time) {
-            worst = time;
+        n_reported += 1.0f;
+        most_recent = current_iteration;
+        if(worst.value_or(0.0f) < current_iteration) {
+            worst = current_iteration;
         }
-        summed += time;
+        summed += current_iteration;
     }
 };
 
-void spent(std::shared_ptr<ProfilingItem> &item, float time) {
-    item->spent(time);
+void log_time(std::shared_ptr<ProfilingItem> &item, float time) {
+    item->log_time(time);
 }
+
+
 
 ProfilingReport report() {
     std::lock_guard<std::recursive_mutex> g(g_registry_access);

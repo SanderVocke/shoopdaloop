@@ -34,7 +34,8 @@ class Profiler {
     
 public:
     std::shared_ptr<ProfilingItem> get_profiling_item(std::string name);
-    void spent(std::shared_ptr<ProfilingItem> &item, float time);
+    void log_time(std::shared_ptr<ProfilingItem> &item, float time);
+    void next_iteration();
     ProfilingReport report(); 
 };
 
