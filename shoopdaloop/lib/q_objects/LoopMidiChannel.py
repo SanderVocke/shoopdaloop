@@ -58,7 +58,7 @@ class LoopMidiChannel(LoopChannel):
             self.nNotesActiveChanged.emit(self._n_notes_active)
     
     @Slot(result=list)
-    def get_msgs(self):
+    def get_data(self):
         if self._backend_obj:
             return self._backend_obj.get_data()
         else:

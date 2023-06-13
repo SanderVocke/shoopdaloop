@@ -160,20 +160,6 @@ class FetchChannelData(QQuickItem):
 
         def worker(channel=self.channel, seq_nr=self._active_request_seq_nr, cb_to=self):
             data = channel.get_data()
-            # is_floats = len(data) > 0 and functools.reduce(lambda a,b: a and b, [isinstance(e, float) for e in data])
-            # qimage = None
-            # if is_floats:            
-            #     # List of floats. Also provide a QImage version
-            #     scale = pow(2,32)/2 - 1
-            #     integers = [int((f * scale)) for f in data]
-            #     width = 8192
-            #     height = math.ceil(len(data) / width)
-            #     elems = width*height
-            #     while len(integers) < elems:
-            #         integers.append(0)
-            #     integers = [i + int(pow(2, 32)/2) for i in integers] # from -1..1 to 0..1
-            #     np_integers = np.array(integers, dtype=np.uint32, copy=False)
-            #     qimage = QImage(np_integers, width, height, QImage.Format.Format_ARGB32)
             channel.clear_data_dirty()
             QMetaObject.invokeMethod(
                 cb_to,
