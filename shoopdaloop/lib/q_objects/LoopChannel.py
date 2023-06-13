@@ -33,7 +33,7 @@ class LoopChannel(QQuickItem):
         self._data_dirty = True
         self._n_preplay_samples = 0
         self._played_back_sample = None
-        self._logger = Logger('Frontend.LoopChannel')
+        self.logger = Logger('Frontend.LoopChannel')
 
         self.rescan_parents()
         if not self._loop:

@@ -6,7 +6,7 @@ from ..logging import Logger as BaseLogger
 class Logger(QObject):
     def __init__(self, parent=None):
         super(Logger, self).__init__(parent)
-        self._logger = BaseLogger("Frontend.Unknown")
+        self.logger = BaseLogger("Frontend.Unknown")
 
     ######################
     # PROPERTIES
@@ -16,11 +16,11 @@ class Logger(QObject):
     nameChanged = Signal(str)
     @Property(str, notify=nameChanged)
     def name(self):
-        return self._logger.name()
+        return self.logger.name()
     @name.setter
     def name(self, l):
-        if l and l != self._logger.name():
-            self._logger = BaseLogger(l)
+        if l and l != self.logger.name():
+            self.logger = BaseLogger(l)
     
     ###########
     ## SLOTS
@@ -28,21 +28,21 @@ class Logger(QObject):
 
     @Slot(str)
     def trace(self, msg):
-        self._logger.trace(msg)
+        self.logger.trace(msg)
     
     @Slot(str)
     def debug(self, msg):
-        self._logger.debug(msg)
+        self.logger.debug(msg)
     
     @Slot(str)
     def info(self, msg):
-        self._logger.info(msg)
+        self.logger.info(msg)
     
     @Slot(str)
     def warning(self, msg):
-        self._logger.warning(msg)
+        self.logger.warning(msg)
     
     @Slot(str)
     def error(self, msg):
-        self._logger.error(msg)
+        self.logger.error(msg)
     
