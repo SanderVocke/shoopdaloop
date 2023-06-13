@@ -72,6 +72,7 @@ class Loop(QQuickItem):
     # Indirect setter via back-end
     @Slot(int)
     def set_mode(self, mode):
+        self.logger.debug('Set mode -> {}'.format(LoopMode(mode)))
         self._backend_loop.set_mode(mode)
 
     # length: loop length in samples
@@ -82,6 +83,7 @@ class Loop(QQuickItem):
     # Indirect setter via back-end
     @Slot(int)
     def set_length(self, length):
+        self.logger.debug('Set length -> {}'.format(length))
         self._backend_loop.set_length(length)
 
     # position: loop playback position in samples
@@ -92,6 +94,7 @@ class Loop(QQuickItem):
     # Indirect setter via back-end
     @Slot(int)
     def set_position(self, position):
+        self.logger.debug('Set position -> {}'.format(position))
         self._backend_loop.set_position(position)
 
     # next_mode: first upcoming mode change
@@ -115,6 +118,7 @@ class Loop(QQuickItem):
     def sync_source(self, loop):
         def do_set():
             if loop != self._sync_source:
+                self.logger.debug('Set sync source -> {}'.format(loop))
                 self._sync_source = loop
                 self._backend_loop.set_sync_source(loop._backend_loop)
                 self.syncSourceChanged.emit(loop)
@@ -186,14 +190,17 @@ class Loop(QQuickItem):
         self._display_midi_events_triggered = (sum([c.n_events_triggered for c in self.midi_channels()]) if len(self.midi_channels()) > 0 else 0)
 
         if prev_mode != self._mode:
+            self.logger.debug('mode -> {}'.format(LoopMode(self._mode)))
             self.modeChanged.emit(self._mode)
         if prev_length != self._length:
             self.lengthChanged.emit(self._length)
         if prev_position != self._position:
             self.positionChanged.emit(self._position)
         if prev_next_mode != self._next_mode:
+            self.logger.debug('next mode -> {}'.format(LoopMode(self._next_mode)))
             self.nextModeChanged.emit(self._next_mode)
         if prev_next_delay != self._next_transition_delay:
+            self.logger.debug('next transition -> {}'.format(self._next_transition_delay))
             self.nextTransitionDelayChanged.emit(self._next_transition_delay)
         if prev_display_peaks != self._display_peaks:
             self.displayPeaksChanged.emit(self._display_peaks)
@@ -219,25 +226,29 @@ class Loop(QQuickItem):
     @Slot(int)
     def clear(self, length):
         if self.initialized:
+            self.logger.debug('clear')
             self._backend_loop.clear(length)
     
     @Slot(int, result=BackendLoopMidiChannel)
     def add_audio_channel(self, mode):
         if self.initialized:
+            self.logger.debug('add audio channel')
             return self._backend_loop.add_audio_channel(ChannelMode(mode))
     
     @Slot(int, result=BackendLoopMidiChannel)
     def add_midi_channel(self, mode):
         if self.initialized:
+            self.logger.debug('add midi channel')
             return self._backend_loop.add_midi_channel(ChannelMode(mode))
     
     @Slot(list)
     def load_audio_data(self, sound_channels):
         if sound_channels is not None:
+            self.logger.info('Loading {} audio channels'.format(len(sound_channels)))
             self.stop(0, False)
             self.set_position(0)
             if len(sound_channels) != len(self.audio_channels()):
-                print ("Loaded {} channels but loop has {} channels. Assigning data to channels in round-robin fashion."
+                self.logger.warning("Loaded {} channels but loop has {} channels. Assigning data to channels in round-robin fashion."
                     .format(len(sound_channels), len(self.audio_channels())))
             for idx in range(len(self.audio_channels())):
                 self.audio_channels()[idx].load_data(sound_channels[idx % len(sound_channels)])
@@ -246,6 +257,7 @@ class Loop(QQuickItem):
     @Slot()
     def close(self):
         if self._backend_loop:
+            self.logger.debug('close')
             self._backend_loop.destroy()
             self._backend_loop = None
             self._initialized = False
@@ -262,12 +274,13 @@ class Loop(QQuickItem):
         maybe_backend = findFirstParent(self, lambda p: p and isinstance(p, QQuickItem) and p.inherits('Backend'))
         if maybe_backend:
             return maybe_backend
-        raise Exception("Could not find backend!")
+        self.logger.throw_error("Could not find backend!")
     
     def maybe_initialize(self):
         if self._backend and self._backend.initialized and not self._backend_loop:
             self._backend_loop = self._backend.get_backend_obj().create_loop()
             if self._backend_loop:
+                self.logger.debug('Found backend, initializing')
                 self._initialized = True
                 self.update()
                 self._backend.registerBackendObject(self)

@@ -101,7 +101,7 @@ Item {
     }
     function queue_load_tasks(data_files_dir, add_tasks_to) {
         var channels = channels
-        var have_data_files = channels.map(c => c.has_data_file())
+        var have_data_files = channels ? channels.map(c => c.has_data_file()) : []
         if (have_data_files.filter(d => d == true).length > 0) {
             force_load_backend()
             channels.forEach((c) => c.queue_load_tasks(data_files_dir, add_tasks_to))
