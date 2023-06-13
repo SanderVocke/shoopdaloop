@@ -28,7 +28,7 @@ struct ProfilingItem {
                       most_recent.value_or(-1.0f));
         }
 
-        n_reported = 0;
+        n_reported = 0.0f;
         summed = 0.0f;
         most_recent = std::nullopt;
         worst = std::nullopt;
@@ -51,18 +51,32 @@ struct ProfilingItem {
     }
 };
 
-void log_time(std::shared_ptr<ProfilingItem> &item, float time) {
-    item->log_time(time);
+void Profiler::next_iteration() {
+    if (!g_ProfilingEnabled) { return; }
+
+    for (auto &item : m_registry) {
+        if (auto l = item.second.lock()) {
+            l->next_iteration();
+        }
+    }
 }
 
+void Profiler::log_time(std::shared_ptr<ProfilingItem> &item, float time) {
+    if (!g_ProfilingEnabled) { return; }
 
+    if (item) {
+        item->log_time(time);
+    }
+}
 
-ProfilingReport report() {
-    std::lock_guard<std::recursive_mutex> g(g_registry_access);
+ProfilingReport Profiler::report() {
+    if (!g_ProfilingEnabled) { return ProfilingReport{}; }
+
+    std::lock_guard<std::recursive_mutex> g(m_registry_access);
 
     ProfilingReport rval;
-    rval.reserve(g_registry.size());
-    for(auto &item : g_registry) {
+    rval.reserve(m_registry.size());
+    for(auto &item : m_registry) {
         if (auto i = item.second.lock()) {
             auto &key = item.first;
             rval.push_back(ProfilingReportItem {});
@@ -80,18 +94,20 @@ ProfilingReport report() {
     return rval;
 }
 
-std::shared_ptr<ProfilingItem> get_profiling_item(std::string name) {
-    std::lock_guard<std::recursive_mutex> g(g_registry_access);
+std::shared_ptr<ProfilingItem> Profiler::maybe_get_profiling_item(std::string name) {
+    if (!g_ProfilingEnabled) { return nullptr; }
 
-    auto maybe_r = g_registry.find(name);
-    if (maybe_r != g_registry.end()) {
+    std::lock_guard<std::recursive_mutex> g(m_registry_access);
+
+    auto maybe_r = m_registry.find(name);
+    if (maybe_r != m_registry.end()) {
         if (auto maybe_rr = maybe_r->second.lock()) {
             return maybe_rr;
         }
     }
 
     auto r = std::make_shared<ProfilingItem>();
-    g_registry[name] = r;
+    m_registry[name] = r;
     return r;
 }
 

@@ -162,6 +162,19 @@ typedef struct {
     unsigned length_samples;
 } midi_channel_data_t;
 
+typedef struct {
+    const char* key;
+    float n_samples;
+    float average;
+    float worst;
+    float most_recent;
+} profiling_report_item_t;
+
+typedef struct {
+    unsigned n_items;
+    profiling_report_item_t *items;
+} profiling_report_t;
+
 #ifdef __cplusplus
 }
 #endif

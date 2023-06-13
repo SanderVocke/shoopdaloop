@@ -1,5 +1,5 @@
 # Backend lib
-add_library(shoopdaloop_backend SHARED shoopdaloop_backend.cpp ../LoggingBackend.cpp)
+add_library(shoopdaloop_backend SHARED shoopdaloop_backend.cpp ../LoggingBackend.cpp ../ProcessProfiling.cpp)
 target_link_libraries(shoopdaloop_backend PUBLIC
                       lv2_evbuf
                       ${BOOST_LIBRARIES}

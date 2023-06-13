@@ -16,11 +16,17 @@
 
 namespace profiling {
 
+#ifdef SHOOP_PROFILING
+constexpr bool g_ProfilingEnabled = true;
+#else
+constexpr bool g_ProfilingEnabled = false;
+#endif
+
 struct ProfilingItem;
 
 struct ProfilingReportItem {
     std::string key;
-    size_t n_samples;
+    float n_samples;
     float avg;
     float worst;
     float most_recent;
@@ -33,10 +39,12 @@ class Profiler {
     std::map<std::string, std::weak_ptr<ProfilingItem>> m_registry;
     
 public:
-    std::shared_ptr<ProfilingItem> get_profiling_item(std::string name);
+    std::shared_ptr<ProfilingItem> maybe_get_profiling_item(std::string name);
     void log_time(std::shared_ptr<ProfilingItem> &item, float time);
     void next_iteration();
-    ProfilingReport report(); 
+    ProfilingReport report();
+
+    Profiler() = default;
 };
 
 }

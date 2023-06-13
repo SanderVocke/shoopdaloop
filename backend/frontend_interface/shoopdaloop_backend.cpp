@@ -28,9 +28,11 @@
 #include "process_loops.h"
 #include "types.h"
 #include "LV2.h"
+#include "ProcessProfiling.h"
 
 // System
 #include <boost/lockfree/spsc_queue.hpp>
+#include <chrono>
 #include <cmath>
 #include <jack/types.h>
 #include <math.h>
@@ -126,6 +128,8 @@ struct Backend : public std::enable_shared_from_this<Backend>,
     CommandQueue cmd_queue;
     std::shared_ptr<AudioBufferPool> audio_buffer_pool;
     std::unique_ptr<AudioSystem> audio_system;
+    std::shared_ptr<profiling::Profiler> profiler;
+    std::shared_ptr<profiling::ProfilingItem> profiling_item;
 
     std::string log_module_name() const override {
         return "Backend";
@@ -133,7 +137,10 @@ struct Backend : public std::enable_shared_from_this<Backend>,
 
     Backend (audio_system_type_t audio_system_type,
              std::string client_name_hint) :
-        cmd_queue (gc_command_queue_size, 1000, 1000) {
+            cmd_queue (gc_command_queue_size, 1000, 1000),
+            profiler(std::make_shared<profiling::Profiler>()),
+            profiling_item(profiler->maybe_get_profiling_item("Process"))
+        {
         log_init();
         
         using namespace std::placeholders;
@@ -362,6 +369,10 @@ backend_state_info_t Backend::get_state() {
 #warning delete destroyed ports
 // MEMBER FUNCTIONS
 void Backend::PROC_process (jack_nframes_t nframes) {
+    profiler->next_iteration();
+    using namespace std::chrono;
+    auto start = high_resolution_clock::now();
+
     // Execute queued commands
     cmd_queue.PROC_exec_all();
 
@@ -462,6 +473,10 @@ void Backend::PROC_process (jack_nframes_t nframes) {
             loop->PROC_finalize_process();
         }
     }
+
+    auto end = high_resolution_clock::now();
+    float us = duration_cast<microseconds>(end - start).count();
+    profiler->log_time(profiling_item, us);
 }
 
 void Backend::PROC_process_decoupled_midi_ports(size_t nframes) {
