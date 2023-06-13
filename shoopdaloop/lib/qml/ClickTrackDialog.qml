@@ -61,7 +61,8 @@ Dialog {
             color: Material.foreground
             verticalAlignment: Text.AlignVCenter
         }
-        ComboBox {
+        ShoopComboBox {
+            width: 150
             id: primary_click_combo
             model: dialog.possible_primary_clicks
             currentIndex: 0
@@ -72,7 +73,8 @@ Dialog {
             color: Material.foreground
             verticalAlignment: Text.AlignVCenter
         }
-        TextField {
+        ShoopTextField {
+            width: 150
             id: bpm_field
             text: "100"
             validator: DoubleValidator { bottom: 1.0 }
@@ -83,7 +85,8 @@ Dialog {
             color: Material.foreground
             verticalAlignment: Text.AlignVCenter
         }
-        TextField {
+        ShoopTextField {
+            width: 150
             id: n_beats_field
             text: "4"
             validator: IntValidator { bottom: 1 }
@@ -94,7 +97,8 @@ Dialog {
             color: Material.foreground
             verticalAlignment: Text.AlignVCenter
         }
-        TextField {
+        ShoopTextField {
+            width: 150
             id: alternate_delay_percent_field
             text: "0"
             validator: IntValidator { bottom: 0; top: 100 }
@@ -105,7 +109,8 @@ Dialog {
             color: Material.foreground
             verticalAlignment: Text.AlignVCenter
         }
-        ComboBox {
+        ShoopComboBox {
+            width: 150
             id: secondary_click_combo
             model: dialog.possible_secondary_clicks
             currentIndex: 0
@@ -116,7 +121,8 @@ Dialog {
             color: Material.foreground
             verticalAlignment: Text.AlignVCenter
         }
-        TextField {
+        ShoopTextField {
+            width: 150
             id: secondary_clicks_per_primary_field
             text: "3"
             validator: IntValidator { bottom: 0 }

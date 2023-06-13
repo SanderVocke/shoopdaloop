@@ -196,7 +196,7 @@ Rectangle {
                 }
             }
 
-            ComboBox {
+            ShoopComboBox {
                 id: current_script_combo
                 model: root.script_descriptors.map(s => s.name)
                 onCurrentIndexChanged: { root.set_active_script_by_index(currentIndex) }
@@ -401,7 +401,7 @@ Rectangle {
             anchors.leftMargin: 5
             anchors.rightMargin: 5
 
-            TextField {
+            ShoopTextField {
                 id: elem_name
 
                 anchors {
@@ -852,7 +852,7 @@ Rectangle {
                     font.pixelSize: action_popup_component.font_pixel_size
                     anchors.verticalCenter: on_cycle.verticalCenter
                 }
-                TextField {
+                ShoopTextField {
                     id: on_cycle
                     font.pixelSize: action_popup_component.font_pixel_size
                     text: '0'
@@ -975,7 +975,7 @@ Rectangle {
             font.pixelSize: action_popup_component.font_pixel_size
             anchors.verticalCenter: combo.verticalCenter
         }
-        ComboBox {
+        ShoopComboBox {
             y:0
             anchors.left: txt.right
             anchors.right: parent.right

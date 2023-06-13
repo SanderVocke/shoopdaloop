@@ -210,7 +210,7 @@ Item {
         //     }
         // }
 
-        ComboBox {
+        ShoopComboBox {
             id: zoom_combo
             model: ['1', '2', '4', '8', '16', '32', '64', '128', '256', '512', '1024', '2048', '4096']
             currentIndex: 8
@@ -221,7 +221,7 @@ Item {
             text: "Tool:"
         }
 
-        ComboBox {
+        ShoopComboBox {
             id: tool_combo
             anchors.verticalCenter: zoom_combo.verticalCenter
             textRole: "text"
@@ -240,7 +240,7 @@ Item {
             text: "Grid:"
         }
 
-        ComboBox {
+        ShoopComboBox {
             id: minor_grid_divider
             anchors.verticalCenter: zoom_combo.verticalCenter
             textRole: "text"
@@ -274,7 +274,7 @@ Item {
             anchors.verticalCenter: length_field.verticalCenter
         }
 
-        TextField {
+        ShoopTextField {
             id: length_field
             validator: IntValidator {}
             text: root.loop.length.toString()

@@ -63,14 +63,14 @@ Dialog {
         Label {
             text: "Name:"
         }
-        TextField {
+        ShoopTextField {
             id: name_field
         }
 
         Label {
             text: "Type:"
         }
-        ComboBox {
+        ShoopComboBox {
             id: select_type
             textRole: "text"
             valueRole: "value"
@@ -122,7 +122,7 @@ Dialog {
             text: "Processing Kind:"
             visible: is_drywet
         }
-        ComboBox {
+        ShoopComboBox {
             id: select_processing_kind
             visible: is_drywet
             textRole: "text"
@@ -195,7 +195,7 @@ Dialog {
         }
     }
 
-    component AudioTypeSelect : ComboBox {
+    component AudioTypeSelect : ShoopComboBox {
         id: select_audio_type
         textRole: "text"
         valueRole: "value"
