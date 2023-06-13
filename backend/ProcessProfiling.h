@@ -5,6 +5,8 @@
 #include <vector>
 #include <map>
 #include <mutex>
+#include <chrono>
+#include <functional>
 
 // This module allows profiling the audio process thread.
 // Different software modules can register to log profiling data.
@@ -46,5 +48,16 @@ public:
 
     Profiler() = default;
 };
+
+inline void stopwatch(std::function<void()> fn, Profiler &prof, std::shared_ptr<ProfilingItem> &item) {
+    using namespace std::chrono;
+    if(g_ProfilingEnabled) {
+        auto start = high_resolution_clock::now();
+        fn();
+        auto end = high_resolution_clock::now();
+        float us = duration_cast<microseconds>(end - start).count();
+        prof.log_time(item, us);
+    }
+}
 
 }

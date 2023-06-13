@@ -130,7 +130,11 @@ struct Backend : public std::enable_shared_from_this<Backend>,
     std::shared_ptr<AudioBufferPool> audio_buffer_pool;
     std::unique_ptr<AudioSystem> audio_system;
     std::shared_ptr<profiling::Profiler> profiler;
-    std::shared_ptr<profiling::ProfilingItem> profiling_item;
+    std::shared_ptr<profiling::ProfilingItem> top_profiling_item;
+    std::shared_ptr<profiling::ProfilingItem> ports_profiling_item;
+    std::shared_ptr<profiling::ProfilingItem> loops_profiling_item;
+    std::shared_ptr<profiling::ProfilingItem> fx_profiling_item;
+    std::shared_ptr<profiling::ProfilingItem> cmds_profiling_item;
 
     std::string log_module_name() const override {
         return "Backend";
@@ -140,7 +144,11 @@ struct Backend : public std::enable_shared_from_this<Backend>,
              std::string client_name_hint) :
             cmd_queue (gc_command_queue_size, 1000, 1000),
             profiler(std::make_shared<profiling::Profiler>()),
-            profiling_item(profiler->maybe_get_profiling_item("Process"))
+            top_profiling_item(profiler->maybe_get_profiling_item("Process")),
+            ports_profiling_item(profiler->maybe_get_profiling_item("Process.Ports")),
+            loops_profiling_item(profiler->maybe_get_profiling_item("Process.Loops")),
+            fx_profiling_item(profiler->maybe_get_profiling_item("Process.FX")),
+            cmds_profiling_item(profiler->maybe_get_profiling_item("Process.Commands"))
         {
         log_init();
         
@@ -370,114 +378,160 @@ backend_state_info_t Backend::get_state() {
 #warning delete destroyed ports
 // MEMBER FUNCTIONS
 void Backend::PROC_process (jack_nframes_t nframes) {
-    profiler->next_iteration();
-    using namespace std::chrono;
-    auto start = high_resolution_clock::now();
+    profiling::stopwatch(
+        [this, &nframes]() {
+            
+            profiler->next_iteration();
+            
+            // Execute queued commands
+            profiling::stopwatch(
+                [this]() {
+                    cmd_queue.PROC_exec_all();
+                },
+                *profiler, cmds_profiling_item
+            );
 
-    // Execute queued commands
-    cmd_queue.PROC_exec_all();
 
-    // Send/receive decoupled midi
-    PROC_process_decoupled_midi_ports(nframes);
+            profiling::stopwatch(
+                [this, &nframes]() {
+                    // Send/receive decoupled midi
+                    PROC_process_decoupled_midi_ports(nframes);
 
-    // Prepare ports:
-    // Get buffers and process passthrough
-    auto prepare_port_fn = [&](auto & p) {
-        if(p) {
-            p->PROC_reset_buffers();
-            p->PROC_ensure_buffer(nframes);
-        }
-    };
-    for (auto & port: ports) { prepare_port_fn(port); }
-    for (auto & chain : fx_chains) {
-        for (auto & p : chain->mc_audio_input_ports) { prepare_port_fn(p); }
-        for (auto & p : chain->mc_audio_output_ports){ prepare_port_fn(p); }
-        for (auto & p : chain->mc_midi_input_ports)  { prepare_port_fn(p); }
-    }
+                    // Prepare ports:
+                    // Get buffers and process passthrough
+                    auto prepare_port_fn = [&](auto & p) {
+                        if(p) {
+                            p->PROC_reset_buffers();
+                            p->PROC_ensure_buffer(nframes);
+                        }
+                    };
+                    for (auto & port: ports) { prepare_port_fn(port); }
+                    for (auto & chain : fx_chains) {
+                        for (auto & p : chain->mc_audio_input_ports) { prepare_port_fn(p); }
+                        for (auto & p : chain->mc_audio_output_ports){ prepare_port_fn(p); }
+                        for (auto & p : chain->mc_midi_input_ports)  { prepare_port_fn(p); }
+                    }
 
-    // Prepare loops:
-    // Connect port buffers to loop channels
-    for (auto & loop: loops) {
-        if (loop) {
-            loop->PROC_prepare_process(nframes);
-        }
-    }
+                    // Prepare loops:
+                    // Connect port buffers to loop channels
+                    for (auto & loop: loops) {
+                        if (loop) {
+                            loop->PROC_prepare_process(nframes);
+                        }
+                    }
 
-    // Process passthrough on the input side (before FX chains)
-    auto before_fx_port_passthrough_fn = [&](auto &p) {
-        if (p && p->ma_process_when == ProcessWhen::BeforeFXChains) { p->PROC_passthrough(nframes); }
-    };
-    for (auto & port: ports) { before_fx_port_passthrough_fn(port); }
-    for (auto & chain : fx_chains) {
-        for (auto & p : chain->mc_audio_input_ports) { before_fx_port_passthrough_fn(p); }
-        for (auto & p : chain->mc_midi_input_ports)  { before_fx_port_passthrough_fn(p); }
-    }
-    
-    // Process the loops. This queues deferred audio operations for post-FX channels.
-    process_loops<LoopInfo>
-        (loops, nframes, [](LoopInfo &l) { return (LoopInterface*)l.loop.get(); });
-    
-    // Finish processing any channels that come before FX.
-    auto before_fx_channel_process = [&](auto &c) {
-        if (c && c->ma_process_when == ProcessWhen::BeforeFXChains) { c->channel->PROC_finalize_process(); }
-    };
-    for (auto & loop: loops) {
-        for (auto & channel: loop->mp_audio_channels) { before_fx_channel_process(channel); }
-        for (auto & channel: loop->mp_midi_channels)  { before_fx_channel_process(channel); }
-    }
+                    // Process passthrough on the input side (before FX chains)
+                    auto before_fx_port_passthrough_fn = [&](auto &p) {
+                        if (p && p->ma_process_when == ProcessWhen::BeforeFXChains) { p->PROC_passthrough(nframes); }
+                    };
+                    for (auto & port: ports) { before_fx_port_passthrough_fn(port); }
+                    for (auto & chain : fx_chains) {
+                        for (auto & p : chain->mc_audio_input_ports) { before_fx_port_passthrough_fn(p); }
+                        for (auto & p : chain->mc_midi_input_ports)  { before_fx_port_passthrough_fn(p); }
+                    }
+                },
+                *profiler, ports_profiling_item
+            );
+            
+            profiling::stopwatch(
+                [this, &nframes]() {
+                    // Process the loops. This queues deferred audio operations for post-FX channels.
+                    process_loops<LoopInfo>
+                        (loops, nframes, [](LoopInfo &l) { return (LoopInterface*)l.loop.get(); });
+            
+                    // Finish processing any channels that come before FX.
+                    auto before_fx_channel_process = [&](auto &c) {
+                        if (c && c->ma_process_when == ProcessWhen::BeforeFXChains) { c->channel->PROC_finalize_process(); }
+                    };
+                    for (auto & loop: loops) {
+                        for (auto & channel: loop->mp_audio_channels) { before_fx_channel_process(channel); }
+                        for (auto & channel: loop->mp_midi_channels)  { before_fx_channel_process(channel); }
+                    }
+                },
+                *profiler, loops_profiling_item
+            );
 
-    // Finish processing any ports that come before FX.
-    auto before_fx_port_process = [&](auto &p) {
-        if (p && p->ma_process_when == ProcessWhen::BeforeFXChains) { p->PROC_finalize_process(nframes); }
-    };
-    for (auto &port : ports) { before_fx_port_process(port); }
-    for (auto & chain : fx_chains) {
-        for (auto & p : chain->mc_audio_input_ports) { before_fx_port_process(p); }
-        for (auto & p : chain->mc_midi_input_ports)  { before_fx_port_process(p); }
-    }
+            profiling::stopwatch(
+                [this, &nframes]() {
+                    // Finish processing any ports that come before FX.
+                    auto before_fx_port_process = [&](auto &p) {
+                        if (p && p->ma_process_when == ProcessWhen::BeforeFXChains) { p->PROC_finalize_process(nframes); }
+                    };
+                    for (auto &port : ports) { before_fx_port_process(port); }
+                    for (auto & chain : fx_chains) {
+                        for (auto & p : chain->mc_audio_input_ports) { before_fx_port_process(p); }
+                        for (auto & p : chain->mc_midi_input_ports)  { before_fx_port_process(p); }
+                    }
+                },
+                *profiler, ports_profiling_item
+            );
 
-    // Process the FX chains.
-    for (auto & chain: fx_chains) {
-        chain->chain->process(nframes);
-    }
+            profiling::stopwatch(
+                [this, &nframes]() {
+                    // Process the FX chains.
+                    for (auto & chain: fx_chains) {
+                        chain->chain->process(nframes);
+                    }
+                },
+                *profiler, fx_profiling_item
+            );
 
-    // Process passthrough on the output side (after FX chains)
-    auto after_fx_port_passthrough_fn = [&](auto &p) {
-        if (p && p->ma_process_when == ProcessWhen::AfterFXChains) { p->PROC_passthrough(nframes); }
-    };
-    for (auto & port: ports) { after_fx_port_passthrough_fn(port); }
-    for (auto & chain : fx_chains) {
-        for (auto & p : chain->mc_audio_output_ports) { after_fx_port_passthrough_fn(p); }
-    }
+            profiling::stopwatch(
+                [this, &nframes]() {
+                    // Process passthrough on the output side (after FX chains)
+                    auto after_fx_port_passthrough_fn = [&](auto &p) {
+                        if (p && p->ma_process_when == ProcessWhen::AfterFXChains) { p->PROC_passthrough(nframes); }
+                    };
+                    for (auto & port: ports) { after_fx_port_passthrough_fn(port); }
+                    for (auto & chain : fx_chains) {
+                        for (auto & p : chain->mc_audio_output_ports) { after_fx_port_passthrough_fn(p); }
+                    }
+                },
+                *profiler, ports_profiling_item
+            );
 
-    // Finish processing any channels that come after FX.
-    auto after_fx_channel_process = [&](auto &c) {
-        if (c && c->ma_process_when == ProcessWhen::AfterFXChains) { c->channel->PROC_finalize_process(); }
-    };
-    for (auto & loop: loops) {
-        for (auto & channel: loop->mp_audio_channels) { after_fx_channel_process(channel); }
-        for (auto & channel: loop->mp_midi_channels)  { after_fx_channel_process(channel); }
-    }
+            profiling::stopwatch(
+                [this, &nframes]() {
+                    // Finish processing any channels that come after FX.
+                    auto after_fx_channel_process = [&](auto &c) {
+                        if (c && c->ma_process_when == ProcessWhen::AfterFXChains) { c->channel->PROC_finalize_process(); }
+                    };
+                    for (auto & loop: loops) {
+                        for (auto & channel: loop->mp_audio_channels) { after_fx_channel_process(channel); }
+                        for (auto & channel: loop->mp_midi_channels)  { after_fx_channel_process(channel); }
+                    }
+                },
+                *profiler, loops_profiling_item
+            );
 
-    // Finish processing any ports that come after FX.
-    auto after_fx_port_process = [&](auto &p) {
-        if (p && p->ma_process_when == ProcessWhen::AfterFXChains) { p->PROC_finalize_process(nframes); }
-    };
-    for (auto &port : ports) { after_fx_port_process(port); }
-    for (auto & chain : fx_chains) {
-        for (auto & p : chain->mc_audio_output_ports) { after_fx_port_process(p); }
-    }
+            profiling::stopwatch(
+                [this, &nframes]() {
+                    // Finish processing any ports that come after FX.
+                    auto after_fx_port_process = [&](auto &p) {
+                        if (p && p->ma_process_when == ProcessWhen::AfterFXChains) { p->PROC_finalize_process(nframes); }
+                    };
+                    for (auto &port : ports) { after_fx_port_process(port); }
+                    for (auto & chain : fx_chains) {
+                        for (auto & p : chain->mc_audio_output_ports) { after_fx_port_process(p); }
+                    }
+                },
+                *profiler, ports_profiling_item
+            );
 
-    // Finish processing loops.
-    for (auto &loop : loops) {
-        if (loop) {
-            loop->PROC_finalize_process();
-        }
-    }
-
-    auto end = high_resolution_clock::now();
-    float us = duration_cast<microseconds>(end - start).count();
-    profiler->log_time(profiling_item, us);
+            profiling::stopwatch(
+                [this, &nframes]() {
+                    // Finish processing loops.
+                    for (auto &loop : loops) {
+                        if (loop) {
+                            loop->PROC_finalize_process();
+                        }
+                    }
+                },
+                *profiler, loops_profiling_item
+            );
+        },
+        *profiler, top_profiling_item
+    );
 }
 
 void Backend::PROC_process_decoupled_midi_ports(size_t nframes) {
