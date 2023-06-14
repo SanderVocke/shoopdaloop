@@ -19,29 +19,16 @@ Backend {
         anchors.fill: parent
         initial_descriptor: GenerateSession.generate_default_session(app_metadata.version_string)
 
-        property var logger : Logger { name: "Test" }
 
-        TestCase {
+        ShoopSessionTestCase {
             id: testcase
-
-            Timer {
-                id: timer
-                running: session.loaded
-                interval: 100
-                repeat: false
-                property bool done : false
-                onTriggered: done = true
-            }
-
-            when: timer.done
-
-            Timer {
-                id: delayer
-            }
+            name: 'SessionDescriptor_default'
+            session: session
+            backend: backend
 
             function test_session_descriptor_default() {
-                verify(backend.initialized, "backend not initialized")
-                backend.doUpdate()
+                start_test_fn('test_session_descriptor_default')
+                check_backend()
 
                 var reference = session.initial_descriptor
                 var actual = session.actual_session_descriptor(false, '', null)
@@ -65,9 +52,9 @@ Backend {
                 } finally {
                     file_io.delete_file(filename)
                 }
-            }
 
-            function cleanupTestCase() { backend.close() }
+                end_test_fn('test_session_descriptor_default');
+            }
         }
     }
 }

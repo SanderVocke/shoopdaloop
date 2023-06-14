@@ -261,7 +261,7 @@ Item {
         transition_loops(_other_loops, Types.LoopMode.Stopped, use_delay, root.sync_active)
         transition_loops(_selected_loops, Types.LoopMode.Playing, use_delay, root.sync_active)
     }
-    function clear(length, emit=true) {
+    function clear(length=0, emit=true) {
         dynamic_loop.clear(length);
     }
     function qml_close() {

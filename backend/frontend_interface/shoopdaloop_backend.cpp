@@ -1472,6 +1472,8 @@ void loops_transition(unsigned int n_loops,
 void clear_loop (shoopdaloop_loop_t *loop, size_t length) {
     internal_loop(loop)->get_backend().cmd_queue.queue([=]() {
         auto &_loop = *internal_loop(loop);
+        _loop.loop->clear_planned_transitions(false);
+        _loop.loop->plan_transition(Stopped, 0, false, false);
         for (auto &chan : _loop.mp_audio_channels) {
             chan->maybe_audio()->PROC_clear(length);
         }

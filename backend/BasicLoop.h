@@ -442,7 +442,7 @@ public:
             if (len != ma_length) {
                 ma_length = len;
                 if (ma_position >= len) {
-                    set_position(len-1, false);
+                    set_position(len == 0 ? 0 : len-1, false);
                 }
                 mp_next_poi = std::nullopt;
                 mp_next_trigger = std::nullopt;

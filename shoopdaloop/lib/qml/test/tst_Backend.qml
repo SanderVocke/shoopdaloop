@@ -10,9 +10,11 @@ Backend {
     client_name_hint: 'ShoopDaLoop'
     backend_type: Types.BackendType.Dummy
 
-    TestCase {
+    ShoopTestCase {
         function test_backend() {
+            start_test_fn('test_backend')
             verify(backend.initialized)
+            end_test_fn('test_backend')
         }
 
         function cleanupTestCase() { backend.close() }

@@ -349,8 +349,8 @@ function generate_default_track(
     return track;
 }
 
-function generate_default_session(app_version) {
-    var master_track = generate_default_track("Master", 1, 'master', true, 'master_loop', 0, 0, 1, false, false, false, undefined)
+function generate_default_session(app_version, n_loops_in_master_track=1) {
+    var master_track = generate_default_track("Master", n_loops_in_master_track, 'master', true, 'master_loop', 0, 0, 1, false, false, false, undefined)
     master_track.loops[0].name = "master"
     var session = generate_session(app_version, [master_track], [], [],
         generate_scripts([generate_script("script", "Script", 0, [])], "script"), []);
