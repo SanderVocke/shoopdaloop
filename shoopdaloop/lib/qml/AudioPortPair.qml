@@ -1,4 +1,4 @@
-import QtQuick 2.15
+import QtQuick 6.3
 
 Item {
     property alias input_name_hint: input.name_hint

@@ -1,5 +1,5 @@
-import QtQuick 2.15
-import QtQuick.Controls 2.15
+import QtQuick 6.3
+import QtQuick.Controls 6.3
 
 import '../backend/frontend_interface/types.js' as Types
 

@@ -1,4 +1,4 @@
-import QtQuick 2.15
+import QtQuick 6.3
 
 Registry {
     function save_action_started() { mutate('n_saving_actions_active', (n) => { return n + 1 }) }

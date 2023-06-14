@@ -1,4 +1,4 @@
-import QtQuick 2.3
+import QtQuick 6.3
 import QtTest 1.0
 import Backend
 

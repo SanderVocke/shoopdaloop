@@ -1,5 +1,5 @@
 import Backend
-import QtQuick 2.15
+import QtQuick 6.3
 
 Backend {
     Component.onCompleted: maybe_init()

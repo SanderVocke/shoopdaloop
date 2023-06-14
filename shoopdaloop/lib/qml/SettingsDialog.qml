@@ -1,7 +1,7 @@
-import QtQuick 2.15
-import QtQuick.Controls 2.15
-import QtQuick.Layouts 2.15
-import QtQuick.Controls.Material 2.15
+import QtQuick 6.3
+import QtQuick.Controls 6.3
+import QtQuick.Layouts 6.3
+import QtQuick.Controls.Material 6.3
 import MIDIControlDialect 1.0
 import MIDIControlInputRule 1.0
 import Qt.labs.qmlmodels 1.0

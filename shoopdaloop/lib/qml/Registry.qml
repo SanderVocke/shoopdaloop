@@ -1,4 +1,4 @@
-import QtQuick 2.15
+import QtQuick 6.3
 
 // A registry is a simple key-value store which can be shared by reference
 Item {

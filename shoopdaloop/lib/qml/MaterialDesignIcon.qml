@@ -22,7 +22,7 @@
 //OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 //SOFTWARE.
 
-import QtQuick 2.0
+import QtQuick 6.3
 import "../../third_party/QtMaterialDesignIcons/qml/MaterialDesignIconGlyphs.js" as MaterialGlyphs
 
 Item {

@@ -1,5 +1,5 @@
 import Loop
-import QtQuick 2.15
+import QtQuick 6.3
 
 Loop {
     property bool loaded : initialized

@@ -1,5 +1,5 @@
 import LoopAudioChannel
-import QtQuick 2.15
+import QtQuick 6.3
 
 import '../session_schemas/conversions.js' as Conversions
 import '../backend/frontend_interface/types.js' as Types

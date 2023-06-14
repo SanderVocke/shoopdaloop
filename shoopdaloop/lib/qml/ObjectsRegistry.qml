@@ -1,4 +1,4 @@
-import QtQuick 2.15
+import QtQuick 6.3
 
 Registry {
     property list<LoopWidget> loop_widgets: []
