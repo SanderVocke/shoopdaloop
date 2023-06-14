@@ -23,21 +23,21 @@ class DictTreeModel(QAbstractItemModel):
                 return self.parent.children.index(self)
             return 0
 
-    def __init__(self, data, tree_separator, parent=None):
+    def __init__(self, data, tree_separator, column_roles, parent=None):
         super(DictTreeModel, self).__init__(parent)
         self.root_node = DictTreeModel.Node('root', None, None)
         self.tree_separator = tree_separator
-        self.role_names = []
+        self.column_roles = column_roles
 
         # Create nodes
+        item = self.create_node("Headers")
+        item.data = {k : k for k in self.column_roles}
         for [name,item_data] in data.items():
-            item_data['display'] = name
+            item_data['name'] = name.split(self.tree_separator)[-1]
             item = self.create_node(name)
             item.data = {}
             for [role, value] in item_data.items():
-                if not role in self.role_names:
-                    self.role_names.append(role)
-                item.data[self.role_names.index(role)] = value
+                item.data[role] = value
 
     def create_node(self, name):
         prev = self.root_node
@@ -55,12 +55,13 @@ class DictTreeModel(QAbstractItemModel):
         return index.internalPointer()
     
     def data(self, index, role):
-        print("data")
-        d = self.node(index).data
-        return (d[role] if role in d else None)
+        if role == 0: # display
+            d = self.node(index).data
+            text = d[self.column_roles[index.column()]]
+            return text
+        return ''
 
     def index(self, row, column, parent):
-        print("index")
         obj = None
         if parent.isValid():
             obj = self.node(parent).children[row]
@@ -69,7 +70,6 @@ class DictTreeModel(QAbstractItemModel):
         return self.createIndex(row, column, obj)
 
     def parent(self, child):
-        print("parent")
         if not child.isValid():
             return QModelIndex()
         
@@ -77,29 +77,28 @@ class DictTreeModel(QAbstractItemModel):
         if node.parent == None or node.parent == self.root_node:
             return QModelIndex()
 
-        return self.createIndex(node.row(), 0, node.parent)
+        return self.createIndex(node.row(), child.column(), node.parent)
 
     def rowCount(self, parent):
-        print("rowCount")
         if not parent.isValid():
             return len(self.root_node.children)
         return len(self.node(parent).children)
 
     def columnCount(self, parent):
-        print("columnCount")
-        return 1
+        return len(self.column_roles)
     
     def roleNames(self):
-        print("roleNames")
-        return {int(k): QByteArray(v) for k, v in enumerate(self.role_names)}
+        return {
+            0: QByteArray('display')
+        }
 
 class DictTreeModelFactory(QObject):
     def __init__(self, parent=None):
         super(DictTreeModelFactory, self).__init__(parent)
     
-    @Slot('QVariant', str, result='QVariant')
-    def create(self, data, tree_separator):
+    @Slot('QVariant', str, list, result='QVariant')
+    def create(self, data, tree_separator, column_roles):
         if isinstance(data, QJSValue):
             data = data.toVariant()
-        rval = DictTreeModel(data, tree_separator, parent=self)
+        rval = DictTreeModel(data, tree_separator, column_roles, parent=self)
         return rval

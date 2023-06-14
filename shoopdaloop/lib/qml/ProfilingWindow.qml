@@ -16,6 +16,7 @@ ApplicationWindow {
     property var backend : null
     property Logger logger : Logger { name: 'Frontend.ProfilingDialog' }
     property alias profiling_tree_model : tree.model
+    readonly property var column_roles : ['name', 'average', 'worst', 'most_recent']
 
     Button {
         text: "Update"
@@ -35,7 +36,7 @@ ApplicationWindow {
             var us = bufsize / samplerate * 1000000.0
             root.logger.info(`Backend buf size: ${bufsize} (${us} us)`)
 
-            root.profiling_tree_model = tree_model_factory.create(data, '.')
+            root.profiling_tree_model = tree_model_factory.create(data, '.', root.column_roles)
         }
     }
 
