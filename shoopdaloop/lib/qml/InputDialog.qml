@@ -19,7 +19,7 @@ Dialog {
 
     signal acceptedInput(string input)
 
-    TextField {
+    ShoopTextField {
         id: input_field
     }
 

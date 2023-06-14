@@ -88,7 +88,7 @@ Dialog {
                     text: 'Showing MIDI control profile:'
                 }
 
-                ComboBox {
+                ShoopComboBox {
                     id: profile_selector
                     model: Object.keys(midi_settings.active_settings.profiles).map((element, index) => index) // Create array of indices only
                     width: 300
@@ -182,7 +182,7 @@ Dialog {
                                 verticalAlignment: Text.AlignVCenter
                                 anchors.verticalCenter: tf1.verticalCenter
                             }
-                            TextField {
+                            ShoopTextField {
                                 id: tf1
                                 placeholderText: 'input port regex'
                                 property string controlledState: midi_settings.active_profile_entry.profile.midi_in_regex
@@ -196,7 +196,7 @@ Dialog {
                                 verticalAlignment: Text.AlignVCenter
                                 anchors.verticalCenter: tf1.verticalCenter
                             }
-                            TextField {
+                            ShoopTextField {
                                 placeholderText: 'output port regex'
                                 property string controlledState: midi_settings.active_profile_entry.profile.midi_out_regex
                                 onControlledStateChanged: () => { text = controlledState }
@@ -231,7 +231,7 @@ Dialog {
                                     width: substitutions_column.width
                                     height: 42
 
-                                    TextField {
+                                    ShoopTextField {
                                         id: from_field
                                         anchors.leftMargin: 10
                                         anchors.left: parent.left
@@ -248,7 +248,7 @@ Dialog {
                                             leftMargin: 10
                                         }
                                     }
-                                    TextField {
+                                    ShoopTextField {
                                         anchors.left: tolabel.right
                                         anchors.leftMargin: 10
                                         anchors.right: deletebutton.left
@@ -318,7 +318,7 @@ Dialog {
                                     width: input_rules_column.width
                                     height: 52
 
-                                    ComboBox {
+                                    ShoopComboBox {
                                         id: filterchoice
                                         textRole: 'text'
                                         valueRole: 'value'
@@ -363,7 +363,7 @@ Dialog {
                                             midi_settings.active_profile_entry.profile.input_rulesChanged()
                                         }
                                     }
-                                    TextField {
+                                    ShoopTextField {
                                         id: condition_field
                                         anchors.leftMargin: 10
                                         anchors.left: filterchoice.right
@@ -371,7 +371,7 @@ Dialog {
                                         width: 200
                                         text: modelData['condition']
                                     }
-                                    TextField {
+                                    ShoopTextField {
                                         anchors.left: condition_field.right
                                         anchors.leftMargin: 10
                                         anchors.right: deleterulebutton.left
@@ -446,7 +446,7 @@ Dialog {
                                     width: state_change_column.width
                                     height: 52
 
-                                    ComboBox {
+                                    ShoopComboBox {
                                         id: statechoice
                                         textRole: 'text'
                                         valueRole: 'value'
@@ -492,7 +492,7 @@ Dialog {
                                             midi_settings.active_profile_entry.profile.loop_state_change_formulasChanged()
                                         }
                                     }
-                                    TextField {
+                                    ShoopTextField {
                                         anchors.left: statechoice.right
                                         anchors.leftMargin: 10
                                         anchors.right: deletestateformula.left
@@ -561,7 +561,7 @@ Dialog {
                                     }
                                     text: 'Formula for other states:'
                                 }
-                                TextField {
+                                ShoopTextField {
                                     anchors.left: defaultstatechangelabel.right
                                     anchors.leftMargin: 10
                                     anchors.right: parent.right
@@ -597,7 +597,7 @@ Dialog {
                                     }
                                     text: 'Formula at (re-)connect:'
                                 }
-                                TextField {
+                                ShoopTextField {
                                     anchors.left: resetlabel.right
                                     anchors.leftMargin: 10
                                     anchors.right: parent.right

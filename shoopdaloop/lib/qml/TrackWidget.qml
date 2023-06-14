@@ -281,7 +281,7 @@ Item {
                     }
                     height: childrenRect.height
 
-                    TextField {
+                    ShoopTextField {
                         anchors {
                             top: parent.top
                             left: parent.left

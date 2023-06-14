@@ -271,7 +271,7 @@ Item {
             onExited: hoverExited()
         }
 
-        TextField {
+        ShoopTextField {
             width: parent.width - 25
             height: parent.height - 6
             anchors.horizontalCenter: parent.horizontalCenter

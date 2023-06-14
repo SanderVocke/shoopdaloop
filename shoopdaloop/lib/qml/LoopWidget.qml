@@ -1324,7 +1324,7 @@ Item {
                         color: Material.foreground
                         anchors.verticalCenter: name_field.verticalCenter
                     }
-                    TextField {
+                    ShoopTextField {
                         id: name_field
                         text: root.name
                         font.pixelSize: 12
@@ -1436,7 +1436,7 @@ Item {
                         text: "Include channels:"
                         anchors.verticalCenter: select_channels.verticalCenter
                     }
-                    ComboBox {
+                    ShoopComboBox {
                         id: select_channels
                         textRole: "text"
                         valueRole: "value"
