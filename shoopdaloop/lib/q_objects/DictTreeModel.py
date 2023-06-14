@@ -23,15 +23,16 @@ class DictTreeModel(QAbstractItemModel):
                 return self.parent.children.index(self)
             return 0
 
-    def __init__(self, data, tree_separator, column_roles, parent=None):
+    def __init__(self, data, tree_separator, column_roles, column_headers, parent=None):
         super(DictTreeModel, self).__init__(parent)
         self.root_node = DictTreeModel.Node('root', None, None)
         self.tree_separator = tree_separator
         self.column_roles = column_roles
+        self.column_headers = column_headers
 
         # Create nodes
         item = self.create_node("Headers")
-        item.data = {k : k for k in self.column_roles}
+        item.data = {k : self.column_headers[i] for i,k in enumerate(self.column_roles)}
         for [name,item_data] in data.items():
             item_data['name'] = name.split(self.tree_separator)[-1]
             item = self.create_node(name)
@@ -96,9 +97,9 @@ class DictTreeModelFactory(QObject):
     def __init__(self, parent=None):
         super(DictTreeModelFactory, self).__init__(parent)
     
-    @Slot('QVariant', str, list, result='QVariant')
-    def create(self, data, tree_separator, column_roles):
+    @Slot('QVariant', str, list, list, result='QVariant')
+    def create(self, data, tree_separator, column_roles, column_headers):
         if isinstance(data, QJSValue):
             data = data.toVariant()
-        rval = DictTreeModel(data, tree_separator, column_roles, parent=self)
+        rval = DictTreeModel(data, tree_separator, column_roles, column_headers, parent=self)
         return rval
