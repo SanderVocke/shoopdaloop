@@ -21,6 +21,7 @@ from lib.q_objects.SchemaValidator import SchemaValidator
 from lib.q_objects.KeyModifiers import KeyModifiers
 from lib.q_objects.ApplicationMetadata import ApplicationMetadata
 from lib.q_objects.Logger import Logger
+from lib.q_objects.DictTreeModel import DictTreeModelFactory
 from lib.cpp_imports import RenderAudioWaveform
 #from lib.q_objects.MIDIControlManager import MIDIControlManager
 #from lib.q_objects.MIDIControlLink import MIDIControlLink
@@ -55,6 +56,7 @@ def register_shoopdaloop_qml_classes():
     register_qml_class(KeyModifiers, 'KeyModifiers')
     register_qml_class(ApplicationMetadata, 'ApplicationMetadata')
     register_qml_class(Logger, 'Logger')
+    register_qml_class(DictTreeModelFactory, 'DictTreeModelFactory')
 
 def create_and_populate_root_context(engine, parent):
     items = {
@@ -63,7 +65,8 @@ def create_and_populate_root_context(engine, parent):
         'click_track_generator': ClickTrackGenerator(parent=parent),
         'key_modifiers': KeyModifiers(parent=parent),
         'app_metadata': ApplicationMetadata(parent=parent),
-        'default_logger': Logger(parent=parent)
+        'default_logger': Logger(parent=parent),
+        'tree_model_factory': DictTreeModelFactory(parent=parent)
     }
 
     items['default_logger'].name = 'Frontend.Qml'

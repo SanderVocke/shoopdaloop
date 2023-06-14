@@ -145,6 +145,7 @@ class Backend(QQuickItem):
     def get_profiling_report(self):
         def report_item_to_dict(item):
             return {
+                'name': item.key,
                 'worst': item.worst,
                 'most_recent': item.most_recent,
                 'average': item.average,

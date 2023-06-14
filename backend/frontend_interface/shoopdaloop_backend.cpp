@@ -325,7 +325,7 @@ struct LoopInfo : public std::enable_shared_from_this<LoopInfo> {
     WeakBackend backend;
 
     LoopInfo(SharedBackend backend) :
-        loop(std::make_shared<Loop>()),
+        loop(std::make_shared<Loop>(backend->profiler)),
         backend(backend) {
         mp_audio_channels.reserve(gc_default_max_audio_channels);
         mp_midi_channels.reserve(gc_default_max_midi_channels);
@@ -388,7 +388,7 @@ void Backend::PROC_process (jack_nframes_t nframes) {
                 [this]() {
                     cmd_queue.PROC_exec_all();
                 },
-                *profiler, cmds_profiling_item
+                cmds_profiling_item
             );
 
 
@@ -430,7 +430,7 @@ void Backend::PROC_process (jack_nframes_t nframes) {
                         for (auto & p : chain->mc_midi_input_ports)  { before_fx_port_passthrough_fn(p); }
                     }
                 },
-                *profiler, ports_profiling_item
+                ports_profiling_item
             );
             
             profiling::stopwatch(
@@ -448,7 +448,7 @@ void Backend::PROC_process (jack_nframes_t nframes) {
                         for (auto & channel: loop->mp_midi_channels)  { before_fx_channel_process(channel); }
                     }
                 },
-                *profiler, loops_profiling_item
+                loops_profiling_item
             );
 
             profiling::stopwatch(
@@ -463,7 +463,7 @@ void Backend::PROC_process (jack_nframes_t nframes) {
                         for (auto & p : chain->mc_midi_input_ports)  { before_fx_port_process(p); }
                     }
                 },
-                *profiler, ports_profiling_item
+                ports_profiling_item
             );
 
             profiling::stopwatch(
@@ -473,7 +473,7 @@ void Backend::PROC_process (jack_nframes_t nframes) {
                         chain->chain->process(nframes);
                     }
                 },
-                *profiler, fx_profiling_item
+                fx_profiling_item
             );
 
             profiling::stopwatch(
@@ -487,7 +487,7 @@ void Backend::PROC_process (jack_nframes_t nframes) {
                         for (auto & p : chain->mc_audio_output_ports) { after_fx_port_passthrough_fn(p); }
                     }
                 },
-                *profiler, ports_profiling_item
+                ports_profiling_item
             );
 
             profiling::stopwatch(
@@ -501,7 +501,7 @@ void Backend::PROC_process (jack_nframes_t nframes) {
                         for (auto & channel: loop->mp_midi_channels)  { after_fx_channel_process(channel); }
                     }
                 },
-                *profiler, loops_profiling_item
+                loops_profiling_item
             );
 
             profiling::stopwatch(
@@ -515,7 +515,7 @@ void Backend::PROC_process (jack_nframes_t nframes) {
                         for (auto & p : chain->mc_audio_output_ports) { after_fx_port_process(p); }
                     }
                 },
-                *profiler, ports_profiling_item
+                ports_profiling_item
             );
 
             profiling::stopwatch(
@@ -527,10 +527,10 @@ void Backend::PROC_process (jack_nframes_t nframes) {
                         }
                     }
                 },
-                *profiler, loops_profiling_item
+                loops_profiling_item
             );
         },
-        *profiler, top_profiling_item
+        top_profiling_item
     );
 }
 

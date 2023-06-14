@@ -3,6 +3,7 @@
 #include "ObjectPool.h"
 #include "AudioBuffer.h"
 #include "WithCommandQueue.h"
+#include "ProcessProfiling.h"
 #include "types.h"
 #include "channel_mode_helpers.h"
 #include <boost/lockfree/policies.hpp>
@@ -53,6 +54,7 @@ private:
     std::atomic<size_t> ma_buffers_data_length;
     Buffers mp_prerecord_buffers; // For temporarily holding pre-recorded data before fully entering record mode
     std::atomic<size_t> mp_prerecord_buffers_data_length;
+    std::shared_ptr<profiling::ProfilingItem> mp_profiling_item;
 
     SampleT *mp_playback_target_buffer;
     size_t   mp_playback_target_buffer_size;
@@ -177,7 +179,8 @@ public:
     AudioChannel(
             std::shared_ptr<BufferPool> buffer_pool,
             size_t initial_max_buffers,
-            channel_mode_t mode) :
+            channel_mode_t mode,
+            std::shared_ptr<profiling::Profiler> maybe_profiler=nullptr) :
         WithCommandQueue<10, 1000, 1000>(),
         ma_buffer_pool(buffer_pool),
         ma_buffers_data_length(0),
@@ -200,6 +203,9 @@ public:
     { 
         log_init();
         log_trace();
+        if (maybe_profiler) {
+            mp_profiling_item = maybe_profiler->maybe_get_profiling_item("Process.Loops.AudioChannels");
+        }
     }
 
     virtual void set_pre_play_samples(size_t samples) override {
@@ -255,66 +261,68 @@ public:
         size_t length_before,
         size_t length_after
     ) override {
-        log_trace();
+        profiling::stopwatch([&, this]() {
+            log_trace();
 
-        // Execute any commands queued from other threads.
-        PROC_handle_command_queue();
+            // Execute any commands queued from other threads.
+            PROC_handle_command_queue();
 
-        auto process_params = get_channel_process_params(
-            mode,
-            maybe_next_mode,
-            maybe_next_mode_delay_cycles,
-            maybe_next_mode_eta,
-            pos_before,
-            ma_start_offset,
-            ma_mode
-        );
-        auto const& process_flags = process_params.process_flags;
+            auto process_params = get_channel_process_params(
+                mode,
+                maybe_next_mode,
+                maybe_next_mode_delay_cycles,
+                maybe_next_mode_eta,
+                pos_before,
+                ma_start_offset,
+                ma_mode
+            );
+            auto const& process_flags = process_params.process_flags;
 
-        if (!(process_flags & ChannelPreRecord) &&
-             (mp_prev_process_flags & ChannelPreRecord))
-        {
-            // Ending pre-record. If transitioning to recording,
-            // make our pre-recorded buffers into our main buffers.
-            // Otherwise, just discard them.
-            if (process_flags & ChannelRecord) {
-                log<LogLevel::debug>("Pre-record ended -> carry over to record");
-                mp_buffers = mp_prerecord_buffers;
-                ma_buffers_data_length = ma_start_offset = mp_prerecord_buffers_data_length.load();
-            } else {
-                log<LogLevel::debug>("Pre-record ended -> discard");
+            if (!(process_flags & ChannelPreRecord) &&
+                (mp_prev_process_flags & ChannelPreRecord))
+            {
+                // Ending pre-record. If transitioning to recording,
+                // make our pre-recorded buffers into our main buffers.
+                // Otherwise, just discard them.
+                if (process_flags & ChannelRecord) {
+                    log<LogLevel::debug>("Pre-record ended -> carry over to record");
+                    mp_buffers = mp_prerecord_buffers;
+                    ma_buffers_data_length = ma_start_offset = mp_prerecord_buffers_data_length.load();
+                } else {
+                    log<LogLevel::debug>("Pre-record ended -> discard");
+                }
+                mp_prerecord_buffers.reset();
+                mp_prerecord_buffers_data_length = 0;
             }
-            mp_prerecord_buffers.reset();
-            mp_prerecord_buffers_data_length = 0;
-        }
 
-        if (process_flags & ChannelPlayback) {
-            ma_last_played_back_sample = process_params.position;
-            PROC_process_playback(process_params.position, length_before, n_samples, false, mp_playback_target_buffer, mp_playback_target_buffer_size);
-        } else {
-            ma_last_played_back_sample = -1;
-        }
-        if (process_flags & ChannelRecord) {
-            PROC_process_record(n_samples, ((int)length_before + ma_start_offset), mp_buffers, ma_buffers_data_length, mp_recording_source_buffer, mp_recording_source_buffer_size);
-        }
-        if (process_flags & ChannelReplace) {
-            PROC_process_replace(process_params.position, length_before, n_samples, mp_recording_source_buffer, mp_recording_source_buffer_size);
-        }
-        if (process_flags & ChannelPreRecord) {
-            PROC_process_record(n_samples, mp_prerecord_buffers_data_length, mp_prerecord_buffers, mp_prerecord_buffers_data_length, mp_recording_source_buffer, mp_recording_source_buffer_size);
-        }
+            if (process_flags & ChannelPlayback) {
+                ma_last_played_back_sample = process_params.position;
+                PROC_process_playback(process_params.position, length_before, n_samples, false, mp_playback_target_buffer, mp_playback_target_buffer_size);
+            } else {
+                ma_last_played_back_sample = -1;
+            }
+            if (process_flags & ChannelRecord) {
+                PROC_process_record(n_samples, ((int)length_before + ma_start_offset), mp_buffers, ma_buffers_data_length, mp_recording_source_buffer, mp_recording_source_buffer_size);
+            }
+            if (process_flags & ChannelReplace) {
+                PROC_process_replace(process_params.position, length_before, n_samples, mp_recording_source_buffer, mp_recording_source_buffer_size);
+            }
+            if (process_flags & ChannelPreRecord) {
+                PROC_process_record(n_samples, mp_prerecord_buffers_data_length, mp_prerecord_buffers, mp_prerecord_buffers_data_length, mp_recording_source_buffer, mp_recording_source_buffer_size);
+            }
 
-        mp_prev_process_flags = process_flags;
+            mp_prev_process_flags = process_flags;
 
-        // Update recording/playback buffers.
-        if(mp_recording_source_buffer) {
-            mp_recording_source_buffer += n_samples;
-            mp_recording_source_buffer_size -= n_samples;
-        }
-        if(mp_playback_target_buffer) {
-            mp_playback_target_buffer += n_samples;
-            mp_playback_target_buffer_size -= n_samples;
-        }
+            // Update recording/playback buffers.
+            if(mp_recording_source_buffer) {
+                mp_recording_source_buffer += n_samples;
+                mp_recording_source_buffer_size -= n_samples;
+            }
+            if(mp_playback_target_buffer) {
+                mp_playback_target_buffer += n_samples;
+                mp_playback_target_buffer_size -= n_samples;
+            }
+        }, mp_profiling_item);
     }
 
     void PROC_exec_cmd(ProcessingCommand cmd) {
@@ -361,12 +369,14 @@ public:
     }
 
     void PROC_finalize_process() override {
-        log_trace();
+        profiling::stopwatch([&, this]() {
+            log_trace();
 
-        ProcessingCommand cmd;
-        while(mp_proc_queue.pop(cmd)) {
-            PROC_exec_cmd(cmd);
-        }
+            ProcessingCommand cmd;
+            while(mp_proc_queue.pop(cmd)) {
+                PROC_exec_cmd(cmd);
+            }
+        }, mp_profiling_item);
     }
 
     // Load data into the loop. Should always be called outside

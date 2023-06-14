@@ -1,4 +1,4 @@
-
+#pragma once
 #include <string_view>
 #include <memory>
 #include <type_traits>
@@ -24,7 +24,20 @@ constexpr bool g_ProfilingEnabled = true;
 constexpr bool g_ProfilingEnabled = false;
 #endif
 
-struct ProfilingItem;
+class Profiler;
+struct ProfilingItemPrivate;
+class ProfilingItem {
+    std::unique_ptr<ProfilingItemPrivate> pvt;
+
+    // Methods only available to Profiler
+    friend class Profiler;
+    ProfilingItem();
+    void next_iteration();
+    void reset(std::function<void(float, float, float, float)> report_cb);
+
+public:
+    void log_time(float time);
+};
 
 struct ProfilingReportItem {
     std::string key;
@@ -36,27 +49,27 @@ struct ProfilingReportItem {
 
 using ProfilingReport = std::vector<ProfilingReportItem>;
 
+struct ProfilerPrivate;
 class Profiler {
-    std::recursive_mutex m_registry_access;
-    std::map<std::string, std::weak_ptr<ProfilingItem>> m_registry;
+    std::unique_ptr<ProfilerPrivate> pvt;
     
 public:
     std::shared_ptr<ProfilingItem> maybe_get_profiling_item(std::string name);
-    void log_time(std::shared_ptr<ProfilingItem> &item, float time);
-    void next_iteration();
     ProfilingReport report();
+    void next_iteration();
 
-    Profiler() = default;
+    Profiler();
+    ~Profiler();
 };
 
-inline void stopwatch(std::function<void()> fn, Profiler &prof, std::shared_ptr<ProfilingItem> &item) {
+inline void stopwatch(std::function<void()> fn, std::shared_ptr<ProfilingItem> &item) {
     using namespace std::chrono;
-    if(g_ProfilingEnabled) {
+    if(g_ProfilingEnabled && item) {
         auto start = high_resolution_clock::now();
         fn();
         auto end = high_resolution_clock::now();
         float us = duration_cast<microseconds>(end - start).count();
-        prof.log_time(item, us);
+        item->log_time(us);
     }
 }
 

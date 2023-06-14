@@ -3,6 +3,7 @@
 #include "AudioChannel.h"
 #include "MidiChannel.h"
 #include "WithCommandQueue.h"
+#include "ProcessProfiling.h"
 
 #include <vector>
 #include <memory>
@@ -11,9 +12,10 @@
 class AudioMidiLoop : public BasicLoop {
     std::vector<std::shared_ptr<ChannelInterface>> mp_audio_channels;
     std::vector<std::shared_ptr<ChannelInterface>> mp_midi_channels;
+    std::shared_ptr<profiling::Profiler> maybe_profiler;
 public:
 
-    AudioMidiLoop() : BasicLoop() {}
+    AudioMidiLoop(std::shared_ptr<profiling::Profiler> maybe_profiler=nullptr) : BasicLoop(), maybe_profiler(maybe_profiler) {}
 
     template<typename SampleT, typename BufferPool>
     std::shared_ptr<AudioChannel<SampleT>>
@@ -22,7 +24,7 @@ public:
                       channel_mode_t mode,
                       bool thread_safe=true) {
         auto channel = std::make_shared<AudioChannel<SampleT>>(
-            buffer_pool, initial_max_buffers, mode);
+            buffer_pool, initial_max_buffers, mode, maybe_profiler);
         auto fn = [this, channel]() {
             mp_audio_channels.push_back(channel);
         };
@@ -47,7 +49,7 @@ public:
 
     template<typename TimeType, typename SizeType>
     std::shared_ptr<MidiChannel<TimeType, SizeType>> add_midi_channel(size_t data_size, channel_mode_t mode, bool thread_safe = true) {
-        auto channel = std::make_shared<MidiChannel<TimeType, SizeType>>(data_size, mode);
+        auto channel = std::make_shared<MidiChannel<TimeType, SizeType>>(data_size, mode, maybe_profiler);
         auto fn = [this, &channel]() {
             mp_midi_channels.push_back(channel);
         };

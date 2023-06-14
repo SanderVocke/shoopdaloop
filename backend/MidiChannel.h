@@ -7,6 +7,7 @@
 #include "MidiStateTracker.h"
 #include "MidiStateDiffTracker.h"
 #include "LoggingEnabled.h"
+#include "ProcessProfiling.h"
 #include "channel_mode_helpers.h"
 #include <memory>
 #include <optional>
@@ -101,6 +102,7 @@ private:
     std::shared_ptr<Storage>       mp_storage;
     std::shared_ptr<Storage>       mp_prerecord_storage;
     std::shared_ptr<StorageCursor> mp_playback_cursor;
+    std::shared_ptr<profiling::ProfilingItem> mp_profiling_item;
 
     // Track the MIDI state on the channel's output.
     std::shared_ptr<MidiStateTracker> mp_output_midi_state;
@@ -134,7 +136,7 @@ private:
     const Message all_sound_off_message_channel_0 = Message(0, 3, {0xB0, 120, 0});
 
 public:
-    MidiChannel(size_t data_size, channel_mode_t mode) :
+    MidiChannel(size_t data_size, channel_mode_t mode, std::shared_ptr<profiling::Profiler> maybe_profiler=nullptr) :
         WithCommandQueue<10, 1000, 1000>(),
         mp_playback_target_buffer(nullptr),
         mp_recording_source_buffer(nullptr),
@@ -160,6 +162,9 @@ public:
         log_init();
         log_trace();
         mp_playback_cursor = mp_storage->create_cursor();
+        if (maybe_profiler) {
+            mp_profiling_item = maybe_profiler->maybe_get_profiling_item("Process.Loops.MidiChannels");
+        }
     }
 
     // NOTE: only use on process thread
@@ -182,6 +187,7 @@ public:
         ma_prerecord_data_length = other.ma_prerecord_data_length;
         *mp_input_midi_state = *other.mp_input_midi_state;
         mp_pre_playback_state = other.mp_pre_playback_state;
+        mp_profiling_item = other.mp_profiling_item;
         data_changed();
         return *this;
     }
@@ -228,114 +234,118 @@ public:
         size_t length_before,
         size_t length_after
         ) override {
-        log_trace();
+        profiling::stopwatch([&, this]() {
+            log_trace();
 
-        PROC_handle_command_queue();
+            PROC_handle_command_queue();
 
-        auto process_params = get_channel_process_params(
-            mode,
-            maybe_next_mode,
-            maybe_next_mode_delay_cycles,
-            maybe_next_mode_eta,
-            pos_before,
-            ma_start_offset,
-            ma_mode
-        );
-        auto const& process_flags = process_params.process_flags;
+            auto process_params = get_channel_process_params(
+                mode,
+                maybe_next_mode,
+                maybe_next_mode_delay_cycles,
+                maybe_next_mode_eta,
+                pos_before,
+                ma_start_offset,
+                ma_mode
+            );
+            auto const& process_flags = process_params.process_flags;
 
-        // We always need to process input messages to keep our input port state up-to-date.
-        // This is done inside the recording process function, but if we don't record,
-        // we need to do it here.
-        bool processed_input_messages = false;
+            // We always need to process input messages to keep our input port state up-to-date.
+            // This is done inside the recording process function, but if we don't record,
+            // we need to do it here.
+            bool processed_input_messages = false;
 
-        // If we were playing back and anything other than forward playback is happening
-        // (e.g. mode switch, position set, ...), send an All Sound Off.
-        bool playback_interrupted = (mp_prev_process_flags & ChannelPlayback) && (
-                                    (!process_flags & ChannelPlayback) ||
-                                    pos_before != mp_prev_pos_after);
-        if (playback_interrupted) {
-            log<LogLevel::debug>("Playback interrupted -> All Sound Off");
-            PROC_send_all_sound_off();
-        }
+            // If we were playing back and anything other than forward playback is happening
+            // (e.g. mode switch, position set, ...), send an All Sound Off.
+            bool playback_interrupted = (mp_prev_process_flags & ChannelPlayback) && (
+                                        (!process_flags & ChannelPlayback) ||
+                                        pos_before != mp_prev_pos_after);
+            if (playback_interrupted) {
+                log<LogLevel::debug>("Playback interrupted -> All Sound Off");
+                PROC_send_all_sound_off();
+            }
 
-        if (!(process_flags & ChannelPreRecord) &&
-             (mp_prev_process_flags & ChannelPreRecord))
-        {
-            log<LogLevel::debug>("Pre-record ended");
-            // Ending pre-record. If transitioning to recording,
-            // make our pre-recorded buffers into our main buffers.
-            // Otherwise, just discard them.
-            if (process_flags & ChannelRecord) {
-                log<LogLevel::debug>("Pre-record ended -> carry over to record");
-                mp_storage = mp_prerecord_storage;
-                ma_data_length = ma_start_offset = ma_prerecord_data_length.load();
-                mp_track_start_state = mp_track_prerecord_start_state;
-                mp_track_prerecord_start_state.reset();
+            if (!(process_flags & ChannelPreRecord) &&
+                (mp_prev_process_flags & ChannelPreRecord))
+            {
+                log<LogLevel::debug>("Pre-record ended");
+                // Ending pre-record. If transitioning to recording,
+                // make our pre-recorded buffers into our main buffers.
+                // Otherwise, just discard them.
+                if (process_flags & ChannelRecord) {
+                    log<LogLevel::debug>("Pre-record ended -> carry over to record");
+                    mp_storage = mp_prerecord_storage;
+                    ma_data_length = ma_start_offset = ma_prerecord_data_length.load();
+                    mp_track_start_state = mp_track_prerecord_start_state;
+                    mp_track_prerecord_start_state.reset();
+                } else {
+                    log<LogLevel::debug>("Pre-record ended -> discard");
+                }
+                mp_prerecord_storage = std::make_shared<Storage>(mp_storage->bytes_capacity());
+                ma_prerecord_data_length = 0;
+            }
+
+            if (process_flags & ChannelPlayback) {
+                // If we are starting playback:
+                //   - Reset the playback cursor
+                //   - set up the state management.
+                // By copying the state tracker, we now have a playback state tracker
+                // that holds the diff between the actual MIDI channel state and the
+                // state that we should have at this point in playback.
+                // That diff will be updated as we process messages, while keeping the
+                // original start state intact.
+                // mp_played_anything_this_loop tracks whether we have played back anything
+                // yet. Upon the first message played back, we can restore the state to
+                // what it should be at that point.
+                if (!(mp_prev_process_flags & ChannelPlayback)) {
+                    mp_playback_cursor->reset();
+                    mp_pre_playback_state = mp_track_start_state;
+                }
+
+                ma_last_played_back_sample = process_params.position;
+                PROC_process_playback(process_params.position, length_before, n_samples, false);
             } else {
-                log<LogLevel::debug>("Pre-record ended -> discard");
+                ma_last_played_back_sample = -1;
             }
-            mp_prerecord_storage = std::make_shared<Storage>(mp_storage->bytes_capacity());
-            ma_prerecord_data_length = 0;
-        }
-
-        if (process_flags & ChannelPlayback) {
-            // If we are starting playback:
-            //   - Reset the playback cursor
-            //   - set up the state management.
-            // By copying the state tracker, we now have a playback state tracker
-            // that holds the diff between the actual MIDI channel state and the
-            // state that we should have at this point in playback.
-            // That diff will be updated as we process messages, while keeping the
-            // original start state intact.
-            // mp_played_anything_this_loop tracks whether we have played back anything
-            // yet. Upon the first message played back, we can restore the state to
-            // what it should be at that point.
-            if (!(mp_prev_process_flags & ChannelPlayback)) {
-                mp_playback_cursor->reset();
-                mp_pre_playback_state = mp_track_start_state;
+            if (process_flags & ChannelRecord) {
+                PROC_process_record(
+                    *mp_storage, 
+                    ma_data_length,
+                    mp_track_start_state,
+                    length_before + ma_start_offset, 
+                    n_samples);
+                processed_input_messages = true;
+            } else if (process_flags & ChannelPreRecord) {
+                PROC_process_record(
+                    *mp_prerecord_storage, 
+                    ma_prerecord_data_length, 
+                    mp_track_prerecord_start_state,
+                    ma_prerecord_data_length, 
+                    n_samples);
+                processed_input_messages = true;
             }
 
-            ma_last_played_back_sample = process_params.position;
-            PROC_process_playback(process_params.position, length_before, n_samples, false);
-        } else {
-            ma_last_played_back_sample = -1;
-        }
-        if (process_flags & ChannelRecord) {
-            PROC_process_record(
-                *mp_storage, 
-                ma_data_length,
-                mp_track_start_state,
-                length_before + ma_start_offset, 
-                n_samples);
-            processed_input_messages = true;
-        } else if (process_flags & ChannelPreRecord) {
-            PROC_process_record(
-                *mp_prerecord_storage, 
-                ma_prerecord_data_length, 
-                mp_track_prerecord_start_state,
-                ma_prerecord_data_length, 
-                n_samples);
-            processed_input_messages = true;
-        }
+            mp_prev_pos_after = pos_after;
+            mp_prev_process_flags = process_flags;
 
-        mp_prev_pos_after = pos_after;
-        mp_prev_process_flags = process_flags;
+            if (!processed_input_messages) {
+                PROC_process_input_messages(n_samples);
+            }
 
-        if (!processed_input_messages) {
-            PROC_process_input_messages(n_samples);
-        }
-
-        // Update recording/playback buffers.
-        if(mp_recording_source_buffer.has_value()) {
-            mp_recording_source_buffer->n_frames_processed += n_samples;
-        }
-        if(mp_playback_target_buffer.has_value()) {
-            mp_playback_target_buffer->n_frames_processed += n_samples;
-        }
+            // Update recording/playback buffers.
+            if(mp_recording_source_buffer.has_value()) {
+                mp_recording_source_buffer->n_frames_processed += n_samples;
+            }
+            if(mp_playback_target_buffer.has_value()) {
+                mp_playback_target_buffer->n_frames_processed += n_samples;
+            }
+        }, mp_profiling_item);
     }
 
     void PROC_finalize_process() override {
-        log_trace();
+        profiling::stopwatch([&, this]() {
+            log_trace();
+        }, mp_profiling_item);
     }
 
     void PROC_process_input_messages(size_t n_samples) {

@@ -7,7 +7,7 @@
 
 namespace profiling {
 
-struct ProfilingItem {
+struct ProfilingItemPrivate {
     float n_reported = 0.0f;
 
     float summed = 0.0f;
@@ -53,32 +53,51 @@ struct ProfilingItem {
     }
 };
 
+struct ProfilerPrivate {
+    std::recursive_mutex m_registry_access;
+    std::map<std::string, std::weak_ptr<ProfilingItem>> m_registry;
+};
+
 void Profiler::next_iteration() {
     if (!g_ProfilingEnabled) { return; }
 
-    for (auto &item : m_registry) {
+    for (auto &item : pvt->m_registry) {
         if (auto l = item.second.lock()) {
             l->next_iteration();
         }
     }
 }
 
-void Profiler::log_time(std::shared_ptr<ProfilingItem> &item, float time) {
+ProfilingItem::ProfilingItem() {
+    pvt = std::make_unique<ProfilingItemPrivate>();
+}
+
+void ProfilingItem::log_time(float time) {
     if (!g_ProfilingEnabled) { return; }
 
-    if (item) {
-        item->log_time(time);
-    }
+    pvt->log_time(time);
+}
+
+void ProfilingItem::reset(std::function<void(float, float, float, float)> report_cb) {
+    if (!g_ProfilingEnabled) { return; }
+
+    pvt->reset(report_cb);
+}
+
+void ProfilingItem::next_iteration() {
+    if (!g_ProfilingEnabled) { return; }
+
+    pvt->next_iteration();
 }
 
 ProfilingReport Profiler::report() {
     if (!g_ProfilingEnabled) { return ProfilingReport{}; }
 
-    std::lock_guard<std::recursive_mutex> g(m_registry_access);
+    std::lock_guard<std::recursive_mutex> g(pvt->m_registry_access);
 
     ProfilingReport rval;
-    rval.reserve(m_registry.size());
-    for(auto &item : m_registry) {
+    rval.reserve(pvt->m_registry.size());
+    for(auto &item : pvt->m_registry) {
         if (auto i = item.second.lock()) {
             auto &key = item.first;
             rval.push_back(ProfilingReportItem {});
@@ -99,18 +118,25 @@ ProfilingReport Profiler::report() {
 std::shared_ptr<ProfilingItem> Profiler::maybe_get_profiling_item(std::string name) {
     if (!g_ProfilingEnabled) { return nullptr; }
 
-    std::lock_guard<std::recursive_mutex> g(m_registry_access);
+    std::lock_guard<std::recursive_mutex> g(pvt->m_registry_access);
 
-    auto maybe_r = m_registry.find(name);
-    if (maybe_r != m_registry.end()) {
+    auto maybe_r = pvt->m_registry.find(name);
+    if (maybe_r != pvt->m_registry.end()) {
         if (auto maybe_rr = maybe_r->second.lock()) {
             return maybe_rr;
         }
     }
 
-    auto r = std::make_shared<ProfilingItem>();
-    m_registry[name] = r;
+    auto rr = new ProfilingItem;
+    auto r = std::shared_ptr<ProfilingItem>(rr);
+    pvt->m_registry[name] = r;
     return r;
 }
+
+Profiler::Profiler() {
+    pvt = std::make_unique<ProfilerPrivate>();
+}
+
+Profiler::~Profiler() {}
 
 }
