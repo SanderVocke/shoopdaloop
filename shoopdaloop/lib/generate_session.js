@@ -69,7 +69,6 @@ function generate_fx_chain(id, title, type, ports) {
 }
 
 function generate_scripts(scripts, active_script_id) {
-    console.log("Scripts:", JSON.stringify(scripts), 'id', active_script_id)
     return {
         'schema': 'scripts.1',
         'scripts': scripts,

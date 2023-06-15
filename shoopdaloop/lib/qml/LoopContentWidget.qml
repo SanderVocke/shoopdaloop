@@ -207,15 +207,16 @@ Item {
             // That is to say: if three channels exist with start offsets 10, 20 and 30,
             // the one with offset 30 dominates so that the overall data starting point
             // becomes -30.
-            property int data_start : -Math.max(...loop.channels.map(c => c.start_offset)) - padding
+            property int data_start : -Math.max(...loop.channels.map(c => c ? c.start_offset : 0)) - padding
             
             // Likewise for the end point.
-            property int data_end : Math.max(...loop.channels.map(c => c.data_length - c.start_offset)) + padding
+            property int data_end : Math.max(...loop.channels.map(c => c ? c.data_length - c.start_offset : 0)) + padding
 
             property int data_length : data_end - data_start
         }
 
         Column {
+            id: channels_column
             anchors.fill: parent
 
             Mapper {
@@ -230,15 +231,16 @@ Item {
 
                     height: 100
                     anchors {
-                        left: parent.left
-                        right: parent.right
+                        left: channels_column.left
+                        right: channels_column.right
                     }
 
                     channel: mapped_item
+
                     fetch_active: true
                     samples_per_pixel: zoom_slider.samples_per_pixel
 
-                    property int first_pixel_sample: channel.start_offset + channels_combine_range.data_start
+                    property int first_pixel_sample: (channel ? channel.start_offset : 0) + channels_combine_range.data_start
 
                     samples_offset: scroll.position * channels_combine_range.data_length + first_pixel_sample
                     loop_length: root.loop.length

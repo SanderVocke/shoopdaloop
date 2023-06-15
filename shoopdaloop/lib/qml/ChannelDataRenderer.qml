@@ -14,27 +14,24 @@ Item {
     property int samples_offset: 0.0
     property int loop_length: 0
     readonly property int n_samples_shown: width * samples_per_pixel
-    readonly property int n_samples: fetcher.channel_data ? fetcher.channel_data.length : 0
+    readonly property int n_samples: fetcher && fetcher.channel_data ? fetcher.channel_data.length : 0
     property real major_grid_lines_interval
     property real minor_grid_lines_interval
+
+    property var played_back_sample : channel ? channel.played_back_sample : 0
+    property int n_preplay_samples : channel ? channel.n_preplay_samples : 0
+    property int start_offset : channel ? channel.start_offset : 0
 
     function snap_sample_to_grid(sample_idx) {
         var interval = minor_grid_lines_interval ? minor_grid_lines_interval : major_grid_lines_interval
         if (interval != undefined) {
-            var steps_from_start = Math.round((sample_idx - channel.start_offset) / interval)
-            return channel.start_offset + steps_from_start * interval
+            var steps_from_start = Math.round((sample_idx - start_offset) / interval)
+            return start_offset + steps_from_start * interval
         }
     }
 
     function snap_visual_to_grid(x) {
         return map_sample_to_pixel(snap_sample_to_grid(map_pixel_to_sample(x)))
-    }
-    
-    // Will repeatedly fetch channel data when changed.
-    FetchChannelData {
-        id: fetcher
-        channel: root.channel
-        active: true
     }
 
     function map_sample_to_pixel(s) {
@@ -47,7 +44,7 @@ Item {
 
     // Render audio
     Loader {
-        active: root.channel.descriptor.type == 'audio'
+        active: root.channel && root.channel.descriptor.type == 'audio'
 
         Rectangle {
             id: background_rect
@@ -69,7 +66,7 @@ Item {
                     root.samples_per_pixel; // explicit dependency
 
                     var rval = []
-                    var s = root.channel.start_offset;
+                    var s = root.start_offset;
                     while (map_sample_to_pixel(s) >= 0) { s -= root.minor_grid_lines_interval }
                     s += root.minor_grid_lines_interval;
                     for(; map_sample_to_pixel(s) < width; s += root.minor_grid_lines_interval) {
@@ -105,7 +102,7 @@ Item {
                     root.samples_per_pixel; // explicit dependency
 
                     var rval = []
-                    var s = root.channel.start_offset;
+                    var s = root.start_offset;
                     while (map_sample_to_pixel(s) >= 0) { s -= root.major_grid_lines_interval }
                     s += root.major_grid_lines_interval;
                     for(; map_sample_to_pixel(s) < width; s += root.major_grid_lines_interval) {
@@ -129,40 +126,47 @@ Item {
         
         RenderAudioWaveform {
             id: render
-            input_data: fetcher.channel_data ? fetcher.channel_data : []
+            input_data: fetcher && fetcher.channel_data ? fetcher.channel_data : []
             samples_per_bin: root.samples_per_pixel
             samples_offset: root.samples_offset
             width: root.width
             height: root.height
             clip: true
 
+            // Will repeatedly fetch channel data when changed.
+            FetchChannelData {
+                id: fetcher
+                channel: root.channel
+                active: true
+            }
+
             Rectangle {
                 id: data_window_rect
                 color: 'blue'
                 width: root.loop_length / render.samples_per_bin
-                height: parent.height
+                height: render.height
                 opacity: 0.3
-                x: (root.channel.start_offset - render.samples_offset) / render.samples_per_bin
+                x: (root.start_offset - render.samples_offset) / render.samples_per_bin
                 y: 0
             }
 
             Rectangle {
                 id: preplay_window_rect
                 color: 'yellow'
-                width: root.channel.n_preplay_samples / render.samples_per_bin
-                height: parent.height
+                width: root.n_preplay_samples / render.samples_per_bin
+                height: render.height
                 opacity: 0.3
-                x: (root.channel.start_offset - render.samples_offset - root.channel.n_preplay_samples) / render.samples_per_bin
+                x: (root.start_offset - render.samples_offset - root.n_preplay_samples) / render.samples_per_bin
                 y: 0
             }
 
             Rectangle {
                 id: playback_cursor_rect
-                visible: root.channel.played_back_sample != null
+                visible: root.played_back_sample != null && root.played_back_sample != undefined
                 color: 'green'
                 width: 2
-                height: parent.height
-                x: (root.channel.played_back_sample - render.samples_offset) / render.samples_per_bin
+                height: render.height
+                x: ((root.played_back_sample || 0) - render.samples_offset) / render.samples_per_bin
                 y: 0
             }
         }
