@@ -87,11 +87,11 @@ public:
         return rval;
     }
 
-    void delete_audio_channel(size_t idx, bool thread_safe=true) {
+    void delete_audio_channel(std::shared_ptr<ChannelInterface> chan, bool thread_safe=true) {
         throw std::runtime_error("delete_audio_channel() not implemented");
     }
 
-    void delete_midi_channel(size_t idx, bool thread_safe=true) {
+    void delete_midi_channel(std::shared_ptr<ChannelInterface> chan, bool thread_safe=true) {
         throw std::runtime_error("delete_midi_channel() not implemented");
     }
 

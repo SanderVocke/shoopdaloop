@@ -167,6 +167,10 @@ public:
         }
     }
 
+    ~MidiChannel() {
+        log<LogLevel::debug>("Destroyed");
+    }
+
     // NOTE: only use on process thread
     MidiChannel<TimeType, SizeType>& operator= (MidiChannel<TimeType, SizeType> const& other) {
         log_trace();

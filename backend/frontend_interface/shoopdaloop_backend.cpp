@@ -345,10 +345,10 @@ struct LoopInfo : public std::enable_shared_from_this<LoopInfo> {
         mp_midi_channels.reserve(gc_default_max_midi_channels);
     }
 
-    void delete_audio_channel_idx(size_t idx);
-    void delete_midi_channel_idx(size_t idx);
-    void delete_audio_channel(SharedChannelInfo chan);
-    void delete_midi_channel(SharedChannelInfo chan);
+    void delete_audio_channel_idx(size_t idx, bool thread_safe=true);
+    void delete_midi_channel_idx(size_t idx, bool thread_safe=true);
+    void delete_audio_channel(SharedChannelInfo chan, bool thread_safe=true);
+    void delete_midi_channel(SharedChannelInfo chan, bool thread_safe=true);
     void PROC_prepare_process(size_t n_frames);
     void PROC_finalize_process();
     Backend &get_backend();
@@ -970,52 +970,50 @@ void LoopInfo::PROC_finalize_process() {
     }
 }
 
-void LoopInfo::delete_audio_channel_idx(size_t idx) {
+void LoopInfo::delete_audio_channel_idx(size_t idx, bool thread_safe) {
     get_backend().cmd_queue.queue([this, idx]() {
-        auto _chan = loop->audio_channel<audio_sample_t>(idx);
-        auto r = std::find_if(mp_audio_channels.begin(), mp_audio_channels.end(), [&_chan](auto const& e) { return _chan.get() == e->channel.get(); });
-        if (r == mp_audio_channels.end()) {
-            throw std::runtime_error("Attempting to delete non-existent audio channel.");
-        }
-        mp_audio_channels.erase(r);
-        loop->delete_audio_channel(idx, false);
+        auto chaninfo = mp_audio_channels.at(idx);
+        delete_midi_channel(chaninfo, false);
     });
 }
 
-void LoopInfo::delete_midi_channel_idx(size_t idx) {
+void LoopInfo::delete_midi_channel_idx(size_t idx, bool thread_safe) {
     get_backend().cmd_queue.queue([this, idx]() {
-        auto _chan = loop->midi_channel<Time, Size>(idx);
-        auto r = std::find_if(mp_midi_channels.begin(), mp_midi_channels.end(), [&_chan](auto const& e) { return _chan.get() == e->channel.get(); });
-        if (r == mp_midi_channels.end()) {
-            throw std::runtime_error("Attempting to delete non-existent midi channel.");
-        }
-        mp_midi_channels.erase(r);
-        loop->delete_midi_channel(idx, false);
+        auto chaninfo = mp_midi_channels.at(idx);
+        delete_midi_channel(chaninfo, false);
     });
 }
 
-void LoopInfo::delete_audio_channel(SharedChannelInfo chan) {
-    get_backend().cmd_queue.queue([this, chan]() {
+void LoopInfo::delete_audio_channel(SharedChannelInfo chan, bool thread_safe) {
+    auto fn = [this, chan]() {
         auto r = std::find_if(mp_audio_channels.begin(), mp_audio_channels.end(), [chan](auto const& e) { return chan->channel.get() == e->channel.get(); });
         if (r == mp_audio_channels.end()) {
             throw std::runtime_error("Attempting to delete non-existent audio channel.");
         }
-        auto idx = r - mp_audio_channels.begin();
+        loop->delete_audio_channel(chan->channel, false);
         mp_audio_channels.erase(r);
-        loop->delete_audio_channel(idx, false);
-    });
+    };
+    if (thread_safe) {
+        get_backend().cmd_queue.queue(fn);
+    } else {
+        fn();
+    }
 }
 
-void LoopInfo::delete_midi_channel(SharedChannelInfo chan) {
-    get_backend().cmd_queue.queue([this, chan]() {
+void LoopInfo::delete_midi_channel(SharedChannelInfo chan, bool thread_safe) {
+    auto fn = [this, chan]() {
         auto r = std::find_if(mp_midi_channels.begin(), mp_midi_channels.end(), [chan](auto const& e) { return chan->channel.get() == e->channel.get(); });
         if (r == mp_midi_channels.end()) {
             throw std::runtime_error("Attempting to delete non-existent midi channel.");
         }
-        auto idx = r - mp_midi_channels.begin();
+        loop->delete_midi_channel(chan->channel, false);
         mp_midi_channels.erase(r);
-        loop->delete_midi_channel(idx, false);
-    });
+    };
+    if (thread_safe) {
+        get_backend().cmd_queue.queue(fn);
+    } else {
+        fn();
+    }
 }
 
 Backend &LoopInfo::get_backend() {
