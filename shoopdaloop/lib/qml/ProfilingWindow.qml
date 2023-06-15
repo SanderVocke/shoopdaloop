@@ -51,9 +51,27 @@ ApplicationWindow {
     readonly property var column_roles : ['name', 'average', 'worst', 'average_%', 'worst_%']
     readonly property var column_headers : ['Section', 'Avg', 'Worst', 'Avg (%)', 'Worst (%)']
 
-    Button {
-        text: "Update"
-        id: btn
+    property alias auto_update: auto_update_switch.checked
+
+    function update() {
+        var data = root.backend.get_profiling_report()
+        var bufsize = root.backend.get_buffer_size()
+        var samplerate = root.backend.get_sample_rate()
+        var us = bufsize / samplerate * 1000000.0
+
+        root.profiling_data = data
+    }
+
+    Timer {
+        id: update_timer
+        interval: 1000
+        repeat: true
+        running: root.visible && root.auto_update
+        onTriggered: root.update()
+    }
+
+    Row {
+        id: controls_row
 
         anchors {
             left: parent.left
@@ -61,15 +79,16 @@ ApplicationWindow {
             right: parent.right
         }
 
-        onClicked: {
-            var data = root.backend.get_profiling_report()
-            root.logger.info(JSON.stringify(data))
-            var bufsize = root.backend.get_buffer_size()
-            var samplerate = root.backend.get_sample_rate()
-            var us = bufsize / samplerate * 1000000.0
-            root.logger.info(`Backend buf size: ${bufsize} (${us} us)`)
+        Button {
+            text: "Update"
+            id: btn
 
-            root.profiling_data = data
+            onClicked: root.update()
+        }
+
+        Switch {
+            id: auto_update_switch
+            text: "Auto-update"
         }
     }
 
@@ -80,7 +99,7 @@ ApplicationWindow {
             left: parent.left
             right: parent.right
             bottom: parent.bottom
-            top: btn.bottom
+            top: controls_row.bottom
         }
 
         delegate: TreeViewDelegate {
@@ -89,5 +108,11 @@ ApplicationWindow {
         }
 
         model: root.profiling_tree_model
+        onModelChanged: expander.trigger()
+
+        ExecuteNextCycle {
+            id: expander
+            onExecute: if(tree.model) { tree.expandRecursively() }
+        }
     }
 }

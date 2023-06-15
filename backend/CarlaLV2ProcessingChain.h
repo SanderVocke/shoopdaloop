@@ -3,6 +3,7 @@
 #include "ProcessingChainInterface.h"
 #include "LoggingEnabled.h"
 #include "random_string.h"
+#include "ProcessProfiling.h"
 
 #include <cstring>
 #include <memory>
@@ -187,6 +188,8 @@ private:
     std::string m_unique_name;
     std::atomic<bool> m_active = false;
     std::atomic<bool> m_state_restore_active = false;
+    std::shared_ptr<profiling::ProfilingItem> m_maybe_profiling_item = nullptr;
+
 
     const LV2UI_Descriptor * m_ui_descriptor = nullptr;
 
@@ -289,12 +292,18 @@ public:
         LilvWorld *lilv_world,
         fx_chain_type_t type,
         size_t sample_rate,
-        std::string human_name
+        std::string human_name,
+        std::shared_ptr<profiling::Profiler> maybe_profiler = nullptr
     ) :
         m_internal_buffers_size(0),
         m_human_name(human_name),
         m_unique_name(human_name + "_" + random_string(6))
     {
+        if (maybe_profiler) {
+            m_maybe_profiling_item = maybe_profiler->maybe_get_profiling_item(
+                "Process.FX." + m_human_name);
+        }
+
         // URIs for the Carla plugins we want to support.
         static const std::map<fx_chain_type_t, std::string> plugin_uris = {
             { Carla_Rack, "http://kxstudio.sf.net/carla/plugins/carlarack" },
@@ -545,19 +554,21 @@ public:
     void set_active(bool active) override { m_active = active; }
 
     void process(size_t frames) override {
-        if(!m_active || !m_instance) {
-            for (auto &port : m_output_audio_ports) {
-                port->zero();
-            }
-            return;
-        }
+        profiling::stopwatch([&, this]() {
+                if(!m_active || !m_instance) {
+                    for (auto &port : m_output_audio_ports) {
+                        port->zero();
+                    }
+                    return;
+                }
 
-        if (frames > m_internal_buffers_size) {
-            throw std::runtime_error("Carla processing chain: requesting to process more than buffer size.");
-        }
-        lilv_instance_activate(m_instance);
-        lilv_instance_run(m_instance, frames);
-        lilv_instance_deactivate(m_instance);
+                if (frames > m_internal_buffers_size) {
+                    throw std::runtime_error("Carla processing chain: requesting to process more than buffer size.");
+                }
+                lilv_instance_activate(m_instance);
+                lilv_instance_run(m_instance, frames);
+                lilv_instance_deactivate(m_instance);
+        }, m_maybe_profiling_item);        
     }
 
     std::vector<SharedInternalAudioPort> const& input_audio_ports() const override {

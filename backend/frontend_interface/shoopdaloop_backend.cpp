@@ -132,6 +132,13 @@ struct Backend : public std::enable_shared_from_this<Backend>,
     std::shared_ptr<profiling::Profiler> profiler;
     std::shared_ptr<profiling::ProfilingItem> top_profiling_item;
     std::shared_ptr<profiling::ProfilingItem> ports_profiling_item;
+    std::shared_ptr<profiling::ProfilingItem> ports_prepare_profiling_item;
+    std::shared_ptr<profiling::ProfilingItem> ports_finalize_profiling_item;
+    std::shared_ptr<profiling::ProfilingItem> ports_prepare_fx_profiling_item;
+    std::shared_ptr<profiling::ProfilingItem> ports_passthrough_profiling_item;
+    std::shared_ptr<profiling::ProfilingItem> ports_passthrough_input_profiling_item;
+    std::shared_ptr<profiling::ProfilingItem> ports_passthrough_output_profiling_item;
+    std::shared_ptr<profiling::ProfilingItem> ports_decoupled_midi_profiling_item;
     std::shared_ptr<profiling::ProfilingItem> loops_profiling_item;
     std::shared_ptr<profiling::ProfilingItem> fx_profiling_item;
     std::shared_ptr<profiling::ProfilingItem> cmds_profiling_item;
@@ -146,6 +153,13 @@ struct Backend : public std::enable_shared_from_this<Backend>,
             profiler(std::make_shared<profiling::Profiler>()),
             top_profiling_item(profiler->maybe_get_profiling_item("Process")),
             ports_profiling_item(profiler->maybe_get_profiling_item("Process.Ports")),
+            ports_prepare_profiling_item(profiler->maybe_get_profiling_item("Process.Ports.Prepare")),
+            ports_finalize_profiling_item(profiler->maybe_get_profiling_item("Process.Ports.Finalize")),
+            ports_prepare_fx_profiling_item(profiler->maybe_get_profiling_item("Process.Ports.PrepareFX")),
+            ports_passthrough_profiling_item(profiler->maybe_get_profiling_item("Process.Ports.Passthrough")),
+            ports_passthrough_input_profiling_item(profiler->maybe_get_profiling_item("Process.Ports.Passthrough.Input")),
+            ports_passthrough_output_profiling_item(profiler->maybe_get_profiling_item("Process.Ports.Passthrough.Output")),
+            ports_decoupled_midi_profiling_item(profiler->maybe_get_profiling_item("Process.Ports.MidiControl")),
             loops_profiling_item(profiler->maybe_get_profiling_item("Process.Loops")),
             fx_profiling_item(profiler->maybe_get_profiling_item("Process.FX")),
             cmds_profiling_item(profiler->maybe_get_profiling_item("Process.Commands"))
@@ -396,7 +410,10 @@ void Backend::PROC_process (jack_nframes_t nframes) {
                 [this, &nframes]() {
                     // Send/receive decoupled midi
                     PROC_process_decoupled_midi_ports(nframes);
-
+                }, ports_decoupled_midi_profiling_item, ports_profiling_item);
+            
+            profiling::stopwatch(
+                [this, &nframes]() {
                     // Prepare ports:
                     // Get buffers and process passthrough
                     auto prepare_port_fn = [&](auto & p) {
@@ -419,7 +436,10 @@ void Backend::PROC_process (jack_nframes_t nframes) {
                             loop->PROC_prepare_process(nframes);
                         }
                     }
-
+                }, ports_prepare_profiling_item, ports_profiling_item);
+            
+            profiling::stopwatch(
+                [this, &nframes]() {
                     // Process passthrough on the input side (before FX chains)
                     auto before_fx_port_passthrough_fn = [&](auto &p) {
                         if (p && p->ma_process_when == ProcessWhen::BeforeFXChains) { p->PROC_passthrough(nframes); }
@@ -430,7 +450,7 @@ void Backend::PROC_process (jack_nframes_t nframes) {
                         for (auto & p : chain->mc_midi_input_ports)  { before_fx_port_passthrough_fn(p); }
                     }
                 },
-                ports_profiling_item
+                ports_profiling_item, ports_passthrough_profiling_item, ports_passthrough_input_profiling_item
             );
             
             profiling::stopwatch(
@@ -463,7 +483,7 @@ void Backend::PROC_process (jack_nframes_t nframes) {
                         for (auto & p : chain->mc_midi_input_ports)  { before_fx_port_process(p); }
                     }
                 },
-                ports_profiling_item
+                ports_profiling_item, ports_prepare_fx_profiling_item
             );
 
             profiling::stopwatch(
@@ -487,7 +507,7 @@ void Backend::PROC_process (jack_nframes_t nframes) {
                         for (auto & p : chain->mc_audio_output_ports) { after_fx_port_passthrough_fn(p); }
                     }
                 },
-                ports_profiling_item
+                ports_profiling_item, ports_passthrough_profiling_item, ports_passthrough_output_profiling_item
             );
 
             profiling::stopwatch(
@@ -515,7 +535,7 @@ void Backend::PROC_process (jack_nframes_t nframes) {
                         for (auto & p : chain->mc_audio_output_ports) { after_fx_port_process(p); }
                     }
                 },
-                ports_profiling_item
+                ports_profiling_item, ports_finalize_profiling_item
             );
 
             profiling::stopwatch(
@@ -585,7 +605,7 @@ SharedLoopInfo Backend::create_loop() {
 
 SharedFXChainInfo Backend::create_fx_chain(fx_chain_type_t type, const char* title) {
     auto chain = g_lv2.create_carla_chain<Time, Size>(
-        type, get_sample_rate(), std::string(title)
+        type, get_sample_rate(), std::string(title), profiler
     );
     chain->ensure_buffers(get_buffer_size());
     auto info = std::make_shared<FXChainInfo>(chain, shared_from_this());
@@ -629,10 +649,12 @@ void PortInfo::PROC_ensure_buffer(size_t n_frames) {
         maybe_audio_buffer = maybe_audio->PROC_get_buffer(n_frames);
         if (port->direction() == PortDirection::Input) {
             float max = 0.0f;
-            for(size_t i=0; i<n_frames; i++) {
-                // TODO: allowed to write to input buffer? test it
-                maybe_audio_buffer[i] *= muted.load() ? 0.0f : volume.load();
-                max = std::max(max, abs(maybe_audio_buffer[i]));
+            if (muted) {
+                memset((void*)maybe_audio_buffer, 0, n_frames * sizeof(audio_sample_t));
+            } else {
+                for(size_t i=0; i<n_frames; i++) {
+                    max = std::max(max, abs(maybe_audio_buffer[i]));
+                }
             }
             peak = std::max(peak.load(), max);
         }

@@ -1,5 +1,6 @@
 #pragma once
 #include "CarlaLV2ProcessingChain.h"
+#include "ProcessProfiling.h"
 #include "types.h"
 #include <lilv/lilv.h>
 #include <memory>
@@ -21,9 +22,10 @@ public:
     std::shared_ptr<CarlaLV2ProcessingChain<TimeType, SizeType>> create_carla_chain(
         fx_chain_type_t type,
         size_t sample_rate,
-        std::string title
+        std::string title,
+        std::shared_ptr<profiling::Profiler> maybe_profiler = nullptr
     ) {
         return std::make_shared<CarlaLV2ProcessingChain<TimeType, SizeType>>
-            (m_world, type, sample_rate, title);
+            (m_world, type, sample_rate, title, maybe_profiler);
     }
 };

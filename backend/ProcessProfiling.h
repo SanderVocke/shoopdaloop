@@ -62,14 +62,43 @@ public:
     ~Profiler();
 };
 
-inline void stopwatch(std::function<void()> fn, std::shared_ptr<ProfilingItem> &item) {
+
+namespace {
+
+inline void log_time(float time, std::shared_ptr<ProfilingItem> item) {
+    if(item) { item->log_time(time); }
+}
+ 
+template<typename ProfItem, typename... ProfItems>
+void log_time(float time, ProfItem first, ProfItems... rest)
+{
+    log_time(time, first);
+    log_time(time, rest...);
+}
+
+inline bool any_valid(std::shared_ptr<ProfilingItem> item) {
+    return (bool) item;
+}
+ 
+template<typename ProfItem, typename... ProfItems>
+bool any_valid(ProfItem first, ProfItems... rest)
+{
+    return any_valid(first) || any_valid(rest...);
+}
+
+}
+
+template<typename ProfItem, typename... ProfItems>
+inline void stopwatch(std::function<void()> fn, ProfItem first, ProfItems... rest) {
     using namespace std::chrono;
-    if(g_ProfilingEnabled && item) {
+    if(g_ProfilingEnabled && any_valid(first, rest...)) {
         auto start = high_resolution_clock::now();
         fn();
         auto end = high_resolution_clock::now();
         float us = duration_cast<microseconds>(end - start).count();
-        item->log_time(us);
+        log_time(us, first, rest...);
+    } else {
+        fn();
     }
 }
 
