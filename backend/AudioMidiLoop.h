@@ -88,11 +88,19 @@ public:
     }
 
     void delete_audio_channel(std::shared_ptr<ChannelInterface> chan, bool thread_safe=true) {
-        throw std::runtime_error("delete_audio_channel() not implemented");
+        auto fn = [=, this]() {
+            std::erase_if(mp_audio_channels, [&](auto const& e) { return e.get() == chan.get(); });
+        };
+        if (thread_safe) { exec_process_thread_command(fn); }
+        else { fn(); }
     }
 
     void delete_midi_channel(std::shared_ptr<ChannelInterface> chan, bool thread_safe=true) {
-        throw std::runtime_error("delete_midi_channel() not implemented");
+        auto fn = [=, this]() {
+            std::erase_if(mp_midi_channels, [&](auto const& e) { return e.get() == chan.get(); });
+        };
+        if (thread_safe) { exec_process_thread_command(fn); }
+        else { fn(); }
     }
 
     void PROC_process_channels(
