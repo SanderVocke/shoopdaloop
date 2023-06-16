@@ -1,4 +1,5 @@
 #include <boost/ut.hpp>
+#include "LoggingBackend.h"
 
 using namespace boost::ut;
 
@@ -8,6 +9,8 @@ void usage(std::string name) {
 
 int main(int argc, const char *argv[]) {
     std::string name(argv[0]);
+
+    logging::parse_conf_from_env();
 
     for(size_t i = 1; i<(size_t) argc; i++) {
         std::string arg(argv[i]);

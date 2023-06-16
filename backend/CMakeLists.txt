@@ -30,6 +30,7 @@ option(ENABLE_PROCESS_PROFILING "Enable internal audio processing profiling")
 if(ENABLE_PROCESS_PROFILING)
     add_compile_options(-DSHOOP_PROFILING)
 endif()
+set(OVERRIDE_COMPILE_LOG_LEVEL "" CACHE STRING "If set, overrides the compile-time log level filter. Valid options are LOG_LEVEL_[TRACE, DEBUG, INFO, WARNING, ERROR].")
 
 # Find pkgs
 find_package(Jack REQUIRED)

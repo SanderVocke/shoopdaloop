@@ -10,6 +10,9 @@
 #include <memory>
 
 #include "midi_helpers.h"
+#include "LoggingEnabled.h"
+
+using namespace logging;
 
 // If you feed MidiStateTracker a sequence of MIDI messages, it will keep track of current state
 // on the MIDI stream, optionally including:
@@ -17,7 +20,7 @@
 // - CC values
 // - Progam changes
 // - Pitch wheel and channel pressure
-class MidiStateTracker {
+class MidiStateTracker : public ModuleLoggingEnabled {
 public:
     class Subscriber {
     public:
@@ -42,6 +45,8 @@ private:
     static size_t cc_index (uint8_t channel, uint8_t cc) { return (size_t)channel * 128 + (size_t)cc; }
 
     void process_noteOn(uint8_t channel, uint8_t note, uint8_t velocity) {
+        log<LogLevel::trace>("Process note on: {}, {}, {}", channel, note, velocity);
+
         if (m_notes_active_velocities.size() == 0) { return; }
 
         auto idx = note_index(channel & 0x0F, note);
@@ -55,6 +60,8 @@ private:
     }
 
     void process_noteOff(uint8_t channel, uint8_t note) {
+        log<LogLevel::trace>("Process note off: {}, {}", channel, note);
+
         if (m_notes_active_velocities.size() == 0) { return; }
 
         auto idx = note_index(channel & 0x0F, note);
@@ -66,6 +73,8 @@ private:
     }
 
     void process_cc(uint8_t channel, uint8_t controller, uint8_t value) {
+        log<LogLevel::trace>("Process cc: {}, {}, {}", channel, controller, value);
+
         if (m_controls.size() == 0) { return; }
 
         auto idx = cc_index(channel & 0x0F, controller);
@@ -76,6 +85,8 @@ private:
     }
 
     void process_program(uint8_t channel, uint8_t value) {
+        log<LogLevel::trace>("Process program: {}, {}", channel, value);
+
         if (m_programs.size() == 0) { return; }
         if (m_programs.at(channel & 0x0F) != value) {
             for (auto const& s : m_subscribers) { if(auto ss = s.lock()) { ss->program_changed(this, channel, value); } }
@@ -84,6 +95,8 @@ private:
     }
     
     void process_pitch_wheel(uint8_t channel, uint16_t value) {
+        log<LogLevel::trace>("Process pitch wheel: {}, {}", channel, value);
+
         if (m_pitch_wheel.size() == 0) { return; }
         if (m_pitch_wheel.at(channel & 0x0F) != value) {
             for (auto const& s : m_subscribers) { if(auto ss = s.lock()) { ss->pitch_wheel_changed(this, channel, value); } }
@@ -92,12 +105,16 @@ private:
     }
 
     void process_channel_pressure(uint8_t channel, uint8_t value) {
+        log<LogLevel::trace>("Process channel pressure: {}, {}", channel, value);
+
         if (m_channel_pressure.size() == 0) { return; }
         if (m_channel_pressure.at(channel & 0x0F) != value) {
             for (auto const& s : m_subscribers) { if(auto ss = s.lock()) { ss->channel_pressure_changed(this, channel, value); } }
         }
         m_channel_pressure[channel & 0x0F] = value;
-    } 
+    }
+
+    std::string log_module_name() const override { return "Backend.MidiStateTracker"; }
 
 public:
     MidiStateTracker(bool track_notes=false, bool track_controls=false, bool track_programs=false) :
@@ -108,6 +125,7 @@ public:
         m_pitch_wheel(track_controls ? 16 : 0),
         m_channel_pressure(track_controls ? 16 : 0)
         {
+            log_init();
             clear();
         }
     
@@ -125,6 +143,8 @@ public:
     }
 
     void copy_relevant_state(MidiStateTracker const& other) {
+        log<LogLevel::debug>("Copy state from other");
+
         if (tracking_notes()) {
             m_n_notes_active = other.m_n_notes_active.load();
             m_notes_active_velocities = other.m_notes_active_velocities;
@@ -140,6 +160,8 @@ public:
     }
     
     void clear() {
+        log<LogLevel::debug>("Clear");
+
         for(size_t i=0; i<m_notes_active_velocities.size(); i++) {
             m_notes_active_velocities[i].reset();
         }

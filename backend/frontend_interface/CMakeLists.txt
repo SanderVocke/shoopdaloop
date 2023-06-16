@@ -20,12 +20,17 @@ target_include_directories(shoopdaloop_backend
                         ${LILV_INCLUDE_DIRS}
                         ${CMAKE_SOURCE_DIR}/third_party/lv2_external_ui
                         )
-if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-  target_compile_definitions(shoopdaloop_backend PUBLIC -DCOMPILE_LOG_LEVEL=LOG_LEVEL_TRACE)
-else()
-  target_compile_definitions(shoopdaloop_backend PUBLIC -DCOMPILE_LOG_LEVEL=LOG_LEVEL_INFO)
-endif()
 
+if (OVERRIDE_COMPILE_LOG_LEVEL STREQUAL "")
+  if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+    target_compile_definitions(shoopdaloop_backend PUBLIC -DCOMPILE_LOG_LEVEL=LOG_LEVEL_TRACE)
+  else()
+    target_compile_definitions(shoopdaloop_backend PUBLIC -DCOMPILE_LOG_LEVEL=LOG_LEVEL_INFO)
+  endif()
+else()
+  message(WARNING "Using overridden compile time log level: ${OVERRIDE_COMPILE_LOG_LEVEL}")
+  target_compile_definitions(shoopdaloop_backend PUBLIC -DCOMPILE_LOG_LEVEL=${OVERRIDE_COMPILE_LOG_LEVEL})
+endif()
 
 # Generate C bindings
 add_custom_command(

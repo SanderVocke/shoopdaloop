@@ -423,21 +423,32 @@ suite AudioMidiLoop_midi_tests = []() {
         loop.PROC_update_trigger_eta();
         expect(eq(loop.PROC_predicted_next_trigger_eta().value_or(999), 100));
 
-        loop.add_midi_channel<uint32_t, uint16_t>(100000, Direct, false);
-        auto &chan = *loop.midi_channel<uint32_t, uint16_t>(0);
+        auto chan = loop.add_midi_channel<uint32_t, uint16_t>(100000, Direct, false);
 
         using Message = MidiChannel<uint32_t, uint16_t>::Message;
         std::vector<Message> data;
-        for(size_t idx=0; idx<256; idx++) { data.push_back(Message{(unsigned)idx, 1, { (unsigned char) ((unsigned char)'a' + (unsigned char) idx) }}); }
+        for(size_t idx=0; idx<256; idx++) {
+            data.push_back(
+                Message {
+                    (unsigned)idx,
+                    3,
+                    {
+                        0xB0,
+                        100,
+                        (unsigned char)(idx % 128)
+                    }
+                }
+            ); 
+        }
 
-        chan.set_contents(data, 256);
-        chan.set_start_offset(110);
-        chan.set_pre_play_samples(90);
+        chan->set_contents(data, 256);
+        chan->set_start_offset(110);
+        chan->set_pre_play_samples(90);
         loop.set_length(128);
 
         auto play_buf = MidiTestBuffer();
         loop.plan_transition(Playing);
-        chan.PROC_set_playback_buffer(&play_buf, 256);
+        chan->PROC_set_playback_buffer(&play_buf, 256);
 
         // Pre-play part
         process(99);
@@ -459,7 +470,7 @@ suite AudioMidiLoop_midi_tests = []() {
         expect(eq(loop.get_mode(), Playing));
 
         // Process the channels' queued operations
-        chan.PROC_finalize_process();
+        chan->PROC_finalize_process();
 
         // We expect the first 10 messages to be skipped, playback
         // starting immediately from msg 10.

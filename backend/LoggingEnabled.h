@@ -38,7 +38,7 @@ public:
         log<logging::LogLevel::trace>("{}:{} - {}", fl, ln, fn);
     }
 
-    LoggingEnabled() {};
+    LoggingEnabled() { };
     virtual ~LoggingEnabled() {}
 };
 
