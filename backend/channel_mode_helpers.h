@@ -2,6 +2,7 @@
 #include "types.h"
 #include <cstddef>
 #include <optional>
+#include <iostream>
 #include <algorithm>
 
 typedef enum {
@@ -76,6 +77,7 @@ inline channel_process_params get_channel_process_params(
     if (rval.process_flags == 0 && // Stopped
         maybe_next_mode.has_value() &&
         maybe_next_mode_eta.has_value() &&
+        maybe_next_mode_delay_cycles.value_or(999) == 0 &&
         loop_mode_to_channel_process_flags(maybe_next_mode.value(), channel_mode) & ChannelPlayback) {
         // Possibly pre-play samples.
         rval.position = (int) start_offset - (int) maybe_next_mode_eta.value();
@@ -83,6 +85,7 @@ inline channel_process_params get_channel_process_params(
     } else if (!(rval.process_flags & ChannelRecord) && 
                maybe_next_mode.has_value() &&
                maybe_next_mode_eta.has_value() &&
+               maybe_next_mode_delay_cycles.value_or(999) == 0 &&
                loop_mode_to_channel_process_flags(maybe_next_mode.value(), channel_mode) & ChannelRecord) {
         rval.process_flags |= ChannelPreRecord;
     }

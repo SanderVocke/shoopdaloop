@@ -140,9 +140,9 @@ Item {
             }
 
             Rectangle {
-                id: data_window_rect
+                id: loop_window_rect
                 color: 'blue'
-                width: root.loop_length / render.samples_per_bin
+                width: (root.n_samples - root.start_offset) / render.samples_per_bin
                 height: render.height
                 opacity: 0.3
                 x: (root.start_offset - render.samples_offset) / render.samples_per_bin
@@ -156,6 +156,16 @@ Item {
                 height: render.height
                 opacity: 0.3
                 x: (root.start_offset - render.samples_offset - root.n_preplay_samples) / render.samples_per_bin
+                y: 0
+            }
+
+            Rectangle {
+                id: unplayed_data_before_rect
+                color: 'darkblue'
+                width: (root.start_offset - root.n_preplay_samples) / render.samples_per_bin
+                height: render.height
+                opacity: 0.3
+                x: -render.samples_offset / render.samples_per_bin
                 y: 0
             }
 

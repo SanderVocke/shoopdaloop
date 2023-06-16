@@ -139,7 +139,7 @@ class LoopChannel(QQuickItem):
     def set_n_preplay_samples(self, n):
         if n != self._n_preplay_samples:
             if self._backend_obj:
-                self.logger.debug('Set # preplay samples -> {}',format(n))
+                self.logger.debug('Set # preplay samples -> {}'.format(n))
                 self._backend_obj.set_n_preplay_samples(n)
             else:
                 self.initializedChanged.connect(lambda: self.set_n_preplay_samples(n))

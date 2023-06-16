@@ -23,8 +23,10 @@ target_include_directories(shoopdaloop_backend
 
 if (OVERRIDE_COMPILE_LOG_LEVEL STREQUAL "")
   if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+    message("Building in debug mode. Using compile time log level: LOG_LEVEL_TRACE")
     target_compile_definitions(shoopdaloop_backend PUBLIC -DCOMPILE_LOG_LEVEL=LOG_LEVEL_TRACE)
   else()
+    message("Building in non-debug mode. Using compile time log level: LOG_LEVEL_INFO")
     target_compile_definitions(shoopdaloop_backend PUBLIC -DCOMPILE_LOG_LEVEL=LOG_LEVEL_INFO)
   endif()
 else()

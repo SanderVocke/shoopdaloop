@@ -272,18 +272,17 @@ public:
             if (!(process_flags & ChannelPreRecord) &&
                 (mp_prev_process_flags & ChannelPreRecord))
             {
-                log<LogLevel::debug>("Pre-record ended");
                 // Ending pre-record. If transitioning to recording,
                 // make our pre-recorded buffers into our main buffers.
                 // Otherwise, just discard them.
                 if (process_flags & ChannelRecord) {
-                    log<LogLevel::debug>("Pre-record ended -> carry over to record");
+                    log<LogLevel::debug>("Pre-record end -> carry over to record");
                     mp_storage = mp_prerecord_storage;
                     ma_data_length = ma_start_offset = ma_prerecord_data_length.load();
                     mp_track_start_state = mp_track_prerecord_start_state;
                     mp_track_prerecord_start_state.reset();
                 } else {
-                    log<LogLevel::debug>("Pre-record ended -> discard");
+                    log<LogLevel::debug>("Pre-record end -> discard");
                 }
                 mp_prerecord_storage = std::make_shared<Storage>(mp_storage->bytes_capacity());
                 ma_prerecord_data_length = 0;
@@ -320,6 +319,9 @@ public:
                     n_samples);
                 processed_input_messages = true;
             } else if (process_flags & ChannelPreRecord) {
+                if (!(mp_prev_process_flags & ChannelPreRecord)) {
+                    log<LogLevel::debug>("Pre-record start");
+                }
                 PROC_process_record(
                     *mp_prerecord_storage, 
                     ma_prerecord_data_length, 

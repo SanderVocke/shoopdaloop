@@ -171,7 +171,7 @@ Item {
                 text = Qt.binding(() => root.loop.length.toString())
             }
         }
-
+        
         ExtendedButton {
             tooltip: "Additional options."
             height: 35

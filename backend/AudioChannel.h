@@ -252,7 +252,7 @@ public:
 
     void PROC_process(
         loop_mode_t mode,
-    std::optional<loop_mode_t> maybe_next_mode,
+        std::optional<loop_mode_t> maybe_next_mode,
         std::optional<size_t> maybe_next_mode_delay_cycles,
         std::optional<size_t> maybe_next_mode_eta,
         size_t n_samples,
@@ -285,11 +285,11 @@ public:
                 // make our pre-recorded buffers into our main buffers.
                 // Otherwise, just discard them.
                 if (process_flags & ChannelRecord) {
-                    log<LogLevel::debug>("Pre-record ended -> carry over to record");
+                    log<LogLevel::debug>("Pre-record end -> carry over to record");
                     mp_buffers = mp_prerecord_buffers;
                     ma_buffers_data_length = ma_start_offset = mp_prerecord_buffers_data_length.load();
                 } else {
-                    log<LogLevel::debug>("Pre-record ended -> discard");
+                    log<LogLevel::debug>("Pre-record end -> discard");
                 }
                 mp_prerecord_buffers.reset();
                 mp_prerecord_buffers_data_length = 0;
@@ -308,6 +308,9 @@ public:
                 PROC_process_replace(process_params.position, length_before, n_samples, mp_recording_source_buffer, mp_recording_source_buffer_size);
             }
             if (process_flags & ChannelPreRecord) {
+                if (!(mp_prev_process_flags & ChannelPreRecord)) {
+                    log<LogLevel::debug>("Pre-record start");
+                }
                 PROC_process_record(n_samples, mp_prerecord_buffers_data_length, mp_prerecord_buffers, mp_prerecord_buffers_data_length, mp_recording_source_buffer, mp_recording_source_buffer_size);
             }
 

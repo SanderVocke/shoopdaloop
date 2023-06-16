@@ -218,7 +218,7 @@ public:
 
         PROC_process_channels(process_channel_mode,
             ma_maybe_next_planned_mode,
-            ma_maybe_next_planned_delay,
+            ma_maybe_next_planned_delay == -1 ? std::optional<size_t>(std::nullopt) : ma_maybe_next_planned_delay.load(),
             ma_maybe_next_planned_delay == 0 ? PROC_predicted_next_trigger_eta() : std::nullopt,
             n_samples, pos_before, pos_after,
             length_before, length_after);
@@ -234,10 +234,14 @@ public:
     }
 
     void set_sync_source(std::shared_ptr<LoopInterface> const& src, bool thread_safe=true) override {
-        if(thread_safe) {
-            exec_process_thread_command([this, src]() { mp_sync_source = src; });
-        } else {
+        auto fn = [=, this]() {
             mp_sync_source = src;
+            PROC_update_trigger_eta();
+        };
+        if(thread_safe) {
+            exec_process_thread_command(fn);
+        } else {
+            fn();
         }
     }
     std::shared_ptr<LoopInterface> get_sync_source(bool thread_safe = true) override {
@@ -394,6 +398,7 @@ public:
                 }
             }
             PROC_update_planned_transition_cache();
+            PROC_update_trigger_eta();
         };
         if (thread_safe) { exec_process_thread_command(fn); }
         else { fn(); }
