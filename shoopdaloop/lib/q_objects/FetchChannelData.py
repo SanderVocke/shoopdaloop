@@ -10,6 +10,7 @@ from PySide6.QtQuick import QQuickItem
 from PySide6.QtGui import QImage
 
 from .LoopChannel import LoopChannel
+from ..logging import Logger
 
 from ..backend_wrappers import *
 from ..mode_helpers import *
@@ -28,6 +29,7 @@ class FetchChannelData(QQuickItem):
         self._next_seq_nr = 0
         self._loop = None
         self._data_as_qimage = None
+        self.logger = Logger('Frontend.FetchChannelData')
     
     ######################
     # PROPERTIES
@@ -158,7 +160,8 @@ class FetchChannelData(QQuickItem):
         self._next_seq_nr += 1
         self.fetching = True
 
-        def worker(channel=self.channel, seq_nr=self._active_request_seq_nr, cb_to=self):
+        def worker(channel=self.channel, seq_nr=self._active_request_seq_nr, cb_to=self, logger=self.logger):
+            logger.debug("Fetching channel data to front-end.")
             data = channel.get_data()
             channel.clear_data_dirty()
             QMetaObject.invokeMethod(

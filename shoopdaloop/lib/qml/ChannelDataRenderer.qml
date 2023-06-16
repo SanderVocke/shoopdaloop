@@ -126,7 +126,7 @@ Item {
         
         RenderAudioWaveform {
             id: render
-            input_data: fetcher && fetcher.channel_data ? fetcher.channel_data : []
+            input_data: fetcher && fetcher.channel_data && root.visible ? fetcher.channel_data : []
             samples_per_bin: root.samples_per_pixel
             samples_offset: root.samples_offset
             width: root.width
@@ -137,7 +137,6 @@ Item {
             FetchChannelData {
                 id: fetcher
                 channel: root.channel
-                active: true
             }
 
             Rectangle {

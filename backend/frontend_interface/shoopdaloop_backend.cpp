@@ -2060,7 +2060,7 @@ void set_logger_level_override(shoopdaloop_logger_t *logger, log_level_t level) 
 }
 
 void shoopdaloop_log(shoopdaloop_logger_t *logger, log_level_t level, const char *msg) {
-    ((logging::logger*)logger)->log(
+    ((logging::logger*)logger)->log_no_filter(
         level_convert.at(level), msg
     );
 }

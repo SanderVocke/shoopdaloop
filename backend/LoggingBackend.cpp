@@ -66,7 +66,7 @@ void set_filter_level(LogLevel level) {
 
     logging_logger().debug("Set global logging level to {}", level);
     if (level < CompileTimeLogLevel) {
-        logging_logger().warn("Compile-time log filtering is set at {}. To get {} messages, please compile a debug version.", CompileTimeLogLevel, level);
+        logging_logger().warn("Compile-time log filtering is set at {}. To get level {} messages of back-end, please compile a debug version.", CompileTimeLogLevel, level);
     }
 
     g_loggers_level = level;
@@ -81,7 +81,7 @@ void set_module_filter_level(std::string name, std::optional<LogLevel> level) {
     if (level.has_value()) {
         logging_logger().debug("Set logging level override of module {} to {}", name, level.value());
         if (level.value() < CompileTimeLogLevel) {
-            logging_logger().warn("Compile-time log filtering is set at {}. To get {} messages, please compile a debug version.", CompileTimeLogLevel, level.value());
+            logging_logger().warn("Compile-time log filtering is set at {}. To get level {} messages of back-end, please compile a debug version.", CompileTimeLogLevel, level.value());
         }
     } else {
         logging_logger().debug("Remove logging level override of module {}", name);

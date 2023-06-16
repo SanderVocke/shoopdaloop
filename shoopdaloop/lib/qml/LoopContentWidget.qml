@@ -226,6 +226,9 @@ Item {
                 property var maybe_cursor_display_x: null
 
                 ChannelDataRenderer {
+                    visible: root.visible
+                    fetch_active: root.visible
+
                     property var mapped_item
                     property int index
 
@@ -237,7 +240,6 @@ Item {
 
                     channel: mapped_item
 
-                    fetch_active: true
                     samples_per_pixel: zoom_slider.samples_per_pixel
 
                     property int first_pixel_sample: (channel ? channel.start_offset : 0) + channels_combine_range.data_start
