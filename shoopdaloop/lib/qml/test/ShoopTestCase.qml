@@ -19,10 +19,12 @@ TestCase {
     }
 
     function verify_eq(a, b) {
+        if (a != b) { logger.error(`Trace: ${backtrace()}`)}
         verify(a == b, `a != b (a = ${a}, b = ${b})`)
     }
 
     function verify_gt(a, b) {
+        if (a <= b) { logger.error(`Trace: ${backtrace()}`)}
         verify(a > b, `a !> b (a = ${a}, b = ${b})`)
     }
 
