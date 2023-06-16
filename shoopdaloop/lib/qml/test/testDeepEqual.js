@@ -16,8 +16,26 @@ function testDeepEqual(object1, object2, log_cb=console.log, crumbs=[]) {
       }
     }
     return true;
-  }
+}
 
-  function isObject(object) {
-    return object != null && typeof object === 'object';
+function testArraysEqual(a, b, log_cb=console.log, crumbs=[]) {
+  if (!Array.isArray(a) || !Array.isArray(b)) { return a == b; }
+  if (a.length != b.length) {
+    log_cb(`At ${crumbs}: # of keys unequal (${a} vs ${b})\n`)
+    return false;
   }
+  a.forEach((elem, idx) => {
+    const other = b[idx];
+    const areArrays = Array.isArray(elem) && Array.isArray(other);
+    if(areArrays && !testArraysEqual(elem, other, log_cb, crumbs.concat([idx]))) { return false; }
+    else if(!areArrays && elem != other) {
+      log_cb(`At ${crumbs.concat([idx])}: value unequal (${elem} vs ${other})\n`)
+      return false;
+    }
+  })
+  return true;
+}
+
+function isObject(object) {
+  return object != null && typeof object === 'object';
+}

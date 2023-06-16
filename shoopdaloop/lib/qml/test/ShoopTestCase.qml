@@ -3,6 +3,7 @@ import QtTest 1.0
 import Logger
 
 import '../../backend/frontend_interface/types.js' as Types
+import './testDeepEqual.js' as TestDeepEqual
 
 TestCase {
     id: root
@@ -19,8 +20,14 @@ TestCase {
     }
 
     function verify_eq(a, b) {
-        if (a != b) { logger.error(`Trace: ${backtrace()}`)}
-        verify(a == b, `a != b (a = ${a}, b = ${b})`)
+        var result;
+        if (Array.isArray(a) && Array.isArray(b)) {
+            result = TestDeepEqual.testArraysEqual(a, b);
+        } else {
+            result = a == b;
+        }
+        if (!result) { logger.error(`Trace: ${backtrace()}`)}
+        verify(result, `a != b (a = ${a}, b = ${b})`)
     }
 
     function verify_gt(a, b) {
@@ -30,12 +37,13 @@ TestCase {
 
     function start_test_fn(name) {
         logger.info("------------------------------------------------")
-        logger.info(`Test start: ${name}`)
+        logger.info(`START ${name}`)
         logger.info("------------------------------------------------")
     }
 
     function end_test_fn(name) {
-        logger.info(`Test end: ${name}`)
+        logger.info("------------------------------------------------")
+        logger.info(`END ${name}`)
         logger.info("------------------------------------------------")
     }
 }

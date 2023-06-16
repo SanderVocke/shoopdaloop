@@ -19,11 +19,9 @@ Backend {
         anchors.fill: parent
         initial_descriptor: GenerateSession.generate_default_session(app_metadata.version_string, 2)
 
-        property var logger : Logger { name: "Test.Control" }
-
         ShoopSessionTestCase {
             id: testcase
-            name: 'TwoLoops'
+            name: 'SessionControl'
             session: session
             backend: backend
 
@@ -79,6 +77,27 @@ Backend {
                 )
 
                 end_test_fn('test_select_multiple_by_coords')
+            }
+
+            function test_select_multiple_by_functor() {
+                start_test_fn('test_select_multiple_by_functor')
+                check_backend()
+                clear()
+
+                verify_eq(
+                    session.control_handler.select_loops((l) => { return l == master_loop() }),
+                    [master_loop().control_handler]
+                )
+                verify_eq(
+                    session.control_handler.select_loops((l) => { return l == other_loop() }),
+                    [other_loop().control_handler]
+                )
+                verify_eq(
+                    session.control_handler.select_loops((l) => { return true }),
+                    [master_loop().control_handler, other_loop().control_handler]
+                )
+
+                end_test_fn('test_select_multiple_by_functor')
             }
         }
     }
