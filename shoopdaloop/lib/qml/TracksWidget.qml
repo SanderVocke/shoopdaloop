@@ -23,6 +23,11 @@ ScrollView {
     property list<var> tracks : []
     property var track_initial_descriptors : []
 
+    onTracksChanged: {
+        // Keep indexes up to date
+        tracks.forEach((c, idx) => { c.track_idx = idx } )
+    }
+
     RegisterInRegistry {
         registry: root.state_registry
         key: 'track_descriptors'

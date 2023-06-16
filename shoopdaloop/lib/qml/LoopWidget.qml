@@ -17,6 +17,16 @@ Item {
     property Registry objects_registry : null
     property Registry state_registry : null
 
+    property int track_idx : -1
+    property int idx_in_track : -1
+
+    onTrack_idxChanged: print_coords()
+    onIdx_in_trackChanged: print_coords()
+
+    function print_coords() {
+        logger.debug(`Loop @ (${track_idx},${idx_in_track})`)
+    }
+
     property Logger logger : Logger { name: default_logger.name + ".Loop" }
 
     RegistryLookup {

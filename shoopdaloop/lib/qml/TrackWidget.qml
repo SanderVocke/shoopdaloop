@@ -14,6 +14,8 @@ Item {
     property Registry objects_registry : null
     property Registry state_registry : null
 
+    property int track_idx: -1
+
     RegistryLookup {
         id: fx_chain_states_registry_lookup
         registry: root.state_registry
@@ -86,7 +88,9 @@ Item {
             throw new Error("TrackWidget: Loop factory not ready")
         } else {
             var loop = loop_factory.createObject(loops_column, properties);
-            loop.onLoadedChanged.connect(() => loop_loaded_changed(loop))
+            loop.onLoadedChanged.connect(() => {
+                loop_loaded_changed(loop)
+            })
             return loop
         }
     }
@@ -109,12 +113,13 @@ Item {
         loaded = false
         var _n_loops_loaded = 0
         // Instantiate initial loops
-        root.loop_descriptors.forEach(desc => {
+        root.loop_descriptors.forEach((desc, idx) => {
             var loop = root.add_loop({
                 initial_descriptor: desc,
                 objects_registry: root.objects_registry,
                 state_registry: root.state_registry,
-                track_widget: root
+                track_widget: root,
+                track_idx: Qt.binding( () => { return root.track_idx } )
             });
             if (loop.loaded) { _n_loops_loaded += 1 }
         })
@@ -411,6 +416,17 @@ Item {
                     width: childrenRect.width
 
                     // Note: loops injected here
+                    onChildrenChanged: update_coords()
+                    function update_coords() {
+                        // Update loop indexes
+                        var idx=0
+                        children.forEach((c) => {
+                            if (c instanceof LoopWidget) {
+                                c.idx_in_track = idx;
+                                idx++;
+                            }
+                        })
+                    }
                 }
 
                 ExtendedButton {
