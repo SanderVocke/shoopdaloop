@@ -22,6 +22,7 @@ Backend {
         ShoopSessionTestCase {
             id: testcase
             name: 'SessionControl'
+
             session: session
             backend: backend
 
