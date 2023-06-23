@@ -20,7 +20,6 @@ TestCase {
     }
 
     function verify_eq(a, b) {
-<<<<<<< HEAD
         var result;
         if (Array.isArray(a) && Array.isArray(b)) {
             result = TestDeepEqual.testArraysEqual(a, b);
@@ -29,10 +28,6 @@ TestCase {
         }
         if (!result) { logger.error(`Trace: ${backtrace()}`)}
         verify(result, `a != b (a = ${a}, b = ${b})`)
-=======
-        if (a != b) { logger.error(`Trace: ${backtrace()}`)}
-        verify(a == b, `a != b (a = ${a}, b = ${b})`)
->>>>>>> tmp
     }
 
     function verify_gt(a, b) {
