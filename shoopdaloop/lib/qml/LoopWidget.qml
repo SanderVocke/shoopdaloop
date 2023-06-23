@@ -425,6 +425,12 @@ Item {
     }
     property alias sync_active: lookup_sync_active.object
 
+    // Control
+    readonly property var control_handler: control_handler
+    ControlHandler {
+        id: control_handler
+    }
+
     // UI
     StatusRect {
         id: statusrect

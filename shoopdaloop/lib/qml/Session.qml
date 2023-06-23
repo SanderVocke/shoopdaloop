@@ -40,6 +40,7 @@ Item {
     readonly property bool saving : state_registry.n_saving_actions_active > 0
     readonly property bool loading : state_registry.n_loading_actions_active > 0
     readonly property bool doing_io : saving || loading
+    readonly property var control_handler : control_handler
 
     Popup {
         visible: saving
