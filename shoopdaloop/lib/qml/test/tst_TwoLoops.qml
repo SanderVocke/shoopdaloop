@@ -6,6 +6,7 @@ import Logger
 import './testDeepEqual.js' as TestDeepEqual
 import '../../backend/frontend_interface/types.js' as Types
 import '../../generate_session.js' as GenerateSession
+import './testfilename.js' as TestFilename
 import '..'
 
 Backend {
@@ -24,6 +25,7 @@ Backend {
         ShoopSessionTestCase {
             id: testcase
             name: 'TwoLoops'
+            filename : TestFilename.test_filename()
             session: session
             backend: backend
 

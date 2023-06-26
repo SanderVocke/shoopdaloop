@@ -3,6 +3,7 @@ import QtTest 1.0
 import Backend
 
 import '../../backend/frontend_interface/types.js' as Types
+import './testfilename.js' as TestFilename
 
 Backend {
     id: backend
@@ -11,6 +12,9 @@ Backend {
     backend_type: Types.BackendType.Dummy
 
     ShoopTestCase {
+        name: 'TwoLoops'
+        filename : TestFilename.test_filename()
+
         function test_backend() {
             start_test_fn('test_backend')
             verify(backend.initialized)
