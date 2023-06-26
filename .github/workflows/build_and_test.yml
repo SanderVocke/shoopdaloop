@@ -1,0 +1,62 @@
+name: Build and test
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+env:
+  BUILD_TYPE: Debug
+  BUILD_DEPENDS_ARCH: qt6 qt6-declarative jack2 lv2 lilv boost spdlog fmt shiboken6 python git cmake ninja pkgconf pyside6 python-pip python-pipx
+  BUILD_DEPENDS_PYTHON: ctypesgen pyside6 shiboken6-generator
+  RUN_DEPENDS_PYTHON: playsound resampy mido jsonschema numpy scipy soundfile
+  VENV: buildenv
+  WITH_VENV: ${VENV}/bin/activate &&
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux
+      options: --privileged
+    
+    steps:
+    - name: Install Arch packages
+      shell: bash
+      run: |
+        pacman --noconfirm -Syy && pacman --noconfirm -S --needed --overwrite ${BUILD_DEPENDS_ARCH}
+    
+    - name: Create venv
+      shell: bash
+      run: |
+        python -m venv $(HOME)/${VENV}
+        echo "FULL_VENV=$(HOME)/${VENV}" >> $GITHUB_ENV
+        echo "Venv created in: $(HOME)/${VENV}."
+        
+    - name: Install Python packages
+      shell: bash
+      run: |
+        source ${FULL_VENV}/bin/activate
+        pip install ${BUILD_DEPENDS_PYTHON}
+        pip install ${RUN_DEPENDS_PYTHON}
+
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        submodules: recursive
+
+    - name: Configure CMake
+      run: |
+        source ${FULL_VENV}/bin/activate
+        cmake -G Ninja -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
+
+    - name: Build CMake
+      run: |
+        source ${FULL_VENV}/bin/activate
+        cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
+    
+    - name: Hello World
+      shell: bash
+      run: |
+        echo "Hello World!"
