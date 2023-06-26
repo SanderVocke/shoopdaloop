@@ -1,0 +1,35 @@
+name: CMake
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+env:
+  BUILD_TYPE: Debug
+  BUILD_DEPENDS: qt6 qt6-declarative jack2 lv2 lilv boost spdlog fmt shiboken6 python git cmake ninja pkgconf
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux
+      options: --privileged
+    
+    steps:
+    - name: Install build dependencies
+      shell: bash
+      run: pacman --noconfirm -Syy && pacman --noconfirm -S --needed --overwrite ${BUILD_DEPENDS}
+
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        submodules: recursive
+
+    - name: Configure CMake
+      run: cmake -G Ninja -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
+
+    - name: Build
+      # Build your program with the given configuration
+      run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
