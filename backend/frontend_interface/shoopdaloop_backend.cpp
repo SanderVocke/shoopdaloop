@@ -168,21 +168,34 @@ struct Backend : public std::enable_shared_from_this<Backend>,
         
         using namespace std::placeholders;
 
-        switch (audio_system_type) {
-        case Jack:
-            log<LogLevel::debug>("Initializing JACK audio system.");
-            audio_system = std::unique_ptr<AudioSystem>(dynamic_cast<AudioSystem*>(new JackAudioSystem(
-                std::string(client_name_hint), std::bind(&Backend::PROC_process, this, _1)
-            )));
-            break;
-        case Dummy:
+        try {
+            switch (audio_system_type) {
+            case Jack:
+                log<LogLevel::debug>("Initializing JACK audio system.");
+                audio_system = std::unique_ptr<AudioSystem>(dynamic_cast<AudioSystem*>(new JackAudioSystem(
+                    std::string(client_name_hint), std::bind(&Backend::PROC_process, this, _1)
+                )));
+                break;
+            case Dummy:
+                // Dummy is also the fallback option - intiialized below
+                break;
+            default:
+                throw_error<std::runtime_error>("Unimplemented backend type");
+            }
+        } catch (std::exception &e) {
+            log<LogLevel::err>("Failed to initialize audio system.");
+            std::cerr << e.what();
+            log<LogLevel::info>("Attempting fallback to dummy audio system.");
+        } catch (...) {
+            log<LogLevel::err>("Failed to initialize audio system: unknown exception");
+            log<LogLevel::info>("Attempting fallback to dummy audio system.");
+        }
+
+        if (!audio_system || audio_system_type == Dummy) {
             log<LogLevel::debug>("Initializing dummy audio system.");
-            audio_system = std::unique_ptr<AudioSystem>(dynamic_cast<AudioSystem*>(new _DummyAudioSystem(
-                std::string(client_name_hint), std::bind(&Backend::PROC_process, this, _1)
-            )));
-            break;
-        default:
-            throw_error<std::runtime_error>("Unimplemented backend type");
+                audio_system = std::unique_ptr<AudioSystem>(dynamic_cast<AudioSystem*>(new _DummyAudioSystem(
+                    std::string(client_name_hint), std::bind(&Backend::PROC_process, this, _1)
+                )));
         }
 
         audio_buffer_pool = std::make_shared<AudioBufferPool>(gc_n_buffers_in_pool, gc_audio_buffer_size);
