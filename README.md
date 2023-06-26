@@ -41,6 +41,10 @@ If possible, internal FX/synth is usually preferred, because:
 - **Scripted looping**: ShoopDaLoop will have a scripting approach (WIP) suitable for (semi-)automated scripted looping. The "script" consists of a sequence of actions (e.g.: change scene, mute a loop, start/stop recording on a loop). The sets of actions are executed sequentially, either in a fully automatic or manually triggered way. This way the song structure can be laid out ahead of time.
 - **MIDI bindings**: Work is in progress to have scriptable MIDI control. The Akai APC Mini will be the first to get support, but the approach should make this easily extendible through script files.
 
+# License
+
+See LICENSE.txt.
+
 # Getting started
 
 Install using setup.py. (TODO: describe in more detail)
