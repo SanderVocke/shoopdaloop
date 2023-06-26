@@ -1,0 +1,73 @@
+name: Build and test
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+env:
+  BUILD_TYPE: Debug
+  BUILD_DEPENDS_ARCH: qt6 qt6-declarative jack2 lv2 lilv boost spdlog fmt shiboken6 python git cmake ninja pkgconf pyside6 python-pip nlohmann-json
+  BUILD_DEPENDS_PYTHON: ctypesgen
+  RUN_DEPENDS_PYTHON: playsound resampy mido jsonschema numpy scipy soundfile pyjacklib
+  VENV: buildenv
+  WITH_VENV: ${VENV}/bin/activate &&
+
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux
+      options: --privileged
+    
+    steps:
+    - name: Install Arch packages
+      run: |
+        pacman --noconfirm -Syy && pacman --noconfirm -S --needed --overwrite ${BUILD_DEPENDS_ARCH}
+    
+    - name: Create venv
+      run: |
+        python -m venv --system-site-packages ${HOME}/${VENV}
+        echo "FULL_VENV=${HOME}/${VENV}" >> $GITHUB_ENV
+        echo "Venv created in: ${HOME}/${VENV}."
+        
+    - name: Install Python packages
+      run: |
+        source ${FULL_VENV}/bin/activate
+        pip install ${BUILD_DEPENDS_PYTHON}
+        pip install ${RUN_DEPENDS_PYTHON}
+
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        submodules: recursive
+
+    - name: Configure CMake
+      run: |
+        source ${FULL_VENV}/bin/activate
+        cmake -G Ninja -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
+
+    - name: FIXME symbolic back-end link
+      run: rm shoopdaloop/lib/backend/frontend_interface && ln -s ${{github.workspace}}/build/backend/frontend_interface shoopdaloop/lib/backend/frontend_interface
+
+    - name: Build CMake
+      run: |
+        source ${FULL_VENV}/bin/activate
+        cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
+    
+    - name: Back-end tests
+      run: |
+        mkdir reports
+        ${{github.workspace}}/build/backend/test/test_runner --reporter junit --out reports/backend_junit_results.xml
+        echo "Back-end test results file: $(ls -la reports/backend_junit_results.xml)"
+
+    - name: Publish Test Report
+      uses: mikepenz/action-junit-report@v3
+      if: success() || failure() # always run even if the previous step fails
+      with:
+        report_paths: 'reports/*.xml'
