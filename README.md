@@ -25,9 +25,9 @@ The main intended use is for quickly expressing complex musical ideas without ne
 
 # Status
 
-ShoopDaLoop works, but not all of its intended functionality is finished yet (see below). GUI elements relating to these features may already be there but not working yet.
-Note however that it is in early development. It has not been used for on-stage performing and probably shouldn't until after doing some serious testing.
-I am not a performing musician, so for me this kind of testing does not have priority.
+ShoopDaLoop works, but not nearly all of its intended functionality is finished yet (see below). GUI elements relating to these features may already be there but not working yet.
+This is in early development. It has not been used for on-stage performing and probably shouldn't until after doing some serious testing.
+I am not a performing musician, so for me rigorous testing does not have priority, but I do aim to accomodate and add automated testing.
 
 # Internal vs. External FX/Synth
 
@@ -41,10 +41,25 @@ If possible, internal FX/synth is usually preferred, because:
 - **Scripted looping**: ShoopDaLoop will have a scripting approach (WIP) suitable for (semi-)automated scripted looping. The "script" consists of a sequence of actions (e.g.: change scene, mute a loop, start/stop recording on a loop). The sets of actions are executed sequentially, either in a fully automatic or manually triggered way. This way the song structure can be laid out ahead of time.
 - **MIDI bindings**: Work is in progress to have scriptable MIDI control. The Akai APC Mini will be the first to get support, but the approach should make this easily extendible through script files.
 
-# License
-
-See LICENSE.txt.
-
 # Getting started
 
 Install using setup.py. (TODO: describe in more detail)
+
+# License / Copyright
+
+Other than Git submodules an files explicitly mentioning a different copyright owner, copyright owner for all files in this repo is Sander Vocke (2023).
+For copying, see LICENSE.txt.
+
+# Credits
+
+This project is only made possible due to many libraries and tools, including but not limited to:
+   
+   - Qt and Qt for Python;
+   - JACK audio;
+   - mido;
+   - numpy;
+   - scipy;
+   - soundfile;
+   - resampy;
+   - boost::ut;
+   - many others (see submodules and dependencies)
