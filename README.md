@@ -1,4 +1,4 @@
-![Logo](./resources/logo-small.png)
+![Logo](./shoopdaloop/resources/logo-small.png)
 
 # ShoopDaLoop
 
