@@ -1,9 +1,9 @@
 from setuptools import setup, find_packages
 
 setup(name='shoopdaloop',
-      version='0.1',
-      description='Loop-based music creation tool for live use or recording',
-      url='https://gitea.octiron.soleus.nu/sander/shoopdaloop',
+      version='0.1.0',
+      description='A live looping application for Linux with a few DAW-like features',
+      url='https://github.com/SanderVocke/shoopdaloop',
       author='Sander Vocke',
       author_email='sandervocke@gmail.com',
       license='MIT',
