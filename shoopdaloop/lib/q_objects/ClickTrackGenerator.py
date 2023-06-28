@@ -4,7 +4,7 @@ import playsound
 
 from PySide6.QtCore import QObject, Slot
 
-from ..GenClickTrack import gen_click_track
+from ..gen_click_track import gen_click_track
 
 class ClickTrackGenerator(QObject):
     script_dir = os.path.dirname(os.path.abspath(__file__))
