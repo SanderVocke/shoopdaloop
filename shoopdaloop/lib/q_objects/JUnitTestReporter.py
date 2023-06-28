@@ -69,8 +69,6 @@ class JUnitTestReporter(QObject):
             self._results['files'][filename]['n_funcs_failed'] += 1
             self._results['n_funcs_failed'] += 1
         
-
-
     @Slot(result=str)
     def generate_junit(self):
         r = '<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n'
