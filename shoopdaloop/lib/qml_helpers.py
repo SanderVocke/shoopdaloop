@@ -21,12 +21,10 @@ from lib.q_objects.SchemaValidator import SchemaValidator
 from lib.q_objects.KeyModifiers import KeyModifiers
 from lib.q_objects.ApplicationMetadata import ApplicationMetadata
 from lib.q_objects.Logger import Logger
+from lib.q_objects.ControlHandler import ControlHandler
+from lib.q_objects.ScriptingEngine import ScriptingEngine
 from lib.q_objects.DictTreeModel import DictTreeModelFactory
 from lib.cpp_imports import RenderAudioWaveform
-#from lib.q_objects.MIDIControlManager import MIDIControlManager
-#from lib.q_objects.MIDIControlLink import MIDIControlLink
-#from lib.q_objects.MIDIControlDialect import MIDIControlDialect
-#from lib.q_objects.MIDIControlInputRule import MIDIControlInputRule
 
 script_dir = os.path.dirname(os.path.realpath(__file__))
 version_file = script_dir + '/../../version.txt'
@@ -42,10 +40,6 @@ def register_shoopdaloop_qml_classes():
     register_qml_class(LoopAudioChannel, 'LoopAudioChannel')
     register_qml_class(LoopMidiChannel, 'LoopMidiChannel')
     register_qml_class(ClickTrackGenerator, 'ClickTrackGenerator')
-    #register_qml_class(MIDIControlManager, 'MIDIControlManager')
-    #register_qml_class(MIDIControlLink, 'MIDIControlLink')
-    #register_qml_class(MIDIControlDialect, 'MIDIControlDialect')
-    #register_qml_class(MIDIControlInputRule, 'BacMIDIControlInputRulekend')
     register_qml_class(Backend, 'Backend')
     register_qml_class(Task, 'Task')
     register_qml_class(Tasks, 'Tasks')
@@ -56,7 +50,9 @@ def register_shoopdaloop_qml_classes():
     register_qml_class(KeyModifiers, 'KeyModifiers')
     register_qml_class(ApplicationMetadata, 'ApplicationMetadata')
     register_qml_class(Logger, 'Logger')
+    register_qml_class(ScriptingEngine, 'ScriptingEngine')
     register_qml_class(DictTreeModelFactory, 'DictTreeModelFactory')
+    register_qml_class(ControlHandler, 'ControlHandler')
 
 def create_and_populate_root_context(engine, parent):
     items = {
@@ -66,7 +62,8 @@ def create_and_populate_root_context(engine, parent):
         'key_modifiers': KeyModifiers(parent=parent),
         'app_metadata': ApplicationMetadata(parent=parent),
         'default_logger': Logger(parent=parent),
-        'tree_model_factory': DictTreeModelFactory(parent=parent)
+        'tree_model_factory': DictTreeModelFactory(parent=parent),
+        'scripting_engine': ScriptingEngine(parent=parent)
     }
 
     items['default_logger'].name = 'Frontend.Qml'

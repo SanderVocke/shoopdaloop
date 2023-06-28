@@ -8,7 +8,7 @@ on:
 
 env:
   BUILD_TYPE: Debug
-  BUILD_DEPENDS_ARCH: qt6 qt6-declarative jack2 lv2 lilv boost spdlog fmt shiboken6 python git cmake ninja pkgconf pyside6 python-pip nlohmann-json xorg-xinit xf86-video-dummy xorg-server jack2
+  BUILD_DEPENDS_ARCH: qt6 qt6-declarative jack2 lv2 lilv boost spdlog fmt shiboken6 python git cmake ninja pkgconf pyside6 python-pip nlohmann-json xorg-xinit xf86-video-dummy xorg-server jack2 luajit
   BUILD_DEPENDS_PYTHON: ctypesgen pytest
   RUN_DEPENDS_PYTHON: playsound resampy mido jsonschema numpy scipy soundfile pyjacklib
   XORG_CONFIG: |

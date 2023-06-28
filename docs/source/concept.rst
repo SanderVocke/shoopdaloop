@@ -44,11 +44,11 @@ In **dry/wet** mode, an effects and/or synthesis chain can be inserted for the t
 
 
 
-Scripting
------------
+Sequencing
+-----------------
 
-In **ShoopDaLoop**, a **script** is a sequential automation of actions on loops. They can be used for turning a set of loops into a cohesive song.
+In **ShoopDaLoop**, a sequential automation of actions on loops is possible. Such a sequence can produce a progressive song from a set of loops. Multiple sequencings are possible for the same collection of loops.
 
-But there are more possibilities: recording can also be automated by scripts. So they also offer a way to set up a live looping performance where the sequence of instruments played is pre-scripted.
+But there are more possibilities: recording can also be automated. So this also offers a way to set up a live looping performance where the sequence of instruments played is pre-scripted.
 
-A session can have more than one script.
+A session can have more than one sequencing.
