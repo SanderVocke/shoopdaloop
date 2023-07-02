@@ -38,7 +38,8 @@ class ScriptingEngine(QObject):
         self.logger.debug('Initializing Lua runtime.')
         self.lua = lupa.LuaRuntime()
         self._current_context = ScriptingNullContext()
-        self.eval_builtin_script('runtime_init.lua')
+        self.execute_builtin_script('sandbox.lua', False)
+        self.execute_builtin_script('runtime_init.lua')
         self.define_callbacks()
         
 
@@ -56,12 +57,12 @@ class ScriptingEngine(QObject):
     def define_callbacks(self):
         pass
 
-    def eval_builtin_script(self, filename):
+    def execute_builtin_script(self, filename, sandboxed=True):
         self.logger.debug('Running built-in script: {}'.format(filename))
         script = None
         with open(lua_scriptdir  + '/' + filename, 'r') as f:
             script = f.read()
-        return self.execute(script)
+        return self.execute(script, sandboxed)
 
     ######################
     # PROPERTIES
@@ -85,24 +86,30 @@ class ScriptingEngine(QObject):
     def new_context(self):
         return ScriptingContext(self.lua)
 
-    @Slot(str, 'QVariant', result='QVariant')
-    def eval(self, lua_code, context=None):
+    @Slot(str, 'QVariant', bool, result='QVariant')
+    def eval(self, lua_code, context=None, sandboxed=True):
         self.logger.trace('Eval (context {}):\n{}'.format(context, lua_code))
         prev_context = self.current_context()
         if context:
             self.use_context(context)
-        rval = self.lua.eval(lua_code)
+        if not sandboxed:
+            rval = self.lua.eval(lua_code)
+        else:
+            rval = self.lua.eval('run_sandboxed({})'.format(lua_code))
         if context:
             self.use_context(prev_context)
         return rval
     
     @Slot(str, 'QVariant')
-    def execute(self, lua_code, context=None):
+    def execute(self, lua_code, context=None, sandboxed=True):
         self.logger.trace('Execute (context {}):\n{}'.format(context, lua_code))
         prev_context = self.current_context()
         if context:
             self.use_context(context)
-        self.lua.execute(lua_code)
+        if not sandboxed:
+            self.lua.execute(lua_code)
+        else:
+            self.lua.execute('run_sandboxed({})'.format(lua_code))
         if context:
             self.use_context(prev_context)
 

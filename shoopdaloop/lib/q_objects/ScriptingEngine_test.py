@@ -14,6 +14,19 @@ def test_callback():
 
     assert(eng.eval('test_python_callback()') == "HELLO WORLD")
 
+def test_sandbox():
+    eng = ScriptingEngine()
+    unsafe_command = 'load("print(\"hello world\")")'
+    safe_command = 'print("hello world")'
+
+    eng.eval(safe_command)
+    eng.execute(safe_command)
+
+    with pytest.raises(lupa.LuaError):
+        eng.eval(unsafe_command)
+    with pytest.raises(lupa.LuaError):
+        eng.execute(unsafe_command)
+
 def test_nonexistent_global():
     eng = ScriptingEngine()
     with pytest.raises(lupa.LuaError):

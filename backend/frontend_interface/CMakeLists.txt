@@ -37,7 +37,7 @@ endif()
 # Generate C bindings
 add_custom_command(
   OUTPUT shoopdaloop_backend.py
-  COMMAND ${RUN_CMD_PREFIX} ctypesgen --no-macro-warnings -lshoopdaloop_backend ${CMAKE_CURRENT_SOURCE_DIR}/shoopdaloop_backend.h ${CMAKE_CURRENT_SOURCE_DIR}/types.h -o shoopdaloop_backend.py
+  COMMAND ${RUN_CMD_PREFIX} ${CTYPESGEN_COMMAND} --no-macro-warnings -lshoopdaloop_backend ${CMAKE_CURRENT_SOURCE_DIR}/shoopdaloop_backend.h ${CMAKE_CURRENT_SOURCE_DIR}/types.h -o shoopdaloop_backend.py
   DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/shoopdaloop_backend.h ${CMAKE_CURRENT_SOURCE_DIR}/shoopdaloop_backend.cpp
   COMMENT "Generating C bindings for back-end."
   )
