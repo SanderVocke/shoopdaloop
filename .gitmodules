@@ -19,3 +19,6 @@
 [submodule "third_party/base64"]
 	path = third_party/base64
 	url = https://github.com/tobiaslocker/base64.git
+[submodule "third_party/ctypesgen"]
+	path = third_party/ctypesgen
+	url = https://github.com/ctypesgen/ctypesgen.git

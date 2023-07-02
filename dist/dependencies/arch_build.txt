@@ -1,0 +1,6 @@
+base-devel
+git
+cmake
+ninja
+python-pytest
+nlohmann-json
