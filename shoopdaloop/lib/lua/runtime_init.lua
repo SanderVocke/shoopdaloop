@@ -15,7 +15,7 @@ end
 --  If it already exists, a declaration is ignored.
 function declare_global (name, initval)
   if (not global_exists(name)) then
-    rawset(_G, name, initval)
+    rawset(_ENV, name, initval)
     __shoop_declared_globals[name] = true
   end
 end
@@ -38,7 +38,6 @@ local __shoop_highest_contextid = nil
 local __shoop_contexts = {}
 
 function __shoop_new_context()
-  local name
   if (not __shoop_highest_contextid) then
     __shoop_highest_contextid = 1
   else
@@ -106,7 +105,7 @@ function declare_new_in_context (name, initval)
   end
 end
 
-setmetatable(_G, {
+setmetatable(_ENV, {
   __newindex = function (t, n, v)
     if exists_in_context(n) then
       __shoop_set_context (n, v)

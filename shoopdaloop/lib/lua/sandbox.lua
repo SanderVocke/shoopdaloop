@@ -29,11 +29,18 @@ local env = {
         rad = math.rad, random = math.random, sin = math.sin, sinh = math.sinh, 
         sqrt = math.sqrt, tan = math.tan, tanh = math.tanh },
     os = { clock = os.clock, difftime = os.difftime, time = os.time },
+    setmetatable = setmetatable,
+    error = error,
+    print = __shoop_print,
+    rawset = rawset,
+    rawget = rawget,
 }
 
 -- run code under environment
-local function run_sandboxed(untrusted_code)
+function __shoop_run_sandboxed(untrusted_code)
   local untrusted_function, message = load(untrusted_code, nil, 't', env)
-  if not untrusted_function then return nil, message end
-  return pcall(untrusted_function)
+  if not untrusted_function then 
+    error(message)
+  end
+  return untrusted_function()
 end

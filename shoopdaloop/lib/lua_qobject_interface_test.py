@@ -28,5 +28,5 @@ def test_callback():
     eng = ScriptingEngine()
     create_lua_qobject_interface('testy', eng, obj)
 
-    assert(eng.eval('testy.foo()') == 'bar')
-    assert(eng.eval('testy.foz("baz")') == 'baz')
+    assert(eng.eval('return testy.foo()') == 'bar')
+    assert(eng.eval('return testy.foz("baz")') == 'baz')
