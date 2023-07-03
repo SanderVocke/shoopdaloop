@@ -21,7 +21,7 @@ end)
 
     # Now register callbacks into the qobject functions.
     if hasattr(qobject, 'lua_interfaces'):
-        registrar = scripting_engine.eval('function (name, cb) __{}_register_cb(name, cb) end'.format(lua_module_name))
+        registrar = scripting_engine.eval('return function (name, cb) __{}_register_cb(name, cb) end'.format(lua_module_name))
         for interface in type(qobject).lua_interfaces:
             # The callback will call back into Python via converter classes for each argument.
             bound_member = getattr(qobject, interface[0])

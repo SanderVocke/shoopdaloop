@@ -6,15 +6,15 @@ def test_init():
     eng = ScriptingEngine()
     assert(eng != None)
 
-    assert(eng.eval('1 + 1') == 2)
+    assert(eng.eval('return 1 + 1') == 2)
 
 def test_callback():
     eng = ScriptingEngine()
     eng.define_global_callback(lambda: "HELLO WORLD", 'test_python_callback')
 
-    assert(eng.eval('test_python_callback()') == "HELLO WORLD")
+    assert(eng.eval('return test_python_callback()') == "HELLO WORLD")
 
-def test_sandbox():
+def test_sandbox_security():
     eng = ScriptingEngine()
     unsafe_command = 'load("print(\"hello world\")")'
     safe_command = 'print("hello world")'
@@ -26,33 +26,42 @@ def test_sandbox():
         eng.eval(unsafe_command)
     with pytest.raises(lupa.LuaError):
         eng.execute(unsafe_command)
+    with pytest.raises(lupa.LuaError):
+        eng.eval('_G.{}'.format(unsafe_command))
+    with pytest.raises(lupa.LuaError):
+        eng.eval('rawget(_G, "load")(print(\"hello world\"))')
+
+def test_sandbox_persistence():
+    eng = ScriptingEngine()
+    eng.execute('declare_global("a", "foo")')
+    assert(eng.eval('return a') == "foo")
 
 def test_nonexistent_global():
     eng = ScriptingEngine()
     with pytest.raises(lupa.LuaError):
-        eng.eval('nonexisting')
+        eng.eval('return nonexisting')
     
 def test_declare_global():
     eng = ScriptingEngine()
     eng.execute('declare_global("existing", "Hello World!")')
-    assert(eng.eval('existing') == 'Hello World!')
+    assert(eng.eval('return existing') == 'Hello World!')
     eng.execute('declare_global("existing", "Should not overwrite")')
-    assert(eng.eval('existing') == 'Hello World!')
+    assert(eng.eval('return existing') == 'Hello World!')
 
 def test_declare_new_global():
     eng = ScriptingEngine()
     eng.execute('declare_new_global("existing", "Hello World!")')
-    assert(eng.eval('existing') == 'Hello World!')
+    assert(eng.eval('return existing') == 'Hello World!')
     with pytest.raises(lupa.LuaError):
         eng.execute('declare_new_global("existing", "Should throw")')
-    assert(eng.eval('existing') == 'Hello World!')
+    assert(eng.eval('return existing') == 'Hello World!')
 
 def test_context_declare_none_active():
     eng = ScriptingEngine()
     with pytest.raises(lupa.LuaError):
-        eng.eval('declare_in_context("foo")')
+        eng.execute('declare_in_context("foo")')
     with pytest.raises(lupa.LuaError):
-        eng.eval('declare_new_in_context("foo")')
+        eng.execute('declare_new_in_context("foo")')
 
 def test_declare_in_context():
     eng = ScriptingEngine()
@@ -65,22 +74,22 @@ def test_declare_in_context():
         eng.execute('declare_in_context("foa", "faz")')
 
     # get
-    assert(eng.eval('foo', c) == 'bar')
+    assert(eng.eval('return foo', c) == 'bar')
 
     # invalid get (no context passed)
     with pytest.raises(lupa.LuaError):
-        eng.eval('foo')
+        eng.eval('return foo')
     
     # redeclare (ignored)
     eng.execute('declare_in_context("foo", "baf")', c)
-    assert(eng.eval('foo', c) == 'bar')
+    assert(eng.eval('return foo', c) == 'bar')
 
     # modify
     eng.execute('foo = "baz"', c)
-    assert(eng.eval('foo', c) == 'baz')
+    assert(eng.eval('return foo', c) == 'baz')
     # still no global leak after modification
     with pytest.raises(lupa.LuaError):
-        assert(eng.eval('foo'))
+        assert(eng.eval('return foo'))
 
 def test_declare_new_in_context():
     eng = ScriptingEngine()
@@ -102,7 +111,7 @@ def test_two_contexts():
     eng.execute('declare_new_in_context("foo", "bar2")', c2)
 
     # get
-    assert(eng.eval('foo', c1) == 'bar1')
-    assert(eng.eval('foo', c2) == 'bar2')
+    assert(eng.eval('return foo', c1) == 'bar1')
+    assert(eng.eval('return foo', c2) == 'bar2')
     with pytest.raises(lupa.LuaError):
-        eng.eval('foo')
+        eng.eval('return foo')

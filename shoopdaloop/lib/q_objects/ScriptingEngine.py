@@ -17,19 +17,19 @@ lua_scriptdir = script_pwd + '/../lua'
 #   which will be visible to any other script(s) run with this context,
 #   but not to scripts which don't have this context.
 class ScriptingContext(QObject):
-    def __init__(self, lua_runtime, parent=None):
+    def __init__(self, engine, parent=None):
         super(ScriptingContext, self).__init__(parent)
-        self.context_id = lua_runtime.eval('__shoop_new_context()')
+        self.context_id = engine.eval('return __shoop_new_context()')
 
-    def use(self, lua_runtime):
-        lua_runtime.execute('__shoop_use_context({})'.format(self.context_id))
+    def use(self, engine):
+        engine.execute('__shoop_use_context({})'.format(self.context_id))
 
 class ScriptingNullContext(QObject):
     def __init__(self, parent=None):
         super(ScriptingNullContext, self).__init__(parent)
 
-    def use(self, lua_runtime):
-        lua_runtime.execute('__shoop_use_context(nil)')
+    def use(self, engine):
+        engine.execute('__shoop_use_context(nil)')
 
 class ScriptingEngine(QObject):
     def __init__(self, parent=None):
@@ -38,7 +38,10 @@ class ScriptingEngine(QObject):
         self.logger.debug('Initializing Lua runtime.')
         self.lua = lupa.LuaRuntime()
         self._current_context = ScriptingNullContext()
+        registrar = self.lua.eval('function(name, fn) _G[name] = fn end')
+        registrar('__shoop_print', lambda s, l=self.logger: l.info('Lua Script: {}'.format(s)))
         self.execute_builtin_script('sandbox.lua', False)
+        self.run_sandboxed = self.lua.eval('function (code) return __shoop_run_sandboxed(code) end')
         self.execute_builtin_script('runtime_init.lua')
         self.define_callbacks()
         
@@ -48,7 +51,7 @@ class ScriptingEngine(QObject):
         sig = inspect.signature(py_cb)
         declaration_name = ('declare_global' if overwrite else 'declare_new_global')
         # create a temporary registrar which can be used to register our global function
-        registrar = self.eval('function(py_cb, name) {0}(name, function({1}) return py_cb({1}) end) end'.format(
+        registrar = self.eval('return function(py_cb, name) {0}(name, function({1}) return py_cb({1}) end) end'.format(
             declaration_name,
             ','.join(sig.parameters.keys())
         ))
@@ -62,7 +65,7 @@ class ScriptingEngine(QObject):
         script = None
         with open(lua_scriptdir  + '/' + filename, 'r') as f:
             script = f.read()
-        return self.execute(script, sandboxed)
+        return self.execute(script, None, sandboxed)
 
     ######################
     # PROPERTIES
@@ -75,7 +78,7 @@ class ScriptingEngine(QObject):
     @Slot('QVariant')
     def use_context(self, context):
         self.logger.debug("Using context: {}".format(context))
-        context.use(self.lua)
+        context.use(self)
         self._current_context = context
     
     @Slot(result='QVariant')
@@ -84,7 +87,7 @@ class ScriptingEngine(QObject):
     
     @Slot(result='QVariant')
     def new_context(self):
-        return ScriptingContext(self.lua)
+        return ScriptingContext(self)
 
     @Slot(str, 'QVariant', bool, result='QVariant')
     def eval(self, lua_code, context=None, sandboxed=True):
@@ -95,7 +98,7 @@ class ScriptingEngine(QObject):
         if not sandboxed:
             rval = self.lua.eval(lua_code)
         else:
-            rval = self.lua.eval('run_sandboxed({})'.format(lua_code))
+            rval = self.run_sandboxed(lua_code)
         if context:
             self.use_context(prev_context)
         return rval
@@ -109,7 +112,7 @@ class ScriptingEngine(QObject):
         if not sandboxed:
             self.lua.execute(lua_code)
         else:
-            self.lua.execute('run_sandboxed({})'.format(lua_code))
+            self.run_sandboxed(lua_code)
         if context:
             self.use_context(prev_context)
 
