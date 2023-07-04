@@ -40,5 +40,6 @@ jobs:
       -
         name: Unique tag
         run: |
+          docker pull sandervocke/shoopdaloop_build_arch:latest
           docker tag sandervocke/shoopdaloop_build_arch:latest sandervocke/shoopdaloop_build_arch:${UNIQUETAG}
           docker push sandervocke/shoopdaloop_build_arch:${UNIQUETAG}
