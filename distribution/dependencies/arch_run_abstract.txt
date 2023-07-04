@@ -1,0 +1,16 @@
+qt6-declarative
+jack
+lv2
+lilv
+boost
+spdlog
+fmt
+pkgconf
+x-server
+luajit
+python
+pyside6
+python-jsonschema
+python-numpy
+python-scipy
+python-lupa

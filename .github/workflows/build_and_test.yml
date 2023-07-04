@@ -35,7 +35,7 @@ permissions:
   checks: write
 
 jobs:
-  build:
+  build_whl:
     runs-on: ubuntu-latest
     container:
       image: sandervocke/shoopdaloop_build_arch:latest
@@ -47,39 +47,56 @@ jobs:
       with:
         submodules: recursive
 
-    - name: Configure CMake
+    - name: Build wheel
       run: |
-        cmake -G Ninja -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
+        python -m build -w --no-isolation
+        cd dist && echo "WHEEL=$(ls *.whl)" >> $GITHUB_ENV
+    
+    - name: Store wheel
+      uses: actions/upload-artifact@v3
+      with:
+        name: wheel
+        path: dist/${{ env.WHEEL }}
+  
+  # Test the built wheel in an Arch environment with dependencies pre-installed.
+  test_wheel_arch_nodeps:
+    needs: build_whl
+    runs-on: ubuntu-latest
+    container:
+      image: sandervocke/shoopdaloop_run_arch:latest
+      options: --user root --workdir /
+    
+    steps:
+    - name: Retrieve wheel
+      uses: actions/download-artifact@v3
+      with:
+        name: wheel
+        path: ~/wheel
 
-    - name: FIXME symbolic back-end link to build folder
+    - name: Install wheel
       run: |
-        ln -s ${{github.workspace}}/build build
-
-    - name: Build using CMake
-      run: |
-        cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
+        sudo python -m pip install ~/wheel/*.whl --break-system-packages
+        echo "SITE_PKGS=$(python -c 'import site; print(*site.getsitepackages())')" >> $GITHUB_ENV
     
     - name: Back-end tests
       if: success() || failure() # always run even if the previous step fails
       run: |
         mkdir -p reports
-        ${{github.workspace}}/build/backend/test/test_runner --reporter junit --out reports/backend_junit_results.xml
+        ${{ env.SITE_PKGS }}/shoopdaloop/test_runner --reporter junit --out reports/backend_junit_results.xml
         echo "Back-end test results file: $(ls -la reports/backend_junit_results.xml)"
     
     - name: Python tests
       if: success() || failure() # always run even if the previous step fails
       run: |
         mkdir -p reports
-        pytest --junit-xml=reports/python_junit_results.xml
+        pytest ${{ env.SITE_PKGS }}/shoopdaloop --junit-xml=reports/python_junit_results.xml
         echo "Python test results file: $(ls -la reports/python_junit_results.xml)"
     
     - name: QML tests
       if: success() || failure() # always run even if the previous step fails
       run: |
         mkdir -p reports
-        X -config /etc/dummy_monitor.conf &
-        sleep 0.5
-        DISPLAY=:0 ./test/run_qml_tests.py --junit reports/qml_junit_results.xml
+        QT_QPA_PLATFORM=vnc ${{ env.SITE_PKGS }}/shoopdaloop/run_qml_tests.py --junit reports/qml_junit_results.xml
         echo "QML test results file: $(ls -la reports/qml_junit_results.xml)"
 
     - name: Publish Backend Test Report

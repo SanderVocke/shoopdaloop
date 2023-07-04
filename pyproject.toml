@@ -1,0 +1,111 @@
+[project]
+name = "shoopdaloop"
+version = "0.1.0"
+description = "An audio + MIDI live looping application with some DAW-like features."
+readme = "README.md"
+license = { "file" = "LICENSE" }
+authors = [
+  { name = "Sander Vocke", email = "sandervocke@gmail.com" },
+]
+maintainers = [
+  { name = "Sander Vocke", email = "sandervocke@gmail.com" },
+]
+requires-python = ">=3.7"
+
+dependencies = [
+  "playsound",
+  "soundfile",
+  "resampy",
+  "mido",
+  "jsonschema",
+  "numpy",
+  "pyjacklib",
+  "pyside6",
+  "lupa"
+]
+
+keywords = ['music', 'midi', 'jack', 'looping']
+
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "License :: OSI Approved :: GNU Lesser General Public License v2 or later (LGPLv2+)",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.7",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Multimedia :: Sound/Audio :: Capture/Recording",
+  "Operating System :: POSIX :: Linux",
+]
+
+[project.gui-scripts]
+shoopdaloop = "shoopdaloop.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/SanderVocke/shoopdaloop"
+# Documentation = "https://shoopdaloop.readthedocs.io/"
+"Bug Tracker" = "https://github.com/SanderVocke/shoopdaloop/issues"
+Discussions = "https://github.com/SanderVocke/shoopdaloop/discussions"
+
+[project.optional-dependencies]
+test = [
+  "pytest",
+]
+docs = [
+  "sphinx",
+]
+
+[tool.setuptools.packages.find]
+# All the following settings are optional:
+where = ["src"]
+include = ["*"]
+exclude = ['codegen', 'dist', 'third_party']
+
+[build-system]
+requires = ["py-build-cmake~=0.1.8", "pyside6", "shiboken6"]
+build-backend = "py_build_cmake.build"
+
+[tool.py-build-cmake.module]
+directory = "src"
+
+[tool.py-build-cmake.cmake]
+minimum_version = "3.22"
+build_type = "Debug"
+source_path = "src"
+build_args = ["-j"]
+install_components = ["package_install"]
+
+[tool.py-build-cmake.editable]
+mode = "symlink"
+
+# TODO:
+# -entry-points / scripts
+
+ #     package_data={
+ #       'shoopdaloop.lib.backend' : [
+ #         'frontend_interface/*.so',
+ #         'frontend_interface/*.py',
+ #         'frontend_interface/*.js'
+ #       ],
+ #       'shoopdaloop.lib' : [
+ #         'qml/*',
+ #         'qml/applications/*',
+ #         'qml/test/*',
+ #         '*.js',
+ #         'session_schemas/*',
+ #         'session_schemas/audioport/*',
+ #         'session_schemas/channel/*',
+ #         'session_schemas/loop/*',
+ #         'session_schemas/midiport/*',
+ #         'session_schemas/session/*',
+ #         'session_schemas/track/*',
+ #       ],
+ #       'shoopdaloop' : [
+ #         'third_party/QtMaterialDesignIcons/*',
+ #         'third_party/QtMaterialDesignIcons/qml/*',
+ #         'third_party/QtMaterialDesignIcons/resources/*',
+ #         'third_party/QtMaterialDesignIcons/sources/*',
+ #         'resources/*'
+ #       ]
+ #     })

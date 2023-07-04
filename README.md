@@ -41,9 +41,20 @@ If possible, internal FX/synth is usually preferred, because:
 - **Scripted looping**: ShoopDaLoop will have a scripting approach (WIP) suitable for (semi-)automated scripted looping. The "script" consists of a sequence of actions (e.g.: change scene, mute a loop, start/stop recording on a loop). The sets of actions are executed sequentially, either in a fully automatic or manually triggered way. This way the song structure can be laid out ahead of time.
 - **MIDI bindings**: Work is in progress to have scriptable MIDI control. The Akai APC Mini will be the first to get support, but the approach should make this easily extendible through script files.
 
-# Getting started
+# Installation
 
-Install using setup.py. (TODO: describe in more detail)
+ShoopDaLoop is distributed as a Python package. Installation options are still quite limited as this is in pre-alpha development.
+
+## Building from source
+
+- Check the dependency packages needed for your OS in distribution/dependencies (see the README.txt there for details). At the moment of writing this, these dependencies are only listed for Arch Linux, and some of the packages needed are from the AUR.
+- To build a Python wheel: `python -m build -w --no-isolation`. The wheel can then be installed in a virtualenv, e.g. using `pipx`: `pipx install dist/shoopdaloop-*.whl`. If you have dependency packages already installed, using site packages for the virtualenv should be enough.
+- Or, for an editable installation (development): `pip install -e --no-build-isolation .` This will install symlinks to the source files so that changes made in the checked-out source are immediately in effect. Reinstallation is needed if C / C++ files are changed.
+- If you have any issues or need more details, take the steps used in this repo's continuous integration scripts as an example. See .github/workflows. There are multiple different installation flows there.
+
+## Installing a package
+
+- There is a preview PKGBUILD for Arch available, built from a template. In an empty directory, run `distribution/packaging/arch/PKGBUILD.git.generate.sh > PKGBUILD`. The PKGBUILD can be built and installed with `makepkg`. Be aware that it will pull in the git repo again and that it has dependencies on AUR packages which may need to be manually installed.
 
 # License / Copyright
 
