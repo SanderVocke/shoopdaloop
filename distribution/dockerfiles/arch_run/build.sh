@@ -1,0 +1,1 @@
+cd ${SCRIPTPATH}/../.. && podman build -f dockerfiles/arch_run/arch_run.Dockerfile -t sandervocke/shoopdaloop_run_arch:latest . $@
