@@ -37,5 +37,4 @@ jobs:
           file: dist/dockerfiles/arch_build/arch_build.Dockerfile
           push: true
           tags: |
-            sandervocke/shoopdaloop_build_arch:latest
-            sandervocke/shoopdaloop_build_arch:${UNIQUETAG}
+            sandervocke/shoopdaloop_build_arch:latest,sandervocke/shoopdaloop_build_arch:${UNIQUETAG}
