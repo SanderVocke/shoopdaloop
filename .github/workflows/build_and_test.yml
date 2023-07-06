@@ -96,7 +96,7 @@ jobs:
       if: success() || failure() # always run even if the previous step fails
       run: |
         mkdir -p reports
-        QT_QPA_PLATFORM=vnc ${{ env.SITE_PKGS }}/shoopdaloop/run_qml_tests.py --junit reports/qml_junit_results.xml
+        QT_QPA_PLATFORM=vnc ${{ env.SITE_PKGS }}/shoopdaloop/run_qml_tests.py -o reports/qml_junit_results.xml,junitxml
         echo "QML test results file: $(ls -la reports/qml_junit_results.xml)"
 
     - name: Publish Backend Test Report

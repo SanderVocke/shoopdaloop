@@ -32,55 +32,24 @@ class Setup(QObject):
 
 logger = Logger('Test.Runner')
 
-def usage():
-    print('Usage: {} [--testfile | -f TESTFILE] [--junit report.xml] [--help | -h]'.format(sys.argv[0]))
-    print('Options:')
-    # print('  --testfile | -f TESTFILE: specify a file selector. Multiple may be used.')
-    print('  --junit | -j report.xml:  use JUnit reporting and write to the given filename.')
-    print('  --help | -h:              display this help.')
+# Add a -h option to the standard Qt options
+for idx,arg in enumerate(sys.argv[1:]):
+    if arg == '-h':
+        sys.argv[idx+1] = '-help'
 
-# Qt test frameworks has its own argument handling, but most of those are unneeded
-# and it also doesn't provide a -h / --help. Parse our own and generate the correct
-# args for Qt instead.
-maybe_junit_filename = None
-maybe_file_selectors = []
-ignore_arg = False
-for idx, arg in enumerate(sys.argv[1:]):
-    maybe_next_arg = sys.argv[idx+2] if len(sys.argv) > (idx+2) else None
-    if ignore_arg:
-        ignore_arg = False
-        continue
-    elif (arg == '--junit' or arg == '-j') and maybe_next_arg:
-        maybe_junit_filename = maybe_next_arg
-        ignore_arg = True
-    # elif (arg == '--testfile' or arg == '-f') and maybe_next_arg:
-    #     maybe_file_selectors.append(maybe_next_arg)
-    #     ignore_arg = True
-    elif (arg == '--help' or arg == '-h'):
-        usage()
-        exit(0)
-    else:
-        print('Invalid argument: {}'.format(arg))
-        usage()
-        exit(1)
-
-# Generate args to pass on
-# argv = (POINTER(c_char) * (len(maybe_file_selectors)*2))()
-# for idx, s in enumerate(maybe_file_selectors):
-#     print(s)
-#     argv[idx*2] = cast('-file-selector'.encode('ascii'), POINTER(c_char))
-#     argv[idx*2+1] = cast(s.encode('ascii'), POINTER(c_char))
-argv = (POINTER(c_char) * 0)()
+def to_c_chars(strings):
+    numParams    = len(strings)
+    strArrayType = c_char_p * numParams
+    strArray     = strArrayType()
+    for i, param in enumerate(strings):
+        if isinstance(param, bytes):
+            strArray[i] = c_char_p(param)
+        else:
+            strArray[i] = c_char_p(param.encode('utf-8'))
+    return cast(strArray, POINTER(POINTER(c_char)))
 
 reporter = JUnitTestReporter(parent=None)
 setup = Setup(reporter, parent=None)
 
 raw_setup = cast(Shiboken.getCppPointer(setup)[0], c_void_p)
-qml_tests.run_quick_test_main_with_setup(len(argv), argv, 'shoopdaloop_tests', script_dir + '/..', raw_setup)
-
-if maybe_junit_filename:
-    logger.info('Generating JUnit output into: {}'.format(maybe_junit_filename))
-    junit = reporter.generate_junit()
-    with open(maybe_junit_filename, 'w') as f:
-        f.write(junit)
-    logger.info('JUnit:\n{}'.format(junit))
+qml_tests.run_quick_test_main_with_setup(len(sys.argv), to_c_chars(sys.argv), 'shoopdaloop_tests', script_dir + '/..', raw_setup)
