@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
    
-FROM ubuntu:latest
+FROM ubuntu:rolling
 WORKDIR /
 
 RUN DEBIAN_FRONTEND=noninteractive apt-get update && \

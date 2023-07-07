@@ -13,4 +13,3 @@ python3-jsonschema
 python3-numpy
 python3-scipy
 python3-lupa
-libgl1-mesa-dev
