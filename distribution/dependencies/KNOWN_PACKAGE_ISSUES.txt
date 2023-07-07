@@ -1,0 +1,1 @@
+2023-07-07: python-numba package broken in Arch (depends on older NumPy). Temporarily switching to python-numba-git.
