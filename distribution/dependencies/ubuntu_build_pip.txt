@@ -1,1 +1,3 @@
 py-build-cmake
+pyjacklib
+mido
