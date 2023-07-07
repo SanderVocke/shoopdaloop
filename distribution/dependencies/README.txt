@@ -5,3 +5,4 @@ The filenames:
 - ..._build.txt:        what is needed to build ShoopDaLoop. Assumes ..._run_default.txt is already installed.
 - ..._aur.txt:          variants of the above which list AUR packages (non-official) for Arch.
 - ..._pip.txt:          variants of the above which list PyPi packages (only used if no official distro packages available).
+- ..._python.txt:       system packages which install Python modules. Can be excluded in favor of Pypi if needed.

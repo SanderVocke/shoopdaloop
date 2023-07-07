@@ -1,3 +1,6 @@
 pyside6
 pyjacklib
 mido
+playsound
+soundfile
+resampy
