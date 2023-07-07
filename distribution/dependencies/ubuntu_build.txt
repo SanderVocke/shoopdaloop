@@ -7,3 +7,4 @@ nlohmann-json3-dev
 libgl1-mesa-dev
 libxkbcommon-dev
 libvulkan-dev
+libspdlog-dev

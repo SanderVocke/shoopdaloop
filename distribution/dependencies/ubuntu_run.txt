@@ -3,7 +3,7 @@ jackd2
 lv2-dev
 liblilv-0-0
 libboost-all-dev
-libspdlog1
+libspdlog1.10
 libfmt-dev
 pkgconf
 xserver-xorg
