@@ -28,6 +28,7 @@ jobs:
 
     - name: Build wheel
       run: |
+        echo "::warning title=BUILD::TODO: Should probably build our wheel based on PyPi packages and not Ubuntu repo packages."
         python3 -m build -w --no-isolation --skip-dependency-check
         cd dist && echo "WHEEL=$(ls *.whl)" >> $GITHUB_ENV
     
@@ -76,6 +77,7 @@ jobs:
       if: success() || failure() # always run even if the previous step fails
       run: |
         mkdir -p reports
+        echo "::warning title=QMLTEST::TODO: QML test step will not fail if any tests fail. Double-check the summary!"
         QT_QPA_PLATFORM=vnc ${{ env.SITE_PKGS }}/shoopdaloop/run_qml_tests.py -o reports/qml_junit_results.xml,junitxml
         echo "QML test results file: $(ls -la reports/qml_junit_results.xml)"
     
@@ -149,6 +151,7 @@ jobs:
       if: success() || failure() # always run even if the previous step fails
       run: |
         mkdir -p reports
+        echo "::warning title=QMLTEST::TODO: QML test step will not fail if any tests fail. Double-check the summary!"
         QT_QPA_PLATFORM=vnc ${{ env.SITE_PKGS }}/shoopdaloop/run_qml_tests.py -o reports/qml_junit_results.xml,junitxml
         echo "QML test results file: $(ls -la reports/qml_junit_results.xml)"
     
@@ -224,6 +227,7 @@ jobs:
       if: success() || failure() # always run even if the previous step fails
       run: |
         mkdir -p reports
+        echo "::warning title=QMLTEST::TODO: QML test step will not fail if any tests fail. Double-check the summary!"
         QT_QPA_PLATFORM=vnc ${{ env.SITE_PKGS }}/shoopdaloop/run_qml_tests.py -o reports/qml_junit_results.xml,junitxml
         echo "QML test results file: $(ls -la reports/qml_junit_results.xml)"
     
