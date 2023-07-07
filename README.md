@@ -2,7 +2,7 @@
 
 # ShoopDaLoop
 
-ShoopDaLoop is a live looping application for Linux with a few DAW-like features.
+ShoopDaLoop is a live looping application for Linux with a few DAW-like features. [Documentation](https://sandervocke.github.io/shoopdaloop/) lives here.
 
 > :warning: **There is no release yet. This is in pre-alpha. All there is to see on this repo is a preview of things to come.**
 
@@ -21,7 +21,7 @@ Live performance could also be a good use-case, although it is not quite battle-
 - **Click tracks**: can be generated via a dialog in the app.
 - **NSM**: Non/New Session Manager support (experimental).
 
-These features are explained in detail in the docs (see `docs` folder).
+These features are explained in detail in the [docs](https://sandervocke.github.io/shoopdaloop/).
 
 # Status
 
