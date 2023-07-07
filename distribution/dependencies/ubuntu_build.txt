@@ -1,0 +1,6 @@
+build-essential
+git
+cmake
+ninja-build
+python3-build
+nlohmann-json3-dev

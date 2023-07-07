@@ -24,5 +24,3 @@ RUN sudo pacman --noconfirm -S --needed --overwrite "*" $(cat dependencies/arch_
     yay --noconfirm -S --needed --overwrite "*" $(cat dependencies/arch_run_default_aur.txt | tr '\n' ' ') && \
     sudo pacman --noconfirm -S --needed --overwrite "*" python-pip
 
-COPY dockerfiles/resources/dummy_monitor.conf /etc/dummy_monitor.conf
-
