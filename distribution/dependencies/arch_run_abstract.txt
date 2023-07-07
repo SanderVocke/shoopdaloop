@@ -11,7 +11,7 @@ luajit
 python
 pyside6
 python-jsonschema
-python-numpy
 python-numba
+python-numpy
 python-scipy
 python-lupa

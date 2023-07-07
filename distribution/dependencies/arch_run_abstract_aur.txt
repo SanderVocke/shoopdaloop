@@ -1,6 +1,5 @@
 python-pyjacklib
 python-mido
-python-numba-git
 python-resampy
 python-soundfile
 python-playsound

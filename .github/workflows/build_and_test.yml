@@ -75,7 +75,8 @@ jobs:
 
     - name: Install wheel
       run: |
-        sudo python3 -m pip install --no-deps ~/wheel/*.whl --break-system-packages
+        run: echo "::warning title=PACKAGING_ISSUE::Temporarily removed --no-deps on Arch because of broken python-numba"
+        sudo python3 -m pip install ~/wheel/*.whl --break-system-packages
         echo "SITE_PKGS=$(python3 -c 'import site; print(*site.getsitepackages())')" >> $GITHUB_ENV
     
     - name: Back-end tests
