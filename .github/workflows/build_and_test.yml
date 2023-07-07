@@ -75,8 +75,8 @@ jobs:
 
     - name: Install wheel
       run: |
-        sudo python -m pip install --no-deps ~/wheel/*.whl --break-system-packages
-        echo "SITE_PKGS=$(python -c 'import site; print(*site.getsitepackages())')" >> $GITHUB_ENV
+        sudo python3 -m pip install --no-deps ~/wheel/*.whl --break-system-packages
+        echo "SITE_PKGS=$(python3 -c 'import site; print(*site.getsitepackages())')" >> $GITHUB_ENV
     
     - name: Back-end tests
       if: success() || failure() # always run even if the previous step fails
@@ -149,6 +149,79 @@ jobs:
     - name: Install wheel
       run: |
         sudo python3 -m pip install --no-deps ~/wheel/*.whl
+        echo "SITE_PKGS=$(python3 -c 'import site; print(*site.getsitepackages())')" >> $GITHUB_ENV
+    
+    - name: Back-end tests
+      if: success() || failure() # always run even if the previous step fails
+      run: |
+        mkdir -p reports
+        ${{ env.SITE_PKGS }}/shoopdaloop/test_runner --reporter junit --out reports/backend_junit_results.xml
+        echo "Back-end test results file: $(ls -la reports/backend_junit_results.xml)"
+    
+    - name: Python tests
+      if: success() || failure() # always run even if the previous step fails
+      run: |
+        mkdir -p reports
+        pytest ${{ env.SITE_PKGS }}/shoopdaloop --junit-xml=reports/python_junit_results.xml
+        echo "Python test results file: $(ls -la reports/python_junit_results.xml)"
+    
+    - name: QML tests
+      if: success() || failure() # always run even if the previous step fails
+      run: |
+        mkdir -p reports
+        QT_QPA_PLATFORM=vnc ${{ env.SITE_PKGS }}/shoopdaloop/run_qml_tests.py -o reports/qml_junit_results.xml,junitxml
+        echo "QML test results file: $(ls -la reports/qml_junit_results.xml)"
+    
+    - name: App runs and closes gracefully
+      if: success() || failure() # always run even if the previous step fails
+      run: |
+        QT_QPA_PLATFORM=vnc EXPECT_STAY_OPEN=1 WAIT_MS_BEFORE_CLOSE=5000 N_ITERATIONS=10 WAIT_MS_BEFORE_KILL=10000 ./scripts/test_run_app.sh shoopdaloop
+
+    - name: Publish Backend Test Report
+      uses: mikepenz/action-junit-report@v3
+      if: success() || failure() # always run even if the previous step fails
+      with:
+        report_paths: 'reports/backend_junit_results.xml'
+        detailed_summary: true
+        include_passed: true
+        check_name: 'Backend Test Report'
+    
+    - name: Publish Python Test Report
+      uses: mikepenz/action-junit-report@v3
+      if: success() || failure() # always run even if the previous step fails
+      with:
+        report_paths: 'reports/python_junit_results.xml'
+        detailed_summary: true
+        include_passed: true
+        check_name: 'Python Test Report'
+    
+    - name: Publish QML Test Report
+      uses: mikepenz/action-junit-report@v3
+      if: success() || failure() # always run even if the previous step fails
+      with:
+        report_paths: 'reports/qml_junit_results.xml'
+        detailed_summary: true
+        include_passed: true
+        check_name: 'QML Test Report'
+
+  # Test the built wheel in an Ubuntu environment using PyPi packages
+  test_wheel_ubuntu_pypi:
+    needs: build_whl
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu:rolling
+      options: --user root --workdir /
+    
+    steps:
+    - name: Retrieve wheel
+      uses: actions/download-artifact@v3
+      with:
+        name: wheel
+        path: ~/wheel
+
+    - name: Install wheel
+      run: |
+        sudo python3 -m pip install ~/wheel/*.whl
         echo "SITE_PKGS=$(python3 -c 'import site; print(*site.getsitepackages())')" >> $GITHUB_ENV
     
     - name: Back-end tests
