@@ -49,7 +49,7 @@ jobs:
 
     - name: Build wheel
       run: |
-        python -m build -w --no-isolation --skip-dependency-check
+        python3 -m build -w --no-isolation --skip-dependency-check
         cd dist && echo "WHEEL=$(ls *.whl)" >> $GITHUB_ENV
     
     - name: Store wheel
