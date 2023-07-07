@@ -38,7 +38,7 @@ jobs:
   build_whl:
     runs-on: ubuntu-latest
     container:
-      image: sandervocke/shoopdaloop_build_arch:latest
+      image: sandervocke/shoopdaloop_build_ubuntu:latest
       options: --user root --workdir /
     
     steps:      

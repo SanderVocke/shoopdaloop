@@ -78,34 +78,3 @@ install_components = ["package_install"]
 
 [tool.py-build-cmake.editable]
 mode = "symlink"
-
-# TODO:
-# -entry-points / scripts
-
- #     package_data={
- #       'shoopdaloop.lib.backend' : [
- #         'frontend_interface/*.so',
- #         'frontend_interface/*.py',
- #         'frontend_interface/*.js'
- #       ],
- #       'shoopdaloop.lib' : [
- #         'qml/*',
- #         'qml/applications/*',
- #         'qml/test/*',
- #         '*.js',
- #         'session_schemas/*',
- #         'session_schemas/audioport/*',
- #         'session_schemas/channel/*',
- #         'session_schemas/loop/*',
- #         'session_schemas/midiport/*',
- #         'session_schemas/session/*',
- #         'session_schemas/track/*',
- #       ],
- #       'shoopdaloop' : [
- #         'third_party/QtMaterialDesignIcons/*',
- #         'third_party/QtMaterialDesignIcons/qml/*',
- #         'third_party/QtMaterialDesignIcons/resources/*',
- #         'third_party/QtMaterialDesignIcons/sources/*',
- #         'resources/*'
- #       ]
- #     })
