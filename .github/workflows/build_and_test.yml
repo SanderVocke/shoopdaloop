@@ -75,8 +75,8 @@ jobs:
 
     - name: Install wheel
       run: |
-        run: echo "::warning title=PACKAGING_ISSUE::Temporarily removed --no-deps on Arch because of broken python-numba"
-        sudo python3 -m pip install ~/wheel/*.whl --break-system-packages
+        echo "::warning title=PACKAGING_ISSUE::Temporarily removed --no-deps on Arch because of broken python-numba"
+        python3 -m pip install ~/wheel/*.whl --break-system-packages
         echo "SITE_PKGS=$(python3 -c 'import site; print(*site.getsitepackages())')" >> $GITHUB_ENV
     
     - name: Back-end tests
@@ -112,7 +112,7 @@ jobs:
         report_paths: 'reports/backend_junit_results.xml'
         detailed_summary: true
         include_passed: true
-        check_name: 'Backend Test Report'
+        check_name: 'backend test (arch system)'
     
     - name: Publish Python Test Report
       uses: mikepenz/action-junit-report@v3
@@ -121,7 +121,7 @@ jobs:
         report_paths: 'reports/python_junit_results.xml'
         detailed_summary: true
         include_passed: true
-        check_name: 'Python Test Report'
+        check_name: 'python test (arch system)'
     
     - name: Publish QML Test Report
       uses: mikepenz/action-junit-report@v3
@@ -130,7 +130,7 @@ jobs:
         report_paths: 'reports/qml_junit_results.xml'
         detailed_summary: true
         include_passed: true
-        check_name: 'QML Test Report'
+        check_name: 'qml test (arch system)'
 
   # Test the built wheel in an Ubuntu environment with dependencies pre-installed.
   test_wheel_ubuntu_systempackages:
@@ -149,7 +149,7 @@ jobs:
 
     - name: Install wheel
       run: |
-        sudo python3 -m pip install --no-deps ~/wheel/*.whl
+        python3 -m pip install --no-deps --break-system-packages ~/wheel/*.whl
         echo "SITE_PKGS=$(python3 -c 'import site; print(*site.getsitepackages())')" >> $GITHUB_ENV
     
     - name: Back-end tests
@@ -185,7 +185,7 @@ jobs:
         report_paths: 'reports/backend_junit_results.xml'
         detailed_summary: true
         include_passed: true
-        check_name: 'Backend Test Report'
+        check_name: 'backend test (ubuntu system)'
     
     - name: Publish Python Test Report
       uses: mikepenz/action-junit-report@v3
@@ -194,7 +194,7 @@ jobs:
         report_paths: 'reports/python_junit_results.xml'
         detailed_summary: true
         include_passed: true
-        check_name: 'Python Test Report'
+        check_name: 'python test (ubuntu system)'
     
     - name: Publish QML Test Report
       uses: mikepenz/action-junit-report@v3
@@ -203,7 +203,7 @@ jobs:
         report_paths: 'reports/qml_junit_results.xml'
         detailed_summary: true
         include_passed: true
-        check_name: 'QML Test Report'
+        check_name: 'qml test (ubuntu system)'
 
   # Test the built wheel in an Ubuntu environment using PyPi packages
   test_wheel_ubuntu_pypi:
@@ -222,7 +222,7 @@ jobs:
 
     - name: Install wheel
       run: |
-        sudo python3 -m pip install ~/wheel/*.whl
+        python3 -m pip install ~/wheel/*.whl
         echo "SITE_PKGS=$(python3 -c 'import site; print(*site.getsitepackages())')" >> $GITHUB_ENV
     
     - name: Back-end tests
@@ -258,7 +258,7 @@ jobs:
         report_paths: 'reports/backend_junit_results.xml'
         detailed_summary: true
         include_passed: true
-        check_name: 'Backend Test Report'
+        check_name: 'backend test (ubuntu pypi)'
     
     - name: Publish Python Test Report
       uses: mikepenz/action-junit-report@v3
@@ -267,7 +267,7 @@ jobs:
         report_paths: 'reports/python_junit_results.xml'
         detailed_summary: true
         include_passed: true
-        check_name: 'Python Test Report'
+        check_name: 'python test (ubuntu pypi)'
     
     - name: Publish QML Test Report
       uses: mikepenz/action-junit-report@v3
@@ -276,4 +276,4 @@ jobs:
         report_paths: 'reports/qml_junit_results.xml'
         detailed_summary: true
         include_passed: true
-        check_name: 'QML Test Report'
+        check_name: 'qml test (ubuntu pypi)'
