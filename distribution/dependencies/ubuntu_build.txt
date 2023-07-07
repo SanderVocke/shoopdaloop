@@ -8,3 +8,4 @@ libgl1-mesa-dev
 libxkbcommon-dev
 libvulkan-dev
 libspdlog-dev
+liblilv-dev
