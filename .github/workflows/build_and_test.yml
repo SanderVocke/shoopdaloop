@@ -8,27 +8,6 @@ on:
 
 env:
   BUILD_TYPE: Debug
-  XORG_CONFIG: |
-    Section "Monitor"
-            Identifier "dummy_monitor"
-            HorizSync 28.0-80.0
-            VertRefresh 48.0-75.0
-            Modeline "1920x1080" 172.80 1920 2040 2248 2576 1080 1081 1084 1118
-    EndSection
-
-    Section "Device"
-            Identifier "dummy_card"
-            VideoRam 256000
-            Driver "dummy"
-    EndSection
-
-    Section "Screen"
-            Identifier "dummy_screen"
-            Device "dummy_card"
-            Monitor "dummy_monitor"
-            SubSection "Display"
-            EndSubSection
-    EndSection
 
 permissions:
   contents: read
@@ -77,7 +56,7 @@ jobs:
       run: |
         echo "::warning title=PACKAGING_ISSUE::Temporarily removed --no-deps on Arch because of broken python-numba"
         python3 -m pip install ~/wheel/*.whl --break-system-packages
-        echo "SITE_PKGS=$(python3 -c 'import site; print(*site.getsitepackages())')" >> $GITHUB_ENV
+        echo "SITE_PKGS=$(python3 -m pip show shiboken6 | grep "Location:" | sed -r 's/Location: //g')" >> $GITHUB_ENV
     
     - name: Back-end tests
       if: success() || failure() # always run even if the previous step fails
@@ -103,7 +82,7 @@ jobs:
     - name: App runs and closes gracefully
       if: success() || failure() # always run even if the previous step fails
       run: |
-        QT_QPA_PLATFORM=vnc EXPECT_STAY_OPEN=1 WAIT_MS_BEFORE_CLOSE=5000 N_ITERATIONS=10 WAIT_MS_BEFORE_KILL=10000 ./scripts/test_run_app.sh shoopdaloop
+        QT_QPA_PLATFORM=vnc EXPECT_STAY_OPEN=1 WAIT_MS_BEFORE_CLOSE=5000 N_ITERATIONS=10 WAIT_MS_BEFORE_KILL=10000 ${{ env.SITE_PKGS }}/shoopdaloop/scripts/test_run_app.sh shoopdaloop
 
     - name: Publish Backend Test Report
       uses: mikepenz/action-junit-report@v3
@@ -150,7 +129,7 @@ jobs:
     - name: Install wheel
       run: |
         python3 -m pip install --no-deps --break-system-packages ~/wheel/*.whl
-        echo "SITE_PKGS=$(python3 -c 'import site; print(*site.getsitepackages())')" >> $GITHUB_ENV
+        echo "SITE_PKGS=$(python3 -m pip show shiboken6 | grep "Location:" | sed -r 's/Location: //g')" >> $GITHUB_ENV
     
     - name: Back-end tests
       if: success() || failure() # always run even if the previous step fails
@@ -176,7 +155,7 @@ jobs:
     - name: App runs and closes gracefully
       if: success() || failure() # always run even if the previous step fails
       run: |
-        QT_QPA_PLATFORM=vnc EXPECT_STAY_OPEN=1 WAIT_MS_BEFORE_CLOSE=5000 N_ITERATIONS=10 WAIT_MS_BEFORE_KILL=10000 ./scripts/test_run_app.sh shoopdaloop
+        QT_QPA_PLATFORM=vnc EXPECT_STAY_OPEN=1 WAIT_MS_BEFORE_CLOSE=5000 N_ITERATIONS=10 WAIT_MS_BEFORE_KILL=10000 ${{ env.SITE_PKGS }}/shoopdaloop/scripts/test_run_app.sh shoopdaloop
 
     - name: Publish Backend Test Report
       uses: mikepenz/action-junit-report@v3
@@ -222,9 +201,10 @@ jobs:
 
     - name: Install wheel
       run: |
+        apt-get update
         apt-get install python3 python3-pip python3-pytest
         python3 -m pip install ~/wheel/*.whl
-        echo "SITE_PKGS=$(python3 -c 'import site; print(*site.getsitepackages())')" >> $GITHUB_ENV
+        echo "SITE_PKGS=$(python3 -m pip show shiboken6 | grep "Location:" | sed -r 's/Location: //g')" >> $GITHUB_ENV
     
     - name: Back-end tests
       if: success() || failure() # always run even if the previous step fails
@@ -250,7 +230,7 @@ jobs:
     - name: App runs and closes gracefully
       if: success() || failure() # always run even if the previous step fails
       run: |
-        QT_QPA_PLATFORM=vnc EXPECT_STAY_OPEN=1 WAIT_MS_BEFORE_CLOSE=5000 N_ITERATIONS=10 WAIT_MS_BEFORE_KILL=10000 ./scripts/test_run_app.sh shoopdaloop
+        QT_QPA_PLATFORM=vnc EXPECT_STAY_OPEN=1 WAIT_MS_BEFORE_CLOSE=5000 N_ITERATIONS=10 WAIT_MS_BEFORE_KILL=10000 ${{ env.SITE_PKGS }}/shoopdaloop/scripts/test_run_app.sh shoopdaloop
 
     - name: Publish Backend Test Report
       uses: mikepenz/action-junit-report@v3
