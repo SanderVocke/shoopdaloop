@@ -143,8 +143,8 @@ jobs:
 
     - name: Install wheel
       run: |
-        sudo python -m pip install --no-deps ~/wheel/*.whl
-        echo "SITE_PKGS=$(python -c 'import site; print(*site.getsitepackages())')" >> $GITHUB_ENV
+        sudo python3 -m pip install --no-deps ~/wheel/*.whl
+        echo "SITE_PKGS=$(python3 -c 'import site; print(*site.getsitepackages())')" >> $GITHUB_ENV
     
     - name: Back-end tests
       if: success() || failure() # always run even if the previous step fails

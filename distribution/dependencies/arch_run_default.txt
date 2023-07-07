@@ -14,5 +14,6 @@ python
 pyside6
 python-jsonschema
 python-numpy
+python-numba
 python-scipy
 python-lupa
