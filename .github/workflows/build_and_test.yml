@@ -28,8 +28,7 @@ jobs:
 
     - name: Build wheel
       run: |
-        echo "::warning title=BUILD::TODO: Should probably build our wheel based on PyPi packages and not Ubuntu repo packages."
-        python3 -m build -w --no-isolation --skip-dependency-check
+        python3 -m build -w
         cd dist && echo "WHEEL=$(ls *.whl)" >> $GITHUB_ENV
     
     - name: Store wheel
