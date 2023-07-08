@@ -13,6 +13,7 @@ WORKDIR /home/build
 COPY dependencies dependencies
 
 RUN sudo DEBIAN_FRONTEND=noninteractive apt-get -y install $(cat dependencies/ubuntu_run.txt | tr '\n' ' ') && \
+    sudo DEBIAN_FRONTEND=noninteractive apt-get -y install $(cat dependencies/ubuntu_run_python.txt | tr '\n' ' ') && \
     sudo DEBIAN_FRONTEND=noninteractive apt-get -y install $(cat dependencies/ubuntu_check.txt | tr '\n' ' ')
 
 RUN sudo DEBIAN_FRONTEND=noninteractive apt-get -y install python3-pip && \
