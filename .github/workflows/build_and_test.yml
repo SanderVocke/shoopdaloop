@@ -26,6 +26,10 @@ jobs:
       with:
         submodules: recursive
 
+    - name: Prepare system
+      run: |
+        sudo DEBIAN_FRONTEND=noninteractive apt-get -y install python3-venv
+
     - name: Build wheel
       run: |
         python3 -m build -w
