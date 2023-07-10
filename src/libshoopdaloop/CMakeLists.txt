@@ -22,14 +22,75 @@ if(ENABLE_PROCESS_PROFILING)
     add_compile_options(-DSHOOP_PROFILING)
 endif()
 set(OVERRIDE_COMPILE_LOG_LEVEL "" CACHE STRING "If set, overrides the compile-time log level filter. Valid options are LOG_LEVEL_[TRACE, DEBUG, INFO, WARNING, ERROR].")
+option(STATIC_DEPENDENCIES "Use static linkage for non-Python dependencies.")
 
 # Find pkgs
-find_package(Jack REQUIRED)
-find_package(LV2 REQUIRED)
-find_package(Lilv REQUIRED)
+# find_package(LV2 REQUIRED)
 find_package(Boost COMPONENTS ALL REQUIRED)
-find_package(spdlog REQUIRED)
-find_package(fmt REQUIRED)
+
+# Generate a wrapper for libjack which allows dynamic loading using dlopen
+find_package(Jack REQUIRED)
+add_custom_command(
+  OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.c ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.h
+  COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers && ${CMAKE_SOURCE_DIR}/../third_party/dynload-wrapper/generate-wrapper.py
+    --include ${JACK_INCLUDE_DIRS}/jack/jack.h
+    --include ${JACK_INCLUDE_DIRS}/jack/midiport.h
+    --sys-include '<jack/jack.h>'
+    --sys-include '<jack/midiport.h>'
+    --soname ${JACK_LIBRARIES}
+    --init-name jack_wrappers
+    --output-header ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.h
+    --output-implementation ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.c
+  COMMENT "Generating libjack dynload wrapper"
+)
+add_custom_target(
+  jack_wrappers_impl
+  ALL
+  DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.c ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.h
+  )
+set(JACKWRAPPERS_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers})
+add_library(jack_wrappers STATIC ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.c)
+set_property(TARGET jack_wrappers PROPERTY POSITION_INDEPENDENT_CODE ON)
+target_include_directories(jack_wrappers PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers)
+
+
+if(STATIC_DEPENDENCIES)
+
+  # Build libfmt
+  add_library(fmtlib_static STATIC ${CMAKE_SOURCE_DIR}/../third_party/fmt/src/format.cc)
+  target_include_directories(fmtlib_static PUBLIC ${CMAKE_SOURCE_DIR}/../third_party/fmt/include)
+  set(fmt_LIBRARY fmtlib_static)
+  set(fmt_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/../third_party/fmt/include)
+
+  # "Build" spdlog (just a single-header)
+  set(SPDLOG_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/../third_party/spdlog/include)
+
+  # Build Lilv
+  include(ExternalProject)
+  ExternalProject_Add(lilv
+    SOURCE_DIR ${CMAKE_SOURCE_DIR}/../third_party/lilv
+    BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/lilv_build
+    INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/lilv
+    CONFIGURE_COMMAND
+      python -m mesonbuild.mesonmain setup -Ddefault_library=static --prefix=<INSTALL_DIR> <BINARY_DIR> <SOURCE_DIR>
+    BUILD_COMMAND
+      python -m mesonbuild.mesonmain compile
+    INSTALL_COMMAND
+      python -m mesonbuild.mesonmain install
+    STEP_TARGETS build_lilv
+  )
+  set(LILV_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR}/lilv/include/lilv-0)
+  add_library(LILV_LIBRARIES STATIC IMPORTED GLOBAL)
+  set_property(TARGET LILV_LIBRARIES PROPERTY IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/lilv/lib/liblilv-0.a)
+  add_dependencies(LILV_LIBRARIES lilv)
+else()
+
+  # Find dynamic versions
+  find_package(spdlog REQUIRED)
+  find_package(fmt REQUIRED)
+  find_package(Lilv REQUIRED)
+
+endif()
 
 # Includes
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal)
@@ -42,23 +103,25 @@ add_subdirectory(qml_types)
 
 # Backend lib
 add_library(shoopdaloop SHARED libshoopdaloop.cpp internal/LoggingBackend.cpp internal/ProcessProfiling.cpp)
+add_dependencies(shoopdaloop jack_wrappers)
 target_link_libraries(shoopdaloop PUBLIC
                       lv2_evbuf
                       ${BOOST_LIBRARIES}
-                      ${JACK_LIBRARIES}
+                      jack_wrappers
                       ${LV2_LIBRARIES}
                       ${LILV_LIBRARIES}
-                      ${SPDLOG_LIBRARIES}
-                      fmt::fmt)
+                      ${fmt_LIBRARY})
 target_include_directories(shoopdaloop
                         PRIVATE
                         ${CMAKE_SOURCE_DIR}/../third_party/lv2_evbuf
                         ${CMAKE_SOURCE_DIR}/../third_party/base64/include
-                        ${JACK_INCLUDE_DIRS}
                         ${CMAKE_CURRENT_BINARY_DIR}
                         ${BOOST_INCLUDE_DIRS}
                         ${LV2_INCLUDE_DIRS}
                         ${LILV_INCLUDE_DIRS}
+                        ${JACKWRAPPERS_INCLUDE_DIRS}
+                        ${fmt_INCLUDE_DIR}
+                        ${SPDLOG_INCLUDE_DIR}
                         ${CMAKE_SOURCE_DIR}/../third_party/lv2_external_ui
                         )
 install(TARGETS shoopdaloop

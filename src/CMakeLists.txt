@@ -10,11 +10,11 @@ find_package(Qt6 REQUIRED COMPONENTS Core Qml Gui Quick Widgets QuickTest)
 qt_standard_project_setup()
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}/cmake")
-set(CTYPESGEN_COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/ctypesgen/run.py")
+set(CTYPESGEN_COMMAND ctypesgen)
 
 add_subdirectory(libshoopdaloop)
 
-# Generate C bindings into source dir
+# Generate libshoopdaloop Python bindings into source dir
 set(GENERATED_BINDINGS_PY ${CMAKE_CURRENT_BINARY_DIR}/libshoopdaloop_bindings.py)
 add_custom_command(
   OUTPUT ${GENERATED_BINDINGS_PY}

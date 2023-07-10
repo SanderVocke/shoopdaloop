@@ -63,7 +63,12 @@ include = ["*"]
 exclude = ['codegen', 'dist', 'third_party']
 
 [build-system]
-requires = ["py-build-cmake~=0.1.8", "pyside6", "shiboken6"]
+requires = [
+  "py-build-cmake~=0.1.8", 
+  "ctypesgen",
+  "meson",
+  "pycparser"
+]
 build-backend = "py_build_cmake.build"
 
 [tool.py-build-cmake.module]
@@ -75,6 +80,7 @@ build_type = "Release"
 source_path = "src"
 build_args = ["-j"]
 install_components = ["package_install"]
+options = { "STATIC_DEPENDENCIES" = "On" }
 
 [tool.py-build-cmake.editable]
 mode = "symlink"

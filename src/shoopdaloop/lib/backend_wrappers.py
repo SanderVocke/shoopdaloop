@@ -9,10 +9,6 @@ import copy
 import threading
 import time
 
-import jacklib
-import mido
-from PySide6.QtCore import QObject
-
 try:
     from shoopdaloop.libshoopdaloop_bindings import *
 except:
@@ -506,9 +502,6 @@ class BackendFXChain:
 class Backend:
     def __init__(self, c_handle : 'POINTER(shoopdaloop_backend_instance_t)'):
         self._c_handle = c_handle
-
-    def get_pyjacklib_client_handle(self):
-        return cast(get_jack_client_handle(self._c_handle), POINTER(jacklib.jack_client_t))
 
     def maybe_shoop_jack_client_handle(self):
         return maybe_jack_client_handle(self._c_handle)

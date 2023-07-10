@@ -3,7 +3,7 @@
 #include <string>
 #include "AudioPortInterface.h"
 #include "PortInterface.h"
-#include <jack/jack.h>
+#include <jack_wrappers.h>
 #include <stdexcept>
 #include <cstring>
 #include <iostream>

@@ -19,6 +19,18 @@
 [submodule "third_party/base64"]
 	path = third_party/base64
 	url = https://github.com/tobiaslocker/base64.git
-[submodule "third_party/ctypesgen"]
-	path = third_party/ctypesgen
-	url = https://github.com/ctypesgen/ctypesgen.git
+[submodule "third_party/fmt"]
+	path = third_party/fmt
+	url = https://github.com/fmtlib/fmt.git
+[submodule "third_party/spdlog"]
+	path = third_party/spdlog
+	url = https://github.com/gabime/spdlog.git
+[submodule "third_party/lilv"]
+	path = third_party/lilv
+	url = https://github.com/lv2/lilv.git
+[submodule "third_party/lv2"]
+	path = third_party/lv2
+	url = https://github.com/lv2/lv2.git
+[submodule "third_party/dynload-wrapper"]
+	path = third_party/dynload-wrapper
+	url = https://github.com/hpvb/dynload-wrapper.git

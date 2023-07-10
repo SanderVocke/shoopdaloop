@@ -3,8 +3,7 @@
 #include <string>
 #include "MidiPortInterface.h"
 #include "PortInterface.h"
-#include <jack/jack.h>
-#include <jack/midiport.h>
+#include <jack_wrappers.h>
 #include <stdexcept>
 #include <vector>
 

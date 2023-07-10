@@ -1,7 +1,7 @@
 #include <boost/program_options/options_description.hpp>
 #include <boost/program_options/parsers.hpp>
 #include <boost/program_options/variables_map.hpp>
-#include <jack/jack.h>
+#include <jack_wrappers.h>
 #include <boost/program_options.hpp>
 #include <iostream>
 #include <chrono>
