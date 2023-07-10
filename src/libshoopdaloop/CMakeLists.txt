@@ -74,15 +74,13 @@ if(STATIC_DEPENDENCIES)
     CONFIGURE_COMMAND
       python -m mesonbuild.mesonmain setup -Ddefault_library=static --prefix=<INSTALL_DIR> <BINARY_DIR> <SOURCE_DIR>
     BUILD_COMMAND
-      python -m mesonbuild.mesonmain compile
+      python -m mesonbuild.mesonmain compile lilv-0
     INSTALL_COMMAND
-      python -m mesonbuild.mesonmain install
+      cmake -E echo "Skipping install step."
     STEP_TARGETS build_lilv
   )
-  set(LILV_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR}/lilv/include/lilv-0)
-  add_library(LILV_LIBRARIES STATIC IMPORTED GLOBAL)
-  set_property(TARGET LILV_LIBRARIES PROPERTY IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/lilv/lib/liblilv-0.a)
-  add_dependencies(LILV_LIBRARIES lilv)
+  set(LILV_INCLUDE_DIRS ${CMAKE_SOURCE_DIR}/../third_party/lilv/include)
+  set(LILV_LIBRARIES ${CMAKE_CURRENT_BINARY_DIR}/lilv_build/liblilv-0.a)
 else()
 
   # Find dynamic versions
@@ -103,6 +101,9 @@ add_subdirectory(qml_types)
 
 # Backend lib
 add_library(shoopdaloop SHARED libshoopdaloop.cpp internal/LoggingBackend.cpp internal/ProcessProfiling.cpp)
+if(STATIC_DEPENDENCIES)
+  add_dependencies(shoopdaloop lilv)
+endif()
 add_dependencies(shoopdaloop jack_wrappers)
 target_link_libraries(shoopdaloop PUBLIC
                       lv2_evbuf
