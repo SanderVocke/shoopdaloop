@@ -54,6 +54,7 @@ test = [
 ]
 docs = [
   "sphinx",
+  "sphinxcontrib-fulltoc",
 ]
 
 [tool.setuptools.packages.find]

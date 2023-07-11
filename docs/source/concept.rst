@@ -18,6 +18,12 @@ The master loop may itself hold audio and/or MIDI data. A typical use is a click
 Tracks
 -------
 
+.. figure:: resources/tracks.png
+   :width: 300px
+   :alt: tracks in ShoopDaLoop
+
+   Example of three tracks in ShoopDaLoop.
+
 **ShoopDaLoop**'s loops are divided over **tracks**. Loops in the same **track** share their input/output port connections, volume/balance and effects/synthesis. Therefore, typically a track per instrument/part is used.
 
 
@@ -33,6 +39,18 @@ Loops of a scene can be easily selected together to perform the same action on t
 Effects / Synthesis
 ---------------------
 
+.. figure:: resources/fx_plugins.drawio.svg
+   :width: 800px
+   :alt: FX / Synthesis using plugins.
+
+   Signal flow when using internal FX/Synthesis in plugins.
+
+.. figure:: resources/external_fx.drawio.svg
+   :width: 800px
+   :alt: FX / Synthesis using external program.
+
+   Signal flow when using external FX/Synthesis.
+
 **ShoopDaLoop** supports two track port connection modes: **direct** and **dry/wet**.
 
 In **direct** mode, there is simply an input and an output.
@@ -41,16 +59,18 @@ In **dry/wet** mode, an effects and/or synthesis chain can be inserted for the t
 
 Note that the **dry** channel can be MIDI, audio or both. However, the **wet** channel can only be audio.
 
-**Dry/wet** mode can be configured in two ways: using external JACK **send** and **return** ports or hosting plugins directly inside **ShoopDaLoop** via **Carla**. The latter has the advantage that the chain can be saved with the session and the chain setting can be remembered with individual loops.
+**Dry/wet** mode can be configured in two ways: using external JACK **send** and **return** ports or hosting plugins directly inside **ShoopDaLoop** via **Carla**. 
 
+There are advantages to using plugins if possible:
+
+* Dry, fx/synthesis and wet are all processed in a single audio process iteration. This saves one period of latency w.r.t. external, where the back-end will usually take two cycles to pass the signal back into ShoopDaLoop and out again.
+* Internal plugin state can be remembered by ShoopDaLoop and saved with the session. With external FX/synthesis this would only be possible with e.g. NSM.
 
 
 
 Sequencing
 -----------------
 
-In **ShoopDaLoop**, a sequential automation of actions on loops is possible. Such a sequence can produce a progressive song from a set of loops. Multiple sequencings are possible for the same collection of loops.
+There is no sequencing available yet, but the plan is for ShoopDaLoop to offer it. It will be possible to sequence different scenes to play back, sequence individual loop transitions or even sequence recording/replacing.
 
-But there are more possibilities: recording can also be automated. So this also offers a way to set up a live looping performance where the sequence of instruments played is pre-scripted.
-
-A session can have more than one sequencing.
+As such, it will be possible to construct songs and/or scripted live performances.
