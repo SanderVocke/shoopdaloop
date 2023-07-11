@@ -5,6 +5,7 @@ build-essential
 git
 cmake
 ninja-build
+libboost-dev
 
 python3-build
 python3-venv
