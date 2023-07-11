@@ -1,21 +1,26 @@
 # Dependencies needed in order to build a .whl on Ubuntu (jammy).
 # Assumption is that PyPi packages are used wherever possible.
 
+# build stuff
 build-essential
 git
 cmake
 ninja-build
+pkgconf
+
+# libraries
 libboost-dev
-
-python3-build
-python3-venv
-python3-virtualenv
-
-# note: not sure why exactly these are needed
-libgl1-mesa-dev
-libvulkan-dev
-
+libjack-jackd2-dev
 # note: qt6 needed to build because of its CMake build system
 # providing simple means to register custom QML types. At runtime,
 # having the PyPi PySide6 package is enough.
 qt6-declarative-dev
+
+# python
+python3-build
+python3-venv
+python3-virtualenv
+
+# not sure why exactly these are needed
+libgl1-mesa-dev
+libvulkan-dev
