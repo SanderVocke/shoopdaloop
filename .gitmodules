@@ -34,3 +34,9 @@
 [submodule "third_party/dynload-wrapper"]
 	path = third_party/dynload-wrapper
 	url = https://github.com/hpvb/dynload-wrapper.git
+[submodule "third_party/serd"]
+	path = third_party/serd
+	url = https://github.com/drobilla/serd.git
+[submodule "third_party/sord"]
+	path = third_party/sord
+	url = https://github.com/drobilla/sord.git

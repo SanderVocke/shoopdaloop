@@ -1,0 +1,12 @@
+# Dependencies needed in order to build a .whl on Ubuntu (jammy).
+# Assumption is that PyPi packages are used wherever possible.
+
+build-essential
+git
+cmake
+ninja-build
+python3-build
+python3-venv
+python3-virtualenv
+libgl1-mesa-dev
+libvulkan-dev

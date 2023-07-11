@@ -56,32 +56,10 @@ target_include_directories(jack_wrappers PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/jack
 
 if(STATIC_DEPENDENCIES)
 
-  # Build libfmt
-  add_library(fmtlib_static STATIC ${CMAKE_SOURCE_DIR}/../third_party/fmt/src/format.cc)
-  target_include_directories(fmtlib_static PUBLIC ${CMAKE_SOURCE_DIR}/../third_party/fmt/include)
-  set(fmt_LIBRARY fmtlib_static)
-  set(fmt_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/../third_party/fmt/include)
+  include (${CMAKE_CURRENT_SOURCE_DIR}/BuildStaticDependencies.cmake)
 
-  # "Build" spdlog (just a single-header)
-  set(SPDLOG_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/../third_party/spdlog/include)
-
-  # Build Lilv
-  include(ExternalProject)
-  ExternalProject_Add(lilv
-    SOURCE_DIR ${CMAKE_SOURCE_DIR}/../third_party/lilv
-    BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/lilv_build
-    INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/lilv
-    CONFIGURE_COMMAND
-      python -m mesonbuild.mesonmain setup -Ddefault_library=static --prefix=<INSTALL_DIR> <BINARY_DIR> <SOURCE_DIR>
-    BUILD_COMMAND
-      python -m mesonbuild.mesonmain compile lilv-0
-    INSTALL_COMMAND
-      cmake -E echo "Skipping install step."
-    STEP_TARGETS build_lilv
-  )
-  set(LILV_INCLUDE_DIRS ${CMAKE_SOURCE_DIR}/../third_party/lilv/include)
-  set(LILV_LIBRARIES ${CMAKE_CURRENT_BINARY_DIR}/lilv_build/liblilv-0.a)
 else()
+  set(DEPEND_ON_LILV)
 
   # Find dynamic versions
   find_package(spdlog REQUIRED)
@@ -101,10 +79,7 @@ add_subdirectory(qml_types)
 
 # Backend lib
 add_library(shoopdaloop SHARED libshoopdaloop.cpp internal/LoggingBackend.cpp internal/ProcessProfiling.cpp)
-if(STATIC_DEPENDENCIES)
-  add_dependencies(shoopdaloop lilv)
-endif()
-add_dependencies(shoopdaloop jack_wrappers)
+add_dependencies(shoopdaloop jack_wrappers ${DEPEND_ON_LILV})
 target_link_libraries(shoopdaloop PUBLIC
                       lv2_evbuf
                       ${BOOST_LIBRARIES}
