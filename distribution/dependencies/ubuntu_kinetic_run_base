@@ -13,4 +13,4 @@ libxkbcommon0
 libgl1-mesa-dev
 
 pkgconf
-cairo
+libcairo2
