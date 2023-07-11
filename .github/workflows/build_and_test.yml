@@ -60,7 +60,7 @@ jobs:
 
     - name: Install wheel
       run: |
-        python3 -m pip install --break-system-packages ~/wheel/*.whl
+        python3 -m pip install ~/wheel/*.whl
         echo "SITE_PKGS=$(python3 -m pip show shoopdaloop | grep "Location:" | sed -r 's/Location: //g')" >> $GITHUB_ENV
     
     - name: Back-end tests
