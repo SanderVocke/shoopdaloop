@@ -16,6 +16,9 @@ libjack-jackd2-dev
 # providing simple means to register custom QML types. At runtime,
 # having the PyPi PySide6 package is enough.
 qt6-declarative-dev
+libserd-0-0
+libsord-0-0
+lv2-dev
 
 # python
 python3-build
