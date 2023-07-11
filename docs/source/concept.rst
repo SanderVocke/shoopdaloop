@@ -39,6 +39,8 @@ In **direct** mode, there is simply an input and an output.
 
 In **dry/wet** mode, an effects and/or synthesis chain can be inserted for the track. When recording loops, the dry and wet signals are simultaneously recorded. This enables tricks such as re-playing the dry loop through live effects, playing back the wet while disabling the effects for CPU savings and re-synthesizing with different virtual instruments.
 
+Note that the **dry** channel can be MIDI, audio or both. However, the **wet** channel can only be audio.
+
 **Dry/wet** mode can be configured in two ways: using external JACK **send** and **return** ports or hosting plugins directly inside **ShoopDaLoop** via **Carla**. The latter has the advantage that the chain can be saved with the session and the chain setting can be remembered with individual loops.
 
 
