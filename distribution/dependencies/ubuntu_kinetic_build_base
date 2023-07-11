@@ -21,6 +21,7 @@ qt6-declarative-dev
 # As static versions will be linked in, not needed at run-time.
 libserd-dev
 libsord-dev
+libsratom-dev
 lv2-dev
 
 # python
