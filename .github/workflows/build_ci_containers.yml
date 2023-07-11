@@ -7,7 +7,7 @@ permissions:
   checks: write
 
 jobs:
-  ubuntu_jammy_build_base:
+  ubuntu_kinetic_build_base:
     runs-on: ubuntu-latest
     steps:
       -
@@ -34,11 +34,11 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           context: distribution
-          file: distribution/dockerfiles/ubuntu_jammy_build_base.Dockerfile
+          file: distribution/dockerfiles/ubuntu_kinetic_build_base.Dockerfile
           push: true
           tags: |
-            sandervocke/shoopdaloop_ubuntu_jammy_build_base:latest
-            sandervocke/shoopdaloop_ubuntu_jammy_build_base:${{ env.UNIQUETAG }}
+            sandervocke/shoopdaloop_ubuntu_kinetic_build_base:latest
+            sandervocke/shoopdaloop_ubuntu_kinetic_build_base:${{ env.UNIQUETAG }}
   
   # arch_build:
   #   runs-on: ubuntu-latest

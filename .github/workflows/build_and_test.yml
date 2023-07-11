@@ -18,7 +18,7 @@ jobs:
   build_whl:
     runs-on: ubuntu-latest
     container:
-      image: sandervocke/shoopdaloop_ubuntu_jammy_build_base:latest
+      image: sandervocke/shoopdaloop_ubuntu_kinetic_build_base:latest
       options: --user build --workdir /home/build
     
     steps:      
@@ -43,7 +43,7 @@ jobs:
     needs: build_whl
     runs-on: ubuntu-latest
     container:
-      image: ubuntu:jammy
+      image: ubuntu:kinetic
       options: --user root --workdir /
     
     steps:

@@ -1,4 +1,4 @@
-# Dependencies needed in order to build a .whl on Ubuntu (jammy).
+# Dependencies needed in order to build a .whl on Ubuntu (kinetic).
 # Assumption is that PyPi packages are used wherever possible.
 
 # build stuff

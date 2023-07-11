@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
    
-FROM ubuntu:jammy
+FROM ubuntu:kinetic
 WORKDIR /
 
 RUN DEBIAN_FRONTEND=noninteractive apt-get update && \
@@ -12,4 +12,4 @@ USER build
 WORKDIR /home/build
 COPY dependencies dependencies
 
-RUN sudo DEBIAN_FRONTEND=noninteractive apt-get -y install $(dependencies/get_dependencies.sh ubuntu_jammy_build_base)
+RUN sudo DEBIAN_FRONTEND=noninteractive apt-get -y install $(dependencies/get_dependencies.sh ubuntu_kinetic_build_base)
