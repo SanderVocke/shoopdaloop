@@ -1,7 +1,6 @@
 # Subdirs
 add_subdirectory(unit)
 add_subdirectory(integration)
-add_subdirectory(tools)
 add_subdirectory(qt)
 
 # Test runner
@@ -19,6 +18,7 @@ target_link_libraries(test_runner PRIVATE
 target_include_directories(test_runner
                         PRIVATE
                         ${BOOST_INCLUDE_DIRS}
+                        ${SPDLOG_INCLUDE_DIR}
                         ${CMAKE_CURRENT_SOURCE_DIR}
                         ${CMAKE_CURRENT_SOURCE_DIR}/..
                         ${CMAKE_SOURCE_DIR}/../third_party/ut/include

@@ -13,9 +13,9 @@ author = 'Sander Vocke'
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
-extensions = []
+extensions = ['sphinxcontrib.fulltoc']
 
-templates_path = ['_templates']
+templates_path = []
 exclude_patterns = []
 
 

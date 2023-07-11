@@ -1,0 +1,35 @@
+# Dependencies needed in order to build a .whl on Ubuntu (kinetic).
+# Assumption is that PyPi packages are used wherever possible.
+
+# build stuff
+build-essential
+git
+cmake
+ninja-build
+pkgconf
+
+# libraries
+libxkbcommon-dev
+libboost-dev
+libjack-jackd2-dev
+# note: qt6 needed to build because of its CMake build system
+# providing simple means to register custom QML types. At runtime,
+# having the PyPi PySide6 package is enough.
+qt6-declarative-dev
+# note: lv2, sord and serd needed at build-time only because it makes
+# it very convenient to build lilv, serd and sord as static libraries.
+# As static versions will be linked in, not needed at run-time.
+libserd-dev
+libsord-dev
+libsratom-dev
+lv2-dev
+nlohmann-json3-dev
+
+# python
+python3-build
+python3-venv
+python3-virtualenv
+
+# not sure why exactly these are needed
+libgl1-mesa-dev
+libvulkan-dev

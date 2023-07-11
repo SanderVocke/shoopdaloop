@@ -6,15 +6,17 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 set(CMAKE_CXX_EXTENSIONS NO)
 
+# Required for custom QML types
 find_package(Qt6 REQUIRED COMPONENTS Core Qml Gui Quick Widgets QuickTest)
 qt_standard_project_setup()
 
+
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}/cmake")
-set(CTYPESGEN_COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/ctypesgen/run.py")
+set(CTYPESGEN_COMMAND ctypesgen)
 
 add_subdirectory(libshoopdaloop)
 
-# Generate C bindings into source dir
+# Generate libshoopdaloop Python bindings into source dir
 set(GENERATED_BINDINGS_PY ${CMAKE_CURRENT_BINARY_DIR}/libshoopdaloop_bindings.py)
 add_custom_command(
   OUTPUT ${GENERATED_BINDINGS_PY}
@@ -33,7 +35,7 @@ set(OUR_PYTHONPATH "$ENV{PYTHONPATH}:${CMAKE_CURRENT_BINARY_DIR}:${PY_BUILD_CMAK
 set(GENERATED_TYPES_JS ${CMAKE_CURRENT_BINARY_DIR}/types.js)
 add_custom_command(
   OUTPUT ${GENERATED_TYPES_JS}
-  COMMAND ${RUN_CMD_PREFIX} PYTHONPATH=${OUR_PYTHONPATH} LD_LIBRARY_PATH=${CMAKE_CURRENT_BINARY_DIR}/libshoopdaloop python gen_js_enums.py ${GENERATED_TYPES_JS}
+  COMMAND ${RUN_CMD_PREFIX} PYTHONPATH=${OUR_PYTHONPATH} LD_LIBRARY_PATH=${CMAKE_CURRENT_BINARY_DIR}/libshoopdaloop python3 gen_js_enums.py ${GENERATED_TYPES_JS}
   COMMENT "Generating Javascript types."
   DEPENDS c_bindings shoopdaloop
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/codegen
@@ -73,3 +75,11 @@ install(FILES ${CMAKE_CURRENT_BINARY_DIR}/version.txt ${CMAKE_CURRENT_BINARY_DIR
     EXCLUDE_FROM_ALL
     COMPONENT package_install
     DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME})
+  
+
+# Include app test script
+install(FILES ${CMAKE_SOURCE_DIR}/../scripts/test_run_app.sh
+        EXCLUDE_FROM_ALL
+        COMPONENT package_install
+        PERMISSIONS WORLD_EXECUTE OWNER_EXECUTE GROUP_EXECUTE GROUP_WRITE OWNER_WRITE GROUP_READ OWNER_READ WORLD_READ
+        DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME}/scripts)

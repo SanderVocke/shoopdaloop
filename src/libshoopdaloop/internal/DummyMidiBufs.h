@@ -2,8 +2,7 @@
 #include <jack/types.h>
 #include <string>
 #include "MidiPortInterface.h"
-#include <jack/jack.h>
-#include <jack/midiport.h>
+#include <jack_wrappers.h>
 #include <stdexcept>
 
 struct DummyReadMidiBuf : public MidiReadableBufferInterface {

@@ -1,6 +1,10 @@
 ShoopDaLoop
 =======================================
 
+.. image:: ../../src/shoopdaloop/resources/logo.png
+   :width: 300px
+   :alt: ShoopDaLoop logo.
+
 **ShoopDaLoop** is an audio+MIDI live looping application for Linux with some DAW-like features. For a quick overview, visit the  `GitHub README
 <https://github.com/SanderVocke/shoopdaloop/>`_.
 

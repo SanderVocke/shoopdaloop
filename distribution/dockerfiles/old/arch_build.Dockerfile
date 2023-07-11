@@ -18,8 +18,9 @@ RUN sudo pacman --noconfirm --needed -S git && \
     cd yay-bin && makepkg --noconfirm -si
 
 RUN sudo pacman --noconfirm -S --needed --overwrite "*" $(cat dependencies/arch_run_default.txt | tr '\n' ' ') && \
+    sudo pacman --noconfirm -S --needed --overwrite "*" $(cat dependencies/arch_build.txt | tr '\n' ' ') && \
+    sudo pacman --noconfirm -S --needed --overwrite "*" $(cat dependencies/arch_check.txt | tr '\n' ' ') && \
+    yay --noconfirm -S --needed --overwrite "*" $(cat dependencies/arch_build_aur.txt | tr '\n' ' ') && \
     yay --noconfirm -S --needed --overwrite "*" $(cat dependencies/arch_run_default_aur.txt | tr '\n' ' ') && \
     sudo pacman --noconfirm -S --needed --overwrite "*" python-pip
-
-COPY dockerfiles/resources/dummy_monitor.conf /etc/dummy_monitor.conf
 

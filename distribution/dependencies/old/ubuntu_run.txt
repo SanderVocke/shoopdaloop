@@ -1,0 +1,12 @@
+qt6-declarative-dev
+jackd2
+libjack-jackd2-dev
+lv2-dev
+liblilv-0-0
+libboost-all-dev
+libspdlog1.10
+libfmt-dev
+pkgconf
+xserver-xorg
+luajit
+python3

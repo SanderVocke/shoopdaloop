@@ -4,7 +4,7 @@
 #include "MidiPortInterface.h"
 #include "PortInterface.h"
 #include "JackAudioPort.h"
-#include <jack/jack.h>
+#include <jack_wrappers.h>
 #include <jack/types.h>
 #include <stdexcept>
 #include <memory>
@@ -49,6 +49,10 @@ public:
         m_client_name(client_name),
         m_process_cb(process_cb)
     {
+        // We use a wrapper which dlopens Jack to not have a hard linkage dependency.
+        // It needs to be initialized first.
+        initialize_jack_wrappers(0);
+
         jack_status_t status;
 
         m_client = jack_client_open(
