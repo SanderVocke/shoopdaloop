@@ -54,6 +54,7 @@ test = [
 ]
 docs = [
   "sphinx",
+  "sphinx-material",
   "sphinxcontrib-fulltoc",
 ]
 
