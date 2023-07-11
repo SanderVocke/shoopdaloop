@@ -35,7 +35,7 @@ jobs:
     - name: Store wheel
       uses: actions/upload-artifact@v3
       with:
-        name: wheel
+        name: ${{ env.WHEEL }}
         path: dist/${{ env.WHEEL }}
   
   # Test the built wheel in an Ubuntu environment using PyPi packages
