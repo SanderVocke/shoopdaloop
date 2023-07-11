@@ -18,7 +18,16 @@ def main():
         )
         parser.add_argument('-d', '--qml-debug', metavar='PORT', type=int, help='Start QML debugging on PORT')
         parser.add_argument('-w', '--debug-wait', action='store_true', help='With QML debugging enabled, will wait until debugger connects.')
+        parser.add_argument('-i', '--info', action='store_true', help='Show information about the ShoopDaLoop installation.')
         args = parser.parse_args()
+
+        if args.info:
+            version=None
+            with open(script_pwd + '/version.txt', 'r') as f:
+                version = f.read()
+            print('ShoopDaLoop {}'.format(version.strip()))
+            print('Installed @ {}'.format(script_pwd))
+            exit(0)
     
         app = Application('ShoopDaLoop',
             '{}/lib/qml/applications/shoopdaloop_main.qml'.format(script_pwd),
