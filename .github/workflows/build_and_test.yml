@@ -58,6 +58,10 @@ jobs:
         python3 -m pip install ~/wheel/*.whl
         echo "SITE_PKGS=$(shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g')" >> $GITHUB_ENV
     
+    - name: Report package install dir
+      run: |
+        echo "$SITE_PKGS"
+    
     - name: Back-end tests
       if: success() || failure() # always run even if the previous step fails
       run: |
