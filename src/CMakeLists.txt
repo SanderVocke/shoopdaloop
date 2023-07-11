@@ -6,8 +6,6 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 set(CMAKE_CXX_EXTENSIONS NO)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Qml Gui Quick Widgets QuickTest)
-qt_standard_project_setup()
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}/cmake")
 set(CTYPESGEN_COMMAND ctypesgen)
