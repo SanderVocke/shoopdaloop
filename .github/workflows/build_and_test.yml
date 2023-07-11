@@ -56,24 +56,24 @@ jobs:
     - name: Install wheel
       run: |
         python3 -m pip install ~/wheel/*.whl
-        echo "SITE_PKGS=$(shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g')" >> $GITHUB_ENV
+        echo "PKG_DIR=$(shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g')" >> $GITHUB_ENV
     
     - name: Report package install dir
       run: |
-        echo "$SITE_PKGS"
+        echo "$PKG_DIR"
     
     - name: Back-end tests
       if: success() || failure() # always run even if the previous step fails
       run: |
         mkdir -p reports
-        ${{ env.SITE_PKGS }}/shoopdaloop/test_runner --reporter junit --out reports/backend_junit_results.xml
+        ${{ env.PKG_DIR }}/test_runner --reporter junit --out reports/backend_junit_results.xml
         echo "Back-end test results file: $(ls -la reports/backend_junit_results.xml)"
     
     - name: Python tests
       if: success() || failure() # always run even if the previous step fails
       run: |
         mkdir -p reports
-        pytest ${{ env.SITE_PKGS }}/shoopdaloop --junit-xml=reports/python_junit_results.xml
+        pytest ${{ env.PKG_DIR }} --junit-xml=reports/python_junit_results.xml
         echo "Python test results file: $(ls -la reports/python_junit_results.xml)"
     
     - name: QML tests
@@ -81,13 +81,13 @@ jobs:
       run: |
         mkdir -p reports
         echo "::warning title=QMLTEST::TODO: QML test step will not fail if any tests fail. Double-check the summary!"
-        QT_QPA_PLATFORM=vnc ${{ env.SITE_PKGS }}/shoopdaloop/run_qml_tests.py -o reports/qml_junit_results.xml,junitxml
+        QT_QPA_PLATFORM=vnc python3 ${{ env.PKG_DIR }}/run_qml_tests.py -o reports/qml_junit_results.xml,junitxml
         echo "QML test results file: $(ls -la reports/qml_junit_results.xml)"
     
     - name: App runs and closes gracefully
       if: success() || failure() # always run even if the previous step fails
       run: |
-        QT_QPA_PLATFORM=vnc EXPECT_STAY_OPEN=1 WAIT_MS_BEFORE_CLOSE=5000 N_ITERATIONS=10 WAIT_MS_BEFORE_KILL=10000 ${{ env.SITE_PKGS }}/shoopdaloop/scripts/test_run_app.sh shoopdaloop
+        QT_QPA_PLATFORM=vnc EXPECT_STAY_OPEN=1 WAIT_MS_BEFORE_CLOSE=5000 N_ITERATIONS=10 WAIT_MS_BEFORE_KILL=10000 ${{ env.PKG_DIR }}/scripts/test_run_app.sh shoopdaloop
 
     - name: Publish Backend Test Report
       uses: mikepenz/action-junit-report@v3
@@ -136,20 +136,20 @@ jobs:
   #     run: |
   #       echo "::warning title=PACKAGING_ISSUE::Temporarily removed --no-deps on Arch because of broken python-numba"
   #       python3 -m pip install ~/wheel/*.whl --break-system-packages
-  #       echo "SITE_PKGS=$(python3 -m pip show shiboken6 | grep "Location:" | sed -r 's/Location: //g')" >> $GITHUB_ENV
+  #       echo "PKG_DIR=$(python3 -m pip show shiboken6 | grep "Location:" | sed -r 's/Location: //g')" >> $GITHUB_ENV
     
   #   - name: Back-end tests
   #     if: success() || failure() # always run even if the previous step fails
   #     run: |
   #       mkdir -p reports
-  #       ${{ env.SITE_PKGS }}/shoopdaloop/test_runner --reporter junit --out reports/backend_junit_results.xml
+  #       ${{ env.PKG_DIR }}/shoopdaloop/test_runner --reporter junit --out reports/backend_junit_results.xml
   #       echo "Back-end test results file: $(ls -la reports/backend_junit_results.xml)"
     
   #   - name: Python tests
   #     if: success() || failure() # always run even if the previous step fails
   #     run: |
   #       mkdir -p reports
-  #       pytest ${{ env.SITE_PKGS }}/shoopdaloop --junit-xml=reports/python_junit_results.xml
+  #       pytest ${{ env.PKG_DIR }}/shoopdaloop --junit-xml=reports/python_junit_results.xml
   #       echo "Python test results file: $(ls -la reports/python_junit_results.xml)"
     
   #   - name: QML tests
@@ -157,13 +157,13 @@ jobs:
   #     run: |
   #       mkdir -p reports
   #       echo "::warning title=QMLTEST::TODO: QML test step will not fail if any tests fail. Double-check the summary!"
-  #       QT_QPA_PLATFORM=vnc ${{ env.SITE_PKGS }}/shoopdaloop/run_qml_tests.py -o reports/qml_junit_results.xml,junitxml
+  #       QT_QPA_PLATFORM=vnc ${{ env.PKG_DIR }}/shoopdaloop/run_qml_tests.py -o reports/qml_junit_results.xml,junitxml
   #       echo "QML test results file: $(ls -la reports/qml_junit_results.xml)"
     
   #   - name: App runs and closes gracefully
   #     if: success() || failure() # always run even if the previous step fails
   #     run: |
-  #       QT_QPA_PLATFORM=vnc EXPECT_STAY_OPEN=1 WAIT_MS_BEFORE_CLOSE=5000 N_ITERATIONS=10 WAIT_MS_BEFORE_KILL=10000 ${{ env.SITE_PKGS }}/shoopdaloop/scripts/test_run_app.sh shoopdaloop
+  #       QT_QPA_PLATFORM=vnc EXPECT_STAY_OPEN=1 WAIT_MS_BEFORE_CLOSE=5000 N_ITERATIONS=10 WAIT_MS_BEFORE_KILL=10000 ${{ env.PKG_DIR }}/shoopdaloop/scripts/test_run_app.sh shoopdaloop
 
   #   - name: Publish Backend Test Report
   #     uses: mikepenz/action-junit-report@v3
@@ -210,20 +210,20 @@ jobs:
   #   - name: Install wheel
   #     run: |
   #       python3 -m pip install --no-deps --break-system-packages ~/wheel/*.whl
-  #       echo "SITE_PKGS=$(python3 -m pip show shiboken6 | grep "Location:" | sed -r 's/Location: //g')" >> $GITHUB_ENV
+  #       echo "PKG_DIR=$(python3 -m pip show shiboken6 | grep "Location:" | sed -r 's/Location: //g')" >> $GITHUB_ENV
     
   #   - name: Back-end tests
   #     if: success() || failure() # always run even if the previous step fails
   #     run: |
   #       mkdir -p reports
-  #       ${{ env.SITE_PKGS }}/shoopdaloop/test_runner --reporter junit --out reports/backend_junit_results.xml
+  #       ${{ env.PKG_DIR }}/shoopdaloop/test_runner --reporter junit --out reports/backend_junit_results.xml
   #       echo "Back-end test results file: $(ls -la reports/backend_junit_results.xml)"
     
   #   - name: Python tests
   #     if: success() || failure() # always run even if the previous step fails
   #     run: |
   #       mkdir -p reports
-  #       pytest ${{ env.SITE_PKGS }}/shoopdaloop --junit-xml=reports/python_junit_results.xml
+  #       pytest ${{ env.PKG_DIR }}/shoopdaloop --junit-xml=reports/python_junit_results.xml
   #       echo "Python test results file: $(ls -la reports/python_junit_results.xml)"
     
   #   - name: QML tests
@@ -231,13 +231,13 @@ jobs:
   #     run: |
   #       mkdir -p reports
   #       echo "::warning title=QMLTEST::TODO: QML test step will not fail if any tests fail. Double-check the summary!"
-  #       QT_QPA_PLATFORM=vnc ${{ env.SITE_PKGS }}/shoopdaloop/run_qml_tests.py -o reports/qml_junit_results.xml,junitxml
+  #       QT_QPA_PLATFORM=vnc ${{ env.PKG_DIR }}/shoopdaloop/run_qml_tests.py -o reports/qml_junit_results.xml,junitxml
   #       echo "QML test results file: $(ls -la reports/qml_junit_results.xml)"
     
   #   - name: App runs and closes gracefully
   #     if: success() || failure() # always run even if the previous step fails
   #     run: |
-  #       QT_QPA_PLATFORM=vnc EXPECT_STAY_OPEN=1 WAIT_MS_BEFORE_CLOSE=5000 N_ITERATIONS=10 WAIT_MS_BEFORE_KILL=10000 ${{ env.SITE_PKGS }}/shoopdaloop/scripts/test_run_app.sh shoopdaloop
+  #       QT_QPA_PLATFORM=vnc EXPECT_STAY_OPEN=1 WAIT_MS_BEFORE_CLOSE=5000 N_ITERATIONS=10 WAIT_MS_BEFORE_KILL=10000 ${{ env.PKG_DIR }}/shoopdaloop/scripts/test_run_app.sh shoopdaloop
 
   #   - name: Publish Backend Test Report
   #     uses: mikepenz/action-junit-report@v3
