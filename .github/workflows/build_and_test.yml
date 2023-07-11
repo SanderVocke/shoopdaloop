@@ -81,7 +81,7 @@ jobs:
       run: |
         mkdir -p reports
         echo "::warning title=QMLTEST::TODO: QML test step will not fail if any tests fail. Double-check the summary!"
-        QT_QPA_PLATFORM=vnc python3 ${{ env.PKG_DIR }}/run_qml_tests.py -o reports/qml_junit_results.xml,junitxml
+        QT_QPA_PLATFORM=vnc LD_LIBRARY_PATH=$(dirname $(find ${{ env.PKG_DIR }}/.. -name libQt6Core.so.6)) python3 ${{ env.PKG_DIR }}/run_qml_tests.py -o reports/qml_junit_results.xml,junitxml
         echo "QML test results file: $(ls -la reports/qml_junit_results.xml)"
     
     - name: App runs and closes gracefully

@@ -51,7 +51,9 @@ public:
     {
         // We use a wrapper which dlopens Jack to not have a hard linkage dependency.
         // It needs to be initialized first.
-        initialize_jack_wrappers(0);
+        if (initialize_jack_wrappers(0)) {
+            throw std::runtime_error("Unable to find Jack client library.");
+        }
 
         jack_status_t status;
 
