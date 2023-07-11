@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: sandervocke/shoopdaloop_ubuntu_kinetic_build_base:latest
-      options: --user build --workdir /home/build
+      options: --user root --workdir /
     
     steps:      
     - name: Checkout
