@@ -52,4 +52,6 @@ reporter = JUnitTestReporter(parent=None)
 setup = Setup(reporter, parent=None)
 
 raw_setup = cast(Shiboken.getCppPointer(setup)[0], c_void_p)
-qml_tests.run_quick_test_main_with_setup(len(sys.argv), to_c_chars(sys.argv), 'shoopdaloop_tests', script_dir + '/..', raw_setup)
+exitcode = qml_tests.run_quick_test_main_with_setup(len(sys.argv), to_c_chars(sys.argv), 'shoopdaloop_tests', script_dir + '/..', raw_setup)
+
+exit(exitcode)
