@@ -2,17 +2,17 @@ import QtQuick 6.3
 import QtQuick.Controls 6.3
 import QtQuick.Controls.Material 6.3
 import QtQuick.Dialogs
-import Logger
-import ControlHandler
+import ShoopDaLoop.PythonLogger
+import ShoopDaLoop.PythonControlHandler
 
 import "../generate_session.js" as GenerateSession
 import "../generated/types.js" as Types
 
-Item {
+AppRegistries {
     id: root
     objectName: 'session'
 
-    property Logger logger : Logger { name: "Frontend.Session" }
+    property PythonLogger logger : PythonLogger { name: "Frontend.Session" }
 
     // The descriptor is an object matching the ShoopDaLoop session JSON
     // schema. The Session object will manage an actual session (consisting)
@@ -62,30 +62,6 @@ Item {
             color: Material.foreground
             text: "Loading..."
         }
-    }
-
-    // The main registry stores various important internal states.
-    // Examples of stuff stored in here:
-    // - selected / targeted / master loops
-    // - sub-registries, such as for cached FX chain states.
-    property Registry state_registry: StateRegistry {
-        verbose: false
-    }
-
-    // The objects registry is a simple map of widget ids (from the session descriptor)
-    // to objects representing those in the app (usually widgets.)
-    property Registry objects_registry: ObjectsRegistry {
-        verbose: false
-    }
-
-    // Store a reference to ourselves in the state registry.
-    // Also make some sub-registries:
-    // - one to keep track of FX chain states caching
-    // - one to keep track of any important objects by ID.
-    property Registry fx_chain_states_registry: Registry { verbose: true }
-    Component.onCompleted: {
-        state_registry.register('session', root)
-        state_registry.register('fx_chain_states_registry', fx_chain_states_registry)
     }
 
     // For (test) access
@@ -167,9 +143,9 @@ Item {
         }
     }
 
-    ControlHandler {
+    PythonControlHandler {
         id: control_handler
-        property Logger logger : Logger { name: "Frontend.Session.ControlHandler" }
+        property PythonLogger logger : PythonLogger { name: "Frontend.Session.ControlHandler" }
 
         function select_loops(loop_selector) {
             var rval = []

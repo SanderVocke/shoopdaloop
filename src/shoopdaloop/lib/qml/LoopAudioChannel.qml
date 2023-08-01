@@ -1,10 +1,10 @@
-import LoopAudioChannel
+import ShoopDaLoop.PythonLoopAudioChannel
 import QtQuick 6.3
 
 import '../session_schemas/conversions.js' as Conversions
 import '../generated/types.js' as Types
 
-LoopAudioChannel {
+PythonLoopAudioChannel {
     id: root
 
     property var descriptor : null

@@ -1,9 +1,9 @@
-import MidiPort
+import ShoopDaLoop.PythonMidiPort
 import QtQuick 6.3
 
 import '../generated/types.js' as Types
 
-MidiPort {
+PythonMidiPort {
     id: root
     property var descriptor : null
     property Registry objects_registry : null

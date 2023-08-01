@@ -1,9 +1,9 @@
-import FXChain
+import ShoopDaLoop.PythonFXChain
 import QtQuick 6.3
 
 import '../generated/types.js' as Types
 
-FXChain {
+PythonFXChain {
     id: root
     property bool loaded : initialized
 

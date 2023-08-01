@@ -31,7 +31,7 @@ with open(script_dir + '/../version.txt', 'r') as f:
     pkg_version = f.read().strip()
 
 def register_qml_class(t, name):
-    qmlRegisterType(t, name, 1, 0, name)
+    qmlRegisterType(t, "ShoopDaLoop.Python" + name, 1, 0, "Python" + name)
 
 def register_shoopdaloop_qml_classes():
     # Register Python classes

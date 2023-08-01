@@ -2,8 +2,8 @@ import QtQuick 6.3
 import QtQuick.Controls 6.3
 import QtQuick.Controls.Material 6.3
 import QtQuick.Dialogs
-import Logger
-import ControlHandler
+import ShoopDaLoop.PythonLogger
+import ShoopDaLoop.PythonControlHandler
 
 import '../generated/types.js' as Types
 import '../mode_helpers.js' as ModeHelpers
@@ -28,7 +28,7 @@ Item {
         logger.debug(`Loop @ (${track_idx},${idx_in_track})`)
     }
 
-    property Logger logger : Logger { name: default_logger.name + ".Loop" }
+    property PythonLogger logger : PythonLogger { name: default_logger.name + ".Loop" }
 
     RegistryLookup {
         id: fx_chain_states_registry_lookup
@@ -428,7 +428,7 @@ Item {
 
     // Control
     readonly property var control_handler: control_handler
-    ControlHandler {
+    PythonControlHandler {
         id: control_handler
     }
 

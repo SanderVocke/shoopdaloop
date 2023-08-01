@@ -1,7 +1,7 @@
 import QtQuick 6.3
 import QtQuick.Controls 6.3
 import QtQuick.Controls.Material 6.3
-import Logger
+import ShoopDaLoop.PythonLogger
 
 import '../mode_helpers.js' as ModeHelpers
 
@@ -9,7 +9,7 @@ ApplicationWindow {
     property var loop
     property var master_loop
 
-    property Logger logger : Logger { name: default_logger.name + '.LoopDetails' }
+    property PythonLogger logger : PythonLogger { name: default_logger.name + '.LoopDetails' }
     
     id: root
 

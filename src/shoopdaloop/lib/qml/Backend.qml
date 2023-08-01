@@ -1,6 +1,9 @@
-import Backend
+import ShoopDaLoop.PythonBackend
 import QtQuick 6.3
 
-Backend {
+PythonBackend {
     Component.onCompleted: maybe_init()
+    Component.onDestruction: {
+        console.log("BACKEND BEING DESTROYED FROM QML")
+    }
 }
