@@ -22,10 +22,18 @@ ApplicationWindow {
         text: '(Backend test, close when done)'
     }
 
-    Backend {
-        update_interval_ms: 30
-        client_name_hint: 'ShoopDaLoop'
-        backend_type: Types.BackendType.Jack
-        id: backend
+     AppRegistries {
+        id: registries
+        anchors.fill:parent
+
+        Backend {
+            update_interval_ms: 30
+            client_name_hint: 'ShoopDaLoop'
+            backend_type: Types.BackendType.Jack
+            id: backend
+
+            Loop {
+            }
+        }
     }
 }
