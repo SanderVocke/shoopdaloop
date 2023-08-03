@@ -14,6 +14,7 @@ from shoopdaloop.libshoopdaloop_bindings import terminate as terminate_backend
 from shoopdaloop.lib.qml_helpers import *
 from shoopdaloop.lib.q_objects.SchemaValidator import SchemaValidator
 from shoopdaloop.lib.logging import Logger
+from shoopdaloop.lib.backend_wrappers import BackendType
 
 import qml_tests
 from ctypes import *
@@ -25,7 +26,7 @@ class Setup(QObject):
     @Slot(QQmlEngine)
     def qmlEngineAvailable(self, engine):
         register_shoopdaloop_qml_classes()
-        self.root_context_items = create_and_populate_root_context(engine)
+        self.root_context_items = create_and_populate_root_context(engine, BackendType.Dummy)
 
 logger = Logger('Test.Runner')
 
