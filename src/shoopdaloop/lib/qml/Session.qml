@@ -21,6 +21,8 @@ AppRegistries {
     // The actual descriptor can be retrieved with actual_session_descriptor().
     property var initial_descriptor : GenerateSession.generate_session(app_metadata.version_string, [], [], [], [])
 
+    property var backend_type : global_args.backend_type
+
     function actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) {
         return GenerateSession.generate_session(
             app_metadata.version_string,
@@ -241,7 +243,7 @@ AppRegistries {
     Backend {
         update_interval_ms: 30
         client_name_hint: 'ShoopDaLoop'
-        backend_type: Types.BackendType.Jack
+        backend_type: root.backend_type
         id: backend
 
         anchors {
