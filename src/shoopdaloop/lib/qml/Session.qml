@@ -21,7 +21,6 @@ AppRegistries {
     // The actual descriptor can be retrieved with actual_session_descriptor().
     property var initial_descriptor : GenerateSession.generate_session(app_metadata.version_string, [], [], [], [])
     property var backend_type : global_args.backend_type
-    Component.onCompleted: console.log("SESSION BACKEND TYPE: " + backend_type)
 
     function actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) {
         return GenerateSession.generate_session(

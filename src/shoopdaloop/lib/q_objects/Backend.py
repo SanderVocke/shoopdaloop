@@ -28,7 +28,6 @@ class Backend(QQuickItem):
         self._dsp_load = 0.0
         self.destroyed.connect(self.close)
         self.logger = Logger('Frontend.Backend')
-        self.logger.error("CONSTRUCT PY BACKEND")
     
     update = Signal()
 
@@ -141,11 +140,8 @@ class Backend(QQuickItem):
     
     @Slot()
     def maybe_init(self):
-        self.logger.error("MAYBE INIT {} {}".format(self._client_name_hint, self._backend_type))
         if not self._initialized and self._client_name_hint != None and self._backend_type != None:
-            self.logger.error("MAYBE INIT INIT")
             self.init()
-        self.logger.error("MAYBE INIT DONE")
     
     @Slot(result='QVariant')
     def get_profiling_report(self):
