@@ -4,7 +4,7 @@ import ShoopDaLoop.PythonLogger
 
 import '../generated/types.js' as Types
 
-// Wrap a Loop that may be dynamically loaded by a Loader in a just-in-time way.
+// Wrap a Loop that may be dynamically loaded in a just-in-time way.
 Item {
     id: root
 
@@ -52,7 +52,7 @@ Item {
     onForce_loadChanged: if(force_load) load()
     
     function qml_close() {
-        if (loader.active) {
+        if (maybe_loop) {
             maybe_loop.close();
         }
     }

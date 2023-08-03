@@ -38,23 +38,22 @@ PythonBackend {
 
                 var filename = file_io.generate_temporary_filename() + '.shl'
 
-                try {
-                    session.logger.info("Saving session to " + filename)
-                    session.save_session(filename)
+                session.logger.info("Saving session to " + filename)
+                session.save_session(filename)
+                
+                testcase.wait(500)
 
-                    testcase.wait(500)
+                session.logger.info("Re-loading session")
+                session.load_session(filename)
 
-                    session.logger.info("Re-loading session")
-                    session.load_session(filename)
-
-                    testcase.wait(500)
+                testcase.wait(500)
                     
-                    actual = session.actual_session_descriptor(false, '', null)
-                    verify(TestDeepEqual.testDeepEqual(actual, reference, session.logger.error))
-                } finally {
-                    file_io.delete_file(filename)
-                }
+                actual = session.actual_session_descriptor(false, '', null)
 
+                file_io.delete_file(filename)
+
+                verify(TestDeepEqual.testDeepEqual(actual, reference, session.logger.error))
+                
                 end_test_fn('test_session_descriptor_default');
             }
         }

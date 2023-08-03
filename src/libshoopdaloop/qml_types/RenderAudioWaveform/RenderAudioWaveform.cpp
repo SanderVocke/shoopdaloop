@@ -69,7 +69,6 @@ RenderAudioWaveform::RenderAudioWaveform(QQuickItem *parent)
 }
 
 RenderAudioWaveform::~RenderAudioWaveform() {
-    std::cout << "RENDERAUDIOWAVEFORM DESTRUCTION, parent: " << parent() << "\n";
 }
 
 void RenderAudioWaveform::update_lines() {

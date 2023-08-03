@@ -120,7 +120,7 @@ class Loop(QQuickItem):
             if loop != self._sync_source:
                 self.logger.debug('Set sync source -> {}'.format(loop))
                 self._sync_source = loop
-                self._backend_loop.set_sync_source(loop._backend_loop)
+                self._backend_loop.set_sync_source(loop.get_backend_loop() if loop else None)
                 self.syncSourceChanged.emit(loop)
         if self.initialized:
             do_set()
@@ -151,13 +151,13 @@ class Loop(QQuickItem):
 
     @Slot(result=list)
     def audio_channels(self):
-        import lib.q_objects.LoopAudioChannel as LoopAudioChannel
-        return findChildItems(self, lambda c: isinstance(c, LoopAudioChannel.LoopAudioChannel))
+        from .LoopAudioChannel import LoopAudioChannel
+        return findChildItems(self, lambda c: isinstance(c, LoopAudioChannel))
     
     @Slot(result=list)
     def midi_channels(self):
-        import lib.q_objects.LoopMidiChannel as LoopMidiChannel
-        return findChildItems(self, lambda c: isinstance(c, LoopMidiChannel.LoopMidiChannel))
+        from .LoopMidiChannel import LoopMidiChannel
+        return findChildItems(self, lambda c: isinstance(c, LoopMidiChannel))
 
     # Update mode from the back-end.
     @Slot()
@@ -275,6 +275,10 @@ class Loop(QQuickItem):
         if maybe_backend:
             return maybe_backend
         self.logger.throw_error("Could not find backend!")
+    
+    @Slot(result="QVariant")
+    def get_backend_loop(self):
+        return self._backend_loop
     
     def maybe_initialize(self):
         if self._backend and self._backend.initialized and not self._backend_loop:
