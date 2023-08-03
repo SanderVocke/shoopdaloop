@@ -1,6 +1,6 @@
 import QtQuick 6.3
 import QtTest 1.0
-import Logger
+import ShoopDaLoop.PythonLogger
 
 import '../../generated/types.js' as Types
 import './testDeepEqual.js' as TestDeepEqual
@@ -9,7 +9,7 @@ TestCase {
     id: root
     property string name : 'UnnamedTestCase'
     property string filename : 'UnknownTestFile'
-    property var logger : Logger { name: `Test.` + root.name }
+    property var logger : PythonLogger { name: `Test.` + root.name }
 
     function verify_loop_cleared(loop) {
         verify(loop.mode == Types.LoopMode.Stopped, `Loop not stopped: ${loop.mode}. Trace: ${backtrace()}`)

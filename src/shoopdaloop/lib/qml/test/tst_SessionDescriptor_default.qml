@@ -1,7 +1,6 @@
 import QtQuick 6.3
 import QtTest 1.0
-import Backend
-import Logger
+PythonBackend
 
 import './testDeepEqual.js' as TestDeepEqual
 import '../../generated/types.js' as Types
@@ -9,7 +8,7 @@ import '../../generate_session.js' as GenerateSession
 import './testfilename.js' as TestFilename
 import '..'
 
-Backend {
+PythonBackend {
     id: backend
     update_interval_ms: 30
     client_name_hint: 'ShoopDaLoop'
