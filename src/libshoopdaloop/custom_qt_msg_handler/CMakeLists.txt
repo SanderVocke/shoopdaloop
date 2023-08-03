@@ -1,6 +1,6 @@
 add_library(custom_qt_msg_handler SHARED custom_qt_msg_handler.cpp)
 target_link_libraries(custom_qt_msg_handler PRIVATE Qt6::Core ${fmt_LIBRARY} shoopdaloop)
-target_include_directories(custom_qt_msg_handler PRIVATE ${fmt_INCLUDE_DIR})
+target_include_directories(custom_qt_msg_handler PRIVATE ${fmt_INCLUDE_DIR} ${SPDLOG_INCLUDE_DIR})
 
 # Generate C bindings
 add_custom_command(
