@@ -1714,8 +1714,16 @@ audio_channel_data_t *alloc_audio_channel_data(size_t n_samples) {
 }
 
 void set_audio_channel_volume (shoopdaloop_loop_audio_channel_t *channel, float volume) {
-    auto &_channel = *dynamic_cast<LoopAudioChannel*>(internal_audio_channel(channel)->channel.get());
-    _channel.set_volume(volume);
+    auto internal = internal_audio_channel(channel);
+    // Perform atomically if possible, or queue if channel not yet initialized.
+    if (internal->channel) {
+        dynamic_cast<LoopAudioChannel*>(internal->channel.get())->set_volume(volume);
+    } else {
+        internal_audio_channel(channel)->backend.lock()->cmd_queue.queue([=]() {
+            auto _channel = internal_audio_channel(channel);
+            dynamic_cast<LoopAudioChannel*>(internal->channel.get())->set_volume(volume);
+        });
+    }
 }
 
 audio_channel_state_info_t *get_audio_channel_state (shoopdaloop_loop_audio_channel_t *channel) {

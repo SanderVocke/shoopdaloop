@@ -2,8 +2,8 @@ import QtQuick 6.3
 import QtQuick.Controls 6.3
 import QtQuick.Layouts 6.3
 import QtQuick.Controls.Material 6.3
-import MIDIControlDialect 1.0
-import MIDIControlInputRule 1.0
+import ShoopDaLoop.PythonMIDIControlDialect 1.0
+import ShoopDaLoop.PythonMIDIControlInputRule 1.0
 import Qt.labs.qmlmodels 1.0
 
 import '../../build/StatesAndActions.js' as StatesAndActions

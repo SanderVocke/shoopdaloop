@@ -1,6 +1,9 @@
-import Backend
+import ShoopDaLoop.PythonBackend
 import QtQuick 6.3
 
-Backend {
-    Component.onCompleted: maybe_init()
+PythonBackend {
+    Component.onCompleted: {
+        console.log(backend_type)
+        maybe_init()
+    }
 }

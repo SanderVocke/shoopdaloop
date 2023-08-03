@@ -1,8 +1,8 @@
 import QtQuick 6.3
 import QtQuick.Controls 6.3
 import QtQuick.Controls.Material 6.3
-import FetchChannelData
-import Logger
+import ShoopDaLoop.PythonFetchChannelData
+import ShoopDaLoop.PythonLogger
 
 import '../mode_helpers.js' as ModeHelpers
 
@@ -11,7 +11,7 @@ Item {
     property var loop
     property var master_loop
 
-    property Logger logger : default_logger
+    property PythonLogger logger : default_logger
 
     enum Tool {
         None,

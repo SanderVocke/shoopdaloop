@@ -1,7 +1,7 @@
 import QtQuick 6.3
 import QtQuick.Controls 6.3
 import QtQuick.Controls.Material 6.3
-import FetchChannelData
+import ShoopDaLoop.PythonFetchChannelData
 import RenderAudioWaveform
 
 import '../mode_helpers.js' as ModeHelpers
@@ -134,7 +134,7 @@ Item {
             clip: true
 
             // Will repeatedly fetch channel data when changed.
-            FetchChannelData {
+            PythonFetchChannelData {
                 id: fetcher
                 channel: root.channel
             }

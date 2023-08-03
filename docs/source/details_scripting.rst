@@ -11,7 +11,10 @@ Introduction
 Lua Environment
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
-The following things should be kept in mind when writing **Lua** snippets or scripts for **ShoopDaLoop**:
+The following things should be kept in mind when writing **Lua** snippets or scripts for **ShoopDaLoop**.
+
+Globals and context variables
+""""""""""""""""""""""""""""""
 
 * **Lua**'s behavior regarding global declarations is slightly altered within **ShoopDaLoop** scripts:
 
@@ -45,3 +48,9 @@ The following things should be kept in mind when writing **Lua** snippets or scr
     * Scripts associated with the same MIDI controller profile share a context
 
     * ...
+
+
+API
+"""
+
+* **print(msg)**, **print_debug(msg)**, **print_error(msg)**, **print_info(msg)**: Print a message to the Frontend.LuaScript logger. Respective log levels are info (default), debug, error, info.

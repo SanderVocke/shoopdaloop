@@ -64,7 +64,7 @@ class Backend(QQuickItem):
     backendTypeChanged = Signal(int)
     @Property(int, notify=backendTypeChanged)
     def backend_type(self):
-        return (self._backend_type.value if self._backend_type else BackendType.Dummy)
+        return (self._backend_type.value if self._backend_type else BackendType.Dummy.value)
     @backend_type.setter
     def backend_type(self, n):
         if self._initialized:
@@ -167,9 +167,12 @@ class Backend(QQuickItem):
     ################
 
     def init(self):
+        self.logger.debug("Initializing with type {}, client name hint {}".format(self._backend_type, self._client_name_hint))
         if self._initialized:
             self.logger.throw_error("May not initialize more than one back-end at a time.")
         self._backend_obj = init_backend(self._backend_type, self._client_name_hint)
+        if not self._backend_obj:
+            self.logger.throw_error("Failed to initialize back-end.")
         self._initialized = True
         self.init_timer()
     
@@ -181,7 +184,4 @@ class Backend(QQuickItem):
         self._timer.setSingleShot(False)
         self._timer.timeout.connect(self.doUpdate)
         self._timer.start(self._update_interval_ms)
-
-    def __del__(self):
-        self.logger.warning("DESTRUCTION")
     

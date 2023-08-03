@@ -1,11 +1,11 @@
 import QtQuick 6.3
 import QtTest 1.0
-import Backend
+import ShoopDaLoop.PythonBackend
 
 import '../../generated/types.js' as Types
 import './testfilename.js' as TestFilename
 
-Backend {
+PythonBackend {
     id: backend
     update_interval_ms: 30
     client_name_hint: 'ShoopDaLoop'

@@ -1,6 +1,6 @@
-import Loop
+import ShoopDaLoop.PythonLoop
 import QtQuick 6.3
 
-Loop {
+PythonLoop {
     property bool loaded : initialized
 }

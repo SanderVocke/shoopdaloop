@@ -2,17 +2,17 @@ import QtQuick 6.3
 import QtQuick.Controls 6.3
 import QtQuick.Controls.Material 6.3
 import QtQuick.Dialogs
-import Logger
-import ControlHandler
+import ShoopDaLoop.PythonLogger
+import ShoopDaLoop.PythonControlHandler
 
 import "../generate_session.js" as GenerateSession
 import "../generated/types.js" as Types
 
-Item {
+AppRegistries {
     id: root
     objectName: 'session'
 
-    property Logger logger : Logger { name: "Frontend.Session" }
+    property PythonLogger logger : PythonLogger { name: "Frontend.Session" }
 
     // The descriptor is an object matching the ShoopDaLoop session JSON
     // schema. The Session object will manage an actual session (consisting)
@@ -20,6 +20,7 @@ Item {
     // The descriptor may not be directly modified and is only used at initialization.
     // The actual descriptor can be retrieved with actual_session_descriptor().
     property var initial_descriptor : GenerateSession.generate_session(app_metadata.version_string, [], [], [], [])
+    property var backend_type : global_args.backend_type
 
     function actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) {
         return GenerateSession.generate_session(
@@ -27,7 +28,7 @@ Item {
             tracks_widget.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to),
             [],
             scenes_widget.actual_scene_descriptors,
-            scripting_widget.actual_descriptor,
+            [],
             fx_chain_states_registry.all_values()
         );
     }
@@ -41,6 +42,7 @@ Item {
     readonly property bool saving : state_registry.n_saving_actions_active > 0
     readonly property bool loading : state_registry.n_loading_actions_active > 0
     readonly property bool doing_io : saving || loading
+    readonly property var backend : session_backend
     readonly property var control_handler : control_handler
 
     Popup {
@@ -62,30 +64,6 @@ Item {
             color: Material.foreground
             text: "Loading..."
         }
-    }
-
-    // The main registry stores various important internal states.
-    // Examples of stuff stored in here:
-    // - selected / targeted / master loops
-    // - sub-registries, such as for cached FX chain states.
-    property Registry state_registry: StateRegistry {
-        verbose: false
-    }
-
-    // The objects registry is a simple map of widget ids (from the session descriptor)
-    // to objects representing those in the app (usually widgets.)
-    property Registry objects_registry: ObjectsRegistry {
-        verbose: false
-    }
-
-    // Store a reference to ourselves in the state registry.
-    // Also make some sub-registries:
-    // - one to keep track of FX chain states caching
-    // - one to keep track of any important objects by ID.
-    property Registry fx_chain_states_registry: Registry { verbose: true }
-    Component.onCompleted: {
-        state_registry.register('session', root)
-        state_registry.register('fx_chain_states_registry', fx_chain_states_registry)
     }
 
     // For (test) access
@@ -167,9 +145,9 @@ Item {
         }
     }
 
-    ControlHandler {
+    PythonControlHandler {
         id: control_handler
-        property Logger logger : Logger { name: "Frontend.Session.ControlHandler" }
+        property PythonLogger logger : PythonLogger { name: "Frontend.Session.ControlHandler" }
 
         function select_loops(loop_selector) {
             var rval = []
@@ -265,8 +243,8 @@ Item {
     Backend {
         update_interval_ms: 30
         client_name_hint: 'ShoopDaLoop'
-        backend_type: Types.BackendType.Jack
-        id: backend
+        backend_type: root.backend_type
+        id: session_backend
 
         anchors {
             fill: parent
@@ -276,7 +254,7 @@ Item {
         AppControls {
             id: app_controls
 
-            backend: backend
+            backend: session_backend
 
             anchors {
                 top: parent.top
@@ -307,25 +285,8 @@ Item {
             anchors {
                 top: app_controls.bottom
                 left: parent.left
-                bottom: tracks_widget.bottom
+                bottom: logo_menu_area.top
                 rightMargin: 6
-            }
-        }
-
-        ScriptingWidget {
-            id: scripting_widget
-
-            initial_descriptor: root.initial_descriptor.scripts
-            objects_registry: root.objects_registry
-            state_registry: root.state_registry
-
-            height: 160
-            anchors {
-                bottom: parent.bottom
-                left: scenes_widget.right
-                right: parent.right
-                topMargin: 4
-                leftMargin: 4
             }
         }
 
@@ -335,7 +296,7 @@ Item {
             anchors {
                 top: app_controls.bottom
                 left: scenes_widget.right
-                bottom: scripting_widget.top
+                bottom: parent.bottom
                 right: parent.right
                 bottomMargin: 4
                 leftMargin: 4
@@ -350,12 +311,12 @@ Item {
             id: logo_menu_area
 
             anchors {
-                top: scenes_widget.bottom
                 bottom: parent.bottom
-                right: scripting_widget.left
+                right: tracks_widget.left
             }
 
             width: 160
+            height: 160
 
             Item {
                 width: childrenRect.width
@@ -415,11 +376,11 @@ Item {
                     width: 80
                     from: 0.0
                     to: 100.0
-                    value: backend.dsp_load
+                    value: session_backend.dsp_load
                 }
 
                 Label { 
-                    text: "Xruns: " + backend.xruns.toString()
+                    text: "Xruns: " + session_backend.xruns.toString()
                 }
 
                 ExtendedButton {
@@ -434,7 +395,7 @@ Item {
                     }
                     width: 40
                     height: 30
-                    onClicked: backend.xruns = 0
+                    onClicked: session_backend.xruns = 0
                 }
             }
         }

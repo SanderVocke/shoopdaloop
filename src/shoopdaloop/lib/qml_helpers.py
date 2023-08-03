@@ -31,7 +31,7 @@ with open(script_dir + '/../version.txt', 'r') as f:
     pkg_version = f.read().strip()
 
 def register_qml_class(t, name):
-    qmlRegisterType(t, name, 1, 0, name)
+    qmlRegisterType(t, "ShoopDaLoop.Python" + name, 1, 0, "Python" + name)
 
 def register_shoopdaloop_qml_classes():
     # Register Python classes
@@ -55,7 +55,7 @@ def register_shoopdaloop_qml_classes():
     register_qml_class(DictTreeModelFactory, 'DictTreeModelFactory')
     register_qml_class(ControlHandler, 'ControlHandler')
 
-def create_and_populate_root_context(engine):
+def create_and_populate_root_context(engine, global_args):
     # Set import path to predefined classes
     engine.addImportPath(script_dir + '/../qml_types')
     engine.addPluginPath(script_dir + '/../qml_plugins')
@@ -68,7 +68,8 @@ def create_and_populate_root_context(engine):
         'app_metadata': ApplicationMetadata(parent=engine),
         'default_logger': Logger(),
         'tree_model_factory': DictTreeModelFactory(parent=engine),
-        'scripting_engine': ScriptingEngine(parent=engine)
+        'scripting_engine': ScriptingEngine(parent=engine),
+        'global_args': global_args,
     }
 
     items['default_logger'].name = 'Frontend.Qml'

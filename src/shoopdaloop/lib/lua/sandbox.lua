@@ -32,6 +32,10 @@ local env = {
     setmetatable = setmetatable,
     error = error,
     print = __shoop_print,
+    print_debug = __shoop_print_debug,
+    print_info = __shoop_print_info,
+    print_warning = __shoop_print_warning,
+    print_error = __shoop_print_error,
     rawset = rawset,
     rawget = rawget,
 }

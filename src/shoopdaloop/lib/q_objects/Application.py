@@ -20,13 +20,17 @@ from .ApplicationMetadata import ApplicationMetadata
 
 from ..logging import *
 
+from ...custom_qt_msg_handler import *
+
 script_dir = os.path.dirname(__file__)
 
 class Application(QGuiApplication):
-    def __init__(self, title, main_qml, qml_debug_port=None, qml_debug_wait=False):
+    def __init__(self, title, main_qml, backend_type, qml_debug_port=None, qml_debug_wait=False):
         super(Application, self).__init__([])
 
         self.logger = Logger("Frontend.Qml.App")
+
+        install_custom_qt_msg_handler(0)
 
         self.nsm_client = None
         self.title = title
@@ -51,8 +55,12 @@ class Application(QGuiApplication):
         self.engine.setOutputWarningsToStandardError(False)
         self.engine.objectCreated.connect(self.onQmlObjectCreated)
         self.engine.warnings.connect(self.onQmlWarnings)
+
+        global_args = {
+            'backend_type': backend_type.value,
+        }
         
-        self.root_context_items = create_and_populate_root_context(self.engine)
+        self.root_context_items = create_and_populate_root_context(self.engine, global_args)
 
         if main_qml:
             self.engine.load(main_qml)

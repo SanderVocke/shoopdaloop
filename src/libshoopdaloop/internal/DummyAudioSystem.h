@@ -3,6 +3,7 @@
 #include "MidiPortInterface.h"
 #include "AudioPortInterface.h"
 #include "PortInterface.h"
+#include "LoggingEnabled.h"
 #include "types.h"
 #include <chrono>
 #include <ratio>
@@ -95,7 +96,11 @@ public:
 };
 
 template<typename Time, typename Size>
-class DummyAudioSystem : public AudioSystemInterface<Time, Size> {
+class DummyAudioSystem : public AudioSystemInterface<Time, Size>, private ModuleLoggingEnabled {
+
+    std::string log_module_name() const override {
+        return "Backend.DummyAudioSystem";
+    }
 
     std::function<void(size_t)> m_process_cb;
     const size_t mc_sample_rate;
@@ -126,30 +131,36 @@ public:
     {
         m_audio_ports.clear();
         m_midi_ports.clear();
+        log_init();
+
+        log<LogLevel::debug>("DummyAudioSystem: constructed");
     }
 
     void start() override {
         m_proc_thread = std::thread([this]{
-            std::cout << "DummyAudioSystem: starting process thread" << std::endl;
+            log<LogLevel::debug>("DummyAudioSystem: starting process thread");
             auto bufs_per_second = mc_sample_rate / mc_buffer_size;
             auto interval = 1.0f / ((float)bufs_per_second);
             auto micros = size_t(interval * 1000000.0f);
             while(!this->m_finish) {
+                log<LogLevel::trace>("DummyAudioSystem: process iteration");
                 std::this_thread::sleep_for(std::chrono::microseconds(micros));
                 m_process_cb(mc_buffer_size);
             }
-            std::cout << "DummyAudioSystem: ending process thread" << std::endl;
+            log<LogLevel::debug>("DummyAudioSystem: ending process thread");
         });
     }
 
     ~DummyAudioSystem() override {
         close();
+        log<LogLevel::debug>("DummyAudioSystem: destructed");
     }
 
     std::shared_ptr<AudioPortInterface<audio_sample_t>> open_audio_port(
         std::string name,
         PortDirection direction
     ) override {
+        log<LogLevel::debug>("DummyAudioSystem : add audio port");
         auto rval = std::make_shared<DummyAudioPort>(name, direction);
         m_audio_ports.insert(rval);
         return rval;
@@ -159,6 +170,7 @@ public:
         std::string name,
         PortDirection direction
     ) override {
+        log<LogLevel::debug>("DummyAudioSystem: add midi port");
         auto rval = std::make_shared<DummyMidiPort>(name, direction);
         m_midi_ports.insert(rval);
         return rval;
@@ -182,7 +194,9 @@ public:
 
     void close() override {
         m_finish = true;
+        log<LogLevel::debug>("DummyAudioSystem: closing");
         if (m_proc_thread.joinable()) {
+            log<LogLevel::debug>("DummyAudioSystem: joining process thread");
             m_proc_thread.join();
         }
     }

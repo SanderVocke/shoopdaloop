@@ -75,6 +75,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 add_subdirectory(${CMAKE_SOURCE_DIR}/../third_party/lv2_evbuf lv2_evbuf)
 add_subdirectory(test)
 add_subdirectory(qml_types)
+add_subdirectory(custom_qt_msg_handler)
 
 # Backend lib
 add_library(shoopdaloop SHARED libshoopdaloop.cpp internal/LoggingBackend.cpp internal/ProcessProfiling.cpp)

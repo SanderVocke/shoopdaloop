@@ -1,10 +1,10 @@
-import LoopMidiChannel
+import ShoopDaLoop.PythonLoopMidiChannel
 import QtQuick 6.3
 
 import '../generated/types.js' as Types
 import '../session_schemas/conversions.js' as Conversions
 
-LoopMidiChannel {
+PythonLoopMidiChannel {
     id: root
 
     property var descriptor : null

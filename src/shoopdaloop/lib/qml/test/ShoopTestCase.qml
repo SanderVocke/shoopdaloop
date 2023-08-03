@@ -1,6 +1,6 @@
 import QtQuick 6.3
 import QtTest 1.0
-import Logger
+import ShoopDaLoop.PythonLogger
 
 import '../../generated/types.js' as Types
 import './testDeepEqual.js' as TestDeepEqual
@@ -9,7 +9,10 @@ TestCase {
     id: root
     property string name : 'UnnamedTestCase'
     property string filename : 'UnknownTestFile'
-    property var logger : Logger { name: `Test.` + root.name }
+    property var logger : PythonLogger { name: `Test.` + root.name }
+
+    Component.onCompleted: logger.info("Testcase " + name + " created.")
+    Component.onDestruction: logger.info("Testcase " + name + " destroyed.")
 
     function verify_loop_cleared(loop) {
         verify(loop.mode == Types.LoopMode.Stopped, `Loop not stopped: ${loop.mode}. Trace: ${backtrace()}`)
@@ -27,10 +30,6 @@ TestCase {
         var casename = name
         var func = qtest_results.functionName
         logger.info(`${filename}::${casename}::${func}: ${statusdesc}`)
-
-        if (g_test_reporter) {
-            g_test_reporter.report_result (filename, casename, func, statusdesc)
-        }
     }
 
     function backtrace() {

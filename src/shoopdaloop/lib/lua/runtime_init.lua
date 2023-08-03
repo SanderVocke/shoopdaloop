@@ -126,4 +126,4 @@ setmetatable(_ENV, {
   end,
 })
 
-print("LUA runtime ready.")
+print_debug("LUA runtime ready.")
