@@ -20,8 +20,8 @@ AppRegistries {
     // The descriptor may not be directly modified and is only used at initialization.
     // The actual descriptor can be retrieved with actual_session_descriptor().
     property var initial_descriptor : GenerateSession.generate_session(app_metadata.version_string, [], [], [], [])
-
     property var backend_type : global_args.backend_type
+    Component.onCompleted: console.log("SESSION BACKEND TYPE: " + backend_type)
 
     function actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) {
         return GenerateSession.generate_session(
@@ -29,7 +29,7 @@ AppRegistries {
             tracks_widget.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to),
             [],
             scenes_widget.actual_scene_descriptors,
-            scripting_widget.actual_descriptor,
+            {},
             fx_chain_states_registry.all_values()
         );
     }
@@ -43,6 +43,7 @@ AppRegistries {
     readonly property bool saving : state_registry.n_saving_actions_active > 0
     readonly property bool loading : state_registry.n_loading_actions_active > 0
     readonly property bool doing_io : saving || loading
+    readonly property var backend : session_backend
     readonly property var control_handler : control_handler
 
     Popup {
@@ -244,7 +245,7 @@ AppRegistries {
         update_interval_ms: 30
         client_name_hint: 'ShoopDaLoop'
         backend_type: root.backend_type
-        id: backend
+        id: session_backend
 
         anchors {
             fill: parent
@@ -254,7 +255,7 @@ AppRegistries {
         AppControls {
             id: app_controls
 
-            backend: backend
+            backend: session_backend
 
             anchors {
                 top: parent.top
@@ -285,25 +286,8 @@ AppRegistries {
             anchors {
                 top: app_controls.bottom
                 left: parent.left
-                bottom: tracks_widget.bottom
+                bottom: logo_menu_area.top
                 rightMargin: 6
-            }
-        }
-
-        ScriptingWidget {
-            id: scripting_widget
-
-            initial_descriptor: root.initial_descriptor.scripts
-            objects_registry: root.objects_registry
-            state_registry: root.state_registry
-
-            height: 160
-            anchors {
-                bottom: parent.bottom
-                left: scenes_widget.right
-                right: parent.right
-                topMargin: 4
-                leftMargin: 4
             }
         }
 
@@ -313,7 +297,7 @@ AppRegistries {
             anchors {
                 top: app_controls.bottom
                 left: scenes_widget.right
-                bottom: scripting_widget.top
+                bottom: parent.bottom
                 right: parent.right
                 bottomMargin: 4
                 leftMargin: 4
@@ -328,12 +312,12 @@ AppRegistries {
             id: logo_menu_area
 
             anchors {
-                top: scenes_widget.bottom
                 bottom: parent.bottom
-                right: scripting_widget.left
+                right: tracks_widget.left
             }
 
             width: 160
+            height: 160
 
             Item {
                 width: childrenRect.width
@@ -393,11 +377,11 @@ AppRegistries {
                     width: 80
                     from: 0.0
                     to: 100.0
-                    value: backend.dsp_load
+                    value: session_backend.dsp_load
                 }
 
                 Label { 
-                    text: "Xruns: " + backend.xruns.toString()
+                    text: "Xruns: " + session_backend.xruns.toString()
                 }
 
                 ExtendedButton {
@@ -412,7 +396,7 @@ AppRegistries {
                     }
                     width: 40
                     height: 30
-                    onClicked: backend.xruns = 0
+                    onClicked: session_backend.xruns = 0
                 }
             }
         }

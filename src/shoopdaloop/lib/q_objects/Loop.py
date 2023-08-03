@@ -281,6 +281,7 @@ class Loop(QQuickItem):
         return self._backend_loop
     
     def maybe_initialize(self):
+        self.logger.error("MAYBE INIT LOOP")
         if self._backend and self._backend.initialized and not self._backend_loop:
             self._backend_loop = self._backend.get_backend_obj().create_loop()
             if self._backend_loop:

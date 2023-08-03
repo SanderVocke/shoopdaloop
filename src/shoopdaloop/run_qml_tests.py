@@ -26,7 +26,7 @@ class Setup(QObject):
     @Slot(QQmlEngine)
     def qmlEngineAvailable(self, engine):
         register_shoopdaloop_qml_classes()
-        self.root_context_items = create_and_populate_root_context(engine, BackendType.Dummy)
+        self.root_context_items = create_and_populate_root_context(engine, { 'backend_type': BackendType.Dummy.value })
 
 logger = Logger('Test.Runner')
 

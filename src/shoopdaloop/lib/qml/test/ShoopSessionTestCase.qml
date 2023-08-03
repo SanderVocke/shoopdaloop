@@ -4,7 +4,7 @@ import QtTest 1.0
 ShoopTestCase {
     id: root
     property var session : null
-    property var backend : null
+    property var backend : session ? session.backend : null
 
     Timer {
         id: timer
@@ -18,9 +18,13 @@ ShoopTestCase {
     when: timer.done
 
     function check_backend() {
-        verify(backend.initialized, "backend not initialized")
+        verify(backend && backend.initialized, "backend not initialized")
         backend.doUpdate()
     }
 
     function cleanupTestCase() { backend.close() }
+
+    function initTestCase() {
+        check_backend()
+    }
 }
