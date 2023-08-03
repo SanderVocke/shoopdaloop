@@ -194,7 +194,9 @@ public:
 
     void close() override {
         m_finish = true;
+        log<LogLevel::debug>("DummyAudioSystem: closing");
         if (m_proc_thread.joinable()) {
+            log<LogLevel::debug>("DummyAudioSystem: joining process thread");
             m_proc_thread.join();
         }
     }

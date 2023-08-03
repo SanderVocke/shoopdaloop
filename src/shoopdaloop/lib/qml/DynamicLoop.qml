@@ -49,11 +49,16 @@ Item {
         }
     }
     Component.onCompleted: if(force_load) load()
+    Component.onDestruction: {
+        qml_close()
+        logger.debug("destroy")
+    }
     onForce_loadChanged: if(force_load) load()
     
     function qml_close() {
         if (maybe_loop) {
             maybe_loop.close();
+            maybe_loop = null;
         }
     }
 

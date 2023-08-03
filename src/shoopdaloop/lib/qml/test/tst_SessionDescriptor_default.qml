@@ -20,7 +20,6 @@ Session {
         name: 'SessionDescriptor_default'
         filename : TestFilename.test_filename()
         session: session
-        backend: backend
 
         function test_session_descriptor_default() {
             start_test_fn('test_session_descriptor_default')
