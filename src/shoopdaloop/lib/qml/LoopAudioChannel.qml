@@ -1,5 +1,6 @@
 import ShoopDaLoop.PythonLoopAudioChannel
 import QtQuick 6.3
+import ShoopDaLoop.PythonLogger
 
 import '../session_schemas/conversions.js' as Conversions
 import '../generated/types.js' as Types
@@ -17,6 +18,8 @@ PythonLoopAudioChannel {
         descriptor: root.descriptor
         schema: 'channel.1'
     }
+
+    readonly property PythonLogger logger : PythonLogger { name: "Frontend.LoopAudioChannel" }
 
     function actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) {
         var rval = {

@@ -28,12 +28,9 @@ class LoopAudioChannel(LoopChannel):
     def maybe_initialize(self):
         if self._loop and self._loop.initialized and not self._backend_obj:
             self._backend_obj = self._loop.add_audio_channel(self.mode)
-            # TODO: this is a workaround for the fact that immediately after channel creation,
-            # we get a placeholder handle because the back-end is still setting it up.
-            # We will push the initial volume on the first update call.
-            self._initial_volume_pushed = False
             self.logger.debug("Initialized back-end channel")
             self.initializedChanged.emit(True)
+            self.set_volume(self._volume)
 
     ######################
     # PROPERTIES
@@ -82,9 +79,6 @@ class LoopAudioChannel(LoopChannel):
         if state.output_peak != self._output_peak:
             self._output_peak = state.output_peak
             self.outputPeakChanged.emit(self._output_peak)
-        if not self._initial_volume_pushed:
-            self.set_volume(self._volume)
-            self._initial_volume_pushed = True
         else:
             if state.volume != self._volume:
                 self._volume = state.volume

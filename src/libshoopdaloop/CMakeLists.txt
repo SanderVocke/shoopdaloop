@@ -49,7 +49,6 @@ add_custom_target(
   )
 set(JACKWRAPPERS_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers})
 add_library(jack_wrappers STATIC ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.c)
-set_property(TARGET jack_wrappers PROPERTY POSITION_INDEPENDENT_CODE ON)
 target_include_directories(jack_wrappers PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers)
 
 
@@ -75,6 +74,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 add_subdirectory(${CMAKE_SOURCE_DIR}/../third_party/lv2_evbuf lv2_evbuf)
 add_subdirectory(test)
 add_subdirectory(qml_types)
+add_subdirectory(custom_qt_msg_handler)
 
 # Backend lib
 add_library(shoopdaloop SHARED libshoopdaloop.cpp internal/LoggingBackend.cpp internal/ProcessProfiling.cpp)
