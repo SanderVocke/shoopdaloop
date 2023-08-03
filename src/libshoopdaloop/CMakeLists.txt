@@ -49,6 +49,7 @@ add_custom_target(
   )
 set(JACKWRAPPERS_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers})
 add_library(jack_wrappers STATIC ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.c)
+set_property(TARGET jack_wrappers PROPERTY POSITION_INDEPENDENT_CODE ON)
 target_include_directories(jack_wrappers PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers)
 
 

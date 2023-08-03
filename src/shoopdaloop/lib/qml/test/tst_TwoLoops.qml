@@ -19,8 +19,6 @@ PythonBackend {
         anchors.fill: parent
         initial_descriptor: GenerateSession.generate_default_session(app_metadata.version_string, 2)
 
-        property var logger : Logger { name: "Test.TwoLoops" }
-
         ShoopSessionTestCase {
             id: testcase
             name: 'TwoLoops'

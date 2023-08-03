@@ -11,7 +11,6 @@ Item {
     property var maybe_loop : null
     readonly property PythonLogger logger : PythonLogger { name:"Frontend.DynamicLoop" }
     readonly property bool ready : maybe_loop != null
-    readonly property bool loaded : ready
     readonly property int mode : ready ? maybe_loop.mode : Types.LoopMode.Stopped
     readonly property int length : ready ? maybe_loop.length : 0
     readonly property int position : ready ? maybe_loop.position : 0

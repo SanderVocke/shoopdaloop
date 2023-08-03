@@ -14,21 +14,18 @@ from shoopdaloop.libshoopdaloop_bindings import terminate as terminate_backend
 from shoopdaloop.lib.qml_helpers import *
 from shoopdaloop.lib.q_objects.SchemaValidator import SchemaValidator
 from shoopdaloop.lib.logging import Logger
-from shoopdaloop.lib.q_objects.JUnitTestReporter import JUnitTestReporter
 
 import qml_tests
 from ctypes import *
 
 class Setup(QObject):
-    def __init__(self, reporter, parent=None):
+    def __init__(self, parent=None):
         super(Setup, self).__init__(parent)
-        self.reporter = reporter
 
     @Slot(QQmlEngine)
     def qmlEngineAvailable(self, engine):
         register_shoopdaloop_qml_classes()
         self.root_context_items = create_and_populate_root_context(engine)
-        engine.rootContext().setContextProperty('g_test_reporter', self.reporter)
 
 logger = Logger('Test.Runner')
 
@@ -48,8 +45,7 @@ def to_c_chars(strings):
             strArray[i] = c_char_p(param.encode('utf-8'))
     return cast(strArray, POINTER(POINTER(c_char)))
 
-reporter = JUnitTestReporter(parent=None)
-setup = Setup(reporter, parent=None)
+setup = Setup(parent=None)
 
 raw_setup = cast(Shiboken.getCppPointer(setup)[0], c_void_p)
 exitcode = qml_tests.run_quick_test_main_with_setup(len(sys.argv), to_c_chars(sys.argv), 'shoopdaloop_tests', script_dir + '/..', raw_setup)

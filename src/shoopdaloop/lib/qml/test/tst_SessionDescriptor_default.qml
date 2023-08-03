@@ -1,6 +1,6 @@
 import QtQuick 6.3
 import QtTest 1.0
-PythonBackend
+import ShoopDaLoop.PythonBackend
 
 import './testDeepEqual.js' as TestDeepEqual
 import '../../generated/types.js' as Types

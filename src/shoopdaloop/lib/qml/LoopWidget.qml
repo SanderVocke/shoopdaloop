@@ -191,7 +191,7 @@ Item {
     }
 
     Component.onCompleted: {
-        loaded = Qt.binding(function() { return maybe_loop.loaded} )
+        loaded = true
     }
 
     property var additional_context_menu_options : null // dict of option name -> functor
