@@ -5,6 +5,7 @@ project(shoopdaloop)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 set(CMAKE_CXX_EXTENSIONS NO)
+set(CMAKE_EXPORT_COMPILE_COMMANDS YES)
 
 # Required for custom QML types
 find_package(Qt6 REQUIRED COMPONENTS Core Qml Gui Quick Widgets QuickTest)

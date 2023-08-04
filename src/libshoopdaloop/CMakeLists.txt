@@ -78,7 +78,8 @@ add_subdirectory(qml_types)
 add_subdirectory(custom_qt_msg_handler)
 
 # Backend lib
-add_library(shoopdaloop SHARED libshoopdaloop.cpp internal/LoggingBackend.cpp internal/ProcessProfiling.cpp)
+file(GLOB INTERNAL_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/internal/*.cpp)
+add_library(shoopdaloop SHARED libshoopdaloop.cpp ${INTERNAL_SOURCES})
 add_dependencies(shoopdaloop jack_wrappers ${DEPEND_ON_LILV})
 target_link_libraries(shoopdaloop PUBLIC
                       lv2_evbuf

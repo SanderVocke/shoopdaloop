@@ -362,6 +362,7 @@ struct LoopInfo : public std::enable_shared_from_this<LoopInfo> {
     void delete_midi_channel_idx(size_t idx, bool thread_safe=true);
     void delete_audio_channel(SharedChannelInfo chan, bool thread_safe=true);
     void delete_midi_channel(SharedChannelInfo chan, bool thread_safe=true);
+    void delete_all_channels(bool thread_safe=true);
     void PROC_prepare_process(size_t n_frames);
     void PROC_finalize_process();
     Backend &get_backend();
@@ -1021,6 +1022,24 @@ void LoopInfo::delete_midi_channel(SharedChannelInfo chan, bool thread_safe) {
         }
         loop->delete_midi_channel(chan->channel, false);
         mp_midi_channels.erase(r);
+    };
+    if (thread_safe) {
+        get_backend().cmd_queue.queue(fn);
+    } else {
+        fn();
+    }
+}
+
+void LoopInfo::delete_all_channels(bool thread_safe) {
+    auto fn = [this]() {
+        for (auto &chan : mp_audio_channels) {
+            loop->delete_audio_channel(chan->channel, false);
+        }
+        mp_audio_channels.clear();
+        for (auto &chan : mp_midi_channels) {
+            loop->delete_midi_channel(chan->channel, false);
+        }
+        mp_midi_channels.clear();
     };
     if (thread_safe) {
         get_backend().cmd_queue.queue(fn);
@@ -1957,6 +1976,19 @@ void destroy_midi_channel_state_info(midi_channel_state_info_t *d) {
 }
 
 void destroy_loop(shoopdaloop_loop_t *d) {
+    auto loop = internal_loop(d);
+    auto backend = loop->backend.lock();
+    backend->cmd_queue.queue_and_wait([loop, backend]() {
+        loop->delete_all_channels(false);
+
+        bool found = false;
+        for(auto &elem : backend->loops) {
+            if(elem == loop) { elem = nullptr; found = true; }
+        }
+        if (!found) {
+            throw std::runtime_error("Did not find loop to destroy");
+        }
+    });
     std::cerr << "Warning: destroying loops is unimplemented" << std::endl;
 }
 

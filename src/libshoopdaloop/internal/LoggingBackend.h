@@ -14,9 +14,11 @@
 #ifndef COMPILE_LOG_LEVEL
 #define COMPILE_LOG_LEVEL logging::LogLevel::info
 #else
-#define HELPER(x) #x
-#define STR(x) HELPER(x)
-#pragma message "Using externally defined log level " STR(COMPILE_LOG_LEVEL)
+
+// #define HELPER(x) #x
+// #define STR(x) HELPER(x)
+// #pragma message "Using externally defined log level " STR(COMPILE_LOG_LEVEL)
+
 #endif
 
 

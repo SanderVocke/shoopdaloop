@@ -21,29 +21,13 @@ class DummyAudioPort : public AudioPortInterface<audio_sample_t> {
 public:
     DummyAudioPort(
         std::string name,
-        PortDirection direction) : AudioPortInterface<audio_sample_t>(name, direction),
-            m_name(name),
-            m_direction(direction) {}
+        PortDirection direction);
     
-    float *PROC_get_buffer(size_t n_frames) override {
-        auto rval = (audio_sample_t*) malloc(n_frames * sizeof(audio_sample_t));
-        memset((void*)rval, 0, sizeof(audio_sample_t) * n_frames);
-        return rval;
-    }
-
-    const char* name() const override {
-        return m_name.c_str();
-    }
-
-    PortDirection direction() const override {
-        return m_direction;
-    }
-
-    void close() override {}
-
-    ~DummyAudioPort() override {
-        close();
-    }
+    float *PROC_get_buffer(size_t n_frames) override;
+    const char* name() const override;
+    PortDirection direction() const override;
+    void close() override;
+    ~DummyAudioPort() override;
 };
 
 class DummyMidiPort : public MidiPortInterface, public MidiReadableBufferInterface, public MidiWriteableBufferInterface {
@@ -52,55 +36,37 @@ class DummyMidiPort : public MidiPortInterface, public MidiReadableBufferInterfa
 
 public:
 
-    size_t PROC_get_n_events() const override { return 0; }
-    virtual MidiSortableMessageInterface &PROC_get_event_reference(size_t idx) override
-    {
-        throw std::runtime_error("Dummy midi port cannot read messages");
-    }
-
+    size_t PROC_get_n_events() const override;
+    virtual MidiSortableMessageInterface &PROC_get_event_reference(size_t idx) override;
     void PROC_write_event_value(uint32_t size,
                         uint32_t time,
-                        const uint8_t* data) override
-    {}
-    void PROC_write_event_reference(MidiSortableMessageInterface const& m) override {}
-    bool write_by_reference_supported() const override { return true; }
-    bool write_by_value_supported() const override { return true; }
+                        const uint8_t* data) override;
+    void PROC_write_event_reference(MidiSortableMessageInterface const& m) override;
+    bool write_by_reference_supported() const override;
+    bool write_by_value_supported() const override;
 
     DummyMidiPort(
         std::string name,
         PortDirection direction
-    ) : MidiPortInterface(name, direction),
-        m_direction(direction), m_name(name) {}
+    );
 
-    const char* name() const override {
-        return m_name.c_str();
-    }
+    const char* name() const override;
 
-    PortDirection direction() const override {
-        return m_direction;
-    }
+    PortDirection direction() const override;
 
-    void close() override {}
+    void close() override;
 
-    MidiReadableBufferInterface &PROC_get_read_buffer (size_t n_frames) override {
-        return *(static_cast<MidiReadableBufferInterface*>(this));
-    }
+    MidiReadableBufferInterface &PROC_get_read_buffer (size_t n_frames) override;
 
-    MidiWriteableBufferInterface &PROC_get_write_buffer (size_t n_frames) override {
-        return *(static_cast<MidiWriteableBufferInterface*>(this));
-    }
+    MidiWriteableBufferInterface &PROC_get_write_buffer (size_t n_frames) override;
 
-    ~DummyMidiPort() override {
-        close();
-    }
+    ~DummyMidiPort() override;
 };
 
 template<typename Time, typename Size>
 class DummyAudioSystem : public AudioSystemInterface<Time, Size>, private ModuleLoggingEnabled {
 
-    std::string log_module_name() const override {
-        return "Backend.DummyAudioSystem";
-    }
+    std::string log_module_name() const override;
 
     std::function<void(size_t)> m_process_cb;
     const size_t mc_sample_rate;
@@ -118,89 +84,36 @@ public:
     DummyAudioSystem(
         std::string client_name,
         std::function<void(size_t)> process_cb
-    ) : AudioSystemInterface<Time, Size>(client_name, process_cb),
-        m_process_cb(process_cb),
-        mc_buffer_size(256),
-        mc_sample_rate(48000),
-        m_finish(false),
-        m_client_name(client_name),
-        m_audio_port_closed_cb(nullptr),
-        m_audio_port_opened_cb(nullptr),
-        m_midi_port_closed_cb(nullptr),
-        m_midi_port_opened_cb(nullptr)
-    {
-        m_audio_ports.clear();
-        m_midi_ports.clear();
-        log_init();
+    );
 
-        log<LogLevel::debug>("DummyAudioSystem: constructed");
-    }
+    void start() override;
 
-    void start() override {
-        m_proc_thread = std::thread([this]{
-            log<LogLevel::debug>("DummyAudioSystem: starting process thread");
-            auto bufs_per_second = mc_sample_rate / mc_buffer_size;
-            auto interval = 1.0f / ((float)bufs_per_second);
-            auto micros = size_t(interval * 1000000.0f);
-            while(!this->m_finish) {
-                log<LogLevel::trace>("DummyAudioSystem: process iteration");
-                std::this_thread::sleep_for(std::chrono::microseconds(micros));
-                m_process_cb(mc_buffer_size);
-            }
-            log<LogLevel::debug>("DummyAudioSystem: ending process thread");
-        });
-    }
-
-    ~DummyAudioSystem() override {
-        close();
-        log<LogLevel::debug>("DummyAudioSystem: destructed");
-    }
+    ~DummyAudioSystem() override;
 
     std::shared_ptr<AudioPortInterface<audio_sample_t>> open_audio_port(
         std::string name,
         PortDirection direction
-    ) override {
-        log<LogLevel::debug>("DummyAudioSystem : add audio port");
-        auto rval = std::make_shared<DummyAudioPort>(name, direction);
-        m_audio_ports.insert(rval);
-        return rval;
-    }
+    ) override;
 
     std::shared_ptr<MidiPortInterface> open_midi_port(
         std::string name,
         PortDirection direction
-    ) override {
-        log<LogLevel::debug>("DummyAudioSystem: add midi port");
-        auto rval = std::make_shared<DummyMidiPort>(name, direction);
-        m_midi_ports.insert(rval);
-        return rval;
-    }
+    ) override;
 
-    size_t get_sample_rate() const override {
-        return mc_sample_rate;
-    }
+    size_t get_sample_rate() const override;
+    size_t get_buffer_size() const override;
+    void* maybe_client_handle() const override;
+    const char* client_name() const override;
+    void close() override;
 
-    size_t get_buffer_size() const override {
-        return mc_buffer_size;
-    }
-
-    void* maybe_client_handle() const override {
-        return (void*)this;
-    }
-
-    const char* client_name() const override {
-        return m_client_name.c_str();
-    }
-
-    void close() override {
-        m_finish = true;
-        log<LogLevel::debug>("DummyAudioSystem: closing");
-        if (m_proc_thread.joinable()) {
-            log<LogLevel::debug>("DummyAudioSystem: joining process thread");
-            m_proc_thread.join();
-        }
-    }
-
-    size_t get_xruns() const override { return 0; }
-    void reset_xruns() override {};
+    size_t get_xruns() const override;
+    void reset_xruns() override;
 };
+
+#ifndef IMPLEMENT_DUMMYAUDIOSYSTEM_H
+extern template class DummyAudioSystem<uint32_t, uint16_t>;
+extern template class DummyAudioSystem<uint32_t, uint32_t>;
+extern template class DummyAudioSystem<uint16_t, uint16_t>;
+extern template class DummyAudioSystem<uint16_t, uint32_t>;
+extern template class DummyAudioSystem<uint32_t, uint64_t>;
+#endif

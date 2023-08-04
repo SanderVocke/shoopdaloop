@@ -84,6 +84,7 @@ source_path = "src"
 build_args = ["-j"]
 install_components = ["package_install"]
 options = { "STATIC_DEPENDENCIES" = "On" }
+build_path = "build"
 
 [tool.py-build-cmake.editable]
 mode = "symlink"
