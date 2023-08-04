@@ -1,4 +1,5 @@
 #include "DummyMidiBufs.h"
+#include <stdexcept>
 
 size_t DummyReadMidiBuf::PROC_get_n_events() const { return 0; }
 

@@ -1,4 +1,7 @@
 #include "ConnectedLoop.h"
+#include "ConnectedChannel.h"
+#include "AudioMidiLoop.h"
+#include "Backend.h"
 
 void ConnectedLoop::PROC_prepare_process(size_t n_frames) {
     for (auto &chan : mp_audio_channels) {
@@ -32,7 +35,7 @@ void ConnectedLoop::delete_midi_channel_idx(size_t idx, bool thread_safe) {
     });
 }
 
-void ConnectedLoop::delete_audio_channel(SharedChannelInfo chan, bool thread_safe) {
+void ConnectedLoop::delete_audio_channel(std::shared_ptr<ConnectedChannel> chan, bool thread_safe) {
     auto fn = [this, chan]() {
         auto r = std::find_if(mp_audio_channels.begin(), mp_audio_channels.end(), [chan](auto const& e) { return chan->channel.get() == e->channel.get(); });
         if (r == mp_audio_channels.end()) {
@@ -48,7 +51,7 @@ void ConnectedLoop::delete_audio_channel(SharedChannelInfo chan, bool thread_saf
     }
 }
 
-void ConnectedLoop::delete_midi_channel(SharedChannelInfo chan, bool thread_safe) {
+void ConnectedLoop::delete_midi_channel(std::shared_ptr<ConnectedChannel> chan, bool thread_safe) {
     auto fn = [this, chan]() {
         auto r = std::find_if(mp_midi_channels.begin(), mp_midi_channels.end(), [chan](auto const& e) { return chan->channel.get() == e->channel.get(); });
         if (r == mp_midi_channels.end()) {

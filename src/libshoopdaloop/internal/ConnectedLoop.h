@@ -1,6 +1,6 @@
 #include <memory>
 #include <vector>
-#include "limits.h"
+#include "shoop_globals.h"
 
 class AudioMidiLoop;
 class ConnectedChannel;
@@ -17,8 +17,8 @@ struct ConnectedLoop : public std::enable_shared_from_this<ConnectedLoop> {
              std::shared_ptr<AudioMidiLoop> loop) :
         loop(loop),
         backend(backend) {
-        mp_audio_channels.reserve(limits::default_max_audio_channels);
-        mp_midi_channels.reserve(limits::default_max_midi_channels);
+        mp_audio_channels.reserve(shoop_constants::default_max_audio_channels);
+        mp_midi_channels.reserve(shoop_constants::default_max_midi_channels);
     }
 
     void delete_audio_channel_idx(size_t idx, bool thread_safe=true);

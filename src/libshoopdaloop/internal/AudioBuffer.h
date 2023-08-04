@@ -1,12 +1,10 @@
 #pragma once
 #include <vector>
+#include <cstring>
 
 template<typename SampleT> class AudioBuffer : public std::vector<SampleT> {
 public:
-    AudioBuffer(size_t size);
+    AudioBuffer(size_t size) : std::vector<SampleT>(size) {
+        memset((void *)this->data(), 0, sizeof(SampleT) * size);
+    }
 };
-
-#ifndef IMPLEMENT_AUDIOBUFFER_H
-extern template class AudioBuffer<float>;
-extern template class AudioBuffer<int>;
-#endif

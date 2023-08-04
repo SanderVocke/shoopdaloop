@@ -1,7 +1,37 @@
 #include "ConnectedChannel.h"
 #include "ConnectedPort.h"
+#include "ChannelInterface.h"
+#include "AudioChannel.h"
+#include "MidiChannel.h"
+#include "DummyMidiBufs.h"
+#include "MidiMergingBuffer.h"
+#include "MidiPortInterface.h"
+#include <stdexcept>
+#include <algorithm>
+#include <Backend.h>
 
-void ConnectedChannel::clear_data_dirty() {ConnectedChannel
+using namespace shoop_types;
+using namespace shoop_constants;
+
+namespace {
+std::vector<audio_sample_t> g_dummy_audio_input_buffer (default_audio_dummy_buffer_size);
+std::vector<audio_sample_t> g_dummy_audio_output_buffer (default_audio_dummy_buffer_size);
+std::shared_ptr<DummyReadMidiBuf> g_dummy_midi_input_buffer = std::make_shared<DummyReadMidiBuf>();
+std::shared_ptr<DummyWriteMidiBuf> g_dummy_midi_output_buffer = std::make_shared<DummyWriteMidiBuf>();
+}
+
+ConnectedChannel &ConnectedChannel::operator= (ConnectedChannel const& other) {
+        if (backend.lock() != other.backend.lock()) {
+            throw std::runtime_error("Cannot copy channels between back-ends");
+        }
+        loop = other.loop;
+        channel = other.channel;
+        mp_input_port_mapping = other.mp_input_port_mapping;
+        mp_output_port_mappings = other.mp_output_port_mappings;
+        return *this;
+    }
+
+void ConnectedChannel::clear_data_dirty() {
     ma_data_sequence_nr = channel->get_data_seq_nr();
 }
 
