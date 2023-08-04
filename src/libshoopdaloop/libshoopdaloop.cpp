@@ -45,6 +45,8 @@
 #include <set>
 #include <thread>
 
+#include "libshoopdaloop_test_if.h"
+
 using namespace logging;
 using namespace shoop_constants;
 using namespace shoop_types;
@@ -52,6 +54,10 @@ using namespace shoop_types;
 // GLOBALS
 namespace {
 std::set<std::shared_ptr<Backend>> g_active_backends;
+}
+
+std::set<std::shared_ptr<Backend>> &get_active_backends() {
+    return g_active_backends;
 }
 
 // HELPER FUNCTIONS
