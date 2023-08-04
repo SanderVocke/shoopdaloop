@@ -985,7 +985,6 @@ void destroy_loop(shoopdaloop_loop_t *d) {
             throw std::runtime_error("Did not find loop to destroy");
         }
     });
-    std::cerr << "Warning: destroying loops is unimplemented" << std::endl;
 }
 
 void destroy_audio_port(shoopdaloop_audio_port_t *d) {
