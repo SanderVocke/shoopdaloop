@@ -1,9 +1,5 @@
 #pragma once
-#include <mutex>
-#include <optional>
-#include <spdlog/logger.h>
 #include <spdlog/spdlog.h>
-#include "spdlog/sinks/stdout_color_sinks.h"
 
 #define LOG_LEVEL_TRACE logging::LogLevel::trace;
 #define LOG_LEVEL_DEBUG logging::LogLevel::debug;

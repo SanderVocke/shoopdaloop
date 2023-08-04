@@ -1,8 +1,5 @@
 #pragma once
 #include "CarlaLV2ProcessingChain.h"
-#include "ProcessProfiling.h"
-#include "types.h"
-#include <lilv/lilv.h>
 #include <memory>
 
 class LV2 {

@@ -1,6 +1,13 @@
 #include <utility>
 #define IMPLEMENT_MIDICHANNEL_H
 #include "MidiChannel.h"
+#include "MidiPortInterface.h"
+#include "channel_mode_helpers.h"
+#include <memory>
+#include <optional>
+#include <functional>
+#include <chrono>
+#include <thread>
 template class MidiChannel<uint32_t, uint16_t>;
 template class MidiChannel<uint32_t, uint32_t>;
 template class MidiChannel<uint16_t, uint16_t>;

@@ -3,11 +3,6 @@
 #include "ChannelInterface.h"
 #include "MidiChannel.h"
 #include "ProcessProfiling.h"
-#include "WithCommandQueue.h"
-#include "ObjectPool.h"
-
-#include <memory>
-#include <vector>
 
 // Extend a BasicLoop with a set of audio and midi channels.
 class AudioMidiLoop : public BasicLoop {

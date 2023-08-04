@@ -1,11 +1,6 @@
 #pragma once
 #include <boost/lockfree/spsc_queue.hpp>
 #include <functional>
-#include <chrono>
-#include <ratio>
-#include <stdexcept>
-#include <thread>
-#include <atomic>
 
 // A lock-free queue suitable for passing functors to be executed in another thread.
 // Typical use is for executing things on the processing thread of the audio back-end.

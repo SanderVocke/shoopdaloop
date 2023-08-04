@@ -1,10 +1,5 @@
 #pragma once
-#include <string>
 #include "AudioPortInterface.h"
-#include "PortInterface.h"
-#include <stdexcept>
-#include <cstring>
-#include <iostream>
 #include <vector>
 
 template<typename SampleT>

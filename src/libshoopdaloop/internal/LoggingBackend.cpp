@@ -8,6 +8,10 @@
 #include <mutex>
 #include <iostream>
 #include <algorithm>
+#include <mutex>
+#include <optional>
+#include <spdlog/logger.h>
+#include "spdlog/sinks/stdout_color_sinks.h"
 
 namespace logging {
 

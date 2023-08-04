@@ -2,19 +2,11 @@
 #include "InternalLV2MidiOutputPort.h"
 #include "ProcessingChainInterface.h"
 #include "LoggingEnabled.h"
-#include "random_string.h"
 #include "ProcessProfiling.h"
-
-#include <cstring>
-#include <memory>
-#include <mutex>
-#include <nlohmann/json_fwd.hpp>
 #include <string>
-#include <tuple>
+#include <vector>
+#include <map>
 #include <types.h>
-
-#include <atomic>
-#include <chrono>
 #include <lilv/lilv.h>
 #include <lv2/core/lv2.h>
 #include <lv2/urid/urid.h>
@@ -28,12 +20,6 @@
 #include <lv2/state/state.h>
 #include <lv2/event/event.h>
 #include <lv2/event/event-helpers.h>
-#include <iostream>
-#include <dlfcn.h>
-#include <thread>
-
-#include <nlohmann/json.hpp>
-#include <base64.hpp>
 
 class LV2StateString {
     // map of key => (type, value)

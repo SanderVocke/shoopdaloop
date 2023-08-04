@@ -1,9 +1,6 @@
 #include "MidiPortInterface.h"
-#include "PortInterface.h"
 #include <memory>
-#include <optional>
 #include <boost/lockfree/spsc_queue.hpp>
-#include <cstring>
 
 // We discard time information for decoupled midi messages.
 // The intended use cases is controllers, where the time is

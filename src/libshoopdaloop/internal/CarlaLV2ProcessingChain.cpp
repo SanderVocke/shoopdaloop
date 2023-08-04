@@ -1,5 +1,18 @@
 #define IMPLEMENT_CARLALV2PROCESSINGCHAIN_H
 #include "CarlaLV2ProcessingChain.h"
+#include "random_string.h"
+#include <cstring>
+#include <memory>
+#include <mutex>
+#include <nlohmann/json_fwd.hpp>
+#include <tuple>
+#include <atomic>
+#include <chrono>
+#include <iostream>
+#include <dlfcn.h>
+#include <thread>
+#include <nlohmann/json.hpp>
+#include <base64.hpp>
 
 template class CarlaLV2ProcessingChain<uint32_t, uint16_t>;
 template class CarlaLV2ProcessingChain<uint32_t, uint32_t>;

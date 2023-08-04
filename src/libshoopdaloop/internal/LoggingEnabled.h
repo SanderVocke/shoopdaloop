@@ -1,10 +1,6 @@
 #pragma once
 #include "LoggingBackend.h"
-#include <spdlog/common.h>
-#include <spdlog/spdlog.h>
-#include <fmt/core.h>
 #include <source_location>
-#include <string_view>
 
 template<logging::LogLevel LevelFilter>
 class LoggingEnabled {

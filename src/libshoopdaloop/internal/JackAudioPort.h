@@ -1,12 +1,6 @@
 #pragma once
 #include <jack/types.h>
-#include <string>
 #include "AudioPortInterface.h"
-#include "PortInterface.h"
-#include <jack_wrappers.h>
-#include <stdexcept>
-#include <cstring>
-#include <iostream>
 
 class JackAudioPort : public AudioPortInterface<jack_default_audio_sample_t> {
     jack_port_t* m_port;

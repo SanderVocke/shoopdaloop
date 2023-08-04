@@ -1,5 +1,8 @@
 #define IMPLEMENT_DECOUPLEDMIDIPORT_H
 #include "DecoupledMidiPort.h"
+#include "PortInterface.h"
+#include <optional>
+#include <cstring>
 template class DecoupledMidiPort<uint32_t, uint16_t>;
 template class DecoupledMidiPort<uint32_t, uint32_t>;
 template class DecoupledMidiPort<uint16_t, uint16_t>;

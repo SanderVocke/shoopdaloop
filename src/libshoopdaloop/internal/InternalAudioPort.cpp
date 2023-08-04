@@ -1,5 +1,11 @@
 #define IMPLEMENT_INTERNALAUDIOPORT_H
 #include "InternalAudioPort.h"
+#include <string>
+#include "PortInterface.h"
+#include <stdexcept>
+#include <cstring>
+#include <iostream>
+
 template class InternalAudioPort<float>;
 template class InternalAudioPort<int>;
 

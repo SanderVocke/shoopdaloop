@@ -1,10 +1,7 @@
 #pragma once
 #include <jack/types.h>
-#include <string>
 #include "MidiPortInterface.h"
-#include "PortInterface.h"
 #include <jack_wrappers.h>
-#include <stdexcept>
 #include <vector>
 
 class JackMidiPort : public MidiPortInterface, public MidiReadableBufferInterface, public MidiWriteableBufferInterface {

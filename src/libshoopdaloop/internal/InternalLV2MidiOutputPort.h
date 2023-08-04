@@ -1,12 +1,5 @@
 #pragma once
-#include <lv2/atom/forge.h>
-#include <string>
 #include "MidiPortInterface.h"
-#include "PortInterface.h"
-#include <stdexcept>
-#include <cstring>
-#include <iostream>
-#include <vector>
 #include <lv2_evbuf.h>
 
 class InternalLV2MidiOutputPort : public MidiPortInterface, public MidiWriteableBufferInterface {

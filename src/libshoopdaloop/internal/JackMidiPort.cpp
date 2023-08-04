@@ -1,4 +1,7 @@
 #include "JackMidiPort.h"
+#include <string>
+#include "PortInterface.h"
+#include <stdexcept>
 
 JackMidiPort::ReadMessage::ReadMessage(jack_midi_event_t e) {
     time = e.time;

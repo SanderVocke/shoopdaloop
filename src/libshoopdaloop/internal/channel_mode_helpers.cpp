@@ -1,4 +1,6 @@
 #include "channel_mode_helpers.h"
+#include <iostream>
+#include <algorithm>
 
 unsigned loop_mode_to_channel_process_flags(
     loop_mode_t loop_mode,

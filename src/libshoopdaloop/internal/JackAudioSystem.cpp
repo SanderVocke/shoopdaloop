@@ -1,4 +1,12 @@
 #include "JackAudioSystem.h"
+#include "JackMidiPort.h"
+#include "MidiPortInterface.h"
+#include "PortInterface.h"
+#include "JackAudioPort.h"
+#include <jack_wrappers.h>
+#include <stdexcept>
+#include <memory>
+#include <atomic>
 
 int JackAudioSystem::PROC_process_cb_static(jack_nframes_t nframes, void *arg) {
     auto &inst = *((JackAudioSystem *)arg);

@@ -1,5 +1,7 @@
 #define IMPLEMENT_AUDIOBUFFER_H
 #include "AudioBuffer.h"
+#include <stdio.h>
+#include <cstring>
 
 template class AudioBuffer<float>;
 template class AudioBuffer<int>;

@@ -1,6 +1,5 @@
 #pragma once
 #include "MidiStorage.h"
-#include "MidiPortInterface.h"
 #include "ChannelInterface.h"
 #include "WithCommandQueue.h"
 #include "MidiMessage.h"
@@ -8,12 +7,6 @@
 #include "MidiStateDiffTracker.h"
 #include "LoggingEnabled.h"
 #include "ProcessProfiling.h"
-#include "channel_mode_helpers.h"
-#include <memory>
-#include <optional>
-#include <functional>
-#include <chrono>
-#include <thread>
 
 template<typename TimeType, typename SizeType>
 class MidiChannel : public ChannelInterface,

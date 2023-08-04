@@ -1,5 +1,8 @@
 #define IMPLEMENT_LV2_H
 #include "LV2.h"
+#include "ProcessProfiling.h"
+#include "types.h"
+#include <lilv/lilv.h>
 
 LV2::LV2() {
     m_world = lilv_world_new();

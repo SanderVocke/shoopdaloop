@@ -1,4 +1,10 @@
 #include "JackAudioPort.h"
+#include <string>
+#include "PortInterface.h"
+#include <jack_wrappers.h>
+#include <stdexcept>
+#include <cstring>
+#include <iostream>
 
 JackAudioPort::JackAudioPort(std::string name, PortDirection direction,
                              jack_client_t *client)

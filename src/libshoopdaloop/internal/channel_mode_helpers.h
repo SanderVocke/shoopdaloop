@@ -2,8 +2,6 @@
 #include "types.h"
 #include <cstddef>
 #include <optional>
-#include <iostream>
-#include <algorithm>
 
 typedef enum {
     ChannelPlayback =  0b00000001,

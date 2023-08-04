@@ -1,13 +1,7 @@
 #pragma once
 #include "AudioSystemInterface.h"
-#include "JackMidiPort.h"
-#include "MidiPortInterface.h"
-#include "PortInterface.h"
-#include "JackAudioPort.h"
-#include <jack_wrappers.h>
 #include <jack/types.h>
-#include <stdexcept>
-#include <memory>
+#include <map>
 #include <atomic>
 
 class JackAudioSystem : public AudioSystemInterface<jack_nframes_t, size_t> {

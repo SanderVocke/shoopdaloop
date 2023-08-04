@@ -1,5 +1,9 @@
 #define IMPLEMENT_AUDIOMIDILOOP_H
 #include "AudioMidiLoop.h"
+#include "WithCommandQueue.h"
+#include "ObjectPool.h"
+#include <memory>
+#include <vector>
 
 AudioMidiLoop::AudioMidiLoop(
     std::shared_ptr<profiling::Profiler> maybe_profiler)

@@ -1,4 +1,11 @@
 #include "InternalLV2MidiOutputPort.h"
+#include <lv2/atom/forge.h>
+#include <string>
+#include "PortInterface.h"
+#include <stdexcept>
+#include <cstring>
+#include <iostream>
+#include <vector>
 
 InternalLV2MidiOutputPort::InternalLV2MidiOutputPort(
     std::string name, PortDirection direction, size_t capacity,
