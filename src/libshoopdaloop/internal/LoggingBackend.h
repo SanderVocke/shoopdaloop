@@ -1,6 +1,7 @@
 #pragma once
 #include <spdlog/spdlog.h>
 #include <string_view>
+#include <optional>
 
 #define LOG_LEVEL_TRACE logging::LogLevel::trace;
 #define LOG_LEVEL_DEBUG logging::LogLevel::debug;
