@@ -78,8 +78,8 @@ directory = "src"
 
 [tool.py-build-cmake.cmake]
 minimum_version = "3.22"
-#build_type = "Release"
-build_type = "Debug"
+build_type = "Release"
+#build_type = "Debug"
 source_path = "src"
 build_args = ["-j"]
 install_components = ["package_install"]
