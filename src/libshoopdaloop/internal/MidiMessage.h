@@ -2,6 +2,7 @@
 #include <vector>
 #include <stdint.h>
 #include "MidiPortInterface.h"
+#include <cstring>
 
 template<typename TimeType, typename SizeType>
 struct MidiMessage : public MidiSortableMessageInterface {
@@ -9,26 +10,15 @@ struct MidiMessage : public MidiSortableMessageInterface {
     SizeType size;
     std::vector<uint8_t> data;
 
-    MidiMessage(decltype(time) time, decltype(size) size, decltype(data) data) :
-        time(time), size(size), data(data) {}
-    MidiMessage() {}
+    MidiMessage(decltype(time) time, decltype(size) size, decltype(data) data);
+    MidiMessage();
 
-    uint32_t get_time() const override {
-        return time;
-    }
-    uint32_t get_size() const override {
-        return size;
-    }
-    const uint8_t* get_data() const override {
-        return data.data();
-    }
+    uint32_t get_time() const override;
+    uint32_t get_size() const override;
+    const uint8_t* get_data() const override;
     void     get(uint32_t &size_out,
                          uint32_t &time_out,
-                         const uint8_t* &data_out) const override {
-        size_out = size;
-        time_out = time;
-        data_out = data.data();
-    }
+                         const uint8_t* &data_out) const override;
 };
 
 template<typename TimeType, typename SizeType, unsigned MaxDataSize>
@@ -63,3 +53,10 @@ struct MaxSizeMidiMessage : public MidiSortableMessageInterface {
         data_out = data;
     }
 };
+
+#ifndef IMPLEMENT_MIDIMESSAGE_H
+extern template class MidiMessage<uint32_t, uint16_t>;
+extern template class MidiMessage<uint32_t, uint32_t>;
+extern template class MidiMessage<uint16_t, uint16_t>;
+extern template class MidiMessage<uint16_t, uint32_t>;
+#endif

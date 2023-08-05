@@ -5,7 +5,6 @@
 #include "PortInterface.h"
 #include "MidiPortInterface.h"
 #include <string>
-#include <map>
 #include "AudioPortInterface.h"
 #include <functional>
 

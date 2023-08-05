@@ -1,12 +1,5 @@
 #pragma once
-#include <lv2/atom/forge.h>
-#include <string>
 #include "MidiPortInterface.h"
-#include "PortInterface.h"
-#include <stdexcept>
-#include <cstring>
-#include <iostream>
-#include <vector>
 #include <lv2_evbuf.h>
 
 class InternalLV2MidiOutputPort : public MidiPortInterface, public MidiWriteableBufferInterface {
@@ -27,59 +20,28 @@ public:
         uint32_t atom_chunk_urid,
         uint32_t atom_sequence_urid,
         uint32_t midi_event_type_urid
-    ) : MidiPortInterface(name, direction),
-        m_name(name),
-        m_direction(direction),
-        m_evbuf(lv2_evbuf_new(capacity, atom_chunk_urid, atom_sequence_urid)),
-        m_midi_event_type_urid(midi_event_type_urid) {}
+    );
 
-    MidiReadableBufferInterface &PROC_get_read_buffer  (size_t n_frames) override {
-        throw std::runtime_error("Internal LV2 MIDI output port does not support reading.");
-    }
+    MidiReadableBufferInterface &PROC_get_read_buffer  (size_t n_frames) override;
 
-    MidiWriteableBufferInterface &PROC_get_write_buffer (size_t n_frames) override {
-        lv2_evbuf_reset(m_evbuf, true);
-        m_iter = lv2_evbuf_begin(m_evbuf);
-        return *(static_cast<MidiWriteableBufferInterface*>(this));
-    }
+    MidiWriteableBufferInterface &PROC_get_write_buffer (size_t n_frames) override;
 
-    const char* name() const override {
-        return m_name.c_str();
-    }
+    const char* name() const override;
 
-    PortDirection direction() const override {
-        return m_direction;
-    }
+    PortDirection direction() const override;
 
-    void close() override {}
+    void close() override;
 
     void PROC_write_event_value(uint32_t size,
                          uint32_t time,
-                         const uint8_t* data) override
-    {
-        bool result = lv2_evbuf_write(
-            &m_iter,
-            time,
-            0,
-            m_midi_event_type_urid,
-            size,
-            (void*)data
-        );
-        if (!result) {
-            throw std::runtime_error("Failed to write MIDI event into LV2 evbuf");
-        }
-    }
+                         const uint8_t* data) override;
 
-    void PROC_write_event_reference(MidiSortableMessageInterface const& m) override {
-        throw std::runtime_error("Write by reference not supported");
-    }
+    void PROC_write_event_reference(MidiSortableMessageInterface const& m) override;
 
-    bool write_by_reference_supported() const override { return false; }
-    bool write_by_value_supported() const override { return true; }
+    bool write_by_reference_supported() const override;
+    bool write_by_value_supported() const override;
 
-    LV2_Evbuf *internal_evbuf() const { return m_evbuf; }
+    LV2_Evbuf *internal_evbuf() const;
 
-    ~InternalLV2MidiOutputPort() {
-        lv2_evbuf_free(m_evbuf);
-    }
+    ~InternalLV2MidiOutputPort();
 };

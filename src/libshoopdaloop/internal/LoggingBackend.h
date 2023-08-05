@@ -1,9 +1,7 @@
 #pragma once
-#include <mutex>
-#include <optional>
-#include <spdlog/logger.h>
 #include <spdlog/spdlog.h>
-#include "spdlog/sinks/stdout_color_sinks.h"
+#include <string_view>
+#include <optional>
 
 #define LOG_LEVEL_TRACE logging::LogLevel::trace;
 #define LOG_LEVEL_DEBUG logging::LogLevel::debug;
@@ -14,9 +12,11 @@
 #ifndef COMPILE_LOG_LEVEL
 #define COMPILE_LOG_LEVEL logging::LogLevel::info
 #else
-#define HELPER(x) #x
-#define STR(x) HELPER(x)
-#pragma message "Using externally defined log level " STR(COMPILE_LOG_LEVEL)
+
+// #define HELPER(x) #x
+// #define STR(x) HELPER(x)
+// #pragma message "Using externally defined log level " STR(COMPILE_LOG_LEVEL)
+
 #endif
 
 

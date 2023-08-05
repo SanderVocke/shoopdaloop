@@ -78,7 +78,8 @@ add_subdirectory(qml_types)
 add_subdirectory(custom_qt_msg_handler)
 
 # Backend lib
-add_library(shoopdaloop SHARED libshoopdaloop.cpp internal/LoggingBackend.cpp internal/ProcessProfiling.cpp)
+file(GLOB INTERNAL_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/internal/*.cpp)
+add_library(shoopdaloop SHARED libshoopdaloop.cpp ${INTERNAL_SOURCES})
 add_dependencies(shoopdaloop jack_wrappers ${DEPEND_ON_LILV})
 target_link_libraries(shoopdaloop PUBLIC
                       lv2_evbuf
@@ -110,8 +111,8 @@ if (OVERRIDE_COMPILE_LOG_LEVEL STREQUAL "")
     message("Building in debug mode. Using compile time log level: LOG_LEVEL_TRACE")
     target_compile_definitions(shoopdaloop PUBLIC -DCOMPILE_LOG_LEVEL=LOG_LEVEL_TRACE)
   else()
-    message("Building in non-debug mode. Using compile time log level: LOG_LEVEL_INFO")
-    target_compile_definitions(shoopdaloop PUBLIC -DCOMPILE_LOG_LEVEL=LOG_LEVEL_INFO)
+    message("Building in non-debug mode. Disabling trace messages. Using compile time log level: LOG_LEVEL_DEBUG")
+    target_compile_definitions(shoopdaloop PUBLIC -DCOMPILE_LOG_LEVEL=LOG_LEVEL_DEBUG)
   endif()
 else()
   message(WARNING "Using overridden compile time log level: ${OVERRIDE_COMPILE_LOG_LEVEL}")

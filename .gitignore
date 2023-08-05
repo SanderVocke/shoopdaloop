@@ -8,7 +8,6 @@
 .qtc_clangd
 build
 .cache/
-.vscode/
 shoopdaloop.egg-info
 dist
 .py-build-cmake_cache
