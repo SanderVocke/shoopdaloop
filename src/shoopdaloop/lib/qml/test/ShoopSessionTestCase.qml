@@ -22,7 +22,7 @@ ShoopTestCase {
         backend.doUpdate()
     }
 
-    function cleanupTestCase() { backend.close() }
+    function cleanupTestCase() { }
 
     function initTestCase() {
         check_backend()
