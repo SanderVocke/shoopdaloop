@@ -183,8 +183,10 @@ void Backend::PROC_process (jack_nframes_t nframes) {
                         if (c && c->ma_process_when == ProcessWhen::BeforeFXChains) { c->channel->PROC_finalize_process(); }
                     };
                     for (auto & loop: loops) {
-                        for (auto & channel: loop->mp_audio_channels) { before_fx_channel_process(channel); }
-                        for (auto & channel: loop->mp_midi_channels)  { before_fx_channel_process(channel); }
+                        if (loop) {
+                            for (auto & channel: loop->mp_audio_channels) { before_fx_channel_process(channel); }
+                            for (auto & channel: loop->mp_midi_channels)  { before_fx_channel_process(channel); }
+                        }
                     }
                 },
                 loops_profiling_item
@@ -236,8 +238,10 @@ void Backend::PROC_process (jack_nframes_t nframes) {
                         if (c && c->ma_process_when == ProcessWhen::AfterFXChains) { c->channel->PROC_finalize_process(); }
                     };
                     for (auto & loop: loops) {
-                        for (auto & channel: loop->mp_audio_channels) { after_fx_channel_process(channel); }
-                        for (auto & channel: loop->mp_midi_channels)  { after_fx_channel_process(channel); }
+                        if (loop) {
+                            for (auto & channel: loop->mp_audio_channels) { after_fx_channel_process(channel); }
+                            for (auto & channel: loop->mp_midi_channels)  { after_fx_channel_process(channel); }
+                        }
                     }
                 },
                 loops_profiling_item

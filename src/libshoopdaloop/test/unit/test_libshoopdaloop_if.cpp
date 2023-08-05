@@ -37,4 +37,24 @@ suite libshoopdaloop_if_tests = []() {
             expect(eq(weak_loop.lock(), nullptr));
         }
     };
+
+    "lif_4_channels_not_destroyed_with_loop"_test = []() {
+        shoopdaloop_backend_instance_t * c_backend = initialize (Dummy, "dummy");
+        {
+            auto c_loop = create_loop(c_backend);
+            shoopdaloop_loop_audio_channel_t* c_chan;
+            {
+                auto loop = internal_loop(c_loop);
+                c_chan = add_audio_channel(c_loop, Direct);
+            }
+            auto weak_chan = std::weak_ptr<ConnectedChannel>(internal_audio_channel(c_chan));
+            auto weak_loop = std::weak_ptr<ConnectedLoop>(internal_loop(c_loop));
+            expect(neq(weak_chan.lock(), nullptr));
+            expect(neq(weak_loop.lock(), nullptr));
+            destroy_loop(c_loop);
+            expect(eq(weak_loop.lock(), nullptr));
+            expect(eq(weak_chan.lock(), nullptr));
+            terminate(c_backend);
+        }
+    };
 };
