@@ -85,7 +85,7 @@ struct SingleDryWetLoopTestChain {
         int_dummy_audio_system->install_post_process_handler([&](size_t n) {
             if (int_dummy_audio_system->get_controlled_mode_samples_to_process() > 0) {
                 size_t to_dequeue = std::min(int_dummy_audio_system->get_controlled_mode_samples_to_process(), int_dummy_audio_system->get_buffer_size());
-                auto buf = int_output_port->maybe_audio_buffer;
+                auto buf = int_dummy_output_port->PROC_get_buffer(n);
                 dummy_output_port_dequeued_data.insert(dummy_output_port_dequeued_data.end(),
                             buf, buf + to_dequeue);
             }
@@ -98,6 +98,7 @@ struct SingleDryWetLoopTestChain {
 
         add_audio_port_passthrough(api_input_port, api_fx_in);
         add_audio_port_passthrough(api_fx_out, api_output_port);
+        add_audio_port_passthrough(api_input_port, api_output_port);
 
         set_audio_port_passthroughMuted(api_input_port, 0);
         set_audio_port_muted(api_input_port, 0);
@@ -120,11 +121,12 @@ suite chains_tests = []() {
         tst.int_dummy_input_port->queue_data(8, input_data.data());
         tst.int_dummy_audio_system->controlled_mode_request_samples(8);
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
 
         tst.int_dummy_audio_system->pause();
 
         expect(eq(tst.dummy_output_port_dequeued_data.size(), 8));
+        expect(eq(tst.int_dummy_input_port->get_queue_empty(), true));
         expect(eq(tst.dummy_output_port_dequeued_data, input_data));
     };
 };

@@ -1,4 +1,5 @@
 #include "Backend.h"
+#include "LoggingBackend.h"
 #include "ProcessProfiling.h"
 #include "JackAudioSystem.h"
 #include "DummyAudioSystem.h"
@@ -113,12 +114,14 @@ Backend::Backend(audio_system_type_t audio_system_type, std::string client_name_
 #warning delete destroyed ports
 // MEMBER FUNCTIONS
 void Backend::PROC_process (jack_nframes_t nframes) {
+    log<LogLevel::trace>("Process {}: start", nframes);
     profiling::stopwatch(
         [this, &nframes]() {
             
             profiler->next_iteration();
             
             // Execute queued commands
+            log<LogLevel::trace>("Process: execute commands");
             profiling::stopwatch(
                 [this]() {
                     cmd_queue.PROC_exec_all();
@@ -126,17 +129,19 @@ void Backend::PROC_process (jack_nframes_t nframes) {
                 cmds_profiling_item
             );
 
-
+            log<LogLevel::trace>("Process: decoupled MIDI");
             profiling::stopwatch(
                 [this, &nframes]() {
                     // Send/receive decoupled midi
                     PROC_process_decoupled_midi_ports(nframes);
                 }, ports_decoupled_midi_profiling_item, ports_profiling_item);
             
+
+            log<LogLevel::trace>("Process: prepare");
             profiling::stopwatch(
                 [this, &nframes]() {
                     // Prepare ports:
-                    // Get buffers and process passthrough
+                    // Get buffers, reset them, and ensure they are the right size
                     auto prepare_port_fn = [&](auto & p) {
                         if(p) {
                             p->PROC_reset_buffers();
@@ -159,6 +164,7 @@ void Backend::PROC_process (jack_nframes_t nframes) {
                     }
                 }, ports_prepare_profiling_item, ports_profiling_item);
             
+            log<LogLevel::trace>("Process: pre-FX passthrough");
             profiling::stopwatch(
                 [this, &nframes]() {
                     // Process passthrough on the input side (before FX chains)
@@ -174,6 +180,7 @@ void Backend::PROC_process (jack_nframes_t nframes) {
                 ports_profiling_item, ports_passthrough_profiling_item, ports_passthrough_input_profiling_item
             );
             
+            log<LogLevel::trace>("Process: process loops");
             profiling::stopwatch(
                 [this, &nframes]() {
                     // Process the loops. This queues deferred audio operations for post-FX channels.
@@ -194,6 +201,7 @@ void Backend::PROC_process (jack_nframes_t nframes) {
                 loops_profiling_item
             );
 
+            log<LogLevel::trace>("Process: finish pre-FX ports");
             profiling::stopwatch(
                 [this, &nframes]() {
                     // Finish processing any ports that come before FX.
@@ -209,6 +217,7 @@ void Backend::PROC_process (jack_nframes_t nframes) {
                 ports_profiling_item, ports_prepare_fx_profiling_item
             );
 
+            log<LogLevel::trace>("Process: FX");
             profiling::stopwatch(
                 [this, &nframes]() {
                     // Process the FX chains.
@@ -219,6 +228,7 @@ void Backend::PROC_process (jack_nframes_t nframes) {
                 fx_profiling_item
             );
 
+            log<LogLevel::trace>("Process: post-FX passthrough");
             profiling::stopwatch(
                 [this, &nframes]() {
                     // Process passthrough on the output side (after FX chains)
@@ -233,6 +243,7 @@ void Backend::PROC_process (jack_nframes_t nframes) {
                 ports_profiling_item, ports_passthrough_profiling_item, ports_passthrough_output_profiling_item
             );
 
+            log<LogLevel::trace>("Process: finish post-FX channels");
             profiling::stopwatch(
                 [this, &nframes]() {
                     // Finish processing any channels that come after FX.
@@ -249,6 +260,7 @@ void Backend::PROC_process (jack_nframes_t nframes) {
                 loops_profiling_item
             );
 
+            log<LogLevel::trace>("Process: finish post-FX ports");
             profiling::stopwatch(
                 [this, &nframes]() {
                     // Finish processing any ports that come after FX.
@@ -263,6 +275,7 @@ void Backend::PROC_process (jack_nframes_t nframes) {
                 ports_profiling_item, ports_finalize_profiling_item
             );
 
+            log<LogLevel::trace>("Process: finish loops");
             profiling::stopwatch(
                 [this, &nframes]() {
                     // Finish processing loops.
@@ -341,7 +354,8 @@ std::shared_ptr<ConnectedFXChain> Backend::create_fx_chain(fx_chain_type_t type,
             break;
         case Test2x2x1:
             chain = std::make_shared<CustomProcessingChain<Time, Size>>(
-                2, 2, 1, [&chain](size_t n, auto &ins, auto &outs, auto &midis) {
+                2, 2, 1, [this, &chain](size_t n, auto &ins, auto &outs, auto &midis) {
+                    log<LogLevel::debug>("{}", ins[0]->PROC_get_buffer(n)[2]);
                     for (size_t i=0; i<2; i++) {
                         memcpy((void*)outs[i]->PROC_get_buffer(n), (void*)ins[i]->PROC_get_buffer(n), n*sizeof(float));
                     }

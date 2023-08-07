@@ -12,7 +12,12 @@
 using namespace shoop_types;
 using namespace shoop_constants;
 
-ConnectedPort::ConnectedPort (std::shared_ptr<PortInterface> const& port, std::shared_ptr<Backend> const& backend) : port(port),
+std::string ConnectedPort::log_module_name() const {
+    return "Backend.ConnectedPort";
+}
+
+ConnectedPort::ConnectedPort (std::shared_ptr<PortInterface> const& port, std::shared_ptr<Backend> const& backend) :
+    port(port),
     maybe_audio_buffer(nullptr),
     maybe_midi_input_buffer(nullptr),
     maybe_midi_output_buffer(nullptr),
@@ -24,6 +29,7 @@ ConnectedPort::ConnectedPort (std::shared_ptr<PortInterface> const& port, std::s
     backend(backend),
     peak(0.0f),
     n_events_processed(0) {
+    log_init();
 
     bool is_internal = (dynamic_cast<InternalAudioPort<float>*>(port.get()) ||
                         dynamic_cast<InternalLV2MidiOutputPort*>(port.get()));
@@ -42,12 +48,14 @@ ConnectedPort::ConnectedPort (std::shared_ptr<PortInterface> const& port, std::s
 }
 
 void ConnectedPort::PROC_reset_buffers() {
+    log_trace();
     maybe_audio_buffer = nullptr;
     maybe_midi_input_buffer = nullptr;
     maybe_midi_output_buffer = nullptr;
 }
 
 void ConnectedPort::PROC_ensure_buffer(size_t n_frames) {
+    log_trace();
     auto maybe_midi = dynamic_cast<MidiPortInterface*>(port.get());
     auto maybe_audio = dynamic_cast<AudioPortInterface<shoop_types::audio_sample_t>*>(port.get());
 
@@ -112,6 +120,7 @@ void ConnectedPort::PROC_check_buffer() {
 }
 
 void ConnectedPort::PROC_passthrough(size_t n_frames) {
+    log_trace();
     if (port->direction() == PortDirection::Input) {
         for(auto & other : mp_passthrough_to) {
             auto o = other.lock();
@@ -126,6 +135,7 @@ void ConnectedPort::PROC_passthrough(size_t n_frames) {
 }
 
 void ConnectedPort::PROC_passthrough_audio(size_t n_frames, ConnectedPort &to) {
+    log_trace();
     if (!muted && !passthrough_muted) {
         for (size_t i=0; i<n_frames; i++) {
             to.maybe_audio_buffer[i] += passthrough_volume * maybe_audio_buffer[i];
@@ -134,6 +144,7 @@ void ConnectedPort::PROC_passthrough_audio(size_t n_frames, ConnectedPort &to) {
 }
 
 void ConnectedPort::PROC_passthrough_midi(size_t n_frames, ConnectedPort &to) {
+    log_trace();
     if(!muted && !passthrough_muted) {
         for(size_t i=0; i<maybe_midi_input_buffer->PROC_get_n_events(); i++) {
             auto &msg = maybe_midi_input_buffer->PROC_get_event_reference(i);
@@ -143,6 +154,7 @@ void ConnectedPort::PROC_passthrough_midi(size_t n_frames, ConnectedPort &to) {
 }
 
 void ConnectedPort::PROC_finalize_process(size_t n_frames) {
+    log_trace();
     if (auto a = dynamic_cast<AudioPortInterface<shoop_types::audio_sample_t>*>(port.get())) {
         if (a->direction() == PortDirection::Output) {
             float max = 0.0f;
@@ -187,6 +199,7 @@ Backend &ConnectedPort::get_backend() {
 }
 
 void ConnectedPort::connect_passthrough(const std::shared_ptr<ConnectedPort> &other) {
+    log_trace();
     get_backend().cmd_queue.queue([this, other]() {
         for (auto &_other : mp_passthrough_to) {
             if(auto __other = _other.lock()) {

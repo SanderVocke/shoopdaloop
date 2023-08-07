@@ -11,7 +11,6 @@
 #include "ExternalUIInterface.h"
 #include "AudioPortInterface.h"
 #include "AudioSystemInterface.h"
-#include "CarlaLV2ProcessingChain.h"
 #include "JackMidiPort.h"
 #include "LoggingBackend.h"
 #include "MidiChannel.h"

@@ -3,6 +3,7 @@
 #include <vector>
 #include <atomic>
 #include "MidiPortInterface.h"
+#include "LoggingEnabled.h"
 #include "shoop_globals.h"
 
 class Backend;
@@ -12,7 +13,10 @@ class MidiWriteableBufferInterface;
 class MidiMergingBuffer;
 class MidiStateTracker;
 
-struct ConnectedPort : public std::enable_shared_from_this<ConnectedPort> {
+struct ConnectedPort : public std::enable_shared_from_this<ConnectedPort>,
+                       private ModuleLoggingEnabled {
+    std::string log_module_name() const override;
+    
     const std::shared_ptr<PortInterface> port;
     std::weak_ptr<Backend> backend;
 
