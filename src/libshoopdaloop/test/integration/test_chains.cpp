@@ -34,7 +34,7 @@ struct SingleDryWetLoopTestChain {
 
     shoopdaloop_fx_chain_t *api_fx_chain;
     std::shared_ptr<ConnectedFXChain> int_fx_chain;
-    std::shared_ptr<shoop_types::CustomFXChain> int_custom_processing_chain;
+    std::shared_ptr<shoop_types::FXChain> int_custom_processing_chain;
 
     shoopdaloop_loop_t *api_loop;
     std::shared_ptr<ConnectedLoop> int_loop;
@@ -61,7 +61,7 @@ struct SingleDryWetLoopTestChain {
 
         api_fx_chain = create_fx_chain(api_backend, Test2x2x1, "Test");
         int_fx_chain = internal_fx_chain(api_fx_chain);
-        int_custom_processing_chain = std::dynamic_pointer_cast<shoop_types::CustomFXChain>(int_fx_chain->chain);
+        int_custom_processing_chain = std::dynamic_pointer_cast<shoop_types::FXChain>(int_fx_chain->chain);
 
         api_loop = create_loop(api_backend);
         int_loop = internal_loop(api_loop);

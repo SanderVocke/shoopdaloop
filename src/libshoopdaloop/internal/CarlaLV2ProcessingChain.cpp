@@ -591,7 +591,7 @@ CarlaLV2ProcessingChain<TimeType, SizeType>::~CarlaLV2ProcessingChain() {
 }
 
 template <typename TimeType, typename SizeType>
-void CarlaLV2ProcessingChain<TimeType, SizeType>::restore_state(
+void CarlaLV2ProcessingChain<TimeType, SizeType>::deserialize_state(
     std::string str) {
     while (!is_ready()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -623,7 +623,7 @@ void CarlaLV2ProcessingChain<TimeType, SizeType>::restore_state(
 }
 
 template <typename TimeType, typename SizeType>
-std::string CarlaLV2ProcessingChain<TimeType, SizeType>::get_state() {
+std::string CarlaLV2ProcessingChain<TimeType, SizeType>::serialize_state() {
     while (!is_ready()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }

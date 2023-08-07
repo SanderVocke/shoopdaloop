@@ -6,7 +6,9 @@
 // Internal
 #include "AudioBuffer.h"
 #include "AudioChannel.h"
+#include "SerializeableStateInterface.h"
 #include "AudioMidiLoop.h"
+#include "ExternalUIInterface.h"
 #include "AudioPortInterface.h"
 #include "AudioSystemInterface.h"
 #include "CarlaLV2ProcessingChain.h"
@@ -1004,10 +1006,11 @@ shoopdaloop_fx_chain_t *create_fx_chain(shoopdaloop_backend_instance_t *backend,
 void fx_chain_set_ui_visible(shoopdaloop_fx_chain_t *chain, unsigned visible) {
     init_log();
     g_logger->debug("fx_chain_set_ui_visible");
-    if(visible) {
-        internal_fx_chain(chain)->chain->show();
+    auto maybe_ui = dynamic_cast<ExternalUIInterface*>(internal_fx_chain(chain)->chain.get());
+    if(maybe_ui) {
+        maybe_ui->show();
     } else {
-        internal_fx_chain(chain)->chain->hide();
+        maybe_ui->hide();
     }
 }
 
@@ -1016,7 +1019,12 @@ fx_chain_state_info_t *get_fx_chain_state(shoopdaloop_fx_chain_t *chain) {
     auto c = internal_fx_chain(chain);
     r->ready = (unsigned) c->chain->is_ready();
     r->active = (unsigned) c->chain->is_active();
-    r->visible = (unsigned) c->chain->visible();
+    auto maybe_ui = dynamic_cast<ExternalUIInterface*>(internal_fx_chain(chain)->chain.get());
+    if(maybe_ui) {
+        r->visible = (unsigned) maybe_ui->visible();
+    } else {
+        r->visible = 0;
+    }
     return r;
 }
 
@@ -1030,18 +1038,26 @@ const char* get_fx_chain_internal_state(shoopdaloop_fx_chain_t *chain) {
     init_log();
     g_logger->debug("get_fx_chain_internal_state");
     auto c = internal_fx_chain(chain);
-    auto str = c->chain->get_state();
-    char * rval = (char*) malloc(str.size() + 1);
-    memcpy((void*)rval, str.data(), str.size());
-    rval[str.size()] = 0;
-    return rval;
+    auto maybe_serializeable = dynamic_cast<SerializeableStateInterface*>(c->chain.get());
+    if(maybe_serializeable) {
+        auto str = maybe_serializeable->serialize_state();
+        char * rval = (char*) malloc(str.size() + 1);
+        memcpy((void*)rval, str.data(), str.size());
+        rval[str.size()] = 0;
+        return rval;
+    } else {
+        return "";
+    }
 }
 
 void restore_fx_chain_internal_state(shoopdaloop_fx_chain_t *chain, const char* state) {
     init_log();
     g_logger->debug("restore_fx_chain_internal_state");
     auto c = internal_fx_chain(chain);
-    c->chain->restore_state(std::string(state));
+    auto maybe_serializeable = dynamic_cast<SerializeableStateInterface*>(c->chain.get());
+    if (maybe_serializeable) {
+        maybe_serializeable->deserialize_state(std::string(state));
+    }
 }
 
 shoopdaloop_audio_port_t **fx_chain_audio_input_ports(shoopdaloop_fx_chain_t *chain, unsigned int *n_out) {

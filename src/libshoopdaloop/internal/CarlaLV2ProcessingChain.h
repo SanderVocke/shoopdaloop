@@ -3,6 +3,8 @@
 #include "ProcessingChainInterface.h"
 #include "LoggingEnabled.h"
 #include "ProcessProfiling.h"
+#include "ExternalUIInterface.h"
+#include "SerializeableStateInterface.h"
 #include <string>
 #include <vector>
 #include <map>
@@ -68,7 +70,9 @@ public:
 
 template<typename TimeType, typename SizeType>
 class CarlaLV2ProcessingChain : public ProcessingChainInterface<TimeType, SizeType>,
-                                public ModuleLoggingEnabled {
+                                public ModuleLoggingEnabled,
+                                public ExternalUIInterface,
+                                public SerializeableStateInterface {
 public:
     using _InternalAudioPort = typename ProcessingChainInterface<TimeType, SizeType>::_InternalAudioPort;
     using SharedInternalAudioPort = typename ProcessingChainInterface<TimeType, SizeType>::SharedInternalAudioPort;
@@ -142,10 +146,10 @@ public:
     );
 
     void instantiate(size_t sample_rate);
-    bool visible() const;
-    void show();
-    void hide();
-    void stop();
+    bool visible() const override;
+    void show() override;
+    void hide() override;
+    void stop() override;
     bool is_ready() const override;
     bool is_active() const override;
     void set_active(bool active) override;
@@ -162,8 +166,8 @@ public:
 
     virtual ~CarlaLV2ProcessingChain();
 
-    void restore_state(std::string str);
-    std::string get_state();
+    void deserialize_state(std::string str) override;
+    std::string serialize_state() override;
 };
 
 #ifndef IMPLEMENT_CARLALV2PROCESSINGCHAIN_H

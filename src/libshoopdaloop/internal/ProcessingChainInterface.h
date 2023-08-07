@@ -42,6 +42,8 @@ public:
     // behaviour as to what will happen on those ports.
     virtual bool is_ready() const = 0;
 
+    virtual void stop();
+
     // A processing chain may be deactivated, in which case it will not produce
     // any output. Typical use-case is for saving CPU.
     virtual bool is_active() const = 0;
