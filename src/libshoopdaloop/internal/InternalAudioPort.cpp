@@ -23,7 +23,7 @@ SampleT *InternalAudioPort<SampleT>::PROC_get_buffer(size_t n_frames) {
             "Requesting oversized buffer from internal port");
     }
     if (m_direction == PortDirection::Output) {
-        memset((void *)m_buffer.data(), 0, sizeof(float) * n_frames);
+        zero();
     }
     return m_buffer.data();
 }

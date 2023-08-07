@@ -98,7 +98,6 @@ struct SingleDryWetLoopTestChain {
 
         add_audio_port_passthrough(api_input_port, api_fx_in);
         add_audio_port_passthrough(api_fx_out, api_output_port);
-        add_audio_port_passthrough(api_input_port, api_output_port);
 
         set_audio_port_passthroughMuted(api_input_port, 0);
         set_audio_port_muted(api_input_port, 0);

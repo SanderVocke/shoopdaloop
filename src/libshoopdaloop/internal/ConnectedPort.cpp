@@ -140,6 +140,7 @@ void ConnectedPort::PROC_passthrough_audio(size_t n_frames, ConnectedPort &to) {
         for (size_t i=0; i<n_frames; i++) {
             to.maybe_audio_buffer[i] += passthrough_volume * maybe_audio_buffer[i];
         }
+        log<logging::LogLevel::debug>("{}", maybe_audio_buffer[0]);
     }
 }
 

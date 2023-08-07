@@ -65,8 +65,6 @@ void CustomProcessingChain<TimeType, SizeType>::process(size_t frames) {
     if (m_process_callback) {
         m_process_callback(frames, m_input_audio_ports, m_output_audio_ports, m_input_midi_ports);
     }
-    log<logging::LogLevel::debug>("fx {} {}", m_input_audio_ports[0]->PROC_get_buffer(frames)[0],
-        m_output_audio_ports[0]->PROC_get_buffer(frames)[0]);
 }
 
 template<typename TimeType, typename SizeType>
