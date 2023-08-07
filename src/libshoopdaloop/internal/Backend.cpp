@@ -355,7 +355,6 @@ std::shared_ptr<ConnectedFXChain> Backend::create_fx_chain(fx_chain_type_t type,
         case Test2x2x1:
             chain = std::make_shared<CustomProcessingChain<Time, Size>>(
                 2, 2, 1, [this, &chain](size_t n, auto &ins, auto &outs, auto &midis) {
-                    log<LogLevel::debug>("{}", ins[0]->PROC_get_buffer(n)[2]);
                     for (size_t i=0; i<2; i++) {
                         memcpy((void*)outs[i]->PROC_get_buffer(n), (void*)ins[i]->PROC_get_buffer(n), n*sizeof(float));
                     }

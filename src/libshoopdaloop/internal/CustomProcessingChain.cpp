@@ -8,6 +8,11 @@ template class CustomProcessingChain<uint16_t, uint16_t>;
 template class CustomProcessingChain<uint16_t, uint32_t>;
 
 template<typename TimeType, typename SizeType>
+std::string CustomProcessingChain<TimeType, SizeType>::log_module_name() const {
+    return "Backend.CustomProcessingChain";
+}
+
+template<typename TimeType, typename SizeType>
 CustomProcessingChain<TimeType, SizeType>::CustomProcessingChain(
     size_t n_audio_inputs,
     size_t n_audio_outputs,
@@ -17,6 +22,7 @@ CustomProcessingChain<TimeType, SizeType>::CustomProcessingChain(
     m_freewheeling(false),
     m_process_callback(process_callback)
 {
+    log_init();
     for(size_t i=0; i<n_audio_inputs; i++) {
         m_input_audio_ports.push_back(std::make_shared<InternalAudioPort<shoop_types::audio_sample_t>>("audio_in_" + std::to_string(i+1), PortDirection::Input, 4096));
     }
@@ -59,6 +65,8 @@ void CustomProcessingChain<TimeType, SizeType>::process(size_t frames) {
     if (m_process_callback) {
         m_process_callback(frames, m_input_audio_ports, m_output_audio_ports, m_input_midi_ports);
     }
+    log<logging::LogLevel::debug>("fx {} {}", m_input_audio_ports[0]->PROC_get_buffer(frames)[0],
+        m_output_audio_ports[0]->PROC_get_buffer(frames)[0]);
 }
 
 template<typename TimeType, typename SizeType>

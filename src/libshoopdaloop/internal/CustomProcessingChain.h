@@ -2,9 +2,13 @@
 #include "ProcessingChainInterface.h"
 #include <functional>
 #include <atomic>
+#include "LoggingEnabled.h"
 
 template<typename TimeType, typename SizeType>
-class CustomProcessingChain : public ProcessingChainInterface<TimeType, SizeType> {
+class CustomProcessingChain : public ProcessingChainInterface<TimeType, SizeType>,
+                              private ModuleLoggingEnabled {
+    std::string log_module_name() const override;
+    
 public:
     using SharedInternalAudioPort = typename ProcessingChainInterface<TimeType, SizeType>::SharedInternalAudioPort;
     using SharedMidiPort = typename ProcessingChainInterface<TimeType, SizeType>::SharedMidiPort;
