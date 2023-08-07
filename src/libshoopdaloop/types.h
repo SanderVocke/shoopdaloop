@@ -73,6 +73,7 @@ typedef enum {
     Carla_Rack, // Carla Rack (1x MIDI, stereo audio w/ fixed internal connections)
     Carla_Patchbay, // Carla Patchbay (1x MIDI, stereo audio w/ flexible internal connections)
     Carla_Patchbay_16x, // Carla Patchbay (1x MIDI, 16x audio w/ flexible internal connections)
+    Test2x2x1, // Custom processing chain with 2 audio in- and outputs and 1 MIDI input for testing.
 } fx_chain_type_t;
 
 typedef struct _shoopdaloop_loop                shoopdaloop_loop_t;

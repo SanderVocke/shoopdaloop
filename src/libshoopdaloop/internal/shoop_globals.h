@@ -1,4 +1,5 @@
 #pragma once 
+#include "CustomProcessingChain.h"
 #include <cstddef>
 #include <cstdint>
 #include <jack/types.h>
@@ -61,7 +62,7 @@ using MidiPort = MidiPortInterface;
 using Command = std::function<void()>;
 using _MidiMessage = MidiMessage<Time, Size>;
 using _DecoupledMidiPort = DecoupledMidiPort<Time, Size>;
-using FXChain = CarlaLV2ProcessingChain<Time, Size>;
+using FXChain = ProcessingChainInterface<Time, Size>;
 
 enum class ProcessWhen {
     BeforeFXChains, // Process before FX chains have processed.

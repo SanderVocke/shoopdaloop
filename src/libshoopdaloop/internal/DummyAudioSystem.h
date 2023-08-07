@@ -96,6 +96,7 @@ class DummyAudioSystem : public AudioSystemInterface<Time, Size>, private Module
     std::set<std::shared_ptr<DummyAudioPort>> m_audio_ports;
     std::set<std::shared_ptr<DummyMidiPort>> m_midi_ports;
     std::string m_client_name;
+    std::function<void(size_t)> m_post_process_cb;
 
     std::function<void(std::string, PortDirection)> m_audio_port_opened_cb, m_midi_port_opened_cb;
     std::function<void(std::string)> m_audio_port_closed_cb, m_midi_port_closed_cb;
@@ -151,6 +152,8 @@ public:
     // thread will process exactly this amount.
     void controlled_mode_request_samples(size_t samples);
     size_t get_controlled_mode_samples_to_process() const;
+
+    void install_post_process_handler(std::function<void(size_t)> cb);
 };
 
 #ifndef IMPLEMENT_DUMMYAUDIOSYSTEM_H

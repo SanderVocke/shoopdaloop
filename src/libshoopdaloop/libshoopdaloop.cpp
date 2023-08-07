@@ -632,9 +632,9 @@ void clear_midi_channel (shoopdaloop_loop_midi_channel_t *channel) {
     });
 }
 
-shoopdaloop_audio_port_t *open_jack_audio_port (shoopdaloop_backend_instance_t *backend, const char* name_hint, port_direction_t direction) {
+shoopdaloop_audio_port_t *open_audio_port (shoopdaloop_backend_instance_t *backend, const char* name_hint, port_direction_t direction) {
     init_log();
-    g_logger->debug("open_jack_audio_port");
+    g_logger->debug("open_audio_port");
     auto _backend = internal_backend(backend);
     auto port = _backend->audio_system->open_audio_port
         (name_hint, internal_port_direction(direction));

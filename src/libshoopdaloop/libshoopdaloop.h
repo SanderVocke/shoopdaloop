@@ -89,7 +89,7 @@ void set_audio_port_passthroughMuted(shoopdaloop_audio_port_t *port, unsigned mu
 void add_audio_port_passthrough(shoopdaloop_audio_port_t *from, shoopdaloop_audio_port_t *to);
 audio_port_state_info_t *get_audio_port_state(shoopdaloop_audio_port_t *port);
 // For JACK audio ports only
-shoopdaloop_audio_port_t *open_jack_audio_port (shoopdaloop_backend_instance_t *backend, const char* name_hint, port_direction_t direction);
+shoopdaloop_audio_port_t *open_audio_port (shoopdaloop_backend_instance_t *backend, const char* name_hint, port_direction_t direction);
 jack_port_t *get_audio_port_jack_handle(shoopdaloop_audio_port_t *port);
 
 // Midi ports

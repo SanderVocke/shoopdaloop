@@ -141,7 +141,8 @@ DummyAudioSystem<Time, Size>::DummyAudioSystem(
       m_midi_port_closed_cb(nullptr), m_midi_port_opened_cb(nullptr),
       m_controlled_mode_samples_to_process(0),
       m_mode(mode),
-      m_paused(false) {
+      m_paused(false),
+      m_post_process_cb(nullptr) {
     m_audio_ports.clear();
     m_midi_ports.clear();
     log_init();
@@ -169,6 +170,9 @@ void DummyAudioSystem<Time, Size>::start() {
                     std::min(m_controlled_mode_samples_to_process.load(), mc_buffer_size) :
                     mc_buffer_size;
                 m_process_cb(to_process);
+                if (m_post_process_cb) {
+                    m_post_process_cb(to_process);
+                }
                 if (mode == DummyAudioSystemMode::Controlled) {
                     m_controlled_mode_samples_to_process -= to_process;
                 }
@@ -252,6 +256,10 @@ size_t DummyAudioSystem<Time, Size>::get_xruns() const {
 }
 
 template <typename Time, typename Size>
-void DummyAudioSystem<Time, Size>::reset_xruns(){
+void DummyAudioSystem<Time, Size>::reset_xruns(){};
 
-};
+template <typename Time, typename Size>
+void DummyAudioSystem<Time, Size>::install_post_process_handler(std::function<void (size_t)> cb) {
+    m_post_process_cb = cb;
+}
+

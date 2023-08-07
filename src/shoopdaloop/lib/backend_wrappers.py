@@ -527,9 +527,9 @@ class Backend:
         rval = BackendFXChain(handle, chain_type)
         return rval
 
-    def open_jack_audio_port(self, name_hint : str, direction : int) -> 'BackendAudioPort':
+    def open_audio_port(self, name_hint : str, direction : int) -> 'BackendAudioPort':
         _dir = (Input if direction == PortDirection.Input.value else Output)
-        handle = open_jack_audio_port(self._c_handle, name_hint.encode('ascii'), _dir)
+        handle = open_audio_port(self._c_handle, name_hint.encode('ascii'), _dir)
         port = BackendAudioPort(handle, direction)
         return port
 
