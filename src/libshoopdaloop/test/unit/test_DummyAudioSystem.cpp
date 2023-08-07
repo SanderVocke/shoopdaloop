@@ -116,7 +116,7 @@ suite DummyAudioSystem_tests = []() {
         expect(eq(bufvec, data));
     };
 
-    "da_3_inputport_queue_multiple"_test = []() {
+    "da_3_inputport_queue_consume_multiple"_test = []() {
         DummyAudioPort put("test_in", PortDirection::Input);
         std::vector<float> data({1, 2, 3, 4, 5, 6, 7, 8});
         put.queue_data(8, data.data());
@@ -130,6 +130,19 @@ suite DummyAudioSystem_tests = []() {
             auto buf = put.PROC_get_buffer(8);
             auto bufvec = std::vector<float>(buf, buf+8);
             expect(eq(bufvec, std::vector<float>({5, 6, 7, 8, 0, 0, 0, 0})));
+        }
+    };
+
+    "da_4_inputport_queue_consume_combine"_test = []() {
+        DummyAudioPort put("test_in", PortDirection::Input);
+        std::vector<float> data({1, 2, 3, 4});
+        put.queue_data(4, data.data());
+        put.queue_data(4, data.data());
+
+        {
+            auto buf = put.PROC_get_buffer(10);
+            auto bufvec = std::vector<float>(buf, buf+10);
+            expect(eq(bufvec, std::vector<float>({1, 2, 3, 4, 1, 2, 3, 4, 0, 0})));
         }
     };
 };
