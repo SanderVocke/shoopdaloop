@@ -34,6 +34,9 @@ public:
     virtual bool is_freewheeling() const = 0;
     virtual void set_freewheeling(bool enabled) = 0;
 
+    virtual void ensure_buffers(size_t size) = 0;
+    virtual size_t buffers_size() const = 0;
+
     virtual void process(size_t frames) = 0;
 
     // When a processing chain is instantiated, it may not immediately be
@@ -42,7 +45,7 @@ public:
     // behaviour as to what will happen on those ports.
     virtual bool is_ready() const = 0;
 
-    virtual void stop();
+    virtual void stop() = 0;
 
     // A processing chain may be deactivated, in which case it will not produce
     // any output. Typical use-case is for saving CPU.

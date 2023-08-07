@@ -5,6 +5,7 @@
 #include <jack_wrappers.h>
 #include "ConnectedPort.h"
 #include "ConnectedFXChain.h"
+#include "ProcessingChainInterface.h"
 #include "process_loops.h"
 #include "ConnectedLoop.h"
 #include "ConnectedChannel.h"
@@ -16,6 +17,7 @@
 #include "AudioBuffer.h"
 #include "ObjectPool.h"
 #include "AudioMidiLoop.h"
+#include "types.h"
 
 using namespace logging;
 using namespace shoop_types;
@@ -328,9 +330,25 @@ std::shared_ptr<ConnectedLoop> Backend::create_loop() {
 }
 
 std::shared_ptr<ConnectedFXChain> Backend::create_fx_chain(fx_chain_type_t type, const char* title) {
-    auto chain = g_lv2.create_carla_chain<Time, Size>(
-        type, get_sample_rate(), std::string(title), profiler
-    );
+    std::shared_ptr<ProcessingChainInterface<Time, Size>> chain;
+    switch(type) {
+        case Carla_Rack:
+        case Carla_Patchbay:
+        case Carla_Patchbay_16x:
+            chain = g_lv2.create_carla_chain<Time, Size>(
+                type, get_sample_rate(), std::string(title), profiler
+            );
+            break;
+        case Test2x2x1:
+            chain = std::make_shared<CustomProcessingChain<Time, Size>>(
+                2, 2, 1, [&chain](size_t n, auto &ins, auto &outs, auto &midis) {
+                    for (size_t i=0; i<2; i++) {
+                        memcpy((void*)outs[i]->PROC_get_buffer(n), (void*)ins[i]->PROC_get_buffer(n), n*sizeof(float));
+                    }
+                }
+            );
+        break;
+    };
     chain->ensure_buffers(get_buffer_size());
     auto info = std::make_shared<ConnectedFXChain>(chain, shared_from_this());
     cmd_queue.queue([this, info]() {

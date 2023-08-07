@@ -161,8 +161,8 @@ public:
     bool is_freewheeling() const override;
     void set_freewheeling(bool enabled) override;
 
-    void ensure_buffers(size_t size);
-    size_t buffers_size() const;
+    void ensure_buffers(size_t size) override;
+    size_t buffers_size() const override;
 
     virtual ~CarlaLV2ProcessingChain();
 

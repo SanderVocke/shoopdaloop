@@ -35,6 +35,8 @@ struct SingleDryWetLoopTestChain {
     shoopdaloop_fx_chain_t *api_fx_chain;
     std::shared_ptr<ConnectedFXChain> int_fx_chain;
     std::shared_ptr<shoop_types::FXChain> int_custom_processing_chain;
+    shoopdaloop_audio_port_t *api_fx_in;
+    shoopdaloop_audio_port_t *api_fx_out;
 
     shoopdaloop_loop_t *api_loop;
     std::shared_ptr<ConnectedLoop> int_loop;
@@ -50,6 +52,8 @@ struct SingleDryWetLoopTestChain {
     std::shared_ptr<shoop_types::LoopAudioChannel> int_wet_audio_chan;
 
     SingleDryWetLoopTestChain() {
+        unsigned int dummy;
+
         api_backend = initialize(Dummy, "backend");
         int_backend = internal_backend(api_backend);
         int_dummy_audio_system = (shoop_types::_DummyAudioSystem*)int_backend->audio_system.get();
@@ -58,10 +62,14 @@ struct SingleDryWetLoopTestChain {
         api_output_port = open_audio_port(api_backend, "output", Output);
         int_input_port = internal_audio_port(api_input_port);
         int_output_port = internal_audio_port(api_output_port);
+        int_dummy_input_port = std::dynamic_pointer_cast<DummyAudioPort>(int_input_port->port);
+        int_dummy_output_port = std::dynamic_pointer_cast<DummyAudioPort>(int_output_port->port);
 
         api_fx_chain = create_fx_chain(api_backend, Test2x2x1, "Test");
         int_fx_chain = internal_fx_chain(api_fx_chain);
         int_custom_processing_chain = std::dynamic_pointer_cast<shoop_types::FXChain>(int_fx_chain->chain);
+        api_fx_in = fx_chain_audio_input_ports(api_fx_chain, &dummy)[0];
+        api_fx_out = fx_chain_audio_output_ports(api_fx_chain, &dummy)[0];
 
         api_loop = create_loop(api_backend);
         int_loop = internal_loop(api_loop);
@@ -82,6 +90,14 @@ struct SingleDryWetLoopTestChain {
                             buf, buf + to_dequeue);
             }
         });
+
+        connect_audio_input(api_dry_chan, api_input_port);
+        connect_audio_output(api_dry_chan, api_fx_in);
+        connect_audio_input(api_wet_chan, api_fx_out);
+        connect_audio_output(api_wet_chan, api_output_port);
+
+        add_audio_port_passthrough(api_input_port, api_fx_in);
+        add_audio_port_passthrough(api_fx_out, api_output_port);
 
         set_audio_port_passthroughMuted(api_input_port, 0);
         set_audio_port_muted(api_input_port, 0);
@@ -109,6 +125,6 @@ suite chains_tests = []() {
         tst.int_dummy_audio_system->pause();
 
         expect(eq(tst.dummy_output_port_dequeued_data.size(), 8));
-        expect(eq(input_data, tst.dummy_output_port_dequeued_data));
+        expect(eq(tst.dummy_output_port_dequeued_data, input_data));
     };
 };

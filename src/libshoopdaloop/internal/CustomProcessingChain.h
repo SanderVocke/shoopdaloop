@@ -28,8 +28,7 @@ public:
     CustomProcessingChain(size_t n_audio_inputs,
                           size_t n_audio_outputs,
                           size_t n_midi_inputs,
-                          ProcessFunctor process_callback,
-                          size_t audio_buffer_size);
+                          ProcessFunctor process_callback);
     
     std::vector<SharedInternalAudioPort> const& input_audio_ports() const override;
     std::vector<SharedInternalAudioPort> const& output_audio_ports() const override;
@@ -41,6 +40,11 @@ public:
     bool is_ready() const override;
     bool is_active() const override;
     void set_active(bool active) override;
+
+    void ensure_buffers(size_t size) override;
+    size_t buffers_size() const override;
+
+    void stop() override;
 };
 
 #ifndef IMPLEMENT_CustomProcessingChain_H

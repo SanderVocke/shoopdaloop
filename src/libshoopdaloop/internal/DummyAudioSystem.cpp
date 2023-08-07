@@ -105,7 +105,7 @@ void DummyAudioSystem<Time, Size>::enter_mode(DummyAudioSystemMode mode) {
     if (m_mode.load() != mode) {
         log<logging::LogLevel::debug>(fmt::runtime(
             std::string("DummyAudioSystem: mode -> ") +
-            std::string(mode_names.at(m_mode))
+            std::string(mode_names.at(mode))
         ));
         m_mode = mode;
         m_controlled_mode_samples_to_process = 0;
@@ -161,14 +161,14 @@ void DummyAudioSystem<Time, Size>::start() {
         auto bufs_per_second = mc_sample_rate / mc_buffer_size;
         auto interval = 1.0f / ((float)bufs_per_second);
         auto micros = size_t(interval * 1000000.0f);
-        auto mode = m_mode.load();
         while (!this->m_finish) {
             std::this_thread::sleep_for(std::chrono::microseconds(micros));
             if (!m_paused) {
-                log<logging::LogLevel::trace>("DummyAudioSystem: process iteration");
+                auto mode = m_mode.load();
                 size_t to_process = mode == DummyAudioSystemMode::Controlled ?
                     std::min(m_controlled_mode_samples_to_process.load(), mc_buffer_size) :
                     mc_buffer_size;
+                log<logging::LogLevel::trace>("DummyAudioSystem: process {}", to_process);
                 m_process_cb(to_process);
                 if (m_post_process_cb) {
                     m_post_process_cb(to_process);
