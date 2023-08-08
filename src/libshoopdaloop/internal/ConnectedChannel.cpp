@@ -105,7 +105,6 @@ void ConnectedChannel::disconnect_input_ports(bool thread_safe) {
     else { fn(); }
 }
 
-#warning This does not deal with multiple output channels properly
 void ConnectedChannel::PROC_prepare_process_audio(size_t n_frames) {
     auto in_locked = mp_input_port_mapping.lock();
     if (in_locked) {

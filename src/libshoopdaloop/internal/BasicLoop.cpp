@@ -20,7 +20,7 @@ BasicLoop::BasicLoop() :
         ma_maybe_next_planned_mode(LOOP_MODE_INVALID),
         ma_maybe_next_planned_delay(-1),
         ma_already_triggered(false)
-    {}
+    { log_init(); }
 
 BasicLoop::~BasicLoop() {}
 
@@ -246,8 +246,11 @@ void BasicLoop::PROC_handle_sync() {
     }
 }
 
+std::string BasicLoop::log_module_name() const { return "Backend.BasicLoop"; }
+
 void BasicLoop::PROC_handle_transition(loop_mode_t new_state) {
     if (ma_mode != new_state) {
+        log<logging::LogLevel::debug>("Do transition");
         bool from_playing_to_playing = is_playing_mode(ma_mode) && is_playing_mode(new_state);
         if (!from_playing_to_playing) {
             set_position(0, false);

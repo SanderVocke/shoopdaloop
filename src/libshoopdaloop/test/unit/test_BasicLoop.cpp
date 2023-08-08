@@ -1,3 +1,7 @@
+
+#define BASICLOOP_EXPOSE_ALL_FOR_TEST
+#include "BasicLoop.h"
+
 #include <boost/ut.hpp>
 #include <memory>
 #include <functional>
@@ -5,12 +9,6 @@
 #include <iostream>
 
 using namespace boost::ut;
-
-#define private public
-#define protected public
-#include "BasicLoop.h"
-#undef private
-#undef protected
 
 suite BasicLoop_tests = []() {
     "bl_1_stop"_test = []() {

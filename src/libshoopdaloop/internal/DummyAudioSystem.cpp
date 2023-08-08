@@ -125,7 +125,14 @@ void DummyAudioSystem<Time, Size>::enter_mode(DummyAudioSystemMode mode) {
         m_controlled_mode_samples_to_process = 0;
 
         // Ensure we finish any processing we were doing
-        while(m_process_active) {}
+        wait_process();
+    }
+}
+
+template <typename Time, typename Size>
+void DummyAudioSystem<Time, Size>::wait_process() {
+    while(m_process_active) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 }
 
@@ -210,6 +217,7 @@ template <typename Time, typename Size>
 void DummyAudioSystem<Time, Size>::pause() {
     log<logging::LogLevel::debug>("DummyAudioSystem: pause");
     m_paused = true;
+    wait_process();
 }
 
 template <typename Time, typename Size>
@@ -292,15 +300,22 @@ template <typename Time, typename Size>
 void DummyAudioSystem<Time, Size>::controlled_mode_run_request(size_t timeout) {
     log<logging::LogLevel::debug>("DummyAudioSystem: run request");
     auto s = std::chrono::high_resolution_clock::now();
+    auto timed_out = [this, &timeout, &s]() {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::high_resolution_clock::now() - s
+        ).count() >= timeout;
+    };
     while(
         m_mode == DummyAudioSystemMode::Controlled &&
         m_controlled_mode_samples_to_process > 0 &&
-        std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::high_resolution_clock::now() - s
-        ).count() < timeout
+        !timed_out()
     ) {
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    wait_process();
+
+    if (m_controlled_mode_samples_to_process > 0) {
+        log<logging::LogLevel::err>("DummyAudioSystem: run request timed out");
+    }
 }

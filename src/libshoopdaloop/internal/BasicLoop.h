@@ -1,8 +1,14 @@
 #pragma once
 #include "LoopInterface.h"
 #include "WithCommandQueue.h"
+#include "LoggingEnabled.h"
 #include <deque>
 #include <atomic>
+
+#ifdef BASICLOOP_EXPOSE_ALL_FOR_TEST
+#define private public
+#define protected public
+#endif
 
 enum BasicPointOfInterestFlags {
     Trigger = 1,
@@ -16,7 +22,11 @@ enum BasicPointOfInterestFlags {
 // logic of handling points of interest while processing, planning
 // mode transitions etc.
 class BasicLoop : public LoopInterface,
-                  protected WithCommandQueue<100, 1000, 1000> {
+                  protected WithCommandQueue<100, 1000, 1000>,
+                  private ModuleLoggingEnabled {
+
+    std::string log_module_name() const override;
+
 public:
     struct PointOfInterest {
         size_t when;
@@ -88,3 +98,8 @@ protected:
     static std::optional<PointOfInterest> dominant_poi(std::optional<PointOfInterest> const& a, std::optional<PointOfInterest> const& b);
     static std::optional<PointOfInterest> dominant_poi(std::vector<std::optional<PointOfInterest>> const& pois);
 };
+
+#ifdef BASICLOOP_EXPOSE_ALL_FOR_TEST
+#undef private
+#undef protected
+#endif

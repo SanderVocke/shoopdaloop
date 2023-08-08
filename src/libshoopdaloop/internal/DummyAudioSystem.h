@@ -164,6 +164,8 @@ public:
     // Post process handler gets passed the amount of samples to process
     // and the amount of samples that were requested in controlled mode, if any
     void install_post_process_handler(std::function<void(size_t, size_t)> cb);
+
+    void wait_process();
 };
 
 #ifndef IMPLEMENT_DUMMYAUDIOSYSTEM_H
