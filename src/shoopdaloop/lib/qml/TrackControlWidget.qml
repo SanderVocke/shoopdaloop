@@ -12,9 +12,9 @@ Item {
     height: childrenRect.height
 
     property alias volume_dB: volume_slider.value
-    property alias passthrough_dB: passthrough_slider.value
+    property alias input_volume_dB: input_slider.value
     property alias volume_dB_min: volume_slider.from
-    property alias passthrough_dB_min: passthrough_slider.from
+    property alias input_volume_dB_min: input_slider.from
 
     readonly property bool in_is_stereo: audio_in_ports.length == 2
     readonly property bool out_is_stereo: audio_out_ports.length == 2
@@ -135,7 +135,7 @@ Item {
     }
 
     onPassthrough_dBChanged: {
-        audio_in_ports.forEach((p) => push_volume(passthrough_dB, p))
+        audio_in_ports.forEach((p) => push_volume(input_volume_dB, p))
     }
 
     function toggle_muted() {
@@ -574,7 +574,7 @@ Item {
                 Item {
                     width: 18
                     height: width
-                    anchors.verticalCenter: passthrough_slider.verticalCenter
+                    anchors.verticalCenter: input_slider.verticalCenter
 
                     Rectangle {
                         anchors.fill: parent
@@ -610,7 +610,7 @@ Item {
                     }
                 }
                 AudioSlider {
-                    id: passthrough_slider
+                    id: input_slider
                     orientation: Qt.Horizontal
                     width: root.in_is_stereo ? 70 : 85
                     height: 20
@@ -642,7 +642,7 @@ Item {
                     width: 18
                     height: 18
 
-                    anchors.verticalCenter: passthrough_slider.verticalCenter
+                    anchors.verticalCenter: input_slider.verticalCenter
 
                     onMoved: {
                         // TODO

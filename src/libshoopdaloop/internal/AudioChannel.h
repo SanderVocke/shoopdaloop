@@ -148,7 +148,9 @@ public:
         Buffers &buffers,
         std::atomic<size_t> &buffers_data_length,
         SampleT *record_buffer,
-        size_t record_buffer_size
+        size_t record_buffer_size,
+        SampleT *playback_buffer,
+        size_t playback_buffer_size
     );
 
     void PROC_process_replace(size_t position, size_t length, size_t n_samples,
