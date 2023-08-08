@@ -23,7 +23,6 @@ ConnectedPort::ConnectedPort (std::shared_ptr<PortInterface> const& port, std::s
     maybe_midi_output_buffer(nullptr),
     maybe_midi_state(nullptr),
     volume(1.0f),
-    passthrough_volume(1.0f),
     muted(false),
     passthrough_muted(false),
     backend(backend),
@@ -139,7 +138,7 @@ void ConnectedPort::PROC_passthrough_audio(size_t n_frames, ConnectedPort &to) {
     log_trace();
     if (!muted && !passthrough_muted) {
         for (size_t i=0; i<n_frames; i++) {
-            to.maybe_audio_buffer[i] += passthrough_volume * maybe_audio_buffer[i];
+            to.maybe_audio_buffer[i] += maybe_audio_buffer[i];
         }
     }
 }

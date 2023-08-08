@@ -739,12 +739,6 @@ void set_audio_port_volume(shoopdaloop_audio_port_t *port, float volume) {
     internal_audio_port(port)->volume = volume;
 }
 
-void set_audio_port_passthroughVolume(shoopdaloop_audio_port_t *port, float passthroughVolume) {
-    init_log();
-    g_logger->debug("set_audio_port_passthroughVolume");
-    internal_audio_port(port)->passthrough_volume = passthroughVolume;
-}
-
 void set_midi_port_muted(shoopdaloop_midi_port_t *port, unsigned int muted) {
     init_log();
     g_logger->debug("set_midi_port_muted");
@@ -948,7 +942,6 @@ audio_port_state_info_t *get_audio_port_state(shoopdaloop_audio_port_t *port) {
     auto p = internal_audio_port(port);
     r->peak = p->peak;
     r->volume = p->volume;
-    r->passthrough_volume = p->passthrough_volume;
     r->muted = p->muted;
     r->passthrough_muted = p->passthrough_muted;
     r->name = p->port->name();

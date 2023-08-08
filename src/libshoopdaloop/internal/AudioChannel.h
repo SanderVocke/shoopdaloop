@@ -73,6 +73,7 @@ private:
 
         Buffers();
         Buffers(std::shared_ptr<BufferPool> pool, size_t initial_max_buffers);
+        
         void reset();
         SampleT &at(size_t offset) const;
         bool ensure_available(size_t offset, bool use_pool=true);
@@ -148,9 +149,7 @@ public:
         Buffers &buffers,
         std::atomic<size_t> &buffers_data_length,
         SampleT *record_buffer,
-        size_t record_buffer_size,
-        SampleT *playback_buffer,
-        size_t playback_buffer_size
+        size_t record_buffer_size
     );
 
     void PROC_process_replace(size_t position, size_t length, size_t n_samples,

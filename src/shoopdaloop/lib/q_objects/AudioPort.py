@@ -22,7 +22,6 @@ class AudioPort(Port):
         super(AudioPort, self).__init__(parent)
         self._peak = 0.0
         self._volume = 1.0
-        self._passthrough_volume = 1.0
         self.logger = Logger("Frontend.AudioPort")
 
     ######################
@@ -51,17 +50,6 @@ class AudioPort(Port):
             self._volume = s
             self.volumeChanged.emit(s)
     
-    # passthrough volume
-    passthroughVolumeChanged = Signal(float)
-    @Property(float, notify=passthroughVolumeChanged)
-    def passthrough_volume(self):
-        return self._passthrough_volume
-    @passthrough_volume.setter
-    def passthrough_volume(self, s):
-        if self._passthrough_volume != s:
-            self._passthrough_volume = s
-            self.passthroughVolumeChanged.emit(s)
-    
     ###########
     ## SLOTS
     ###########
@@ -76,7 +64,6 @@ class AudioPort(Port):
         self.name = state.name
 
         self.volume = state.volume
-        self.passthrough_volume = state.passthrough_volume
         self.muted = state.muted
         self.passthrough_muted = state.passthrough_muted
     
@@ -84,11 +71,6 @@ class AudioPort(Port):
     def set_volume(self, volume):
         if self._backend_obj:
             self._backend_obj.set_volume(volume)
-    
-    @Slot(float)
-    def set_passthrough_volume(self, passthrough_volume):
-        if self._backend_obj:
-            self._backend_obj.set_passthrough_volume(passthrough_volume)
 
     ##########
     ## INTERNAL MEMBERS
@@ -132,7 +114,6 @@ class AudioPort(Port):
     def push_state(self):
         self.set_muted(self.muted)
         self.set_passthrough_muted(self.passthrough_muted)
-        self.set_passthrough_volume(self.passthrough_volume)
         self.set_volume(self.volume)
         
     def maybe_initialize_impl(self, name_hint, direction, is_internal):

@@ -97,7 +97,6 @@ typedef struct {
 typedef struct {
     float peak;
     float volume;
-    float passthrough_volume;
     unsigned muted;
     unsigned passthrough_muted;
     const char* name;

@@ -366,7 +366,7 @@ MidiChannel<TimeType, SizeType>::PROC_process_record(Storage &storage,
         } else {
             if (t >=
                 recbuf.first.n_frames_processed) { // Don't store any message that
-                                             // came before our process window
+                                                   // came before our process window
                 // If here, we are about to record a message.
                 // If it is the first recorded message, this is also the moment
                 // to cache the MIDI state on the input (such as hold pedal,

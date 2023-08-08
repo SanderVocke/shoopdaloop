@@ -114,7 +114,6 @@ class LoopState:
 class AudioPortState:
     peak: float
     volume: float
-    passthrough_volume: float
     muted: bool
     passthrough_muted: bool
     name: str
@@ -122,7 +121,6 @@ class AudioPortState:
     def __init__(self, backend_state : 'audio_port_state_info_t'):
         self.peak = backend_state.peak
         self.volume = backend_state.volume
-        self.passthrough_volume = backend_state.passthrough_volume
         self.muted = bool(backend_state.muted)
         self.passthrough_muted = bool(backend_state.passthrough_muted)
         self.name = str(backend_state.name)
@@ -406,10 +404,6 @@ class BackendAudioPort:
     def set_volume(self, volume):
         if self._c_handle:
             set_audio_port_volume(self._c_handle, volume)
-    
-    def set_passthrough_volume(self, passthrough_volume):
-        if self._c_handle:
-            set_audio_port_passthroughVolume(self._c_handle, passthrough_volume)
     
     def set_muted(self, muted):
         if self._c_handle:

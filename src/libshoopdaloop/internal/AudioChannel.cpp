@@ -248,9 +248,7 @@ void AudioChannel<SampleT>::PROC_process(
                                     ((int)length_before + ma_start_offset),
                                     mp_buffers, ma_buffers_data_length,
                                     mp_recording_source_buffer,
-                                    mp_recording_source_buffer_size,
-                                    mp_playback_target_buffer,
-                                    mp_playback_target_buffer_size);
+                                    mp_recording_source_buffer_size);
             }
             if (process_flags & ChannelReplace) {
                 PROC_process_replace(process_params.position, length_before,
@@ -265,9 +263,7 @@ void AudioChannel<SampleT>::PROC_process(
                                     mp_prerecord_buffers,
                                     mp_prerecord_buffers_data_length,
                                     mp_recording_source_buffer,
-                                    mp_recording_source_buffer_size,
-                                    mp_playback_target_buffer,
-                                    mp_playback_target_buffer_size);
+                                    mp_recording_source_buffer_size);
             }
 
             mp_prev_process_flags = process_flags;
@@ -408,9 +404,7 @@ void AudioChannel<SampleT>::PROC_process_record(
     std::atomic<size_t>
     &buffers_data_length,
     SampleT *record_buffer,
-    size_t record_buffer_size,
-    SampleT *playback_buffer,
-    size_t playback_buffer_size) {
+    size_t record_buffer_size) {
     log_trace();
 
     if (record_buffer_size < n_samples) {
@@ -421,7 +415,6 @@ void AudioChannel<SampleT>::PROC_process_record(
     auto data_length = buffers_data_length.load();
 
     auto &from = record_buffer;
-    auto &passthrough = playback_buffer;
 
     // Find the position in our sequence of buffers (buffer index and index in
     // buffer)
@@ -436,9 +429,6 @@ void AudioChannel<SampleT>::PROC_process_record(
 
     // Queue the actual copy for later.
     PROC_queue_memcpy((void *)ptr, (void *)from, sizeof(SampleT) * n);
-    if (passthrough) {
-        PROC_queue_memcpy((void *)passthrough, (void *)from, sizeof(SampleT) * n);
-    }
     changed = changed || (n > 0);
 
     buffers_data_length = record_from + n;
@@ -450,7 +440,7 @@ void AudioChannel<SampleT>::PROC_process_record(
     }
     if (rest > 0) {
         PROC_process_record(rest, record_from + n, buffers, buffers_data_length,
-                            record_buffer + n, record_buffer_size - n, playback_buffer ? playback_buffer + n : nullptr, playback_buffer_size-n);
+                            record_buffer + n, record_buffer_size - n);
     }
 }
 

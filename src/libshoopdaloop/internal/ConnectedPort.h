@@ -25,7 +25,6 @@ struct ConnectedPort : public std::enable_shared_from_this<ConnectedPort>,
     // Audio only
     shoop_types::audio_sample_t* maybe_audio_buffer;
     std::atomic<float> volume;
-    std::atomic<float> passthrough_volume;
     std::atomic<float> peak;
 
     // Midi only

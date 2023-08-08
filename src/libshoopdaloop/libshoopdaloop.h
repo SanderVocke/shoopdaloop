@@ -83,7 +83,6 @@ shoopdaloop_midi_port_t **fx_chain_midi_input_ports(shoopdaloop_fx_chain_t *chai
 
 // Audio ports
 void set_audio_port_volume(shoopdaloop_audio_port_t *port, float volume);
-void set_audio_port_passthroughVolume(shoopdaloop_audio_port_t *port, float volume);
 void set_audio_port_muted(shoopdaloop_audio_port_t *port, unsigned muted);
 void set_audio_port_passthroughMuted(shoopdaloop_audio_port_t *port, unsigned muted);
 void add_audio_port_passthrough(shoopdaloop_audio_port_t *from, shoopdaloop_audio_port_t *to);

@@ -37,7 +37,7 @@ struct Logger {
 };
 
 std::map<std::string, Logger> g_loggers;
-std::recursive_mutex g_loggers_mutex, g_do_log_mutex;
+std::recursive_mutex g_loggers_mutex;
 
 logger &get_logger_impl(std::string name) {
     std::lock_guard<std::recursive_mutex> guard(g_loggers_mutex);
@@ -49,8 +49,6 @@ logger &get_logger_impl(std::string name) {
             .m_logger = std::make_shared<logger>(std::make_shared<spdlog::logger>(name, _stdout))
         };
         g_loggers.at(name).update_level();
-
-        //logging_logger().debug("Register logger: {}, level {}", name, g_loggers.at(name).get_level());
     }
 
     auto rval = g_loggers.at(name).m_logger;

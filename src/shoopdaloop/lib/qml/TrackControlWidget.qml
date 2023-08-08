@@ -26,22 +26,10 @@ Item {
             .filter(p => p != undefined)
         return volumes.length > 0 ? Math.min(...volumes) : 1.0
     }
-    property real initial_passthrough_volume: {
-        var volumes = initial_track_descriptor.ports
-            .filter(p => is_in(p))
-            .map(p => ('volume' in p) ? p.volume : undefined)
-            .filter(p => p != undefined)
-        return volumes.length > 0 ? Math.min(...volumes) : 1.0
-    }
     property real initial_volume_dB: 0.0
     onInitial_volumeChanged: {
         convert_volume.linear = initial_volume
         initial_volume_dB = convert_volume.dB
-    }
-    property real initial_passthrough_volume_dB: 0.0
-    onInitial_passthrough_volumeChanged: {
-        convert_passthrough.linear = initial_passthrough_volume
-        initial_passthrough_volume_dB = convert_passthrough.dB
     }
 
     property bool muted: audio_out_ports.length > 0 ? audio_out_ports[0].muted : false
@@ -121,7 +109,7 @@ Item {
     }
 
     LinearDbConversion {
-        id: convert_passthrough
+        id: convert_input_volume
     }
 
     function push_volume(volume, target) {
@@ -438,7 +426,7 @@ Item {
                     id: input_peak_meter_l
                     max_dt: 0.1
 
-                    input: root.audio_in_ports.length > 0 ? root.audio_in_ports[0].peak * root.audio_in_ports[0].passthrough_volume : 0.0
+                    input: root.audio_in_ports.length > 0 ? root.audio_in_ports[0].peak : 0.0
                 }
 
                 background: Rectangle {
@@ -480,7 +468,7 @@ Item {
                     id: input_peak_meter_r
                     max_dt: 0.1
 
-                    input: root.audio_in_ports.length > 1 ? root.audio_in_ports[1].peak * root.audio_in_ports[1].passthrough_volume : 0.0
+                    input: root.audio_in_ports.length > 1 ? root.audio_in_ports[1].peak : 0.0
                 }
 
                 background: Rectangle {
@@ -521,7 +509,7 @@ Item {
                     id: input_peak_meter_overall
                     max_dt: 0.1
 
-                    input: root.audio_in_ports.length > 0 ? Math.max(...root.audio_in_ports.map(p => p.peak)) * Math.max(...root.audio_in_ports.map(p => p.passthrough_volume)) : 0.0
+                    input: root.audio_in_ports.length > 0 ? Math.max(...root.audio_in_ports.map(p => p.peak)) : 0.0
                 }
 
                 background: Rectangle {
@@ -623,7 +611,7 @@ Item {
 
                     Material.accent: root.passthroughMuted ? 'grey' : root.Material.accent
 
-                    property real initial_value_dB: root.initial_passthrough_volume_dB
+                    property real initial_value_dB: root.initial_input_volume_dB
                     onInitial_value_dBChanged: value = initial_value_dB
                     Component.onCompleted: value = initial_value_dB
 
@@ -633,7 +621,7 @@ Item {
                 }
 
                 AudioDial {
-                    id: passthrough_balance_dial
+                    id: input_balance_dial
                     visible: root.in_is_stereo
                     from: -1.0
                     to:   1.0
