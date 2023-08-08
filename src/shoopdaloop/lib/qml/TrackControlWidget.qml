@@ -134,7 +134,7 @@ Item {
         audio_out_ports.forEach((p) => push_volume(volume_dB, p))
     }
 
-    onPassthrough_dBChanged: {
+    onInput_volume_dBChanged: {
         audio_in_ports.forEach((p) => push_volume(input_volume_dB, p))
     }
 
