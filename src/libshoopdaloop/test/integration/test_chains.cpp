@@ -2,6 +2,7 @@
 #include "DummyAudioSystem.h"
 #include "CustomProcessingChain.h"
 #include "AudioMidiLoop.h"
+#include "LoggingBackend.h"
 #include "PortInterface.h"
 #include "ObjectPool.h"
 #include "AudioBuffer.h"
@@ -11,10 +12,16 @@
 #include "libshoopdaloop_test_if.h"
 #include "libshoopdaloop.h"
 #include "shoop_globals.h"
+#include <iostream>
+#include "LoggingEnabled.h"
 
 using namespace boost::ut;
 
-struct SingleDryWetLoopTestChain {
+struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled {
+    std::string log_module_name() const override {
+        return "Test.SingleDryWetLoopTestChain";
+    }
+
     shoopdaloop_backend_instance_t *api_backend;
     std::shared_ptr<Backend> int_backend;
     shoop_types::_DummyAudioSystem *int_dummy_audio_system;
@@ -37,6 +44,8 @@ struct SingleDryWetLoopTestChain {
     std::shared_ptr<shoop_types::FXChain> int_custom_processing_chain;
     shoopdaloop_audio_port_t *api_fx_in;
     shoopdaloop_audio_port_t *api_fx_out;
+    std::shared_ptr<ConnectedPort> int_fx_in;
+    std::shared_ptr<ConnectedPort> int_fx_out;
 
     shoopdaloop_loop_t *api_loop;
     std::shared_ptr<ConnectedLoop> int_loop;
@@ -52,6 +61,7 @@ struct SingleDryWetLoopTestChain {
     std::shared_ptr<shoop_types::LoopAudioChannel> int_wet_audio_chan;
 
     SingleDryWetLoopTestChain() {
+        log_init();
         unsigned int dummy;
 
         api_backend = initialize(Dummy, "backend");
@@ -70,6 +80,8 @@ struct SingleDryWetLoopTestChain {
         int_custom_processing_chain = std::dynamic_pointer_cast<shoop_types::FXChain>(int_fx_chain->chain);
         api_fx_in = fx_chain_audio_input_ports(api_fx_chain, &dummy)[0];
         api_fx_out = fx_chain_audio_output_ports(api_fx_chain, &dummy)[0];
+        int_fx_in = internal_audio_port(api_fx_in);
+        int_fx_out = internal_audio_port(api_fx_out);
 
         api_loop = create_loop(api_backend);
         int_loop = internal_loop(api_loop);
@@ -82,10 +94,11 @@ struct SingleDryWetLoopTestChain {
         int_wet_audio_chan = std::dynamic_pointer_cast<shoop_types::LoopAudioChannel>(int_wet_chan->channel);
 
         int_dummy_audio_system->enter_mode(DummyAudioSystemMode::Controlled);
-        int_dummy_audio_system->install_post_process_handler([&](size_t n) {
-            if (int_dummy_audio_system->get_controlled_mode_samples_to_process() > 0) {
-                size_t to_dequeue = std::min(int_dummy_audio_system->get_controlled_mode_samples_to_process(), int_dummy_audio_system->get_buffer_size());
-                auto buf = int_dummy_output_port->PROC_get_buffer(n);
+        int_dummy_audio_system->install_post_process_handler([&](size_t n, size_t to_process) {
+            if (to_process > 0) {
+                size_t to_dequeue = std::min(to_process, n);
+                log<logging::LogLevel::debug>("Dequeueing {} samples", to_dequeue);
+                auto buf = int_output_port->maybe_audio_buffer;
                 dummy_output_port_dequeued_data.insert(dummy_output_port_dequeued_data.end(),
                             buf, buf + to_dequeue);
             }
@@ -104,6 +117,12 @@ struct SingleDryWetLoopTestChain {
         set_audio_port_volume(api_input_port, 1.0f);
         set_audio_port_passthroughMuted(api_output_port, 0);
         set_audio_port_muted(api_output_port, 0);
+        set_audio_port_volume(api_fx_in, 1.0f);
+        set_audio_port_passthroughMuted(api_fx_in, 0);
+        set_audio_port_muted(api_fx_in, 0);
+        set_audio_port_volume(api_fx_out, 1.0f);
+        set_audio_port_passthroughMuted(api_fx_out, 0);
+        set_audio_port_muted(api_fx_out, 0);
         set_audio_port_volume(api_output_port, 1.0f);
         set_audio_channel_volume(api_dry_chan, 1.0f);
         set_audio_channel_volume(api_wet_chan, 1.0f);        
@@ -117,15 +136,34 @@ suite chains_tests = []() {
         SingleDryWetLoopTestChain tst;
         
         std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
+        std::vector<float> input_data2({-8, -7, -6, -5, -4, -3 , -2, -1});
         tst.int_dummy_input_port->queue_data(8, input_data.data());
-        tst.int_dummy_audio_system->controlled_mode_request_samples(8);
+        tst.int_dummy_input_port->queue_data(8, input_data2.data());
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        tst.int_dummy_audio_system->controlled_mode_request_samples(4);
+        tst.int_dummy_audio_system->controlled_mode_run_request();
 
         tst.int_dummy_audio_system->pause();
 
-        expect(eq(tst.dummy_output_port_dequeued_data.size(), 8));
+        expect(eq(tst.dummy_output_port_dequeued_data.size(), 4));
+        expect(eq(tst.int_dummy_input_port->get_queue_empty(), false));
+        auto expect_output_1 = std::vector<float>(input_data.begin(), input_data.begin() + 4);
+        expect(eq(tst.dummy_output_port_dequeued_data, expect_output_1));
+        tst.dummy_output_port_dequeued_data.clear();
+
+        tst.int_dummy_audio_system->resume();
+
+        tst.int_dummy_audio_system->controlled_mode_request_samples(12);
+        tst.int_dummy_audio_system->controlled_mode_run_request();
+
+        tst.int_dummy_audio_system->pause();
+
+        expect(eq(tst.dummy_output_port_dequeued_data.size(), 12));
         expect(eq(tst.int_dummy_input_port->get_queue_empty(), true));
-        expect(eq(tst.dummy_output_port_dequeued_data, input_data));
+        auto expect_output_2 = std::vector<float>(input_data.begin() + 4, input_data.end());
+        expect_output_2.insert(expect_output_2.end(), input_data2.begin(), input_data2.end());
+        expect(eq(tst.dummy_output_port_dequeued_data, expect_output_2));
+
+        tst.int_dummy_audio_system->close();
     };
 };

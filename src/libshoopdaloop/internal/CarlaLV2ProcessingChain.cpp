@@ -185,7 +185,7 @@ void CarlaLV2ProcessingChain<TimeType, SizeType>::reconnect_ports() {
     for (size_t i = 0; i < m_output_audio_ports.size(); i++) {
         lilv_instance_connect_port(
             m_instance, m_audio_out_port_indices[i],
-            m_output_audio_ports[i]->PROC_get_buffer(m_internal_buffers_size));
+            m_output_audio_ports[i]->PROC_get_buffer(m_internal_buffers_size, true));
     }
     for (size_t i = 0; i < m_input_midi_ports.size(); i++) {
         auto &midi_in = *m_input_midi_ports[i];

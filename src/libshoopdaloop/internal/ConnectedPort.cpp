@@ -54,7 +54,7 @@ void ConnectedPort::PROC_reset_buffers() {
     maybe_midi_output_buffer = nullptr;
 }
 
-void ConnectedPort::PROC_ensure_buffer(size_t n_frames) {
+void ConnectedPort::PROC_ensure_buffer(size_t n_frames, bool do_zero) {
     log_trace();
     auto maybe_midi = dynamic_cast<MidiPortInterface*>(port.get());
     auto maybe_audio = dynamic_cast<AudioPortInterface<shoop_types::audio_sample_t>*>(port.get());
@@ -80,7 +80,7 @@ void ConnectedPort::PROC_ensure_buffer(size_t n_frames) {
         }
     } else if (maybe_audio) {
         if (maybe_audio_buffer) { return; } // already there
-        maybe_audio_buffer = maybe_audio->PROC_get_buffer(n_frames);
+        maybe_audio_buffer = maybe_audio->PROC_get_buffer(n_frames, do_zero);
         if (port->direction() == PortDirection::Input) {
             float max = 0.0f;
             if (muted) {
@@ -140,7 +140,6 @@ void ConnectedPort::PROC_passthrough_audio(size_t n_frames, ConnectedPort &to) {
         for (size_t i=0; i<n_frames; i++) {
             to.maybe_audio_buffer[i] += passthrough_volume * maybe_audio_buffer[i];
         }
-        log<logging::LogLevel::debug>("{}", maybe_audio_buffer[0]);
     }
 }
 

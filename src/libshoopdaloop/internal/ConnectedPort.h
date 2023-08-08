@@ -43,7 +43,7 @@ struct ConnectedPort : public std::enable_shared_from_this<ConnectedPort>,
     ConnectedPort (std::shared_ptr<PortInterface> const& port, std::shared_ptr<Backend> const& backend);
 
     void PROC_reset_buffers();
-    void PROC_ensure_buffer(size_t n_frames);
+    void PROC_ensure_buffer(size_t n_frames, bool do_zero=false);
     void PROC_passthrough(size_t n_frames);
     void PROC_passthrough_audio(size_t n_frames, ConnectedPort &to);
     void PROC_passthrough_midi(size_t n_frames, ConnectedPort &to);

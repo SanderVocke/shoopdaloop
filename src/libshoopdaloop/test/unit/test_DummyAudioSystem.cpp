@@ -59,7 +59,7 @@ suite DummyAudioSystem_tests = []() {
         );
        
         dut.start();
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
         dut.close();
 
         expect(gt(dut.tracker.total_samples_processed.load(), 0));
@@ -77,7 +77,7 @@ suite DummyAudioSystem_tests = []() {
         );
        
         dut.start();
-        std::this_thread::sleep_for(std::chrono::milliseconds(30));
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
         dut.pause();
         
         expect(eq(dut.tracker.total_samples_processed.load(), 0));
@@ -88,7 +88,7 @@ suite DummyAudioSystem_tests = []() {
         expect(eq(dut.get_controlled_mode_samples_to_process(), 64));
 
         dut.resume();
-        std::this_thread::sleep_for(std::chrono::milliseconds(30));
+        std::this_thread::sleep_for(std::chrono::milliseconds(60));
         dut.pause();
 
         expect(eq(dut.tracker.total_samples_processed.load(), 64));

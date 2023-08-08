@@ -15,7 +15,7 @@ public:
         jack_client_t *client
     );
     
-    float *PROC_get_buffer(size_t n_frames) override;
+    float *PROC_get_buffer(size_t n_frames, bool do_zero=false) override;
     const char* name() const override;
     PortDirection direction() const override;
     void close() override;

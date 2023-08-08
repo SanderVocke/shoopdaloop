@@ -145,7 +145,7 @@ void Backend::PROC_process (jack_nframes_t nframes) {
                     auto prepare_port_fn = [&](auto & p) {
                         if(p) {
                             p->PROC_reset_buffers();
-                            p->PROC_ensure_buffer(nframes);
+                            p->PROC_ensure_buffer(nframes, p->port->direction() == PortDirection::Output);
                         }
                     };
                     for (auto & port: ports) { prepare_port_fn(port); }

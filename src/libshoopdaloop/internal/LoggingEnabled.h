@@ -1,6 +1,7 @@
 #pragma once
 #include "LoggingBackend.h"
 #include <source_location>
+#include <spdlog/common.h>
 
 template<logging::LogLevel LevelFilter>
 class LoggingEnabled {
@@ -16,7 +17,7 @@ protected:
 
 public:
     template<logging::LogLevel Level, typename... Args>
-    void log(fmt::format_string<Args...> fmt, Args &&... args) const {
+    void log(spdlog::format_string_t<Args...> fmt, Args &&... args) const {
         if (!m_logger) { throw std::runtime_error("Uninitialized, ensure you have called log_init()." ); }
         if (Level >= LevelFilter) {
             m_logger->log(Level, fmt, std::forward<Args>(args)...);
@@ -24,7 +25,7 @@ public:
     }
 
     template<typename Exception, typename ...Args>
-    void throw_error(fmt::format_string<Args...> fmt, Args &&... args) const {
+    void throw_error(spdlog::format_string_t<Args...> fmt, Args &&... args) const {
         if (!m_logger) { throw std::runtime_error("Uninitialized, ensure you have called log_init()." ); }
         log<logging::LogLevel::err>(fmt, std::forward<Args>(args)...);
         throw Exception("Error");

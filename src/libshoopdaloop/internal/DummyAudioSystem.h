@@ -6,6 +6,7 @@
 #include "LoggingEnabled.h"
 #include "types.h"
 #include <chrono>
+#include <cstddef>
 #include <ratio>
 #include <stdexcept>
 #include <memory>
@@ -18,7 +19,10 @@
 #include <boost/lockfree/spsc_queue.hpp>
 #include <memory>
 
-class DummyAudioPort : public AudioPortInterface<audio_sample_t> {
+class DummyAudioPort : public AudioPortInterface<audio_sample_t>,
+                       private ModuleLoggingEnabled {
+    std::string log_module_name() const override;
+
     std::string m_name;
     PortDirection m_direction;
     boost::lockfree::spsc_queue<std::vector<audio_sample_t>> m_queued_data;
@@ -31,7 +35,7 @@ public:
         std::string name,
         PortDirection direction);
     
-    float *PROC_get_buffer(size_t n_frames) override;
+    float *PROC_get_buffer(size_t n_frames, bool do_zero=false) override;
     const char* name() const override;
     PortDirection direction() const override;
     void close() override;
@@ -96,7 +100,8 @@ class DummyAudioSystem : public AudioSystemInterface<Time, Size>, private Module
     std::set<std::shared_ptr<DummyAudioPort>> m_audio_ports;
     std::set<std::shared_ptr<DummyMidiPort>> m_midi_ports;
     std::string m_client_name;
-    std::function<void(size_t)> m_post_process_cb;
+    std::function<void(size_t, size_t)> m_post_process_cb;
+    std::atomic<bool> m_process_active;
 
     std::function<void(std::string, PortDirection)> m_audio_port_opened_cb, m_midi_port_opened_cb;
     std::function<void(std::string)> m_audio_port_closed_cb, m_midi_port_closed_cb;
@@ -153,7 +158,12 @@ public:
     void controlled_mode_request_samples(size_t samples);
     size_t get_controlled_mode_samples_to_process() const;
 
-    void install_post_process_handler(std::function<void(size_t)> cb);
+    // Run until the requested amount of samples has been completed.
+    void controlled_mode_run_request(size_t timeout_ms = 100);
+
+    // Post process handler gets passed the amount of samples to process
+    // and the amount of samples that were requested in controlled mode, if any
+    void install_post_process_handler(std::function<void(size_t, size_t)> cb);
 };
 
 #ifndef IMPLEMENT_DUMMYAUDIOSYSTEM_H

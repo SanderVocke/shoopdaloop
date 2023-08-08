@@ -138,16 +138,16 @@ void ConnectedChannel::PROC_prepare_process_audio(size_t n_frames) {
 }
 
 void ConnectedChannel::PROC_finalize_process_audio() {
-    auto in_locked = mp_input_port_mapping.lock();
-    if (in_locked) {
-        in_locked->PROC_reset_buffers();
-    }
-    for (auto &port : mp_output_port_mappings) {
-        auto locked = port.lock();
-        if (locked) {
-            locked->PROC_reset_buffers();
-        }
-    }
+    // auto in_locked = mp_input_port_mapping.lock();
+    // if (in_locked) {
+    //     in_locked->PROC_reset_buffers();
+    // }
+    // for (auto &port : mp_output_port_mappings) {
+    //     auto locked = port.lock();
+    //     if (locked) {
+    //         locked->PROC_reset_buffers();
+    //     }
+    // }
 }
 
 void ConnectedChannel::PROC_prepare_process_midi(size_t n_frames) {
@@ -176,16 +176,16 @@ void ConnectedChannel::PROC_prepare_process_midi(size_t n_frames) {
 
 
 void ConnectedChannel::PROC_finalize_process_midi() {
-    auto in_locked = mp_input_port_mapping.lock();
-    if (in_locked) {
-        in_locked->PROC_reset_buffers();
-    }
-    for (auto &port : mp_output_port_mappings) {
-        auto locked = port.lock();
-        if (locked) {
-            locked->PROC_reset_buffers();
-        }
-    }
+    // auto in_locked = mp_input_port_mapping.lock();
+    // if (in_locked) {
+    //     in_locked->PROC_reset_buffers();
+    // }
+    // for (auto &port : mp_output_port_mappings) {
+    //     auto locked = port.lock();
+    //     if (locked) {
+    //         locked->PROC_reset_buffers();
+    //     }
+    // }
 }
 
 LoopAudioChannel *ConnectedChannel::maybe_audio() {
