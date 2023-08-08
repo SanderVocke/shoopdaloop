@@ -228,6 +228,8 @@ CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
     std::string human_name, std::shared_ptr<profiling::Profiler> maybe_profiler)
     : m_internal_buffers_size(0), m_human_name(human_name),
       m_unique_name(human_name + "_" + random_string(6)) {
+    log_init();
+
     if (maybe_profiler) {
         m_maybe_profiling_item = maybe_profiler->maybe_get_profiling_item(
             "Process.FX." + m_human_name);
@@ -350,11 +352,18 @@ CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
         const LilvNode *ui_binary_uri = lilv_ui_get_binary_uri(m_ui);
         const char *ui_binary_path = lilv_node_get_path(ui_binary_uri, nullptr);
         void *ui_lib_handle = dlopen(ui_binary_path, RTLD_LAZY);
+        if (!ui_lib_handle) {
+            const char *error_message = dlerror();
+            throw_error<std::runtime_error>(
+                "Could not load UI library {}: {}", ui_binary_path, error_message);
+        }
+        log<logging::LogLevel::debug>("Loading UI library: {}",
+                                      ui_binary_path);
         LV2UI_DescriptorFunction _get_ui_descriptor =
             (LV2UI_DescriptorFunction)dlsym(ui_lib_handle, "lv2ui_descriptor");
         if (!_get_ui_descriptor) {
-            throw std::runtime_error(
-                "Could not load UI descriptor entry point.");
+            throw_error<std::runtime_error>(
+                "Could not load UI descriptor entry point (lv2ui_descriptor symbol in {}).", ui_binary_path);
         }
 
         m_ui_descriptor = _get_ui_descriptor(0);
