@@ -1272,3 +1272,94 @@ void shoopdaloop_log(shoopdaloop_logger_t *logger, log_level_t level, const char
         level_convert.at(level), msg
     );
 }
+
+void dummy_audio_port_queue_data(shoopdaloop_audio_port_t *port, size_t n_frames, audio_sample_t const* data) {
+    init_log();
+    g_logger->debug("dummy_audio_port_queue_data");
+    auto maybe_dummy = dynamic_cast<DummyAudioPort*>(internal_audio_port(port)->maybe_audio());
+    if (maybe_dummy) {
+        maybe_dummy->queue_data(n_frames, data);
+    } else {
+        g_logger->error("dummy_audio_port_queue_data called on non-dummy port");
+    }
+}
+
+void dummy_audio_port_dequeue_data(shoopdaloop_audio_port_t *port, size_t n_frames, audio_sample_t *store_in) {
+    init_log();
+    g_logger->debug("dummy_audio_port_dequeue_data");
+    auto maybe_dummy = dynamic_cast<DummyAudioPort*>(internal_audio_port(port)->maybe_audio());
+    if (maybe_dummy) {
+        auto data = maybe_dummy->dequeue_data(n_frames);
+        memcpy((void*)store_in, (void*)data.data(), sizeof(audio_sample_t) * n_frames);
+    } else {
+        g_logger->error("dummy_audio_port_queue_data called on non-dummy port");
+    }
+}
+
+void dummy_audio_port_request_data(shoopdaloop_audio_port_t* port, size_t n_frames) {
+    init_log();
+    g_logger->debug("dummy_audio_port_request_data");
+    auto maybe_dummy = dynamic_cast<DummyAudioPort*>(internal_audio_port(port)->maybe_audio());
+    if (maybe_dummy) {
+        maybe_dummy->request_data(n_frames);
+    } else {
+        g_logger->error("dummy_audio_port_request_data called on non-dummy port");
+    }
+}
+
+void dummy_audio_enter_controlled_mode(shoopdaloop_backend_instance_t *backend) {
+    init_log();
+    g_logger->debug("dummy_audio_enter_controlled_mode");
+    auto _backend = internal_backend(backend);
+    if (auto maybe_dummy = dynamic_cast<_DummyAudioSystem*>(_backend->audio_system.get())) {
+        maybe_dummy->enter_mode(DummyAudioSystemMode::Controlled);
+    } else {
+        g_logger->error("dummy_audio_enter_controlled_mode called on non-dummy backend");
+    }
+}
+
+void dummy_audio_enter_automatic_mode(shoopdaloop_backend_instance_t *backend) {
+    init_log();
+    g_logger->debug("dummy_audio_enter_automatic_mode");
+    auto _backend = internal_backend(backend);
+    if (auto maybe_dummy = dynamic_cast<_DummyAudioSystem*>(_backend->audio_system.get())) {
+        maybe_dummy->enter_mode(DummyAudioSystemMode::Automatic);
+    } else {
+        g_logger->error("dummy_audio_enter_automatic_mode called on non-dummy backend");
+    }
+}
+
+unsigned dummy_audio_is_in_controlled_mode(shoopdaloop_backend_instance_t *backend) {
+    init_log();
+    g_logger->debug("dummy_audio_is_in_controlled_mode");
+    auto _backend = internal_backend(backend);
+    if (auto maybe_dummy = dynamic_cast<_DummyAudioSystem*>(_backend->audio_system.get())) {
+        return (unsigned) (maybe_dummy->get_mode() == DummyAudioSystemMode::Controlled);
+    } else {
+        g_logger->error("dummy_audio_is_in_controlled_mode called on non-dummy backend");
+        return 0;
+    }
+}
+
+void dummy_audio_request_controlled_frames(shoopdaloop_backend_instance_t *backend, size_t n_frames) {
+    init_log();
+    g_logger->debug("dummy_audio_request_controlled_frames");
+    auto _backend = internal_backend(backend);
+    if (auto maybe_dummy = dynamic_cast<_DummyAudioSystem*>(_backend->audio_system.get())) {
+        maybe_dummy->controlled_mode_request_samples(n_frames);
+    } else {
+        g_logger->error("dummy_audio_request_controlled_frames called on non-dummy backend");
+    }
+}
+
+size_t dummy_audio_n_requested_frames(shoopdaloop_backend_instance_t *backend) {
+    init_log();
+    g_logger->debug("dummy_audio_n_requested_frames");
+    auto _backend = internal_backend(backend);
+    if (auto maybe_dummy = dynamic_cast<_DummyAudioSystem*>(_backend->audio_system.get())) {
+        return maybe_dummy->get_controlled_mode_samples_to_process();
+    } else {
+        g_logger->error("dummy_audio_n_requested_frames called on non-dummy backend");
+        return 0;
+    }
+}

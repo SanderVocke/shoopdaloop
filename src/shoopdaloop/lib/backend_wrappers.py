@@ -415,6 +415,22 @@ class BackendAudioPort:
     
     def connect_passthrough(self, other):
         add_audio_port_passthrough(self._c_handle, other.c_handle())
+    
+    def dummy_queue_data(self, data):
+        data_type = c_float * len(data)
+        arr = data_type()
+        for i in range(len(data)):
+            arr[i] = data[i]
+        dummy_audio_port_queue_data(self._c_handle, len(data), arr)
+    
+    def dummy_dequeue_data(self, n_samples):
+        data_type = c_float * n_samples
+        arr = data_type()
+        dummy_audio_port_dequeue_data(self._c_handle, n_samples, arr)
+        return [int(arr[i].value) for i in range(n_samples)]
+    
+    def dummy_request_data(self, n_samples):
+        dummy_audio_port_request_data(self._c_handle, n_samples)
 
     def __del__(self):
         self.destroy()
@@ -561,6 +577,21 @@ class Backend:
         rval = ProfilingReport(state[0])
         destroy_profiling_report(state)
         return rval
+
+    def dummy_enter_controlled_mode(self):
+        dummy_audio_enter_controlled_mode(self._c_handle)
+        
+    def dummy_enter_automatic_mode(self):
+        dummy_audio_enter_automatic_mode(self._c_handle)
+        
+    def dummy_is_controlled(self):
+        return bool(dummy_audio_is_in_controlled_mode(self._c_handle))
+    
+    def dummy_request_controlled_frames(self, n):
+        dummy_audio_request_controlled_frames(self._c_handle, n)
+    
+    def dummy_n_requested_frames(self):
+        return int(dummy_audio_n_requested_frames(self._c_handle))
 
     def terminate(self):
         terminate(self._c_handle)
