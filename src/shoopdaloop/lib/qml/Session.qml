@@ -33,9 +33,10 @@ AppRegistries {
         );
     }
 
+    readonly property string object_schema : 'session.1'
     SchemaCheck {
         descriptor: root.initial_descriptor
-        schema: 'session.1'
+        schema: root.object_schema
         id: validator
     }
 

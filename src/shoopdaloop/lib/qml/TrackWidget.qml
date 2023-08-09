@@ -32,9 +32,10 @@ Item {
     signal rowAdded()
     signal requestDelete()
 
+    readonly property string object_schema : 'track.1'
     SchemaCheck {
         descriptor: root.initial_descriptor
-        schema: 'track.1'
+        schema: root.object_schema
     }
 
     property var maybe_fx_chain: fx_chain_loader.active && fx_chain_loader.status == Loader.Ready ? fx_chain_loader.item : undefined

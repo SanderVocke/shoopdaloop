@@ -26,9 +26,10 @@ PythonFXChain {
         }
     }
 
+    readonly property string object_schema : 'fx_chain.1'
     SchemaCheck {
         descriptor: root.descriptor
-        schema: 'fx_chain.1'
+        schema: root.object_schema
     }
 
     RegisterInRegistry {

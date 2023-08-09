@@ -41,9 +41,10 @@ PythonAudioPort {
         keys: descriptor.passthrough_to
     }
 
+    readonly property string object_schema : 'audioport.1'
     SchemaCheck {
         descriptor: root.descriptor
-        schema: 'audioport.1'
+        schema: root.object_schema
     }
 
     RegisterInRegistry {
