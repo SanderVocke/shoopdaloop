@@ -148,6 +148,10 @@ Item {
         return Object.values(registry_data)
     }
 
+    function keys() {
+        return Object.keys(registry_data)
+    }
+
     function clear(except_keys=[]) {
         var replace = {}
         for(const key of except_keys) { replace[key] = registry_data[key] }
