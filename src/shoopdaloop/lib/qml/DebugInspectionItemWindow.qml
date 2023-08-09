@@ -42,34 +42,51 @@ ApplicationWindow {
         }
     }
 
+    component ItemRow: Row {
+        spacing: 5
+        property alias label: l.text
+        Label { id: l; width: 200 }
+    }
+
     Component {
         id: debug_port_component
         Item {
-            Grid {
+            Column {
                 anchors.fill: parent
-                columns: 2
                 spacing: 5
 
-                Label { text: "obj_id:" }
-                Label { text: object.obj_id }
+                ItemRow {
+                    label: "obj_id:"
+                    Label { text: object.obj_id }
+                }
 
-                Label { text: "object_schema:" }
-                Label { text: object.object_schema }
+                ItemRow {
+                    label: "object_schema:"
+                    Label { text: object.object_schema }
+                }
 
-                Label { text: "muted:" }
-                Label { text: object.muted }
+                ItemRow {
+                    label: "muted:"
+                    Label { text: object.muted }
+                }
 
-                Label { text: "passthrough muted:" }
-                Label { text: object.passthrough_muted }
+                ItemRow {
+                    label: "passthrough muted:"
+                    Label { text: object.passthrough_muted }
+                }
 
-                Label { text: "direction:" }
-                Label { text: object.direction }
+                ItemRow {
+                    label: "direction:"
+                    Label { text: object.direction }
+                }
 
-                Label { text: "internal:" }
-                Label { text: object.is_internal }
+                ItemRow {
+                    label: "internal:"
+                    Label { text: object.is_internal }
+                }
 
-                Label { text: "passthrough to:" }
-                Item {
+                ItemRow {
+                    label: "passthrough to:"
                     Row {
                         spacing: 3
                         Mapper {
@@ -85,8 +102,26 @@ ApplicationWindow {
                     }
                 }
 
-                Label { text: "descriptor:" }
-                Label { text: JSON.stringify(object.descriptor, null, 2) }
+                Loader {
+                    active: object.object_schema.match(/audioport.[0-9]/)
+                    sourceComponent: ItemRow {
+                        label: "volume:"
+                        Label { text: object.volume.toString() }
+                    }
+                }
+
+                Loader {
+                    active: object.object_schema.match(/midiport.[0-9]/)
+                    sourceComponent: ItemRow {
+                        label: "n notes active: "
+                        Label { text: object.n_notes_active.toString() }
+                    }
+                }
+
+                ItemRow {
+                    label: "descriptor:"
+                    Label { text: JSON.stringify(object.descriptor, null, 2) }
+                }
             }
         }
     }
