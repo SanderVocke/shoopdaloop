@@ -239,9 +239,9 @@ function generate_default_track(
 
     var audio_dry_port_pairs = Array.from(Array(n_audio_dry).keys()).map((idx) => {
         var in_id_post = external_port_id_part("audio", "in", idx);
-        var in_id = id + in_id_post;
+        var in_id = id + "_dry_" + in_id_post;
         var out_id_post = external_port_id_part("audio", "send", idx);
-        var out_id = id + out_id_post;
+        var out_id = id + "_dry_" + out_id_post;
         var fx_in_id = id + fx_chain_port_id_part("audio", "in", idx);
 
         var rval = [generate_audio_port(in_id, have_drywet_jack_ports ? [out_id] : [fx_in_id], [port_name_base, in_id_post], 'input', 1.0, false, true)]
@@ -253,9 +253,9 @@ function generate_default_track(
     })
     var audio_wet_port_pairs = Array.from(Array(n_audio_wet).keys()).map((idx) => {
         var in_id_post = external_port_id_part("audio", "return", idx);
-        var in_id = id + in_id_post;
+        var in_id = id + "_wet_" + in_id_post;
         var out_id_post = external_port_id_part("audio", "out", idx);
-        var out_id = id + out_id_post;
+        var out_id = id + "_wet_" + out_id_post;
 
         var rval = []
         if (have_drywet_jack_ports) {
@@ -267,8 +267,8 @@ function generate_default_track(
     })
     var audio_direct_port_pairs = Array.from(Array(n_audio_direct).keys()).map((idx) => {
         var idx_str = (idx+1).toString();
-        var in_id_post = n_audio_direct == 1 ? "_in" : "_in_" + idx_str;
-        var out_id_post = n_audio_direct == 1 ? "_out" : "_out_" + idx_str;
+        var in_id_post = n_audio_direct == 1 ? "_direct_in" : "_direct_in_" + idx_str;
+        var out_id_post = n_audio_direct == 1 ? "_direct_out" : "_direct_out_" + idx_str;
         var in_id = id + in_id_post;
         var out_id = id + out_id_post;
         return [
@@ -277,8 +277,8 @@ function generate_default_track(
         ]
     })
     var midi_direct_port_pairs = have_midi_direct ? (() => {
-        var in_id_post = "_midi_in";
-        var out_id_post = "_midi_out";
+        var in_id_post = "_direct_midi_in";
+        var out_id_post = "_direct_midi_out";
         var in_id = id + in_id_post;
         var out_id = id + out_id_post;
         return [[
@@ -287,11 +287,11 @@ function generate_default_track(
         ]]
     })() : [];
     var midi_dry_port_pairs = have_midi_dry ? (() => {
-        var in_id_post = "_midi_in";
+        var in_id_post = "_dry_midi_in";
         var in_id = id + in_id_post;
-        var out_id_post = "_midi_send";
+        var out_id_post = "_dry_midi_send";
         var out_id = id + out_id_post;
-        var fx_in_id = id + fx_chain_port_id_part("midi", "in", 0);
+        var fx_in_id = id + "_dry_" + fx_chain_port_id_part("midi", "in", 0);
 
         var rval = [generate_midi_port(in_id, have_drywet_jack_ports ? [out_id] : [fx_in_id], [port_name_base, in_id_post], 'input', false, true)]
         if (have_drywet_jack_ports) {

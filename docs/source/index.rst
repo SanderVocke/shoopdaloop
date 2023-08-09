@@ -14,3 +14,4 @@ ShoopDaLoop
    
    concept
    details
+   developers

@@ -304,9 +304,9 @@ shoopdaloop_loop_audio_channel_t *add_audio_channel (shoopdaloop_loop_t *loop, c
                                                         audio_channel_initial_buffers,
                                                         mode,
                                                         false);
-        auto replacement = std::make_shared<ConnectedChannel> (chan, loop_info, loop_info->backend.lock());
+        r->channel = chan;
         loop_info->mp_audio_channels.push_back(r);
-        *r = *replacement;
+        g_logger->debug("add_audio_channel: executed on process thread");
     });
     return external_audio_channel(r);
 }
@@ -320,12 +320,12 @@ shoopdaloop_loop_midi_channel_t *add_midi_channel (shoopdaloop_loop_t *loop, cha
     // address later.
     std::shared_ptr<ConnectedLoop> loop_info = internal_loop(loop);
     auto &backend = loop_info->get_backend();
-    auto r = std::make_shared<ConnectedChannel> (nullptr, nullptr, backend.shared_from_this());
+    auto r = std::make_shared<ConnectedChannel> (nullptr, loop_info, backend.shared_from_this());
     backend.cmd_queue.queue([loop_info, mode, r]() {
         auto chan = loop_info->loop->add_midi_channel<Time, Size>(midi_storage_size, mode, false);
-        auto replacement = std::make_shared<ConnectedChannel> (chan, loop_info, loop_info->backend.lock());
+        r->channel = chan;
         loop_info->mp_midi_channels.push_back(r);
-        *r = *replacement;
+        g_logger->debug("add_midi_channel: executed on process thread");
     });
     return external_midi_channel(r);
 }

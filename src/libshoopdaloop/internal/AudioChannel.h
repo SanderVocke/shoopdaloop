@@ -8,7 +8,7 @@
 
 template<typename SampleT>
 class AudioChannel : public ChannelInterface,
-                            private WithCommandQueue<10, 1000, 1000>,
+                            private WithCommandQueue<20, 1000, 1000>,
                             private ModuleLoggingEnabled {
 public:
     typedef AudioBuffer<SampleT> BufferObj;

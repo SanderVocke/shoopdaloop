@@ -1,3 +1,4 @@
+#include "WithCommandQueue.h"
 #include "types.h"
 #include <bits/chrono.h>
 #include <chrono>
@@ -131,9 +132,10 @@ void DummyAudioSystem<Time, Size>::enter_mode(DummyAudioSystemMode mode) {
 
 template <typename Time, typename Size>
 void DummyAudioSystem<Time, Size>::wait_process() {
-    while(m_process_active) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
+    // Ensure one process iteration is started
+    log<logging::LogLevel::trace>("DummyAudioSystem: wait process");
+    exec_process_thread_command([]() { ; });
+    log<logging::LogLevel::trace>("DummyAudioSystem: wait process done");
 }
 
 template <typename Time, typename Size>
@@ -161,6 +163,7 @@ DummyAudioSystem<Time, Size>::DummyAudioSystem(
     size_t sample_rate,
     size_t buffer_size)
     : AudioSystemInterface<Time, Size>(client_name, process_cb),
+      WithCommandQueue<20, 1000, 1000>(),
       m_process_cb(process_cb), mc_buffer_size(buffer_size), mc_sample_rate(sample_rate),
       m_finish(false), m_client_name(client_name),
       m_audio_port_closed_cb(nullptr), m_audio_port_opened_cb(nullptr),
@@ -168,8 +171,7 @@ DummyAudioSystem<Time, Size>::DummyAudioSystem(
       m_controlled_mode_samples_to_process(0),
       m_mode(mode),
       m_paused(false),
-      m_post_process_cb(nullptr),
-      m_process_active(false) {
+      m_post_process_cb(nullptr) {
     m_audio_ports.clear();
     m_midi_ports.clear();
     log_init();
@@ -190,8 +192,8 @@ void DummyAudioSystem<Time, Size>::start() {
         auto micros = size_t(interval * 1000000.0f);
         while (!this->m_finish) {
             std::this_thread::sleep_for(std::chrono::microseconds(micros));
+            PROC_handle_command_queue();
             if (!m_paused) {
-                m_process_active = true;
                 auto mode = m_mode.load();
                 auto samples_to_process = m_controlled_mode_samples_to_process.load();
                 size_t to_process = mode == DummyAudioSystemMode::Controlled ?
@@ -205,7 +207,6 @@ void DummyAudioSystem<Time, Size>::start() {
                 if (mode == DummyAudioSystemMode::Controlled) {
                     m_controlled_mode_samples_to_process -= to_process;
                 }
-                m_process_active = false;
             }
         }
         log<logging::LogLevel::debug>(

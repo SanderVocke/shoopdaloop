@@ -4,6 +4,7 @@
 #include "AudioPortInterface.h"
 #include "PortInterface.h"
 #include "LoggingEnabled.h"
+#include "WithCommandQueue.h"
 #include "types.h"
 #include <chrono>
 #include <cstddef>
@@ -86,7 +87,9 @@ enum class DummyAudioSystemMode {
 };
 
 template<typename Time, typename Size>
-class DummyAudioSystem : public AudioSystemInterface<Time, Size>, private ModuleLoggingEnabled {
+class DummyAudioSystem : public AudioSystemInterface<Time, Size>,
+                         private ModuleLoggingEnabled,
+                         public WithCommandQueue<20, 1000, 1000> {
     std::string log_module_name() const override;
 
     std::function<void(size_t)> m_process_cb;
@@ -101,7 +104,6 @@ class DummyAudioSystem : public AudioSystemInterface<Time, Size>, private Module
     std::set<std::shared_ptr<DummyMidiPort>> m_midi_ports;
     std::string m_client_name;
     std::function<void(size_t, size_t)> m_post_process_cb;
-    std::atomic<bool> m_process_active;
 
     std::function<void(std::string, PortDirection)> m_audio_port_opened_cb, m_midi_port_opened_cb;
     std::function<void(std::string)> m_audio_port_closed_cb, m_midi_port_closed_cb;

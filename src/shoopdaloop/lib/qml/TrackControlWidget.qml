@@ -11,68 +11,176 @@ Item {
     width: childrenRect.width
     height: childrenRect.height
 
-    property alias volume_dB: volume_slider.value
-    property alias input_volume_dB: input_slider.value
-    property alias volume_dB_min: volume_slider.from
-    property alias input_volume_dB_min: input_slider.from
-
-    readonly property bool in_is_stereo: audio_in_ports.length == 2
-    readonly property bool out_is_stereo: audio_out_ports.length == 2
-
-    property real initial_volume: {
-        var volumes = initial_track_descriptor.ports
-            .filter(p => is_out(p))
-            .map(p => ('volume' in p) ? p.volume : undefined)
-            .filter(p => p != undefined)
-        return volumes.length > 0 ? Math.min(...volumes) : 1.0
-    }
-    property real initial_volume_dB: 0.0
-    onInitial_volumeChanged: {
-        convert_volume.linear = initial_volume
-        initial_volume_dB = convert_volume.dB
-    }
-
-    property bool muted: audio_out_ports.length > 0 ? audio_out_ports[0].muted : false
-    property bool passthroughMuted: {
-        var in_ports = [...audio_in_ports, ...midi_in_ports]
-        return in_ports.length > 0 ? in_ports[0].passthrough_muted : false
-    }
-
+    // Input properties
+    property alias unique_loop_modes : logic.unique_loop_modes
+    property alias unique_next_cycle_loop_modes : logic.unique_next_cycle_loop_modes
     property var initial_track_descriptor : null
     property Registry objects_registry : null
     property Registry state_registry : null
 
-    property bool has_fx_chain : initial_track_descriptor && 'fx_chain' in initial_track_descriptor
+    // UI-controlled properties
+    property alias volume_dB: volume_slider.value
+    property alias input_volume_dB: input_slider.value
+    property alias volume_dB_min: volume_slider.from
+    property alias input_volume_dB_min: input_slider.from
+    property alias input_balance: input_balance_dial.value
+    property alias output_balance: output_balance_dial.value
 
+    // Readonlies
+    readonly property bool in_is_stereo: audio_in_ports.length == 2
+    readonly property bool out_is_stereo: audio_out_ports.length == 2
+    readonly property var initial_output_volume_and_balance: {
+        var ports = initial_track_descriptor.ports
+            .filter(p => is_out(p));
+        ports.sort((a,b) => a.id.localeCompare(b.id))
+        return volume_and_balance_from_volumes(
+            ports.map(p => ('volume' in p) ? p.volume : undefined)
+            .filter(p => p != undefined)
+        );
+    }
+    readonly property var initial_input_volume_and_balance: {
+        var ports = initial_track_descriptor.ports
+            .filter(p => is_in(p));
+        ports.sort((a,b) => a.id.localeCompare(b.id))
+        return volume_and_balance_from_volumes(
+            ports.map(p => ('volume' in p) ? p.volume : undefined)
+            .filter(p => p != undefined)
+        );
+    }
+    property real initial_volume: initial_output_volume_and_balance["volume"]
+    property real initial_balance: initial_output_volume_and_balance["balance"]
+    property real initial_input_volume: initial_input_volume_and_balance["volume"]
+    property real initial_input_balance: initial_input_volume_and_balance["balance"]
+    readonly property bool has_fx_chain : initial_track_descriptor && 'fx_chain' in initial_track_descriptor
+    readonly property alias ports : lookup_ports.objects
+    readonly property alias maybe_fx_chain : lookup_fx_chain.object
+    readonly property alias fx_ports : lookup_fx_ports.objects
+    readonly property var audio_in_ports : {
+        var r = ports.filter((p) => p && is_audio(p.descriptor) && is_in(p.descriptor))
+        r.sort((a,b) => a.obj_id.localeCompare(b.obj_id))
+        return r
+    }
+    readonly property var audio_out_ports : {
+        var r = ports.filter((p) => p && is_audio(p.descriptor) && is_out(p.descriptor))
+        r.sort((a,b) => a.obj_id.localeCompare(b.obj_id))
+        return r
+    }
+    readonly property var fx_out_ports : {
+        var r = fx_ports.filter((p) => p && is_audio(p.descriptor) && is_in(p.descriptor))
+        r.sort((a,b) => a.obj_id.localeCompare(b.obj_id))
+        return r
+    }
+    readonly property var midi_in_ports : ports.filter((p) => p && is_midi(p.descriptor) && is_in(p.descriptor))
+    readonly property var midi_out_ports : ports.filter((p) => p && is_midi(p.descriptor) && is_out(p.descriptor))
+    readonly property var out_balance_volume_factor_l: balance_volume_factor_l(output_balance)
+    readonly property var in_balance_volume_factor_l: balance_volume_factor_l(input_balance)
+    readonly property var out_balance_volume_factor_r: balance_volume_factor_r(output_balance)
+    readonly property var in_balance_volume_factor_r: balance_volume_factor_r(input_balance)
+
+    // Controlled properties
+    property real initial_volume_dB: 0.0
+    property real initial_input_volume_dB: 0.0
+    property int n_midi_notes_active_in : 0
+    property int n_midi_notes_active_out : 0
+    property int n_midi_events_in : 0
+    property int n_midi_events_out : 0
+    property bool monitor : false
+    property bool mute : false
+
+    // Handlers
+    onInitial_volumeChanged: {
+        // Will lead to updating the sliders
+        convert_volume.linear = initial_volume
+        initial_volume_dB = convert_volume.dB
+    }
+    onInitial_input_volumeChanged: {
+        // Will lead to updating the sliders
+        convert_volume.linear = initial_input_volume
+        initial_input_volume_dB = convert_volume.dB
+    }
+    onMidi_in_portsChanged: {
+        midi_in_ports.forEach((m) => m.nNotesActiveChanged.connect(update_midi))
+        midi_out_ports.forEach((m) => m.nNotesActiveChanged.connect(update_midi))
+        midi_in_ports.forEach((m) => m.nEventsTriggeredChanged.connect(update_midi))
+        midi_out_ports.forEach((m) => m.nEventsTriggeredChanged.connect(update_midi))
+    }
+    onVolume_dBChanged: push_out_volumes()
+    onInput_volume_dBChanged: push_in_volumes()
+    onOutput_balanceChanged: push_out_volumes()
+    onInput_balanceChanged: push_in_volumes()
+    Connections {
+        target: logic
+        function onForce_monitoring_offChanged() {
+            if (logic.force_monitoring_off) {
+                monitor = false
+            }
+        }
+        function onMute_drywet_input_passthroughChanged() {
+            audio_in_ports
+                .filter(p => is_dry(p.descriptor))
+                .forEach((p) => {
+                    p.set_passthrough_muted(logic.mute_drywet_input_passthrough)
+                })
+        }
+        function onMute_drywet_output_passthroughChanged() {
+            fx_out_ports
+                .forEach((p) => {
+                    p.set_passthrough_muted(logic.mute_drywet_output_passthrough)
+                })
+        }
+        function onMute_direct_passthroughChanged() {
+            audio_in_ports
+                .filter(p => is_direct(p.descriptor))
+                .forEach((p) => {
+                    p.set_passthrough_muted(logic.mute_direct_passthrough)
+                })
+        }
+        function onDisable_fxChanged() {
+            if (root.maybe_fx_chain) root.maybe_fx_chain.set_active(!logic.disable_fx)
+        }
+    }
+    onPortsChanged: logic.trigger_signals()
+    onMaybe_fx_chainChanged: logic.trigger_signals()
+    onFx_out_portsChanged: logic.trigger_signals()
+    onMuteChanged: {
+        audio_out_ports.forEach((p) => p.set_muted(mute))
+    }
+
+    // Helpers
+    TrackControlLogic {
+        id: logic
+        monitor: root.monitor
+    }
     RegistryLookups {
         id: lookup_ports
         registry: root.objects_registry
         keys: initial_track_descriptor ? initial_track_descriptor.ports.map((p) => p.id) : []
     }
-    property alias ports : lookup_ports.objects
-
-    function is_audio(p) { return p.schema.match(/audioport\.[0-9]+/) }
-    function is_midi(p)  { return p.schema.match(/midiport\.[0-9]+/)  }
-    function is_in(p)    { return p.direction == "input" && p.id.match(/.*_(?:in|direct)(?:_[0-9]*)?$/); }
-    function is_out(p)   { return p.direction == "output" && p.id.match(/.*_(?:out|direct)(?:_[0-9]*)?$/); }
-
-    property var audio_in_ports : {
-        var r = ports.filter((p) => p && is_audio(p.descriptor) && is_in(p.descriptor))
-        r.sort((a,b) => a.obj_id.localeCompare(b.obj_id))
-        return r
+    RegistryLookups {
+        id: lookup_fx_ports
+        registry: root.objects_registry
+        keys: initial_track_descriptor && 'fx_chain' in initial_track_descriptor ? initial_track_descriptor.fx_chain.ports.map((p) => p.id) : []
     }
-    property var audio_out_ports : {
-        var r = ports.filter((p) => p && is_audio(p.descriptor) && is_out(p.descriptor))
-        r.sort((a,b) => a.obj_id.localeCompare(b.obj_id))
-        return r
+    RegistryLookup {
+        id: lookup_fx_chain
+        registry: root.objects_registry
+        key: initial_track_descriptor && 'fx_chain' in initial_track_descriptor ? initial_track_descriptor.fx_chain.id : null
     }
-    property var midi_in_ports : ports.filter((p) => p && is_midi(p.descriptor) && is_in(p.descriptor))
-    property var midi_out_ports : ports.filter((p) => p && is_midi(p.descriptor) && is_out(p.descriptor))
+    LinearDbConversion {
+        id: convert_volume
+    }
+    LinearDbConversion {
+        id: convert_input_volume
+    }
 
-    property int n_midi_notes_active_in : 0
-    property int n_midi_notes_active_out : 0
-    property int n_midi_events_in : 0
-    property int n_midi_events_out : 0
+    // Methods
+    function is_audio(p)  { return p.schema.match(/audioport\.[0-9]+/) }
+    function is_midi(p)   { return p.schema.match(/midiport\.[0-9]+/)  }
+    function is_in(p)     { return p.direction == "input"  && p.id.match(/.*_in(?:_[0-9]*)?$/); }
+    function is_out(p)    { return p.direction == "output" && p.id.match(/.*_out(?:_[0-9]*)?$/); }
+    function is_dry(p)    { return p.id.match(/.*_dry_.*/); }
+    function is_wet(p)    { return p.id.match(/.*_wet_.*/); }
+    function is_direct(p) { return p.id.match(/.*_direct_.*/); }
     function aggregate_midi_notes(ports) {
         var notes_per_port = ports.map((p) => p.n_notes_active)
         return Math.max(notes_per_port)
@@ -87,13 +195,6 @@ Item {
         n_midi_events_in = aggregate_midi_events(midi_in_ports)
         n_midi_events_out = aggregate_midi_events(midi_out_ports)
     }
-    onMidi_in_portsChanged: {
-        midi_in_ports.forEach((m) => m.nNotesActiveChanged.connect(update_midi))
-        midi_out_ports.forEach((m) => m.nNotesActiveChanged.connect(update_midi))
-        midi_in_ports.forEach((m) => m.nEventsTriggeredChanged.connect(update_midi))
-        midi_out_ports.forEach((m) => m.nEventsTriggeredChanged.connect(update_midi))
-    }
-
     function find_nth(array, n, fn) {
         var _n=0
         for(var i=0; i<array.length; i++) {
@@ -103,43 +204,58 @@ Item {
         }
         return null;
     }
-
-    LinearDbConversion {
-        id: convert_volume
-    }
-
-    LinearDbConversion {
-        id: convert_input_volume
-    }
-
     function push_volume(volume, target) {
         convert_volume.dB = volume
         var v = convert_volume.linear
         if (target && target.volume != v) { target.set_volume(v) }
     }
-
-    onVolume_dBChanged: {
-        audio_out_ports.forEach((p) => push_volume(volume_dB, p))
+    function toggle_muted() { mute = !mute }
+    function toggle_monitor() { monitor = !monitor }
+    function balance_volume_factor_l(balance) {
+        return (balance > 0.0) ? 1.0 - balance : 1.0
     }
-
-    onInput_volume_dBChanged: {
-        audio_in_ports.forEach((p) => push_volume(input_volume_dB, p))
+    function balance_volume_factor_r(balance) {
+        return (balance < 0.0) ? 1.0 + balance : 1.0
     }
-
-    function toggle_muted() {
-        var n = !muted
-        audio_out_ports.forEach((p) => p.set_muted(n))
-        midi_out_ports.forEach((p) => p.set_muted(n))
+    function volume_and_balance_from_volumes(volumes) {
+        let overall_volume = volumes.length > 0 ? Math.min(...volumes) : 1.0
+        if (volumes.length == 2) {
+            // Stereo handling
+            let vol = Math.max(...volumes)
+            let weak_factor = Math.min(...volumes) / vol
+            let weak_is_left = volumes[0] < volumes[1]
+            let balance = weak_is_left ? -(1.0 - weak_factor) : (1.0 - weak_factor)
+            return {
+                "volume": vol,
+                "balance": balance
+            }
+        }
+        else {
+            return {
+                "volume": overall_volume,
+                "balance": 0.0
+            }
+        }
     }
-
-    function toggle_passthroughMuted() {
-        var n = !passthroughMuted
-        audio_in_ports.forEach((p) => p.set_passthrough_muted(n))
-        midi_in_ports.forEach((p) => p.set_passthrough_muted(n))
+    function push_in_volumes() {
+        audio_in_ports.forEach((p, idx) => {
+            if (idx == 0 && in_is_stereo) { push_volume(in_balance_volume_factor_l * volume_dB, p) }
+            else if (idx == 1 && in_is_stereo) { push_volume(in_balance_volume_factor_r * volume_dB, p) }
+            else { push_volume(volume_dB, p) }
+        })
+    }
+    function push_out_volumes() {
+        audio_out_ports.forEach((p, idx) => {
+            if (idx == 0 && out_is_stereo) { push_volume(out_balance_volume_factor_l * volume_dB, p) }
+            else if (idx == 1 && out_is_stereo) { push_volume(out_balance_volume_factor_r * volume_dB, p) }
+            else { push_volume(volume_dB, p) }
+        })
     }
 
     signal mute()
     signal unmute()
+
+    // UI
 
     Column {
         spacing: 2
@@ -325,8 +441,8 @@ Item {
 
                         MaterialDesignIcon {
                             size: parent.width
-                            name: root.muted ? 'volume-mute' : 'volume-high'
-                            color: root.muted ? 'grey' : Material.foreground
+                            name: root.mute ? 'volume-mute' : 'volume-high'
+                            color: root.mute ? 'grey' : Material.foreground
                             anchors.fill: parent
                         }
                         ToolTip {
@@ -354,9 +470,9 @@ Item {
 
                     handle.width: 4
 
-                    Material.accent: root.muted ? 'grey' : root.Material.accent
+                    Material.accent: root.mute ? 'grey' : root.Material.accent
 
-                    property real initial_value_dB: root.initial_volume_dB
+                    property alias initial_value_dB: root.initial_volume_dB
                     onInitial_value_dBChanged: value = initial_value_dB
                     Component.onCompleted: value = initial_value_dB
 
@@ -377,12 +493,12 @@ Item {
 
                     anchors.verticalCenter: volume_slider.verticalCenter
 
+                    property alias initial_value: root.initial_balance
+                    onInitial_valueChanged: value = initial_value
+                    Component.onCompleted: value = initial_value
+
                     tooltip: 'Track stereo balance. Double-click to reset.'
                     label: 'B'
-
-                    onMoved: {
-                        // TODO
-                    }
 
                     show_value_tooltip: true
 
@@ -415,7 +531,7 @@ Item {
                 anchors {
                     left: parent.left
                     right: parent.horizontalCenter
-                    verticalCenter: passthrough_row.verticalCenter
+                    verticalCenter: monitor_row.verticalCenter
                 }
 
                 // Note: dB
@@ -457,7 +573,7 @@ Item {
                 anchors {
                     left: parent.horizontalCenter
                     right: parent.right
-                    verticalCenter: passthrough_row.verticalCenter
+                    verticalCenter: monitor_row.verticalCenter
                 }
 
                 // Note: dB
@@ -556,7 +672,7 @@ Item {
                 visible: root.n_midi_events_in > 0
             }
             Row {
-                id: passthrough_row
+                id: monitor_row
                 spacing: -4
 
                 Item {
@@ -566,28 +682,28 @@ Item {
 
                     Rectangle {
                         anchors.fill: parent
-                        visible: passthrough_mouse_area.containsMouse
+                        visible: monitor_mouse_area.containsMouse
                         color: '#555555'
                         radius: width/2
                     }
                     MouseArea {
-                        id: passthrough_mouse_area
+                        id: monitor_mouse_area
                         anchors.fill: parent
                         acceptedButtons: Qt.LeftButton
                         hoverEnabled: true
 
-                        onClicked: root.toggle_passthroughMuted()
+                        onClicked: root.toggle_monitor()
 
                         MaterialDesignIcon {
                             size: parent.width
                             name: 'ear-hearing'
-                            color: root.passthroughMuted ? 'grey' : Material.foreground
+                            color: root.monitor ? Material.foreground : 'grey'
                             anchors.fill: parent
                         }
                         ToolTip {
                             delay: 1000
                             visible: pt_ma.containsMouse
-                            text: 'Mute/unmute passthrough monitoring.'
+                            text: 'Enable/disable onitoring.'
                         }
                         MouseArea {
                             id: pt_ma
@@ -609,7 +725,7 @@ Item {
                     
                     handle.width: 4
 
-                    Material.accent: root.passthroughMuted ? 'grey' : root.Material.accent
+                    Material.accent: root.monitor ? root.Material.accent : 'grey'
 
                     property real initial_value_dB: root.initial_input_volume_dB
                     onInitial_value_dBChanged: value = initial_value_dB
@@ -630,11 +746,11 @@ Item {
                     width: 18
                     height: 18
 
-                    anchors.verticalCenter: input_slider.verticalCenter
+                    property real initial_value: root.initial_input_balance
+                    onInitial_valueChanged: value = initial_value
+                    Component.onCompleted: value = initial_value
 
-                    onMoved: {
-                        // TODO
-                    }
+                    anchors.verticalCenter: input_slider.verticalCenter
 
                     handle.width: 4
                     handle.height: 4
