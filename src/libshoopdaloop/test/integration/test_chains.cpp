@@ -34,7 +34,6 @@ struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled {
     shoopdaloop_audio_port_t *api_output_port;
     std::shared_ptr<ConnectedPort> int_output_port;
     std::shared_ptr<DummyAudioPort> int_dummy_output_port;
-    std::vector<float> dummy_output_port_dequeued_data;
 
     shoopdaloop_midi_port_t *api_midi_input_port;
     std::shared_ptr<ConnectedPort> int_midi_input_port;
@@ -102,15 +101,6 @@ struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled {
         if(!int_wet_audio_chan) { throw std::runtime_error("Wet audio channel is null"); }
 
         int_dummy_audio_system->enter_mode(DummyAudioSystemMode::Controlled);
-        int_dummy_audio_system->install_post_process_handler([&](size_t n, size_t to_process) {
-            if (to_process > 0) {
-                size_t to_dequeue = std::min(to_process, n);
-                log<logging::LogLevel::debug>("Dequeueing {} samples", to_dequeue);
-                auto buf = int_output_port->maybe_audio_buffer;
-                dummy_output_port_dequeued_data.insert(dummy_output_port_dequeued_data.end(),
-                            buf, buf + to_dequeue);
-            }
-        });
 
         connect_audio_input(api_dry_chan, api_input_port);
         connect_audio_output(api_dry_chan, api_fx_in);
@@ -156,28 +146,32 @@ suite chains_tests = []() {
         tst.int_dummy_input_port->queue_data(8, input_data2.data());
 
         tst.int_dummy_audio_system->controlled_mode_request_samples(4);
+        tst.int_dummy_output_port->request_data(4);
         tst.int_dummy_audio_system->controlled_mode_run_request();
 
         tst.int_dummy_audio_system->pause();
 
-        expect(eq(tst.dummy_output_port_dequeued_data.size(), 4));
+        auto result_data = tst.int_dummy_output_port->dequeue_data(4);
+        expect(eq(result_data.size(), 4));
         expect(eq(tst.int_dummy_input_port->get_queue_empty(), false));
         auto expect_output_1 = std::vector<float>(input_data.begin(), input_data.begin() + 4);
-        expect(eq(tst.dummy_output_port_dequeued_data, expect_output_1));
-        tst.dummy_output_port_dequeued_data.clear();
+        expect(eq(result_data, expect_output_1));
+        result_data.clear();
 
         tst.int_dummy_audio_system->resume();
 
         tst.int_dummy_audio_system->controlled_mode_request_samples(12);
+        tst.int_dummy_output_port->request_data(12);
         tst.int_dummy_audio_system->controlled_mode_run_request();
 
         tst.int_dummy_audio_system->pause();
 
-        expect(eq(tst.dummy_output_port_dequeued_data.size(), 12));
+        result_data = tst.int_dummy_output_port->dequeue_data(12);
+        expect(eq(result_data.size(), 12));
         expect(eq(tst.int_dummy_input_port->get_queue_empty(), true));
         auto expect_output_2 = std::vector<float>(input_data.begin() + 4, input_data.end());
         expect_output_2.insert(expect_output_2.end(), input_data2.begin(), input_data2.end());
-        expect(eq(tst.dummy_output_port_dequeued_data, expect_output_2));
+        expect(eq(result_data, expect_output_2));
 
         tst.int_dummy_audio_system->close();
     };
@@ -190,6 +184,7 @@ suite chains_tests = []() {
         std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
         tst.int_dummy_input_port->queue_data(8, input_data.data());
         tst.int_dummy_audio_system->controlled_mode_request_samples(8);
+        tst.int_dummy_output_port->request_data(8);
         tst.int_dummy_audio_system->controlled_mode_run_request();
 
         expect(eq(tst.int_dry_audio_chan->get_data(true), input_data));
@@ -207,11 +202,13 @@ suite chains_tests = []() {
         std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
         tst.int_dummy_input_port->queue_data(8, input_data.data());
         tst.int_dummy_audio_system->controlled_mode_request_samples(8);
+        tst.int_dummy_output_port->request_data(8);
         tst.int_dummy_audio_system->controlled_mode_run_request();
 
+        auto result_data = tst.int_dummy_output_port->dequeue_data(8);
         expect(eq(tst.int_dry_audio_chan->get_data(true), input_data));
         expect(eq(tst.int_wet_audio_chan->get_data(true), zeroes(8)));
-        expect(eq(tst.dummy_output_port_dequeued_data, zeroes(8)));
+        expect(eq(result_data, zeroes(8)));
 
         tst.int_dummy_audio_system->close();
     };
@@ -225,6 +222,7 @@ suite chains_tests = []() {
         std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
         tst.int_dummy_input_port->queue_data(8, input_data.data());
         tst.int_dummy_audio_system->controlled_mode_request_samples(8);
+        tst.int_dummy_output_port->request_data(8);
         tst.int_dummy_audio_system->controlled_mode_run_request();
 
         expect(eq(tst.int_dry_audio_chan->get_data(true), zeroes(8)));
@@ -243,6 +241,7 @@ suite chains_tests = []() {
         std::vector<float> expected({0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4});
         tst.int_dummy_input_port->queue_data(8, input_data.data());
         tst.int_dummy_audio_system->controlled_mode_request_samples(8);
+        tst.int_dummy_output_port->request_data(8);
         tst.int_dummy_audio_system->controlled_mode_run_request();
 
         expect(eq(tst.int_dry_audio_chan->get_data(true), expected));
@@ -264,9 +263,11 @@ suite chains_tests = []() {
         loop_transition(tst.api_loop, Playing, 0, 0);
         
         tst.int_dummy_audio_system->controlled_mode_request_samples(4);
+        tst.int_dummy_output_port->request_data(4);
         tst.int_dummy_audio_system->controlled_mode_run_request();
 
-        expect(eq(tst.dummy_output_port_dequeued_data, wet_data));
+        auto result_data = tst.int_dummy_output_port->dequeue_data(4);
+        expect(eq(result_data, wet_data));
 
         tst.int_dummy_audio_system->close();
     };
@@ -285,9 +286,11 @@ suite chains_tests = []() {
         loop_transition(tst.api_loop, Playing, 0, 0);
         
         tst.int_dummy_audio_system->controlled_mode_request_samples(4);
+        tst.int_dummy_output_port->request_data(4);
         tst.int_dummy_audio_system->controlled_mode_run_request();
 
-        expect(eq(tst.dummy_output_port_dequeued_data, half_wet));
+        auto result_data = tst.int_dummy_output_port->dequeue_data(4);
+        expect(eq(result_data, half_wet));
 
         tst.int_dummy_audio_system->close();
     };
@@ -305,9 +308,11 @@ suite chains_tests = []() {
         loop_transition(tst.api_loop, PlayingDryThroughWet, 0, 0);
         
         tst.int_dummy_audio_system->controlled_mode_request_samples(4);
+        tst.int_dummy_output_port->request_data(4);
         tst.int_dummy_audio_system->controlled_mode_run_request();
 
-        expect(eq(tst.dummy_output_port_dequeued_data, dry_data));
+        auto result_data = tst.int_dummy_output_port->dequeue_data(4);
+        expect(eq(result_data, dry_data));
 
         tst.int_dummy_audio_system->close();
     };
@@ -326,9 +331,11 @@ suite chains_tests = []() {
         loop_transition(tst.api_loop, PlayingDryThroughWet, 0, 0);
         
         tst.int_dummy_audio_system->controlled_mode_request_samples(4);
+        tst.int_dummy_output_port->request_data(4);
         tst.int_dummy_audio_system->controlled_mode_run_request();
 
-        expect(eq(tst.dummy_output_port_dequeued_data, half_dry));
+        auto result_data = tst.int_dummy_output_port->dequeue_data(4);
+        expect(eq(result_data, half_dry));
 
         tst.int_dummy_audio_system->close();
     };
@@ -347,9 +354,11 @@ suite chains_tests = []() {
         loop_transition(tst.api_loop, PlayingDryThroughWet, 0, 0);
         
         tst.int_dummy_audio_system->controlled_mode_request_samples(4);
+        tst.int_dummy_output_port->request_data(4);
         tst.int_dummy_audio_system->controlled_mode_run_request();
 
-        expect(eq(tst.dummy_output_port_dequeued_data, dry_data));
+        auto result_data = tst.int_dummy_output_port->dequeue_data(4);
+        expect(eq(result_data, dry_data));
 
         tst.int_dummy_audio_system->close();
     };
@@ -368,9 +377,11 @@ suite chains_tests = []() {
         loop_transition(tst.api_loop, PlayingDryThroughWet, 0, 0);
         
         tst.int_dummy_audio_system->controlled_mode_request_samples(4);
+        tst.int_dummy_output_port->request_data(4);
         tst.int_dummy_audio_system->controlled_mode_run_request();
 
-        expect(eq(tst.dummy_output_port_dequeued_data, dry_data));
+        auto result_data = tst.int_dummy_output_port->dequeue_data(4);
+        expect(eq(result_data, dry_data));
 
         tst.int_dummy_audio_system->close();
     };

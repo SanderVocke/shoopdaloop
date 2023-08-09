@@ -27,6 +27,9 @@ struct ConnectedPort : public std::enable_shared_from_this<ConnectedPort>,
     std::atomic<float> volume;
     std::atomic<float> peak;
 
+    // Dummy audio only (testing purposes)
+    std::vector<float> stored_dummy_data;
+
     // Midi only
     MidiReadableBufferInterface *maybe_midi_input_buffer;
     MidiWriteableBufferInterface *maybe_midi_output_buffer;

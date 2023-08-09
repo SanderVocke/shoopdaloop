@@ -8,6 +8,7 @@
 #include "MidiStateTracker.h"
 #include "MidiMergingBuffer.h"
 #include "Backend.h"
+#include "DummyAudioSystem.h"
 
 using namespace shoop_types;
 using namespace shoop_constants;
@@ -179,6 +180,11 @@ void ConnectedPort::PROC_finalize_process(size_t n_frames) {
                 n_events_processed += n_events;
             }
         }
+    }
+
+    auto maybe_dummy = dynamic_cast<DummyAudioPort*>(port.get());
+    if (maybe_dummy) {
+        maybe_dummy->PROC_post_process(maybe_audio_buffer, n_frames);       
     }
 }
 

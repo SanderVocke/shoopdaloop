@@ -27,9 +27,8 @@ class DummyAudioPort : public AudioPortInterface<audio_sample_t>,
     std::string m_name;
     PortDirection m_direction;
     boost::lockfree::spsc_queue<std::vector<audio_sample_t>> m_queued_data;
-    std::atomic<size_t> m_retain_output_data;
-
-    std::vector<audio_sample_t>dequeue_data_internal(size_t n_samples, std::vector<audio_sample_t> &add_to);
+    std::atomic<size_t> m_n_requested_samples;
+    std::vector<float> m_retained_samples;
 
 public:
     DummyAudioPort(
@@ -42,10 +41,15 @@ public:
     void close() override;
     ~DummyAudioPort() override;
 
-
     // For input ports, queue up data to be read from the port.
     void queue_data(size_t n_frames, audio_sample_t const* data);
     bool get_queue_empty(); 
+
+    // For output ports, ensure the postprocess function is called
+    // and samples can be requested/dequeued.
+    void PROC_post_process(float* buf, size_t n_frames);
+    void request_data(size_t n_frames);
+    std::vector<audio_sample_t> dequeue_data(size_t n);
 };
 
 class DummyMidiPort : public MidiPortInterface, public MidiReadableBufferInterface, public MidiWriteableBufferInterface {
@@ -103,7 +107,6 @@ class DummyAudioSystem : public AudioSystemInterface<Time, Size>,
     std::set<std::shared_ptr<DummyAudioPort>> m_audio_ports;
     std::set<std::shared_ptr<DummyMidiPort>> m_midi_ports;
     std::string m_client_name;
-    std::function<void(size_t, size_t)> m_post_process_cb;
 
     std::function<void(std::string, PortDirection)> m_audio_port_opened_cb, m_midi_port_opened_cb;
     std::function<void(std::string)> m_audio_port_closed_cb, m_midi_port_closed_cb;

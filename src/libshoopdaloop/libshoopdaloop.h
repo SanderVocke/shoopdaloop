@@ -139,6 +139,15 @@ void set_logger_level_override(shoopdaloop_logger_t *logger, log_level_t level);
 void reset_logger_level_override(shoopdaloop_logger_t *logger);
 void shoopdaloop_log(shoopdaloop_logger_t *logger, log_level_t level, const char *msg);
 
+// For testing purposes
+void dummy_audio_port_queue_data(shoopdaloop_audio_port_t *port, size_t n_frames, audio_sample_t const* data);
+audio_sample_t const* dummy_audio_port_dequeue_data(shoopdaloop_audio_port_t *port, size_t n_frames);
+void dummy_audio_enter_controlled_mode(shoopdaloop_backend_instance_t *backend);
+void dummy_audio_enter_automatic_mode(shoopdaloop_backend_instance_t *backend);
+unsigned dummy_audio_is_in_controlled_mode(shoopdaloop_backend_instance_t *backend);
+void dummy_audio_request_controlled_samples(shoopdaloop_backend_instance_t *backend, size_t n_frames);
+size_t dummy_audio_n_requested_samples(shoopdaloop_backend_instance_t *backend);
+
 #ifdef __cplusplus
 }
 #endif

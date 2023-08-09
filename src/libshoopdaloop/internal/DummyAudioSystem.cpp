@@ -71,6 +71,27 @@ bool DummyAudioPort::get_queue_empty() {
 
 DummyAudioPort::~DummyAudioPort() { close(); }
 
+void DummyAudioPort::PROC_post_process(float* buf, size_t n_frames) {
+    size_t to_store = std::min(n_frames, m_n_requested_samples.load());
+    if (to_store > 0) {
+        log<logging::LogLevel::debug>("Storing {} samples", to_store);
+        m_retained_samples.insert(m_retained_samples.end(), buf, buf+to_store);
+    }
+}
+
+void DummyAudioPort::request_data(size_t n_frames) {
+    m_n_requested_samples += n_frames;
+}
+
+std::vector<audio_sample_t> DummyAudioPort::dequeue_data(size_t n) {
+    if (n > m_retained_samples.size()) {
+        throw_error<std::runtime_error>("Not enough retained samples");
+    }
+    std::vector<audio_sample_t> rval(m_retained_samples.begin(), m_retained_samples.begin()+n);
+    m_retained_samples.erase(m_retained_samples.begin(), m_retained_samples.begin()+n);
+    return rval;
+}
+
 size_t DummyMidiPort::PROC_get_n_events() const { return 0; }
 
 MidiSortableMessageInterface &
@@ -170,8 +191,7 @@ DummyAudioSystem<Time, Size>::DummyAudioSystem(
       m_midi_port_closed_cb(nullptr), m_midi_port_opened_cb(nullptr),
       m_controlled_mode_samples_to_process(0),
       m_mode(mode),
-      m_paused(false),
-      m_post_process_cb(nullptr) {
+      m_paused(false) {
     m_audio_ports.clear();
     m_midi_ports.clear();
     log_init();
@@ -201,9 +221,6 @@ void DummyAudioSystem<Time, Size>::start() {
                     mc_buffer_size;
                 log<logging::LogLevel::trace>("DummyAudioSystem: process {}", to_process);
                 m_process_cb(to_process);
-                if (m_post_process_cb) {
-                    m_post_process_cb(to_process, samples_to_process);
-                }
                 if (mode == DummyAudioSystemMode::Controlled) {
                     m_controlled_mode_samples_to_process -= to_process;
                 }
@@ -291,11 +308,6 @@ size_t DummyAudioSystem<Time, Size>::get_xruns() const {
 
 template <typename Time, typename Size>
 void DummyAudioSystem<Time, Size>::reset_xruns(){};
-
-template <typename Time, typename Size>
-void DummyAudioSystem<Time, Size>::install_post_process_handler(std::function<void (size_t, size_t)> cb) {
-    m_post_process_cb = cb;
-}
 
 template <typename Time, typename Size>
 void DummyAudioSystem<Time, Size>::controlled_mode_run_request(size_t timeout) {
