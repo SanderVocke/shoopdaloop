@@ -10,28 +10,36 @@ ApplicationWindow {
     property var objects_registry: null
     property var object: null
 
-    width: 200
-    height: 500
+    width: 500
+    height: 300
     minimumWidth: 100
     minimumHeight: 100
     
     Material.theme: Material.Dark
 
-    Loader {
-        sourceComponent: {
-            if (object && object.object_schema.match(/(?:audio|midi)port.[0-9]+/)) {
-                return debug_port_component;
-            } else if (object && object.object_schema.match(/channel.[0-9]+/)) {
-                return debug_channel_component;
-            } else if (object && object.object_schema.match(/loop.[0-9]+/)) {
-                return debug_loop_component;
-            } else if (object && object.object_schema.match(/fx_chain.[0-9]+/)) {
-                return debug_fx_chain_component;
-            }
-            return null;
-        }
+    ScrollView {
         anchors.fill: parent
-        active: true
+        contentWidth: 400
+        contentHeight: 1600
+        ScrollBar.horizontal.policy: ScrollBar.AlwaysOn
+        ScrollBar.vertical.policy: ScrollBar.AlwaysOn
+
+        Loader {
+            id: loader
+            sourceComponent: {
+                if (object && object.object_schema.match(/(?:audio|midi)port.[0-9]+/)) {
+                    return debug_port_component;
+                } else if (object && object.object_schema.match(/channel.[0-9]+/)) {
+                    return debug_channel_component;
+                } else if (object && object.object_schema.match(/loop.[0-9]+/)) {
+                    return debug_loop_component;
+                } else if (object && object.object_schema.match(/fx_chain.[0-9]+/)) {
+                    return debug_fx_chain_component;
+                }
+                return null;
+            }
+            active: true
+        }
     }
 
     readonly property var window_factory : Qt.createComponent("DebugInspectionItemWindow.qml")
@@ -314,7 +322,7 @@ ApplicationWindow {
 
                 ItemRow {
                     label: "descriptor:"
-                    Label { text: JSON.stringify(object.descriptor, null, 2) }
+                    Label { text: JSON.stringify(object.initial_descriptor, null, 2) }
                 }
             }
         }

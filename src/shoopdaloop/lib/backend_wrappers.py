@@ -492,6 +492,7 @@ class BackendFXChain:
     
     def restore_state(self, state_str):
         restore_fx_chain_internal_state(self._c_handle, c_char_p(bytes(state_str, 'ascii')))
+
 class Backend:
     def __init__(self, c_handle : 'POINTER(shoopdaloop_backend_instance_t)'):
         self._c_handle = c_handle
@@ -537,7 +538,7 @@ class Backend:
         n_ports = c_uint()
         ports = get_fn(fx_chain.c_handle(), byref(n_ports))
         if idx >= n_ports.value:
-            raise Exception('Trying to get port {} of {} ports'.format(idx, int(n_ports)))
+            raise Exception('Trying to get port {} of {} ports'.format(idx, int(n_ports.value)))
         return ports[idx]
     
     def get_fx_chain_audio_input_port(self, fx_chain : Type['BackendFXChain'], idx : int):
