@@ -71,6 +71,18 @@ class AudioPort(Port):
     def set_volume(self, volume):
         if self._backend_obj:
             self._backend_obj.set_volume(volume)
+    
+    @Slot(list)
+    def dummy_queue_data(self, data):
+        self._backend_obj.dummy_queue_data(data)
+    
+    @Slot(int, result=list)
+    def dummy_dequeue_data(self, n):
+        return self._backend_obj.dummy_dequeue_data(n)
+    
+    @Slot(int)
+    def dummy_request_data(self, n):
+        self._backend_obj.dummy_request_data(n)
 
     ##########
     ## INTERNAL MEMBERS
