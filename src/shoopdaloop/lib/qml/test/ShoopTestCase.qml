@@ -36,6 +36,12 @@ TestCase {
         return new Error().stack
     }
 
+    function verify_throw(a) {
+        var result = Boolean(a)
+        if (!result) { logger.error(`Trace: ${backtrace()}`)}
+        verify(result, `a != null-like (a = ${a})`)
+    }
+
     function verify_eq(a, b) {
         var result;
         if (Array.isArray(a) && Array.isArray(b)) {

@@ -125,9 +125,10 @@ Rectangle {
         }
     }
 
+    readonly property string object_schema : 'scripts.1'
     SchemaCheck {
         descriptor: root.initial_descriptor
-        schema: 'scripts.1'
+        schema: root.object_schema
         id: validator
     }
 

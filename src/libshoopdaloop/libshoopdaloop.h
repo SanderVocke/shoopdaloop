@@ -83,13 +83,12 @@ shoopdaloop_midi_port_t **fx_chain_midi_input_ports(shoopdaloop_fx_chain_t *chai
 
 // Audio ports
 void set_audio_port_volume(shoopdaloop_audio_port_t *port, float volume);
-void set_audio_port_passthroughVolume(shoopdaloop_audio_port_t *port, float volume);
 void set_audio_port_muted(shoopdaloop_audio_port_t *port, unsigned muted);
 void set_audio_port_passthroughMuted(shoopdaloop_audio_port_t *port, unsigned muted);
 void add_audio_port_passthrough(shoopdaloop_audio_port_t *from, shoopdaloop_audio_port_t *to);
 audio_port_state_info_t *get_audio_port_state(shoopdaloop_audio_port_t *port);
 // For JACK audio ports only
-shoopdaloop_audio_port_t *open_jack_audio_port (shoopdaloop_backend_instance_t *backend, const char* name_hint, port_direction_t direction);
+shoopdaloop_audio_port_t *open_audio_port (shoopdaloop_backend_instance_t *backend, const char* name_hint, port_direction_t direction);
 jack_port_t *get_audio_port_jack_handle(shoopdaloop_audio_port_t *port);
 
 // Midi ports
@@ -139,6 +138,17 @@ void set_global_logging_level(log_level_t level);
 void set_logger_level_override(shoopdaloop_logger_t *logger, log_level_t level);
 void reset_logger_level_override(shoopdaloop_logger_t *logger);
 void shoopdaloop_log(shoopdaloop_logger_t *logger, log_level_t level, const char *msg);
+
+// For testing purposes
+void dummy_audio_port_queue_data(shoopdaloop_audio_port_t *port, size_t n_frames, audio_sample_t const* data);
+void dummy_audio_port_dequeue_data(shoopdaloop_audio_port_t *port, size_t n_frames, audio_sample_t * store_in);
+void dummy_audio_port_request_data(shoopdaloop_audio_port_t* port, size_t n_frames);
+void dummy_audio_enter_controlled_mode(shoopdaloop_backend_instance_t *backend);
+void dummy_audio_enter_automatic_mode(shoopdaloop_backend_instance_t *backend);
+unsigned dummy_audio_is_in_controlled_mode(shoopdaloop_backend_instance_t *backend);
+void dummy_audio_request_controlled_frames(shoopdaloop_backend_instance_t *backend, size_t n_frames);
+size_t dummy_audio_n_requested_frames(shoopdaloop_backend_instance_t *backend);
+void dummy_audio_wait_process(shoopdaloop_backend_instance_t *backend);
 
 #ifdef __cplusplus
 }

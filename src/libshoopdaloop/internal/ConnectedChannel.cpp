@@ -20,6 +20,17 @@ std::shared_ptr<DummyReadMidiBuf> g_dummy_midi_input_buffer = std::make_shared<D
 std::shared_ptr<DummyWriteMidiBuf> g_dummy_midi_output_buffer = std::make_shared<DummyWriteMidiBuf>();
 }
 
+ConnectedChannel::ConnectedChannel(std::shared_ptr<ChannelInterface> chan,
+                std::shared_ptr<ConnectedLoop> loop,
+                std::shared_ptr<Backend> backend) :
+        channel(chan),
+        loop(loop),
+        backend(backend),
+        ma_process_when(shoop_types::ProcessWhen::BeforeFXChains)
+{
+    ma_data_sequence_nr = 0;
+}
+
 ConnectedChannel &ConnectedChannel::operator= (ConnectedChannel const& other) {
         if (backend.lock() != other.backend.lock()) {
             throw std::runtime_error("Cannot copy channels between back-ends");
@@ -27,7 +38,7 @@ ConnectedChannel &ConnectedChannel::operator= (ConnectedChannel const& other) {
         loop = other.loop;
         channel = other.channel;
         mp_input_port_mapping = other.mp_input_port_mapping;
-        mp_output_port_mappings = other.mp_output_port_mappings;
+        mp_output_port_mapping = other.mp_output_port_mapping;
         return *this;
     }
 
@@ -41,10 +52,7 @@ bool ConnectedChannel::get_data_dirty() const {
 
 void ConnectedChannel::connect_output_port(std::shared_ptr<ConnectedPort> port, bool thread_safe) {
     auto fn = [this, port]() {
-        for (auto const& elem : mp_output_port_mappings) {
-            if (elem.lock() == port) { return; }
-        }
-        mp_output_port_mappings.push_back(port);
+        mp_output_port_mapping = port;
         ma_process_when = port->ma_process_when; // Process in same phase as the connected port
     };
     if (thread_safe) { get_backend().cmd_queue.queue(fn); }
@@ -62,14 +70,13 @@ void ConnectedChannel::connect_input_port(std::shared_ptr<ConnectedPort> port, b
 
 void ConnectedChannel::disconnect_output_port(std::shared_ptr<ConnectedPort> port, bool thread_safe) {
     auto fn = [this, port]() {
-        for (auto it = mp_output_port_mappings.rbegin(); it != mp_output_port_mappings.rend(); it++) {
-            mp_output_port_mappings.erase(
-                std::remove_if(mp_output_port_mappings.begin(), mp_output_port_mappings.end(),
-                    [port](auto const& e) {
-                        auto l = e.lock();
-                        return !l || l == port;
-                    }), mp_output_port_mappings.end());
+        auto locked = mp_output_port_mapping.lock();
+        if (locked) {
+            if (port != locked) {
+                throw std::runtime_error("Attempting to disconnect unconnected output");
+            }
         }
+        mp_output_port_mapping.reset();
     };
     if (thread_safe) { get_backend().cmd_queue.queue(fn); }
     else { fn(); }
@@ -77,7 +84,7 @@ void ConnectedChannel::disconnect_output_port(std::shared_ptr<ConnectedPort> por
 
 void ConnectedChannel::disconnect_output_ports(bool thread_safe) {
     auto fn = [this]() {
-        mp_output_port_mappings.clear();
+        mp_output_port_mapping.reset();
     };
     if (thread_safe) { get_backend().cmd_queue.queue(fn); }
     else { fn(); }
@@ -105,7 +112,6 @@ void ConnectedChannel::disconnect_input_ports(bool thread_safe) {
     else { fn(); }
 }
 
-#warning This does not deal with multiple output channels properly
 void ConnectedChannel::PROC_prepare_process_audio(size_t n_frames) {
     auto in_locked = mp_input_port_mapping.lock();
     if (in_locked) {
@@ -119,18 +125,14 @@ void ConnectedChannel::PROC_prepare_process_audio(size_t n_frames) {
         auto chan = dynamic_cast<LoopAudioChannel*>(channel.get());
         chan->PROC_set_recording_buffer(g_dummy_audio_input_buffer.data(), n_frames);
     }
-    size_t n_outputs_mapped = 0;
-    for (auto &port : mp_output_port_mappings) {
-        auto locked = port.lock();
-        if (locked) {
-            auto chan = dynamic_cast<LoopAudioChannel*>(channel.get());
-            chan->PROC_set_playback_buffer(locked->maybe_audio_buffer, n_frames);
-            n_outputs_mapped++;
-        }
-    }
-    if (n_outputs_mapped == 0) {
+    auto out_locked = mp_output_port_mapping.lock();
+    if (out_locked) {
+        auto chan = dynamic_cast<LoopAudioChannel*>(channel.get());
+        chan->PROC_set_playback_buffer(out_locked->maybe_audio_buffer, n_frames);
+    } else {
         if (g_dummy_audio_output_buffer.size() < n_frames*sizeof(audio_sample_t)) {
             g_dummy_audio_output_buffer.resize(n_frames*sizeof(audio_sample_t));
+            memset((void*)g_dummy_audio_output_buffer.data(), 0, n_frames*sizeof(audio_sample_t));
         }
         auto chan = dynamic_cast<LoopAudioChannel*>(channel.get());
         chan->PROC_set_playback_buffer(g_dummy_audio_output_buffer.data(), n_frames);
@@ -138,16 +140,6 @@ void ConnectedChannel::PROC_prepare_process_audio(size_t n_frames) {
 }
 
 void ConnectedChannel::PROC_finalize_process_audio() {
-    auto in_locked = mp_input_port_mapping.lock();
-    if (in_locked) {
-        in_locked->PROC_reset_buffers();
-    }
-    for (auto &port : mp_output_port_mappings) {
-        auto locked = port.lock();
-        if (locked) {
-            locked->PROC_reset_buffers();
-        }
-    }
 }
 
 void ConnectedChannel::PROC_prepare_process_midi(size_t n_frames) {
@@ -159,16 +151,11 @@ void ConnectedChannel::PROC_prepare_process_midi(size_t n_frames) {
         auto chan = dynamic_cast<LoopMidiChannel*>(channel.get());
         chan->PROC_set_recording_buffer(g_dummy_midi_input_buffer.get(), n_frames);
     }
-    size_t n_outputs_mapped = 0;
-    for (auto &port : mp_output_port_mappings) {
-        auto locked = port.lock();
+    auto out_locked = mp_output_port_mapping.lock();
+    if (out_locked) {
         auto chan = dynamic_cast<LoopMidiChannel*>(channel.get());
-        if (locked) {
-            chan->PROC_set_playback_buffer(locked->maybe_midi_output_merging_buffer.get(), n_frames);
-            n_outputs_mapped++;
-        }
-    }
-    if (n_outputs_mapped == 0) {
+        chan->PROC_set_playback_buffer(out_locked->maybe_midi_output_buffer, n_frames);
+    } else {
         auto chan = dynamic_cast<LoopMidiChannel*>(channel.get());
         chan->PROC_set_playback_buffer(g_dummy_midi_output_buffer.get(), n_frames);
     }
@@ -176,16 +163,16 @@ void ConnectedChannel::PROC_prepare_process_midi(size_t n_frames) {
 
 
 void ConnectedChannel::PROC_finalize_process_midi() {
-    auto in_locked = mp_input_port_mapping.lock();
-    if (in_locked) {
-        in_locked->PROC_reset_buffers();
-    }
-    for (auto &port : mp_output_port_mappings) {
-        auto locked = port.lock();
-        if (locked) {
-            locked->PROC_reset_buffers();
-        }
-    }
+    // auto in_locked = mp_input_port_mapping.lock();
+    // if (in_locked) {
+    //     in_locked->PROC_reset_buffers();
+    // }
+    // for (auto &port : mp_output_port_mappings) {
+    //     auto locked = port.lock();
+    //     if (locked) {
+    //         locked->PROC_reset_buffers();
+    //     }
+    // }
 }
 
 LoopAudioChannel *ConnectedChannel::maybe_audio() {

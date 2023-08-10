@@ -17,13 +17,13 @@ InternalAudioPort<SampleT>::InternalAudioPort(std::string name,
       m_direction(direction), m_buffer(n_frames) {}
 
 template <typename SampleT>
-SampleT *InternalAudioPort<SampleT>::PROC_get_buffer(size_t n_frames) {
+SampleT *InternalAudioPort<SampleT>::PROC_get_buffer(size_t n_frames, bool do_zero) {
     if (n_frames > m_buffer.size()) {
         throw std::runtime_error(
             "Requesting oversized buffer from internal port");
     }
-    if (m_direction == PortDirection::Output) {
-        memset((void *)m_buffer.data(), 0, sizeof(float) * n_frames);
+    if (do_zero) {
+        memset((void *)m_buffer.data(), 0, sizeof(float) * m_buffer.size());
     }
     return m_buffer.data();
 }

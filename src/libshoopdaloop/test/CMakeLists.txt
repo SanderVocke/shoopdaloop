@@ -10,8 +10,10 @@ add_executable(test_runner
     unit/test_AudioMidiLoop_midi.cpp
     unit/test_ObjectPool.cpp
     unit/test_BasicLoop.cpp
-    unit/test_libshoopdaloop_if.cpp
+    unit/test_DummyAudioSystem.cpp
+    integration/test_libshoopdaloop_if.cpp
     integration/test_synced_BasicLoops.cpp
+    integration/test_chains.cpp
     )
 target_link_libraries(test_runner PRIVATE
                       ${BOOST_LIBRARIES}

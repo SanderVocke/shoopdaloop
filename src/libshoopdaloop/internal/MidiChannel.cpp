@@ -89,7 +89,7 @@ MidiChannel<TimeType, SizeType>::TrackedState::resolve_to_output(
 template <typename TimeType, typename SizeType>
 MidiChannel<TimeType, SizeType>::MidiChannel(size_t data_size, channel_mode_t mode,
             std::shared_ptr<profiling::Profiler> maybe_profiler)
-    : WithCommandQueue<10, 1000, 1000>(),
+    : WithCommandQueue<20, 1000, 1000>(),
       mp_playback_target_buffer(std::make_pair(ExternalBufState(), nullptr)),
       mp_recording_source_buffer(std::make_pair(ExternalBufState(), nullptr)),
       mp_storage(std::make_shared<Storage>(data_size)),
@@ -366,7 +366,7 @@ MidiChannel<TimeType, SizeType>::PROC_process_record(Storage &storage,
         } else {
             if (t >=
                 recbuf.first.n_frames_processed) { // Don't store any message that
-                                             // came before our process window
+                                                   // came before our process window
                 // If here, we are about to record a message.
                 // If it is the first recorded message, this is also the moment
                 // to cache the MIDI state on the input (such as hold pedal,

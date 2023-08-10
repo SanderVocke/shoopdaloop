@@ -16,20 +16,13 @@ struct ConnectedChannel : public std::enable_shared_from_this<ConnectedChannel> 
     std::weak_ptr<ConnectedLoop> loop;
     std::weak_ptr<ConnectedPort> mp_input_port_mapping;
     std::weak_ptr<Backend> backend;
-    std::vector<std::weak_ptr<ConnectedPort>> mp_output_port_mappings;
+    std::weak_ptr<ConnectedPort> mp_output_port_mapping;
     shoop_types::ProcessWhen ma_process_when;
     std::atomic<unsigned> ma_data_sequence_nr;
 
     ConnectedChannel(std::shared_ptr<ChannelInterface> chan,
                 std::shared_ptr<ConnectedLoop> loop,
-                std::shared_ptr<Backend> backend) :
-        channel(chan),
-        loop(loop),
-        backend(backend),
-        ma_process_when(shoop_types::ProcessWhen::BeforeFXChains) {
-            mp_output_port_mappings.reserve(shoop_constants::default_max_port_mappings);
-        ma_data_sequence_nr = 0;
-    }
+                std::shared_ptr<Backend> backend);
 
     // NOTE: only use on process thread
     ConnectedChannel &operator= (ConnectedChannel const& other);

@@ -13,9 +13,10 @@ PythonLoopMidiChannel {
 
     readonly property string obj_id : descriptor.id
 
+    readonly property string object_schema : 'channel.1'
     SchemaCheck {
         descriptor: root.descriptor
-        schema: 'channel.1'
+        schema: root.object_schema
     }
 
     function actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) {

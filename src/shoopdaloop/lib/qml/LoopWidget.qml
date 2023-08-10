@@ -91,9 +91,10 @@ Item {
         return Stereo.balance(channels[0].volume, channels[1].volume)
     }
 
+    readonly property string object_schema : 'loop.1'
     SchemaCheck {
         descriptor: root.initial_descriptor
-        schema: 'loop.1'
+        schema: root.object_schema
     }
 
     function force_load_backend() {

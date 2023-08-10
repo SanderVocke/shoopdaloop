@@ -1,6 +1,7 @@
 #include "AudioChannel.h"
 #include "BasicLoop.h"
 #include "ChannelInterface.h"
+#include "LoggingEnabled.h"
 #include "MidiChannel.h"
 #include "ProcessProfiling.h"
 

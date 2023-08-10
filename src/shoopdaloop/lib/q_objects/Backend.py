@@ -139,6 +139,30 @@ class Backend(QQuickItem):
         return self._backend_obj
     
     @Slot()
+    def dummy_enter_controlled_mode(self):
+        self._backend_obj.dummy_enter_controlled_mode()
+    
+    @Slot()
+    def dummy_enter_automatic_mode(self):
+        self._backend_obj.dummy_enter_automatic_mode()
+    
+    @Slot(result=bool)
+    def dummy_is_controlled(self):
+        self._backend_obj.dummy_is_controlled()
+    
+    @Slot(int)
+    def dummy_request_controlled_frames(self, n):
+        self._backend_obj.dummy_request_controlled_frames(n)
+        
+    @Slot(result=int)
+    def dummy_n_requested_frames(self):
+        return self._backend_obj.dummy_n_requested_frames()
+    
+    @Slot()
+    def dummy_wait_process(self):
+        self._backend_obj.dummy_wait_process()
+    
+    @Slot()
     def maybe_init(self):
         if not self._initialized and self._client_name_hint != None and self._backend_type != None:
             self.init()

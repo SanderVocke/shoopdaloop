@@ -14,9 +14,10 @@ PythonLoopAudioChannel {
 
     readonly property string obj_id : descriptor.id
 
+    readonly property string object_schema : 'channel.1'
     SchemaCheck {
         descriptor: root.descriptor
-        schema: 'channel.1'
+        schema: root.object_schema
     }
 
     readonly property PythonLogger logger : PythonLogger { name: "Frontend.LoopAudioChannel" }

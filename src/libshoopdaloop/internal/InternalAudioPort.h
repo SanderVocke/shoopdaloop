@@ -18,7 +18,7 @@ public:
         size_t n_frames
     );
     
-    SampleT *PROC_get_buffer(size_t n_frames) override;
+    SampleT *PROC_get_buffer(size_t n_frames, bool do_zero=false) override;
 
     const char* name() const override;
     PortDirection direction() const override;

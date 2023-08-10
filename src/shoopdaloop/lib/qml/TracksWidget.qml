@@ -173,17 +173,20 @@ ScrollView {
         anchors.bottom: parent.bottom
 
         Mapper {
+            id: track_controls_mapper
             model: root.tracks
 
             Item {
                 id: a_track
                 property var mapped_item
                 property int index
+                property var widget: widget
 
                 width: mapped_item.width
                 height: 50
 
                 TrackControlWidget {
+                    id: widget
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.horizontalCenter: parent.horizontalCenter
                     initial_track_descriptor: a_track.mapped_item.initial_descriptor
@@ -192,6 +195,9 @@ ScrollView {
                 }
             }
         }
+    }
+    function get_track_control_widget(track_idx) {
+        return track_controls_mapper.instances[track_idx].widget
     }
 
     Row {

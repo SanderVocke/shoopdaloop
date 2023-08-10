@@ -37,7 +37,8 @@ Item {
         } else if (factory.status != Component.Ready) {
             throw new Error("TracksWidget: Track factory not ready")
         } else {
-            var loop = factory.createObject(root, {})
+            var loop = factory.createObject(root, {
+            })
             loop.sync_source = Qt.binding(() => {
                 return root.sync_source
             })

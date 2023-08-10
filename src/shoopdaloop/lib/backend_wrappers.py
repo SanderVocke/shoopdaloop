@@ -114,7 +114,6 @@ class LoopState:
 class AudioPortState:
     peak: float
     volume: float
-    passthrough_volume: float
     muted: bool
     passthrough_muted: bool
     name: str
@@ -122,7 +121,6 @@ class AudioPortState:
     def __init__(self, backend_state : 'audio_port_state_info_t'):
         self.peak = backend_state.peak
         self.volume = backend_state.volume
-        self.passthrough_volume = backend_state.passthrough_volume
         self.muted = bool(backend_state.muted)
         self.passthrough_muted = bool(backend_state.passthrough_muted)
         self.name = str(backend_state.name)
@@ -407,10 +405,6 @@ class BackendAudioPort:
         if self._c_handle:
             set_audio_port_volume(self._c_handle, volume)
     
-    def set_passthrough_volume(self, passthrough_volume):
-        if self._c_handle:
-            set_audio_port_passthroughVolume(self._c_handle, passthrough_volume)
-    
     def set_muted(self, muted):
         if self._c_handle:
             set_audio_port_muted(self._c_handle, (1 if muted else 0))
@@ -421,6 +415,22 @@ class BackendAudioPort:
     
     def connect_passthrough(self, other):
         add_audio_port_passthrough(self._c_handle, other.c_handle())
+    
+    def dummy_queue_data(self, data):
+        data_type = c_float * len(data)
+        arr = data_type()
+        for i in range(len(data)):
+            arr[i] = data[i]
+        dummy_audio_port_queue_data(self._c_handle, len(data), arr)
+    
+    def dummy_dequeue_data(self, n_samples):
+        data_type = c_float * n_samples
+        arr = data_type()
+        dummy_audio_port_dequeue_data(self._c_handle, n_samples, arr)
+        return [float(arr[i]) for i in range(n_samples)]
+    
+    def dummy_request_data(self, n_samples):
+        dummy_audio_port_request_data(self._c_handle, n_samples)
 
     def __del__(self):
         self.destroy()
@@ -498,6 +508,7 @@ class BackendFXChain:
     
     def restore_state(self, state_str):
         restore_fx_chain_internal_state(self._c_handle, c_char_p(bytes(state_str, 'ascii')))
+
 class Backend:
     def __init__(self, c_handle : 'POINTER(shoopdaloop_backend_instance_t)'):
         self._c_handle = c_handle
@@ -527,9 +538,9 @@ class Backend:
         rval = BackendFXChain(handle, chain_type)
         return rval
 
-    def open_jack_audio_port(self, name_hint : str, direction : int) -> 'BackendAudioPort':
+    def open_audio_port(self, name_hint : str, direction : int) -> 'BackendAudioPort':
         _dir = (Input if direction == PortDirection.Input.value else Output)
-        handle = open_jack_audio_port(self._c_handle, name_hint.encode('ascii'), _dir)
+        handle = open_audio_port(self._c_handle, name_hint.encode('ascii'), _dir)
         port = BackendAudioPort(handle, direction)
         return port
 
@@ -543,7 +554,7 @@ class Backend:
         n_ports = c_uint()
         ports = get_fn(fx_chain.c_handle(), byref(n_ports))
         if idx >= n_ports.value:
-            raise Exception('Trying to get port {} of {} ports'.format(idx, int(n_ports)))
+            raise Exception('Trying to get port {} of {} ports'.format(idx, int(n_ports.value)))
         return ports[idx]
     
     def get_fx_chain_audio_input_port(self, fx_chain : Type['BackendFXChain'], idx : int):
@@ -566,6 +577,24 @@ class Backend:
         rval = ProfilingReport(state[0])
         destroy_profiling_report(state)
         return rval
+
+    def dummy_enter_controlled_mode(self):
+        dummy_audio_enter_controlled_mode(self._c_handle)
+        
+    def dummy_enter_automatic_mode(self):
+        dummy_audio_enter_automatic_mode(self._c_handle)
+        
+    def dummy_is_controlled(self):
+        return bool(dummy_audio_is_in_controlled_mode(self._c_handle))
+    
+    def dummy_request_controlled_frames(self, n):
+        dummy_audio_request_controlled_frames(self._c_handle, n)
+    
+    def dummy_n_requested_frames(self):
+        return int(dummy_audio_n_requested_frames(self._c_handle))
+
+    def dummy_wait_process(self):
+        dummy_audio_wait_process(self._c_handle)
 
     def terminate(self):
         terminate(self._c_handle)

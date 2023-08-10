@@ -24,16 +24,17 @@ function testArraysEqual(a, b, log_cb=console.log, crumbs=[]) {
     log_cb(`At ${crumbs}: # of keys unequal (${a} vs ${b})\n`)
     return false;
   }
+  var result = true;
   a.forEach((elem, idx) => {
     const other = b[idx];
     const areArrays = Array.isArray(elem) && Array.isArray(other);
     if(areArrays && !testArraysEqual(elem, other, log_cb, crumbs.concat([idx]))) { return false; }
     else if(!areArrays && elem != other) {
       log_cb(`At ${crumbs.concat([idx])}: value unequal (${elem} vs ${other})\n`)
-      return false;
+      result = false;
     }
   })
-  return true;
+  return result;
 }
 
 function isObject(object) {

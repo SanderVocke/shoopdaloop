@@ -6,10 +6,11 @@
 // Internal
 #include "AudioBuffer.h"
 #include "AudioChannel.h"
+#include "SerializeableStateInterface.h"
 #include "AudioMidiLoop.h"
+#include "ExternalUIInterface.h"
 #include "AudioPortInterface.h"
 #include "AudioSystemInterface.h"
-#include "CarlaLV2ProcessingChain.h"
 #include "JackMidiPort.h"
 #include "LoggingBackend.h"
 #include "MidiChannel.h"
@@ -303,9 +304,9 @@ shoopdaloop_loop_audio_channel_t *add_audio_channel (shoopdaloop_loop_t *loop, c
                                                         audio_channel_initial_buffers,
                                                         mode,
                                                         false);
-        auto replacement = std::make_shared<ConnectedChannel> (chan, loop_info, loop_info->backend.lock());
+        r->channel = chan;
         loop_info->mp_audio_channels.push_back(r);
-        *r = *replacement;
+        g_logger->debug("add_audio_channel: executed on process thread");
     });
     return external_audio_channel(r);
 }
@@ -319,12 +320,12 @@ shoopdaloop_loop_midi_channel_t *add_midi_channel (shoopdaloop_loop_t *loop, cha
     // address later.
     std::shared_ptr<ConnectedLoop> loop_info = internal_loop(loop);
     auto &backend = loop_info->get_backend();
-    auto r = std::make_shared<ConnectedChannel> (nullptr, nullptr, backend.shared_from_this());
+    auto r = std::make_shared<ConnectedChannel> (nullptr, loop_info, backend.shared_from_this());
     backend.cmd_queue.queue([loop_info, mode, r]() {
         auto chan = loop_info->loop->add_midi_channel<Time, Size>(midi_storage_size, mode, false);
-        auto replacement = std::make_shared<ConnectedChannel> (chan, loop_info, loop_info->backend.lock());
+        r->channel = chan;
         loop_info->mp_midi_channels.push_back(r);
-        *r = *replacement;
+        g_logger->debug("add_midi_channel: executed on process thread");
     });
     return external_midi_channel(r);
 }
@@ -632,9 +633,9 @@ void clear_midi_channel (shoopdaloop_loop_midi_channel_t *channel) {
     });
 }
 
-shoopdaloop_audio_port_t *open_jack_audio_port (shoopdaloop_backend_instance_t *backend, const char* name_hint, port_direction_t direction) {
+shoopdaloop_audio_port_t *open_audio_port (shoopdaloop_backend_instance_t *backend, const char* name_hint, port_direction_t direction) {
     init_log();
-    g_logger->debug("open_jack_audio_port");
+    g_logger->debug("open_audio_port");
     auto _backend = internal_backend(backend);
     auto port = _backend->audio_system->open_audio_port
         (name_hint, internal_port_direction(direction));
@@ -734,14 +735,8 @@ void set_audio_port_passthroughMuted(shoopdaloop_audio_port_t *port, unsigned in
 
 void set_audio_port_volume(shoopdaloop_audio_port_t *port, float volume) {
     init_log();
-    g_logger->debug("set_audio_port_volume");
+    g_logger->debug("set_audio_port_volume {}", volume);
     internal_audio_port(port)->volume = volume;
-}
-
-void set_audio_port_passthroughVolume(shoopdaloop_audio_port_t *port, float passthroughVolume) {
-    init_log();
-    g_logger->debug("set_audio_port_passthroughVolume");
-    internal_audio_port(port)->passthrough_volume = passthroughVolume;
 }
 
 void set_midi_port_muted(shoopdaloop_midi_port_t *port, unsigned int muted) {
@@ -947,7 +942,6 @@ audio_port_state_info_t *get_audio_port_state(shoopdaloop_audio_port_t *port) {
     auto p = internal_audio_port(port);
     r->peak = p->peak;
     r->volume = p->volume;
-    r->passthrough_volume = p->passthrough_volume;
     r->muted = p->muted;
     r->passthrough_muted = p->passthrough_muted;
     r->name = p->port->name();
@@ -1004,10 +998,11 @@ shoopdaloop_fx_chain_t *create_fx_chain(shoopdaloop_backend_instance_t *backend,
 void fx_chain_set_ui_visible(shoopdaloop_fx_chain_t *chain, unsigned visible) {
     init_log();
     g_logger->debug("fx_chain_set_ui_visible");
-    if(visible) {
-        internal_fx_chain(chain)->chain->show();
+    auto maybe_ui = dynamic_cast<ExternalUIInterface*>(internal_fx_chain(chain)->chain.get());
+    if(maybe_ui) {
+        maybe_ui->show();
     } else {
-        internal_fx_chain(chain)->chain->hide();
+        maybe_ui->hide();
     }
 }
 
@@ -1016,7 +1011,12 @@ fx_chain_state_info_t *get_fx_chain_state(shoopdaloop_fx_chain_t *chain) {
     auto c = internal_fx_chain(chain);
     r->ready = (unsigned) c->chain->is_ready();
     r->active = (unsigned) c->chain->is_active();
-    r->visible = (unsigned) c->chain->visible();
+    auto maybe_ui = dynamic_cast<ExternalUIInterface*>(internal_fx_chain(chain)->chain.get());
+    if(maybe_ui) {
+        r->visible = (unsigned) maybe_ui->visible();
+    } else {
+        r->visible = 0;
+    }
     return r;
 }
 
@@ -1030,18 +1030,26 @@ const char* get_fx_chain_internal_state(shoopdaloop_fx_chain_t *chain) {
     init_log();
     g_logger->debug("get_fx_chain_internal_state");
     auto c = internal_fx_chain(chain);
-    auto str = c->chain->get_state();
-    char * rval = (char*) malloc(str.size() + 1);
-    memcpy((void*)rval, str.data(), str.size());
-    rval[str.size()] = 0;
-    return rval;
+    auto maybe_serializeable = dynamic_cast<SerializeableStateInterface*>(c->chain.get());
+    if(maybe_serializeable) {
+        auto str = maybe_serializeable->serialize_state();
+        char * rval = (char*) malloc(str.size() + 1);
+        memcpy((void*)rval, str.data(), str.size());
+        rval[str.size()] = 0;
+        return rval;
+    } else {
+        return "";
+    }
 }
 
 void restore_fx_chain_internal_state(shoopdaloop_fx_chain_t *chain, const char* state) {
     init_log();
     g_logger->debug("restore_fx_chain_internal_state");
     auto c = internal_fx_chain(chain);
-    c->chain->restore_state(std::string(state));
+    auto maybe_serializeable = dynamic_cast<SerializeableStateInterface*>(c->chain.get());
+    if (maybe_serializeable) {
+        maybe_serializeable->deserialize_state(std::string(state));
+    }
 }
 
 shoopdaloop_audio_port_t **fx_chain_audio_input_ports(shoopdaloop_fx_chain_t *chain, unsigned int *n_out) {
@@ -1263,4 +1271,106 @@ void shoopdaloop_log(shoopdaloop_logger_t *logger, log_level_t level, const char
     ((logging::logger*)logger)->log_no_filter(
         level_convert.at(level), msg
     );
+}
+
+void dummy_audio_port_queue_data(shoopdaloop_audio_port_t *port, size_t n_frames, audio_sample_t const* data) {
+    init_log();
+    g_logger->debug("dummy_audio_port_queue_data");
+    auto maybe_dummy = dynamic_cast<DummyAudioPort*>(internal_audio_port(port)->maybe_audio());
+    if (maybe_dummy) {
+        maybe_dummy->queue_data(n_frames, data);
+    } else {
+        g_logger->error("dummy_audio_port_queue_data called on non-dummy port");
+    }
+}
+
+void dummy_audio_port_dequeue_data(shoopdaloop_audio_port_t *port, size_t n_frames, audio_sample_t *store_in) {
+    init_log();
+    g_logger->debug("dummy_audio_port_dequeue_data");
+    auto maybe_dummy = dynamic_cast<DummyAudioPort*>(internal_audio_port(port)->maybe_audio());
+    if (maybe_dummy) {
+        auto data = maybe_dummy->dequeue_data(n_frames);
+        memcpy((void*)store_in, (void*)data.data(), sizeof(audio_sample_t) * n_frames);
+    } else {
+        g_logger->error("dummy_audio_port_queue_data called on non-dummy port");
+    }
+}
+
+void dummy_audio_port_request_data(shoopdaloop_audio_port_t* port, size_t n_frames) {
+    init_log();
+    g_logger->debug("dummy_audio_port_request_data");
+    auto maybe_dummy = dynamic_cast<DummyAudioPort*>(internal_audio_port(port)->maybe_audio());
+    if (maybe_dummy) {
+        maybe_dummy->request_data(n_frames);
+    } else {
+        g_logger->error("dummy_audio_port_request_data called on non-dummy port");
+    }
+}
+
+void dummy_audio_enter_controlled_mode(shoopdaloop_backend_instance_t *backend) {
+    init_log();
+    g_logger->debug("dummy_audio_enter_controlled_mode");
+    auto _backend = internal_backend(backend);
+    if (auto maybe_dummy = dynamic_cast<_DummyAudioSystem*>(_backend->audio_system.get())) {
+        maybe_dummy->enter_mode(DummyAudioSystemMode::Controlled);
+    } else {
+        g_logger->error("dummy_audio_enter_controlled_mode called on non-dummy backend");
+    }
+}
+
+void dummy_audio_enter_automatic_mode(shoopdaloop_backend_instance_t *backend) {
+    init_log();
+    g_logger->debug("dummy_audio_enter_automatic_mode");
+    auto _backend = internal_backend(backend);
+    if (auto maybe_dummy = dynamic_cast<_DummyAudioSystem*>(_backend->audio_system.get())) {
+        maybe_dummy->enter_mode(DummyAudioSystemMode::Automatic);
+    } else {
+        g_logger->error("dummy_audio_enter_automatic_mode called on non-dummy backend");
+    }
+}
+
+unsigned dummy_audio_is_in_controlled_mode(shoopdaloop_backend_instance_t *backend) {
+    init_log();
+    g_logger->debug("dummy_audio_is_in_controlled_mode");
+    auto _backend = internal_backend(backend);
+    if (auto maybe_dummy = dynamic_cast<_DummyAudioSystem*>(_backend->audio_system.get())) {
+        return (unsigned) (maybe_dummy->get_mode() == DummyAudioSystemMode::Controlled);
+    } else {
+        g_logger->error("dummy_audio_is_in_controlled_mode called on non-dummy backend");
+        return 0;
+    }
+}
+
+void dummy_audio_request_controlled_frames(shoopdaloop_backend_instance_t *backend, size_t n_frames) {
+    init_log();
+    g_logger->debug("dummy_audio_request_controlled_frames");
+    auto _backend = internal_backend(backend);
+    if (auto maybe_dummy = dynamic_cast<_DummyAudioSystem*>(_backend->audio_system.get())) {
+        maybe_dummy->controlled_mode_request_samples(n_frames);
+    } else {
+        g_logger->error("dummy_audio_request_controlled_frames called on non-dummy backend");
+    }
+}
+
+size_t dummy_audio_n_requested_frames(shoopdaloop_backend_instance_t *backend) {
+    init_log();
+    g_logger->debug("dummy_audio_n_requested_frames");
+    auto _backend = internal_backend(backend);
+    if (auto maybe_dummy = dynamic_cast<_DummyAudioSystem*>(_backend->audio_system.get())) {
+        return maybe_dummy->get_controlled_mode_samples_to_process();
+    } else {
+        g_logger->error("dummy_audio_n_requested_frames called on non-dummy backend");
+        return 0;
+    }
+}
+
+void dummy_audio_wait_process(shoopdaloop_backend_instance_t *backend) {
+    init_log();
+    g_logger->debug("dummy_audio_wait_process");
+    auto _backend = internal_backend(backend);
+    if (auto maybe_dummy = dynamic_cast<_DummyAudioSystem*>(_backend->audio_system.get())) {
+        maybe_dummy->wait_process();
+    } else {
+        g_logger->error("dummy_audio_wait_process called on non-dummy backend");
+    }
 }

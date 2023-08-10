@@ -40,9 +40,10 @@ PythonMidiPort {
         keys: descriptor.passthrough_to
     }
 
+    readonly property string object_schema : 'midiport.1'
     SchemaCheck {
         descriptor: root.descriptor
-        schema: 'midiport.1'
+        schema: root.object_schema
     }
 
     RegisterInRegistry {

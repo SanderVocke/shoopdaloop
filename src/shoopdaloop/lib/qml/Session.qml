@@ -33,9 +33,10 @@ AppRegistries {
         );
     }
 
+    readonly property string object_schema : 'session.1'
     SchemaCheck {
         descriptor: root.initial_descriptor
-        schema: 'session.1'
+        schema: root.object_schema
         id: validator
     }
 
@@ -108,6 +109,10 @@ AppRegistries {
 
     function queue_load_tasks(data_files_directory, add_tasks_to) {
         tracks_widget.queue_load_tasks(data_files_directory, add_tasks_to)
+    }
+
+    function get_track_control_widget(idx) {
+        return tracks_widget.get_track_control_widget(idx)
     }
 
     function load_session(filename) {

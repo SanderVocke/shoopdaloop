@@ -22,7 +22,6 @@ class AudioPort(Port):
         super(AudioPort, self).__init__(parent)
         self._peak = 0.0
         self._volume = 1.0
-        self._passthrough_volume = 1.0
         self.logger = Logger("Frontend.AudioPort")
 
     ######################
@@ -51,17 +50,6 @@ class AudioPort(Port):
             self._volume = s
             self.volumeChanged.emit(s)
     
-    # passthrough volume
-    passthroughVolumeChanged = Signal(float)
-    @Property(float, notify=passthroughVolumeChanged)
-    def passthrough_volume(self):
-        return self._passthrough_volume
-    @passthrough_volume.setter
-    def passthrough_volume(self, s):
-        if self._passthrough_volume != s:
-            self._passthrough_volume = s
-            self.passthroughVolumeChanged.emit(s)
-    
     ###########
     ## SLOTS
     ###########
@@ -76,7 +64,6 @@ class AudioPort(Port):
         self.name = state.name
 
         self.volume = state.volume
-        self.passthrough_volume = state.passthrough_volume
         self.muted = state.muted
         self.passthrough_muted = state.passthrough_muted
     
@@ -85,10 +72,17 @@ class AudioPort(Port):
         if self._backend_obj:
             self._backend_obj.set_volume(volume)
     
-    @Slot(float)
-    def set_passthrough_volume(self, passthrough_volume):
-        if self._backend_obj:
-            self._backend_obj.set_passthrough_volume(passthrough_volume)
+    @Slot(list)
+    def dummy_queue_data(self, data):
+        self._backend_obj.dummy_queue_data(data)
+    
+    @Slot(int, result=list)
+    def dummy_dequeue_data(self, n):
+        return self._backend_obj.dummy_dequeue_data(n)
+    
+    @Slot(int)
+    def dummy_request_data(self, n):
+        self._backend_obj.dummy_request_data(n)
 
     ##########
     ## INTERNAL MEMBERS
@@ -113,7 +107,7 @@ class AudioPort(Port):
                 if idx == None:
                     self.logger.throw_error('Could not find self in FX chain')
                 # Now request our backend object.
-                if self.direction == PortDirection.Input.value:
+                if direction == PortDirection.Input.value:
                     self._backend_obj = self.backend.get_backend_obj().get_fx_chain_audio_output_port(
                         maybe_fx_chain.get_backend_obj(),
                         idx
@@ -126,13 +120,12 @@ class AudioPort(Port):
                 self.push_state()
 
     def maybe_initialize_external(self, name_hint, direction):
-        self._backend_obj = self.backend.get_backend_obj().open_jack_audio_port(name_hint, direction)
+        self._backend_obj = self.backend.get_backend_obj().open_audio_port(name_hint, direction)
         self.push_state()
 
     def push_state(self):
         self.set_muted(self.muted)
         self.set_passthrough_muted(self.passthrough_muted)
-        self.set_passthrough_volume(self.passthrough_volume)
         self.set_volume(self.volume)
         
     def maybe_initialize_impl(self, name_hint, direction, is_internal):

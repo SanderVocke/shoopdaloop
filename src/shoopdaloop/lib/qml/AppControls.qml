@@ -58,6 +58,10 @@ Item {
                     text: "Profiling"
                     onClicked: profilingwindow.visible = true
                 }
+                MenuItem {
+                    text: "Debug Inspection"
+                    onClicked: debugwindow.visible = true
+                }
             }
 
             FileDialog {
@@ -89,6 +93,11 @@ Item {
             ProfilingWindow {
                 id: profilingwindow
                 backend: root.backend
+            }
+
+            DebugInspectionMainWindow {
+                id: debugwindow
+                objects_registry: root.objects_registry
             }
         }
 

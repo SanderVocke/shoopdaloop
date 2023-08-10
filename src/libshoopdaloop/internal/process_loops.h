@@ -32,9 +32,7 @@ void process_loops(std::vector<std::shared_ptr<Loop>> const& loops_access,
     // Process until the first POI, then handle POIs and triggers.
     for(size_t i=0; i<loops_access.size(); i++) {
         if(loops_access[i]) {
-            if (process_until > 0) {
-                loop_getter(*loops_access[i].get())->PROC_process(process_until);
-            }
+            loop_getter(*loops_access[i].get())->PROC_process(process_until);
         }
     }
     for(size_t i=0; i<loops_access.size(); i++) {

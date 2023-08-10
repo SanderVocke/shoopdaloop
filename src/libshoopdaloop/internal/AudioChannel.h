@@ -8,7 +8,7 @@
 
 template<typename SampleT>
 class AudioChannel : public ChannelInterface,
-                            private WithCommandQueue<10, 1000, 1000>,
+                            private WithCommandQueue<20, 1000, 1000>,
                             private ModuleLoggingEnabled {
 public:
     typedef AudioBuffer<SampleT> BufferObj;
@@ -73,6 +73,7 @@ private:
 
         Buffers();
         Buffers(std::shared_ptr<BufferPool> pool, size_t initial_max_buffers);
+        
         void reset();
         SampleT &at(size_t offset) const;
         bool ensure_available(size_t offset, bool use_pool=true);

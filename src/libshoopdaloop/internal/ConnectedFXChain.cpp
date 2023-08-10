@@ -1,7 +1,6 @@
 #include "ConnectedFXChain.h"
 #include "ConnectedPort.h"
 #include "ConnectedChannel.h"
-#include "CarlaLV2ProcessingChain.h"
 #include "shoop_globals.h"
 
 using namespace shoop_types;

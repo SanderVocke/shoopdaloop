@@ -3,6 +3,7 @@
 #include <vector>
 #include <atomic>
 #include "MidiPortInterface.h"
+#include "LoggingEnabled.h"
 #include "shoop_globals.h"
 
 class Backend;
@@ -12,7 +13,10 @@ class MidiWriteableBufferInterface;
 class MidiMergingBuffer;
 class MidiStateTracker;
 
-struct ConnectedPort : public std::enable_shared_from_this<ConnectedPort> {
+struct ConnectedPort : public std::enable_shared_from_this<ConnectedPort>,
+                       private ModuleLoggingEnabled {
+    std::string log_module_name() const override;
+    
     const std::shared_ptr<PortInterface> port;
     std::weak_ptr<Backend> backend;
 
@@ -21,8 +25,10 @@ struct ConnectedPort : public std::enable_shared_from_this<ConnectedPort> {
     // Audio only
     shoop_types::audio_sample_t* maybe_audio_buffer;
     std::atomic<float> volume;
-    std::atomic<float> passthrough_volume;
     std::atomic<float> peak;
+
+    // Dummy audio only (testing purposes)
+    std::vector<float> stored_dummy_data;
 
     // Midi only
     MidiReadableBufferInterface *maybe_midi_input_buffer;
@@ -39,7 +45,7 @@ struct ConnectedPort : public std::enable_shared_from_this<ConnectedPort> {
     ConnectedPort (std::shared_ptr<PortInterface> const& port, std::shared_ptr<Backend> const& backend);
 
     void PROC_reset_buffers();
-    void PROC_ensure_buffer(size_t n_frames);
+    void PROC_ensure_buffer(size_t n_frames, bool do_zero=false);
     void PROC_passthrough(size_t n_frames);
     void PROC_passthrough_audio(size_t n_frames, ConnectedPort &to);
     void PROC_passthrough_midi(size_t n_frames, ConnectedPort &to);

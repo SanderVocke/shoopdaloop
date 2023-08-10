@@ -7,7 +7,7 @@
       "command": "PIP_BREAK_SYSTEM_PACKAGES=1 pip install -e ${workspaceFolder} --no-deps -v",
       "group": {
         "kind": "build",
-        "isDefault": false
+        "isDefault": true
       },
       "problemMatcher": {
         "owner": "cpp",
@@ -28,7 +28,7 @@
       "command": "PIP_BREAK_SYSTEM_PACKAGES=1 pip install -e ${workspaceFolder} --no-deps -v -C--local=${workspaceFolder}/pyproject.toml.debug_overrides",
       "group": {
         "kind": "build",
-        "isDefault": false
+        "isDefault": true
       },
       "problemMatcher": {
         "owner": "cpp",

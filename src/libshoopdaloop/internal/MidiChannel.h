@@ -10,7 +10,7 @@
 
 template<typename TimeType, typename SizeType>
 class MidiChannel : public ChannelInterface,
-                    private WithCommandQueue<10, 1000, 1000>,
+                    private WithCommandQueue<20, 1000, 1000>,
                     private ModuleLoggingEnabled {
 public:
     using Storage = MidiStorage<TimeType, SizeType>;
