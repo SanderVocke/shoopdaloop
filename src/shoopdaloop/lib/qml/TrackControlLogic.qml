@@ -21,7 +21,7 @@ Item {
     readonly property bool mute_drywet_input_passthrough:  !any_loop_pre_recording &&  any_loop_playing_dry && !any_loop_recording && !monitor
     readonly property bool mute_drywet_output_passthrough: !any_loop_playing_dry   && !monitor
     readonly property bool mute_direct_passthrough:        !monitor       
-    readonly property bool disable_fx:                     !any_loop_pre_recording && !any_loop_playing_dry && !monitor
+    readonly property bool disable_fx:                     !any_loop_rerecording_dry && !any_loop_pre_recording && !any_loop_recording && !any_loop_playing_dry && !monitor
     readonly property bool force_monitoring_off:            any_loop_rerecording_dry || any_loop_pre_rerecording_dry        
 
     function trigger_signals() {
@@ -39,7 +39,10 @@ Item {
 
     Component.onCompleted: trigger_signals()
 
-    property PythonLogger logger : PythonLogger { name: default_logger.name + ".TrackControlLogic" }
+    PythonLogger { 
+        id: logger
+        name: default_logger.name + ".TrackControlLogic"
+    }
 
     onMute_drywet_input_passthroughChanged: logger.debug("mute fx in monitor: " + mute_drywet_input_passthrough)
     onMute_drywet_output_passthroughChanged: logger.debug("mute fx out monitor: " + mute_drywet_output_passthrough)

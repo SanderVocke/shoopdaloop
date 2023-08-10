@@ -87,6 +87,8 @@ Session {
             verify_throw(output_port_1)
             verify_throw(output_port_2)
             verify_throw(fx)
+            verify_throw(lut)
+            verify_throw(tut)
             reset()
         }
 
