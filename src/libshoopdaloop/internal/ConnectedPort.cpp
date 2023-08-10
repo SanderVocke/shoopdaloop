@@ -87,7 +87,8 @@ void ConnectedPort::PROC_ensure_buffer(size_t n_frames, bool do_zero) {
                 memset((void*)maybe_audio_buffer, 0, n_frames * sizeof(audio_sample_t));
             } else {
                 for(size_t i=0; i<n_frames; i++) {
-                    maybe_audio_buffer[i] *= volume;
+                    float vol = volume.load();
+                    maybe_audio_buffer[i] *= vol;
                     max = std::max(max, std::abs(maybe_audio_buffer[i]));
                 }
             }
@@ -160,7 +161,8 @@ void ConnectedPort::PROC_finalize_process(size_t n_frames) {
         if (a->direction() == PortDirection::Output) {
             float max = 0.0f;
             for (size_t i=0; i<n_frames; i++) {
-                maybe_audio_buffer[i] *= muted.load() ? 0.0f : volume.load();
+                float vol = volume.load();
+                maybe_audio_buffer[i] *= muted.load() ? 0.0f : vol;
                 max = std::max(std::abs(maybe_audio_buffer[i]), max);
             }
             peak = std::max(peak.load(), max);

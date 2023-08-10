@@ -2,6 +2,7 @@
 #include "types.h"
 #include <bits/chrono.h>
 #include <chrono>
+#include <thread>
 #define IMPLEMENT_DUMMYAUDIOSYSTEM_H
 #include "DummyAudioSystem.h"
 #include <map>
@@ -153,8 +154,12 @@ void DummyAudioSystem<Time, Size>::enter_mode(DummyAudioSystemMode mode) {
 
 template <typename Time, typename Size>
 void DummyAudioSystem<Time, Size>::wait_process() {
-    // Ensure one process iteration is started
+    // To ensure a complete process cycle was done, execute two commands with
+    // a small delay in-between. Each command will end up in a separate process
+    // iteration.
     log<logging::LogLevel::trace>("DummyAudioSystem: wait process");
+    exec_process_thread_command([]() { ; });
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
     exec_process_thread_command([]() { ; });
     log<logging::LogLevel::trace>("DummyAudioSystem: wait process done");
 }

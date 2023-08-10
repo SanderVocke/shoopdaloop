@@ -2,6 +2,7 @@ import QtQuick 6.3
 import QtQuick.Controls 6.3
 import QtQuick.Controls.Material 6.3
 
+import ShoopDaLoop.PythonLogger
 import '../generated/types.js' as Types
 
 // The track control widget displays control buttons to control the
@@ -29,6 +30,7 @@ Item {
     property bool mute : false
 
     // Readonlies
+    readonly property PythonLogger logger : PythonLogger { name: default_logger.name + ".TrackControlWidget" }
     readonly property bool in_is_stereo: audio_in_ports.length == 2
     readonly property bool out_is_stereo: audio_out_ports.length == 2
     readonly property var initial_output_volume_and_balance: {
@@ -207,6 +209,7 @@ Item {
     function push_volume(volume, target, gain_factor = 1.0) {
         convert_volume.dB = volume
         var v = convert_volume.linear * gain_factor
+        logger.trace("Pushing gain " + v + " to " + target.obj_id)
         if (target && target.volume != v) { target.set_volume(v) }
     }
     function toggle_muted() { mute = !mute }
@@ -239,8 +242,8 @@ Item {
     }
     function push_in_volumes() {
         audio_in_ports.forEach((p, idx) => {
-            if (idx == 0 && in_is_stereo) { push_volume(volume_dB, p, in_balance_volume_factor_l) }
-            else if (idx == 1 && in_is_stereo) { push_volume(volume_dB, p, in_balance_volume_factor_r) }
+            if (idx == 0 && in_is_stereo) { push_volume(input_volume_dB, p, in_balance_volume_factor_l) }
+            else if (idx == 1 && in_is_stereo) { push_volume(input_volume_dB, p, in_balance_volume_factor_r) }
             else { push_volume(volume_dB, p) }
         })
     }

@@ -205,7 +205,7 @@ Session {
             reset()
             tut_control().monitor = true
             tut_control().mute = false
-            tut_control().output_balance = -1.0
+            tut_control().output_balance = 1.0
             tut_control().volume_dB = 6.0
             testcase.wait(50)
 

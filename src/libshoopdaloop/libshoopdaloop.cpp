@@ -735,7 +735,7 @@ void set_audio_port_passthroughMuted(shoopdaloop_audio_port_t *port, unsigned in
 
 void set_audio_port_volume(shoopdaloop_audio_port_t *port, float volume) {
     init_log();
-    g_logger->debug("set_audio_port_volume");
+    g_logger->debug("set_audio_port_volume {}", volume);
     internal_audio_port(port)->volume = volume;
 }
 
