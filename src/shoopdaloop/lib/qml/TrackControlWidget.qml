@@ -117,36 +117,15 @@ Item {
                 monitor = false
             }
         }
-        function onMute_drywet_input_passthroughChanged() {
-            audio_in_ports
-                .filter(p => is_dry(p.descriptor))
-                .forEach((p) => {
-                    p.set_passthrough_muted(logic.mute_drywet_input_passthrough)
-                })
-        }
-        function onMute_drywet_output_passthroughChanged() {
-            fx_out_ports
-                .forEach((p) => {
-                    p.set_passthrough_muted(logic.mute_drywet_output_passthrough)
-                })
-        }
-        function onMute_direct_passthroughChanged() {
-            audio_in_ports
-                .filter(p => is_direct(p.descriptor))
-                .forEach((p) => {
-                    p.set_passthrough_muted(logic.mute_direct_passthrough)
-                })
-        }
-        function onDisable_fxChanged() {
-            if (root.maybe_fx_chain) root.maybe_fx_chain.set_active(!logic.disable_fx)
-        }
+        function onMute_drywet_input_passthroughChanged() { root.push_monitor() }
+        function onMute_drywet_output_passthroughChanged() { root.push_monitor() }
+        function onMute_direct_passthroughChanged() { root.push_monitor() }
+        function onDisable_fxChanged() { root.push_fx_active() }
     }
     onPortsChanged: logic.trigger_signals()
     onMaybe_fx_chainChanged: logic.trigger_signals()
     onFx_out_portsChanged: logic.trigger_signals()
-    onMuteChanged: {
-        audio_out_ports.forEach((p) => p.set_muted(mute))
-    }
+    onMuteChanged: push_mute()
 
     // Helpers
     TrackControlLogic {
@@ -253,6 +232,35 @@ Item {
             else if (idx == 1 && out_is_stereo) { push_volume(volume_dB, p, out_balance_volume_factor_r) }
             else { push_volume(volume_dB, p) }
         })
+    }
+    function push_mute() {
+        audio_out_ports.forEach((p) => p.set_muted(mute))
+    }
+    function push_monitor() {
+        audio_in_ports
+            .filter(p => is_dry(p.descriptor))
+            .forEach((p) => {
+                p.set_passthrough_muted(logic.mute_drywet_input_passthrough)
+            })
+        audio_in_ports
+            .filter(p => is_direct(p.descriptor))
+            .forEach((p) => {
+                p.set_passthrough_muted(logic.mute_direct_passthrough)
+            })
+        fx_out_ports
+            .forEach((p) => {
+                p.set_passthrough_muted(logic.mute_drywet_output_passthrough)
+            })
+    }
+    function push_fx_active() {
+        if (root.maybe_fx_chain) root.maybe_fx_chain.set_active(!logic.disable_fx)
+    }
+    Component.onCompleted: {
+        push_monitor()
+        push_mute()
+        push_out_volumes()
+        push_in_volumes()
+        push_fx_active()
     }
 
     signal mute()

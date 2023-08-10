@@ -48,28 +48,28 @@ Session {
         RegistryLookup {
             id: lookup_input_port_1
             registry: session.objects_registry
-            key: "tut_dry_in_1"
+            key: "tut_audio_dry_in_1"
         }
         property alias input_port_1: lookup_input_port_1.object
 
         RegistryLookup {
             id: lookup_input_port_2
             registry: session.objects_registry
-            key: "tut_dry_in_2"
+            key: "tut_audio_dry_in_2"
         }
         property alias input_port_2: lookup_input_port_2.object
 
         RegistryLookup {
             id: lookup_output_port_1
             registry: session.objects_registry
-            key: "tut_wet_out_1"
+            key: "tut_audio_wet_out_1"
         }
         property alias output_port_1: lookup_output_port_1.object
 
         RegistryLookup {
             id: lookup_output_port_2
             registry: session.objects_registry
-            key: "tut_wet_out_2"
+            key: "tut_audio_wet_out_2"
         }
         property alias output_port_2: lookup_output_port_2.object
 
