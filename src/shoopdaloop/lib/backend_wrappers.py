@@ -427,7 +427,7 @@ class BackendAudioPort:
         data_type = c_float * n_samples
         arr = data_type()
         dummy_audio_port_dequeue_data(self._c_handle, n_samples, arr)
-        return [int(arr[i].value) for i in range(n_samples)]
+        return [float(arr[i]) for i in range(n_samples)]
     
     def dummy_request_data(self, n_samples):
         dummy_audio_port_request_data(self._c_handle, n_samples)
@@ -592,6 +592,9 @@ class Backend:
     
     def dummy_n_requested_frames(self):
         return int(dummy_audio_n_requested_frames(self._c_handle))
+
+    def dummy_wait_process(self):
+        dummy_audio_wait_process(self._c_handle)
 
     def terminate(self):
         terminate(self._c_handle)

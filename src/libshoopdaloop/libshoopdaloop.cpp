@@ -1363,3 +1363,14 @@ size_t dummy_audio_n_requested_frames(shoopdaloop_backend_instance_t *backend) {
         return 0;
     }
 }
+
+void dummy_audio_wait_process(shoopdaloop_backend_instance_t *backend) {
+    init_log();
+    g_logger->debug("dummy_audio_wait_process");
+    auto _backend = internal_backend(backend);
+    if (auto maybe_dummy = dynamic_cast<_DummyAudioSystem*>(_backend->audio_system.get())) {
+        maybe_dummy->wait_process();
+    } else {
+        g_logger->error("dummy_audio_wait_process called on non-dummy backend");
+    }
+}

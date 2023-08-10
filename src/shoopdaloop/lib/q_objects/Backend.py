@@ -159,6 +159,10 @@ class Backend(QQuickItem):
         return self._backend_obj.dummy_n_requested_frames()
     
     @Slot()
+    def dummy_wait_process(self):
+        self._backend_obj.dummy_wait_process()
+    
+    @Slot()
     def maybe_init(self):
         if not self._initialized and self._client_name_hint != None and self._backend_type != None:
             self.init()

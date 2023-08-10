@@ -148,6 +148,7 @@ void dummy_audio_enter_automatic_mode(shoopdaloop_backend_instance_t *backend);
 unsigned dummy_audio_is_in_controlled_mode(shoopdaloop_backend_instance_t *backend);
 void dummy_audio_request_controlled_frames(shoopdaloop_backend_instance_t *backend, size_t n_frames);
 size_t dummy_audio_n_requested_frames(shoopdaloop_backend_instance_t *backend);
+void dummy_audio_wait_process(shoopdaloop_backend_instance_t *backend);
 
 #ifdef __cplusplus
 }

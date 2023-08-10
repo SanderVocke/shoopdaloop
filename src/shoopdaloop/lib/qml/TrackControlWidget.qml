@@ -25,6 +25,8 @@ Item {
     property alias input_volume_dB_min: input_slider.from
     property alias input_balance: input_balance_dial.value
     property alias output_balance: output_balance_dial.value
+    property bool monitor : false
+    property bool mute : false
 
     // Readonlies
     readonly property bool in_is_stereo: audio_in_ports.length == 2
@@ -84,8 +86,6 @@ Item {
     property int n_midi_notes_active_out : 0
     property int n_midi_events_in : 0
     property int n_midi_events_out : 0
-    property bool monitor : false
-    property bool mute : false
 
     // Handlers
     onInitial_volumeChanged: {
@@ -204,9 +204,9 @@ Item {
         }
         return null;
     }
-    function push_volume(volume, target) {
+    function push_volume(volume, target, gain_factor = 1.0) {
         convert_volume.dB = volume
-        var v = convert_volume.linear
+        var v = convert_volume.linear * gain_factor
         if (target && target.volume != v) { target.set_volume(v) }
     }
     function toggle_muted() { mute = !mute }
@@ -239,15 +239,15 @@ Item {
     }
     function push_in_volumes() {
         audio_in_ports.forEach((p, idx) => {
-            if (idx == 0 && in_is_stereo) { push_volume(in_balance_volume_factor_l * volume_dB, p) }
-            else if (idx == 1 && in_is_stereo) { push_volume(in_balance_volume_factor_r * volume_dB, p) }
+            if (idx == 0 && in_is_stereo) { push_volume(volume_dB, p, in_balance_volume_factor_l) }
+            else if (idx == 1 && in_is_stereo) { push_volume(volume_dB, p, in_balance_volume_factor_r) }
             else { push_volume(volume_dB, p) }
         })
     }
     function push_out_volumes() {
         audio_out_ports.forEach((p, idx) => {
-            if (idx == 0 && out_is_stereo) { push_volume(out_balance_volume_factor_l * volume_dB, p) }
-            else if (idx == 1 && out_is_stereo) { push_volume(out_balance_volume_factor_r * volume_dB, p) }
+            if (idx == 0 && out_is_stereo) { push_volume(volume_dB, p, out_balance_volume_factor_l) }
+            else if (idx == 1 && out_is_stereo) { push_volume(volume_dB, p, out_balance_volume_factor_r) }
             else { push_volume(volume_dB, p) }
         })
     }
