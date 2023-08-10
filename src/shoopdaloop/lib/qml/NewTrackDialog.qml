@@ -131,9 +131,10 @@ Dialog {
                 { value: 'jack', text: "External (JACK)" },
                 { value: 'carla_rack', text: "Carla (Rack)" },
                 { value: 'carla_patchbay', text: "Carla (Patchbay)" },
-                { value: 'carla_patchbay_16', text: "Carla (Patchbay 16x)" }
+                { value: 'carla_patchbay_16', text: "Carla (Patchbay 16x)" },
+                { value: 'test2x2x1', text: "Dummy (2x2x1 passthrough)" }
             ]
-            property bool is_carla : ['carla_rack', 'carla_patchbay', 'carla_patchbay_16'].includes(currentValue)
+            property bool is_carla : ['carla_rack', 'carla_patchbay', 'carla_patchbay_16', 'test2x2x1'].includes(currentValue)
             property bool is_jack : currentValue == 'jack'
             property var carla_type : is_carla ? currentValue : undefined
         }

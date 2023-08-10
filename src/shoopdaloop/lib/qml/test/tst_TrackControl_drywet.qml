@@ -20,13 +20,13 @@ Session {
             "tut",
             false,
             "tut",
-            0,
-            0,
             2,
+            2,
+            0,
             false,
             false,
             false,
-            undefined
+            "test2x2x1"
             )
         base.tracks.push(track)
         testcase.logger.debug("session descriptor: " + JSON.stringify(base, null, 2))
@@ -35,7 +35,7 @@ Session {
 
     ShoopSessionTestCase {
         id: testcase
-        name: 'TrackControl_direct'
+        name: 'TrackControl_drywet'
         filename : TestFilename.test_filename()
         session: session
 
@@ -48,28 +48,28 @@ Session {
         RegistryLookup {
             id: lookup_input_port_1
             registry: session.objects_registry
-            key: "tut_direct_in_1"
+            key: "tut_dry_in_1"
         }
         property alias input_port_1: lookup_input_port_1.object
 
         RegistryLookup {
             id: lookup_input_port_2
             registry: session.objects_registry
-            key: "tut_direct_in_2"
+            key: "tut_dry_in_2"
         }
         property alias input_port_2: lookup_input_port_2.object
 
         RegistryLookup {
             id: lookup_output_port_1
             registry: session.objects_registry
-            key: "tut_direct_out_1"
+            key: "tut_wet_out_1"
         }
         property alias output_port_1: lookup_output_port_1.object
 
         RegistryLookup {
             id: lookup_output_port_2
             registry: session.objects_registry
-            key: "tut_direct_out_2"
+            key: "tut_wet_out_2"
         }
         property alias output_port_2: lookup_output_port_2.object
 
@@ -99,8 +99,8 @@ Session {
             session.backend.dummy_wait_process()
         }
 
-        function test_direct_monitor() {
-            start_test_fn('test_direct_monitor')
+        function test_drywet_monitor() {
+            start_test_fn('test_drywet_monitor')
             check_backend()
             reset()
             tut_control().monitor = true
@@ -120,11 +120,11 @@ Session {
             verify_eq(out1, [1, 2, 3, 4])
             verify_eq(out2, [4, 3, 2, 1])
 
-            end_test_fn('test_direct_monitor')
+            end_test_fn('test_drywet_monitor')
         }
 
-        function test_direct_monitor_input_volume() {
-            start_test_fn('test_direct_monitor_input_volume')
+        function test_drywet_monitor_input_volume() {
+            start_test_fn('test_drywet_monitor_input_volume')
             check_backend()
             reset()
             tut_control().monitor = true
@@ -145,11 +145,11 @@ Session {
             verify_eq(out1.map(o => Math.round(o)), [2, 4, 6, 8])
             verify_eq(out2.map(o => Math.round(o)), [8, 6, 4, 2])
 
-            end_test_fn('test_direct_monitor_input_volume')
+            end_test_fn('test_drywet_monitor_input_volume')
         }
 
-        function test_direct_monitor_output_volume() {
-            start_test_fn('test_direct_monitor_output_volume')
+        function test_drywet_monitor_output_volume() {
+            start_test_fn('test_drywet_monitor_output_volume')
             check_backend()
             reset()
             tut_control().monitor = true
@@ -170,11 +170,11 @@ Session {
             verify_eq(out1.map(o => Math.round(o)), [2, 4, 6, 8])
             verify_eq(out2.map(o => Math.round(o)), [8, 6, 4, 2])
 
-            end_test_fn('test_direct_monitor_output_volume')
+            end_test_fn('test_drywet_monitor_output_volume')
         }
 
-        function test_direct_monitor_output_balance_left() {
-            start_test_fn('test_direct_monitor_balance_left')
+        function test_drywet_monitor_output_balance_left() {
+            start_test_fn('test_drywet_monitor_balance_left')
             check_backend()
             reset()
             tut_control().monitor = true
@@ -196,11 +196,11 @@ Session {
             verify_eq(out1.map(o => Math.round(o)), [2, 4, 6, 8])
             verify_eq(out2.map(o => Math.round(o)), [0, 0, 0, 0])
 
-            end_test_fn('test_direct_monitor_output_balance_left')
+            end_test_fn('test_drywet_monitor_output_balance_left')
         }
 
-        function test_direct_monitor_output_balance_right() {
-            start_test_fn('test_direct_monitor_output_balance_right')
+        function test_drywet_monitor_output_balance_right() {
+            start_test_fn('test_drywet_monitor_output_balance_right')
             check_backend()
             reset()
             tut_control().monitor = true
@@ -222,11 +222,11 @@ Session {
             verify_eq(out1.map(o => Math.round(o)), [0, 0, 0, 0])
             verify_eq(out2.map(o => Math.round(o)), [8, 6, 4, 2])
 
-            end_test_fn('test_direct_monitor_output_balance_right')
+            end_test_fn('test_drywet_monitor_output_balance_right')
         }
 
-        function test_direct_no_monitor() {
-            start_test_fn('test_direct_no_monitor')
+        function test_drywet_no_monitor() {
+            start_test_fn('test_drywet_no_monitor')
             check_backend()
             reset()
             tut_control().monitor = false
@@ -246,11 +246,11 @@ Session {
             verify_eq(out1, [0, 0, 0, 0])
             verify_eq(out2, [0, 0, 0, 0])
 
-            end_test_fn('test_direct_no_monitor')
+            end_test_fn('test_drywet_no_monitor')
         }
 
-        function test_direct_monitor_mute() {
-            start_test_fn('test_direct_monitor_mute')
+        function test_drywet_monitor_mute() {
+            start_test_fn('test_drywet_monitor_mute')
             check_backend()
             reset()
             tut_control().monitor = true
@@ -270,7 +270,7 @@ Session {
             verify_eq(out1, [0, 0, 0, 0])
             verify_eq(out2, [0, 0, 0, 0])
 
-            end_test_fn('test_direct_monitor_mute')
+            end_test_fn('test_drywet_monitor_mute')
         }
     }
 }

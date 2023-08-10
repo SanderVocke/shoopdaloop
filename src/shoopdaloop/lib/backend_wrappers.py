@@ -41,6 +41,7 @@ class FXChainType(Enum):
     Carla_Rack = Carla_Rack
     Carla_Patchbay = Carla_Patchbay
     Carla_Patchbay_16x = Carla_Patchbay_16x
+    Test2x2x1 = Test2x2x1
 
 @dataclass
 class FXChainState:

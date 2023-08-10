@@ -35,7 +35,7 @@ Session {
 
     ShoopSessionTestCase {
         id: testcase
-        name: 'TrackControl_direct_flow'
+        name: 'TrackControlAndLoop_direct'
         filename : TestFilename.test_filename()
         session: session
 
