@@ -73,12 +73,20 @@ Session {
         }
         property alias output_port_2: lookup_output_port_2.object
 
+        RegistryLookup {
+            id: lookup_fx
+            registry: session.objects_registry
+            key: "tut_fx_chain"
+        }
+        property alias fx: lookup_fx.object
+
         function initTestCase() {
             session.backend.dummy_enter_controlled_mode()
             verify_throw(input_port_1)
             verify_throw(input_port_2)
             verify_throw(output_port_1)
             verify_throw(output_port_2)
+            verify_throw(fx)
             reset()
         }
 
@@ -119,6 +127,7 @@ Session {
 
             verify_eq(out1, [1, 2, 3, 4])
             verify_eq(out2, [4, 3, 2, 1])
+            verify_throw(fx.active)
 
             end_test_fn('test_drywet_monitor')
         }
@@ -144,6 +153,7 @@ Session {
 
             verify_eq(out1.map(o => Math.round(o)), [2, 4, 6, 8])
             verify_eq(out2.map(o => Math.round(o)), [8, 6, 4, 2])
+            verify_throw(fx.active)
 
             end_test_fn('test_drywet_monitor_input_volume')
         }
@@ -169,6 +179,7 @@ Session {
 
             verify_eq(out1.map(o => Math.round(o)), [2, 4, 6, 8])
             verify_eq(out2.map(o => Math.round(o)), [8, 6, 4, 2])
+            verify_throw(fx.active)
 
             end_test_fn('test_drywet_monitor_output_volume')
         }
@@ -195,6 +206,7 @@ Session {
 
             verify_eq(out1.map(o => Math.round(o)), [2, 4, 6, 8])
             verify_eq(out2.map(o => Math.round(o)), [0, 0, 0, 0])
+            verify_throw(fx.active)
 
             end_test_fn('test_drywet_monitor_output_balance_left')
         }
@@ -221,6 +233,7 @@ Session {
 
             verify_eq(out1.map(o => Math.round(o)), [0, 0, 0, 0])
             verify_eq(out2.map(o => Math.round(o)), [8, 6, 4, 2])
+            verify_throw(fx.active)
 
             end_test_fn('test_drywet_monitor_output_balance_right')
         }
@@ -245,6 +258,7 @@ Session {
 
             verify_eq(out1, [0, 0, 0, 0])
             verify_eq(out2, [0, 0, 0, 0])
+            verify_throw(!fx.active)
 
             end_test_fn('test_drywet_no_monitor')
         }
@@ -269,6 +283,7 @@ Session {
 
             verify_eq(out1, [0, 0, 0, 0])
             verify_eq(out2, [0, 0, 0, 0])
+            verify_throw(fx.active)
 
             end_test_fn('test_drywet_monitor_mute')
         }
