@@ -108,7 +108,7 @@ Session {
         }
 
         function test_direct_record_no_monitor() {
-            run_test_fn('test_direct_record_no_monitor', () => {
+            run_case('test_direct_record_no_monitor', () => {
                 check_backend()
                 reset()
                 tut_control().monitor = false
@@ -138,7 +138,7 @@ Session {
         }
 
         function test_direct_record_monitor() {
-            run_test_fn('test_direct_record_monitor', () => {
+            run_case('test_direct_record_monitor', () => {
                 check_backend()
                 reset()
                 tut_control().monitor = true
@@ -168,7 +168,7 @@ Session {
         }
 
         function test_direct_play_no_monitor() {
-            run_test_fn('test_direct_play_no_monitor', () => {
+            run_case('test_direct_play_no_monitor', () => {
                 check_backend()
                 reset()
                 tut_control().monitor = false
@@ -201,7 +201,7 @@ Session {
         }
 
         function test_direct_play_monitor() {
-            run_test_fn('test_direct_play_monitor', () => {
+            run_case('test_direct_play_monitor', () => {
                 check_backend()
                 reset()
                 tut_control().monitor = true

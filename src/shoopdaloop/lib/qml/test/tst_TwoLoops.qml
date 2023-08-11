@@ -37,7 +37,7 @@ Session {
         }
 
         function test_two_loops_cleared() {
-            run_test_fn('test_two_loops_cleared', () => {
+            run_case('test_two_loops_cleared', () => {
                 check_backend()
 
                 clear()
@@ -46,7 +46,7 @@ Session {
         }
 
         function test_two_loops_master_record() {
-            run_test_fn('test_two_loops_master_record', () => {
+            run_case('test_two_loops_master_record', () => {
                 check_backend()
 
                 master_loop().transition(Types.LoopMode.Recording, 0, true)
@@ -60,7 +60,7 @@ Session {
         }
 
         function test_two_loops_master_playback() {
-            run_test_fn('test_two_loops_master_playback', () => {
+            run_case('test_two_loops_master_playback', () => {
                 check_backend()
 
                 master_loop().set_length(48000)

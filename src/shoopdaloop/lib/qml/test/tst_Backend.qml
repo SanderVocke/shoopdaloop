@@ -16,7 +16,7 @@ PythonBackend {
         filename : TestFilename.test_filename()
 
         function test_backend() {
-            run_test_fn('test_backend', () => {
+            run_case('test_backend', () => {
                 verify(backend.initialized)
             })
         }

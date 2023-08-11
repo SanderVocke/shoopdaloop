@@ -18,7 +18,7 @@ function testDeepEqual(object1, object2, log_cb=console.log, crumbs=[]) {
     return true;
 }
 
-function testArraysEqual(a, b, log_cb=console.log, crumbs=[]) {
+function testArraysCompare(a, b, compare=(a, b) => a == b, log_cb=console.log, crumbs=[]) {
   if (!Array.isArray(a) || !Array.isArray(b)) { return a == b; }
   if (a.length != b.length) {
     log_cb(`At ${crumbs}: # of keys unequal (${a} vs ${b})\n`)
@@ -28,9 +28,9 @@ function testArraysEqual(a, b, log_cb=console.log, crumbs=[]) {
   a.forEach((elem, idx) => {
     const other = b[idx];
     const areArrays = Array.isArray(elem) && Array.isArray(other);
-    if(areArrays && !testArraysEqual(elem, other, log_cb, crumbs.concat([idx]))) { return false; }
-    else if(!areArrays && elem != other) {
-      log_cb(`At ${crumbs.concat([idx])}: value unequal (${elem} vs ${other})\n`)
+    if(areArrays && !testArraysCompare(elem, other, compare, log_cb, crumbs.concat([idx]))) { return false; }
+    else if(!areArrays && !compare(elem, other)) {
+      log_cb(`At ${crumbs.concat([idx])}: value compare failed (${elem} vs ${other})\n`)
       result = false;
     }
   })

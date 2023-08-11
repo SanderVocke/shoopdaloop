@@ -37,7 +37,7 @@ Session {
         }
 
         function test_select_single_by_coords() {
-            run_test_fn('test_select_single_by_coords', () => {
+            run_case('test_select_single_by_coords', () => {
                 check_backend()
                 clear()
 
@@ -53,7 +53,7 @@ Session {
         }
 
         function test_select_multiple_by_coords() {
-            run_test_fn('test_select_multiple_by_coords', () => {
+            run_case('test_select_multiple_by_coords', () => {
                 check_backend()
                 clear()
 
@@ -73,7 +73,7 @@ Session {
         }
 
         function test_select_multiple_by_functor() {
-            run_test_fn('test_select_multiple_by_functor', () => {
+            run_case('test_select_multiple_by_functor', () => {
                 check_backend()
                 clear()
 

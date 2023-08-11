@@ -4,12 +4,16 @@ import QtQuick.Controls.Material 6.3
 
 import "../generate_session.js" as GenerateSession
 
+import ShoopDaLoop.PythonLogger
+
 ScrollView {
     ScrollBar.horizontal.policy: ScrollBar.horizontal.size < 1.0 ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
     ScrollBar.vertical.policy: ScrollBar.AlwaysOff
     ScrollBar.horizontal.height: 10
     contentWidth: buttons_column.x + buttons_column.width
     property int scroll_offset : ScrollBar.horizontal.position * contentWidth
+
+    property PythonLogger logger : PythonLogger { name: "Frontend.Qml.TracksWidget" }
 
     id: root
 
@@ -45,6 +49,7 @@ ScrollView {
     }
 
     function queue_load_tasks(data_files_dir, add_tasks_to) {
+        root.logger.debug(`Queue load tasks for ${root.tracks.length} tracks`)
         for(var i=0; i<root.tracks.length; i++) {
             tracks[i].queue_load_tasks(data_files_dir, add_tasks_to)
         }
