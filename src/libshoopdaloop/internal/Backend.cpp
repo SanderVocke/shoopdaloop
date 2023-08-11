@@ -56,19 +56,28 @@ Backend::Backend(audio_system_type_t audio_system_type, std::string client_name_
               profiler->maybe_get_profiling_item("Process.Loops")),
           fx_profiling_item(profiler->maybe_get_profiling_item("Process.FX")),
           cmds_profiling_item(
-              profiler->maybe_get_profiling_item("Process.Commands")) {
+              profiler->maybe_get_profiling_item("Process.Commands")),
+          m_audio_system_type(audio_system_type),
+          m_client_name_hint(client_name_hint)
+{
         log_init();
+}
 
-        using namespace std::placeholders;
-
+void Backend::start() {
+        auto weak_self = weak_from_this();
         try {
-            switch (audio_system_type) {
+            switch (m_audio_system_type) {
             case Jack:
                 log<LogLevel::debug>("Initializing JACK audio system.");
                 audio_system = std::unique_ptr<AudioSystem>(
                     dynamic_cast<AudioSystem *>(new JackAudioSystem(
-                        std::string(client_name_hint),
-                        std::bind(&Backend::PROC_process, this, _1))));
+                        std::string(m_client_name_hint),
+                        [weak_self] (size_t n_frames) {
+                        if (auto self = weak_self.lock()) {
+                            self->log<LogLevel::trace>("dummy process: {}", n_frames);
+                            self->PROC_process(n_frames);
+                        }
+                    })));
                 break;
             case Dummy:
                 // Dummy is also the fallback option - intiialized below
@@ -86,14 +95,14 @@ Backend::Backend(audio_system_type_t audio_system_type, std::string client_name_
             log<LogLevel::info>("Attempting fallback to dummy audio system.");
         }
 
-        if (!audio_system || audio_system_type == Dummy) {
+        if (!audio_system || m_audio_system_type == Dummy) {
             log<LogLevel::debug>("Initializing dummy audio system.");
-            auto weak_self = weak_from_this();
             audio_system = std::unique_ptr<AudioSystem>(
                 dynamic_cast<AudioSystem *>(new _DummyAudioSystem(
-                    std::string(client_name_hint),
+                    std::string(m_client_name_hint),
                     [weak_self] (size_t n_frames) {
                         if (auto self = weak_self.lock()) {
+                            self->log<LogLevel::trace>("dummy process: {}", n_frames);
                             self->PROC_process(n_frames);
                         }
                     })));
@@ -108,7 +117,7 @@ Backend::Backend(audio_system_type_t audio_system_type, std::string client_name_
         audio_system->start();
     }
 
-    backend_state_info_t Backend::get_state() {
+backend_state_info_t Backend::get_state() {
     backend_state_info_t rval;
     rval.dsp_load_percent = maybe_jack_client_handle() ? jack_cpu_load(maybe_jack_client_handle()) : 0.0f;
     rval.xruns_since_last = audio_system->get_xruns();
