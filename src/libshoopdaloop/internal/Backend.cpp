@@ -120,11 +120,10 @@ Backend::Backend(audio_system_type_t audio_system_type, std::string client_name_
 // MEMBER FUNCTIONS
 void Backend::PROC_process (jack_nframes_t nframes) {
     log<LogLevel::trace>("Process {}: start", nframes);
-    auto _profiler = profiler;
     profiling::stopwatch(
-        [this, &nframes, _profiler]() {
+        [this, &nframes]() {
             
-            _profiler->next_iteration();
+            profiler->next_iteration();
             
             // Execute queued commands
             log<LogLevel::trace>("Process: execute commands");
