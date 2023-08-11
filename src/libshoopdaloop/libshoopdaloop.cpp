@@ -1026,7 +1026,7 @@ fx_chain_state_info_t *get_fx_chain_state(shoopdaloop_fx_chain_t *chain) {
 
 void set_fx_chain_active(shoopdaloop_fx_chain_t *chain, unsigned active) {
     init_log();
-    g_logger->debug("set_fx_chain_active");
+    g_logger->debug("set_fx_chain_active {}", active);
     internal_fx_chain(chain)->chain->set_active(active);
 }
 

@@ -108,129 +108,129 @@ Session {
         }
 
         function test_direct_record_no_monitor() {
-            start_test_fn('test_direct_record_no_monitor')
-            check_backend()
-            reset()
-            tut_control().monitor = false
-            tut_control().mute = false
-            lut.transition(Types.LoopMode.Recording, 0, false)
-            testcase.wait(50)
+            run_test_fn('test_direct_record_no_monitor', () => {
+                check_backend()
+                reset()
+                tut_control().monitor = false
+                tut_control().mute = false
+                lut.transition(Types.LoopMode.Recording, 0, false)
+                testcase.wait(50)
 
-            input_port_1.dummy_queue_data([1, 2, 3, 4])
-            input_port_2.dummy_queue_data([4, 3, 2, 1])
-            output_port_1.dummy_request_data(4)
-            output_port_2.dummy_request_data(4)
-            session.backend.dummy_request_controlled_frames(4)
-            session.backend.dummy_wait_process()
+                input_port_1.dummy_queue_data([1, 2, 3, 4])
+                input_port_2.dummy_queue_data([4, 3, 2, 1])
+                output_port_1.dummy_request_data(4)
+                output_port_2.dummy_request_data(4)
+                session.backend.dummy_request_controlled_frames(4)
+                session.backend.dummy_wait_process()
 
-            let out1 = output_port_1.dummy_dequeue_data(4)
-            let out2 = output_port_2.dummy_dequeue_data(4)
-            let chans = lut.get_audio_output_channels()
-            let loop1 = chans[0].get_data()
-            let loop2 = chans[1].get_data()
+                let out1 = output_port_1.dummy_dequeue_data(4)
+                let out2 = output_port_2.dummy_dequeue_data(4)
+                let chans = lut.get_audio_output_channels()
+                let loop1 = chans[0].get_data()
+                let loop2 = chans[1].get_data()
 
-            verify_eq(out1, [0, 0, 0, 0])
-            verify_eq(out2, [0, 0, 0, 0])
-            verify_eq(loop1, [1, 2, 3, 4])
-            verify_eq(loop2, [4, 3, 2, 1])
+                verify_eq(out1, [0, 0, 0, 0])
+                verify_eq(out2, [0, 0, 0, 0])
+                verify_eq(loop1, [1, 2, 3, 4])
+                verify_eq(loop2, [4, 3, 2, 1])
 
-            end_test_fn('test_direct_record_no_monitor')
+            })
         }
 
         function test_direct_record_monitor() {
-            start_test_fn('test_direct_record_monitor')
-            check_backend()
-            reset()
-            tut_control().monitor = true
-            tut_control().mute = false
-            lut.transition(Types.LoopMode.Recording, 0, false)
-            testcase.wait(50)
+            run_test_fn('test_direct_record_monitor', () => {
+                check_backend()
+                reset()
+                tut_control().monitor = true
+                tut_control().mute = false
+                lut.transition(Types.LoopMode.Recording, 0, false)
+                testcase.wait(50)
 
-            input_port_1.dummy_queue_data([1, 2, 3, 4])
-            input_port_2.dummy_queue_data([4, 3, 2, 1])
-            output_port_1.dummy_request_data(4)
-            output_port_2.dummy_request_data(4)
-            session.backend.dummy_request_controlled_frames(4)
-            session.backend.dummy_wait_process()
+                input_port_1.dummy_queue_data([1, 2, 3, 4])
+                input_port_2.dummy_queue_data([4, 3, 2, 1])
+                output_port_1.dummy_request_data(4)
+                output_port_2.dummy_request_data(4)
+                session.backend.dummy_request_controlled_frames(4)
+                session.backend.dummy_wait_process()
 
-            let out1 = output_port_1.dummy_dequeue_data(4)
-            let out2 = output_port_2.dummy_dequeue_data(4)
-            let chans = lut.get_audio_output_channels()
-            let loop1 = chans[0].get_data()
-            let loop2 = chans[1].get_data()
+                let out1 = output_port_1.dummy_dequeue_data(4)
+                let out2 = output_port_2.dummy_dequeue_data(4)
+                let chans = lut.get_audio_output_channels()
+                let loop1 = chans[0].get_data()
+                let loop2 = chans[1].get_data()
 
-            verify_eq(out1, [1, 2, 3, 4])
-            verify_eq(out2, [4, 3, 2, 1])
-            verify_eq(loop1, [1, 2, 3, 4])
-            verify_eq(loop2, [4, 3, 2, 1])
+                verify_eq(out1, [1, 2, 3, 4])
+                verify_eq(out2, [4, 3, 2, 1])
+                verify_eq(loop1, [1, 2, 3, 4])
+                verify_eq(loop2, [4, 3, 2, 1])
 
-            end_test_fn('test_direct_record_monitor')
+            })
         }
 
         function test_direct_play_no_monitor() {
-            start_test_fn('test_direct_play_no_monitor')
-            check_backend()
-            reset()
-            tut_control().monitor = false
-            tut_control().mute = false
-            let chans = lut.get_audio_output_channels()
-            chans[0].load_data([5, 6, 7, 8])
-            chans[1].load_data([8, 7, 6, 5])
-            lut.set_length(4)
-            lut.transition(Types.LoopMode.Playing, 0, false)
-            testcase.wait(50)
+            run_test_fn('test_direct_play_no_monitor', () => {
+                check_backend()
+                reset()
+                tut_control().monitor = false
+                tut_control().mute = false
+                let chans = lut.get_audio_output_channels()
+                chans[0].load_data([5, 6, 7, 8])
+                chans[1].load_data([8, 7, 6, 5])
+                lut.set_length(4)
+                lut.transition(Types.LoopMode.Playing, 0, false)
+                testcase.wait(50)
 
-            input_port_1.dummy_queue_data([1, 2, 3, 4])
-            input_port_2.dummy_queue_data([4, 3, 2, 1])
-            output_port_1.dummy_request_data(4)
-            output_port_2.dummy_request_data(4)
-            session.backend.dummy_request_controlled_frames(4)
-            session.backend.dummy_wait_process()
+                input_port_1.dummy_queue_data([1, 2, 3, 4])
+                input_port_2.dummy_queue_data([4, 3, 2, 1])
+                output_port_1.dummy_request_data(4)
+                output_port_2.dummy_request_data(4)
+                session.backend.dummy_request_controlled_frames(4)
+                session.backend.dummy_wait_process()
 
-            let out1 = output_port_1.dummy_dequeue_data(4)
-            let out2 = output_port_2.dummy_dequeue_data(4)
-            let loop1 = chans[0].get_data()
-            let loop2 = chans[1].get_data()
+                let out1 = output_port_1.dummy_dequeue_data(4)
+                let out2 = output_port_2.dummy_dequeue_data(4)
+                let loop1 = chans[0].get_data()
+                let loop2 = chans[1].get_data()
 
-            verify_eq(out1, [5, 6, 7, 8])
-            verify_eq(out2, [8, 7, 6, 5])
-            verify_eq(loop1, [5, 6, 7, 8])
-            verify_eq(loop2, [8, 7, 6, 5])
+                verify_eq(out1, [5, 6, 7, 8])
+                verify_eq(out2, [8, 7, 6, 5])
+                verify_eq(loop1, [5, 6, 7, 8])
+                verify_eq(loop2, [8, 7, 6, 5])
 
-            end_test_fn('test_direct_play_no_monitor')
+            })
         }
 
         function test_direct_play_monitor() {
-            start_test_fn('test_direct_play_monitor')
-            check_backend()
-            reset()
-            tut_control().monitor = true
-            tut_control().mute = false
-            let chans = lut.get_audio_output_channels()
-            chans[0].load_data([5, 6, 7, 8])
-            chans[1].load_data([8, 7, 6, 5])
-            lut.set_length(4)
-            lut.transition(Types.LoopMode.Playing, 0, false)
-            testcase.wait(50)
+            run_test_fn('test_direct_play_monitor', () => {
+                check_backend()
+                reset()
+                tut_control().monitor = true
+                tut_control().mute = false
+                let chans = lut.get_audio_output_channels()
+                chans[0].load_data([5, 6, 7, 8])
+                chans[1].load_data([8, 7, 6, 5])
+                lut.set_length(4)
+                lut.transition(Types.LoopMode.Playing, 0, false)
+                testcase.wait(50)
 
-            input_port_1.dummy_queue_data([1, 2, 3, 4])
-            input_port_2.dummy_queue_data([4, 3, 2, 1])
-            output_port_1.dummy_request_data(4)
-            output_port_2.dummy_request_data(4)
-            session.backend.dummy_request_controlled_frames(4)
-            session.backend.dummy_wait_process()
+                input_port_1.dummy_queue_data([1, 2, 3, 4])
+                input_port_2.dummy_queue_data([4, 3, 2, 1])
+                output_port_1.dummy_request_data(4)
+                output_port_2.dummy_request_data(4)
+                session.backend.dummy_request_controlled_frames(4)
+                session.backend.dummy_wait_process()
 
-            let out1 = output_port_1.dummy_dequeue_data(4)
-            let out2 = output_port_2.dummy_dequeue_data(4)
-            let loop1 = chans[0].get_data()
-            let loop2 = chans[1].get_data()
+                let out1 = output_port_1.dummy_dequeue_data(4)
+                let out2 = output_port_2.dummy_dequeue_data(4)
+                let loop1 = chans[0].get_data()
+                let loop2 = chans[1].get_data()
 
-            verify_eq(out1, [6, 8, 10, 12])
-            verify_eq(out2, [12, 10, 8, 6])
-            verify_eq(loop1, [5, 6, 7, 8])
-            verify_eq(loop2, [8, 7, 6, 5])
+                verify_eq(out1, [6, 8, 10, 12])
+                verify_eq(out2, [12, 10, 8, 6])
+                verify_eq(loop1, [5, 6, 7, 8])
+                verify_eq(loop2, [8, 7, 6, 5])
 
-            end_test_fn('test_direct_play_monitor')
+            })
         }
     }
 }

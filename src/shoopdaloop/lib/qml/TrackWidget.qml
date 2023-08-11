@@ -234,9 +234,6 @@ Item {
     readonly property var midi_ports : ports.filter(p => p && is_midi(p.descriptor))
     readonly property var input_ports : ports.filter(p => p && is_in(p.descriptor))
 
-    readonly property bool fx_input_muted : input_ports.length > 0 ?
-        (input_ports[0].muted || input_ports[0].passthrough_muted) : true
-
     Loader {
         id: fx_chain_loader
         active: root.fx_chain_descriptor != undefined
@@ -253,12 +250,6 @@ Item {
             Component.onCompleted: {
                 root.fx_ready = Qt.binding(() => this.ready)
                 root.fx_active = Qt.binding(() => this.active)
-                set_active(!root.fx_input_muted)
-            }
-
-            Connections {
-                target: root
-                function onFx_input_mutedChanged() { chain.set_active(!root.fx_input_muted) }
             }
         }
     }

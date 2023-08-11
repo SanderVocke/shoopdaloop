@@ -131,7 +131,7 @@ Item {
         function onMute_drywet_input_passthroughChanged() { root.push_monitor() }
         function onMute_drywet_output_passthroughChanged() { root.push_monitor() }
         function onMute_direct_passthroughChanged() { root.push_monitor() }
-        function onDisable_fxChanged() { root.logger.info("disable fx changed " + logic.disable_fx); root.push_fx_active() }
+        function onEnable_fxChanged() { root.push_fx_active() }
     }
     onPortsChanged: logic.trigger_signals()
     onMaybe_fx_chainChanged: logic.trigger_signals()
@@ -272,8 +272,7 @@ Item {
             })
     }
     function push_fx_active() {
-        logger.info("PUSH FX ACTIVE: " + logic.disable_fx)
-        if (root.maybe_fx_chain) root.maybe_fx_chain.set_active(!logic.disable_fx)
+        if (root.maybe_fx_chain) root.maybe_fx_chain.set_active(logic.enable_fx)
     }
     Component.onCompleted: {
         push_monitor()

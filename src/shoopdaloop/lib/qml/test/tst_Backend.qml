@@ -16,9 +16,9 @@ PythonBackend {
         filename : TestFilename.test_filename()
 
         function test_backend() {
-            start_test_fn('test_backend')
-            verify(backend.initialized)
-            end_test_fn('test_backend')
+            run_test_fn('test_backend', () => {
+                verify(backend.initialized)
+            })
         }
 
         function cleanupTestCase() { backend.close() }

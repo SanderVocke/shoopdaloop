@@ -37,41 +37,41 @@ Session {
         }
 
         function test_two_loops_cleared() {
-            start_test_fn('test_two_loops_cleared')
-            check_backend()
+            run_test_fn('test_two_loops_cleared', () => {
+                check_backend()
 
-            clear()
+                clear()
 
-            end_test_fn('test_two_loops_cleared')
+            })
         }
 
         function test_two_loops_master_record() {
-            start_test_fn('test_two_loops_master_record')
-            check_backend()
+            run_test_fn('test_two_loops_master_record', () => {
+                check_backend()
 
-            master_loop().transition(Types.LoopMode.Recording, 0, true)
-            testcase.wait(100)
-            verify_eq(master_loop().mode, Types.LoopMode.Recording)
-            verify_gt(master_loop().length, 0)
-            verify_loop_cleared(other_loop())
+                master_loop().transition(Types.LoopMode.Recording, 0, true)
+                testcase.wait(100)
+                verify_eq(master_loop().mode, Types.LoopMode.Recording)
+                verify_gt(master_loop().length, 0)
+                verify_loop_cleared(other_loop())
 
-            clear()
-            end_test_fn('test_two_loops_master_record')
+                clear()
+            })
         }
 
         function test_two_loops_master_playback() {
-            start_test_fn('test_two_loops_master_playback')
-            check_backend()
+            run_test_fn('test_two_loops_master_playback', () => {
+                check_backend()
 
-            master_loop().set_length(48000)
-            master_loop().transition(Types.LoopMode.Playing, 0, true)
-            testcase.wait(100)
-            verify_eq(master_loop().mode, Types.LoopMode.Playing)
-            verify_eq(master_loop().length, 48000)
-            verify_loop_cleared(other_loop())
+                master_loop().set_length(48000)
+                master_loop().transition(Types.LoopMode.Playing, 0, true)
+                testcase.wait(100)
+                verify_eq(master_loop().mode, Types.LoopMode.Playing)
+                verify_eq(master_loop().length, 48000)
+                verify_loop_cleared(other_loop())
 
-            clear()
-            end_test_fn('test_two_loops_master_playback')
+                clear()
+            })
         }
     }
 }

@@ -100,177 +100,177 @@ Session {
         }
 
         function test_direct_monitor() {
-            start_test_fn('test_direct_monitor')
-            check_backend()
-            reset()
-            tut_control().monitor = true
-            tut_control().mute = false
-            testcase.wait(50)
+            run_test_fn('test_direct_monitor', () => {
+                check_backend()
+                reset()
+                tut_control().monitor = true
+                tut_control().mute = false
+                testcase.wait(50)
 
-            input_port_1.dummy_queue_data([1, 2, 3, 4])
-            input_port_2.dummy_queue_data([4, 3, 2, 1])
-            output_port_1.dummy_request_data(4)
-            output_port_2.dummy_request_data(4)
-            session.backend.dummy_request_controlled_frames(4)
-            session.backend.dummy_wait_process()
+                input_port_1.dummy_queue_data([1, 2, 3, 4])
+                input_port_2.dummy_queue_data([4, 3, 2, 1])
+                output_port_1.dummy_request_data(4)
+                output_port_2.dummy_request_data(4)
+                session.backend.dummy_request_controlled_frames(4)
+                session.backend.dummy_wait_process()
 
-            let out1 = output_port_1.dummy_dequeue_data(4)
-            let out2 = output_port_2.dummy_dequeue_data(4)
+                let out1 = output_port_1.dummy_dequeue_data(4)
+                let out2 = output_port_2.dummy_dequeue_data(4)
 
-            verify_eq(out1, [1, 2, 3, 4])
-            verify_eq(out2, [4, 3, 2, 1])
+                verify_eq(out1, [1, 2, 3, 4])
+                verify_eq(out2, [4, 3, 2, 1])
 
-            end_test_fn('test_direct_monitor')
+            })
         }
 
         function test_direct_monitor_input_volume() {
-            start_test_fn('test_direct_monitor_input_volume')
-            check_backend()
-            reset()
-            tut_control().monitor = true
-            tut_control().mute = false
-            tut_control().input_volume_dB = 6.0
-            testcase.wait(50)
+            run_test_fn('test_direct_monitor_input_volume', () => {
+                check_backend()
+                reset()
+                tut_control().monitor = true
+                tut_control().mute = false
+                tut_control().input_volume_dB = 6.0
+                testcase.wait(50)
 
-            input_port_1.dummy_queue_data([1, 2, 3, 4])
-            input_port_2.dummy_queue_data([4, 3, 2, 1])
-            output_port_1.dummy_request_data(4)
-            output_port_2.dummy_request_data(4)
-            session.backend.dummy_request_controlled_frames(4)
-            session.backend.dummy_wait_process()
+                input_port_1.dummy_queue_data([1, 2, 3, 4])
+                input_port_2.dummy_queue_data([4, 3, 2, 1])
+                output_port_1.dummy_request_data(4)
+                output_port_2.dummy_request_data(4)
+                session.backend.dummy_request_controlled_frames(4)
+                session.backend.dummy_wait_process()
 
-            let out1 = output_port_1.dummy_dequeue_data(4)
-            let out2 = output_port_2.dummy_dequeue_data(4)
+                let out1 = output_port_1.dummy_dequeue_data(4)
+                let out2 = output_port_2.dummy_dequeue_data(4)
 
-            verify_eq(out1.map(o => Math.round(o)), [2, 4, 6, 8])
-            verify_eq(out2.map(o => Math.round(o)), [8, 6, 4, 2])
+                verify_eq(out1.map(o => Math.round(o)), [2, 4, 6, 8])
+                verify_eq(out2.map(o => Math.round(o)), [8, 6, 4, 2])
 
-            end_test_fn('test_direct_monitor_input_volume')
+            })
         }
 
         function test_direct_monitor_output_volume() {
-            start_test_fn('test_direct_monitor_output_volume')
-            check_backend()
-            reset()
-            tut_control().monitor = true
-            tut_control().mute = false
-            tut_control().volume_dB = 6.0
-            testcase.wait(50)
+            run_test_fn('test_direct_monitor_output_volume', () => {
+                check_backend()
+                reset()
+                tut_control().monitor = true
+                tut_control().mute = false
+                tut_control().volume_dB = 6.0
+                testcase.wait(50)
 
-            input_port_1.dummy_queue_data([1, 2, 3, 4])
-            input_port_2.dummy_queue_data([4, 3, 2, 1])
-            output_port_1.dummy_request_data(4)
-            output_port_2.dummy_request_data(4)
-            session.backend.dummy_request_controlled_frames(4)
-            session.backend.dummy_wait_process()
+                input_port_1.dummy_queue_data([1, 2, 3, 4])
+                input_port_2.dummy_queue_data([4, 3, 2, 1])
+                output_port_1.dummy_request_data(4)
+                output_port_2.dummy_request_data(4)
+                session.backend.dummy_request_controlled_frames(4)
+                session.backend.dummy_wait_process()
 
-            let out1 = output_port_1.dummy_dequeue_data(4)
-            let out2 = output_port_2.dummy_dequeue_data(4)
+                let out1 = output_port_1.dummy_dequeue_data(4)
+                let out2 = output_port_2.dummy_dequeue_data(4)
 
-            verify_eq(out1.map(o => Math.round(o)), [2, 4, 6, 8])
-            verify_eq(out2.map(o => Math.round(o)), [8, 6, 4, 2])
+                verify_eq(out1.map(o => Math.round(o)), [2, 4, 6, 8])
+                verify_eq(out2.map(o => Math.round(o)), [8, 6, 4, 2])
 
-            end_test_fn('test_direct_monitor_output_volume')
+            })
         }
 
         function test_direct_monitor_output_balance_left() {
-            start_test_fn('test_direct_monitor_balance_left')
-            check_backend()
-            reset()
-            tut_control().monitor = true
-            tut_control().mute = false
-            tut_control().output_balance = -1.0
-            tut_control().volume_dB = 6.0
-            testcase.wait(50)
+            run_test_fn('test_direct_monitor_balance_left', () => {
+                check_backend()
+                reset()
+                tut_control().monitor = true
+                tut_control().mute = false
+                tut_control().output_balance = -1.0
+                tut_control().volume_dB = 6.0
+                testcase.wait(50)
 
-            input_port_1.dummy_queue_data([1, 2, 3, 4])
-            input_port_2.dummy_queue_data([4, 3, 2, 1])
-            output_port_1.dummy_request_data(4)
-            output_port_2.dummy_request_data(4)
-            session.backend.dummy_request_controlled_frames(4)
-            session.backend.dummy_wait_process()
+                input_port_1.dummy_queue_data([1, 2, 3, 4])
+                input_port_2.dummy_queue_data([4, 3, 2, 1])
+                output_port_1.dummy_request_data(4)
+                output_port_2.dummy_request_data(4)
+                session.backend.dummy_request_controlled_frames(4)
+                session.backend.dummy_wait_process()
 
-            let out1 = output_port_1.dummy_dequeue_data(4)
-            let out2 = output_port_2.dummy_dequeue_data(4)
+                let out1 = output_port_1.dummy_dequeue_data(4)
+                let out2 = output_port_2.dummy_dequeue_data(4)
 
-            verify_eq(out1.map(o => Math.round(o)), [2, 4, 6, 8])
-            verify_eq(out2.map(o => Math.round(o)), [0, 0, 0, 0])
+                verify_eq(out1.map(o => Math.round(o)), [2, 4, 6, 8])
+                verify_eq(out2.map(o => Math.round(o)), [0, 0, 0, 0])
 
-            end_test_fn('test_direct_monitor_output_balance_left')
+            })
         }
 
         function test_direct_monitor_output_balance_right() {
-            start_test_fn('test_direct_monitor_output_balance_right')
-            check_backend()
-            reset()
-            tut_control().monitor = true
-            tut_control().mute = false
-            tut_control().output_balance = 1.0
-            tut_control().volume_dB = 6.0
-            testcase.wait(50)
+            run_test_fn('test_direct_monitor_output_balance_right', () => {
+                check_backend()
+                reset()
+                tut_control().monitor = true
+                tut_control().mute = false
+                tut_control().output_balance = 1.0
+                tut_control().volume_dB = 6.0
+                testcase.wait(50)
 
-            input_port_1.dummy_queue_data([1, 2, 3, 4])
-            input_port_2.dummy_queue_data([4, 3, 2, 1])
-            output_port_1.dummy_request_data(4)
-            output_port_2.dummy_request_data(4)
-            session.backend.dummy_request_controlled_frames(4)
-            session.backend.dummy_wait_process()
+                input_port_1.dummy_queue_data([1, 2, 3, 4])
+                input_port_2.dummy_queue_data([4, 3, 2, 1])
+                output_port_1.dummy_request_data(4)
+                output_port_2.dummy_request_data(4)
+                session.backend.dummy_request_controlled_frames(4)
+                session.backend.dummy_wait_process()
 
-            let out1 = output_port_1.dummy_dequeue_data(4)
-            let out2 = output_port_2.dummy_dequeue_data(4)
+                let out1 = output_port_1.dummy_dequeue_data(4)
+                let out2 = output_port_2.dummy_dequeue_data(4)
 
-            verify_eq(out1.map(o => Math.round(o)), [0, 0, 0, 0])
-            verify_eq(out2.map(o => Math.round(o)), [8, 6, 4, 2])
+                verify_eq(out1.map(o => Math.round(o)), [0, 0, 0, 0])
+                verify_eq(out2.map(o => Math.round(o)), [8, 6, 4, 2])
 
-            end_test_fn('test_direct_monitor_output_balance_right')
+            })
         }
 
         function test_direct_no_monitor() {
-            start_test_fn('test_direct_no_monitor')
-            check_backend()
-            reset()
-            tut_control().monitor = false
-            tut_control().mute = false
-            testcase.wait(50)
+            run_test_fn('test_direct_no_monitor', () => {
+                check_backend()
+                reset()
+                tut_control().monitor = false
+                tut_control().mute = false
+                testcase.wait(50)
 
-            input_port_1.dummy_queue_data([1, 2, 3, 4])
-            input_port_2.dummy_queue_data([4, 3, 2, 1])
-            output_port_1.dummy_request_data(4)
-            output_port_2.dummy_request_data(4)
-            session.backend.dummy_request_controlled_frames(4)
-            session.backend.dummy_wait_process()
+                input_port_1.dummy_queue_data([1, 2, 3, 4])
+                input_port_2.dummy_queue_data([4, 3, 2, 1])
+                output_port_1.dummy_request_data(4)
+                output_port_2.dummy_request_data(4)
+                session.backend.dummy_request_controlled_frames(4)
+                session.backend.dummy_wait_process()
 
-            let out1 = output_port_1.dummy_dequeue_data(4)
-            let out2 = output_port_2.dummy_dequeue_data(4)
+                let out1 = output_port_1.dummy_dequeue_data(4)
+                let out2 = output_port_2.dummy_dequeue_data(4)
 
-            verify_eq(out1, [0, 0, 0, 0])
-            verify_eq(out2, [0, 0, 0, 0])
+                verify_eq(out1, [0, 0, 0, 0])
+                verify_eq(out2, [0, 0, 0, 0])
 
-            end_test_fn('test_direct_no_monitor')
+            })
         }
 
         function test_direct_monitor_mute() {
-            start_test_fn('test_direct_monitor_mute')
-            check_backend()
-            reset()
-            tut_control().monitor = true
-            tut_control().mute = true
-            testcase.wait(50)
+            run_test_fn('test_direct_monitor_mute', () => {
+                check_backend()
+                reset()
+                tut_control().monitor = true
+                tut_control().mute = true
+                testcase.wait(50)
 
-            input_port_1.dummy_queue_data([1, 2, 3, 4])
-            input_port_2.dummy_queue_data([4, 3, 2, 1])
-            output_port_1.dummy_request_data(4)
-            output_port_2.dummy_request_data(4)
-            session.backend.dummy_request_controlled_frames(4)
-            session.backend.dummy_wait_process()
+                input_port_1.dummy_queue_data([1, 2, 3, 4])
+                input_port_2.dummy_queue_data([4, 3, 2, 1])
+                output_port_1.dummy_request_data(4)
+                output_port_2.dummy_request_data(4)
+                session.backend.dummy_request_controlled_frames(4)
+                session.backend.dummy_wait_process()
 
-            let out1 = output_port_1.dummy_dequeue_data(4)
-            let out2 = output_port_2.dummy_dequeue_data(4)
+                let out1 = output_port_1.dummy_dequeue_data(4)
+                let out2 = output_port_2.dummy_dequeue_data(4)
 
-            verify_eq(out1, [0, 0, 0, 0])
-            verify_eq(out2, [0, 0, 0, 0])
+                verify_eq(out1, [0, 0, 0, 0])
+                verify_eq(out2, [0, 0, 0, 0])
 
-            end_test_fn('test_direct_monitor_mute')
+            })
         }
     }
 }
