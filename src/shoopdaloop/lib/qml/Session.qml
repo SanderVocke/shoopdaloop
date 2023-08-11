@@ -124,6 +124,7 @@ AppRegistries {
             var tasks = tasks_factory.create_tasks_obj(root)
 
             file_io.extract_tarfile(filename, tempdir)
+            root.logger.debug(`Extracted files: ${JSON.stringify(file_io.glob(tempdir + '/*', true, true), null, 2)}`)
 
             var session_filename = tempdir + '/session.json'
             var session_file_contents = file_io.read_file(session_filename)

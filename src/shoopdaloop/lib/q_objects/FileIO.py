@@ -9,6 +9,7 @@ import numpy as np
 import resampy
 import mido
 import math
+import glob
 
 from PySide6.QtCore import QObject, Slot, Signal, QThread
 
@@ -279,3 +280,7 @@ class FileIO(QThread):
     @Slot(result='QVariant')
     def get_soundfile_formats(self):
         return dict(sf.available_formats())
+    
+    @Slot(str, bool, bool, result='QVariant')
+    def glob(self, pattern, recursive, hidden):
+        return glob.glob(pattern, recursive=recursive, include_hidden = hidden)

@@ -112,11 +112,19 @@ Item {
         }
     }
     function queue_load_tasks(data_files_dir, add_tasks_to) {
-        var channels = channels
-        var have_data_files = channels ? channels.map(c => c.has_data_file()) : []
-        if (have_data_files.filter(d => d == true).length > 0) {
+        var have_data_files = channels ? channels.map(c => {
+            let r = c.has_data_file()
+            if (r) { root.logger.debug(`${obj_id} has data file for channel ${c.obj_id}`) }
+            else   { root.logger.debug(`${obj_id} has no data file for channel ${c.obj_id}`) }
+            return r
+        }) : []
+        let have_any = have_data_files.filter(d => d == true).length > 0
+        if (have_any) {
+            root.logger.debug(`${obj_id} has data files, queueing load tasks.`)
             force_load_backend()
             channels.forEach((c) => c.queue_load_tasks(data_files_dir, add_tasks_to))
+        } else {
+            root.logger.debug(`${obj_id} has no data files, not queueing load tasks.`)
         }
     }
 
