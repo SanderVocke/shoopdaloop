@@ -19,7 +19,7 @@ jobs:
         run: |
           wget https://github.com/plantuml/plantuml/releases/download/v1.2023.10/plantuml-1.2023.10.jar
           sudo cp plantuml-1.2023.10.jar /usr/bin/plantuml.jar
-          printf '#!/bin/sh\njava -jar /usr/bin/plantuml.jar $@' > /usr/bin/plantuml
+          sudo printf '#!/bin/sh\njava -jar /usr/bin/plantuml.jar $@' > /usr/bin/plantuml
 
       - name: Install dependencies
         run: |
