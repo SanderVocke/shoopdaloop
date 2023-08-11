@@ -120,6 +120,18 @@ PortDirection DummyMidiPort::direction() const { return m_direction; }
 
 void DummyMidiPort::close() {}
 
+void DummyMidiPort::queue_msg(const DummyMidiPort::StoredMessage &msg) {
+    m_queued_msgs.push_back(msg);
+}
+
+bool DummyMidiPort::get_queue_empty() {
+    return m_queued_msgs.empty();
+}
+
+void DummyMidiPort::request_data(size_t n_frames) {
+    n_requested_frames += n_frames;
+}
+
 MidiReadableBufferInterface &
 DummyMidiPort::PROC_get_read_buffer(size_t n_frames) {
     return *(static_cast<MidiReadableBufferInterface *>(this));
