@@ -88,10 +88,15 @@ Backend::Backend(audio_system_type_t audio_system_type, std::string client_name_
 
         if (!audio_system || audio_system_type == Dummy) {
             log<LogLevel::debug>("Initializing dummy audio system.");
+            auto weak_self = weak_from_this();
             audio_system = std::unique_ptr<AudioSystem>(
                 dynamic_cast<AudioSystem *>(new _DummyAudioSystem(
                     std::string(client_name_hint),
-                    std::bind(&Backend::PROC_process, this, _1))));
+                    [weak_self] (size_t n_frames) {
+                        if (auto self = weak_self.lock()) {
+                            self->PROC_process(n_frames);
+                        }
+                    })));
         }
 
         audio_buffer_pool = std::make_shared<ObjectPool<AudioBuffer<shoop_types::audio_sample_t>>>(
@@ -115,10 +120,11 @@ Backend::Backend(audio_system_type_t audio_system_type, std::string client_name_
 // MEMBER FUNCTIONS
 void Backend::PROC_process (jack_nframes_t nframes) {
     log<LogLevel::trace>("Process {}: start", nframes);
+    auto _profiler = profiler;
     profiling::stopwatch(
-        [this, &nframes]() {
+        [this, &nframes, _profiler]() {
             
-            profiler->next_iteration();
+            _profiler->next_iteration();
             
             // Execute queued commands
             log<LogLevel::trace>("Process: execute commands");
