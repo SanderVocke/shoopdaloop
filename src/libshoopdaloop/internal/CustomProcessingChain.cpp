@@ -62,7 +62,10 @@ void CustomProcessingChain<TimeType, SizeType>::set_freewheeling(bool enabled) {
 
 template<typename TimeType, typename SizeType>
 void CustomProcessingChain<TimeType, SizeType>::process(size_t frames) {
-    if (m_process_callback) {
+    for(auto &p : m_output_audio_ports) {
+        p->PROC_get_buffer(frames, true); // zero outputs
+    }
+    if (m_process_callback && m_active.load()) {
         m_process_callback(frames, m_input_audio_ports, m_output_audio_ports, m_input_midi_ports);
     }
 }

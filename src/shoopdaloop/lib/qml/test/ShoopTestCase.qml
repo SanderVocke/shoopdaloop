@@ -15,8 +15,8 @@ TestCase {
     Component.onDestruction: logger.info("Testcase " + name + " destroyed.")
 
     function verify_loop_cleared(loop) {
-        verify(loop.mode == Types.LoopMode.Stopped, `Loop not stopped: ${loop.mode}. Trace: ${backtrace()}`)
-        verify(loop.length == 0, `Loop length not 0: ${loop.length}. Trace: ${backtrace()}`)
+        verify_eq(loop.mode, Types.LoopMode.Stopped)
+        verify_eq(loop.length, 0)
     }
 
     function cleanup() {
@@ -32,30 +32,47 @@ TestCase {
         logger.info(`${filename}::${casename}::${func}: ${statusdesc}`)
     }
 
-    function backtrace() {
-        return new Error().stack
+    function format_error(failstring, stack=null) {
+        if (stack == null) {
+            stack = new Error().stack
+        }
+        let m = stack.match(/[\s]*(test_[^\@]+)\@.*\/(tst_.*\.qml:[0-9]*)/)
+        let testfn = m[1]
+        let testfile = m[2]
+        let trace = '  ' + stack.split('\n').join('\n  ')
+        return `${testfn}: ${failstring} \@ ${testfile}\nBacktrace:\n${trace}`
     }
 
     function verify_throw(a) {
         var result = Boolean(a)
-        if (!result) { logger.error(`Trace: ${backtrace()}`)}
-        verify(result, `a != null-like (a = ${a})`)
+        let failstring = `verify_throw failed (v = ${a})`
+        if (!result) {
+            logger.error(format_error(failstring))
+        }
+        verify(result, failstring)
     }
 
     function verify_eq(a, b) {
         var result;
+        let failstring = `verify_eq failed (a = ${a}, b = ${b})`
         if (Array.isArray(a) && Array.isArray(b)) {
             result = TestDeepEqual.testArraysEqual(a, b);
         } else {
             result = a == b;
         }
-        if (!result) { logger.error(`Trace: ${backtrace()}`)}
-        verify(result, `a != b (a = ${a}, b = ${b})`)
+        if (!result) {
+            logger.error(format_error(failstring))
+        }
+        verify(result, failstring)
     }
 
     function verify_gt(a, b) {
-        if (a <= b) { logger.error(`Trace: ${backtrace()}`)}
-        verify(a > b, `a !> b (a = ${a}, b = ${b})`)
+        let failstring = `verify_gt failed (a = ${a}, b = ${b})`
+        let result = a > b;
+        if (!result) {
+            logger.error(format_error(failstring))
+        }
+        verify(result, failstring)
     }
 
     function start_test_fn(name) {
@@ -68,5 +85,16 @@ TestCase {
         logger.info("------------------------------------------------")
         logger.info(`END ${name}`)
         logger.info("------------------------------------------------")
+    }
+
+    function run_test_fn(name, fn) {
+        try {
+            start_test_fn(name)
+            fn()
+            end_test_fn(name)
+        } catch (e) {
+            let failstring = `Uncaught exception: ${e.message} (${e.name}}`
+            logger.error(format_error(failstring, e.stack))
+        }
     }
 }

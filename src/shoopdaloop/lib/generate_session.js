@@ -187,6 +187,7 @@ function generate_default_track(
     if (drywet_carla_type) {
         n_fx_audio_inputs =
             drywet_carla_type == 'carla_rack' ? 2 :
+            drywet_carla_type == 'test2x2x1' ? 2 :
             drywet_carla_type == 'carla_patchbay' ? 2 :
             drywet_carla_type == 'carla_patchbay_16' ? 16 :
             0

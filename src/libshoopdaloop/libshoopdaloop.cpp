@@ -1000,9 +1000,13 @@ void fx_chain_set_ui_visible(shoopdaloop_fx_chain_t *chain, unsigned visible) {
     g_logger->debug("fx_chain_set_ui_visible");
     auto maybe_ui = dynamic_cast<ExternalUIInterface*>(internal_fx_chain(chain)->chain.get());
     if(maybe_ui) {
-        maybe_ui->show();
+        if (visible) {
+            maybe_ui->show();
+        } else {
+            maybe_ui->hide();
+        }
     } else {
-        maybe_ui->hide();
+        g_logger->debug("fx_chain_set_ui_visible: chain does not support UI, ignoring");
     }
 }
 
@@ -1022,7 +1026,7 @@ fx_chain_state_info_t *get_fx_chain_state(shoopdaloop_fx_chain_t *chain) {
 
 void set_fx_chain_active(shoopdaloop_fx_chain_t *chain, unsigned active) {
     init_log();
-    g_logger->debug("set_fx_chain_active");
+    g_logger->debug("set_fx_chain_active {}", active);
     internal_fx_chain(chain)->chain->set_active(active);
 }
 

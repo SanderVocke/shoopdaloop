@@ -319,9 +319,12 @@ Item {
         if (targeted) { untarget() } else { target() }
     }
 
+    function get_audio_channels() {
+        return Array.from(Array(audio_channels.model).keys()).map((i) => audio_channels.itemAt(i))
+    } 
+
     function get_audio_output_channels() {
-        var chans = Array.from(Array(audio_channels.model).keys()).map((i) => audio_channels.itemAt(i))
-        return chans.filter(c => c && c.obj_id.match(/.*_(?:wet|direct)(?:_[0-9]+)?$/))
+        return get_audio_channels().filter(c => c && c.obj_id.match(/.*_(?:wet|direct)(?:_[0-9]+)?$/))
     }
 
     function get_stereo_audio_output_channels() {

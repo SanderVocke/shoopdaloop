@@ -13,8 +13,6 @@ Item {
     height: childrenRect.height
 
     // Input properties
-    property alias unique_loop_modes : logic.unique_loop_modes
-    property alias unique_next_cycle_loop_modes : logic.unique_next_cycle_loop_modes
     property var initial_track_descriptor : null
     property Registry objects_registry : null
     property Registry state_registry : null
@@ -57,6 +55,7 @@ Item {
     property real initial_input_balance: initial_input_volume_and_balance["balance"]
     readonly property bool has_fx_chain : initial_track_descriptor && 'fx_chain' in initial_track_descriptor
     readonly property alias ports : lookup_ports.objects
+    readonly property alias loops : lookup_loops.objects
     readonly property alias maybe_fx_chain : lookup_fx_chain.object
     readonly property alias fx_ports : lookup_fx_ports.objects
     readonly property var audio_in_ports : {
@@ -70,7 +69,7 @@ Item {
         return r
     }
     readonly property var fx_out_ports : {
-        var r = fx_ports.filter((p) => p && is_audio(p.descriptor) && is_in(p.descriptor))
+        var r = fx_ports.filter((p) => p && is_audio(p.descriptor) && p.descriptor.id.match(/_out_/))
         r.sort((a,b) => a.obj_id.localeCompare(b.obj_id))
         return r
     }
@@ -80,6 +79,18 @@ Item {
     readonly property var in_balance_volume_factor_l: balance_volume_factor_l(input_balance)
     readonly property var out_balance_volume_factor_r: balance_volume_factor_r(output_balance)
     readonly property var in_balance_volume_factor_r: balance_volume_factor_r(input_balance)
+    readonly property var unique_loop_modes : {
+        let modes = root.loops.map(l => l.mode)
+        return Array.from(new Set(modes))
+    }
+    readonly property var unique_next_cycle_loop_modes : {
+        let modes = root.loops.map(l => {
+            if (l.next_transition_delay == 1) { return l.next_mode; }
+            else { return undefined }
+        }).filter(m => "undefined" !== typeof m)
+        return Array.from(new Set(modes))
+    }
+    readonly property var control_logic : logic
 
     // Controlled properties
     property real initial_volume_dB: 0.0
@@ -117,41 +128,28 @@ Item {
                 monitor = false
             }
         }
-        function onMute_drywet_input_passthroughChanged() {
-            audio_in_ports
-                .filter(p => is_dry(p.descriptor))
-                .forEach((p) => {
-                    p.set_passthrough_muted(logic.mute_drywet_input_passthrough)
-                })
-        }
-        function onMute_drywet_output_passthroughChanged() {
-            fx_out_ports
-                .forEach((p) => {
-                    p.set_passthrough_muted(logic.mute_drywet_output_passthrough)
-                })
-        }
-        function onMute_direct_passthroughChanged() {
-            audio_in_ports
-                .filter(p => is_direct(p.descriptor))
-                .forEach((p) => {
-                    p.set_passthrough_muted(logic.mute_direct_passthrough)
-                })
-        }
-        function onDisable_fxChanged() {
-            if (root.maybe_fx_chain) root.maybe_fx_chain.set_active(!logic.disable_fx)
-        }
+        function onMute_drywet_input_passthroughChanged() { root.push_monitor() }
+        function onMute_drywet_output_passthroughChanged() { root.push_monitor() }
+        function onMute_direct_passthroughChanged() { root.push_monitor() }
+        function onEnable_fxChanged() { root.push_fx_active() }
     }
     onPortsChanged: logic.trigger_signals()
     onMaybe_fx_chainChanged: logic.trigger_signals()
     onFx_out_portsChanged: logic.trigger_signals()
-    onMuteChanged: {
-        audio_out_ports.forEach((p) => p.set_muted(mute))
-    }
+    onMuteChanged: push_mute()
 
     // Helpers
     TrackControlLogic {
         id: logic
         monitor: root.monitor
+
+        unique_loop_modes : root.unique_loop_modes
+        unique_next_cycle_loop_modes : root.unique_next_cycle_loop_modes
+    }
+    RegistryLookups {
+        id: lookup_loops
+        registry: root.objects_registry
+        keys: root.initial_track_descriptor ? root.initial_track_descriptor.loops.map((l) => l.id) : []
     }
     RegistryLookups {
         id: lookup_ports
@@ -176,13 +174,13 @@ Item {
     }
 
     // Methods
-    function is_audio(p)  { return p.schema.match(/audioport\.[0-9]+/) }
-    function is_midi(p)   { return p.schema.match(/midiport\.[0-9]+/)  }
-    function is_in(p)     { return p.direction == "input"  && p.id.match(/.*_in(?:_[0-9]*)?$/); }
-    function is_out(p)    { return p.direction == "output" && p.id.match(/.*_out(?:_[0-9]*)?$/); }
-    function is_dry(p)    { return p.id.match(/.*_dry_.*/); }
-    function is_wet(p)    { return p.id.match(/.*_wet_.*/); }
-    function is_direct(p) { return p.id.match(/.*_direct_.*/); }
+    function is_audio(p)  { return p && p.schema.match(/audioport\.[0-9]+/) }
+    function is_midi(p)   { return p && p.schema.match(/midiport\.[0-9]+/)  }
+    function is_in(p)     { return p && p.direction == "input"  && p.id.match(/.*_in(?:_[0-9]*)?$/); }
+    function is_out(p)    { return p && p.direction == "output" && p.id.match(/.*_out(?:_[0-9]*)?$/); }
+    function is_dry(p)    { return p && p.id.match(/.*_dry_.*/); }
+    function is_wet(p)    { return p && p.id.match(/.*_wet_.*/); }
+    function is_direct(p) { return p && p.id.match(/.*_direct_.*/); }
     function aggregate_midi_notes(ports) {
         var notes_per_port = ports.map((p) => p.n_notes_active)
         return Math.max(notes_per_port)
@@ -253,6 +251,35 @@ Item {
             else if (idx == 1 && out_is_stereo) { push_volume(volume_dB, p, out_balance_volume_factor_r) }
             else { push_volume(volume_dB, p) }
         })
+    }
+    function push_mute() {
+        audio_out_ports.forEach((p) => p.set_muted(mute))
+    }
+    function push_monitor() {
+        audio_in_ports
+            .filter(p => is_dry(p.descriptor))
+            .forEach((p) => {
+                p.set_passthrough_muted(logic.mute_drywet_input_passthrough)
+            })
+        audio_in_ports
+            .filter(p => is_direct(p.descriptor))
+            .forEach((p) => {
+                p.set_passthrough_muted(logic.mute_direct_passthrough)
+            })
+        fx_out_ports
+            .forEach((p) => {
+                p.set_passthrough_muted(logic.mute_drywet_output_passthrough)
+            })
+    }
+    function push_fx_active() {
+        if (root.maybe_fx_chain) root.maybe_fx_chain.set_active(logic.enable_fx)
+    }
+    Component.onCompleted: {
+        push_monitor()
+        push_mute()
+        push_out_volumes()
+        push_in_volumes()
+        push_fx_active()
     }
 
     signal mute()

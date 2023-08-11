@@ -5,6 +5,7 @@ Introduction
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
 **ShoopDaLoop** supports embedded **Lua scripts** for querying and controlling the application. For example, these are used to define how **ShoopDaLoop** reacts to control MIDI events.
+Lua scripts can be provided by the user and don't require a re-installation of the software.
 
 
 

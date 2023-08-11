@@ -22,34 +22,32 @@ Session {
         session: session
 
         function test_session_descriptor_default() {
-            start_test_fn('test_session_descriptor_default')
-            
-            check_backend()
+            run_test_fn('test_session_descriptor_default', () => {
+                check_backend()
 
-            testcase.wait(500)
-            var reference = session.initial_descriptor
-            var actual = session.actual_session_descriptor(false, '', null)
-            verify(TestDeepEqual.testDeepEqual(actual, reference, session.logger.error))
+                testcase.wait(500)
+                var reference = session.initial_descriptor
+                var actual = session.actual_session_descriptor(false, '', null)
+                verify(TestDeepEqual.testDeepEqual(actual, reference, session.logger.error))
 
-            var filename = file_io.generate_temporary_filename() + '.shl'
+                var filename = file_io.generate_temporary_filename() + '.shl'
 
-            session.logger.info("Saving session to " + filename)
-            session.save_session(filename)
-            
-            testcase.wait(500)
-
-            session.logger.info("Re-loading session")
-            session.load_session(filename)
-
-            testcase.wait(500)
+                session.logger.info("Saving session to " + filename)
+                session.save_session(filename)
                 
-            actual = session.actual_session_descriptor(false, '', null)
+                testcase.wait(500)
 
-            file_io.delete_file(filename)
+                session.logger.info("Re-loading session")
+                session.load_session(filename)
 
-            verify(TestDeepEqual.testDeepEqual(actual, reference, session.logger.error))
-            
-            end_test_fn('test_session_descriptor_default');
+                testcase.wait(500)
+                    
+                actual = session.actual_session_descriptor(false, '', null)
+
+                file_io.delete_file(filename)
+
+                verify(TestDeepEqual.testDeepEqual(actual, reference, session.logger.error))
+            })
         }
     }
 }

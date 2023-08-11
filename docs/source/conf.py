@@ -13,7 +13,7 @@ author = 'Sander Vocke'
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
-extensions = ['sphinxcontrib.fulltoc']
+extensions = ['sphinxcontrib.fulltoc', 'sphinxcontrib.plantuml']
 
 templates_path = []
 exclude_patterns = []

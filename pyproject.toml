@@ -56,6 +56,7 @@ docs = [
   "sphinx",
   "sphinx-material",
   "sphinxcontrib-fulltoc",
+  "sphinxcontrib-plantuml"
 ]
 
 [tool.setuptools.packages.find]
