@@ -297,10 +297,12 @@ const char *DummyAudioSystem<Time, Size>::client_name() const {
 template <typename Time, typename Size>
 void DummyAudioSystem<Time, Size>::close() {
     m_finish = true;
-    if (std::this_thread::get_id() != m_proc_thread.get_id()) {
-        m_proc_thread.join();
-    } else {
-        m_proc_thread.detach();
+    if (m_proc_thread.joinable()) {
+        if (std::this_thread::get_id() != m_proc_thread.get_id()) {
+            m_proc_thread.join();
+        } else {
+            m_proc_thread.detach();
+        }
     }
 }
 
