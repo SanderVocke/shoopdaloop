@@ -12,7 +12,7 @@ AppRegistries {
     id: root
     objectName: 'session'
 
-    property PythonLogger logger : PythonLogger { name: "Frontend.Session" }
+    property PythonLogger logger : PythonLogger { name: "Frontend.Qml.Session" }
 
     // The descriptor is an object matching the ShoopDaLoop session JSON
     // schema. The Session object will manage an actual session (consisting)
@@ -74,6 +74,7 @@ AppRegistries {
     TasksFactory { id: tasks_factory }
 
     function save_session(filename) {
+        state_registry.reset_saving_loading()
         state_registry.save_action_started()
         var tempdir = file_io.create_temporary_folder()
         var tasks = tasks_factory.create_tasks_obj(root)
@@ -102,7 +103,6 @@ AppRegistries {
             'sync_active',
             'scenes_widget'
         ])
-        state_registry.reset_saving_loading()
         objects_registry.clear()
         tracks_widget.reload()
     }
@@ -116,6 +116,7 @@ AppRegistries {
     }
 
     function load_session(filename) {
+        state_registry.reset_saving_loading()
         state_registry.load_action_started()
         var tempdir = file_io.create_temporary_folder()
 
@@ -130,20 +131,37 @@ AppRegistries {
 
             schema_validator.validate_schema(descriptor, validator.schema)
             root.initial_descriptor = descriptor
+            root.logger.debug("Reloading session")
             reload()
+            state_registry.load_action_started()
 
-            queue_load_tasks(tempdir, tasks)
+            let finish_fn = () => {
+                root.logger.debug("Queueing load tasks")
+                queue_load_tasks(tempdir, tasks)
 
-            tasks.when_finished(() => {
-                try {
-                    file_io.delete_recursive(tempdir)
-                } finally {
-                    state_registry.load_action_finished()
-                    tasks.parent = null
-                    tasks.destroy()
+                tasks.when_finished(() => {
+                    try {
+                        file_io.delete_recursive(tempdir)
+                    } finally {
+                        state_registry.load_action_finished()
+                        tasks.parent = null
+                        tasks.destroy()
+                    }
+                })
+            }
+
+            function connectOnce(sig, slot) {
+                var f = function() {
+                    slot.apply(this, arguments)
+                    sig.disconnect(f)
                 }
-            })
-            
+                sig.connect(f)
+            }
+
+            if(root.loaded) { finish_fn() }
+            else {
+                connectOnce(root.loadedChanged, finish_fn)
+            }
         } catch(e) {
             file_io.delete_recursive(tempdir)
             throw e;

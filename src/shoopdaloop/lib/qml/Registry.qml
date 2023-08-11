@@ -1,30 +1,30 @@
 import QtQuick 6.3
+import ShoopDaLoop.PythonLogger
 
 // A registry is a simple key-value store which can be shared by reference
 Item {
     property var registry_data: ({})
     property var verbose: false
 
+    property PythonLogger logger: PythonLogger { name: "Frontend.Qml.Registry" }
+
     signal contentsChanged()
     signal itemAdded(var id, var item)
     signal itemModified(var id, var item)
     signal itemRemoved(var id)
+    signal cleared()
 
     function register(id, object, overwrite=false) {
         if(id in registry_data && !overwrite) {
-            throw new Error("attempting to re-register existing key: " + id)
+            logger.throw_error("attempting to re-register existing key: " + id)
         }
         if(!(id in registry_data)) {
-            if (verbose) {
-                console.log("REGISTRY: Registered:", id, " => ", object)
-            }
+            logger.debug(`Registered: ${id} => ${object}`)
             registry_data[id] = object
             itemAdded(id, object)
             contentsChanged()
         } else if(overwrite && (id in registry_data)) {
-            if (verbose) {
-                console.log("REGISTRY: Overwrite: ", id, ":", registry_data[id], " => ", object)
-            }
+            logger.debug(`Overwrite: ${id}: ${registry_data[id]}  => ${object}`)
             registry_data[id] = object
             itemModified(id, object)
             contentsChanged()
@@ -35,9 +35,7 @@ Item {
         if(!(id in registry_data)) {
             return;
         }
-        if(verbose) {
-            console.log("REGISTRY: Unregistered:", id)
-        }
+        logger.debug("Unregistered:" + id)
         delete registry_data[id]
         itemRemoved(id)
         contentsChanged()
@@ -45,7 +43,7 @@ Item {
 
     function get(id) {
         if(!(id in registry_data)) {
-            throw new Error("attempting to get non-existing key: " + id)
+            logger.throw_error("attempting to get non-existing key: " + id)
         }
         return registry_data[id]
     }
@@ -67,18 +65,14 @@ Item {
             if (typeof d === 'object') { itemModified(id, val) }
             return;
         }
-        if(verbose) {
-            console.log("REGISTRY: Replacing ", id, ":", d, " => ", val)
-        }
+        logger.debug(`Replacing ${id}: ${d} => ${val}`)
         registry_data[id] = val
         itemModified(id, val)
         contentsChanged()
     }
 
     function multi_replace(dict) {
-        if(verbose) {
-            console.log("REGISTRY: Multi replace:", Object.keys(dict))
-        }
+        logger.debug(`Multi replace: ${Object.keys(dict)}`)
         var n_changed = 0;
         for (const [key, val] of Object.entries(dict)) {
             if (registry_data[key] != val) {
@@ -97,17 +91,13 @@ Item {
     function add_to_set(id, val) {
         if (!has(id)) { registry_data[id] = new Set() }
         mutate(id, s => { s.add(val); return s } )
-        if (verbose) {
-            console.log("REGISTRY: set contents after add: ", ...registry_data[id])
-        }
+        logger.debug(`set contents after add: ${registry_data[id]}`)
     }
 
     function remove_from_set(id, val) {
         if (!has(id)) { registry_data[id] = new Set() }
         mutate(id, s => { s.delete(val); return s } )
-        if (verbose) {
-            console.log("REGISTRY: set contents after remove: ", ...registry_data[id])
-        }
+        logger.debug(`set contents after remove: ${registry_data[id]}`)
     }
 
     function clear_set(id) {
@@ -117,7 +107,7 @@ Item {
     function mutate(id, fn) {
         const mutated = fn(registry_data[id])
         if(verbose) {
-            console.log("REGISTRY: Mutating:", id, registry_data[id], " => ", mutated)
+            logger.debug(`Mutating: ${id}, ${registry_data[id]} => ${mutated}`)
         }
         registry_data[id] = mutated
         itemModified(id, registry_data[id])
@@ -155,14 +145,13 @@ Item {
     function clear(except_keys=[]) {
         var replace = {}
         for(const key of except_keys) { replace[key] = registry_data[key] }
-        if(verbose) {
-            console.log("REGISTRY: Clearing")
-        }
+        logger.debug("Clearing")
         for(var key of Object.keys(registry_data)) {
             itemRemoved(key)
         }
         registry_data = replace
-        contentsChanged()  
+        contentsChanged()
+        cleared()
     }
 
     function value_or(id, val) {

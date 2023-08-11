@@ -28,7 +28,7 @@ Item {
         logger.debug(`Loop @ (${track_idx},${idx_in_track})`)
     }
 
-    property PythonLogger logger : PythonLogger { name: default_logger.name + ".Loop" }
+    property PythonLogger logger : PythonLogger { name: "Frontend.Qml.Loop" }
 
     RegistryLookup {
         id: fx_chain_states_registry_lookup

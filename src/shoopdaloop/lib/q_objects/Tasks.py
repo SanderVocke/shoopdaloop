@@ -1,6 +1,8 @@
 from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
 from PySide6.QtQml import QJSValue
 
+from ..logging import Logger
+
 # Keep track of a set of tasks.
 # Can itself also be used as a Task.
 class Tasks(QObject):
@@ -8,6 +10,7 @@ class Tasks(QObject):
         super(Tasks, self).__init__(parent)
         self._tasks = []
         self._n_done = 0
+        self.logger = Logger('Frontend.Tasks')
 
     def calc_all_done(self):
         return self._n_done >= len(self._tasks)
@@ -20,6 +23,7 @@ class Tasks(QObject):
     
     @Slot('QVariant')
     def add_task(self, task):
+        self.logger.debug('Adding task {}, anything to do: {}'.format(task, not self.calc_all_done()))
         prev_all_done = self.calc_all_done()
         self._tasks.append(task)
         if not task.anything_to_do:
@@ -32,6 +36,7 @@ class Tasks(QObject):
     
     @Slot(bool)
     def task_changed(self, anything_to_do):
+        self.logger.debug('Task changed, anything to do: {}'.format(not self.calc_all_done()))
         prev_all_done = self.calc_all_done()
         if not anything_to_do:
             self._n_done = self._n_done + 1
@@ -44,6 +49,7 @@ class Tasks(QObject):
     @Slot('QVariant')
     def when_finished(self, fn):
         def exec_fn():
+            self.logger.debug('All tasks finished, calling callback')
             if callable(fn):
                 fn()
             elif isinstance(fn, QJSValue):

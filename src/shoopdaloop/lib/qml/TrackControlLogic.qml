@@ -39,10 +39,7 @@ Item {
 
     Component.onCompleted: trigger_signals()
 
-    PythonLogger { 
-        id: logger
-        name: default_logger.name + ".TrackControlLogic"
-    }
+    property PythonLogger logger: PythonLogger { name: "Frontend.Qml.TrackControlLogic" }
 
     onMute_drywet_input_passthroughChanged: logger.debug("mute fx in monitor: " + mute_drywet_input_passthrough)
     onMute_drywet_output_passthroughChanged: logger.debug("mute fx out monitor: " + mute_drywet_output_passthrough)

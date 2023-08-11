@@ -28,7 +28,7 @@ Item {
     property bool mute : false
 
     // Readonlies
-    readonly property PythonLogger logger : PythonLogger { name: default_logger.name + ".TrackControlWidget" }
+    readonly property PythonLogger logger : PythonLogger { name: "Frontend.Qml.TrackControlWidget" }
     readonly property bool in_is_stereo: audio_in_ports.length == 2
     readonly property bool out_is_stereo: audio_out_ports.length == 2
     readonly property var initial_output_volume_and_balance: {
