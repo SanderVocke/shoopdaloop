@@ -33,14 +33,17 @@ TestCase {
     }
 
     function format_error(failstring, stack=null) {
-        if (stack == null) {
-            stack = new Error().stack
+        let _stack = stack ? stack : (new Error().stack)
+        let m = _stack.match(/[\s]*(test_[^\@]+)\@.*\/(tst_.*\.qml:[0-9]*)/)
+        if (m) {
+            let testfn = m[1]
+            let testfile = m[2]
+            let trace = '  ' + _stack.split('\n').join('\n  ')
+            return `${testfn}: ${failstring} \@ ${testfile}\nBacktrace:\n${trace}`
         }
-        let m = stack.match(/[\s]*(test_[^\@]+)\@.*\/(tst_.*\.qml:[0-9]*)/)
-        let testfn = m[1]
-        let testfile = m[2]
-        let trace = '  ' + stack.split('\n').join('\n  ')
-        return `${testfn}: ${failstring} \@ ${testfile}\nBacktrace:\n${trace}`
+        let trace = '  ' + _stack.split('\n').join('\n  ')
+        return `${failstring}\nBacktrace:\n${trace}`
+        return failstring        
     }
 
     function verify_throw(a) {
@@ -56,9 +59,24 @@ TestCase {
         var result;
         let failstring = `verify_eq failed (a = ${a}, b = ${b})`
         if (Array.isArray(a) && Array.isArray(b)) {
-            result = TestDeepEqual.testArraysEqual(a, b);
+            result = TestDeepEqual.testArraysCompare(a, b);
         } else {
             result = a == b;
+        }
+        if (!result) {
+            logger.error(format_error(failstring))
+        }
+        verify(result, failstring)
+    }
+
+    function verify_approx(a, b) {
+        var result;
+        let compare = (a,b) => (a - b) < Math.max(a,b) / 10000.0
+        let failstring = `verify_approx failed (a = ${a}, b = ${b})`
+        if (Array.isArray(a) && Array.isArray(b)) {
+            result = TestDeepEqual.testArraysCompare(a, b, compare);
+        } else {
+            result = compare(a, b)
         }
         if (!result) {
             logger.error(format_error(failstring))
@@ -87,7 +105,7 @@ TestCase {
         logger.info("------------------------------------------------")
     }
 
-    function run_test_fn(name, fn) {
+    function run_case(name, fn) {
         try {
             start_test_fn(name)
             fn()

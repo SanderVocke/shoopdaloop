@@ -100,7 +100,7 @@ Session {
         }
 
         function test_direct_monitor() {
-            run_test_fn('test_direct_monitor', () => {
+            run_case('test_direct_monitor', () => {
                 check_backend()
                 reset()
                 tut_control().monitor = true
@@ -124,7 +124,7 @@ Session {
         }
 
         function test_direct_monitor_input_volume() {
-            run_test_fn('test_direct_monitor_input_volume', () => {
+            run_case('test_direct_monitor_input_volume', () => {
                 check_backend()
                 reset()
                 tut_control().monitor = true
@@ -149,7 +149,7 @@ Session {
         }
 
         function test_direct_monitor_output_volume() {
-            run_test_fn('test_direct_monitor_output_volume', () => {
+            run_case('test_direct_monitor_output_volume', () => {
                 check_backend()
                 reset()
                 tut_control().monitor = true
@@ -174,7 +174,7 @@ Session {
         }
 
         function test_direct_monitor_output_balance_left() {
-            run_test_fn('test_direct_monitor_balance_left', () => {
+            run_case('test_direct_monitor_balance_left', () => {
                 check_backend()
                 reset()
                 tut_control().monitor = true
@@ -200,7 +200,7 @@ Session {
         }
 
         function test_direct_monitor_output_balance_right() {
-            run_test_fn('test_direct_monitor_output_balance_right', () => {
+            run_case('test_direct_monitor_output_balance_right', () => {
                 check_backend()
                 reset()
                 tut_control().monitor = true
@@ -226,7 +226,7 @@ Session {
         }
 
         function test_direct_no_monitor() {
-            run_test_fn('test_direct_no_monitor', () => {
+            run_case('test_direct_no_monitor', () => {
                 check_backend()
                 reset()
                 tut_control().monitor = false
@@ -250,7 +250,7 @@ Session {
         }
 
         function test_direct_monitor_mute() {
-            run_test_fn('test_direct_monitor_mute', () => {
+            run_case('test_direct_monitor_mute', () => {
                 check_backend()
                 reset()
                 tut_control().monitor = true

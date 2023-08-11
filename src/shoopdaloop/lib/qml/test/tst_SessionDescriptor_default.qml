@@ -22,7 +22,7 @@ Session {
         session: session
 
         function test_session_descriptor_default() {
-            run_test_fn('test_session_descriptor_default', () => {
+            run_case('test_session_descriptor_default', () => {
                 check_backend()
 
                 testcase.wait(500)

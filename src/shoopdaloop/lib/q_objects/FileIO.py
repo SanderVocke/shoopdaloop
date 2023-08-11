@@ -22,7 +22,7 @@ from ..logging import Logger
 class FileIO(QThread):
     def __init__(self, parent=None):
         super(FileIO, self).__init__(parent)
-        self.logger = Logger("FileIO")
+        self.logger = Logger("Frontend.FileIO")
 
     startSavingFile = Signal()
     doneSavingFile = Signal()
@@ -221,26 +221,25 @@ class FileIO(QThread):
             else:
                 # Sf gives NcxNs, we want NsxNc
                 data = np.swapaxes(data, 0, 1)
-            n_file_samples = len(data[0])
-            n_target_samples = int(float(n_file_samples) / float(file_sample_rate) * float(target_sample_rate))
 
             target_sample_rate = int(target_sample_rate)
             file_sample_rate = int(file_sample_rate)
             resampled = data
             if target_sample_rate != file_sample_rate:
+                self.logger.debug("Resampling {} from {} to {}".format(filename, file_sample_rate, target_sample_rate))
                 resampled = resampy.resample(data, file_sample_rate, target_sample_rate)
             
-            if len(channels_to_loop_channels) > len(data):
-                self.logger.error("Need {} channels, but loaded file only has {}".format(len(channels_to_loop_channels), len(data)))
+            if len(channels_to_loop_channels) > len(resampled):
+                self.logger.error("Need {} channels, but loaded file only has {}".format(len(channels_to_loop_channels), len(resampled)))
                 return
 
-            for d in data:
+            for d in resampled:
                 if maybe_target_data_length != None and len(d) > maybe_target_data_length:
                     del d[maybe_target_data_length:]
                 while maybe_target_data_length != None and len(d) < maybe_target_data_length:
                     d.append(d[len(d)-1])
 
-            for idx, data_channel in enumerate(data):
+            for idx, data_channel in enumerate(resampled):
                 channels = channels_to_loop_channels[idx]
                 for channel in channels:
                     channel.load_data(data_channel)
@@ -248,10 +247,10 @@ class FileIO(QThread):
                     self.logger.debug("load channel: {} samples, result {}".format(len(data_channel), channel.data_length))
             
             if maybe_loop_set_length:
-                self.logger.debug("Set loop length to {}".format(len(data[0])))
-                maybe_loop_set_length.set_length(len(data[0]))
+                self.logger.debug("Set loop length to {}".format(len(resampled[0])))
+                maybe_loop_set_length.set_length(len(resampled[0]))
 
-            self.logger.info("Loaded {}-channel audio from {} ({} samples)".format(len(data), filename, len(data[0])))
+            self.logger.info("Loaded {}-channel audio from {} ({} samples)".format(len(resampled), filename, len(resampled[0])))
         finally:
             self.doneLoadingFile.emit()
     

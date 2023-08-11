@@ -132,7 +132,7 @@ Session {
         }
 
         function test_drywet_record_no_monitor() {
-            run_test_fn('test_drywet_record_no_monitor', () => {
+            run_case('test_drywet_record_no_monitor', () => {
                 check_backend()
                 reset()
                 tut_control().monitor = false
@@ -166,7 +166,7 @@ Session {
         }
 
         function test_drywet_record_monitor() {
-            run_test_fn('test_drywet_record_monitor', () => {
+            run_case('test_drywet_record_monitor', () => {
                 check_backend()
                 reset()
                 tut_control().monitor = true
@@ -200,7 +200,7 @@ Session {
         }
 
         function test_drywet_play_no_monitor() {
-            run_test_fn('test_drywet_play_no_monitor', () => {
+            run_case('test_drywet_play_no_monitor', () => {
                 check_backend()
                 reset()
                 tut_control().monitor = false
@@ -239,7 +239,7 @@ Session {
         }
 
         function test_drywet_play_monitor() {
-            run_test_fn('test_drywet_play_monitor', () => {
+            run_case('test_drywet_play_monitor', () => {
                 check_backend()
                 reset()
                 tut_control().monitor = true
@@ -278,7 +278,7 @@ Session {
         }
 
         function test_drywet_playdry_no_monitor() {
-            run_test_fn('test_drywet_playdry_no_monitor', () => {
+            run_case('test_drywet_playdry_no_monitor', () => {
                 check_backend()
                 reset()
                 tut_control().monitor = false
@@ -319,7 +319,7 @@ Session {
         }
 
         function test_drywet_playdry_monitor() {
-            run_test_fn('test_drywet_playdry_monitor', () => {
+            run_case('test_drywet_playdry_monitor', () => {
                 check_backend()
                 reset()
                 tut_control().monitor = true
@@ -358,7 +358,7 @@ Session {
         }
 
         function test_drywet_rerecord_no_monitor() {
-            run_test_fn('test_drywet_rerecord_no_monitor', () => {
+            run_case('test_drywet_rerecord_no_monitor', () => {
                 check_backend()
                 reset()
                 tut_control().monitor = false
@@ -399,7 +399,7 @@ Session {
         }
 
         function test_drywet_rerecord_monitor() {
-            run_test_fn('test_drywet_rerecord_monitor', () => {
+            run_case('test_drywet_rerecord_monitor', () => {
                 check_backend()
                 reset()
                 tut_control().monitor = true
