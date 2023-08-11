@@ -16,7 +16,7 @@ jobs:
       - uses: actions/setup-python@v3
       - name: Install dependencies
         run: |
-          pip install sphinx sphinx-material sphinxcontrib.fulltoc
+          pip install sphinx sphinx-material sphinxcontrib.fulltoc sphinxcontrib.plantuml
       - name: Sphinx build
         run: |
           sphinx-build docs/source _build
