@@ -15,11 +15,11 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions/setup-python@v3
 
-      - name: Cache apt packages
-        uses: awalsh128/cache-apt-pkgs-action@latest
-        with:
-          packages: graphviz plantuml
-          version: 1.0
+      - name: Download and install PlantUML
+        run: |
+          wget https://github.com/plantuml/plantuml/releases/download/v1.2023.10/plantuml-1.2023.10.jar
+          sudo cp plantuml-1.2023.10.jar /usr/bin/plantuml.jar
+          printf '#!/bin/sh\njava -jar /usr/bin/plantuml.jar $@' > /usr/bin/plantuml
 
       - name: Install dependencies
         run: |
