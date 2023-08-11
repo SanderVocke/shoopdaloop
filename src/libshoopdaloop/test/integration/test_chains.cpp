@@ -25,7 +25,7 @@ struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled {
 
     shoopdaloop_backend_instance_t *api_backend;
     std::shared_ptr<Backend> int_backend;
-    shoop_types::_DummyAudioSystem *int_dummy_audio_system;
+    shoop_types::_DummyAudioSystem* int_dummy_audio_system;
 
     shoopdaloop_audio_port_t *api_input_port;
     std::shared_ptr<ConnectedPort> int_input_port;
