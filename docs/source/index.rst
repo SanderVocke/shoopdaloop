@@ -13,5 +13,5 @@ ShoopDaLoop
    :caption: Contents:
    
    concept
-   details
+   usage
    developers
