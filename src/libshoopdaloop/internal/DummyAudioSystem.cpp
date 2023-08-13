@@ -6,6 +6,7 @@
 #define IMPLEMENT_DUMMYAUDIOSYSTEM_H
 #include "DummyAudioSystem.h"
 #include <map>
+#include <algorithm>
 
 template class DummyAudioSystem<uint32_t, uint16_t>;
 template class DummyAudioSystem<uint32_t, uint32_t>;
@@ -93,11 +94,13 @@ std::vector<audio_sample_t> DummyAudioPort::dequeue_data(size_t n) {
     return rval;
 }
 
-size_t DummyMidiPort::PROC_get_n_events() const { return 0; }
-
 MidiSortableMessageInterface &
 DummyMidiPort::PROC_get_event_reference(size_t idx) {
-    throw std::runtime_error("Dummy midi port cannot read messages");
+    try {
+        return m_queued_msgs.at(idx);
+    } catch (std::out_of_range &e) {
+        throw std::runtime_error("Dummy midi port read error");
+    }
 }
 
 void DummyMidiPort::PROC_write_event_value(uint32_t size, uint32_t time,
@@ -134,12 +137,38 @@ void DummyMidiPort::request_data(size_t n_frames) {
 
 MidiReadableBufferInterface &
 DummyMidiPort::PROC_get_read_buffer(size_t n_frames) {
+    current_buf_frames = n_frames;
     return *(static_cast<MidiReadableBufferInterface *>(this));
 }
 
 MidiWriteableBufferInterface &
 DummyMidiPort::PROC_get_write_buffer(size_t n_frames) {
+    current_buf_frames = n_frames;
     return *(static_cast<MidiWriteableBufferInterface *>(this));
+}
+
+void DummyMidiPort::PROC_post_process(size_t n_frames) {
+    // Decrement timestamps of all midi messages.
+
+    // (first erase those that will end up having a negative timestamp)
+    std::erase_if(m_queued_msgs, [&](StoredMessage const& msg) {
+        return msg.time < n_frames;
+    });
+    std::for_each(m_queued_msgs.begin(), m_queued_msgs.end(), [&](StoredMessage &msg) {
+        msg.time -= n_frames;
+    });
+}
+
+size_t DummyMidiPort::PROC_get_n_events() const {
+    size_t r = 0;
+    for (auto it = m_queued_msgs.begin(); it != m_queued_msgs.end(); ++it) {
+        if (it->time < current_buf_frames) {
+            r++;
+        } else {
+            break;
+        }
+    }
+    return r;
 }
 
 DummyMidiPort::~DummyMidiPort() { close(); }

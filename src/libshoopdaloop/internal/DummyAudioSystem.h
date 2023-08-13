@@ -60,7 +60,12 @@ public:
 private:
     std::string m_name;
     PortDirection m_direction;
+
+    // Queued messages as external input to the port
     std::vector<StoredMessage> m_queued_msgs;
+    std::atomic<size_t> current_buf_frames;
+
+    // Amount of frames requested for reading externally out of the port
     std::atomic<size_t> n_requested_frames;
 
 public:
