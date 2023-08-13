@@ -67,6 +67,8 @@ private:
 
     // Amount of frames requested for reading externally out of the port
     std::atomic<size_t> n_requested_frames;
+    std::atomic<size_t> n_original_requested_frames;
+    std::vector<StoredMessage> m_written_requested_msgs;
 
 public:
     size_t PROC_get_n_events() const override;
@@ -94,8 +96,12 @@ public:
     bool get_queue_empty();
 
     void PROC_post_process(size_t n_frames);
+    // Request a certain number of frames to be stored.
+    // Not allowed if previous request was not yet completed.
     void request_data(size_t n_frames);
-    std::vector<StoredMessage> dequeue_data(size_t n);
+    // Dequeue messages written during the requested period.
+    // Timestamps are relative to when the request was made.
+    std::vector<StoredMessage> get_written_requested_msgs();
 
     ~DummyMidiPort() override;
 };

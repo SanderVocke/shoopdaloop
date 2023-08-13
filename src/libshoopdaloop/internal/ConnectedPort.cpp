@@ -184,9 +184,13 @@ void ConnectedPort::PROC_finalize_process(size_t n_frames) {
         }
     }
 
-    auto maybe_dummy = dynamic_cast<DummyAudioPort*>(port.get());
-    if (maybe_dummy) {
-        maybe_dummy->PROC_post_process(maybe_audio_buffer, n_frames);       
+    auto maybe_dummy_audio = dynamic_cast<DummyAudioPort*>(port.get());
+    if (maybe_dummy_audio) {
+        maybe_dummy_audio->PROC_post_process(maybe_audio_buffer, n_frames);       
+    }
+    auto maybe_dummy_midi = dynamic_cast<DummyMidiPort*>(port.get());
+    if (maybe_dummy_midi) {
+        maybe_dummy_midi->PROC_post_process(n_frames);       
     }
 }
 

@@ -104,10 +104,19 @@ DummyMidiPort::PROC_get_event_reference(size_t idx) {
 }
 
 void DummyMidiPort::PROC_write_event_value(uint32_t size, uint32_t time,
-                                           const uint8_t *data) {}
+                                           const uint8_t *data)
+{
+    if (time < n_requested_frames) {
+        size_t new_time = time + (n_original_requested_frames - n_requested_frames);
+        m_written_requested_msgs.push_back(StoredMessage(new_time, size, std::vector<uint8_t>(data, data + size)));
+    }                                           
+}
 
 void DummyMidiPort::PROC_write_event_reference(
-    MidiSortableMessageInterface const &m) {}
+    MidiSortableMessageInterface const &m)
+{
+    PROC_write_event_value(m.get_size(), m.get_time(), m.get_data());    
+}
 
 bool DummyMidiPort::write_by_reference_supported() const { return true; }
 
@@ -125,6 +134,9 @@ void DummyMidiPort::close() {}
 
 void DummyMidiPort::queue_msg(const DummyMidiPort::StoredMessage &msg) {
     m_queued_msgs.push_back(msg);
+    std::stable_sort(m_queued_msgs.begin(), m_queued_msgs.end(), [](StoredMessage const& a, StoredMessage const& b) {
+        return a.time < b.time;
+    });
 }
 
 bool DummyMidiPort::get_queue_empty() {
@@ -132,7 +144,11 @@ bool DummyMidiPort::get_queue_empty() {
 }
 
 void DummyMidiPort::request_data(size_t n_frames) {
-    n_requested_frames += n_frames;
+    if (n_requested_frames > 0) {
+        throw std::runtime_error("Previous request not yet completed");
+    }
+    n_requested_frames = n_frames;
+    n_original_requested_frames = n_frames;
 }
 
 MidiReadableBufferInterface &
@@ -157,6 +173,7 @@ void DummyMidiPort::PROC_post_process(size_t n_frames) {
     std::for_each(m_queued_msgs.begin(), m_queued_msgs.end(), [&](StoredMessage &msg) {
         msg.time -= n_frames;
     });
+    n_requested_frames -= std::min(n_requested_frames.load(), n_frames);
 }
 
 size_t DummyMidiPort::PROC_get_n_events() const {
@@ -169,6 +186,10 @@ size_t DummyMidiPort::PROC_get_n_events() const {
         }
     }
     return r;
+}
+
+std::vector<DummyMidiPort::StoredMessage> DummyMidiPort::get_written_requested_msgs() {
+    return m_written_requested_msgs;
 }
 
 DummyMidiPort::~DummyMidiPort() { close(); }
