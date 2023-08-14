@@ -20,10 +20,10 @@ Session {
             "tut",
             false,
             "tut",
-            2,
-            2,
+            2, // dry audio
+            2, // wet audio
             0,
-            false,
+            true, // dry MIDI
             false,
             false,
             "test2x2x1"
@@ -74,6 +74,13 @@ Session {
         property alias output_port_2: lookup_output_port_2.object
 
         RegistryLookup {
+            id: lookup_midi_input_port
+            registry: session.objects_registry
+            key: "tut_direct_dry_in"
+        }
+        property alias midi_input_port: lookup_midi_input_port.object
+
+        RegistryLookup {
             id: lookup_fx
             registry: session.objects_registry
             key: "tut_fx_chain"
@@ -86,6 +93,7 @@ Session {
             verify_throw(input_port_2)
             verify_throw(output_port_1)
             verify_throw(output_port_2)
+            verify_throw(midi_input_port)
             verify_throw(fx)
             verify_throw(tut)
             reset()

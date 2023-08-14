@@ -213,7 +213,7 @@ MidiChannel<TimeType, SizeType>::PROC_process(loop_mode_t mode, std::optional<lo
                 (mp_prev_process_flags & ChannelPlayback) &&
                 ((!process_flags & ChannelPlayback) ||
                  pos_before != mp_prev_pos_after);
-            if (playback_interrupted) {
+            if (playback_interrupted && n_samples > 0) {
                 log<LogLevel::debug>("Playback interrupted -> All Sound Off");
                 PROC_send_all_sound_off();
             }
