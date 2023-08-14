@@ -205,7 +205,6 @@ void DummyMidiPort::PROC_post_process(size_t n_frames) {
     // Decrement timestamps of all midi messages.
 
     n_requested_frames -= std::min(n_requested_frames.load(), n_frames);
-    if (n_requested_frames == 0) { n_original_requested_frames = 0; }
     m_update_queue_by_frames_pending = n_frames;
 }
 

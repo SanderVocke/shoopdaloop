@@ -126,6 +126,7 @@ TestCase {
         } catch (e) {
             let failstring = `Uncaught exception: ${e.message} (${e.name}}`
             logger.error(format_error(failstring, e.stack))
+            throw e
         }
     }
 }
