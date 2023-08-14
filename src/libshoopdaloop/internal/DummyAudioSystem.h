@@ -92,7 +92,7 @@ public:
     MidiReadableBufferInterface &PROC_get_read_buffer (size_t n_frames) override;
     MidiWriteableBufferInterface &PROC_get_write_buffer (size_t n_frames) override;
 
-    void queue_msg(StoredMessage const& msg);
+    void queue_msg(uint32_t size, uint32_t time, const uint8_t* data);
     bool get_queue_empty();
 
     void PROC_post_process(size_t n_frames);

@@ -44,11 +44,11 @@ shoopdaloop_fx_chain_t* external_fx_chain(std::shared_ptr<ConnectedFXChain> chai
 
 audio_channel_data_t *external_audio_data(std::vector<audio_sample_t> f);
 
-midi_channel_data_t *external_midi_data(std::vector<_MidiMessage> m);
+midi_sequence_t *external_midi_data(std::vector<_MidiMessage> m);
 
 std::vector<float> internal_audio_data(audio_channel_data_t const& d);
 
-std::vector<_MidiMessage> internal_midi_data(midi_channel_data_t const& d);
+std::vector<_MidiMessage> internal_midi_data(midi_sequence_t const& d);
 
 shoopdaloop_decoupled_midi_port_t *external_decoupled_midi_port(std::shared_ptr<ConnectedDecoupledMidiPort> port);
 

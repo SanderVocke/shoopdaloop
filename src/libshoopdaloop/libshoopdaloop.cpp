@@ -136,8 +136,8 @@ audio_channel_data_t *external_audio_data(std::vector<audio_sample_t> f) {
     return d;
 }
 
-midi_channel_data_t *external_midi_data(std::vector<_MidiMessage> m) {
-    auto d = new midi_channel_data_t;
+midi_sequence_t *external_midi_data(std::vector<_MidiMessage> m) {
+    auto d = new midi_sequence_t;
     d->n_events = m.size();
     d->events = (midi_event_t**) malloc(sizeof(midi_event_t*) * m.size());
     for (size_t idx=0; idx < m.size(); idx++) {
@@ -156,7 +156,7 @@ std::vector<float> internal_audio_data(audio_channel_data_t const& d) {
     return r;
 }
 
-std::vector<_MidiMessage> internal_midi_data(midi_channel_data_t const& d) {
+std::vector<_MidiMessage> internal_midi_data(midi_sequence_t const& d) {
     auto r = std::vector<_MidiMessage>(d.n_events);
     for (size_t idx=0; idx < d.n_events; idx++) {
         auto &from = *d.events[idx];
@@ -503,7 +503,7 @@ audio_channel_data_t *get_audio_channel_data (shoopdaloop_loop_audio_channel_t *
         chan.backend.lock()->cmd_queue);
 }
 
-midi_channel_data_t *get_midi_channel_data (shoopdaloop_loop_midi_channel_t  *channel) {
+midi_sequence_t *get_midi_channel_data (shoopdaloop_loop_midi_channel_t  *channel) {
     init_log();
     g_logger->debug("get_midi_channel_data");
     auto &chan = *internal_midi_channel(channel);
@@ -525,7 +525,7 @@ void load_audio_channel_data  (shoopdaloop_loop_audio_channel_t *channel, audio_
         chan.backend.lock()->cmd_queue);
 }
 
-void load_midi_channel_data (shoopdaloop_loop_midi_channel_t  *channel, midi_channel_data_t  *data) {
+void load_midi_channel_data (shoopdaloop_loop_midi_channel_t  *channel, midi_sequence_t  *data) {
     init_log();
     g_logger->debug("load_midi_channel_data");
     auto &chan = *internal_midi_channel(channel);
@@ -815,10 +815,11 @@ midi_event_t *alloc_midi_event(size_t data_bytes) {
     return r;
 }
 
-midi_channel_data_t *alloc_midi_channel_data(size_t n_events) {
-    auto r = new midi_channel_data_t;
+midi_sequence_t *alloc_midi_sequence(size_t n_events) {
+    auto r = new midi_sequence_t;
     r->n_events = n_events;
     r->events = (midi_event_t**)malloc (sizeof(midi_event_t*) * n_events);
+    r->length_samples = 0;
     return r;
 }
 
@@ -1094,7 +1095,7 @@ void destroy_midi_event(midi_event_t *e) {
     delete e;
 }
 
-void destroy_midi_channel_data(midi_channel_data_t *d) {
+void destroy_midi_sequence(midi_sequence_t *d) {
     for(size_t idx=0; idx<d->n_events; idx++) {
         destroy_midi_event(d->events[idx]);
     }
@@ -1284,7 +1285,7 @@ void dummy_audio_port_queue_data(shoopdaloop_audio_port_t *port, size_t n_frames
     if (maybe_dummy) {
         maybe_dummy->queue_data(n_frames, data);
     } else {
-        g_logger->error("dummy_audio_port_queue_data called on non-dummy port");
+        g_logger->error("dummy_audio_port_queue_data called on non-dummy-audio port");
     }
 }
 
@@ -1296,7 +1297,53 @@ void dummy_audio_port_dequeue_data(shoopdaloop_audio_port_t *port, size_t n_fram
         auto data = maybe_dummy->dequeue_data(n_frames);
         memcpy((void*)store_in, (void*)data.data(), sizeof(audio_sample_t) * n_frames);
     } else {
-        g_logger->error("dummy_audio_port_queue_data called on non-dummy port");
+        g_logger->error("dummy_audio_port_queue_data called on non-dummy-audio port");
+    }
+}
+void dummy_midi_port_queue_data(shoopdaloop_midi_port_t *port, midi_sequence_t* events) {
+    init_log();
+    g_logger->debug("dummy_midi_port_queue_data");
+    auto maybe_dummy = dynamic_cast<DummyMidiPort*>(internal_midi_port(port)->maybe_midi());
+    if (maybe_dummy) {
+        for(size_t i=0; i<events->n_events; i++) {
+            auto &e = events->events[i];
+            maybe_dummy->queue_msg(
+                e->size, e->time, e->data
+            );
+        }
+    } else {
+        g_logger->error("dummy_midi_port_queue_data called on non-dummy0midi port");
+    }
+}
+
+midi_sequence_t *dummy_midi_port_dequeue_data(shoopdaloop_midi_port_t *port) {
+    init_log();
+    g_logger->debug("dummy_midi_port_queue_data");
+    auto maybe_dummy = dynamic_cast<DummyMidiPort*>(internal_midi_port(port)->maybe_midi());
+    if (maybe_dummy) {
+        auto msgs = maybe_dummy->get_written_requested_msgs();
+        midi_sequence_t *rval = alloc_midi_sequence(msgs.size());
+        for (size_t i=0; i<msgs.size(); i++) {
+            auto &e = msgs[i];
+            rval->events[i] = alloc_midi_event(e.get_size());
+            rval->events[i]->size = e.get_size();
+            rval->events[i]->time = e.get_time();
+            memcpy((void*)rval->events[i]->data, (void*)e.get_data(), e.get_size());
+        }
+        rval->n_events = msgs.size();
+        rval->length_samples = msgs.back().time+1;
+        return rval;
+    } else {
+        g_logger->error("dummy_midi_port_queue_data called on non-dummy0midi port");
+        return nullptr;
+    }
+}
+void dummy_midi_port_request_data(shoopdaloop_midi_port_t* port, size_t n_frames) {
+    init_log();
+    g_logger->debug("dummy_midi_port_queue_data");
+    auto maybe_dummy = dynamic_cast<DummyMidiPort*>(internal_midi_port(port)->maybe_midi());
+    if (maybe_dummy) {
+        maybe_dummy->request_data(n_frames);
     }
 }
 

@@ -132,8 +132,8 @@ PortDirection DummyMidiPort::direction() const { return m_direction; }
 
 void DummyMidiPort::close() {}
 
-void DummyMidiPort::queue_msg(const DummyMidiPort::StoredMessage &msg) {
-    m_queued_msgs.push_back(msg);
+void DummyMidiPort::queue_msg(uint32_t size, uint32_t time, uint8_t const *data) {
+    m_queued_msgs.push_back(StoredMessage(time, size, std::vector<uint8_t>(data, data + size)));
     std::stable_sort(m_queued_msgs.begin(), m_queued_msgs.end(), [](StoredMessage const& a, StoredMessage const& b) {
         return a.time < b.time;
     });

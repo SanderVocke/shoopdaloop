@@ -55,14 +55,27 @@ TestCase {
         verify(result, failstring)
     }
 
-    function verify_eq(a, b) {
+    function verify_eq(a, b, stringify=false) {
         var result;
-        let failstring = `verify_eq failed (a = ${a}, b = ${b})`
-        if (Array.isArray(a) && Array.isArray(b)) {
-            result = TestDeepEqual.testArraysCompare(a, b);
+
+        let failstring = ''
+        if (stringify) {
+            failstring = `verify_eq failed (a = ${JSON.stringify(a, null, 2)}, b = ${JSON.stringify(b, null, 2)})`
         } else {
-            result = a == b;
+            failstring = `verify_eq failed (a = ${a}, b = ${b})`
         }
+
+        let compare = (a, b) => {
+            if (Array.isArray(a) && Array.isArray(b)) {
+                return TestDeepEqual.testArraysCompare(a, b, compare);
+            } else if (TestDeepEqual.isObject(a) && TestDeepEqual.isObject(b)) {
+                return TestDeepEqual.testDeepEqual(a, b);
+            } else {
+                return a == b;
+            }
+        }
+        result = compare(a,b);
+        
         if (!result) {
             logger.error(format_error(failstring))
         }

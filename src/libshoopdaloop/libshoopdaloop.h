@@ -45,9 +45,9 @@ void                   disconnect_midi_inputs  (shoopdaloop_loop_midi_channel_t 
 void                   disconnect_audio_input  (shoopdaloop_loop_audio_channel_t *channel, shoopdaloop_audio_port_t* port);
 void                   disconnect_midi_input   (shoopdaloop_loop_midi_channel_t  *channel, shoopdaloop_midi_port_t* port);
 audio_channel_data_t  *get_audio_channel_data   (shoopdaloop_loop_audio_channel_t *channel);
-midi_channel_data_t   *get_midi_channel_data    (shoopdaloop_loop_midi_channel_t  *channel);
+midi_sequence_t   *get_midi_channel_data    (shoopdaloop_loop_midi_channel_t  *channel);
 void                   load_audio_channel_data  (shoopdaloop_loop_audio_channel_t *channel, audio_channel_data_t *data);
-void                   load_midi_channel_data   (shoopdaloop_loop_midi_channel_t  *channel, midi_channel_data_t  *data);
+void                   load_midi_channel_data   (shoopdaloop_loop_midi_channel_t  *channel, midi_sequence_t  *data);
 audio_channel_state_info_t *get_audio_channel_state  (shoopdaloop_loop_audio_channel_t *channel);
 void                   set_audio_channel_volume (shoopdaloop_loop_audio_channel_t *channel, float volume);
 midi_channel_state_info_t  *get_midi_channel_state   (shoopdaloop_loop_midi_channel_t  *channel);
@@ -108,7 +108,7 @@ void send_decoupled_midi(shoopdaloop_decoupled_midi_port_t *port, unsigned lengt
 // Helpers for freeing any objects/handles obtained from this API.
 // This will always safely destroy, including breaking any made connections to other objects, etc.
 void destroy_midi_event(midi_event_t *d);
-void destroy_midi_channel_data(midi_channel_data_t *d);
+void destroy_midi_sequence(midi_sequence_t *d);
 void destroy_audio_channel_data(audio_channel_data_t *d);
 void destroy_audio_channel_state_info(audio_channel_state_info_t *d);
 void destroy_midi_channel_state_info(midi_channel_state_info_t *d);
@@ -129,7 +129,7 @@ void destroy_string(const char* s);
 
 // Helpers for allocating data objects
 midi_event_t *alloc_midi_event(size_t data_bytes);
-midi_channel_data_t *alloc_midi_channel_data(size_t n_events);
+midi_sequence_t *alloc_midi_sequence(size_t n_events);
 audio_channel_data_t *alloc_audio_channel_data(size_t n_samples);
 
 // Logging
@@ -149,6 +149,9 @@ unsigned dummy_audio_is_in_controlled_mode(shoopdaloop_backend_instance_t *backe
 void dummy_audio_request_controlled_frames(shoopdaloop_backend_instance_t *backend, size_t n_frames);
 size_t dummy_audio_n_requested_frames(shoopdaloop_backend_instance_t *backend);
 void dummy_audio_wait_process(shoopdaloop_backend_instance_t *backend);
+void dummy_midi_port_queue_data(shoopdaloop_midi_port_t *port, midi_sequence_t* events);
+midi_sequence_t   *dummy_midi_port_dequeue_data(shoopdaloop_midi_port_t *port);
+void dummy_midi_port_request_data(shoopdaloop_midi_port_t* port, size_t n_frames);
 
 #ifdef __cplusplus
 }
