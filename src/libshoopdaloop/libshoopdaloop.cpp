@@ -723,13 +723,13 @@ void add_midi_port_passthrough(shoopdaloop_midi_port_t *from, shoopdaloop_midi_p
 
 void set_audio_port_muted(shoopdaloop_audio_port_t *port, unsigned int muted) {
     init_log();
-    g_logger->debug("set_audio_port_muted");
+    g_logger->debug("set_audio_port_muted {}", muted);
     internal_audio_port(port)->muted = (bool)muted;
 }
 
 void set_audio_port_passthroughMuted(shoopdaloop_audio_port_t *port, unsigned int muted) {
     init_log();
-    g_logger->debug("set_audio_port_passthroughMuted");
+    g_logger->debug("set_audio_port_passthroughMuted {}", muted);
     internal_audio_port(port)->passthrough_muted = (bool)muted;
 }
 
@@ -741,13 +741,13 @@ void set_audio_port_volume(shoopdaloop_audio_port_t *port, float volume) {
 
 void set_midi_port_muted(shoopdaloop_midi_port_t *port, unsigned int muted) {
     init_log();
-    g_logger->debug("set_midi_port_muted");
+    g_logger->debug("set_midi_port_muted {}", muted);
     internal_midi_port(port)->muted = (bool)muted;
 }
 
 void set_midi_port_passthroughMuted(shoopdaloop_midi_port_t *port, unsigned int muted) {
     init_log();
-    g_logger->debug("set_midi_port_passthroughMuted");
+    g_logger->debug("set_midi_port_passthroughMuted {}", muted);
     internal_midi_port(port)->passthrough_muted = (bool)muted;
 }
 
@@ -1318,7 +1318,7 @@ void dummy_midi_port_queue_data(shoopdaloop_midi_port_t *port, midi_sequence_t* 
 
 midi_sequence_t *dummy_midi_port_dequeue_data(shoopdaloop_midi_port_t *port) {
     init_log();
-    g_logger->debug("dummy_midi_port_queue_data");
+    g_logger->debug("dummy_midi_port_dequeue_data");
     auto maybe_dummy = dynamic_cast<DummyMidiPort*>(internal_midi_port(port)->maybe_midi());
     if (maybe_dummy) {
         auto msgs = maybe_dummy->get_written_requested_msgs();
@@ -1331,10 +1331,10 @@ midi_sequence_t *dummy_midi_port_dequeue_data(shoopdaloop_midi_port_t *port) {
             memcpy((void*)rval->events[i]->data, (void*)e.get_data(), e.get_size());
         }
         rval->n_events = msgs.size();
-        rval->length_samples = msgs.back().time+1;
+        rval->length_samples = msgs.size()? msgs.back().time+1 : 0;
         return rval;
     } else {
-        g_logger->error("dummy_midi_port_queue_data called on non-dummy0midi port");
+        g_logger->error("dummy_midi_port_dequeue_data called on non-dummy-midi port");
         return nullptr;
     }
 }
@@ -1344,6 +1344,15 @@ void dummy_midi_port_request_data(shoopdaloop_midi_port_t* port, size_t n_frames
     auto maybe_dummy = dynamic_cast<DummyMidiPort*>(internal_midi_port(port)->maybe_midi());
     if (maybe_dummy) {
         maybe_dummy->request_data(n_frames);
+    }
+}
+
+void dummy_midi_port_clear_queues(shoopdaloop_midi_port_t* port) {
+    init_log();
+    g_logger->debug("dummy_midi_port_clear_queues");
+    auto maybe_dummy = dynamic_cast<DummyMidiPort*>(internal_midi_port(port)->maybe_midi());
+    if (maybe_dummy) {
+        maybe_dummy->clear_queues();
     }
 }
 

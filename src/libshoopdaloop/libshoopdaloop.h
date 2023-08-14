@@ -152,6 +152,7 @@ void dummy_audio_wait_process(shoopdaloop_backend_instance_t *backend);
 void dummy_midi_port_queue_data(shoopdaloop_midi_port_t *port, midi_sequence_t* events);
 midi_sequence_t   *dummy_midi_port_dequeue_data(shoopdaloop_midi_port_t *port);
 void dummy_midi_port_request_data(shoopdaloop_midi_port_t* port, size_t n_frames);
+void dummy_midi_port_clear_queues(shoopdaloop_midi_port_t* port);
 
 #ifdef __cplusplus
 }

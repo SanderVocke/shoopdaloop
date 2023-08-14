@@ -53,11 +53,15 @@ public:
     std::vector<audio_sample_t> dequeue_data(size_t n);
 };
 
-class DummyMidiPort : public MidiPortInterface, public MidiReadableBufferInterface, public MidiWriteableBufferInterface {
+class DummyMidiPort : public MidiPortInterface,
+                      public MidiReadableBufferInterface,
+                      public MidiWriteableBufferInterface,
+                      private ModuleLoggingEnabled {
 public:
     using StoredMessage = MidiMessage<uint32_t, uint32_t>;
     
 private:
+    std::string log_module_name() const override;
     std::string m_name;
     PortDirection m_direction;
 
@@ -68,6 +72,7 @@ private:
     // Amount of frames requested for reading externally out of the port
     std::atomic<size_t> n_requested_frames;
     std::atomic<size_t> n_original_requested_frames;
+    std::atomic<size_t> m_update_queue_by_frames_pending = 0;
     std::vector<StoredMessage> m_written_requested_msgs;
 
 public:
@@ -94,6 +99,8 @@ public:
 
     void queue_msg(uint32_t size, uint32_t time, const uint8_t* data);
     bool get_queue_empty();
+    
+    void clear_queues();
 
     void PROC_post_process(size_t n_frames);
     // Request a certain number of frames to be stored.

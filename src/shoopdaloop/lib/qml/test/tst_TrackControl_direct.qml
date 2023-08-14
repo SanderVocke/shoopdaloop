@@ -157,12 +157,18 @@ Session {
                     { 'time': 3, 'data': [0x90, 50,  50]  },
                 ]
 
+                midi_input_port.dummy_clear_queues()
+                midi_output_port.dummy_clear_queues()
+
                 midi_input_port.dummy_queue_msgs(msgs)
                 midi_output_port.dummy_request_data(4)
                 session.backend.dummy_request_controlled_frames(4)
                 session.backend.dummy_wait_process()
 
                 let out = midi_output_port.dummy_dequeue_data()
+
+                midi_input_port.dummy_clear_queues()
+                midi_output_port.dummy_clear_queues()
 
                 verify_eq(out, expect_out, true)
             })
@@ -298,7 +304,7 @@ Session {
             run_case('test_direct_midi_no_monitor', () => {
                 check_backend()
                 reset()
-                tut_control().monitor = true
+                tut_control().monitor = false
                 tut_control().mute = false
                 testcase.wait(50)
 
@@ -308,12 +314,18 @@ Session {
                     { 'time': 4, 'data': [0x90, 10,  10]  }
                 ]
 
+                midi_input_port.dummy_clear_queues()
+                midi_output_port.dummy_clear_queues()
+
                 midi_input_port.dummy_queue_msgs(msgs)
                 midi_output_port.dummy_request_data(4)
                 session.backend.dummy_request_controlled_frames(4)
                 session.backend.dummy_wait_process()
 
                 let out = midi_output_port.dummy_dequeue_data()
+
+                midi_input_port.dummy_clear_queues()
+                midi_output_port.dummy_clear_queues()
 
                 verify_eq(out, [], true)
             })

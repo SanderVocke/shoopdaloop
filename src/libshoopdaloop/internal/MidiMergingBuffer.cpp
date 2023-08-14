@@ -32,7 +32,7 @@ MidiMergingBuffer::PROC_get_event_reference(size_t idx) {
 
 void MidiMergingBuffer::PROC_sort() {
     if (dirty) {
-        std::sort(references.begin(), references.end(), compare);
+        std::stable_sort(references.begin(), references.end(), compare);
         dirty = false;
     }
 }

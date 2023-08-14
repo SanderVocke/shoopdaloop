@@ -473,6 +473,9 @@ class BackendMidiPort:
     def connect_passthrough(self, other):
         add_midi_port_passthrough(self._c_handle, other.c_handle())
 
+    def dummy_clear_queues(self):
+        dummy_midi_port_clear_queues(self._c_handle)
+
     def dummy_queue_msg(self, msg):
         return self.dummy_queue_msgs([msg])
     

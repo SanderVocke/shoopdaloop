@@ -76,6 +76,10 @@ class MidiPort(Port):
     def dummy_request_data(self, n_frames):
         self._backend_obj.dummy_request_data(n_frames)
     
+    @Slot()
+    def dummy_clear_queues(self):
+        self._backend_obj.dummy_clear_queues()
+    
     ##########
     ## INTERNAL MEMBERS
     ##########
