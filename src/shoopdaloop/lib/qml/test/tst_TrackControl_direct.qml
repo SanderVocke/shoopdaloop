@@ -294,6 +294,31 @@ Session {
             })
         }
 
+        function test_direct_midi_no_monitor() {
+            run_case('test_direct_midi_no_monitor', () => {
+                check_backend()
+                reset()
+                tut_control().monitor = true
+                tut_control().mute = false
+                testcase.wait(50)
+
+                let msgs = [
+                    { 'time': 0, 'data': [0x90, 100, 100] },
+                    { 'time': 3, 'data': [0x90, 50,  50]  },
+                    { 'time': 4, 'data': [0x90, 10,  10]  }
+                ]
+
+                midi_input_port.dummy_queue_msgs(msgs)
+                midi_output_port.dummy_request_data(4)
+                session.backend.dummy_request_controlled_frames(4)
+                session.backend.dummy_wait_process()
+
+                let out = midi_output_port.dummy_dequeue_data()
+
+                verify_eq(out, [], true)
+            })
+        }
+
         function test_direct_audio_monitor_mute() {
             run_case('test_direct_audio_monitor_mute', () => {
                 check_backend()
