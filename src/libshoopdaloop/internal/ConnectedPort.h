@@ -49,7 +49,7 @@ struct ConnectedPort : public std::enable_shared_from_this<ConnectedPort>,
     void PROC_passthrough(size_t n_frames);
     void PROC_passthrough_audio(size_t n_frames, ConnectedPort &to);
     void PROC_passthrough_midi(size_t n_frames, ConnectedPort &to);
-    void PROC_check_buffer();
+    bool PROC_check_buffer(bool raise_if_absent=true);
     void PROC_finalize_process(size_t n_frames);
 
     void connect_passthrough(std::shared_ptr<ConnectedPort> const& other);

@@ -101,7 +101,7 @@ void ConnectedPort::PROC_ensure_buffer(size_t n_frames, bool do_zero) {
     }
 }
 
-void ConnectedPort::PROC_check_buffer() {
+bool ConnectedPort::PROC_check_buffer(bool raise_if_absent) {
     auto maybe_midi = dynamic_cast<MidiPortInterface*>(port.get());
     auto maybe_audio = dynamic_cast<AudioPortInterface<shoop_types::audio_sample_t>*>(port.get());
     bool result;
@@ -118,9 +118,11 @@ void ConnectedPort::PROC_check_buffer() {
         throw std::runtime_error("Invalid port");
     }
 
-    if (!result) {
+    if (!result && raise_if_absent) {
         throw std::runtime_error("No buffer available.");
     }
+
+    return (bool)result;
 }
 
 void ConnectedPort::PROC_passthrough(size_t n_frames) {
@@ -128,8 +130,7 @@ void ConnectedPort::PROC_passthrough(size_t n_frames) {
     if (port->direction() == PortDirection::Input) {
         for(auto & other : mp_passthrough_to) {
             auto o = other.lock();
-            if(o) {
-                o->PROC_check_buffer();
+            if(o && o->PROC_check_buffer(false)) {
                 if (dynamic_cast<AudioPortInterface<shoop_types::audio_sample_t>*>(port.get())) { PROC_passthrough_audio(n_frames, *o); }
                 else if (dynamic_cast<MidiPortInterface*>(port.get())) { PROC_passthrough_midi(n_frames, *o); }
                 else { throw std::runtime_error("Invalid port"); }

@@ -574,21 +574,14 @@ class Backend:
         port = BackendMidiPort(handle, direction)
         return port
     
-    def _fx_chain_ports_get(self, get_fn, fx_chain, idx):
-        n_ports = c_uint()
-        ports = get_fn(fx_chain.c_handle(), byref(n_ports))
-        if idx >= n_ports.value:
-            raise Exception('Trying to get port {} of {} ports'.format(idx, int(n_ports.value)))
-        return ports[idx]
-    
     def get_fx_chain_audio_input_port(self, fx_chain : Type['BackendFXChain'], idx : int):
-        return BackendAudioPort(self._fx_chain_ports_get(fx_chain_audio_input_ports, fx_chain, idx), PortDirection.Output.value)
+        return fx_chain_audio_input_port(fx_chain.c_handle(), idx)
     
     def get_fx_chain_audio_output_port(self, fx_chain : Type['BackendFXChain'], idx : int):
-        return BackendAudioPort(self._fx_chain_ports_get(fx_chain_audio_output_ports, fx_chain, idx), PortDirection.Input.value)
+        return fx_chain_audio_output_port(fx_chain.c_handle(), idx)
     
     def get_fx_chain_midi_input_port(self, fx_chain : Type['BackendFXChain'], idx : int):
-        return BackendMidiPort(self._fx_chain_ports_get(fx_chain_midi_input_ports, fx_chain, idx), PortDirection.Output.value)
+        return fx_chain_midi_input_port(fx_chain.c_handle(), idx)
         
     def get_sample_rate(self):
         return int(get_sample_rate(self._c_handle))

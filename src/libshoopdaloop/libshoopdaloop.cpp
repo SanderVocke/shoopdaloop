@@ -1060,37 +1060,43 @@ void restore_fx_chain_internal_state(shoopdaloop_fx_chain_t *chain, const char* 
     }
 }
 
-shoopdaloop_audio_port_t **fx_chain_audio_input_ports(shoopdaloop_fx_chain_t *chain, unsigned int *n_out) {
+ 
+
+
+unsigned n_fx_chain_audio_input_ports(shoopdaloop_fx_chain_t *chain) {
     auto _chain = internal_fx_chain(chain);
     auto const& ports = _chain->audio_input_ports();
-    shoopdaloop_audio_port_t **rval = (shoopdaloop_audio_port_t**) malloc(sizeof(shoopdaloop_audio_port_t*) * ports.size());
-    for (size_t i=0; i<ports.size(); i++) {
-        rval[i] = external_audio_port(ports[i]);
-    }
-    *n_out = ports.size();
-    return rval;
+    return ports.size();
 }
 
-shoopdaloop_audio_port_t **fx_chain_audio_output_ports(shoopdaloop_fx_chain_t *chain, unsigned int *n_out) {
+shoopdaloop_audio_port_t *fx_chain_audio_input_port(shoopdaloop_fx_chain_t *chain, unsigned int idx) {
+    auto _chain = internal_fx_chain(chain);
+    auto port = _chain->audio_input_ports()[idx];
+    return external_audio_port(port);
+}
+
+unsigned n_fx_chain_audio_output_ports(shoopdaloop_fx_chain_t *chain) {
     auto _chain = internal_fx_chain(chain);
     auto const& ports = _chain->audio_output_ports();
-    shoopdaloop_audio_port_t **rval = (shoopdaloop_audio_port_t**) malloc(sizeof(shoopdaloop_audio_port_t*) * ports.size());
-    for (size_t i=0; i<ports.size(); i++) {
-        rval[i] = external_audio_port(ports[i]);
-    }
-    *n_out = ports.size();
-    return rval;
+    return ports.size();
 }
 
-shoopdaloop_midi_port_t **fx_chain_midi_input_ports(shoopdaloop_fx_chain_t *chain, unsigned int *n_out) {
+unsigned n_fx_chain_midi_input_ports(shoopdaloop_fx_chain_t *chain) {
     auto _chain = internal_fx_chain(chain);
     auto const& ports = _chain->midi_input_ports();
-    shoopdaloop_midi_port_t **rval = (shoopdaloop_midi_port_t**) malloc(sizeof(shoopdaloop_midi_port_t*) * ports.size());
-    for (size_t i=0; i<ports.size(); i++) {
-        rval[i] = external_midi_port(ports[i]);
-    }
-    *n_out = ports.size();
-    return rval;
+    return ports.size();
+}
+;
+shoopdaloop_audio_port_t *fx_chain_audio_output_port(shoopdaloop_fx_chain_t *chain, unsigned int idx) {
+    auto _chain = internal_fx_chain(chain);
+    auto port = _chain->audio_output_ports()[idx];
+    return external_audio_port(port);
+}
+
+shoopdaloop_midi_port_t *fx_chain_midi_input_port(shoopdaloop_fx_chain_t *chain, unsigned int idx) {
+    auto _chain = internal_fx_chain(chain);
+    auto port = _chain->midi_input_ports()[idx];
+    return external_midi_port(port);
 }
 
 void destroy_midi_event(midi_event_t *e) {
