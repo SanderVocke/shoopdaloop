@@ -21,7 +21,7 @@ add_subdirectory(libshoopdaloop)
 set(GENERATED_BINDINGS_PY ${CMAKE_CURRENT_BINARY_DIR}/libshoopdaloop_bindings.py)
 add_custom_command(
   OUTPUT ${GENERATED_BINDINGS_PY}
-  COMMAND ${RUN_CMD_PREFIX} ${CTYPESGEN_COMMAND} --no-macro-warnings -lshoopdaloop ${CMAKE_CURRENT_SOURCE_DIR}/libshoopdaloop/libshoopdaloop.h ${CMAKE_CURRENT_SOURCE_DIR}/libshoopdaloop/types.h -o ${GENERATED_BINDINGS_PY}
+  COMMAND ${RUN_CMD_PREFIX} ASAN_OPTIONS=detect_leaks=0 ${CTYPESGEN_COMMAND} --no-macro-warnings -lshoopdaloop ${CMAKE_CURRENT_SOURCE_DIR}/libshoopdaloop/libshoopdaloop.h ${CMAKE_CURRENT_SOURCE_DIR}/libshoopdaloop/types.h -o ${GENERATED_BINDINGS_PY}
   DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/libshoopdaloop/libshoopdaloop.h ${CMAKE_CURRENT_SOURCE_DIR}/libshoopdaloop/libshoopdaloop.cpp
   COMMENT "Generating C bindings for libshoopdaloop."
   )
@@ -36,7 +36,7 @@ set(OUR_PYTHONPATH "$ENV{PYTHONPATH}:${CMAKE_CURRENT_BINARY_DIR}:${PY_BUILD_CMAK
 set(GENERATED_TYPES_JS ${CMAKE_CURRENT_BINARY_DIR}/types.js)
 add_custom_command(
   OUTPUT ${GENERATED_TYPES_JS}
-  COMMAND ${RUN_CMD_PREFIX} PYTHONPATH=${OUR_PYTHONPATH} LD_LIBRARY_PATH=${CMAKE_CURRENT_BINARY_DIR}/libshoopdaloop python3 gen_js_enums.py ${GENERATED_TYPES_JS}
+  COMMAND ${RUN_CMD_PREFIX} ASAN_OPTIONS=detect_leaks=0 PYTHONPATH=${OUR_PYTHONPATH} LD_LIBRARY_PATH=${CMAKE_CURRENT_BINARY_DIR}/libshoopdaloop python3 gen_js_enums.py ${GENERATED_TYPES_JS}
   COMMENT "Generating Javascript types."
   DEPENDS c_bindings shoopdaloop
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/codegen
