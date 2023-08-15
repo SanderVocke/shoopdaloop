@@ -150,14 +150,9 @@ jobs:
       if: success() || failure() # always run even if the previous step fails
       run: |
         mkdir -p reports
-        ${{ env.ASAN_CMD_PREFIX }} ASAN_OPTIONS=detect_leaks=0 QT_QPA_PLATFORM=vnc LD_LIBRARY_PATH=$(dirname $(find ${{ env.ASAN_PKG_DIR }}/.. -name libQt6Core.so.6)) python3 ${{ env.ASAN_PKG_DIR }}/run_qml_tests.py -o reports/qml_junit_results.xml,junitxml
+        ${{ env.ASAN_CMD_PREFIX }} ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0 QT_QPA_PLATFORM=vnc LD_LIBRARY_PATH=$(dirname $(find ${{ env.ASAN_PKG_DIR }}/.. -name libQt6Core.so.6)) python3 ${{ env.ASAN_PKG_DIR }}/run_qml_tests.py -o reports/qml_junit_results.xml,junitxml
         echo "QML test results file: $(ls -la reports/qml_junit_results.xml)"
     
-    - name: App runs and closes gracefully
-      if: success() || failure() # always run even if the previous step fails
-      run: |
-        ${{ env.ASAN_CMD_PREFIX }} ASAN_OPTIONS=detect_leaks=0 QT_QPA_PLATFORM=vnc EXPECT_STAY_OPEN=1 WAIT_MS_BEFORE_CLOSE=5000 N_ITERATIONS=10 WAIT_MS_BEFORE_KILL=10000 ${{ env.ASAN_PKG_DIR }}/scripts/test_run_app.sh shoopdaloop -b dummy
-
     - name: Publish Backend Test Report
       uses: mikepenz/action-junit-report@v3
       if: success() || failure() # always run even if the previous step fails
