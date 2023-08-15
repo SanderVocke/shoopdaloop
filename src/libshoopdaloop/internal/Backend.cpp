@@ -18,6 +18,7 @@
 #include "AudioBuffer.h"
 #include "ObjectPool.h"
 #include "AudioMidiLoop.h"
+#include "shoop_globals.h"
 #include "types.h"
 
 using namespace logging;
@@ -355,7 +356,7 @@ std::shared_ptr<ConnectedFXChain> Backend::create_fx_chain(fx_chain_type_t type,
         case Test2x2x1:
             chain = std::make_shared<CustomProcessingChain<Time, Size>>(
                 2, 2, 1, [this, &chain](size_t n, auto &ins, auto &outs, auto &midis) {
-                    static std::vector<uint8_t> out_buf_1, out_buf_2;
+                    static std::vector<audio_sample_t> out_buf_1, out_buf_2;
                     out_buf_1.resize(std::max(n, out_buf_1.size()));
                     out_buf_2.resize(std::max(n, out_buf_2.size()));
 

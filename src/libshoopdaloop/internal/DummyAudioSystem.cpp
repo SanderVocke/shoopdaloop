@@ -348,7 +348,6 @@ void DummyAudioSystem<Time, Size>::resume() {
 template <typename Time, typename Size>
 DummyAudioSystem<Time, Size>::~DummyAudioSystem() {
     close();
-    log<logging::LogLevel::debug>("DummyAudioSystem: destructed");
 }
 
 template <typename Time, typename Size>
@@ -394,10 +393,7 @@ const char *DummyAudioSystem<Time, Size>::client_name() const {
 template <typename Time, typename Size>
 void DummyAudioSystem<Time, Size>::close() {
     m_finish = true;
-    log<logging::LogLevel::debug>("DummyAudioSystem: closing");
     if (m_proc_thread.joinable()) {
-        log<logging::LogLevel::debug>(
-            "DummyAudioSystem: joining process thread");
         m_proc_thread.join();
     }
 }

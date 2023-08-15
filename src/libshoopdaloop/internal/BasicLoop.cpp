@@ -25,9 +25,7 @@ BasicLoop::BasicLoop() :
         log_trace();
     }
 
-BasicLoop::~BasicLoop() {
-    log_trace();
-}
+BasicLoop::~BasicLoop() {}
 
 std::optional<size_t> BasicLoop::PROC_get_next_poi() const {
     return mp_next_poi.has_value() ? mp_next_poi.value().when : (std::optional<size_t>)std::nullopt;

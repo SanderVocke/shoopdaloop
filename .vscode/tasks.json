@@ -44,6 +44,27 @@
       }
     },
     {
+      "label": "Build (Pip editable system install - ASAN)",
+      "type": "shell",
+      "command": "PIP_BREAK_SYSTEM_PACKAGES=1 pip install -e ${workspaceFolder} --no-deps -v -C--local=${workspaceFolder}/pyproject.toml.debug_asan_overrides",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": {
+        "owner": "cpp",
+        "fileLocation": "absolute",
+        "pattern": {
+          "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "severity": 4,
+          "message": 5
+        }
+      }
+    },
+    {
       "label": "Build (Pip wheel in isolation)",
       "type": "shell",
       "command": "python -m build --wheel ${workspaceFolder}",
@@ -68,6 +89,27 @@
       "label": "Build (Pip wheel in isolation - Debug)",
       "type": "shell",
       "command": "python -m build --wheel ${workspaceFolder} -C--local=${workspaceFolder}/pyproject.toml.debug_overrides",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": {
+        "owner": "cpp",
+        "fileLocation": "absolute",
+        "pattern": {
+          "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "severity": 4,
+          "message": 5
+        }
+      }
+    },
+    {
+      "label": "Build (Pip wheel in isolation - ASAN)",
+      "type": "shell",
+      "command": "python -m build --wheel ${workspaceFolder} -C--local=${workspaceFolder}/pyproject.toml.debug_asan_overrides",
       "group": {
         "kind": "build",
         "isDefault": true
