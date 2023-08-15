@@ -30,7 +30,7 @@ jobs:
     - name: Build ASAN wheel
       run: |
         python3 -m build -w -C--local=pyproject.toml.debug_asan_overrides
-        echo "ASAN_CMD_PREFIX=$(find . -name run_cmd_prefix.txt -exec cat {} +)" >> $GITHUB_ENV
+        echo "ASAN_CMD_PREFIX_FILE=$(find . -name run_cmd_prefix.txt) >> $GITHUB_ENV
         cd dist
         for f in *.whl; do mv -- "$f" "${f%.whl}.asan.whl"; done
         echo "ASAN_WHEEL=$(ls *.whl)" >> $GITHUB_ENV
@@ -45,7 +45,7 @@ jobs:
       uses: actions/upload-artifact@v3
       with:
         name: asan_cmd_prefix
-        path: ./**/run_cmd_prefix.txt
+        path: ${{ env.ASAN_CMD_PREFIX_FILE }}
   
   build_debug_whl:
     runs-on: ubuntu-latest
@@ -120,6 +120,7 @@ jobs:
     
     - name: Set cmd prefix
       run: |
+        ls -la ~/asan_cmd_prefix
         echo "ASAN_CMD_PREFIX=$(cat ~/asan_cmd_prefix/run_cmd_prefix.txt)" >> $GITHUB_ENV
 
     - name: Install wheel
