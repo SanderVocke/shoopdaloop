@@ -575,13 +575,13 @@ class Backend:
         return port
     
     def get_fx_chain_audio_input_port(self, fx_chain : Type['BackendFXChain'], idx : int):
-        return fx_chain_audio_input_port(fx_chain.c_handle(), idx)
+        return BackendAudioPort(fx_chain_audio_input_port(fx_chain.c_handle(), idx), PortDirection.Output)
     
     def get_fx_chain_audio_output_port(self, fx_chain : Type['BackendFXChain'], idx : int):
-        return fx_chain_audio_output_port(fx_chain.c_handle(), idx)
+        return BackendAudioPort(fx_chain_audio_output_port(fx_chain.c_handle(), idx), PortDirection.Input)
     
     def get_fx_chain_midi_input_port(self, fx_chain : Type['BackendFXChain'], idx : int):
-        return fx_chain_midi_input_port(fx_chain.c_handle(), idx)
+        return BackendMidiPort(fx_chain_midi_input_port(fx_chain.c_handle(), idx), PortDirection.Output)
         
     def get_sample_rate(self):
         return int(get_sample_rate(self._c_handle))

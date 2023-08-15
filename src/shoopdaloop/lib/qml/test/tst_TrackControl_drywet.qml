@@ -76,7 +76,7 @@ Session {
         RegistryLookup {
             id: lookup_midi_input_port
             registry: session.objects_registry
-            key: "tut_direct_dry_in"
+            key: "tut_dry_midi_in"
         }
         property alias midi_input_port: lookup_midi_input_port.object
 

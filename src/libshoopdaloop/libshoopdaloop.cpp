@@ -1368,7 +1368,7 @@ void dummy_midi_port_clear_queues(shoopdaloop_midi_port_t* port) {
 void dummy_audio_port_request_data(shoopdaloop_audio_port_t* port, size_t n_frames) {
     init_log();
     g_logger->debug("dummy_audio_port_request_data");
-    auto maybe_dummy = std::dynamic_pointer_cast<DummyMidiPort>(internal_audio_port(port)->maybe_audio());
+    auto maybe_dummy = std::dynamic_pointer_cast<DummyAudioPort>(internal_audio_port(port)->maybe_audio());
     if (maybe_dummy) {
         maybe_dummy->request_data(n_frames);
     } else {

@@ -69,7 +69,7 @@ TestCase {
             if (Array.isArray(a) && Array.isArray(b)) {
                 return TestDeepEqual.testArraysCompare(a, b, compare);
             } else if (TestDeepEqual.isObject(a) && TestDeepEqual.isObject(b)) {
-                return TestDeepEqual.testDeepEqual(a, b);
+                return a == b || TestDeepEqual.testDeepEqual(a, b);
             } else {
                 return a == b;
             }
