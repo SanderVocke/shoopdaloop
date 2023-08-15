@@ -33,6 +33,8 @@ jobs:
         cd dist
         for f in *.whl; do mv -- "$f" "${f%.whl}.asan.whl"; done
         echo "ASAN_WHEEL=$(ls *.whl)" >> $GITHUB_ENV
+        echo "ASAN_CMD_PREFIX=$(cat build/**/run_cmd_prefix.txt)" >> $GITHUB_ENV
+        echo "Run cmd prefix: ${{ env.ASAN_CMD_PREFIX }}}}"
     
     - name: Upload ASAN
       uses: actions/upload-artifact@v3
@@ -90,10 +92,12 @@ jobs:
   
   # Test the built wheel in an Ubuntu environment using PyPi packages
   test_asan_wheel_ubuntu_pypi:
+    # note: this runs on the build container because that will provide
+    # the same shared libasan.so used during build
     needs: build_asan_whl
     runs-on: ubuntu-latest
     container:
-      image: sandervocke/shoopdaloop_ubuntu_kinetic_run_base:latest
+      image: sandervocke/shoopdaloop_ubuntu_kinetic_build_base:latest
       options: --user root --workdir /
     
     steps:
@@ -116,27 +120,27 @@ jobs:
       if: success() || failure() # always run even if the previous step fails
       run: |
         mkdir -p reports
-        ${{ env.ASAN_PKG_DIR }}/test_runner --reporter junit --out reports/backend_junit_results.xml
+        ${{ env.ASAN_CMD_PREFIX }} ${{ env.ASAN_PKG_DIR }}/test_runner --reporter junit --out reports/backend_junit_results.xml
         echo "Back-end test results file: $(ls -la reports/backend_junit_results.xml)"
     
     - name: Python tests
       if: success() || failure() # always run even if the previous step fails
       run: |
         mkdir -p reports
-        pytest ${{ env.ASAN_PKG_DIR }} --junit-xml=reports/python_junit_results.xml
+        ${{ env.ASAN_CMD_PREFIX }} pytest ${{ env.ASAN_PKG_DIR }} --junit-xml=reports/python_junit_results.xml
         echo "Python test results file: $(ls -la reports/python_junit_results.xml)"
     
     - name: QML tests
       if: success() || failure() # always run even if the previous step fails
       run: |
         mkdir -p reports
-        QT_QPA_PLATFORM=vnc LD_LIBRARY_PATH=$(dirname $(find ${{ env.ASAN_PKG_DIR }}/.. -name libQt6Core.so.6)) python3 ${{ env.ASAN_PKG_DIR }}/run_qml_tests.py -o reports/qml_junit_results.xml,junitxml
+        ${{ env.ASAN_CMD_PREFIX }} QT_QPA_PLATFORM=vnc LD_LIBRARY_PATH=$(dirname $(find ${{ env.ASAN_PKG_DIR }}/.. -name libQt6Core.so.6)) python3 ${{ env.ASAN_PKG_DIR }}/run_qml_tests.py -o reports/qml_junit_results.xml,junitxml
         echo "QML test results file: $(ls -la reports/qml_junit_results.xml)"
     
     - name: App runs and closes gracefully
       if: success() || failure() # always run even if the previous step fails
       run: |
-        QT_QPA_PLATFORM=vnc EXPECT_STAY_OPEN=1 WAIT_MS_BEFORE_CLOSE=5000 N_ITERATIONS=10 WAIT_MS_BEFORE_KILL=10000 ${{ env.ASAN_PKG_DIR }}/scripts/test_run_app.sh shoopdaloop -b dummy
+        ${{ env.ASAN_CMD_PREFIX }} QT_QPA_PLATFORM=vnc EXPECT_STAY_OPEN=1 WAIT_MS_BEFORE_CLOSE=5000 N_ITERATIONS=10 WAIT_MS_BEFORE_KILL=10000 ${{ env.ASAN_PKG_DIR }}/scripts/test_run_app.sh shoopdaloop -b dummy
 
     - name: Publish Backend Test Report
       uses: mikepenz/action-junit-report@v3
@@ -145,7 +149,7 @@ jobs:
         report_paths: 'reports/backend_junit_results.xml'
         detailed_summary: true
         include_passed: true
-        check_name: 'backend test (ubuntu pypi)'
+        check_name: 'backend test (ubuntu pypi asan)'
     
     - name: Publish Python Test Report
       uses: mikepenz/action-junit-report@v3
@@ -154,7 +158,7 @@ jobs:
         report_paths: 'reports/python_junit_results.xml'
         detailed_summary: true
         include_passed: true
-        check_name: 'python test (ubuntu pypi)'
+        check_name: 'python test (ubuntu pypi asan)'
     
     - name: Publish QML Test Report
       uses: mikepenz/action-junit-report@v3
@@ -163,7 +167,7 @@ jobs:
         report_paths: 'reports/qml_junit_results.xml'
         detailed_summary: true
         include_passed: true
-        check_name: 'qml test (ubuntu pypi)'
+        check_name: 'qml test (ubuntu pypi asan)'
   
   test_release_wheel_ubuntu_pypi:
     needs: build_release_whl
@@ -221,7 +225,7 @@ jobs:
         report_paths: 'reports/backend_junit_results.xml'
         detailed_summary: true
         include_passed: true
-        check_name: 'backend test (ubuntu pypi)'
+        check_name: 'backend test (ubuntu pypi release)'
     
     - name: Publish Python Test Report
       uses: mikepenz/action-junit-report@v3
@@ -230,7 +234,7 @@ jobs:
         report_paths: 'reports/python_junit_results.xml'
         detailed_summary: true
         include_passed: true
-        check_name: 'python test (ubuntu pypi)'
+        check_name: 'python test (ubuntu pypi release)'
     
     - name: Publish QML Test Report
       uses: mikepenz/action-junit-report@v3
@@ -239,7 +243,7 @@ jobs:
         report_paths: 'reports/qml_junit_results.xml'
         detailed_summary: true
         include_passed: true
-        check_name: 'qml test (ubuntu pypi)'
+        check_name: 'qml test (ubuntu pypi release)'
 
   
   # # Test the built wheel in an Arch environment with dependencies pre-installed.

@@ -59,6 +59,17 @@ add_library(jack_wrappers STATIC ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_
 set_property(TARGET jack_wrappers PROPERTY POSITION_INDEPENDENT_CODE ON)
 target_include_directories(jack_wrappers PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers)
 
+# Generate the run cmd prefix so that it can be referred to after the build (e.g. when running tests)
+add_custom_command(
+  OUTPUT ${CMAKE_BINARY_DIR}/run_cmd_prefix.txt
+  COMMAND echo ${RUN_CMD_PREFIX} > ${CMAKE_BINARY_DIR}/run_cmd_prefix.txt
+  COMMENT "Storing run cmd prefix into ${CMAKE_BINARY_DIR}/run_cmd_prefix.txt"
+)
+add_custom_target(
+  run_cmd_prefix_file
+  ALL
+  DEPENDS ${CMAKE_BINARY_DIR}/run_cmd_prefix.txt
+)
 
 if(STATIC_DEPENDENCIES)
 
