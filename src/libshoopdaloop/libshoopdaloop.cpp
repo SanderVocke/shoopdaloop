@@ -217,6 +217,7 @@ shoopdaloop_backend_instance_t *initialize (
     const char* client_name_hint) {
     
     auto backend = std::make_shared<Backend>(audio_system, client_name_hint);
+    backend->start();
     g_active_backends.insert(backend);
 
     auto rval = external_backend(backend);

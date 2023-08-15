@@ -394,7 +394,11 @@ template <typename Time, typename Size>
 void DummyAudioSystem<Time, Size>::close() {
     m_finish = true;
     if (m_proc_thread.joinable()) {
-        m_proc_thread.join();
+        if (std::this_thread::get_id() != m_proc_thread.get_id()) {
+            m_proc_thread.join();
+        } else {
+            m_proc_thread.detach();
+        }
     }
 }
 

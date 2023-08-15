@@ -14,12 +14,34 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-python@v3
+
+      - name: Cache apt packages
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: graphviz
+          version: 1.0
+
+      - name: Download and install PlantUML
+        run: |
+          wget https://github.com/plantuml/plantuml/releases/download/v1.2023.10/plantuml-1.2023.10.jar
+          sudo cp plantuml-1.2023.10.jar /usr/bin/plantuml.jar
+          printf '#!/bin/sh\njava -jar /usr/bin/plantuml.jar $@' | sudo tee /usr/bin/plantuml > /dev/null
+          sudo chmod a+x /usr/bin/plantuml
+
       - name: Install dependencies
         run: |
           pip install sphinx sphinx-material sphinxcontrib.fulltoc sphinxcontrib.plantuml
+
       - name: Sphinx build
         run: |
           sphinx-build docs/source _build
+      
+      - name: Store HTML as artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: html
+          path: _build/
+
       - name: Deploy
         uses: peaceiris/actions-gh-pages@v3
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}

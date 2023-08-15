@@ -13,6 +13,12 @@ Actions on **loops** are synchronized to **triggers** of the **master loop**. A 
 
 The master loop may itself hold audio and/or MIDI data. A typical use is a click track. However, it is also perfectly fine to leave it empty and use it for synchronization only.
 
+.. figure:: resources/masterloop.gif
+   :width: 200px
+   :alt: Synchronization to the master loop.
+
+   Synchronization to the master loop.
+
 
 
 Tracks

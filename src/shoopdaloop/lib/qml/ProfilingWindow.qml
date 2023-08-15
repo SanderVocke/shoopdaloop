@@ -13,6 +13,7 @@ ApplicationWindow {
 
     Material.theme: Material.Dark
 
+    property int cycle_us : 0
     property var backend : null
     property PythonLogger logger : PythonLogger { name: 'Frontend.ProfilingDialog' }
     property var profiling_data : null
@@ -24,7 +25,7 @@ ApplicationWindow {
 
             var bufsize = root.backend.get_buffer_size()
             var samplerate = root.backend.get_sample_rate()
-            var cycle_us = bufsize / samplerate * 1000000.0
+            cycle_us = bufsize / samplerate * 1000000.0
 
             Object.entries(profiling_data).forEach((p) => {
                 _data[p[0]] = {}
@@ -57,7 +58,7 @@ ApplicationWindow {
         var data = root.backend.get_profiling_report()
         var bufsize = root.backend.get_buffer_size()
         var samplerate = root.backend.get_sample_rate()
-        var us = bufsize / samplerate * 1000000.0
+        cycle_us = bufsize / samplerate * 1000000.0
 
         root.profiling_data = data
     }
@@ -89,17 +90,26 @@ ApplicationWindow {
         Switch {
             id: auto_update_switch
             text: "Auto-update"
+            anchors.verticalCenter : btn.verticalCenter
         }
+    }
+
+    Label {
+        id: cycle_time_label
+        anchors.top: controls_row.bottom
+        text: "System cycle time (us): " + root.cycle_us
     }
 
     TreeView {
         id: tree
+       
+        rowHeightProvider: (idx) => 20
 
         anchors {
             left: parent.left
             right: parent.right
             bottom: parent.bottom
-            top: controls_row.bottom
+            top: cycle_time_label.bottom
         }
 
         delegate: TreeViewDelegate {

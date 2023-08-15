@@ -48,6 +48,9 @@ public:
     std::shared_ptr<profiling::ProfilingItem> fx_profiling_item;
     std::shared_ptr<profiling::ProfilingItem> cmds_profiling_item;
 
+    const std::string m_client_name_hint;
+    const audio_system_type_t m_audio_system_type;
+
     std::string log_module_name() const override;
 
     Backend(audio_system_type_t audio_system_type, std::string client_name_hint);
@@ -62,4 +65,5 @@ public:
     backend_state_info_t get_state();
     std::shared_ptr<ConnectedLoop> create_loop();
     std::shared_ptr<ConnectedFXChain> create_fx_chain(fx_chain_type_t type, const char *title);
+    void start();
 };
