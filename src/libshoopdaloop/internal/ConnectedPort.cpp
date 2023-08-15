@@ -3,6 +3,7 @@
 #include "MidiPortInterface.h"
 #include "InternalAudioPort.h"
 #include "InternalLV2MidiOutputPort.h"
+#include <memory>
 #include <stdexcept>
 #include <algorithm>
 #include "MidiStateTracker.h"
@@ -200,12 +201,12 @@ void ConnectedPort::PROC_finalize_process(size_t n_frames) {
     }
 }
 
-AudioPortInterface<shoop_types::audio_sample_t> *ConnectedPort::maybe_audio() {
-    return dynamic_cast<AudioPortInterface<shoop_types::audio_sample_t>*>(port.get());
+std::shared_ptr<AudioPortInterface<shoop_types::audio_sample_t>> ConnectedPort::maybe_audio() {
+    return std::dynamic_pointer_cast<AudioPortInterface<shoop_types::audio_sample_t>>(port);
 }
 
-MidiPortInterface *ConnectedPort::maybe_midi() {
-    return dynamic_cast<MidiPortInterface*>(port.get());
+std::shared_ptr<MidiPortInterface> ConnectedPort::maybe_midi() {
+    return std::dynamic_pointer_cast<MidiPortInterface>(port);
 }
 
 Backend &ConnectedPort::get_backend() {

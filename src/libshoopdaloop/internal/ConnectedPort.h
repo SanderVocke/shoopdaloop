@@ -54,7 +54,7 @@ struct ConnectedPort : public std::enable_shared_from_this<ConnectedPort>,
 
     void connect_passthrough(std::shared_ptr<ConnectedPort> const& other);
 
-    shoop_types::AudioPort *maybe_audio();
-    shoop_types::MidiPort *maybe_midi();
+    std::shared_ptr<shoop_types::AudioPort> maybe_audio();
+    std::shared_ptr<shoop_types::MidiPort> maybe_midi();
     Backend &get_backend();
 };

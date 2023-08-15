@@ -30,7 +30,7 @@ jobs:
     - name: Build ASAN wheel
       run: |
         python3 -m build -w -C--local=pyproject.toml.debug_asan_overrides
-        echo "ASAN_CMD_PREFIX_FILE=$(find . -name run_cmd_prefix.txt) >> $GITHUB_ENV
+        echo "ASAN_CMD_PREFIX_FILE=$(find . -name run_cmd_prefix.txt)" >> $GITHUB_ENV
         cd dist
         for f in *.whl; do mv -- "$f" "${f%.whl}.asan.whl"; done
         echo "ASAN_WHEEL=$(ls *.whl)" >> $GITHUB_ENV

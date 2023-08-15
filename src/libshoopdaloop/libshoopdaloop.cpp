@@ -665,9 +665,10 @@ void close_audio_port (shoopdaloop_backend_instance_t *backend, shoopdaloop_audi
 
 jack_port_t *get_audio_port_jack_handle(shoopdaloop_audio_port_t *port) {
     auto pi = internal_audio_port(port);
+    auto _audio = pi->maybe_audio();
     return evaluate_before_or_after_process<jack_port_t*>(
-        [pi]() { return dynamic_cast<JackAudioPort*>(pi->maybe_audio())->get_jack_port(); },
-        pi->maybe_audio(),
+        [pi, _audio]() { return std::dynamic_pointer_cast<JackAudioPort>(_audio)->get_jack_port(); },
+        _audio != nullptr,
         pi->backend.lock()->cmd_queue);
 }
 
@@ -700,9 +701,10 @@ void close_midi_port (shoopdaloop_midi_port_t *port) {
 }
 jack_port_t *get_midi_port_jack_handle(shoopdaloop_midi_port_t *port) {
     auto pi = internal_midi_port(port);
+    auto _midi = pi->maybe_midi();
     return evaluate_before_or_after_process<jack_port_t*>(
-        [pi]() { return dynamic_cast<JackMidiPort*>(pi->maybe_midi())->get_jack_port(); },
-        pi->maybe_midi(),
+        [pi, _midi]() { return std::dynamic_pointer_cast<JackMidiPort>(_midi)->get_jack_port(); },
+        _midi != nullptr,
         pi->backend.lock()->cmd_queue);
 }
 
@@ -1282,7 +1284,7 @@ void shoopdaloop_log(shoopdaloop_logger_t *logger, log_level_t level, const char
 void dummy_audio_port_queue_data(shoopdaloop_audio_port_t *port, size_t n_frames, audio_sample_t const* data) {
     init_log();
     g_logger->debug("dummy_audio_port_queue_data");
-    auto maybe_dummy = dynamic_cast<DummyAudioPort*>(internal_audio_port(port)->maybe_audio());
+    auto maybe_dummy = std::dynamic_pointer_cast<DummyAudioPort>(internal_audio_port(port)->maybe_audio());
     if (maybe_dummy) {
         maybe_dummy->queue_data(n_frames, data);
     } else {
@@ -1293,7 +1295,7 @@ void dummy_audio_port_queue_data(shoopdaloop_audio_port_t *port, size_t n_frames
 void dummy_audio_port_dequeue_data(shoopdaloop_audio_port_t *port, size_t n_frames, audio_sample_t *store_in) {
     init_log();
     g_logger->debug("dummy_audio_port_dequeue_data");
-    auto maybe_dummy = dynamic_cast<DummyAudioPort*>(internal_audio_port(port)->maybe_audio());
+    auto maybe_dummy = std::dynamic_pointer_cast<DummyAudioPort>(internal_audio_port(port)->maybe_audio());
     if (maybe_dummy) {
         auto data = maybe_dummy->dequeue_data(n_frames);
         memcpy((void*)store_in, (void*)data.data(), sizeof(audio_sample_t) * n_frames);
@@ -1304,7 +1306,7 @@ void dummy_audio_port_dequeue_data(shoopdaloop_audio_port_t *port, size_t n_fram
 void dummy_midi_port_queue_data(shoopdaloop_midi_port_t *port, midi_sequence_t* events) {
     init_log();
     g_logger->debug("dummy_midi_port_queue_data");
-    auto maybe_dummy = dynamic_cast<DummyMidiPort*>(internal_midi_port(port)->maybe_midi());
+    auto maybe_dummy = std::dynamic_pointer_cast<DummyMidiPort>(internal_midi_port(port)->maybe_midi());
     if (maybe_dummy) {
         for(size_t i=0; i<events->n_events; i++) {
             auto &e = events->events[i];
@@ -1320,7 +1322,7 @@ void dummy_midi_port_queue_data(shoopdaloop_midi_port_t *port, midi_sequence_t* 
 midi_sequence_t *dummy_midi_port_dequeue_data(shoopdaloop_midi_port_t *port) {
     init_log();
     g_logger->debug("dummy_midi_port_dequeue_data");
-    auto maybe_dummy = dynamic_cast<DummyMidiPort*>(internal_midi_port(port)->maybe_midi());
+    auto maybe_dummy = std::dynamic_pointer_cast<DummyMidiPort>(internal_midi_port(port)->maybe_midi());
     if (maybe_dummy) {
         auto msgs = maybe_dummy->get_written_requested_msgs();
         midi_sequence_t *rval = alloc_midi_sequence(msgs.size());
@@ -1342,7 +1344,7 @@ midi_sequence_t *dummy_midi_port_dequeue_data(shoopdaloop_midi_port_t *port) {
 void dummy_midi_port_request_data(shoopdaloop_midi_port_t* port, size_t n_frames) {
     init_log();
     g_logger->debug("dummy_midi_port_queue_data");
-    auto maybe_dummy = dynamic_cast<DummyMidiPort*>(internal_midi_port(port)->maybe_midi());
+    auto maybe_dummy = std::dynamic_pointer_cast<DummyMidiPort>(internal_midi_port(port)->maybe_midi());
     if (maybe_dummy) {
         maybe_dummy->request_data(n_frames);
     }
@@ -1351,7 +1353,7 @@ void dummy_midi_port_request_data(shoopdaloop_midi_port_t* port, size_t n_frames
 void dummy_midi_port_clear_queues(shoopdaloop_midi_port_t* port) {
     init_log();
     g_logger->debug("dummy_midi_port_clear_queues");
-    auto maybe_dummy = dynamic_cast<DummyMidiPort*>(internal_midi_port(port)->maybe_midi());
+    auto maybe_dummy = std::dynamic_pointer_cast<DummyMidiPort>(internal_midi_port(port)->maybe_midi());
     if (maybe_dummy) {
         maybe_dummy->clear_queues();
     }
@@ -1360,7 +1362,7 @@ void dummy_midi_port_clear_queues(shoopdaloop_midi_port_t* port) {
 void dummy_audio_port_request_data(shoopdaloop_audio_port_t* port, size_t n_frames) {
     init_log();
     g_logger->debug("dummy_audio_port_request_data");
-    auto maybe_dummy = dynamic_cast<DummyAudioPort*>(internal_audio_port(port)->maybe_audio());
+    auto maybe_dummy = std::dynamic_pointer_cast<DummyMidiPort>(internal_audio_port(port)->maybe_audio());
     if (maybe_dummy) {
         maybe_dummy->request_data(n_frames);
     } else {
