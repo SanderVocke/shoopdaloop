@@ -30,6 +30,7 @@ class DummyAudioPort : public AudioPortInterface<audio_sample_t>,
     boost::lockfree::spsc_queue<std::vector<audio_sample_t>> m_queued_data;
     std::atomic<size_t> m_n_requested_samples;
     std::vector<audio_sample_t> m_retained_samples;
+    std::vector<audio_sample_t> m_buffer_data;
 
 public:
     DummyAudioPort(

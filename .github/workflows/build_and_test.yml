@@ -120,7 +120,7 @@ jobs:
     
     - name: Set cmd prefix
       run: |
-        echo "ASAN_CMD_PREFIX=$(cat ~/asan_cmd_prefix/run_cmd_prefix.txt" >> $GITHUB_ENV
+        echo "ASAN_CMD_PREFIX=$(cat ~/asan_cmd_prefix/run_cmd_prefix.txt)" >> $GITHUB_ENV
 
     - name: Install wheel
       run: |

@@ -30,7 +30,8 @@ std::string DummyAudioPort::log_module_name() const {
 }
 
 float *DummyAudioPort::PROC_get_buffer(size_t n_frames, bool do_zero) {
-    auto rval = (audio_sample_t *)malloc(n_frames * sizeof(audio_sample_t));
+    m_buffer_data.resize(std::max(m_buffer_data.size(), n_frames));
+    auto rval = m_buffer_data.data();
     size_t filled = 0;
     while (!m_queued_data.empty() && filled < n_frames) {
         auto &front = m_queued_data.front();
