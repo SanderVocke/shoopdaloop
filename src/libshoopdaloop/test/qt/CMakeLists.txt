@@ -4,7 +4,7 @@ target_link_libraries(qml_tests PRIVATE Qt6::QuickTest)
 # Generate C bindings
 add_custom_command(
   OUTPUT qml_tests.py
-  COMMAND ${CTYPESGEN_COMMAND} ASAN_OPTIONS=detect_leaks=0 -lqml_tests ${CMAKE_CURRENT_SOURCE_DIR}/qml_tests.h -o qml_tests.py
+  COMMAND ${RUN_CMD_PREFIX} ASAN_OPTIONS=detect_leaks=0 ${CTYPESGEN_COMMAND} -lqml_tests ${CMAKE_CURRENT_SOURCE_DIR}/qml_tests.h -o qml_tests.py
   DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/qml_tests.h
   COMMENT "Generating C bindings for QML test interface."
   )
