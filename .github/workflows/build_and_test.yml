@@ -33,7 +33,7 @@ jobs:
         cd dist
         for f in *.whl; do mv -- "$f" "${f%.whl}.asan.whl"; done
         echo "ASAN_WHEEL=$(ls *.whl)" >> $GITHUB_ENV
-        echo "ASAN_CMD_PREFIX=$(cat build/**/run_cmd_prefix.txt)" >> $GITHUB_ENV
+        echo "ASAN_CMD_PREFIX=$(find . -name run_cmd_prefix.txt -exec cat {} +)" >> $GITHUB_ENV
         echo "Run cmd prefix: ${{ env.ASAN_CMD_PREFIX }}"
     
     - name: Upload ASAN
