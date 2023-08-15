@@ -1,4 +1,3 @@
-#pragma once
 #include "MidiStateDiffTracker.h"
 #include <algorithm>
 #include <array>

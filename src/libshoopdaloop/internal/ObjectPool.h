@@ -37,14 +37,15 @@ public:
     }
 
     ~ObjectPool() {
-        Object *buf;
-        while(m_queue.pop(buf)) {
-            delete buf;
-        }
         m_finish = true;
         m_replenish_flag.test_and_set();
         m_replenish_flag.notify_all();
         m_replenish_thread.join();
+
+        Object *buf;
+        while(m_queue.pop(buf)) {
+            delete buf;
+        }
     }
 
     // Get an object.

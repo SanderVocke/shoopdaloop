@@ -18,6 +18,7 @@
 #include "AudioBuffer.h"
 #include "ObjectPool.h"
 #include "AudioMidiLoop.h"
+#include "shoop_globals.h"
 #include "types.h"
 
 using namespace logging;
@@ -369,9 +370,33 @@ std::shared_ptr<ConnectedFXChain> Backend::create_fx_chain(fx_chain_type_t type,
         case Test2x2x1:
             chain = std::make_shared<CustomProcessingChain<Time, Size>>(
                 2, 2, 1, [this, &chain](size_t n, auto &ins, auto &outs, auto &midis) {
-                    for (size_t i=0; i<2; i++) {
-                        memcpy((void*)outs[i]->PROC_get_buffer(n), (void*)ins[i]->PROC_get_buffer(n), n*sizeof(float));
+                    static std::vector<audio_sample_t> out_buf_1, out_buf_2;
+                    out_buf_1.resize(std::max(n, out_buf_1.size()));
+                    out_buf_2.resize(std::max(n, out_buf_2.size()));
+
+                    // Audio: copy straight from input to output
+                    memcpy((void*)out_buf_1.data(), (void*)ins[0]->PROC_get_buffer(n), n*sizeof(float));
+                    memcpy((void*)out_buf_2.data(), (void*)ins[1]->PROC_get_buffer(n), n*sizeof(float));
+
+                    // Midi: for any MIDI message, synthesize a single sample on the timestamp of the message.
+                    // Its value will be (3rd msg byte / 0xFF).
+                    auto &midi = midis[0];
+                    auto &readbuf = midi->PROC_get_read_buffer(n);
+                    auto n_msgs = readbuf.PROC_get_n_events();
+                    for (size_t i = 0; i < n_msgs; i++) {
+                        auto &msg = readbuf.PROC_get_event_reference(i);
+                        auto time = msg.get_time();
+                        auto data = msg.get_data();
+                        auto size = msg.get_size();
+                        if (size >= 3) {
+                            auto val = data[2] / 255.0f;
+                            out_buf_1[time] += val;
+                            out_buf_2[time] += val;
+                        }
                     }
+
+                    memcpy((void*)outs[0]->PROC_get_buffer(n), (void*)out_buf_1.data(), n*sizeof(float));
+                    memcpy((void*)outs[1]->PROC_get_buffer(n), (void*)out_buf_2.data(), n*sizeof(float));
                 }
             );
         break;

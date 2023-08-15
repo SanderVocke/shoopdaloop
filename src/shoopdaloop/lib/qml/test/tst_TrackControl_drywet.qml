@@ -20,10 +20,10 @@ Session {
             "tut",
             false,
             "tut",
-            2,
-            2,
+            2, // dry audio
+            2, // wet audio
             0,
-            false,
+            true, // dry MIDI
             false,
             false,
             "test2x2x1"
@@ -74,6 +74,13 @@ Session {
         property alias output_port_2: lookup_output_port_2.object
 
         RegistryLookup {
+            id: lookup_midi_input_port
+            registry: session.objects_registry
+            key: "tut_dry_midi_in"
+        }
+        property alias midi_input_port: lookup_midi_input_port.object
+
+        RegistryLookup {
             id: lookup_fx
             registry: session.objects_registry
             key: "tut_fx_chain"
@@ -86,6 +93,7 @@ Session {
             verify_throw(input_port_2)
             verify_throw(output_port_1)
             verify_throw(output_port_2)
+            verify_throw(midi_input_port)
             verify_throw(fx)
             verify_throw(tut)
             reset()
@@ -108,8 +116,8 @@ Session {
             session.backend.dummy_wait_process()
         }
 
-        function test_drywet_monitor() {
-            run_case('test_drywet_monitor', () => {
+        function test_drywet_audio_monitor() {
+            run_case('test_drywet_audio_monitor', () => {
                 check_backend()
                 reset()
                 tut_control().monitor = true
@@ -133,8 +141,8 @@ Session {
             })
         }
 
-        function test_drywet_monitor_input_volume() {
-            run_case('test_drywet_monitor_input_volume', () => {
+        function test_drywet_audio_monitor_input_volume() {
+            run_case('test_drywet_audio_monitor_input_volume', () => {
                 check_backend()
                 reset()
                 tut_control().monitor = true
@@ -159,8 +167,8 @@ Session {
             })
         }
 
-        function test_drywet_monitor_output_volume() {
-            run_case('test_drywet_monitor_output_volume', () => {
+        function test_drywet_audio_monitor_output_volume() {
+            run_case('test_drywet_audio_monitor_output_volume', () => {
                 check_backend()
                 reset()
                 tut_control().monitor = true
@@ -185,8 +193,8 @@ Session {
             })
         }
 
-        function test_drywet_monitor_output_balance_left() {
-            run_case('test_drywet_monitor_balance_left', () => {
+        function test_drywet_audio_monitor_output_balance_left() {
+            run_case('test_drywet_audio_monitor_balance_left', () => {
                 check_backend()
                 reset()
                 tut_control().monitor = true
@@ -212,8 +220,8 @@ Session {
             })
         }
 
-        function test_drywet_monitor_output_balance_right() {
-            run_case('test_drywet_monitor_output_balance_right', () => {
+        function test_drywet_audio_monitor_output_balance_right() {
+            run_case('test_drywet_audio_monitor_output_balance_right', () => {
                 check_backend()
                 reset()
                 tut_control().monitor = true
@@ -239,8 +247,8 @@ Session {
             })
         }
 
-        function test_drywet_no_monitor() {
-            run_case('test_drywet_no_monitor', () => {
+        function test_drywet_audio_no_monitor() {
+            run_case('test_drywet_audio_no_monitor', () => {
                 check_backend()
                 reset()
                 tut_control().monitor = false
@@ -264,8 +272,8 @@ Session {
             })
         }
 
-        function test_drywet_monitor_mute() {
-            run_case('test_drywet_monitor_mute', () => {
+        function test_drywet_audio_monitor_mute() {
+            run_case('test_drywet_audio_monitor_mute', () => {
                 check_backend()
                 reset()
                 tut_control().monitor = true

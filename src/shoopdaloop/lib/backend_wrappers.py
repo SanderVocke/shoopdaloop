@@ -257,16 +257,16 @@ class BackendLoopMidiChannel:
     def get_data(self):
         r = get_midi_channel_data(self.shoop_c_handle)
         msgs = [backend_midi_message_to_dict(r[0].events[i][0]) for i in range(r[0].n_events)]
-        destroy_midi_channel_data(r)
+        destroy_midi_sequence(r)
         return msgs
     
     def load_data(self, msgs):
-        d = alloc_midi_channel_data(len(msgs))
+        d = alloc_midi_sequence(len(msgs))
         d[0].length_samples = msgs[len(msgs)-1]['time'] + 1
         for idx, m in enumerate(msgs):
             d[0].events[idx] = midi_message_dict_to_backend(m)
         load_midi_channel_data(self.shoop_c_handle, d)
-        destroy_midi_channel_data(d)
+        destroy_midi_sequence(d)
     
     def connect(self, port : 'BackendMidiPort'):
         if port.direction() == PortDirection.Input:
@@ -473,6 +473,29 @@ class BackendMidiPort:
     def connect_passthrough(self, other):
         add_midi_port_passthrough(self._c_handle, other.c_handle())
 
+    def dummy_clear_queues(self):
+        dummy_midi_port_clear_queues(self._c_handle)
+
+    def dummy_queue_msg(self, msg):
+        return self.dummy_queue_msgs([msg])
+    
+    def dummy_queue_msgs(self, msgs):
+        d = alloc_midi_sequence(len(msgs))
+        d[0].length_samples = msgs[len(msgs)-1]['time'] + 1
+        for idx, m in enumerate(msgs):
+            d[0].events[idx] = midi_message_dict_to_backend(m)
+        dummy_midi_port_queue_data(self._c_handle, d)
+        destroy_midi_sequence(d)
+    
+    def dummy_dequeue_data(self):
+        r = dummy_midi_port_dequeue_data(self._c_handle)
+        msgs = [backend_midi_message_to_dict(r[0].events[i][0]) for i in range(r[0].n_events)]
+        destroy_midi_sequence(r)
+        return msgs
+    
+    def dummy_request_data(self, n_frames):
+        dummy_midi_port_request_data(self._c_handle, n_frames)
+
     def __del__(self):
         self.destroy()
 
@@ -551,21 +574,14 @@ class Backend:
         port = BackendMidiPort(handle, direction)
         return port
     
-    def _fx_chain_ports_get(self, get_fn, fx_chain, idx):
-        n_ports = c_uint()
-        ports = get_fn(fx_chain.c_handle(), byref(n_ports))
-        if idx >= n_ports.value:
-            raise Exception('Trying to get port {} of {} ports'.format(idx, int(n_ports.value)))
-        return ports[idx]
-    
     def get_fx_chain_audio_input_port(self, fx_chain : Type['BackendFXChain'], idx : int):
-        return BackendAudioPort(self._fx_chain_ports_get(fx_chain_audio_input_ports, fx_chain, idx), PortDirection.Output.value)
+        return BackendAudioPort(fx_chain_audio_input_port(fx_chain.c_handle(), idx), PortDirection.Output)
     
     def get_fx_chain_audio_output_port(self, fx_chain : Type['BackendFXChain'], idx : int):
-        return BackendAudioPort(self._fx_chain_ports_get(fx_chain_audio_output_ports, fx_chain, idx), PortDirection.Input.value)
+        return BackendAudioPort(fx_chain_audio_output_port(fx_chain.c_handle(), idx), PortDirection.Input)
     
     def get_fx_chain_midi_input_port(self, fx_chain : Type['BackendFXChain'], idx : int):
-        return BackendMidiPort(self._fx_chain_ports_get(fx_chain_midi_input_ports, fx_chain, idx), PortDirection.Output.value)
+        return BackendMidiPort(fx_chain_midi_input_port(fx_chain.c_handle(), idx), PortDirection.Output)
         
     def get_sample_rate(self):
         return int(get_sample_rate(self._c_handle))

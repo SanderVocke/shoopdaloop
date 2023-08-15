@@ -22,9 +22,9 @@ Session {
             "tut",
             0,
             0,
-            2,
+            2, // direct Audio
             false,
-            false,
+            true, // direct MIDI
             false,
             undefined
             )
@@ -46,39 +46,55 @@ Session {
         }
 
         RegistryLookup {
-            id: lookup_input_port_1
+            id: lookup_audio_input_port_1
             registry: session.objects_registry
             key: "tut_direct_in_1"
         }
-        property alias input_port_1: lookup_input_port_1.object
+        property alias audio_input_port_1: lookup_audio_input_port_1.object
 
         RegistryLookup {
-            id: lookup_input_port_2
+            id: lookup_audio_input_port_2
             registry: session.objects_registry
             key: "tut_direct_in_2"
         }
-        property alias input_port_2: lookup_input_port_2.object
+        property alias audio_input_port_2: lookup_audio_input_port_2.object
 
         RegistryLookup {
-            id: lookup_output_port_1
+            id: lookup_audio_output_port_1
             registry: session.objects_registry
             key: "tut_direct_out_1"
         }
-        property alias output_port_1: lookup_output_port_1.object
+        property alias audio_output_port_1: lookup_audio_output_port_1.object
 
         RegistryLookup {
-            id: lookup_output_port_2
+            id: lookup_audio_output_port_2
             registry: session.objects_registry
             key: "tut_direct_out_2"
         }
-        property alias output_port_2: lookup_output_port_2.object
+        property alias audio_output_port_2: lookup_audio_output_port_2.object
+
+        RegistryLookup {
+            id: lookup_midi_input_port
+            registry: session.objects_registry
+            key: "tut_direct_midi_in"
+        }
+        property alias midi_input_port: lookup_midi_input_port.object
+
+        RegistryLookup {
+            id: lookup_midi_output_port
+            registry: session.objects_registry
+            key: "tut_direct_midi_out"
+        }
+        property alias midi_output_port: lookup_midi_output_port.object
 
         function initTestCase() {
             session.backend.dummy_enter_controlled_mode()
-            verify_throw(input_port_1)
-            verify_throw(input_port_2)
-            verify_throw(output_port_1)
-            verify_throw(output_port_2)
+            verify_throw(audio_input_port_1)
+            verify_throw(audio_input_port_2)
+            verify_throw(audio_output_port_1)
+            verify_throw(audio_output_port_2)
+            verify_throw(midi_input_port)
+            verify_throw(midi_output_port)
             reset()
         }
 
@@ -99,23 +115,23 @@ Session {
             session.backend.dummy_wait_process()
         }
 
-        function test_direct_monitor() {
-            run_case('test_direct_monitor', () => {
+        function test_direct_audio_monitor() {
+            run_case('test_direct_audio_monitor', () => {
                 check_backend()
                 reset()
                 tut_control().monitor = true
                 tut_control().mute = false
                 testcase.wait(50)
 
-                input_port_1.dummy_queue_data([1, 2, 3, 4])
-                input_port_2.dummy_queue_data([4, 3, 2, 1])
-                output_port_1.dummy_request_data(4)
-                output_port_2.dummy_request_data(4)
+                audio_input_port_1.dummy_queue_data([1, 2, 3, 4])
+                audio_input_port_2.dummy_queue_data([4, 3, 2, 1])
+                audio_output_port_1.dummy_request_data(4)
+                audio_output_port_2.dummy_request_data(4)
                 session.backend.dummy_request_controlled_frames(4)
                 session.backend.dummy_wait_process()
 
-                let out1 = output_port_1.dummy_dequeue_data(4)
-                let out2 = output_port_2.dummy_dequeue_data(4)
+                let out1 = audio_output_port_1.dummy_dequeue_data(4)
+                let out2 = audio_output_port_2.dummy_dequeue_data(4)
 
                 verify_eq(out1, [1, 2, 3, 4])
                 verify_eq(out2, [4, 3, 2, 1])
@@ -123,8 +139,52 @@ Session {
             })
         }
 
-        function test_direct_monitor_input_volume() {
-            run_case('test_direct_monitor_input_volume', () => {
+        function test_direct_midi_monitor() {
+            run_case('test_direct_midi_monitor', () => {
+                check_backend()
+                reset()
+                tut_control().monitor = true
+                tut_control().mute = false
+                testcase.wait(50)
+
+                let msgs = [
+                    { 'time': 0, 'data': [0x90, 100, 100] },
+                    { 'time': 3, 'data': [0x90, 50,  50]  },
+                    { 'time': 4, 'data': [0x90, 10,  10]  }
+                ]
+                let expect_out1 = [
+                    { 'time': 0, 'data': [0x90, 100, 100] },
+                    { 'time': 3, 'data': [0x90, 50,  50]  },
+                ]
+                let expect_out2 = [
+                    { 'time': 4, 'data': [0x90, 10,  10]  }
+                ]
+
+                midi_input_port.dummy_clear_queues()
+                midi_output_port.dummy_clear_queues()
+
+                midi_input_port.dummy_queue_msgs(msgs)
+                midi_output_port.dummy_request_data(8)
+                session.backend.dummy_request_controlled_frames(4)
+                session.backend.dummy_wait_process()
+
+                let out = midi_output_port.dummy_dequeue_data()
+
+                session.backend.dummy_request_controlled_frames(4)
+                session.backend.dummy_wait_process()
+
+                let out2 = midi_output_port.dummy_dequeue_data()
+
+                midi_input_port.dummy_clear_queues()
+                midi_output_port.dummy_clear_queues()
+
+                verify_eq(out, expect_out1, true)
+                verify_eq(out2, expect_out2, true)
+            })
+        }
+
+        function test_direct_audio_monitor_input_volume() {
+            run_case('test_direct_audio_monitor_input_volume', () => {
                 check_backend()
                 reset()
                 tut_control().monitor = true
@@ -132,15 +192,15 @@ Session {
                 tut_control().input_volume_dB = 6.0
                 testcase.wait(50)
 
-                input_port_1.dummy_queue_data([1, 2, 3, 4])
-                input_port_2.dummy_queue_data([4, 3, 2, 1])
-                output_port_1.dummy_request_data(4)
-                output_port_2.dummy_request_data(4)
+                audio_input_port_1.dummy_queue_data([1, 2, 3, 4])
+                audio_input_port_2.dummy_queue_data([4, 3, 2, 1])
+                audio_output_port_1.dummy_request_data(4)
+                audio_output_port_2.dummy_request_data(4)
                 session.backend.dummy_request_controlled_frames(4)
                 session.backend.dummy_wait_process()
 
-                let out1 = output_port_1.dummy_dequeue_data(4)
-                let out2 = output_port_2.dummy_dequeue_data(4)
+                let out1 = audio_output_port_1.dummy_dequeue_data(4)
+                let out2 = audio_output_port_2.dummy_dequeue_data(4)
 
                 verify_eq(out1.map(o => Math.round(o)), [2, 4, 6, 8])
                 verify_eq(out2.map(o => Math.round(o)), [8, 6, 4, 2])
@@ -148,8 +208,8 @@ Session {
             })
         }
 
-        function test_direct_monitor_output_volume() {
-            run_case('test_direct_monitor_output_volume', () => {
+        function test_direct_audio_monitor_output_volume() {
+            run_case('test_direct_audio_monitor_output_volume', () => {
                 check_backend()
                 reset()
                 tut_control().monitor = true
@@ -157,15 +217,15 @@ Session {
                 tut_control().volume_dB = 6.0
                 testcase.wait(50)
 
-                input_port_1.dummy_queue_data([1, 2, 3, 4])
-                input_port_2.dummy_queue_data([4, 3, 2, 1])
-                output_port_1.dummy_request_data(4)
-                output_port_2.dummy_request_data(4)
+                audio_input_port_1.dummy_queue_data([1, 2, 3, 4])
+                audio_input_port_2.dummy_queue_data([4, 3, 2, 1])
+                audio_output_port_1.dummy_request_data(4)
+                audio_output_port_2.dummy_request_data(4)
                 session.backend.dummy_request_controlled_frames(4)
                 session.backend.dummy_wait_process()
 
-                let out1 = output_port_1.dummy_dequeue_data(4)
-                let out2 = output_port_2.dummy_dequeue_data(4)
+                let out1 = audio_output_port_1.dummy_dequeue_data(4)
+                let out2 = audio_output_port_2.dummy_dequeue_data(4)
 
                 verify_eq(out1.map(o => Math.round(o)), [2, 4, 6, 8])
                 verify_eq(out2.map(o => Math.round(o)), [8, 6, 4, 2])
@@ -173,8 +233,8 @@ Session {
             })
         }
 
-        function test_direct_monitor_output_balance_left() {
-            run_case('test_direct_monitor_balance_left', () => {
+        function test_direct_audio_monitor_output_balance_left() {
+            run_case('test_direct_audio_monitor_balance_left', () => {
                 check_backend()
                 reset()
                 tut_control().monitor = true
@@ -183,15 +243,15 @@ Session {
                 tut_control().volume_dB = 6.0
                 testcase.wait(50)
 
-                input_port_1.dummy_queue_data([1, 2, 3, 4])
-                input_port_2.dummy_queue_data([4, 3, 2, 1])
-                output_port_1.dummy_request_data(4)
-                output_port_2.dummy_request_data(4)
+                audio_input_port_1.dummy_queue_data([1, 2, 3, 4])
+                audio_input_port_2.dummy_queue_data([4, 3, 2, 1])
+                audio_output_port_1.dummy_request_data(4)
+                audio_output_port_2.dummy_request_data(4)
                 session.backend.dummy_request_controlled_frames(4)
                 session.backend.dummy_wait_process()
 
-                let out1 = output_port_1.dummy_dequeue_data(4)
-                let out2 = output_port_2.dummy_dequeue_data(4)
+                let out1 = audio_output_port_1.dummy_dequeue_data(4)
+                let out2 = audio_output_port_2.dummy_dequeue_data(4)
 
                 verify_eq(out1.map(o => Math.round(o)), [2, 4, 6, 8])
                 verify_eq(out2.map(o => Math.round(o)), [0, 0, 0, 0])
@@ -199,8 +259,8 @@ Session {
             })
         }
 
-        function test_direct_monitor_output_balance_right() {
-            run_case('test_direct_monitor_output_balance_right', () => {
+        function test_direct_audio_monitor_output_balance_right() {
+            run_case('test_direct_audio_monitor_output_balance_right', () => {
                 check_backend()
                 reset()
                 tut_control().monitor = true
@@ -209,15 +269,15 @@ Session {
                 tut_control().volume_dB = 6.0
                 testcase.wait(50)
 
-                input_port_1.dummy_queue_data([1, 2, 3, 4])
-                input_port_2.dummy_queue_data([4, 3, 2, 1])
-                output_port_1.dummy_request_data(4)
-                output_port_2.dummy_request_data(4)
+                audio_input_port_1.dummy_queue_data([1, 2, 3, 4])
+                audio_input_port_2.dummy_queue_data([4, 3, 2, 1])
+                audio_output_port_1.dummy_request_data(4)
+                audio_output_port_2.dummy_request_data(4)
                 session.backend.dummy_request_controlled_frames(4)
                 session.backend.dummy_wait_process()
 
-                let out1 = output_port_1.dummy_dequeue_data(4)
-                let out2 = output_port_2.dummy_dequeue_data(4)
+                let out1 = audio_output_port_1.dummy_dequeue_data(4)
+                let out2 = audio_output_port_2.dummy_dequeue_data(4)
 
                 verify_eq(out1.map(o => Math.round(o)), [0, 0, 0, 0])
                 verify_eq(out2.map(o => Math.round(o)), [8, 6, 4, 2])
@@ -225,23 +285,23 @@ Session {
             })
         }
 
-        function test_direct_no_monitor() {
-            run_case('test_direct_no_monitor', () => {
+        function test_direct_audio_no_monitor() {
+            run_case('test_direct_audio_no_monitor', () => {
                 check_backend()
                 reset()
                 tut_control().monitor = false
                 tut_control().mute = false
                 testcase.wait(50)
 
-                input_port_1.dummy_queue_data([1, 2, 3, 4])
-                input_port_2.dummy_queue_data([4, 3, 2, 1])
-                output_port_1.dummy_request_data(4)
-                output_port_2.dummy_request_data(4)
+                audio_input_port_1.dummy_queue_data([1, 2, 3, 4])
+                audio_input_port_2.dummy_queue_data([4, 3, 2, 1])
+                audio_output_port_1.dummy_request_data(4)
+                audio_output_port_2.dummy_request_data(4)
                 session.backend.dummy_request_controlled_frames(4)
                 session.backend.dummy_wait_process()
 
-                let out1 = output_port_1.dummy_dequeue_data(4)
-                let out2 = output_port_2.dummy_dequeue_data(4)
+                let out1 = audio_output_port_1.dummy_dequeue_data(4)
+                let out2 = audio_output_port_2.dummy_dequeue_data(4)
 
                 verify_eq(out1, [0, 0, 0, 0])
                 verify_eq(out2, [0, 0, 0, 0])
@@ -249,27 +309,101 @@ Session {
             })
         }
 
-        function test_direct_monitor_mute() {
-            run_case('test_direct_monitor_mute', () => {
+        function test_direct_midi_no_monitor() {
+            run_case('test_direct_midi_no_monitor', () => {
+                check_backend()
+                reset()
+                tut_control().monitor = false
+                tut_control().mute = false
+                testcase.wait(50)
+
+                let msgs = [
+                    { 'time': 0, 'data': [0x90, 100, 100] },
+                    { 'time': 3, 'data': [0x90, 50,  50]  },
+                    { 'time': 4, 'data': [0x90, 10,  10]  }
+                ]
+
+                midi_input_port.dummy_clear_queues()
+                midi_output_port.dummy_clear_queues()
+
+                midi_input_port.dummy_queue_msgs(msgs)
+                midi_output_port.dummy_request_data(8)
+                session.backend.dummy_request_controlled_frames(4)
+                session.backend.dummy_wait_process()
+
+                let out = midi_output_port.dummy_dequeue_data()
+
+                session.backend.dummy_request_controlled_frames(4)
+                session.backend.dummy_wait_process()
+
+                let out2 = midi_output_port.dummy_dequeue_data()
+
+                midi_input_port.dummy_clear_queues()
+                midi_output_port.dummy_clear_queues()
+
+                verify_eq(out, [], true)
+                verify_eq(out2, [], true)
+            })
+        }
+
+        function test_direct_audio_monitor_mute() {
+            run_case('test_direct_audio_monitor_mute', () => {
                 check_backend()
                 reset()
                 tut_control().monitor = true
                 tut_control().mute = true
                 testcase.wait(50)
 
-                input_port_1.dummy_queue_data([1, 2, 3, 4])
-                input_port_2.dummy_queue_data([4, 3, 2, 1])
-                output_port_1.dummy_request_data(4)
-                output_port_2.dummy_request_data(4)
+                audio_input_port_1.dummy_queue_data([1, 2, 3, 4])
+                audio_input_port_2.dummy_queue_data([4, 3, 2, 1])
+                audio_output_port_1.dummy_request_data(4)
+                audio_output_port_2.dummy_request_data(4)
                 session.backend.dummy_request_controlled_frames(4)
                 session.backend.dummy_wait_process()
 
-                let out1 = output_port_1.dummy_dequeue_data(4)
-                let out2 = output_port_2.dummy_dequeue_data(4)
+                let out1 = audio_output_port_1.dummy_dequeue_data(4)
+                let out2 = audio_output_port_2.dummy_dequeue_data(4)
 
                 verify_eq(out1, [0, 0, 0, 0])
                 verify_eq(out2, [0, 0, 0, 0])
 
+            })
+        }
+
+        function test_direct_midi_monitor_mute() {
+            run_case('test_direct_midi_monitor', () => {
+                check_backend()
+                reset()
+                tut_control().monitor = true
+                tut_control().mute = true
+                testcase.wait(50)
+
+                let msgs = [
+                    { 'time': 0, 'data': [0x90, 100, 100] },
+                    { 'time': 3, 'data': [0x90, 50,  50]  },
+                    { 'time': 4, 'data': [0x90, 10,  10]  }
+                ]
+
+                midi_input_port.dummy_clear_queues()
+                midi_output_port.dummy_clear_queues()
+
+                midi_input_port.dummy_queue_msgs(msgs)
+                midi_output_port.dummy_request_data(8)
+                session.backend.dummy_request_controlled_frames(4)
+                session.backend.dummy_wait_process()
+
+                let out = midi_output_port.dummy_dequeue_data()
+
+                session.backend.dummy_request_controlled_frames(4)
+                session.backend.dummy_wait_process()
+
+                let out2 = midi_output_port.dummy_dequeue_data()
+
+                midi_input_port.dummy_clear_queues()
+                midi_output_port.dummy_clear_queues()
+
+                verify_eq(out, [], true)
+                verify_eq(out2, [], true)
             })
         }
     }

@@ -254,6 +254,7 @@ Item {
     }
     function push_mute() {
         audio_out_ports.forEach((p) => p.set_muted(mute))
+        midi_out_ports.forEach((p) => p.set_muted(mute))
     }
     function push_monitor() {
         audio_in_ports
@@ -265,6 +266,16 @@ Item {
             .filter(p => is_direct(p.descriptor))
             .forEach((p) => {
                 p.set_passthrough_muted(logic.mute_direct_passthrough)
+            })
+        midi_in_ports
+            .filter(p => is_direct(p.descriptor))
+            .forEach((p) => {
+                p.set_passthrough_muted(logic.mute_direct_passthrough)
+            })
+        midi_in_ports
+            .filter(p => is_dry(p.descriptor))
+            .forEach((p) => {
+                p.set_passthrough_muted(logic.mute_dry_passthrough)
             })
         fx_out_ports
             .forEach((p) => {

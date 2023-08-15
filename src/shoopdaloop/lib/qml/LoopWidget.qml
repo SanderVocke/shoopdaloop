@@ -329,10 +329,18 @@ Item {
 
     function get_audio_channels() {
         return Array.from(Array(audio_channels.model).keys()).map((i) => audio_channels.itemAt(i))
-    } 
+    }
+
+    function get_midi_channels() {
+        return Array.from(Array(midi_channels.model).keys()).map((i) => midi_channels.itemAt(i))
+    }
 
     function get_audio_output_channels() {
         return get_audio_channels().filter(c => c && c.obj_id.match(/.*_(?:wet|direct)(?:_[0-9]+)?$/))
+    }
+
+    function get_midi_output_channels() {
+        return get_midi_channels().filter(c => c && c.obj_id.match(/.*_(?:wet|direct)(?:_[0-9]+)?$/))
     }
 
     function get_stereo_audio_output_channels() {

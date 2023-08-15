@@ -160,7 +160,7 @@ typedef struct {
     unsigned int n_events;
     midi_event_t **events;
     unsigned length_samples;
-} midi_channel_data_t;
+} midi_sequence_t;
 
 typedef struct {
     const char* key;

@@ -64,6 +64,22 @@ class MidiPort(Port):
         self.muted = state.muted
         self.passthrough_muted = state.passthrough_muted
     
+    @Slot(list)
+    def dummy_queue_msgs(self, msgs):
+        self._backend_obj.dummy_queue_msgs(msgs)
+    
+    @Slot(result=list)
+    def dummy_dequeue_data(self):
+        return self._backend_obj.dummy_dequeue_data()
+    
+    @Slot(int)
+    def dummy_request_data(self, n_frames):
+        self._backend_obj.dummy_request_data(n_frames)
+    
+    @Slot()
+    def dummy_clear_queues(self):
+        self._backend_obj.dummy_clear_queues()
+    
     ##########
     ## INTERNAL MEMBERS
     ##########

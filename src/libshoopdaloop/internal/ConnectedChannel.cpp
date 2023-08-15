@@ -154,7 +154,7 @@ void ConnectedChannel::PROC_prepare_process_midi(size_t n_frames) {
     auto out_locked = mp_output_port_mapping.lock();
     if (out_locked) {
         auto chan = dynamic_cast<LoopMidiChannel*>(channel.get());
-        chan->PROC_set_playback_buffer(out_locked->maybe_midi_output_buffer, n_frames);
+        chan->PROC_set_playback_buffer(out_locked->maybe_midi_output_merging_buffer.get(), n_frames);
     } else {
         auto chan = dynamic_cast<LoopMidiChannel*>(channel.get());
         chan->PROC_set_playback_buffer(g_dummy_midi_output_buffer.get(), n_frames);
@@ -163,16 +163,6 @@ void ConnectedChannel::PROC_prepare_process_midi(size_t n_frames) {
 
 
 void ConnectedChannel::PROC_finalize_process_midi() {
-    // auto in_locked = mp_input_port_mapping.lock();
-    // if (in_locked) {
-    //     in_locked->PROC_reset_buffers();
-    // }
-    // for (auto &port : mp_output_port_mappings) {
-    //     auto locked = port.lock();
-    //     if (locked) {
-    //         locked->PROC_reset_buffers();
-    //     }
-    // }
 }
 
 LoopAudioChannel *ConnectedChannel::maybe_audio() {

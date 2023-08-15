@@ -280,6 +280,6 @@ class FileIO(QThread):
     def get_soundfile_formats(self):
         return dict(sf.available_formats())
     
-    @Slot(str, bool, bool, result='QVariant')
-    def glob(self, pattern, recursive, hidden):
-        return glob.glob(pattern, recursive=recursive, include_hidden = hidden)
+    @Slot(str, bool, result='QVariant')
+    def glob(self, pattern, recursive):
+        return glob.glob(pattern, recursive=recursive)

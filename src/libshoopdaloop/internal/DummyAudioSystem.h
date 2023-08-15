@@ -5,6 +5,7 @@
 #include "PortInterface.h"
 #include "LoggingEnabled.h"
 #include "WithCommandQueue.h"
+#include "MidiMessage.h"
 #include "types.h"
 #include <chrono>
 #include <cstddef>
@@ -28,14 +29,15 @@ class DummyAudioPort : public AudioPortInterface<audio_sample_t>,
     PortDirection m_direction;
     boost::lockfree::spsc_queue<std::vector<audio_sample_t>> m_queued_data;
     std::atomic<size_t> m_n_requested_samples;
-    std::vector<float> m_retained_samples;
+    std::vector<audio_sample_t> m_retained_samples;
+    std::vector<audio_sample_t> m_buffer_data;
 
 public:
     DummyAudioPort(
         std::string name,
         PortDirection direction);
     
-    float *PROC_get_buffer(size_t n_frames, bool do_zero=false) override;
+    audio_sample_t *PROC_get_buffer(size_t n_frames, bool do_zero=false) override;
     const char* name() const override;
     PortDirection direction() const override;
     void close() override;
@@ -47,22 +49,39 @@ public:
 
     // For output ports, ensure the postprocess function is called
     // and samples can be requested/dequeued.
-    void PROC_post_process(float* buf, size_t n_frames);
+    void PROC_post_process(audio_sample_t* buf, size_t n_frames);
     void request_data(size_t n_frames);
     std::vector<audio_sample_t> dequeue_data(size_t n);
 };
 
-class DummyMidiPort : public MidiPortInterface, public MidiReadableBufferInterface, public MidiWriteableBufferInterface {
+class DummyMidiPort : public MidiPortInterface,
+                      public MidiReadableBufferInterface,
+                      public MidiWriteableBufferInterface,
+                      private ModuleLoggingEnabled {
+public:
+    using StoredMessage = MidiMessage<uint32_t, uint32_t>;
+    
+private:
+    std::string log_module_name() const override;
     std::string m_name;
     PortDirection m_direction;
 
-public:
+    // Queued messages as external input to the port
+    std::vector<StoredMessage> m_queued_msgs;
+    std::atomic<size_t> current_buf_frames;
 
+    // Amount of frames requested for reading externally out of the port
+    std::atomic<size_t> n_requested_frames;
+    std::atomic<size_t> n_original_requested_frames;
+    std::atomic<size_t> m_update_queue_by_frames_pending = 0;
+    std::vector<StoredMessage> m_written_requested_msgs;
+
+public:
     size_t PROC_get_n_events() const override;
     virtual MidiSortableMessageInterface &PROC_get_event_reference(size_t idx) override;
     void PROC_write_event_value(uint32_t size,
-                        uint32_t time,
-                        const uint8_t* data) override;
+                                uint32_t time,
+                                const uint8_t* data) override;
     void PROC_write_event_reference(MidiSortableMessageInterface const& m) override;
     bool write_by_reference_supported() const override;
     bool write_by_value_supported() const override;
@@ -73,14 +92,24 @@ public:
     );
 
     const char* name() const override;
-
     PortDirection direction() const override;
-
     void close() override;
 
     MidiReadableBufferInterface &PROC_get_read_buffer (size_t n_frames) override;
-
     MidiWriteableBufferInterface &PROC_get_write_buffer (size_t n_frames) override;
+
+    void queue_msg(uint32_t size, uint32_t time, const uint8_t* data);
+    bool get_queue_empty();
+    
+    void clear_queues();
+
+    void PROC_post_process(size_t n_frames);
+    // Request a certain number of frames to be stored.
+    // Not allowed if previous request was not yet completed.
+    void request_data(size_t n_frames);
+    // Dequeue messages written during the requested period.
+    // Timestamps are relative to when the request was made.
+    std::vector<StoredMessage> get_written_requested_msgs();
 
     ~DummyMidiPort() override;
 };

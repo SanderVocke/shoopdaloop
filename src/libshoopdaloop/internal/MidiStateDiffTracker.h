@@ -1,4 +1,4 @@
-// #pragma once
+#pragma once
 #include <boost/container/flat_set.hpp>
 #include "MidiStateTracker.h"
 

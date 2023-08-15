@@ -22,9 +22,9 @@ Session {
             "tut",
             0,
             0,
-            2,
+            2, // direct Audio
             false,
-            false,
+            true, // direct MIDI
             false,
             undefined
             )
@@ -74,12 +74,28 @@ Session {
         }
         property alias output_port_2: lookup_output_port_2.object
 
+        RegistryLookup {
+            id: lookup_midi_input_port
+            registry: session.objects_registry
+            key: "tut_direct_midi_in"
+        }
+        property alias midi_input_port: lookup_midi_input_port.object
+
+        RegistryLookup {
+            id: lookup_midi_output_port
+            registry: session.objects_registry
+            key: "tut_direct_midi_out"
+        }
+        property alias midi_output_port: lookup_midi_output_port.object
+
         function initTestCase() {
             session.backend.dummy_enter_controlled_mode()
             verify_throw(input_port_1)
             verify_throw(input_port_2)
             verify_throw(output_port_1)
             verify_throw(output_port_2)
+            verify_throw(midi_input_port)
+            verify_throw(midi_output_port)
             reset()
         }
 
@@ -107,8 +123,8 @@ Session {
             session.backend.dummy_wait_process()
         }
 
-        function test_direct_record_no_monitor() {
-            run_case('test_direct_record_no_monitor', () => {
+        function test_audio_direct_record_no_monitor() {
+            run_case('test_audio_direct_record_no_monitor', () => {
                 check_backend()
                 reset()
                 tut_control().monitor = false
@@ -137,8 +153,50 @@ Session {
             })
         }
 
-        function test_direct_record_monitor() {
-            run_case('test_direct_record_monitor', () => {
+        function test_midi_direct_record_no_monitor() {
+            run_case('test_midi_direct_record_no_monitor', () => {
+                check_backend()
+                reset()
+                tut_control().monitor = false
+                tut_control().mute = false
+                lut.transition(Types.LoopMode.Recording, 0, false)
+                testcase.wait(50)
+
+                let input = [
+                    { 'time': 0, 'data': [0x90, 100, 100] },
+                    { 'time': 3, 'data': [0x90, 50,  50]  },
+                    { 'time': 4, 'data': [0x90, 10,  10]  }
+                ]
+                let expect_loop = [
+                    { 'time': 0, 'data': [0x90, 100, 100] },
+                    { 'time': 3, 'data': [0x90, 50,  50]  },
+                ]
+                let expect_out = []
+                let chan = lut.get_midi_output_channels()[0]
+
+                midi_input_port.dummy_clear_queues()
+                midi_output_port.dummy_clear_queues()
+
+                midi_input_port.dummy_queue_msgs(input)
+                midi_output_port.dummy_request_data(4)
+                session.backend.dummy_request_controlled_frames(2)
+                session.backend.dummy_wait_process()
+                session.backend.dummy_request_controlled_frames(2)
+                session.backend.dummy_wait_process()
+
+                let out = midi_output_port.dummy_dequeue_data()
+                let chan_data = chan.get_data()
+
+                midi_input_port.dummy_clear_queues()
+                midi_output_port.dummy_clear_queues()
+
+                verify_eq(out, expect_out, true)
+                verify_eq(chan_data, expect_loop, true)
+            })
+        }
+
+        function test_audio_direct_record_monitor() {
+            run_case('test_audio_direct_record_monitor', () => {
                 check_backend()
                 reset()
                 tut_control().monitor = true
@@ -167,8 +225,50 @@ Session {
             })
         }
 
-        function test_direct_play_no_monitor() {
-            run_case('test_direct_play_no_monitor', () => {
+        function test_midi_direct_record_monitor() {
+            run_case('test_midi_direct_record_monitor', () => {
+                check_backend()
+                reset()
+                tut_control().monitor = true
+                tut_control().mute = false
+                lut.transition(Types.LoopMode.Recording, 0, false)
+                testcase.wait(50)
+
+                let input = [
+                    { 'time': 0, 'data': [0x90, 100, 100] },
+                    { 'time': 3, 'data': [0x90, 50,  50]  },
+                    { 'time': 4, 'data': [0x90, 10,  10]  }
+                ]
+                let expect_loop = [
+                    { 'time': 0, 'data': [0x90, 100, 100] },
+                    { 'time': 3, 'data': [0x90, 50,  50]  },
+                ]
+                let expect_out = expect_loop
+                let chan = lut.get_midi_output_channels()[0]
+
+                midi_input_port.dummy_clear_queues()
+                midi_output_port.dummy_clear_queues()
+
+                midi_input_port.dummy_queue_msgs(input)
+                midi_output_port.dummy_request_data(4)
+                session.backend.dummy_request_controlled_frames(2)
+                session.backend.dummy_wait_process()
+                session.backend.dummy_request_controlled_frames(2)
+                session.backend.dummy_wait_process()
+
+                let out = midi_output_port.dummy_dequeue_data()
+                let chan_data = chan.get_data()
+
+                midi_input_port.dummy_clear_queues()
+                midi_output_port.dummy_clear_queues()
+
+                verify_eq(out, expect_out, true)
+                verify_eq(chan_data, expect_loop, true)
+            })
+        }
+
+        function test_audio_direct_play_no_monitor() {
+            run_case('test_audio_direct_play_no_monitor', () => {
                 check_backend()
                 reset()
                 tut_control().monitor = false
@@ -200,8 +300,51 @@ Session {
             })
         }
 
-        function test_direct_play_monitor() {
-            run_case('test_direct_play_monitor', () => {
+        function test_midi_direct_play_no_monitor() {
+            run_case('test_midi_direct_play_no_monitor', () => {
+                let input = [
+                    { 'time': 0, 'data': [0x90, 100, 100] },
+                    { 'time': 3, 'data': [0x90, 50,  50]  }
+                ]
+                let loop = [
+                    { 'time': 1, 'data': [0x90, 20, 20] },
+                    { 'time': 2, 'data': [0x90, 10, 10] },
+                ]
+                let expect_out = loop
+
+                check_backend()
+                reset()
+                tut_control().monitor = false
+                tut_control().mute = false
+                let chan = lut.get_midi_output_channels()[0]
+                chan.load_data(loop)
+                lut.set_length(4)
+                lut.transition(Types.LoopMode.Playing, 0, false)
+                testcase.wait(50)
+
+                midi_input_port.dummy_clear_queues()
+                midi_output_port.dummy_clear_queues()
+
+                midi_input_port.dummy_queue_msgs(input)
+                midi_output_port.dummy_request_data(4)
+                session.backend.dummy_request_controlled_frames(2)
+                session.backend.dummy_wait_process()
+                session.backend.dummy_request_controlled_frames(2)
+                session.backend.dummy_wait_process()
+
+                let out = midi_output_port.dummy_dequeue_data()
+                let chan_data = chan.get_data()
+
+                midi_input_port.dummy_clear_queues()
+                midi_output_port.dummy_clear_queues()
+
+                verify_eq(out, expect_out, true)
+                verify_eq(chan_data, loop, true)
+            })
+        }
+
+        function test_audio_direct_play_monitor() {
+            run_case('test_audio_direct_play_monitor', () => {
                 check_backend()
                 reset()
                 tut_control().monitor = true
@@ -230,6 +373,54 @@ Session {
                 verify_eq(loop1, [5, 6, 7, 8])
                 verify_eq(loop2, [8, 7, 6, 5])
 
+            })
+        }
+
+        function test_midi_direct_play_monitor() {
+            run_case('test_midi_direct_play_monitor', () => {
+                let input = [
+                    { 'time': 0, 'data': [0x90, 100, 100] },
+                    { 'time': 3, 'data': [0x90, 50,  50]  }
+                ]
+                let loop = [
+                    { 'time': 1, 'data': [0x90, 20, 20] },
+                    { 'time': 2, 'data': [0x90, 10, 10] },
+                ]
+                let expect_out = [
+                    { 'time': 0, 'data': [0x90, 100, 100] },
+                    { 'time': 1, 'data': [0x90, 20, 20]   },
+                    { 'time': 2, 'data': [0x90, 10, 10]   },
+                    { 'time': 3, 'data': [0x90, 50,  50]  }
+                ]
+
+                check_backend()
+                reset()
+                tut_control().monitor = true
+                tut_control().mute = false
+                let chan = lut.get_midi_output_channels()[0]
+                chan.load_data(loop)
+                lut.set_length(4)
+                lut.transition(Types.LoopMode.Playing, 0, false)
+                testcase.wait(50)
+
+                midi_input_port.dummy_clear_queues()
+                midi_output_port.dummy_clear_queues()
+
+                midi_input_port.dummy_queue_msgs(input)
+                midi_output_port.dummy_request_data(4)
+                session.backend.dummy_request_controlled_frames(2)
+                session.backend.dummy_wait_process()
+                session.backend.dummy_request_controlled_frames(2)
+                session.backend.dummy_wait_process()
+
+                let out = midi_output_port.dummy_dequeue_data()
+                let chan_data = chan.get_data()
+
+                midi_input_port.dummy_clear_queues()
+                midi_output_port.dummy_clear_queues()
+
+                verify_eq(out, expect_out, true)
+                verify_eq(chan_data, loop, true)
             })
         }
     }

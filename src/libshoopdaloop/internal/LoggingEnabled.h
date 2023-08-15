@@ -35,7 +35,10 @@ public:
                    const char* fl = std::source_location::current().file_name(),
                    uint32_t ln = std::source_location::current().line()) const {
         if (!m_logger) { throw std::runtime_error("Uninitialized, ensure you have called log_init()." ); }
-        log<logging::LogLevel::trace>("{}:{} - {}", fl, ln, fn);
+        if (logging::LogLevel::trace >= LevelFilter) {
+            auto _t = fmt::ptr((void*)this);
+            log<logging::LogLevel::trace>("[@{}] {}:{} - {}", _t, fl, ln, fn);
+        }
     }
 
     LoggingEnabled() { };

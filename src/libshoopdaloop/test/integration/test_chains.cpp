@@ -62,7 +62,6 @@ struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled {
 
     SingleDryWetLoopTestChain() {
         log_init();
-        unsigned int dummy;
 
         api_backend = initialize(Dummy, "backend");
         int_backend = internal_backend(api_backend);
@@ -78,8 +77,8 @@ struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled {
         api_fx_chain = create_fx_chain(api_backend, Test2x2x1, "Test");
         int_fx_chain = internal_fx_chain(api_fx_chain);
         int_custom_processing_chain = std::dynamic_pointer_cast<shoop_types::FXChain>(int_fx_chain->chain);
-        api_fx_in = fx_chain_audio_input_ports(api_fx_chain, &dummy)[0];
-        api_fx_out = fx_chain_audio_output_ports(api_fx_chain, &dummy)[0];
+        api_fx_in = fx_chain_audio_input_port(api_fx_chain, 0);
+        api_fx_out = fx_chain_audio_output_port(api_fx_chain, 0);
         int_fx_in = internal_audio_port(api_fx_in);
         int_fx_out = internal_audio_port(api_fx_out);
 

@@ -8,16 +8,24 @@ if(ENABLE_PERFTOOLS)
     link_libraries(${GPERFTOOLS_LIBRARIES})
     include_directories(${GPERFTOOLS_INCLUDES})
 endif()
-option(ENABLE_ASAN "Enable address sanitizer")
+option(ENABLE_ASAN "Enable address sanitizer" OFF)
 if(ENABLE_ASAN)
-    add_compile_options(-fsanitize=address -shared-libasan)
-    add_link_options(-fsanitize=address -shared-libasan)
     if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+        add_compile_options(-fsanitize=address -shared-libasan)
+        add_link_options(-fsanitize=address -shared-libasan)
         execute_process(COMMAND clang -print-file-name=libclang_rt.asan-x86_64.so OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE ASAN_DSO)
-        set(RUN_CMD_PREFIX LD_PRELOAD=${ASAN_DSO} ASAN_OPTIONS=detect_leaks=0 ${RUN_CMD_PREFIX})
+        set(RUN_CMD_PREFIX LD_PRELOAD=${ASAN_DSO} ${RUN_CMD_PREFIX})
+    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        add_compile_options(-fsanitize=address)
+        add_link_options(-fsanitize=address)
+        execute_process(COMMAND gcc -print-file-name=libasan.so OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE ASAN_DSO)
+        set(RUN_CMD_PREFIX LD_PRELOAD=${ASAN_DSO} ${RUN_CMD_PREFIX})
+    else()
+        message(FATAL_ERROR "Address sanitizer is only supported on Clang and GCC")
     endif()
+    set(RUN_CMD_PREFIX ${RUN_CMD_PREFIX} PARENT_SCOPE)
 endif()
-option(ENABLE_PROCESS_PROFILING "Enable internal audio processing profiling" 1)
+option(ENABLE_PROCESS_PROFILING "Enable internal audio processing profiling" ON)
 if(ENABLE_PROCESS_PROFILING)
     add_compile_options(-DSHOOP_PROFILING)
 endif()
@@ -52,6 +60,17 @@ add_library(jack_wrappers STATIC ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_
 set_property(TARGET jack_wrappers PROPERTY POSITION_INDEPENDENT_CODE ON)
 target_include_directories(jack_wrappers PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers)
 
+# Generate the run cmd prefix so that it can be referred to after the build (e.g. when running tests)
+add_custom_command(
+  OUTPUT ${CMAKE_BINARY_DIR}/run_cmd_prefix.txt
+  COMMAND echo ${RUN_CMD_PREFIX} > ${CMAKE_BINARY_DIR}/run_cmd_prefix.txt
+  COMMENT "Storing run cmd prefix (${RUN_CMD_PREFIX}) into ${CMAKE_BINARY_DIR}/run_cmd_prefix.txt"
+)
+add_custom_target(
+  run_cmd_prefix_file
+  ALL
+  DEPENDS ${CMAKE_BINARY_DIR}/run_cmd_prefix.txt
+)
 
 if(STATIC_DEPENDENCIES)
 
@@ -73,6 +92,8 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
 # Subdirs
 add_subdirectory(${CMAKE_SOURCE_DIR}/../third_party/lv2_evbuf lv2_evbuf)
+target_compile_options(lv2_evbuf PUBLIC -fPIC)
+
 add_subdirectory(test)
 add_subdirectory(qml_types)
 add_subdirectory(custom_qt_msg_handler)
