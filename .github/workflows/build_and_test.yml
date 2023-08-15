@@ -35,15 +35,17 @@ jobs:
         for f in *.whl; do mv -- "$f" "${f%.whl}.asan.whl"; done
         echo "ASAN_WHEEL=$(ls *.whl)" >> $GITHUB_ENV
     
-    - name: Report command prefix
-      run: |
-        echo "Run cmd prefix: ${{ env.ASAN_CMD_PREFIX }}"
-    
     - name: Upload ASAN
       uses: actions/upload-artifact@v3
       with:
         name: asan_wheel
         path: dist/${{ env.ASAN_WHEEL }}
+    
+    - name: Upload ASAN command prefix
+      uses: actions/upload-artifact@v3
+      with:
+        name: asan_cmd_prefix
+        path: ./**/run_cmd_prefix.txt
   
   build_debug_whl:
     runs-on: ubuntu-latest
@@ -110,10 +112,19 @@ jobs:
         name: asan_wheel
         path: ~/wheel
 
+    - name: Retrieve cmd prefix
+      uses: actions/download-artifact@v3
+      with:
+        name: asan_cmd_prefix
+        path: ~/asan_cmd_prefix
+    
+    - name: Set cmd prefix
+      run: |
+        echo "ASAN_CMD_PREFIX=$(cat ~/asan_cmd_prefix/run_cmd_prefix.txt" >> $GITHUB_ENV
+
     - name: Install wheel
       run: |
-        python3 -m pip install ~/wheel/*.whl
-        echo "ASAN command prefix: ${{ env.ASAN_CMD_PREFIX }}"
+        ${{ env.ASAN_CMD_PREFIX }} python3 -m pip install ~/wheel/*.whl
         echo "ASAN_PKG_DIR=$(${{ env.ASAN_CMD_PREFIX }} shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g')" >> $GITHUB_ENV
     
     - name: Report package install dir
