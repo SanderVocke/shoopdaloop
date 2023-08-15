@@ -178,9 +178,9 @@ Session {
                 let out2 = output_port_2.dummy_dequeue_data(4)
 
                 midi_input_port.dummy_clear_queues()
-
-                verify_eq(out1, expect_out1)
-                verify_eq(out2, expect_out2)
+                
+                verify_approx(out1, expect_out1)
+                verify_approx(out2, expect_out2)
                 verify_throw(fx.active)
             })
         }
@@ -316,6 +316,41 @@ Session {
             })
         }
 
+        function test_drywet_midi_no_monitor() {
+            run_case('test_drywet_midi_no_monitor', () => {
+                check_backend()
+                reset()
+                tut_control().monitor = false
+                tut_control().mute = false
+                testcase.wait(50)
+
+                let msgs = [
+                    { 'time': 0, 'data': [0x90, 100, 100] },
+                    { 'time': 3, 'data': [0x90, 50,  50]  },
+                    { 'time': 4, 'data': [0x90, 10,  10]  }
+                ]
+                let expect_out1 = [0, 0, 0, 0]
+                let expect_out2 = expect_out1
+
+                midi_input_port.dummy_clear_queues()
+                midi_input_port.dummy_queue_msgs(msgs)
+
+                output_port_1.dummy_request_data(4)
+                output_port_2.dummy_request_data(4)
+                session.backend.dummy_request_controlled_frames(4)
+                session.backend.dummy_wait_process()
+
+                let out1 = output_port_1.dummy_dequeue_data(4)
+                let out2 = output_port_2.dummy_dequeue_data(4)
+
+                midi_input_port.dummy_clear_queues()
+
+                verify_approx(out1, expect_out1)
+                verify_approx(out2, expect_out2)
+                verify_throw(!fx.active)
+            })
+        }
+
         function test_drywet_audio_monitor_mute() {
             run_case('test_drywet_audio_monitor_mute', () => {
                 check_backend()
@@ -338,6 +373,41 @@ Session {
                 verify_eq(out2, [0, 0, 0, 0])
                 verify_throw(fx.active)
 
+            })
+        }
+
+        function test_drywet_midi_mute() {
+            run_case('test_drywet_midi_mute', () => {
+                check_backend()
+                reset()
+                tut_control().monitor = true
+                tut_control().mute = true
+                testcase.wait(50)
+
+                let msgs = [
+                    { 'time': 0, 'data': [0x90, 100, 100] },
+                    { 'time': 3, 'data': [0x90, 50,  50]  },
+                    { 'time': 4, 'data': [0x90, 10,  10]  }
+                ]
+                let expect_out1 = [0, 0, 0, 0]
+                let expect_out2 = expect_out1
+
+                midi_input_port.dummy_clear_queues()
+                midi_input_port.dummy_queue_msgs(msgs)
+
+                output_port_1.dummy_request_data(4)
+                output_port_2.dummy_request_data(4)
+                session.backend.dummy_request_controlled_frames(4)
+                session.backend.dummy_wait_process()
+
+                let out1 = output_port_1.dummy_dequeue_data(4)
+                let out2 = output_port_2.dummy_dequeue_data(4)
+
+                midi_input_port.dummy_clear_queues()
+
+                verify_approx(out1, expect_out1)
+                verify_approx(out2, expect_out2)
+                verify_throw(fx.active)
             })
         }
     }

@@ -84,7 +84,7 @@ TestCase {
 
     function verify_approx(a, b) {
         var result;
-        let compare = (a,b) => (a - b) < Math.max(a,b) / 10000.0
+        let compare = (a,b) => a == b || ((a - b) < Math.max(a,b) / 10000.0)
         let failstring = `verify_approx failed (a = ${a}, b = ${b})`
         if (Array.isArray(a) && Array.isArray(b)) {
             result = TestDeepEqual.testArraysCompare(a, b, compare);

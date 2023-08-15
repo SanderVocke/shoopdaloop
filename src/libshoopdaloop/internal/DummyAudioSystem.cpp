@@ -99,11 +99,19 @@ std::vector<audio_sample_t> DummyAudioPort::dequeue_data(size_t n) {
 MidiSortableMessageInterface &
 DummyMidiPort::PROC_get_event_reference(size_t idx) {
     try {
-        auto &m =  m_queued_msgs.at(idx);
-        std::vector<uint8_t> pd{m.get_data(), m.get_data()+m.get_size()};
-        uint32_t time = m.get_time();
-        log<logging::LogLevel::debug>("Read midi message @ {}: {}", time, pd);
-        return m;
+        if (!m_queued_msgs.empty()) {
+            auto &m =  m_queued_msgs.at(idx);
+            std::vector<uint8_t> pd{m.get_data(), m.get_data()+m.get_size()};
+            uint32_t time = m.get_time();
+            log<logging::LogLevel::debug>("Read queued midi message @ {}: {}", time, pd);
+            return m;
+        } else {
+            auto &m =  m_buffer_data.at(idx);
+            std::vector<uint8_t> pd{m.get_data(), m.get_data()+m.get_size()};
+            uint32_t time = m.get_time();
+            log<logging::LogLevel::debug>("Read buffer midi message @ {}: {}", time, pd);
+            return m;
+        }
     } catch (std::out_of_range &e) {
         throw std::runtime_error("Dummy midi port read error");
     }
@@ -115,9 +123,11 @@ void DummyMidiPort::PROC_write_event_value(uint32_t size, uint32_t time,
     if (time < n_requested_frames) {
         size_t new_time = time + (n_original_requested_frames - n_requested_frames);
         std::vector<uint8_t> pd{data, data+size};
-        log<logging::LogLevel::debug>("Write midi message value @ {} -> {}: {}", time, new_time, pd);
+        log<logging::LogLevel::debug>("Write midi message value to external queue @ {} -> {}: {}", time, new_time, pd);
         m_written_requested_msgs.push_back(StoredMessage(new_time, size, std::vector<uint8_t>(data, data + size)));
-    }                                           
+    }
+    log<logging::LogLevel::debug>("Write midi message value to internal buffer @ {}", time);
+    m_buffer_data.push_back(StoredMessage(time, size, std::vector<uint8_t>(data, data + size)));
 }
 
 void DummyMidiPort::PROC_write_event_reference(
@@ -199,6 +209,7 @@ DummyMidiPort::PROC_get_read_buffer(size_t n_frames) {
 MidiWriteableBufferInterface &
 DummyMidiPort::PROC_get_write_buffer(size_t n_frames) {
     current_buf_frames = n_frames;
+    m_buffer_data.clear();
     return *(static_cast<MidiWriteableBufferInterface *>(this));
 }
 
@@ -211,14 +222,17 @@ void DummyMidiPort::PROC_post_process(size_t n_frames) {
 
 size_t DummyMidiPort::PROC_get_n_events() const {
     size_t r = 0;
-    for (auto it = m_queued_msgs.begin(); it != m_queued_msgs.end(); ++it) {
-        if (it->time < current_buf_frames) {
-            r++;
-        } else {
-            break;
+    if (!m_queued_msgs.empty()) {
+        for (auto it = m_queued_msgs.begin(); it != m_queued_msgs.end(); ++it) {
+            if (it->time < current_buf_frames) {
+                r++;
+            } else {
+                break;
+            }
         }
+        return r;
     }
-    return r;
+    return m_buffer_data.size();
 }
 
 std::vector<DummyMidiPort::StoredMessage> DummyMidiPort::get_written_requested_msgs() {
