@@ -80,7 +80,7 @@ jobs:
     - name: Build release wheel
       run: |
         python3 -m build -w
-        echo "RELEASE_WHEEL=$(ls dist/*.whl)" >> $GITHUB_ENV
+        cd dist && echo "RELEASE_WHEEL=$(ls *.whl)" >> $GITHUB_ENV
     
     - name: Upload release
       uses: actions/upload-artifact@v3
