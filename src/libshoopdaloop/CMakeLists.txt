@@ -14,15 +14,16 @@ if(ENABLE_ASAN)
         add_compile_options(-fsanitize=address -shared-libasan)
         add_link_options(-fsanitize=address -shared-libasan)
         execute_process(COMMAND clang -print-file-name=libclang_rt.asan-x86_64.so OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE ASAN_DSO)
-        set(RUN_CMD_PREFIX LD_PRELOAD=${ASAN_DSO} ${RUN_CMD_PREFIX} PARENT_SCOPE)
+        set(RUN_CMD_PREFIX LD_PRELOAD=${ASAN_DSO} ${RUN_CMD_PREFIX})
     elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
         add_compile_options(-fsanitize=address)
         add_link_options(-fsanitize=address)
         execute_process(COMMAND gcc -print-file-name=libasan.so OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE ASAN_DSO)
-        set(RUN_CMD_PREFIX LD_PRELOAD=${ASAN_DSO} ${RUN_CMD_PREFIX} PARENT_SCOPE)
+        set(RUN_CMD_PREFIX LD_PRELOAD=${ASAN_DSO} ${RUN_CMD_PREFIX})
     else()
         message(FATAL_ERROR "Address sanitizer is only supported on Clang and GCC")
     endif()
+    set(RUN_CMD_PREFIX ${RUN_CMD_PREFIX} PARENT_SCOPE)
 endif()
 option(ENABLE_PROCESS_PROFILING "Enable internal audio processing profiling" ON)
 if(ENABLE_PROCESS_PROFILING)
@@ -63,7 +64,7 @@ target_include_directories(jack_wrappers PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/jack
 add_custom_command(
   OUTPUT ${CMAKE_BINARY_DIR}/run_cmd_prefix.txt
   COMMAND echo ${RUN_CMD_PREFIX} > ${CMAKE_BINARY_DIR}/run_cmd_prefix.txt
-  COMMENT "Storing run cmd prefix into ${CMAKE_BINARY_DIR}/run_cmd_prefix.txt"
+  COMMENT "Storing run cmd prefix (${RUN_CMD_PREFIX}) into ${CMAKE_BINARY_DIR}/run_cmd_prefix.txt"
 )
 add_custom_target(
   run_cmd_prefix_file
