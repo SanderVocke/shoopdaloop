@@ -62,11 +62,15 @@ jobs:
       run: |
         echo "Package dir: $PKG_DIR"
     
-    - name: Prepare coverage command prefix
+    - name: Prepare coverage back-end command prefix
       if: false
       #FOR NOW ${{ inputs.upload_coverage }}
       run: |
         echo "COVERAGE_PREFIX=BASEDIR=${{ github.workspace }} EXCLUDE=third_party,nlohmann,qt6,lv2,boost,c++ REPORTDIR=${{ github.workspace }}/coverage_reports BUILDDIR=${{ github.workspace }} ${{ env.PKG_DIR }}/scripts/run_and_generate_coverage.sh" >> $GITHUB_ENV
+    
+    - name: Prepare coverage python command prefix
+      if: ${{ inputs.upload_coverage }}
+      run: |
         echo "PYTHON_EXTRA_ARGS=-m coverage run" >> $GITHUB_ENV 
     
     - name: Back-end tests
