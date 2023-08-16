@@ -52,8 +52,7 @@ jobs:
     - name: Find wheel
       id: find
       run: |
-        cd dist
-        echo "name=$(ls *.whl)" >> $GITHUB_OUTPUT
+        echo "name=$(ls dist/*.whl)" >> $GITHUB_OUTPUT
       
     - name: Upload wheel (${{ inputs.variant_name }})
       uses: actions/upload-artifact@v3
