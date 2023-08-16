@@ -100,7 +100,7 @@ jobs:
       with:
         variant_name: asan
         run_cmd_prefix: >-
-          BASEDIR=${source_dir}
+          BASEDIR=${{ steps.build.outputs.source_dir }}
           EXCLUDE=third_party,qt6,boost,c++
           REPORTDIR=coverage_reports
           BUILDDIR=${{ steps.build.outputs.build_dir }}

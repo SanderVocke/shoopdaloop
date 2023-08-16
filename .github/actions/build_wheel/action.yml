@@ -29,6 +29,10 @@ outputs:
   install_dir:
     description: "If the package was installed, this holds the installation folder"
     value: ${{ steps.install.outputs.install_dir }}
+  build_dir:
+    value: ${{ steps.build.outputs.build_dir }}
+  source_dir:
+    value: ${{ steps.build.outputs.source_dir }}
 
 runs:
   using: "composite"
@@ -39,6 +43,8 @@ runs:
     run: |
       python3 -m build -w ${{ inputs.pypa_build_extra_args }}
       echo "run_cmd_prefix=$(find . -name run_cmd_prefix.txt -exec cat {} \;)" >> $GITHUB_OUTPUT
+      echo "source_dir=$(pwd)" >> $GITHUB_OUTPUT
+      echo "build_dir=$(realpath build/cp*/)" >> $GITHUB_OUTPUT
   
   - name: Rename wheel
     shell: bash
