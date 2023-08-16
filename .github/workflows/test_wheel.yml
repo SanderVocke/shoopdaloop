@@ -71,7 +71,7 @@ jobs:
     - name: Prepare coverage python command prefix
       if: ${{ inputs.upload_coverage }}
       run: |
-        echo "PYTHON_EXTRA_ARGS=-m coverage run" >> $GITHUB_ENV
+        echo "PYTHON_EXTRA_ARGS=-m coverage run --source=${{ env.PKG_DIR }}" >> $GITHUB_ENV
     
     - name: Back-end tests
       if: ${{ inputs.test_backend }} && !${{ inputs.upload_coverage }} (success() || failure())
@@ -99,7 +99,7 @@ jobs:
     - name: Python tests coverage
       if: ${{ inputs.upload_coverage }}
       run: |
-        python3 -m coverage xml --source=${{ env.PKG_DIR }} -i -o coverage_reports/python_pytest_coverage.xml
+        python3 -m coverage xml --include=${{ env.PKG_DIR }}/**/*.py -i -o coverage_reports/python_pytest_coverage.xml
     
     - name: Publish Python Test Report
       uses: mikepenz/action-junit-report@v3
