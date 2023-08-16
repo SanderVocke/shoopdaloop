@@ -19,6 +19,9 @@ inputs:
     type: boolean
     default: false
 
+env:
+  ASAN_OPTIONS: detect_leaks=0
+
 outputs:
   run_cmd_prefix:
     description: "Command-line prefix to use when running the apps in the built wheel"

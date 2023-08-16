@@ -55,7 +55,7 @@ jobs:
       with:
         variant_name: asan
         # note: build step generates run_cmd_prefix output
-        # for usage with shared ASAN library
+        # for usage with shared ASAN library.
         run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
         test_runner_dir: ${{ steps.build.outputs.install_dir }}
   
