@@ -48,7 +48,7 @@ jobs:
         path: ${{ env.ASAN_CMD_PREFIX_FILE }}
   
   build_debug_whl:
-    uses: ./build_wheel.yml
+    uses: ./.github/workflows/build_wheel.yml
     with:
       variant_name: debug
       pypa_build_extra_args: -C--local=pyproject.toml.debug_overrides
