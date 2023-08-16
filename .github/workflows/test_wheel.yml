@@ -56,7 +56,7 @@ jobs:
     - name: Install Python coverage
       if: ${{ inputs.upload_coverage }}
       run: |
-        python3 -m pip install coverage
+        sudo apt-get install -y python3-coverage
     
     - name: Report package install dir
       run: |
