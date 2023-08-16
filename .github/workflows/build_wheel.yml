@@ -41,13 +41,17 @@ jobs:
       run: |
         python3 -m build -w ${{ inputs.pypa_build_extra_args }}
         echo "run_cmd_prefix=$(find . -name run_cmd_prefix.txt -exec cat {} \;)" >> $GITHUB_OUTPUT
+    
+    - name: Rename wheel
+      id: rename
+      if: ${{ inputs.whl_suffix }}
+      run: | 
         cd dist
         for f in *.whl; do mv -- "$f" "${f%.whl}${{ inputs.whl_suffix }}.whl"; done
-        echo "wheel=$(ls *.whl)" >> $GITHUB_OUTPUT
     
     - name: Upload wheel (${{ inputs.variant_name }})
       uses: actions/upload-artifact@v3
       with:
         name: ${{ inputs.artifact_name }}
-        path: dist/${{ steps.build.outputs.wheel }}
+        path: $(cd dist && ls *.whl)
 

@@ -45,7 +45,7 @@ jobs:
     with:
       variant_name: asan
       container: sandervocke/shoopdaloop_ubuntu_kinetic_build_base:latest
-      artifact_name: ${{ needs.build_asan_whl.inputs.artifact_name }}
+      artifact_name: asan_wheel
       run_cmd_prefix: ${{ needs.build_asan_whl.outputs.run_cmd_prefix }}
       test_backend: true
       test_python: true
@@ -58,7 +58,7 @@ jobs:
     needs: build_release_whl
     with:
       variant_name: release
-      artifact_name: ${{ needs.build_release_whl.inputs.artifact_name }}
+      artifact_name: release_wheel
       run_cmd_prefix: ${{ needs.build_release_whl.outputs.run_cmd_prefix }}
       test_backend: true
       test_python: true
