@@ -31,7 +31,7 @@ jobs:
         variant_name: release
         artifact_name: release_wheel
   
-  build_asan_whl:
+  asan:
     runs-on: ubuntu-latest
     container:
       image: sandervocke/shoopdaloop_ubuntu_kinetic_build_base:latest
@@ -42,12 +42,20 @@ jobs:
       with:
         submodules: recursive
     - name: Build and upload
+      id: build
       uses: ./.github/actions/build_wheel
       with:
         variant_name: asan
         artifact_name: asan_wheel
         pypa_build_extra_args: -C--local=pyproject.toml.debug_asan_overrides
         whl_suffix: asan
+        install: true
+    - name: Test back-end
+      uses: ./.github/actions/backend_test
+      with:
+        variant_name: asan
+        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
+        test_runner_dir: ${{ steps.build.outputs.install_dir }}
   
   build_debug_whl:
     runs-on: ubuntu-latest

@@ -14,11 +14,18 @@ inputs:
   artifact_name:
     required: true
     type: string
+  install:
+    required: false
+    type: boolean
+    default: false
 
 outputs:
   run_cmd_prefix:
     description: "Command-line prefix to use when running the apps in the built wheel"
     value: ${{ steps.build.outputs.run_cmd_prefix }}
+  install_dir:
+    description: "If the package was installed, this holds the installation folder"
+    value: ${{ steps.install.outputs.install_dir }}
 
 runs:
   using: "composite"
@@ -49,4 +56,13 @@ runs:
     with:
       name: ${{ inputs.artifact_name }}
       path: ${{ steps.find.outputs.name }}
+  
+  - name: Install wheel
+    shell: bash
+    id: install
+    if: ${{ inputs.install }}
+    run: |
+      mkdir -p install
+      ${{ inputs.run_cmd_prefix }} python3 -m pip install ${{ steps.find.outputs.name }}
+      echo "install_dir=$(${{ inputs.run_cmd_prefix }} shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g')" >> $GITHUB_OUTPUT
 
