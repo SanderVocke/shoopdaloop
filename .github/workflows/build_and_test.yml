@@ -48,29 +48,11 @@ jobs:
         path: ${{ env.ASAN_CMD_PREFIX_FILE }}
   
   build_debug_whl:
-    runs-on: ubuntu-latest
-    container:
-      image: sandervocke/shoopdaloop_ubuntu_kinetic_build_base:latest
-      options: --user root --workdir /
-    
-    steps:      
-    - name: Checkout
-      uses: actions/checkout@v3
-      with:
-        submodules: recursive
-    
-    - name: Build debug wheel
-      run: |
-        python3 -m build -w -C--local=pyproject.toml.debug_overrides
-        cd dist
-        for f in *.whl; do mv -- "$f" "${f%.whl}.dbg.whl"; done
-        echo "DEBUG_WHEEL=$(ls *.whl)" >> $GITHUB_ENV
-    
-    - name: Upload debug
-      uses: actions/upload-artifact@v3
-      with:
-        name: debug_wheel
-        path: dist/${{ env.DEBUG_WHEEL }}
+    uses: ./build_wheel.yml
+    with:
+      variant_name: debug
+      pypa_build_extra_args: -C--local=pyproject.toml.debug_overrides
+      whl_suffix: dbg
 
   build_release_whl:
     runs-on: ubuntu-latest
