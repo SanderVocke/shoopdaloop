@@ -17,48 +17,6 @@ option(ENABLE_COVERAGE "Enable code coverage" OFF)
 if(ENABLE_COVERAGE)
   include (CodeCoverage)
   append_coverage_compiler_flags()
-
-  # Install all the files that LCOV will need in order to do back-end
-  # code coverage.
-  install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-          DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME}/coverage/build
-          COMPONENT package_install
-          FILES_MATCHING PATTERN "*.gcno" PATTERN "*.o"
-  )
-  install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-          DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME}/coverage/src
-          COMPONENT package_install
-          FILES_MATCHING PATTERN "*.cpp" PATTERN "*.c" PATTERN "*.h" PATTERN "*.hpp"
-  )
-
-  # Install files holding the paths to source and build dirs, so they can be remapped
-  # on the target where coverage is run.
-  add_custom_command(
-    OUTPUT ${CMAKE_BINARY_DIR}/cmake_binary_dir.txt
-    COMMAND bash -c "echo ${CMAKE_BINARY_DIR} >${CMAKE_BINARY_DIR}/cmake_binary_dir.txt"
-    COMMENT "Generating binary dir path file."
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    )
-  add_custom_target(
-    binary_dir_path_file
-    ALL
-    DEPENDS ${CMAKE_BINARY_DIR}/cmake_binary_dir.txt
-    )
-  add_custom_command(
-    OUTPUT ${CMAKE_BINARY_DIR}/cmake_source_dir.txt
-    COMMAND bash -c "echo ${CMAKE_SOURCE_DIR} >${CMAKE_BINARY_DIR}/cmake_source_dir.txt"
-    COMMENT "Generating source dir path file."
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    )
-  add_custom_target(
-    source_dir_path_file
-    ALL
-    DEPENDS ${CMAKE_BINARY_DIR}/cmake_source_dir.txt
-    )
-  install(FILES ${CMAKE_BINARY_DIR}/cmake_binary_dir.txt ${CMAKE_BINARY_DIR}/cmake_source_dir.txt
-    EXCLUDE_FROM_ALL
-    COMPONENT package_install
-    DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME})
 endif()
 
 set(CTYPESGEN_COMMAND ctypesgen)

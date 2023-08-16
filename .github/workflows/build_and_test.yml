@@ -41,7 +41,7 @@ jobs:
       uses: actions/checkout@v3
       with:
         submodules: recursive
-    - name: Build and upload
+    - name: Build, install and upload
       id: build
       uses: ./.github/actions/build_wheel
       with:
@@ -54,6 +54,8 @@ jobs:
       uses: ./.github/actions/backend_test
       with:
         variant_name: asan
+        # note: build step generates run_cmd_prefix output
+        # for usage with shared ASAN library
         run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
         test_runner_dir: ${{ steps.build.outputs.install_dir }}
   
@@ -85,13 +87,26 @@ jobs:
       uses: actions/checkout@v3
       with:
         submodules: recursive
-    - name: Build and upload
+    - name: Build, install and upload
       uses: ./.github/actions/build_wheel
       with:
         variant_name: coverage
         artifact_name: coverage_wheel
         pypa_build_extra_args: -C--local=pyproject.toml.coverage_overrides
         whl_suffix: coverage
+        install: true
+    - name: Back-end tests with coverage
+      uses: ./.github/actions/backend_test
+      with:
+        variant_name: asan
+        run_cmd_prefix: >-
+          BASEDIR=${source_dir}
+          EXCLUDE=third_party,qt6,boost,c++
+          REPORTDIR=coverage_reports
+          BUILDDIR=${{ steps.build.outputs.build_dir }}
+          DO_GENHTML=0
+          ${{ steps.build.outputs.install_dir}}/scripts/run_and_generate_coverage.sh 
+        test_runner_dir: ${{ steps.build.outputs.install_dir }}
   
   # test_asan_wheel_ubuntu_pypi:
   #   # note: this runs on the build container because that will provide
