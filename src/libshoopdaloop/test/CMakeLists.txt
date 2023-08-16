@@ -31,3 +31,10 @@ install(TARGETS test_runner
         EXCLUDE_FROM_ALL
         COMPONENT package_install
         DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME})
+if(ENABLE_COVERAGE)
+setup_target_for_coverage_lcov(
+    NAME test_runner_coverage
+    EXECUTABLE test_runner
+    DEPENDENCIES test_runner
+)
+endif()

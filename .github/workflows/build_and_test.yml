@@ -37,6 +37,13 @@ jobs:
       variant_name: release
       artifact_name: release_wheel
   
+  build_coverage_whl:
+    uses: ./.github/workflows/build_wheel.yml
+    with:
+      variant_name: coverage
+      pypa_build_extra_args: -C--local=pyproject.toml.coverage_overrides
+      artifact_name: coverage_wheel
+  
   test_asan_wheel_ubuntu_pypi:
     # note: this runs on the build container because that will provide
     # the same shared libasan.so used during build
@@ -64,6 +71,20 @@ jobs:
       test_python: true
       test_qml: true
       test_runapp: true
+  
+  test_coverage:
+    uses: ./.github/workflows/test_wheel.yml
+    needs: build_coverage_whl
+    with:
+      variant_name: coverage
+      container: sandervocke/shoopdaloop_ubuntu_kinetic_build_base:latest
+      artifact_name: coverage_wheel
+      run_cmd_prefix: ${{ needs.build_coverage_whl.outputs.run_cmd_prefix }}
+      test_backend: true
+      test_python: false
+      test_qml: false
+      test_runapp: false
+      upload_coverage: true
 
   
   # # Test the built wheel in an Arch environment with dependencies pre-installed.
