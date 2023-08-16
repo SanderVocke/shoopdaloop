@@ -43,6 +43,7 @@ jobs:
       variant_name: coverage
       pypa_build_extra_args: -C--local=pyproject.toml.coverage_overrides
       artifact_name: coverage_wheel
+      whl_suffix: coverage
   
   test_asan_wheel_ubuntu_pypi:
     # note: this runs on the build container because that will provide

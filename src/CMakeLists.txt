@@ -17,6 +17,13 @@ option(ENABLE_COVERAGE "Enable code coverage" OFF)
 if(ENABLE_COVERAGE)
   include (CodeCoverage)
   append_coverage_compiler_flags()
+  # Install GCNO files into the wheel if coverage is enabled, so that coverage
+  # testing may be done on target
+  install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+          DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME}
+          COMPONENT package_install
+          FILES_MATCHING PATTERN "*.gcno"
+  )
 endif()
 
 set(CTYPESGEN_COMMAND ctypesgen)
