@@ -153,5 +153,7 @@ jobs:
       uses: codecov/codecov-action@v3
       env:
         CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      with:
+        files: ./coverage_reports/*.xml,./coverage_reports/*.info
       continue-on-error: true
     
