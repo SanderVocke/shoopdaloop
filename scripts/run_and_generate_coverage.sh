@@ -11,17 +11,16 @@ _LCOV_ARGS=${LCOV_ARGS}
 _GENHTML=${GENHTML:-genhtml}
 _REPORTNAME=${REPORTNAME:-report}
 _ORI_BUILD_DIR=${ORI_BUILD_DIR}
-_TARGET_BUILD_DIR=${TARGET_BUILD_DIR}
 
 _LCOV="${_LCOV} --gcov-tool ${_GCOV} -b ${_BASEDIR} -d ${_BUILDDIR} ${_LCOV_ARGS}"
 echo "Using lcov as: ${_LCOV}"
 
 mkdir -p ${_REPORTDIR}
 
-if [ ! -z ${_TARGET_BUILD_DIR} ]; then
-    export GCOV_PREFIX=${_TARGET_BUILD_DIR}
+if [ ! -z ${_ORI_BUILD_DIR} ]; then
+    export GCOV_PREFIX=${_BUILDDIR}
     export GCOV_PREFIX_STRIP=$(echo ${_ORI_BUILD_DIR} | tr '/' ' ' | wc -w)
-    echo "Remapping build dir: ${_ORI_BUILD_DIR} -> ${_TARGET_BUILD_DIR}"
+    echo "Remapping build dir: ${_ORI_BUILD_DIR} -> ${_BUILDDIR}"
     echo "  - GCOV_PREFIX = ${GCOV_PREFIX}"
     echo "  - GCOV_PREFIX_STRIP = ${GCOV_PREFIX_STRIP}"
 fi
