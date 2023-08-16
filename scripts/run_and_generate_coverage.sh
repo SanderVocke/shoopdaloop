@@ -4,13 +4,14 @@ CMD="$@"
 _BASEDIR=${BASEDIR}
 _EXCLUDE=${EXCLUDE}
 _BUILDDIR=${BUILDDIR}
-_REPORTDIR=${REPORTDIR}
+_REPORTDIR=${REPORTDIR:-${PWD}/coverage_reports}
 _LCOV=${LCOV:-lcov}
 _GCOV=${GCOV:-gcov}
 _LCOV_ARGS=${LCOV_ARGS}
 _GENHTML=${GENHTML:-genhtml}
 _REPORTNAME=${REPORTNAME:-report}
 _ORI_BUILD_DIR=${ORI_BUILD_DIR}
+_DO_GENHTML=${DO_GENHTML:-1}
 
 _LCOV="${_LCOV} --gcov-tool ${_GCOV} -b ${_BASEDIR} -d ${_BUILDDIR} ${_LCOV_ARGS}"
 echo "Using lcov as: ${_LCOV}"
@@ -74,11 +75,18 @@ echo "Filtering report: ${c}"
 echo "---------------------------------------"
 ${c}
 
-# HTML
-c="${_GENHTML} -o ${_REPORTDIR}/${_REPORTNAME} ${_REPORTDIR}/${_REPORTNAME}.info"
-echo "---------------------------------------"
-echo "Generating HTML: ${c}"
-echo "---------------------------------------"
-${c}
+
+if [ $_DO_GENHTML -ne 0 ]; then
+    # HTML
+    c="${_GENHTML} -o ${_REPORTDIR}/${_REPORTNAME} ${_REPORTDIR}/${_REPORTNAME}.info"
+    echo "---------------------------------------"
+    echo "Generating HTML: ${c}"
+    echo "---------------------------------------"
+    ${c}
+else
+    echo "---------------------------------------"
+    echo "Skipping HTML generation"
+    echo "---------------------------------------"
+fi
 
 

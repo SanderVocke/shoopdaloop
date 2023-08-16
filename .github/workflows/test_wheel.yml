@@ -66,7 +66,7 @@ jobs:
       if: ${{ inputs.upload_coverage }}
       run: |
         export build_dir=$(realpath ${{ env.PKG_DIR }}/coverage/build/cp*)
-        echo "COVERAGE_PREFIX=BASEDIR=$(pwd) EXCLUDE=third_party,nlohmann,qt6,lv2,boost,c++ REPORTDIR=${{ github.workspace }}/coverage_reports BUILDDIR=${build_dir} ORI_BUILD_DIR=$(cat ${{ env.PKG_DIR }}/cmake_binary_dir.txt) ${{ env.PKG_DIR }}/scripts/run_and_generate_coverage.sh" >> $GITHUB_ENV
+        echo "COVERAGE_PREFIX=BASEDIR=$(pwd) EXCLUDE=third_party,nlohmann,qt6,lv2,boost,c++ REPORTDIR=${{ github.workspace }}/coverage_reports BUILDDIR=${build_dir} ORI_BUILD_DIR=$(cat ${{ env.PKG_DIR }}/cmake_binary_dir.txt) DO_GENHTML=0 ${{ env.PKG_DIR }}/scripts/run_and_generate_coverage.sh" >> $GITHUB_ENV
     
     - name: Prepare coverage python command prefix
       if: ${{ inputs.upload_coverage }}
