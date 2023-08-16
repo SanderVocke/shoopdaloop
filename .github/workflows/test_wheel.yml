@@ -104,5 +104,5 @@ jobs:
     - name: App runs and closes gracefully
       if: ${{ inputs.test_runapp}} && (success() || failure())
       run: |
-        QT_QPA_PLATFORM=vnc EXPECT_STAY_OPEN=1 WAIT_MS_BEFORE_CLOSE=5000 N_ITERATIONS=10 WAIT_MS_BEFORE_KILL=10000 ${{ env.RELEASE_PKG_DIR }}/scripts/test_run_app.sh shoopdaloop -b dummy
+        QT_QPA_PLATFORM=vnc EXPECT_STAY_OPEN=1 WAIT_MS_BEFORE_CLOSE=5000 N_ITERATIONS=10 WAIT_MS_BEFORE_KILL=10000 ${{ env.PKG_DIR }}/scripts/test_run_app.sh shoopdaloop -b dummy
     

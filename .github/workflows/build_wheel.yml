@@ -47,7 +47,7 @@ jobs:
       if: ${{ inputs.whl_suffix }}
       run: | 
         cd dist
-        for f in *.whl; do mv -- "$f" "${f%.whl}${{ inputs.whl_suffix }}.whl"; done
+        for f in *.whl; do mv -- "$f" "${f%.whl}.${{ inputs.whl_suffix }}.whl"; done
     
     - name: Find wheel
       id: find
