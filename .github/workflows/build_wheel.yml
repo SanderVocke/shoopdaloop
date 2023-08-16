@@ -49,9 +49,15 @@ jobs:
         cd dist
         for f in *.whl; do mv -- "$f" "${f%.whl}${{ inputs.whl_suffix }}.whl"; done
     
+    - name: Find wheel
+      id: find
+      run: |
+        cd dist
+        echo "name=$(ls *.whl)" >> $GITHUB_OUTPUT
+      
     - name: Upload wheel (${{ inputs.variant_name }})
       uses: actions/upload-artifact@v3
       with:
         name: ${{ inputs.artifact_name }}
-        path: $(cd dist && ls *.whl)
+        path: ${{ steps.find.outputs.name }}
 
