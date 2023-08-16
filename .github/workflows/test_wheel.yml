@@ -71,7 +71,11 @@ jobs:
     - name: Prepare coverage python command prefix
       if: ${{ inputs.upload_coverage }}
       run: |
-        echo "PYTHON_EXTRA_ARGS=-m coverage run" >> $GITHUB_ENV 
+        echo "PYTHON_EXTRA_ARGS=-m coverage run" >> $GITHUB_ENV
+
+    - name: Cache coverage dir
+      run: |
+        echo "coverage_dir=${{ github.workspace }}/coverage_reports" >> $GITHUB_ENV
     
     - name: Back-end tests
       if: ${{ inputs.test_backend }} && !${{ inputs.upload_coverage }} (success() || failure())
@@ -145,5 +149,5 @@ jobs:
       env:
         CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       with:
-        files: ${{ github.workspace }}/coverage_reports/*.info,${{ github.workspace }}/coverage_reports/*.xml
+        files: ${{ env.coverage_dir }}/*.info,${{ env.coverage_dir }}/*.xml
     
