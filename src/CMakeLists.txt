@@ -15,7 +15,6 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAK
 
 option(ENABLE_COVERAGE "Enable code coverage" OFF)
 if(ENABLE_COVERAGE)
-  set(Coverage_LCOV_ARGS --ignore_errors negative,source,count)
   include (CodeCoverage)
   append_coverage_compiler_flags()
 endif()

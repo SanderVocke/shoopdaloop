@@ -81,8 +81,8 @@ jobs:
       artifact_name: coverage_wheel
       run_cmd_prefix: ${{ needs.build_coverage_whl.outputs.run_cmd_prefix }}
       test_backend: true
-      test_python: false
-      test_qml: false
+      test_python: true
+      test_qml: true
       test_runapp: false
       upload_coverage: true
 

@@ -57,11 +57,16 @@ jobs:
       run: |
         echo "$PKG_DIR"
     
+    - name: Prepare coverage command prefix
+      if: ${{ inputs.upload_coverage }}
+      run: |
+        echo "COVERAGE_PREFIX=BASEDIR=${{ github.workspace }} EXCLUDE=third_party,nlohmann,qt6,lv2,boost,c++ REPORTDIR=${{ github.workspace }}/coverage_reports BUILDDIR=${{ github.workspace }} ../../scripts/run_and_generate_coverage.sh" >> $GITHUB_ENV
+    
     - name: Back-end tests
-      if: ${{ inputs.test_backend }} && (success() || failure())
+      if: ${{ inputs.test_backend }} && !${{ inputs.upload_coverage }} (success() || failure())
       run: |
         mkdir -p reports
-        ${{ inputs.run_cmd_prefix }} ${{ env.PKG_DIR }}/test_runner --reporter junit --out reports/backend_junit_results.xml
+        ${{ env.COVERAGE_PREFIX }} REPORTNAME=test_runner ${{ inputs.run_cmd_prefix }} ${{ env.PKG_DIR }}/test_runner --reporter junit --out reports/backend_junit_results.xml
         echo "Back-end test results file: $(ls -la reports/backend_junit_results.xml)"
 
     - name: Publish Back-end Test Report
@@ -77,7 +82,7 @@ jobs:
       if: ${{ inputs.test_python }} && (success() || failure())
       run: |
         mkdir -p reports
-        ${{ inputs.run_cmd_prefix }} ASAN_OPTIONS=detect_leaks=0 pytest ${{ env.PKG_DIR }} --junit-xml=reports/python_junit_results.xml
+        ${{ env.COVERAGE_PREFIX }} REPORTNAME=pytest ${{ inputs.run_cmd_prefix }} ASAN_OPTIONS=detect_leaks=0 pytest ${{ env.PKG_DIR }} --junit-xml=reports/python_junit_results.xml
         echo "Python test results file: $(ls -la reports/python_junit_results.xml)"
     
     - name: Publish Python Test Report
@@ -93,7 +98,7 @@ jobs:
       if: ${{ inputs.test_qml }} && (success() || failure())
       run: |
         mkdir -p reports
-        ${{ inputs.run_cmd_prefix }} ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0 QT_QPA_PLATFORM=vnc LD_LIBRARY_PATH=$(dirname $(find ${{ env.PKG_DIR }}/.. -name libQt6Core.so.6)) python3 ${{ env.PKG_DIR }}/run_qml_tests.py -o reports/qml_junit_results.xml,junitxml
+        ${{ env.COVERAGE_PREFIX }} REPORTNAME=qml_tests ${{ inputs.run_cmd_prefix }} ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0 QT_QPA_PLATFORM=vnc LD_LIBRARY_PATH=$(dirname $(find ${{ env.PKG_DIR }}/.. -name libQt6Core.so.6)) python3 ${{ env.PKG_DIR }}/run_qml_tests.py -o reports/qml_junit_results.xml,junitxml
         echo "QML test results file: $(ls -la reports/qml_junit_results.xml)"
     
     - name: Publish QML Test Report
@@ -109,7 +114,7 @@ jobs:
       if: ${{ inputs.test_runapp}} && (success() || failure())
       run: |
         QT_QPA_PLATFORM=vnc EXPECT_STAY_OPEN=1 WAIT_MS_BEFORE_CLOSE=5000 N_ITERATIONS=10 WAIT_MS_BEFORE_KILL=10000 ${{ env.PKG_DIR }}/scripts/test_run_app.sh shoopdaloop -b dummy
-    
+
     - name: Upload coverage reports to Codecov
       if: ${{ inputs.upload_coverage }} && (success() || failure())
       uses: codecov/codecov-action@v3
