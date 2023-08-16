@@ -12,6 +12,9 @@ on:
       whl_suffix:
         required: false
         type: string
+      artifact_name:
+        required: true
+        type: string
     outputs:
       run_cmd_prefix:
         description: "Command-line prefix to use when running the apps in the built wheel"
@@ -45,6 +48,6 @@ jobs:
     - name: Upload wheel (${{ inputs.variant_name }})
       uses: actions/upload-artifact@v3
       with:
-        name: ${{ inputs.variant_name }}_wheel
+        name: ${{ inputs.artifact_name }}
         path: dist/${{ steps.build.outputs.wheel }}
 
