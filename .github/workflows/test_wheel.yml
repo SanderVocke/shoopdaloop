@@ -53,14 +53,20 @@ jobs:
         ${{ inputs.run_cmd_prefix }} ASAN_OPTIONS=detect_leaks=0 python3 -m pip install ~/wheel/*.whl
         echo "PKG_DIR=$(${{ inputs.run_cmd_prefix }} ASAN_OPTIONS=detect_leaks=0 shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g')" >> $GITHUB_ENV
     
+    - name: Install Python coverage
+      if: ${{ inputs.upload_coverage }}
+      run: |
+        python3 -m pip install coverage
+    
     - name: Report package install dir
       run: |
-        echo "$PKG_DIR"
+        echo "Package dir: $PKG_DIR"
     
     - name: Prepare coverage command prefix
       if: ${{ inputs.upload_coverage }}
       run: |
         echo "COVERAGE_PREFIX=BASEDIR=${{ github.workspace }} EXCLUDE=third_party,nlohmann,qt6,lv2,boost,c++ REPORTDIR=${{ github.workspace }}/coverage_reports BUILDDIR=${{ github.workspace }} ${{ env.PKG_DIR }}/scripts/run_and_generate_coverage.sh" >> $GITHUB_ENV
+        echo "PYTHON_EXTRA_ARGS=-m coverage run" >> $GITHUB_ENV 
     
     - name: Back-end tests
       if: ${{ inputs.test_backend }} && !${{ inputs.upload_coverage }} (success() || failure())
@@ -82,8 +88,13 @@ jobs:
       if: ${{ inputs.test_python }} && (success() || failure())
       run: |
         mkdir -p reports
-        ${{ env.COVERAGE_PREFIX }} REPORTNAME=pytest ${{ inputs.run_cmd_prefix }} ASAN_OPTIONS=detect_leaks=0 pytest ${{ env.PKG_DIR }} --junit-xml=reports/python_junit_results.xml
+        ${{ env.COVERAGE_PREFIX }} REPORTNAME=pytest ${{ inputs.run_cmd_prefix }} ASAN_OPTIONS=detect_leaks=0 python3 ${{ env.PYTHON_EXTRA_ARGS }} -m pytest ${{ env.PKG_DIR }} --junit-xml=reports/python_junit_results.xml
         echo "Python test results file: $(ls -la reports/python_junit_results.xml)"
+    
+    - name: Python tests coverage
+      if: ${{ inputs.upload_coverage }}
+      run: |
+        python3 -m coverage xml -i -o ${{ github.workspace }}/coverage_reports/python_pytest_coverage.xml
     
     - name: Publish Python Test Report
       uses: mikepenz/action-junit-report@v3
@@ -98,8 +109,13 @@ jobs:
       if: ${{ inputs.test_qml }} && (success() || failure())
       run: |
         mkdir -p reports
-        ${{ env.COVERAGE_PREFIX }} REPORTNAME=qml_tests ${{ inputs.run_cmd_prefix }} ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0 QT_QPA_PLATFORM=vnc LD_LIBRARY_PATH=$(dirname $(find ${{ env.PKG_DIR }}/.. -name libQt6Core.so.6)) python3 ${{ env.PKG_DIR }}/run_qml_tests.py -o reports/qml_junit_results.xml,junitxml
+        ${{ env.COVERAGE_PREFIX }} REPORTNAME=qml_tests ${{ inputs.run_cmd_prefix }} ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0 QT_QPA_PLATFORM=vnc LD_LIBRARY_PATH=$(dirname $(find ${{ env.PKG_DIR }}/.. -name libQt6Core.so.6)) python3 ${{ env.PYTHON_EXTRA_ARGS }} ${{ env.PKG_DIR }}/run_qml_tests.py -o reports/qml_junit_results.xml,junitxml
         echo "QML test results file: $(ls -la reports/qml_junit_results.xml)"
+    
+    - name: Python QML tests coverage
+      if: ${{ inputs.upload_coverage }}
+      run: |
+        python3 -m coverage xml -i -o ${{ github.workspace }}/coverage_reports/python_qmltests_coverage.xml
     
     - name: Publish QML Test Report
       uses: mikepenz/action-junit-report@v3
@@ -120,4 +136,6 @@ jobs:
       uses: codecov/codecov-action@v3
       env:
         CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      with:
+        files: ${{ github.workspace }}/coverage_reports/*.info,${{ github.workspace }}/coverage_reports/*.xml
     
