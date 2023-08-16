@@ -31,6 +31,28 @@ jobs:
         variant_name: release
         artifact_name: release_wheel
   
+  test_release_whl:
+    runs-on: ubuntu-latest
+    needs: build_release_whl
+    container:
+      image: sandervocke/shoopdaloop_ubuntu_kinetic_run_base:latest
+      options: --user root --workdir /
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        submodules: recursive
+    - name: Retrieve wheel
+      uses: actions/download-artifact@v3
+      with:
+        name: release_wheel
+        path: ~/wheel
+    - name: Install wheel
+      id: install
+      run: |
+        python3 -m pip install ~/wheel/*.whl
+        echo "install_dir=$(shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g')" >> $GITHUB_ENV
+  
   asan:
     runs-on: ubuntu-latest
     container:
