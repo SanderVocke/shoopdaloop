@@ -7,7 +7,7 @@ _BUILDDIR=${BUILDDIR}
 _REPORTDIR=${REPORTDIR}
 _LCOV=${LCOV:-lcov}
 _GCOV=${GCOV:-gcov}
-_LCOV_ARGS=${LCOV_ARGS:-"--ignore-errors source,negative"}
+_LCOV_ARGS=${LCOV_ARGS}
 _GENHTML=${GENHTML:-genhtml}
 _REPORTNAME=${REPORTNAME:-report}
 
