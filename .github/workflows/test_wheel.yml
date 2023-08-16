@@ -127,7 +127,7 @@ jobs:
         check_name: 'qml test (${{ inputs.variant_name}})'
 
     - name: App runs and closes gracefully
-      if: ${{ inputs.test_runapp}} && (success() || failure())
+      if: ${{ inputs.test_runapp }}
       run: |
         ${{ inputs.run_cmd_prefix }} QT_QPA_PLATFORM=vnc EXPECT_STAY_OPEN=1 WAIT_MS_BEFORE_CLOSE=5000 N_ITERATIONS=10 WAIT_MS_BEFORE_KILL=10000 ${{ env.PKG_DIR }}/scripts/test_run_app.sh shoopdaloop -b dummy
 
