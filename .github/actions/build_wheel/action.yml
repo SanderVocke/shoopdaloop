@@ -18,7 +18,7 @@ inputs:
 outputs:
   run_cmd_prefix:
     description: "Command-line prefix to use when running the apps in the built wheel"
-    value: ${{ jobs.build_whl.outputs.run_cmd_prefix }}
+    value: ${{ steps.build.outputs.run_cmd_prefix }}
 
 defaults:
   run:
