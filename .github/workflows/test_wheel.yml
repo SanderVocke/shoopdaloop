@@ -99,7 +99,7 @@ jobs:
     - name: Python tests coverage
       if: ${{ inputs.upload_coverage }}
       run: |
-        python3 -m coverage xml -i -o coverage_reports/python_pytest_coverage.xml
+        python3 -m coverage xml --source=${{ env.PKG_DIR }} -i -o coverage_reports/python_pytest_coverage.xml
     
     - name: Publish Python Test Report
       uses: mikepenz/action-junit-report@v3
