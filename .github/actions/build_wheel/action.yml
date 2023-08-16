@@ -14,10 +14,16 @@ inputs:
   artifact_name:
     required: true
     type: string
+
 outputs:
   run_cmd_prefix:
     description: "Command-line prefix to use when running the apps in the built wheel"
     value: ${{ jobs.build_whl.outputs.run_cmd_prefix }}
+
+defaults:
+  run:
+    shell: bash
+
 runs:
   using: "composite"
   steps:
