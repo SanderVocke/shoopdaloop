@@ -1,0 +1,47 @@
+name: Build Wheel
+description: Build a Python wheel distribution
+
+inputs:
+  variant_name:
+    required: true
+    type: string
+  pypa_build_extra_args:
+    required: false
+    type: string
+  whl_suffix:
+    required: false
+    type: string
+  artifact_name:
+    required: true
+    type: string
+outputs:
+  run_cmd_prefix:
+    description: "Command-line prefix to use when running the apps in the built wheel"
+    value: ${{ jobs.build_whl.outputs.run_cmd_prefix }}
+runs:
+  using: "composite"
+  steps:
+  - name: Build wheel (${{ inputs.variant_name }})
+    id: build
+    run: |
+      python3 -m build -w ${{ inputs.pypa_build_extra_args }}
+      echo "run_cmd_prefix=$(find . -name run_cmd_prefix.txt -exec cat {} \;)" >> $GITHUB_OUTPUT
+  
+  - name: Rename wheel
+    id: rename
+    if: ${{ inputs.whl_suffix }}
+    run: | 
+      cd dist
+      for f in *.whl; do mv -- "$f" "${f%.whl}.${{ inputs.whl_suffix }}.whl"; done
+  
+  - name: Find wheel
+    id: find
+    run: |
+      echo "name=$(ls dist/*.whl)" >> $GITHUB_OUTPUT
+    
+  - name: Upload wheel (${{ inputs.variant_name }})
+    uses: actions/upload-artifact@v3
+    with:
+      name: ${{ inputs.artifact_name }}
+      path: ${{ steps.find.outputs.name }}
+
