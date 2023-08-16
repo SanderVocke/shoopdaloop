@@ -72,7 +72,7 @@ jobs:
       if: ${{ inputs.test_backend }} && !${{ inputs.upload_coverage }} (success() || failure())
       run: |
         mkdir -p reports
-        ${{ env.COVERAGE_PREFIX }} REPORTNAME=test_runner ${{ inputs.run_cmd_prefix }} ${{ env.PKG_DIR }}/test_runner --reporter junit --out reports/backend_junit_results.xml
+        REPORTNAME=test_runner ${{ env.COVERAGE_PREFIX }} ${{ inputs.run_cmd_prefix }} ${{ env.PKG_DIR }}/test_runner --reporter junit --out reports/backend_junit_results.xml
         echo "Back-end test results file: $(ls -la reports/backend_junit_results.xml)"
 
     - name: Publish Back-end Test Report
@@ -88,7 +88,7 @@ jobs:
       if: ${{ inputs.test_python }} && (success() || failure())
       run: |
         mkdir -p reports
-        ${{ env.COVERAGE_PREFIX }} REPORTNAME=pytest ${{ inputs.run_cmd_prefix }} ASAN_OPTIONS=detect_leaks=0 python3 ${{ env.PYTHON_EXTRA_ARGS }} -m pytest ${{ env.PKG_DIR }} --junit-xml=reports/python_junit_results.xml
+        REPORTNAME=pytest ${{ env.COVERAGE_PREFIX }} ${{ inputs.run_cmd_prefix }} ASAN_OPTIONS=detect_leaks=0 python3 ${{ env.PYTHON_EXTRA_ARGS }} -m pytest ${{ env.PKG_DIR }} --junit-xml=reports/python_junit_results.xml
         echo "Python test results file: $(ls -la reports/python_junit_results.xml)"
     
     - name: Python tests coverage
@@ -109,7 +109,7 @@ jobs:
       if: ${{ inputs.test_qml }} && (success() || failure())
       run: |
         mkdir -p reports
-        ${{ env.COVERAGE_PREFIX }} REPORTNAME=qml_tests ${{ inputs.run_cmd_prefix }} ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0 QT_QPA_PLATFORM=vnc LD_LIBRARY_PATH=$(dirname $(find ${{ env.PKG_DIR }}/.. -name libQt6Core.so.6)) python3 ${{ env.PYTHON_EXTRA_ARGS }} ${{ env.PKG_DIR }}/run_qml_tests.py -o reports/qml_junit_results.xml,junitxml
+        REPORTNAME=qml_tests ${{ env.COVERAGE_PREFIX }} ${{ inputs.run_cmd_prefix }} ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0 QT_QPA_PLATFORM=vnc LD_LIBRARY_PATH=$(dirname $(find ${{ env.PKG_DIR }}/.. -name libQt6Core.so.6)) python3 ${{ env.PYTHON_EXTRA_ARGS }} ${{ env.PKG_DIR }}/run_qml_tests.py -o reports/qml_junit_results.xml,junitxml
         echo "QML test results file: $(ls -la reports/qml_junit_results.xml)"
     
     - name: Python QML tests coverage
