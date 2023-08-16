@@ -20,20 +20,18 @@ outputs:
     description: "Command-line prefix to use when running the apps in the built wheel"
     value: ${{ steps.build.outputs.run_cmd_prefix }}
 
-defaults:
-  run:
-    shell: bash
-
 runs:
   using: "composite"
   steps:
   - name: Build wheel (${{ inputs.variant_name }})
+    shell: bash
     id: build
     run: |
       python3 -m build -w ${{ inputs.pypa_build_extra_args }}
       echo "run_cmd_prefix=$(find . -name run_cmd_prefix.txt -exec cat {} \;)" >> $GITHUB_OUTPUT
   
   - name: Rename wheel
+    shell: bash
     id: rename
     if: ${{ inputs.whl_suffix }}
     run: | 
@@ -41,6 +39,7 @@ runs:
       for f in *.whl; do mv -- "$f" "${f%.whl}.${{ inputs.whl_suffix }}.whl"; done
   
   - name: Find wheel
+    shell: bash
     id: find
     run: |
       echo "name=$(ls dist/*.whl)" >> $GITHUB_OUTPUT
