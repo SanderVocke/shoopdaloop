@@ -114,7 +114,7 @@ jobs:
       if: ${{ inputs.test_qml }} && (success() || failure())
       run: |
         mkdir -p reports
-        REPORTNAME=qml_tests ${{ env.COVERAGE_PREFIX }} ${{ inputs.run_cmd_prefix }} ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0 QT_QPA_PLATFORM=vnc LD_LIBRARY_PATH=$(dirname $(find ${{ env.PKG_DIR }}/.. -name libQt6Core.so.6)) python3 ${{ env.PYTHON_EXTRA_ARGS }} ${{ env.PKG_DIR }}/run_qml_tests.py -o reports/qml_junit_results.xml,junitxml
+        REPORTNAME=qml_tests ${{ env.COVERAGE_PREFIX_TODO }} ${{ inputs.run_cmd_prefix }} ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0 QT_QPA_PLATFORM=vnc LD_LIBRARY_PATH=$(dirname $(find ${{ env.PKG_DIR }}/.. -name libQt6Core.so.6)) python3 ${{ env.PYTHON_EXTRA_ARGS }} ${{ env.PKG_DIR }}/run_qml_tests.py -o reports/qml_junit_results.xml,junitxml
         echo "QML test results file: $(ls -la reports/qml_junit_results.xml)"
     
     - name: Python QML tests coverage
