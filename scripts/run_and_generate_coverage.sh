@@ -12,9 +12,13 @@ _GENHTML=${GENHTML:-genhtml}
 _REPORTNAME=${REPORTNAME:-report}
 _ORI_BUILD_DIR=${ORI_BUILD_DIR}
 _DO_GENHTML=${DO_GENHTML:-1}
+_WORKDIR=${WORKDIR:-${PWD}}
+
+cd ${_WORKDIR}
 
 _LCOV="${_LCOV} --gcov-tool ${_GCOV} -b ${_BASEDIR} -d ${_BUILDDIR} ${_LCOV_ARGS}"
 echo "Using lcov as: ${_LCOV}"
+echo "Running in: $(pwd)"
 
 mkdir -p ${_REPORTDIR}
 
