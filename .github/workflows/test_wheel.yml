@@ -60,7 +60,7 @@ jobs:
     - name: Prepare coverage command prefix
       if: ${{ inputs.upload_coverage }}
       run: |
-        echo "COVERAGE_PREFIX=BASEDIR=${{ github.workspace }} EXCLUDE=third_party,nlohmann,qt6,lv2,boost,c++ REPORTDIR=${{ github.workspace }}/coverage_reports BUILDDIR=${{ github.workspace }} ../../scripts/run_and_generate_coverage.sh" >> $GITHUB_ENV
+        echo "COVERAGE_PREFIX=BASEDIR=${{ github.workspace }} EXCLUDE=third_party,nlohmann,qt6,lv2,boost,c++ REPORTDIR=${{ github.workspace }}/coverage_reports BUILDDIR=${{ github.workspace }} ${{ env.PKG_DIR }}/scripts/run_and_generate_coverage.sh" >> $GITHUB_ENV
     
     - name: Back-end tests
       if: ${{ inputs.test_backend }} && !${{ inputs.upload_coverage }} (success() || failure())
@@ -113,7 +113,7 @@ jobs:
     - name: App runs and closes gracefully
       if: ${{ inputs.test_runapp}} && (success() || failure())
       run: |
-        QT_QPA_PLATFORM=vnc EXPECT_STAY_OPEN=1 WAIT_MS_BEFORE_CLOSE=5000 N_ITERATIONS=10 WAIT_MS_BEFORE_KILL=10000 ${{ env.PKG_DIR }}/scripts/test_run_app.sh shoopdaloop -b dummy
+        ${{ inputs.run_cmd_prefix }} QT_QPA_PLATFORM=vnc EXPECT_STAY_OPEN=1 WAIT_MS_BEFORE_CLOSE=5000 N_ITERATIONS=10 WAIT_MS_BEFORE_KILL=10000 ${{ env.PKG_DIR }}/scripts/test_run_app.sh shoopdaloop -b dummy
 
     - name: Upload coverage reports to Codecov
       if: ${{ inputs.upload_coverage }} && (success() || failure())
