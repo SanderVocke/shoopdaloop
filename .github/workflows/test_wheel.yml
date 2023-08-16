@@ -66,7 +66,8 @@ jobs:
       if: ${{ inputs.upload_coverage }}
       run: |
         export build_dir=$(realpath ${{ env.PKG_DIR }}/coverage/build/cp*)
-        echo "COVERAGE_PREFIX=BASEDIR=$(pwd) EXCLUDE=third_party,nlohmann,qt6,lv2,boost,c++ REPORTDIR=${{ github.workspace }}/coverage_reports BUILDDIR=${build_dir} ORI_BUILD_DIR=$(cat ${{ env.PKG_DIR }}/cmake_binary_dir.txt) DO_GENHTML=0 ${{ env.PKG_DIR }}/scripts/run_and_generate_coverage.sh" >> $GITHUB_ENV
+        export source_dir=$(realpath ${{ env.PKG_DIR }}/coverage/src)
+        echo "COVERAGE_PREFIX=BASEDIR=${source_dir} EXCLUDE=third_party,nlohmann,qt6,lv2,boost,c++ REPORTDIR=${{ github.workspace }}/coverage_reports BUILDDIR=${build_dir} ORI_BUILD_DIR=$(cat ${{ env.PKG_DIR }}/cmake_binary_dir.txt) DO_GENHTML=0 ${{ env.PKG_DIR }}/scripts/run_and_generate_coverage.sh" >> $GITHUB_ENV
     
     - name: Prepare coverage python command prefix
       if: ${{ inputs.upload_coverage }}
@@ -104,6 +105,7 @@ jobs:
       if: ${{ inputs.upload_coverage }}
       run: |
         python3 -m coverage xml -i -o coverage_reports/python_pytest_coverage.xml
+      continue-on-error: true
     
     - name: Publish Python Test Report
       uses: mikepenz/action-junit-report@v3
@@ -132,8 +134,7 @@ jobs:
     
     - name: Publish QML Test Report
       uses: mikepenz/action-junit-report@v3
-      if: false
-      #${{ inputs.test_qml }} && (success() || failure())
+      if: ${{ inputs.test_qml }} && (success() || failure())
       with:
         report_paths: 'reports/qml_junit_results.xml'
         detailed_summary: true
