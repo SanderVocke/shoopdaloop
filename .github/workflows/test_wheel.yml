@@ -72,10 +72,6 @@ jobs:
       if: ${{ inputs.upload_coverage }}
       run: |
         echo "PYTHON_EXTRA_ARGS=-m coverage run" >> $GITHUB_ENV
-
-    - name: Cache coverage dir
-      run: |
-        echo "coverage_dir=${{ github.workspace }}/coverage_reports" >> $GITHUB_ENV
     
     - name: Back-end tests
       if: ${{ inputs.test_backend }} && !${{ inputs.upload_coverage }} (success() || failure())
@@ -103,7 +99,7 @@ jobs:
     - name: Python tests coverage
       if: ${{ inputs.upload_coverage }}
       run: |
-        python3 -m coverage xml -i -o ${{ github.workspace }}/coverage_reports/python_pytest_coverage.xml
+        python3 -m coverage xml -i -o coverage_reports/python_pytest_coverage.xml
     
     - name: Publish Python Test Report
       uses: mikepenz/action-junit-report@v3
@@ -126,7 +122,7 @@ jobs:
       if: false
       #${{ inputs.upload_coverage }}
       run: |
-        python3 -m coverage xml -i -o ${{ github.workspace }}/coverage_reports/python_qmltests_coverage.xml
+        python3 -m coverage xml -i -o coverage_reports/python_qmltests_coverage.xml
     
     - name: Publish QML Test Report
       uses: mikepenz/action-junit-report@v3
@@ -148,6 +144,4 @@ jobs:
       uses: codecov/codecov-action@v3
       env:
         CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-      with:
-        files: ${{ env.coverage_dir }}/*.info,${{ env.coverage_dir }}/*.xml
     

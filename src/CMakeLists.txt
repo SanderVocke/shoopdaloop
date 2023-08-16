@@ -17,12 +17,18 @@ option(ENABLE_COVERAGE "Enable code coverage" OFF)
 if(ENABLE_COVERAGE)
   include (CodeCoverage)
   append_coverage_compiler_flags()
-  # Install GCNO files into the wheel if coverage is enabled, so that coverage
-  # testing may be done on target
+
+  # Install all the files that LCOV will need in order to do back-end
+  # code coverage.
   install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-          DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME}
+          DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME}/coverage/build
           COMPONENT package_install
-          FILES_MATCHING PATTERN "*.gcno"
+          FILES_MATCHING PATTERN "*.gcno" PATTERN "*.o"
+  )
+  install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+          DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME}/coverage/src
+          COMPONENT package_install
+          FILES_MATCHING PATTERN "*.cpp" PATTERN "*.c" PATTERN "*.h" PATTERN "*.hpp"
   )
 endif()
 
