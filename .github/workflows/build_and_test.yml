@@ -15,46 +15,75 @@ permissions:
 
 jobs:
   
-  build_debug_whl:
+  build_release_whl:
     runs-on: ubuntu-latest
     container:
       image: sandervocke/shoopdaloop_ubuntu_kinetic_build_base:latest
       options: --user root --workdir /
-    
     steps:
-
     - name: Checkout
       uses: actions/checkout@v3
       with:
         submodules: recursive
-    
-    - name: Build
+    - name: Build and upload
       uses: ./.github/actions/build_wheel
       with:
         variant_name: release
         artifact_name: release_wheel
   
-  # build_asan_whl:
-  #   uses: ./.github/workflows/build_wheel.yml
-  #   with:
-  #     variant_name: asan
-  #     pypa_build_extra_args: -C--local=pyproject.toml.debug_asan_overrides
-  #     whl_suffix: asan
-  #     artifact_name: asan_wheel
+  build_asan_whl:
+    runs-on: ubuntu-latest
+    container:
+      image: sandervocke/shoopdaloop_ubuntu_kinetic_build_base:latest
+      options: --user root --workdir /
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        submodules: recursive
+    - name: Build and upload
+      uses: ./.github/actions/build_wheel
+      with:
+        variant_name: asan
+        artifact_name: asan_wheel
+        pypa_build_extra_args: -C--local=pyproject.toml.debug_asan_overrides
+        whl_suffix: asan
   
-  # build_release_whl:
-  #   uses: ./.github/workflows/build_wheel.yml
-  #   with:
-  #     variant_name: release
-  #     artifact_name: release_wheel
+  build_debug_whl:
+    runs-on: ubuntu-latest
+    container:
+      image: sandervocke/shoopdaloop_ubuntu_kinetic_build_base:latest
+      options: --user root --workdir /
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        submodules: recursive
+    - name: Build and upload
+      uses: ./.github/actions/build_wheel
+      with:
+        variant_name: debug
+        artifact_name: debug_wheel
+        pypa_build_extra_args: -C--local=pyproject.toml.debug_overrides
+        whl_suffix: debug
   
-  # build_coverage_whl:
-  #   uses: ./.github/workflows/build_wheel.yml
-  #   with:
-  #     variant_name: coverage
-  #     pypa_build_extra_args: -C--local=pyproject.toml.coverage_overrides
-  #     artifact_name: coverage_wheel
-  #     whl_suffix: coverage
+  coverage:
+    runs-on: ubuntu-latest
+    container:
+      image: sandervocke/shoopdaloop_ubuntu_kinetic_build_base:latest
+      options: --user root --workdir /
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        submodules: recursive
+    - name: Build and upload
+      uses: ./.github/actions/build_wheel
+      with:
+        variant_name: coverage
+        artifact_name: coverage_wheel
+        pypa_build_extra_args: -C--local=pyproject.toml.coverage_overrides
+        whl_suffix: coverage
   
   # test_asan_wheel_ubuntu_pypi:
   #   # note: this runs on the build container because that will provide
