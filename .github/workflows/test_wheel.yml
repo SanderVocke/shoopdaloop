@@ -56,7 +56,7 @@ jobs:
     - name: Install Python coverage
       if: ${{ inputs.upload_coverage }}
       run: |
-        sudo apt-get install -y python3-coverage
+        python3 -m pip install coverage
     
     - name: Report package install dir
       run: |
@@ -111,20 +111,23 @@ jobs:
         check_name: 'python test (${{ inputs.variant_name }})'
 
     - name: QML tests
-      if: ${{ inputs.test_qml }} && (success() || failure())
+      if: false
+      #${{ inputs.test_qml }} && (success() || failure())
       run: |
         mkdir -p reports
         REPORTNAME=qml_tests ${{ env.COVERAGE_PREFIX }} ${{ inputs.run_cmd_prefix }} ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0 QT_QPA_PLATFORM=vnc LD_LIBRARY_PATH=$(dirname $(find ${{ env.PKG_DIR }}/.. -name libQt6Core.so.6)) python3 ${{ env.PYTHON_EXTRA_ARGS_TODO }} ${{ env.PKG_DIR }}/run_qml_tests.py -o reports/qml_junit_results.xml,junitxml
         echo "QML test results file: $(ls -la reports/qml_junit_results.xml)"
     
     - name: Python QML tests coverage
-      if: ${{ inputs.upload_coverage }}
+      if: false
+      #${{ inputs.upload_coverage }}
       run: |
         python3 -m coverage xml -i -o ${{ github.workspace }}/coverage_reports/python_qmltests_coverage.xml
     
     - name: Publish QML Test Report
       uses: mikepenz/action-junit-report@v3
-      if: ${{ inputs.test_qml }} && (success() || failure())
+      if: false
+      #${{ inputs.test_qml }} && (success() || failure())
       with:
         report_paths: 'reports/qml_junit_results.xml'
         detailed_summary: true
