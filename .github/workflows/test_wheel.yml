@@ -126,8 +126,7 @@ jobs:
       continue-on-error: true
     
     - name: Python QML tests coverage
-      if: false
-      #${{ inputs.upload_coverage }}
+      if: ${{ inputs.upload_coverage }}
       run: |
         python3 -m coverage xml -i -o coverage_reports/python_qmltests_coverage.xml
       continue-on-error: true
