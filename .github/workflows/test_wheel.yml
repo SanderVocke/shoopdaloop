@@ -67,7 +67,7 @@ jobs:
       run: |
         export build_dir=$(realpath ${{ env.PKG_DIR }}/coverage/build/cp*)
         export source_dir=$(realpath ${{ env.PKG_DIR }}/coverage/src)
-        echo "COVERAGE_PREFIX=BASEDIR=${source_dir} EXCLUDE=third_party,nlohmann,qt6,lv2,boost,c++ REPORTDIR=${{ github.workspace }}/coverage_reports BUILDDIR=${build_dir} ORI_BUILD_DIR=$(cat ${{ env.PKG_DIR }}/cmake_binary_dir.txt) DO_GENHTML=0 ${{ env.PKG_DIR }}/scripts/run_and_generate_coverage.sh" >> $GITHUB_ENV
+        echo "COVERAGE_PREFIX=BASEDIR=${source_dir} EXCLUDE=third_party,nlohmann,qt6,lv2,boost,c++ REPORTDIR=${{ github.workspace }}/coverage_reports BUILDDIR=${build_dir} ORI_BUILD_DIR=$(cat ${{ env.PKG_DIR }}/cmake_binary_dir.txt) DO_GENHTML=0 cd ${source_dir} && ${{ env.PKG_DIR }}/scripts/run_and_generate_coverage.sh" >> $GITHUB_ENV
     
     - name: Prepare coverage python command prefix
       if: ${{ inputs.upload_coverage }}
@@ -154,7 +154,7 @@ jobs:
       env:
         CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       with:
-        files: ./coverage_reports/*.xml,./coverage_reports/*.info
+        files: coverage_reports/qml_tests.info,coverage_reports/test_runner.info,coverage_reports/python_pytest_coverage.xml,coverage_reports/python_qmltests_coverage.xml
         verbose: true
       continue-on-error: true
     
