@@ -10,11 +10,21 @@ _GCOV=${GCOV:-gcov}
 _LCOV_ARGS=${LCOV_ARGS}
 _GENHTML=${GENHTML:-genhtml}
 _REPORTNAME=${REPORTNAME:-report}
+_ORI_BUILD_DIR=${ORI_BUILD_DIR}
+_TARGET_BUILD_DIR=${TARGET_BUILD_DIR}
 
 _LCOV="${_LCOV} --gcov-tool ${_GCOV} -b ${_BASEDIR} -d ${_BUILDDIR} ${_LCOV_ARGS}"
 echo "Using lcov as: ${_LCOV}"
 
 mkdir -p ${_REPORTDIR}
+
+if [ ! -z ${_TARGET_BUILD_DIR} ]; then
+    export GCOV_PREFIX=${_TARGET_BUILD_DIR}
+    export GCOV_PREFIX_STRIP=$(echo ${_ORI_BUILD_DIR} | tr '/' ' ' | wc -w)
+    echo "Remapping build dir: ${_ORI_BUILD_DIR} -> ${_TARGET_BUILD_DIR}"
+    echo "  - GCOV_PREFIX = ${GCOV_PREFIX}"
+    echo "  - GCOV_PREFIX_STRIP = ${GCOV_PREFIX_STRIP}"
+fi
 
 # Clean
 c="${_LCOV} -z"
@@ -37,6 +47,12 @@ echo "---------------------------------------"
 echo "Running command: ${CMD}"
 echo "---------------------------------------"
 ${CMD}
+
+# Count GCDA files
+gcda_count=`find . -name "*.gcda" | wc -l`
+echo "---------------------------------------"
+echo "Found ${gcda_count} gcda files"
+echo "---------------------------------------"
 
 # Capture
 c="${_LCOV} -c -o ${_REPORTDIR}/${_REPORTNAME}.capture"
