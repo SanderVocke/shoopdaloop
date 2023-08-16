@@ -155,5 +155,6 @@ jobs:
         CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       with:
         files: ./coverage_reports/*.xml,./coverage_reports/*.info
+        verbose: true
       continue-on-error: true
     
