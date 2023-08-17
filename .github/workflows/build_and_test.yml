@@ -157,7 +157,7 @@ jobs:
     - name: Back-end tests with coverage
       uses: ./.github/actions/backend_test
       with:
-        variant_name: asan
+        variant_name: coverage
         test_runner_dir: ${{ steps.build.outputs.install_dir }}
         run_cmd_prefix: >-
           BASEDIR=${{ steps.build.outputs.source_dir }}
@@ -170,7 +170,7 @@ jobs:
     - name: Test Python with coverage
       uses: ./.github/actions/python_test
       with:
-        variant_name: asan
+        variant_name: coverage
         root_path: ${{ steps.build.outputs.install_dir }}
         run_cmd_prefix: >-
           BASEDIR=${{ steps.build.outputs.source_dir }}
@@ -183,7 +183,7 @@ jobs:
     - name: Test QML with coverage
       uses: ./.github/actions/qml_test
       with:
-        variant_name: asan
+        variant_name: coverage
         root_path: ${{ steps.build.outputs.install_dir }}
         run_cmd_prefix: >-
           BASEDIR=${{ steps.build.outputs.source_dir }}
