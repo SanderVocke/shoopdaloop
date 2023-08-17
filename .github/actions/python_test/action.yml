@@ -24,7 +24,7 @@ runs:
   - name: pytest (${{ inputs.variant_name }})
     shell: bash
     run: |
-      ${{ inputs.run_cmd_prefix }} ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0 python3 -m pytest ${{ inputs.root_path }} --junit-xml=${{ env.results_xml }}
+      ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0 ${{ inputs.run_cmd_prefix }} python3 -m pytest ${{ inputs.root_path }} --junit-xml=${{ env.results_xml }}
       echo "Python test results file: $(ls -la ${{ env.results_xml }})"
   
   - name: Publish Python Test Report
