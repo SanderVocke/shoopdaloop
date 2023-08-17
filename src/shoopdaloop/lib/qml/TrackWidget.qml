@@ -412,7 +412,7 @@ Item {
                     function update_coords() {
                         // Update loop indexes
                         var idx=0
-                        for(var i=0; i<children.length; i++) {}
+                        for(var i=0; i<children.length; i++) {
                             let c = children[i]
                             if (c instanceof LoopWidget) {
                                 c.idx_in_track = idx;
