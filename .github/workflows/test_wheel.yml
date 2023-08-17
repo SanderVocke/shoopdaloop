@@ -9,7 +9,7 @@ on:
       container:
         required: false
         type: string
-        default: 'sandervocke/shoopdaloop_ubuntu_kinetic_run_base:latest'
+        default: 'sandervocke/shoopdaloop_run_base:latest'
       artifact_name:
         required: true
         type: string

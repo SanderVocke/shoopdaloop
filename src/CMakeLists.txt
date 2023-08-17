@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED YES)
 set(CMAKE_CXX_EXTENSIONS NO)
 set(CMAKE_EXPORT_COMPILE_COMMANDS YES)
 
-# Required for custom QML types
+# Qt6 is required for custom QML types.
 find_package(Qt6 REQUIRED COMPONENTS Core Qml Gui Quick Widgets QuickTest)
 qt_standard_project_setup()
 
