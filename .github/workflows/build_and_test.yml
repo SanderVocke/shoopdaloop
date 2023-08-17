@@ -209,7 +209,7 @@ jobs:
       with:
         variant_name: coverage
         root_path: ${{ steps.build.outputs.install_dir }}
-        python_command: python3 -m coverage --source=shoopdaloop run
+        python_command: python3 -m coverage run --source=shoopdaloop
         run_cmd_prefix: >-
           BASEDIR=${{ steps.build.outputs.source_dir }}
           EXCLUDE=third_party,qt6,boost,c++
