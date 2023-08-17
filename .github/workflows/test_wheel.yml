@@ -51,7 +51,7 @@ jobs:
     - name: Install wheel
       run: |
         ${{ inputs.run_cmd_prefix }} ASAN_OPTIONS=detect_leaks=0 python3 -m pip install ~/wheel/*.whl
-        echo "PKG_DIR=$(${{ inputs.run_cmd_prefix }} ASAN_OPTIONS=detect_leaks=0 shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g')" >> $GITHUB_ENV
+        echo "PKG_DIR=$(${{ inputs.run_cmd_prefix }} ASAN_OPTIONS=detect_leaks=0 shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g')" | tee -a $GITHUB_ENV
     
     - name: Install Python coverage
       if: ${{ inputs.upload_coverage }}
@@ -67,12 +67,12 @@ jobs:
       run: |
         export build_dir=$(realpath ${{ env.PKG_DIR }}/coverage/build/cp*)
         export source_dir=$(realpath ${{ env.PKG_DIR }}/coverage/src)
-        echo "COVERAGE_PREFIX=BASEDIR=${source_dir} EXCLUDE=third_party,nlohmann,qt6,lv2,boost,c++ REPORTDIR=coverage_reports BUILDDIR=${build_dir} ORI_BUILD_DIR=$(cat ${{ env.PKG_DIR }}/cmake_binary_dir.txt) DO_GENHTML=0 ${{ env.PKG_DIR }}/scripts/run_and_generate_coverage.sh" >> $GITHUB_ENV
+        echo "COVERAGE_PREFIX=BASEDIR=${source_dir} EXCLUDE=third_party,nlohmann,qt6,lv2,boost,c++ REPORTDIR=coverage_reports BUILDDIR=${build_dir} ORI_BUILD_DIR=$(cat ${{ env.PKG_DIR }}/cmake_binary_dir.txt) DO_GENHTML=0 ${{ env.PKG_DIR }}/scripts/run_and_generate_coverage.sh" | tee -a $GITHUB_ENV
     
     - name: Prepare coverage python command prefix
       if: ${{ inputs.upload_coverage }}
       run: |
-        echo "PYTHON_EXTRA_ARGS=-m coverage run --source=${{ env.PKG_DIR }}" >> $GITHUB_ENV
+        echo "PYTHON_EXTRA_ARGS=-m coverage run --source=${{ env.PKG_DIR }}" | tee -a $GITHUB_ENV
       continue-on-error: true
 
     - name: Back-end tests

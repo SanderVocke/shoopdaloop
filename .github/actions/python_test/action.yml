@@ -19,7 +19,7 @@ runs:
     shell: bash
     run: |
       mkdir -p reports
-      echo "results_xml=reports/pytest_${{ inputs.variant_name }}_results.xml" >> $GITHUB_ENV
+      echo "results_xml=reports/pytest_${{ inputs.variant_name }}_results.xml" | tee -a $GITHUB_ENV
 
   - name: pytest (${{ inputs.variant_name }})
     shell: bash

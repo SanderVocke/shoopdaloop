@@ -51,7 +51,7 @@ jobs:
       id: install
       run: |
         python3 -m pip install ~/wheel/*.whl
-        echo "install_dir=$(shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g')" >> $GITHUB_ENV
+        echo "install_dir=$(shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g')" | tee -a $GITHUB_ENV
   
   asan:
     runs-on: ubuntu-latest
@@ -191,7 +191,7 @@ jobs:
   #     run: |
   #       echo "::warning title=PACKAGING_ISSUE::Temporarily removed --no-deps on Arch because of broken python-numba"
   #       python3 -m pip install ~/wheel/*.whl --break-system-packages
-  #       echo "PKG_DIR=$(python3 -m pip show shiboken6 | grep "Location:" | sed -r 's/Location: //g')" >> $GITHUB_ENV
+  #       echo "PKG_DIR=$(python3 -m pip show shiboken6 | grep "Location:" | sed -r 's/Location: //g')" | tee -a $GITHUB_ENV
     
   #   - name: Back-end tests
   #     if: success() || failure() # always run even if the previous step fails
@@ -264,7 +264,7 @@ jobs:
   #   - name: Install wheel
   #     run: |
   #       python3 -m pip install --no-deps --break-system-packages ~/wheel/*.whl
-  #       echo "PKG_DIR=$(python3 -m pip show shiboken6 | grep "Location:" | sed -r 's/Location: //g')" >> $GITHUB_ENV
+  #       echo "PKG_DIR=$(python3 -m pip show shiboken6 | grep "Location:" | sed -r 's/Location: //g')" | tee -a $GITHUB_ENV
     
   #   - name: Back-end tests
   #     if: success() || failure() # always run even if the previous step fails

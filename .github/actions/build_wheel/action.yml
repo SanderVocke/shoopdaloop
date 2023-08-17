@@ -42,9 +42,9 @@ runs:
     id: build
     run: |
       python3 -m build -w ${{ inputs.pypa_build_extra_args }}
-      echo "run_cmd_prefix=$(find . -name run_cmd_prefix.txt -exec cat {} \;)" >> $GITHUB_OUTPUT
-      echo "source_dir=$(pwd)" >> $GITHUB_OUTPUT
-      echo "build_dir=$(realpath build/cp*/)" >> $GITHUB_OUTPUT
+      echo "run_cmd_prefix=$(find . -name run_cmd_prefix.txt -exec cat {} \;)" | tee -a $GITHUB_OUTPUT
+      echo "source_dir=$(pwd)" | tee -a $GITHUB_OUTPUT
+      echo "build_dir=$(realpath build/cp*/)" | tee -a $GITHUB_OUTPUT
   
   - name: Rename wheel
     shell: bash
@@ -58,7 +58,7 @@ runs:
     shell: bash
     id: find
     run: |
-      echo "name=$(ls dist/*.whl)" >> $GITHUB_OUTPUT
+      echo "name=$(ls dist/*.whl)" | tee -a $GITHUB_OUTPUT
     
   - name: Upload wheel (${{ inputs.variant_name }})
     uses: actions/upload-artifact@v3
@@ -73,5 +73,5 @@ runs:
     run: |
       mkdir -p install
       ${{ env.noleakcheck }} ${{ steps.build.outputs.run_cmd_prefix }} python3 -m pip install ${{ steps.find.outputs.name }}
-      echo "install_dir=$(${{ env.noleakcheck }} ${{ steps.build.outputs.run_cmd_prefix }} shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g')" >> $GITHUB_OUTPUT
+      echo "install_dir=$(${{ env.noleakcheck }} ${{ steps.build.outputs.run_cmd_prefix }} shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g')" | tee -a $GITHUB_OUTPUT
 

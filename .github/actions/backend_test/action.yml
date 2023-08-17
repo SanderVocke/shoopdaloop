@@ -19,7 +19,7 @@ runs:
     shell: bash
     run: |
       mkdir -p reports
-      echo "results_xml=reports/test_runner_${{ inputs.variant_name }}_results.xml" >> $GITHUB_ENV
+      echo "results_xml=reports/test_runner_${{ inputs.variant_name }}_results.xml" | tee -a $GITHUB_ENV
 
   - name: test_runner (${{ inputs.variant_name }})
     shell: bash
