@@ -155,7 +155,7 @@ jobs:
       with:
         variant_name: coverage
         artifact_name: coverage_wheel
-        pypa_build_extra_args: -C--local=pyproject.toml.coverage_overrides
+        pypa_build_extra_args: --skip-dependency-check -C--local=pyproject.toml.coverage_overrides
         whl_suffix: coverage
         install: true
     - name: Back-end tests with coverage
