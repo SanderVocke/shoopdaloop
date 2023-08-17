@@ -110,6 +110,7 @@ jobs:
       with:
         submodules: recursive
     - name: Build, install and upload
+      id: build
       uses: ./.github/actions/build_wheel
       with:
         variant_name: coverage
@@ -121,6 +122,7 @@ jobs:
       uses: ./.github/actions/backend_test
       with:
         variant_name: asan
+        test_runner_dir: ${{ steps.build.outputs.install_dir }}
         run_cmd_prefix: >-
           BASEDIR=${{ steps.build.outputs.source_dir }}
           EXCLUDE=third_party,qt6,boost,c++
@@ -128,7 +130,7 @@ jobs:
           BUILDDIR=${{ steps.build.outputs.build_dir }}
           DO_GENHTML=0
           ${{ steps.build.outputs.install_dir}}/scripts/run_and_generate_coverage.sh 
-        test_runner_dir: ${{ steps.build.outputs.install_dir }}
+  
   
   # test_asan_wheel_ubuntu_pypi:
   #   # note: this runs on the build container because that will provide
