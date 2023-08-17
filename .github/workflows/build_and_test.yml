@@ -48,7 +48,27 @@ jobs:
       run: |
         python3 -m pip install ~/wheel/*.whl
         echo "install_dir=$(shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g')" | tee -a $GITHUB_ENV
-  
+    - name: Test back-end
+      uses: ./.github/actions/backend_test
+      with:
+        variant_name: asan
+        # note: build step generates run_cmd_prefix output
+        # for usage with shared ASAN library.
+        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
+        test_runner_dir: ${{ steps.build.outputs.install_dir }}
+    - name: Test Python
+      uses: ./.github/actions/python_test
+      with:
+        variant_name: asan
+        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
+        root_path: ${{ steps.build.outputs.install_dir }}
+    - name: Test QML
+      uses: ./.github/actions/qml_test
+      with:
+        variant_name: asan
+        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
+        root_path: ${{ steps.build.outputs.install_dir }}
+        
   asan:
     runs-on: ubuntu-latest
     container:
@@ -78,6 +98,12 @@ jobs:
         test_runner_dir: ${{ steps.build.outputs.install_dir }}
     - name: Test Python
       uses: ./.github/actions/python_test
+      with:
+        variant_name: asan
+        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
+        root_path: ${{ steps.build.outputs.install_dir }}
+    - name: Test QML
+      uses: ./.github/actions/qml_test
       with:
         variant_name: asan
         run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
