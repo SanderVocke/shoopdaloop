@@ -50,6 +50,11 @@ jobs:
       run: |
         python3 -m pip install ~/wheel/*.whl
         echo "install_dir=$(shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g')" | tee -a $GITHUB_OUTPUT
+    - name: Find Qt
+      shell: bash
+      id: findqt
+      run: |
+        echo "qtlibpath=$(dirname $(find ${{ steps.install.outputs.install_dir }}/.. -name libQt6Core.so.6))" | tee -a $GITHUB_ENV
     - name: Test back-end
       uses: ./.github/actions/backend_test
       with:
@@ -57,25 +62,24 @@ jobs:
         # note: build step generates run_cmd_prefix output
         # for usage with shared ASAN library.
         run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
-        test_runner_dir: ${{ steps.build.outputs.install_dir }}
+        test_runner_dir: ${{ steps.install.outputs.install_dir }}
     - name: Test Python
       uses: ./.github/actions/python_test
       with:
         variant_name: release
-        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
+        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH=${{ env.qtlibpath }}
         root_path: ${{ steps.install.outputs.install_dir }}
     - name: Test QML
       uses: ./.github/actions/qml_test
       with:
         variant_name: release
-        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
+        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH=${{ env.qtlibpath }}
         root_path: ${{ steps.install.outputs.install_dir }}
     - name: Test App
       uses: ./.github/actions/app_run_test
       with:
         variant_name: release
-        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
-        root_path: ${{ steps.install.outputs.install_dir }}
+        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH=${{ env.qtlibpath }}
         
   asan:
     runs-on: ubuntu-latest

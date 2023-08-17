@@ -52,7 +52,7 @@ echo "Running command: ${CMD}"
 echo "---------------------------------------"
 ${CMD}
 RESULT=$?
-if [ $RESULT -eq 0 ]; then
+if [ ! $RESULT -eq 0 ]; then
     echo "ERROR: exited with code $RESULT" >&2
     exit $RESULT
 fi

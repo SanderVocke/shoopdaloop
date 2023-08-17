@@ -24,7 +24,7 @@ runs:
   - name: QML test (${{ inputs.variant_name }})
     shell: bash
     run: |
-      ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0 QT_QPA_PLATFORM=vnc LD_LIBRARY_PATH=$(dirname $(find ${{ inputs.root_path }}/.. -name libQt6Core.so.6)) ${{ inputs.run_cmd_prefix }}  python3 ${{ inputs.root_path }}/run_qml_tests.py -o ${{ env.results_xml }},junitxml
+      ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0 QT_QPA_PLATFORM=vnc ${{ inputs.run_cmd_prefix }}  python3 ${{ inputs.root_path }}/run_qml_tests.py -o ${{ env.results_xml }},junitxml
       echo "QML test results file: $(ls -la ${{ env.results_xml }})"
   
   - name: Publish QML Test Report

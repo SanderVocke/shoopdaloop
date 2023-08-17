@@ -16,12 +16,17 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAK
 option(ENABLE_COVERAGE "Enable code coverage" OFF)
 if(ENABLE_COVERAGE)
   include (CodeCoverage)
-  append_coverage_compiler_flags()
+  #append_coverage_compiler_flags()
 endif()
 
 set(CTYPESGEN_COMMAND ctypesgen)
 
 add_subdirectory(libshoopdaloop)
+
+if(ENABLE_COVERAGE)
+  append_coverage_compiler_flags_to_target(shoopdaloop)
+  append_coverage_compiler_flags_to_target(test_runner)
+endif()
 
 # Generate libshoopdaloop Python bindings into source dir
 set(GENERATED_BINDINGS_PY ${CMAKE_CURRENT_BINARY_DIR}/libshoopdaloop_bindings.py)
