@@ -63,19 +63,19 @@ jobs:
       with:
         variant_name: release
         run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
-        root_path: ${{ steps.build.outputs.install_dir }}
+        root_path: ${{ steps.install.outputs.install_dir }}
     - name: Test QML
       uses: ./.github/actions/qml_test
       with:
         variant_name: release
         run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
-        root_path: ${{ steps.build.outputs.install_dir }}
+        root_path: ${{ steps.install.outputs.install_dir }}
     - name: Test App
       uses: ./.github/actions/app_run_test
       with:
         variant_name: release
         run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
-        root_path: ${{ steps.build.outputs.install_dir }}
+        root_path: ${{ steps.install.outputs.install_dir }}
         
   asan:
     runs-on: ubuntu-latest
