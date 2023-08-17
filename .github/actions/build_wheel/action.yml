@@ -70,7 +70,7 @@ runs:
   - name: Install wheel
     shell: bash
     id: install
-    if: ${{ inputs.install }}
+    if: ${{ inputs.install == 'true' }}
     run: |
       mkdir -p install
       ASAN_OPTIONS=detect_leaks=0 ${{ steps.build.outputs.run_cmd_prefix }} python3 -m pip install --force-reinstall ${{ inputs.pip_install_extra_args }} ${{ steps.find.outputs.name }}
