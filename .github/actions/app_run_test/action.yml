@@ -18,6 +18,6 @@ runs:
   - name: pytest (${{ inputs.variant_name }})
     shell: bash
     run: |
-        ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0 ${{ inputs.run_cmd_prefix }} QT_QPA_PLATFORM=vnc EXPECT_STAY_OPEN=1 WAIT_MS_BEFORE_CLOSE=5000 N_ITERATIONS=10 WAIT_MS_BEFORE_KILL=10000 ${{ inputs.root_path }}/scripts/test_run_app.sh shoopdaloop -b dummy
+        ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0 QT_QPA_PLATFORM=vnc EXPECT_STAY_OPEN=1 WAIT_MS_BEFORE_CLOSE=5000 N_ITERATIONS=10 WAIT_MS_BEFORE_KILL=10000 ${{ inputs.run_cmd_prefix }} ${{ inputs.root_path }}/scripts/test_run_app.sh shoopdaloop -b dummy
 
 
