@@ -7,15 +7,26 @@ set(CMAKE_CXX_STANDARD_REQUIRED YES)
 set(CMAKE_CXX_EXTENSIONS NO)
 set(CMAKE_EXPORT_COMPILE_COMMANDS YES)
 
-# Required for custom QML types
+# Qt6 is required for custom QML types.
 find_package(Qt6 REQUIRED COMPONENTS Core Qml Gui Quick Widgets QuickTest)
 qt_standard_project_setup()
 
-
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}/cmake")
+
+option(ENABLE_COVERAGE "Enable code coverage" OFF)
+if(ENABLE_COVERAGE)
+  include (CodeCoverage)
+  append_coverage_compiler_flags()
+endif()
+
 set(CTYPESGEN_COMMAND ctypesgen)
 
 add_subdirectory(libshoopdaloop)
+
+# if(ENABLE_COVERAGE)
+#   append_coverage_compiler_flags_to_target(shoopdaloop)
+#   append_coverage_compiler_flags_to_target(test_runner)
+# endif()
 
 # Generate libshoopdaloop Python bindings into source dir
 set(GENERATED_BINDINGS_PY ${CMAKE_CURRENT_BINARY_DIR}/libshoopdaloop_bindings.py)
@@ -78,8 +89,13 @@ install(FILES ${CMAKE_CURRENT_BINARY_DIR}/version.txt ${CMAKE_CURRENT_BINARY_DIR
     DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME})
   
 
-# Include app test script
+# Include app test scripts
 install(FILES ${CMAKE_SOURCE_DIR}/../scripts/test_run_app.sh
+        EXCLUDE_FROM_ALL
+        COMPONENT package_install
+        PERMISSIONS WORLD_EXECUTE OWNER_EXECUTE GROUP_EXECUTE GROUP_WRITE OWNER_WRITE GROUP_READ OWNER_READ WORLD_READ
+        DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME}/scripts)
+install(FILES ${CMAKE_SOURCE_DIR}/../scripts/run_and_generate_coverage.sh
         EXCLUDE_FROM_ALL
         COMPONENT package_install
         PERMISSIONS WORLD_EXECUTE OWNER_EXECUTE GROUP_EXECUTE GROUP_WRITE OWNER_WRITE GROUP_READ OWNER_READ WORLD_READ

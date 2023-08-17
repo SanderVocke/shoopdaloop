@@ -1,0 +1,78 @@
+name: Build Wheel
+description: Build a Python wheel distribution
+
+inputs:
+  variant_name:
+    required: true
+    type: string
+  pypa_build_extra_args:
+    required: false
+    type: string
+  whl_suffix:
+    required: false
+    type: string
+  artifact_name:
+    required: true
+    type: string
+  install:
+    required: false
+    type: boolean
+    default: false
+  pip_install_extra_args:
+    required: false
+    type: string
+
+outputs:
+  run_cmd_prefix:
+    description: "Command-line prefix to use when running the apps in the built wheel"
+    value: ${{ steps.build.outputs.run_cmd_prefix }}
+  install_dir:
+    description: "If the package was installed, this holds the installation folder"
+    value: ${{ steps.install.outputs.install_dir }}
+  build_dir:
+    value: ${{ steps.build.outputs.build_dir }}
+  source_dir:
+    value: ${{ steps.build.outputs.source_dir }}
+
+runs:
+  using: "composite"
+  steps:
+  - name: Build wheel (${{ inputs.variant_name }})
+    shell: bash
+    id: build
+    run: |
+      python3 -m build -w ${{ inputs.pypa_build_extra_args }}
+      echo "run_cmd_prefix=$(find . -name run_cmd_prefix.txt -exec cat {} \;)" | tee -a $GITHUB_OUTPUT
+      echo "source_dir=$(pwd)" | tee -a $GITHUB_OUTPUT
+      echo "build_dir=$(realpath build/cp*/)" | tee -a $GITHUB_OUTPUT
+  
+  - name: Rename wheel
+    shell: bash
+    id: rename
+    run: | 
+      cd dist
+      mkdir -p final
+      for f in *.whl; do mv -- "$f" "final/${f%.whl}.${{ inputs.whl_suffix }}.whl"; done
+  
+  - name: Find wheel
+    shell: bash
+    id: find
+    run: |
+      echo "name=$(ls dist/final/*.whl)" | tee -a $GITHUB_OUTPUT
+    
+  - name: Upload wheel (${{ inputs.variant_name }})
+    if: ${{ !env.ACT }}
+    uses: actions/upload-artifact@v3
+    with:
+      name: ${{ inputs.artifact_name }}
+      path: ${{ steps.find.outputs.name }}
+  
+  - name: Install wheel
+    shell: bash
+    id: install
+    if: ${{ inputs.install == 'true' }}
+    run: |
+      mkdir -p install
+      ASAN_OPTIONS=detect_leaks=0 ${{ steps.build.outputs.run_cmd_prefix }} python3 -m pip install --force-reinstall ${{ inputs.pip_install_extra_args }} ${{ steps.find.outputs.name }}
+      echo "install_dir=$(ASAN_OPTIONS=detect_leaks=0 ${{ steps.build.outputs.run_cmd_prefix }} shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g')" | tee -a $GITHUB_OUTPUT
+

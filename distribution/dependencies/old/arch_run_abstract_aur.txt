@@ -1,5 +1,0 @@
-python-pyjacklib
-python-mido
-python-resampy
-python-soundfile
-python-playsound

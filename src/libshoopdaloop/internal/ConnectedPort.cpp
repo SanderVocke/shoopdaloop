@@ -10,6 +10,7 @@
 #include "MidiMergingBuffer.h"
 #include "Backend.h"
 #include "DummyAudioSystem.h"
+#include "shoop_globals.h"
 #include <fmt/ranges.h>
 
 using namespace shoop_types;
@@ -19,7 +20,9 @@ std::string ConnectedPort::log_module_name() const {
     return "Backend.ConnectedPort";
 }
 
-ConnectedPort::ConnectedPort (std::shared_ptr<PortInterface> const& port, std::shared_ptr<Backend> const& backend) :
+ConnectedPort::ConnectedPort (std::shared_ptr<PortInterface> const& port,
+                              std::shared_ptr<Backend> const& backend,
+                              shoop_types::ProcessWhen process_when) :
     port(port),
     maybe_audio_buffer(nullptr),
     maybe_midi_input_buffer(nullptr),
@@ -30,16 +33,14 @@ ConnectedPort::ConnectedPort (std::shared_ptr<PortInterface> const& port, std::s
     passthrough_muted(false),
     backend(backend),
     peak(0.0f),
-    n_events_processed(0) {
+    n_events_processed(0),
+    ma_process_when(process_when) {
     log_init();
 
     bool is_internal = (dynamic_cast<InternalAudioPort<float>*>(port.get()) ||
                         dynamic_cast<InternalLV2MidiOutputPort*>(port.get()));
     bool is_fx_in = is_internal && (port->direction() == PortDirection::Output);
     bool is_ext_in = !is_internal && (port->direction() == PortDirection::Input);
-
-    ma_process_when = (is_ext_in || is_fx_in) ?
-        shoop_types::ProcessWhen::BeforeFXChains : shoop_types::ProcessWhen::AfterFXChains;
 
     if (auto m = dynamic_cast<MidiPortInterface*>(port.get())) {
         maybe_midi_state = std::make_shared<MidiStateTracker>(true, true, true);
@@ -155,7 +156,9 @@ void ConnectedPort::PROC_passthrough_midi(size_t n_frames, ConnectedPort &to) {
             auto &msg = maybe_midi_input_buffer->PROC_get_event_reference(i);
             std::vector<uint8_t> pd{msg.get_data(), msg.get_data() + msg.get_size()};
             uint32_t t = msg.get_time();
-            log<logging::LogLevel::debug>("Passthrough midi message reference @ {}: {}", t, pd);
+            void* to_ptr = &to;
+            auto to_ptr_fmt = fmt::ptr(to_ptr);
+            log<logging::LogLevel::debug>("Passthrough midi message reference to {} @ {}: {}", to_ptr_fmt, t, pd);
             to.maybe_midi_output_merging_buffer->PROC_write_event_reference(msg);
         }
     }
@@ -176,8 +179,9 @@ void ConnectedPort::PROC_finalize_process(size_t n_frames) {
     } else if (auto m = dynamic_cast<MidiPortInterface*>(port.get())) {
         if (m->direction() == PortDirection::Output) {
             if (!muted) {
-                maybe_midi_output_merging_buffer->PROC_sort();
                 size_t n_events = maybe_midi_output_merging_buffer->PROC_get_n_events();
+                maybe_midi_output_merging_buffer->PROC_sort();
+                
                 for(size_t i=0; i<n_events; i++) {
                     uint32_t size, time;
                     const uint8_t* data;
@@ -187,6 +191,7 @@ void ConnectedPort::PROC_finalize_process(size_t n_frames) {
                     maybe_midi_output_buffer->PROC_write_event_value(size, time, data);
                     maybe_midi_state->process_msg(data);
                 }
+
                 n_events_processed += n_events;
             }
         }

@@ -1,4 +1,4 @@
-# Dependencies needed in order to build a .whl on Ubuntu (kinetic).
+# Dependencies needed in order to build a .whl.
 # Assumption is that PyPi packages are used wherever possible.
 
 # build stuff
@@ -7,6 +7,7 @@ git
 cmake
 ninja-build
 pkgconf
+lcov
 
 # libraries
 libxkbcommon-dev
@@ -30,7 +31,12 @@ python3-build
 python3-venv
 python3-virtualenv
 python3-pytest
+python3-pip
+python3-coverage
 
 # not sure why exactly these are needed
 libgl1-mesa-dev
 libvulkan-dev
+
+# scripting stuff
+procps

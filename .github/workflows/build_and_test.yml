@@ -15,393 +15,234 @@ permissions:
 
 jobs:
   
-  build_asan_whl:
+  build_release_whl:
     runs-on: ubuntu-latest
     container:
-      image: sandervocke/shoopdaloop_ubuntu_kinetic_build_base:latest
+      image: sandervocke/shoopdaloop_build_base:latest
       options: --user root --workdir /
-    
-    steps:      
+    steps:
     - name: Checkout
       uses: actions/checkout@v3
       with:
         submodules: recursive
-
-    - name: Build ASAN wheel
+    - name: Build and upload
+      uses: ./.github/actions/build_wheel
+      with:
+        variant_name: release
+        artifact_name: release_wheel
+        install: false
+  
+  test_release_whl:
+    runs-on: ubuntu-latest
+    needs: build_release_whl
+    container:
+      image: sandervocke/shoopdaloop_run_base:latest
+      options: --user root --workdir /
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+    - name: Retrieve wheel
+      uses: actions/download-artifact@v3
+      with:
+        name: release_wheel
+        path: ~/wheel
+    - name: Install wheel
+      id: install
       run: |
-        python3 -m build -w -C--local=pyproject.toml.debug_asan_overrides
-        echo "ASAN_CMD_PREFIX_FILE=$(find . -name run_cmd_prefix.txt)" >> $GITHUB_ENV
-        cd dist
-        for f in *.whl; do mv -- "$f" "${f%.whl}.asan.whl"; done
-        echo "ASAN_WHEEL=$(ls *.whl)" >> $GITHUB_ENV
-    
-    - name: Upload ASAN
-      uses: actions/upload-artifact@v3
+        python3 -m pip install --force-reinstall --break-system-packages ~/wheel/*.whl
+        echo "install_dir=$(shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g')" | tee -a $GITHUB_OUTPUT
+    - name: Find Qt
+      shell: bash
+      id: findqt
+      run: |
+        echo "qtlibpath=$(dirname $(find ${{ steps.install.outputs.install_dir }}/.. -name libQt6Core.so.6))" | tee -a $GITHUB_ENV
+    - name: Test back-end
+      uses: ./.github/actions/backend_test
       with:
-        name: asan_wheel
-        path: dist/${{ env.ASAN_WHEEL }}
-    
-    - name: Upload ASAN command prefix
-      uses: actions/upload-artifact@v3
+        variant_name: release
+        # note: build step generates run_cmd_prefix output
+        # for usage with shared ASAN library.
+        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
+        test_runner_dir: ${{ steps.install.outputs.install_dir }}
+    - name: Test Python
+      uses: ./.github/actions/python_test
       with:
-        name: asan_cmd_prefix
-        path: ${{ env.ASAN_CMD_PREFIX_FILE }}
+        variant_name: release
+        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH=${{ env.qtlibpath }}
+        root_path: ${{ steps.install.outputs.install_dir }}
+    - name: Test QML
+      uses: ./.github/actions/qml_test
+      with:
+        variant_name: release
+        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH=${{ env.qtlibpath }}
+        root_path: ${{ steps.install.outputs.install_dir }}
+    - name: Test App
+      uses: ./.github/actions/app_run_test
+      with:
+        variant_name: release
+        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH=${{ env.qtlibpath }}
+        root_path: ${{ steps.install.outputs.install_dir }}
+        
+  asan:
+    runs-on: ubuntu-latest
+    container:
+      image: sandervocke/shoopdaloop_build_base:latest
+      options: --user root --workdir /
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        submodules: recursive
+    - name: Build, install and upload
+      id: build
+      uses: ./.github/actions/build_wheel
+      with:
+        variant_name: asan
+        artifact_name: asan_wheel
+        pypa_build_extra_args: -C--local=pyproject.toml.debug_asan_overrides
+        pip_install_extra_args: --break-system-packages
+        whl_suffix: asan
+        install: true
+    - name: Find Qt
+      shell: bash
+      id: findqt
+      run: |
+        echo "qtlibpath=$(dirname $(find ${{ steps.build.outputs.install_dir }}/.. -name libQt6Core.so.6))" | tee -a $GITHUB_ENV
+    - name: Test back-end
+      uses: ./.github/actions/backend_test
+      with:
+        variant_name: asan
+        # note: build step generates run_cmd_prefix output
+        # for usage with shared ASAN library.
+        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
+        test_runner_dir: ${{ steps.build.outputs.install_dir }}
+    - name: Test Python
+      uses: ./.github/actions/python_test
+      with:
+        variant_name: asan
+        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH=${{ env.qtlibpath }}
+        root_path: ${{ steps.build.outputs.install_dir }}
+    - name: Test QML
+      uses: ./.github/actions/qml_test
+      with:
+        variant_name: asan
+        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH=${{ env.qtlibpath }}
+        root_path: ${{ steps.build.outputs.install_dir }}
   
   build_debug_whl:
     runs-on: ubuntu-latest
     container:
-      image: sandervocke/shoopdaloop_ubuntu_kinetic_build_base:latest
+      image: sandervocke/shoopdaloop_build_base:latest
       options: --user root --workdir /
-    
-    steps:      
+    steps:
     - name: Checkout
       uses: actions/checkout@v3
       with:
         submodules: recursive
-    
-    - name: Build debug wheel
-      run: |
-        python3 -m build -w -C--local=pyproject.toml.debug_overrides
-        cd dist
-        for f in *.whl; do mv -- "$f" "${f%.whl}.dbg.whl"; done
-        echo "DEBUG_WHEEL=$(ls *.whl)" >> $GITHUB_ENV
-    
-    - name: Upload debug
-      uses: actions/upload-artifact@v3
+    - name: Build and upload
+      uses: ./.github/actions/build_wheel
       with:
-        name: debug_wheel
-        path: dist/${{ env.DEBUG_WHEEL }}
-
-  build_release_whl:
+        variant_name: debug
+        artifact_name: debug_wheel
+        pypa_build_extra_args: -C--local=pyproject.toml.debug_overrides
+        whl_suffix: debug
+        install: false
+  
+  coverage:
     runs-on: ubuntu-latest
     container:
-      image: sandervocke/shoopdaloop_ubuntu_kinetic_build_base:latest
+      image: sandervocke/shoopdaloop_build_base:latest
       options: --user root --workdir /
-    
-    steps:      
+    steps:
     - name: Checkout
       uses: actions/checkout@v3
       with:
         submodules: recursive
-    
-    - name: Build release wheel
-      run: |
-        python3 -m build -w
-        cd dist && echo "RELEASE_WHEEL=$(ls *.whl)" >> $GITHUB_ENV
-    
-    - name: Upload release
-      uses: actions/upload-artifact@v3
+    - name: Build, install and upload
+      id: build
+      uses: ./.github/actions/build_wheel
       with:
-        name: release_wheel
-        path: dist/${{ env.RELEASE_WHEEL }}
-  
-  # Test the built wheel in an Ubuntu environment using PyPi packages
-  test_asan_wheel_ubuntu_pypi:
-    # note: this runs on the build container because that will provide
-    # the same shared libasan.so used during build
-    needs: build_asan_whl
-    runs-on: ubuntu-latest
-    container:
-      image: sandervocke/shoopdaloop_ubuntu_kinetic_build_base:latest
-      options: --user root --workdir /
-    
-    steps:
-    - name: Retrieve wheel
-      uses: actions/download-artifact@v3
+        variant_name: coverage
+        artifact_name: coverage_wheel
+        pypa_build_extra_args: --skip-dependency-check -C--local=pyproject.toml.coverage_overrides
+        pip_install_extra_args: --break-system-packages
+        whl_suffix: coverage
+        install: true
+    - name: Find Qt
+      shell: bash
+      id: findqt
+      run: |
+        echo "qtlibpath=$(dirname $(find ${{ steps.build.outputs.install_dir }}/.. -name libQt6Core.so.6))" | tee -a $GITHUB_ENV
+    - name: Back-end tests with coverage
+      uses: ./.github/actions/backend_test
       with:
-        name: asan_wheel
-        path: ~/wheel
-
-    - name: Retrieve cmd prefix
-      uses: actions/download-artifact@v3
+        variant_name: coverage
+        test_runner_dir: ${{ steps.build.outputs.install_dir }}
+        run_cmd_prefix: >-
+          BASEDIR=${{ steps.build.outputs.source_dir }}
+          EXCLUDE=third_party,qt6,boost,c++
+          REPORTDIR=coverage_reports
+          REPORTNAME=test_runner
+          BUILDDIR=${{ steps.build.outputs.build_dir }}
+          DO_GENHTML=0
+          ${{ steps.build.outputs.install_dir}}/scripts/run_and_generate_coverage.sh
+    - name: Test Python with coverage
+      uses: ./.github/actions/python_test
       with:
-        name: asan_cmd_prefix
-        path: ~/asan_cmd_prefix
-    
-    - name: Set cmd prefix
+        variant_name: coverage
+        root_path: ${{ steps.build.outputs.install_dir }}
+        pytest_command: python3 -m coverage run --source=shoopdaloop -m pytest
+        run_cmd_prefix: >-
+          BASEDIR=${{ steps.build.outputs.source_dir }}
+          EXCLUDE=third_party,qt6,boost,c++
+          REPORTDIR=coverage_reports
+          REPORTNAME=pytest
+          BUILDDIR=${{ steps.build.outputs.build_dir }}
+          DO_GENHTML=0
+          LD_LIBRARY_PATH=${{ env.qtlibpath }}
+          ${{ steps.build.outputs.install_dir}}/scripts/run_and_generate_coverage.sh
+    - name: Generate Pytest coverage report
       run: |
-        ls -la ~/asan_cmd_prefix
-        echo "ASAN_CMD_PREFIX=$(cat ~/asan_cmd_prefix/run_cmd_prefix.txt)" >> $GITHUB_ENV
-
-    - name: Install wheel
-      run: |
-        ${{ env.ASAN_CMD_PREFIX }} ASAN_OPTIONS=detect_leaks=0 python3 -m pip install ~/wheel/*.whl
-        echo "ASAN_PKG_DIR=$(${{ env.ASAN_CMD_PREFIX }} ASAN_OPTIONS=detect_leaks=0 shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g')" >> $GITHUB_ENV
-    
-    - name: Report package install dir
-      run: |
-        echo "$ASAN_PKG_DIR"
-    
-    - name: Back-end tests
-      if: success() || failure() # always run even if the previous step fails
-      run: |
-        mkdir -p reports
-        ${{ env.ASAN_CMD_PREFIX }} ${{ env.ASAN_PKG_DIR }}/test_runner --reporter junit --out reports/backend_junit_results.xml
-        echo "Back-end test results file: $(ls -la reports/backend_junit_results.xml)"
-    
-    - name: Python tests
-      if: success() || failure() # always run even if the previous step fails
-      run: |
-        mkdir -p reports
-        ${{ env.ASAN_CMD_PREFIX }} ASAN_OPTIONS=detect_leaks=0 pytest ${{ env.ASAN_PKG_DIR }} --junit-xml=reports/python_junit_results.xml
-        echo "Python test results file: $(ls -la reports/python_junit_results.xml)"
-    
-    - name: QML tests
-      if: success() || failure() # always run even if the previous step fails
-      run: |
-        mkdir -p reports
-        ${{ env.ASAN_CMD_PREFIX }} ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0 QT_QPA_PLATFORM=vnc LD_LIBRARY_PATH=$(dirname $(find ${{ env.ASAN_PKG_DIR }}/.. -name libQt6Core.so.6)) python3 ${{ env.ASAN_PKG_DIR }}/run_qml_tests.py -o reports/qml_junit_results.xml,junitxml
-        echo "QML test results file: $(ls -la reports/qml_junit_results.xml)"
-    
-    - name: Publish Backend Test Report
-      uses: mikepenz/action-junit-report@v3
-      if: success() || failure() # always run even if the previous step fails
+        python3 -m coverage xml -i -o coverage_reports/pytest.xml
+    - name: Test QML with coverage
+      uses: ./.github/actions/qml_test
       with:
-        report_paths: 'reports/backend_junit_results.xml'
-        detailed_summary: true
-        include_passed: true
-        check_name: 'backend test (ubuntu pypi asan)'
-    
-    - name: Publish Python Test Report
-      uses: mikepenz/action-junit-report@v3
-      if: success() || failure() # always run even if the previous step fails
-      with:
-        report_paths: 'reports/python_junit_results.xml'
-        detailed_summary: true
-        include_passed: true
-        check_name: 'python test (ubuntu pypi asan)'
-    
-    - name: Publish QML Test Report
-      uses: mikepenz/action-junit-report@v3
-      if: success() || failure() # always run even if the previous step fails
-      with:
-        report_paths: 'reports/qml_junit_results.xml'
-        detailed_summary: true
-        include_passed: true
-        check_name: 'qml test (ubuntu pypi asan)'
-  
-  test_release_wheel_ubuntu_pypi:
-    needs: build_release_whl
-    runs-on: ubuntu-latest
-    container:
-      image: sandervocke/shoopdaloop_ubuntu_kinetic_run_base:latest
-      options: --user root --workdir /
-    
-    steps:
-    - name: Retrieve wheel
-      uses: actions/download-artifact@v3
-      with:
-        name: release_wheel
-        path: ~/wheel
-
-    - name: Install wheel
+        variant_name: coverage
+        root_path: ${{ steps.build.outputs.install_dir }}
+        python_command: python3 -m coverage run --source=shoopdaloop
+        run_cmd_prefix: >-
+          BASEDIR=${{ steps.build.outputs.source_dir }}
+          EXCLUDE=third_party,qt6,boost,c++
+          REPORTDIR=coverage_reports
+          REPORTNAME=qmltest
+          BUILDDIR=${{ steps.build.outputs.build_dir }}
+          DO_GENHTML=0
+          LD_LIBRARY_PATH=${{ env.qtlibpath }}
+          ${{ steps.build.outputs.install_dir}}/scripts/run_and_generate_coverage.sh
+    - name: Generate Pytest coverage report
       run: |
-        python3 -m pip install ~/wheel/*.whl
-        echo "RELEASE_PKG_DIR=$(shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g')" >> $GITHUB_ENV
-    
-    - name: Report package install dir
-      run: |
-        echo "$RELEASE_PKG_DIR"
-    
-    - name: Back-end tests
-      if: success() || failure() # always run even if the previous step fails
-      run: |
-        mkdir -p reports
-        ${{ env.RELEASE_PKG_DIR }}/test_runner --reporter junit --out reports/backend_junit_results.xml
-        echo "Back-end test results file: $(ls -la reports/backend_junit_results.xml)"
-    
-    - name: Python tests
-      if: success() || failure() # always run even if the previous step fails
-      run: |
-        mkdir -p reports
-        pytest ${{ env.RELEASE_PKG_DIR }} --junit-xml=reports/python_junit_results.xml
-        echo "Python test results file: $(ls -la reports/python_junit_results.xml)"
-    
-    - name: QML tests
-      if: success() || failure() # always run even if the previous step fails
-      run: |
-        mkdir -p reports
-        QT_QPA_PLATFORM=vnc LD_LIBRARY_PATH=$(dirname $(find ${{ env.RELEASE_PKG_DIR }}/.. -name libQt6Core.so.6)) python3 ${{ env.RELEASE_PKG_DIR }}/run_qml_tests.py -o reports/qml_junit_results.xml,junitxml
-        echo "QML test results file: $(ls -la reports/qml_junit_results.xml)"
-    
-    - name: App runs and closes gracefully
-      if: success() || failure() # always run even if the previous step fails
-      run: |
-        QT_QPA_PLATFORM=vnc EXPECT_STAY_OPEN=1 WAIT_MS_BEFORE_CLOSE=5000 N_ITERATIONS=10 WAIT_MS_BEFORE_KILL=10000 ${{ env.RELEASE_PKG_DIR }}/scripts/test_run_app.sh shoopdaloop -b dummy
-
-    - name: Publish Backend Test Report
-      uses: mikepenz/action-junit-report@v3
-      if: success() || failure() # always run even if the previous step fails
+        python3 -m coverage xml -i -o coverage_reports/qml.xml
+    - name: Upload back-end coverage to CodeCov
+      if: ${{ !env.ACT }}
+      uses: codecov/codecov-action@v3
       with:
-        report_paths: 'reports/backend_junit_results.xml'
-        detailed_summary: true
-        include_passed: true
-        check_name: 'backend test (ubuntu pypi release)'
-    
-    - name: Publish Python Test Report
-      uses: mikepenz/action-junit-report@v3
-      if: success() || failure() # always run even if the previous step fails
+        token: ${{ secrets.CODECOV_TOKEN }}
+        flags: back-end
+        files: coverage_reports/test_runner.info
+        verbose: true
+    - name: Upload Pytest coverage to CodeCov
+      if: ${{ !env.ACT }}
+      uses: codecov/codecov-action@v3
       with:
-        report_paths: 'reports/python_junit_results.xml'
-        detailed_summary: true
-        include_passed: true
-        check_name: 'python test (ubuntu pypi release)'
-    
-    - name: Publish QML Test Report
-      uses: mikepenz/action-junit-report@v3
-      if: success() || failure() # always run even if the previous step fails
+        token: ${{ secrets.CODECOV_TOKEN }}
+        flags: pytest
+        files: coverage_reports/pytest.info,coverage_reports/pytest.xml
+        verbose: true
+    - name: Upload QML test coverage to CodeCov
+      if: ${{ !env.ACT }}
+      uses: codecov/codecov-action@v3
       with:
-        report_paths: 'reports/qml_junit_results.xml'
-        detailed_summary: true
-        include_passed: true
-        check_name: 'qml test (ubuntu pypi release)'
-
-  
-  # # Test the built wheel in an Arch environment with dependencies pre-installed.
-  # test_wheel_arch_systempackages:
-  #   needs: build_whl
-  #   runs-on: ubuntu-latest
-  #   container:
-  #     image: sandervocke/shoopdaloop_run_arch:latest
-  #     options: --user root --workdir /
-    
-  #   steps:
-  #   - name: Retrieve wheel
-  #     uses: actions/download-artifact@v3
-  #     with:
-  #       name: wheel
-  #       path: ~/wheel
-
-  #   - name: Install wheel
-  #     run: |
-  #       echo "::warning title=PACKAGING_ISSUE::Temporarily removed --no-deps on Arch because of broken python-numba"
-  #       python3 -m pip install ~/wheel/*.whl --break-system-packages
-  #       echo "PKG_DIR=$(python3 -m pip show shiboken6 | grep "Location:" | sed -r 's/Location: //g')" >> $GITHUB_ENV
-    
-  #   - name: Back-end tests
-  #     if: success() || failure() # always run even if the previous step fails
-  #     run: |
-  #       mkdir -p reports
-  #       ${{ env.PKG_DIR }}/shoopdaloop/test_runner --reporter junit --out reports/backend_junit_results.xml
-  #       echo "Back-end test results file: $(ls -la reports/backend_junit_results.xml)"
-    
-  #   - name: Python tests
-  #     if: success() || failure() # always run even if the previous step fails
-  #     run: |
-  #       mkdir -p reports
-  #       pytest ${{ env.PKG_DIR }}/shoopdaloop --junit-xml=reports/python_junit_results.xml
-  #       echo "Python test results file: $(ls -la reports/python_junit_results.xml)"
-    
-  #   - name: QML tests
-  #     if: success() || failure() # always run even if the previous step fails
-  #     run: |
-  #       mkdir -p reports
-  #       QT_QPA_PLATFORM=vnc ${{ env.PKG_DIR }}/shoopdaloop/run_qml_tests.py -o reports/qml_junit_results.xml,junitxml
-  #       echo "QML test results file: $(ls -la reports/qml_junit_results.xml)"
-    
-  #   - name: App runs and closes gracefully
-  #     if: success() || failure() # always run even if the previous step fails
-  #     run: |
-  #       QT_QPA_PLATFORM=vnc EXPECT_STAY_OPEN=1 WAIT_MS_BEFORE_CLOSE=5000 N_ITERATIONS=10 WAIT_MS_BEFORE_KILL=10000 ${{ env.PKG_DIR }}/shoopdaloop/scripts/test_run_app.sh shoopdaloop
-
-  #   - name: Publish Backend Test Report
-  #     uses: mikepenz/action-junit-report@v3
-  #     if: success() || failure() # always run even if the previous step fails
-  #     with:
-  #       report_paths: 'reports/backend_junit_results.xml'
-  #       detailed_summary: true
-  #       include_passed: true
-  #       check_name: 'backend test (arch system)'
-    
-  #   - name: Publish Python Test Report
-  #     uses: mikepenz/action-junit-report@v3
-  #     if: success() || failure() # always run even if the previous step fails
-  #     with:
-  #       report_paths: 'reports/python_junit_results.xml'
-  #       detailed_summary: true
-  #       include_passed: true
-  #       check_name: 'python test (arch system)'
-    
-  #   - name: Publish QML Test Report
-  #     uses: mikepenz/action-junit-report@v3
-  #     if: success() || failure() # always run even if the previous step fails
-  #     with:
-  #       report_paths: 'reports/qml_junit_results.xml'
-  #       detailed_summary: true
-  #       include_passed: true
-  #       check_name: 'qml test (arch system)'
-
-  # # Test the built wheel in an Ubuntu environment with dependencies pre-installed.
-  # test_wheel_ubuntu_systempackages:
-  #   needs: build_whl
-  #   runs-on: ubuntu-latest
-  #   container:
-  #     image: sandervocke/shoopdaloop_run_ubuntu:latest
-  #     options: --user root --workdir /
-    
-  #   steps:
-  #   - name: Retrieve wheel
-  #     uses: actions/download-artifact@v3
-  #     with:
-  #       name: wheel
-  #       path: ~/wheel
-
-  #   - name: Install wheel
-  #     run: |
-  #       python3 -m pip install --no-deps --break-system-packages ~/wheel/*.whl
-  #       echo "PKG_DIR=$(python3 -m pip show shiboken6 | grep "Location:" | sed -r 's/Location: //g')" >> $GITHUB_ENV
-    
-  #   - name: Back-end tests
-  #     if: success() || failure() # always run even if the previous step fails
-  #     run: |
-  #       mkdir -p reports
-  #       ${{ env.PKG_DIR }}/shoopdaloop/test_runner --reporter junit --out reports/backend_junit_results.xml
-  #       echo "Back-end test results file: $(ls -la reports/backend_junit_results.xml)"
-    
-  #   - name: Python tests
-  #     if: success() || failure() # always run even if the previous step fails
-  #     run: |
-  #       mkdir -p reports
-  #       pytest ${{ env.PKG_DIR }}/shoopdaloop --junit-xml=reports/python_junit_results.xml
-  #       echo "Python test results file: $(ls -la reports/python_junit_results.xml)"
-    
-  #   - name: QML tests
-  #     if: success() || failure() # always run even if the previous step fails
-  #     run: |
-  #       mkdir -p reports
-  #       QT_QPA_PLATFORM=vnc ${{ env.PKG_DIR }}/shoopdaloop/run_qml_tests.py -o reports/qml_junit_results.xml,junitxml
-  #       echo "QML test results file: $(ls -la reports/qml_junit_results.xml)"
-    
-  #   - name: App runs and closes gracefully
-  #     if: success() || failure() # always run even if the previous step fails
-  #     run: |
-  #       QT_QPA_PLATFORM=vnc EXPECT_STAY_OPEN=1 WAIT_MS_BEFORE_CLOSE=5000 N_ITERATIONS=10 WAIT_MS_BEFORE_KILL=10000 ${{ env.PKG_DIR }}/shoopdaloop/scripts/test_run_app.sh shoopdaloop
-
-  #   - name: Publish Backend Test Report
-  #     uses: mikepenz/action-junit-report@v3
-  #     if: success() || failure() # always run even if the previous step fails
-  #     with:
-  #       report_paths: 'reports/backend_junit_results.xml'
-  #       detailed_summary: true
-  #       include_passed: true
-  #       check_name: 'backend test (ubuntu system)'
-    
-  #   - name: Publish Python Test Report
-  #     uses: mikepenz/action-junit-report@v3
-  #     if: success() || failure() # always run even if the previous step fails
-  #     with:
-  #       report_paths: 'reports/python_junit_results.xml'
-  #       detailed_summary: true
-  #       include_passed: true
-  #       check_name: 'python test (ubuntu system)'
-    
-  #   - name: Publish QML Test Report
-  #     uses: mikepenz/action-junit-report@v3
-  #     if: success() || failure() # always run even if the previous step fails
-  #     with:
-  #       report_paths: 'reports/qml_junit_results.xml'
-  #       detailed_summary: true
-  #       include_passed: true
-  #       check_name: 'qml test (ubuntu system)'
-
-  
+        token: ${{ secrets.CODECOV_TOKEN }}
+        flags: qml
+        files: coverage_reports/qmltest.info,coverage_reports/qml.xml
+        verbose: true

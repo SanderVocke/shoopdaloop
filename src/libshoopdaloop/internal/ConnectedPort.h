@@ -42,7 +42,9 @@ struct ConnectedPort : public std::enable_shared_from_this<ConnectedPort>,
     std::atomic<bool> passthrough_muted;
     shoop_types::ProcessWhen ma_process_when;
 
-    ConnectedPort (std::shared_ptr<PortInterface> const& port, std::shared_ptr<Backend> const& backend);
+    ConnectedPort (std::shared_ptr<PortInterface> const& port,
+                   std::shared_ptr<Backend> const& backend,
+                   shoop_types::ProcessWhen process_when);
 
     void PROC_reset_buffers();
     void PROC_ensure_buffer(size_t n_frames, bool do_zero=false);

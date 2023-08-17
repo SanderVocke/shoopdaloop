@@ -1,0 +1,26 @@
+ignore:
+  - ".github"
+  - "docs"
+  - "dist"
+  - "distribution"
+  - "scripts"
+  - "third_party"
+  - "build"
+  - "src/shoopdaloop/third_party"
+
+comment:
+  layout: "header, diff, flags, components"
+
+component_management:
+  individual_components:
+    - component_id: python
+      name: Python
+      paths:
+        - "**/*.py"
+    - component_id: cpp
+      name: C(++)
+      paths:
+        - "**/*.cpp"
+        - "**/*.h"
+        - "**/*.hpp"
+        - "**/*.c"
