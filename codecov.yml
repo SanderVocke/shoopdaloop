@@ -15,11 +15,11 @@ component_management:
     - component_id: python
       name: Python
       paths:
-        - **/*.py
+        - "**/*.py"
     - component_id: cpp
       name: C(++)
       paths:
-        - **/*.cpp
-        - **/*.h
-        - **/*.hpp
-        - **/*.c
+        - "**/*.cpp"
+        - "**/*.h"
+        - "**/*.hpp"
+        - "**/*.c"
