@@ -37,3 +37,6 @@ python3-coverage
 # not sure why exactly these are needed
 libgl1-mesa-dev
 libvulkan-dev
+
+# scripting stuff
+procps

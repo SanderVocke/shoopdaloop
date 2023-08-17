@@ -11,3 +11,6 @@ libglib2.0-0
 libdbus-1-3
 libxkbcommon0
 libgl1-mesa-dev
+
+# scripting stuff
+procps

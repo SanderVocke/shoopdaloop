@@ -15,7 +15,7 @@ inputs:
 runs:
   using: "composite"
   steps:
-  - name: pytest (${{ inputs.variant_name }})
+  - name: run app (${{ inputs.variant_name }})
     shell: bash
     timeout-minutes: 4
     run: |
