@@ -50,7 +50,7 @@ fi
 echo "---------------------------------------"
 echo "Running command: ${CMD}"
 echo "---------------------------------------"
-${CMD}
+${CMD} 2>&1
 RESULT=$?
 if [ ! $RESULT -eq 0 ]; then
     echo "ERROR: exited with code $RESULT" >&2

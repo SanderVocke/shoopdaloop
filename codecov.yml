@@ -16,8 +16,8 @@ component_management:
       name: Python
       paths:
         - **/*.py
-    - component_id: C(++)
-      name: cpp
+    - component_id: cpp
+      name: C(++)
       paths:
         - **/*.cpp
         - **/*.h
