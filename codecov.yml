@@ -6,3 +6,20 @@ ignore:
   - "scripts"
   - "third_party"
   - "build"
+
+comment:
+  layout: "header, diff, flags, components"
+
+component_management:
+  individual_components:
+    - component_id: python
+      name: Python
+      paths:
+        - **/*.py
+    - component_id: C(++)
+      name: cpp
+      paths:
+        - **/*.cpp
+        - **/*.h
+        - **/*.hpp
+        - **/*.c

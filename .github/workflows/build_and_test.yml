@@ -203,7 +203,7 @@ jobs:
           ${{ steps.build.outputs.install_dir}}/scripts/run_and_generate_coverage.sh
     - name: Generate Pytest coverage report
       run: |
-        python3 -m coverage xml --include=${{ steps.build.outputs.install_dir}}/**/* -i -o coverage_reports/pytest.xml
+        python3 -m coverage xml -i -o coverage_reports/pytest.xml
     - name: Test QML with coverage
       uses: ./.github/actions/qml_test
       with:
@@ -221,7 +221,7 @@ jobs:
           ${{ steps.build.outputs.install_dir}}/scripts/run_and_generate_coverage.sh
     - name: Generate Pytest coverage report
       run: |
-        python3 -m coverage xml --include=${{ steps.build.outputs.install_dir}}/**/* -i -o coverage_reports/qml.xml
+        python3 -m coverage xml -i -o coverage_reports/qml.xml
     - name: Upload back-end coverage to CodeCov
       if: ${{ !env.ACT }}
       uses: codecov/codecov-action@v3
