@@ -203,7 +203,7 @@ jobs:
           ${{ steps.build.outputs.install_dir}}/scripts/run_and_generate_coverage.sh
     - name: Generate Pytest coverage report
       run: |
-        python3 -m coverage xml -o coverage_reports/pytest.xml
+        python3 -m coverage xml -i -o coverage_reports/pytest.xml
     - name: Test QML with coverage
       uses: ./.github/actions/qml_test
       with:
@@ -221,12 +221,28 @@ jobs:
           ${{ steps.build.outputs.install_dir}}/scripts/run_and_generate_coverage.sh
     - name: Generate Pytest coverage report
       run: |
-        python3 -m coverage xml -o coverage_reports/qml.xml
-    - name: Upload coverage reports to Codecov
+        python3 -m coverage xml -i -o coverage_reports/qml.xml
+    - name: Upload back-end coverage to CodeCov
       if: ${{ !env.ACT }}
       uses: codecov/codecov-action@v3
-      env:
-        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       with:
-        files: coverage_reports/test_runner.info,coverage_reports/pytest.info,coverage_reports/qmltest.info,coverage_reports/pytest.xml,coverage_reports/qml.xml
+        token: ${{ secrets.CODECOV_TOKEN }}
+        flags: back-end
+        files: coverage_reports/test_runner.info
+        verbose: true
+    - name: Upload Pytest coverage to CodeCov
+      if: ${{ !env.ACT }}
+      uses: codecov/codecov-action@v3
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        flags: pytest
+        files: coverage_reports/pytest.info,coverage_reports/pytest.xml
+        verbose: true
+    - name: Upload QML test coverage to CodeCov
+      if: ${{ !env.ACT }}
+      uses: codecov/codecov-action@v3
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        flags: qml
+        files: coverage_reports/qmltest.info,coverage_reports/qml.xml
         verbose: true
