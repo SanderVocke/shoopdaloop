@@ -38,10 +38,6 @@ jobs:
       image: sandervocke/shoopdaloop_ubuntu_kinetic_run_base:latest
       options: --user root --workdir /
     steps:
-    - name: Checkout
-      uses: actions/checkout@v3
-      with:
-        submodules: recursive
     - name: Retrieve wheel
       uses: actions/download-artifact@v3
       with:
