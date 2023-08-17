@@ -1,0 +1,8 @@
+ignore:
+  - ".github"
+  - "docs"
+  - "dist"
+  - "distribution"
+  - "scripts"
+  - "third_party"
+  - "build"
