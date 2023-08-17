@@ -105,7 +105,7 @@ jobs:
       shell: bash
       id: findqt
       run: |
-        echo "qtlibpath=$(dirname $(find ${{ steps.install.outputs.install_dir }}/.. -name libQt6Core.so.6))" | tee -a $GITHUB_ENV
+        echo "qtlibpath=$(dirname $(find ${{ steps.build.outputs.install_dir }}/.. -name libQt6Core.so.6))" | tee -a $GITHUB_ENV
     - name: Test back-end
       uses: ./.github/actions/backend_test
       with:
@@ -168,7 +168,7 @@ jobs:
       shell: bash
       id: findqt
       run: |
-        echo "qtlibpath=$(dirname $(find ${{ steps.install.outputs.install_dir }}/.. -name libQt6Core.so.6))" | tee -a $GITHUB_ENV
+        echo "qtlibpath=$(dirname $(find ${{ steps.build.outputs.install_dir }}/.. -name libQt6Core.so.6))" | tee -a $GITHUB_ENV
     - name: Back-end tests with coverage
       uses: ./.github/actions/backend_test
       with:
