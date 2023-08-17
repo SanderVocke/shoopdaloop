@@ -53,7 +53,7 @@ jobs:
     - name: Test back-end
       uses: ./.github/actions/backend_test
       with:
-        variant_name: asan
+        variant_name: release
         # note: build step generates run_cmd_prefix output
         # for usage with shared ASAN library.
         run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
@@ -61,13 +61,19 @@ jobs:
     - name: Test Python
       uses: ./.github/actions/python_test
       with:
-        variant_name: asan
+        variant_name: release
         run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
         root_path: ${{ steps.build.outputs.install_dir }}
     - name: Test QML
       uses: ./.github/actions/qml_test
       with:
-        variant_name: asan
+        variant_name: release
+        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
+        root_path: ${{ steps.build.outputs.install_dir }}
+    - name: Test App
+      uses: ./.github/actions/app_run_test
+      with:
+        variant_name: release
         run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
         root_path: ${{ steps.build.outputs.install_dir }}
         
