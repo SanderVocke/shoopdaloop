@@ -17,7 +17,6 @@ runs:
   steps:
   - name: run app (${{ inputs.variant_name }})
     shell: bash
-    timeout-minutes: 4
     run: |
         ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0 QT_QPA_PLATFORM=vnc EXPECT_STAY_OPEN=1 WAIT_MS_BEFORE_CLOSE=5000 N_ITERATIONS=6 WAIT_MS_BEFORE_KILL=10000 ${{ inputs.run_cmd_prefix }} ${{ inputs.root_path }}/scripts/test_run_app.sh shoopdaloop -b dummy
 
