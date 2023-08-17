@@ -6,6 +6,7 @@ ignore:
   - "scripts"
   - "third_party"
   - "build"
+  - "src/shoopdaloop/third_party"
 
 comment:
   layout: "header, diff, flags, components"

@@ -55,6 +55,10 @@ Session {
             r.sort((a,b) => a.obj_id.localeCompare(b.obj_id))
             return r
         }
+
+        function midi_channel() {
+            return lut.get_midi_channels()[0]
+        }
         
         function tut_control() {
             return session.get_track_control_widget(1)
@@ -112,6 +116,7 @@ Session {
             verify_throw(fx)
             verify_throw(lut)
             verify_throw(tut)
+            verify_throw(midi_channel())
             reset()
         }
 
@@ -141,6 +146,10 @@ Session {
 
         function synthed_value_for(midi_msg) {
             return midi_msg.data[2] / 255.0
+        }
+
+        function elems_add(a, b) {
+            return a.map((value, index) => value + b[index]);
         }
 
         function test_drywet_audio_record_no_monitor() {
@@ -177,6 +186,64 @@ Session {
             })
         }
 
+        function test_drywet_midi_record_no_monitor() {
+            run_case('test_drywet_midi_record_no_monitor', () => {
+                check_backend()
+                reset()
+                tut_control().monitor = false
+                tut_control().mute = false
+                lut.transition(Types.LoopMode.Recording, 0, false)
+                testcase.wait(50)
+
+                let input = [
+                    { 'time': 0, 'data': [0x90, 100, 100] },
+                    { 'time': 3, 'data': [0x90, 50,  50]  },
+                    { 'time': 4, 'data': [0x90, 10,  10]  }
+                ]
+                let expect_loop = [
+                    { 'time': 0, 'data': [0x90, 100, 100] },
+                    { 'time': 3, 'data': [0x90, 50,  50]  },
+                ]
+                let expect_wet = [
+                    synthed_value_for(expect_loop[0]),
+                    0,
+                    0,
+                    synthed_value_for(expect_loop[1])
+                ]
+                let expect_dry = [0, 0, 0, 0]
+                let expect_out = [0, 0, 0, 0]
+
+                midi_input_port.dummy_clear_queues()
+
+                midi_input_port.dummy_queue_msgs(input)
+                output_port_1.dummy_request_data(4)
+                output_port_2.dummy_request_data(4)
+                session.backend.dummy_request_controlled_frames(2)
+                session.backend.dummy_wait_process()
+                session.backend.dummy_request_controlled_frames(2)
+                session.backend.dummy_wait_process()
+
+                let out1 = output_port_1.dummy_dequeue_data(4)
+                let out2 = output_port_2.dummy_dequeue_data(4)
+                let dry1 = dry_channels()[0].get_data()
+                let dry2 = dry_channels()[1].get_data()
+                let wet1 = wet_channels()[0].get_data()
+                let wet2 = wet_channels()[1].get_data()
+                let midi = midi_channel().get_data()
+
+                midi_input_port.dummy_clear_queues()
+
+                verify_throw(fx.active)
+                verify_approx(dry1, expect_dry)
+                verify_approx(dry2, expect_dry)
+                verify_approx(wet1, expect_wet)
+                verify_approx(wet2, expect_wet)
+                verify_approx(out1, expect_out)
+                verify_approx(out2, expect_out)
+                verify_eq(midi, expect_loop, true)
+            })
+        }
+
         function test_drywet_audio_record_monitor() {
             run_case('test_drywet_audio_record_monitor', () => {
                 check_backend()
@@ -208,6 +275,64 @@ Session {
                 verify_eq(wet1, [1, 2, 3, 4])
                 verify_eq(wet2, [4, 3, 2, 1])
 
+            })
+        }
+
+        function test_drywet_midi_record_monitor() {
+            run_case('test_drywet_midi_record_monitor', () => {
+                check_backend()
+                reset()
+                tut_control().monitor = true
+                tut_control().mute = false
+                lut.transition(Types.LoopMode.Recording, 0, false)
+                testcase.wait(50)
+
+                let input = [
+                    { 'time': 0, 'data': [0x90, 100, 100] },
+                    { 'time': 3, 'data': [0x90, 50,  50]  },
+                    { 'time': 4, 'data': [0x90, 10,  10]  }
+                ]
+                let expect_loop = [
+                    { 'time': 0, 'data': [0x90, 100, 100] },
+                    { 'time': 3, 'data': [0x90, 50,  50]  },
+                ]
+                let expect_out = [
+                    synthed_value_for(expect_loop[0]),
+                    0,
+                    0,
+                    synthed_value_for(expect_loop[1])
+                ]
+                let expect_dry = [0, 0, 0, 0]
+                let expect_wet = expect_out
+
+                midi_input_port.dummy_clear_queues()
+
+                midi_input_port.dummy_queue_msgs(input)
+                output_port_1.dummy_request_data(4)
+                output_port_2.dummy_request_data(4)
+                session.backend.dummy_request_controlled_frames(2)
+                session.backend.dummy_wait_process()
+                session.backend.dummy_request_controlled_frames(2)
+                session.backend.dummy_wait_process()
+
+                let out1 = output_port_1.dummy_dequeue_data(4)
+                let out2 = output_port_2.dummy_dequeue_data(4)
+                let dry1 = dry_channels()[0].get_data()
+                let dry2 = dry_channels()[1].get_data()
+                let wet1 = wet_channels()[0].get_data()
+                let wet2 = wet_channels()[1].get_data()
+                let midi = midi_channel().get_data()
+
+                midi_input_port.dummy_clear_queues()
+
+                verify_throw(fx.active)
+                verify_approx(dry1, expect_dry)
+                verify_approx(dry2, expect_dry)
+                verify_approx(wet1, expect_wet)
+                verify_approx(wet2, expect_wet)
+                verify_approx(out1, expect_out)
+                verify_approx(out2, expect_out)
+                verify_eq(midi, expect_loop, true)
             })
         }
 
@@ -250,6 +375,62 @@ Session {
             })
         }
 
+        function test_drywet_midi_play_no_monitor() {
+            run_case('test_drywet_midi_play_no_monitor', () => {
+                check_backend()
+                reset()
+                tut_control().monitor = false
+                tut_control().mute = false
+                dry_channels()[0].load_data([50, 60, 70, 80])
+                dry_channels()[1].load_data([80, 70, 60, 50])
+                wet_channels()[0].load_data([5, 6, 7, 8])
+                wet_channels()[1].load_data([8, 7, 6, 5])
+                let midichan = [
+                    { 'time': 1, 'data': [0x90, 70,  70]  }
+                ]
+                midi_channel().load_data(midichan)
+                lut.set_length(4)
+                lut.transition(Types.LoopMode.Playing, 0, false)
+                testcase.wait(50)
+
+                let input = [
+                    { 'time': 0, 'data': [0x90, 100, 100] },
+                    { 'time': 3, 'data': [0x90, 50,  50]  },
+                    { 'time': 4, 'data': [0x90, 10,  10]  }
+                ]
+                let expect_loop = []
+
+                midi_input_port.dummy_clear_queues()
+
+                midi_input_port.dummy_queue_msgs(input)
+                output_port_1.dummy_request_data(4)
+                output_port_2.dummy_request_data(4)
+                session.backend.dummy_request_controlled_frames(2)
+                session.backend.dummy_wait_process()
+                session.backend.dummy_request_controlled_frames(2)
+                session.backend.dummy_wait_process()
+
+                let out1 = output_port_1.dummy_dequeue_data(4)
+                let out2 = output_port_2.dummy_dequeue_data(4)
+                let dry1 = dry_channels()[0].get_data()
+                let dry2 = dry_channels()[1].get_data()
+                let wet1 = wet_channels()[0].get_data()
+                let wet2 = wet_channels()[1].get_data()
+                let midi = midi_channel().get_data()
+
+                midi_input_port.dummy_clear_queues()
+
+                verify_throw(!fx.active)
+                verify_eq(out1, [5, 6, 7, 8])
+                verify_eq(out2, [8, 7, 6, 5])
+                verify_eq(dry1, [50, 60, 70, 80])
+                verify_eq(dry2, [80, 70, 60, 50])
+                verify_eq(wet1, [5, 6, 7, 8])
+                verify_eq(wet2, [8, 7, 6, 5])
+                verify_eq(midi, midichan, true)
+            })
+        }
+
         function test_drywet_audio_play_monitor() {
             run_case('test_drywet_audio_play_monitor', () => {
                 check_backend()
@@ -284,8 +465,70 @@ Session {
                 verify_eq(dry2, [80, 70, 60, 50])
                 verify_eq(wet1, [5, 6, 7, 8])
                 verify_eq(wet2, [8, 7, 6, 5])
+
                 verify_throw(fx.active)
 
+            })
+        }
+
+        function test_drywet_midi_play_monitor() {
+            run_case('test_drywet_midi_play_monitor', () => {
+                check_backend()
+                reset()
+                tut_control().monitor = true
+                tut_control().mute = false
+                dry_channels()[0].load_data([50, 60, 70, 80])
+                dry_channels()[1].load_data([80, 70, 60, 50])
+                wet_channels()[0].load_data([5, 6, 7, 8])
+                wet_channels()[1].load_data([8, 7, 6, 5])
+                let midichan = [
+                    { 'time': 1, 'data': [0x90, 70,  70]  }
+                ]
+                midi_channel().load_data(midichan)
+                lut.set_length(4)
+                lut.transition(Types.LoopMode.Playing, 0, false)
+                testcase.wait(50)
+
+                let input = [
+                    { 'time': 0, 'data': [0x90, 100, 100] },
+                    { 'time': 3, 'data': [0x90, 50,  50]  },
+                    { 'time': 4, 'data': [0x90, 10,  10]  }
+                ]
+                let synthed = [
+                    synthed_value_for(input[0]),
+                    0,
+                    0,
+                    synthed_value_for(input[1])
+                ]
+
+                midi_input_port.dummy_clear_queues()
+
+                midi_input_port.dummy_queue_msgs(input)
+                output_port_1.dummy_request_data(4)
+                output_port_2.dummy_request_data(4)
+                session.backend.dummy_request_controlled_frames(2)
+                session.backend.dummy_wait_process()
+                session.backend.dummy_request_controlled_frames(2)
+                session.backend.dummy_wait_process()
+
+                let out1 = output_port_1.dummy_dequeue_data(4)
+                let out2 = output_port_2.dummy_dequeue_data(4)
+                let dry1 = dry_channels()[0].get_data()
+                let dry2 = dry_channels()[1].get_data()
+                let wet1 = wet_channels()[0].get_data()
+                let wet2 = wet_channels()[1].get_data()
+                let midi = midi_channel().get_data()
+
+                midi_input_port.dummy_clear_queues()
+
+                verify_throw(fx.active)
+                verify_approx(out1, elems_add([5, 6, 7, 8], synthed))
+                verify_approx(out2, elems_add([8, 7, 6, 5], synthed))
+                verify_eq(dry1, [50, 60, 70, 80])
+                verify_eq(dry2, [80, 70, 60, 50])
+                verify_eq(wet1, [5, 6, 7, 8])
+                verify_eq(wet2, [8, 7, 6, 5])
+                verify_eq(midi, midichan, true)
             })
         }
 
@@ -330,6 +573,73 @@ Session {
             })
         }
 
+        function test_drywet_midi_playdry_no_monitor() {
+            run_case('test_drywet_midi_playdry_no_monitor', () => {
+                check_backend()
+                reset()
+                tut_control().monitor = false
+                tut_control().mute = false
+                dry_channels()[0].load_data([50, 60, 70, 80])
+                dry_channels()[1].load_data([80, 70, 60, 50])
+                wet_channels()[0].load_data([5, 6, 7, 8])
+                wet_channels()[1].load_data([8, 7, 6, 5])
+                let midichan = [
+                    { 'time': 1, 'data': [0x90, 70,  70]  }
+                ]
+                midi_channel().load_data(midichan)
+                lut.set_length(4)
+                lut.transition(Types.LoopMode.PlayingDryThroughWet, 0, false)
+                testcase.wait(50)
+
+                let input = [
+                    { 'time': 0, 'data': [0x90, 100, 100] },
+                    { 'time': 3, 'data': [0x90, 50,  50]  },
+                    { 'time': 4, 'data': [0x90, 10,  10]  }
+                ]
+                let synthed = [
+                    synthed_value_for(input[0]),
+                    0,
+                    0,
+                    synthed_value_for(input[1])
+                ]
+                let synthed_chan = [
+                    0,
+                    synthed_value_for(midichan[0]),
+                    0,
+                    0
+                ]
+
+                midi_input_port.dummy_clear_queues()
+
+                midi_input_port.dummy_queue_msgs(input)
+                output_port_1.dummy_request_data(4)
+                output_port_2.dummy_request_data(4)
+                session.backend.dummy_request_controlled_frames(2)
+                session.backend.dummy_wait_process()
+                session.backend.dummy_request_controlled_frames(2)
+                session.backend.dummy_wait_process()
+
+                let out1 = output_port_1.dummy_dequeue_data(4)
+                let out2 = output_port_2.dummy_dequeue_data(4)
+                let dry1 = dry_channels()[0].get_data()
+                let dry2 = dry_channels()[1].get_data()
+                let wet1 = wet_channels()[0].get_data()
+                let wet2 = wet_channels()[1].get_data()
+                let midi = midi_channel().get_data()
+
+                midi_input_port.dummy_clear_queues()
+
+                verify_throw(fx.active)
+                verify_approx(out1, elems_add(synthed_chan, [50, 60, 70, 80]))
+                verify_approx(out2, elems_add(synthed_chan, [80, 70, 60, 50]))
+                verify_eq(dry1, [50, 60, 70, 80])
+                verify_eq(dry2, [80, 70, 60, 50])
+                verify_eq(wet1, [5, 6, 7, 8])
+                verify_eq(wet2, [8, 7, 6, 5])
+                verify_eq(midi, midichan, true)
+            })
+        }
+
         function test_drywet_audio_playdry_monitor() {
             run_case('test_drywet_audio_playdry_monitor', () => {
                 check_backend()
@@ -366,6 +676,74 @@ Session {
                 verify_eq(wet1, [5, 6, 7, 8])
                 verify_eq(wet2, [8, 7, 6, 5])
 
+            })
+        }
+
+        function test_drywet_midi_playdry_monitor() {
+            run_case('test_drywet_midi_playdry_monitor', () => {
+                check_backend()
+                reset()
+                tut_control().monitor = true
+                tut_control().mute = false
+                dry_channels()[0].load_data([50, 60, 70, 80])
+                dry_channels()[1].load_data([80, 70, 60, 50])
+                wet_channels()[0].load_data([5, 6, 7, 8])
+                wet_channels()[1].load_data([8, 7, 6, 5])
+                let midichan = [
+                    { 'time': 1, 'data': [0x90, 70,  70]  }
+                ]
+                midi_channel().load_data(midichan)
+                lut.set_length(4)
+                lut.transition(Types.LoopMode.PlayingDryThroughWet, 0, false)
+                testcase.wait(50)
+
+                let input = [
+                    { 'time': 0, 'data': [0x90, 100, 100] },
+                    { 'time': 3, 'data': [0x90, 50,  50]  },
+                    { 'time': 4, 'data': [0x90, 10,  10]  }
+                ]
+                let synthed = [
+                    synthed_value_for(input[0]),
+                    0,
+                    0,
+                    synthed_value_for(input[1])
+                ]
+                let synthed_chan = [
+                    0,
+                    synthed_value_for(midichan[0]),
+                    0,
+                    0
+                ]
+                let synthed_both = elems_add(synthed, synthed_chan)
+
+                midi_input_port.dummy_clear_queues()
+
+                midi_input_port.dummy_queue_msgs(input)
+                output_port_1.dummy_request_data(4)
+                output_port_2.dummy_request_data(4)
+                session.backend.dummy_request_controlled_frames(2)
+                session.backend.dummy_wait_process()
+                session.backend.dummy_request_controlled_frames(2)
+                session.backend.dummy_wait_process()
+
+                let out1 = output_port_1.dummy_dequeue_data(4)
+                let out2 = output_port_2.dummy_dequeue_data(4)
+                let dry1 = dry_channels()[0].get_data()
+                let dry2 = dry_channels()[1].get_data()
+                let wet1 = wet_channels()[0].get_data()
+                let wet2 = wet_channels()[1].get_data()
+                let midi = midi_channel().get_data()
+
+                midi_input_port.dummy_clear_queues()
+
+                verify_throw(fx.active)
+                verify_approx(out1, elems_add(synthed_both, [50, 60, 70, 80]))
+                verify_approx(out2, elems_add(synthed_both, [80, 70, 60, 50]))
+                verify_eq(dry1, [50, 60, 70, 80])
+                verify_eq(dry2, [80, 70, 60, 50])
+                verify_eq(wet1, [5, 6, 7, 8])
+                verify_eq(wet2, [8, 7, 6, 5])
+                verify_eq(midi, midichan, true)
             })
         }
 
@@ -410,6 +788,73 @@ Session {
             })
         }
 
+        function test_drywet_midi_rerecord_no_monitor() {
+            run_case('test_drywet_midi_rerecord_no_monitor', () => {
+                check_backend()
+                reset()
+                tut_control().monitor = false
+                tut_control().mute = false
+                dry_channels()[0].load_data([50, 60, 70, 80])
+                dry_channels()[1].load_data([80, 70, 60, 50])
+                wet_channels()[0].load_data([5, 6, 7, 8])
+                wet_channels()[1].load_data([8, 7, 6, 5])
+                let midichan = [
+                    { 'time': 1, 'data': [0x90, 70,  70]  }
+                ]
+                midi_channel().load_data(midichan)
+                lut.set_length(4)
+                lut.transition(Types.LoopMode.RecordingDryIntoWet, 0, false)
+                testcase.wait(50)
+
+                let input = [
+                    { 'time': 0, 'data': [0x90, 100, 100] },
+                    { 'time': 3, 'data': [0x90, 50,  50]  },
+                    { 'time': 4, 'data': [0x90, 10,  10]  }
+                ]
+                let synthed = [
+                    synthed_value_for(input[0]),
+                    0,
+                    0,
+                    synthed_value_for(input[1])
+                ]
+                let synthed_chan = [
+                    0,
+                    synthed_value_for(midichan[0]),
+                    0,
+                    0
+                ]
+
+                midi_input_port.dummy_clear_queues()
+
+                midi_input_port.dummy_queue_msgs(input)
+                output_port_1.dummy_request_data(4)
+                output_port_2.dummy_request_data(4)
+                session.backend.dummy_request_controlled_frames(2)
+                session.backend.dummy_wait_process()
+                session.backend.dummy_request_controlled_frames(2)
+                session.backend.dummy_wait_process()
+
+                let out1 = output_port_1.dummy_dequeue_data(4)
+                let out2 = output_port_2.dummy_dequeue_data(4)
+                let dry1 = dry_channels()[0].get_data()
+                let dry2 = dry_channels()[1].get_data()
+                let wet1 = wet_channels()[0].get_data()
+                let wet2 = wet_channels()[1].get_data()
+                let midi = midi_channel().get_data()
+
+                midi_input_port.dummy_clear_queues()
+
+                verify_throw(fx.active)
+                verify_approx(out1, elems_add(synthed_chan, [50, 60, 70, 80]))
+                verify_approx(out2, elems_add(synthed_chan, [80, 70, 60, 50]))
+                verify_eq(dry1, [50, 60, 70, 80])
+                verify_eq(dry2, [80, 70, 60, 50])
+                verify_approx(wet1, elems_add(synthed_chan, [50, 60, 70, 80]))
+                verify_approx(wet2, elems_add(synthed_chan, [80, 70, 60, 50]))
+                verify_eq(midi, midichan, true)
+            })
+        }
+
         function test_drywet_audio_rerecord_monitor() {
             run_case('test_drywet_audio_rerecord_monitor', () => {
                 check_backend()
@@ -446,6 +891,74 @@ Session {
                 verify_eq(wet1, [50, 60, 70, 80])
                 verify_eq(wet2, [80, 70, 60, 50])
 
+            })
+        }
+
+        function test_drywet_midi_rerecord_monitor() {
+            run_case('test_drywet_midi_rerecord_monitor', () => {
+                check_backend()
+                reset()
+                tut_control().monitor = true
+                tut_control().mute = false
+                dry_channels()[0].load_data([50, 60, 70, 80])
+                dry_channels()[1].load_data([80, 70, 60, 50])
+                wet_channels()[0].load_data([5, 6, 7, 8])
+                wet_channels()[1].load_data([8, 7, 6, 5])
+                let midichan = [
+                    { 'time': 1, 'data': [0x90, 70,  70]  }
+                ]
+                midi_channel().load_data(midichan)
+                lut.set_length(4)
+                lut.transition(Types.LoopMode.RecordingDryIntoWet, 0, false)
+                testcase.wait(50)
+
+                let input = [
+                    { 'time': 0, 'data': [0x90, 100, 100] },
+                    { 'time': 3, 'data': [0x90, 50,  50]  },
+                    { 'time': 4, 'data': [0x90, 10,  10]  }
+                ]
+                let synthed = [
+                    synthed_value_for(input[0]),
+                    0,
+                    0,
+                    synthed_value_for(input[1])
+                ]
+                let synthed_chan = [
+                    0,
+                    synthed_value_for(midichan[0]),
+                    0,
+                    0
+                ]
+                let synthed_both = elems_add(synthed, synthed_chan)
+
+                midi_input_port.dummy_clear_queues()
+
+                midi_input_port.dummy_queue_msgs(input)
+                output_port_1.dummy_request_data(4)
+                output_port_2.dummy_request_data(4)
+                session.backend.dummy_request_controlled_frames(2)
+                session.backend.dummy_wait_process()
+                session.backend.dummy_request_controlled_frames(2)
+                session.backend.dummy_wait_process()
+
+                let out1 = output_port_1.dummy_dequeue_data(4)
+                let out2 = output_port_2.dummy_dequeue_data(4)
+                let dry1 = dry_channels()[0].get_data()
+                let dry2 = dry_channels()[1].get_data()
+                let wet1 = wet_channels()[0].get_data()
+                let wet2 = wet_channels()[1].get_data()
+                let midi = midi_channel().get_data()
+
+                midi_input_port.dummy_clear_queues()
+
+                verify_throw(fx.active)
+                verify_approx(out1, elems_add(synthed_both, [50, 60, 70, 80]))
+                verify_approx(out2, elems_add(synthed_both, [80, 70, 60, 50]))
+                verify_eq(dry1, [50, 60, 70, 80])
+                verify_eq(dry2, [80, 70, 60, 50])
+                verify_approx(wet1, elems_add(synthed_both, [50, 60, 70, 80]))
+                verify_approx(wet2, elems_add(synthed_both, [80, 70, 60, 50]))
+                verify_eq(midi, midichan, true)
             })
         }
     }

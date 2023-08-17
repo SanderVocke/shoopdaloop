@@ -275,7 +275,7 @@ Item {
         midi_in_ports
             .filter(p => is_dry(p.descriptor))
             .forEach((p) => {
-                p.set_passthrough_muted(logic.mute_dry_passthrough)
+                p.set_passthrough_muted(logic.mute_drywet_input_passthrough)
             })
         fx_out_ports
             .forEach((p) => {
