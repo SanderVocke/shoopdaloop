@@ -49,7 +49,7 @@ jobs:
       id: install
       run: |
         python3 -m pip install ~/wheel/*.whl
-        echo "install_dir=$(shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g')" | tee -a $GITHUB_ENV
+        echo "install_dir=$(shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g')" | tee -a $GITHUB_OUTPUT
     - name: Test back-end
       uses: ./.github/actions/backend_test
       with:
