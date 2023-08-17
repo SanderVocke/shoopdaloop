@@ -80,6 +80,7 @@ jobs:
       with:
         variant_name: release
         run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH=${{ env.qtlibpath }}
+        root_path: ${{ steps.install.outputs.install_dir }}
         
   asan:
     runs-on: ubuntu-latest
@@ -100,6 +101,11 @@ jobs:
         pypa_build_extra_args: -C--local=pyproject.toml.debug_asan_overrides
         whl_suffix: asan
         install: true
+    - name: Find Qt
+      shell: bash
+      id: findqt
+      run: |
+        echo "qtlibpath=$(dirname $(find ${{ steps.install.outputs.install_dir }}/.. -name libQt6Core.so.6))" | tee -a $GITHUB_ENV
     - name: Test back-end
       uses: ./.github/actions/backend_test
       with:
@@ -112,13 +118,13 @@ jobs:
       uses: ./.github/actions/python_test
       with:
         variant_name: asan
-        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
+        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH=${{ env.qtlibpath }}
         root_path: ${{ steps.build.outputs.install_dir }}
     - name: Test QML
       uses: ./.github/actions/qml_test
       with:
         variant_name: asan
-        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
+        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH=${{ env.qtlibpath }}
         root_path: ${{ steps.build.outputs.install_dir }}
   
   build_debug_whl:
@@ -158,6 +164,11 @@ jobs:
         pypa_build_extra_args: --skip-dependency-check -C--local=pyproject.toml.coverage_overrides
         whl_suffix: coverage
         install: true
+    - name: Find Qt
+      shell: bash
+      id: findqt
+      run: |
+        echo "qtlibpath=$(dirname $(find ${{ steps.install.outputs.install_dir }}/.. -name libQt6Core.so.6))" | tee -a $GITHUB_ENV
     - name: Back-end tests with coverage
       uses: ./.github/actions/backend_test
       with:
@@ -183,6 +194,7 @@ jobs:
           REPORTNAME=pytest
           BUILDDIR=${{ steps.build.outputs.build_dir }}
           DO_GENHTML=0
+          LD_LIBRARY_PATH=${{ env.qtlibpath }}
           ${{ steps.build.outputs.install_dir}}/scripts/run_and_generate_coverage.sh
     - name: Test QML with coverage
       uses: ./.github/actions/qml_test
@@ -196,6 +208,7 @@ jobs:
           REPORTNAME=qmltest
           BUILDDIR=${{ steps.build.outputs.build_dir }}
           DO_GENHTML=0
+          LD_LIBRARY_PATH=${{ env.qtlibpath }}
           ${{ steps.build.outputs.install_dir}}/scripts/run_and_generate_coverage.sh
     - name: Upload coverage reports to Codecov
       if: ${{ !env.ACT }}
