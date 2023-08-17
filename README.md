@@ -1,5 +1,7 @@
 ![Logo](./src/shoopdaloop/resources/logo-small.png)
 
+[![codecov](https://codecov.io/github/SanderVocke/shoopdaloop/graph/badge.svg?token=15RLMBAYV7)](https://codecov.io/github/SanderVocke/shoopdaloop)
+
 # ShoopDaLoop
 
 ShoopDaLoop is a live looping application for Linux with a few DAW-like features. [Documentation](https://sandervocke.github.io/shoopdaloop/) lives here.
