@@ -1,6 +1,0 @@
-base-devel
-git
-cmake
-ninja
-python-build
-nlohmann-json

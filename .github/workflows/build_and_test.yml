@@ -30,6 +30,7 @@ jobs:
       with:
         variant_name: release
         artifact_name: release_wheel
+        install: false
   
   test_release_whl:
     runs-on: ubuntu-latest
@@ -48,7 +49,7 @@ jobs:
     - name: Install wheel
       id: install
       run: |
-        python3 -m pip install ~/wheel/*.whl
+        python3 -m pip install --break-system-packages ~/wheel/*.whl
         echo "install_dir=$(shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g')" | tee -a $GITHUB_OUTPUT
     - name: Find Qt
       shell: bash
@@ -99,6 +100,7 @@ jobs:
         variant_name: asan
         artifact_name: asan_wheel
         pypa_build_extra_args: -C--local=pyproject.toml.debug_asan_overrides
+        pip_install_extra_args: --break-system-packages
         whl_suffix: asan
         install: true
     - name: Find Qt
@@ -144,6 +146,7 @@ jobs:
         artifact_name: debug_wheel
         pypa_build_extra_args: -C--local=pyproject.toml.debug_overrides
         whl_suffix: debug
+        install: false
   
   coverage:
     runs-on: ubuntu-latest
@@ -162,6 +165,7 @@ jobs:
         variant_name: coverage
         artifact_name: coverage_wheel
         pypa_build_extra_args: --skip-dependency-check -C--local=pyproject.toml.coverage_overrides
+        pip_install_extra_args: --break-system-packages
         whl_suffix: coverage
         install: true
     - name: Find Qt

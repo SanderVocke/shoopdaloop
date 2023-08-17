@@ -188,8 +188,10 @@ AppRegistries {
                 }
             } else {
                 // Form callback:  (loop) => true/false
-                tracks_widget.tracks.forEach((track) => {
-                    track.loops.forEach((loop) => {
+                for(var t=0; t<tracks_widget.tracks.length; t++) {
+                    let track = tracks_widget.tracks[t]
+                    for(var l=0; l<track.loops.length; l++) {
+                        let loop = track.loops[l]
                         if(loop_selector(loop)) { rval.push(loop.control_handler) }
                     })
                 })
