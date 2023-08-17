@@ -49,7 +49,7 @@ jobs:
     - name: Install wheel
       id: install
       run: |
-        python3 -m pip install --break-system-packages ~/wheel/*.whl
+        python3 -m pip install --force-reinstall --break-system-packages ~/wheel/*.whl
         echo "install_dir=$(shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g')" | tee -a $GITHUB_OUTPUT
     - name: Find Qt
       shell: bash

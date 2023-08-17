@@ -193,8 +193,8 @@ AppRegistries {
                     for(var l=0; l<track.loops.length; l++) {
                         let loop = track.loops[l]
                         if(loop_selector(loop)) { rval.push(loop.control_handler) }
-                    })
-                })
+                    }
+                }
             }
             logger.debug(`Selected ${rval.length} target loop(s).`)
             return rval

@@ -50,13 +50,13 @@ jobs:
     
     - name: Install wheel
       run: |
-        ${{ inputs.run_cmd_prefix }} ASAN_OPTIONS=detect_leaks=0 python3 -m pip install ~/wheel/*.whl
+        ${{ inputs.run_cmd_prefix }} ASAN_OPTIONS=detect_leaks=0 python3 -m pip install --force-reinstall --break-system-packages ~/wheel/*.whl
         echo "PKG_DIR=$(${{ inputs.run_cmd_prefix }} ASAN_OPTIONS=detect_leaks=0 shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g')" | tee -a $GITHUB_ENV
     
     - name: Install Python coverage
       if: ${{ inputs.upload_coverage }}
       run: |
-        python3 -m pip install coverage
+        python3 -m pip install --break-system-packages coverage
     
     - name: Report package install dir
       run: |

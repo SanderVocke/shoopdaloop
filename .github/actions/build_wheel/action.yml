@@ -73,6 +73,6 @@ runs:
     if: ${{ inputs.install }}
     run: |
       mkdir -p install
-      ASAN_OPTIONS=detect_leaks=0 ${{ steps.build.outputs.run_cmd_prefix }} python3 -m pip install ${{ inputs.pip_install_extra_args }} ${{ steps.find.outputs.name }}
+      ASAN_OPTIONS=detect_leaks=0 ${{ steps.build.outputs.run_cmd_prefix }} python3 -m pip install --force-reinstall ${{ inputs.pip_install_extra_args }} ${{ steps.find.outputs.name }}
       echo "install_dir=$(ASAN_OPTIONS=detect_leaks=0 ${{ steps.build.outputs.run_cmd_prefix }} shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g')" | tee -a $GITHUB_OUTPUT
 
