@@ -29,6 +29,7 @@ runs:
       echo "Back-end test results file: $(ls -la ${{ env.results_xml }})"
   
   - name: Publish Back-end Test Report
+    if: ${{ !env.ACT }}
     uses: mikepenz/action-junit-report@v3
     with:
       report_paths: ${{ env.results_xml }}

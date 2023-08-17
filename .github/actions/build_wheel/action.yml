@@ -61,6 +61,7 @@ runs:
       echo "name=$(ls dist/*.whl)" | tee -a $GITHUB_OUTPUT
     
   - name: Upload wheel (${{ inputs.variant_name }})
+    if: ${{ !env.ACT }}
     uses: actions/upload-artifact@v3
     with:
       name: ${{ inputs.artifact_name }}
