@@ -32,6 +32,7 @@ python3-venv
 python3-virtualenv
 python3-pytest
 python3-pip
+python3-pytest-cov
 
 # not sure why exactly these are needed
 libgl1-mesa-dev
