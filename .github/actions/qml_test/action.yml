@@ -14,6 +14,9 @@ inputs:
   python_command:
     type: string
     default: python3
+  tee_all_output_to:
+    type: string
+    default: /dev/null
 
 runs:
   using: "composite"
@@ -27,7 +30,7 @@ runs:
   - name: QML test (${{ inputs.variant_name }})
     shell: bash
     run: |
-      ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0 QT_QPA_PLATFORM=vnc ${{ inputs.run_cmd_prefix }} ${{ inputs.python_command }} ${{ inputs.root_path }}/run_qml_tests.py -o ${{ env.results_xml }},junitxml
+      ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0 QT_QPA_PLATFORM=vnc ${{ inputs.run_cmd_prefix }} ${{ inputs.python_command }} ${{ inputs.root_path }}/run_qml_tests.py -o ${{ env.results_xml }},junitxml 2>&1 | tee ${{ inputs.tee_all_output_to }}
       echo "QML test results file: $(ls -la ${{ env.results_xml }})"
   
   - name: Publish QML Test Report

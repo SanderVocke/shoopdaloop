@@ -1,0 +1,23 @@
+name: Install Qoverage
+description: Install the latest Qoverage dev build from git.
+
+inputs:
+  python_command:
+    type: string
+    default: python3
+
+runs:
+  using: "composite"
+  steps:
+  - name: Checkout
+    uses: actions/checkout@v3
+    with:
+      repository: https://github.com/SanderVocke/qoverage.git
+      ref: master
+      path: qoverage
+
+  - name: Build and install
+    run: |
+      cd qoverage
+      ${{ inputs.python_command }} -m build -w
+      ${{ inputs.python_command }} -m pip install dist/*.whl

@@ -154,6 +154,10 @@ jobs:
       image: sandervocke/shoopdaloop_build_base:latest
       options: --user root --workdir /
     steps:
+    - name: Install Qoverage
+      uses: ./.github/actions/install_qoverage
+      with:
+        python_command: python3
     - name: Checkout
       uses: actions/checkout@v3
       with:
@@ -168,6 +172,15 @@ jobs:
         pip_install_extra_args: --break-system-packages
         whl_suffix: coverage
         install: true
+    - name: Instrument QML files
+      shell: bash
+      run: >-
+        mkdir -p /tmp/shoop-qoverage &&
+        qoverage instrument
+        --glob ${{ steps.build.outputs.install_dir }}/**/*.qml
+        --glob-base ${{ steps.build.outputs.install_dir }}
+        --in-place
+        --store-intermediates
     - name: Find Qt
       shell: bash
       id: findqt
@@ -209,6 +222,7 @@ jobs:
       with:
         variant_name: coverage
         root_path: ${{ steps.build.outputs.install_dir }}
+        tee_all_output: /tmp/shoop-qoverage/console-output.log
         python_command: python3 -m coverage run --source=shoopdaloop
         run_cmd_prefix: >-
           BASEDIR=${{ steps.build.outputs.source_dir }}
@@ -218,10 +232,13 @@ jobs:
           BUILDDIR=${{ steps.build.outputs.build_dir }}
           DO_GENHTML=0
           LD_LIBRARY_PATH=${{ env.qtlibpath }}
-          ${{ steps.build.outputs.install_dir}}/scripts/run_and_generate_coverage.sh
-    - name: Generate Pytest coverage report
+          ${{ steps.build.outputs.install_dir }}/scripts/run_and_generate_coverage.sh
+    - name: Generate QML Python coverage report
       run: |
         python3 -m coverage xml -i -o coverage_reports/qml.xml
+    - name: Generage QML coverage report
+      run: |
+        qoverage collect --report /tmp/shoop-qoverage/qoverage-report.xml --base ${{ steps.build.outputs.install_dir }} --file /tmp/shoop-qoverage/console-output.log
     - name: Upload back-end coverage to CodeCov
       if: ${{ !env.ACT }}
       uses: codecov/codecov-action@v3
@@ -245,4 +262,12 @@ jobs:
         token: ${{ secrets.CODECOV_TOKEN }}
         flags: qml
         files: coverage_reports/qmltest.info,coverage_reports/qml.xml
+        verbose: true
+    - name: Upload QML coverage to CodeCov
+      if: ${{ !env.ACT }}
+      uses: codecov/codecov-action@v3
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        flags: qml
+        files: /tmp/shoop-qoverage/qoverage-report.xml
         verbose: true
