@@ -5,6 +5,9 @@ inputs:
   python_command:
     type: string
     default: python3
+  pip_install_extra_args:
+    required: false
+    type: string
 
 runs:
   using: "composite"
@@ -21,4 +24,4 @@ runs:
     run: |
       cd qoverage
       ${{ inputs.python_command }} -m build -w
-      ${{ inputs.python_command }} -m pip install dist/*.whl
+      ${{ inputs.python_command }} -m pip install dist/*.whl ${{ inputs.pip_install_extra_args }}

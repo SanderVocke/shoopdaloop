@@ -162,6 +162,7 @@ jobs:
       uses: ./.github/actions/install_qoverage
       with:
         python_command: python3
+        pip_install_extra_args: --break-system-packages
     - name: Build, install and upload
       id: build
       uses: ./.github/actions/build_wheel
