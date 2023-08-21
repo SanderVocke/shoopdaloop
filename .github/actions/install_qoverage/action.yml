@@ -17,6 +17,7 @@ runs:
       path: qoverage
 
   - name: Build and install
+    shell: bash
     run: |
       cd qoverage
       ${{ inputs.python_command }} -m build -w
