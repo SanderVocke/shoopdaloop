@@ -18,10 +18,11 @@ runs:
       repository: SanderVocke/qoverage
       ref: master
       path: qoverage
+      token: ${{ github.token }}
 
   - name: Build and install
     shell: bash
     run: |
       cd qoverage
       ${{ inputs.python_command }} -m build -w
-      ${{ inputs.python_command }} -m pip install dist/*.whl ${{ inputs.pip_install_extra_args }}
+      ${{ inputs.python_command }} -m pip install --force-reinstall dist/*.whl ${{ inputs.pip_install_extra_args }}

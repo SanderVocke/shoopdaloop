@@ -223,7 +223,7 @@ jobs:
       with:
         variant_name: coverage
         root_path: ${{ steps.build.outputs.install_dir }}
-        tee_all_output: /tmp/shoop-qoverage/console-output.log
+        tee_all_output_to: /tmp/shoop-qoverage/console-output.log
         python_command: python3 -m coverage run --source=shoopdaloop
         run_cmd_prefix: >-
           BASEDIR=${{ steps.build.outputs.source_dir }}
