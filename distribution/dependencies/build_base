@@ -40,3 +40,6 @@ libvulkan-dev
 
 # scripting stuff
 procps
+
+# for Github Actions
+nodejs

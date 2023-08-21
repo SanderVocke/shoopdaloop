@@ -154,14 +154,14 @@ jobs:
       image: sandervocke/shoopdaloop_build_base:latest
       options: --user root --workdir /
     steps:
-    - name: Install Qoverage
-      uses: ./.github/actions/install_qoverage
-      with:
-        python_command: python3
     - name: Checkout
       uses: actions/checkout@v3
       with:
         submodules: recursive
+    - name: Install Qoverage
+      uses: ./.github/actions/install_qoverage
+      with:
+        python_command: python3
     - name: Build, install and upload
       id: build
       uses: ./.github/actions/build_wheel
