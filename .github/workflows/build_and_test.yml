@@ -178,7 +178,7 @@ jobs:
       run: >-
         mkdir -p /tmp/shoop-qoverage &&
         qoverage instrument
-        --glob ${{ steps.build.outputs.install_dir }}/**/*.qml
+        --glob "${{ steps.build.outputs.install_dir }}/**/*.qml"
         --glob-base ${{ steps.build.outputs.install_dir }}
         --in-place
         --store-intermediates
