@@ -1,3 +1,3 @@
-FROM: docker:20.10
+FROM docker:20.10
 
-RUN echo "Hello world!"
+ENTRYPOINT ["/entrypoint.sh"]
