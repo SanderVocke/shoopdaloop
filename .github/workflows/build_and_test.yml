@@ -55,7 +55,7 @@ jobs:
       shell: bash
       id: findqt
       run: |
-        echo "qtlibpath=$(dirname $(find ${{ steps.install.outputs.install_dir }}/.. -name libQt6Core.so.6))" | tee -a $GITHUB_ENV
+        echo "qtlibpath=$(dirname $(find /usr/local/lib/python3.11/dist-packages -name libQt6Core.so.6))" | tee -a $GITHUB_ENV
     - name: Test back-end
       uses: ./.github/actions/backend_test
       with:
@@ -260,5 +260,5 @@ jobs:
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         flags: qml
-        files: /tmp/qoverage-report.xml
+        files: qoverage-report.xml
         verbose: true
