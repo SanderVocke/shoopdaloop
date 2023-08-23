@@ -154,6 +154,14 @@ jobs:
       image: sandervocke/shoopdaloop_build_base:latest
       options: --user root --workdir /
     steps:
+    # - name: Test Str
+    #   shell: bash
+    #   run: >-
+    #     echo ${{ fromJSON('
+    #     ["hi",
+    #      "ho"]
+    #     ') }}
+    #     && exit 1
     - name: Checkout
       uses: actions/checkout@v3
       with:
@@ -171,12 +179,15 @@ jobs:
     - name: Qoverage - Instrument QML files
       uses: ./.github/actions/qoverage
       with:
-        command: >-
-          instrument
-          --glob "${{ steps.build.outputs.install_dir }}/**/*.qml"
-          --glob-base ${{ steps.build.outputs.install_dir }}
-          --in-place
-          --store-intermediates
+        command_json: '["qoverage", "-h"]'
+        # command_json: >-
+        #   ["qoverage",
+        #    "instrument",
+        #    "--glob",
+        #    "pip/shoopdaloop/**/*.qml",
+        #    "--glob-base pip/shoopdaloop",
+        #    "--in-place",
+        #    "--store-intermediates"]
     - name: Find Qt
       shell: bash
       id: findqt
@@ -188,6 +199,7 @@ jobs:
         variant_name: coverage
         test_runner_dir: ${{ steps.build.outputs.install_dir }}
         run_cmd_prefix: >-
+          PYTHONPATH="$PYTHONPATH:$(pwd)/${{ steps.build.outputs.install_dir}}/.."
           BASEDIR=${{ steps.build.outputs.source_dir }}
           EXCLUDE=third_party,qt6,boost,c++
           REPORTDIR=coverage_reports
@@ -202,6 +214,7 @@ jobs:
         root_path: ${{ steps.build.outputs.install_dir }}
         pytest_command: python3 -m coverage run --source=shoopdaloop -m pytest
         run_cmd_prefix: >-
+          PYTHONPATH="$PYTHONPATH:$(pwd)/${{ steps.build.outputs.install_dir}}/.."
           BASEDIR=${{ steps.build.outputs.source_dir }}
           EXCLUDE=third_party,qt6,boost,c++
           REPORTDIR=coverage_reports
@@ -218,9 +231,10 @@ jobs:
       with:
         variant_name: coverage
         root_path: ${{ steps.build.outputs.install_dir }}
-        tee_all_output_to: /tmp/qoverage-console-output.log
+        tee_all_output_to: qoverage-console-output.log
         python_command: python3 -m coverage run --source=shoopdaloop
         run_cmd_prefix: >-
+          PYTHONPATH="$PYTHONPATH:$(pwd)/${{ steps.build.outputs.install_dir}}/.."
           BASEDIR=${{ steps.build.outputs.source_dir }}
           EXCLUDE=third_party,qt6,boost,c++
           REPORTDIR=coverage_reports
@@ -237,9 +251,9 @@ jobs:
       with:
         command: >-
           collect
-          --report /tmp/shoop-qoverage/qoverage-report.xml
-          --base ${{ steps.build.outputs.install_dir }}
-          --file /tmp/qoverage-console-output.log
+          --report qoverage-report.xml
+          --base pip/shoopdaloop
+          --file qoverage-console-output.log
     - name: Upload back-end coverage to CodeCov
       if: ${{ !env.ACT }}
       uses: codecov/codecov-action@v3
@@ -270,5 +284,5 @@ jobs:
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         flags: qml
-        files: /tmp/shoop-qoverage/qoverage-report.xml
+        files: /tmp/qoverage-report.xml
         verbose: true

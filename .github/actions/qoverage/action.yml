@@ -2,9 +2,13 @@ name: Qoverage
 description: Run Qoverage.
 
 inputs:
-  command:
+  command_json:
+    type: string
+  docker_options:
     type: string
 
 runs:
   using: 'docker'
-  image: 'Dockerfile'
+  image: 'docker://sandervocke/qoverage:latest'
+  entrypoint: '["/bin/sh", "-c"]'
+  args: ${{ fromJSON(inputs.command_json) }}
