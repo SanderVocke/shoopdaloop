@@ -11,4 +11,4 @@ runs:
   using: 'docker'
   image: 'docker://sandervocke/qoverage:latest'
   entrypoint: '["/bin/sh", "-c"]'
-  args: ${{ fromJSON(inputs.command_json) }}
+  args: ${{ fromJSON(github.event.inputs.command_json) }}
