@@ -6,10 +6,13 @@ inputs:
     type: string
 
 runs:
-  using: "composite"
-  steps:
-  - name: Run Qoverage via Docker
-    shell: bash
-    run: |
-      podman run -v "/var/run/docker.sock":"/var/run/docker.sock" sandervocke/qoverage:latest ${{ inputs.command }}
+  # using: "composite"
+  # steps:
+  # - name: Run Qoverage via Docker
+  #   shell: bash
+  #   run: |
+  #     podman run -v "/var/run/docker.sock":"/var/run/docker.sock" sandervocke/qoverage:latest ${{ inputs.command }}
+
+  using: 'docker'
+  image: 'Dockerfile'
 
