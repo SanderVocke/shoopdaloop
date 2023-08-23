@@ -34,6 +34,9 @@ class QoverageCollectorFactory(QObject):
     
     @Slot(str, list, result='QVariant')
     def create_file_collector(self, filename, initial_lines_data):
+        # When running QML unit tests, the same qml files will get re-loaded and the same
+        # collectors re-requested. Ensure we pass back the existing collectors such that
+        # total coverage is added, not reset from scratch.
         if filename in self.file_collectors:
             self.logger.debug("Request existing collector for {}".format(filename))
             return self.file_collectors[filename]
