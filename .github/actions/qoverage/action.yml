@@ -8,5 +8,4 @@ inputs:
 runs:
   using: 'docker'
   image: 'docker://sandervocke/qoverage:latest'
-  args: '${{ inputs.command }}'
-
+  entrypoint: 'qoverage ${{ inputs.command }}'
