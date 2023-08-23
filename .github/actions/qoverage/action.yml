@@ -14,5 +14,6 @@ runs:
   #     podman run -v "/var/run/docker.sock":"/var/run/docker.sock" sandervocke/qoverage:latest ${{ inputs.command }}
 
   using: 'docker'
-  image: 'Dockerfile'
+  image: 'docker://sandervocke/qoverage:latest'
+  args: [ '${{ inputs.command }}' ]
 
