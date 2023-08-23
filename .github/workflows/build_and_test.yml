@@ -158,11 +158,6 @@ jobs:
       uses: actions/checkout@v3
       with:
         submodules: recursive
-    - name: Install Qoverage
-      uses: ./.github/actions/install_qoverage
-      with:
-        python_command: python3
-        pip_install_extra_args: --break-system-packages
     - name: Build, install and upload
       id: build
       uses: ./.github/actions/build_wheel
@@ -173,15 +168,15 @@ jobs:
         pip_install_extra_args: --break-system-packages
         whl_suffix: coverage
         install: true
-    - name: Instrument QML files
-      shell: bash
-      run: >-
-        mkdir -p /tmp/shoop-qoverage &&
-        qoverage instrument
-        --glob "${{ steps.build.outputs.install_dir }}/**/*.qml"
-        --glob-base ${{ steps.build.outputs.install_dir }}
-        --in-place
-        --store-intermediates
+    - name: Qoverage - Instrument QML files
+      uses: ./.github/actions/qoverage
+      with:
+        command: >-
+          instrument
+          --glob "${{ steps.build.outputs.install_dir }}/**/*.qml"
+          --glob-base ${{ steps.build.outputs.install_dir }}
+          --in-place
+          --store-intermediates
     - name: Find Qt
       shell: bash
       id: findqt
@@ -223,7 +218,7 @@ jobs:
       with:
         variant_name: coverage
         root_path: ${{ steps.build.outputs.install_dir }}
-        tee_all_output_to: /tmp/shoop-qoverage/console-output.log
+        tee_all_output_to: /tmp/qoverage-console-output.log
         python_command: python3 -m coverage run --source=shoopdaloop
         run_cmd_prefix: >-
           BASEDIR=${{ steps.build.outputs.source_dir }}
@@ -237,9 +232,14 @@ jobs:
     - name: Generate QML Python coverage report
       run: |
         python3 -m coverage xml -i -o coverage_reports/qml.xml
-    - name: Generage QML coverage report
-      run: |
-        qoverage collect --report /tmp/shoop-qoverage/qoverage-report.xml --base ${{ steps.build.outputs.install_dir }} --file /tmp/shoop-qoverage/console-output.log
+    - name: Qoverage - Generate report
+      uses: ./.github/actions/qoverage
+      with:
+        command: >-
+          collect
+          --report /tmp/shoop-qoverage/qoverage-report.xml
+          --base ${{ steps.build.outputs.install_dir }}
+          --file /tmp/qoverage-console-output.log
     - name: Upload back-end coverage to CodeCov
       if: ${{ !env.ACT }}
       uses: codecov/codecov-action@v3

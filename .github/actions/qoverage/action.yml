@@ -1,0 +1,15 @@
+name: Qoverage
+description: Run Qoverage.
+
+inputs:
+  command:
+    type: string
+
+runs:
+  using: "composite"
+  steps:
+  - name: Run Qoverage via Docker
+    uses: addnab/docker-run-action@v3
+    with:
+      image: sandervocke/qoverage:latest
+      options: ${{ inputs.command }}
