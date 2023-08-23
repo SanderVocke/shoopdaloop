@@ -166,28 +166,27 @@ jobs:
       uses: actions/checkout@v3
       with:
         submodules: recursive
-    - name: Build, install and upload
-      id: build
-      uses: ./.github/actions/build_wheel
-      with:
-        variant_name: coverage
-        artifact_name: coverage_wheel
-        pypa_build_extra_args: --skip-dependency-check -C--local=pyproject.toml.coverage_overrides
-        pip_install_extra_args: --break-system-packages
-        whl_suffix: coverage
-        install: true
+    # - name: Build, install and upload
+    #   id: build
+    #   uses: ./.github/actions/build_wheel
+    #   with:
+    #     variant_name: coverage
+    #     artifact_name: coverage_wheel
+    #     pypa_build_extra_args: --skip-dependency-check -C--local=pyproject.toml.coverage_overrides
+    #     pip_install_extra_args: --break-system-packages
+    #     whl_suffix: coverage
+    #     install: true
     - name: Qoverage - Instrument QML files
       uses: ./.github/actions/qoverage
       with:
-        command_json: '["qoverage", "-h"]'
-        # command_json: >-
-        #   ["qoverage",
-        #    "instrument",
-        #    "--glob",
-        #    "pip/shoopdaloop/**/*.qml",
-        #    "--glob-base pip/shoopdaloop",
-        #    "--in-place",
-        #    "--store-intermediates"]
+        command_json: >-
+          ["qoverage",
+           "instrument",
+           "--glob",
+           "pip/shoopdaloop/**/*.qml",
+           "--glob-base pip/shoopdaloop",
+           "--in-place",
+           "--store-intermediates"]
     - name: Find Qt
       shell: bash
       id: findqt
