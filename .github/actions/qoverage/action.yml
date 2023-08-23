@@ -11,5 +11,5 @@ runs:
   - name: Run Qoverage via Docker
     uses: addnab/docker-run-action@v3
     with:
-      image: sandervocke/qoverage:latest
-      options: ${{ inputs.command }}
+      image: 
+      options: ${{ inputs.command }} sandervocke/qoverage:latest
