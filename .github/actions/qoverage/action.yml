@@ -9,7 +9,7 @@ runs:
   using: "composite"
   steps:
   - name: Run Qoverage via Docker
-    uses: addnab/docker-run-action@v3
-    with:
-      image: 
-      options: ${{ inputs.command }} sandervocke/qoverage:latest
+    shell: bash
+    run: |
+      podman run -v "/var/run/docker.sock":"/var/run/docker.sock" sandervocke/qoverage:latest ${{ inputs.command }}
+
