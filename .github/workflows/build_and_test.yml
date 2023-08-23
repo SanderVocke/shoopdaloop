@@ -162,10 +162,10 @@ jobs:
     #      "ho"]
     #     ') }}
     #     && exit 1
-    # - name: Checkout
-    #   uses: actions/checkout@v3
-    #   with:
-    #     submodules: recursive
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        submodules: recursive
     # - name: Build, install and upload
     #   id: build
     #   uses: ./.github/actions/build_wheel
