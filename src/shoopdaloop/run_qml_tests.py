@@ -15,9 +15,12 @@ from shoopdaloop.lib.qml_helpers import *
 from shoopdaloop.lib.q_objects.SchemaValidator import SchemaValidator
 from shoopdaloop.lib.logging import Logger
 from shoopdaloop.lib.backend_wrappers import BackendType
+from shoopdaloop.lib.q_objects.QoverageCollectorFactory import QoverageCollectorFactory
 
 import qml_tests
 from ctypes import *
+
+qoverage_collector_factory = QoverageCollectorFactory()
 
 class Setup(QObject):
     def __init__(self, parent=None):
@@ -26,7 +29,11 @@ class Setup(QObject):
     @Slot(QQmlEngine)
     def qmlEngineAvailable(self, engine):
         register_shoopdaloop_qml_classes()
-        self.root_context_items = create_and_populate_root_context(engine, { 'backend_type': BackendType.Dummy.value })
+        self.root_context_items = create_and_populate_root_context(
+            engine,
+            { 'backend_type': BackendType.Dummy.value },
+            { 'qoverage_collector_factory' : qoverage_collector_factory }
+            )
 
 logger = Logger('Test.Runner')
 
@@ -50,5 +57,9 @@ setup = Setup(parent=None)
 
 raw_setup = cast(Shiboken.getCppPointer(setup)[0], c_void_p)
 exitcode = qml_tests.run_quick_test_main_with_setup(len(sys.argv), to_c_chars(sys.argv), 'shoopdaloop_tests', script_dir + '/..', raw_setup)
+
+qoverage_collector_factory.report_all()
+
+print('All tests done. Exiting with code {}'.format(exitcode))
 
 exit(exitcode)

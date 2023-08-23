@@ -81,7 +81,7 @@ directory = "src"
 minimum_version = "3.22"
 build_type = "Release"
 source_path = "src"
-build_args = ["-j4"]
+build_args = []
 install_components = ["package_install"]
 options = { "STATIC_DEPENDENCIES" = "On" }
 build_path = "build"

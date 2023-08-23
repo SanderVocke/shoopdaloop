@@ -20,6 +20,7 @@ TestCase {
     }
 
     function cleanup() {
+        logger.debug("cleanup " + root.name)
         // Note: the fact that this works is due to the internal TestCase.qml implementation of Qt Quick Test.
         // Tested on Qt 6.3
         var failed = qtest_results.failed || qtest_results.dataFailed
