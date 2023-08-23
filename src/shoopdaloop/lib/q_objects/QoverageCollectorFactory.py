@@ -29,14 +29,19 @@ class QoverageCollectorFactory(QObject):
     def __init__(self, parent=None):
         super(QoverageCollectorFactory, self).__init__(parent)
         self.logger = Logger("QoverageCollectorFactory")
-        self.file_collectors = []
+        self.logger.debug("Initialized")
+        self.file_collectors = {}
     
     @Slot(str, list, result='QVariant')
     def create_file_collector(self, filename, initial_lines_data):
-        self.logger.debug("Collector requested for {}".format(filename))
-        rval = QoverageFileCollector(filename, initial_lines_data, self)
-        self.file_collectors.append(rval)
-        return rval
+        if filename in self.file_collectors:
+            self.logger.debug("Request existing collector for {}".format(filename))
+            return self.file_collectors[filename]
+        else:
+            self.logger.debug("New collector requested for {}".format(filename))
+            rval = QoverageFileCollector(filename, initial_lines_data, self)
+            self.file_collectors[filename] = rval
+            return rval
     
     def report_all(self):
         self.logger.debug("Reporting all")
