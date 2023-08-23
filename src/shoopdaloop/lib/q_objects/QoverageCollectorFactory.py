@@ -48,7 +48,7 @@ class QoverageCollectorFactory(QObject):
     
     def report_all(self):
         self.logger.debug("Reporting all")
-        if len(self.file_collectors) > 0:
+        if len(self.file_collectors.items()) > 0:
             self.logger.info('Reporting {} file collectors'.format(len(self.file_collectors)))
-            for fc in self.file_collectors:
+            for fc in self.file_collectors.values():
                 fc.report()
