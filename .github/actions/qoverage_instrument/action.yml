@@ -9,5 +9,6 @@ runs:
       "--glob",
       "pip/shoopdaloop/**/*.qml",
       "--in-place",
-      "--store-intermediates"
+      "--store-intermediates",
+      '--verbose'
   ]

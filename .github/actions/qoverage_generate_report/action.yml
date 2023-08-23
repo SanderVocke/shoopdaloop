@@ -8,7 +8,9 @@ runs:
       "collect",
       "--report",
       "qoverage-report.xml",
-      "--base", "pip", # will lead to relative paths like "shoopdaloop/lib/qml/xxx.qml"
+      "--base", "pip/shoopdaloop",
       "--file",
-      "qoverage-console-output.log"
+      "qoverage-console-output.log",
+      "--replace-base", "src/shoopdaloop",
+      "--verbose"
   ]

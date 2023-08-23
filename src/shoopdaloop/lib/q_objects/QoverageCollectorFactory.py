@@ -19,7 +19,7 @@ class QoverageFileCollector(QObject):
     @Slot()
     def report(self):
         self.logger.info(
-            '<QOVERAGERESULT file={}>{}</QOVERAGERESULT>'.format(
+            '<QOVERAGERESULT file="{}">{}</QOVERAGERESULT>'.format(
                 self.filename,
                 json.dumps(self.lines_data)
             )
