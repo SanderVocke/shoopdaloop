@@ -1,0 +1,15 @@
+name: Qoverage Instrument
+description: instrument the QML sources. Implemented in a very non-flexible way because of what seems like bugs in action input parsing.
+
+runs:
+  using: 'docker'
+  image: 'docker://sandervocke/qoverage:latest'
+  args: [
+      "collect",
+      "--report",
+      "qoverage-report.xml",
+      "--base",
+      "pip/shoopdaloop",
+      "--file",
+      "qoverage-console-output.log"
+  ]

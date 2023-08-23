@@ -1,0 +1,13 @@
+name: Qoverage Instrument
+description: instrument the QML sources. Implemented in a very non-flexible way because of what seems like bugs in action input parsing.
+
+runs:
+  using: 'docker'
+  image: 'docker://sandervocke/qoverage:latest'
+  args: [
+      "instrument",
+      "--glob",
+      "pip/shoopdaloop/**/*.qml",
+      "--in-place",
+      "--store-intermediates"
+  ]

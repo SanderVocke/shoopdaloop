@@ -154,39 +154,22 @@ jobs:
       image: sandervocke/shoopdaloop_build_base:latest
       options: --user root --workdir /
     steps:
-    # - name: Test Str
-    #   shell: bash
-    #   run: >-
-    #     echo ${{ fromJSON('
-    #     ["hi",
-    #      "ho"]
-    #     ') }}
-    #     && exit 1
     - name: Checkout
       uses: actions/checkout@v3
       with:
         submodules: recursive
-    # - name: Build, install and upload
-    #   id: build
-    #   uses: ./.github/actions/build_wheel
-    #   with:
-    #     variant_name: coverage
-    #     artifact_name: coverage_wheel
-    #     pypa_build_extra_args: --skip-dependency-check -C--local=pyproject.toml.coverage_overrides
-    #     pip_install_extra_args: --break-system-packages
-    #     whl_suffix: coverage
-    #     install: true
-    - name: Qoverage - Instrument QML files
-      uses: ./.github/actions/qoverage
+    - name: Build, install and upload
+      id: build
+      uses: ./.github/actions/build_wheel
       with:
-        command_json: >-
-          ["qoverage",
-           "instrument",
-           "--glob",
-           "pip/shoopdaloop/**/*.qml",
-           "--glob-base pip/shoopdaloop",
-           "--in-place",
-           "--store-intermediates"]
+        variant_name: coverage
+        artifact_name: coverage_wheel
+        pypa_build_extra_args: --skip-dependency-check -C--local=pyproject.toml.coverage_overrides
+        pip_install_extra_args: --break-system-packages
+        whl_suffix: coverage
+        install: true
+    - name: Qoverage - Instrument QML files
+      uses: ./.github/actions/qoverage_instrument
     - name: Find Qt
       shell: bash
       id: findqt
@@ -246,13 +229,7 @@ jobs:
       run: |
         python3 -m coverage xml -i -o coverage_reports/qml.xml
     - name: Qoverage - Generate report
-      uses: ./.github/actions/qoverage
-      with:
-        command: >-
-          collect
-          --report qoverage-report.xml
-          --base pip/shoopdaloop
-          --file qoverage-console-output.log
+      uses: ./.github/actions/qoverage_generate_report
     - name: Upload back-end coverage to CodeCov
       if: ${{ !env.ACT }}
       uses: codecov/codecov-action@v3
