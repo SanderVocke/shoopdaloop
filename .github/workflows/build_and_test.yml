@@ -207,8 +207,8 @@ jobs:
           ${{ steps.build.outputs.install_dir}}/scripts/run_and_generate_coverage.sh
     - name: Generate Pytest coverage report
       run: |
-        python3 -m coverage xml -i -o coverage_reports/pytest.pre.xml
-        sed -i 's/pip\/shoopdaloop/src\/shoopdaloop/g' coverage_reports/pytest.pre.xml > coverage_reports/pytest.xml
+        python3 -m coverage xml -i -o coverage_reports/pytest.xml
+        sed -i 's/pip\/shoopdaloop/src\/shoopdaloop/g' coverage_reports/pytest.xml
     - name: Test QML with coverage
       uses: ./.github/actions/qml_test
       with:
@@ -228,8 +228,8 @@ jobs:
           ${{ steps.build.outputs.install_dir }}/scripts/run_and_generate_coverage.sh
     - name: Generate QML Python coverage report
       run: |
-        python3 -m coverage xml -i -o coverage_reports/qml.pre.xml
-        sed -i 's/pip\/shoopdaloop/src\/shoopdaloop/g' coverage_reports/qml.pre.xml > coverage_reports/qml.xml
+        python3 -m coverage xml -i -o coverage_reports/qml.xml
+        sed -i 's/pip\/shoopdaloop/src\/shoopdaloop/g' coverage_reports/qml.xml
 
     - name: Qoverage - Generate report
       uses: ./.github/actions/qoverage_generate_report
