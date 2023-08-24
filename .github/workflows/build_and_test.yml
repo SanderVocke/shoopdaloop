@@ -234,7 +234,7 @@ jobs:
     - name: Qoverage - Generate report
       uses: ./.github/actions/qoverage_generate_report
       with:
-        strip: "${{ github.workspace }}/pip/shoopdaloop"
+        strip: ".*/pip/shoopdaloop"
     - name: Upload back-end coverage to CodeCov
       if: ${{ !env.ACT }}
       uses: codecov/codecov-action@v3
