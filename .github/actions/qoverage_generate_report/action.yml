@@ -6,11 +6,8 @@ runs:
   image: 'docker://sandervocke/qoverage:latest'
   args: [
       "collect",
-      "--report",
-      "qoverage-report.xml",
-      "--base", "pip/shoopdaloop",
-      "--file",
-      "qoverage-console-output.log",
-      "--replace-base", "src/shoopdaloop",
+      "--report", "qoverage-report.xml",
+      "--files-path", "pip/shoopdaloop",
+      "--input", "qoverage-console-output.log",
       "--verbose"
   ]
