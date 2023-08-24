@@ -18,9 +18,8 @@ PythonBackend {
         function test_backend() {
             run_case('test_backend', () => {
                 verify(backend.initialized)
+                backend.close()
             })
         }
-
-        function cleanupTestCase() { backend.close() }
     }
 }

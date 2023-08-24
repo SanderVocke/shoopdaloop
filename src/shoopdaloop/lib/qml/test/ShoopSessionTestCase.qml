@@ -22,8 +22,6 @@ ShoopTestCase {
         backend.doUpdate()
     }
 
-    function cleanupTestCase() { }
-
     function initTestCase() {
         check_backend()
     }
