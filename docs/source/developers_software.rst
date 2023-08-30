@@ -84,6 +84,8 @@ The test suites for **ShoopDaLoop** are by no means complete, but do test essent
 
 The QML integration tests come closest to "system-level". For example, there are tests there which can check cycle-accurately that the correct audio samples are produced based on what the user clicked in the user interface.
 
+Coverage is generated at each of the aforementioned test levels. QML coverage generation is powered by `qoverage <https://github.com/SanderVocke/qoverage>`_.
+
 
 
 Continuous integration
