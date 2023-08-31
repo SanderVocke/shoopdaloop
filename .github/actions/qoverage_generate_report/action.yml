@@ -6,14 +6,9 @@ inputs:
     type: string
 
 runs:
-  using: 'docker'
-  image: 'docker://sandervocke/qoverage:latest'
-  args: [
-      "collect",
-      "--report", "qoverage-report.xml",
-      "--files-path", "pip/shoopdaloop",
-      "--input", "qoverage-console-output.log",
-      "--strip-paths-expr", "${{ inputs.strip }}",
-      "--report-prefix", "src/shoopdaloop",
-      "--verbose"
-  ]
+  using: "composite"
+  steps:
+  - name: run
+    shell: bash
+    run: |
+      qoverage collect --report qoverage-report.xml --files-path pip/shoopdaloop --input qoverage-console-output.log --strip-paths-expr "${{ inputs.strip }}" --report-prefix src/shoopdaloop --verbose

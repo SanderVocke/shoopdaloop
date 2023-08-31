@@ -168,6 +168,8 @@ jobs:
         pip_install_extra_args: --break-system-packages
         whl_suffix: coverage
         install: true
+    - name: Install Qoverage
+      uses: ./.github/actions/install_qoverage
     - name: Qoverage - Instrument QML files
       uses: ./.github/actions/qoverage_instrument
     - name: Find Qt

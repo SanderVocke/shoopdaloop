@@ -1,0 +1,11 @@
+name: Install Qoverage
+description: Install Qoverage, for now using a direct link to its Github pre-release.
+
+runs:
+  using: "composite"
+  steps:
+  - name: run
+    shell: bash
+    run: |
+      wget https://github.com/SanderVocke/qoverage/releases/download/v0.1.0/qoverage-0.1.0-py3-none-any.whl
+      python3 -m pip install --break-system-packages qoverage-0.1.0-py3-none-any.whl
