@@ -227,6 +227,7 @@ jobs:
           BUILDDIR=${{ steps.build.outputs.build_dir }}
           DO_GENHTML=0
           LD_LIBRARY_PATH=${{ env.qtlibpath }}
+          QT_ASSUME_STDERR_HAS_CONSOLE=1
           ${{ steps.build.outputs.install_dir }}/scripts/run_and_generate_coverage.sh
     - name: Generate QML Python coverage report
       run: |
