@@ -11,4 +11,4 @@ runs:
   - name: run
     shell: bash
     run: |
-      qoverage collect --report qoverage-report.xml --files-path pip/shoopdaloop --input qoverage-console-output.log --strip-paths-expr "${{ inputs.strip }}" --report-prefix src/shoopdaloop --verbose
+      qoverage collect --report qoverage-report.xml --files-path pip/shoopdaloop --input qoverage-console-output.log --strip-paths-expr "${{ inputs.strip }}" --report-prefix src/shoopdaloop/ --verbose
