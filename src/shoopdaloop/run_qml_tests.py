@@ -60,6 +60,7 @@ exitcode = qml_tests.run_quick_test_main_with_setup(len(sys.argv), to_c_chars(sy
 
 qoverage_collector_factory.report_all()
 
-print('All tests done. Exiting with code {}'.format(exitcode))
+final_msg = 'Tests ran successfully' if exitcode == 0 else 'Test(s) failed or failed to run'
+print('{}. Exiting with code {}'.format(final_msg, exitcode))
 
 exit(exitcode)

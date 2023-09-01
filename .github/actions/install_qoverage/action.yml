@@ -1,0 +1,10 @@
+name: Install Qoverage
+description: Install Qoverage, for now using a direct link to its Github pre-release.
+
+runs:
+  using: "composite"
+  steps:
+  - name: run
+    shell: bash
+    run: |
+      python3 -m pip install --force-reinstall --break-system-packages qoverage
