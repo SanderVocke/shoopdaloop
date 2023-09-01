@@ -39,6 +39,7 @@ runs:
       ${{ inputs.root_path }}/run_qml_tests.py
       -input ${{ inputs.root_path }}/lib/qml/test
       -o ${{ env.results_xml }},junitxml
+      -functions
       2>&1 | tee ${{ inputs.tee_all_output_to }}
   
   - name: Report results filename
