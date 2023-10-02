@@ -208,6 +208,11 @@ Item {
     readonly property var audio_ports : ports.filter(p => p && is_audio(p.descriptor))
     readonly property var midi_ports : ports.filter(p => p && is_midi(p.descriptor))
     readonly property var input_ports : ports.filter(p => p && is_in(p.descriptor))
+    readonly property var output_ports : ports.filter(p => p && is_out(p.descriptor))
+    readonly property var audio_in_ports : audio_ports.filter(p => p && is_in(p.descriptor))
+    readonly property var audio_out_ports : audio_ports.filter(p => p && is_out(p.descriptor))
+    readonly property var midi_in_ports : midi_ports.filter(p => p && is_in(p.descriptor))
+    readonly property var midi_out_ports : midi_ports.filter(p => p && is_out(p.descriptor))
 
     Loader {
         id: fx_chain_loader
@@ -294,7 +299,7 @@ Item {
 
                             MenuItem {
                                 text: "Connections..."
-                                onClicked: { root.openConnectionsDialog() }
+                                onClicked: { connectionsdialog.open() }
                             }
 
                             MenuItem {
@@ -422,8 +427,13 @@ Item {
     }
 
     ConnectionsDialog {
-        id: connections_dialog
+        id: connectionsdialog
         title: root.name + " Connections"
+
+        audio_in_ports : root.audio_in_ports
+        audio_out_ports : root.audio_out_ports
+        midi_in_ports : root.midi_in_ports
+        midi_out_ports : root.midi_out_ports
     }
 
 }

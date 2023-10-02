@@ -34,6 +34,7 @@ JackPort::JackPort(std::string name,
         throw std::runtime_error("Unable to open port.");
     }
 
+    m_port = p;
     m_name = std::string(jack_port_name(m_port));
 }
 
@@ -56,7 +57,7 @@ PortExternalConnectionStatus JackPort::get_external_connection_status() const {
 
     // Get list of port names we are connected to and update/create entries
     const char ** connected_ports = jack_port_get_all_connections(m_client, m_port);
-    for(auto n = connected_ports; n != nullptr; n++) {
+    for(auto n = connected_ports; n != nullptr && *n != nullptr; n++) {
         std::string _n(*n);
         rval[_n] = true;
     }

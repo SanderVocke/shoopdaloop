@@ -171,6 +171,12 @@ class ProfilingReport:
 
     def __init__(self, backend_obj : 'profiling_report_t'):
         self.items = [ProfilingReportItem(backend_obj.items[i]) for i in range(backend_obj.n_items)]
+        
+def parse_connections_state(backend_state : 'port_connections_state_info_t'):
+    rval = dict()
+    for i in range(backend_state.n_ports):
+        rval[str(backend_state.ports[i].name)] = bool(backend_state.ports[i].connected)
+    return rval
 
 def backend_midi_message_to_dict(backend_msg: 'midi_event_t'):
     r = dict()
@@ -432,6 +438,12 @@ class BackendAudioPort:
     
     def dummy_request_data(self, n_samples):
         dummy_audio_port_request_data(self._c_handle, n_samples)
+    
+    def get_connections_state(self):
+        state = get_audio_port_connections_state(self._c_handle)
+        rval = parse_connections_state(state[0])
+        destroy_port_connections_state(state)
+        return rval
 
     def __del__(self):
         self.destroy()
@@ -495,6 +507,12 @@ class BackendMidiPort:
     
     def dummy_request_data(self, n_frames):
         dummy_midi_port_request_data(self._c_handle, n_frames)
+    
+    def get_connections_state(self):
+        state = get_midi_port_connections_state(self._c_handle)
+        rval = parse_connections_state(state[0])
+        destroy_port_connections_state(state)
+        return rval
 
     def __del__(self):
         self.destroy()
