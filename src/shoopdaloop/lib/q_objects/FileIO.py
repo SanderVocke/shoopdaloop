@@ -12,11 +12,18 @@ import math
 import glob
 
 from PySide6.QtCore import QObject, Slot, Signal, QThread
+from PySide6.QtQml import QJSValue
 
 from .Task import Task
 from .Tasks import Tasks
 
 from ..logging import Logger
+
+def call_callable(callable, *args):
+    if isinstance(callable, QJSValue):
+        return callable.call(args)
+    else:
+        return callable(*args)
 
 # Allow filesystem operations from QML
 class FileIO(QThread):
@@ -139,12 +146,11 @@ class FileIO(QThread):
         return task
     
     @Slot(str, int, 'QVariant', 'QVariant')
-    def load_midi_to_channel(self, filename, sample_rate, channel, maybe_loop_set_length):
+    def load_midi_to_channel(self, filename, sample_rate, channel, post_load_hook=None):
         self.startLoadingFile.emit()
         try:
             mido_file = mido.MidiFile(filename)
             mido_msgs = [msg for msg in mido_file]
-            length = int(math.ceil(mido_file.length * sample_rate))
             total_time = 0.0
             total_sample_time = 0
             backend_msgs = []
@@ -163,20 +169,20 @@ class FileIO(QThread):
                 })
             
             channel.load_data(backend_msgs)
-            if maybe_loop_set_length:
-                self.logger.debug("Set loop length to {}".format(total_sample_time))
-                maybe_loop_set_length.set_length(total_sample_time)
+            
+            if post_load_hook:
+                call_callable(post_load_hook, total_sample_time)
             
             self.logger.info("Loaded MIDI from {} into channel ({} messages, {} samples)".format(filename, len(backend_msgs), total_sample_time))
         finally:
             self.doneLoadingFile.emit()
     
     @Slot(str, int, 'QVariant', 'QVariant', result=Task)
-    def load_midi_to_channel_async(self, filename, sample_rate, channel, maybe_loop_set_length):
+    def load_midi_to_channel_async(self, filename, sample_rate, channel, post_load_hook):
         task = Task(parent=self)
         def do_load():
             try:
-                self.load_midi_to_channel(filename, sample_rate, channel, maybe_loop_set_length)
+                self.load_midi_to_channel(filename, sample_rate, channel, post_load_hook)
             finally:
                 task.done()
         
@@ -211,7 +217,7 @@ class FileIO(QThread):
         return task
     
     @Slot(str, int, 'QVariant', list, 'QVariant')
-    def load_soundfile_to_channels(self, filename, target_sample_rate, maybe_target_data_length, channels_to_loop_channels, maybe_loop_set_length):
+    def load_soundfile_to_channels(self, filename, target_sample_rate, maybe_target_data_length, channels_to_loop_channels, post_load_hook=None):
         self.startLoadingFile.emit()
         try:
             data, file_sample_rate = sf.read(filename, dtype='float32')
@@ -246,20 +252,19 @@ class FileIO(QThread):
                     channel.update() # dbg
                     self.logger.debug("load channel: {} samples, result {}".format(len(data_channel), channel.data_length))
             
-            if maybe_loop_set_length:
-                self.logger.debug("Set loop length to {}".format(len(resampled[0])))
-                maybe_loop_set_length.set_length(len(resampled[0]))
+            if post_load_hook:
+                call_callable(post_load_hook, len(resampled[0]))
 
             self.logger.info("Loaded {}-channel audio from {} ({} samples)".format(len(resampled), filename, len(resampled[0])))
         finally:
             self.doneLoadingFile.emit()
     
     @Slot(str, int, 'QVariant', list, 'QVariant', result=Task)
-    def load_soundfile_to_channels_async(self, filename, target_sample_rate, target_data_length, channels_to_loop_channels, maybe_loop_set_length):
+    def load_soundfile_to_channels_async(self, filename, target_sample_rate, maybe_target_data_length, channels_to_loop_channels, post_load_hook):
         task = Task(parent=self)
         def do_load():
             try:
-                self.load_soundfile_to_channels(filename, target_sample_rate, target_data_length, channels_to_loop_channels, maybe_loop_set_length)
+                self.load_soundfile_to_channels(filename, target_sample_rate, maybe_target_data_length, channels_to_loop_channels, post_load_hook)
             finally:
                 task.done()
         
