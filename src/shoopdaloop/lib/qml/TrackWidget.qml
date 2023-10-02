@@ -171,31 +171,6 @@ Item {
         rowAdded()
     }
 
-    // signal toggle_loop_in_scene(var loop)
-    // signal renamed(string name)
-    // signal request_select_loop(var loop)
-    // signal request_rename_loop(var loop, string name)
-    // signal request_clear_loop(var loop)
-    // signal request_toggle_loop_selected(var loop)
-    // signal request_set_targeted_loop(var loop)
-    // signal loop_created(int index, LoopWidget loop)
-
-    // function actions_on_loop_mgrs(idx, on_idx_loop_fn, on_other_loop_fn) {
-    //     for(var i = 0; i < track.num_loops; i++) {
-    //         var mgr = loop_managers[i]
-    //         if (idx === i) {
-    //             on_idx_loop_fn(mgr)
-    //         }
-    //         else {
-    //             on_other_loop_fn(mgr)
-    //         }
-    //     }
-    // }
-
-    // TODO: make ports dynamic
-    // TODO: apparently the order in which these are instantiated will make
-    // Patchance group the pairs or not. Quite confusing...
-
     RepeaterWithLoadedDetection {
         id : audio_ports_repeater
         model : root.audio_port_descriptors.length
@@ -318,9 +293,15 @@ Item {
                             id: menu
 
                             MenuItem {
+                                text: "Connections..."
+                                onClicked: { root.openConnectionsDialog() }
+                            }
+
+                            MenuItem {
                                 text: "Delete Track"
                                 onClicked: { root.requestDelete() }
                             }
+
                             MenuItem {
                                 text: "Snapshot FX State"
                                 enabled: root.maybe_fx_chain != undefined
@@ -342,6 +323,7 @@ Item {
                                     }
                                 }
                             }
+
                             Menu {
                                 id: restore_submenu
                                 title: "Restore FX State"
@@ -438,4 +420,10 @@ Item {
             }
         }
     }
+
+    ConnectionsDialog {
+        id: connections_dialog
+        title: root.name + " Connections"
+    }
+
 }

@@ -175,6 +175,16 @@ typedef struct {
     profiling_report_item_t *items;
 } profiling_report_t;
 
+typedef struct {
+    const char *name;
+    unsigned connected;
+} port_maybe_connection_t;
+
+typedef struct {
+    unsigned n_ports;
+    port_maybe_connection_t *ports;
+} port_connections_state_t;
+
 #ifdef __cplusplus
 }
 #endif
