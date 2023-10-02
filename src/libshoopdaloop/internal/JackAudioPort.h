@@ -3,7 +3,7 @@
 #include "JackPort.h"
 #include "AudioPortInterface.h"
 
-class JackAudioPort : public AudioPortInterface<jack_default_audio_sample_t>, public JackPort {
+class JackAudioPort : public virtual AudioPortInterface<jack_default_audio_sample_t>, public JackPort {
 public:
     JackAudioPort(
         std::string name,

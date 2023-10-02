@@ -1,3 +1,4 @@
+#include "PortInterface.h"
 #include "WithCommandQueue.h"
 #include "types.h"
 #include <bits/chrono.h>
@@ -20,8 +21,29 @@ const std::map<DummyAudioSystemMode, const char*> mode_names = {
     {DummyAudioSystemMode::Controlled, "Controlled"}
 };
 
+DummyPort::DummyPort(
+    std::string name,
+    PortDirection direction,
+    PortType type
+) : m_name(name), m_direction(direction), m_type(type) {}
+
+const char* DummyPort::name() const { return m_name.c_str(); }
+
+PortDirection DummyPort::direction() const { return m_direction; }
+
+PortType DummyPort::type() const { return m_type; }
+
+void DummyPort::close() {}
+
+PortExternalConnectionStatus DummyPort::get_external_connection_status() const { return PortExternalConnectionStatus(); }
+
+void DummyPort::connect_external(std::string name) {}
+
+void DummyPort::disconnect_external(std::string name) {}
+
 DummyAudioPort::DummyAudioPort(std::string name, PortDirection direction)
     : AudioPortInterface<audio_sample_t>(name, direction), m_name(name),
+      DummyPort(name, direction, PortType::Audio),
       m_direction(direction),
       m_queued_data(256) { log_init(); }
 
@@ -57,12 +79,6 @@ float *DummyAudioPort::PROC_get_buffer(size_t n_frames, bool do_zero) {
     return rval;
 }
 
-const char *DummyAudioPort::name() const { return m_name.c_str(); }
-
-PortDirection DummyAudioPort::direction() const { return m_direction; }
-
-void DummyAudioPort::close() {}
-
 void DummyAudioPort::queue_data(size_t n_frames, audio_sample_t const *data) {
     m_queued_data.push(
         std::vector<audio_sample_t>(data, data + n_frames)
@@ -73,7 +89,7 @@ bool DummyAudioPort::get_queue_empty() {
     return m_queued_data.empty();
 }
 
-DummyAudioPort::~DummyAudioPort() { close(); }
+DummyAudioPort::~DummyAudioPort() { DummyPort::close(); }
 
 void DummyAudioPort::PROC_post_process(float* buf, size_t n_frames) {
     size_t to_store = std::min(n_frames, m_n_requested_samples.load());
@@ -144,19 +160,13 @@ bool DummyMidiPort::write_by_reference_supported() const { return true; }
 bool DummyMidiPort::write_by_value_supported() const { return true; }
 
 DummyMidiPort::DummyMidiPort(std::string name, PortDirection direction)
-    : MidiPortInterface(name, direction), m_direction(direction), m_name(name) {
+    : MidiPortInterface(name, direction), DummyPort(name, direction, PortType::Midi){
     log_init();
 }
 
 std::string DummyMidiPort::log_module_name() const {
     return "Backend.DummyMidiPort";
 }
-
-const char *DummyMidiPort::name() const { return m_name.c_str(); }
-
-PortDirection DummyMidiPort::direction() const { return m_direction; }
-
-void DummyMidiPort::close() {}
 
 void DummyMidiPort::clear_queues() {
     m_queued_msgs.clear();
@@ -241,7 +251,7 @@ std::vector<DummyMidiPort::StoredMessage> DummyMidiPort::get_written_requested_m
     return rval;
 }
 
-DummyMidiPort::~DummyMidiPort() { close(); }
+DummyMidiPort::~DummyMidiPort() { DummyPort::close(); }
 
 template <typename Time, typename Size>
 std::string DummyAudioSystem<Time, Size>::log_module_name() const {

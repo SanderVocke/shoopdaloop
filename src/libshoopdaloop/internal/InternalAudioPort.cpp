@@ -39,6 +39,18 @@ PortDirection InternalAudioPort<SampleT>::direction() const {
 }
 
 template <typename SampleT>
+PortExternalConnectionStatus InternalAudioPort<SampleT>::get_external_connection_status() const { return PortExternalConnectionStatus(); }
+
+template <typename SampleT>
+void InternalAudioPort<SampleT>::connect_external(std::string name) {}
+
+template <typename SampleT>
+void InternalAudioPort<SampleT>::disconnect_external(std::string name) {}
+
+template <typename SampleT>
+PortType InternalAudioPort<SampleT>::type() const { return PortType::Audio; }
+
+template <typename SampleT>
 void InternalAudioPort<SampleT>::reallocate_buffer(size_t n_frames) {
     m_buffer = std::vector<SampleT>(n_frames);
 }

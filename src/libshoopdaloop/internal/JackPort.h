@@ -6,7 +6,7 @@
 #include <memory>
 
 class JackPort :
-    public PortInterface
+    public virtual PortInterface
 {
 protected:
     jack_port_t* m_port;

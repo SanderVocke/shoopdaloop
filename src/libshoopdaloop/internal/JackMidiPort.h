@@ -6,7 +6,7 @@
 #include <vector>
 
 class JackMidiPort :
-    public MidiPortInterface,
+    public virtual MidiPortInterface,
     public MidiReadableBufferInterface,
     public MidiWriteableBufferInterface,
     public JackPort

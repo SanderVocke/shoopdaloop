@@ -27,10 +27,13 @@ public:
     MidiWriteableBufferInterface &PROC_get_write_buffer (size_t n_frames) override;
 
     const char* name() const override;
-
     PortDirection direction() const override;
-
     void close() override;
+    PortType type() const override;
+
+    PortExternalConnectionStatus get_external_connection_status() const override;
+    void connect_external(std::string name) override;
+    void disconnect_external(std::string name) override;
 
     void PROC_write_event_value(uint32_t size,
                          uint32_t time,

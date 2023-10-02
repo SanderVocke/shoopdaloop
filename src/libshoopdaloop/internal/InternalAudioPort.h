@@ -25,7 +25,12 @@ public:
     void reallocate_buffer(size_t n_frames);
     size_t buffer_size() const;
     void close() override;
+    PortType type() const override;
     void zero();
+
+    PortExternalConnectionStatus get_external_connection_status() const override;
+    void connect_external(std::string name) override;
+    void disconnect_external(std::string name) override;
 };
 
 #ifndef IMPLEMENT_INTERNALAUDIOPORT_H
