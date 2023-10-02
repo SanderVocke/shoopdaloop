@@ -1,14 +1,16 @@
 #pragma once
 #include <jack/types.h>
 #include "MidiPortInterface.h"
+#include "JackPort.h"
 #include <jack_wrappers.h>
 #include <vector>
 
-class JackMidiPort : public MidiPortInterface, public MidiReadableBufferInterface, public MidiWriteableBufferInterface {
-    jack_port_t* m_port;
-    jack_client_t* m_client;
-    std::string m_name;
-    PortDirection m_direction;
+class JackMidiPort :
+    public MidiPortInterface,
+    public MidiReadableBufferInterface,
+    public MidiWriteableBufferInterface,
+    public JackPort
+{
     void * m_jack_read_buf;
     void * m_jack_write_buf;
     static constexpr size_t n_event_storage = 1024;
@@ -44,14 +46,10 @@ public:
     JackMidiPort(
         std::string name,
         PortDirection direction,
-        jack_client_t *client
+        jack_client_t *client,
+        std::shared_ptr<JackAllPorts> all_ports_tracker
     );
 
-    const char* name() const override;
-    PortDirection direction() const override;
-    void close() override;
-    jack_port_t *get_jack_port() const;
     MidiReadableBufferInterface &PROC_get_read_buffer (size_t n_frames) override;
     MidiWriteableBufferInterface &PROC_get_write_buffer (size_t n_frames) override;
-    ~JackMidiPort() override;
 };

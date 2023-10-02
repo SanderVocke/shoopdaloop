@@ -1,5 +1,6 @@
 #pragma once
 #include "AudioSystemInterface.h"
+#include "JackAllPorts.h"
 #include <jack/types.h>
 #include <map>
 #include <atomic>
@@ -11,15 +12,18 @@ class JackAudioSystem : public AudioSystemInterface<jack_nframes_t, size_t> {
     std::map<std::string, std::shared_ptr<PortInterface>> m_ports;
     std::function<void(size_t)> m_process_cb;
     std::atomic<unsigned> m_xruns = 0;
+    std::shared_ptr<JackAllPorts> m_all_ports_tracker;
 
     static int PROC_process_cb_static (jack_nframes_t nframes,
                                   void *arg);
-
     static int PROC_xrun_cb_static(void *arg);
+    static void PROC_port_connect_cb_static(jack_port_id_t a, jack_port_id_t b, int connect, void *arg);
+    static void PROC_port_registration_cb_static(jack_port_id_t port, int, void *arg);
+    static void PROC_port_rename_cb_static(jack_port_id_t port, const char *old_name, const char *new_name, void *arg);
 
     int PROC_process_cb_inst (jack_nframes_t nframes);
-
     int PROC_xrun_cb_inst ();
+    void PROC_update_ports_cb_inst();
 
 public:
     JackAudioSystem(

@@ -1,24 +1,16 @@
 #pragma once
 #include <jack/types.h>
+#include "JackPort.h"
 #include "AudioPortInterface.h"
 
-class JackAudioPort : public AudioPortInterface<jack_default_audio_sample_t> {
-    jack_port_t* m_port;
-    jack_client_t* m_client;
-    std::string m_name;
-    PortDirection m_direction;
-
+class JackAudioPort : public AudioPortInterface<jack_default_audio_sample_t>, public JackPort {
 public:
     JackAudioPort(
         std::string name,
         PortDirection direction,
-        jack_client_t *client
+        jack_client_t *client,
+        std::shared_ptr<JackAllPorts> all_ports_tracker
     );
     
     float *PROC_get_buffer(size_t n_frames, bool do_zero=false) override;
-    const char* name() const override;
-    PortDirection direction() const override;
-    void close() override;
-    jack_port_t *get_jack_port() const;
-    ~JackAudioPort() override;
 };

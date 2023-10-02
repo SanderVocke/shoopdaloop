@@ -47,30 +47,11 @@ bool JackMidiPort::write_by_reference_supported() const { return false; }
 bool JackMidiPort::write_by_value_supported() const { return true; }
 
 JackMidiPort::JackMidiPort(std::string name, PortDirection direction,
-                           jack_client_t *client)
-    : MidiPortInterface(name, direction), m_client(client),
-      m_direction(direction) {
+                           jack_client_t *client, std::shared_ptr<JackAllPorts> all_ports_tracker)
+    : MidiPortInterface(name, direction), JackPort(name, direction, PortType::Midi, client, all_ports_tracker) {
 
     m_temp_midi_storage.reserve(n_event_storage);
-
-    m_port = jack_port_register(
-        m_client, name.c_str(), JACK_DEFAULT_MIDI_TYPE,
-        direction == PortDirection::Input ? JackPortIsInput : JackPortIsOutput,
-        0);
-
-    if (m_port == nullptr) {
-        throw std::runtime_error("Unable to open port.");
-    }
-    m_name = std::string(jack_port_name(m_port));
 }
-
-const char *JackMidiPort::name() const { return m_name.c_str(); }
-
-PortDirection JackMidiPort::direction() const { return m_direction; }
-
-void JackMidiPort::close() { jack_port_unregister(m_client, m_port); }
-
-jack_port_t *JackMidiPort::get_jack_port() const { return m_port; }
 
 MidiReadableBufferInterface &
 JackMidiPort::PROC_get_read_buffer(size_t n_frames) {
@@ -85,5 +66,3 @@ JackMidiPort::PROC_get_write_buffer(size_t n_frames) {
     jack_midi_clear_buffer(m_jack_write_buf);
     return *(static_cast<MidiWriteableBufferInterface *>(this));
 }
-
-JackMidiPort::~JackMidiPort() { close(); }
