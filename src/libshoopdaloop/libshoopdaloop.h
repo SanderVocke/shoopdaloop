@@ -102,9 +102,9 @@ midi_port_state_info_t *get_midi_port_state(shoopdaloop_midi_port_t *port);
 void set_midi_port_muted(shoopdaloop_midi_port_t *port, unsigned muted);
 void set_midi_port_passthroughMuted(shoopdaloop_midi_port_t *port, unsigned muted);
 void add_midi_port_passthrough(shoopdaloop_midi_port_t *from, shoopdaloop_midi_port_t *to);
-port_connections_state_t *get_midi_port_connections_state(shoopdaloop_audio_port_t *port);
-void connect_external_midi_port(shoopdaloop_audio_port_t *ours, const char* external_port_name);
-void disconnect_external_midi_port(shoopdaloop_audio_port_t *ours, const char* external_port_name);
+port_connections_state_t *get_midi_port_connections_state(shoopdaloop_midi_port_t *port);
+void connect_external_midi_port(shoopdaloop_midi_port_t *ours, const char* external_port_name);
+void disconnect_external_midi_port(shoopdaloop_midi_port_t *ours, const char* external_port_name);
 // For JACK midi ports only
 shoopdaloop_midi_port_t *open_jack_midi_port (shoopdaloop_backend_instance_t *backend, const char* name_hint, port_direction_t direction);
 jack_port_t *get_midi_port_jack_handle(shoopdaloop_midi_port_t *port);

@@ -445,6 +445,12 @@ class BackendAudioPort:
         destroy_port_connections_state(state)
         return rval
 
+    def connect_external_port(self, name):
+        connect_external_audio_port(self._c_handle, name.encode('ascii'))
+    
+    def disconnect_external_port(self, name):
+        disconnect_external_audio_port(self._c_handle, name.encode('ascii'))
+
     def __del__(self):
         self.destroy()
 
@@ -513,6 +519,12 @@ class BackendMidiPort:
         rval = parse_connections_state(state[0])
         destroy_port_connections_state(state)
         return rval
+
+    def connect_external_port(self, name):
+        connect_external_midi_port(self._c_handle, name.encode('ascii'))
+    
+    def disconnect_external_port(self, name):
+        disconnect_external_midi_port(self._c_handle, name.encode('ascii'))
 
     def __del__(self):
         self.destroy()

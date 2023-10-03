@@ -66,9 +66,17 @@ PortExternalConnectionStatus JackPort::get_external_connection_status() const {
 }
 
 void JackPort::connect_external(std::string name) {
-    jack_connect(m_client, jack_port_name(m_port), name.c_str());
+    if (m_direction == PortDirection::Input) {
+        jack_connect(m_client, name.c_str(), jack_port_name(m_port));
+    } else {
+        jack_connect(m_client, jack_port_name(m_port), name.c_str());
+    }
 }
 
 void JackPort::disconnect_external(std::string name) {
-    jack_disconnect(m_client, jack_port_name(m_port), name.c_str());
+    if (m_direction == PortDirection::Input) {
+        jack_disconnect(m_client, name.c_str(), jack_port_name(m_port));
+    } else {
+        jack_disconnect(m_client, jack_port_name(m_port), name.c_str());
+    }
 }

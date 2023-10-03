@@ -16,12 +16,14 @@ Dialog {
     modal: true
     standardButtons: Dialog.Close
 
-    width: 800
-    height: 400
+    width: Overlay.overlay.width - 50
+    height: Overlay.overlay.height - 50
+    anchors.centerIn: Overlay.overlay
 
     TabBar {
         id: bar
         width: parent.width
+        height: 50
         TabButton {
             text: 'Audio in'
         }
@@ -40,6 +42,8 @@ Dialog {
         width: parent.width
         anchors.bottom: parent.bottom
         anchors.top: bar.bottom
+        anchors.left: parent.left
+        anchors.right: parent.right
         currentIndex: bar.currentIndex
         PortsConnections {
             id: audio_in_view
@@ -62,48 +66,153 @@ Dialog {
     component PortsConnections: Item {
         id: connections
         property var ports: []
-        property int name_width: 100
-        property int column_width: 100
+        property int name_width: 300
+        property int column_width: 200
+        property int grid_cell_size: 25
+        property int font_size: 14
 
-        Row {
-            Mapper {
-                model: connections.ports
-                Label {
-                    property var mapped_item
-                    property int index
+        Timer {
+            interval: 100
+            repeat: true
+            running: parent.visible
+            onTriggered: parent.update()
+        }
 
-                    text: mapped_item.name
+        property var port_connections : []
 
-                    Component.onCompleted: root.logger.info("Made label! " + text)
-                    onTextChanged: root.logger.info(text)
+        function update() {
+            port_connections = ports.map(p => {
+                return p.get_connections_state()
+            })
+        }
+
+        onPortsChanged: {
+            update()
+        }
+
+        readonly property var external_ports : {
+            var all_ports = []
+            for(var idx=0; idx < port_connections.length; idx++) {
+                for(var j=0; j < Object.entries(port_connections[idx]).length; j++) {
+                    let name = Object.entries(port_connections[idx])[j][0]
+                    all_ports.push(name)
                 }
             }
-
-            // Rectangle { width: connections.name_width }
-
-            // Mapper {
-            //     model: connections.ports
-            
-            //     Rectangle {
-            //         property int index
-            //         property var mapped_item
-
-            //         width: connections.column_width
-            //         Label {
-            //             text: mapped_item.name
-            //             transform: Rotation { origin.x: 0; origin.y: 0; angle: 45}
-            //         }
-            //     }
-            // }
+            return all_ports
         }
-        // Column {
-        //     Mapper {
-        //         model : ports
 
-        //         Row {
+        // Header row for our ports
+        Row {
+            id: header
+            anchors.top: parent.top
+            height: 150
 
-        //         }
-        //     }
-        // }
+            Rectangle {
+                width: connections.name_width
+                height: 150
+                color: 'transparent'
+            }
+            Mapper {
+                model: connections.ports
+                
+                Rectangle {
+                    property int index
+                    property var mapped_item
+                    width: connections.grid_cell_size
+                    height: 150
+                    color: 'transparent'
+                    Label {
+                        id: label
+                        text: mapped_item.name
+                        font.pixelSize: connections.font_size
+                        anchors.right: parent.horizontalCenter
+                        anchors.bottom: parent.bottom
+                        transform: Rotation { origin.x: label.width; origin.y: label.height; angle: 25}
+                    }
+                }
+            }
+        }   
+
+        ScrollView {
+            anchors.bottom: parent.bottom
+            anchors.top: header.bottom
+            anchors.left: parent.left
+            anchors.right: parent.right
+
+            ScrollBar.vertical.policy: ScrollBar.AsNeeded
+            ScrollBar.horizontal.policy: ScrollBar.AsNeeded
+    
+            Column {
+                // Row per external port
+                Mapper {
+                    model: connections.external_ports
+
+                    Row {
+                        id: external_port_row
+                        property var mapped_item
+                        property int index
+
+                        Rectangle {
+                            width: connections.name_width
+                            height: connections.grid_cell_size
+                            color: 'transparent'
+
+                            Label {
+                                anchors.verticalCenter: parent.verticalCenter
+                                anchors.right: parent.right
+                                anchors.rightMargin: 5
+                                font.pixelSize: connections.font_size
+                                text: mapped_item
+                            }
+                        }
+                        Mapper {
+                            model: connections.ports
+                            
+                            Rectangle {
+                                property int index
+                                property var mapped_item
+                                width: connections.grid_cell_size
+                                height: connections.grid_cell_size
+                                border.width: 1
+                                border.color: Material.foreground
+                                color: 'transparent'
+
+                                property var connected : {
+                                    let our_port_conns = connections.port_connections[index]
+                                    if (our_port_conns.hasOwnProperty (external_port_row.mapped_item)) {
+                                        return our_port_conns[external_port_row.mapped_item]
+                                    }
+                                }
+                                property var connectable : connections.port_connections[index].hasOwnProperty(external_port_row.mapped_item)
+
+                                MouseArea {
+                                    hoverEnabled: false
+                                    anchors.fill: parent
+                                    onClicked: {
+                                        if (parent.connectable) {
+                                            if (connected) {
+                                                parent.mapped_item.disconnect_external_port(external_port_row.mapped_item)
+                                            } else {
+                                                parent.mapped_item.connect_external_port(external_port_row.mapped_item)
+                                            }
+                                            connections.update()
+                                        }
+                                    }
+                                }
+
+                                MaterialDesignIcon {
+                                    size: 20
+                                    name: (!connectable) ? "cancel" : "circle"
+                                    visible: connected || !connectable
+                                    color: Material.foreground
+
+                                    anchors.centerIn: parent
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }

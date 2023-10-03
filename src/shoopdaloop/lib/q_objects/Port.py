@@ -106,6 +106,7 @@ class Port(QQuickItem):
     @name.setter
     def name(self, s):
         if self._name != s:
+            self._name = s
             self.nameChanged.emit(s)
 
     # muted
@@ -194,6 +195,18 @@ class Port(QQuickItem):
                 self._initialized = True
                 self._backend.registerBackendObject(self)
                 self.initializedChanged.emit(True)
+
+    @Slot(str)
+    def connect_external_port(self, name):
+        self._backend_obj.connect_external_port(name)
+    
+    @Slot(str)
+    def disconnect_external_port(self, name):
+        self._backend_obj.disconnect_external_port(name)
+
+    @Slot(result=dict)
+    def get_connections_state(self):
+        return (self._backend_obj.get_connections_state() if self._backend_obj else dict())
 
     ##########
     ## INTERNAL MEMBERS

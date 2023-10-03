@@ -80,10 +80,6 @@ class MidiPort(Port):
     def dummy_clear_queues(self):
         self._backend_obj.dummy_clear_queues()
     
-    @Slot(result=dict)
-    def get_connections_state(self):
-        return (self._backend_obj.get_connections_state() if self._backend_obj else dict())
-    
     ##########
     ## INTERNAL MEMBERS
     ##########

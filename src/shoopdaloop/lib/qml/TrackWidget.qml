@@ -1,6 +1,7 @@
 import QtQuick 6.3
 import QtQuick.Controls 6.3
 import QtQuick.Controls.Material 6.3
+import QtQuick.Window
 
 import '../generated/types.js' as Types
 import "../generate_session.js" as GenerateSession

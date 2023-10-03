@@ -1005,7 +1005,7 @@ audio_port_state_info_t *get_audio_port_state(shoopdaloop_audio_port_t *port) {
     r->volume = p->volume;
     r->muted = p->muted;
     r->passthrough_muted = p->passthrough_muted;
-    r->name = p->port->name();
+    r->name = strdup(p->maybe_audio()->name());
     p->peak = 0.0f;
     return r;
 }
@@ -1017,7 +1017,7 @@ midi_port_state_info_t *get_midi_port_state(shoopdaloop_midi_port_t *port) {
     r->n_notes_active = p->maybe_midi_state->n_notes_active();
     r->muted = p->muted;
     r->passthrough_muted = p->passthrough_muted;
-    r->name = p->port->name();
+    r->name = strdup(p->maybe_midi()->name());
     p->n_events_processed = 0;
     return r;
 }
