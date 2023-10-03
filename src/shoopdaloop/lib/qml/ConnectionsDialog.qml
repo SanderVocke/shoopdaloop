@@ -98,6 +98,10 @@ Dialog {
                     all_ports.push(name)
                 }
             }
+
+            // Uniquify
+            all_ports = Array.from(new Set(all_ports))
+
             return all_ports
         }
 
@@ -123,7 +127,7 @@ Dialog {
                     color: 'transparent'
                     Label {
                         id: label
-                        text: mapped_item.name
+                        text: mapped_item.name.split(':')[1]
                         font.pixelSize: connections.font_size
                         anchors.right: parent.horizontalCenter
                         anchors.bottom: parent.bottom
@@ -145,68 +149,89 @@ Dialog {
             Column {
                 // Row per external port
                 Mapper {
+                    id: external_ports_mapper
                     model: connections.external_ports
 
-                    Row {
-                        id: external_port_row
+                    Column {
+                        id: external_port_item
                         property var mapped_item
                         property int index
 
-                        Rectangle {
-                            width: connections.name_width
-                            height: connections.grid_cell_size
-                            color: 'transparent'
+                        Label {
+                            property bool show: ( parent.index == 0 ||
+                                                  external_ports_mapper.model[parent.index-1].split(':')[0] != external_port_item.mapped_item.split(':')[0] ) ?
+                                                    20 : 0
+                            height: show ? 30 : 0
+                            text: show ? external_port_item.mapped_item.split(':')[0] : ""
+                            font.pixelSize : connections.font_size
+                            font.italic : true
+                            font.underline: true
 
-                            Label {
-                                anchors.verticalCenter: parent.verticalCenter
-                                anchors.right: parent.right
-                                anchors.rightMargin: 5
-                                font.pixelSize: connections.font_size
-                                text: mapped_item
-                            }
+                            width: connections.name_width
+                            horizontalAlignment: Text.AlignRight
+                            verticalAlignment: Text.AlignBottom
+                            rightPadding: 10
                         }
-                        Mapper {
-                            model: connections.ports
-                            
+
+                        Row {
+                            id: external_port_row
+
                             Rectangle {
-                                property int index
-                                property var mapped_item
-                                width: connections.grid_cell_size
+                                width: connections.name_width
                                 height: connections.grid_cell_size
-                                border.width: 1
-                                border.color: Material.foreground
                                 color: 'transparent'
 
-                                property var connected : {
-                                    let our_port_conns = connections.port_connections[index]
-                                    if (our_port_conns.hasOwnProperty (external_port_row.mapped_item)) {
-                                        return our_port_conns[external_port_row.mapped_item]
-                                    }
+                                Label {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    anchors.right: parent.right
+                                    anchors.rightMargin: 5
+                                    font.pixelSize: connections.font_size
+                                    text: mapped_item.split(':')[1]
                                 }
-                                property var connectable : connections.port_connections[index].hasOwnProperty(external_port_row.mapped_item)
+                            }
+                            Mapper {
+                                model: connections.ports
+                                
+                                Rectangle {
+                                    property int index
+                                    property var mapped_item
+                                    width: connections.grid_cell_size
+                                    height: connections.grid_cell_size
+                                    border.width: 1
+                                    border.color: Material.foreground
+                                    color: 'transparent'
 
-                                MouseArea {
-                                    hoverEnabled: false
-                                    anchors.fill: parent
-                                    onClicked: {
-                                        if (parent.connectable) {
-                                            if (connected) {
-                                                parent.mapped_item.disconnect_external_port(external_port_row.mapped_item)
-                                            } else {
-                                                parent.mapped_item.connect_external_port(external_port_row.mapped_item)
-                                            }
-                                            connections.update()
+                                    property var connected : {
+                                        let our_port_conns = connections.port_connections[index]
+                                        if (our_port_conns.hasOwnProperty (external_port_item.mapped_item)) {
+                                            return our_port_conns[external_port_item.mapped_item]
                                         }
                                     }
-                                }
+                                    property var connectable : connections.port_connections[index].hasOwnProperty(external_port_item.mapped_item)
 
-                                MaterialDesignIcon {
-                                    size: 20
-                                    name: (!connectable) ? "cancel" : "circle"
-                                    visible: connected || !connectable
-                                    color: Material.foreground
+                                    MouseArea {
+                                        hoverEnabled: false
+                                        anchors.fill: parent
+                                        onClicked: {
+                                            if (parent.connectable) {
+                                                if (connected) {
+                                                    parent.mapped_item.disconnect_external_port(external_port_item.mapped_item)
+                                                } else {
+                                                    parent.mapped_item.connect_external_port(external_port_item.mapped_item)
+                                                }
+                                                connections.update()
+                                            }
+                                        }
+                                    }
 
-                                    anchors.centerIn: parent
+                                    MaterialDesignIcon {
+                                        size: 20
+                                        name: (!connectable) ? "cancel" : "circle"
+                                        visible: connected || !connectable
+                                        color: Material.foreground
+
+                                        anchors.centerIn: parent
+                                    }
                                 }
                             }
                         }
