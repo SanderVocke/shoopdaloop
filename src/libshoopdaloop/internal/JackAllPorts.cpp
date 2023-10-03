@@ -1,10 +1,10 @@
 #include "JackAllPorts.h"
 #include "jack_wrappers.h"
 
-JackAllPorts::JackAllPorts() : m_cache(std::make_shared<std::vector<JackAllPortsEntry>>()) {}
+JackAllPorts::JackAllPorts() : m_cache(std::vector<JackAllPortsEntry>()) {}
 
 void JackAllPorts::update(jack_client_t *client) {
-    auto new_cache = std::make_shared<std::vector<JackAllPortsEntry>>();
+    auto new_cache = std::vector<JackAllPortsEntry>();
     const char** port_names = jack_get_ports(client, nullptr, nullptr, 0);
 
     for(auto port_name = port_names; port_name != nullptr && *port_name != nullptr; port_name++) {
@@ -20,12 +20,16 @@ void JackAllPorts::update(jack_client_t *client) {
             entry.connections.push_back(std::string(*connected_port));
         }
 
-        new_cache->push_back(entry);
+        new_cache.push_back(entry);
     }
 
-    m_cache = new_cache;
+    {
+        std::lock_guard<std::mutex> lock(m_cache_mutex);
+        m_cache = new_cache;
+    }
 }
 
-std::vector<JackAllPortsEntry> JackAllPorts::get() const {
-    return *m_cache;
+std::vector<JackAllPortsEntry> JackAllPorts::get() {
+    std::lock_guard<std::mutex> lock(m_cache_mutex);
+    return m_cache;
 }

@@ -3,7 +3,7 @@
 #include <jack/types.h>
 #include <jack_wrappers.h>
 #include <vector>
-#include <memory>
+#include <mutex>
 
 struct JackAllPortsEntry {
     std::string name;
@@ -13,11 +13,12 @@ struct JackAllPortsEntry {
 };
 
 class JackAllPorts {
-    std::shared_ptr<std::vector<JackAllPortsEntry>> m_cache;
+    std::vector<JackAllPortsEntry> m_cache;
+    std::mutex m_cache_mutex;
 
 public:
     JackAllPorts();
 
     void update(jack_client_t *client);
-    std::vector<JackAllPortsEntry> get() const;
+    std::vector<JackAllPortsEntry> get();
 };
