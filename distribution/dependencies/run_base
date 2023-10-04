@@ -12,7 +12,8 @@ libdbus-1-3
 libxkbcommon0
 libgl1-mesa-dev
 
-jackd2
+libjack-dev
+jackd1
 
 # scripting stuff
 procps
