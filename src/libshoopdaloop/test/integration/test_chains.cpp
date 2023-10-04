@@ -63,7 +63,7 @@ struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled {
     SingleDryWetLoopTestChain() {
         log_init();
 
-        api_backend = initialize(Dummy, "backend");
+        api_backend = initialize(Dummy, "backend", "");
         int_backend = internal_backend(api_backend);
         int_dummy_audio_system = (shoop_types::_DummyAudioSystem*)int_backend->audio_system.get();
 

@@ -37,6 +37,7 @@ find_package(Boost COMPONENTS ALL REQUIRED)
 
 # Generate a wrapper for libjack which allows dynamic loading using dlopen
 find_package(Jack REQUIRED)
+get_filename_component(JACK_SONAME ${JACK_LIBRARIES} NAME)
 add_custom_command(
   OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.c ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.h
   COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers && ${CMAKE_SOURCE_DIR}/../third_party/dynload-wrapper/generate-wrapper.py
@@ -44,7 +45,7 @@ add_custom_command(
     --include ${JACK_INCLUDE_DIRS}/jack/midiport.h
     --sys-include '<jack/jack.h>'
     --sys-include '<jack/midiport.h>'
-    --soname ${JACK_LIBRARIES}
+    --soname ${JACK_SONAME}
     --init-name jack_wrappers
     --output-header ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.h
     --output-implementation ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.c

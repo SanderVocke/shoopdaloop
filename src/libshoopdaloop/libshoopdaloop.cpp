@@ -214,9 +214,10 @@ RType evaluate_before_or_after_process(std::function<RType()> fn, bool predicate
 
 shoopdaloop_backend_instance_t *initialize (
     audio_system_type_t audio_system,
-    const char* client_name_hint) {
+    const char* client_name_hint,
+    const char* argstring) {
     
-    auto backend = std::make_shared<Backend>(audio_system, client_name_hint);
+    auto backend = std::make_shared<Backend>(audio_system, client_name_hint, argstring);
     backend->start();
     g_active_backends.insert(backend);
 

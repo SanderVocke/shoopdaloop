@@ -113,6 +113,7 @@ typedef struct {
 typedef struct {
     float dsp_load_percent;
     unsigned xruns_since_last;
+    audio_system_type_t actual_type;
 } backend_state_info_t;
 
 typedef struct {

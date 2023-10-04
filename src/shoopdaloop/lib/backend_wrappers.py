@@ -145,10 +145,12 @@ class MidiPortState:
 class BackendState:
     dsp_load_percent: float
     xruns_since_last: int
+    actual_type: Type[BackendType]
 
     def __init__(self, backend_state : 'backend_state_info_t'):
         self.dsp_load_percent = float(backend_state.dsp_load_percent)
         self.xruns_since_last = int(backend_state.xruns_since_last)
+        self.actual_type = BackendType(backend_state.actual_type)
 
 @dataclass
 class ProfilingReportItem:
@@ -646,7 +648,7 @@ class Backend:
     def terminate(self):
         terminate(self._c_handle)
 
-def init_backend(backend_type : Type[BackendType], client_name_hint : str):
-    _ptr = initialize(backend_type.value, client_name_hint.encode('ascii'))
+def init_backend(backend_type : Type[BackendType], client_name_hint : str, argstring : str):
+    _ptr = initialize(backend_type.value, client_name_hint.encode('ascii'), argstring.encode('ascii'))
     b = Backend(_ptr)
     return b

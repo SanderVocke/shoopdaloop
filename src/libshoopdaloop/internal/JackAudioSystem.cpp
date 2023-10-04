@@ -8,6 +8,10 @@
 #include <memory>
 #include <atomic>
 
+std::string JackAudioSystem::log_module_name() const {
+    return "Backend.JackAudioSystem";
+}
+
 int JackAudioSystem::PROC_process_cb_static(jack_nframes_t nframes, void *arg) {
     auto &inst = *((JackAudioSystem *)arg);
     return inst.PROC_process_cb_inst(nframes);
@@ -50,21 +54,26 @@ void JackAudioSystem::PROC_update_ports_cb_inst() {
 }
 
 JackAudioSystem::JackAudioSystem(std::string client_name,
+                                 std::optional<std::string> server_name,
                                  std::function<void(size_t)> process_cb)
     : AudioSystemInterface(client_name, process_cb), m_client_name(client_name),
       m_process_cb(process_cb), m_all_ports_tracker(std::make_shared<JackAllPorts>()) {
+    log_init();
+
     // We use a wrapper which dlopens Jack to not have a hard linkage
     // dependency. It needs to be initialized first.
     if (initialize_jack_wrappers(0)) {
-        throw std::runtime_error("Unable to find Jack client library.");
+        throw_error<std::runtime_error>("Unable to find Jack client library.");
     }
 
     jack_status_t status;
 
-    m_client = jack_client_open(client_name.c_str(), JackNullOption, &status);
+    std::string servername = server_name.value_or("default");
+    log<logging::LogLevel::info>("Opening JACK client with name {}, server name {}.", client_name, servername);
+    m_client = jack_client_open(client_name.c_str(), JackServerName, &status, servername.c_str());
 
     if (m_client == nullptr) {
-        throw std::runtime_error("Unable to open JACK client.");
+        throw_error<std::runtime_error>("Unable to open JACK client.");
     }
 
     if (status && JackNameNotUnique) {
@@ -90,7 +99,7 @@ JackAudioSystem::JackAudioSystem(std::string client_name,
 
 void JackAudioSystem::start() {
     if (jack_activate(m_client)) {
-        throw std::runtime_error("Could not activate JACK client.");
+        throw_error<std::runtime_error>("Could not activate JACK client.");
     }
 }
 
@@ -136,6 +145,7 @@ const char *JackAudioSystem::client_name() const {
 void JackAudioSystem::close() {
     if (m_client) {
         jack_client_close(m_client);
+        m_client = nullptr;
     }
 }
 

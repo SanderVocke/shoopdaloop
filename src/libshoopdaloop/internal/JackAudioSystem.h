@@ -1,11 +1,19 @@
 #pragma once
 #include "AudioSystemInterface.h"
 #include "JackAllPorts.h"
+#include "LoggingEnabled.h"
 #include <jack/types.h>
 #include <map>
 #include <atomic>
+#include <optional>
 
-class JackAudioSystem : public AudioSystemInterface<jack_nframes_t, size_t> {
+class JackAudioSystem :
+    public AudioSystemInterface<jack_nframes_t, size_t>,
+    private ModuleLoggingEnabled
+{
+private:
+    std::string log_module_name() const override;
+
     jack_client_t * m_client;
     std::string m_client_name;
     size_t m_sample_rate;
@@ -28,6 +36,7 @@ class JackAudioSystem : public AudioSystemInterface<jack_nframes_t, size_t> {
 public:
     JackAudioSystem(
         std::string client_name,
+        std::optional<std::string> server_name,
         std::function<void(size_t)> process_cb
     );
 

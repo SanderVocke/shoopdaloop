@@ -8,7 +8,7 @@ using namespace boost::ut;
 
 suite libshoopdaloop_if_tests = []() {
     "lif_1_create_destroy_backend"_test = []() {
-        shoopdaloop_backend_instance_t * c_backend = initialize (Dummy, "dummy");
+        shoopdaloop_backend_instance_t * c_backend = initialize (Dummy, "dummy", "");
         auto weak_backend = std::weak_ptr<Backend>(internal_backend(c_backend));
         expect(neq(weak_backend.lock(), nullptr));
         terminate(c_backend);
@@ -16,7 +16,7 @@ suite libshoopdaloop_if_tests = []() {
     };
 
     "lif_2_create_destroy_loop"_test = []() {
-        shoopdaloop_backend_instance_t * c_backend = initialize (Dummy, "dummy");
+        shoopdaloop_backend_instance_t * c_backend = initialize (Dummy, "dummy", "");
         {
             auto c_loop = create_loop(c_backend);
             auto weak_loop = std::weak_ptr<ConnectedLoop>(internal_loop(c_loop));
@@ -28,7 +28,7 @@ suite libshoopdaloop_if_tests = []() {
     };
 
     "lif_3_create_destroy_backend_loop_destroyed"_test = []() {
-        shoopdaloop_backend_instance_t * c_backend = initialize (Dummy, "dummy");
+        shoopdaloop_backend_instance_t * c_backend = initialize (Dummy, "dummy", "");
         {
             auto c_loop = create_loop(c_backend);
             auto weak_loop = std::weak_ptr<ConnectedLoop>(internal_loop(c_loop));
@@ -39,7 +39,7 @@ suite libshoopdaloop_if_tests = []() {
     };
 
     "lif_4_channels_not_destroyed_with_loop"_test = []() {
-        shoopdaloop_backend_instance_t * c_backend = initialize (Dummy, "dummy");
+        shoopdaloop_backend_instance_t * c_backend = initialize (Dummy, "dummy", "");
         {
             auto c_loop = create_loop(c_backend);
             shoopdaloop_loop_audio_channel_t* c_chan;
