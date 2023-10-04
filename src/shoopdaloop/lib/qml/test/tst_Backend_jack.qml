@@ -17,7 +17,7 @@ PythonDummyJackTestServer {
         backend_argstring: server.get_server_name()
 
         ShoopTestCase {
-            name: 'TwoLoops'
+            name: 'JackBackend'
             filename : TestFilename.test_filename()
 
             function test_backend() {

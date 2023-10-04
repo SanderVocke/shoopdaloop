@@ -13,7 +13,7 @@ PythonBackend {
     backend_type: Types.BackendType.Dummy
 
     ShoopTestCase {
-        name: 'TwoLoops'
+        name: 'DummyBackend'
         filename : TestFilename.test_filename()
 
         function test_backend() {
