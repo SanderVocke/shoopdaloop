@@ -76,7 +76,7 @@ class DummyJackTestServer(QQuickItem):
             self.logger.error("Jackd not found.\nstdout:\n{}\nstderr:\n{}".format(result.stdout.decode(), result.stderr.decode()))
             raise Exception("Jackd not found")
     
-        self.jackd = subprocess.Popen('jackd -T -r -m -n {} -d dummy -C 0 -P 0 --rate 1024 --period 128'.format(self._server_name), shell=True, preexec_fn = set_pdeathsig(signal.SIGTERM))
+        self.jackd = subprocess.Popen('jackd -T -r -n {} -d dummy -C 0 -P 0'.format(self._server_name), shell=True, preexec_fn = set_pdeathsig(signal.SIGTERM))
 
         time.sleep(1.0)
 

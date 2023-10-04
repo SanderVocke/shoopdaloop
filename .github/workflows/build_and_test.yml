@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: sandervocke/shoopdaloop_build_base:latest
-      options: --user root --workdir /
+      options: --user root --workdir / --shm-size=1gb
     steps:
     - name: Checkout
       uses: actions/checkout@v3
@@ -37,7 +37,7 @@ jobs:
     needs: build_release_whl
     container:
       image: sandervocke/shoopdaloop_run_base:latest
-      options: --user root --workdir /
+      options: --user root --workdir / --shm-size=1gb
     steps:
     - name: Checkout
       uses: actions/checkout@v3
@@ -87,7 +87,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: sandervocke/shoopdaloop_build_base:latest
-      options: --user root --workdir /
+      options: --user root --workdir / --shm-size=1gb
     steps:
     - name: Checkout
       uses: actions/checkout@v3
@@ -133,7 +133,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: sandervocke/shoopdaloop_build_base:latest
-      options: --user root --workdir /
+      options: --user root --workdir / --shm-size=1gb
     steps:
     - name: Checkout
       uses: actions/checkout@v3
@@ -152,7 +152,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: sandervocke/shoopdaloop_build_base:latest
-      options: --user root --workdir /
+      options: --user root --workdir / --shm-size=1gb
     steps:
     - name: Checkout
       uses: actions/checkout@v3

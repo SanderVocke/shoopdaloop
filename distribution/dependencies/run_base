@@ -12,7 +12,7 @@ libdbus-1-3
 libxkbcommon0
 libgl1-mesa-dev
 
-libjack-jadckd2-dev
+libjack-jackd2-dev
 jackd2
 
 # scripting stuff
