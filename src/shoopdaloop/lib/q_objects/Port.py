@@ -51,6 +51,7 @@ class Port(QQuickItem):
             if self._backend or self._backend_obj:
                 raise Exception('May not change backend of existing port')
             self._backend = l
+            self._backend.initializedChanged.connect(lambda: self.maybe_initialize())
             self.maybe_initialize()
 
     # initialized

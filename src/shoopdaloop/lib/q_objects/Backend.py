@@ -224,6 +224,7 @@ class Backend(QQuickItem):
         if not self._backend_obj:
             self.logger.throw_error("Failed to initialize back-end.")
         self._initialized = True
+        self.initializedChanged.emit(True)
         self.init_timer()
     
     def init_timer(self):
