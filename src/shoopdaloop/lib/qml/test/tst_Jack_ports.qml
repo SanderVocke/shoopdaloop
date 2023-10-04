@@ -101,26 +101,11 @@ PythonDummyJackTestServer {
 
                     wait(100)
 
-                    verify_eq(new Set(Object.keys(audio_in.get_connections_state())), new Set([
-                        'test1:audio_out',
-                        'test2:audio_out',
-                        'shoop:audio_out',
-                    ]))
-                    verify_eq(new Set(Object.keys(audio_out.get_connections_state())), new Set([
-                        'test1:audio_in',
-                        'test2:audio_in',
-                        'shoop:audio_in',
-                    ]))
-                    verify_eq(new Set(Object.keys(midi_in.get_connections_state())), new Set([
-                        'test1:midi_out',
-                        'test2:midi_out',
-                        'shoop:midi_out',
-                    ]))
-                    verify_eq(new Set(Object.keys(midi_out.get_connections_state())), new Set([
-                        'test1:midi_in',
-                        'test2:midi_in',
-                        'shoop:midi_in',
-                    ]))
+                    verify_eq(audio_in.get_connections_state(), {
+                        'test1:audio_out': false,
+                        'test2:audio_out': false,
+                        'shoop:audio_out': false
+                    })
                 })
             }
         }

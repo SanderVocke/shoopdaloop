@@ -94,7 +94,7 @@ AppRegistries {
                 state_registry.save_action_finished()
                 file_io.delete_recursive(tempdir)
                 tasks.parent = null
-                tasks.destroy()
+                tasks.deleteLater()
             }
         })
     }
@@ -147,7 +147,7 @@ AppRegistries {
                     } finally {
                         state_registry.load_action_finished()
                         tasks.parent = null
-                        tasks.destroy()
+                        tasks.deleteLater()
                     }
                 })
             }
