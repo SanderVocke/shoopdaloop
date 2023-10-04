@@ -318,6 +318,11 @@ void Backend::PROC_process_decoupled_midi_ports(size_t nframes) {
 }
 
 void Backend::terminate() {
+    for (auto &p : ports) {
+        if (p) {
+            p->port->close();
+        }
+    }
     if(audio_system) {
         audio_system->close();
         audio_system.reset(nullptr);
@@ -411,4 +416,8 @@ std::shared_ptr<ConnectedFXChain> Backend::create_fx_chain(fx_chain_type_t type,
         fx_chains.push_back(info);
     });
     return info;
+}
+
+Backend::~Backend() {
+    terminate();
 }

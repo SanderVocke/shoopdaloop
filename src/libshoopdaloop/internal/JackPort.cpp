@@ -1,6 +1,7 @@
 #include "JackPort.h"
 #include "JackAllPorts.h"
 #include "PortInterface.h"
+#include "jack_wrappers.h"
 #include <algorithm>
 #include <stdexcept>
 
@@ -8,7 +9,12 @@ const char *JackPort::name() const { return m_name.c_str(); }
 
 PortDirection JackPort::direction() const { return m_direction; }
 
-void JackPort::close() { jack_port_unregister(m_client, m_port); }
+void JackPort::close() {
+    if (m_port && jack_get_client_name(m_client) != nullptr) {
+        jack_port_unregister(m_client, m_port);
+        m_port = nullptr;
+    }
+}
 
 jack_port_t *JackPort::get_jack_port() const { return m_port; }
 
@@ -39,6 +45,10 @@ JackPort::JackPort(std::string name,
 }
 
 PortExternalConnectionStatus JackPort::get_external_connection_status() const {
+    if (!m_port || jack_get_client_name(m_client) == nullptr) {
+        return PortExternalConnectionStatus {};
+    }
+
     // Get list of ports we can connect to
     auto entries = m_all_ports_tracker->get();
     decltype(entries) eligible_ports;
@@ -66,6 +76,10 @@ PortExternalConnectionStatus JackPort::get_external_connection_status() const {
 }
 
 void JackPort::connect_external(std::string name) {
+    if (!m_port || jack_get_client_name(m_client) == nullptr) {
+        return;
+    }
+
     if (m_direction == PortDirection::Input) {
         jack_connect(m_client, name.c_str(), jack_port_name(m_port));
     } else {
@@ -74,6 +88,10 @@ void JackPort::connect_external(std::string name) {
 }
 
 void JackPort::disconnect_external(std::string name) {
+    if (!m_port || jack_get_client_name(m_client) == nullptr) {
+        return;
+    }
+
     if (m_direction == PortDirection::Input) {
         jack_disconnect(m_client, name.c_str(), jack_port_name(m_port));
     } else {

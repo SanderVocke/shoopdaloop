@@ -26,7 +26,8 @@ PythonDummyJackTestServer {
                 'volume': 1.0,
                 'muted': false,
                 'passthrough_muted': false,
-                'passthrough_to': []
+                'passthrough_to': [],
+                'external_port_connections': []
             })
 
             is_internal: false
@@ -41,7 +42,8 @@ PythonDummyJackTestServer {
                 'volume': 1.0,
                 'muted': false,
                 'passthrough_muted': false,
-                'passthrough_to': []
+                'passthrough_to': [],
+                'external_port_connections': []
             })
 
             is_internal: false
@@ -55,7 +57,8 @@ PythonDummyJackTestServer {
                 'direction': 'input',
                 'muted': false,
                 'passthrough_muted': false,
-                'passthrough_to': []
+                'passthrough_to': [],
+                'external_port_connections': []
             })
 
             is_internal: false
@@ -69,7 +72,8 @@ PythonDummyJackTestServer {
                 'direction': 'output',
                 'muted': false,
                 'passthrough_muted': false,
-                'passthrough_to': []
+                'passthrough_to': [],
+                'external_port_connections': []
             })
 
             is_internal: false

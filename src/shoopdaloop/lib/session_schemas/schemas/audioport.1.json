@@ -8,7 +8,8 @@
         "volume":           { "type": "number" },
         "muted":            { "type": "boolean" },
         "passthrough_muted":{ "type": "boolean" },
-        "passthrough_to":   { "type": "array", "items": { "type": "string" } }
+        "passthrough_to":   { "type": "array", "items": { "type": "string" } },
+        "external_ports_connected": { "type": "array", "items": { "type": "string" } }
     },
-    "required": ["schema", "id", "name_parts", "direction", "volume", "muted", "passthrough_muted", "passthrough_to"]
+    "required": ["schema", "id", "name_parts", "direction", "volume", "muted", "passthrough_muted", "passthrough_to", "external_ports_connected"]
 }

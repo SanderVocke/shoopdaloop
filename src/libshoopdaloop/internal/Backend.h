@@ -55,6 +55,7 @@ public:
     std::string log_module_name() const override;
 
     Backend(audio_system_type_t audio_system_type, std::string client_name_hint, std::string argstring);
+    ~Backend();
 
     void PROC_process(jack_nframes_t nframes);
     void PROC_process_decoupled_midi_ports(size_t nframes);
