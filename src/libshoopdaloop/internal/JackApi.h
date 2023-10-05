@@ -56,6 +56,7 @@ public:
             if (initialize_jack_wrappers(0)) {
                 throw std::runtime_error("Unable to find Jack client library.");
             }
+            initialized = true;
         }
     }
 };

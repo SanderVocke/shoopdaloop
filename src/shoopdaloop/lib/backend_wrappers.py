@@ -35,6 +35,7 @@ class ChannelMode(Enum):
 
 class BackendType(Enum):
     Jack = Jack
+    JackTest = JackTest
     Dummy = Dummy
 
 class FXChainType(Enum):
