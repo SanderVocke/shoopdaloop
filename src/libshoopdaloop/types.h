@@ -7,8 +7,9 @@ typedef float audio_sample_t;
 
 // Audio systems.
 typedef enum {
-    Jack,
-    Dummy
+    Jack,     // JACK audio
+    JackTest, // Internal test backend which mocks part of JACK for connections testing
+    Dummy     // Internal test backend aimed at controlled processing
 } audio_system_type_t;
 
 // Modes a loop can be in.

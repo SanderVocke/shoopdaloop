@@ -11,12 +11,8 @@ TestCase {
     property string filename : 'UnknownTestFile'
     property var logger : PythonLogger { name: `Test.` + root.name }
 
-    Component.onCompleted: {
-        logger.info("Testcase " + name + " created.")
-    }
-    Component.onDestruction: {
-        logger.info("Testcase " + name + " destroyed.")
-    }
+    Component.onCompleted: logger.info("Testcase " + name + " created.")
+    Component.onDestruction: logger.info("Testcase " + name + " destroyed.")
 
     function verify_loop_cleared(loop) {
         verify_eq(loop.mode, Types.LoopMode.Stopped)

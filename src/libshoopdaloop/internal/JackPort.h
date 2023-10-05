@@ -2,10 +2,11 @@
 #include <jack/types.h>
 #include "PortInterface.h"
 #include "JackAllPorts.h"
-#include <jack_wrappers.h>
+#include "JackApi.h"
 #include <memory>
 
-class JackPort :
+template<typename API>
+class GenericJackPort :
     public virtual PortInterface
 {
 protected:
@@ -14,7 +15,7 @@ protected:
     std::string m_name;
     PortDirection m_direction;
     PortType m_type;
-    std::shared_ptr<JackAllPorts> m_all_ports_tracker;
+    std::shared_ptr<GenericJackAllPorts<API>> m_all_ports_tracker;
 
 public:
     const char* name() const override;
@@ -27,12 +28,14 @@ public:
     void connect_external(std::string name) override;
     void disconnect_external(std::string name) override;
 
-    JackPort(
+    GenericJackPort(
         std::string name,
         PortDirection direction,
         PortType type,
         jack_client_t *client,
-        std::shared_ptr<JackAllPorts> all_ports_tracker
+        std::shared_ptr<GenericJackAllPorts<API>> all_ports_tracker
     );
-    ~JackPort() override;
+    ~GenericJackPort() override;
 };
+
+using JackPort = GenericJackPort<JackApi>;

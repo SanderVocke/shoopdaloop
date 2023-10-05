@@ -1,35 +1,41 @@
 #include "JackPort.h"
 #include "JackAllPorts.h"
 #include "PortInterface.h"
-#include "jack_wrappers.h"
 #include <algorithm>
 #include <stdexcept>
 
-const char *JackPort::name() const { return m_name.c_str(); }
+template<typename API>
+const char* GenericJackPort<API>::name() const { return m_name.c_str(); }
 
-PortDirection JackPort::direction() const { return m_direction; }
+template<typename API>
+PortDirection GenericJackPort<API>::direction() const { return m_direction; }
 
-void JackPort::close() {
-    if (m_port && jack_get_client_name(m_client) != nullptr) {
-        jack_port_unregister(m_client, m_port);
+template<typename API>
+void GenericJackPort<API>::close() {
+    if (m_port && API::get_client_name(m_client) != nullptr) {
+        API::port_unregister(m_client, m_port);
         m_port = nullptr;
     }
 }
 
-jack_port_t *JackPort::get_jack_port() const { return m_port; }
+template<typename API>
+jack_port_t *GenericJackPort<API>::get_jack_port() const { return m_port; }
 
-JackPort::~JackPort() { close(); }
+template<typename API>
+GenericJackPort<API>::~GenericJackPort() { close(); }
 
-PortType JackPort::type() const { return m_type; }
+template<typename API>
+PortType GenericJackPort<API>::type() const { return m_type; }
 
-JackPort::JackPort(std::string name,
+template<typename API>
+GenericJackPort<API>::GenericJackPort(std::string name,
                    PortDirection direction,
                    PortType type,
                    jack_client_t *client,
-                   std::shared_ptr<JackAllPorts> all_ports_tracker)
+                   std::shared_ptr<GenericJackAllPorts<API>> all_ports_tracker)
     : m_client(client), m_type(type), m_direction(direction), m_all_ports_tracker(all_ports_tracker) {
 
-    auto p = jack_port_register(
+    auto p = API::port_register(
         m_client,
         name.c_str(),
         m_type == PortType::Audio ? JACK_DEFAULT_AUDIO_TYPE : JACK_DEFAULT_MIDI_TYPE,
@@ -41,11 +47,12 @@ JackPort::JackPort(std::string name,
     }
 
     m_port = p;
-    m_name = std::string(jack_port_name(m_port));
+    m_name = std::string(API::port_name(m_port));
 }
 
-PortExternalConnectionStatus JackPort::get_external_connection_status() const {
-    if (!m_port || jack_get_client_name(m_client) == nullptr) {
+template<typename API>
+PortExternalConnectionStatus GenericJackPort<API>::get_external_connection_status() const {
+    if (!m_port || API::get_client_name(m_client) == nullptr) {
         return PortExternalConnectionStatus {};
     }
 
@@ -66,7 +73,7 @@ PortExternalConnectionStatus JackPort::get_external_connection_status() const {
     }
 
     // Get list of port names we are connected to and update/create entries
-    const char ** connected_ports = jack_port_get_all_connections(m_client, m_port);
+    const char ** connected_ports = API::port_get_all_connections(m_client, m_port);
     for(auto n = connected_ports; n != nullptr && *n != nullptr; n++) {
         std::string _n(*n);
         rval[_n] = true;
@@ -75,26 +82,28 @@ PortExternalConnectionStatus JackPort::get_external_connection_status() const {
     return rval;
 }
 
-void JackPort::connect_external(std::string name) {
-    if (!m_port || jack_get_client_name(m_client) == nullptr) {
+template<typename API>
+void GenericJackPort<API>::connect_external(std::string name) {
+    if (!m_port || API::get_client_name(m_client) == nullptr) {
         return;
     }
 
     if (m_direction == PortDirection::Input) {
-        jack_connect(m_client, name.c_str(), jack_port_name(m_port));
+        API::connect(m_client, name.c_str(), API::port_name(m_port));
     } else {
-        jack_connect(m_client, jack_port_name(m_port), name.c_str());
+        API::connect(m_client, API::port_name(m_port), name.c_str());
     }
 }
 
-void JackPort::disconnect_external(std::string name) {
-    if (!m_port || jack_get_client_name(m_client) == nullptr) {
+template<typename API>
+void GenericJackPort<API>::disconnect_external(std::string name) {
+    if (!m_port || API::get_client_name(m_client) == nullptr) {
         return;
     }
 
     if (m_direction == PortDirection::Input) {
-        jack_disconnect(m_client, name.c_str(), jack_port_name(m_port));
+        API::disconnect(m_client, name.c_str(), API::port_name(m_port));
     } else {
-        jack_disconnect(m_client, jack_port_name(m_port), name.c_str());
+        API::disconnect(m_client, API::port_name(m_port), name.c_str());
     }
 }

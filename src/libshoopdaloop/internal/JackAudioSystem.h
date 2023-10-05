@@ -1,13 +1,15 @@
 #pragma once
 #include "AudioSystemInterface.h"
 #include "JackAllPorts.h"
+#include "JackApi.h"
 #include "LoggingEnabled.h"
 #include <jack/types.h>
 #include <map>
 #include <atomic>
 #include <optional>
 
-class JackAudioSystem :
+template<typename API>
+class GenericJackAudioSystem :
     public AudioSystemInterface<jack_nframes_t, size_t>,
     private ModuleLoggingEnabled
 {
@@ -20,7 +22,7 @@ private:
     std::map<std::string, std::shared_ptr<PortInterface>> m_ports;
     std::function<void(size_t)> m_process_cb;
     std::atomic<unsigned> m_xruns = 0;
-    std::shared_ptr<JackAllPorts> m_all_ports_tracker;
+    std::shared_ptr<GenericJackAllPorts<API>> m_all_ports_tracker;
 
     static int PROC_process_cb_static (jack_nframes_t nframes,
                                   void *arg);
@@ -34,7 +36,7 @@ private:
     void PROC_update_ports_cb_inst();
 
 public:
-    JackAudioSystem(
+    GenericJackAudioSystem(
         std::string client_name,
         std::optional<std::string> server_name,
         std::function<void(size_t)> process_cb
@@ -42,7 +44,7 @@ public:
 
     void start() override;
 
-    ~JackAudioSystem() override;
+    ~GenericJackAudioSystem() override;
 
     std::shared_ptr<AudioPortInterface<float>> open_audio_port(
         std::string name,
@@ -62,3 +64,5 @@ public:
     size_t get_xruns() const override;
     void reset_xruns() override;
 };
+
+using JackAudioSystem = GenericJackAudioSystem<JackApi>;

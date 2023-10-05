@@ -5,11 +5,12 @@
 #include <jack_wrappers.h>
 #include <vector>
 
-class JackMidiPort :
+template<typename API>
+class GenericJackMidiPort :
     public virtual MidiPortInterface,
     public MidiReadableBufferInterface,
     public MidiWriteableBufferInterface,
-    public JackPort
+    public GenericJackPort<API>
 {
     void * m_jack_read_buf;
     void * m_jack_write_buf;
@@ -30,8 +31,6 @@ class JackMidiPort :
                  const uint8_t* &data_out) const override;
     };
     std::vector<ReadMessage> m_temp_midi_storage;
-
-    friend class JackReadMidiBuf;
 public:
 
     size_t PROC_get_n_events() const override;
@@ -43,13 +42,15 @@ public:
     bool write_by_reference_supported() const override;
     bool write_by_value_supported() const override;
 
-    JackMidiPort(
+    GenericJackMidiPort(
         std::string name,
         PortDirection direction,
         jack_client_t *client,
-        std::shared_ptr<JackAllPorts> all_ports_tracker
+        std::shared_ptr<GenericJackAllPorts<API>> all_ports_tracker
     );
 
     MidiReadableBufferInterface &PROC_get_read_buffer (size_t n_frames) override;
     MidiWriteableBufferInterface &PROC_get_write_buffer (size_t n_frames) override;
 };
+
+using JackMidiPort = GenericJackMidiPort<JackApi>;

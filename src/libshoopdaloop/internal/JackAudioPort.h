@@ -1,16 +1,20 @@
 #pragma once
 #include <jack/types.h>
+#include "JackApi.h"
 #include "JackPort.h"
 #include "AudioPortInterface.h"
 
-class JackAudioPort : public virtual AudioPortInterface<jack_default_audio_sample_t>, public JackPort {
+template<typename API>
+class GenericJackAudioPort : public virtual AudioPortInterface<jack_default_audio_sample_t>, public GenericJackPort<API> {
 public:
-    JackAudioPort(
+    GenericJackAudioPort(
         std::string name,
         PortDirection direction,
         jack_client_t *client,
-        std::shared_ptr<JackAllPorts> all_ports_tracker
+        std::shared_ptr<GenericJackAllPorts<API>> all_ports_tracker
     );
     
     float *PROC_get_buffer(size_t n_frames, bool do_zero=false) override;
 };
+
+using JackAudioPort = GenericJackAudioPort<JackApi>;

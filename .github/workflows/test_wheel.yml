@@ -39,7 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ${{ inputs.container }}
-      options: --user root --workdir / --shm-size=1gb
+      options: --user root --workdir /
     
     steps:
     - name: Retrieve wheel

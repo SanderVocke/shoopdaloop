@@ -1,9 +1,11 @@
 #include "JackAllPorts.h"
 #include "jack_wrappers.h"
 
-JackAllPorts::JackAllPorts() : m_cache(std::vector<JackAllPortsEntry>()) {}
+template<typename API>
+GenericJackAllPorts<API>::GenericJackAllPorts() : m_cache(std::vector<JackAllPortsEntry>()) {}
 
-void JackAllPorts::update(jack_client_t *client) {
+template<typename API>
+void GenericJackAllPorts<API>::update(jack_client_t *client) {
     auto new_cache = std::vector<JackAllPortsEntry>();
     const char** port_names = jack_get_ports(client, nullptr, nullptr, 0);
 
@@ -29,7 +31,8 @@ void JackAllPorts::update(jack_client_t *client) {
     }
 }
 
-std::vector<JackAllPortsEntry> JackAllPorts::get() {
+template<typename API>
+std::vector<JackAllPortsEntry> GenericJackAllPorts<API>::get() {
     std::lock_guard<std::mutex> lock(m_cache_mutex);
     return m_cache;
 }
