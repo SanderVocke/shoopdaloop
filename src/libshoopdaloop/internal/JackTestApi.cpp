@@ -5,7 +5,7 @@ std::map<std::string, JackTestApi::Client> JackTestApi::ms_clients;
 logging::logger* JackTestApi::ms_logger;
 
 jack_client_t* JackTestApi::client_open(const char* name, jack_options_t options, jack_status_t* status, ...) {
-    ms_clients.emplace(name, Client(name));
+    ms_clients.try_emplace(name, name);
     *status = (jack_status_t)0;
     auto rval = ms_clients.at(name).as_ptr();
     auto _rval = fmt::ptr(rval);
@@ -41,7 +41,7 @@ const char** JackTestApi::port_get_all_connections(const jack_client_t* client,c
 }
 
 const char** JackTestApi::port_get_connections(const jack_port_t* port) {
-    auto p = Port::from_ptr((jack_port_t*) port);
+    auto &p = Port::from_ptr((jack_port_t*) port);
     auto &conns = p.get_connections();
     auto rval = new const char*[conns.size() + 1];
     for (size_t i=0; i<conns.size(); i++) {
@@ -61,8 +61,8 @@ jack_port_t* JackTestApi::port_register(
     unsigned long flags,
     unsigned long bufsize)
 {
-    auto c = Client::from_ptr(client);
-    auto p = c.open_port(port_name, flags & JackPortIsInput ? Direction::Input : Direction::Output,
+    auto &c = Client::from_ptr(client);
+    auto &p = c.open_port(port_name, flags & JackPortIsInput ? Direction::Input : Direction::Output,
     std::string(port_type) == std::string(JACK_DEFAULT_AUDIO_TYPE) ? Type::Audio : Type::Midi);
     auto rval = p.as_ptr();
     auto _rval = fmt::ptr(rval);
@@ -90,7 +90,7 @@ const char** JackTestApi::get_ports(jack_client_t * client,
 
     const char** port_names = new const char*[ports.size() + 1];
     for (size_t i=0; i<ports.size(); i++) {
-        auto c = ports[i]->client;
+        auto &c = ports[i]->client;
         auto name = c.name + ":" + ports[i]->name;
         port_names[i] = strdup(name.c_str());
         ms_logger->trace("Get ports: {} -> {}", i, port_names[i]);
@@ -127,7 +127,7 @@ jack_port_t* JackTestApi::port_by_name(jack_client_t* client, const char *name) 
 }
 
 int JackTestApi::port_flags(const jack_port_t* port) {
-    auto p = Port::from_ptr((jack_port_t*) port);
+    auto &p = Port::from_ptr((jack_port_t*) port);
     int rval;
     switch (p.direction) {
         case Direction::Input:  rval = JackPortIsInput; break;
@@ -140,7 +140,7 @@ int JackTestApi::port_flags(const jack_port_t* port) {
 }
 
 const char* JackTestApi::port_type(const jack_port_t* port) {
-    auto p = Port::from_ptr((jack_port_t*) port);
+    auto &p = Port::from_ptr((jack_port_t*) port);
     const char* rval;
     switch (p.type) {
         case Type::Audio: rval = JACK_DEFAULT_AUDIO_TYPE; break;

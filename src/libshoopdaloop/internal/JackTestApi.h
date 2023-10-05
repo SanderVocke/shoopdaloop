@@ -5,6 +5,7 @@
 #include <functional>
 #include <string>
 #include <map>
+#include <tuple>
 #include "LoggingBackend.h"
 
 // A partial simple mock implementation of the JACK API which can be used for simple
@@ -39,6 +40,7 @@ public:
         Port(std::string name, Client &client, Type type, Direction direction) : name(name), type(type), direction(direction), valid(true), client(client) {
             connections.push_back(nullptr);
         }
+        Port(Port const& other) = delete;
 
         void* get_buffer() { return nullptr; }
         Client &get_client() { return client; }
@@ -56,6 +58,7 @@ public:
         std::map<std::string, Port> ports;
 
         Client(std::string name) : name(name), active(false), valid(true) {}
+        Client(Client const& other) = delete;
 
         void close() { valid = false; }
         void activate() { active = true; }
@@ -63,7 +66,7 @@ public:
         Port &open_port(std::string name, Direction direction, Type type) {
             if (ports.find(name) != ports.end()) { return ports.at(name); }
 
-            ports.emplace(name, Port(name, *this, type, direction));
+            ports.try_emplace(name, name, *this, type, direction);
             return ports.at(name);
         }
         void close_port(std::string name) {}
