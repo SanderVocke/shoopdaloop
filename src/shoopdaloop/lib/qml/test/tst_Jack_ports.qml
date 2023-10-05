@@ -84,24 +84,14 @@ Backend {
         function test_backend() {
             run_case('test_available_ports', () => {
                 verify(backend.initialized)
-                wait(100)
-
-                server.ensure_test_port('test1', 'audio_out', true, false)
-                server.ensure_test_port('test1', 'audio_in', true, true)
-                server.ensure_test_port('test2', 'audio_out', true, false)
-                server.ensure_test_port('test2', 'audio_in', true, true)
-                server.ensure_test_port('test1', 'midi_out', false, false)
-                server.ensure_test_port('test1', 'midi_in', false, true)
-                server.ensure_test_port('test2', 'midi_out', false, false)
-                server.ensure_test_port('test2', 'midi_in', false, true)
 
                 wait(100)
 
-                // verify_eq(audio_in.get_connections_state(), {
-                //     'test1:audio_out': false,
-                //     'test2:audio_out': false,
-                //     'shoop:audio_out': false
-                // })
+                verify_eq(audio_in.get_connections_state(), {
+                    'test_client_1:audio_out': false,
+                    'test_client_2:audio_out': false,
+                    'shoop:audio_out': false
+                })
                 // verify_eq(audio_out.get_connections_state(), {
                 //     'test1:audio_in': false,
                 //     'test2:audio_in': false,
