@@ -6,6 +6,9 @@
 #include <cstring>
 #include <iostream>
 
+template class GenericJackAudioPort<JackApi>;
+template class GenericJackAudioPort<JackTestApi>;
+
 template<typename API>
 GenericJackAudioPort<API>::GenericJackAudioPort(std::string name, PortDirection direction,
                              jack_client_t *client, std::shared_ptr<GenericJackAllPorts<API>> all_ports_tracker)
@@ -13,7 +16,6 @@ GenericJackAudioPort<API>::GenericJackAudioPort(std::string name, PortDirection 
 
 template<typename API>
 float *GenericJackAudioPort<API>::PROC_get_buffer(size_t n_frames, bool do_zero) {
-    using GenericJackPort<API>::m_port;
     auto rval =
         (jack_default_audio_sample_t *)API::port_get_buffer(m_port, n_frames);
     if (do_zero) {

@@ -1,38 +1,61 @@
 #pragma once
 #include <jack/types.h>
 #include <jack_wrappers.h>
+#include <type_traits>
+#include <stdarg.h>
+#include <stdexcept>
 
 // Hide the JACK API behind a class with redirections, such that
 // we can mock it out in tests.
 // TODO: this does not contain the complete API, only what we use
 class JackApi {
-    static constexpr auto get_ports = &jack_get_ports;
-    static constexpr auto port_by_name = &jack_port_by_name;
-    static constexpr auto port_flags = &jack_port_flags;
-    static constexpr auto port_type = &jack_port_type;
-    static constexpr auto port_get_all_connections = &jack_port_get_all_connections;
-    static constexpr auto port_get_buffer = &jack_port_get_buffer;
-    static constexpr auto port_get_latency_range = &jack_port_get_latency_range;
-    static constexpr auto port_get_latency = &jack_port_get_latency;
-    static constexpr auto client_open = &jack_client_open;
-    static constexpr auto get_client_name = &jack_get_client_name;
-    static constexpr auto get_sample_rate = &jack_get_sample_rate;
-    static constexpr auto get_buffer_size = &jack_get_buffer_size;
-    static constexpr auto activate = &jack_activate;
-    static constexpr auto client_close = &jack_client_close;
-    static constexpr auto get_time = &jack_get_time;
-    static constexpr auto set_process_callback = &jack_set_process_callback;
-    static constexpr auto set_xrun_callback = &jack_set_xrun_callback;
-    static constexpr auto set_port_connect_callback = &jack_set_port_connect_callback;
-    static constexpr auto set_port_registration_callback = &jack_set_port_registration_callback;
-    static constexpr auto set_port_rename_callback = &jack_set_port_rename_callback;
-    static constexpr auto port_register = &jack_port_register;
-    static constexpr auto port_unregister = &jack_port_unregister;
-    static constexpr auto port_name = &jack_port_name;
-    static constexpr auto connect = &jack_connect;
-    static constexpr auto disconnect = &jack_disconnect;
-    static constexpr auto midi_get_event_count = &jack_midi_get_event_count;
-    static constexpr auto midi_event_get = &jack_midi_event_get;
-    static constexpr auto midi_clear_buffer = &jack_midi_clear_buffer;
-    static constexpr auto midi_event_write = &jack_midi_event_write;
+public:
+    static auto get_ports(auto ...args) { return jack_get_ports(args...); }
+    static auto port_by_name(auto ...args) { return jack_port_by_name(args...); }
+    static auto port_flags(auto ...args) { return jack_port_flags(args...); }
+    static auto port_type(auto ...args) { return jack_port_type(args...); }
+    static auto port_get_all_connections(auto ...args) { return jack_port_get_all_connections(args...); }
+    static auto port_get_buffer(auto ...args) { return jack_port_get_buffer(args...); }
+    static auto port_get_latency_range(auto ...args) { return jack_port_get_latency_range(args...); }
+    static auto port_get_latency(auto ...args) { return jack_port_get_latency(args...); }
+    static auto get_client_name(auto ...args) { return jack_get_client_name(args...); }
+    static auto get_sample_rate(auto ...args) { return jack_get_sample_rate(args...); }
+    static auto get_buffer_size(auto ...args) { return jack_get_buffer_size(args...); }
+    static auto activate(auto ...args) { return jack_activate(args...); }
+    static auto client_close(auto ...args) { return jack_client_close(args...); }
+    static auto get_time(auto ...args) { return jack_get_time(args...); }
+    static auto set_process_callback(auto ...args) { return jack_set_process_callback(args...); }
+    static auto set_xrun_callback(auto ...args) { return jack_set_xrun_callback(args...); }
+    static auto set_port_connect_callback(auto ...args) { return jack_set_port_connect_callback(args...); }
+    static auto set_port_registration_callback(auto ...args) { return jack_set_port_registration_callback(args...); }
+    static auto set_port_rename_callback(auto ...args) { return jack_set_port_rename_callback(args...); }
+    static auto port_register(auto ...args) { return jack_port_register(args...); }
+    static auto port_unregister(auto ...args) { return jack_port_unregister(args...); }
+    static auto port_name(auto ...args) { return jack_port_name(args...); }
+    static auto connect(auto ...args) { return jack_connect(args...); }
+    static auto disconnect(auto ...args) { return jack_disconnect(args...); }
+    static auto midi_get_event_count(auto ...args) { return jack_midi_get_event_count(args...); }
+    static auto midi_event_get(auto ...args) { return jack_midi_event_get(args...); }
+    static auto midi_clear_buffer(auto ...args) { return jack_midi_clear_buffer(args...); }
+    static auto midi_event_write(auto ...args) { return jack_midi_event_write(args...); }
+    static auto cpu_load(auto ...args) { return jack_cpu_load(args...); }
+
+    static jack_client_t* client_open(const char* name, jack_options_t options, jack_status_t* status, ...) {
+        va_list args;
+        va_start(args, status);
+        auto rval = jack_client_open(name, options, status, args);
+        va_end(args);
+        return rval;
+    }
+
+    static void init() {
+        static bool initialized = false;
+        if (!initialized) {
+            // We use a wrapper which dlopens Jack to not have a hard linkage
+            // dependency. It needs to be initialized first.
+            if (initialize_jack_wrappers(0)) {
+                throw std::runtime_error("Unable to find Jack client library.");
+            }
+        }
+    }
 };

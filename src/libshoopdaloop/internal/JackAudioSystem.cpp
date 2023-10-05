@@ -7,6 +7,9 @@
 #include <memory>
 #include <atomic>
 
+template class GenericJackAudioSystem<JackApi>;
+template class GenericJackAudioSystem<JackTestApi>;
+
 template<typename API>
 std::string GenericJackAudioSystem<API>::log_module_name() const {
     return "Backend.JackAudioSystem";
@@ -14,31 +17,31 @@ std::string GenericJackAudioSystem<API>::log_module_name() const {
 
 template<typename API>
 int GenericJackAudioSystem<API>::PROC_process_cb_static(jack_nframes_t nframes, void *arg) {
-    auto &inst = *((JackAudioSystem *)arg);
+    auto &inst = *((GenericJackAudioSystem<API> *)arg);
     return inst.PROC_process_cb_inst(nframes);
 }
 
 template<typename API>
 int GenericJackAudioSystem<API>::PROC_xrun_cb_static(void *arg) {
-    auto &inst = *((JackAudioSystem *)arg);
+    auto &inst = *((GenericJackAudioSystem<API> *)arg);
     return inst.PROC_xrun_cb_inst();
 }
 
 template<typename API>
 void GenericJackAudioSystem<API>::PROC_port_connect_cb_static(jack_port_id_t a, jack_port_id_t b, int connect, void *arg) {
-    auto &inst = *((JackAudioSystem *)arg);
+    auto &inst = *((GenericJackAudioSystem<API> *)arg);
     inst.PROC_update_ports_cb_inst();
 }
 
 template<typename API>
 void GenericJackAudioSystem<API>::PROC_port_registration_cb_static(jack_port_id_t port, int, void *arg) {
-    auto &inst = *((JackAudioSystem *)arg);
+    auto &inst = *((GenericJackAudioSystem<API> *)arg);
     inst.PROC_update_ports_cb_inst();
 }
 
 template<typename API>
 void GenericJackAudioSystem<API>::PROC_port_rename_cb_static(jack_port_id_t port, const char *old_name, const char *new_name, void *arg) {
-    auto &inst = *((JackAudioSystem *)arg);
+    auto &inst = *((GenericJackAudioSystem<API> *)arg);
     inst.PROC_update_ports_cb_inst();
 }
 
@@ -63,23 +66,17 @@ void GenericJackAudioSystem<API>::PROC_update_ports_cb_inst() {
 
 template<typename API>
 GenericJackAudioSystem<API>::GenericJackAudioSystem(std::string client_name,
-                                 std::optional<std::string> server_name,
                                  std::function<void(size_t)> process_cb)
     : AudioSystemInterface(client_name, process_cb), m_client_name(client_name),
       m_process_cb(process_cb), m_all_ports_tracker(std::make_shared<GenericJackAllPorts<API>>()) {
     log_init();
 
-    // We use a wrapper which dlopens Jack to not have a hard linkage
-    // dependency. It needs to be initialized first.
-    if (initialize_jack_wrappers(0)) {
-        throw_error<std::runtime_error>("Unable to find Jack client library.");
-    }
+    API::init();
 
     jack_status_t status;
 
-    std::string servername = server_name.value_or("default");
-    log<logging::LogLevel::info>("Opening JACK client with name {}, server name {}.", client_name, servername);
-    m_client = API::client_open(client_name.c_str(), JackServerName, &status, servername.c_str());
+    log<logging::LogLevel::info>("Opening JACK client with name {}.", client_name);
+    m_client = API::client_open(client_name.c_str(), JackNullOption, &status);
 
     if (m_client == nullptr) {
         throw_error<std::runtime_error>("Unable to open JACK client.");
@@ -123,7 +120,7 @@ template<typename API>
 std::shared_ptr<AudioPortInterface<float>>GenericJackAudioSystem<API>::open_audio_port(std::string name, PortDirection direction) {
     std::shared_ptr<PortInterface> port =
         std::static_pointer_cast<PortInterface>(
-            std::make_shared<JackAudioPort>(name, direction, m_client, m_all_ports_tracker)
+            std::make_shared<GenericJackAudioPort<API>>(name, direction, m_client, m_all_ports_tracker)
         );
     m_ports[port->name()] = port;
     return std::dynamic_pointer_cast<AudioPortInterface<float>>(port);
@@ -133,7 +130,7 @@ template<typename API>
 std::shared_ptr<MidiPortInterface> GenericJackAudioSystem<API>::open_midi_port(std::string name, PortDirection direction) {
     std::shared_ptr<PortInterface> port =
         std::static_pointer_cast<PortInterface>(
-            std::make_shared<JackMidiPort>(name, direction, m_client, m_all_ports_tracker)
+            std::make_shared<GenericJackMidiPort<API>>(name, direction, m_client, m_all_ports_tracker)
         );
     m_ports[port->name()] = port;
     return std::dynamic_pointer_cast<MidiPortInterface>(port);

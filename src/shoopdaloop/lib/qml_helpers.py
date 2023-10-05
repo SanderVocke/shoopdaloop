@@ -24,7 +24,6 @@ from .q_objects.Logger import Logger
 from .q_objects.ControlHandler import ControlHandler
 from .q_objects.ScriptingEngine import ScriptingEngine
 from .q_objects.DictTreeModel import DictTreeModelFactory
-from .q_objects.DummyJackTestServer import DummyJackTestServer
 
 # Read version from the version.txt file (will be present when packaged)
 pkg_version = None
@@ -55,8 +54,7 @@ def register_shoopdaloop_qml_classes():
     register_qml_class(ScriptingEngine, 'ScriptingEngine')
     register_qml_class(DictTreeModelFactory, 'DictTreeModelFactory')
     register_qml_class(ControlHandler, 'ControlHandler')
-    register_qml_class(DummyJackTestServer, 'DummyJackTestServer')
-
+    
 def create_and_populate_root_context(engine, global_args, additional_items={}):
     # Set import path to predefined classes
     engine.addImportPath(script_dir + '/../qml_types')

@@ -1,11 +1,13 @@
 #pragma once
 #include <jack/types.h>
 #include "JackApi.h"
+#include "JackTestApi.h"
 #include "JackPort.h"
 #include "AudioPortInterface.h"
 
 template<typename API>
 class GenericJackAudioPort : public virtual AudioPortInterface<jack_default_audio_sample_t>, public GenericJackPort<API> {
+    using GenericJackPort<API>::m_port;
 public:
     GenericJackAudioPort(
         std::string name,
@@ -18,3 +20,4 @@ public:
 };
 
 using JackAudioPort = GenericJackAudioPort<JackApi>;
+using JackTestAudioPort = GenericJackAudioPort<JackTestApi>;

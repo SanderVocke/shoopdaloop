@@ -1,6 +1,9 @@
 #include "JackAllPorts.h"
 #include "jack_wrappers.h"
 
+template class GenericJackAllPorts<JackApi>;
+template class GenericJackAllPorts<JackTestApi>;
+
 template<typename API>
 GenericJackAllPorts<API>::GenericJackAllPorts() : m_cache(std::vector<JackAllPortsEntry>()) {}
 

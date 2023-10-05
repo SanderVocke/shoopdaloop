@@ -1,7 +1,6 @@
 import QtQuick 6.3
 import QtTest 1.0
 import ShoopDaLoop.PythonBackend
-import ShoopDaLoop.PythonDummyJackTestServer
 
 import '../../generated/types.js' as Types
 import './testfilename.js' as TestFilename

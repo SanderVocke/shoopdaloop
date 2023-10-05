@@ -74,10 +74,21 @@ void Backend::start() {
                 audio_system = std::unique_ptr<AudioSystem>(
                     dynamic_cast<AudioSystem *>(new JackAudioSystem(
                         std::string(m_client_name_hint),
-                        m_argstring.size() > 0 ? std::optional<std::string>(m_argstring) : std::optional<std::string>(),
                         [weak_self] (size_t n_frames) {
                         if (auto self = weak_self.lock()) {
                             self->log<LogLevel::trace>("Jack process: {}", n_frames);
+                            self->PROC_process(n_frames);
+                        }
+                    })));
+                break;
+            case JackTest:
+                log<LogLevel::debug>("Initializing JackTest mock audio system.");
+                audio_system = std::unique_ptr<AudioSystem>(
+                    dynamic_cast<AudioSystem *>(new JackTestAudioSystem(
+                        std::string(m_client_name_hint),
+                        [weak_self] (size_t n_frames) {
+                        if (auto self = weak_self.lock()) {
+                            self->log<LogLevel::trace>("Jack test process: {}", n_frames);
                             self->PROC_process(n_frames);
                         }
                     })));
@@ -123,7 +134,7 @@ void Backend::start() {
 
 backend_state_info_t Backend::get_state() {
     backend_state_info_t rval;
-    rval.dsp_load_percent = maybe_jack_client_handle() ? jack_cpu_load(maybe_jack_client_handle()) : 0.0f;
+    rval.dsp_load_percent = (maybe_jack_client_handle() && m_audio_system_type == Jack) ? JackApi::cpu_load(maybe_jack_client_handle()) : 0.0f;
     rval.xruns_since_last = audio_system->get_xruns();
     rval.actual_type = m_audio_system_type;
     audio_system->reset_xruns();
@@ -330,7 +341,7 @@ void Backend::terminate() {
 }
 
 jack_client_t *Backend::maybe_jack_client_handle() {
-    if (!audio_system || !dynamic_cast<JackAudioSystem*>(audio_system.get())) {
+    if (!audio_system || m_audio_system_type != Jack) {
         return nullptr;
     }
     return (jack_client_t*)audio_system->maybe_client_handle();

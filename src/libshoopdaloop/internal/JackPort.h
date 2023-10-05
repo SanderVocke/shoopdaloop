@@ -1,5 +1,6 @@
 #pragma once
 #include <jack/types.h>
+#include "JackTestApi.h"
 #include "PortInterface.h"
 #include "JackAllPorts.h"
 #include "JackApi.h"
@@ -39,3 +40,4 @@ public:
 };
 
 using JackPort = GenericJackPort<JackApi>;
+using JackTestPort = GenericJackPort<JackTestApi>;

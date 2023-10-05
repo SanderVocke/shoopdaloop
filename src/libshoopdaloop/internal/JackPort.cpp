@@ -4,6 +4,9 @@
 #include <algorithm>
 #include <stdexcept>
 
+template class GenericJackPort<JackApi>;
+template class GenericJackPort<JackTestApi>;
+
 template<typename API>
 const char* GenericJackPort<API>::name() const { return m_name.c_str(); }
 

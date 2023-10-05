@@ -1,6 +1,7 @@
 #pragma once
 #include "PortInterface.h"
 #include "JackApi.h"
+#include "JackTestApi.h"
 #include <vector>
 #include <mutex>
 
@@ -24,3 +25,4 @@ public:
 };
 
 using JackAllPorts = GenericJackAllPorts<JackApi>;
+using JackTestAllPorts = GenericJackAllPorts<JackTestApi>;

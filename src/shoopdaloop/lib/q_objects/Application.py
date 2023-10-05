@@ -58,7 +58,7 @@ class Application(QGuiApplication):
 
         global_args = {
             'backend_type': backend_type.value,
-            'backend_argstring': backend_argstring.value
+            'backend_argstring': backend_argstring
         }
         
         self.root_context_items = create_and_populate_root_context(self.engine, global_args)

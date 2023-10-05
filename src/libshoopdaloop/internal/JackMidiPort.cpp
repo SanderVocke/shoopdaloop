@@ -3,6 +3,9 @@
 #include "PortInterface.h"
 #include <stdexcept>
 
+template class GenericJackMidiPort<JackApi>;
+template class GenericJackMidiPort<JackTestApi>;
+
 template<typename API>
 GenericJackMidiPort<API>::ReadMessage::ReadMessage(jack_midi_event_t e) {
     time = e.time;
@@ -66,7 +69,6 @@ GenericJackMidiPort<API>::GenericJackMidiPort(std::string name, PortDirection di
 
 template<typename API>
 MidiReadableBufferInterface &GenericJackMidiPort<API>::PROC_get_read_buffer(size_t n_frames) {
-    using GenericJackPort<API>::m_port;
     m_temp_midi_storage.clear();
     m_jack_read_buf = API::port_get_buffer(m_port, n_frames);
     return *(static_cast<MidiReadableBufferInterface *>(this));
@@ -74,7 +76,6 @@ MidiReadableBufferInterface &GenericJackMidiPort<API>::PROC_get_read_buffer(size
 
 template<typename API>
 MidiWriteableBufferInterface &GenericJackMidiPort<API>::PROC_get_write_buffer(size_t n_frames) {
-    using GenericJackPort<API>::m_port;
     m_jack_write_buf = API::port_get_buffer(m_port, n_frames);
     API::midi_clear_buffer(m_jack_write_buf);
     return *(static_cast<MidiWriteableBufferInterface *>(this));

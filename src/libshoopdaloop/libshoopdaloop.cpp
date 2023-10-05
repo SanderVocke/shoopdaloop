@@ -723,6 +723,7 @@ void disconnect_external_midi_port(shoopdaloop_midi_port_t *ours, const char* ex
 jack_port_t *get_audio_port_jack_handle(shoopdaloop_audio_port_t *port) {
     auto pi = internal_audio_port(port);
     auto _audio = pi->maybe_audio();
+    if (pi->get_backend().m_audio_system_type != Jack) { return nullptr; }
     return evaluate_before_or_after_process<jack_port_t*>(
         [pi, _audio]() { return std::dynamic_pointer_cast<JackAudioPort>(_audio)->get_jack_port(); },
         _audio != nullptr,

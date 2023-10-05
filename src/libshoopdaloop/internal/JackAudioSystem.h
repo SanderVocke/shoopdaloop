@@ -2,6 +2,7 @@
 #include "AudioSystemInterface.h"
 #include "JackAllPorts.h"
 #include "JackApi.h"
+#include "JackTestApi.h"
 #include "LoggingEnabled.h"
 #include <jack/types.h>
 #include <map>
@@ -38,7 +39,6 @@ private:
 public:
     GenericJackAudioSystem(
         std::string client_name,
-        std::optional<std::string> server_name,
         std::function<void(size_t)> process_cb
     );
 
@@ -66,3 +66,4 @@ public:
 };
 
 using JackAudioSystem = GenericJackAudioSystem<JackApi>;
+using JackTestAudioSystem = GenericJackAudioSystem<JackTestApi>;

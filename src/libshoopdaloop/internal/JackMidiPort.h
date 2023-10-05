@@ -1,5 +1,6 @@
 #pragma once
 #include <jack/types.h>
+#include "JackTestApi.h"
 #include "MidiPortInterface.h"
 #include "JackPort.h"
 #include <jack_wrappers.h>
@@ -12,6 +13,8 @@ class GenericJackMidiPort :
     public MidiWriteableBufferInterface,
     public GenericJackPort<API>
 {
+    using GenericJackPort<API>::m_port;
+    
     void * m_jack_read_buf;
     void * m_jack_write_buf;
     static constexpr size_t n_event_storage = 1024;
@@ -54,3 +57,4 @@ public:
 };
 
 using JackMidiPort = GenericJackMidiPort<JackApi>;
+using JackTestMidiPort = GenericJackMidiPort<JackTestApi>;
