@@ -213,6 +213,18 @@ class Port(QQuickItem):
     def get_connected_external_ports(self):
         state = self.get_connections_state()
         return [k for k in state.keys() if state[k]]
+    
+    @Slot(list)
+    def try_make_connections(self, port_names):
+        if not self.initialized:
+            return
+        connected = self.get_connected_external_ports()
+        for p in connected:
+            if not p in port_names:
+                self.disconnect_external_port(p)
+        for p in port_names:
+            if not p in connected:
+                self.connect_external_port(p)
 
     ##########
     ## INTERNAL MEMBERS
