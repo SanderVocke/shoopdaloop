@@ -1,8 +1,11 @@
 #include "JackTestApi.h"
 #include "LoggingBackend.h"
+#include <jack/types.h>
 
 std::map<std::string, JackTestApi::Client> JackTestApi::ms_clients;
 logging::logger* JackTestApi::ms_logger;
+JackPortRegistrationCallback JackTestApi::ms_port_registration_callback = nullptr;
+void *JackTestApi::ms_port_registration_callback_arg = nullptr;
 
 jack_client_t* JackTestApi::client_open(const char* name, jack_options_t options, jack_status_t* status, ...) {
     ms_clients.try_emplace(name, name);
@@ -64,6 +67,11 @@ jack_port_t* JackTestApi::port_register(
     auto &c = Client::from_ptr(client);
     auto &p = c.open_port(port_name, flags & JackPortIsInput ? Direction::Input : Direction::Output,
     std::string(port_type) == std::string(JACK_DEFAULT_AUDIO_TYPE) ? Type::Audio : Type::Midi);
+    
+    if (ms_port_registration_callback) {
+        ms_port_registration_callback(-1, 1, ms_port_registration_callback_arg);
+    }
+    
     auto rval = p.as_ptr();
     auto _rval = fmt::ptr(rval);
     ms_logger->trace("Register port {} -> {}", port_name, _rval);
@@ -164,4 +172,13 @@ const char* JackTestApi::get_client_name(jack_client_t *client) {
     auto _client = fmt::ptr(client);
     ms_logger->trace("Get client name {} -> {}", _client, rval);
     return rval;
+}
+
+int JackTestApi::set_port_registration_callback(jack_client_t* client, JackPortRegistrationCallback cb, void* arg) {
+    auto _client = fmt::ptr(client);
+    auto _arg = fmt::ptr(arg); 
+    ms_logger->trace("Set port registration cb for client {}, arg {}", _client, _arg);
+    ms_port_registration_callback = cb;
+    ms_port_registration_callback_arg = arg;
+    return 0;
 }

@@ -209,6 +209,11 @@ class Port(QQuickItem):
     def get_connections_state(self):
         return (self._backend_obj.get_connections_state() if self._backend_obj else dict())
 
+    @Slot(result=list)
+    def get_connected_external_ports(self):
+        state = self.get_connections_state()
+        return [k for k in state.keys() if state[k]]
+
     ##########
     ## INTERNAL MEMBERS
     ##########

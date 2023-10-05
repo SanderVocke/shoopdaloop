@@ -31,7 +31,7 @@ class Setup(QObject):
         register_shoopdaloop_qml_classes()
         self.root_context_items = create_and_populate_root_context(
             engine,
-            { 'backend_type': BackendType.Dummy.value },
+            { 'backend_type': BackendType.Dummy.value, 'backend_argstring': '' },
             { 'qoverage_collector_factory' : qoverage_collector_factory }
             )
 

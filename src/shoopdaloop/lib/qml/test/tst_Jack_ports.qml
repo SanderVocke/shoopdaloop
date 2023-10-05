@@ -92,21 +92,21 @@ Backend {
                     'test_client_2:audio_out': false,
                     'shoop:audio_out': false
                 })
-                // verify_eq(audio_out.get_connections_state(), {
-                //     'test1:audio_in': false,
-                //     'test2:audio_in': false,
-                //     'shoop:audio_in': false
-                // })
-                // verify_eq(midi_in.get_connections_state(), {
-                //     'test1:midi_out': false,
-                //     'test2:midi_out': false,
-                //     'shoop:midi_out': false
-                // })
-                // verify_eq(midi_out.get_connections_state(), {
-                //     'test1:midi_in': false,
-                //     'test2:midi_in': false,
-                //     'shoop:midi_in': false
-                // })
+                verify_eq(audio_out.get_connections_state(), {
+                    'test_client_1:audio_in': false,
+                    'test_client_2:audio_in': false,
+                    'shoop:audio_in': false
+                })
+                verify_eq(midi_in.get_connections_state(), {
+                    'test_client_1:midi_out': false,
+                    'test_client_2:midi_out': false,
+                    'shoop:midi_out': false
+                })
+                verify_eq(midi_out.get_connections_state(), {
+                    'test_client_1:midi_in': false,
+                    'test_client_2:midi_in': false,
+                    'shoop:midi_in': false
+                })
             })
         }
     }
