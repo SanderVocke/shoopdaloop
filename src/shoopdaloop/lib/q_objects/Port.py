@@ -207,7 +207,6 @@ class Port(QQuickItem):
 
     @Slot(result='QVariant')
     def get_connections_state(self):
-        print((self._backend_obj.get_connections_state() if self._backend_obj else dict()))
         return (self._backend_obj.get_connections_state() if self._backend_obj else dict())
 
     @Slot(result=list)
