@@ -49,10 +49,9 @@ PythonLoopMidiChannel {
                     data_files_dir + '/' + descriptor.data_file,
                     get_backend().get_sample_rate(),
                     root,
-                    (length) => {
-                        set_start_offset(descriptor.start_offset)
-                        set_n_preplay_samples(descriptor.n_preplay_samples)
-                    })
+                    descriptor.n_preplay_samples,
+                    descriptor.start_offset
+                    )
             )
         }
     }
