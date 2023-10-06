@@ -49,8 +49,9 @@ const char** JackTestApi::port_get_connections(const jack_port_t* port) {
     auto &p = Port::from_ptr((jack_port_t*) port);
     auto &conns = p.get_connections();
     auto rval = new const char*[conns.size() + 1];
-    for (size_t i=0; i<conns.size(); i++) {
-        rval[i] = conns[i];
+    size_t i=0;
+    for (auto it = conns.begin(); it != conns.end(); it++, i++) {
+        rval[i] = strdup(it->c_str());
     }
     rval[conns.size()] = nullptr;
     auto _port = fmt::ptr(port);
@@ -117,17 +118,21 @@ jack_port_t* JackTestApi::port_by_name(jack_client_t* client, const char *name) 
     std::string _name(name);
     size_t colon = _name.find(':');
     jack_port_t *rval = nullptr;
+    std::string cname, pname;
     if (colon != std::string::npos) {
-        auto cname = _name.substr(0, colon);
-        auto pname = _name.substr(colon + 1);
+        cname = _name.substr(0, colon);
+        pname = _name.substr(colon + 1);
+    } else {
+        cname = Client::from_ptr(client).name;
+        pname = _name;
+    }
 
-        jacktestapi_globals::logger->debug("name parts: {} : {}", cname, pname);
+    jacktestapi_globals::logger->debug("name parts: {} : {}", cname, pname);
 
-        if (jacktestapi_globals::clients.find(cname) != jacktestapi_globals::clients.end()) {
-            auto &port_client = jacktestapi_globals::clients.at(cname);
-            if (port_client.ports.find(pname) != port_client.ports.end()) {
-                rval = port_client.ports.at(pname).as_ptr();
-            }
+    if (jacktestapi_globals::clients.find(cname) != jacktestapi_globals::clients.end()) {
+        auto &port_client = jacktestapi_globals::clients.at(cname);
+        if (port_client.ports.find(pname) != port_client.ports.end()) {
+            rval = port_client.ports.at(pname).as_ptr();
         }
     }
     
@@ -184,3 +189,27 @@ int JackTestApi::set_port_registration_callback(jack_client_t* client, JackPortR
     jacktestapi_globals::port_registration_callback_arg = arg;
     return 0;
 }
+
+int JackTestApi::connect(jack_client_t* client, const char* src, const char* dst) {
+    auto &_src = Port::from_ptr(port_by_name(client, src));
+    auto &_dst = Port::from_ptr(port_by_name(client, dst));
+
+    _src.connections.insert(dst);
+    _dst.connections.insert(src);
+
+    jacktestapi_globals::logger->trace("Connect {} {}", _src.name, _dst.name);
+    
+    return 0;
+};
+
+int JackTestApi::disconnect(jack_client_t* client, const char* src, const char* dst) {
+    auto &_src = Port::from_ptr(port_by_name(client, src));
+    auto &_dst = Port::from_ptr(port_by_name(client, dst));
+
+    _src.connections.erase(dst);
+    _dst.connections.erase(src);
+
+    jacktestapi_globals::logger->trace("Disconnect {} {}", _src.name, _dst.name);
+    
+    return 0;
+};

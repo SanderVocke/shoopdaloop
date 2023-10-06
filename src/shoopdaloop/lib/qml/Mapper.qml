@@ -70,7 +70,7 @@ Item {
         old_parent_children.forEach(c => {
             if (new_parent_children.find(e => e == c) == undefined) {
                 c.parent = null
-                c.deleteLater()
+                c.destroy()
             }
         })
     }

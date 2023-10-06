@@ -107,6 +107,62 @@ Backend {
                     'test_client_2:midi_in': false,
                     'shoop:midi_in': false
                 })
+
+                wait(100)
+
+                audio_in.connect_external_port('test_client_1:audio_out')
+                audio_out.connect_external_port('test_client_2:audio_in')
+                midi_in.connect_external_port('test_client_2:midi_out')
+                midi_out.connect_external_port('test_client_1:midi_in')
+
+                wait(100)
+
+                verify_eq(audio_in.get_connections_state(), {
+                    'test_client_1:audio_out': true,
+                    'test_client_2:audio_out': false,
+                    'shoop:audio_out': false
+                })
+                verify_eq(audio_out.get_connections_state(), {
+                    'test_client_1:audio_in': false,
+                    'test_client_2:audio_in': true,
+                    'shoop:audio_in': false
+                })
+                verify_eq(midi_in.get_connections_state(), {
+                    'test_client_1:midi_out': false,
+                    'test_client_2:midi_out': true,
+                    'shoop:midi_out': false
+                })
+                verify_eq(midi_out.get_connections_state(), {
+                    'test_client_1:midi_in': true,
+                    'test_client_2:midi_in': false,
+                    'shoop:midi_in': false
+                })
+
+                audio_in.disconnect_external_port('test_client_1:audio_out')
+                audio_out.disconnect_external_port('test_client_2:audio_in')
+                midi_in.disconnect_external_port('test_client_2:midi_out')
+                midi_out.disconnect_external_port('test_client_1:midi_in')
+
+                verify_eq(audio_in.get_connections_state(), {
+                    'test_client_1:audio_out': false,
+                    'test_client_2:audio_out': false,
+                    'shoop:audio_out': false
+                })
+                verify_eq(audio_out.get_connections_state(), {
+                    'test_client_1:audio_in': false,
+                    'test_client_2:audio_in': false,
+                    'shoop:audio_in': false
+                })
+                verify_eq(midi_in.get_connections_state(), {
+                    'test_client_1:midi_out': false,
+                    'test_client_2:midi_out': false,
+                    'shoop:midi_out': false
+                })
+                verify_eq(midi_out.get_connections_state(), {
+                    'test_client_1:midi_in': false,
+                    'test_client_2:midi_in': false,
+                    'shoop:midi_in': false
+                })
             })
         }
     }

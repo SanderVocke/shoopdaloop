@@ -6,6 +6,7 @@
 #include <string>
 #include <map>
 #include <tuple>
+#include <set>
 #include "LoggingBackend.h"
 
 namespace jacktestapi_globals {
@@ -39,19 +40,17 @@ public:
         std::string name;
         Type type;
         Direction direction;
-        std::vector<const char*> connections;
+        std::set<std::string> connections;
         Client &client;
         bool valid;
 
-        Port(std::string name, Client &client, Type type, Direction direction) : name(name), type(type), direction(direction), valid(true), client(client) {
-            connections.push_back(nullptr);
-        }
+        Port(std::string name, Client &client, Type type, Direction direction) : name(name), type(type), direction(direction), valid(true), client(client) {}
         Port(Port const& other) = delete;
 
         void* get_buffer() { return nullptr; }
         Client &get_client() { return client; }
         unsigned long get_flags() { return direction == Direction::Input ? JackPortIsInput : JackPortIsOutput; }
-        std::vector<const char*> &get_connections() { return connections; }
+        std::set<std::string> &get_connections() { return connections; }
     };
 
     struct Client {
@@ -90,8 +89,6 @@ public:
     static void midi_clear_buffer(auto ...args) { jacktestapi_globals::logger->trace("UNIMPL midi_clear_buffer"); return; };
     static int midi_event_write(auto ...args) { jacktestapi_globals::logger->trace("UNIMPL midi_event_write"); return 0; };
     static int port_unregister(auto ...args) { return 0; };
-    static int connect(auto ...args) { jacktestapi_globals::logger->trace("UNIMPL connect"); return 0; };
-    static int disconnect(auto ...args) { jacktestapi_globals::logger->trace("UNIMPL disconnect"); return 0; };
     static int activate(auto ...args) { jacktestapi_globals::logger->trace("UNIMPL activate"); return 0; };
     static int client_close(auto ...args) { return 0; };
     static jack_nframes_t get_sample_rate(auto ...args) { jacktestapi_globals::logger->trace("UNIMPL get_sample_rate"); return 48000; }
@@ -123,7 +120,8 @@ public:
     static const char* port_name(const jack_port_t* port);
     static const char* get_client_name(jack_client_t *client);
 
-    
+    static int connect(jack_client_t* client, const char* src, const char* dst);
+    static int disconnect(jack_client_t* client, const char* src, const char* dst);
 };
 
 namespace jacktestapi_globals {

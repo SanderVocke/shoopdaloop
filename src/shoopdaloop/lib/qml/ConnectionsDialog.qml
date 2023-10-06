@@ -16,8 +16,8 @@ Dialog {
     modal: true
     standardButtons: Dialog.Close
 
-    width: Overlay.overlay.width - 50
-    height: Overlay.overlay.height - 50
+    width: Overlay.overlay ? Overlay.overlay.width - 50 : 800
+    height: Overlay.overlay ? Overlay.overlay.height - 50 : 500
     anchors.centerIn: Overlay.overlay
 
     TabBar {
@@ -127,7 +127,14 @@ Dialog {
                     color: 'transparent'
                     Label {
                         id: label
-                        text: mapped_item.name.split(':')[1]
+                        text: {
+                            let parts = mapped_item.name.split(':')
+                            if (parts.length == 2) {
+                                return parts[1]
+                            } else {
+                                return mapped_item.name
+                            }
+                        }
                         font.pixelSize: connections.font_size
                         anchors.right: parent.horizontalCenter
                         anchors.bottom: parent.bottom

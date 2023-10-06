@@ -56,8 +56,8 @@ Session {
 
         property var dt : session.tracks[1]
         property var dwt: session.tracks[2]
-        property var dt_loop : dt.loops[0]
-        property var dwt_loop : dwt.loops[0]
+        property var dt_loop : dt ? dt.loops[0] : null
+        property var dwt_loop : dwt ? dwt.loops[0] : null
 
         function dt_loop_channels() {
             if (!dt_loop) return []
