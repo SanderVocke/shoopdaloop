@@ -13,12 +13,43 @@ The main intended use is for quickly expressing musical ideas without needing to
 
 Live performance could also be a good use-case, although it is not quite battle-tested enough to recommend that.
 
+For currently open known issues, check the GitHub Issues page.
+
 # In a nutshell
+
+To summarize why ShoopDaLoop exists and what the goals and plans are, a short comparison table with similar software gives a good picture:
+
+|                             | ShoopDaLoop              | SooperLooper     | Luppp                  | Ardour                 |
+|-----------------------------|--------------------------|------------------|------------------------|------------------------|
+| OS                          | Linux <sup>(2)</sup>     | Linux, Mac       | Linux                  | Linux, Mac, Windows    |
+| MIDI looping                | ✓                        | X                | X                      | ✓                      |
+| Audio+MIDI co-recording     | ✓                        | X                | X                      | ?                      |
+| Audio dry+wet co-recording  | ✓                        | manual setup     | ✓                      | ?                      |
+| Loop Organization           | Grid                     | Separate loopers | Grid                   | Grid                   |
+| Scenes support              | ✓ (any loop combination) | X                | ✓ (grid row = scene)   | ?                      |
+| Suitable for live use       | ✓                        | ✓                | ✓                      | X                      |
+| Plugin Host                 | ✓ <sup>(1)</sup>         | X                | X                      | ✓                      |
+| Song/performance sequencing | planned                  | X                | X                      | ✓                      |
+| MIDI controller support     | planned (LUA scripting)  | ✓ (MIDI learn)   | ✓ (not sure of method) | ✓ (not sure of method) |
+| NSM Session Management      | ✓                        | ✓                | ✓                      | ✓                      |
+| Overdubbing                 | planned                  | ✓                | ✓                      | ?                      |
+
+(1): ShoopDaLoop has built-in support to host Carla through LV2, relying on Carla as a proxy to support other plugin types such as VST(3). <br>
+(2): Focus is on Linux for now until it is reasonably feature-complete. The design does not prevent moving to Mac + Windows in the future.
+
+Disclaimers:
+
+- I may have mistakes in this table due to not being completely familiar with these programs. Please raise an issue/PR for corrections or extra products to compare.
+- Also note that I filled this in primarily as a comparison of FOSS loopers for Linux. Software like Ardour offers way more other DAW functionality that neither ShoopDaLoop nor the other loopers have.
+
+As seen in the comparison table, ShoopDaLoop is closest to Luppp in what it offers, the main differentiators being built-in MIDI support and the planned features for song construction. And of course, the details of how loops are managed exactly differ between all these tools and are a matter of preference.
+
+# Summary
 
 - **Fast**: can easily handle a large number of loops.
 - **Tracks**: loops are organized into tracks, which share inputs/outputs and effects/synthesis.
 - **MIDI and audio**: can both be looped, including alongside each other in the same loop.
-- **FX/synthesis**: can be inserted into a loop via external JACK connections or by using plugins. The same loop can simultaneously record "dry" and "wet", akin to [Luppp](http://openavproductions.com/luppp/).
+- **FX/synthesis**: can be inserted into a loop via external JACK connections or by using plugins. The same loop can simultaneously record "dry" and "wet", akin to [Luppp](http://openavproductions.com/luppp/), to save precious CPU during playback.
 - **Scenes**: scenes are named groups of loops. They can be started/stopped simultaneously. Typical use is for sections of a song.
 - **Synchronization**: every loop is synced to the "master loop", which typically holds a beat, click-track or just fixed-length silence. Loops may also be a multiple of the master loop length.
 - **Click tracks**: can be generated via a dialog in the app.
@@ -28,9 +59,9 @@ These features are explained in detail in the [docs](https://sandervocke.github.
 
 # Status
 
-ShoopDaLoop works, but not nearly all of its intended functionality is finished yet (see below). GUI elements relating to these features may already be there but not working yet.
-This is in early development. It has not been used for on-stage performing and probably shouldn't until after doing some serious testing.
-I am not a performing musician, so for me rigorous testing does not have priority, but I do aim to accomodate and add automated testing.
+ShoopDaLoop is in early development. The basics work but not nearly all of its intended functionality is finished yet (see below), and there are bugs.
+As such, it obviously has not been used for on-stage performing and definitely shouldn't until after doing some serious testing.
+Note however that having automated testing with high coverage is among the project goals.
 
 # Roadmap
 
