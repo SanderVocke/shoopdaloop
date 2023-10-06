@@ -113,6 +113,8 @@ Session {
                 dt_loop.set_length(2)
                 dt_loop_channels()[0].set_n_preplay_samples(1)
                 dt_loop_channels()[0].set_start_offset(2)
+                dt_loop_channels()[1].set_n_preplay_samples(1)
+                dt_loop_channels()[1].set_start_offset(2)
                 dwt_loop.set_length(4)
                 testcase.wait(50)
 
