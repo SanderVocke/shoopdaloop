@@ -110,7 +110,9 @@ Session {
                 dwt_dry_loop_channels()[1].load_data([0.8, 0.7, 0.6, 0.5])
                 dwt_wet_loop_channels()[0].load_data([0.9, 0.10, 0.11, 0.12])
                 dwt_wet_loop_channels()[1].load_data([0.12, 0.11, 0.10, 0.9])
-                dt_loop.set_length(4)
+                dt_loop.set_length(2)
+                dt_loop_channels()[0].set_n_preplay_samples(1)
+                dt_loop_channels()[0].set_start_offset(2)
                 dwt_loop.set_length(4)
                 testcase.wait(50)
 

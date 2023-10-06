@@ -53,8 +53,6 @@ PythonLoopAudioChannel {
                     data_files_dir + '/' + descriptor.data_file,
                     get_backend().get_sample_rate(),
                     descriptor.data_length,
-                    descriptor.start_offset,
-                    descriptor.n_preplay_samples,
                     [[root]],
                     (length) => {
                         set_start_offset(descriptor.start_offset)
