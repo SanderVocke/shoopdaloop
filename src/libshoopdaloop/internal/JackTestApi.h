@@ -8,6 +8,12 @@
 #include <tuple>
 #include "LoggingBackend.h"
 
+namespace jacktestapi_globals {
+    extern logging::logger *logger;
+    extern JackPortRegistrationCallback port_registration_callback;
+    extern void* port_registration_callback_arg;
+}
+
 // A partial simple mock implementation of the JACK API which can be used for simple
 // tests of connectivity (creating and manipulating clients, ports).
 // Note that only creation is supported. Closing clients and ports will not do anything.
@@ -72,29 +78,24 @@ public:
         void close_port(std::string name) {}
     };
 
-    static std::map<std::string, Client> ms_clients;
-    static logging::logger *ms_logger;
-    static JackPortRegistrationCallback ms_port_registration_callback;
-    static void* ms_port_registration_callback_arg;
-
-    static void* port_get_buffer(auto ...args) { ms_logger->trace("UNIMPL port_get_buffer"); return nullptr; };
-    static void port_get_latency_range(auto ...args) { ms_logger->trace("UNIMPL port_get_latency_range"); return; };
-    static jack_nframes_t port_get_latency(auto ...args) { ms_logger->trace("UNIMPL port_get_latency"); return 0; };
-    static int set_process_callback(auto ...args) { ms_logger->trace("UNIMPL set_process_callback"); return 0; };
-    static int set_xrun_callback(auto ...args) { ms_logger->trace("UNIMPL set_xrun_callback"); return 0; };
-    static int set_port_connect_callback(auto ...args) { ms_logger->trace("UNIMPL set_port_connect_callback"); return 0; };
-    static int set_port_rename_callback(auto ...args) { ms_logger->trace("UNIMPL set_port_rename_callback"); return 0; };
-    static uint32_t midi_get_event_count(auto ...args) { ms_logger->trace("UNIMPL midi_get_event_count"); return 0; };
-    static int midi_event_get(auto ...args) { ms_logger->trace("UNIMPL midi_event_get"); return 0; };
-    static void midi_clear_buffer(auto ...args) { ms_logger->trace("UNIMPL midi_clear_buffer"); return; };
-    static int midi_event_write(auto ...args) { ms_logger->trace("UNIMPL midi_event_write"); return 0; };
-    static int port_unregister(auto ...args) { ms_logger->trace("UNIMPL port_unregister"); return 0; };
-    static int connect(auto ...args) { ms_logger->trace("UNIMPL connect"); return 0; };
-    static int disconnect(auto ...args) { ms_logger->trace("UNIMPL disconnect"); return 0; };
-    static int activate(auto ...args) { ms_logger->trace("UNIMPL activate"); return 0; };
-    static int client_close(auto ...args) { ms_logger->trace("UNIMPL client_close"); return 0; };
-    static jack_nframes_t get_sample_rate(auto ...args) { ms_logger->trace("UNIMPL get_sample_rate"); return 48000; }
-    static jack_nframes_t get_buffer_size(auto ...args) { ms_logger->trace("UNIMPL get_buffer_size"); return 2048; }
+    static void* port_get_buffer(auto ...args) { jacktestapi_globals::logger->trace("UNIMPL port_get_buffer"); return nullptr; };
+    static void port_get_latency_range(auto ...args) { jacktestapi_globals::logger->trace("UNIMPL port_get_latency_range"); return; };
+    static jack_nframes_t port_get_latency(auto ...args) { jacktestapi_globals::logger->trace("UNIMPL port_get_latency"); return 0; };
+    static int set_process_callback(auto ...args) { jacktestapi_globals::logger->trace("UNIMPL set_process_callback"); return 0; };
+    static int set_xrun_callback(auto ...args) { jacktestapi_globals::logger->trace("UNIMPL set_xrun_callback"); return 0; };
+    static int set_port_connect_callback(auto ...args) { jacktestapi_globals::logger->trace("UNIMPL set_port_connect_callback"); return 0; };
+    static int set_port_rename_callback(auto ...args) { jacktestapi_globals::logger->trace("UNIMPL set_port_rename_callback"); return 0; };
+    static uint32_t midi_get_event_count(auto ...args) { jacktestapi_globals::logger->trace("UNIMPL midi_get_event_count"); return 0; };
+    static int midi_event_get(auto ...args) { jacktestapi_globals::logger->trace("UNIMPL midi_event_get"); return 0; };
+    static void midi_clear_buffer(auto ...args) { jacktestapi_globals::logger->trace("UNIMPL midi_clear_buffer"); return; };
+    static int midi_event_write(auto ...args) { jacktestapi_globals::logger->trace("UNIMPL midi_event_write"); return 0; };
+    static int port_unregister(auto ...args) { return 0; };
+    static int connect(auto ...args) { jacktestapi_globals::logger->trace("UNIMPL connect"); return 0; };
+    static int disconnect(auto ...args) { jacktestapi_globals::logger->trace("UNIMPL disconnect"); return 0; };
+    static int activate(auto ...args) { jacktestapi_globals::logger->trace("UNIMPL activate"); return 0; };
+    static int client_close(auto ...args) { return 0; };
+    static jack_nframes_t get_sample_rate(auto ...args) { jacktestapi_globals::logger->trace("UNIMPL get_sample_rate"); return 48000; }
+    static jack_nframes_t get_buffer_size(auto ...args) { jacktestapi_globals::logger->trace("UNIMPL get_buffer_size"); return 2048; }
 
     static jack_client_t* client_open(const char* name, jack_options_t options, jack_status_t* status, ...);
     static void init();
@@ -124,3 +125,7 @@ public:
 
     
 };
+
+namespace jacktestapi_globals {
+    extern std::map<std::string, JackTestApi::Client> clients;
+}

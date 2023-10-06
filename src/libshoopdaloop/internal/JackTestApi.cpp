@@ -2,17 +2,19 @@
 #include "LoggingBackend.h"
 #include <jack/types.h>
 
-std::map<std::string, JackTestApi::Client> JackTestApi::ms_clients;
-logging::logger* JackTestApi::ms_logger;
-JackPortRegistrationCallback JackTestApi::ms_port_registration_callback = nullptr;
-void *JackTestApi::ms_port_registration_callback_arg = nullptr;
+namespace jacktestapi_globals {
+    std::map<std::string, JackTestApi::Client> clients;
+    logging::logger* logger;
+    JackPortRegistrationCallback port_registration_callback = nullptr;
+    void *port_registration_callback_arg = nullptr;
+}
 
 jack_client_t* JackTestApi::client_open(const char* name, jack_options_t options, jack_status_t* status, ...) {
-    ms_clients.try_emplace(name, name);
+    jacktestapi_globals::clients.try_emplace(name, name);
     *status = (jack_status_t)0;
-    auto rval = ms_clients.at(name).as_ptr();
+    auto rval = jacktestapi_globals::clients.at(name).as_ptr();
     auto _rval = fmt::ptr(rval);
-    ms_logger->trace("Create client {} -> {}", name, _rval);
+    jacktestapi_globals::logger->trace("Create client {} -> {}", name, _rval);
     return rval;
 }
 
@@ -20,8 +22,8 @@ void JackTestApi::init() {
     static bool initialized = false;
     if (initialized) { return; }
 
-    ms_logger = &logging::get_logger("Backend.JackTestApi");
-    ms_logger->trace("Initializing");
+    jacktestapi_globals::logger = &logging::get_logger("Backend.JackTestApi");
+    jacktestapi_globals::logger->trace("Initializing");
 
     // Populate the test environment with two clients, each having some ports.
     jack_status_t s;
@@ -53,7 +55,7 @@ const char** JackTestApi::port_get_connections(const jack_port_t* port) {
     rval[conns.size()] = nullptr;
     auto _port = fmt::ptr(port);
     auto _rval = fmt::ptr(rval);
-    ms_logger->trace("Get all connections for port {} -> {}", _port, _rval);
+    jacktestapi_globals::logger->trace("Get all connections for port {} -> {}", _port, _rval);
     return rval;
 }
 
@@ -68,13 +70,13 @@ jack_port_t* JackTestApi::port_register(
     auto &p = c.open_port(port_name, flags & JackPortIsInput ? Direction::Input : Direction::Output,
     std::string(port_type) == std::string(JACK_DEFAULT_AUDIO_TYPE) ? Type::Audio : Type::Midi);
     
-    if (ms_port_registration_callback) {
-        ms_port_registration_callback(-1, 1, ms_port_registration_callback_arg);
+    if (jacktestapi_globals::port_registration_callback) {
+        jacktestapi_globals::port_registration_callback(-1, 1, jacktestapi_globals::port_registration_callback_arg);
     }
     
     auto rval = p.as_ptr();
     auto _rval = fmt::ptr(rval);
-    ms_logger->trace("Register port {} -> {}", port_name, _rval);
+    jacktestapi_globals::logger->trace("Register port {} -> {}", port_name, _rval);
     return rval;
 };
 
@@ -85,7 +87,7 @@ const char** JackTestApi::get_ports(jack_client_t * client,
 {
     // TODO implement regex patterns
     std::vector<Port*> ports;
-    for(auto &c : ms_clients) {
+    for(auto &c : jacktestapi_globals::clients) {
         for(auto &p : c.second.ports) {
             ports.push_back(&p.second);
         }
@@ -101,12 +103,12 @@ const char** JackTestApi::get_ports(jack_client_t * client,
         auto &c = ports[i]->client;
         auto name = c.name + ":" + ports[i]->name;
         port_names[i] = strdup(name.c_str());
-        ms_logger->trace("Get ports: {} -> {}", i, port_names[i]);
+        jacktestapi_globals::logger->trace("Get ports: {} -> {}", i, port_names[i]);
     }
     port_names[ports.size()] = nullptr;
 
     auto nports = ports.size();
-    ms_logger->trace("Get ports: {} ports found", nports);
+    jacktestapi_globals::logger->trace("Get ports: {} ports found", nports);
 
     return port_names;
 };
@@ -119,10 +121,10 @@ jack_port_t* JackTestApi::port_by_name(jack_client_t* client, const char *name) 
         auto cname = _name.substr(0, colon);
         auto pname = _name.substr(colon + 1);
 
-        ms_logger->debug("name parts: {} : {}", cname, pname);
+        jacktestapi_globals::logger->debug("name parts: {} : {}", cname, pname);
 
-        if (ms_clients.find(cname) != ms_clients.end()) {
-            auto &port_client = ms_clients.at(cname);
+        if (jacktestapi_globals::clients.find(cname) != jacktestapi_globals::clients.end()) {
+            auto &port_client = jacktestapi_globals::clients.at(cname);
             if (port_client.ports.find(pname) != port_client.ports.end()) {
                 rval = port_client.ports.at(pname).as_ptr();
             }
@@ -130,7 +132,7 @@ jack_port_t* JackTestApi::port_by_name(jack_client_t* client, const char *name) 
     }
     
     auto _rval = fmt::ptr(rval);
-    ms_logger->trace("Get port by name {} -> {}", name, _rval);
+    jacktestapi_globals::logger->trace("Get port by name {} -> {}", name, _rval);
     return rval;
 }
 
@@ -143,7 +145,7 @@ int JackTestApi::port_flags(const jack_port_t* port) {
     }
 
     auto _port = fmt::ptr(port);
-    ms_logger->trace("Get port flags {} -> {}", _port, rval);
+    jacktestapi_globals::logger->trace("Get port flags {} -> {}", _port, rval);
     return rval;
 }
 
@@ -156,29 +158,29 @@ const char* JackTestApi::port_type(const jack_port_t* port) {
     }
 
     auto _port = fmt::ptr(port);
-    ms_logger->trace("Get port type {} -> {}", _port, rval);
+    jacktestapi_globals::logger->trace("Get port type {} -> {}", _port, rval);
     return rval;
 }
 
 const char* JackTestApi::port_name(const jack_port_t* port) {
     auto rval = strdup(Port::from_ptr((jack_port_t*) port).name.c_str());
     auto _port = fmt::ptr(port);
-    ms_logger->trace("Get port name {} -> {}", _port, rval);
+    jacktestapi_globals::logger->trace("Get port name {} -> {}", _port, rval);
     return rval;
 }
 
 const char* JackTestApi::get_client_name(jack_client_t *client) {
     auto rval = strdup(Client::from_ptr(client).name.c_str());
     auto _client = fmt::ptr(client);
-    ms_logger->trace("Get client name {} -> {}", _client, rval);
+    jacktestapi_globals::logger->trace("Get client name {} -> {}", _client, rval);
     return rval;
 }
 
 int JackTestApi::set_port_registration_callback(jack_client_t* client, JackPortRegistrationCallback cb, void* arg) {
     auto _client = fmt::ptr(client);
     auto _arg = fmt::ptr(arg); 
-    ms_logger->trace("Set port registration cb for client {}, arg {}", _client, _arg);
-    ms_port_registration_callback = cb;
-    ms_port_registration_callback_arg = arg;
+    jacktestapi_globals::logger->trace("Set port registration cb for client {}, arg {}", _client, _arg);
+    jacktestapi_globals::port_registration_callback = cb;
+    jacktestapi_globals::port_registration_callback_arg = arg;
     return 0;
 }
