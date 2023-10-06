@@ -19,20 +19,20 @@ For currently open known issues, check the GitHub Issues page.
 
 To summarize why ShoopDaLoop exists and what the goals and plans are, a short comparison table with similar software gives a good picture:
 
-|                             | ShoopDaLoop              | SooperLooper     | Luppp                  | Ardour                 |
-|-----------------------------|--------------------------|------------------|------------------------|------------------------|
-| OS                          | Linux <sup>(2)</sup>     | Linux, Mac       | Linux                  | Linux, Mac, Windows    |
-| MIDI looping                | ✓                        | X                | X                      | ✓                      |
-| Audio+MIDI co-recording     | ✓                        | X                | X                      | ?                      |
-| Audio dry+wet co-recording  | ✓                        | manual setup     | ✓                      | ?                      |
-| Loop Organization           | Grid                     | Separate loopers | Grid                   | Grid                   |
-| Scenes support              | ✓ (any loop combination) | X                | ✓ (grid row = scene)   | ?                      |
-| Suitable for live use       | ✓                        | ✓                | ✓                      | X                      |
-| Plugin Host                 | ✓ <sup>(1)</sup>         | X                | X                      | ✓                      |
-| Song/performance sequencing | planned                  | X                | X                      | ✓                      |
-| MIDI controller support     | planned (LUA scripting)  | ✓ (MIDI learn)   | ✓ (not sure of method) | ✓ (not sure of method) |
-| NSM Session Management      | ✓                        | ✓                | ✓                      | ✓                      |
-| Overdubbing                 | planned                  | ✓                | ✓                      | ?                      |
+|                             | ShoopDaLoop               | SooperLooper     | Luppp                  | Ardour                   |
+|-----------------------------|---------------------------|------------------|------------------------|--------------------------|
+| OS                          | Linux <sup>(2)</sup>      | Linux, Mac       | Linux                    | Linux, Mac, Windows    |
+| MIDI looping                | ✅                        | ❌              | ❌                       | ✅                      |
+| Audio+MIDI co-recording     | ✅                        | ❌              | ❌                       | ?                      |
+| Audio dry+wet co-recording  | ✅                        | manual setup     | ✅                      | ?                      |
+| Loop Organization           | Grid                      | Separate loopers | Grid                     | Grid                   |
+| Scenes support              | ✅ (any loop combination) | ❌              | ✅ (grid row = scene)    | ?                      |
+| Suitable for live use       | ✅                        | ✅               | ✅                      | ❌                      |
+| Plugin Host                 | ✅ <sup>(1)</sup>         | ❌               | ❌                      | ✅                      |
+| Song/performance sequencing | planned                   | ❌               | ❌                      | ✅                      |
+| MIDI controller support     | planned (LUA scripting)   | ✅ (MIDI learn)  | ✅ (not sure of method) | ✅ (not sure of method) |
+| NSM Session Management      | ✅                        | ✅               | ✅                      | ✅                      |
+| Overdubbing                 | planned                   | ✅               | ✅                      | ?                      |
 
 (1): ShoopDaLoop has built-in support to host Carla through LV2, relying on Carla as a proxy to support other plugin types such as VST(3). <br>
 (2): Focus is on Linux for now until it is reasonably feature-complete. The design does not prevent moving to Mac + Windows in the future.
