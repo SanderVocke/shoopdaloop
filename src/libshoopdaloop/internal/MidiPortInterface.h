@@ -38,7 +38,7 @@ public:
     virtual ~MidiWriteableBufferInterface() {};
 };
 
-class MidiPortInterface : public PortInterface {
+class MidiPortInterface : public virtual PortInterface {
 public:
 MidiPortInterface(
         std::string name,

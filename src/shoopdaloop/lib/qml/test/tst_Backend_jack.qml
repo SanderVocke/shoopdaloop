@@ -8,18 +8,21 @@ import './testfilename.js' as TestFilename
 PythonBackend {
     id: backend
     update_interval_ms: 30
-    client_name_hint: 'ShoopDaLoop'
+    client_name_hint: 'shoop'
+    backend_type: Types.BackendType.JackTest
     backend_argstring: ''
-    backend_type: Types.BackendType.Dummy
 
     ShoopTestCase {
-        name: 'DummyBackend'
+        name: 'JackBackend'
         filename : TestFilename.test_filename()
 
         function test_backend() {
             run_case('test_backend', () => {
                 verify(backend.initialized)
-                backend.close()
+                wait(1000)
+                if(backend.actual_backend_type != Types.BackendType.JackTest) {
+                    skip("Was not able to start a Jack test backend")
+                }
             })
         }
     }

@@ -21,7 +21,31 @@
 #include <boost/lockfree/spsc_queue.hpp>
 #include <memory>
 
-class DummyAudioPort : public AudioPortInterface<audio_sample_t>,
+class DummyPort : public virtual PortInterface {
+protected:
+    std::string m_name;
+    PortDirection m_direction;
+    PortType m_type;
+
+public:
+    DummyPort(
+        std::string name,
+        PortDirection direction,
+        PortType type
+    );
+
+    const char* name() const override;
+    PortDirection direction() const override;
+    PortType type() const override;
+    void close() override;
+
+    PortExternalConnectionStatus get_external_connection_status() const override;
+    void connect_external(std::string name) override;
+    void disconnect_external(std::string name) override;
+};
+
+class DummyAudioPort : public virtual AudioPortInterface<audio_sample_t>,
+                       public DummyPort,
                        private ModuleLoggingEnabled {
     std::string log_module_name() const override;
 
@@ -38,9 +62,6 @@ public:
         PortDirection direction);
     
     audio_sample_t *PROC_get_buffer(size_t n_frames, bool do_zero=false) override;
-    const char* name() const override;
-    PortDirection direction() const override;
-    void close() override;
     ~DummyAudioPort() override;
 
     // For input ports, queue up data to be read from the port.
@@ -54,7 +75,8 @@ public:
     std::vector<audio_sample_t> dequeue_data(size_t n);
 };
 
-class DummyMidiPort : public MidiPortInterface,
+class DummyMidiPort : public virtual MidiPortInterface,
+                      public DummyPort,
                       public MidiReadableBufferInterface,
                       public MidiWriteableBufferInterface,
                       private ModuleLoggingEnabled {
@@ -63,8 +85,6 @@ public:
     
 private:
     std::string log_module_name() const override;
-    std::string m_name;
-    PortDirection m_direction;
 
     // Queued messages as external input to the port
     std::vector<StoredMessage> m_queued_msgs;
@@ -91,10 +111,6 @@ public:
         std::string name,
         PortDirection direction
     );
-
-    const char* name() const override;
-    PortDirection direction() const override;
-    void close() override;
 
     MidiReadableBufferInterface &PROC_get_read_buffer (size_t n_frames) override;
     MidiWriteableBufferInterface &PROC_get_write_buffer (size_t n_frames) override;

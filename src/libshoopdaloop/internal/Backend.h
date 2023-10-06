@@ -49,11 +49,13 @@ public:
     std::shared_ptr<profiling::ProfilingItem> cmds_profiling_item;
 
     const std::string m_client_name_hint;
-    const audio_system_type_t m_audio_system_type;
+    const std::string m_argstring;
+    audio_system_type_t m_audio_system_type;
 
     std::string log_module_name() const override;
 
-    Backend(audio_system_type_t audio_system_type, std::string client_name_hint);
+    Backend(audio_system_type_t audio_system_type, std::string client_name_hint, std::string argstring);
+    ~Backend();
 
     void PROC_process(jack_nframes_t nframes);
     void PROC_process_decoupled_midi_ports(size_t nframes);

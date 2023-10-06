@@ -3,7 +3,7 @@
 #include "PortInterface.h"
 
 template<typename SampleT>
-class AudioPortInterface : public PortInterface {
+class AudioPortInterface : public virtual PortInterface {
 public:
     AudioPortInterface(
         std::string name,

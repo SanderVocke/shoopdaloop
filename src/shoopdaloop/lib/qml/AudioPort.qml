@@ -30,10 +30,14 @@ PythonAudioPort {
             'volume': volume,
             'muted': muted,
             'passthrough_muted': passthrough_muted,
-            'passthrough_to': descriptor.passthrough_to
+            'passthrough_to': descriptor.passthrough_to,
+            'external_port_connections': get_connected_external_ports()
         }
     }
     function queue_load_tasks(data_files_dir, add_tasks_to) {}
+
+    Component.onCompleted: try_make_connections(descriptor.external_port_connections)
+    onInitializedChanged: try_make_connections(descriptor.external_port_connections)
 
     RegistryLookups {
         id: lookup_passthrough_to

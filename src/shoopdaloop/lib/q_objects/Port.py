@@ -51,6 +51,7 @@ class Port(QQuickItem):
             if self._backend or self._backend_obj:
                 raise Exception('May not change backend of existing port')
             self._backend = l
+            self._backend.initializedChanged.connect(lambda: self.maybe_initialize())
             self.maybe_initialize()
 
     # initialized
@@ -106,6 +107,7 @@ class Port(QQuickItem):
     @name.setter
     def name(self, s):
         if self._name != s:
+            self._name = s
             self.nameChanged.emit(s)
 
     # muted
@@ -194,6 +196,36 @@ class Port(QQuickItem):
                 self._initialized = True
                 self._backend.registerBackendObject(self)
                 self.initializedChanged.emit(True)
+
+    @Slot(str)
+    def connect_external_port(self, name):
+        self._backend_obj.connect_external_port(name)
+    
+    @Slot(str)
+    def disconnect_external_port(self, name):
+        self._backend_obj.disconnect_external_port(name)
+
+    @Slot(result='QVariant')
+    def get_connections_state(self):
+        print((self._backend_obj.get_connections_state() if self._backend_obj else dict()))
+        return (self._backend_obj.get_connections_state() if self._backend_obj else dict())
+
+    @Slot(result=list)
+    def get_connected_external_ports(self):
+        state = self.get_connections_state()
+        return [k for k in state.keys() if state[k]]
+    
+    @Slot(list)
+    def try_make_connections(self, port_names):
+        if not self.initialized:
+            return
+        connected = self.get_connected_external_ports()
+        for p in connected:
+            if not p in port_names:
+                self.disconnect_external_port(p)
+        for p in port_names:
+            if not p in connected:
+                self.connect_external_port(p)
 
     ##########
     ## INTERNAL MEMBERS

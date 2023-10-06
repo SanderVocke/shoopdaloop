@@ -7,8 +7,9 @@ typedef float audio_sample_t;
 
 // Audio systems.
 typedef enum {
-    Jack,
-    Dummy
+    Jack,     // JACK audio
+    JackTest, // Internal test backend which mocks part of JACK for connections testing
+    Dummy     // Internal test backend aimed at controlled processing
 } audio_system_type_t;
 
 // Modes a loop can be in.
@@ -113,6 +114,7 @@ typedef struct {
 typedef struct {
     float dsp_load_percent;
     unsigned xruns_since_last;
+    audio_system_type_t actual_type;
 } backend_state_info_t;
 
 typedef struct {
@@ -174,6 +176,16 @@ typedef struct {
     unsigned n_items;
     profiling_report_item_t *items;
 } profiling_report_t;
+
+typedef struct {
+    const char *name;
+    unsigned connected;
+} port_maybe_connection_t;
+
+typedef struct {
+    unsigned n_ports;
+    port_maybe_connection_t *ports;
+} port_connections_state_t;
 
 #ifdef __cplusplus
 }

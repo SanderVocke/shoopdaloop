@@ -1,35 +1,50 @@
 #pragma once
 #include "AudioSystemInterface.h"
+#include "JackAllPorts.h"
+#include "JackApi.h"
+#include "JackTestApi.h"
+#include "LoggingEnabled.h"
 #include <jack/types.h>
 #include <map>
 #include <atomic>
+#include <optional>
 
-class JackAudioSystem : public AudioSystemInterface<jack_nframes_t, size_t> {
+template<typename API>
+class GenericJackAudioSystem :
+    public AudioSystemInterface<jack_nframes_t, size_t>,
+    private ModuleLoggingEnabled
+{
+private:
+    std::string log_module_name() const override;
+
     jack_client_t * m_client;
     std::string m_client_name;
     size_t m_sample_rate;
     std::map<std::string, std::shared_ptr<PortInterface>> m_ports;
     std::function<void(size_t)> m_process_cb;
     std::atomic<unsigned> m_xruns = 0;
+    std::shared_ptr<GenericJackAllPorts<API>> m_all_ports_tracker;
 
     static int PROC_process_cb_static (jack_nframes_t nframes,
                                   void *arg);
-
     static int PROC_xrun_cb_static(void *arg);
+    static void PROC_port_connect_cb_static(jack_port_id_t a, jack_port_id_t b, int connect, void *arg);
+    static void PROC_port_registration_cb_static(jack_port_id_t port, int, void *arg);
+    static void PROC_port_rename_cb_static(jack_port_id_t port, const char *old_name, const char *new_name, void *arg);
 
     int PROC_process_cb_inst (jack_nframes_t nframes);
-
     int PROC_xrun_cb_inst ();
+    void PROC_update_ports_cb_inst();
 
 public:
-    JackAudioSystem(
+    GenericJackAudioSystem(
         std::string client_name,
         std::function<void(size_t)> process_cb
     );
 
     void start() override;
 
-    ~JackAudioSystem() override;
+    ~GenericJackAudioSystem() override;
 
     std::shared_ptr<AudioPortInterface<float>> open_audio_port(
         std::string name,
@@ -49,3 +64,6 @@ public:
     size_t get_xruns() const override;
     void reset_xruns() override;
 };
+
+using JackAudioSystem = GenericJackAudioSystem<JackApi>;
+using JackTestAudioSystem = GenericJackAudioSystem<JackTestApi>;

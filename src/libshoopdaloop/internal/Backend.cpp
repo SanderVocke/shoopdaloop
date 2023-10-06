@@ -31,7 +31,7 @@ LV2 g_lv2;
 
 std::string Backend::log_module_name() const { return "Backend"; }
 
-Backend::Backend(audio_system_type_t audio_system_type, std::string client_name_hint)
+Backend::Backend(audio_system_type_t audio_system_type, std::string client_name_hint, std::string argstring)
         : cmd_queue(shoop_constants::command_queue_size, 1000, 1000),
           profiler(std::make_shared<profiling::Profiler>()),
           top_profiling_item(profiler->maybe_get_profiling_item("Process")),
@@ -59,7 +59,8 @@ Backend::Backend(audio_system_type_t audio_system_type, std::string client_name_
           cmds_profiling_item(
               profiler->maybe_get_profiling_item("Process.Commands")),
           m_audio_system_type(audio_system_type),
-          m_client_name_hint(client_name_hint)
+          m_client_name_hint(client_name_hint),
+          m_argstring(argstring)
 {
         log_init();
 }
@@ -75,7 +76,19 @@ void Backend::start() {
                         std::string(m_client_name_hint),
                         [weak_self] (size_t n_frames) {
                         if (auto self = weak_self.lock()) {
-                            self->log<LogLevel::trace>("dummy process: {}", n_frames);
+                            self->log<LogLevel::trace>("Jack process: {}", n_frames);
+                            self->PROC_process(n_frames);
+                        }
+                    })));
+                break;
+            case JackTest:
+                log<LogLevel::debug>("Initializing JackTest mock audio system.");
+                audio_system = std::unique_ptr<AudioSystem>(
+                    dynamic_cast<AudioSystem *>(new JackTestAudioSystem(
+                        std::string(m_client_name_hint),
+                        [weak_self] (size_t n_frames) {
+                        if (auto self = weak_self.lock()) {
+                            self->log<LogLevel::trace>("Jack test process: {}", n_frames);
                             self->PROC_process(n_frames);
                         }
                     })));
@@ -97,6 +110,7 @@ void Backend::start() {
         }
 
         if (!audio_system || m_audio_system_type == Dummy) {
+            m_audio_system_type = Dummy;
             log<LogLevel::debug>("Initializing dummy audio system.");
             audio_system = std::unique_ptr<AudioSystem>(
                 dynamic_cast<AudioSystem *>(new _DummyAudioSystem(
@@ -120,8 +134,9 @@ void Backend::start() {
 
 backend_state_info_t Backend::get_state() {
     backend_state_info_t rval;
-    rval.dsp_load_percent = maybe_jack_client_handle() ? jack_cpu_load(maybe_jack_client_handle()) : 0.0f;
+    rval.dsp_load_percent = (maybe_jack_client_handle() && m_audio_system_type == Jack) ? JackApi::cpu_load(maybe_jack_client_handle()) : 0.0f;
     rval.xruns_since_last = audio_system->get_xruns();
+    rval.actual_type = m_audio_system_type;
     audio_system->reset_xruns();
     return rval;
 }
@@ -314,6 +329,11 @@ void Backend::PROC_process_decoupled_midi_ports(size_t nframes) {
 }
 
 void Backend::terminate() {
+    for (auto &p : ports) {
+        if (p) {
+            p->port->close();
+        }
+    }
     if(audio_system) {
         audio_system->close();
         audio_system.reset(nullptr);
@@ -321,7 +341,7 @@ void Backend::terminate() {
 }
 
 jack_client_t *Backend::maybe_jack_client_handle() {
-    if (!audio_system || !dynamic_cast<JackAudioSystem*>(audio_system.get())) {
+    if (!audio_system || m_audio_system_type != Jack) {
         return nullptr;
     }
     return (jack_client_t*)audio_system->maybe_client_handle();
@@ -407,4 +427,8 @@ std::shared_ptr<ConnectedFXChain> Backend::create_fx_chain(fx_chain_type_t type,
         fx_chains.push_back(info);
     });
     return info;
+}
+
+Backend::~Backend() {
+    terminate();
 }

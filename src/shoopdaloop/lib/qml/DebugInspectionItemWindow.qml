@@ -75,6 +75,11 @@ ApplicationWindow {
                 }
 
                 ItemRow {
+                    label: "name:"
+                    Label { text: object.name }
+                }
+
+                ItemRow {
                     label: "object_schema:"
                     Label { text: object.object_schema }
                 }

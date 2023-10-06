@@ -214,9 +214,10 @@ RType evaluate_before_or_after_process(std::function<RType()> fn, bool predicate
 
 shoopdaloop_backend_instance_t *initialize (
     audio_system_type_t audio_system,
-    const char* client_name_hint) {
+    const char* client_name_hint,
+    const char* argstring) {
     
-    auto backend = std::make_shared<Backend>(audio_system, client_name_hint);
+    auto backend = std::make_shared<Backend>(audio_system, client_name_hint, argstring);
     backend->start();
     g_active_backends.insert(backend);
 
@@ -665,9 +666,64 @@ void close_audio_port (shoopdaloop_backend_instance_t *backend, shoopdaloop_audi
     });
 }
 
+port_connections_state_t *get_audio_port_connections_state(shoopdaloop_audio_port_t *port) {
+    auto connections = internal_audio_port(port)->maybe_audio()->get_external_connection_status();
+
+    auto rval = new port_connections_state_t;
+    rval->n_ports = connections.size();
+    rval->ports = new port_maybe_connection_t[rval->n_ports];
+    size_t idx = 0;
+    for (auto &pair : connections) {
+        rval->ports[idx].name = strdup(pair.first.c_str());
+        rval->ports[idx].connected = pair.second;
+        idx++;
+    }
+    return rval;
+}
+
+void connect_external_audio_port(shoopdaloop_audio_port_t *ours, const char* external_port_name) {
+    internal_audio_port(ours)->maybe_audio()->connect_external(std::string(external_port_name));
+}
+
+void disconnect_external_audio_port(shoopdaloop_audio_port_t *ours, const char* external_port_name) {
+    internal_audio_port(ours)->maybe_audio()->disconnect_external(std::string(external_port_name));
+}
+
+port_connections_state_t *get_midi_port_connections_state(shoopdaloop_midi_port_t *port) {
+    auto connections = internal_midi_port(port)->maybe_midi()->get_external_connection_status();
+
+    auto rval = new port_connections_state_t;
+    rval->n_ports = connections.size();
+    rval->ports = new port_maybe_connection_t[rval->n_ports];
+    size_t idx = 0;
+    for (auto &pair : connections) {
+        rval->ports[idx].name = strdup(pair.first.c_str());
+        rval->ports[idx].connected = pair.second;
+        idx++;
+    }
+    return rval;
+}
+
+void destroy_port_connections_state(port_connections_state_t *d) {
+    for (size_t idx=0; idx<d->n_ports; idx++) {
+        free((void*)d->ports[idx].name);
+    }
+    delete[] d->ports;
+    delete d;
+}
+
+void connect_external_midi_port(shoopdaloop_midi_port_t *ours, const char* external_port_name) {
+    internal_midi_port(ours)->maybe_midi()->connect_external(std::string(external_port_name));
+}
+
+void disconnect_external_midi_port(shoopdaloop_midi_port_t *ours, const char* external_port_name) {
+    internal_midi_port(ours)->maybe_midi()->disconnect_external(std::string(external_port_name));
+}
+
 jack_port_t *get_audio_port_jack_handle(shoopdaloop_audio_port_t *port) {
     auto pi = internal_audio_port(port);
     auto _audio = pi->maybe_audio();
+    if (pi->get_backend().m_audio_system_type != Jack) { return nullptr; }
     return evaluate_before_or_after_process<jack_port_t*>(
         [pi, _audio]() { return std::dynamic_pointer_cast<JackAudioPort>(_audio)->get_jack_port(); },
         _audio != nullptr,
@@ -951,7 +1007,7 @@ audio_port_state_info_t *get_audio_port_state(shoopdaloop_audio_port_t *port) {
     r->volume = p->volume;
     r->muted = p->muted;
     r->passthrough_muted = p->passthrough_muted;
-    r->name = p->port->name();
+    r->name = strdup(p->maybe_audio()->name());
     p->peak = 0.0f;
     return r;
 }
@@ -963,7 +1019,7 @@ midi_port_state_info_t *get_midi_port_state(shoopdaloop_midi_port_t *port) {
     r->n_notes_active = p->maybe_midi_state->n_notes_active();
     r->muted = p->muted;
     r->passthrough_muted = p->passthrough_muted;
-    r->name = p->port->name();
+    r->name = strdup(p->maybe_midi()->name());
     p->n_events_processed = 0;
     return r;
 }

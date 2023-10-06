@@ -36,6 +36,14 @@ PortDirection InternalLV2MidiOutputPort::direction() const {
 
 void InternalLV2MidiOutputPort::close() {}
 
+PortType InternalLV2MidiOutputPort::type() const { return PortType::Midi; }
+
+PortExternalConnectionStatus InternalLV2MidiOutputPort::get_external_connection_status() const { return PortExternalConnectionStatus(); }
+
+void InternalLV2MidiOutputPort::connect_external(std::string name) {}
+
+void InternalLV2MidiOutputPort::disconnect_external(std::string name) {}
+
 void InternalLV2MidiOutputPort::PROC_write_event_value(uint32_t size,
                                                        uint32_t time,
                                                        const uint8_t *data) {

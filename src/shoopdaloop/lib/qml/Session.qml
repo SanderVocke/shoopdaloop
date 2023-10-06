@@ -21,6 +21,7 @@ AppRegistries {
     // The actual descriptor can be retrieved with actual_session_descriptor().
     property var initial_descriptor : GenerateSession.generate_session(app_metadata.version_string, [], [], [], [])
     property var backend_type : global_args.backend_type
+    property var backend_argstring : global_args.backend_argstring
 
     function actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) {
         return GenerateSession.generate_session(
@@ -93,7 +94,7 @@ AppRegistries {
                 state_registry.save_action_finished()
                 file_io.delete_recursive(tempdir)
                 tasks.parent = null
-                tasks.destroy()
+                tasks.deleteLater()
             }
         })
     }
@@ -146,7 +147,7 @@ AppRegistries {
                     } finally {
                         state_registry.load_action_finished()
                         tasks.parent = null
-                        tasks.destroy()
+                        tasks.deleteLater()
                     }
                 })
             }
@@ -270,6 +271,7 @@ AppRegistries {
         update_interval_ms: 30
         client_name_hint: 'ShoopDaLoop'
         backend_type: root.backend_type
+        backend_argstring: root.backend_argstring
         id: session_backend
 
         anchors {

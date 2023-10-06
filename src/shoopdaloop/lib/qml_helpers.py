@@ -54,7 +54,7 @@ def register_shoopdaloop_qml_classes():
     register_qml_class(ScriptingEngine, 'ScriptingEngine')
     register_qml_class(DictTreeModelFactory, 'DictTreeModelFactory')
     register_qml_class(ControlHandler, 'ControlHandler')
-
+    
 def create_and_populate_root_context(engine, global_args, additional_items={}):
     # Set import path to predefined classes
     engine.addImportPath(script_dir + '/../qml_types')

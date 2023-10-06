@@ -1,6 +1,7 @@
 import QtQuick 6.3
 import QtQuick.Controls 6.3
 import QtQuick.Controls.Material 6.3
+import QtQuick.Window
 
 import '../generated/types.js' as Types
 import "../generate_session.js" as GenerateSession
@@ -171,31 +172,6 @@ Item {
         rowAdded()
     }
 
-    // signal toggle_loop_in_scene(var loop)
-    // signal renamed(string name)
-    // signal request_select_loop(var loop)
-    // signal request_rename_loop(var loop, string name)
-    // signal request_clear_loop(var loop)
-    // signal request_toggle_loop_selected(var loop)
-    // signal request_set_targeted_loop(var loop)
-    // signal loop_created(int index, LoopWidget loop)
-
-    // function actions_on_loop_mgrs(idx, on_idx_loop_fn, on_other_loop_fn) {
-    //     for(var i = 0; i < track.num_loops; i++) {
-    //         var mgr = loop_managers[i]
-    //         if (idx === i) {
-    //             on_idx_loop_fn(mgr)
-    //         }
-    //         else {
-    //             on_other_loop_fn(mgr)
-    //         }
-    //     }
-    // }
-
-    // TODO: make ports dynamic
-    // TODO: apparently the order in which these are instantiated will make
-    // Patchance group the pairs or not. Quite confusing...
-
     RepeaterWithLoadedDetection {
         id : audio_ports_repeater
         model : root.audio_port_descriptors.length
@@ -233,6 +209,11 @@ Item {
     readonly property var audio_ports : ports.filter(p => p && is_audio(p.descriptor))
     readonly property var midi_ports : ports.filter(p => p && is_midi(p.descriptor))
     readonly property var input_ports : ports.filter(p => p && is_in(p.descriptor))
+    readonly property var output_ports : ports.filter(p => p && is_out(p.descriptor))
+    readonly property var audio_in_ports : audio_ports.filter(p => p && is_in(p.descriptor))
+    readonly property var audio_out_ports : audio_ports.filter(p => p && is_out(p.descriptor))
+    readonly property var midi_in_ports : midi_ports.filter(p => p && is_in(p.descriptor))
+    readonly property var midi_out_ports : midi_ports.filter(p => p && is_out(p.descriptor))
 
     Loader {
         id: fx_chain_loader
@@ -318,9 +299,15 @@ Item {
                             id: menu
 
                             MenuItem {
+                                text: "Connections..."
+                                onClicked: { connectionsdialog.open() }
+                            }
+
+                            MenuItem {
                                 text: "Delete Track"
                                 onClicked: { root.requestDelete() }
                             }
+
                             MenuItem {
                                 text: "Snapshot FX State"
                                 enabled: root.maybe_fx_chain != undefined
@@ -342,6 +329,7 @@ Item {
                                     }
                                 }
                             }
+
                             Menu {
                                 id: restore_submenu
                                 title: "Restore FX State"
@@ -438,4 +426,15 @@ Item {
             }
         }
     }
+
+    ConnectionsDialog {
+        id: connectionsdialog
+        title: root.name + " Connections"
+
+        audio_in_ports : root.audio_in_ports
+        audio_out_ports : root.audio_out_ports
+        midi_in_ports : root.midi_in_ports
+        midi_out_ports : root.midi_out_ports
+    }
+
 }
