@@ -24,3 +24,11 @@ component_management:
         - "**/*.h"
         - "**/*.hpp"
         - "**/*.c"
+
+coverage:
+  status:
+    project:
+      default:
+        branches:
+          - master
+        informational: true
