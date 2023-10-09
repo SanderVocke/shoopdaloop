@@ -19,6 +19,12 @@ from .Tasks import Tasks
 
 from ..logging import Logger
 
+def call_callable(callable, *args):
+    if isinstance(callable, QJSValue):
+        return callable.call(args)
+    else:
+        return callable(*args)
+
 # Allow filesystem operations from QML
 class FileIO(QThread):
     def __init__(self, parent=None):
