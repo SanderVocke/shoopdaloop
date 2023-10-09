@@ -29,6 +29,8 @@ PythonLoopAudioChannel {
             'mode': initialized ? Conversions.stringify_channel_mode(mode) : descriptor.mode,
             'type': 'audio',
             'data_length': data_length,
+            'start_offset': start_offset,
+            'n_preplay_samples': n_preplay_samples,
             'volume': volume,
             'connected_port_ids': initialized ? connected_ports.map((c) => c.obj_id) : descriptor.connected_port_ids
         }
@@ -46,8 +48,16 @@ PythonLoopAudioChannel {
     }
     function queue_load_tasks(data_files_dir, add_tasks_to) {
         if (has_data_file()) {
+            const _so = descriptor.start_offset
+            const _nps = descriptor.n_preplay_samples
             add_tasks_to.add_task(
-                file_io.load_soundfile_to_channels_async(data_files_dir + '/' + descriptor.data_file, get_backend().get_sample_rate(), descriptor.data_length, [[root]], null)
+                file_io.load_soundfile_to_channels_async(
+                    data_files_dir + '/' + descriptor.data_file,
+                    get_backend().get_sample_rate(),
+                    descriptor.data_length,
+                    [[root]],
+                    descriptor.n_preplay_samples,
+                    descriptor.start_offset)
             )
         }
     }

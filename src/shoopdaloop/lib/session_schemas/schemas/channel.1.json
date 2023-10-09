@@ -1,15 +1,17 @@
 {
     "type": "object",
     "properties": {
-        "schema":       { "const": "channel.1" },
-        "id":           { "type": "string"  },
-        "mode":         { "enum": ["disabled", "direct", "dry", "wet"] },
-        "type":         { "enum": ["audio", "midi"] },
-        "data_length":  { "type": "integer" },
-        "data_file":    { "type": "string" },
-        "volume":       { "type": "number" },
+        "schema":              { "const": "channel.1" },
+        "id":                  { "type": "string"  },
+        "mode":                { "enum": ["disabled", "direct", "dry", "wet"] },
+        "type":                { "enum": ["audio", "midi"] },
+        "data_length":         { "type": "integer" },
+        "start_offset":        { "type": "integer" },
+        "n_preplay_samples":   { "type": "integer" },
+        "data_file":           { "type": "string" },
+        "volume":              { "type": "number" },
         "recording_starts_at": { "type": "string", "format": "date-time" },
-        "connected_port_ids": {
+        "connected_port_ids":  {
             "type": "array",
             "items": { "type": "string" }
         },

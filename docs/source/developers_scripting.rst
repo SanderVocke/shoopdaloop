@@ -52,6 +52,8 @@ Globals and context variables
 
 
 API
-"""
+^^^
 
-* **print(msg)**, **print_debug(msg)**, **print_error(msg)**, **print_info(msg)**: Print a message to the Frontend.LuaScript logger. Respective log levels are info (default), debug, error, info.
+* **print(msg)**, **print_debug(msg)**, **print_error(msg)**, **print_info(msg)**: Print a message to the Frontend.LuaScript logger. Respective log levels are info (default), debug, error.
+* For the rest of the API, there are plans to auto-generate documentation, but for now the available interfaces can be found in the source files `ControlHandler.py` and `ControlInterface.py`. Look for functions with a docstring. These functios are exposed in the LUA environment as shoop.<function_name>.
+* Check `lib/lua/keyboard.lua` for an example.

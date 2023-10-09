@@ -282,7 +282,7 @@ Item {
             color: is_selected ? Material.background : Material.foreground
             anchors.centerIn: parent
 
-            onEditingFinished: () => { nameEntered(displayText); background_focus.forceActiveFocus() }
+            onEditingFinished: () => { nameEntered(displayText); focus = false }
         }
     }
 }

@@ -24,6 +24,8 @@ from .q_objects.Logger import Logger
 from .q_objects.ControlHandler import ControlHandler
 from .q_objects.ScriptingEngine import ScriptingEngine
 from .q_objects.DictTreeModel import DictTreeModelFactory
+from .q_objects.ReleaseFocusNotifier import ReleaseFocusNotifier
+from .q_objects.ControlInterface import ControlInterface
 
 # Read version from the version.txt file (will be present when packaged)
 pkg_version = None
@@ -54,7 +56,9 @@ def register_shoopdaloop_qml_classes():
     register_qml_class(ScriptingEngine, 'ScriptingEngine')
     register_qml_class(DictTreeModelFactory, 'DictTreeModelFactory')
     register_qml_class(ControlHandler, 'ControlHandler')
-    
+    register_qml_class(ReleaseFocusNotifier, 'ReleaseFocusNotifier')
+    register_qml_class(ControlInterface, 'ControlInterface')
+
 def create_and_populate_root_context(engine, global_args, additional_items={}):
     # Set import path to predefined classes
     engine.addImportPath(script_dir + '/../qml_types')
@@ -69,6 +73,7 @@ def create_and_populate_root_context(engine, global_args, additional_items={}):
         'default_logger': Logger(),
         'tree_model_factory': DictTreeModelFactory(parent=engine),
         'scripting_engine': ScriptingEngine(parent=engine),
+        'release_focus_notifier': ReleaseFocusNotifier(parent=engine),
         'global_args': global_args
     }
 

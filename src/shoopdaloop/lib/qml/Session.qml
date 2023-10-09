@@ -4,6 +4,7 @@ import QtQuick.Controls.Material 6.3
 import QtQuick.Dialogs
 import ShoopDaLoop.PythonLogger
 import ShoopDaLoop.PythonControlHandler
+import ShoopDaLoop.PythonControlInterface
 
 import "../generate_session.js" as GenerateSession
 import "../generated/types.js" as Types
@@ -12,7 +13,7 @@ AppRegistries {
     id: root
     objectName: 'session'
 
-    property PythonLogger logger : PythonLogger { name: "Frontend.Qml.Session" }
+    readonly property PythonLogger logger : PythonLogger { name: "Frontend.Qml.Session" }
 
     // The descriptor is an object matching the ShoopDaLoop session JSON
     // schema. The Session object will manage an actual session (consisting)
@@ -45,7 +46,8 @@ AppRegistries {
     readonly property bool loading : state_registry.n_loading_actions_active > 0
     readonly property bool doing_io : saving || loading
     readonly property var backend : session_backend
-    readonly property var control_handler : control_handler
+    property alias control_interface: control_interface
+    property alias control_handler: control_interface
 
     Popup {
         visible: saving
@@ -170,21 +172,57 @@ AppRegistries {
         }
     }
 
-    PythonControlHandler {
-        id: control_handler
-        property PythonLogger logger : PythonLogger { name: "Frontend.Session.ControlHandler" }
+    RegistryLookup {
+        id: selected_loops_lookup
+        registry: state_registry
+        key: 'selected_loop_ids'
+    }
+    property alias selected_loop_ids : selected_loops_lookup.object
+    property list<var> selected_loops : selected_loop_ids ? Array.from(selected_loop_ids).map((id) => objects_registry.get(id)) : []
+
+    RegistryLookup {
+        id: targeted_loop_lookup
+        registry: state_registry
+        key: 'targeted_loop'
+    }
+    property alias targeted_loop : targeted_loop_lookup.object
+
+    PythonControlInterface {
+        id: control_interface
+        qml_instance: this
+        property bool ready: false
+
+        Component.onCompleted: {
+            scripting_engine.use_context(null)
+            scripting_engine.create_lua_qobject_interface_in_current_context('shoop', control_interface)
+            ready = true
+        }
+
+        property PythonLogger logger : PythonLogger { name: "Frontend.Session.ControlInterface" }
+
+        property list<var> selected_loop_idxs : root.selected_loops ? root.selected_loops.map((l) => [l.track_idx, l.idx_in_track]) : []
+        property var targeted_loop_idx: root.targeted_loop ? [root.targeted_loop.track_idx, root.targeted_loop.idx_in_track] : null
 
         function select_loops(loop_selector) {
             var rval = []
-            if (Array.isArray(loop_selector)) {
+            if (loop_selector.length == 0) {
+                rval = []
+            } else if (Array.isArray(loop_selector)) {
                 if (loop_selector.length == 0) { rval = [] }
                 else {
                     if (Array.isArray(loop_selector[0])) {
                         // form [[x, y], [x, y], ...]
-                        rval = loop_selector.map((coords) => tracks_widget.tracks[coords[0]].loops[coords[1]].control_handler)
+                        rval = loop_selector.map((coords) => {
+                            if (coords[0] >= 0 && coords[0] < tracks_widget.tracks.length &&
+                                coords[1] >= 0 && coords[1] < tracks_widget.tracks[coords[0]].loops.length) {
+                                return tracks_widget.tracks[coords[0]].loops[coords[1]];
+                            } else {        
+                                return null
+                            }
+                        })
                     } else {
                         // form [x, y]
-                        rval = [ tracks_widget.tracks[loop_selector[0]].loops[loop_selector[1]].control_handler ]
+                        rval = [ tracks_widget.tracks[loop_selector[0]].loops[loop_selector[1]] ]
                     }
                 }
             } else {
@@ -193,11 +231,11 @@ AppRegistries {
                     let track = tracks_widget.tracks[t]
                     for(var l=0; l<track.loops.length; l++) {
                         let loop = track.loops[l]
-                        if(loop_selector(loop)) { rval.push(loop.control_handler) }
+                        if(loop_selector(loop)) { rval.push(loop) }
                     }
                 }
             }
-            logger.debug(`Selected ${rval.length} target loop(s).`)
+            logger.debug(`Selected loops for selector ${JSON.stringify(loop_selector)}: ${JSON.stringify(rval.map(l => l ? l.obj_id : null))}.`)
             return rval
         }
 
@@ -209,27 +247,49 @@ AppRegistries {
             return handlers[0]
         }
 
-        function loop_is_playing_impl(loop_selector) { return select_single_loop(loop_selector).loop_is_playing(loop_selector) }
-        function loop_is_selected_impl(loop_selector) { return select_single_loop(loop_selector).loop_is_selected(loop_selector) }
-        function loop_is_targeted_impl(loop_selector) { return select_single_loop(loop_selector).loop_is_targeted(loop_selector) }
-        function loop_get_volume_impl(loop_selector) { return select_single_loop(loop_selector).loop_get_volume(loop_selector) }
-        function loop_get_balance_impl(loop_selector) { return select_single_loop(loop_selector).loop_get_balance(loop_selector) }
-        function loop_play_impl(loop_selector, cycles_delay, wait_sync) { select_loops(loop_selector).forEach((h) => { h.loop_play(loop_selector, cycles_delay, wait_sync) } )}
-        function loop_stop_impl(loop_selector, cycles_delay, wait_sync) { select_loops(loop_selector).forEach((h) => { h.loop_stop(loop_selector, cycles_delay, wait_sync) } )}
-        function loop_record_impl(loop_selector, cycles_delay, wait_sync) { select_loops(loop_selector).forEach((h) => { h.loop_record(loop_selector, cycles_delay, wait_sync) } )}
-        function loop_record_n_impl(loop_selector, n, cycles_delay, wait_sync) { select_loops(loop_selector).forEach((h) => { h.loop_record_n(loop_selector, n, cycles_delay, wait_sync) } )}
-        function loop_clear_impl(loop_selector, cycles_delay, wait_sync) { select_loops(loop_selector).forEach((h) => { h.loop_clear(loop_selector, cycles_delay, wait_sync) } )}
-        function loop_set_volume_impl(loop_selector, volume) { select_loops(loop_selector).forEach((h) => { h.loop_set_volume(loop_selector, volume) } )}
-        function loop_set_balance_impl(loop_selector, balance) { select_loops(loop_selector).forEach((h) => { h.loop_set_balance(loop_selector, balance) } )}
-        function loop_play_dry_through_wet_impl(loop_selector, cycles_delay, wait_sync) { select_loops(loop_selector).forEach((h) => { h.loop_play_dry_through_wet(loop_selector, cycles_delay, wait_sync) } )}
-        function loop_re_record_fx_impl(loop_selector, cycles_delay, wait_sync) { select_loops(loop_selector).forEach((h) => { h.loop_re_record_fx(loop_selector, cycles_delay, wait_sync) } )}
-        function loop_play_solo_impl(loop_selector, cycles_delay, wait_sync) { select_loops(loop_selector).forEach((h) => { h.loop_play_solo(loop_selector, cycles_delay, wait_sync) } )}
-        function loop_select_impl(loop_selector) { select_loops(loop_selector).forEach((h) => { h.loop_select(loop_selector) } )}
-        function loop_target_impl(loop_selector) { select_loops(loop_selector).forEach((h) => { h.loop_target(loop_selector) } )}
-        function loop_deselect_impl(loop_selector) { select_loops(loop_selector).forEach((h) => { h.loop_deselect(loop_selector) } )}
-        function loop_untarget_impl(loop_selector) { select_loops(loop_selector).forEach((h) => { h.loop_untarget(loop_selector) } )}
-        function loop_toggle_selected_impl(loop_selector) { select_loops(loop_selector).forEach((h) => { h.loop_toggle_selected(loop_selector) } )}
-        function loop_toggle_targeted_impl(loop_selector) { select_loops(loop_selector).forEach((h) => { h.loop_toggle_targeted(loop_selector) } )}
+        function loop_count_override(loop_selector) { return select_loops(loop_selector).filter(l => l != null).length }
+        function loop_get_which_selected_override() { return selected_loop_idxs }
+        function loop_get_which_targeted_override() { return targeted_loop_idx }
+        function loop_get_mode_override(loop_selector) {
+            return select_loops(loop_selector).map((l) => l.mode)
+        }
+        function loop_transition_override(loop_selector, mode, cycles_delay) {
+            select_loops(loop_selector).forEach((h) => { h.transition(mode, cycles_delay, state_registry.get('sync_active')) } )
+        }
+        function loop_get_volume_override(loop_selector) { return select_single_loop(loop_selector).loop_get_volume(loop_selector) }
+        function loop_get_balance_override(loop_selector) { return select_single_loop(loop_selector).loop_get_balance(loop_selector) }
+        function loop_stop_override(loop_selector, cycles_delay, wait_sync) { select_loops(loop_selector).forEach((h) => { h.loop_stop(loop_selector, cycles_delay, wait_sync) } )}
+        function loop_record_n_override(loop_selector, n, cycles_delay) { select_loops(loop_selector).forEach((h) => { h.record_n(cycles_delay, n) } )}
+        function loop_record_with_targeted_override(loop_selector) {
+            if (targeted_loop_idx) {
+                select_loops(loop_selector).forEach((l) => l.record_with_targeted() )
+            }
+        }
+        function loop_set_volume_override(loop_selector, volume) { select_loops(loop_selector).forEach((h) => { h.loop_set_volume(loop_selector, volume) } )}
+        function loop_set_balance_override(loop_selector, balance) { select_loops(loop_selector).forEach((h) => { h.loop_set_balance(loop_selector, balance) } )}
+        function loop_select_override(loop_selector, deselect_others) {
+            var selection = new Set(select_loops(loop_selector).map((l) => l ? l.obj_id : null))
+            selection.delete(null)
+            if (!deselect_others && root.selected_loop_ids) {
+                root.selected_loop_ids.forEach((id) => { selection.add(id) })
+            }
+            state_registry.replace('selected_loop_ids', selection)
+        }
+        function loop_target_override(loop_selector) {
+            for(const loop of select_loops(loop_selector)) {
+                if (loop) {
+                    state_registry.replace('targeted_loop', loop)
+                    return
+                }
+            }
+            state_registry.replace('targeted_loop_id', null)
+        }
+        function loop_clear_override(loop_selector) {
+            select_loops(loop_selector).forEach((h) => { h.clear() } )
+        }
+        function loop_untarget_all_override() { state_registry.replace('targeted_loop', null) }
+        function loop_toggle_selected_override(loop_selector) { select_loops(loop_selector).forEach((h) => { h.loop_toggle_selected(loop_selector) } )}
+        function loop_toggle_targeted_override(loop_selector) { select_loops(loop_selector).forEach((h) => { h.loop_toggle_targeted(loop_selector) } )}
 
         function select_ports(port_selector) {
             var rval = []
@@ -257,14 +317,64 @@ AppRegistries {
             return handlers[0]
         }
 
-        function port_get_volume_impl(port_selector) { return select_ports(port_selector).port_get_volume(port_selector) }
-        function port_get_muted_impl(port_selector) { return select_ports(port_selector).port_get_muted(port_selector) }
-        function port_get_input_muted_impl(port_selector) { return select_ports(port_selector).port_get_input_muted(port_selector) }
-        function port_mute_impl(port_selector) { select_ports(port_selector).port_mute(port_selector) }
-        function port_mute_input_impl(port_selector) { select_ports(port_selector).port_mute_input(port_selector) }
-        function port_unmute_impl(port_selector) { select_ports(port_selector).port_unmute(port_selector) }
-        function port_unmute_input_impl(port_selector) { select_ports(port_selector).port_unmute_input(port_selector) }
-        function port_set_volume_impl(port_selector, vol) { select_ports(port_selector).port_set_volume(port_selector, vol) }
+        function port_get_volume_override(port_selector) { return select_ports(port_selector).port_get_volume(port_selector) }
+        function port_get_muted_override(port_selector) { return select_ports(port_selector).port_get_muted(port_selector) }
+        function port_get_input_muted_override(port_selector) { return select_ports(port_selector).port_get_input_muted(port_selector) }
+        function port_mute_override(port_selector) { select_ports(port_selector).port_mute(port_selector) }
+        function port_mute_input_override(port_selector) { select_ports(port_selector).port_mute_input(port_selector) }
+        function port_unmute_override(port_selector) { select_ports(port_selector).port_unmute(port_selector) }
+        function port_unmute_input_override(port_selector) { select_ports(port_selector).port_unmute_input(port_selector) }
+        function port_set_volume_override(port_selector, vol) { select_ports(port_selector).port_set_volume(port_selector, vol) }
+    }
+
+    RegisterInRegistry {
+        registry: root.state_registry
+        key: 'control_interface'
+        object: control_interface
+    }
+
+    LuaUserScript {
+        script_name: 'keyboard.lua'
+        script_code: control_interface.ready ? file_io.read_file(
+            file_io.get_installation_directory() + '/lib/lua/keyboard.lua'
+        ) : null
+    }
+
+    MouseArea {
+        ExecuteNextCycle {
+            id: takeFocus
+            onExecute: {
+                session_focus_item.forceActiveFocus()
+            }
+        }
+
+        anchors.fill: parent
+        focus: true
+        id: session_focus_item
+
+        //Keys.onLeftPressed: tracks_widget.navigate('left')
+        //Keys.onRightPressed: tracks_widget.navigate('right')
+        //Keys.onUpPressed: tracks_widget.navigate('up')
+        //Keys.onDownPressed: tracks_widget.navigate('down')\
+
+        Keys.onPressed: (event) => control_interface.key_pressed(event.key, event.modifiers)
+        Keys.onReleased: (event) => control_interface.key_released(event.key, event.modifiers)
+
+        property var focusItem : Window.activeFocusItem
+        onFocusItemChanged: {
+            root.logger.debug("Focus item changed: " + focusItem)
+            if (!focusItem || focusItem == Window.contentItem) {
+                takeFocus.trigger()
+            }
+        }
+
+        onClicked: forceActiveFocus()
+        Connections {
+            target: release_focus_notifier
+            function onFocusReleased() {
+                session_focus_item.forceActiveFocus()
+            }
+        }
     }
 
     Backend {
