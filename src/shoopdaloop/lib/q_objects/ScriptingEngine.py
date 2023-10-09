@@ -114,8 +114,8 @@ class ScriptingEngine(QObject):
         self.logger.debug("Creating new context.")
         return self.eval('return __shoop_new_context()')
 
-    @Slot(str, 'QVariant', 'QVariant', bool, result='QVariant')
-    def eval(self, lua_code, context=None, script_name=None, sandboxed=True):
+    @Slot(str, 'QVariant', 'QVariant', bool, bool, result='QVariant')
+    def eval(self, lua_code, context=None, script_name=None, sandboxed=True, catch_errors=True):
         try:
             self.logger.trace('Eval (context {}):\n{}'.format(context, lua_code))
             prev_context = self.current_context()
@@ -129,13 +129,15 @@ class ScriptingEngine(QObject):
                 self.use_context(prev_context)
             return rval
         except Exception as e:
+            if not catch_errors:
+                raise e from e
             if script_name:
                 self.logger.error('Error evaluating script "{}": {}. Trace: {}'.format(script_name, str(e), traceback.format_exc()))
             else:
                 self.logger.error('Error evaluating expression: {}. Trace: {}'.format(str(e), traceback.format_exc()))
     
-    @Slot(str, 'QVariant', 'QVariant', bool)
-    def execute(self, lua_code, context=None, script_name=None, sandboxed=True):
+    @Slot(str, 'QVariant', 'QVariant', bool, bool)
+    def execute(self, lua_code, context=None, script_name=None, sandboxed=True, catch_errors=True):
         try:
             self.logger.trace('Execute (context {}):\n{}'.format(context, lua_code))
             prev_context = self.current_context()
@@ -148,6 +150,8 @@ class ScriptingEngine(QObject):
             if context:
                 self.use_context(prev_context)
         except Exception as e:
+            if not catch_errors:
+                raise e from e
             if script_name:
                 self.logger.error('Error executing script "{}": {}. Trace: {}'.format(script_name, str(e), traceback.format_exc()))
             else:

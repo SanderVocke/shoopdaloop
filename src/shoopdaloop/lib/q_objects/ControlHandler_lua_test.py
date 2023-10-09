@@ -8,10 +8,7 @@ def test_control_handler_loop_selector_coords():
     eng = ScriptingEngine()
     create_lua_qobject_interface('shoop', eng, obj)
 
-    # Test that this calls back properly. Note that the control handler
-    # will also cache the call which we can check afterwards.
-    with pytest.raises(NotImplementedError):
-        eng.eval('shoop.loop_get_mode({4,5})')
+    eng.eval('shoop.loop_get_mode({4,5})')
     
     assert(obj.cached_calls() == [
         ['loop_get_mode', [4,5]]
@@ -22,10 +19,7 @@ def test_control_handler_loop_selector_coordslist():
     eng = ScriptingEngine()
     create_lua_qobject_interface('shoop', eng, obj)
 
-    # Test that this calls back properly. Note that the control handler
-    # will also cache the call which we can check afterwards.
-    with pytest.raises(NotImplementedError):
-        eng.eval('shoop.loop_get_mode({ {5,6}, {7,8} })')
+    eng.eval('shoop.loop_get_mode({ {5,6}, {7,8} })')
     
     assert(obj.cached_calls() == [
         ['loop_get_mode', [[5,6], [7,8]] ]
@@ -36,10 +30,7 @@ def test_control_handler_loop_selector_simple_functor():
     eng = ScriptingEngine()
     create_lua_qobject_interface('shoop', eng, obj)
 
-    # Test that this calls back properly. Note that the control handler
-    # will also cache the call which we can check afterwards.
-    with pytest.raises(NotImplementedError):
-        eng.eval('shoop.loop_get_mode(function(loop) return true end)')
+    eng.eval('shoop.loop_get_mode(function(loop) return true end)')
     
     assert(len(obj.cached_calls()) == 1)
     assert(obj.cached_calls()[0][0] == 'loop_get_mode')
@@ -48,8 +39,7 @@ def test_control_handler_loop_selector_simple_functor():
 
     obj.clear_call_cache()
 
-    with pytest.raises(NotImplementedError):
-        eng.eval('shoop.loop_get_mode(function(loop) return false end)')
+    eng.eval('shoop.loop_get_mode(function(loop) return false end)')
     
     assert(len(obj.cached_calls()) == 1)
     assert(obj.cached_calls()[0][0] == 'loop_get_mode')
@@ -61,10 +51,7 @@ def test_control_handler_loop_selector_object_functor():
     eng = ScriptingEngine()
     create_lua_qobject_interface('shoop', eng, obj)
 
-    # Test that this calls back properly. Note that the control handler
-    # will also cache the call which we can check afterwards.
-    with pytest.raises(NotImplementedError):
-        eng.eval('shoop.loop_get_mode(function(loop) return loop["x"] < 10 end)')
+    eng.eval('shoop.loop_get_mode(function(loop) return loop["x"] < 10 end)')
     
     assert(len(obj.cached_calls()) == 1)
     assert(obj.cached_calls()[0][0] == 'loop_get_mode')

@@ -148,7 +148,7 @@ class ControlHandler(QQuickItem):
                 except RuntimeError as e:
                     self.logger.error("Failed to call QML override: {}".format(str(e)))
 
-            self.cache_call([inspect.stack()[0][3], *args])
+            self.cache_call([func.__name__, *args])
             raise NotImplementedError(
                 "ControlHandler interface {0} not or incorrectly overridden.".format(func.__name__)
             )
