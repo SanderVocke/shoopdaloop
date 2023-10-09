@@ -1632,12 +1632,8 @@ Item {
                         mapping[fidx].push(channels_to_load[cidx])
                         fidx = (fidx + 1) % n_file_channels
                     }
-                    var task = file_io.load_soundfile_to_channels_async(filename, samplerate, null, mapping, 
-                        (length) => {
-                            if (update_audio_length_checkbox) {
-                                root.maybe_loaded_loop.set_length(length)
-                            }
-                        })
+                    var task = file_io.load_soundfile_to_channels_async(filename, samplerate, null,
+                        mapping, 0, 0, root.maybe_loaded_loop)
                     task.when_finished( () => root.state_registry.load_action_finished() )
                 } catch(e) {
                     root.state_registry.load_action_finished()

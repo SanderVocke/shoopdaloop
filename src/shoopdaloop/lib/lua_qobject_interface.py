@@ -16,6 +16,23 @@ qt_typename.lookup = {
 def lua_passthrough(val):
     return val
 
+def as_int(lua_val):
+    return int(lua_val)
+
+def as_float(lua_val):
+    return float(lua_val)
+
+def as_str(lua_val):
+    return str(lua_val)
+
+def as_callable(lua_val):
+    return lua_val # TODO
+
+lua_int = [ int, lua_passthrough ]
+lua_bool = [ bool, lua_passthrough ]
+lua_str = [ str, lua_passthrough ]
+lua_callable = [ 'QVariant', as_callable ]
+
 # Creates a global object in the Lua runtime with the given name.
 # All functions which are included in the qobject class' static "interface_names" member
 # will be registered in the global Lua object, and set up such that they call back to

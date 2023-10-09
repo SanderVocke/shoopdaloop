@@ -11,10 +11,10 @@ def test_control_handler_loop_selector_coords():
     # Test that this calls back properly. Note that the control handler
     # will also cache the call which we can check afterwards.
     with pytest.raises(NotImplementedError):
-        eng.eval('shoop.loop_is_playing({4,5})')
+        eng.eval('shoop.loop_get_mode({4,5})')
     
     assert(obj.cached_calls() == [
-        ['loop_is_playing', [4,5]]
+        ['loop_get_mode', [4,5]]
     ])
 
 def test_control_handler_loop_selector_coordslist():
@@ -25,10 +25,10 @@ def test_control_handler_loop_selector_coordslist():
     # Test that this calls back properly. Note that the control handler
     # will also cache the call which we can check afterwards.
     with pytest.raises(NotImplementedError):
-        eng.eval('shoop.loop_is_playing({ {5,6}, {7,8} })')
+        eng.eval('shoop.loop_get_mode({ {5,6}, {7,8} })')
     
     assert(obj.cached_calls() == [
-        ['loop_is_playing', [[5,6], [7,8]] ]
+        ['loop_get_mode', [[5,6], [7,8]] ]
     ])
 
 def test_control_handler_loop_selector_simple_functor():
@@ -39,20 +39,20 @@ def test_control_handler_loop_selector_simple_functor():
     # Test that this calls back properly. Note that the control handler
     # will also cache the call which we can check afterwards.
     with pytest.raises(NotImplementedError):
-        eng.eval('shoop.loop_is_playing(function(loop) return true end)')
+        eng.eval('shoop.loop_get_mode(function(loop) return true end)')
     
     assert(len(obj.cached_calls()) == 1)
-    assert(obj.cached_calls()[0][0] == 'loop_is_playing')
+    assert(obj.cached_calls()[0][0] == 'loop_get_mode')
     assert(callable(obj.cached_calls()[0][1]))
     assert(obj.cached_calls()[0][1](None) == True)
 
     obj.clear_call_cache()
 
     with pytest.raises(NotImplementedError):
-        eng.eval('shoop.loop_is_playing(function(loop) return false end)')
+        eng.eval('shoop.loop_get_mode(function(loop) return false end)')
     
     assert(len(obj.cached_calls()) == 1)
-    assert(obj.cached_calls()[0][0] == 'loop_is_playing')
+    assert(obj.cached_calls()[0][0] == 'loop_get_mode')
     assert(callable(obj.cached_calls()[0][1]))
     assert(obj.cached_calls()[0][1](None) == False)
 
@@ -64,10 +64,10 @@ def test_control_handler_loop_selector_object_functor():
     # Test that this calls back properly. Note that the control handler
     # will also cache the call which we can check afterwards.
     with pytest.raises(NotImplementedError):
-        eng.eval('shoop.loop_is_playing(function(loop) return loop["x"] < 10 end)')
+        eng.eval('shoop.loop_get_mode(function(loop) return loop["x"] < 10 end)')
     
     assert(len(obj.cached_calls()) == 1)
-    assert(obj.cached_calls()[0][0] == 'loop_is_playing')
+    assert(obj.cached_calls()[0][0] == 'loop_get_mode')
     fn = obj.cached_calls()[0][1]
     assert (fn({ "x": 9 }) == True)
     assert (fn({ "x": 10 }) == False)

@@ -57,7 +57,8 @@ PythonLoopAudioChannel {
                     descriptor.data_length,
                     [[root]],
                     descriptor.n_preplay_samples,
-                    descriptor.start_offset)
+                    descriptor.start_offset,
+                    null)
             )
         }
     }

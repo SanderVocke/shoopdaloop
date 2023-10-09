@@ -6,7 +6,7 @@ import inspect
 import lupa
 
 from ..logging import Logger
-from ..lua_qobject_interface import lua_passthrough, qt_typename
+from ..lua_qobject_interface import lua_passthrough, qt_typename, lua_int, lua_bool, lua_str, lua_callable
 from ..backend_wrappers import LoopMode
 
 def as_loop_selector(lua_val):
@@ -34,23 +34,7 @@ def as_loop_selector(lua_val):
     
     raise ValueError('Failed to interpret loop selector. Loop selector may be a callable (f => bool), [], [x,y], or [[x1,y1],[x2,y2],...]. Selector: {} (type {}). Exception: {}'.format(str(lua_val), lupa.lua_type(lua_val), str(maybe_exception)))
 
-def as_int(lua_val):
-    return int(lua_val)
-
-def as_float(lua_val):
-    return float(lua_val)
-
-def as_str(lua_val):
-    return str(lua_val)
-
-def as_callable(lua_val):
-    return lua_val # TODO
-
 lua_loop_selector = [ 'QVariant', as_loop_selector ]
-lua_int = [ int, lua_passthrough ]
-lua_bool = [ bool, lua_passthrough ]
-lua_str = [ str, lua_passthrough ]
-lua_callable = [ 'QVariant', as_callable ]
 
 class ControlHandler(QQuickItem):
     """
@@ -92,7 +76,6 @@ class ControlHandler(QQuickItem):
         [ 'loop_get_mode', lua_loop_selector ],
         [ 'loop_get_which_selected' ],
         [ 'loop_get_which_targeted' ],
-        [ 'loop_is_targeted', lua_loop_selector ],
         [ 'loop_get_volume', lua_loop_selector ],
         [ 'loop_get_balance', lua_loop_selector ],
         [ 'loop_transition', lua_loop_selector, lua_int, lua_int ],

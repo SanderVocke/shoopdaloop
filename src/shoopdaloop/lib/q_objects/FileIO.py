@@ -237,7 +237,7 @@ class FileIO(QThread):
         t.start()
         return task
     
-    @Slot(str, int, 'QVariant', list, 'QVariant', 'QVariant')
+    @Slot(str, int, 'QVariant', list, 'QVariant', 'QVariant', 'QVariant')
     def load_soundfile_to_channels(
         self, 
         filename, 
@@ -245,7 +245,8 @@ class FileIO(QThread):
         maybe_target_data_length, 
         channels_to_loop_channels, 
         maybe_set_n_preplay_samples,
-        maybe_set_start_offset
+        maybe_set_start_offset,
+        maybe_update_loop_to_datalength
     ):
         self.startLoadingFile.emit()
         try:
@@ -283,13 +284,16 @@ class FileIO(QThread):
                         channel.set_start_offset(maybe_set_start_offset)
                     if maybe_set_n_preplay_samples != None:
                         channel.set_n_preplay_samples(maybe_set_n_preplay_samples)
-                    self.logger.debug("load channel: {} samples, result {}".format(len(data_channel), channel.data_length))     
+                    self.logger.debug("load channel: {} samples, result {}".format(len(data_channel), channel.data_length))  
+                    
+            if maybe_update_loop_to_datalength != None:
+                maybe_update_loop_to_datalength.set_length(len(resampled[0]))
        
             self.logger.info("Loaded {}-channel audio from {} ({} samples)".format(len(resampled), filename, len(resampled[0])))
         finally:
             self.doneLoadingFile.emit()
     
-    @Slot(str, int, 'QVariant', list, 'QVariant', 'QVariant', result=Task)
+    @Slot(str, int, 'QVariant', list, 'QVariant', 'QVariant', 'QVariant', result=Task)
     def load_soundfile_to_channels_async(
         self, 
         filename, 
@@ -297,7 +301,8 @@ class FileIO(QThread):
         maybe_target_data_length, 
         channels_to_loop_channels, 
         maybe_set_n_preplay_samples,
-        maybe_set_start_offset
+        maybe_set_start_offset,
+        maybe_update_loop_to_datalength
     ):
         task = Task(parent=self)
         def do_load():
@@ -308,7 +313,8 @@ class FileIO(QThread):
                     maybe_target_data_length, 
                     channels_to_loop_channels, 
                     maybe_set_n_preplay_samples,
-                    maybe_set_start_offset
+                    maybe_set_start_offset,
+                    maybe_update_loop_to_datalength
                 )
             finally:
                 task.done()
