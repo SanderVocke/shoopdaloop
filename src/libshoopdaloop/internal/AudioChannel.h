@@ -152,7 +152,7 @@ public:
         size_t record_buffer_size
     );
 
-    void PROC_process_replace(size_t position, size_t length, size_t n_samples,
+    void PROC_process_replace(size_t data_position, size_t length, size_t n_samples,
                               SampleT *record_buffer, size_t record_buffer_size);
 
     size_t get_length() const override;
