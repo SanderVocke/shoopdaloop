@@ -36,7 +36,7 @@ To summarize why ShoopDaLoop exists and what the goals and plans are, a short co
 | Plugin scripts              | ✅ <sup>(3)</sup>         | ❌               | ❌                      | ✅                     |
 
 (1): ShoopDaLoop has built-in support to host Carla through LV2, relying on Carla as a proxy to support other plugin types such as VST(3). <br>
-(2): Focus is on Linux for now until it is reasonably feature-complete. The design does not prevent moving to Mac + Windows in the future.
+(2): Focus is on Linux for now until it is reasonably feature-complete. The design does not prevent moving to Mac + Windows in the future. <br>
 (3): ShoopDaLoop plug-in scripts are written in LUA. Currently the main goal is to support deep MIDI controller integrations and custom keyboard control scripts and opening/managing additional MIDI control ports. Future goals could be integration with the future song/performance sequencer or integration with the outside world by e.g. network.
 
 Disclaimers:
