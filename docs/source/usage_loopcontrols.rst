@@ -26,7 +26,9 @@ Loops can be in the following modes:
 * **Playing Dry Through Wet**: Only available for dry+wet tracks. The loop plays back the dry recording through FX/synth being processed in real-time. This way, e.g. FX/synth settings can be changed and the result is immediatlely audible.
 * **Recording Dry Into Wet**: Only available for dry+wet tracks. The loop is playing the dry recording through the FX/synth into the wet, which is being recorded. This way, changed synth/FX settings can be baked into the wet recording such that normal (wet) playback can again be used.
 
-Loops can be transitioned by hovering over them with the mouse. Hovering over certain buttons will open a dropdown with more options. For example, playing dry through wet appears when hovering the play button.
+Using a long-press on the **record one cycle** button, you can also choose to **record N cycles** of the master loop.
+
+Loops can be transitioned by hovering over them with the mouse. There are also keyboard controls (currently only documented in **keyboard.lua**). Hovering over certain buttons will open a dropdown with more options. For example, playing dry through wet appears when hovering the play button.
 
 Normally, a loop will keep recording until transitioned to another state. However, it is also possible to record for a fixed amount of master loop cycles so that recording does not need to be manually stopped.
 
