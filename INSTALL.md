@@ -1,15 +1,11 @@
 
 # Installation
 
-## From a distro package
+ShoopDaLoop is built and distributed as a Python package. Installation options are still quite limited as this is in pre-alpha development.
 
-There are no official packages in any distro's repositories yet, but there is a preview in this repo that can be used already:
-
-- For Arch, a PKGBUILD can be generated using `distribution/packaging/arch/PKGBUILD.git.generate.sh` (pipe the output into a PKGBUILD file). It can then be installed using `makepkg`. Be aware that this PKGBUILD will again pull in this Git repo and build it.
+There are no official binaries or packages yet. However, you can probably grab a recent .whl package from a continuous integration build. Navigate to the 'Actions' tab on GitHub, select the 'Build And Test' workflow, choose the build you want to pick the wheel from and download one of the wheels there. Of course, YMMV.
 
 ## From source
-
-ShoopDaLoop is built and distributed as a Python package. Installation options are still quite limited as this is in pre-alpha development.
 
 To build from source, ensure the build dependencies for your OS are installed. The dependencies for each supported platform can be found in `distribution/dependencies` (also see the CI workflows in `.github/workflows` for practical examples).
 
