@@ -142,39 +142,6 @@ ScrollView {
         loaded = Qt.binding(() => { return n_loaded >= tracks.length })
     }
 
-    function navigate(direction) {
-        default_logger.info(selected_loop_ids)
-        if (!selected_loop_ids || selected_loop_ids.size == 0) {
-            for (var i=0; i<tracks.length; i++) {
-                if (tracks[i].loops.length > 0) {
-                    tracks[i].loops[0].select(true)
-                    break;
-                }
-            }
-        } else if (selected_loop_ids.size == 1) {
-            const selected_loop = objects_registry.get(selected_loop_ids.values().next().value)
-            var row = selected_loop.idx_in_track
-            var col = selected_loop.track_idx
-            default_logger.info(col.toString())
-            switch(direction) {
-                case 'left':
-                    col = Math.max(0, col-1)
-                    break;
-                case 'right':
-                    col = Math.min(tracks.length-1, col+1)
-                    break;
-                case 'up':
-                    row = Math.max(0, row-1)
-                    break;
-                case 'down':
-                    row = Math.min(tracks[col].loops.length-1, row+1)
-                    break;
-            }
-            default_logger.info(col.toString())
-            tracks[col].loops[row].select(true)
-        }
-    }
-
     Component.onCompleted: initialize()
     function reload() { initialize() }
 

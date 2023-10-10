@@ -58,7 +58,6 @@ class ScriptingEngine(QObject):
         ''')
         self.execute_builtin_script('runtime_init.lua')
         self.define_callbacks()
-        
 
     def define_global_callback(self, py_cb, lua_name, overwrite=True):
         self.logger.debug('Declaring global callback "{}"'.format(lua_name))
@@ -127,6 +126,7 @@ class ScriptingEngine(QObject):
                 rval = self.run_sandboxed(lua_code)
             if context:
                 self.use_context(prev_context)
+            self.logger.trace('Eval result: {}'.format(rval))
             return rval
         except Exception as e:
             if not catch_errors:

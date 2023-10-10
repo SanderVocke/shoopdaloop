@@ -31,12 +31,12 @@ Item {
     function evaluate(expression, script=script_name) {
         if (!ready) return null;
         logger.trace("Evaluating expression: " + expression + " in context: " + scripting_context)
-        return scripting_engine.eval(expression, scripting_context, script, true)
+        return scripting_engine.eval(expression, scripting_context, script, true, true)
     }
 
     function execute(statement, force=false, script=script_name) {
         if (!ready && !force) return;
         logger.trace("Executing statement: " + statement + " in context: " + scripting_context)
-        scripting_engine.execute(statement, scripting_context, script, true)
+        scripting_engine.execute(statement, scripting_context, script, true, true)
     }
 }

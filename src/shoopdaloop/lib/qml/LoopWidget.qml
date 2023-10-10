@@ -297,14 +297,14 @@ Item {
 
     function select(clear = false) {
         untarget()
-        if (key_modifiers.control_pressed) {
+        if (!clear) {
             state_registry.add_to_set('selected_loop_ids', obj_id)
         } else {
             state_registry.replace('selected_loop_ids', new Set([obj_id]))
         }
     }
-    function deselect() {
-        if (key_modifiers.control_pressed) {
+    function deselect(clear = false) {
+        if (!clear) {
             state_registry.remove_from_set('selected_loop_ids', obj_id)
         } else {
             state_registry.replace('selected_loop_ids', new Set())
