@@ -27,7 +27,7 @@ To summarize why ShoopDaLoop exists and what the goals and plans are, a short co
 | Audio dry+wet co-recording  | ✅                        | manual setup     | ✅                      | ?                      |
 | Loop Organization           | Grid                      | Separate loopers | Grid                     | Grid                   |
 | Scenes support              | ✅ (any loop combination) | ❌              | ✅ (grid row = scene)    | ?                      |
-| Suitable for live use       | ✅                        | ✅               | ✅                      | ❌                      |
+| Designed for live use       | ✅                        | ✅               | ✅                      | ❌                      |
 | Plugin Host                 | ✅ <sup>(1)</sup>         | ❌               | ❌                      | ✅                      |
 | Song/performance sequencing | ❌ (planned)              | ❌               | ❌                      | ✅ (not sure of details) |
 | MIDI controller support     | ❌ (planned v. LUA scripts) | ✅ (MIDI learn)  | ✅ (not sure of method) | ✅ (not sure of method) |
