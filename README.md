@@ -34,6 +34,7 @@ To summarize why ShoopDaLoop exists and what the goals and plans are, a short co
 | NSM Session Management      | ✅                        | ✅               | ✅                      | ✅                      |
 | Overdubbing                 | ❌                        | ✅               | ✅                      | ?                      |
 | Plugin scripts              | ✅ <sup>(3)</sup>         | ❌               | ❌                      | ✅                     |
+| Transport/tempo system      | None (sync on master loop) | None             | JACK transport / MIDI beats | ? |
 
 (1): ShoopDaLoop has built-in support to host Carla through LV2, relying on Carla as a proxy to support other plugin types such as VST(3). <br>
 (2): Focus is on Linux for now until it is reasonably feature-complete. The design does not prevent moving to Mac + Windows in the future. <br>
