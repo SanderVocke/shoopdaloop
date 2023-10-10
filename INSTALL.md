@@ -5,6 +5,8 @@ ShoopDaLoop is built and distributed as a Python package. Installation options a
 
 There are no official binaries or packages yet. However, you can probably grab a recent .whl package from a continuous integration build. Navigate to the 'Actions' tab on GitHub, select the 'Build And Test' workflow, choose the build you want to pick the wheel from and download one of the wheels there. Of course, YMMV.
 
+Be aware that a recent version of Qt/PySide is needed in any case (>=6.4.2). This is not yet offered by most distros, although you may have luck by using PySide from the PyPi repositories.
+
 ## From source
 
 To build from source, ensure the build dependencies for your OS are installed. The dependencies for each supported platform can be found in `distribution/dependencies` (also see the CI workflows in `.github/workflows` for practical examples).
