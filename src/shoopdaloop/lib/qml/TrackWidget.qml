@@ -272,7 +272,8 @@ Item {
                         readOnly: !root.name_editable
 
                         onEditingFinished: () => {
-                                            background_focus.forceActiveFocus()
+                                            focus = false
+                                            release_focus_notifier.notify()
                                             root.name = text
                                         }
                     }

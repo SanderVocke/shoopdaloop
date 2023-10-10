@@ -40,6 +40,13 @@ ScrollView {
 
     readonly property var factory : Qt.createComponent("TrackWidget.qml")
 
+    RegistryLookup {
+        id: selected_loops_lookup
+        registry: state_registry
+        key: 'selected_loop_ids'
+    }
+    property alias selected_loop_ids : selected_loops_lookup.object
+
     function actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) {
         var r = []
         for(var i=0; i<root.tracks.length; i++) {

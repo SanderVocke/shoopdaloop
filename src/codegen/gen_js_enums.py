@@ -5,6 +5,7 @@ script_pwd = os.path.dirname(__file__)
 sys.path.append(script_pwd + '/../shoopdaloop')
 
 from lib.backend_wrappers import LoopMode, ChannelMode, BackendType, PortDirection, FXChainType
+from lib.types import KeyEventType
 
 output_filename = sys.argv[1]
 
@@ -36,3 +37,4 @@ with open(output_filename, 'w') as f:
     write_enum(f, 'BackendType', BackendType)
     write_enum(f, 'PortDirection', PortDirection)
     write_enum(f, 'FXChainType', FXChainType)
+    write_enum(f, 'KeyEventType', KeyEventType)

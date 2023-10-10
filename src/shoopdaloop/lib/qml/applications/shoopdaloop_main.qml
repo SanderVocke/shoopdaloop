@@ -17,14 +17,6 @@ ApplicationWindow {
 
     Material.theme: Material.Dark
 
-    // Ensure other controls lose focus when clicked outside
-    MouseArea {
-        id: background_focus
-        anchors.fill: parent
-        acceptedButtons: Qt.AllButtons
-        onClicked: () => { forceActiveFocus() }
-    }
-
     Session {
         anchors.fill: parent
         initial_descriptor: GenerateSession.generate_default_session(app_metadata.version_string)

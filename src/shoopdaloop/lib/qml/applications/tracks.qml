@@ -18,14 +18,7 @@ ApplicationWindow {
     title: "ShoopDaLoop Tracks"
 
     Material.theme: Material.Dark
-
-    MouseArea {
-        id: background_focus
-        anchors.fill: parent
-        acceptedButtons: Qt.AllButtons
-        onClicked: () => { forceActiveFocus() }
-    }
-
+    
     AppRegistries {
         id: registries
         anchors.fill:parent

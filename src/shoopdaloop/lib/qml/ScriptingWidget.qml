@@ -414,7 +414,8 @@ Rectangle {
 
                 onEditingFinished: {
                     scriptelem.rename(displayText)
-                    background_focus.forceActiveFocus()
+                    focus = false
+                    release_focus_notifier.notify()
                 }
             }
 

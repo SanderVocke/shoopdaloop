@@ -1,4 +1,4 @@
--- Based on: http://lua-users.org/wiki/SandBoxes (fist simple example)
+-- Based on: http://lua-users.org/wiki/SandBoxes (first simple example)
 
 -- make environment
 local env = {

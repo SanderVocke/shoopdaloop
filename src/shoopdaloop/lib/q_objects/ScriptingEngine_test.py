@@ -23,13 +23,13 @@ def test_sandbox_security():
     eng.execute(safe_command)
 
     with pytest.raises(lupa.LuaError):
-        eng.eval(unsafe_command)
+        eng.eval(unsafe_command, catch_errors=False)
     with pytest.raises(lupa.LuaError):
-        eng.execute(unsafe_command)
+        eng.execute(unsafe_command, catch_errors=False)
     with pytest.raises(lupa.LuaError):
-        eng.eval('_G.{}'.format(unsafe_command))
+        eng.eval('_G.{}'.format(unsafe_command), catch_errors=False)
     with pytest.raises(lupa.LuaError):
-        eng.eval('rawget(_G, "load")(print(\"hello world\"))')
+        eng.eval('rawget(_G, "load")(print(\"hello world\"))', catch_errors=False)
 
 def test_sandbox_persistence():
     eng = ScriptingEngine()
@@ -39,7 +39,7 @@ def test_sandbox_persistence():
 def test_nonexistent_global():
     eng = ScriptingEngine()
     with pytest.raises(lupa.LuaError):
-        eng.eval('return nonexisting')
+        eng.eval('return nonexisting', catch_errors=False)
     
 def test_declare_global():
     eng = ScriptingEngine()
@@ -53,15 +53,15 @@ def test_declare_new_global():
     eng.execute('declare_new_global("existing", "Hello World!")')
     assert(eng.eval('return existing') == 'Hello World!')
     with pytest.raises(lupa.LuaError):
-        eng.execute('declare_new_global("existing", "Should throw")')
+        eng.execute('declare_new_global("existing", "Should throw")', catch_errors=False)
     assert(eng.eval('return existing') == 'Hello World!')
 
 def test_context_declare_none_active():
     eng = ScriptingEngine()
     with pytest.raises(lupa.LuaError):
-        eng.execute('declare_in_context("foo")')
+        eng.execute('declare_in_context("foo")', catch_errors=False)
     with pytest.raises(lupa.LuaError):
-        eng.execute('declare_new_in_context("foo")')
+        eng.execute('declare_new_in_context("foo")', catch_errors=False)
 
 def test_declare_in_context():
     eng = ScriptingEngine()
@@ -71,14 +71,14 @@ def test_declare_in_context():
 
     # invalid (declare without context)
     with pytest.raises(lupa.LuaError):
-        eng.execute('declare_in_context("foa", "faz")')
+        eng.execute('declare_in_context("foa", "faz")', catch_errors=False)
 
     # get
     assert(eng.eval('return foo', c) == 'bar')
 
     # invalid get (no context passed)
     with pytest.raises(lupa.LuaError):
-        eng.eval('return foo')
+        eng.eval('return foo', catch_errors=False)
     
     # redeclare (ignored)
     eng.execute('declare_in_context("foo", "baf")', c)
@@ -89,7 +89,7 @@ def test_declare_in_context():
     assert(eng.eval('return foo', c) == 'baz')
     # still no global leak after modification
     with pytest.raises(lupa.LuaError):
-        assert(eng.eval('return foo'))
+        assert(eng.eval('return foo', catch_errors=False))
 
 def test_declare_new_in_context():
     eng = ScriptingEngine()
@@ -99,7 +99,7 @@ def test_declare_new_in_context():
 
     # invalid (redeclare)
     with pytest.raises(lupa.LuaError):
-        eng.execute('declare_new_in_context("foo", "bar")')
+        eng.execute('declare_new_in_context("foo", "bar")', catch_errors=False)
 
 def test_two_contexts():
     eng = ScriptingEngine()
@@ -114,4 +114,4 @@ def test_two_contexts():
     assert(eng.eval('return foo', c1) == 'bar1')
     assert(eng.eval('return foo', c2) == 'bar2')
     with pytest.raises(lupa.LuaError):
-        eng.eval('return foo')
+        eng.eval('return foo', catch_errors=False)

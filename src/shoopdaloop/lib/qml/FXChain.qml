@@ -1,4 +1,5 @@
 import ShoopDaLoop.PythonFXChain
+import ShoopDaLoop.PythonLogger
 import QtQuick 6.3
 
 import '../generated/types.js' as Types
@@ -6,6 +7,8 @@ import '../generated/types.js' as Types
 PythonFXChain {
     id: root
     property bool loaded : initialized
+
+    readonly property var logger : PythonLogger { name: "Frontend.Qml.FXChain" }
 
     property var descriptor : null
     property Registry objects_registry: null
@@ -48,12 +51,12 @@ PythonFXChain {
                 case "test2x2x1": chain_type = Types.FXChainType.Test2x2x1; break;
             }
 
-            if ('state_str' in descriptor) {
-                var restore = function() {
-                    root.restore_state(descriptor.state_str)
+            if ('internal_state' in descriptor) {
+                var restore = function(state_str = descriptor.internal_state) {
+                    root.restore_state(state_str)
                 }
                 if (initialized) { restore() }
-                else { root.initializedChanged.connect(restore) }
+                else { root.initializedChanged.connect(function() { restore() }) }
             }
 
         } else {

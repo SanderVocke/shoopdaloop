@@ -3,7 +3,6 @@ import QtQuick.Controls 6.3
 import QtQuick.Controls.Material 6.3
 import QtQuick.Dialogs
 import ShoopDaLoop.PythonLogger
-import ShoopDaLoop.PythonControlHandler
 
 import '../generated/types.js' as Types
 import '../mode_helpers.js' as ModeHelpers
@@ -298,14 +297,14 @@ Item {
 
     function select(clear = false) {
         untarget()
-        if (key_modifiers.control_pressed) {
+        if (!clear) {
             state_registry.add_to_set('selected_loop_ids', obj_id)
         } else {
             state_registry.replace('selected_loop_ids', new Set([obj_id]))
         }
     }
-    function deselect() {
-        if (key_modifiers.control_pressed) {
+    function deselect(clear = false) {
+        if (!clear) {
             state_registry.remove_from_set('selected_loop_ids', obj_id)
         } else {
             state_registry.replace('selected_loop_ids', new Set())
@@ -386,6 +385,25 @@ Item {
         }
     }
 
+    function record_n(delay_start, n) {
+        root.transition(Types.LoopMode.Recording, delay_start, true)
+        root.transition(Types.LoopMode.Playing, delay_start + n, true)
+    }
+
+    function record_with_targeted() {
+        if (!root.targeted_loop) { return }
+        // A target loop is set. Do the "record together with" functionality.
+        // TODO: code is duplicated in app shared state for MIDI source
+        var n_cycles_delay = 0
+        var n_cycles_record = 1
+        n_cycles_record = Math.ceil(root.targeted_loop.length / root.master_loop.length)
+        if (ModeHelpers.is_playing_mode(root.targeted_loop.mode)) {
+            var current_cycle = Math.floor(root.targeted_loop.position / root.master_loop.length)
+            n_cycles_delay = Math.max(0, n_cycles_record - current_cycle - 1)
+        }
+        root.record_n(n_cycles_delay, n_cycles_record)
+    }
+
     width: childrenRect.width
     height: childrenRect.height
     clip: true
@@ -445,12 +463,6 @@ Item {
         key: 'sync_active'
     }
     property alias sync_active: lookup_sync_active.object
-
-    // Control
-    readonly property var control_handler: control_handler
-    PythonControlHandler {
-        id: control_handler
-    }
 
     // UI
     StatusRect {
@@ -917,25 +929,11 @@ Item {
                                         font.pixelSize: size / 2.0
                                     }
 
-                                    function execute(delay, n_cycles) {
-                                        root.transition(Types.LoopMode.Recording, delay, true)
-                                        root.transition(Types.LoopMode.Playing, delay + n_cycles, true)
-                                    }
-
                                     onClicked: {
                                         if (root.targeted_loop === undefined || root.targeted_loop === null) {
-                                            execute(0, recordN.n)
+                                            root.record_n(0, recordN.n)
                                         } else {
-                                            // A target loop is set. Do the "record together with" functionality.
-                                            // TODO: code is duplicated in app shared state for MIDI source
-                                            var n_cycles_delay = 0
-                                            var n_cycles_record = 1
-                                            n_cycles_record = Math.ceil(root.targeted_loop.length / root.master_loop.length)
-                                            if (ModeHelpers.is_playing_mode(root.targeted_loop.mode)) {
-                                                var current_cycle = Math.floor(root.targeted_loop.position / root.master_loop.length)
-                                                n_cycles_delay = Math.max(0, n_cycles_record - current_cycle - 1)
-                                            }
-                                            execute(n_cycles_delay, n_cycles_record)
+                                            root.record_with_targeted()
                                         }
                                     }
                                     onPressAndHold: { recordn_menu.popup() }
@@ -951,31 +949,31 @@ Item {
                                         title: 'Select # of cycles'
                                         MenuItem {
                                             text: "1 cycle"
-                                            onClicked: () => { recordN.execute(0, 1) }
+                                            onClicked: () => { root.record_n(0, 1) }
                                         }
                                         MenuItem {
                                             text: "2 cycles"
-                                            onClicked: () => { recordN.execute(0, 2) }
+                                            onClicked: () => { root.record_n(0, 2) }
                                         }
                                         MenuItem {
                                             text: "3 cycles"
-                                            onClicked: () => { recordN.execute(0, 3) }
+                                            onClicked: () => { root.record_n(0, 3) }
                                         }
                                         MenuItem {
                                             text: "4 cycles"
-                                            onClicked: () => { recordN.execute(0, 4) }
+                                            onClicked: () => { root.record_n(0, 4) }
                                         }
                                         MenuItem {
                                             text: "6 cycles"
-                                            onClicked: () => { recordN.execute(0, 6) }
+                                            onClicked: () => { root.record_n(0, 6) }
                                         }
                                         MenuItem {
                                             text: "8 cycles"
-                                            onClicked: () => { recordN.execute(0, 8) }
+                                            onClicked: () => { root.record_n(0, 8) }
                                         }
                                         MenuItem {
                                             text: "16 cycles"
-                                            onClicked: () => { recordN.execute(0, 16) }
+                                            onClicked: () => { root.record_n(0, 16) }
                                         }
                                     }
                                 }
@@ -1367,7 +1365,8 @@ Item {
                         font.pixelSize: 12
                         onEditingFinished: {
                             root.name = text
-                            background_focus.forceActiveFocus();
+                            focus = false
+                            release_focus_notifier.notify()
                         }
                     }
                 }
@@ -1633,12 +1632,8 @@ Item {
                         mapping[fidx].push(channels_to_load[cidx])
                         fidx = (fidx + 1) % n_file_channels
                     }
-                    var task = file_io.load_soundfile_to_channels_async(filename, samplerate, null, mapping, 
-                        (length) => {
-                            if (update_audio_length_checkbox) {
-                                root.maybe_loaded_loop.set_length(length)
-                            }
-                        })
+                    var task = file_io.load_soundfile_to_channels_async(filename, samplerate, null,
+                        mapping, 0, 0, root.maybe_loaded_loop)
                     task.when_finished( () => root.state_registry.load_action_finished() )
                 } catch(e) {
                     root.state_registry.load_action_finished()

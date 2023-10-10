@@ -1,39 +1,58 @@
 
-from PySide6.QtCore import QObject, Signal, Property, Slot
+from PySide6.QtCore import QObject, Signal, Property, Slot, Qt, Q_ARG, Q_RETURN_ARG, QMetaType
+from PySide6.QtQuick import QQuickItem
+from PySide6.QtQml import QJSValue
 import inspect
 import lupa
 
 from ..logging import Logger
+from ..lua_qobject_interface import lua_passthrough, qt_typename, lua_int, lua_bool, lua_str, lua_callable
+from ..backend_wrappers import LoopMode
 
 def as_loop_selector(lua_val):
     def iscoords(l):
         return len(l) == 2 and isinstance(l[0], int) and isinstance(l[1], int)
+    def isempty(l):
+        return len(l) == 0
+    def tolist(l):
+        return l if isinstance(l, list) else list(dict(l).values())
     
-    if lupa.lua_type(lua_val) == 'function':
-        # Lua functors may be passed, can be called from Python later.
-        return lua_val
-    
+    maybe_exception = RuntimeError("Could not recognize loop selector type.")
     try:
-        assert lupa.lua_type(lua_val) == 'table'
-        aslist = list(dict(lua_val).values())
-        if iscoords(aslist):
-            return aslist # is coordinates
-        aslists = [list(dict(val).values()) for val in aslist]
-        assert(list(set([iscoords(l) for l in aslists])) == [True])
-        return aslists
+        if lupa.lua_type(lua_val) == 'table' or isinstance(lua_val, list):
+            aslist = tolist(lua_val)
+            if iscoords(aslist) or isempty(aslist):
+                return aslist # is coordinates or empty
+            aslists = [tolist(val) for val in aslist]
+            assert(list(set([iscoords(l) for l in aslists])) == [True])
+            return aslists
+        elif lupa.lua_type(lua_val) == 'function' or callable(lua_val):
+            # Lua functors may be passed, can be called from Python later.
+            return lua_val
     except Exception as e:
-        raise ValueError('Failed to intepret loop selector. Loop selector may be a callable (f => bool), [x,y], or [[x1,y1],[x2,y2],...]. Exception: {}'.format(str(e)))
+        maybe_exception = e
+    
+    raise ValueError('Failed to interpret loop selector. Loop selector may be a callable (f => bool), [], [x,y], or [[x1,y1],[x2,y2],...]. Selector: {} (type {}). Exception: {}'.format(str(lua_val), lupa.lua_type(lua_val), str(maybe_exception)))
 
-# Defines the API through which ShoopDaLoop can be controlled externally
-# (used by e.g. MIDI controllers and Lua scripts).
-# In principle the methods of this class should be overridden (they will all throw unimplemented errors).
-# However, if the exceptions are caught and discarded, this class can also be used for testing, as it will
-# cache the calls made.
-class ControlHandler(QObject):
+lua_loop_selector = [ 'QVariant', as_loop_selector ]
+
+class ControlHandler(QQuickItem):
+    """
+    Defines the API through which ShoopDaLoop can be controlled externally
+    (used by e.g. MIDI controllers and Lua scripts).
+    In principle the methods of this class should be overridden (they will all throw unimplemented errors).
+    However, if the exceptions are caught and discarded, this class can also be used for testing, as it will
+    cache the calls made.
+    """
+    
     def __init__(self, parent=None):
         super(ControlHandler, self).__init__(parent)
-        self.logger = Logger('Frontend.ControlHandlerInterface')
+        self.logger = Logger('Frontend.ControlHandler')
         self.clear_call_cache()
+        self._qml_instance = None
+        self._methods = dict()
+        self.qml_instance_changed.connect(self.introspect)
+        self.introspect()
     
     def to_py_val(self, val):
         if isinstance(val, QJSValue):
@@ -53,28 +72,23 @@ class ControlHandler(QObject):
 
     # For introspection
     lua_interfaces = [
-        [ 'loop_is_playing', as_loop_selector ],
-        [ 'loop_is_selected', as_loop_selector ],
-        [ 'loop_is_targeted', as_loop_selector ],
-        [ 'loop_get_volume', as_loop_selector ],
-        [ 'loop_get_balance', as_loop_selector ],
-        [ 'loop_play', as_loop_selector ],
-        [ 'loop_stop', as_loop_selector ],
-        [ 'loop_record', as_loop_selector ],
-        [ 'loop_record_n', as_loop_selector ],
-        [ 'loop_set_balance', as_loop_selector ],
-        [ 'loop_play_dry_through_wet', as_loop_selector ],
-        [ 'loop_re_record_fx', as_loop_selector ],
-        [ 'loop_play_solo', as_loop_selector ],
-        [ 'loop_select', as_loop_selector ],
-        [ 'loop_target', as_loop_selector ],
-        [ 'loop_deselect', as_loop_selector ],
-        [ 'loop_untarget', as_loop_selector ],
-        [ 'loop_toggle_selected', as_loop_selector ],
-        [ 'loop_toggle_targeted', as_loop_selector ],
-        [ 'loop_toggle_playing', as_loop_selector ],
-        [ 'port_get_volume', as_loop_selector ],
-        [ 'port_get_muted', as_loop_selector ],
+        [ 'loop_count', lua_loop_selector ],
+        [ 'loop_get_mode', lua_loop_selector ],
+        [ 'loop_get_which_selected' ],
+        [ 'loop_get_which_targeted' ],
+        [ 'loop_get_volume', lua_loop_selector ],
+        [ 'loop_get_balance', lua_loop_selector ],
+        [ 'loop_transition', lua_loop_selector, lua_int, lua_int ],
+        [ 'loop_record_n', lua_loop_selector, lua_int, lua_int ],
+        [ 'loop_record_with_targeted', lua_loop_selector ],
+        [ 'loop_set_balance', lua_loop_selector ],
+        [ 'loop_select', lua_loop_selector, lua_bool ],
+        [ 'loop_target', lua_loop_selector ],
+        [ 'loop_clear', lua_loop_selector ],
+        [ 'loop_untarget_all' ],
+        [ 'port_get_volume', lua_loop_selector ],
+        [ 'port_get_muted', lua_loop_selector ],
+        # TODO
         # 'port_get_input_muted',
         # 'port_mute',
         # 'port_mute_input',
@@ -82,6 +96,75 @@ class ControlHandler(QObject):
         # 'port_unmute_input',
         # 'port_set_volume',
     ]
+
+    def generate_loop_mode_constants():
+        rval = []
+        for i in list(LoopMode):
+            rval.append(['LoopMode_' + i.name, i.value])
+        return rval
+    
+    lua_constants = generate_loop_mode_constants()
+    
+    @Slot()
+    def introspect(self):
+        if not self._qml_instance:
+            return
+        for i in range(self._qml_instance.metaObject().methodCount()):
+            method = self._qml_instance.metaObject().method(i)
+            def call_qml(*args, m=method):
+                return_typename = qt_typename(m.returnType())
+                name = str(m.name(), 'ascii')
+                if return_typename == 'Void':
+                    self.logger.debug("Calling void QML method {}".format(name))
+                    self._qml_instance.metaObject().invokeMethod(
+                        self._qml_instance,
+                        name,
+                        Qt.ConnectionType.AutoConnection,
+                        *[Q_ARG('QVariant', arg) for arg in args]
+                    )
+                    return
+                rval = self._qml_instance.metaObject().invokeMethod(
+                    self._qml_instance,
+                    name,
+                    Qt.ConnectionType.AutoConnection,
+                    Q_RETURN_ARG(return_typename),
+                    *[Q_ARG('QVariant', arg) for arg in args]
+                )
+                if isinstance(rval, QJSValue):
+                    rval = rval.toVariant()
+                self.logger.debug("Result of calling {} QML method {}: {}".format(return_typename, name, str(rval)))
+                return rval
+            self._methods[str(method.name(), 'ascii')] = {
+                'call_qml': call_qml
+            }
+
+    @staticmethod
+    def allow_qml_override(func):
+        def wrapper(self, *args, **kwargs):
+            self.logger.debug("Call ControlHandler {} with args {}".format(func.__name__, str(args)))
+            if self.qml_instance:
+                try:
+                    return self._methods[func.__name__ + "_override"]['call_qml'](*args)
+                except RuntimeError as e:
+                    self.logger.error("Failed to call QML override: {}".format(str(e)))
+
+            self.cache_call([func.__name__, *args])
+            raise NotImplementedError(
+                "ControlHandler interface {0} not or incorrectly overridden.".format(func.__name__)
+            )
+        wrapper.__name__ = func.__name__
+        wrapper.__doc__ = func.__doc__
+        return wrapper
+
+    qml_instance_changed = Signal('QVariant')
+    @Property('QVariant', notify=qml_instance_changed)
+    def qml_instance(self):
+        return self._qml_instance
+    @qml_instance.setter
+    def qml_instance(self, val):
+        if val != self._qml_instance:
+            self._qml_instance = val
+            self.qml_instance_changed.emit(val)
 
     # LOOPS
     # loop_selector selects the loop(s) to target.
@@ -92,111 +175,134 @@ class ControlHandler(QObject):
     # - [[track_idx, loop_idx], [track_idx, loop_idx], ...]  (select multiple by coords)
     # - (loop) => <true/false> (functor which is passed the loop widget and should return true/false)
 
-    # Loop getter interfaces
-    Slot('QVariant')
-    def loop_is_playing(self, loop_selector):
-        self.cache_call([inspect.stack()[0][3], loop_selector])
-        raise NotImplementedError('ControlHandler interface not overridden')
+    @Slot('QVariant', result=int)
+    @allow_qml_override
+    def loop_count(self, loop_selector):
+        """
+        Count the amount of loops given by the selector.
+        """
+        pass
 
-    Slot('QVariant')
-    def loop_is_selected(self, loop_selector):
-        self.cache_call([inspect.stack()[0][3], loop_selector])
-        raise NotImplementedError('ControlHandler interface not overridden')
+    @Slot('QVariant', result='QVariant')
+    @allow_qml_override
+    def loop_get_mode(self, loop_selector):
+        """
+        Get the current mode of the specified loops.
+        """
+        pass
+    
+    @Slot(result='QVariant')
+    @allow_qml_override
+    def loop_get_which_selected(self):
+        """
+        Get the coordinates of all currently selected loops.
+        """
+        pass
+    
+    @Slot(result='QVariant')
+    @allow_qml_override
+    def loop_get_which_targeted(self):
+        """
+        Get the coordinates of the currently targeted loop, or None if none are targeted.
+        """
+        pass
 
-    Slot('QVariant')
-    def loop_is_targeted(self, loop_selector):
-        self.cache_call([inspect.stack()[0][3], loop_selector])
-        raise NotImplementedError('ControlHandler interface not overridden')
-
-    Slot('QVariant')
+    @Slot('QVariant', result=float)
+    @allow_qml_override
     def loop_get_volume(self, loop_selector):
-        self.cache_call([inspect.stack()[0][3], loop_selector])
-        raise NotImplementedError('ControlHandler interface not overridden')
+        """
+        Get the output audio volume of the specified loops.
+        """
+        pass
 
-    Slot('QVariant')
+    @Slot('QVariant', result=float)
+    @allow_qml_override
     def loop_get_balance(self, loop_selector):
-        self.cache_call([inspect.stack()[0][3], loop_selector])
-        raise NotImplementedError('ControlHandler interface not overridden')
+        """
+        Get the output audio balance of the specified stereo loops.
+        """
+        pass
 
     # Loop action interfaces
-    Slot('QVariant', int, bool)
-    def loop_play(self, loop_selector, cycles_delay, wait_sync):
-        self.cache_call([inspect.stack()[0][3], loop_selector, cycles_delay, wait_sync])
-        raise NotImplementedError('ControlHandler interface not overridden')
+    @Slot('QVariant', int, int)
+    @allow_qml_override
+    def loop_transition(self, loop_selector, mode, cycles_delay):
+        """
+        Transition the given loops. Whether the transition is immediate or synchronized
+        depends on the global application "synchronization active" state.
+        
+        Args:
+            loop_selector: The loop(s) to transition.
+            mode: The mode to transition to.
+            cycles_delay: The amount of cycles to wait before transitioning.
+        """
+        pass
 
-    Slot('QVariant', int, bool)
-    def loop_stop(self, loop_selector, cycles_delay, wait_sync):
-        self.cache_call([inspect.stack()[0][3], loop_selector, cycles_delay, wait_sync])
-        raise NotImplementedError('ControlHandler interface not overridden')
+    @Slot('QVariant', int, int)
+    @allow_qml_override
+    def loop_record_n(self, loop_selector, n, cycles_delay):
+        """
+        Record the given loops for N cycles synchronously.
 
-    Slot('QVariant', int, bool)
-    def loop_record(self, loop_selector, cycles_delay, wait_sync):
-        self.cache_call([inspect.stack()[0][3], loop_selector, cycles_delay, wait_sync])
-        raise NotImplementedError('ControlHandler interface not overridden')
+        Args:
+            loop_selector: The loop(s) to record.
+            n: The amount of cycles to record.
+            cycles_delay: The amount of cycles to wait before recording.
+        """
+        pass
 
-    Slot('QVariant', int, int, bool)
-    def loop_record_n(self, loop_selector, n, cycles_delay, wait_sync):
-        self.cache_call([inspect.stack()[0][3], loop_selector, n, cycles_delay, wait_sync])
-        raise NotImplementedError('ControlHandler interface not overridden')
+    @Slot('QVariant')
+    @allow_qml_override
+    def loop_record_with_targeted(self, loop_selector):
+        """
+        Record the given loops in sync with the currently targeted loop.
+        """
+        pass
 
-    Slot('QVariant', int, float)
+    @Slot('QVariant', int, float)
+    @allow_qml_override
     def loop_set_balance(self, loop_selector, balance):
-        self.cache_call([inspect.stack()[0][3], loop_selector, balance])
-        raise NotImplementedError('ControlHandler interface not overridden')
+        """
+        Set the audio output balance for the specified loops.
+        """
+        pass
 
-    Slot('QVariant', int, bool)
-    def loop_play_dry_through_wet(self, loop_selector, cycles_delay, wait_sync):
-        self.cache_call([inspect.stack()[0][3], loop_selector, cycles_delay, wait_sync])
-        raise NotImplementedError('ControlHandler interface not overridden')
+    @Slot('QVariant', bool)
+    @allow_qml_override
+    def loop_select(self, loop_selector, deselect_others):
+        """
+        Select the specified loops.
 
-    Slot('QVariant', int, bool)
-    def loop_re_record_fx(self, loop_selector, cycles_delay, wait_sync):
-        self.cache_call([inspect.stack()[0][3], loop_selector, cycles_delay, wait_sync])
-        raise NotImplementedError('ControlHandler interface not overridden')
+        Args:
+            loop_selector: The loop(s) to select.
+            deselect_others: Whether to deselect all other loops.
+        """
+        pass
 
-    Slot('QVariant', int, bool)
-    def loop_play_solo(self, loop_selector, cycles_delay, wait_sync):
-        self.cache_call([inspect.stack()[0][3], loop_selector, cycles_delay, wait_sync])
-        raise NotImplementedError('ControlHandler interface not overridden')
-
-    Slot('QVariant')
-    def loop_select(self, loop_selector):
-        self.cache_call([inspect.stack()[0][3], loop_selector])
-        raise NotImplementedError('ControlHandler interface not overridden')
-
-    Slot('QVariant')
+    @Slot('QVariant')
+    @allow_qml_override
     def loop_target(self, loop_selector):
-        self.cache_call([inspect.stack()[0][3], loop_selector])
-        raise NotImplementedError('ControlHandler interface not overridden')
+        """
+        Target the specified loop. If the selector specifies more than one loop,
+        a single loop in the set is chosen arbitrarily.
+        """
+        pass
 
-    Slot('QVariant')
-    def loop_deselect(self, loop_selector):
-        self.cache_call([inspect.stack()[0][3], loop_selector])
-        raise NotImplementedError('ControlHandler interface not overridden')
+    @Slot()
+    @allow_qml_override
+    def loop_untarget_all(self):
+        """
+        Untarget the currently targeted loop, if any.
+        """
+        pass
 
-    Slot('QVariant')
-    def loop_untarget(self, loop_selector):
-        self.cache_call([inspect.stack()[0][3], loop_selector])
-        raise NotImplementedError('ControlHandler interface not overridden')
-
-    Slot('QVariant')
-    def loop_toggle_selected(self, loop_selector):
-        self.cache_call([inspect.stack()[0][3], loop_selector])
-        raise NotImplementedError('ControlHandler interface not overridden')
-
-    Slot('QVariant')
-    def loop_toggle_targeted(self, loop_selector):
-        self.cache_call([inspect.stack()[0][3], loop_selector])
-        raise NotImplementedError('ControlHandler interface not overridden')
-
-    # Loop internally implemented interfaces
-    Slot('QVariant', int, bool)
-    def loop_toggle_playing(self, loop_selector, cycles_delay, wait_sync):
-        self.cache_call([inspect.stack()[0][3], loop_selector, cycles_delay, wait_sync])
-        if loop_is_playing (loop_selector):
-            return loop_stop(loop_selector, cycles_delay, wait_sync)
-        else:
-            return loop_play(loop_selector, cycles_delay, wait_sync)    
+    @Slot('QVariant')
+    @allow_qml_override
+    def loop_clear(self, loop_selector):
+        """
+        Clear the given loops.
+        """
+        pass
 
     # PORTS
     # port_selector selects the port(s) to target.
@@ -207,43 +313,43 @@ class ControlHandler(QObject):
     # - fn              (fn is (port) => true/false, applied to ports of all tracks)
 
     # Port getter interfaces
-    Slot('QVariant')
+    @Slot('QVariant', result=float)
+    @allow_qml_override
     def port_get_volume(self, port_selector):
-        self.cache_call([inspect.stack()[0][3], port_selector])
-        raise NotImplementedError('ControlHandler interface not overridden')
+        pass
 
-    Slot('QVariant')
-    def port_get_muted(self, port_selector):
-        self.cache_call([inspect.stack()[0][3], port_selector])
-        raise NotImplementedError('ControlHandler interface not overridden')
+    @Slot('QVariant')
+    @allow_qml_override
+    def port_get_muted(self, port_selector, result=bool):
+        pass
 
-    Slot('QVariant')
-    def port_get_input_muted(self, port_selector):
-        self.cache_call([inspect.stack()[0][3], port_selector])
-        raise NotImplementedError('ControlHandler interface not overridden')
+    @Slot('QVariant')
+    @allow_qml_override
+    def port_get_input_muted(self, port_selector, result=bool):
+        pass
 
     # Port action interfaces
-    Slot('QVariant')
+    @Slot('QVariant')
+    @allow_qml_override
     def port_mute(self, port_selector):
-        self.cache_call([inspect.stack()[0][3], port_selector])
-        raise NotImplementedError('ControlHandler interface not overridden')
+        pass
 
-    Slot('QVariant')
+    @Slot('QVariant')
+    @allow_qml_override
     def port_mute_input(self, port_selector):
-        self.cache_call([inspect.stack()[0][3], port_selector])
-        raise NotImplementedError('ControlHandler interface not overridden')
+        pass
 
-    Slot('QVariant')
+    @Slot('QVariant')
+    @allow_qml_override
     def port_unmute(self, port_selector):
-        self.cache_call([inspect.stack()[0][3], port_selector])
-        raise NotImplementedError('ControlHandler interface not overridden')
+        pass
 
-    Slot('QVariant')
+    @Slot('QVariant')
+    @allow_qml_override
     def port_unmute_input(self, port_selector):
-        self.cache_call([inspect.stack()[0][3], port_selector])
-        raise NotImplementedError('ControlHandler interface not overridden')
+        pass
 
-    Slot('QVariant', float)
+    @Slot('QVariant', float)
+    @allow_qml_override
     def port_set_volume(self, port_selector, vol):
-        self.cache_call([inspect.stack()[0][3], port_selector, vol])
-        raise NotImplementedError('ControlHandler interface not overridden')
+        pass

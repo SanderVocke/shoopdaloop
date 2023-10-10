@@ -344,7 +344,7 @@ function generate_default_track(
                 id + '_loop_' + ii + "_audio_wet_" + (idx+1).toString(), 'wet', 'audio', 0, 0, 0, 1.0, ports_to_connect
             ))
         })
-        var loop = generate_loop(id+'_loop_'+ii, "(" + ii + ")", 0, (first_loop_is_master && i==0) ? true : false, channels);
+        var loop = generate_loop(id+'_loop_'+ii, "(" + (i+1).toString() + ")", 0, (first_loop_is_master && i==0) ? true : false, channels);
         loops.push(loop);
     }
     var all_ports = [];
