@@ -17,6 +17,7 @@ Session {
         id: testcase
         name: 'SessionControl'
         filename : TestFilename.test_filename()
+        when: session.control_handler && session.control_handler.ready
 
         session: session
 
