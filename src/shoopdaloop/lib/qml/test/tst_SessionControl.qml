@@ -43,11 +43,11 @@ Session {
 
                 verify_eq(
                     session.control_handler.select_single_loop([0,0]),
-                    master_loop().control_handler
+                    master_loop()
                 )
                 verify_eq(
                     session.control_handler.select_single_loop([0,1]),
-                    other_loop().control_handler
+                    other_loop()
                 )
             })
         }
@@ -59,15 +59,15 @@ Session {
 
                 verify_eq(
                     session.control_handler.select_loops([[0,0]]),
-                    [master_loop().control_handler]
+                    [master_loop()]
                 )
                 verify_eq(
                     session.control_handler.select_loops([[0,1]]),
-                    [other_loop().control_handler]
+                    [other_loop()]
                 )
                 verify_eq(
                     session.control_handler.select_loops([[0,1],[0,0]]),
-                    [other_loop().control_handler, master_loop().control_handler]
+                    [other_loop(), master_loop()]
                 )
             })
         }
@@ -79,15 +79,15 @@ Session {
 
                 verify_eq(
                     session.control_handler.select_loops((l) => { return l == master_loop() }),
-                    [master_loop().control_handler]
+                    [master_loop()]
                 )
                 verify_eq(
                     session.control_handler.select_loops((l) => { return l == other_loop() }),
-                    [other_loop().control_handler]
+                    [other_loop()]
                 )
                 verify_eq(
                     session.control_handler.select_loops((l) => { return true }),
-                    [master_loop().control_handler, other_loop().control_handler]
+                    [master_loop(), other_loop()]
                 )
             })
         }
