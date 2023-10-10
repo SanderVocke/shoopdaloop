@@ -1,3 +1,4 @@
+#include <cstdlib>
 #define IMPLEMENT_AUDIOCHANNEL_H
 #include "AudioChannel.h"
 
@@ -445,7 +446,7 @@ void AudioChannel<SampleT>::PROC_process_record(
 }
 
 template <typename SampleT>
-void AudioChannel<SampleT>::PROC_process_replace(size_t position, size_t length,
+void AudioChannel<SampleT>::PROC_process_replace(size_t data_position, size_t length,
                                                  size_t n_samples,
                                                  SampleT *record_buffer,
                                                  size_t record_buffer_size) {
@@ -457,7 +458,6 @@ void AudioChannel<SampleT>::PROC_process_replace(size_t position, size_t length,
     }
     auto data_length = ma_buffers_data_length.load();
     auto start_offset = ma_start_offset.load();
-    auto data_position = (int)position + start_offset;
     bool changed = false;
 
     if (data_position < 0) {
@@ -466,7 +466,7 @@ void AudioChannel<SampleT>::PROC_process_replace(size_t position, size_t length,
         const int n = (int)n_samples - skip;
         record_buffer += std::min(skip, (int)record_buffer_size);
         record_buffer_size = std::max((int)record_buffer_size - skip, 0);
-        return PROC_process_replace(position + skip, length,
+        return PROC_process_replace(data_position + skip, length,
                                     std::max((int)n_samples - skip, 0),
                                     record_buffer, record_buffer_size);
     }
@@ -476,7 +476,7 @@ void AudioChannel<SampleT>::PROC_process_replace(size_t position, size_t length,
         changed = true;
     }
 
-    size_t samples_left = length - position;
+    size_t samples_left = data_length - data_position;
     size_t buf_space = mp_buffers.buf_space_for_sample(data_position);
     SampleT *to = &mp_buffers.at(data_position);
     SampleT *&from = record_buffer;
@@ -493,7 +493,10 @@ void AudioChannel<SampleT>::PROC_process_replace(size_t position, size_t length,
 
     // If we didn't replace all yet, go to next buffer and continue
     if (rest > 0) {
-        PROC_process_replace(position + n, length, rest, record_buffer + n,
+        if (n == 0 && data_position >= data_length) {
+            throw_error<std::runtime_error>("Attempt to replace out of bounds");
+        }
+        PROC_process_replace(data_position + n, length, rest, record_buffer + n,
                              record_buffer_size - n);
     }
 }
