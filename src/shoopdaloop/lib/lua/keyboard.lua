@@ -26,6 +26,9 @@ This script allows controlling ShoopDaLoop through keyboard keys.
                If none selected, select all "recording dry into wet" loops.
 -  N key:      "Record next": Queue recording into the first empty loop of the
                currently selected/recording track.
+-  O key:      "Overdub": Queue recording into the first empty loop of the
+               currently selected/recording track while playing back currently
+               recording loops.
 -  T key:      Target the selected loop. If more than one loop is selected, one
                of the selected loops is arbitrarily chosen.
 -  U key:      Untarget all loops.
@@ -183,7 +186,7 @@ local handle_number_key = function(number, modifiers)
     shoop.loop_record_n(shoop.loop_get_which_selected(), number, 0)
 end
 
-local record_into_first_empty = function(number, modifiers)
+local record_into_first_empty = function(overdub)
     local selected = shoop.loop_get_which_selected()
     local recording = shoop.loop_get_by_mode(shoop.constants.LoopMode_Recording)
     local selected_tracks_set = {}
@@ -224,7 +227,9 @@ local record_into_first_empty = function(number, modifiers)
 
     if (#chosen_loops > 0) then
         --  Stop the currently recording loops and start recording into the chosen ones.
-        shoop.loop_transition(recording, shoop.constants.LoopMode_Stopped, 0)
+        if (overdub) shoop.loop_transition(recording, shoop.constants.LoopMode_Playing, 0)
+        else shoop.loop_transition(recording, shoop.constants.LoopMode_Stopped, 0)
+        end 
         shoop.loop_transition(chosen_loops, shoop.constants.LoopMode_Recording, 0)
     end
 end
@@ -259,7 +264,9 @@ local handle_keyboard = function(event_type, key, modifiers)
         elseif key == shoop.constants.Key_M then
             handle_loop_action(shoop.constants.LoopMode_RecordingDryIntoWet)
         elseif key == shoop.constants.Key_N then
-            record_into_first_empty()
+            record_into_first_empty(false)
+        elseif key == shoop.constants.Key_O then
+            record_into_first_empty(true)
         elseif key == shoop.constants.Key_T then
             shoop.loop_target(shoop.loop_get_which_selected())
         elseif key == shoop.constants.Key_U then
