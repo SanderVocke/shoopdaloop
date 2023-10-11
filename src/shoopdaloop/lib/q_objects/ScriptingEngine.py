@@ -101,7 +101,7 @@ class ScriptingEngine(QObject):
     @Slot('QVariant')
     def use_context(self, context_id):
         self.logger.debug("Using context: {}".format(context_id))
-        self.execute('__shoop_use_context({})'.format(context_id if context_id != None else 'nil'))
+        self.execute('__shoop_use_context({})'.format(context_id if context_id != None else 'nil'), None, None, True, False)
         self._current_context_id = context_id
     
     @Slot(result='QVariant')
@@ -111,14 +111,14 @@ class ScriptingEngine(QObject):
     @Slot(result='QVariant')
     def new_context(self):
         self.logger.debug("Creating new context.")
-        return self.evaluate('return __shoop_new_context()')
+        return self.evaluate('return __shoop_new_context()', None, None, True, False)
     
     @Slot('QVariant')
     def delete_context(self, context_id):
         self.logger.debug("Deleting context: {}".format(context_id))
         if self.current_context() == context_id:
             self.use_context(None)
-        self.execute('__shoop_delete_context({})'.format(context_id))
+        self.execute('__shoop_delete_context({})'.format(context_id), None, None, True, False)
     
     @Slot('QVariant', result=bool)
     def context_exists(self, context_id):
@@ -140,6 +140,9 @@ class ScriptingEngine(QObject):
             if context:
                 self.use_context(prev_context)
             self.logger.trace('evaluate result: {}'.format(rval))
+            if lupa.lua_type(rval) == 'function':
+                # wrap the function in a lambda which will call it in the correct context
+                rval = lambda *args, rval=rval, context=context: self.call(rval, args, context)
             return rval
         except Exception as e:
             if not catch_errors:
@@ -171,6 +174,17 @@ class ScriptingEngine(QObject):
                 self.logger.error('Error executing script "{}": {}. Trace: {}'.format(script_name, str(e), traceback.format_exc()))
             else:
                 self.logger.error('Error executing statement: {}. Trace: {}'.format(str(e), traceback.format_exc()))
+    
+    @Slot('QVariant', list, 'QVariant', result='QVariant')
+    def call(self, callable, args=[], context=None):
+        self.logger.trace('call callable in context {}:\n{}'.format(context, callable))
+        if context:
+            prev_context = self.current_context()
+            self.use_context(context)
+        rval = callable(*args)
+        if context:
+            self.use_context(prev_context)
+        return rval
     
     @Slot(str, 'QVariant')
     def create_lua_qobject_interface_in_current_context(self, name, qobject):
