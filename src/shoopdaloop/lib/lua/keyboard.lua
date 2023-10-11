@@ -189,7 +189,8 @@ local record_into_first_empty = function(overdub)
 
     if (#chosen_loops > 0) then
         --  Stop the currently recording loops and start recording into the chosen ones.
-        if (overdub) shoop.loop_transition(recording, shoop.constants.LoopMode_Playing, 0)
+        if (overdub)
+        then shoop.loop_transition(recording, shoop.constants.LoopMode_Playing, 0)
         else shoop.loop_transition(recording, shoop.constants.LoopMode_Stopped, 0)
         end 
         shoop.loop_transition(chosen_loops, shoop.constants.LoopMode_Recording, 0)
