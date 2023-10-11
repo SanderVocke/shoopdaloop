@@ -15,10 +15,15 @@ This script allows controlling ShoopDaLoop through keyboard keys.
                action is to cycle between recording, playing and stopped modes
                respectively.
 -  R key:      Set the selected loop(s) to recording mode.
+               If none selected, select all recording loops.
 -  P key:      Set the selected loop(s) to playing mode.
+               If none selected, select all playing loops.
 -  S key:      Set the selected loop(s) to stopped mode.
+               If none selected, stop all loops.
 -  L key:      Set the selected loop(s) to playing dry through wet mode.
+               If none selected, select all "playing dry through wet" loops.
 -  M key:      Set the selected loop(s) to recording dry into wet mode.
+               If none selected, select all "recording dry into wet" loops.
 -  N key:      "Record next": Queue recording into the first empty loop of the
                currently selected/recording track.
 -  T key:      Target the selected loop. If more than one loop is selected, one
@@ -191,6 +196,17 @@ local record_into_first_empty = function(number, modifiers)
     end
 end
 
+local handle_loop_action = function(mode)
+    local selected = shoop.loop_get_which_selected()
+    if (#selected > 0) then
+        shoop.loop_transition(selected, mode, 0)
+    elseif (mode == shoop.constants.LoopMode_Stopped) then
+        shoop.loop_transition(shoop.loop_get_all(), mode, 0)
+    else
+        shoop.loop_select(shoop.loop_get_by_mode(mode), true)
+    end
+end
+
 --  Overall keyboard event handler.
 local handle_keyboard = function(event_type, key, modifiers)
     if event_type == shoop.constants.KeyEventType_Pressed then
@@ -200,15 +216,15 @@ local handle_keyboard = function(event_type, key, modifiers)
         elseif key == shoop.constants.Key_Space then
             handle_default_loop_action()
         elseif key == shoop.constants.Key_R then
-            shoop.loop_transition(shoop.loop_get_which_selected(), shoop.constants.LoopMode_Recording, 0)
+            handle_loop_action(shoop.constants.LoopMode_Recording)
         elseif key == shoop.constants.Key_P then
-            shoop.loop_transition(shoop.loop_get_which_selected(), shoop.constants.LoopMode_Playing, 0)
+            handle_loop_action(shoop.constants.LoopMode_Playing)
         elseif key == shoop.constants.Key_S then
-            shoop.loop_transition(shoop.loop_get_which_selected(), shoop.constants.LoopMode_Stopped, 0)
+            handle_loop_action(shoop.constants.LoopMode_Stopped)
         elseif key == shoop.constants.Key_L then
-            shoop.loop_transition(shoop.loop_get_which_selected(), shoop.constants.LoopMode_PlayingDryThroughWet, 0)
+            handle_loop_action(shoop.constants.LoopMode_PlayingDryThroughWet)
         elseif key == shoop.constants.Key_M then
-            shoop.loop_transition(shoop.loop_get_which_selected(), shoop.constants.LoopMode_RecordingDryIntoWet, 0)
+            handle_loop_action(shoop.constants.LoopMode_RecordingDryIntoWet)
         elseif key == shoop.constants.Key_N then
             record_into_first_empty()
         elseif key == shoop.constants.Key_T then
