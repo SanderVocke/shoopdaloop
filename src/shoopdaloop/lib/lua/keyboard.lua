@@ -15,10 +15,15 @@ This script allows controlling ShoopDaLoop through keyboard keys.
                action is to cycle between recording, playing and stopped modes
                respectively.
 -  R key:      Set the selected loop(s) to recording mode.
+               If none selected, select all recording loops.
 -  P key:      Set the selected loop(s) to playing mode.
+               If none selected, select all playing loops.
 -  S key:      Set the selected loop(s) to stopped mode.
+               If none selected, stop all loops.
 -  L key:      Set the selected loop(s) to playing dry through wet mode.
+               If none selected, select all "playing dry through wet" loops.
 -  M key:      Set the selected loop(s) to recording dry into wet mode.
+               If none selected, select all "recording dry into wet" loops.
 -  N key:      "Record next": Queue recording into the first empty loop of the
                currently selected/recording track.
 -  O key:      "Overdub": Queue recording into the first empty loop of the
@@ -96,6 +101,27 @@ local move_coords = function(coords, direction_key)
     return new_coords
 end
 
+--  Look for the highest or lowest index (row/col) in the
+--  given direction
+local extreme_coord = function(all_coords, direction_key, highest)
+    local extreme = nil
+    for _, v in ipairs(all_coords) do
+        local coord = v[1]
+        if direction_key == shoop.constants.Key_Up or
+           direction_key == shoop.constants.Key_Down
+        then
+            coord = v[2]
+        end
+        if extreme == nil or
+           (highest and coord > extreme) or
+           (not highest and coord < extreme)
+        then
+            extreme = coord
+        end
+    end
+    return extreme
+end
+
 --  Handle a keypress of a direction key.
 local handle_direction_key = function(key, modifiers)
     local loops = shoop.loop_get_which_selected()
@@ -105,6 +131,7 @@ local handle_direction_key = function(key, modifiers)
     end
 
     if (modifiers & shoop.constants.ControlModifier) > 0 then
+        --  Expand selection
         local new_coords = loops
         local add_coords = {}
         for i, v in ipairs(loops) do
@@ -114,6 +141,17 @@ local handle_direction_key = function(key, modifiers)
             table.insert(new_coords, v)
         end
         shoop.loop_select(new_coords, true)
+    elseif (modifiers & shoop.constants.AltModifier) > 0 then
+        --  Shrink selection
+        local extreme = extreme_coord(loops, key, key == shoop.constants.Key_Up or key == shoop.constants.Key_Left)
+        local deselect_row = (key == shoop.constants.Key_Up or key == shoop.constants.Key_Down) and extreme or nil
+        local deselect_col = (key == shoop.constants.Key_Left or key == shoop.constants.Key_Right) and extreme or nil
+        for i = #loops, 1, -1 do
+            if loops[i][1] == deselect_col or loops[i][2] == deselect_row then
+                table.remove(loops, i)
+            end
+        end
+        shoop.loop_select(loops, true)
     else
         local new_coords = {}
         for i, v in ipairs(loops) do
@@ -197,6 +235,17 @@ local record_into_first_empty = function(overdub)
     end
 end
 
+local handle_loop_action = function(mode)
+    local selected = shoop.loop_get_which_selected()
+    if (#selected > 0) then
+        shoop.loop_transition(selected, mode, 0)
+    elseif (mode == shoop.constants.LoopMode_Stopped) then
+        shoop.loop_transition(shoop.loop_get_all(), mode, 0)
+    else
+        shoop.loop_select(shoop.loop_get_by_mode(mode), true)
+    end
+end
+
 --  Overall keyboard event handler.
 local handle_keyboard = function(event_type, key, modifiers)
     if event_type == shoop.constants.KeyEventType_Pressed then
@@ -206,15 +255,15 @@ local handle_keyboard = function(event_type, key, modifiers)
         elseif key == shoop.constants.Key_Space then
             handle_default_loop_action()
         elseif key == shoop.constants.Key_R then
-            shoop.loop_transition(shoop.loop_get_which_selected(), shoop.constants.LoopMode_Recording, 0)
+            handle_loop_action(shoop.constants.LoopMode_Recording)
         elseif key == shoop.constants.Key_P then
-            shoop.loop_transition(shoop.loop_get_which_selected(), shoop.constants.LoopMode_Playing, 0)
+            handle_loop_action(shoop.constants.LoopMode_Playing)
         elseif key == shoop.constants.Key_S then
-            shoop.loop_transition(shoop.loop_get_which_selected(), shoop.constants.LoopMode_Stopped, 0)
+            handle_loop_action(shoop.constants.LoopMode_Stopped)
         elseif key == shoop.constants.Key_L then
-            shoop.loop_transition(shoop.loop_get_which_selected(), shoop.constants.LoopMode_PlayingDryThroughWet, 0)
+            handle_loop_action(shoop.constants.LoopMode_PlayingDryThroughWet)
         elseif key == shoop.constants.Key_M then
-            shoop.loop_transition(shoop.loop_get_which_selected(), shoop.constants.LoopMode_RecordingDryIntoWet, 0)
+            handle_loop_action(shoop.constants.LoopMode_RecordingDryIntoWet)
         elseif key == shoop.constants.Key_N then
             record_into_first_empty(false)
         elseif key == shoop.constants.Key_O then

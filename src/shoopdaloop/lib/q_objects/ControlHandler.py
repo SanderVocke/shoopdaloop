@@ -79,6 +79,7 @@ class ControlHandler(QQuickItem):
         [ 'loop_get_which_targeted' ],
         [ 'loop_get_by_mode', lua_int ],
         [ 'loop_get_by_track', lua_int ],
+        [ 'loop_get_all' ],
         [ 'loop_get_volume', lua_loop_selector ],
         [ 'loop_get_balance', lua_loop_selector ],
         [ 'loop_transition', lua_loop_selector, lua_int, lua_int ],
@@ -207,6 +208,14 @@ class ControlHandler(QQuickItem):
     def loop_get_which_selected(self):
         """
         Get the coordinates of all currently selected loops.
+        """
+        pass
+
+    @Slot(result='QVariant')
+    @allow_qml_override
+    def loop_get_all(self):
+        """
+        Get the coordinates of all loops.
         """
         pass
     

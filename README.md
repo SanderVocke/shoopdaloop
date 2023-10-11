@@ -15,6 +15,10 @@ Live performance could also be a good use-case, although it is not quite battle-
 
 For currently open known issues, check the GitHub Issues page.
 
+# Screenshot
+
+![Screenshot](https://github.com/SanderVocke/shoopdaloop/assets/11209121/27632906-c158-41fe-af48-867ec5eecd42)
+
 # In a nutshell
 
 To summarize why ShoopDaLoop exists and what the goals and plans are, a short comparison table with similar software gives a good picture:
@@ -32,7 +36,7 @@ To summarize why ShoopDaLoop exists and what the goals and plans are, a short co
 | Song/performance sequencing | ❌ (planned)              | ❌               | ❌                      | ✅ (not sure of details) |
 | MIDI controller support     | ❌ (planned v. LUA scripts) | ✅ (MIDI learn)  | ✅ (not sure of method) | ✅ (not sure of method) |
 | NSM Session Management      | ✅                        | ✅               | ✅                      | ✅                      |
-| Overdubbing                 | ❌                        | ✅               | ✅                      | ?                      |
+| Overdubbing                 | ❌ (planned)              | ✅               | ✅                      | ?                      |
 | Plugin scripts              | ✅ <sup>(3)</sup>         | ❌               | ❌                      | ✅                     |
 | Transport/tempo system      | None (sync on master loop) | None             | JACK transport / MIDI beats | ? |
 
