@@ -89,13 +89,13 @@ Session {
 
         function initTestCase() {
             session.backend.dummy_enter_controlled_mode()
-            verify_throw(input_port_1)
-            verify_throw(input_port_2)
-            verify_throw(output_port_1)
-            verify_throw(output_port_2)
-            verify_throw(midi_input_port)
-            verify_throw(fx)
-            verify_throw(tut)
+            verify_true(input_port_1)
+            verify_true(input_port_2)
+            verify_true(output_port_1)
+            verify_true(output_port_2)
+            verify_true(midi_input_port)
+            verify_true(fx)
+            verify_true(tut)
             reset()
         }
 
@@ -140,7 +140,7 @@ Session {
 
                 verify_eq(out1, [1, 2, 3, 4])
                 verify_eq(out2, [4, 3, 2, 1])
-                verify_throw(fx.active)
+                verify_true(fx.active)
 
             })
         }
@@ -181,7 +181,7 @@ Session {
                 
                 verify_approx(out1, expect_out1)
                 verify_approx(out2, expect_out2)
-                verify_throw(fx.active)
+                verify_true(fx.active)
             })
         }
 
@@ -206,7 +206,7 @@ Session {
 
                 verify_eq(out1.map(o => Math.round(o)), [2, 4, 6, 8])
                 verify_eq(out2.map(o => Math.round(o)), [8, 6, 4, 2])
-                verify_throw(fx.active)
+                verify_true(fx.active)
 
             })
         }
@@ -232,7 +232,7 @@ Session {
 
                 verify_eq(out1.map(o => Math.round(o)), [2, 4, 6, 8])
                 verify_eq(out2.map(o => Math.round(o)), [8, 6, 4, 2])
-                verify_throw(fx.active)
+                verify_true(fx.active)
 
             })
         }
@@ -259,7 +259,7 @@ Session {
 
                 verify_eq(out1.map(o => Math.round(o)), [2, 4, 6, 8])
                 verify_eq(out2.map(o => Math.round(o)), [0, 0, 0, 0])
-                verify_throw(fx.active)
+                verify_true(fx.active)
 
             })
         }
@@ -286,7 +286,7 @@ Session {
 
                 verify_eq(out1.map(o => Math.round(o)), [0, 0, 0, 0])
                 verify_eq(out2.map(o => Math.round(o)), [8, 6, 4, 2])
-                verify_throw(fx.active)
+                verify_true(fx.active)
 
             })
         }
@@ -311,7 +311,7 @@ Session {
 
                 verify_eq(out1, [0, 0, 0, 0])
                 verify_eq(out2, [0, 0, 0, 0])
-                verify_throw(!fx.active)
+                verify_true(!fx.active)
 
             })
         }
@@ -347,7 +347,7 @@ Session {
 
                 verify_approx(out1, expect_out1)
                 verify_approx(out2, expect_out2)
-                verify_throw(!fx.active)
+                verify_true(!fx.active)
             })
         }
 
@@ -371,7 +371,7 @@ Session {
 
                 verify_eq(out1, [0, 0, 0, 0])
                 verify_eq(out2, [0, 0, 0, 0])
-                verify_throw(fx.active)
+                verify_true(fx.active)
 
             })
         }
@@ -407,7 +407,7 @@ Session {
 
                 verify_approx(out1, expect_out1)
                 verify_approx(out2, expect_out2)
-                verify_throw(fx.active)
+                verify_true(fx.active)
             })
         }
     }

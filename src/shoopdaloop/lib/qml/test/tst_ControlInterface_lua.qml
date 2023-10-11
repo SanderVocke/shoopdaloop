@@ -44,7 +44,7 @@ Session {
         }
 
         function do_eval(code) {
-            return scripting_engine.eval(
+            return scripting_engine.evaluate(
                 code,
                 null,
                 'test',

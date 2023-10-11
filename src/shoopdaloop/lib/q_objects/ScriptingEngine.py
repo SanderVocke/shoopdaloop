@@ -64,7 +64,7 @@ class ScriptingEngine(QObject):
         sig = inspect.signature(py_cb)
         declaration_name = ('declare_global' if overwrite else 'declare_new_global')
         # create a temporary registrar which can be used to register our global function
-        registrar = self.eval('return function(py_cb, name) {0}(name, function({1}) return py_cb({1}) end) end'.format(
+        registrar = self.evaluate('return function(py_cb, name) {0}(name, function({1}) return py_cb({1}) end) end'.format(
             declaration_name,
             ','.join(sig.parameters.keys())
         ))
@@ -111,14 +111,27 @@ class ScriptingEngine(QObject):
     @Slot(result='QVariant')
     def new_context(self):
         self.logger.debug("Creating new context.")
-        return self.eval('return __shoop_new_context()')
+        return self.evaluate('return __shoop_new_context()')
+    
+    @Slot('QVariant')
+    def delete_context(self, context_id):
+        self.logger.debug("Deleting context: {}".format(context_id))
+        if self.current_context() == context_id:
+            self.use_context(None)
+        self.execute('__shoop_delete_context({})'.format(context_id))
+    
+    @Slot('QVariant', result=bool)
+    def context_exists(self, context_id):
+        return bool(self.evaluate('return __shoop_context_exists({})'.format(context_id)))
 
     @Slot(str, 'QVariant', 'QVariant', bool, bool, result='QVariant')
-    def eval(self, lua_code, context=None, script_name=None, sandboxed=True, catch_errors=True):
+    def evaluate(self, lua_code, context=None, script_name=None, sandboxed=True, catch_errors=True):
         try:
-            self.logger.trace('Eval (context {}):\n{}'.format(context, lua_code))
+            self.logger.trace('evaluate (context {}):\n{}'.format(context, lua_code))
             prev_context = self.current_context()
             if context:
+                if not self.context_exists(context):
+                    raise ScriptExecutionError('Context {} does not exist.'.format(context))
                 self.use_context(context)
             if not sandboxed:
                 rval = self.lua.eval(lua_code)
@@ -126,7 +139,7 @@ class ScriptingEngine(QObject):
                 rval = self.run_sandboxed(lua_code)
             if context:
                 self.use_context(prev_context)
-            self.logger.trace('Eval result: {}'.format(rval))
+            self.logger.trace('evaluate result: {}'.format(rval))
             return rval
         except Exception as e:
             if not catch_errors:
@@ -142,6 +155,8 @@ class ScriptingEngine(QObject):
             self.logger.trace('Execute (context {}):\n{}'.format(context, lua_code))
             prev_context = self.current_context()
             if context:
+                if not self.context_exists(context):
+                    raise ScriptExecutionError('Context {} does not exist.'.format(context))
                 self.use_context(context)
             if not sandboxed:
                 self.lua.execute(lua_code)

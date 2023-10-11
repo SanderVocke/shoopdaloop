@@ -90,10 +90,10 @@ Session {
         function initTestCase() {
             run_case("initTestCase" , () => {
                 session.backend.dummy_enter_controlled_mode()
-                verify_throw(dt)
-                verify_throw(dwt)
-                verify_throw(dt_loop)
-                verify_throw(dwt_loop)
+                verify_true(dt)
+                verify_true(dwt)
+                verify_true(dt_loop)
+                verify_true(dwt_loop)
                 verify_eq(dt_loop_channels().length, 2)
                 verify_eq(dwt_dry_loop_channels().length, 2)
                 verify_eq(dwt_wet_loop_channels().length, 2)

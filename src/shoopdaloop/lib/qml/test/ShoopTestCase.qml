@@ -47,9 +47,20 @@ TestCase {
         return failstring        
     }
 
-    function verify_throw(a) {
+    function verify_throw(fn) {
+        try {
+            fn()
+        } catch (e) {
+            verify(true)
+            return;
+        }
+        logger.error(format_error(`verify_throw failed (fn = ${fn})`))
+        verify(false)
+    }
+
+    function verify_true(a) {
         var result = Boolean(a)
-        let failstring = `verify_throw failed (v = ${a})`
+        let failstring = `verify_true failed (v = ${a})`
         if (!result) {
             logger.error(format_error(failstring))
         }

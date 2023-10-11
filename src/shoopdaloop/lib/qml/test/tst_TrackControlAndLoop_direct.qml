@@ -90,12 +90,12 @@ Session {
 
         function initTestCase() {
             session.backend.dummy_enter_controlled_mode()
-            verify_throw(input_port_1)
-            verify_throw(input_port_2)
-            verify_throw(output_port_1)
-            verify_throw(output_port_2)
-            verify_throw(midi_input_port)
-            verify_throw(midi_output_port)
+            verify_true(input_port_1)
+            verify_true(input_port_2)
+            verify_true(output_port_1)
+            verify_true(output_port_2)
+            verify_true(midi_input_port)
+            verify_true(midi_output_port)
             reset()
         }
 

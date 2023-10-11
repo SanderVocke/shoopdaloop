@@ -60,8 +60,8 @@ end)
 {0}["constants"] = {{}}
 '''.format(lua_module_name))
     
-    if_registrar = scripting_engine.eval('return function (name, member) __{}_register_member(name, member) end'.format(lua_module_name))
-    const_registrar = scripting_engine.eval('return function (name, value) {}["constants"][name] = value end'.format(lua_module_name))
+    if_registrar = scripting_engine.evaluate('return function (name, member) __{}_register_member(name, member) end'.format(lua_module_name))
+    const_registrar = scripting_engine.evaluate('return function (name, value) {}["constants"][name] = value end'.format(lua_module_name))
 
     meta_methods = dict()
     for i in range(qobject.metaObject().methodCount()):

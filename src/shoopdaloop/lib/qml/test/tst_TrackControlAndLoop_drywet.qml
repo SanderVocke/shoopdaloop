@@ -108,15 +108,15 @@ Session {
 
         function initTestCase() {
             session.backend.dummy_enter_controlled_mode()
-            verify_throw(input_port_1)
-            verify_throw(input_port_2)
-            verify_throw(output_port_1)
-            verify_throw(output_port_2)
-            verify_throw(midi_input_port)
-            verify_throw(fx)
-            verify_throw(lut)
-            verify_throw(tut)
-            verify_throw(midi_channel())
+            verify_true(input_port_1)
+            verify_true(input_port_2)
+            verify_true(output_port_1)
+            verify_true(output_port_2)
+            verify_true(midi_input_port)
+            verify_true(fx)
+            verify_true(lut)
+            verify_true(tut)
+            verify_true(midi_channel())
             reset()
         }
 
@@ -174,7 +174,7 @@ Session {
                 let dry2 = dry_channels()[1].get_data()
                 let wet1 = wet_channels()[0].get_data()
                 let wet2 = wet_channels()[1].get_data()
-                verify_throw(fx.active)
+                verify_true(fx.active)
 
                 verify_eq(out1, [0, 0, 0, 0])
                 verify_eq(out2, [0, 0, 0, 0])
@@ -233,7 +233,7 @@ Session {
 
                 midi_input_port.dummy_clear_queues()
 
-                verify_throw(fx.active)
+                verify_true(fx.active)
                 verify_approx(dry1, expect_dry)
                 verify_approx(dry2, expect_dry)
                 verify_approx(wet1, expect_wet)
@@ -266,7 +266,7 @@ Session {
                 let dry2 = dry_channels()[1].get_data()
                 let wet1 = wet_channels()[0].get_data()
                 let wet2 = wet_channels()[1].get_data()
-                verify_throw(fx.active)
+                verify_true(fx.active)
 
                 verify_eq(out1, [1, 2, 3, 4])
                 verify_eq(out2, [4, 3, 2, 1])
@@ -325,7 +325,7 @@ Session {
 
                 midi_input_port.dummy_clear_queues()
 
-                verify_throw(fx.active)
+                verify_true(fx.active)
                 verify_approx(dry1, expect_dry)
                 verify_approx(dry2, expect_dry)
                 verify_approx(wet1, expect_wet)
@@ -363,7 +363,7 @@ Session {
                 let dry2 = dry_channels()[1].get_data()
                 let wet1 = wet_channels()[0].get_data()
                 let wet2 = wet_channels()[1].get_data()
-                verify_throw(!fx.active)
+                verify_true(!fx.active)
 
                 verify_eq(out1, [5, 6, 7, 8])
                 verify_eq(out2, [8, 7, 6, 5])
@@ -420,7 +420,7 @@ Session {
 
                 midi_input_port.dummy_clear_queues()
 
-                verify_throw(!fx.active)
+                verify_true(!fx.active)
                 verify_eq(out1, [5, 6, 7, 8])
                 verify_eq(out2, [8, 7, 6, 5])
                 verify_eq(dry1, [50, 60, 70, 80])
@@ -466,7 +466,7 @@ Session {
                 verify_eq(wet1, [5, 6, 7, 8])
                 verify_eq(wet2, [8, 7, 6, 5])
 
-                verify_throw(fx.active)
+                verify_true(fx.active)
 
             })
         }
@@ -521,7 +521,7 @@ Session {
 
                 midi_input_port.dummy_clear_queues()
 
-                verify_throw(fx.active)
+                verify_true(fx.active)
                 verify_approx(out1, elems_add([5, 6, 7, 8], synthed))
                 verify_approx(out2, elems_add([8, 7, 6, 5], synthed))
                 verify_eq(dry1, [50, 60, 70, 80])
@@ -562,7 +562,7 @@ Session {
                 let wet1 = wet_channels()[0].get_data()
                 let wet2 = wet_channels()[1].get_data()
 
-                verify_throw(fx.active)
+                verify_true(fx.active)
                 verify_eq(out1, [50, 60, 70, 80])
                 verify_eq(out2, [80, 70, 60, 50])
                 verify_eq(dry1, [50, 60, 70, 80])
@@ -629,7 +629,7 @@ Session {
 
                 midi_input_port.dummy_clear_queues()
 
-                verify_throw(fx.active)
+                verify_true(fx.active)
                 verify_approx(out1, elems_add(synthed_chan, [50, 60, 70, 80]))
                 verify_approx(out2, elems_add(synthed_chan, [80, 70, 60, 50]))
                 verify_eq(dry1, [50, 60, 70, 80])
@@ -668,7 +668,7 @@ Session {
                 let wet1 = wet_channels()[0].get_data()
                 let wet2 = wet_channels()[1].get_data()
 
-                verify_throw(fx.active)
+                verify_true(fx.active)
                 verify_eq(out1, [51, 62, 73, 84])
                 verify_eq(out2, [84, 73, 62, 51])
                 verify_eq(dry1, [50, 60, 70, 80])
@@ -736,7 +736,7 @@ Session {
 
                 midi_input_port.dummy_clear_queues()
 
-                verify_throw(fx.active)
+                verify_true(fx.active)
                 verify_approx(out1, elems_add(synthed_both, [50, 60, 70, 80]))
                 verify_approx(out2, elems_add(synthed_both, [80, 70, 60, 50]))
                 verify_eq(dry1, [50, 60, 70, 80])
@@ -777,7 +777,7 @@ Session {
                 let wet1 = wet_channels()[0].get_data()
                 let wet2 = wet_channels()[1].get_data()
 
-                verify_throw(fx.active)
+                verify_true(fx.active)
                 verify_eq(out1, [50, 60, 70, 80])
                 verify_eq(out2, [80, 70, 60, 50])
                 verify_eq(dry1, [50, 60, 70, 80])
@@ -844,7 +844,7 @@ Session {
 
                 midi_input_port.dummy_clear_queues()
 
-                verify_throw(fx.active)
+                verify_true(fx.active)
                 verify_approx(out1, elems_add(synthed_chan, [50, 60, 70, 80]))
                 verify_approx(out2, elems_add(synthed_chan, [80, 70, 60, 50]))
                 verify_eq(dry1, [50, 60, 70, 80])
@@ -883,7 +883,7 @@ Session {
                 let wet1 = wet_channels()[0].get_data()
                 let wet2 = wet_channels()[1].get_data()
 
-                verify_throw(fx.active)
+                verify_true(fx.active)
                 verify_eq(out1, [50, 60, 70, 80])
                 verify_eq(out2, [80, 70, 60, 50])
                 verify_eq(dry1, [50, 60, 70, 80])
@@ -951,7 +951,7 @@ Session {
 
                 midi_input_port.dummy_clear_queues()
 
-                verify_throw(fx.active)
+                verify_true(fx.active)
                 verify_approx(out1, elems_add(synthed_both, [50, 60, 70, 80]))
                 verify_approx(out2, elems_add(synthed_both, [80, 70, 60, 50]))
                 verify_eq(dry1, [50, 60, 70, 80])
