@@ -98,6 +98,27 @@ local move_coords = function(coords, direction_key)
     return new_coords
 end
 
+--  Look for the highest or lowest index (row/col) in the
+--  given direction
+local extreme_coord = function(all_coords, direction_key, highest)
+    local extreme = nil
+    for _, v in ipairs(all_coords) do
+        local coord = v[1]
+        if direction_key == shoop.constants.Key_Up or
+           direction_key == shoop.constants.Key_Down
+        then
+            coord = v[2]
+        end
+        if extreme == nil or
+           (highest and coord > extreme) or
+           (not highest and coord < extreme)
+        then
+            extreme = coord
+        end
+    end
+    return extreme
+end
+
 --  Handle a keypress of a direction key.
 local handle_direction_key = function(key, modifiers)
     local loops = shoop.loop_get_which_selected()
@@ -107,6 +128,7 @@ local handle_direction_key = function(key, modifiers)
     end
 
     if (modifiers & shoop.constants.ControlModifier) > 0 then
+        --  Expand selection
         local new_coords = loops
         local add_coords = {}
         for i, v in ipairs(loops) do
@@ -116,6 +138,17 @@ local handle_direction_key = function(key, modifiers)
             table.insert(new_coords, v)
         end
         shoop.loop_select(new_coords, true)
+    elseif (modifiers & shoop.constants.AltModifier) > 0 then
+        --  Shrink selection
+        local extreme = extreme_coord(loops, key, key == shoop.constants.Key_Up or key == shoop.constants.Key_Left)
+        local deselect_row = (key == shoop.constants.Key_Up or key == shoop.constants.Key_Down) and extreme or nil
+        local deselect_col = (key == shoop.constants.Key_Left or key == shoop.constants.Key_Right) and extreme or nil
+        for i = #loops, 1, -1 do
+            if loops[i][1] == deselect_col or loops[i][2] == deselect_row then
+                table.remove(loops, i)
+            end
+        end
+        shoop.loop_select(loops, true)
     else
         local new_coords = {}
         for i, v in ipairs(loops) do
