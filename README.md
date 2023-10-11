@@ -32,7 +32,7 @@ To summarize why ShoopDaLoop exists and what the goals and plans are, a short co
 | Song/performance sequencing | ❌ (planned)              | ❌               | ❌                      | ✅ (not sure of details) |
 | MIDI controller support     | ❌ (planned v. LUA scripts) | ✅ (MIDI learn)  | ✅ (not sure of method) | ✅ (not sure of method) |
 | NSM Session Management      | ✅                        | ✅               | ✅                      | ✅                      |
-| Overdubbing                 | ❌                        | ✅               | ✅                      | ?                      |
+| Overdubbing                 | ❌ (planned)              | ✅               | ✅                      | ?                      |
 | Plugin scripts              | ✅ <sup>(3)</sup>         | ❌               | ❌                      | ✅                     |
 | Transport/tempo system      | None (sync on master loop) | None             | JACK transport / MIDI beats | ? |
 
