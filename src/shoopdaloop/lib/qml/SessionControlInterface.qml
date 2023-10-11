@@ -94,6 +94,9 @@ PythonControlInterface {
     function loop_count_override(loop_selector) {
         return select_loops(loop_selector).filter(l => l != null).length
     }
+    function loop_get_all_override() {
+        return select_loops((l) => true).map(((l) => [l.track_idx, l.idx_in_track]))
+    }
     function loop_get_which_selected_override() {
         return selected_loop_idxs
     }
