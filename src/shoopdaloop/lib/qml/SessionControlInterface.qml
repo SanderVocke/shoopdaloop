@@ -100,11 +100,20 @@ PythonControlInterface {
     function loop_get_which_targeted_override() {
         return targeted_loop_idx
     }
+    function loop_get_by_mode_override(mode) {
+        return select_loops((l) => l.mode == mode).map(((l) => [l.track_idx, l.idx_in_track]))
+    }
     function loop_get_mode_override(loop_selector) {
         return select_loops(loop_selector).map((l) => l.mode)
     }
+    function loop_get_length_override(loop_selector) {
+        return select_loops(loop_selector).map((l) => l.length)
+    }
+    function loop_get_by_track_override(track_idx) {
+        return select_loops((l) => l.track_idx == track_idx).map(((l) => [l.track_idx, l.idx_in_track]))
+    }
     function loop_transition_override(loop_selector, mode, cycles_delay) {
-        select_loops(loop_selector).forEach((h) => { h.transition(mode, cycles_delay, state_registry.get('sync_active')) } )
+        select_loops(loop_selector).forEach((h) => { h.transition(mode, cycles_delay, state_registry.get('sync_active'), false) } )
     }
     function loop_get_volume_override(loop_selector) {
         return select_single_loop(loop_selector).loop_get_volume(loop_selector)
@@ -155,7 +164,6 @@ PythonControlInterface {
     function loop_toggle_targeted_override(loop_selector) {
         select_loops(loop_selector).forEach((h) => { h.loop_toggle_targeted(loop_selector) } )
     }
-
     function port_get_volume_override(port_selector) {
         return select_ports(port_selector).port_get_volume(port_selector)
     }

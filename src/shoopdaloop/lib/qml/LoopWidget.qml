@@ -255,9 +255,9 @@ Item {
         var backend_loops = loops.map(o => o.maybe_loaded_loop)
         backend_loops[0].transition_multiple(backend_loops, mode, delay, wait_for_sync)
     }
-    function transition(mode, delay, wait_for_sync) {
+    function transition(mode, delay, wait_for_sync, include_selected=true) {
         // Do the transition for this loop and all selected loops, if any
-        var selected_ids = new Set(state_registry.maybe_get('selected_loop_ids', new Set()))
+        var selected_ids = include_selected ? new Set(state_registry.maybe_get('selected_loop_ids', new Set())) : new Set()
         selected_ids.add(obj_id)
         var objects = Array.from(selected_ids).map(id => objects_registry.maybe_get(id, undefined)).filter(v => v != undefined)
         transition_loops(objects, mode, delay, wait_for_sync)
