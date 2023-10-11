@@ -74,8 +74,11 @@ class ControlHandler(QQuickItem):
     lua_interfaces = [
         [ 'loop_count', lua_loop_selector ],
         [ 'loop_get_mode', lua_loop_selector ],
+        [ 'loop_get_length', lua_loop_selector ],
         [ 'loop_get_which_selected' ],
         [ 'loop_get_which_targeted' ],
+        [ 'loop_get_by_mode', lua_int ],
+        [ 'loop_get_by_track', lua_int ],
         [ 'loop_get_volume', lua_loop_selector ],
         [ 'loop_get_balance', lua_loop_selector ],
         [ 'loop_transition', lua_loop_selector, lua_int, lua_int ],
@@ -190,6 +193,14 @@ class ControlHandler(QQuickItem):
         Get the current mode of the specified loops.
         """
         pass
+
+    @Slot('QVariant', result='QVariant')
+    @allow_qml_override
+    def loop_get_length(self, loop_selector):
+        """
+        Get the length of the specified loops.
+        """
+        pass
     
     @Slot(result='QVariant')
     @allow_qml_override
@@ -204,6 +215,22 @@ class ControlHandler(QQuickItem):
     def loop_get_which_targeted(self):
         """
         Get the coordinates of the currently targeted loop, or None if none are targeted.
+        """
+        pass
+
+    @Slot(int, result='QVariant')
+    @allow_qml_override
+    def loop_get_by_mode(self, mode):
+        """
+        Get the coordinates of all loops with the given mode.
+        """
+        pass
+
+    @Slot(int, result='QVariant')
+    @allow_qml_override
+    def loop_get_by_track(self, track):
+        """
+        Get the coordinates of all loops with the given mode.
         """
         pass
 
