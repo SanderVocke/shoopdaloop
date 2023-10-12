@@ -13,7 +13,7 @@ Item {
         'Left': 'shoop_helpers.move_selection(shoop_control.constants.Key_Left)',
         'Up': 'shoop_helpers.move_selection(shoop_control.constants.Key_Up)',
         'Down': 'shoop_helpers.move_selection(shoop_control.constants.Key_Down)',
-        'APC Loop': 'print_info(msg[1]); if msg[1] < 64 then shoop_helpers.default_loop_action({{0, 0}}) end',
+        'APC Loop': 'if msg[1] < 64 then shoop_helpers.default_loop_action({{0, 0}}) end',
     })
     
     property var action_impls : {}

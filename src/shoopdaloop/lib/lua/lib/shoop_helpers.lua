@@ -91,7 +91,8 @@ end
 --  Perform the "default loop action" on a set of loop coordinates.
 --  The default action is to:
 --  - if all given loops are recording, transition them all to playback
---  - if all given loops are stopped, transition them all to recording
+--  - if all given loops are stopped and empty, transition them all to recording
+--  - if all given loops are stopped but not all empty, transition them all to playback
 --  - otherwise, stop all selected loops
 --  (this usually means that using the default action cycles between
 --   stopped, recording and playing, with some corner cases for multiple
@@ -100,11 +101,16 @@ function shoop_helpers.default_loop_action(loops)
     if #loops == 0 then
         return
     end
-    local modes = shoop_control.loop_get_mode(loops)
-    local new_mode = shoop_control.constants.LoopMode_Recording
-    if sets_equal(list_to_set(modes), list_to_set({ shoop_control.constants.LoopMode_Recording })) then
+    local modes = list_to_set(shoop_control.loop_get_mode(loops))
+    local lengths = list_to_set(shoop_control.loop_get_length(loops))
+    local new_mode = nil
+    if sets_equal(modes, list_to_set({ shoop_control.constants.LoopMode_Recording })) then
         new_mode = shoop_control.constants.LoopMode_Playing
-    elseif not sets_equal(list_to_set(modes), list_to_set({ shoop_control.constants.LoopMode_Stopped })) then
+    elseif sets_equal(lengths, list_to_set({ 0 })) and sets_equal(modes, list_to_set({ shoop_control.constants.LoopMode_Stopped })) then
+        new_mode = shoop_control.constants.LoopMode_Recording
+    elseif not sets_equal(lengths, list_to_set({ 0 })) and sets_equal(modes, list_to_set({ shoop_control.constants.LoopMode_Stopped })) then
+        new_mode = shoop_control.constants.LoopMode_Playing
+    else
         new_mode = shoop_control.constants.LoopMode_Stopped
     end
     shoop_control.loop_transition(loops, new_mode, 0)

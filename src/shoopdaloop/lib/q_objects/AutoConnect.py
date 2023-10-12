@@ -83,5 +83,6 @@ class AutoConnect(QQuickItem):
 
         for _from in from_candidates:
             for _to in to_candidates:
-                self.logger.info("Autoconnecting {} to {}".format(_from, _to))
-                self._jack.connect_ports(_from, _to)
+                if _to not in self._jack.all_port_connections(_from):
+                    self.logger.info("Autoconnecting {} to {}".format(_from, _to))
+                    self._jack.connect_ports(_from, _to)

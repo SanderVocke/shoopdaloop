@@ -1,4 +1,4 @@
-from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
+from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, Qt
 from PySide6.QtQuick import QQuickItem
 
 from ..logging import Logger as BaseLogger
@@ -26,6 +26,10 @@ class JackControlClient(QQuickItem):
         
         self._client = client
         
+        self.portRenamedProxy.connect(self.portRenamed, Qt.ConnectionType.QueuedConnection)
+        self.portRegisteredProxy.connect(self.portRegistered, Qt.ConnectionType.QueuedConnection)
+        self.portUnregisteredProxy.connect(self.portUnregistered, Qt.ConnectionType.QueuedConnection)
+        
         jack.set_port_registration_callback(self._client, self.port_register_cb, None)
         jack.set_port_rename_callback(self._client, self.port_rename_cb, None)
     
@@ -37,12 +41,12 @@ class JackControlClient(QQuickItem):
         port = jack.port_by_id(self._client, port_id)
         name = jack.port_name(port)
         if registered_or_unregistered:
-            self.portRegistered.emit(name)
+            self.portRegisteredProxy.emit(name)
         else:
-            self.portUnregistered.emit(name)
+            self.portUnregisteredProxy.emit(name)
     
     def port_rename_cb(self, port_id, old_name, new_name, *args):
-        self.portRenamed.emit(old_name, new_name)
+        self.portRenamedProxy.emit(old_name, new_name)
     
     ######################
     ## SIGNALS
@@ -50,6 +54,11 @@ class JackControlClient(QQuickItem):
     portRegistered = Signal(str)
     portUnregistered = Signal(str)
     portRenamed = Signal(str, str)
+
+    # These proxies ensure decoupling through the Qt event loop.
+    portRegisteredProxy = Signal(str)
+    portUnregisteredProxy = Signal(str)
+    portRenamedProxy = Signal(str, str)
 
     ######################
     # PROPERTIES
@@ -71,13 +80,16 @@ class JackControlClient(QQuickItem):
         
     @Slot('QVariant', 'QVariant', int, result=list)
     def find_ports(self, maybe_name_regex=None, maybe_type_regex=None, flags=0):
-        ports = []
-        ports_ptr = jack.get_ports(self._client, maybe_name_regex, maybe_type_regex, flags)
-        i = 0
-        while ports_ptr[i]:
-            ports.append(ports_ptr[i].decode('ascii'))
-            i += 1
+        ports = c_char_p_p_to_list(jack.get_ports(self._client, maybe_name_regex, maybe_type_regex, flags))
         return ports
+
+    @Slot(str, result=list)
+    def all_port_connections(self, port_name):
+        port = jack.port_by_name(self._client, port_name)
+        if port:
+            conns = list(jack.port_get_all_connections(self._client, port))
+            return conns
+        return []
 
     ###########
     ## METHODS
