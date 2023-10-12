@@ -200,7 +200,7 @@ AppRegistries {
     LuaUserScript {
         script_name: 'keyboard.lua'
         script_code: control_interface.ready ? file_io.read_file(
-            file_io.get_installation_directory() + '/lib/lua/keyboard.lua'
+            file_io.get_installation_directory() + '/lib/lua/builtins/keyboard.lua'
         ) : null
     }
 

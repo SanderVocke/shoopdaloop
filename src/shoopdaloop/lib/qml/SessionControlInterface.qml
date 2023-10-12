@@ -11,7 +11,7 @@ PythonControlInterface {
     Component.onCompleted: {
         // Register ourselves as "shoop" in the LUA environment
         scripting_engine.use_context(null)
-        scripting_engine.create_lua_qobject_interface_in_current_context('shoop', root)
+        scripting_engine.create_lua_qobject_interface_as_global('__shoop_control_interface', root)
         ready = true
     }
 

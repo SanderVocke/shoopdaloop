@@ -38,7 +38,15 @@ local env = {
     print_error = __shoop_print_error,
     rawset = rawset,
     rawget = rawget,
+    require = require,
+    package = package
 }
+
+print_debug = __shoop_print_debug
+print_info = __shoop_print_info
+print_warning = __shoop_print_warning
+print_error = __shoop_print_error
+print = __shoop_print
 
 -- run code under environment
 function __shoop_run_sandboxed(untrusted_code)
