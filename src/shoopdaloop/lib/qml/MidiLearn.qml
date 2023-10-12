@@ -1,6 +1,7 @@
 import QtQuick 6.3
 
 Item {
+    id: root
     readonly property var use_libs: [
         'shoop_control',
         'shoop_helpers',
@@ -40,4 +41,39 @@ Item {
     property var configuration : [
         [[NoteOn, null, null], 'Stop All']
     ]
+
+    readonly property PythonLogger logger: PythonLogger { name: "Frontend.Qml.MidiLearn" }
+
+    function handle_midi(msg) {
+        let try_filter_entry = (filter_entry, byte) => {
+            if (filter_entry === null) { return true; }
+            else if (filter_entry === undefined) { return true; }
+            else if Array.isArray(filter_entry) {
+                for(var i=0; i<filter_entry.length; i++) {
+                    if (!arguments.callee(filter_entry[i], byte)) {
+                        return false
+                    }
+                }
+            }
+            else {
+                return (filter_entry & byte) != 0
+            }
+        }
+
+        let try_filter = (filter, msg) => {
+            if (filter.length != msg.length) { return false; }
+            for(var i=0; i<filter.length; i++) {
+                if (!try_filter_entry(filter[i], msg[i])) { return false; }
+            }
+            return true;
+        }
+
+        for(var i=0; i<configuration.length; i++) {
+            const filter = configuration[i][0]
+            const action = configuration[i][1]
+            if (try_filter(filter, msg)) {
+                root.logger.debug(`Matched MIDI learn filter: msg = ${msg}, filter = ${filter}, action = ${action}`)
+            }
+        }
+    }
 }

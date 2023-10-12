@@ -26,6 +26,7 @@ from .q_objects.ScriptingEngine import ScriptingEngine
 from .q_objects.DictTreeModel import DictTreeModelFactory
 from .q_objects.ReleaseFocusNotifier import ReleaseFocusNotifier
 from .q_objects.ControlInterface import ControlInterface
+from .q_objects.MidiControlPort import MidiControlPort
 
 # Read version from the version.txt file (will be present when packaged)
 pkg_version = None
@@ -58,6 +59,7 @@ def register_shoopdaloop_qml_classes():
     register_qml_class(ControlHandler, 'ControlHandler')
     register_qml_class(ReleaseFocusNotifier, 'ReleaseFocusNotifier')
     register_qml_class(ControlInterface, 'ControlInterface')
+    register_qml_class(MidiControlPort, 'MidiControlPort')
 
 def create_and_populate_root_context(engine, global_args, additional_items={}):
     # Set import path to predefined classes

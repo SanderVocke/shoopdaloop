@@ -203,6 +203,10 @@ AppRegistries {
             file_io.get_installation_directory() + '/lib/lua/builtins/keyboard.lua'
         ) : null
     }
+    MidiControlPort {
+        name_hint: "test"
+        direction: Types.PortDirection.Input
+    }
 
     MouseArea {
         ExecuteNextCycle {
@@ -215,11 +219,6 @@ AppRegistries {
         anchors.fill: parent
         focus: true
         id: session_focus_item
-
-        //Keys.onLeftPressed: tracks_widget.navigate('left')
-        //Keys.onRightPressed: tracks_widget.navigate('right')
-        //Keys.onUpPressed: tracks_widget.navigate('up')
-        //Keys.onDownPressed: tracks_widget.navigate('down')\
 
         Keys.onPressed: (event) => control_interface.key_pressed(event.key, event.modifiers)
         Keys.onReleased: (event) => control_interface.key_released(event.key, event.modifiers)

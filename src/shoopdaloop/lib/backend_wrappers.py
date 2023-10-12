@@ -143,6 +143,17 @@ class MidiPortState:
         self.name = str(backend_state.name)
 
 @dataclass
+class MidiEvent:
+    time: int
+    size: int
+    data: list[int]
+    
+    def __init__(self, backend_event : 'midi_event_t'):
+        self.time = backend_event.time
+        self.size = backend_event.size
+        self.data = [int(backend_event.data[i]) for i in range(backend_event.size)]
+
+@dataclass
 class BackendState:
     dsp_load_percent: float
     xruns_since_last: int
@@ -457,6 +468,26 @@ class BackendAudioPort:
     def __del__(self):
         self.destroy()
 
+
+class BackendDecoupledMidiPort:
+    def __init__(self, c_handle : 'POINTER(shoopdaloop_decoupled_midi_port_t)',
+                 direction : int):
+        self._direction = PortDirection(direction)
+        self._c_handle = c_handle
+    
+    def maybe_next_message(self):
+        r = maybe_next_message(self._c_handle)
+        if not r:
+            return None
+        else:
+            return MidiEvent(r[0])
+    
+    def destroy(self):
+        raise Exception("unimplemented")
+    
+    def __del__(self):
+        self.destroy()
+            
 class BackendMidiPort:
     def __init__(self, c_handle : 'POINTER(shoopdaloop_midi_port_t)',
                  direction : int):
@@ -605,6 +636,12 @@ class Backend:
         _dir = (Input if direction == PortDirection.Input.value else Output)
         handle = open_jack_midi_port(self._c_handle, name_hint.encode('ascii'), _dir)
         port = BackendMidiPort(handle, direction)
+        return port
+
+    def open_decoupled_midi_port(self, name_hint : str, direction : int) -> 'BackendDecoupledMidiPort':
+        _dir = (Input if direction == PortDirection.Input.value else Output)
+        handle = open_decoupled_midi_port(self._c_handle, name_hint.encode('ascii'), _dir)
+        port = BackendDecoupledMidiPort(handle, direction)
         return port
     
     def get_fx_chain_audio_input_port(self, fx_chain : Type['BackendFXChain'], idx : int):
