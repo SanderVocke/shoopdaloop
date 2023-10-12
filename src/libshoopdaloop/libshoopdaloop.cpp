@@ -830,7 +830,6 @@ shoopdaloop_decoupled_midi_port_t *open_decoupled_midi_port(shoopdaloop_backend_
 
 midi_event_t *maybe_next_message(shoopdaloop_decoupled_midi_port_t *port) {
     init_log();
-    g_logger->debug("maybe_next_message");
     auto &_port = *internal_decoupled_midi_port(port);
     auto m = _port.port->pop_incoming();
     if (m.has_value()) {

@@ -4,6 +4,8 @@ import ShoopDaLoop.PythonLogger
 Item {
     id: root
 
+    property bool when: false
+
     readonly property PythonLogger logger : PythonLogger { name: "Frontend.Qml.LuaUserScript" }
 
     // Inputs
@@ -18,11 +20,22 @@ Item {
 
     property bool ready : false
 
-    onScript_codeChanged: {
+    function accept() {
         if (accepted_script_code !== null) {
             throw new Error("Script code cannot be changed")
         }
         accepted_script_code = script_code
+    }
+
+    onScript_codeChanged: {
+        if (when) {
+            accept()
+        }
+    }
+    onWhenChanged: {
+        if (script_code) {
+            accept()
+        }
     }
 
     onScript_pathChanged: {

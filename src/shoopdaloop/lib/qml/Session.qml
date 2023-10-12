@@ -198,10 +198,16 @@ AppRegistries {
     }
 
     LuaUserScript {
+        when: control_interface.ready
         script_name: 'keyboard.lua'
         script_code: control_interface.ready ? file_io.read_file(
             file_io.get_installation_directory() + '/lib/lua/builtins/keyboard.lua'
         ) : null
+    }
+
+    MidiLearn {
+        id: midi_learn
+        when: control_interface.ready
     }
 
     MouseArea {
@@ -244,8 +250,10 @@ AppRegistries {
         id: session_backend
 
         MidiControlPort {
-            name_hint: "test"
+            name_hint: "control"
             direction: Types.PortDirection.Input
+
+            onMsgReceived: msg => midi_learn.handle_midi(msg)
         }
 
         anchors {

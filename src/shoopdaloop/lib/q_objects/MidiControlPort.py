@@ -70,7 +70,7 @@ class MidiControlPort(QQuickItem):
             r = self._backend_obj.maybe_next_message()
             if not r:
                 break
-            self.logger.debug("Received MIDI: {}".format(r.data))
+            self.logger.trace("Received: {}".format(r.data))
             self.msgReceived.emit(r.data)
     
     @Slot()
@@ -84,9 +84,9 @@ class MidiControlPort(QQuickItem):
     def maybe_init(self):
         if self._backend and not self._backend.get_backend_obj():
             self._backend.initializedChanged.connect(self.maybe_init)
+            return
         if self._name_hint and self._backend and self._direction != None:
             if self._backend_obj:
-                self.logger.error("Cannot re-initialize a MIDI port")
                 return
             
             self.logger.debug("Opening decoupled MIDI port {}".format(self._name_hint))
@@ -100,6 +100,7 @@ class MidiControlPort(QQuickItem):
             self.timer.setSingleShot(False)
             self.timer.setInterval(0)
             self.timer.timeout.connect(self.poll)
+            self.timer.start()
             
             self.initializedChanged.emit(True)
     
