@@ -203,10 +203,6 @@ AppRegistries {
             file_io.get_installation_directory() + '/lib/lua/builtins/keyboard.lua'
         ) : null
     }
-    MidiControlPort {
-        name_hint: "test"
-        direction: Types.PortDirection.Input
-    }
 
     MouseArea {
         ExecuteNextCycle {
@@ -246,6 +242,11 @@ AppRegistries {
         backend_type: root.backend_type
         backend_argstring: root.backend_argstring
         id: session_backend
+
+        MidiControlPort {
+            name_hint: "test"
+            direction: Types.PortDirection.Input
+        }
 
         anchors {
             fill: parent

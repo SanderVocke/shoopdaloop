@@ -45,7 +45,7 @@ class MidiControlPort(QQuickItem):
         return self._direction if self._direction else 0
     @direction.setter
     def direction(self, l):
-        if l and l != self._direction:
+        if l != self._direction:
             self._direction = l
             self.directionChanged.emit(l)
             self.maybe_init()
@@ -75,21 +75,22 @@ class MidiControlPort(QQuickItem):
     
     @Slot()
     def rescan_parents(self):
-        self.logger.error("Rescan")
         maybe_backend = findFirstParent(self, lambda p: p and isinstance(p, QQuickItem) and p.inherits('Backend') and self._backend == None)
         if maybe_backend:
-            self.logger.error("Found")
             self._backend = maybe_backend
+            self.maybe_init()
     
+    @Slot()
     def maybe_init(self):
-        self.logger.trace("Attempt to initialize: {} {} {}".format(self._name_hint, self._backend, self._direction))
+        if self._backend and not self._backend.get_backend_obj():
+            self._backend.initializedChanged.connect(self.maybe_init)
         if self._name_hint and self._backend and self._direction != None:
             if self._backend_obj:
                 self.logger.error("Cannot re-initialize a MIDI port")
                 return
             
             self.logger.debug("Opening decoupled MIDI port {}".format(self._name_hint))
-            self._backend_obj = self._backend.open_decoupled_midi_port(self._name_hint, self._direction)
+            self._backend_obj = self._backend.get_backend_obj().open_decoupled_midi_port(self._name_hint, self._direction)
             
             if not self._backend_obj:
                 self.logger.error("Failed to open decoupled MIDI port {}".format(self._name_hint))
