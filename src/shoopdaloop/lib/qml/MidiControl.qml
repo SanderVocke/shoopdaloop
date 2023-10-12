@@ -29,12 +29,12 @@ declare_in_context('shoop_control', require('shoop_control'))
 declare_in_context('shoop_coords', require('shoop_coords'))
 declare_in_context('shoop_helpers', require('shoop_helpers'))
 declare_in_context('shoop_format', require('shoop_format'))
-`, scripting_context, 'MidiLearn', true, true)
+`, scripting_context, 'MidiControl', true, true)
         let context = scripting_context
         var rval = {}
         for(const name in builtin_actions) {
             let script = `return function(msg) ${builtin_actions[name]} end`
-            let fn = scripting_engine.evaluate(script, context, 'MidiLearn', true, true)
+            let fn = scripting_engine.evaluate(script, context, 'MidiControl', true, true)
             let _name = name
             rval[_name] = function(msg, _fn=fn, name=_name, _context=context) {
                 root.logger.debug(`Running action ${name}`)
@@ -80,7 +80,7 @@ declare_in_context('shoop_format', require('shoop_format'))
         [ [match_type(Midi.NoteOn)], 'APC Loop' ]
     ]
 
-    readonly property PythonLogger logger: PythonLogger { name: "Frontend.Qml.MidiLearn" }
+    readonly property PythonLogger logger: PythonLogger { name: "Frontend.Qml.MidiControl" }
 
     function handle_midi(msg) {
         let try_filter = function(filter, msg) {

@@ -205,7 +205,7 @@ AppRegistries {
         ) : null
     }
 
-    MidiLearn {
+    MidiControl {
         id: midi_learn
         when: control_interface.ready
     }
