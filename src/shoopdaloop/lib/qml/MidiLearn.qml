@@ -7,7 +7,7 @@ Item {
     id: root
     property bool when: false
 
-    readonly property var actions: ({
+    readonly property var builtin_actions: ({
         'Stop All': 'shoop_control.loop_transition(shoop_control.loop_get_all(), shoop_control.constants.LoopMode_Stopped, 0)',
         'Right': 'shoop_helpers.move_selection(shoop_control.constants.Key_Right)',
         'Left': 'shoop_helpers.move_selection(shoop_control.constants.Key_Left)',
@@ -32,8 +32,8 @@ declare_in_context('shoop_format', require('shoop_format'))
 `, scripting_context, 'MidiLearn', true, true)
         let context = scripting_context
         var rval = {}
-        for(const name in actions) {
-            let script = `return function(msg) ${actions[name]} end`
+        for(const name in builtin_actions) {
+            let script = `return function(msg) ${builtin_actions[name]} end`
             let fn = scripting_engine.evaluate(script, context, 'MidiLearn', true, true)
             let _name = name
             rval[_name] = function(msg, _fn=fn, name=_name, _context=context) {
@@ -73,10 +73,10 @@ declare_in_context('shoop_format', require('shoop_format'))
     // for every single message
     property var configuration : [
         [ [match_type(Midi.NoteOn), match_note(89)], 'Stop All'],
-        [ [match_type(Midi.NoteOn), match_note(64)], 'Up'],
-        [ [match_type(Midi.NoteOn), match_note(65)], 'Down'],
-        [ [match_type(Midi.NoteOn), match_note(66)], 'Left'],
-        [ [match_type(Midi.NoteOn), match_note(67)], 'Right'],
+        [ [match_type(Midi.NoteOn), match_note(64)], 'Select Move Up'],
+        [ [match_type(Midi.NoteOn), match_note(65)], 'Select Move Down'],
+        [ [match_type(Midi.NoteOn), match_note(66)], 'Select Move Left'],
+        [ [match_type(Midi.NoteOn), match_note(67)], 'Select Move Right'],
         [ [match_type(Midi.NoteOn)], 'APC Loop' ]
     ]
 

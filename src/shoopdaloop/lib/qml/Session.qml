@@ -252,6 +252,7 @@ AppRegistries {
         MidiControlPort {
             name_hint: "control"
             direction: Types.PortDirection.Input
+            autoconnect_regexes: ['.*APC MINI MIDI.*']
 
             onMsgReceived: msg => midi_learn.handle_midi(msg)
         }

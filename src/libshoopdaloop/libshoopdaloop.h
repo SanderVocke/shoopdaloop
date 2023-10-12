@@ -113,6 +113,8 @@ jack_port_t *get_midi_port_jack_handle(shoopdaloop_midi_port_t *port);
 shoopdaloop_decoupled_midi_port_t *open_decoupled_midi_port(shoopdaloop_backend_instance_t *backend, const char* name_hint, port_direction_t direction);
 midi_event_t *maybe_next_message(shoopdaloop_decoupled_midi_port_t *port);
 void send_decoupled_midi(shoopdaloop_decoupled_midi_port_t *port, unsigned length, unsigned char *data);
+const char* get_decoupled_midi_port_name(shoopdaloop_decoupled_midi_port_t *port);
+void close_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *port);
 
 // Helpers for freeing any objects/handles obtained from this API.
 // This will always safely destroy, including breaking any made connections to other objects, etc.

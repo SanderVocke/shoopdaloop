@@ -47,7 +47,7 @@ Item {
                 id: mainmenu
 
                 MenuItem {
-                    text: "Save copy of session"
+                    text: "Save session"
                     onClicked: { savesessiondialog.open() }
                 }
                 MenuItem {
@@ -57,6 +57,10 @@ Item {
                 MenuItem {
                     text: "Profiling"
                     onClicked: profilingwindow.visible = true
+                }
+                MenuItem {
+                    text: "Settings"
+                    onClicked: settings_dialog.open()
                 }
                 MenuItem {
                     text: "Debug Inspection"
@@ -153,5 +157,9 @@ Item {
                 color: Material.foreground
             }
         }
+    }
+
+    SettingsDialog {
+        id: settings_dialog
     }
 }

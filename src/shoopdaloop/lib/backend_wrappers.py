@@ -482,8 +482,12 @@ class BackendDecoupledMidiPort:
         else:
             return MidiEvent(r[0])
     
+    def name(self):
+        return get_decoupled_midi_port_name(self._c_handle).decode('ascii')
+    
     def destroy(self):
-        raise Exception("unimplemented")
+        if self._c_handle:
+            close_decoupled_midi_port(self._c_handle)
     
     def __del__(self):
         self.destroy()

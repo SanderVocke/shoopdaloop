@@ -858,6 +858,12 @@ void close_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *port) {
     });
 }
 
+const char* get_decoupled_midi_port_name(shoopdaloop_decoupled_midi_port_t *port) {
+    init_log();
+    g_logger->debug("get_decoupled_midi_port_name");
+    return internal_decoupled_midi_port(port)->port->name();
+}
+
 void send_decoupled_midi(shoopdaloop_decoupled_midi_port_t *port, unsigned length, unsigned char *data) {
     init_log();
     g_logger->debug("send_decoupled_midi");

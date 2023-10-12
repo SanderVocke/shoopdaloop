@@ -4,6 +4,8 @@ from PySide6.QtQuick import QQuickItem
 from ..logging import Logger as BaseLogger
 from ..findFirstParent import findFirstParent
 
+from .AutoConnect import AutoConnect
+from ..backend_wrappers import *
 class MidiControlPort(QQuickItem):
     def __init__(self, parent=None):
         super(MidiControlPort, self).__init__(parent)
@@ -12,6 +14,13 @@ class MidiControlPort(QQuickItem):
         self._backend_obj = None
         self.logger = BaseLogger("Frontend.MidiControlPort")
         self._backend = None
+        self._autoconnect_regexes = []
+        self._name = None
+        
+        self._autoconnecters = []
+        self.nameChanged.connect(self.autoconnect_update)
+        self.autoconnect_regexesChanged.connect(self.autoconnect_update)
+        self.directionChanged.connect(self.autoconnect_update)
         
         self.rescan_parents()
         if not self._backend:
@@ -25,6 +34,17 @@ class MidiControlPort(QQuickItem):
     ######################
     # PROPERTIES
     ######################
+    
+    # autoconnect_regexes
+    autoconnect_regexesChanged = Signal(list)
+    @Property(list, notify=autoconnect_regexesChanged)
+    def autoconnect_regexes(self):
+        return self._autoconnect_regexes
+    @autoconnect_regexes.setter
+    def autoconnect_regexes(self, l):
+        if l != self._autoconnect_regexes:
+            self._autoconnect_regexes = l
+            self.autoconnect_regexesChanged.emit(l)
 
     # name_hint
     nameHintChanged = Signal(str)
@@ -37,6 +57,12 @@ class MidiControlPort(QQuickItem):
             self._name_hint = l
             self.nameHintChanged.emit(l)
             self.maybe_init()
+    
+    # name
+    nameChanged = Signal(str)
+    @Property(str, notify=nameChanged)
+    def name(self):
+        return self._name
     
     # direction
     directionChanged = Signal(int)
@@ -57,12 +83,32 @@ class MidiControlPort(QQuickItem):
         return self._backend_obj != None
     
     ###########
-    ## SLOTS
-    ###########
-
-    ###########
     ## METHODS
     ###########
+    
+    ###########
+    ## SLOTS
+    ###########
+    
+    @Slot()
+    def autoconnect_update(self):
+        if self._name and self._autoconnect_regexes and self._direction != None:
+            for conn in self._autoconnecters:
+                conn.destroy()
+            self._autoconnecters = []
+            
+            if self._direction == PortDirection.Input.value:
+                for regex in self._autoconnect_regexes:
+                    conn = AutoConnect(self)
+                    conn.from_regex = regex
+                    conn.to_regex = self._name.replace('.', '\.')
+                    self._autoconnecters.append(conn)
+            else:
+                for regex in self._autoconnect_regexes:
+                    conn = AutoConnect(self)
+                    conn.from_regex = self._name.replace('.', '\.')
+                    conn.to_regex = regex
+                    self._autoconnecters.append(conn)
     
     @Slot()
     def poll(self):
@@ -95,6 +141,9 @@ class MidiControlPort(QQuickItem):
             if not self._backend_obj:
                 self.logger.error("Failed to open decoupled MIDI port {}".format(self._name_hint))
                 return
+
+            self._name = self._backend_obj.name()
+            self.nameChanged.emit(self._name)
             
             self.timer = QTimer(self)
             self.timer.setSingleShot(False)
