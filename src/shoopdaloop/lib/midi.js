@@ -6,3 +6,7 @@ const PitchBend = 0xE0
 const Aftertouch = 0xA0
 const PolyAftertouch = 0xD0
 const SysEx = 0xF0
+
+function create_noteOn(channel, note, velocity) {
+  return [NoteOn + channel, note, velocity]
+}

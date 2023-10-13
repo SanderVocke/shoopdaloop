@@ -1,21 +1,12 @@
 import QtQuick 6.3
-import ShoopDaLoop.PythonControlInterface
 import ShoopDaLoop.PythonLogger
 
-PythonControlInterface {
+LuaControlInterface {
     id: root
     qml_instance: this
-    property bool ready: false
     property var session: null
 
-    Component.onCompleted: {
-        // Register ourselves as "shoop" in the LUA environment
-        scripting_engine.use_context(null)
-        scripting_engine.create_lua_qobject_interface_as_global('__shoop_control_interface', root)
-        ready = true
-    }
-
-    property PythonLogger logger : PythonLogger { name: "Frontend.Session.ControlInterface" }
+    property PythonLogger logger : PythonLogger { name: "Frontend.SessionControlInterface" }
 
     property list<var> selected_loop_idxs : session.selected_loops ? session.selected_loops.map((l) => [l.track_idx, l.idx_in_track]) : []
     property var targeted_loop_idx: session.targeted_loop ? [session.targeted_loop.track_idx, session.targeted_loop.idx_in_track] : null

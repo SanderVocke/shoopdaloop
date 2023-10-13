@@ -233,6 +233,16 @@ Dialog {
                             }
                         }
                     }
+
+                    GroupBox {
+                        title: 'MIDI control triggers'
+                        width: parent.width
+
+                        EditMidiControl {
+                            id: edit_midi_control
+                            width: parent.width
+                        }
+                    }
                 }
             }
         }
