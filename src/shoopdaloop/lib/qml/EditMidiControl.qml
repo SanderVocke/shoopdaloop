@@ -40,10 +40,19 @@ Column {
 
     component EditMidiControlItem: GroupBox {
         property var item
-
         id: box
 
-        property string rule_kind_description: {
+        enum RecognizedRuleKind {
+            AnyNoteOn,
+            AnyNoteOff,
+            SpecificNoteOn,
+            SpecificNoteOff,
+            AnyControlChange,
+            SpecificControlChange,
+            Advanced
+        }
+
+        property int rule_kind: {
             let filters = item.filters
             var filters_covered = 0
             let n_filters = item.filters.length
@@ -62,11 +71,13 @@ Column {
             let all_covered = filters_covered == n_filters
             if(all_covered && maybe_msgtype_filter == 'note on') {
                 if (n_filters == 1) {
-                    return 'Any note on'
+                    return RecognizedRuleKind.AnyNoteOn
+                } else if (n_filters == 2 && maybe_2ndbyte_filter !== null) {
+                    return RecognizedRuleKind.SpecificNoteOn
                 }
             }
 
-            return 'Advanced rule'
+            return RecognizedRuleKind.Advanced
         }
 
         Row {
