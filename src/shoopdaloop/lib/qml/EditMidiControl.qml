@@ -1,6 +1,7 @@
 import QtQuick 6.3
 import QtQuick.Controls 6.3
 import QtQuick.Controls.Material 6.3
+import ShoopDaLoop.PythonLogger
 
 import '../midi.js' as Midi
 import '../midi_control.js' as MidiControl
@@ -8,6 +9,18 @@ import '../midi_control.js' as MidiControl
 Column {
     id: root
     width: parent.width
+
+    property PythonLogger logger: PythonLogger { name: "Frontend.Qml.EditMidiControl" }
+
+    enum RecognizedRuleKind {
+        AnyNoteOn,
+        AnyNoteOff,
+        SpecificNoteOn,
+        SpecificNoteOff,
+        AnyControlChange,
+        SpecificControlChange,
+        Advanced
+    }
 
     property MidiControlConfiguration configuration : MidiControlConfiguration {}
 
@@ -42,42 +55,71 @@ Column {
         property var item
         id: box
 
-        enum RecognizedRuleKind {
-            AnyNoteOn,
-            AnyNoteOff,
-            SpecificNoteOn,
-            SpecificNoteOff,
-            AnyControlChange,
-            SpecificControlChange,
-            Advanced
+        property var maybe_msgtype_filters: {
+            let filters = item.filters
+            var result = []
+            for(var i=0; i<item.filters.length; i++) {
+                let filter = item.filters[i]
+                if (filter[0] == 0 && filter[1] == 0xF0) {
+                    result.push(filter[2])
+                }
+            }
+            return result
+        }
+        property var maybe_2ndbyte_filters: {
+            let filters = item.filters
+            var result = []
+            for(var i=0; i<item.filters.length; i++) {
+                let filter = item.filters[i]
+                if (filter[0] == 1 && filter[1] == 0xFF) {
+                    result.push(filter[2])
+                }
+            }
+            return result
+        }
+        property var maybe_3rdbyte_filters: {
+            let filters = item.filters
+            var result = []
+            for(var i=0; i<item.filters.length; i++) {
+                let filter = item.filters[i]
+                if (filter[0] == 2 && filter[1] == 0xFF) {
+                    result.push(filter[2])
+                }
+            }
+            return result
         }
 
         property int rule_kind: {
             let filters = item.filters
             var filters_covered = 0
             let n_filters = item.filters.length
-            var maybe_msgtype_filter = null
-            var maybe_2ndbyte_filter = null
-            var maybe_3rdbyte_filter = null
+            var rval = undefined
 
-            for(var i=0; i<item.filters.length; i++) {
-                let filter = item.filters[i]
-                if (filter[0] == 0 && filter[1] == 0xF0 && filter[2] == Midi.NoteOn) {
-                    maybe_msgtype_filter = 'note on'
-                    filters_covered++
+            if (maybe_msgtype_filters.length == 1 && maybe_msgtype_filters[0] == Midi.NoteOn) {
+                if (maybe_2ndbyte_filters == [] && maybe_3rdbyte_filters == []) {
+                    rval = EditMidiControl.RecognizedRuleKind.AnyNoteOn
+                } else if (maybe_2ndbyte_filters.length == 1 && maybe_3rdbyte_filters == []) {
+                    rval = EditMidiControl.RecognizedRuleKind.SpecificNoteOn
                 }
             }
 
-            let all_covered = filters_covered == n_filters
-            if(all_covered && maybe_msgtype_filter == 'note on') {
-                if (n_filters == 1) {
-                    return RecognizedRuleKind.AnyNoteOn
-                } else if (n_filters == 2 && maybe_2ndbyte_filter !== null) {
-                    return RecognizedRuleKind.SpecificNoteOn
-                }
+            if (rval === undefined) {
+                rval = EditMidiControl.RecognizedRuleKind.Advanced
             }
 
-            return RecognizedRuleKind.Advanced
+            root.logger.debug(`Rule kind for filters ${filters}: ${rval}`)
+            return rval
+        }
+        property string rule_kind_description: {
+            let filters = item.filters
+            switch(rule_kind) {
+                case EditMidiControl.RecognizedRuleKind.AnyNoteOn:
+                    return 'Any Note On'
+                case EditMidiControl.RecognizedRuleKind.SpecificNoteOn:
+                    return `Note ${maybe_2ndbyte_filters[0]} On`
+                case EditMidiControl.RecognizedRuleKind.Advanced:
+                    return 'Advanced rule'
+            }
         }
 
         Row {
