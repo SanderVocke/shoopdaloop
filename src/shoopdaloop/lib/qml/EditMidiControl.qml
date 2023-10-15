@@ -44,7 +44,7 @@ Column {
         }
         onClicked: {
             configuration.contents.push({
-                'filters': [MidiControl.match_type(Midi.NoteOn)],
+                'filters': [MidiControl.match_type(Midi.NoteOn), MidiControl.match_note(45)],
                 'action': 'Stop All',
             })
             configuration.contentsChanged()
@@ -96,9 +96,9 @@ Column {
             var rval = undefined
 
             if (maybe_msgtype_filters.length == 1 && maybe_msgtype_filters[0] == Midi.NoteOn) {
-                if (maybe_2ndbyte_filters == [] && maybe_3rdbyte_filters == []) {
+                if (maybe_2ndbyte_filters.length == 0 && maybe_3rdbyte_filters.length == 0) {
                     rval = EditMidiControl.RecognizedRuleKind.AnyNoteOn
-                } else if (maybe_2ndbyte_filters.length == 1 && maybe_3rdbyte_filters == []) {
+                } else if (maybe_2ndbyte_filters.length == 1 && maybe_3rdbyte_filters.length <= 1) {
                     rval = EditMidiControl.RecognizedRuleKind.SpecificNoteOn
                 }
             }
@@ -116,7 +116,9 @@ Column {
                 case EditMidiControl.RecognizedRuleKind.AnyNoteOn:
                     return 'Any Note On'
                 case EditMidiControl.RecognizedRuleKind.SpecificNoteOn:
-                    return `Note ${maybe_2ndbyte_filters[0]} On`
+                    return `Note ${maybe_2ndbyte_filters[0]} On` +
+                           (maybe_3rdbyte_filters.length == 1 ?
+                           ` on ch. ${maybe_3rdbyte_filters[0]}` : '')
                 case EditMidiControl.RecognizedRuleKind.Advanced:
                     return 'Advanced rule'
             }
