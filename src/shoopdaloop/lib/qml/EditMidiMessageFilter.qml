@@ -18,12 +18,14 @@ Column {
     property PythonLogger logger: PythonLogger { name: 'Frontend.Qml.EditMidiMessageFilter'}
 
     function create_default_filters(kind) {
-        if (kind == MidiControl.UiMessageFilterKind.NoteOn) {
+        if (kind == MidiControl.MessageFilterKind.NoteOn) {
             return [ MidiControl.match_type(Midi.NoteOn) ]
-        } else if (kind == MidiControl.UiMessageFilterKind.NoteOff) {
+        } else if (kind == MidiControl.MessageFilterKind.NoteOff) {
             return [ MidiControl.match_type(Midi.NoteOff) ]
-        } else if (kind == MidiControl.UiMessageFilterKind.ControlChange) {
+        } else if (kind == MidiControl.MessageFilterKind.ControlChange) {
             return [ MidiControl.match_type(Midi.ControlChange) ]
+        } else if (kind == MidiControl.MessageFilterKind.ProgramChange) {
+            return [ MidiControl.match_type(Midi.ProgramChange) ]
         } else {
             return []
         }
@@ -54,64 +56,239 @@ Column {
                 }
                 ComboBox {
                     id: kind_combo
-                    model: Object.values(MidiControl.UiMessageFilterKind)
-                    currentIndex: Object.values(MidiControl.UiMessageFilterKind).indexOf(MidiControl.KindToUiKind[root.filters_descriptor.kind])
+                    model: Object.values(MidiControl.MessageFilterKind)
+                    currentIndex: Object.values(MidiControl.MessageFilterKind).indexOf(root.filters_descriptor.kind)
                     onActivated: (idx) => {
-                        let new_val = Object.values(MidiControl.UiMessageFilterKind)[idx]
-                        if (MidiControl.KindToUiKind[MidiControl.parse_midi_filters(filters).kind] != new_val) {
+                        let new_val = Object.values(MidiControl.MessageFilterKind)[idx]
+                        if (MidiControl.parse_midi_filters(filters).kind != new_val) {
                             root.filters = root.create_default_filters(new_val)
-                            root.logger.error(`filters => ${JSON.stringify(root.filters)}, index => ${currentIndex}, kind => ${new_val}, idx => ${idx}`)
-                        }
-                    }
-                }
-
-                Loader {
-                    active: root.filters_descriptor.kind === MidiControl.MessageFilterKind.AnyNoteOn
-                    anchors.verticalCenter: kind_combo.verticalCenter
-                    sourceComponent: Component {
-                        Row {
-                            spacing: 5
-                            Label {
-                                text: ', note'
-                                anchors.verticalCenter: note_combo.verticalCenter
-                            }
-                            ComboBox {
-                                model: ['Any', 'Choose...']
-                                id: note_combo
-                                currentIndex: root.filters_descriptor.kind === MidiControl.MessageFilterKind.AnyNoteOn ? 0 : 1
-                                onActivated: (idx) => {
-                                    if (idx > 0) {
-                                        root.filters.push([1, 0xFF, 0])
-                                        root.filtersChanged()
-                                    }
-                                }
+                            if (new_val == MidiControl.MessageFilterKind.Advanced) {
+                                bar.currentIndex = 1
                             }
                         }
                     }
                 }
 
-                Loader {
-                    active: root.filters_descriptor.kind === MidiControl.MessageFilterKind.SpecificNoteOn
+                Label {
+                    text: ', note'
+                    visible: MidiControl.supports_note(root.filters_descriptor)
                     anchors.verticalCenter: kind_combo.verticalCenter
-                    sourceComponent: Component {
-                        Row {
-                            spacing: 5
-                            Label {
-                                text: ', note'
-                                anchors.verticalCenter: note_spinbox.verticalCenter
-                            }
-                            SpinBox {
-                                from: 0
-                                to: 127
-                                id: note_spinbox
-                                value: root.filters_descriptor.note || 0
-                                onValueModified: {
-                                    root.filters
-                                        .filter(f => (f && f[0] == 1 && f[1] == 0xFF))
-                                        .forEach(f => { f[2] = value })
-                                    root.filtersChanged()
+                }
+
+                ComboBox {
+                    model: ['Any', 'Choose...']
+                    visible: MidiControl.supports_note(root.filters_descriptor)
+                             && !MidiControl.has_note(root.filters_descriptor)
+                    anchors.verticalCenter: kind_combo.verticalCenter
+                    currentIndex: MidiControl.has_note(root.filters_descriptor) ? 1 : 0
+                    onActivated: (idx) => {
+                        if (idx > 0) {
+                            root.filters.push([1, 0xFF, 0])
+                            root.filtersChanged()
+                        }
+                    }
+                }
+
+                SpinBox {
+                    anchors.verticalCenter: kind_combo.verticalCenter
+                    from: 0
+                    to: 127
+                    editable: true
+                    value: root.filters_descriptor.note || 0
+                    visible: MidiControl.supports_note(root.filters_descriptor)
+                             && MidiControl.has_note(root.filters_descriptor)
+                    onValueModified: {
+                        root.filters = root.filters
+                            .map(f => {
+                                if ((f && f[0] == 1 && MidiControl.is_identity_mask(f[1]))) {
+                                    f[2] = value; return f;
                                 }
-                            }
+                                return f;
+                            })
+                    }
+
+                    ExtendedButton {
+                        tooltip: "Remove note filter"
+                        anchors.left: parent.right
+                        anchors.top: parent.top
+                        width: 16
+                        height: 30
+                        MaterialDesignIcon {
+                            size: 14
+                            name: 'delete'
+                            color: Material.foreground
+                            anchors.centerIn: parent
+                        }
+                        onClicked: {
+                            root.filters = root.filters.filter(f => (f && !(f[0] == 1 && MidiControl.is_identity_mask(f[1]))))
+                        }
+                    }
+                }
+
+                Label {
+                    text: ', CC'
+                    visible: MidiControl.supports_cc(root.filters_descriptor)
+                    anchors.verticalCenter: kind_combo.verticalCenter
+                }
+
+                ComboBox {
+                    model: ['Any', 'Choose...']
+                    visible: MidiControl.supports_cc(root.filters_descriptor)
+                             && !MidiControl.has_cc(root.filters_descriptor)
+                    anchors.verticalCenter: kind_combo.verticalCenter
+                    currentIndex: MidiControl.has_cc(root.filters_descriptor) ? 1 : 0
+                    onActivated: (idx) => {
+                        if (idx > 0) {
+                            root.filters.push([1, 0xFF, 0])
+                            root.filtersChanged()
+                        }
+                    }
+                }
+
+                SpinBox {
+                    anchors.verticalCenter: kind_combo.verticalCenter
+                    from: 0
+                    to: 127
+                    editable: true
+                    value: root.filters_descriptor.cc || 0
+                    visible: MidiControl.supports_cc(root.filters_descriptor)
+                             && MidiControl.has_cc(root.filters_descriptor)
+                    onValueModified: {
+                        root.filters = root.filters
+                            .map(f => {
+                                if ((f && f[0] == 1 && MidiControl.is_identity_mask(f[1]))) {
+                                    f[2] = value; return f;
+                                }
+                                return f;
+                            })
+                    }
+
+                    ExtendedButton {
+                        tooltip: "Remove CC filter"
+                        anchors.left: parent.right
+                        anchors.top: parent.top
+                        width: 16
+                        height: 30
+                        MaterialDesignIcon {
+                            size: 14
+                            name: 'delete'
+                            color: Material.foreground
+                            anchors.centerIn: parent
+                        }
+                        onClicked: {
+                            root.filters = root.filters.filter(f => (f && !(f[0] == 1 && MidiControl.is_identity_mask(f[1]))))
+                        }
+                    }
+                }
+
+                Label {
+                    text: ', program'
+                    visible: MidiControl.supports_program(root.filters_descriptor)
+                    anchors.verticalCenter: kind_combo.verticalCenter
+                }
+
+                ComboBox {
+                    model: ['Any', 'Choose...']
+                    visible: MidiControl.supports_program(root.filters_descriptor)
+                             && !MidiControl.has_program(root.filters_descriptor)
+                    anchors.verticalCenter: kind_combo.verticalCenter
+                    currentIndex: MidiControl.has_program(root.filters_descriptor) ? 1 : 0
+                    onActivated: (idx) => {
+                        if (idx > 0) {
+                            root.filters.push([1, 0xFF, 0])
+                            root.filtersChanged()
+                        }
+                    }
+                }
+
+                SpinBox {
+                    anchors.verticalCenter: kind_combo.verticalCenter
+                    from: 0
+                    to: 127
+                    editable: true
+                    value: root.filters_descriptor.program || 0
+                    visible: MidiControl.supports_program(root.filters_descriptor)
+                             && MidiControl.has_program(root.filters_descriptor)
+                    onValueModified: {
+                        root.filters = root.filters
+                            .map(f => {
+                                if ((f && f[0] == 1 && MidiControl.is_identity_mask(f[1]))) {
+                                    f[2] = value; return f;
+                                }
+                                return f;
+                            })
+                    }
+
+                    ExtendedButton {
+                        tooltip: "Remove program filter"
+                        anchors.left: parent.right
+                        anchors.top: parent.top
+                        width: 16
+                        height: 30
+                        MaterialDesignIcon {
+                            size: 14
+                            name: 'delete'
+                            color: Material.foreground
+                            anchors.centerIn: parent
+                        }
+                        onClicked: {
+                            root.filters = root.filters.filter(f => (f && !(f[0] == 1 && MidiControl.is_identity_mask(f[1]))))
+                        }
+                    }
+                }
+
+                Label {
+                    text: ', channel'
+                    visible: MidiControl.supports_channel(root.filters_descriptor)
+                    anchors.verticalCenter: kind_combo.verticalCenter
+                }
+
+                ComboBox {
+                    model: ['Any', 'Choose...']
+                    visible: MidiControl.supports_channel(root.filters_descriptor)
+                             && !MidiControl.has_channel(root.filters_descriptor)
+                    anchors.verticalCenter: kind_combo.verticalCenter
+                    currentIndex: MidiControl.has_channel(root.filters_descriptor) ? 1 : 0
+                    onActivated: (idx) => {
+                        if (idx > 0) {
+                            root.filters.push([0, 0x0F, 0])
+                            root.filtersChanged()
+                        }
+                    }
+                }
+
+                SpinBox {
+                    anchors.verticalCenter: kind_combo.verticalCenter
+                    from: 0
+                    to: 127
+                    editable: true
+                    value: root.filters_descriptor.channel || 0
+                    visible: MidiControl.supports_channel(root.filters_descriptor)
+                             && MidiControl.has_channel(root.filters_descriptor)
+                    onValueModified: {
+                        root.filters = root.filters
+                            .map(f => {
+                                if ((f && f[0] == 0 && MidiControl.is_channel_mask(f[1]))) {
+                                    f[2] = value; return f;
+                                }
+                                return f;
+                            })
+                    }
+
+                    ExtendedButton {
+                        tooltip: "Remove channel filter"
+                        anchors.left: parent.right
+                        anchors.top: parent.top
+                        width: 16
+                        height: 30
+                        MaterialDesignIcon {
+                            size: 14
+                            name: 'delete'
+                            color: Material.foreground
+                            anchors.centerIn: parent
+                        }
+                        onClicked: {
+                            root.filters = root.filters.filter(f => (f && !(f[0] == 0 && MidiControl.is_channel_mask(f[1]))))
                         }
                     }
                 }

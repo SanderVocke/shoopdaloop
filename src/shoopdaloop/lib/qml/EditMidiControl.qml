@@ -76,7 +76,7 @@ Column {
             title: 'Specify MIDI filter'
             standardButtons: Dialog.Reset | Dialog.Ok | Dialog.Cancel
 
-            width: Math.min(Overlay.overlay ? Overlay.overlay.width - 50 : 600, 600)
+            width: Math.min(Overlay.overlay ? Overlay.overlay.width - 50 : 700, 700)
             height: Math.min(Overlay.overlay ? Overlay.overlay.height - 50 : 450, 450)
             anchors.centerIn: Overlay.overlay ? Overlay.overlay : parent
 

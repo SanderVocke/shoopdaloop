@@ -61,97 +61,135 @@ function match_type(type) {
 function match_note(note) {
     return [ 1, 0xFF, note ]
 }
-
-const MessageFilterKind = {
-    AnyNoteOn: 0,
-    AnyNoteOff: 1,
-    SpecificNoteOn: 2,
-    SpecificNoteOff: 3,
-    AnyControlChange: 4,
-    SpecificControlChange: 5,
-    Advanced: 6
-  }
-  
-  const UiMessageFilterKind = {
+  const MessageFilterKind = {
     NoteOn: 'Note on',
     NoteOff: 'Note off',
     ControlChange: 'CC',
+    ProgramChange: 'Program change',
     Advanced: 'Advanced'
-  }
-  
-  const KindToUiKind = {
-    [MessageFilterKind.AnyNoteOn]: UiMessageFilterKind.NoteOn,
-    [MessageFilterKind.AnyNoteOff]: UiMessageFilterKind.NoteOff,
-    [MessageFilterKind.SpecificNoteOn]: UiMessageFilterKind.NoteOn,
-    [MessageFilterKind.SpecificNoteOff]: UiMessageFilterKind.NoteOff,
-    [MessageFilterKind.AnyControlChange]: UiMessageFilterKind.ControlChange,
-    [MessageFilterKind.SpecificControlChange]: UiMessageFilterKind.ControlChange,
-    [MessageFilterKind.Advanced]: UiMessageFilterKind.Advanced
   }
 
   function parse_midi_filters(filters) {
-    function select_filter_values(byte, mask) {
-      return filters.filter(f => f && f.length >= 3 &&f[0] === byte && f[1] === mask).map(f => f[2])
-    }
   
-    let msgtype_filters = select_filter_values(0, 0xF0)
-    let _1stbyte_filters = filters.filter(f => f && f[0] === 0)
-    let _2ndbyte_filters = select_filter_values(1, 0xFF)
-    let _3rdbyte_filters = select_filter_values(2, 0xFF)
+    let msgtype_filters = filters.filter(f => (f[0] === 0 && is_msgtype_mask(f[1])))
+    let channel_filters = filters.filter(f => f && f[0] === 0 && f[1] === 0x0F)
+    let _2ndbyte_filters = filters.filter(f => (f[0] === 1))
+    let _3rdbyte_filters = filters.filter(f => (f[0] === 2))
   
     var kind = null
-    var description = null
-    var note = undefined
-    var cc = undefined
-  
+
     if (
       msgtype_filters.length === 1
-      && _1stbyte_filters.length === 1
-      && msgtype_filters[0] === Midi.NoteOn) {
-      if (_2ndbyte_filters.length === 0 && _3rdbyte_filters.length === 0) {
-        kind = MessageFilterKind.AnyNoteOn
-        description = 'Any note on'
-      } else if (_2ndbyte_filters.length === 1 && _3rdbyte_filters.length <= 1) {
-        kind = MessageFilterKind.SpecificNoteOn
-        note = _2ndbyte_filters[0]
-        description = `Note on ${_2ndbyte_filters[0]}` +
-          (_3rdbyte_filters.length == 1 ? ` on ch. ${_3rdbyte_filters[0]}` : '')
-      }
+      && channel_filters.length <= 1
+      && msgtype_filters[0][2] === Midi.NoteOn) {
+      kind = MessageFilterKind.NoteOn
     } else if (msgtype_filters.length === 1
-              && _1stbyte_filters.length === 1
-              && msgtype_filters[0] === Midi.NoteOff) {
-      if (_2ndbyte_filters.length === 0 && _3rdbyte_filters.length === 0) {
-        kind = MessageFilterKind.AnyNoteOff
-        description = 'Any note off'
-      } else if (_2ndbyte_filters.length === 1 && _3rdbyte_filters.length <= 1) {
-        kind = MessageFilterKind.SpecificNoteOff
-        note = _2ndbyte_filters[0]
-        description = `Note off ${_2ndbyte_filters[0]}` +
-          (_3rdbyte_filters.length == 1 ? ` on ch. ${_3rdbyte_filters[0]}` : '')
-      }
+              && channel_filters.length <= 1
+              && msgtype_filters[0][2] === Midi.NoteOff) {
+      kind = MessageFilterKind.NoteOff
     } else if (msgtype_filters.length === 1
-               && _1stbyte_filters.length === 1
-               && msgtype_filters[0] === Midi.ControlChange) {
-      if (_2ndbyte_filters.length === 0 && _3rdbyte_filters.length === 0) {
-        kind = MessageFilterKind.AnyControlChange
-        description = 'Any CC'
-      } else if (_2ndbyte_filters.length === 1 && _3rdbyte_filters.length <= 1) {
-        kind = MessageFilterKind.SpecificControlChange
-        cc = _2ndbyte_filters[0]
-        description = `CC ${_2ndbyte_filters[0]}` +
-          (_3rdbyte_filters.length == 1 ? ` set to ${_3rdbyte_filters[0]}` : '')
-      }
+               && channel_filters.length <= 1
+               && msgtype_filters[0][2] === Midi.ControlChange) {
+      kind = MessageFilterKind.ControlChange
+    } else if (msgtype_filters.length === 1
+               && channel_filters.length <= 1
+               && msgtype_filters[0][2] === Midi.ProgramChange) {
+      kind = MessageFilterKind.ProgramChange
     }
   
     if (kind === null) {
-      kind = MessageFilterKind.Advanced 
-      description = 'Advanced rule'
+      kind = MessageFilterKind.Advanced
     }
   
-    return {
+    var rval = {
       'kind': kind,
-      'description': description,
-      'note': note,
-      'cc': cc
     }
+
+    if (supports_note(rval) && _2ndbyte_filters.length === 1 &&
+        is_identity_mask(_2ndbyte_filters[0][1])) {
+      rval.note = _2ndbyte_filters[0][2]
+    }
+    if (supports_channel(rval) && channel_filters.length === 1) {
+      rval.channel = channel_filters[0][2]
+    }
+    if (supports_program(rval) && _2ndbyte_filters.length === 1 &&
+        is_identity_mask(_2ndbyte_filters[0][1])) {
+      rval.program = _2ndbyte_filters[0][2]
+    }
+    if (supports_cc(rval) && _2ndbyte_filters.length === 1 &&
+        is_identity_mask(_2ndbyte_filters[0][1])) {
+      rval.cc = _2ndbyte_filters[0][2]
+    }
+
+    switch (kind) {
+      case MessageFilterKind.NoteOn:
+        rval.description = (rval.note) ? `Note ${rval.note} on` : 'Any note on'
+        break;
+      case MessageFilterKind.NoteOff:
+        rval.description = (rval.note) ? `Note ${rval.note} off` : 'Any note off'
+        break;
+      case MessageFilterKind.ControlChange:
+        rval.description = (rval.cc) ? `CC ${rval.cc}` : 'Any CC'
+        break;
+      case MessageFilterKind.ProgramChange:
+        rval.description = (rval.program) ? `Program Change ${rval.program}` : 'Any Program Change'
+        break;
+      default:
+        rval.description = 'Advanced'
+        break;
+    }
+
+    return rval
+  }
+
+  function supports_channel(filters_descriptor) {
+    return filters_descriptor.kind === MessageFilterKind.NoteOn ||
+    filters_descriptor.kind === MessageFilterKind.NoteOff ||
+    filters_descriptor.kind === MessageFilterKind.ControlChange ||
+    filters_descriptor.kind === MessageFilterKind.ProgramChange
+  }
+
+  function supports_note(filters_descriptor) {
+    return filters_descriptor.kind === MessageFilterKind.NoteOn ||
+    filters_descriptor.kind === MessageFilterKind.NoteOff
+  }
+
+  function supports_program(filters_descriptor) {
+    return filters_descriptor.kind === MessageFilterKind.ProgramChange
+  }
+
+  function supports_cc(filters_descriptor) {
+    return filters_descriptor.kind === MessageFilterKind.ControlChange
+  }
+
+  function has_note(filters_descriptor) {
+    return Object.keys(filters_descriptor).includes('note') &&
+      filters_descriptor.note !== undefined
+  }
+  
+  function has_channel(filters_descriptor) {
+    return Object.keys(filters_descriptor).includes('channel') &&
+      filters_descriptor.channel !== undefined
+  }
+
+  function has_program(filters_descriptor) {
+    return Object.keys(filters_descriptor).includes('program') &&
+      filters_descriptor.program !== undefined
+  }
+
+  function has_cc(filters_descriptor) {
+    return Object.keys(filters_descriptor).includes('cc') &&
+      filters_descriptor.cc !== undefined
+  }
+
+  function is_identity_mask(value) {
+    return value & 0x7F === 0x7F
+  }
+
+  function is_channel_mask(value) {
+    return value === 0x0F
+  }
+
+  function is_msgtype_mask(value) {
+    return value === 0xF0
   }
