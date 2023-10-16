@@ -4,7 +4,7 @@ import ShoopDaLoop.PythonLogger
 Item {
     id: root
 
-    property bool when: false
+    property bool when: true
 
     readonly property PythonLogger logger : PythonLogger { name: "Frontend.Qml.LuaUserScript" }
 

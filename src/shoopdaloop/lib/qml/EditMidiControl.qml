@@ -46,7 +46,7 @@ Column {
             dialog.accepted.connect(function() {
                 configuration.contents.push({
                     'filters': dialog.filters,
-                    'action': 'Stop All',
+                    'action': 'Stop Loops',
                 })
                 configuration.contentsChanged()
                 dialog.close()

@@ -32,6 +32,19 @@ Session {
             return session.tracks[0].loops[1]
         }
 
+        property bool done_imports: false
+        function prepare_imports() {
+            if (!done_imports) {
+                scripting_engine.execute(`
+declare_global('shoop_control', require('shoop_control'))
+declare_global('shoop_coords', require('shoop_coords'))
+declare_global('shoop_helpers', require('shoop_helpers'))
+declare_global('shoop_format', require('shoop_format'))
+`, null, 'MidiControl', true, true)
+                done_imports = true
+            }
+        }
+
         function clear() {
             master_loop().clear()
             other_loop().clear()
@@ -44,6 +57,7 @@ Session {
         }
 
         function do_eval(code) {
+            prepare_imports()
             return scripting_engine.evaluate(
                 code,
                 null,
@@ -54,6 +68,7 @@ Session {
         }
 
         function do_execute(code) {
+            prepare_imports()
             scripting_engine.execute(
                 code,
                 null,
@@ -94,11 +109,11 @@ Session {
                 check_backend()
                 clear()
                 
-                verify_eq(do_eval('return shoop.loop_count({})'), 0)
-                verify_eq(do_eval('return shoop.loop_count({-1, -1})'), 0)
-                verify_eq(do_eval('return shoop.loop_count({0, 0})'), 1)
-                verify_eq(do_eval('return shoop.loop_count({{0, 0}})'), 1)
-                verify_eq(do_eval('return shoop.loop_count({{0, 0}, {0, 1}})'), 2)
+                verify_eq(do_eval('return shoop_control.loop_count({})'), 0)
+                verify_eq(do_eval('return shoop_control.loop_count({-1, -1})'), 0)
+                verify_eq(do_eval('return shoop_control.loop_count({0, 0})'), 1)
+                verify_eq(do_eval('return shoop_control.loop_count({{0, 0}})'), 1)
+                verify_eq(do_eval('return shoop_control.loop_count({{0, 0}, {0, 1}})'), 2)
             })
         }
 
@@ -107,11 +122,11 @@ Session {
                 check_backend()
                 clear()
 
-                verify_eq_lua('shoop.loop_get_which_selected()', '{}')
+                verify_eq_lua('shoop_control.loop_get_which_selected()', '{}')
                 master_loop().select()
-                verify_eq_lua('shoop.loop_get_which_selected()', '{{0, 0}}')
+                verify_eq_lua('shoop_control.loop_get_which_selected()', '{{0, 0}}')
                 other_loop().select()
-                verify_eq_lua('shoop.loop_get_which_selected()', '{{0, 0}, {0, 1}}')
+                verify_eq_lua('shoop_control.loop_get_which_selected()', '{{0, 0}, {0, 1}}')
             })
         }
 
@@ -120,11 +135,11 @@ Session {
                 check_backend()
                 clear()
                 
-                verify_eq_lua('shoop.loop_get_which_targeted()', 'nil')
+                verify_eq_lua('shoop_control.loop_get_which_targeted()', 'nil')
                 master_loop().target()
-                verify_eq_lua('shoop.loop_get_which_targeted()', '{0, 0}')
+                verify_eq_lua('shoop_control.loop_get_which_targeted()', '{0, 0}')
                 other_loop().target()
-                verify_eq_lua('shoop.loop_get_which_targeted()', '{0, 1}')
+                verify_eq_lua('shoop_control.loop_get_which_targeted()', '{0, 1}')
             })
         }
 
@@ -133,11 +148,11 @@ Session {
                 check_backend()
                 clear()
                 
-                verify_eq_lua('shoop.loop_get_mode({0,0})', '{ shoop.constants.LoopMode_Stopped }')
+                verify_eq_lua('shoop_control.loop_get_mode({0,0})', '{ shoop_control.constants.LoopMode_Stopped }')
                 master_loop().transition(Types.LoopMode.Recording, 0, false)
                 wait(50)
-                verify_eq_lua('shoop.loop_get_mode({0,0})', '{ shoop.constants.LoopMode_Recording }')
-                verify_eq_lua('shoop.loop_get_mode({0,1})', '{ shoop.constants.LoopMode_Stopped }')
+                verify_eq_lua('shoop_control.loop_get_mode({0,0})', '{ shoop_control.constants.LoopMode_Recording }')
+                verify_eq_lua('shoop_control.loop_get_mode({0,1})', '{ shoop_control.constants.LoopMode_Stopped }')
             })
         }
 
@@ -147,11 +162,11 @@ Session {
                 clear()
 
                 verify_eq(master_loop().mode, Types.LoopMode.Stopped)
-                do_execute('shoop.loop_transition({0,0}, shoop.constants.LoopMode_Recording, 0)')
+                do_execute('shoop_control.loop_transition({0,0}, shoop_control.constants.LoopMode_Recording, 0)')
                 wait(50)
                 verify_eq(master_loop().mode, Types.LoopMode.Recording)
                 verify_eq(other_loop().mode, Types.LoopMode.Stopped)
-                do_execute('shoop.loop_transition({0,1}, shoop.constants.LoopMode_Recording, 0)')
+                do_execute('shoop_control.loop_transition({0,1}, shoop_control.constants.LoopMode_Recording, 0)')
                 wait(50)
                 verify_eq(master_loop().mode, Types.LoopMode.Recording)
                 verify_eq(other_loop().mode, Types.LoopMode.Recording)

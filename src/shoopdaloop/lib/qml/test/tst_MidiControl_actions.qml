@@ -42,37 +42,37 @@ MidiControl {
             },
             {
                 'filters': [MidiControl.match_type(Midi.NoteOn), MidiControl.match_note(2)],
-                'action': 'Stop All'
+                'action': 'Stop Loops'
             },
             {
                 'filters': [MidiControl.match_type(Midi.NoteOn), MidiControl.match_note(3)],
-                'action': 'Stop All',
+                'action': 'Stop Loops',
                 'inputs': {
                     'loops': 'selection'
                 }
             },
             {
                 'filters': [MidiControl.match_type(Midi.NoteOn), MidiControl.match_note(4)],
-                'action': 'Stop All',
+                'action': 'Stop Loops',
                 'inputs': {
                     'loops': '{{1, 1}}'
                 }
             },
             {
                 'filters': [MidiControl.match_type(Midi.NoteOn), MidiControl.match_note(5)],
-                'action': 'Stop All',
+                'action': 'Stop Loops',
                 'condition': 'false'
             },
             {
                 'filters': [MidiControl.match_type(Midi.NoteOn), MidiControl.match_note(6)],
-                'action': 'Stop All',
+                'action': 'Stop Loops',
                 'condition': 'true'
             },
         ]
     }
 
     ShoopTestCase {
-        name: 'MidiControl'
+        name: 'MidiControl_actions'
         filename : TestFilename.test_filename()
         when: ctl.ready
 
