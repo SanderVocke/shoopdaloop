@@ -12,16 +12,6 @@ Column {
 
     property PythonLogger logger: PythonLogger { name: "Frontend.Qml.EditMidiControl" }
 
-    enum RecognizedRuleKind {
-        AnyNoteOn,
-        AnyNoteOff,
-        SpecificNoteOn,
-        SpecificNoteOff,
-        AnyControlChange,
-        SpecificControlChange,
-        Advanced
-    }
-
     property MidiControlConfiguration configuration : MidiControlConfiguration {}
 
     Repeater {
@@ -55,78 +45,11 @@ Column {
         property var item
         id: box
 
-        property var maybe_msgtype_filters: {
-            let filters = item.filters
-            var result = []
-            for(var i=0; i<item.filters.length; i++) {
-                let filter = item.filters[i]
-                if (filter[0] == 0 && filter[1] == 0xF0) {
-                    result.push(filter[2])
-                }
-            }
-            return result
-        }
-        property var maybe_2ndbyte_filters: {
-            let filters = item.filters
-            var result = []
-            for(var i=0; i<item.filters.length; i++) {
-                let filter = item.filters[i]
-                if (filter[0] == 1 && filter[1] == 0xFF) {
-                    result.push(filter[2])
-                }
-            }
-            return result
-        }
-        property var maybe_3rdbyte_filters: {
-            let filters = item.filters
-            var result = []
-            for(var i=0; i<item.filters.length; i++) {
-                let filter = item.filters[i]
-                if (filter[0] == 2 && filter[1] == 0xFF) {
-                    result.push(filter[2])
-                }
-            }
-            return result
-        }
-
-        property int rule_kind: {
-            let filters = item.filters
-            var filters_covered = 0
-            let n_filters = item.filters.length
-            var rval = undefined
-
-            if (maybe_msgtype_filters.length == 1 && maybe_msgtype_filters[0] == Midi.NoteOn) {
-                if (maybe_2ndbyte_filters.length == 0 && maybe_3rdbyte_filters.length == 0) {
-                    rval = EditMidiControl.RecognizedRuleKind.AnyNoteOn
-                } else if (maybe_2ndbyte_filters.length == 1 && maybe_3rdbyte_filters.length <= 1) {
-                    rval = EditMidiControl.RecognizedRuleKind.SpecificNoteOn
-                }
-            }
-
-            if (rval === undefined) {
-                rval = EditMidiControl.RecognizedRuleKind.Advanced
-            }
-
-            root.logger.debug(`Rule kind for filters ${filters}: ${rval}`)
-            return rval
-        }
-        property string rule_kind_description: {
-            let filters = item.filters
-            switch(rule_kind) {
-                case EditMidiControl.RecognizedRuleKind.AnyNoteOn:
-                    return 'Any Note On'
-                case EditMidiControl.RecognizedRuleKind.SpecificNoteOn:
-                    return `Note ${maybe_2ndbyte_filters[0]} On` +
-                           (maybe_3rdbyte_filters.length == 1 ?
-                           ` on ch. ${maybe_3rdbyte_filters[0]}` : '')
-                case EditMidiControl.RecognizedRuleKind.Advanced:
-                    return 'Advanced rule'
-            }
-        }
+        property var rule_descriptor: Midi.parse_midi_filters(item.filters)
 
         Row {
             Label {
-                text: 'On: ' + box.rule_kind_description
+                text: 'On: ' + rule_descriptor.description || 'Unknown'
             }
 
             ComboBox {
