@@ -39,26 +39,29 @@ Dialog {
             anchors.bottom: parent.bottom
             currentIndex: bar.currentIndex
 
-            MIDISettings {
+            MIDISettingsUi {
                 id: midi_settings_being_edited
             }
         }
     }
 
-    component MIDISettings : Item {
-        id: midi_settings
+    component MIDISettings : Settings {
+        name: 'MIDISettings'
+        schema_name: 'midi_settings'
+        current_version: 1
 
-        function serialize() {
-            return JSON.stringify({
-                'autoconnect_input_regexes': midi_settings.autoconnect_input_regexes,
-                'autoconnect_output_regexes': midi_settings.autoconnect_output_regexes
-            })
-        }
-        function deserialize() {
-            var data = JSON.parse(midi_settings_being_edited.serialize())
-            autoconnect_input_regexes = data['autoconnect_input_regexes']
-            autoconnect_output_regexes = data['autoconnect_output_regexes']
-        }
+        contents: ({
+            'autoconnect_input_regexes': [],
+            'autoconnect_output_regexes': [],
+            'midi_control_configuration': {
+                'schema': 'midi_control_configuration.1',
+                'configuration': []
+            }
+        })
+    }
+
+    component MIDISettingsUi : Item {
+        id: midi_settings
 
         property list<string> autoconnect_input_regexes: []
         property list<string> autoconnect_output_regexes: []
@@ -248,49 +251,4 @@ Dialog {
             }
         }
     }
-
-
-    // component MIDIControlSettingsData : QtObject {
-
-    //     readonly property var builtin_akai_apc_mini_profile : MIDIControlProfile {
-    //         name: 'AKAI APC Mini'
-
-    //         midi_in_regex: '.*APC MINI MIDI.*'
-    //         midi_out_regex: '.*APC MINI MIDI.*'
-
-    //         substitutions: {
-    //             // Map our loop index to the note identifier on the APC
-    //             'loop_note':  '0 if (track == 0 and loop == 0) else (56+track-1-loop*8)',
-    //             // Map note identifier on APC to our track index
-    //             'note_track': '0 if note == 0 else (note % 8 + 1)',
-    //             // Map note identifier on APC to our loop index within  the track
-    //             'note_loop':  '0 if note == 0 else 7 - (note / 8)',
-    //             // Map fader CC identifier on APC to our track index
-    //             'fader_track': 'controller-48+1' //'controller-48+1 if controller >= 48 and controller < 56'
-    //         }
-
-    //         input_rules: [
-    //             {
-    //                 'filter': StatesAndActions.MIDIMessageFilterType.IsNoteOn,
-    //                 'condition': 'note <= 64',
-    //                 'action': 'loopAction(note_track, note_loop, play_or_stop)'
-    //             },
-    //             {
-    //                 'filter': StatesAndActions.MIDIMessageFilterType.IsCCKind,
-    //                 'condition': '48 <= controller < 56',
-    //                 'action': 'setVolume(fader_track, value/127.0)'
-    //             }
-    //         ]
-
-    //         loop_state_change_formulas: [
-    //             { 'mode': StatesAndActions.LoopMode.Recording, 'action': 'noteOn(0, loop_note, 3)' },
-    //             { 'mode': StatesAndActions.LoopMode.Playing, 'action': 'noteOn(0, loop_note, 1)' },
-    //             { 'mode': StatesAndActions.LoopMode.Stopped, 'action': 'noteOn(0, loop_note, 0)' },
-    //             { 'mode': StatesAndActions.LoopMode.PlayingMuted, 'action': 'noteOn(0, loop_note, 0)' }
-    //         ]
-
-    //         default_loop_state_change_formula: 'noteOn(0, loop_note, 5)' // Unhandled mode becomes yellow
-            
-    //         reset_formula: 'notesOn(0, 0, 98, 0)' // Everything off
-    //     }
 }

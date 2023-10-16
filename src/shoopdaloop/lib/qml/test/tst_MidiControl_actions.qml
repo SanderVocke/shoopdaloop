@@ -35,6 +35,7 @@ MidiControl {
     }
 
     configuration: MidiControlConfiguration {
+        id: config
         contents: [
             { 
                 'filters': [MidiControl.match_type(Midi.NoteOn), MidiControl.match_note(1)],
@@ -75,6 +76,12 @@ MidiControl {
         name: 'MidiControl_actions'
         filename : TestFilename.test_filename()
         when: ctl.ready
+        
+        function test_validate_config() {
+            run_case('test_validate_config', () => {
+                verify_eq(config.validate(), true)
+            })
+        }
 
         function test_midi_control_custom_action() {
             run_case('test_midi_control_custom_action', () => {

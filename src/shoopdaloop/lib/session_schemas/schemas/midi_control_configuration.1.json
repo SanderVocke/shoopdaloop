@@ -1,0 +1,28 @@
+{
+    "type": "object",
+    "properties": {
+        "schema": { "const": "midi_control_configuration.1" },
+        "configuration": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "filters": {
+                        "type": "array",
+                        "items": {
+                            "type": "array",
+                            "items": {
+                                "type": "integer"
+                            }
+                        }
+                    },
+                    "action": { "type": "string" },
+                    "inputs": { "type": "object" },
+                    "condition": { "type": "string" }
+                },
+                "required": ["filters", "action"]
+            }
+        }
+    },
+    "required": ["schema", "configuration"]
+}
