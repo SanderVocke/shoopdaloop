@@ -14,8 +14,9 @@ Dialog {
 
     readonly property PythonLogger logger: PythonLogger { name: "Frontend.Qml.SettingsDialog" }
 
-    width: 800
-    height: 500
+    width: Overlay.overlay ? Overlay.overlay.width - 50 : 800
+    height: Overlay.overlay ? Overlay.overlay.height - 50 : 500
+    anchors.centerIn: Overlay.overlay ? Overlay.overlay : parent
 
     Item {
         anchors.fill: parent

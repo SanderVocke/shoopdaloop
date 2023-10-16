@@ -33,11 +33,20 @@ Column {
             anchors.centerIn: parent
         }
         onClicked: {
-            configuration.contents.push({
-                'filters': [MidiControl.match_type(Midi.NoteOn), MidiControl.match_note(45)],
-                'action': 'Stop All',
+            var dialog = midi_filters_dialog_factory.createObject(root, {
+                'filters': [MidiControl.match_type(Midi.NoteOn)],
             })
-            configuration.contentsChanged()
+
+            dialog.open()
+            dialog.accepted.connect(function() {
+                configuration.contents.push({
+                    'filters': dialog.filters,
+                    'action': 'Stop All',
+                })
+                configuration.contentsChanged()
+                dialog.close()
+                dialog.destroy()
+            })
         }
     }
 
@@ -45,7 +54,7 @@ Column {
         property var item
         id: box
 
-        property var rule_descriptor: Midi.parse_midi_filters(item.filters)
+        property var rule_descriptor: MidiControl.parse_midi_filters(item.filters)
 
         Row {
             Label {
@@ -56,6 +65,25 @@ Column {
                 width: 150
                 popup.width: 300
                 model: Object.keys(MidiControl.builtin_actions).concat(['Custom...'])
+            }
+        }
+    }
+
+    Component {
+        id: midi_filters_dialog_factory
+        Dialog {
+            modal: true
+            title: 'Specify MIDI filter'
+            standardButtons: Dialog.Reset | Dialog.Ok | Dialog.Cancel
+
+            width: Math.min(Overlay.overlay ? Overlay.overlay.width - 50 : 600, 600)
+            height: Math.min(Overlay.overlay ? Overlay.overlay.height - 50 : 450, 450)
+            anchors.centerIn: Overlay.overlay ? Overlay.overlay : parent
+
+            property alias filters: edit.filters
+
+            EditMidiMessageFilter {
+                id: edit
             }
         }
     }
