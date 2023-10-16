@@ -27,6 +27,7 @@ from .q_objects.DictTreeModel import DictTreeModelFactory
 from .q_objects.ReleaseFocusNotifier import ReleaseFocusNotifier
 from .q_objects.ControlInterface import ControlInterface
 from .q_objects.MidiControlPort import MidiControlPort
+from .q_objects.SettingsIO import SettingsIO
 
 # Read version from the version.txt file (will be present when packaged)
 pkg_version = None
@@ -60,6 +61,7 @@ def register_shoopdaloop_qml_classes():
     register_qml_class(ReleaseFocusNotifier, 'ReleaseFocusNotifier')
     register_qml_class(ControlInterface, 'ControlInterface')
     register_qml_class(MidiControlPort, 'MidiControlPort')
+    register_qml_class(SettingsIO, 'SettingsIO')
 
 def create_and_populate_root_context(engine, global_args, additional_items={}):
     # Set import path to predefined classes
@@ -76,7 +78,8 @@ def create_and_populate_root_context(engine, global_args, additional_items={}):
         'tree_model_factory': DictTreeModelFactory(parent=engine),
         'scripting_engine': ScriptingEngine(parent=engine),
         'release_focus_notifier': ReleaseFocusNotifier(parent=engine),
-        'global_args': global_args
+        'global_args': global_args,
+        'settings_io': SettingsIO(parent=engine),
     }
 
     for key, item in additional_items.items():

@@ -10,7 +10,7 @@ Dialog {
     id: root
     modal: true
     title: 'Settings'
-    standardButtons: Dialog.Reset | Dialog.Save | Dialog.Close
+    standardButtons: Dialog.Save | Dialog.Close
 
     readonly property PythonLogger logger: PythonLogger { name: "Frontend.Qml.SettingsDialog" }
 
@@ -50,7 +50,7 @@ Dialog {
         schema_name: 'midi_settings'
         current_version: 1
 
-        contents: ({
+        property var default_contents: ({
             'autoconnect_input_regexes': [],
             'autoconnect_output_regexes': [],
             'midi_control_configuration': {

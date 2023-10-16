@@ -27,6 +27,14 @@ script_dir = os.path.dirname(__file__)
 class Application(QGuiApplication):
     def __init__(self, title, main_qml, backend_type, backend_argstring, qml_debug_port=None, qml_debug_wait=False):
         super(Application, self).__init__([])
+        
+        pkg_version = None
+        with open(script_dir + '/../version.txt', 'r') as f:
+            pkg_version = f.read().strip()
+        
+        self.setApplicationName('ShoopDaLoop')
+        self.setApplicationVersion(pkg_version)
+        self.setOrganizationName('ShoopDaLoop')
 
         self.logger = Logger("Frontend.Qml.App")
 
