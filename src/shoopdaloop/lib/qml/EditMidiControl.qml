@@ -19,6 +19,11 @@ Column {
         delegate: EditMidiControlItem {
             width: root.width
             item: configuration.contents[index]
+
+            onUpdateFilters: (filters) => {
+                configuration.contents[index].filters = filters
+                configuration.contentsChanged()
+            }
         }
     }
 
@@ -55,16 +60,135 @@ Column {
         id: box
 
         property var rule_descriptor: MidiControl.parse_midi_filters(item.filters)
+        property var builtin_action: (MidiControl.builtin_actions[item.action] || {
+            'name': 'Custom...',
+            'description': 'Custom action',
+            'script': 'print_debug("hello")'
+        })
+        property var action_inputs: builtin_action.inputs || {}
 
-        Row {
-            Label {
-                text: 'On: ' + rule_descriptor.description || 'Unknown'
+        signal updateFilters(list<var> filters)
+
+        Column {
+            Row {
+                spacing: 3
+
+                Label {
+                    text: 'On:'
+                    anchors.verticalCenter: action_combo.verticalCenter
+                }
+
+                TextField {
+                    enabled: false
+                    text: rule_descriptor.description
+                    anchors.verticalCenter: action_combo.verticalCenter
+                    height: action_combo.height
+                    width: 250
+                }
+
+                ExtendedButton {
+                    height: action_combo.height
+                    width: height - 10
+                    tooltip: "Edit MIDI filter"
+
+                    MaterialDesignIcon {
+                        size: 16
+                        name: 'pencil'
+                        color: Material.foreground
+                        anchors.centerIn: parent
+                    }
+                    onClicked: {
+                        var dialog = midi_filters_dialog_factory.createObject(root, {
+                            'filters': [MidiControl.match_type(Midi.NoteOn)],
+                        })
+
+                        dialog.open()
+                        dialog.accepted.connect(function() {
+                            box.updateFilters(dialog.filters)
+                            configuration.contentsChanged()
+                            dialog.close()
+                            dialog.destroy()
+                        })
+                    }
+                }
+
+                Label {
+                    text: ':'
+                    anchors.verticalCenter: action_combo.verticalCenter
+                }
+
+                ComboBox {
+                    id: action_combo
+                    width: 200
+                    height: 40
+                    popup.width: 300
+                    model: Object.keys(MidiControl.builtin_actions).concat(['Custom...'])
+                    onActivated: (idx) => {
+                        box.item.action = model[idx]
+                        box.itemChanged()
+                    }
+                }
+
+                Label {
+                    text: 'with:'
+                    anchors.verticalCenter: action_combo.verticalCenter
+                    visible: Object.keys(action_inputs).length > 0
+                }
             }
 
-            ComboBox {
-                width: 150
-                popup.width: 300
-                model: Object.keys(MidiControl.builtin_actions).concat(['Custom...'])
+            Row {
+                spacing: 3
+                id: custom_action_script_row
+                visible: action_combo.currentValue === 'Custom...'
+
+                Item { width: 200; height: 30 }
+
+                Label {
+                    text: '•  execute: '
+                    anchors.verticalCenter: custom_action_script_field.verticalCenter
+                }
+
+                TextField {
+                    id: custom_action_script_field
+                    height: 40
+                    placeholderText: 'custom action script'
+                    width: 500
+                }
+            }
+
+            Repeater {
+                id: actions_repeater
+
+                model: Object.keys(action_inputs).length
+
+                Row {
+                    spacing: 3
+                    id: action_row
+                    property var action: Object.values(action_inputs)[index]
+                    property string action_name: Object.keys(action_inputs)[index]
+
+                    Item { width: 200; height: 30 }
+
+                    Label {
+                        text: '•  ' + action_name + ': '
+                        anchors.verticalCenter: input_combo.verticalCenter
+                    }
+
+                    ComboBox {
+                        id: input_combo
+                        height: 40
+                        width: 150
+                        model: Object.keys(action.presets).concat(['custom...'])
+                    }
+
+                    TextField {
+                        visible: input_combo.currentText === 'custom...'
+                        height: input_combo.height
+                        anchors.verticalCenter: input_combo.verticalCenter
+                        placeholderText: 'custom input script'
+                        width: 400
+                    }
+                }
             }
         }
     }

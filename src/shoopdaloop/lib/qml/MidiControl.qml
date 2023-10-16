@@ -45,44 +45,6 @@ declare_in_context('shoop_format', require('shoop_format'))
     // TODO: some optimization in the implementation so that we don't have to iterate over all the filters
     // for every single message
     property var configuration : MidiControlConfiguration {}
-    
-    // [
-    //     { 
-    //         'filters': [match_type(Midi.NoteOn), match_note(89)],
-    //         'action': 'Stop All',
-    //     },
-    //     { 
-    //         'filters': [match_type(Midi.NoteOn), match_note(64)],
-    //         'action': 'Select Move Up'
-    //     },
-    //     { 
-    //         'filters': [match_type(Midi.NoteOn), match_note(65)],
-    //         'action': 'Select Move Down'
-    //     },
-    //     { 
-    //         'filters': [match_type(Midi.NoteOn), match_note(66)],
-    //         'action': 'Select Move Left'
-    //     },
-    //     { 
-    //         'filters': [match_type(Midi.NoteOn), match_note(67)],
-    //         'action': 'Select Move Right'
-    //     },
-    //     { 
-    //         'filters': [match_type(Midi.NoteOn), match_note(68)],
-    //         'action': 'Stop All',
-    //         'inputs': {
-    //             'loops': 'selection'
-    //         },
-    //     },
-    //     {
-    //         'filters': [match_type(Midi.NoteOn)],
-    //         'action': 'Default Loop Action',
-    //         'condition': 'msg[2] < 64',
-    //         'inputs': {
-    //             'loops': '{{1,1}}'
-    //         },
-    //     }
-    // ]
 
     // Hook up an action descriptor to a configuration descriptor using that action,
     // generating a callable that can be called to execute the configured action.

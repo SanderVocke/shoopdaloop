@@ -14,8 +14,8 @@ function loops_input(_default='selection') {
 // Specifies built-in actions that can be mapped. An action is a named script command which can also take inputs.
 // Inputs have default values and presets.
 const builtin_actions = ({
-    'Stop All': {
-        'description': 'Stop all loops',
+    'Stop Loops': {
+        'description': 'Stop loops',
         'script': 'shoop_control.loop_transition(loops, shoop_control.constants.LoopMode_Stopped, 0)',
         'inputs': {
             'loops': loops_input('all')
@@ -123,20 +123,24 @@ function match_note(note) {
 
     switch (kind) {
       case MessageFilterKind.NoteOn:
-        rval.description = (rval.note) ? `Note ${rval.note} on` : 'Any note on'
+        rval.description = (rval.note !== undefined) ? `Note ${rval.note} on` : 'Any note on'
         break;
       case MessageFilterKind.NoteOff:
-        rval.description = (rval.note) ? `Note ${rval.note} off` : 'Any note off'
+        rval.description = (rval.note !== undefined) ? `Note ${rval.note} off` : 'Any note off'
         break;
       case MessageFilterKind.ControlChange:
-        rval.description = (rval.cc) ? `CC ${rval.cc}` : 'Any CC'
+        rval.description = (rval.cc !== undefined) ? `CC ${rval.cc}` : 'Any CC'
         break;
       case MessageFilterKind.ProgramChange:
-        rval.description = (rval.program) ? `Program Change ${rval.program}` : 'Any Program Change'
+        rval.description = (rval.program !== undefined) ? `Program Change ${rval.program}` : 'Any Program Change'
         break;
       default:
         rval.description = 'Advanced'
         break;
+    }
+
+    if (supports_channel(rval) && has_channel(rval)) {
+      rval.description += ` @ ch. ${rval.channel}`
     }
 
     return rval
