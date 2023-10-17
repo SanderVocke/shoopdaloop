@@ -52,9 +52,10 @@ class ControlInterface(ControlHandler):
     @Slot(str, 'QVariant')
     def register_midi_event_cb(self, device_name_filter_regex, cb):
         """
-        Register a callback for MIDI events.
-        
-        TODO: fill in the rest of this docstring
+        @shoop_lua_fn_docstring.start
+        shoop_control.register_midi_event_cb(device_name_filter_regex, callback)
+        Register a callback for MIDI events. TODO: fill in further
+        @shoop_lua_fn_docstring.end
         """
         self.logger.debug("Registering MIDI event callback for device '{}'".format(device_name_filter_regex))
         self._midi_callbacks.append([device_name_filter_regex, cb])
@@ -62,12 +63,15 @@ class ControlInterface(ControlHandler):
     @Slot('QVariant')
     def register_keyboard_event_cb(self, cb):
         """
+        @shoop_lua_fn_docstring.start
+        shoop_control.register_keyboard_event_cb(callback)
         Register a callback for keyboard events.
 
         The callback should have the signature callback(event_type, key, modifiers), where:
         - event_type is a KeyEventType enum value (example in LUA: shoop.constants.KeyEventType_Pressed or shoop.constants.KeyEventType_Released)
         - key is the keycode as used by Qt.Key (example in LUA: shoop.constants.Key_A)
         - modifiers is a bitmask of Qt.KeyboardModifier values (example in LUA: shoop.constants.ShiftModifier)
+        @shoop_lua_fn_docstring.end
         """
         self.logger.debug("Registering keyboard event callback")
         self._keyboard_callbacks.append(cb)
