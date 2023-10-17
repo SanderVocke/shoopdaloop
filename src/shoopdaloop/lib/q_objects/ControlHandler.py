@@ -126,6 +126,15 @@ class ControlHandler(QQuickItem):
     ]
 
     def generate_loop_mode_constants():
+        # @shoop_lua_enum_docstring.start
+        # LoopMode
+        # shoop_control.LoopMode_Unknown
+        # shoop_control.LoopMode_Stopped
+        # shoop_control.LoopMode_Playing
+        # shoop_control.LoopMode_Recording
+        # shoop_control.LoopMode_PlayingDryThroughWet 
+        # shoop_control.LoopMode_RecordingDryIntoWet
+        # @shoop_lua_enum_docstring.end
         rval = []
         for i in list(LoopMode):
             rval.append(['LoopMode_' + i.name, i.value])
@@ -207,7 +216,10 @@ class ControlHandler(QQuickItem):
     @allow_qml_override
     def loop_count(self, loop_selector):
         """
+        @shoop_lua_fn_docstring.start
+        shoop_control.loop_count(loop_selector) -> int
         Count the amount of loops given by the selector.
+        @shoop_lua_fn_docstring.end
         """
         pass
 
@@ -215,7 +227,10 @@ class ControlHandler(QQuickItem):
     @allow_qml_override
     def loop_get_mode(self, loop_selector):
         """
+        @shoop_lua_fn_docstring.start
+        shoop_control.loop_get_mode(loop_selector) -> LoopMode
         Get the current mode of the specified loops.
+        @shoop_lua_fn_docstring.end
         """
         pass
 
@@ -223,7 +238,10 @@ class ControlHandler(QQuickItem):
     @allow_qml_override
     def loop_get_length(self, loop_selector):
         """
-        Get the length of the specified loops.
+        @shoop_lua_fn_docstring.start
+        shoop_control.loop_get_length(loop_selector) -> int
+        Get the length of the specified loops in samples.
+        @shoop_lua_fn_docstring.end
         """
         pass
     

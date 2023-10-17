@@ -6,6 +6,11 @@
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
+import os
+import sys
+
+sys.path.append(os.path.abspath("./_ext"))
+
 project = 'ShoopDaLoop'
 copyright = '2023, Sander Vocke'
 author = 'Sander Vocke'
@@ -13,7 +18,9 @@ author = 'Sander Vocke'
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
-extensions = ['sphinxcontrib.fulltoc', 'sphinxcontrib.plantuml']
+extensions = ['sphinxcontrib.fulltoc',
+              'sphinxcontrib.plantuml',
+              'shoop_function_docstrings']
 
 templates_path = []
 exclude_patterns = []
