@@ -11,8 +11,6 @@ PythonFXChain {
     readonly property var logger : PythonLogger { name: "Frontend.Qml.FXChain" }
 
     property var descriptor : null
-    property Registry objects_registry: null
-    property Registry state_registry: null
 
     readonly property string obj_id : descriptor.id
     title: descriptor.title
@@ -37,7 +35,7 @@ PythonFXChain {
 
     RegisterInRegistry {
         id: reg_entry
-        registry: root.objects_registry
+        registry: registries.objects_registry
         key: root.descriptor.id
         object: root
     }
@@ -81,8 +79,6 @@ PythonFXChain {
             property var mapped_item
             property int index
             descriptor: mapped_item
-            objects_registry: root.objects_registry
-            state_registry: root.state_registry
             is_internal: true
         }
     }
@@ -94,8 +90,6 @@ PythonFXChain {
             property var mapped_item
             property int index
             descriptor: mapped_item
-            objects_registry: root.objects_registry
-            state_registry: root.state_registry
             is_internal: true
         }
     }

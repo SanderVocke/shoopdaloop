@@ -10,9 +10,12 @@ Dialog {
     id: root
     modal: true
     title: 'Settings'
-    standardButtons: Dialog.Save | Dialog.Close
+    standardButtons: Dialog.Save | Dialog.Discard | Dialog.Close
 
     readonly property PythonLogger logger: PythonLogger { name: "Frontend.Qml.SettingsDialog" }
+
+    onAccepted: all_settings.save()
+    onDiscarded: all_settings.load()
 
     width: Overlay.overlay ? Overlay.overlay.width - 50 : 800
     height: Overlay.overlay ? Overlay.overlay.height - 50 : 500
@@ -45,26 +48,59 @@ Dialog {
         }
     }
 
-    component MIDISettings : Settings {
+    Settings {
+        id: all_settings
+        name: "AllSettings"
+        schema_name: "settings"
+        current_version: 1
+
+        readonly property PythonLogger logger: PythonLogger { name: "Frontend.Qml.AllSettings" }
+
+        function save() {
+            logger.debug("Saving settings.")
+            validate()
+            settings_io.save_settings(to_dict(), null)
+        }
+
+        function load() {
+            logger.debug("Loading settings.")
+            let loaded_settings = settings_io.load_settings(null)
+            if (loaded_settings != null) { from_dict(loaded_settings) }
+        }
+
+        Component.onCompleted: load()
+
+        contents: ({
+            'midi_settings': {
+                'schema': 'midi_settings.1',
+                'configuration': midi_settings.default_contents()
+            }
+        })
+    }
+
+    Settings {
+        id: midi_settings
         name: 'MIDISettings'
         schema_name: 'midi_settings'
         current_version: 1
 
-        property var default_contents: ({
+        contents: all_settings.contents.midi_settings.configuration
+
+        function default_contents() { return ({
             'autoconnect_input_regexes': [],
             'autoconnect_output_regexes': [],
             'midi_control_configuration': {
                 'schema': 'midi_control_configuration.1',
                 'configuration': []
             }
-        })
+        }) }
     }
 
     component MIDISettingsUi : Item {
-        id: midi_settings
+        id: midi_settings_ui
 
-        property list<string> autoconnect_input_regexes: []
-        property list<string> autoconnect_output_regexes: []
+        property list<string> autoconnect_input_regexes: midi_settings.contents ? midi_settings.contents.autoconnect_input_regexes : []
+        property list<string> autoconnect_output_regexes: midi_settings.contents ? midi_settings.contents.autoconnect_output_regexes : []
 
         Column {
             id: header
@@ -134,16 +170,16 @@ Dialog {
                                 text: 'Input device name regexes'
                             }
                             Repeater {
-                                model: midi_settings.autoconnect_input_regexes.length
+                                model: midi_settings_ui.autoconnect_input_regexes.length
 
                                 Row {
                                     spacing: 10
                                     height: 40
 
                                     ShoopTextField {
-                                        property string controlledState: midi_settings.autoconnect_input_regexes[index]
+                                        property string controlledState: midi_settings_ui.autoconnect_input_regexes[index]
                                         onControlledStateChanged: () => { text = controlledState }
-                                        onTextChanged: () => { midi_settings.autoconnect_input_regexes[index] = text }
+                                        onTextChanged: () => { midi_settings_ui.autoconnect_input_regexes[index] = text }
                                         Component.onCompleted: () => { text = controlledState }
                                         width: 190
                                     }
@@ -158,7 +194,7 @@ Dialog {
                                             anchors.centerIn: parent
                                         }
                                         onClicked: {
-                                            midi_settings.autoconnect_input_regexes.splice(index, 1)
+                                            midi_settings_ui.autoconnect_input_regexes.splice(index, 1)
                                         }
                                     }
                                 }
@@ -174,8 +210,8 @@ Dialog {
                                     anchors.centerIn: parent
                                 }
                                 onClicked: {
-                                    midi_settings.autoconnect_input_regexes.push('')
-                                    midi_settings.autoconnect_input_regexesChanged()
+                                    midi_settings_ui.autoconnect_input_regexes.push('')
+                                    midi_settings_ui.autoconnect_input_regexesChanged()
                                 }
                             }
                         }
@@ -190,17 +226,16 @@ Dialog {
                                 text: 'Output device name regexes'
                             }
                             Repeater {
-                                model: midi_settings.autoconnect_output_regexes.length
-                                onModelChanged: console.log('model changed')
+                                model: midi_settings_ui.autoconnect_output_regexes.length
 
                                 Row {
                                     spacing: 10
                                     height: 40
 
                                     ShoopTextField {
-                                        property string controlledState: midi_settings.autoconnect_output_regexes[index]
+                                        property string controlledState: midi_settings_ui.autoconnect_output_regexes[index]
                                         onControlledStateChanged: () => { text = controlledState }
-                                        onTextChanged: () => { midi_settings.autoconnect_output_regexes[index] = text }
+                                        onTextChanged: () => { midi_settings_ui.autoconnect_output_regexes[index] = text }
                                         Component.onCompleted: () => { text = controlledState }
                                         width: 190
                                     }
@@ -231,8 +266,8 @@ Dialog {
                                     anchors.centerIn: parent
                                 }
                                 onClicked: {
-                                    midi_settings.autoconnect_output_regexes.push('')
-                                    midi_settings.autoconnect_output_regexesChanged()
+                                    midi_settings_ui.autoconnect_output_regexes.push('')
+                                    midi_settings_ui.autoconnect_output_regexesChanged()
                                 }
                             }
                         }

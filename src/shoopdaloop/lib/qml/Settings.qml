@@ -10,16 +10,17 @@ QtObject {
 
     // Note: don't set directly! Use from_dict instead.
     property var contents: []
-    readonly property var current_version: 1
+    property var current_version: 1
 
     readonly property PythonLogger logger: PythonLogger { name: `Frontend.Qml.Settings.${name}` }
 
     function validate() {
         let dict = to_dict()
+        let schema = `${schema_name}.${current_version}`
         try {
-            schema_validator.validate_schema(dict, `${schema_name}.${current_version}`)
+            schema_validator.validate_schema(dict, schema)
         } catch (e) {
-            root.logger.error(`Failed to validate ${name} settings: ${e.message}. Config: ${JSON.stringify(dict, 0, 2)}`)
+            root.logger.error(`Failed to validate ${name} settings against ${schema}: ${e.message}. Config: ${JSON.stringify(dict, 0, 2)}`)
             return false
         }
         return true
@@ -36,7 +37,7 @@ QtObject {
     }
     function to_dict() {
         return {
-            'schema': '${schema_name}.1',
+            'schema': `${schema_name}.1`,
             'configuration': contents
         }
     }

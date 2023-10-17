@@ -1,20 +1,37 @@
 from PySide6.QtCore import QObject, Signal, Property, Slot, QSettings
+from PySide6.QtQml import QJSValue
 
 import appdirs
+import json
+import os
+
+from ..logging import *
 
 class SettingsIO(QObject):
     def __init__(self, parent=None):
         super(SettingsIO, self).__init__(parent)
-        self.filename = appdirs.user_config_dir(appname='ShoopDaLoop') + '/settings.json'
+        self.dir = appdirs.user_config_dir(appname='ShoopDaLoop')
+        self.filename = self.dir + '/settings.json'
+        self.logger = Logger('Frontend.SettingsIO')
         
-    @Slot(str, 'QVariant')
+    @Slot('QVariant', 'QVariant')
     def save_settings(self, settings, override_filename=None):
+        if isinstance(settings, QJSValue):
+            settings = settings.toVariant()
         file = self.filename if override_filename is None else override_filename
+        self.logger.info("Saving settings to {}".format(file))
+        if not os.path.exists(self.dir):
+            os.makedirs(self.dir)
         with open(file, 'w') as f:
-            f.write(settings)
+            f.write(json.dumps(settings, indent=2))
     
-    @Slot(str, result='QVariant')
+    @Slot('QVariant', result='QVariant')
     def load_settings(self, override_filename=None):
         file = self.filename if override_filename is None else override_filename
-        with open(file, 'r') as f:
-            return f.read()
+        if os.path.exists(file):
+            self.logger.info("Loading settings from {}".format(file))
+            with open(file, 'r') as f:
+                return json.loads(f.read())
+        else:
+            self.logger.info("No settings file found at {}. Using defaults.".format(file))
+            return None

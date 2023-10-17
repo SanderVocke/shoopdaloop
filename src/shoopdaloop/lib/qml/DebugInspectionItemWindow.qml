@@ -7,7 +7,6 @@ ApplicationWindow {
     id: root
     title: "Inspect " + object ? object.obj_id : "Unknown"
 
-    property var objects_registry: null
     property var object: null
 
     width: 500

@@ -35,8 +35,6 @@ ApplicationWindow {
                 anchors.fill: parent
 
                 initial_track_descriptors: []
-                objects_registry: registries.objects_registry
-                state_registry: registries.state_registry
             }
         }
     }

@@ -7,8 +7,6 @@ ApplicationWindow {
     id: root
     title: "Debug Inspections"
 
-    property var objects_registry
-
     width: 700
     height: 250
     minimumWidth: 700
@@ -18,11 +16,11 @@ ApplicationWindow {
     
     Material.theme: Material.Dark
 
-    property var object_ids: objects_registry ? objects_registry.keys() : []
+    property var object_ids: registries.objects_registry.keys()
     Connections {
-        target: objects_registry
+        target: registries.objects_registry ? registries.objects_registry : null
         function onContentsChanged() {
-            object_ids = objects_registry.keys()
+            object_ids = registries.objects_registry.keys()
         }
     }
 
@@ -55,13 +53,13 @@ ApplicationWindow {
                     case "Any":
                         return root.object_ids
                     case "Port":
-                        return root.object_ids.filter(id => objects_registry.get(id).object_schema.match(/(?:audio|midi)port.[0-9]+/))
+                        return root.object_ids.filter(id => registries.objects_registry.get(id).object_schema.match(/(?:audio|midi)port.[0-9]+/))
                     case "Loop":
-                        return root.object_ids.filter(id => objects_registry.get(id).object_schema.match(/loop.[0-9]+/))
+                        return root.object_ids.filter(id => registries.objects_registry.get(id).object_schema.match(/loop.[0-9]+/))
                     case "Channel":
-                        return root.object_ids.filter(id => objects_registry.get(id).object_schema.match(/channel.[0-9]+/))
+                        return root.object_ids.filter(id => registries.objects_registry.get(id).object_schema.match(/channel.[0-9]+/))
                     case "FX":
-                        return root.object_ids.filter(id => objects_registry.get(id).object_schema.match(/fx_chain.[0-9]+/))
+                        return root.object_ids.filter(id => registries.objects_registry.get(id).object_schema.match(/fx_chain.[0-9]+/))
                 }
             }
             width: 400
@@ -70,8 +68,8 @@ ApplicationWindow {
             anchors.verticalCenter: filter.verticalCenter
             text: "Inspect"
             onClicked: {
-                if (root.objects_registry.has(object_select.currentValue)) {
-                    root.spawn_window(root.objects_registry.get(object_select.currentValue))
+                if (registries.objects_registry.has(object_select.currentValue)) {
+                    root.spawn_window(registries.objects_registry.get(object_select.currentValue))
                 }
             }
         }

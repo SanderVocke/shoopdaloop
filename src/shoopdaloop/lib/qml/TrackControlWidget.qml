@@ -14,8 +14,6 @@ Item {
 
     // Input properties
     property var initial_track_descriptor : null
-    property Registry objects_registry : null
-    property Registry state_registry : null
 
     // UI-controlled properties
     property alias volume_dB: volume_slider.value
@@ -148,22 +146,22 @@ Item {
     }
     RegistryLookups {
         id: lookup_loops
-        registry: root.objects_registry
+        registry: registries.objects_registry
         keys: root.initial_track_descriptor ? root.initial_track_descriptor.loops.map((l) => l.id) : []
     }
     RegistryLookups {
         id: lookup_ports
-        registry: root.objects_registry
+        registry: registries.objects_registry
         keys: initial_track_descriptor ? initial_track_descriptor.ports.map((p) => p.id) : []
     }
     RegistryLookups {
         id: lookup_fx_ports
-        registry: root.objects_registry
+        registry: registries.objects_registry
         keys: initial_track_descriptor && 'fx_chain' in initial_track_descriptor ? initial_track_descriptor.fx_chain.ports.map((p) => p.id) : []
     }
     RegistryLookup {
         id: lookup_fx_chain
-        registry: root.objects_registry
+        registry: registries.objects_registry
         key: initial_track_descriptor && 'fx_chain' in initial_track_descriptor ? initial_track_descriptor.fx_chain.id : null
     }
     LinearDbConversion {

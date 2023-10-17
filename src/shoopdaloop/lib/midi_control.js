@@ -61,7 +61,17 @@ function match_type(type) {
 function match_note(note) {
     return [ 1, 0xFF, note ]
 }
-  const MessageFilterKind = {
+function match_cc(cc) {
+    return [ 1, 0xFF, cc ]
+}
+function match_channel(channel) {
+    return [ 0, 0x0F, channel ]
+}
+function match_program(program) {
+    return [ 1, 0xFF, program ]
+}
+
+const MessageFilterKind = {
     NoteOn: 'Note on',
     NoteOff: 'Note off',
     ControlChange: 'CC',

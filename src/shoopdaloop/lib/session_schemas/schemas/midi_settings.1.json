@@ -16,9 +16,9 @@
                 "midi_control_configuration": {
                     "type": "object",
                     "properties": {
-                        "schema": { "const": "midi_control_configuration.1", "$comment": "see midi_control_configuration.1 schema" },
+                        "schema": { "const": "midi_control_configuration.1", "$comment": "see midi_control_configuration.1 schema" }
                     },
-                    "required": "schema"
+                    "required": [ "schema" ]
                 }
             },
             "required": [

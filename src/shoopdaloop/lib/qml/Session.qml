@@ -31,7 +31,7 @@ AppRegistries {
             [],
             scenes_widget.actual_scene_descriptors,
             [],
-            fx_chain_states_registry.all_values()
+            registries.fx_chain_states_registry.all_values()
         );
     }
 
@@ -105,7 +105,7 @@ AppRegistries {
             'sync_active',
             'scenes_widget'
         ])
-        objects_registry.clear()
+        registries.objects_registry.clear()
         tracks_widget.reload()
     }
 
@@ -177,7 +177,7 @@ AppRegistries {
         key: 'selected_loop_ids'
     }
     property alias selected_loop_ids : selected_loops_lookup.object
-    property list<var> selected_loops : selected_loop_ids ? Array.from(selected_loop_ids).map((id) => objects_registry.get(id)) : []
+    property list<var> selected_loops : selected_loop_ids ? Array.from(selected_loop_ids).map((id) => registries.objects_registry.get(id)) : []
 
     RegistryLookup {
         id: targeted_loop_lookup
@@ -192,7 +192,7 @@ AppRegistries {
     }
 
     RegisterInRegistry {
-        registry: root.state_registry
+        registry: registries.state_registry
         key: 'control_interface'
         object: control_interface
     }
@@ -206,7 +206,7 @@ AppRegistries {
     }
 
     MidiControl {
-        id: midi_learn
+        id: midi_control
         when: control_interface.ready
     }
 
@@ -250,11 +250,18 @@ AppRegistries {
         id: session_backend
 
         MidiControlPort {
+            id: midi_control_port
             name_hint: "control"
             direction: Types.PortDirection.Input
             autoconnect_regexes: ['.*APC MINI MIDI.*']
 
-            onMsgReceived: msg => midi_learn.handle_midi(msg)
+            onMsgReceived: msg => midi_control.handle_midi(msg)
+        }
+
+        RegisterInRegistry {
+            registry: registries.state_registry
+            key: 'midi_control_port'
+            object: midi_control_port
         }
 
         anchors {
@@ -280,17 +287,12 @@ AppRegistries {
 
             onLoadSession: (filename) => root.load_session(filename)
             onSaveSession: (filename) => root.save_session(filename)
-
-            state_registry: root.state_registry
-            objects_registry: root.objects_registry
         }
 
         ScenesWidget {
             id: scenes_widget
 
             initial_scene_descriptors: root.initial_descriptor.scenes
-            objects_registry: root.objects_registry
-            state_registry: root.state_registry
             
             width: 140
             anchors {
@@ -314,8 +316,6 @@ AppRegistries {
             }
 
             initial_track_descriptors: root.initial_descriptor.tracks
-            objects_registry: root.objects_registry
-            state_registry: root.state_registry
         }
 
         Item {

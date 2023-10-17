@@ -28,6 +28,7 @@ from .q_objects.ReleaseFocusNotifier import ReleaseFocusNotifier
 from .q_objects.ControlInterface import ControlInterface
 from .q_objects.MidiControlPort import MidiControlPort
 from .q_objects.SettingsIO import SettingsIO
+from .q_objects.AppRegistries import AppRegistries
 
 # Read version from the version.txt file (will be present when packaged)
 pkg_version = None
@@ -62,6 +63,7 @@ def register_shoopdaloop_qml_classes():
     register_qml_class(ControlInterface, 'ControlInterface')
     register_qml_class(MidiControlPort, 'MidiControlPort')
     register_qml_class(SettingsIO, 'SettingsIO')
+    register_qml_class(AppRegistries, 'AppRegistries')
 
 def create_and_populate_root_context(engine, global_args, additional_items={}):
     # Set import path to predefined classes
@@ -80,6 +82,7 @@ def create_and_populate_root_context(engine, global_args, additional_items={}):
         'release_focus_notifier': ReleaseFocusNotifier(parent=engine),
         'global_args': global_args,
         'settings_io': SettingsIO(parent=engine),
+        'registries': AppRegistries(parent=engine),
     }
 
     for key, item in additional_items.items():

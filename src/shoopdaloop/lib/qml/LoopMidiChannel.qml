@@ -8,8 +8,6 @@ PythonLoopMidiChannel {
     id: root
 
     property var descriptor : null
-    property Registry objects_registry : null
-    property Registry state_registry : null
 
     readonly property string obj_id : descriptor.id
 
@@ -67,13 +65,13 @@ PythonLoopMidiChannel {
 
     RegistryLookups {
         id: lookup_connected_ports
-        registry: objects_registry
+        registry: registries.objects_registry
         keys: descriptor.connected_port_ids
     }
 
     RegisterInRegistry {
         id: reg_entry
-        registry: root.objects_registry
+        registry: registries.objects_registry
         key: root.descriptor.id
         object: root
     }

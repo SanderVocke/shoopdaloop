@@ -11,9 +11,6 @@ import '..'
 Session {
     id: session
 
-    objects_registry: ObjectsRegistry {}
-    state_registry: StateRegistry {}
-
     anchors.fill: parent
     initial_descriptor: GenerateSession.generate_default_session(app_metadata.version_string, 2)
 
@@ -48,7 +45,7 @@ declare_global('shoop_format', require('shoop_format'))
         function clear() {
             master_loop().clear()
             other_loop().clear()
-            session.state_registry.replace('sync_active', false)
+            registries.state_registry.replace('sync_active', false)
             master_loop().deselect()
             other_loop().deselect()
             testcase.wait(100)

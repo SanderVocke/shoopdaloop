@@ -1,0 +1,22 @@
+{
+    "type": "object",
+    "properties": {
+        "schema": { "const": "settings.1" },
+        "configuration": {
+            "type": "object",
+            "properties": {
+                "midi_settings": {
+                    "type": "object",
+                    "properties": {
+                        "schema": { "const": "midi_settings.1", "$comment": "see midi_settings.1 schema" }
+                    },
+                    "required": ["schema"]
+                }
+            },
+            "required": [
+                "midi_settings"
+            ]
+        }
+    },
+    "required": ["schema", "configuration"]
+}

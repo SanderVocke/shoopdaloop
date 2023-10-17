@@ -6,8 +6,6 @@ import '../generated/types.js' as Types
 PythonMidiPort {
     id: root
     property var descriptor : null
-    property Registry objects_registry : null
-    property Registry state_registry : null
     property bool loaded : initialized
     direction: {
         switch(descriptor.direction) {
@@ -40,7 +38,7 @@ PythonMidiPort {
 
     RegistryLookups {
         id: lookup_passthrough_to
-        registry: objects_registry
+        registry: registries.objects_registry
         keys: descriptor.passthrough_to
     }
 
@@ -52,7 +50,7 @@ PythonMidiPort {
 
     RegisterInRegistry {
         id: reg_entry
-        registry: root.objects_registry
+        registry: registries.objects_registry
         key: root.descriptor.id
         object: root
     }
