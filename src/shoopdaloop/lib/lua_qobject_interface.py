@@ -31,6 +31,7 @@ def as_callable(lua_val):
 lua_int = [ int, lua_passthrough ]
 lua_bool = [ bool, lua_passthrough ]
 lua_str = [ str, lua_passthrough ]
+lua_float = [ float, lua_passthrough ]
 lua_callable = [ 'QVariant', as_callable ]
 
 # Creates a global object in the Lua runtime with the given name.

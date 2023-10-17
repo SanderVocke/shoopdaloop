@@ -6,7 +6,7 @@ import inspect
 import lupa
 
 from ..logging import Logger
-from ..lua_qobject_interface import lua_passthrough, qt_typename, lua_int, lua_bool, lua_str, lua_callable
+from ..lua_qobject_interface import lua_passthrough, qt_typename, lua_int, lua_bool, lua_str, lua_float, lua_callable
 from ..backend_wrappers import LoopMode
 
 def as_loop_selector(lua_val):
@@ -34,7 +34,34 @@ def as_loop_selector(lua_val):
     
     raise ValueError('Failed to interpret loop selector. Loop selector may be a callable (f => bool), [], [x,y], or [[x1,y1],[x2,y2],...]. Selector: {} (type {}). Exception: {}'.format(str(lua_val), lupa.lua_type(lua_val), str(maybe_exception)))
 
+def as_track_selector(lua_val):
+    def iscoord(l):
+        # track coordinates are based on the track.
+        return isinstance(l, int)
+    def isempty(l):
+        return len(l) == 0
+    def tolist(l):
+        return l if isinstance(l, list) else list(dict(l).values())
+    
+    maybe_exception = RuntimeError("Could not recognize track selector type.")
+    try:
+        if lupa.lua_type(lua_val) == 'table' or isinstance(lua_val, list):
+            aslist = tolist(lua_val)
+            if isempty(aslist):
+                return aslist # is empty
+            assert(list(set([iscoord(l) for l in aslist])) == [True])
+            return aslist
+        elif lupa.lua_type(lua_val) == 'function' or callable(lua_val):
+            # Lua functors may be passed, can be called from Python later.
+            return lua_val
+    except Exception as e:
+        maybe_exception = e
+    
+    raise ValueError('Failed to interpret track selector. track selector may be a callable (f => bool), [], [track_idx], or [tidx1,tidx2,...]. Selector: {} (type {}). Exception: {}'.format(str(lua_val), lupa.lua_type(lua_val), str(maybe_exception)))
+
+
 lua_loop_selector = [ 'QVariant', as_loop_selector ]
+lua_track_selector = [ 'QVariant', as_track_selector ]
 
 class ControlHandler(QQuickItem):
     """
@@ -90,15 +117,12 @@ class ControlHandler(QQuickItem):
         [ 'loop_target', lua_loop_selector ],
         [ 'loop_clear', lua_loop_selector ],
         [ 'loop_untarget_all' ],
-        [ 'port_get_volume', lua_loop_selector ],
-        [ 'port_get_muted', lua_loop_selector ],
-        # TODO
-        # 'port_get_input_muted',
-        # 'port_mute',
-        # 'port_mute_input',
-        # 'port_unmute',
-        # 'port_unmute_input',
-        # 'port_set_volume',
+        [ 'track_get_volume', lua_track_selector ],
+        [ 'track_get_muted', lua_track_selector ],
+        [ 'track_get_input_muted', lua_track_selector ],
+        [ 'track_set_muted', lua_track_selector, lua_bool ],
+        [ 'track_set_input_muted', lua_track_selector, lua_bool ],
+        [ 'track_set_volume', lua_track_selector, lua_float ],
     ]
 
     def generate_loop_mode_constants():
@@ -340,52 +364,51 @@ class ControlHandler(QQuickItem):
         """
         pass
 
-    # PORTS
-    # port_selector selects the port(s) to target.
-    # For some interfaces only one port may be selected (e.g. getters).
-    # For some interfaces, the selector may yield multiple ports (e.g. set volume).
+    # track
+    # track_selector selects the track(s) to target.
+    # For some interfaces only one track may be selected (e.g. getters).
+    # For some interfaces, the selector may yield multiple tracks (e.g. set volume).
     # The selector can be one of:
-    # - [track_idx, fn] (fn is (port) => true/false, applied to ports of track)
-    # - fn              (fn is (port) => true/false, applied to ports of all tracks)
+    # - [track_idx, fn] (fn is (track) => true/false, applied to tracks of track)
+    # - fn              (fn is (track) => true/false, applied to tracks of all tracks)
 
-    # Port getter interfaces
+    # track getter interfaces
     @Slot('QVariant', result=float)
     @allow_qml_override
-    def port_get_volume(self, port_selector):
+    def track_get_volume(self, track_selector):
+        """
+        Get the volume of the given track.
+        """
         pass
 
-    @Slot('QVariant')
+    @Slot('QVariant', result=bool)
     @allow_qml_override
-    def port_get_muted(self, port_selector, result=bool):
+    def track_get_muted(self, track_selector):
+        """
+        Get whether the given track is muted.
+        """
         pass
 
-    @Slot('QVariant')
+    @Slot('QVariant', result=bool)
     @allow_qml_override
-    def port_get_input_muted(self, port_selector, result=bool):
+    def track_get_input_muted(self, track_selector):
+        """
+        Get whether the given track's input is muted.
+        """
         pass
 
-    # Port action interfaces
-    @Slot('QVariant')
+    @Slot('QVariant', bool)
     @allow_qml_override
-    def port_mute(self, port_selector):
-        pass
-
-    @Slot('QVariant')
-    @allow_qml_override
-    def port_mute_input(self, port_selector):
-        pass
-
-    @Slot('QVariant')
-    @allow_qml_override
-    def port_unmute(self, port_selector):
-        pass
-
-    @Slot('QVariant')
-    @allow_qml_override
-    def port_unmute_input(self, port_selector):
+    def track_set_input_muted(self, track_selector, muted):
+        """
+        Set whether the given track's input is muted.
+        """
         pass
 
     @Slot('QVariant', float)
     @allow_qml_override
-    def port_set_volume(self, port_selector, vol):
+    def track_set_volume(self, track_selector, vol):
+        """
+        Set the given track's volume.
+        """
         pass
