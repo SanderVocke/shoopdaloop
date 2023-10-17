@@ -127,13 +127,14 @@ class ControlHandler(QQuickItem):
 
     def generate_loop_mode_constants():
         # @shoop_lua_enum_docstring.start
-        # LoopMode
-        # shoop_control.LoopMode_Unknown
-        # shoop_control.LoopMode_Stopped
-        # shoop_control.LoopMode_Playing
-        # shoop_control.LoopMode_Recording
-        # shoop_control.LoopMode_PlayingDryThroughWet 
-        # shoop_control.LoopMode_RecordingDryIntoWet
+        # shoop_control.constants.LoopMode_
+        # Constants to represent the various modes a loop can be in or transitioned to.
+        # Unknown
+        # Stopped
+        # Playing
+        # Recording
+        # PlayingDryThroughWet 
+        # RecordingDryIntoWet
         # @shoop_lua_enum_docstring.end
         rval = []
         for i in list(LoopMode):

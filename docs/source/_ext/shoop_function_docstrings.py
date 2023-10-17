@@ -16,7 +16,6 @@ class FunctionDocstrings(Directive):
         entity = self.arguments[1]
         full_filename = base_path + '/' + filename
         lines = []
-        rval = []
         fns = []
         enums = []
         
@@ -43,9 +42,27 @@ class FunctionDocstrings(Directive):
                         break
                     else:
                         desc_lines.append(lines[idx2].replace('#', '').replace('--', '').strip())
-                rval.append(nodes.paragraph(text=' '.join(desc_lines)))
+                enums.append({
+                    'base': desc_lines[0],
+                    'description': desc_lines[1],
+                    'values': desc_lines[2:]
+                })                
+        
+        root = nodes.paragraph()
+        bullet_list = nodes.bullet_list()
+        root += bullet_list
+        for enum in enums:
+            item = nodes.list_item()
+            item += nodes.strong(text=enum['base']+'[{}]'.format(','.join(enum['values'])))
+            item += nodes.paragraph(text=enum['description'])
+            bullet_list += item
+        for fn in fns:
+            item = nodes.list_item()
+            item += nodes.strong(text=fn['signature'])
+            item += nodes.paragraph(text=fn['description'])
+            bullet_list += item    
                 
-        return [nodes.paragraph(text='Shoopy hi shoopy.')]
+        return [root]
 
 def setup(app):
     app.add_directive("shoop_function_docstrings", FunctionDocstrings)

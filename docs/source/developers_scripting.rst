@@ -54,9 +54,16 @@ Globals and context variables
 API
 ^^^
 
+The API consists of globally available functions and constants, in addition to functions and constants available through built-in libraries. Built-in libraries should be included in scripts using the `require` function. Check `lib/lua/builtins/keyboard.lua` for an example.
+
+**globally available functions**:
+
+* **print(msg)**, **print_debug(msg)**, **print_error(msg)**, **print_info(msg)**: Print a message to the Frontend.LuaScript logger. Respective log levels are info (default), debug, error.
+
+**shoop_control**: provides basic interfacing with **ShoopDaLoop**. It has the following constants and functions:
+
 .. shoop_function_docstrings::
    src/shoopdaloop/lib/q_objects/ControlHandler.py ControlHandler
 
-* **print(msg)**, **print_debug(msg)**, **print_error(msg)**, **print_info(msg)**: Print a message to the Frontend.LuaScript logger. Respective log levels are info (default), debug, error.
-* For the rest of the API, there are plans to auto-generate documentation, but for now the available interfaces can be found in the source files `ControlHandler.py` and `ControlInterface.py`. Look for functions with a docstring. These functios are exposed in the LUA environment as shoop.<function_name>.
-* Check `lib/lua/builtins/keyboard.lua` for an example.
+.. shoop_function_docstrings::
+   src/shoopdaloop/lib/q_objects/ControlInterface.py ControlInterface
