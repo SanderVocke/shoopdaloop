@@ -250,7 +250,10 @@ class ControlHandler(QQuickItem):
     @allow_qml_override
     def loop_get_which_selected(self):
         """
+        @shoop_lua_fn_docstring.start
+        shoop_control.loop_get_which_selected() -> [[x1,y1],[x2,y2],...]
         Get the coordinates of all currently selected loops.
+        @shoop_lua_fn_docstring.end
         """
         pass
 
@@ -258,7 +261,10 @@ class ControlHandler(QQuickItem):
     @allow_qml_override
     def loop_get_all(self):
         """
+        @shoop_lua_fn_docstring.start
+        shoop_control.loop_get_all() -> [[x1,y1],[x2,y2],...]
         Get the coordinates of all loops.
+        @shoop_lua_fn_docstring.end
         """
         pass
     
@@ -266,7 +272,10 @@ class ControlHandler(QQuickItem):
     @allow_qml_override
     def loop_get_which_targeted(self):
         """
+        @shoop_lua_fn_docstring.start
+        shoop_control.loop_get_which_targeted() -> [x,y] | nil
         Get the coordinates of the currently targeted loop, or None if none are targeted.
+        @shoop_lua_fn_docstring.end
         """
         pass
 
@@ -274,7 +283,10 @@ class ControlHandler(QQuickItem):
     @allow_qml_override
     def loop_get_by_mode(self, mode):
         """
+        @shoop_lua_fn_docstring.start
+        shoop_control.loop_get_by_mode(mode) -> [[x1,y1],[x2,y2],...]
         Get the coordinates of all loops with the given mode.
+        @shoop_lua_fn_docstring.end
         """
         pass
 
@@ -282,7 +294,10 @@ class ControlHandler(QQuickItem):
     @allow_qml_override
     def loop_get_by_track(self, track):
         """
+        @shoop_lua_fn_docstring.start
+        shoop_control.loop_get_by_track(track) -> [[x1,y1],[x2,y2],...]
         Get the coordinates of all loops with the given mode.
+        @shoop_lua_fn_docstring.end
         """
         pass
 
@@ -290,7 +305,10 @@ class ControlHandler(QQuickItem):
     @allow_qml_override
     def loop_get_volume(self, loop_selector):
         """
+        @shoop_lua_fn_docstring.start
+        shoop_control.loop_get_volume(loop_selector) -> float
         Get the output audio volume of the specified loops.
+        @shoop_lua_fn_docstring.end
         """
         pass
 
@@ -298,7 +316,10 @@ class ControlHandler(QQuickItem):
     @allow_qml_override
     def loop_get_balance(self, loop_selector):
         """
+        @shoop_lua_fn_docstring.start
+        shoop_control.loop_get_balance(loop_selector) -> float
         Get the output audio balance of the specified stereo loops.
+        @shoop_lua_fn_docstring.end
         """
         pass
 
@@ -307,26 +328,21 @@ class ControlHandler(QQuickItem):
     @allow_qml_override
     def loop_transition(self, loop_selector, mode, cycles_delay):
         """
-        Transition the given loops. Whether the transition is immediate or synchronized
-        depends on the global application "synchronization active" state.
-        
-        Args:
-            loop_selector: The loop(s) to transition.
-            mode: The mode to transition to.
-            cycles_delay: The amount of cycles to wait before transitioning.
+        @shoop_lua_fn_docstring.start
+        shoop_control.loop_transition(loop_selector, mode, cycles_delay)
+        Transition the given loops. Whether the transition is immediate or synchronized depends on the global application "synchronization active" state.
+        @shoop_lua_fn_docstring.end
         """
         pass
 
     @Slot('QVariant', int, int)
     @allow_qml_override
-    def loop_record_n(self, loop_selector, n, cycles_delay):
+    def loop_record_n(self, loop_selector, n_cycles, cycles_delay):
         """
+        @shoop_lua_fn_docstring.start
+        shoop_control.loop_record_n(loop_selector, n_cycles, cycles_delay)
         Record the given loops for N cycles synchronously.
-
-        Args:
-            loop_selector: The loop(s) to record.
-            n: The amount of cycles to record.
-            cycles_delay: The amount of cycles to wait before recording.
+        @shoop_lua_fn_docstring.end
         """
         pass
 
@@ -334,7 +350,10 @@ class ControlHandler(QQuickItem):
     @allow_qml_override
     def loop_record_with_targeted(self, loop_selector):
         """
+        @shoop_lua_fn_docstring.start
+        shoop_control.loop_record_with_targeted(loop_selector)
         Record the given loops in sync with the currently targeted loop.
+        @shoop_lua_fn_docstring.end
         """
         pass
 
@@ -342,7 +361,10 @@ class ControlHandler(QQuickItem):
     @allow_qml_override
     def loop_set_balance(self, loop_selector, balance):
         """
+        @shoop_lua_fn_docstring.start
+        shoop_control.loop_set_balance(loop_selector, balance)
         Set the audio output balance for the specified loops.
+        @shoop_lua_fn_docstring.end
         """
         pass
 
@@ -350,11 +372,10 @@ class ControlHandler(QQuickItem):
     @allow_qml_override
     def loop_select(self, loop_selector, deselect_others):
         """
-        Select the specified loops.
-
-        Args:
-            loop_selector: The loop(s) to select.
-            deselect_others: Whether to deselect all other loops.
+        @shoop_lua_fn_docstring.start
+        shoop_control.loop_select(loop_selector)
+        Select the specified loops. If deselect_others is true, all other loops are deselected.
+        @shoop_lua_fn_docstring.end
         """
         pass
 
@@ -362,8 +383,10 @@ class ControlHandler(QQuickItem):
     @allow_qml_override
     def loop_target(self, loop_selector):
         """
-        Target the specified loop. If the selector specifies more than one loop,
-        a single loop in the set is chosen arbitrarily.
+        @shoop_lua_fn_docstring.start
+        shoop_control.loop_target(loop_selector)
+        Target the specified loop. If the selector specifies more than one loop, a single loop in the set is chosen arbitrarily.
+        @shoop_lua_fn_docstring.end
         """
         pass
 
@@ -371,7 +394,10 @@ class ControlHandler(QQuickItem):
     @allow_qml_override
     def loop_untarget_all(self):
         """
+        @shoop_lua_fn_docstring.start
+        shoop_control.loop_untarget_all()
         Untarget the currently targeted loop, if any.
+        @shoop_lua_fn_docstring.end
         """
         pass
 
@@ -379,7 +405,10 @@ class ControlHandler(QQuickItem):
     @allow_qml_override
     def loop_clear(self, loop_selector):
         """
+        @shoop_lua_fn_docstring.start
+        shoop_control.loop_clear(loop_selector)
         Clear the given loops.
+        @shoop_lua_fn_docstring.end
         """
         pass
 
@@ -396,7 +425,10 @@ class ControlHandler(QQuickItem):
     @allow_qml_override
     def track_get_volume(self, track_selector):
         """
+        @shoop_lua_fn_docstring.start
+        shoop_control.track_get_volume(track_selector) -> float
         Get the volume of the given track.
+        @shoop_lua_fn_docstring.end
         """
         pass
 
@@ -404,7 +436,10 @@ class ControlHandler(QQuickItem):
     @allow_qml_override
     def track_get_muted(self, track_selector):
         """
+        @shoop_lua_fn_docstring.start
+        shoop_control.track_get_muted(track_selector) -> bool
         Get whether the given track is muted.
+        @shoop_lua_fn_docstring.end
         """
         pass
 
@@ -412,7 +447,10 @@ class ControlHandler(QQuickItem):
     @allow_qml_override
     def track_get_input_muted(self, track_selector):
         """
+        @shoop_lua_fn_docstring.start
+        shoop_control.track_get_input_muted(track_selector) -> bool
         Get whether the given track's input is muted.
+        @shoop_lua_fn_docstring.end
         """
         pass
 
@@ -420,7 +458,10 @@ class ControlHandler(QQuickItem):
     @allow_qml_override
     def track_set_input_muted(self, track_selector, muted):
         """
+        @shoop_lua_fn_docstring.start
+        shoop_control.track_set_input_muted(track_selector, muted)
         Set whether the given track's input is muted.
+        @shoop_lua_fn_docstring.end
         """
         pass
 
@@ -428,6 +469,9 @@ class ControlHandler(QQuickItem):
     @allow_qml_override
     def track_set_volume(self, track_selector, vol):
         """
+        @shoop_lua_fn_docstring.start
+        shoop_control.track_set_volume(track_selector, vol)
         Set the given track's volume.
+        @shoop_lua_fn_docstring.end
         """
         pass
