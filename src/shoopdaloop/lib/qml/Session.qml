@@ -208,6 +208,15 @@ AppRegistries {
     MidiControl {
         id: midi_control
         when: control_interface.ready
+        configuration: lookup_midi_configuration.object || fallback
+
+        MidiControlConfiguration { id: fallback }
+
+        RegistryLookup {
+            registry: registries.state_registry
+            key: 'midi_control_configuration'
+            id: lookup_midi_configuration
+        }
     }
 
     MouseArea {
@@ -253,7 +262,14 @@ AppRegistries {
             id: midi_control_port
             name_hint: "control"
             direction: Types.PortDirection.Input
-            autoconnect_regexes: ['.*APC MINI MIDI.*']
+
+            RegistryLookup {
+                id: lookup_autoconnect
+                registry: registries.state_registry
+                key: 'autoconnect_input_regexes'
+            }
+
+            autoconnect_regexes: lookup_autoconnect.object || []
 
             onMsgReceived: msg => midi_control.handle_midi(msg)
         }

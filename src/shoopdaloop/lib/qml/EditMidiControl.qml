@@ -44,11 +44,12 @@ Column {
 
             dialog.open()
             dialog.accepted.connect(function() {
-                configuration.contents.push({
+                var new_contents = configuration.contents.concat([{
                     'filters': dialog.filters,
                     'action': 'Stop Loops',
-                })
-                configuration.contentsChanged()
+                }])
+                root.logger.info(JSON.stringify(new_contents))
+                configuration.contents = new_contents
                 dialog.close()
                 dialog.destroy()
             })

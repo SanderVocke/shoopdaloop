@@ -99,8 +99,22 @@ Dialog {
     component MIDISettingsUi : Item {
         id: midi_settings_ui
 
+        onAutoconnect_input_regexesChanged: midi_settings.contents.autoconnect_input_regexes = autoconnect_input_regexes
+        onAutoconnect_output_regexesChanged: midi_settings.contents.autoconnect_output_regexes = autoconnect_output_regexes
+
         property list<string> autoconnect_input_regexes: midi_settings.contents ? midi_settings.contents.autoconnect_input_regexes : []
         property list<string> autoconnect_output_regexes: midi_settings.contents ? midi_settings.contents.autoconnect_output_regexes : []
+
+        RegisterInRegistry {
+            registry: registries.state_registry
+            key: 'autoconnect_input_regexes'
+            object: autoconnect_input_regexes
+        }
+        RegisterInRegistry {
+            registry: registries.state_registry
+            key: 'autoconnect_output_regexes'
+            object: autoconnect_output_regexes
+        }
 
         Column {
             id: header
@@ -280,6 +294,26 @@ Dialog {
                         EditMidiControl {
                             id: edit_midi_control
                             width: parent.width
+
+                            Connections {
+                                target: edit_midi_control.configuration
+                                function onContentsChanged() {
+                                    all_settings.contents.midi_settings.configuration.midi_control_configuration = edit_midi_control.configuration.to_dict()
+                                }
+                            }
+
+                            Connections {
+                                target: all_settings
+                                function onContentsChanged() {
+                                    edit_midi_control.configuration.from_dict(all_settings.contents.midi_settings.configuration.midi_control_configuration)
+                                }
+                            }
+
+                            RegisterInRegistry {
+                                registry: registries.state_registry
+                                key: 'midi_control_configuration'
+                                object: edit_midi_control.configuration
+                            }
                         }
                     }
                 }

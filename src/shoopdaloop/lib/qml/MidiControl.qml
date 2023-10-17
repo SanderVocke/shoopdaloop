@@ -8,9 +8,11 @@ Item {
     id: root
     property bool when: false
     property bool ready: false
+    property bool initialized: false
 
     function initialize() {
         if (!when) { return; }
+        if (initialized) { return; }
 
         root.logger.debug('Initializing')
 
@@ -28,10 +30,12 @@ declare_in_context('shoop_format', require('shoop_format'))
         update_all_handlers()
 
         ready = true
+        initialized = true
     }
 
     onWhenChanged: initialize()
     Component.onCompleted: initialize()
+    onConfigurationChanged: update_all_handlers()
 
     property var scripting_context: null
 
@@ -106,6 +110,8 @@ declare_in_context('shoop_format', require('shoop_format'))
             let result = byte_data & filter[1]
             return result == filter[2]
         }
+
+        root.logger.debug(`Received: [${msg}]. Matching against ${configuration.contents.length} action items.`)
 
         for(var i=0; i<configuration.contents.length; i++) {
             const filters = configuration.contents[i].filters
