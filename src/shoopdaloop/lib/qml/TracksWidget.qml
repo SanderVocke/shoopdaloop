@@ -54,7 +54,7 @@ ScrollView {
     }
 
     function queue_load_tasks(data_files_dir, add_tasks_to) {
-        root.logger.debug(`Queue load tasks for ${root.tracks.length} tracks`)
+        root.logger.debug(() => (`Queue load tasks for ${root.tracks.length} tracks`))
         for(var i=0; i<root.tracks.length; i++) {
             tracks[i].queue_load_tasks(data_files_dir, add_tasks_to)
         }

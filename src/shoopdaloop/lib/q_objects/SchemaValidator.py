@@ -24,5 +24,5 @@ class SchemaValidator(QObject):
         _obj = obj
         if isinstance(obj, QJSValue):
             _obj = obj.toVariant()
-        self.logger.trace("Validating against {}: {}".format(schemaname, json.dumps(_obj, indent=2)))
+        self.logger.trace(lambda: "Validating against {}: {}".format(schemaname, json.dumps(_obj, indent=2)))
         validate_session_object(_obj, schemaname)

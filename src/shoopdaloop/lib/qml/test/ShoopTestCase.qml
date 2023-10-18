@@ -11,8 +11,8 @@ TestCase {
     property string filename : 'UnknownTestFile'
     property var logger : PythonLogger { name: `Test.` + root.name }
 
-    Component.onCompleted: logger.info("Testcase " + name + " created.")
-    Component.onDestruction: logger.info("Testcase " + name + " destroyed.")
+    Component.onCompleted: logger.info(() => ("Testcase " + name + " created."))
+    Component.onDestruction: logger.info(() => ("Testcase " + name + " destroyed."))
 
     function verify_loop_cleared(loop) {
         verify_eq(loop.mode, Types.LoopMode.Stopped)
@@ -20,7 +20,7 @@ TestCase {
     }
 
     function cleanup() {
-        logger.debug("cleanup " + root.name)
+        logger.debug(() => ("cleanup " + root.name))
         // Note: the fact that this works is due to the internal TestCase.qml implementation of Qt Quick Test.
         // Tested on Qt 6.3
         var failed = qtest_results.failed || qtest_results.dataFailed
@@ -30,7 +30,7 @@ TestCase {
                          'pass'
         var casename = name
         var func = qtest_results.functionName
-        logger.info(`${filename}::${casename}::${func}: ${statusdesc}`)
+        logger.info(() => (`${filename}::${casename}::${func}: ${statusdesc}`))
     }
 
     function format_error(failstring, stack=null) {
@@ -54,7 +54,7 @@ TestCase {
             verify(true)
             return;
         }
-        logger.error(format_error(`verify_throw failed (fn = ${fn})`))
+        logger.error(() => (format_error(`verify_throw failed (fn = ${fn}))`))
         verify(false)
     }
 
@@ -62,7 +62,7 @@ TestCase {
         var result = Boolean(a)
         let failstring = `verify_true failed (v = ${a})`
         if (!result) {
-            logger.error(format_error(failstring))
+            logger.error(() => (format_error(failstring)))
         }
         verify(result, failstring)
     }
@@ -89,7 +89,7 @@ TestCase {
         result = compare(a,b);
         
         if (!result) {
-            logger.error(format_error(failstring))
+            logger.error(() => (format_error(failstring)))
         }
         verify(result, failstring)
     }
@@ -104,7 +104,7 @@ TestCase {
             result = compare(a, b)
         }
         if (!result) {
-            logger.error(format_error(failstring))
+            logger.error(() => (format_error(failstring)))
         }
         verify(result, failstring)
     }
@@ -113,21 +113,21 @@ TestCase {
         let failstring = `verify_gt failed (a = ${a}, b = ${b})`
         let result = a > b;
         if (!result) {
-            logger.error(format_error(failstring))
+            logger.error(() => (format_error(failstring)))
         }
         verify(result, failstring)
     }
 
     function start_test_fn(name) {
-        logger.info("------------------------------------------------")
-        logger.info(`START ${name}`)
-        logger.info("------------------------------------------------")
+        logger.info(() => ("------------------------------------------------"))
+        logger.info(() => (`START ${name}`))
+        logger.info(() => ("------------------------------------------------"))
     }
 
     function end_test_fn(name) {
-        logger.info("------------------------------------------------")
-        logger.info(`END ${name}`)
-        logger.info("------------------------------------------------")
+        logger.info(() => ("------------------------------------------------"))
+        logger.info(() => (`END ${name}`))
+        logger.info(() => ("------------------------------------------------"))
     }
 
     function run_case(name, fn) {
@@ -137,7 +137,7 @@ TestCase {
             end_test_fn(name)
         } catch (e) {
             let failstring = `Uncaught exception: ${e.message} (${e.name}}`
-            logger.error(format_error(failstring, e.stack))
+            logger.error(() => (format_error(failstring, e.stack)))
             throw e
         }
     }

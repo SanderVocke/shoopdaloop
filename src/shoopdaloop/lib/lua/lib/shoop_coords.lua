@@ -1,9 +1,12 @@
 local shoop_control = shoop_control or require('shoop_control')
 local shoop_coords = {}
 
+--  @shoop_lua_fn_docstring.start
+--  shoop_coords.move(coords, direction_key) -> coords
 --  Take a single coordinates list and return coordinates
 --  if they were moved to the direction indicated by the given
 --  keyboard key.
+--  @shoop_lua_fn_docstring.end
 function shoop_coords.move(coords, direction_key)
     local new_coords = {coords[1], coords[2]}
     if direction_key == shoop_control.constants.Key_Up then
@@ -18,8 +21,10 @@ function shoop_coords.move(coords, direction_key)
     return new_coords
 end
 
---  Look for the highest or lowest index (row/col) in the
---  given direction
+--  @shoop_lua_fn_docstring.start
+--  shoop_coords.extreme(all_coords, direction_key, highest) -> coord
+--  Look for the highest (if highest == true) or lowest index (row/col) in the given direction
+--  @shoop_lua_fn_docstring.end
 function shoop_coords.extreme(all_coords, direction_key, highest)
     local extreme = nil
     for _, v in ipairs(all_coords) do

@@ -1,5 +1,9 @@
 local shoop_format = {}
 
+--  @shoop_lua_fn_docstring.start
+--  shoop_format.format_table(table, recursive) -> string
+--  Format a table such that all elements can be inspected.
+--  @shoop_lua_fn_docstring.end
 function shoop_format.format_table(table, recursive)
     local function format_table_recursively(table, recursive, indent)
         local result = ""

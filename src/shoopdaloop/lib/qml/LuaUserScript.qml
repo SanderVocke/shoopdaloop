@@ -45,8 +45,8 @@ Item {
 
     onAccepted_script_codeChanged: {
         scripting_context = scripting_engine.new_context()
-        logger.debug("Executing script in new context: " + scripting_context)
-        logger.trace("Code: " + accepted_script_code)
+        logger.debug(() => ("Executing script in new context: " + scripting_context))
+        logger.trace(() => ("Code: " + accepted_script_code))
         execute(accepted_script_code, true, script_name)
         ready = true
     }
@@ -59,13 +59,13 @@ Item {
 
     function evaluate(expression, script=script_name) {
         if (!ready) return null;
-        logger.trace("Evaluating expression: " + expression + " in context: " + scripting_context)
+        logger.trace(() => ("Evaluating expression: " + expression + " in context: " + scripting_context))
         return scripting_engine.evaluate(expression, scripting_context, script, true, catch_errors)
     }
 
     function execute(statement, force=false, script=script_name) {
         if (!ready && !force) return;
-        logger.trace("Executing statement: " + statement + " in context: " + scripting_context)
+        logger.trace(() => ("Executing statement: " + statement + " in context: " + scripting_context))
         scripting_engine.execute(statement, scripting_context, script, true, catch_errors)
     }
 }

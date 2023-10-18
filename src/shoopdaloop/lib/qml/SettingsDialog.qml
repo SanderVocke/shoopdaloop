@@ -57,13 +57,13 @@ Dialog {
         readonly property PythonLogger logger: PythonLogger { name: "Frontend.Qml.AllSettings" }
 
         function save() {
-            logger.debug("Saving settings.")
+            logger.debug(() => ("Saving settings."))
             validate()
             settings_io.save_settings(to_dict(), null)
         }
 
         function load() {
-            logger.debug("Loading settings.")
+            logger.debug(() => ("Loading settings."))
             let loaded_settings = settings_io.load_settings(null)
             if (loaded_settings != null) { from_dict(loaded_settings) }
         }

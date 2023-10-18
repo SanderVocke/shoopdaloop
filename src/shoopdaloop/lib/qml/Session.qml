@@ -90,7 +90,7 @@ AppRegistries {
             try {
                 // TODO make this step asynchronous
                 file_io.make_tarfile(filename, tempdir, false)
-                root.logger.info("Session written to: " + filename)
+                root.logger.info(() => ("Session written to: " + filename))
             } finally {
                 state_registry.save_action_finished()
                 file_io.delete_recursive(tempdir)
@@ -126,7 +126,7 @@ AppRegistries {
             var tasks = tasks_factory.create_tasks_obj(root)
 
             file_io.extract_tarfile(filename, tempdir)
-            root.logger.debug(`Extracted files: ${JSON.stringify(file_io.glob(tempdir + '/*', true), null, 2)}`)
+            root.logger.debug(() => (`Extracted files: ${JSON.stringify(file_io.glob(tempdir + '/*', true), null, 2)}`))
 
             var session_filename = tempdir + '/session.json'
             var session_file_contents = file_io.read_file(session_filename)
@@ -134,12 +134,12 @@ AppRegistries {
 
             schema_validator.validate_schema(descriptor, validator.schema)
             root.initial_descriptor = descriptor
-            root.logger.debug("Reloading session")
+            root.logger.debug(() => ("Reloading session"))
             reload()
             state_registry.load_action_started()
 
             let finish_fn = () => {
-                root.logger.debug("Queueing load tasks")
+                root.logger.debug(() => ("Queueing load tasks"))
                 queue_load_tasks(tempdir, tasks)
 
                 tasks.when_finished(() => {
@@ -236,7 +236,7 @@ AppRegistries {
 
         property var focusItem : Window.activeFocusItem
         onFocusItemChanged: {
-            root.logger.debug("Focus item changed: " + focusItem)
+            root.logger.debug(() => ("Focus item changed: " + focusItem))
             if (!focusItem || focusItem == Window.contentItem) {
                 takeFocus.trigger()
             }

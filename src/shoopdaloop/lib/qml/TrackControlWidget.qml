@@ -205,7 +205,7 @@ Item {
     function push_volume(volume, target, gain_factor = 1.0) {
         convert_volume.dB = volume
         var v = convert_volume.linear * gain_factor
-        logger.trace("Pushing gain " + v + " to " + target.obj_id)
+        logger.trace(() => ("Pushing gain " + v + " to " + target.obj_id))
         if (target && target.volume != v) { target.set_volume(v) }
     }
     function toggle_muted() { mute = !mute }

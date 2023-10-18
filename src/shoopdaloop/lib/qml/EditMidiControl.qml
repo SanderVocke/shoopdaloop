@@ -48,7 +48,7 @@ Column {
                     'filters': dialog.filters,
                     'action': 'Stop Loops',
                 }])
-                root.logger.info(JSON.stringify(new_contents))
+                root.logger.info(() => (JSON.stringify(new_contents)))
                 configuration.contents = new_contents
                 dialog.close()
                 dialog.destroy()

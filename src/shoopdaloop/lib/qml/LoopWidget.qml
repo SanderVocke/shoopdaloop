@@ -22,7 +22,7 @@ Item {
     onIdx_in_trackChanged: print_coords()
 
     function print_coords() {
-        logger.debug(`Loop @ (${track_idx},${idx_in_track})`)
+        logger.debug(() => (`Loop @ (${track_idx},${idx_in_track})`))
     }
 
     property PythonLogger logger : PythonLogger { name: "Frontend.Qml.Loop" }
@@ -104,17 +104,17 @@ Item {
     function queue_load_tasks(data_files_dir, add_tasks_to) {
         var have_data_files = channels ? channels.map(c => {
             let r = c.has_data_file()
-            if (r) { root.logger.debug(`${obj_id} has data file for channel ${c.obj_id}`) }
-            else   { root.logger.debug(`${obj_id} has no data file for channel ${c.obj_id}`) }
+            if (r) { root.logger.debug(() => (`${obj_id} has data file for channel ${c.obj_id}`)) }
+            else   { root.logger.debug(() => (`${obj_id} has no data file for channel ${c.obj_id}`)) }
             return r
         }) : []
         let have_any = have_data_files.filter(d => d == true).length > 0
         if (have_any) {
-            root.logger.debug(`${obj_id} has data files, queueing load tasks.`)
+            root.logger.debug(() => (`${obj_id} has data files, queueing load tasks.`))
             force_load_backend()
             channels.forEach((c) => c.queue_load_tasks(data_files_dir, add_tasks_to))
         } else {
-            root.logger.debug(`${obj_id} has no data files, not queueing load tasks.`)
+            root.logger.debug(() => (`${obj_id} has no data files, not queueing load tasks.`))
         }
     }
 
@@ -195,7 +195,7 @@ Item {
 
     property var additional_context_menu_options : null // dict of option name -> functor
 
-    onIs_loadedChanged: if(is_loaded) { root.logger.debug("Loaded back-end loop.") }
+    onIs_loadedChanged: if(is_loaded) { root.logger.debug(() => ("Loaded back-end loop.")) }
 
     // Internally controlled
     readonly property DynamicLoop maybe_loop : dynamic_loop
@@ -1502,7 +1502,7 @@ Item {
             property var channels: []
             onAccepted: {
                 if (!root.maybe_loaded_loop) { 
-                    root.logger.error("Cannot save: loop not loaded")
+                    root.logger.error(() => ("Cannot save: loop not loaded"))
                     return;
                 }
                 close()
@@ -1527,7 +1527,7 @@ Item {
             property var channel: null
             onAccepted: {
                 if (!root.maybe_loaded_loop) { 
-                    root.logger.error("Cannot save: loop not loaded")
+                    root.logger.error(() => ("Cannot save: loop not loaded"))
                     return;
                 }
                 close()
@@ -1604,7 +1604,7 @@ Item {
 
             onAccepted: {
                 if (!root.maybe_loaded_loop) { 
-                    root.logger.error("Cannot load: loop not loaded")
+                    root.logger.error(() => ("Cannot load: loop not loaded"))
                     return;
                 }
                 registries.state_registry.load_action_started()

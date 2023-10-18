@@ -48,7 +48,7 @@ Column {
         } else {
             root.maybe_suggested_filters = null
         }
-        root.logger.debug(`Received: [${msg}]. Suggestion: [${root.maybe_suggested_filters}]`)
+        root.logger.debug(() => (`Received: [${msg}]. Suggestion: [${root.maybe_suggested_filters}]`))
     }
 
     function create_default_filters(kind) {

@@ -150,6 +150,7 @@ void set_global_logging_level(log_level_t level);
 void set_logger_level_override(shoopdaloop_logger_t *logger, log_level_t level);
 void reset_logger_level_override(shoopdaloop_logger_t *logger);
 void shoopdaloop_log(shoopdaloop_logger_t *logger, log_level_t level, const char *msg);
+void shoopdaloop_should_log(shoopdaloop_logger_t *logger, log_level_t level);
 
 // For testing purposes
 void dummy_audio_port_queue_data(shoopdaloop_audio_port_t *port, size_t n_frames, audio_sample_t const* data);

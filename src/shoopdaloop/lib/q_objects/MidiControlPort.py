@@ -116,7 +116,7 @@ class MidiControlPort(QQuickItem):
             r = self._backend_obj.maybe_next_message()
             if not r:
                 break
-            self.logger.trace("Received: {}".format(r.data))
+            self.logger.trace(lambda: "Received: {}".format(r.data))
             self.msgReceived.emit(r.data)
     
     @Slot()
@@ -135,11 +135,11 @@ class MidiControlPort(QQuickItem):
             if self._backend_obj:
                 return
             
-            self.logger.debug("Opening decoupled MIDI port {}".format(self._name_hint))
+            self.logger.debug(lambda: "Opening decoupled MIDI port {}".format(self._name_hint))
             self._backend_obj = self._backend.get_backend_obj().open_decoupled_midi_port(self._name_hint, self._direction)
             
             if not self._backend_obj:
-                self.logger.error("Failed to open decoupled MIDI port {}".format(self._name_hint))
+                self.logger.error(lambda: "Failed to open decoupled MIDI port {}".format(self._name_hint))
                 return
 
             self._name = self._backend_obj.name()

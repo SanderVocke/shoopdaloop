@@ -20,7 +20,7 @@ QtObject {
         try {
             schema_validator.validate_schema(dict, schema)
         } catch (e) {
-            root.logger.error(`Failed to validate ${name} settings against ${schema}: ${e.message}. Config: ${JSON.stringify(dict, 0, 2)}`)
+            root.logger.error(() => (`Failed to validate ${name} settings against ${schema}: ${e.message}. Config: ${JSON.stringify(dict, 0, 2)}`))
             return false
         }
         return true

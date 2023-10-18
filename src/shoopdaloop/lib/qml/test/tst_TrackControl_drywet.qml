@@ -30,7 +30,7 @@ AppRegistries {
                 "test2x2x1"
                 )
             base.tracks.push(track)
-            testcase.logger.debug("session descriptor: " + JSON.stringify(base, null, 2))
+            testcase.logger.debug(() => ("session descriptor: " + JSON.stringify(base, null, 2)))
             return base
         }
 

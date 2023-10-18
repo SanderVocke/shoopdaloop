@@ -43,7 +43,7 @@ LuaControlInterface {
                 }
             }
         }
-        logger.debug(`Selected loops for selector ${JSON.stringify(loop_selector)}: ${JSON.stringify(rval.map(l => l ? l.obj_id : null))}.`)
+        logger.debug(() => (`Selected loops for selector ${JSON.stringify(loop_selector)}: ${JSON.stringify(rval.map(l => l ? l.obj_id : null))}.`))
         return rval
     }
 
@@ -69,7 +69,7 @@ LuaControlInterface {
                 rval = rval.concat(t.ports.filter((p) => port_selector(p)).map((p) => p.control_handler))
             })
         }
-        logger.debug(`Selected ${rval.length} target port(s).`)
+        logger.debug(() => (`Selected ${rval.length} target port(s).`))
         return rval
     }
 

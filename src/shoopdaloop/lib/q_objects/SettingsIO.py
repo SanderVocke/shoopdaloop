@@ -19,7 +19,7 @@ class SettingsIO(QObject):
         if isinstance(settings, QJSValue):
             settings = settings.toVariant()
         file = self.filename if override_filename is None else override_filename
-        self.logger.info("Saving settings to {}".format(file))
+        self.logger.info(lambda: "Saving settings to {}".format(file))
         if not os.path.exists(self.dir):
             os.makedirs(self.dir)
         with open(file, 'w') as f:
@@ -29,9 +29,9 @@ class SettingsIO(QObject):
     def load_settings(self, override_filename=None):
         file = self.filename if override_filename is None else override_filename
         if os.path.exists(file):
-            self.logger.info("Loading settings from {}".format(file))
+            self.logger.info(lambda: "Loading settings from {}".format(file))
             with open(file, 'r') as f:
                 return json.loads(f.read())
         else:
-            self.logger.info("No settings file found at {}. Using defaults.".format(file))
+            self.logger.info(lambda: "No settings file found at {}. Using defaults.".format(file))
             return None

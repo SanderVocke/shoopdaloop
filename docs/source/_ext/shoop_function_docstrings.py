@@ -9,11 +9,10 @@ script_path = os.path.dirname(os.path.realpath(__file__))
 base_path = script_path + '/../../..'
 
 class FunctionDocstrings(Directive):
-    required_arguments = 2     
+    required_arguments = 1  
     
     def run(self):
         filename = self.arguments[0]
-        entity = self.arguments[1]
         full_filename = base_path + '/' + filename
         lines = []
         fns = []
@@ -22,10 +21,10 @@ class FunctionDocstrings(Directive):
         with open(full_filename, 'r') as f:
             lines = f.readlines()
         for idx, line in enumerate(lines):
-            if re.match(r'^[ #/]*@shoop_lua_fn_docstring.start', line):
+            if re.match(r'^[ #/-]*@shoop_lua_fn_docstring.start', line):
                 fn_lines = []
                 for idx2 in range(idx+1, len(lines)):
-                    if re.match(r'^[ #/]*@shoop_lua_fn_docstring.end', lines[idx2]):
+                    if re.match(r'^[ #/-]*@shoop_lua_fn_docstring.end', lines[idx2]):
                         break
                     else:
                         fn_lines.append(lines[idx2].replace('#', '').replace('--', '').strip())
@@ -35,10 +34,10 @@ class FunctionDocstrings(Directive):
                     'signature': signature,
                     'description': ' '.join(desc_lines)
                 })
-            elif re.match(r'^[ #/]*@shoop_lua_enum_docstring.start', line):
+            elif re.match(r'^[ #/-]*@shoop_lua_enum_docstring.start', line):
                 desc_lines = []
                 for idx2 in range(idx+1, len(lines)):
-                    if re.match(r'^[ #/]*@shoop_lua_enum_docstring.end', lines[idx2]):
+                    if re.match(r'^[ #/-]*@shoop_lua_enum_docstring.end', lines[idx2]):
                         break
                     else:
                         desc_lines.append(lines[idx2].replace('#', '').replace('--', '').strip())

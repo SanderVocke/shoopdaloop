@@ -43,10 +43,10 @@ Item {
                     case LoopContentWidget.Tool.SetEnd:
                         var len = s - channel.start_offset
                         if (len >= 0) { channel.loop.set_length(len); }
-                        else { root.logger.error("Ignoring invalid end point: is before start offset.") }
+                        else { root.logger.error(() => ("Ignoring invalid end point: is before start offset.")) }
                         break;
                     default:
-                        root.logger.error("Unimplemented tool.")
+                        root.logger.error(() => ("Unimplemented tool."))
                         throw new Error("Unimplemented")
                 }
             }
@@ -176,7 +176,7 @@ Item {
             tooltip: "Additional options."
             height: 35
             width: 30
-            onClicked: { root.logger.error("Unimplemented") }
+            onClicked: { root.logger.error(() => ("Unimplemented")) }
 
             anchors.verticalCenter: length_field.verticalCenter
 

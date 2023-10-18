@@ -32,12 +32,12 @@ Session {
 
                 var filename = file_io.generate_temporary_filename() + '.shl'
 
-                session.logger.info("Saving session to " + filename)
+                session.logger.info(() => ("Saving session to " + filename))
                 session.save_session(filename)
                 
                 testcase.wait(500)
 
-                session.logger.info("Re-loading session")
+                session.logger.info(() => ("Re-loading session"))
                 session.load_session(filename)
 
                 testcase.wait(500)

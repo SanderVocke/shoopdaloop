@@ -47,7 +47,7 @@ def create_lua_qobject_interface(lua_module_name, scripting_engine, qobject):
     if logger == None:
         logger = Logger('Frontend.LuaQObjectInterface')
     
-    logger.debug("Creating Lua interface for QObject {} as \"{}\"".format(qobject, lua_module_name))
+    logger.debug(lambda: "Creating Lua interface for QObject {} as \"{}\"".format(qobject, lua_module_name))
     
     module = scripting_engine.evaluate('return {{}}')
     if_registrar = scripting_engine.evaluate('return function (module, name, member) module[name] = member; return module end')
@@ -77,7 +77,7 @@ def create_lua_qobject_interface(lua_module_name, scripting_engine, qobject):
             returntypename = qt_typename(method.returnType())
             def callback(interface, returntypename, scripting_engine, *args):
                 if returntypename == 'Void':
-                    logger.debug("Calling void QML method {} with args {}".format(interface[0], str(args)))
+                    logger.debug(lambda: "Calling void QML method {} with args {}".format(interface[0], str(args)))
                     qobject.metaObject().invokeMethod(
                         qobject,
                         interface[0],
@@ -93,7 +93,7 @@ def create_lua_qobject_interface(lua_module_name, scripting_engine, qobject):
                     *[convert_arg(interface[idx+1][0], interface[idx+1][1](arg)) for idx,arg in enumerate(args)]
                 )
                 rval_converted = scripting_engine.to_lua_val(rval)
-                logger.debug("Result of calling {} QML method {} with args {}: {} (LUA: {})".format(returntypename, interface[0], str(args), str(rval), str(rval_converted)))
+                logger.debug(lambda: "Result of calling {} QML method {} with args {}: {} (LUA: {})".format(returntypename, interface[0], str(args), str(rval), str(rval_converted)))
                 return rval_converted
                 
             module = if_registrar(module, interface[0],

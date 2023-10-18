@@ -97,7 +97,7 @@ class LoopChannel(QQuickItem):
         _mode = ChannelMode(mode)
         if _mode != self._mode:
             if self._backend_obj:
-                self.logger.debug('Set mode -> {}'.format(_mode))
+                self.logger.debug(lambda: 'Set mode -> {}'.format(_mode))
                 self._backend_obj.set_mode(_mode)
             else:
                 self.initializedChanged.connect(lambda: self.set_mode(_mode))
@@ -124,7 +124,7 @@ class LoopChannel(QQuickItem):
     def set_start_offset(self, offset):
         if offset != self._start_offset:
             if self._backend_obj:
-                self.logger.debug('Set start offset -> {}'.format(offset))
+                self.logger.debug(lambda: 'Set start offset -> {}'.format(offset))
                 self._backend_obj.set_start_offset(offset)
             else:
                 self.initializedChanged.connect(lambda: self.set_start_offset(offset))
@@ -139,7 +139,7 @@ class LoopChannel(QQuickItem):
     def set_n_preplay_samples(self, n):
         if n != self._n_preplay_samples:
             if self._backend_obj:
-                self.logger.debug('Set # preplay samples -> {}'.format(n))
+                self.logger.debug(lambda: 'Set # preplay samples -> {}'.format(n))
                 self._backend_obj.set_n_preplay_samples(n)
             else:
                 self.initializedChanged.connect(lambda: self.set_n_preplay_samples(n))
@@ -153,7 +153,7 @@ class LoopChannel(QQuickItem):
     @Slot()
     def clear_data_dirty(self):
         if self._backend_obj:
-            self.logger.debug('Set data dirty -> False')
+            self.logger.debug(lambda: 'Set data dirty -> False')
             self._backend_obj.clear_data_dirty()
         else:
             self.initializedChanged.connect(lambda: self.clear_data_dirty())
@@ -190,13 +190,13 @@ class LoopChannel(QQuickItem):
     @Slot('QVariant')
     def connect_port(self, port):
         if not self._backend_obj:
-            self.logger.debug('Defer connect to port')
+            self.logger.debug(lambda: 'Defer connect to port')
             self.initializedChanged.connect(lambda: self.connect_port(port))
         elif not port.initialized:
-            self.logger.debug('Defer connect to port')
+            self.logger.debug(lambda: 'Defer connect to port')
             port.initializedChanged.connect(lambda: self.connect_port(port))
         elif port not in self._connected_ports:
-            self.logger.debug('Connect to port')
+            self.logger.debug(lambda: 'Connect to port')
             backend_channel = self._backend_obj
             backend_port = port.get_backend_obj()
             backend_channel.connect(backend_port)
@@ -213,13 +213,13 @@ class LoopChannel(QQuickItem):
     @Slot('QVariant')
     def disconnect(self, port):
         if not self._backend_obj:
-            self.logger.debug('Defer disconnect from port')
+            self.logger.debug(lambda: 'Defer disconnect from port')
             self.initializedChanged.connect(lambda: self.disconnect(port))
         elif not port.initialized:
-            self.logger.debug('Defer disconnect from port')
+            self.logger.debug(lambda: 'Defer disconnect from port')
             port.initializedChanged.connect(lambda: self.disconnect(port))
         elif port in self._connected_ports:
-            self.logger.debug('Disconnect from port')
+            self.logger.debug(lambda: 'Disconnect from port')
             backend_channel = self._backend_obj
             backend_port = port.get_backend_obj()
             backend_channel.disconnect(backend_port)
@@ -240,19 +240,19 @@ class LoopChannel(QQuickItem):
             self._data_length = state.length
             self.dataLengthChanged.emit(self._data_length)
         if state.start_offset != self._start_offset:
-            self.logger.debug('start_offset -> {}'.format(state.start_offset))
+            self.logger.debug(lambda: 'start_offset -> {}'.format(state.start_offset))
             self._start_offset = state.start_offset
             self.startOffsetChanged.emit(self._start_offset)
         if state.mode != self._mode:
-            self.logger.debug('mode -> {}'.format(ChannelMode(state.mode)))
+            self.logger.debug(lambda: 'mode -> {}'.format(ChannelMode(state.mode)))
             self._mode = state.mode
             self.modeChanged.emit(self._mode.value)
         if state.data_dirty != self._data_dirty:
-            self.logger.debug('data dirty -> {}'.format(state.data_dirty))
+            self.logger.debug(lambda: 'data dirty -> {}'.format(state.data_dirty))
             self._data_dirty = state.data_dirty
             self.dataDirtyChanged.emit(self._data_dirty)
         if state.n_preplay_samples != self._n_preplay_samples:
-            self.logger.debug('# preplay samples -> {}'.format(state.n_preplay_samples))
+            self.logger.debug(lambda: '# preplay samples -> {}'.format(state.n_preplay_samples))
             self._n_preplay_samples = state.n_preplay_samples
             self.nPreplaySamplesChanged.emit(self._n_preplay_samples)
         if state.played_back_sample != self._played_back_sample:
@@ -265,7 +265,7 @@ class LoopChannel(QQuickItem):
     @Slot()
     def close(self):
         if self._backend_obj:
-            self.logger.debug('destroy')
+            self.logger.debug(lambda: 'destroy')
             self._backend_obj.destroy()
             self._backend_obj = None
     
@@ -273,5 +273,5 @@ class LoopChannel(QQuickItem):
     def rescan_parents(self):
         maybe_loop = findFirstParent(self, lambda p: p and isinstance(p, QQuickItem) and p.inherits('Loop') and self._loop == None)
         if maybe_loop:
-            self.logger.debug('found loop')
+            self.logger.debug(lambda: 'found loop')
             self.loop = maybe_loop

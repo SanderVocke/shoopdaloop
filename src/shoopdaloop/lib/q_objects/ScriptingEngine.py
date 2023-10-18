@@ -27,7 +27,7 @@ class ScriptingEngine(QObject):
         super(ScriptingEngine, self).__init__(parent)
         self.logger = Logger('Frontend.ScriptingEngine')
         self.lua_logger = Logger('Frontend.LuaScript')
-        self.logger.debug('Initializing Lua runtime.')
+        self.logger.debug(lambda: 'Initializing Lua runtime.')
         self.lua = lupa.LuaRuntime()
         self._current_context_id = None
         self.global_registrar = self.lua.eval('function(name, fn) _G[name] = fn end')
@@ -58,9 +58,9 @@ class ScriptingEngine(QObject):
         end
         ''')
         self.execute_builtin_script('system/runtime_init.lua', True)
-
+    
     def define_global_callback(self, py_cb, lua_name, overwrite=True):
-        self.logger.debug('Declaring global callback "{}"'.format(lua_name))
+        self.logger.debug(lambda: 'Declaring global callback "{}"'.format(lua_name))
         sig = inspect.signature(py_cb)
         declaration_name = ('declare_global' if overwrite else 'declare_new_global')
         # create a temporary registrar which can be used to register our global function
@@ -71,7 +71,7 @@ class ScriptingEngine(QObject):
         registrar(py_cb, lua_name)
 
     def execute_builtin_script(self, filename, sandboxed=True):
-        self.logger.debug('Running built-in script: {}'.format(filename))
+        self.logger.debug(lambda: 'Running built-in script: {}'.format(filename))
         script = None
         with open(lua_scriptdir  + '/' + filename, 'r') as f:
             script = f.read()
@@ -97,7 +97,7 @@ class ScriptingEngine(QObject):
 
     @Slot('QVariant')
     def use_context(self, context_id):
-        self.logger.debug("Using context: {}".format(context_id))
+        self.logger.debug(lambda: "Using context: {}".format(context_id))
         self.execute('__shoop_use_context({})'.format(context_id if context_id != None else 'nil'), None, None, True, False)
         self._current_context_id = context_id
     
@@ -107,12 +107,12 @@ class ScriptingEngine(QObject):
     
     @Slot(result='QVariant')
     def new_context(self):
-        self.logger.debug("Creating new context.")
+        self.logger.debug(lambda: "Creating new context.")
         return self.evaluate('return __shoop_new_context()', None, None, True, False)
     
     @Slot('QVariant')
     def delete_context(self, context_id):
-        self.logger.debug("Deleting context: {}".format(context_id))
+        self.logger.debug(lambda: "Deleting context: {}".format(context_id))
         if self.current_context() == context_id:
             self.use_context(None)
         self.execute('__shoop_delete_context({})'.format(context_id), None, None, True, False)
@@ -124,7 +124,7 @@ class ScriptingEngine(QObject):
     @Slot(str, 'QVariant', 'QVariant', bool, bool, result='QVariant')
     def evaluate(self, lua_code, context=None, script_name=None, sandboxed=True, catch_errors=True):
         try:
-            self.logger.trace('evaluate (context {}):\n{}'.format(context, lua_code))
+            self.logger.trace(lambda: 'evaluate (context {}):\n{}'.format(context, lua_code))
             prev_context = self.current_context()
             if context:
                 if not self.context_exists(context):
@@ -136,7 +136,7 @@ class ScriptingEngine(QObject):
                 rval = self.run_sandboxed(lua_code)
             if context:
                 self.use_context(prev_context)
-            self.logger.trace('evaluate result: {}'.format(rval))
+            self.logger.trace(lambda: 'evaluate result: {}'.format(rval))
             if lupa.lua_type(rval) == 'function':
                 # wrap the function in a lambda which will call it in the correct context
                 rval = lambda *args, rval=rval, context=context: self.call(rval, args, context)
@@ -145,14 +145,14 @@ class ScriptingEngine(QObject):
             if not catch_errors:
                 raise e from e
             if script_name:
-                self.logger.error('Error evaluating script "{}": {}. Trace: {}'.format(script_name, str(e), traceback.format_exc()))
+                self.logger.error(lambda: 'Error evaluating script "{}": {}. Trace: {}'.format(script_name, str(e), traceback.format_exc()))
             else:
-                self.logger.error('Error evaluating expression: {}. Trace: {}'.format(str(e), traceback.format_exc()))
+                self.logger.error(lambda: 'Error evaluating expression: {}. Trace: {}'.format(str(e), traceback.format_exc()))
     
     @Slot(str, 'QVariant', 'QVariant', bool, bool)
     def execute(self, lua_code, context=None, script_name=None, sandboxed=True, catch_errors=True):
         try:
-            self.logger.trace('Execute (context {}):\n{}'.format(context, lua_code))
+            self.logger.trace(lambda: 'Execute (context {}):\n{}'.format(context, lua_code))
             prev_context = self.current_context()
             if context:
                 if not self.context_exists(context):
@@ -168,13 +168,13 @@ class ScriptingEngine(QObject):
             if not catch_errors:
                 raise e from e
             if script_name:
-                self.logger.error('Error executing script "{}": {}. Trace: {}'.format(script_name, str(e), traceback.format_exc()))
+                self.logger.error(lambda: 'Error executing script "{}": {}. Trace: {}'.format(script_name, str(e), traceback.format_exc()))
             else:
-                self.logger.error('Error executing statement: {}. Trace: {}'.format(str(e), traceback.format_exc()))
+                self.logger.error(lambda: 'Error executing statement: {}. Trace: {}'.format(str(e), traceback.format_exc()))
     
     @Slot('QVariant', list, 'QVariant', result='QVariant')
     def call(self, callable, args=[], context=None):
-        self.logger.trace('call callable in context {}:\n{}'.format(context, callable))
+        self.logger.trace(lambda: 'call callable in context {}:\n{}'.format(context, callable))
         if context:
             prev_context = self.current_context()
             self.use_context(context)
@@ -185,7 +185,7 @@ class ScriptingEngine(QObject):
     
     @Slot(str, 'QVariant')
     def create_lua_qobject_interface_as_global(self, name, qobject):
-        self.logger.debug('Creating Lua interface for QObject: {}'.format(qobject))
+        self.logger.debug(lambda: 'Creating Lua interface for QObject: {}'.format(qobject))
         module = create_lua_qobject_interface(name, self, qobject)
         self.global_registrar(name, module)
         

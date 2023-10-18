@@ -26,8 +26,11 @@ local sets_equal = function(set1, set2)
     end
 end
 
+--  @shoop_lua_fn_docstring.start
+--  shoop_helpers.expand_selection(direction_key)
 --  Given a direction key, expand the current selection of loops
 --  by adding the loop(s) in the given direction.
+--  @shoop_lua_fn_docstring.end
 function shoop_helpers.expand_selection(direction_key)
     local loops = shoop_control.loop_get_which_selected()
     if #loops == 0 then
@@ -46,9 +49,11 @@ function shoop_helpers.expand_selection(direction_key)
     shoop_control.loop_select(new_coords, true)
 end
 
-
+--  @shoop_lua_fn_docstring.start
+--  shoop_helpers.shrink_selection(direction_key)
 --  Given a direction key, shrink the current selection of loops
 --  by removing loops "coming from" that direction.
+--  @shoop_lua_fn_docstring.end
 function shoop_helpers.shrink_selection(direction_key)
     local loops = shoop_control.loop_get_which_selected()
     local key = direction_key
@@ -68,8 +73,11 @@ function shoop_helpers.shrink_selection(direction_key)
     shoop_control.loop_select(loops, true)
 end
 
+--  @shoop_lua_fn_docstring.start
+--  shoop_helpers.move_selection(direction_key)
 --  Given a direction key, move the selection of loops to that direction
 --  if none of the loops would be out of bounds.
+--  @shoop_lua_fn_docstring.end
 function shoop_helpers.move_selection(direction_key)
     local loops = shoop_control.loop_get_which_selected()
     if #loops == 0 then
@@ -88,15 +96,11 @@ function shoop_helpers.move_selection(direction_key)
     end
 end
 
+--  @shoop_lua_fn_docstring.start
+--  shoop_helpers.default_loop_action(loop_selector)
 --  Perform the "default loop action" on a set of loop coordinates.
---  The default action is to:
---  - if all given loops are recording, transition them all to playback
---  - if all given loops are stopped and empty, transition them all to recording
---  - if all given loops are stopped but not all empty, transition them all to playback
---  - otherwise, stop all selected loops
---  (this usually means that using the default action cycles between
---   stopped, recording and playing, with some corner cases for multiple
---   selected loops)
+--  The default loop action is designed to cycle intuitively from empty to recording, playing and stopping.
+--  @shoop_lua_fn_docstring.end
 function shoop_helpers.default_loop_action(loops)
     if #loops == 0 then
         return
@@ -116,10 +120,13 @@ function shoop_helpers.default_loop_action(loops)
     shoop_control.loop_transition(loops, new_mode, 0)
 end
 
+--  @shoop_lua_fn_docstring.start
+--  shoop_helpers.record_into_first_empty(overdub)
 --  In the track(s) of all selected loop(s) (or recording loop(s) of none selected),
 --  find the first empty loop and start recording into it.
 --  If overdub is true, already recording loops will transition to Playing.
 --  Otherwise, they will transition to Stopped.
+--  @shoop_lua_fn_docstring.end
 function shoop_helpers.record_into_first_empty(overdub)
     local selected = shoop_control.loop_get_which_selected()
     local recording = shoop_control.loop_get_by_mode(shoop_control.constants.LoopMode_Recording)

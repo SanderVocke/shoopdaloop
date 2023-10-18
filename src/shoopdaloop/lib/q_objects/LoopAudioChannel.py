@@ -28,7 +28,7 @@ class LoopAudioChannel(LoopChannel):
     def maybe_initialize(self):
         if self._loop and self._loop.initialized and not self._backend_obj:
             self._backend_obj = self._loop.add_audio_channel(self.mode)
-            self.logger.debug("Initialized back-end channel")
+            self.logger.debug(lambda: "Initialized back-end channel")
             self.initializedChanged.emit(True)
             self.set_volume(self._volume)
 

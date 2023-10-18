@@ -14,7 +14,7 @@ Item {
         if (!when) { return; }
         if (initialized) { return; }
 
-        root.logger.debug('Initializing')
+        root.logger.debug(() => ('Initializing'))
 
         scripting_context = scripting_engine.new_context()
 
@@ -90,12 +90,12 @@ declare_in_context('shoop_format', require('shoop_format'))
             script += ` ${base_script} `
             if (do_if) { script += `end ` }
             script += ` end`
-            root.logger.trace('Generated script: ' + script)
+            root.logger.trace(() => ('Generated script: ' + script))
 
             let fn = scripting_engine.evaluate(script, context, 'MidiControl', true, true)
             let _name = action_name
             return function(msg, _fn=fn, name=_name, _context=context) {
-                root.logger.debug(`Running action ${name}`)
+                root.logger.debug(() => (`Running action ${name}`))
                 scripting_engine.call(_fn, [msg], _context)
             }
         }
@@ -111,7 +111,7 @@ declare_in_context('shoop_format', require('shoop_format'))
             return result == filter[2]
         }
 
-        root.logger.debug(`Received: [${msg}]. Matching against ${configuration.contents.length} action items.`)
+        root.logger.debug(() => (`Received: [${msg}]. Matching against ${configuration.contents.length} action items.`))
 
         for(var i=0; i<configuration.contents.length; i++) {
             const filters = configuration.contents[i].filters
@@ -119,13 +119,13 @@ declare_in_context('shoop_format', require('shoop_format'))
             const condition = configuration.contents[i].condition
             const input_overrides = configuration.contents[i].inputs
             if (!( new Set(filters.map(f => try_filter(f, msg))).has(false) )) {
-                root.logger.debug(`Matched MIDI control filter: msg = ${msg}, filters = ${filters}, action = ${action}`)
+                root.logger.debug(() => (`Matched MIDI control filter: msg = ${msg}, filters = ${filters}, action = ${action}`))
                 if (configuration_handlers.length <= i) {
-                    root.logger.error('MIDI control handlers not up-to-date')
+                    root.logger.error(() => ('MIDI control handlers not up-to-date'))
                 }
                 configuration_handlers[i].callable(msg)
             } else {
-                root.logger.trace(`No match for MIDI control filter: msg = ${msg}, filters = ${filters}, action = ${action}`)
+                root.logger.trace(() => (`No match for MIDI control filter: msg = ${msg}, filters = ${filters}, action = ${action}`))
             }
         }
     }

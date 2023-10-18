@@ -45,7 +45,7 @@ AppRegistries {
                 )
             base.tracks.push(direct_track)
             base.tracks.push(drywet_track)
-            testcase.logger.debug("session descriptor: " + JSON.stringify(base, null, 2))
+            testcase.logger.debug(() => ("session descriptor: " + JSON.stringify(base, null, 2)))
             return base
         }
 

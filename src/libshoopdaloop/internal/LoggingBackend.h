@@ -61,6 +61,13 @@ struct logger {
         m_logger->log(lvl, msg);
     }
 
+    void should_log(spdlog::level::level_enum lvl) {
+        if (lvl >= CompileTimeLogLevel) {
+            std::lock_guard<std::recursive_mutex> guard(m_mutex);
+            m_logger->should_log(lvl);
+        }
+    }
+
     template<class T, typename std::enable_if<!spdlog::is_convertible_to_any_format_string<const T &>::value, int>::type = 0>
     void log(spdlog::source_loc loc, spdlog::level::level_enum lvl, const T &msg) {
         if (lvl >= CompileTimeLogLevel) {

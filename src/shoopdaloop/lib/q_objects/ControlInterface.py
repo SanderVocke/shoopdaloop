@@ -16,6 +16,11 @@ class ControlInterface(ControlHandler):
     """
     
     def generate_keyboard_constants():
+        # @shoop_lua_enum_docstring.start
+        # shoop_control.constants.Key_
+        # Keyboard key identifiers. Equal to Qt.Key_* (see Qt documentation).
+        # ...
+        # @shoop_lua_enum_docstring.end
         rval = []
         for i in list(Qt.Key):
             rval.append([i.name, i.value])
@@ -28,6 +33,12 @@ class ControlInterface(ControlHandler):
         ['register_keyboard_event_cb', lua_callable ],
     ]
     
+    # @shoop_lua_enum_docstring.start
+    # shoop_control.constants.KeyEventType_
+    # Keyboard event type identifier.
+    # Pressed
+    # Released
+    # @shoop_lua_enum_docstring.end
     lua_constants = ControlHandler.lua_constants + [
         [ 'KeyEventType_Pressed', KeyEventType.Pressed ],
         [ 'KeyEventType_Released', KeyEventType.Released ],
@@ -57,7 +68,7 @@ class ControlInterface(ControlHandler):
         Register a callback for MIDI events. TODO: fill in further
         @shoop_lua_fn_docstring.end
         """
-        self.logger.debug("Registering MIDI event callback for device '{}'".format(device_name_filter_regex))
+        self.logger.debug(lambda: "Registering MIDI event callback for device '{}'".format(device_name_filter_regex))
         self._midi_callbacks.append([device_name_filter_regex, cb])
     
     @Slot('QVariant')
@@ -73,7 +84,7 @@ class ControlInterface(ControlHandler):
         - modifiers is a bitmask of Qt.KeyboardModifier values (example in LUA: shoop.constants.ShiftModifier)
         @shoop_lua_fn_docstring.end
         """
-        self.logger.debug("Registering keyboard event callback")
+        self.logger.debug(lambda: "Registering keyboard event callback")
         self._keyboard_callbacks.append(cb)
     
     

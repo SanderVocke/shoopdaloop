@@ -153,11 +153,11 @@ class Backend(QQuickItem):
 
     @Slot()
     def close(self):
-        self.logger.info("Closing back-end")
+        self.logger.info(lambda: "Closing back-end")
         if self._initialized:
             self._backend_obj.terminate()
         self._initialized = False
-        self.logger.info("Back-end closed")
+        self.logger.info(lambda: "Back-end closed")
     
     # Get the wrapped back-end object.
     @Slot(result='QVariant')
@@ -217,7 +217,7 @@ class Backend(QQuickItem):
     ################
 
     def init(self):
-        self.logger.debug("Initializing with type {}, client name hint {}, argstring {}".format(self._backend_type, self._client_name_hint, self._backend_argstring))
+        self.logger.debug(lambda: "Initializing with type {}, client name hint {}, argstring {}".format(self._backend_type, self._client_name_hint, self._backend_argstring))
         if self._initialized:
             self.logger.throw_error("May not initialize more than one back-end at a time.")
         self._backend_obj = init_backend(self._backend_type, self._client_name_hint, self._backend_argstring)

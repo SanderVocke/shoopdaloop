@@ -87,11 +87,11 @@ class ControlHandler(QQuickItem):
         return val
     
     def clear_call_cache(self):
-        self.logger.debug('Clearing call cache.')
+        self.logger.debug(lambda: 'Clearing call cache.')
         self._call_cache = []
     
     def cache_call(self, elems):
-        self.logger.debug('Logging call: {}'.format(elems))
+        self.logger.debug(lambda: 'Logging call: {}'.format(elems))
         self._call_cache.append(elems)
     
     def cached_calls(self):
@@ -153,7 +153,7 @@ class ControlHandler(QQuickItem):
                 return_typename = qt_typename(m.returnType())
                 name = str(m.name(), 'ascii')
                 if return_typename == 'Void':
-                    self.logger.debug("Calling void QML method {}".format(name))
+                    self.logger.debug(lambda: "Calling void QML method {}".format(name))
                     self._qml_instance.metaObject().invokeMethod(
                         self._qml_instance,
                         name,
@@ -170,7 +170,7 @@ class ControlHandler(QQuickItem):
                 )
                 if isinstance(rval, QJSValue):
                     rval = rval.toVariant()
-                self.logger.debug("Result of calling {} QML method {}: {}".format(return_typename, name, str(rval)))
+                self.logger.debug(lambda: "Result of calling {} QML method {}: {}".format(return_typename, name, str(rval)))
                 return rval
             self._methods[str(method.name(), 'ascii')] = {
                 'call_qml': call_qml
@@ -179,12 +179,12 @@ class ControlHandler(QQuickItem):
     @staticmethod
     def allow_qml_override(func):
         def wrapper(self, *args, **kwargs):
-            self.logger.debug("Call ControlHandler {} with args {}".format(func.__name__, str(args)))
+            self.logger.debug(lambda: "Call ControlHandler {} with args {}".format(func.__name__, str(args)))
             if self.qml_instance:
                 try:
                     return self._methods[func.__name__ + "_override"]['call_qml'](*args)
                 except RuntimeError as e:
-                    self.logger.error("Failed to call QML override: {}".format(str(e)))
+                    self.logger.error(lambda: "Failed to call QML override: {}".format(str(e)))
 
             self.cache_call([func.__name__, *args])
             raise NotImplementedError(

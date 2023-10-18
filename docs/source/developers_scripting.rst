@@ -51,8 +51,8 @@ Globals and context variables
     * ...
 
 
-API
-^^^
+API and Libraries
+^^^^^^^^^^^^^^^^^
 
 The API consists of globally available functions and constants, in addition to functions and constants available through built-in libraries. Built-in libraries should be included in scripts using the `require` function. Check `lib/lua/builtins/keyboard.lua` for an example.
 
@@ -60,10 +60,26 @@ The API consists of globally available functions and constants, in addition to f
 
 * **print(msg)**, **print_debug(msg)**, **print_error(msg)**, **print_info(msg)**: Print a message to the Frontend.LuaScript logger. Respective log levels are info (default), debug, error.
 
-**shoop_control**: provides basic interfacing with **ShoopDaLoop**. It has the following constants and functions:
+**shoop_control**: provides basic interfacing with **ShoopDaLoop**. Note that these functions are provided as bindings into the application - they are not written in Lua.
 
 .. shoop_function_docstrings::
-   src/shoopdaloop/lib/q_objects/ControlHandler.py ControlHandler
+   src/shoopdaloop/lib/q_objects/ControlHandler.py
 
 .. shoop_function_docstrings::
-   src/shoopdaloop/lib/q_objects/ControlInterface.py ControlInterface
+   src/shoopdaloop/lib/q_objects/ControlInterface.py
+
+
+**shoop_coords**: provides helper functions to manipulate loop and track coordinates. Implemented in `shoop_coords.lua`.
+
+.. shoop_function_docstrings::
+   src/shoopdaloop/lib/lua/lib/shoop_coords.lua
+
+**shoop_helpers**: provides helper functions for advanced control. Implemented in `shoop_helpers.lua`.
+
+.. shoop_function_docstrings::
+   src/shoopdaloop/lib/lua/lib/shoop_helpers.lua
+
+**shoop_format**: provides helper functions for formatting strings. Implemented in `shoop_format.lua`.
+
+.. shoop_function_docstrings::
+   src/shoopdaloop/lib/lua/lib/shoop_format.lua

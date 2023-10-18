@@ -161,7 +161,7 @@ class FetchChannelData(QQuickItem):
         self.fetching = True
 
         def worker(channel=self.channel, seq_nr=self._active_request_seq_nr, cb_to=self, logger=self.logger):
-            logger.debug("Fetching channel data to front-end.")
+            logger.debug(lambda: "Fetching channel data to front-end.")
             data = channel.get_data()
             channel.clear_data_dirty()
             QMetaObject.invokeMethod(

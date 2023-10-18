@@ -22,7 +22,7 @@ class JackControlClient(QQuickItem):
         client = jack.client_open("shoopdaloop-control", jack.JackNoStartServer, status)
         if status.value:
             err = get_jack_status_error_string(status)
-            self.logger.error("Could not open jack client: {}".format(err))
+            self.logger.error(lambda: "Could not open jack client: {}".format(err))
         
         self._client = client
         
@@ -70,12 +70,12 @@ class JackControlClient(QQuickItem):
 
     @Slot(str, str)
     def connect_ports(self, port_from, port_to):
-        self.logger.debug("Connecting {} to {}".format(port_from, port_to))
+        self.logger.debug(lambda: "Connecting {} to {}".format(port_from, port_to))
         jack.connect(self._client, port_from, port_to)
     
     @Slot(str, str)
     def disconnect_ports(self, port_from, port_to):
-        self.logger.debug("Disconnecting {} from {}".format(port_from, port_to))
+        self.logger.debug(lambda: "Disconnecting {} from {}".format(port_from, port_to))
         jack.disconnect(self._client, port_from, port_to)
         
     @Slot('QVariant', 'QVariant', int, result=list)

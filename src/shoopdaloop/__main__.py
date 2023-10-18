@@ -48,5 +48,5 @@ def main():
             )
         app.exec()
     except Exception as e:
-        logger.error("Exception: " + str(e) + "\n" + traceback.format_exc())
+        logger.error(lambda: "Exception: " + str(e) + "\n" + traceback.format_exc())
         exit()
