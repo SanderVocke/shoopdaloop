@@ -60,7 +60,12 @@ The API consists of globally available functions and constants, in addition to f
 
 * **print(msg)**, **print_debug(msg)**, **print_error(msg)**, **print_info(msg)**: Print a message to the Frontend.LuaScript logger. Respective log levels are info (default), debug, error.
 
-**shoop_control**: provides basic interfacing with **ShoopDaLoop**. Note that these functions are provided as bindings into the application - they are not written in Lua.
+**type midi_control_port**: a type used to access state related to a specific MIDI control port.
+
+.. shoop_function_docstrings::
+   src/shoopdaloop/lib/q_objects/MidiControlPort.py
+
+**library shoop_control**: provides basic interfacing with **ShoopDaLoop**. Note that these functions are provided as bindings into the application - they are not written in Lua.
 
 .. shoop_function_docstrings::
    src/shoopdaloop/lib/q_objects/ControlHandler.py
@@ -69,17 +74,17 @@ The API consists of globally available functions and constants, in addition to f
    src/shoopdaloop/lib/q_objects/ControlInterface.py
 
 
-**shoop_coords**: provides helper functions to manipulate loop and track coordinates. Implemented in `shoop_coords.lua`.
+**library shoop_coords**: provides helper functions to manipulate loop and track coordinates. Implemented in `shoop_coords.lua`.
 
 .. shoop_function_docstrings::
    src/shoopdaloop/lib/lua/lib/shoop_coords.lua
 
-**shoop_helpers**: provides helper functions for advanced control. Implemented in `shoop_helpers.lua`.
+**library shoop_helpers**: provides helper functions for advanced control. Implemented in `shoop_helpers.lua`.
 
 .. shoop_function_docstrings::
    src/shoopdaloop/lib/lua/lib/shoop_helpers.lua
 
-**shoop_format**: provides helper functions for formatting strings. Implemented in `shoop_format.lua`.
+**library shoop_format**: provides helper functions for formatting strings. Implemented in `shoop_format.lua`.
 
 .. shoop_function_docstrings::
    src/shoopdaloop/lib/lua/lib/shoop_format.lua

@@ -8,12 +8,6 @@ def test_init():
 
     assert(eng.evaluate('return 1 + 1') == 2)
 
-def test_callback():
-    eng = ScriptingEngine()
-    eng.define_global_callback(lambda: "HELLO WORLD", 'test_python_callback')
-
-    assert(eng.evaluate('return test_python_callback()') == "HELLO WORLD")
-
 def test_sandbox_security():
     eng = ScriptingEngine()
     unsafe_command = 'load("print(\"hello world\")")'

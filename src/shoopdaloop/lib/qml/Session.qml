@@ -271,7 +271,7 @@ AppRegistries {
 
             autoconnect_regexes: lookup_autoconnect.object || []
 
-            onMsgReceived: msg => midi_control.handle_midi(msg)
+            onMsgReceived: msg => midi_control.handle_midi(msg, midi_control_port)
         }
 
         RegisterInRegistry {

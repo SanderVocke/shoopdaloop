@@ -1,5 +1,6 @@
 from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
 from PySide6.QtQuick import QQuickItem
+from PySide6.QtQml import qmlContext
 
 from ..logging import Logger as BaseLogger
 from ..findFirstParent import findFirstParent
@@ -7,7 +8,17 @@ from ..findFirstParent import findFirstParent
 from .AutoConnect import AutoConnect
 from ..backend_wrappers import *
 from ..midi_helpers import *
+
+from ..lua_qobject_interface import create_lua_qobject_interface, lua_int
 class MidiControlPort(QQuickItem):
+    
+    # MIDI control port has several Lua interfaces to query its state
+    # from the Lua side.
+    lua_interfaces: [
+        [ 'get_cc_state', lua_int, lua_int ],
+        [ 'get_active_notes' ]
+    ]
+    
     def __init__(self, parent=None):
         super(MidiControlPort, self).__init__(parent)
         self._name_hint = None
@@ -27,6 +38,10 @@ class MidiControlPort(QQuickItem):
         self.nameChanged.connect(self.autoconnect_update)
         self.autoconnect_regexesChanged.connect(self.autoconnect_update)
         self.directionChanged.connect(self.autoconnect_update)
+        
+        # Create a Lua interface for ourselves
+        scripting_engine = qmlContext(self).contextProperty('scripting_engine')
+        self._lua_obj = create_lua_qobject_interface('midi_control_port', scripting_engine, self)
         
         self.rescan_parents()
         if not self._backend:
@@ -104,6 +119,26 @@ class MidiControlPort(QQuickItem):
     ###########
     ## SLOTS
     ###########
+    
+    @Slot(int, int, result='QVariant')
+    def get_cc_state(self, channel, cc):
+        """
+        @shoop_lua_fn_docstring.start
+        midi_control_port.get_cc_state(channel : int, cc : int) -> int / nil
+        Get the current state (as known since port opened) of the given CC.
+        @shoop_lua_fn_docstring.end
+        """
+        return self._cc_states[channel][cc]
+    
+    @Slot(result=list)
+    def get_active_notes(self):
+        """
+        @shoop_lua_fn_docstring.start
+        midi_control_port.get_active_notes() -> list of [int, int]
+        Get the current set of active ("on") notes ([channel, note]), tracked since port opened.
+        @shoop_lua_fn_docstring.end
+        """
+        return [list(_tuple) for _tuple in self._active_notes]
     
     @Slot()
     def autoconnect_update(self):

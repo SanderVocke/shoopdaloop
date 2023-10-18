@@ -58,17 +58,6 @@ class ScriptingEngine(QObject):
         end
         ''')
         self.execute_builtin_script('system/runtime_init.lua', True)
-    
-    def define_global_callback(self, py_cb, lua_name, overwrite=True):
-        self.logger.debug(lambda: 'Declaring global callback "{}"'.format(lua_name))
-        sig = inspect.signature(py_cb)
-        declaration_name = ('declare_global' if overwrite else 'declare_new_global')
-        # create a temporary registrar which can be used to register our global function
-        registrar = self.evaluate('return function(py_cb, name) {0}(name, function({1}) return py_cb({1}) end) end'.format(
-            declaration_name,
-            ','.join(sig.parameters.keys())
-        ))
-        registrar(py_cb, lua_name)
 
     def execute_builtin_script(self, filename, sandboxed=True):
         self.logger.debug(lambda: 'Running built-in script: {}'.format(filename))

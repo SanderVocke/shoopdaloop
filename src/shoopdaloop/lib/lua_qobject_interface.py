@@ -42,12 +42,12 @@ lua_callable = [ 'QVariant', as_callable ]
 # the arg converters should be functors which convert the given Lua argument back into Python
 # types. For simple primitive arguments, "lua_passthrough" (identity functor) can be used.
 # Constants can also be shared into Lua by populating the lua_constants list.
-def create_lua_qobject_interface(lua_module_name, scripting_engine, qobject):
+def create_lua_qobject_interface(scripting_engine, qobject):
     global logger
     if logger == None:
         logger = Logger('Frontend.LuaQObjectInterface')
     
-    logger.debug(lambda: "Creating Lua interface for QObject {} as \"{}\"".format(qobject, lua_module_name))
+    logger.debug(lambda: "Creating Lua interface for QObject {} as \"{}\"".format(qobject))
     
     module = scripting_engine.evaluate('return {{}}')
     if_registrar = scripting_engine.evaluate('return function (module, name, member) module[name] = member; return module end')

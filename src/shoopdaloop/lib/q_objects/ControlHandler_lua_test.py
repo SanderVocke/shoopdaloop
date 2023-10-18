@@ -6,7 +6,7 @@ import pytest
 def test_control_handler_loop_selector_coords():
     obj = ControlHandler()
     eng = ScriptingEngine()
-    create_lua_qobject_interface('shoop', eng, obj)
+    eng.create_lua_qobject_interface_as_global('shoop', obj)
 
     eng.evaluate('shoop.loop_get_mode({4,5})')
     
@@ -17,7 +17,7 @@ def test_control_handler_loop_selector_coords():
 def test_control_handler_loop_selector_coordslist():
     obj = ControlHandler()
     eng = ScriptingEngine()
-    create_lua_qobject_interface('shoop', eng, obj)
+    create_lua_qobject_interface(eng, obj)
 
     eng.evaluate('shoop.loop_get_mode({ {5,6}, {7,8} })')
     

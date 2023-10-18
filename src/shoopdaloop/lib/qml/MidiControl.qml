@@ -100,7 +100,7 @@ declare_in_context('shoop_format', require('shoop_format'))
     readonly property PythonLogger logger: PythonLogger { name: "Frontend.Qml.MidiControl" }
 
     // Handle a MIDI message received and execute any actions that match.
-    function handle_midi(msg) {
+    function handle_midi(msg, control_port) {
         let try_filter = function(filter, msg) {
             let byte_data = msg[filter[0]]
             let result = byte_data & filter[1]
