@@ -45,6 +45,23 @@ function direction_input(_default='right') {
   }
 }
 
+function track_input(_default='0') {
+  return {
+    'description': 'Track',
+    'default': _default,
+  }
+}
+
+function volume_conversion_input(_default='cc/vel') {
+  return {
+    'description': 'Volume level conversion',
+    'presets': {
+      'cc/vel': 'msg.bytes[2] / 127.0',
+    },
+    'default': _default,
+  }
+}
+
 // Specifies built-in actions that can be mapped. An action is a named script command which can also take inputs.
 // Inputs have default values and presets.
 const builtin_actions = ({
@@ -71,6 +88,14 @@ const builtin_actions = ({
             'direction': direction_input(),
         },
     },
+    'Set Track Volume': {
+        'description': 'Set volume level of (a) track(s)',
+        'script': 'shoop_control.track_set_volume_slider(track, value)',
+        'inputs': {
+          'track': track_input('0'),
+          'value': volume_conversion_input('cc/vel')
+        }
+    }
 })
 
 // To specify what MIDI messages to react to, and how to react to them,

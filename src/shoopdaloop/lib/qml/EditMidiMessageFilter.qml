@@ -33,15 +33,15 @@ Column {
     }
 
     function midi_msg_received(msg) {
-        if (Midi.maybe_note(msg) !== null) {
+        if (Midi.maybe_note(msg) !== undefined) {
             root.maybe_suggested_filters = [ MidiControl.match_type(Midi.NoteOn),
                                              MidiControl.match_note(Midi.maybe_note(msg)),
                                              MidiControl.match_channel(Midi.channel(msg)) ]
-        } else if (Midi.maybe_cc(msg) !== null) {
+        } else if (Midi.maybe_cc(msg) !== undefined) {
             root.maybe_suggested_filters = [ MidiControl.match_type(Midi.ControlChange),
                                              MidiControl.match_cc(Midi.maybe_cc(msg)),
                                              MidiControl.match_channel(Midi.channel(msg)) ]
-        } else if (Midi.maybe_program(msg) !== null) {
+        } else if (Midi.maybe_program(msg) !== undefined) {
             root.maybe_suggested_filters = [ MidiControl.match_type(Midi.ProgramChange),
                                              MidiControl.match_program(Midi.maybe_program(msg)),
                                              MidiControl.match_channel(Midi.channel(msg)) ]

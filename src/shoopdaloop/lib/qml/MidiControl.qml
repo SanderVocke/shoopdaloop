@@ -109,6 +109,16 @@ declare_in_context('shoop_format', require('shoop_format'))
 
         root.logger.debug(() => (`Received: [${msg}]. Matching against ${configuration.contents.length} action items.`))
 
+        let msg_object = {
+            'bytes': msg,
+            'note': Midi.maybe_note(msg),
+            'channel': Midi.channel(msg),
+            'cc': Midi.maybe_cc(msg),
+            'program': Midi.maybe_program(msg),
+            'velocity': Midi.maybe_velocity(msg),
+            'value': Midi.maybe_value(msg)
+        }
+
         for(var i=0; i<configuration.contents.length; i++) {
             const filters = configuration.contents[i].filters
             const action = configuration.contents[i].action
@@ -119,7 +129,7 @@ declare_in_context('shoop_format', require('shoop_format'))
                 if (configuration_handlers.length <= i) {
                     root.logger.error(() => ('MIDI control handlers not up-to-date'))
                 }
-                configuration_handlers[i].callable(msg)
+                configuration_handlers[i].callable(msg_object)
             } else {
                 root.logger.trace(() => (`No match for MIDI control filter: msg = ${msg}, filters = ${filters}, action = ${action}`))
             }

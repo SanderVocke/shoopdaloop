@@ -6,7 +6,7 @@ LuaControlInterface {
     qml_instance: this
     property var session: null
 
-    property PythonLogger logger : PythonLogger { name: "Frontend.SessionControlInterface" }
+    property PythonLogger logger : PythonLogger { name: "Frontend.Qml.SessionControlInterface" }
 
     property list<var> selected_loop_idxs : session.selected_loops ? session.selected_loops.map((l) => [l.track_idx, l.idx_in_track]) : []
     property var targeted_loop_idx: session.targeted_loop ? [session.targeted_loop.track_idx, session.targeted_loop.idx_in_track] : null
@@ -55,28 +55,26 @@ LuaControlInterface {
         return handlers[0]
     }
 
-    function select_ports(port_selector) {
+    function select_tracks(track_selector) {
         var rval = []
-        if (Array.isArray(port_selector)) {
-            if (port_selector.length == 0) { rval = [] }
+        if (Array.isArray(track_selector)) {
+            if (track_selector.length == 0) { rval = [] }
             else {
-                // Form [track_idx, port_select_fn]
-                rval = tracks_widget.tracks[port_selector[0]].ports.filter((p) => port_selector[1](p))
+                // Form [track_idx1, track_idx2, ...]
+                rval = track_selector.map((idx) => tracks_widget.tracks[idx])
             }
         } else {
-            // Form [port_select_fn]
-            tracks_widget.tracks.forEach((t) => {
-                rval = rval.concat(t.ports.filter((p) => port_selector(p)).map((p) => p.control_handler))
-            })
+            // Form [track_select_fn]
+            rval = tracks.filter((t) => track_selector(t))
         }
-        logger.debug(() => (`Selected ${rval.length} target port(s).`))
+        logger.debug(() => (`Selected ${rval.length} target track(s).`))
         return rval
     }
 
-    function select_single_port(port_selector) {
-        var handlers = select_loops(port_selector)
+    function select_single_track(track_selector) {
+        var handlers = select_tracks(track_selector)
         if (handlers.length != 1) {
-            logger.throw_error('Handling port call: multiple ports yielded while only one expected')
+            logger.throw_error('Handling track call: multiple tracks yielded while only one expected')
         }
         return handlers[0]
     }
@@ -158,28 +156,10 @@ LuaControlInterface {
     function loop_toggle_targeted_override(loop_selector) {
         select_loops(loop_selector).forEach((h) => { h.loop_toggle_targeted(loop_selector) } )
     }
-    function port_get_volume_override(port_selector) {
-        return select_ports(port_selector).port_get_volume(port_selector)
+    function track_set_volume_override(track_selector, vol) {
+        select_tracks(track_selector).forEach(t => t.control_widget.set_all_gains(vol))
     }
-    function port_get_muted_override(port_selector) {
-        return select_ports(port_selector).port_get_muted(port_selector)
-    }
-    function port_get_input_muted_override(port_selector) {
-        return select_ports(port_selector).port_get_input_muted(port_selector)
-    }
-    function port_mute_override(port_selector) {
-        select_ports(port_selector).port_mute(port_selector)
-    }
-    function port_mute_input_override(port_selector) {
-        select_ports(port_selector).port_mute_input(port_selector)
-    }
-    function port_unmute_override(port_selector) {
-        select_ports(port_selector).port_unmute(port_selector)
-    }
-    function port_unmute_input_override(port_selector) {
-        select_ports(port_selector).port_unmute_input(port_selector)
-    }
-    function port_set_volume_override(port_selector, vol) {
-        select_ports(port_selector).port_set_volume(port_selector, vol)
+    function track_set_volume_slider_override(track_selector, vol) {
+        select_tracks(track_selector).forEach(t => t.control_widget.set_volume_slider(vol))
     }
 }

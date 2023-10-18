@@ -45,7 +45,9 @@ def as_track_selector(lua_val):
     
     maybe_exception = RuntimeError("Could not recognize track selector type.")
     try:
-        if lupa.lua_type(lua_val) == 'table' or isinstance(lua_val, list):
+        if iscoord(lua_val):
+            return [lua_val]
+        elif lupa.lua_type(lua_val) == 'table' or isinstance(lua_val, list):
             aslist = tolist(lua_val)
             if isempty(aslist):
                 return aslist # is empty
@@ -108,21 +110,28 @@ class ControlHandler(QQuickItem):
         [ 'loop_get_by_track', lua_int ],
         [ 'loop_get_all' ],
         [ 'loop_get_volume', lua_loop_selector ],
+        [ 'loop_get_volume_slider', lua_loop_selector ],
+        [ 'loop_set_volume', lua_loop_selector ],
+        [ 'loop_set_volume_slider', lua_loop_selector ],
         [ 'loop_get_balance', lua_loop_selector ],
+        [ 'loop_set_balance', lua_loop_selector ],
         [ 'loop_transition', lua_loop_selector, lua_int, lua_int ],
         [ 'loop_record_n', lua_loop_selector, lua_int, lua_int ],
         [ 'loop_record_with_targeted', lua_loop_selector ],
-        [ 'loop_set_balance', lua_loop_selector ],
         [ 'loop_select', lua_loop_selector, lua_bool ],
         [ 'loop_target', lua_loop_selector ],
         [ 'loop_clear', lua_loop_selector ],
         [ 'loop_untarget_all' ],
         [ 'track_get_volume', lua_track_selector ],
+        [ 'track_set_volume', lua_track_selector, lua_float ],
+        [ 'track_get_volume_slider', lua_track_selector ],
+        [ 'track_set_volume_slider', lua_track_selector, lua_float ],
+        [ 'track_get_balance', lua_track_selector ],
+        [ 'track_set_balance', lua_track_selector, lua_float ],
         [ 'track_get_muted', lua_track_selector ],
         [ 'track_get_input_muted', lua_track_selector ],
         [ 'track_set_muted', lua_track_selector, lua_bool ],
         [ 'track_set_input_muted', lua_track_selector, lua_bool ],
-        [ 'track_set_volume', lua_track_selector, lua_float ],
     ]
 
     def generate_loop_mode_constants():
@@ -307,7 +316,40 @@ class ControlHandler(QQuickItem):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.loop_get_volume(loop_selector) -> float
-        Get the output audio volume of the specified loops.
+        Get the output audio volume of the specified loops as a gain factor.
+        @shoop_lua_fn_docstring.end
+        """
+        pass
+    
+    @Slot('QVariant', result=float)
+    @allow_qml_override
+    def loop_get_volume_slider(self, loop_selector):
+        """
+        @shoop_lua_fn_docstring.start
+        shoop_control.loop_get_volume(loop_selector) -> float
+        Get the output audio volume slider position as a fraction of its total range (0-1) of the given loop.
+        @shoop_lua_fn_docstring.end
+        """
+        pass
+    
+    @Slot('QVariant', float)
+    @allow_qml_override
+    def loop_set_volume(self, loop_selector, volume):
+        """
+        @shoop_lua_fn_docstring.start
+        shoop_control.loop_set_volume(loop_selector, volume)
+        Set the output audio volume of the specified loops as a gain factor.
+        @shoop_lua_fn_docstring.end
+        """
+        pass
+    
+    @Slot('QVariant', float)
+    @allow_qml_override
+    def loop_set_volume_slider(self, loop_selector, volume):
+        """
+        @shoop_lua_fn_docstring.start
+        shoop_control.loop_set_volume(loop_selector)
+        Set the output audio volume slider position as a fraction of its total range (0-1) of the given loop.
         @shoop_lua_fn_docstring.end
         """
         pass
@@ -427,7 +469,18 @@ class ControlHandler(QQuickItem):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.track_get_volume(track_selector) -> float
-        Get the volume of the given track.
+        Get the volume of the given track as a gain factor.
+        @shoop_lua_fn_docstring.end
+        """
+        pass
+    
+    @Slot('QVariant', result=float)
+    @allow_qml_override
+    def track_get_volume_slider(self, track_selector):
+        """
+        @shoop_lua_fn_docstring.start
+        shoop_control.track_get_volume_slider(track_selector) -> float
+        Get the volume of the given track as a fraction of its total range (0-1).
         @shoop_lua_fn_docstring.end
         """
         pass
@@ -471,7 +524,18 @@ class ControlHandler(QQuickItem):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.track_set_volume(track_selector, vol)
-        Set the given track's volume.
+        Set the given track's volume as a gain factor.
+        @shoop_lua_fn_docstring.end
+        """
+        pass
+    
+    @Slot('QVariant', float)
+    @allow_qml_override
+    def track_set_volume_slider(self, track_selector, vol):
+        """
+        @shoop_lua_fn_docstring.start
+        shoop_control.track_set_volume_slider(track_selector, vol)
+        Set the given track's volume as a fraction of its total range (0-1).
         @shoop_lua_fn_docstring.end
         """
         pass

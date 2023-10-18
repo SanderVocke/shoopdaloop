@@ -18,7 +18,29 @@ Column {
         model: configuration.contents.length
         delegate: EditMidiControlItem {
             width: root.width
-            item: configuration.contents[index]
+            
+            Component.onCompleted: { item = configuration.contents[index]; itemChanged() }
+
+            Connections {
+                target: configuration
+                function onContentsChanged() {
+                    if (JSON.stringify(item) !== JSON.stringify(configuration.contents[index])) {
+                        item = configuration.contents[index]
+                        itemChanged()
+                    }
+                }
+            }
+
+            onItemChanged: {
+                if (JSON.stringify(item) !== JSON.stringify(configuration.contents[index])) {
+                    configuration.contents[index] = item
+                    configuration.contentsChanged()
+                }
+            }
+            onDeleteItem: {
+                configuration.contents.splice(index, 1)
+                configuration.contentsChanged()
+            }
 
             onUpdateFilters: (filters) => {
                 configuration.contents[index].filters = filters
@@ -69,52 +91,136 @@ Column {
         property var action_inputs: builtin_action.inputs || {}
 
         signal updateFilters(list<var> filters)
+        signal deleteItem()
 
         Column {
+            width: parent.width
+            spacing: 1
+            Item {
+                width: parent.width
+                height: childrenRect.height
+
+                Row {
+                    anchors.left: parent.left
+                    id: filter_row
+                    spacing: 3
+
+                    Label {
+                        text: 'On'
+                        anchors.verticalCenter: edit_filters_button.verticalCenter
+                    }
+
+                    TextField {
+                        height: 30
+                        enabled: false
+                        text: rule_descriptor.description
+                        anchors.verticalCenter: edit_filters_button.verticalCenter
+                        width: 250
+                    }
+
+                    ExtendedButton {
+                        height: action_combo.height
+                        width: height - 10
+                        tooltip: "Edit MIDI filter"
+                        id: edit_filters_button
+
+                        MaterialDesignIcon {
+                            size: 16
+                            name: 'pencil'
+                            color: Material.foreground
+                            anchors.centerIn: parent
+                        }
+                        onClicked: {
+                            var dialog = midi_filters_dialog_factory.createObject(root, {
+                                'filters': item.filters,
+                            })
+
+                            dialog.open()
+                            dialog.accepted.connect(function() {
+                                box.updateFilters(dialog.filters)
+                                configuration.contentsChanged()
+                                dialog.close()
+                                dialog.destroy()
+                            })
+                        }
+                    }
+
+                    Label {
+                        text: ':'
+                        anchors.verticalCenter: edit_filters_button.verticalCenter
+                    }
+                }
+
+                Button {
+                    id: delete_rule_button
+                    anchors.right: parent.right
+                    text: 'Delete rule'
+                    height: filter_row.height
+
+                    onClicked: {
+                        box.deleteItem()
+                    }
+                }
+
+                Button {
+                    anchors.right: delete_rule_button.left
+                    text: 'Add condition'
+                    height: filter_row.height
+                    visible: !item.hasOwnProperty('condition')
+
+                    onClicked: {
+                        box.item.condition = ''
+                        box.itemChanged()
+                    }
+                }
+            }
+
             Row {
                 spacing: 3
+                visible: item.hasOwnProperty('condition')
 
                 Label {
-                    text: 'On:'
-                    anchors.verticalCenter: action_combo.verticalCenter
+                    text: 'If '
+                    anchors.verticalCenter: condition_field.verticalCenter
                 }
 
                 TextField {
-                    enabled: false
-                    text: rule_descriptor.description
-                    anchors.verticalCenter: action_combo.verticalCenter
-                    height: action_combo.height
-                    width: 250
+                    id: condition_field
+                    height: 30
+                    placeholderText: 'custom condition expression'
+                    text: box.item.condition || ''
+                    width: 500
+                    onAccepted: {
+                        box.item.condition = text
+                        box.itemChanged()
+                    }
                 }
 
                 ExtendedButton {
-                    height: action_combo.height
-                    width: height - 10
-                    tooltip: "Edit MIDI filter"
-
+                    tooltip: "Remove condition"
+                    width: 26
+                    height: 36
+                    anchors.verticalCenter: condition_field.verticalCenter
                     MaterialDesignIcon {
-                        size: 16
-                        name: 'pencil'
+                        size: 18
+                        name: 'delete'
                         color: Material.foreground
                         anchors.centerIn: parent
                     }
                     onClicked: {
-                        var dialog = midi_filters_dialog_factory.createObject(root, {
-                            'filters': item.filters,
-                        })
-
-                        dialog.open()
-                        dialog.accepted.connect(function() {
-                            box.updateFilters(dialog.filters)
-                            configuration.contentsChanged()
-                            dialog.close()
-                            dialog.destroy()
-                        })
+                        if(item.hasOwnProperty('condition')) {
+                            delete item.condition
+                            box.itemChanged()
+                        }
                     }
                 }
+            }
+
+            Row {
+                spacing: 3
 
                 Label {
-                    text: ':'
+                    text: "Do"
                     anchors.verticalCenter: action_combo.verticalCenter
                 }
 
@@ -164,7 +270,7 @@ Column {
 
                 TextField {
                     id: custom_action_script_field
-                    height: 40
+                    height: 30
                     placeholderText: 'custom action script'
                     text: box.item.action
                     width: 500
@@ -176,8 +282,6 @@ Column {
             }
 
             Repeater {
-                id: actions_repeater
-
                 model: Object.keys(action_inputs).length
 
                 Row {
@@ -188,7 +292,7 @@ Column {
                     property var maybe_configured_value: (item.hasOwnProperty('inputs') && item.inputs.hasOwnProperty(input_name)) ?
                         item.inputs[input_name] : null
 
-                    Item { width: 200; height: 30 }
+                    Item { width: 200; height: 30; anchors.verticalCenter: input_combo.verticalCenter }
 
                     Label {
                         text: '•  ' + input_name + ': '
@@ -220,10 +324,10 @@ Column {
                         visible: (input_combo.currentText === 'custom...') ||
                                  (!input.hasOwnProperty('presets')) ||
                                     (Object.keys(input.presets).length === 0)
-                        height: input_combo.height
                         anchors.verticalCenter: input_combo.verticalCenter
                         placeholderText: 'custom input script'
                         width: 400
+                        height: 30
 
                         text: maybe_configured_value || ''
 

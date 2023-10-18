@@ -136,6 +136,14 @@ Item {
     onFx_out_portsChanged: logic.trigger_signals()
     onMuteChanged: push_mute()
 
+    // Registration
+    RegisterInRegistry {
+        id: reg_entry
+        registry: registries.objects_registry
+        object: root
+        key: root.initial_track_descriptor.id + "_control_widget"
+    }
+
     // Helpers
     TrackControlLogic {
         id: logic
@@ -201,6 +209,12 @@ Item {
             if (match) { _n++ }
         }
         return null;
+    }
+    function set_all_gains(gain) {
+        audio_out_ports.forEach((p) => p.set_volume(gain))
+    }
+    function set_volume_slider(value) {
+        volume_slider.value = volume_slider.valueAt(value)
     }
     function push_volume(volume, target, gain_factor = 1.0) {
         convert_volume.dB = volume

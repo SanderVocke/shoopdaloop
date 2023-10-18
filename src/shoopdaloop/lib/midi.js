@@ -15,21 +15,35 @@ function maybe_note(msg) {
   if ([NoteOn, NoteOff].includes(msg[0] & 0xF0)) {
     return msg[1]
   }
-  return null
+  return undefined
 }
 
 function maybe_cc(msg) {
   if ((msg[0] & 0xF0) === ControlChange) {
     return msg[1]
   }
-  return null
+  return undefined
 }
 
 function maybe_program(msg) {
   if ((msg[0] & 0xF0) === ProgramChange) {
     return msg[1]
   }
-  return null
+  return undefined
+}
+
+function maybe_velocity(msg) {
+  if ([NoteOn, NoteOff].includes(msg[0] & 0xF0)) {
+    return msg[2]
+  }
+  return undefined
+}
+
+function maybe_value(msg) {
+  if ((msg[0] & 0xF0) === ControlChange) {
+    return msg[2]
+  }
+  return undefined
 }
 
 function channel(msg) {

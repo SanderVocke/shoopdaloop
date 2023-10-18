@@ -109,12 +109,16 @@ function shoop_helpers.default_loop_action(loops)
     local lengths = list_to_set(shoop_control.loop_get_length(loops))
     local new_mode = nil
     if sets_equal(modes, list_to_set({ shoop_control.constants.LoopMode_Recording })) then
+        print_debug("Default loop action: Recording -> Playing")
         new_mode = shoop_control.constants.LoopMode_Playing
     elseif sets_equal(lengths, list_to_set({ 0 })) and sets_equal(modes, list_to_set({ shoop_control.constants.LoopMode_Stopped })) then
+        print_debug("Default loop action: Empty -> Recording")
         new_mode = shoop_control.constants.LoopMode_Recording
     elseif not sets_equal(lengths, list_to_set({ 0 })) and sets_equal(modes, list_to_set({ shoop_control.constants.LoopMode_Stopped })) then
+        print_debug("Default loop action: Stopped -> Playing")
         new_mode = shoop_control.constants.LoopMode_Playing
     else
+        print_debug("Default loop action: Any -> Stopped")
         new_mode = shoop_control.constants.LoopMode_Stopped
     end
     shoop_control.loop_transition(loops, new_mode, 0)

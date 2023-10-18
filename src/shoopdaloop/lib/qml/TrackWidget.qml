@@ -102,6 +102,13 @@ Item {
         key: root.obj_id
     }
 
+    RegistryLookup {
+        id: lookup_control_widget
+        registry: registries.objects_registry
+        key: root.obj_id + "_control_widget"
+    }
+    property alias control_widget: lookup_control_widget.object
+
     Component.onCompleted: {
         loaded = false
         var _n_loops_loaded = 0
