@@ -100,7 +100,7 @@ Column {
                     }
                     onClicked: {
                         var dialog = midi_filters_dialog_factory.createObject(root, {
-                            'filters': [MidiControl.match_type(Midi.NoteOn)],
+                            'filters': item.filters,
                         })
 
                         dialog.open()
@@ -125,8 +125,12 @@ Column {
                     popup.width: 300
                     model: Object.keys(MidiControl.builtin_actions).concat(['Custom...'])
                     onActivated: (idx) => {
-                        box.item.action = model[idx]
+                        box.item.action = (model[idx] === 'Custom...') ? '' : model[idx]
                         box.itemChanged()
+                    }
+                    currentIndex: {
+                        let idx = action_combo.model.indexOf(box.item.action)
+                        currentIndex = (idx < 0) ? model.length - 1 : idx
                     }
                 }
 
@@ -153,7 +157,12 @@ Column {
                     id: custom_action_script_field
                     height: 40
                     placeholderText: 'custom action script'
+                    text: box.item.action
                     width: 500
+                    onAccepted: {
+                        box.item.action = text
+                        box.itemChanged()
+                    }
                 }
             }
 
@@ -179,11 +188,14 @@ Column {
                         id: input_combo
                         height: 40
                         width: 150
-                        model: Object.keys(action.presets).concat(['custom...'])
+                        model: action.hasOwnProperty('presets') ? Object.keys(action.presets).concat(['custom...']) || [] : []
+                        visible: action.hasOwnProperty('presets') && Object.keys(action.presets).length > 0
                     }
 
                     TextField {
-                        visible: input_combo.currentText === 'custom...'
+                        visible: (input_combo.currentText === 'custom...') ||
+                                 (!action.hasOwnProperty('presets')) ||
+                                    (Object.keys(action.presets).length === 0)
                         height: input_combo.height
                         anchors.verticalCenter: input_combo.verticalCenter
                         placeholderText: 'custom input script'

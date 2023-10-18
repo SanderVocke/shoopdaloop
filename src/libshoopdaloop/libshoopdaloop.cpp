@@ -1351,10 +1351,10 @@ void shoopdaloop_log(shoopdaloop_logger_t *logger, log_level_t level, const char
     );
 }
 
-void shoopdaloop_should_log(shoopdaloop_logger_t *logger, log_level_t level) {
-    ((logging::logger*)logger)->should_log(
+unsigned shoopdaloop_should_log(shoopdaloop_logger_t *logger, log_level_t level) {
+    return ((logging::logger*)logger)->should_log(
         level_convert.at(level)
-    );
+    ) ? 1 : 0;
 }
 
 void dummy_audio_port_queue_data(shoopdaloop_audio_port_t *port, size_t n_frames, audio_sample_t const* data) {

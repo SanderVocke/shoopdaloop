@@ -14,8 +14,6 @@ Item {
         if (!when) { return; }
         if (initialized) { return; }
 
-        root.logger.debug(() => ('Initializing'))
-
         scripting_context = scripting_engine.new_context()
 
         // Include all the shoop libraries so that their functions can be used
@@ -28,6 +26,8 @@ declare_in_context('shoop_format', require('shoop_format'))
 `, scripting_context, 'MidiControl', true, true)
 
         update_all_handlers()
+
+        root.logger.debug(() => ('MIDI control initialized'))
 
         ready = true
         initialized = true
@@ -75,15 +75,11 @@ declare_in_context('shoop_format', require('shoop_format'))
             for (const input_name in inputs) {
                 let action_input = inputs[input_name]
                 var input_impl = null
-                if ('inputs' in configuration && input_name in configuration.inputs) {
-                    let conf_input = configuration.inputs[input_name]
-                    if (conf_input in action_input.presets) {
-                        input_impl = action_input.presets[conf_input]
-                    } else {
-                        input_impl = conf_input
-                    }
+                let input_to_use = ('inputs' in configuration && input_name in configuration.inputs) ? configuration.inputs[input_name] : action_input.default
+                if (action_input.hasOwnProperty('presets') && input_to_use in action_input.presets) {
+                    input_impl = action_input.presets[input_to_use]
                 } else {
-                    input_impl = action_input.presets[action_input.default]
+                    input_impl = input_to_use
                 }
                 script += `local ${input_name} = ${input_impl}; `
             }

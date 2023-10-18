@@ -15,7 +15,7 @@ Dialog {
     readonly property PythonLogger logger: PythonLogger { name: "Frontend.Qml.SettingsDialog" }
 
     onAccepted: all_settings.save()
-    onDiscarded: all_settings.load()
+    onDiscarded: { all_settings.load(); close() }
 
     width: Overlay.overlay ? Overlay.overlay.width - 50 : 800
     height: Overlay.overlay ? Overlay.overlay.height - 50 : 500

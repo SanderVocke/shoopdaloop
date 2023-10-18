@@ -11,16 +11,43 @@ function loops_input(_default='selection') {
     }
 }
 
+function delay_input(_default='0') {
+    return {
+      'description': 'Delay by # of master loop cycles',
+      'default': _default,
+    }
+}
+
+function mode_input(_default='stopped') {
+  return {
+    'description': 'Specify loop mode',
+    'presets': {
+      'stopped': 'shoop_control.constants.LoopMode_Stopped',
+      'recording': 'shoop_control.constants.LoopMode_Recording',
+      'playing': 'shoop_control.constants.LoopMode_Playing',
+      'play w/ FX': 'shoop_control.constants.LoopMode_PlayingDryThroughWet',
+      're-record FX': 'shoop_control.constants.LoopMode_RecordingDryIntoWet',
+    },
+    'default': _default
+  }
+}
+
+function direction_input(_default='right') {
+  return {
+      'description': 'Direction',
+      'presets': {
+          'right': 'shoop_control.constants.Key_Right',
+          'left': 'shoop_control.constants.Key_Left',
+          'up': 'shoop_control.constants.Key_Up',
+          'down': 'shoop_control.constants.Key_Down',
+      },
+      'default': 'right',
+  }
+}
+
 // Specifies built-in actions that can be mapped. An action is a named script command which can also take inputs.
 // Inputs have default values and presets.
 const builtin_actions = ({
-    'Stop Loops': {
-        'description': 'Stop loops',
-        'script': 'shoop_control.loop_transition(loops, shoop_control.constants.LoopMode_Stopped, 0)',
-        'inputs': {
-            'loops': loops_input('all')
-        },
-    },
     'Default Loop Action': {
         'description': 'Perform default action on (a) loop(s). The default action is designed to cycle through the recording, stopped and playback modes in an intuitive way.',
         'script': 'shoop_helpers.default_loop_action(loops)',
@@ -28,25 +55,21 @@ const builtin_actions = ({
             'loops': loops_input('selection')
         },
     },
-    'Right': {
-        'description': 'Move selection right',
-        'script': 'shoop_helpers.move_selection(shoop_control.constants.Key_Right)',
-        'inputs': {},
+    'Loop Transition': {
+        'description': 'Transition loop(s) to a mode',
+        'script': 'shoop_control.loop_transition(loops, mode, delay_cycles)',
+        'inputs': {
+          'loops': loops_input('selection'),
+          'mode': mode_input('stopped'),
+          'delay_cycles': delay_input('0')
+        }
     },
-    'Left': {
-        'description': 'Move selection left',
-        'script': 'shoop_helpers.move_selection(shoop_control.constants.Key_Left)',
-        'inputs': {},
-    },
-    'Up': {
-        'description': 'Move selection up',
-        'script': 'shoop_helpers.move_selection(shoop_control.constants.Key_Up)',
-        'inputs': {},
-    },
-    'Down': {
-        'description': 'Move selection down',
-        'script': 'shoop_helpers.move_selection(shoop_control.constants.Key_Down)',
-        'inputs': {},
+    'Move Selection': {
+        'description': 'Move selection in a direction',
+        'script': 'shoop_helpers.move_selection(direction)',
+        'inputs': {
+            'direction': direction_input(),
+        },
     },
 })
 
