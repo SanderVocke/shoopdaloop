@@ -216,6 +216,12 @@ Item {
     function set_volume_slider(value) {
         volume_slider.value = volume_slider.valueAt(value)
     }
+    function set_all_input_gains(gain) {
+        audio_in_ports.forEach((p) => p.set_volume(gain))
+    }
+    function set_input_volume_slider(value) {
+        input_slider.value = input_slider.valueAt(value)
+    }
     function push_volume(volume, target, gain_factor = 1.0) {
         convert_volume.dB = volume
         var v = convert_volume.linear * gain_factor

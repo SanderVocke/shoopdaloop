@@ -6,6 +6,7 @@ from ..findFirstParent import findFirstParent
 
 from .AutoConnect import AutoConnect
 from ..backend_wrappers import *
+from ..midi_helpers import *
 class MidiControlPort(QQuickItem):
     def __init__(self, parent=None):
         super(MidiControlPort, self).__init__(parent)
@@ -16,6 +17,11 @@ class MidiControlPort(QQuickItem):
         self._backend = None
         self._autoconnect_regexes = []
         self._name = None
+        
+        # Track CC states
+        self._cc_states = [[ None for cc in range(128)] for channel in range(128)]
+        # Track active notes (set of (chan, note))
+        self._active_notes = set()
         
         self._autoconnecters = []
         self.nameChanged.connect(self.autoconnect_update)
@@ -86,6 +92,15 @@ class MidiControlPort(QQuickItem):
     ## METHODS
     ###########
     
+    def handle_msg(self, msg):
+        if is_noteOn(msg):
+            self._active_notes.add((channel(msg), note(msg)))
+        elif is_noteOff(msg):
+            self._active_notes.discard((channel(msg), note(msg)))
+        elif is_cc(msg):
+            self._cc_states[channel(msg)][msg['data'][1]] = msg['data'][2]
+        self.msgReceived.emit(msg)
+    
     ###########
     ## SLOTS
     ###########
@@ -117,7 +132,7 @@ class MidiControlPort(QQuickItem):
             if not r:
                 break
             self.logger.trace(lambda: "Received: {}".format(r.data))
-            self.msgReceived.emit(r.data)
+            self.handle_msg(r.data)
     
     @Slot()
     def rescan_parents(self):

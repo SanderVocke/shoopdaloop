@@ -162,4 +162,10 @@ LuaControlInterface {
     function track_set_volume_slider_override(track_selector, vol) {
         select_tracks(track_selector).forEach(t => t.control_widget.set_volume_slider(vol))
     }
+    function track_set_input_volume_override(track_selector, vol) {
+        select_tracks(track_selector).forEach(t => t.control_widget.set_all_input_gains(vol))
+    }
+    function track_set_input_volume_slider_override(track_selector, vol) {
+        select_tracks(track_selector).forEach(t => t.control_widget.set_input_volume_slider(vol))
+    }
 }

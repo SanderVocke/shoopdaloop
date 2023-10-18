@@ -126,6 +126,10 @@ class ControlHandler(QQuickItem):
         [ 'track_set_volume', lua_track_selector, lua_float ],
         [ 'track_get_volume_slider', lua_track_selector ],
         [ 'track_set_volume_slider', lua_track_selector, lua_float ],
+        [ 'track_get_input_volume', lua_track_selector ],
+        [ 'track_set_input_volume', lua_track_selector, lua_float ],
+        [ 'track_get_input_volume_slider', lua_track_selector ],
+        [ 'track_set_input_volume_slider', lua_track_selector, lua_float ],
         [ 'track_get_balance', lua_track_selector ],
         [ 'track_set_balance', lua_track_selector, lua_float ],
         [ 'track_get_muted', lua_track_selector ],
@@ -484,6 +488,28 @@ class ControlHandler(QQuickItem):
         @shoop_lua_fn_docstring.end
         """
         pass
+    
+    @Slot('QVariant', result=float)
+    @allow_qml_override
+    def track_get_input_volume(self, track_selector):
+        """
+        @shoop_lua_fn_docstring.start
+        shoop_control.track_get_input_volume(track_selector) -> float
+        Get the input volume of the given track as a gain factor.
+        @shoop_lua_fn_docstring.end
+        """
+        pass
+    
+    @Slot('QVariant', result=float)
+    @allow_qml_override
+    def track_get_input_volume_slider(self, track_selector):
+        """
+        @shoop_lua_fn_docstring.start
+        shoop_control.track_get_input_volume_slider(track_selector) -> float
+        Get the input volume of the given track as a fraction of its total range (0-1).
+        @shoop_lua_fn_docstring.end
+        """
+        pass
 
     @Slot('QVariant', result=bool)
     @allow_qml_override
@@ -536,6 +562,28 @@ class ControlHandler(QQuickItem):
         @shoop_lua_fn_docstring.start
         shoop_control.track_set_volume_slider(track_selector, vol)
         Set the given track's volume as a fraction of its total range (0-1).
+        @shoop_lua_fn_docstring.end
+        """
+        pass
+    
+    @Slot('QVariant', float)
+    @allow_qml_override
+    def track_set_input_volume(self, track_selector, vol):
+        """
+        @shoop_lua_fn_docstring.start
+        shoop_control.track_set_input_volume(track_selector, vol)
+        Set the given track's input volume as a gain factor.
+        @shoop_lua_fn_docstring.end
+        """
+        pass
+    
+    @Slot('QVariant', float)
+    @allow_qml_override
+    def track_set_input_volume_slider(self, track_selector, vol):
+        """
+        @shoop_lua_fn_docstring.start
+        shoop_control.track_set_input_volume_slider(track_selector, vol)
+        Set the given track's input volume as a fraction of its total range (0-1).
         @shoop_lua_fn_docstring.end
         """
         pass
