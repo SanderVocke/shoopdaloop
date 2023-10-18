@@ -125,7 +125,16 @@ Column {
                     popup.width: 300
                     model: Object.keys(MidiControl.builtin_actions).concat(['Custom...'])
                     onActivated: (idx) => {
-                        box.item.action = (model[idx] === 'Custom...') ? '' : model[idx]
+                        if (model[idx] === 'Custom...') {
+                            box.item.action = ''
+                            if (item.hasOwnProperty('inputs')) { delete item.inputs }
+                        } else {
+                            box.item.action = model[idx]
+                            item.inputs = {}
+                            for (var input_name in MidiControl.builtin_actions[model[idx]].inputs) {
+                                item.inputs[input_name] = MidiControl.builtin_actions[model[idx]].inputs[input_name].default
+                            }
+                        }
                         box.itemChanged()
                     }
                     currentIndex: {
@@ -174,13 +183,15 @@ Column {
                 Row {
                     spacing: 3
                     id: action_row
-                    property var action: Object.values(action_inputs)[index]
-                    property string action_name: Object.keys(action_inputs)[index]
+                    property var input: Object.values(action_inputs)[index]
+                    property string input_name: Object.keys(action_inputs)[index]
+                    property var maybe_configured_value: (item.hasOwnProperty('inputs') && item.inputs.hasOwnProperty(input_name)) ?
+                        item.inputs[input_name] : null
 
                     Item { width: 200; height: 30 }
 
                     Label {
-                        text: '•  ' + action_name + ': '
+                        text: '•  ' + input_name + ': '
                         anchors.verticalCenter: input_combo.verticalCenter
                     }
 
@@ -188,18 +199,39 @@ Column {
                         id: input_combo
                         height: 40
                         width: 150
-                        model: action.hasOwnProperty('presets') ? Object.keys(action.presets).concat(['custom...']) || [] : []
-                        visible: action.hasOwnProperty('presets') && Object.keys(action.presets).length > 0
+                        model: input.hasOwnProperty('presets') ? Object.keys(input.presets).concat(['custom...']) || [] : []
+                        visible: input.hasOwnProperty('presets') && Object.keys(input.presets).length > 0
+                        currentIndex: {
+                            let idx = (maybe_configured_value !== null) ? model.indexOf(maybe_configured_value) : 0
+                            if (idx === -1) { idx = model.length - 1 }
+                            return idx
+                        }
+                        onActivated: (idx) => {
+                            if (idx < (model.length - 1)) {
+                                if (!box.item.hasOwnProperty('inputs')) { box.item.inputs = {} }
+                                box.item["inputs"][action_row.input_name] = model[idx]
+                                box.itemChanged()
+                            }
+                        }
                     }
 
                     TextField {
+                        id: input_script_field
                         visible: (input_combo.currentText === 'custom...') ||
-                                 (!action.hasOwnProperty('presets')) ||
-                                    (Object.keys(action.presets).length === 0)
+                                 (!input.hasOwnProperty('presets')) ||
+                                    (Object.keys(input.presets).length === 0)
                         height: input_combo.height
                         anchors.verticalCenter: input_combo.verticalCenter
                         placeholderText: 'custom input script'
                         width: 400
+
+                        text: maybe_configured_value || ''
+
+                        onAccepted: {
+                            if (!box.item.hasOwnProperty('inputs')) { box.item.inputs = {} }
+                            box.item["inputs"][action_row.input_name] = text
+                            box.itemChanged()
+                        }
                     }
                 }
             }
