@@ -9,7 +9,7 @@ import ShoopDaLoop.PythonControlInterface
 import "../generate_session.js" as GenerateSession
 import "../generated/types.js" as Types
 
-AppRegistries {
+Item {
     id: root
     objectName: 'session'
 
@@ -42,8 +42,8 @@ AppRegistries {
         id: validator
     }
 
-    readonly property bool saving : state_registry.n_saving_actions_active > 0
-    readonly property bool loading : state_registry.n_loading_actions_active > 0
+    readonly property bool saving : registries.state_registry.n_saving_actions_active > 0
+    readonly property bool loading : registries.state_registry.n_loading_actions_active > 0
     readonly property bool doing_io : saving || loading
     readonly property var backend : session_backend
     property alias control_interface: control_interface
@@ -76,8 +76,8 @@ AppRegistries {
     TasksFactory { id: tasks_factory }
 
     function save_session(filename) {
-        state_registry.reset_saving_loading()
-        state_registry.save_action_started()
+        registries.state_registry.reset_saving_loading()
+        registries.state_registry.save_action_started()
         var tempdir = file_io.create_temporary_folder()
         var tasks = tasks_factory.create_tasks_obj(root)
         var session_filename = tempdir + '/session.json'
@@ -92,7 +92,7 @@ AppRegistries {
                 file_io.make_tarfile(filename, tempdir, false)
                 root.logger.info(() => ("Session written to: " + filename))
             } finally {
-                state_registry.save_action_finished()
+                registries.state_registry.save_action_finished()
                 file_io.delete_recursive(tempdir)
                 tasks.parent = null
                 tasks.deleteLater()
@@ -101,7 +101,7 @@ AppRegistries {
     }
 
     function reload() {
-        state_registry.clear([
+        registries.state_registry.clear([
             'sync_active',
             'scenes_widget'
         ])
@@ -118,8 +118,8 @@ AppRegistries {
     }
 
     function load_session(filename) {
-        state_registry.reset_saving_loading()
-        state_registry.load_action_started()
+        registries.state_registry.reset_saving_loading()
+        registries.state_registry.load_action_started()
         var tempdir = file_io.create_temporary_folder()
 
         try {
@@ -136,7 +136,7 @@ AppRegistries {
             root.initial_descriptor = descriptor
             root.logger.debug(() => ("Reloading session"))
             reload()
-            state_registry.load_action_started()
+            registries.state_registry.load_action_started()
 
             let finish_fn = () => {
                 root.logger.debug(() => ("Queueing load tasks"))
@@ -146,7 +146,7 @@ AppRegistries {
                     try {
                         file_io.delete_recursive(tempdir)
                     } finally {
-                        state_registry.load_action_finished()
+                        registries.state_registry.load_action_finished()
                         tasks.parent = null
                         tasks.deleteLater()
                     }
@@ -173,7 +173,7 @@ AppRegistries {
 
     RegistryLookup {
         id: selected_loops_lookup
-        registry: state_registry
+        registry: registries.state_registry
         key: 'selected_loop_ids'
     }
     property alias selected_loop_ids : selected_loops_lookup.object
@@ -181,7 +181,7 @@ AppRegistries {
 
     RegistryLookup {
         id: targeted_loop_lookup
-        registry: state_registry
+        registry: registries.state_registry
         key: 'targeted_loop'
     }
     property alias targeted_loop : targeted_loop_lookup.object

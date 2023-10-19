@@ -90,7 +90,7 @@ Column {
         })
         property var action_inputs: builtin_action.inputs || {}
 
-        signal updateFilters(list<var> filters)
+        signal updateFilters(var filters)
         signal deleteItem()
 
         Column {

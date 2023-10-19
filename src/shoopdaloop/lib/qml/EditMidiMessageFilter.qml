@@ -408,7 +408,7 @@ Column {
         }
 
         signal deleteRequested()
-        signal filterUpdated(list<int> filter)
+        signal filterUpdated(var filter)
 
         Label {
             text: 'Byte'

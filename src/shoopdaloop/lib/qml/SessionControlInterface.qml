@@ -105,7 +105,7 @@ LuaControlInterface {
         return select_loops((l) => l.track_idx == track_idx).map(((l) => [l.track_idx, l.idx_in_track]))
     }
     function loop_transition_override(loop_selector, mode, cycles_delay) {
-        select_loops(loop_selector).forEach((h) => { h.transition(mode, cycles_delay, state_registry.get('sync_active'), false) } )
+        select_loops(loop_selector).forEach((h) => { h.transition(mode, cycles_delay, registries.state_registry.get('sync_active'), false) } )
     }
     function loop_get_volume_override(loop_selector) {
         return select_single_loop(loop_selector).last_pushed_volume
@@ -139,22 +139,22 @@ LuaControlInterface {
         if (!deselect_others && session.selected_loop_ids) {
             session.selected_loop_ids.forEach((id) => { selection.add(id) })
         }
-        state_registry.replace('selected_loop_ids', selection)
+        registries.state_registry.replace('selected_loop_ids', selection)
     }
     function loop_target_override(loop_selector) {
         for(const loop of select_loops(loop_selector)) {
             if (loop) {
-                state_registry.replace('targeted_loop', loop)
+                registries.state_registry.replace('targeted_loop', loop)
                 return
             }
         }
-        state_registry.replace('targeted_loop', null)
+        registries.state_registry.replace('targeted_loop', null)
     }
     function loop_clear_override(loop_selector) {
         select_loops(loop_selector).forEach((h) => { h.clear() } )
     }
     function loop_untarget_all_override() {
-        state_registry.replace('targeted_loop', null)
+        registries.state_registry.replace('targeted_loop', null)
     }
     function loop_toggle_selected_override(loop_selector) {
         select_loops(loop_selector).forEach((h) => { h.loop_toggle_selected(loop_selector) } )

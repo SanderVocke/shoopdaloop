@@ -124,14 +124,14 @@ Item {
 
     RegistryLookup {
         id: master_loop_lookup
-        registry: state_registry
+        registry: registries.state_registry
         key: 'master_loop'
     }
     property alias master_loop : master_loop_lookup.object
 
     RegistryLookup {
         id: targeted_loop_lookup
-        registry: state_registry
+        registry: registries.state_registry
         key: 'targeted_loop'
     }
     property alias targeted_loop : targeted_loop_lookup.object
@@ -139,7 +139,7 @@ Item {
 
     RegistryLookup {
         id: hovered_scene_loops_lookup
-        registry: state_registry
+        registry: registries.state_registry
         key: 'hovered_scene_loop_ids'
     }
     property alias hovered_scene_loop_ids : hovered_scene_loops_lookup.object
@@ -147,7 +147,7 @@ Item {
 
     RegistryLookup {
         id: selected_scene_loops_lookup
-        registry: state_registry
+        registry: registries.state_registry
         key: 'selected_scene_loop_ids'
     }
     property alias selected_scene_loop_ids : selected_scene_loops_lookup.object
@@ -155,14 +155,14 @@ Item {
 
     RegistryLookup {
         id: scenes_widget_lookup
-        registry: state_registry
+        registry: registries.state_registry
         key: 'scenes_widget'
     }
     property alias scenes_widget : scenes_widget_lookup.object
 
     RegistryLookup {
         id: selected_loops_lookup
-        registry: state_registry
+        registry: registries.state_registry
         key: 'selected_loop_ids'
     }
     property alias selected_loop_ids : selected_loops_lookup.object
@@ -248,14 +248,14 @@ Item {
     }
     function transition(mode, delay, wait_for_sync, include_selected=true) {
         // Do the transition for this loop and all selected loops, if any
-        var selected_ids = include_selected ? new Set(state_registry.maybe_get('selected_loop_ids', new Set())) : new Set()
+        var selected_ids = include_selected ? new Set(registries.state_registry.maybe_get('selected_loop_ids', new Set())) : new Set()
         selected_ids.add(obj_id)
         var objects = Array.from(selected_ids).map(id => registries.objects_registry.maybe_get(id, undefined)).filter(v => v != undefined)
         transition_loops(objects, mode, delay, wait_for_sync)
     }
     function play_solo_in_track() {
         // Gather all selected loops
-        var _selected_ids = new Set(state_registry.maybe_get('selected_loop_ids', new Set()))
+        var _selected_ids = new Set(registries.state_registry.maybe_get('selected_loop_ids', new Set()))
         _selected_ids.add(obj_id)
         // Gather all other loops that are in the same track(s)
         var _selected_loops = []
@@ -289,25 +289,25 @@ Item {
     function select(clear = false) {
         untarget()
         if (!clear) {
-            state_registry.add_to_set('selected_loop_ids', obj_id)
+            registries.state_registry.add_to_set('selected_loop_ids', obj_id)
         } else {
-            state_registry.replace('selected_loop_ids', new Set([obj_id]))
+            registries.state_registry.replace('selected_loop_ids', new Set([obj_id]))
         }
     }
     function deselect(clear = false) {
         if (!clear) {
-            state_registry.remove_from_set('selected_loop_ids', obj_id)
+            registries.state_registry.remove_from_set('selected_loop_ids', obj_id)
         } else {
-            state_registry.replace('selected_loop_ids', new Set())
+            registries.state_registry.replace('selected_loop_ids', new Set())
         }
     }
     function target() {
         deselect()
-        state_registry.replace('targeted_loop', root)
+        registries.state_registry.replace('targeted_loop', root)
     }
     function untarget() {
         if (targeted) {
-            state_registry.replace('targeted_loop', null)
+            registries.state_registry.replace('targeted_loop', null)
         }
     }
     function toggle_selected(clear_if_select = false) {

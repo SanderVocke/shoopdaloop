@@ -19,7 +19,7 @@ Session {
         name: 'ControlInterface'
         filename : TestFilename.test_filename()
         session: session
-        when: session.control_interface.ready
+        when: session.control_interface.ready && registries.state_registry
 
         function master_loop() {
             return session.tracks[0].loops[0]
@@ -264,8 +264,39 @@ declare_global('shoop_format', require('shoop_format'))
             })
         }
 
-        // loop_clear
-        // loop_count
+        function test_loop_clear() {
+            run_case('test_loop_clear', () => {
+                check_backend()
+                clear()
+
+                master_loop().set_length(100)
+                other_loop().set_length(100)
+                wait(50)
+                
+                do_execute('shoop_control.loop_clear({0,0})')
+                wait(50)
+
+                verify_loop_cleared(master_loop())
+                verify(other_loop().length > 0)
+
+                do_execute('shoop_control.loop_clear({0,1})')
+                wait(50)
+
+                verify_loop_cleared(master_loop())
+                verify_loop_cleared(other_loop())
+
+                master_loop().set_length(100)
+                other_loop().set_length(100)
+                wait(50)
+
+                do_execute('shoop_control.loop_clear({{0,0}, {0,1}})')
+                wait(50)
+
+                verify_loop_cleared(master_loop())
+                verify_loop_cleared(other_loop())
+            })
+        }
+
         // loop_get_all
         // loop_get_by_mode
         // loop_get_by_track

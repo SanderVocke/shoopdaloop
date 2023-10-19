@@ -17,7 +17,7 @@ Item {
     property var backend : null
 
     function update() {
-        state_registry.replace('sync_active', sync_active)
+        registries.state_registry.replace('sync_active', sync_active)
     }
 
     onSync_activeChanged: update()

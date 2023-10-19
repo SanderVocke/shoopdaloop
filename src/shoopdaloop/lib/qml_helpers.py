@@ -1,4 +1,5 @@
-from PySide6.QtQml import qmlRegisterType
+from PySide6.QtQml import qmlRegisterType, QQmlComponent
+from PySide6.QtCore import QUrl
 
 import sys
 import os
@@ -28,7 +29,6 @@ from .q_objects.ReleaseFocusNotifier import ReleaseFocusNotifier
 from .q_objects.ControlInterface import ControlInterface
 from .q_objects.MidiControlPort import MidiControlPort
 from .q_objects.SettingsIO import SettingsIO
-from .q_objects.AppRegistries import AppRegistries
 
 # Read version from the version.txt file (will be present when packaged)
 pkg_version = None
@@ -63,12 +63,15 @@ def register_shoopdaloop_qml_classes():
     register_qml_class(ControlInterface, 'ControlInterface')
     register_qml_class(MidiControlPort, 'MidiControlPort')
     register_qml_class(SettingsIO, 'SettingsIO')
-    register_qml_class(AppRegistries, 'AppRegistries')
 
 def create_and_populate_root_context(engine, global_args, additional_items={}):
     # Set import path to predefined classes
     engine.addImportPath(script_dir + '/../qml_types')
     engine.addPluginPath(script_dir + '/../qml_plugins')
+    
+    # QML instantiations
+    registries_comp = QQmlComponent(engine, QUrl.fromLocalFile(script_dir + '/qml/AppRegistries.qml'))
+    registries = registries_comp.create()
 
     items = {
         'file_io': FileIO(parent=engine),
@@ -82,7 +85,7 @@ def create_and_populate_root_context(engine, global_args, additional_items={}):
         'release_focus_notifier': ReleaseFocusNotifier(parent=engine),
         'global_args': global_args,
         'settings_io': SettingsIO(parent=engine),
-        'registries': AppRegistries(parent=engine),
+        'registries': registries
     }
 
     for key, item in additional_items.items():
