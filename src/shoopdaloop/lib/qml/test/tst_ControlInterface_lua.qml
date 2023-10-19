@@ -210,6 +210,8 @@ declare_global('shoop_format', require('shoop_format'))
             })
         }
 
+        // TODO: harder to test because this requires loops to
+        // trigger each other
         // function test_loop_record_n() {
         //     run_case('test_loop_record_n', () => {
         //         check_backend()
@@ -218,6 +220,8 @@ declare_global('shoop_format', require('shoop_format'))
         //     })
         // }
 
+        // TODO: harder to test because this requires loops to
+        // trigger each other
         // function test_loop_record_with_targeted() {
         //     run_case('test_loop_record_with_targeted', () => {
         //         check_backend()
@@ -251,3 +255,23 @@ declare_global('shoop_format', require('shoop_format'))
         //         verify(false)
         //     })
         // }
+
+        // loop_clear
+        // loop_count
+        // loop_get_all
+        // loop_get_by_mode
+        // loop_get_by_track
+        // loop_get_length
+        // track_get_input_muted
+        // track_get_input_volume
+        // track_get_input_volume_slider
+        // track_get_muted
+        // track_get_volume
+        // track_get_volume_slider
+        // track_set_input_muted
+        // track_set_input_volume
+        // track_set_input_volume_slider
+        // track_set_volume
+        // track_set_volume_slider
+    }
+}

@@ -99,7 +99,11 @@ class ControlHandler(QQuickItem):
     def cached_calls(self):
         return self._call_cache
 
-    # For introspection
+    # Specify slots which can be made accessible to Lua. Specified as
+    # [ method_name, arg1_type, arg2_type, ... ]
+    # Where each type is:
+    # [ PySide_type, convert_fn ]
+    # (convert_fn will be called on the value passed to Python from Lua)
     lua_interfaces = [
         [ 'loop_count', lua_loop_selector ],
         [ 'loop_get_mode', lua_loop_selector ],
