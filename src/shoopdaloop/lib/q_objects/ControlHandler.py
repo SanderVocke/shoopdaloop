@@ -198,6 +198,8 @@ class ControlHandler(QQuickItem):
     def allow_qml_override(func):
         def wrapper(self, *args, **kwargs):
             self.logger.debug(lambda: "Call ControlHandler {} with args {}".format(func.__name__, str(args)))
+            # Call func() in most cases just for code coverage
+            func(self, *args, **kwargs)
             if self.qml_instance:
                 try:
                     return self._methods[func.__name__ + "_override"]['call_qml'](*args)
