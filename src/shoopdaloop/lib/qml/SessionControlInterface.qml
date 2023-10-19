@@ -148,7 +148,7 @@ LuaControlInterface {
                 return
             }
         }
-        state_registry.replace('targeted_loop_id', null)
+        state_registry.replace('targeted_loop', null)
     }
     function loop_clear_override(loop_selector) {
         select_loops(loop_selector).forEach((h) => { h.clear() } )

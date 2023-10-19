@@ -19,6 +19,8 @@ def as_loop_selector(lua_val):
     
     maybe_exception = RuntimeError("Could not recognize loop selector type.")
     try:
+        if lua_val == None:
+            return []
         if lupa.lua_type(lua_val) == 'table' or isinstance(lua_val, list):
             aslist = tolist(lua_val)
             if iscoords(aslist) or isempty(aslist):
@@ -32,7 +34,7 @@ def as_loop_selector(lua_val):
     except Exception as e:
         maybe_exception = e
     
-    raise ValueError('Failed to interpret loop selector. Loop selector may be a callable (f => bool), [], [x,y], or [[x1,y1],[x2,y2],...]. Selector: {} (type {}). Exception: {}'.format(str(lua_val), lupa.lua_type(lua_val), str(maybe_exception)))
+    raise ValueError('Failed to interpret loop selector. Loop selector may be a callable (f => bool), nil, [], [x,y], or [[x1,y1],[x2,y2],...]. Selector: {} (type {}). Exception: {}'.format(str(lua_val), lupa.lua_type(lua_val), str(maybe_exception)))
 
 def as_track_selector(lua_val):
     def iscoord(l):

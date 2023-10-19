@@ -248,13 +248,21 @@ declare_global('shoop_format', require('shoop_format'))
             })
         }
 
-        // function test_loop_target() {
-        //     run_case('test_loop_target', () => {
-        //         check_backend()
-        //         clear()
-        //         verify(false)
-        //     })
-        // }
+        function test_loop_target() {
+            run_case('test_loop_target', () => {
+                check_backend()
+                clear()
+                
+                do_execute('shoop_control.loop_target({0,0})')
+                verify_eq_lua('shoop_control.loop_get_which_targeted()', '{0,0}')
+                do_execute('shoop_control.loop_target({0,1})')
+                verify_eq_lua('shoop_control.loop_get_which_targeted()', '{0,1}')
+                do_execute('shoop_control.loop_target({})')
+                verify_eq_lua('shoop_control.loop_get_which_targeted()', 'nil')
+                do_execute('shoop_control.loop_target(nil)')
+                verify_eq_lua('shoop_control.loop_get_which_targeted()', 'nil')
+            })
+        }
 
         // loop_clear
         // loop_count
