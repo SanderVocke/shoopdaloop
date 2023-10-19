@@ -43,11 +43,12 @@ runs:
   
   - name: Report results filename
     shell: bash
+    if: success() || failure()
     run: |
       echo "QML test results file: $(ls -la ${{ env.results_xml }})"
   
   - name: Publish QML Test Report
-    if: ${{ !env.ACT }}
+    if: ${{ !env.ACT }} && ( success() || failure() )
     uses: mikepenz/action-junit-report@v3
     with:
       report_paths: ${{ env.results_xml }}
