@@ -30,12 +30,12 @@ class ScriptingEngine(QObject):
         self.logger.debug(lambda: 'Initializing Lua runtime.')
         self.lua = lupa.LuaRuntime()
         self._current_context_id = None
-        self.global_registrar = self.lua.eval('function(name, fn) _G[name] = fn end')
-        self.global_registrar('__shoop_print', lambda s, l=self.lua_logger: l.info('{}'.format(s)))
-        self.global_registrar('__shoop_print_debug', lambda s, l=self.lua_logger: l.debug('{}'.format(s)))
-        self.global_registrar('__shoop_print_info', lambda s, l=self.lua_logger: l.info('{}'.format(s)))
-        self.global_registrar('__shoop_print_warning', lambda s, l=self.lua_logger: l.warning('{}'.format(s)))
-        self.global_registrar('__shoop_print_error', lambda s, l=self.lua_logger: l.error('{}'.format(s)))
+        self._G_registrar = self.lua.eval('function(name, fn) _G[name] = fn end')
+        self._G_registrar('__shoop_print', lambda s, l=self.lua_logger: l.info('{}'.format(s)))
+        self._G_registrar('__shoop_print_debug', lambda s, l=self.lua_logger: l.debug('{}'.format(s)))
+        self._G_registrar('__shoop_print_info', lambda s, l=self.lua_logger: l.info('{}'.format(s)))
+        self._G_registrar('__shoop_print_warning', lambda s, l=self.lua_logger: l.warning('{}'.format(s)))
+        self._G_registrar('__shoop_print_error', lambda s, l=self.lua_logger: l.error('{}'.format(s)))
         self.execute_builtin_script('system/sandbox.lua', False)
         self.run_sandboxed = self.lua.eval('function (code) return __shoop_run_sandboxed(code) end')
         self.execute('package.path = package.path .. ";{}"'.format(lua_scriptdir + '/lib/?.lua'), None, None, True, False)
@@ -58,7 +58,7 @@ class ScriptingEngine(QObject):
         end
         ''')
         self.execute_builtin_script('system/runtime_init.lua', True)
-        self.global_registrar = self.evaluate('return function(name, val) declare_global(name, val) end', None, None, True, False)
+        self.declare_global_fn = self.evaluate('return function(name, val) declare_global(name, val) end', None, None, True, False)
 
     def execute_builtin_script(self, filename, sandboxed=True):
         self.logger.debug(lambda: 'Running built-in script: {}'.format(filename))
@@ -177,8 +177,13 @@ class ScriptingEngine(QObject):
     def create_lua_qobject_interface_as_global(self, name, qobject):
         self.logger.debug(lambda: 'Creating Lua interface for QObject: {}'.format(qobject))
         module = create_lua_qobject_interface(self, qobject)
-        self.global_registrar(name, module)
-        
+        self._G_registrar(name, module)
+    
+    @Slot(str, 'QVariant')
+    def create_lua_qobject_interface_as_sandboxed_global(self, name, qobject):
+        self.logger.debug(lambda: 'Creating sandboxed Lua interface for QObject: {}'.format(qobject))
+        module = create_lua_qobject_interface(self, qobject)
+        self.declare_global_fn(name, module)
 
     ##########
     ## INTERNAL MEMBERS

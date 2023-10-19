@@ -182,6 +182,18 @@ declare_global('shoop_format', require('shoop_format'))
             })
         }
 
+        // function test_loop_set_get_volume_slider() {
+        //     run_case('test_loop_set_get_volume_slider', () => {
+        //         check_backend()
+        //         clear()
+                
+        //         do_execute('shoop_control.loop_set_volume_slider({0,0}, 1.0)')
+        //         verify_eq_lua('shoop_control.loop_get_volume_slider({0,0})', '1.0')
+        //         do_execute('shoop_control.loop_set_volume_slider({0,0}, 0.5)')
+        //         verify_eq_lua('shoop_control.loop_get_volume_slider({0,0})', '0.5')
+        //     })
+        // }
+
         // function test_loop_set_get_balance() {
         //     run_case('test_loop_set_get_balance', () => {
         //         check_backend()

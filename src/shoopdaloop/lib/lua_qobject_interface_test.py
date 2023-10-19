@@ -36,7 +36,7 @@ def test_callback():
     
     obj = TestHandler()
     eng = ScriptingEngine()
-    eng.create_lua_qobject_interface_as_global('testy', obj)
+    eng.create_lua_qobject_interface_as_sandboxed_global('testy', obj)
 
     assert(eng.evaluate('return testy.foo()') == 'bar')
     assert(eng.evaluate('return testy.foz("baz")') == 'baz')
