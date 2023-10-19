@@ -25,7 +25,7 @@ Session {
             run_case('test_session_descriptor_default', () => {
                 check_backend()
 
-                testcase.wait(500)
+                testcase.wait(200)
                 var reference = session.initial_descriptor
                 var actual = session.actual_session_descriptor(false, '', null)
                 verify(TestDeepEqual.testDeepEqual(actual, reference, session.logger.error))

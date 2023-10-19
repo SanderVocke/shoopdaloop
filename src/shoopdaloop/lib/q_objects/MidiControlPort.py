@@ -1,6 +1,5 @@
 from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
 from PySide6.QtQuick import QQuickItem
-from PySide6.QtQml import qmlContext
 
 from ..logging import Logger as BaseLogger
 from ..findFirstParent import findFirstParent
@@ -38,10 +37,8 @@ class MidiControlPort(QQuickItem):
         self.nameChanged.connect(self.autoconnect_update)
         self.autoconnect_regexesChanged.connect(self.autoconnect_update)
         self.directionChanged.connect(self.autoconnect_update)
-        
-        # Create a Lua interface for ourselves
-        scripting_engine = qmlContext(self).contextProperty('scripting_engine')
-        self._lua_obj = create_lua_qobject_interface('midi_control_port', scripting_engine, self)
+    
+        self._lua_obj = None
         
         self.rescan_parents()
         if not self._backend:
@@ -55,6 +52,12 @@ class MidiControlPort(QQuickItem):
     ######################
     # PROPERTIES
     ######################
+    
+    # lua_interface
+    luaInterfaceChanged = Signal('QVariant')
+    @Property('QVariant', notify=luaInterfaceChanged)
+    def lua_interface(self):
+        return self._lua_obj
     
     # autoconnect_regexes
     autoconnect_regexesChanged = Signal(list)
@@ -119,6 +122,11 @@ class MidiControlPort(QQuickItem):
     ###########
     ## SLOTS
     ###########
+    
+    @Slot('QVariant')
+    def register_lua_interface(self, scripting_engine):
+        # Create a Lua interface for ourselves
+        self._lua_obj = create_lua_qobject_interface(scripting_engine, self)
     
     @Slot(int, int, result='QVariant')
     def get_cc_state(self, channel, cc):

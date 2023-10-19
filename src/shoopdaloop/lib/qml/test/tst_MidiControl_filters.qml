@@ -31,19 +31,19 @@ MidiControl {
                 'action': 'shoop_control.loop_count({{0, 0}})'
             },
             { 
-                'filters': [MidiControl.match_type(MidiControl.NoteOn)],
+                'filters': [MidiControl.match_type(Midi.NoteOn)],
                 'action': 'shoop_control.loop_count({{1, 1}})'
             },
             { 
-                'filters': [MidiControl.match_type(MidiControl.NoteOff)],
+                'filters': [MidiControl.match_type(Midi.NoteOff)],
                 'action': 'shoop_control.loop_count({{2, 2}})'
             },
             { 
-                'filters': [MidiControl.match_type(MidiControl.ControlChange)],
+                'filters': [MidiControl.match_type(Midi.ControlChange)],
                 'action': 'shoop_control.loop_count({{3, 3}})'
             },
             { 
-                'filters': [MidiControl.match_type(MidiControl.ProgramChange)],
+                'filters': [MidiControl.match_type(Midi.ProgramChange)],
                 'action': 'shoop_control.loop_count({{4, 4}})'
             },
         ]

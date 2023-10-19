@@ -175,7 +175,7 @@ class ScriptingEngine(QObject):
     @Slot(str, 'QVariant')
     def create_lua_qobject_interface_as_global(self, name, qobject):
         self.logger.debug(lambda: 'Creating Lua interface for QObject: {}'.format(qobject))
-        module = create_lua_qobject_interface(name, self, qobject)
+        module = create_lua_qobject_interface(self, qobject)
         self.global_registrar(name, module)
         
 

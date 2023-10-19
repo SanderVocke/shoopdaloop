@@ -17,7 +17,7 @@ def test_control_handler_loop_selector_coords():
 def test_control_handler_loop_selector_coordslist():
     obj = ControlHandler()
     eng = ScriptingEngine()
-    create_lua_qobject_interface(eng, obj)
+    eng.create_lua_qobject_interface_as_global('shoop', obj)
 
     eng.evaluate('shoop.loop_get_mode({ {5,6}, {7,8} })')
     
@@ -28,7 +28,7 @@ def test_control_handler_loop_selector_coordslist():
 def test_control_handler_loop_selector_simple_functor():
     obj = ControlHandler()
     eng = ScriptingEngine()
-    create_lua_qobject_interface('shoop', eng, obj)
+    eng.create_lua_qobject_interface_as_global('shoop', obj)
 
     eng.evaluate('shoop.loop_get_mode(function(loop) return true end)')
     
@@ -49,7 +49,7 @@ def test_control_handler_loop_selector_simple_functor():
 def test_control_handler_loop_selector_object_functor():
     obj = ControlHandler()
     eng = ScriptingEngine()
-    create_lua_qobject_interface('shoop', eng, obj)
+    eng.create_lua_qobject_interface_as_global('shoop', obj)
 
     eng.evaluate('shoop.loop_get_mode(function(loop) return loop["x"] < 10 end)')
     

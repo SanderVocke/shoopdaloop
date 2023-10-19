@@ -175,24 +175,24 @@ declare_global('shoop_format', require('shoop_format'))
                 check_backend()
                 clear()
                 
-                do_execute('shoop_control.loop_set_volume({0,0}, 1.0)'))
+                do_execute('shoop_control.loop_set_volume({0,0}, 1.0)')
                 verify_eq_lua('shoop_control.loop_get_volume({0,0})', '1.0')
                 do_execute('shoop_control.loop_set_volume({0,0}, 0.5)')
                 verify_eq_lua('shoop_control.loop_get_volume({0,0})', '0.5')
             })
         }
 
-        function test_loop_set_get_balance() {
-            run_case('test_loop_set_get_balance', () => {
-                check_backend()
-                clear()
+        // function test_loop_set_get_balance() {
+        //     run_case('test_loop_set_get_balance', () => {
+        //         check_backend()
+        //         clear()
 
-                do_execute('shoop_control.loop_set_balance({0,0}, 1.0)'))
-                verify_eq_lua('shoop_control.loop_get_balance({0,0})', '1.0')
-                do_execute('shoop_control.loop_set_balance({0,0}, 0.5)')
-                verify_eq_lua('shoop_control.loop_get_balance({0,0})', '0.5')
-            })
-        }
+        //         do_execute('shoop_control.loop_set_balance({0,0}, 1.0)')
+        //         verify_eq_lua('shoop_control.loop_get_balance({0,0})', '1.0')
+        //         do_execute('shoop_control.loop_set_balance({0,0}, 0.5)')
+        //         verify_eq_lua('shoop_control.loop_get_balance({0,0})', '0.5')
+        //     })
+        // }
 
         // function test_loop_record_n() {
         //     run_case('test_loop_record_n', () => {

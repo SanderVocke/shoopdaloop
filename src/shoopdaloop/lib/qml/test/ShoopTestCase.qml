@@ -54,7 +54,7 @@ TestCase {
             verify(true)
             return;
         }
-        logger.error(() => (format_error(`verify_throw failed (fn = ${fn}))`))
+        logger.error(() => (format_error(`verify_throw failed (fn = ${fn})`)))
         verify(false)
     }
 

@@ -10,7 +10,8 @@ def qt_typename(qt_type):
 qt_typename.lookup = {
     'Bool': bool,
     'Int': int,
-    'String': str
+    'String': str,
+    'Double': float,
 } 
 
 def lua_passthrough(val):
@@ -47,7 +48,7 @@ def create_lua_qobject_interface(scripting_engine, qobject):
     if logger == None:
         logger = Logger('Frontend.LuaQObjectInterface')
     
-    logger.debug(lambda: "Creating Lua interface for QObject {} as \"{}\"".format(qobject))
+    logger.debug(lambda: "Creating Lua interface for QObject {}".format(qobject))
     
     module = scripting_engine.evaluate('return {{}}')
     if_registrar = scripting_engine.evaluate('return function (module, name, member) module[name] = member; return module end')
@@ -77,7 +78,7 @@ def create_lua_qobject_interface(scripting_engine, qobject):
             returntypename = qt_typename(method.returnType())
             def callback(interface, returntypename, scripting_engine, *args):
                 if returntypename == 'Void':
-                    logger.debug(lambda: "Calling void QML method {} with args {}".format(interface[0], str(args)))
+                    logger.debug(lambda: "Calling void QML method {} with args {}".format(interface, str(args)))
                     qobject.metaObject().invokeMethod(
                         qobject,
                         interface[0],

@@ -108,10 +108,10 @@ LuaControlInterface {
         select_loops(loop_selector).forEach((h) => { h.transition(mode, cycles_delay, state_registry.get('sync_active'), false) } )
     }
     function loop_get_volume_override(loop_selector) {
-        return select_single_loop(loop_selector).loop_get_volume(loop_selector)
+        return select_single_loop(loop_selector).last_pushed_volume
     }
     function loop_get_balance_override(loop_selector) {
-        return select_single_loop(loop_selector).loop_get_balance(loop_selector)
+        return select_single_loop(loop_selector).last_pushed_stereo_balance
     }
     function loop_record_n_override(loop_selector, n, cycles_delay) {
         select_loops(loop_selector).forEach((h) => { h.record_n(cycles_delay, n) } )
@@ -122,10 +122,10 @@ LuaControlInterface {
         }
     }
     function loop_set_volume_override(loop_selector, volume) {
-        select_loops(loop_selector).forEach((h) => { h.loop_set_volume(loop_selector, volume) } )
+        select_loops(loop_selector).forEach((h) => { h.push_volume(volume) } )
     }
     function loop_set_balance_override(loop_selector, balance) {
-        select_loops(loop_selector).forEach((h) => { h.loop_set_balance(loop_selector, balance) } )
+        select_loops(loop_selector).forEach((h) => { h.push_stereo_balance(balance) } )
     }
     function loop_select_override(loop_selector, deselect_others) {
         var selection = new Set(select_loops(loop_selector).map((l) => l ? l.obj_id : null))
@@ -156,6 +156,8 @@ LuaControlInterface {
     function loop_toggle_targeted_override(loop_selector) {
         select_loops(loop_selector).forEach((h) => { h.loop_toggle_targeted(loop_selector) } )
     }
+
+    
     function track_set_volume_override(track_selector, vol) {
         select_tracks(track_selector).forEach(t => t.control_widget.set_all_gains(vol))
     }

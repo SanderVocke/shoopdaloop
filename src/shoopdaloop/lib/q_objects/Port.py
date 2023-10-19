@@ -26,8 +26,8 @@ class Port(QQuickItem):
         self._passthrough_to = []
         self._passthrough_connected_to = []
         self._name = ''
-        self._muted = False
-        self._passthrough_muted = False
+        self._muted = None
+        self._passthrough_muted = None
         self._is_internal = None
         
         self.rescan_parents()
@@ -114,7 +114,7 @@ class Port(QQuickItem):
     mutedChanged = Signal(bool)
     @Property(bool, notify=mutedChanged)
     def muted(self):
-        return self._muted
+        return self._muted if self._muted != None else False
     @muted.setter
     def muted(self, s):
         if self._muted != s:
@@ -125,11 +125,12 @@ class Port(QQuickItem):
     passthroughMutedChanged = Signal(bool)
     @Property(bool, notify=passthroughMutedChanged)
     def passthrough_muted(self):
-        return self._passthrough_muted
+        return self._passthrough_muted if self._passthrough_muted != None else False
     @passthrough_muted.setter
     def passthrough_muted(self, s):
         if self._passthrough_muted != s:
             self._passthrough_muted = s
+            self.maybe_initialize()
             self.passthroughMutedChanged.emit(s)
     
     # passthrough_to : ports to which to passthrough
@@ -142,6 +143,7 @@ class Port(QQuickItem):
         if self._passthrough_to != s:
             self._passthrough_to = s
             self.update_passthrough_connections()
+            self.maybe_initialize()
             self.passthroughToChanged.emit(s)
     
     ###########
@@ -184,12 +186,14 @@ class Port(QQuickItem):
     
     @Slot()
     def maybe_initialize(self):
-        if self._name_hint != '' and \
+        if not self._backend_obj and \
+            self._name_hint != '' and \
             self._direction != None and \
             self._is_internal != None and \
+            self._muted != None and \
+            self._passthrough_muted != None and \
             self._backend and \
-            self._backend.initialized and \
-            not self._backend_obj:
+            self._backend.initialized:
             
             self.maybe_initialize_impl(self._name_hint, self._direction, self._is_internal)
             if self._backend_obj:

@@ -68,7 +68,7 @@ Column {
             dialog.accepted.connect(function() {
                 var new_contents = configuration.contents.concat([{
                     'filters': dialog.filters,
-                    'action': 'Stop Loops',
+                    'action': MidiControl.default_action_config
                 }])
                 root.logger.info(() => (JSON.stringify(new_contents)))
                 configuration.contents = new_contents

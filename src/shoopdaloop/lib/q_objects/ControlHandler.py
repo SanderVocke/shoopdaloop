@@ -111,10 +111,10 @@ class ControlHandler(QQuickItem):
         [ 'loop_get_all' ],
         [ 'loop_get_volume', lua_loop_selector ],
         [ 'loop_get_volume_slider', lua_loop_selector ],
-        [ 'loop_set_volume', lua_loop_selector ],
-        [ 'loop_set_volume_slider', lua_loop_selector ],
+        [ 'loop_set_volume', lua_loop_selector, lua_float ],
+        [ 'loop_set_volume_slider', lua_loop_selector, lua_float ],
         [ 'loop_get_balance', lua_loop_selector ],
-        [ 'loop_set_balance', lua_loop_selector ],
+        [ 'loop_set_balance', lua_loop_selector, lua_float ],
         [ 'loop_transition', lua_loop_selector, lua_int, lua_int ],
         [ 'loop_record_n', lua_loop_selector, lua_int, lua_int ],
         [ 'loop_record_with_targeted', lua_loop_selector ],
@@ -403,7 +403,7 @@ class ControlHandler(QQuickItem):
         """
         pass
 
-    @Slot('QVariant', int, float)
+    @Slot('QVariant', float)
     @allow_qml_override
     def loop_set_balance(self, loop_selector, balance):
         """

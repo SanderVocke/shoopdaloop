@@ -67,7 +67,7 @@ declare_in_context('shoop_format', require('shoop_format'))
             let base_script = (typeof action_or_script === 'string') ? action_or_script : action_or_script.script
             let inputs = (typeof action_or_script === 'string') ? {} : action_or_script.inputs
 
-            var script = `return function(msg) `
+            var script = `return function(msg, port) `
             let do_if =  ('condition' in configuration && configuration.condition !== null)
             if (do_if) {
                 script += `if (${configuration.condition}) then `
@@ -90,9 +90,9 @@ declare_in_context('shoop_format', require('shoop_format'))
 
             let fn = scripting_engine.evaluate(script, context, 'MidiControl', true, true)
             let _name = action_name
-            return function(msg, _fn=fn, name=_name, _context=context) {
+            return function(msg, port, _fn=fn, name=_name, _context=context) {
                 root.logger.debug(() => (`Running action ${name}`))
-                scripting_engine.call(_fn, [msg], _context)
+                scripting_engine.call(_fn, [msg, port], _context)
             }
         }
     }
@@ -129,7 +129,7 @@ declare_in_context('shoop_format', require('shoop_format'))
                 if (configuration_handlers.length <= i) {
                     root.logger.error(() => ('MIDI control handlers not up-to-date'))
                 }
-                configuration_handlers[i].callable(msg_object)
+                configuration_handlers[i].callable(msg_object, control_port ? control_port.lua_interface : null)
             } else {
                 root.logger.trace(() => (`No match for MIDI control filter: msg = ${msg}, filters = ${filters}, action = ${action}`))
             }

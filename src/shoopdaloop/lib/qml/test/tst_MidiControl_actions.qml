@@ -43,30 +43,36 @@ MidiControl {
             },
             {
                 'filters': [MidiControl.match_type(Midi.NoteOn), MidiControl.match_note(2)],
-                'action': 'Stop Loops'
+                'action': 'Loop Transition',
+                'inputs': {
+                    'loops': 'all'
+                },
             },
             {
                 'filters': [MidiControl.match_type(Midi.NoteOn), MidiControl.match_note(3)],
-                'action': 'Stop Loops',
+                'action': 'Loop Transition',
                 'inputs': {
                     'loops': 'selection'
                 }
             },
             {
                 'filters': [MidiControl.match_type(Midi.NoteOn), MidiControl.match_note(4)],
-                'action': 'Stop Loops',
+                'action': 'Loop Transition',
                 'inputs': {
                     'loops': '{{1, 1}}'
                 }
             },
             {
                 'filters': [MidiControl.match_type(Midi.NoteOn), MidiControl.match_note(5)],
-                'action': 'Stop Loops',
+                'action': 'Loop Transition',
                 'condition': 'false'
             },
             {
                 'filters': [MidiControl.match_type(Midi.NoteOn), MidiControl.match_note(6)],
-                'action': 'Stop Loops',
+                'action': 'Loop Transition',
+                'inputs': {
+                    'loops': 'all'
+                },
                 'condition': 'true'
             },
         ]
@@ -86,7 +92,7 @@ MidiControl {
         function test_midi_control_custom_action() {
             run_case('test_midi_control_custom_action', () => {
                 itf.clear()
-                ctl.handle_midi(Midi.create_noteOn(0, 1, 127))
+                ctl.handle_midi(Midi.create_noteOn(0, 1, 127), null)
 
                 verify_eq(itf.logged_calls, [
                     [ 'loop_count', [[0, 0]] ]
@@ -97,7 +103,7 @@ MidiControl {
         function test_midi_control_default_action() {
             run_case('test_midi_control_default_action', () => {
                 itf.clear()
-                ctl.handle_midi(Midi.create_noteOn(0, 2, 127))
+                ctl.handle_midi(Midi.create_noteOn(0, 2, 127), null)
 
                 verify_eq(itf.logged_calls, [
                     [ 'loop_transition', [[0, 0], [1, 1], [2, 2]], Types.LoopMode.Stopped, 0 ]
@@ -108,7 +114,7 @@ MidiControl {
         function test_midi_control_action_with_input_preset() {
             run_case('test_midi_control_action_with_input_preset', () => {
                 itf.clear()
-                ctl.handle_midi(Midi.create_noteOn(0, 3, 127))
+                ctl.handle_midi(Midi.create_noteOn(0, 3, 127), null)
 
                 verify_eq(itf.logged_calls, [
                     [ 'loop_transition', [[0, 0], [2, 2]], Types.LoopMode.Stopped, 0 ]
@@ -119,7 +125,7 @@ MidiControl {
         function test_midi_control_action_with_custom_input() {
             run_case('test_midi_control_action_with_custom_input', () => {
                 itf.clear()
-                ctl.handle_midi(Midi.create_noteOn(0, 4, 127))
+                ctl.handle_midi(Midi.create_noteOn(0, 4, 127), null)
 
                 verify_eq(itf.logged_calls, [
                     [ 'loop_transition', [[1, 1]], Types.LoopMode.Stopped, 0 ]
@@ -130,7 +136,7 @@ MidiControl {
         function test_midi_control_action_with_condition_false() {
             run_case('test_midi_control_action_with_condition_false', () => {
                 itf.clear()
-                ctl.handle_midi(Midi.create_noteOn(0, 5, 127))
+                ctl.handle_midi(Midi.create_noteOn(0, 5, 127), null)
 
                 verify_eq(itf.logged_calls, [])
             })
@@ -139,7 +145,7 @@ MidiControl {
         function test_midi_control_action_with_condition_true() {
             run_case('test_midi_control_action_with_condition_true', () => {
                 itf.clear()
-                ctl.handle_midi(Midi.create_noteOn(0, 6, 127))
+                ctl.handle_midi(Midi.create_noteOn(0, 6, 127), null)
 
                 verify_eq(itf.logged_calls, [
                     [ 'loop_transition', [[0, 0], [1, 1], [2, 2]], Types.LoopMode.Stopped, 0 ]

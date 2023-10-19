@@ -98,6 +98,13 @@ const builtin_actions = ({
     }
 })
 
+const default_action_config =({
+  'action': 'Default Loop Action',
+  'inputs': {
+    'loops': 'selection'
+  }
+})
+
 // To specify what MIDI messages to react to, and how to react to them,
 // we use filters and input extractors.
 // A filter is a structure as follows:
