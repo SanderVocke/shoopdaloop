@@ -12,7 +12,7 @@ Session {
     id: session
 
     anchors.fill: parent
-    initial_descriptor: GenerateSession.generate_default_session(app_metadata.version_string, 2)
+    initial_descriptor: GenerateSession.generate_default_session(app_metadata.version_string, 2, 2)
 
     ShoopSessionTestCase {
         id: testcase
@@ -182,29 +182,33 @@ declare_global('shoop_format', require('shoop_format'))
             })
         }
 
-        // function test_loop_set_get_volume_slider() {
-        //     run_case('test_loop_set_get_volume_slider', () => {
-        //         check_backend()
-        //         clear()
+        function test_loop_set_get_volume_slider() {
+            run_case('test_loop_set_get_volume_slider', () => {
+                check_backend()
+                clear()
                 
-        //         do_execute('shoop_control.loop_set_volume_slider({0,0}, 1.0)')
-        //         verify_eq_lua('shoop_control.loop_get_volume_slider({0,0})', '1.0')
-        //         do_execute('shoop_control.loop_set_volume_slider({0,0}, 0.5)')
-        //         verify_eq_lua('shoop_control.loop_get_volume_slider({0,0})', '0.5')
-        //     })
-        // }
+                do_execute('shoop_control.loop_set_volume_slider({0,0}, 1.0)')
+                verify_eq_lua('shoop_control.loop_get_volume_slider({0,0})', '1.0')
+                do_execute('shoop_control.loop_set_volume_slider({0,0}, 0.5)')
+                verify_eq_lua('shoop_control.loop_get_volume_slider({0,0})', '0.5')
+                do_execute('shoop_control.loop_set_volume_slider({0,0}, 2.0)')
+                verify_eq_lua('shoop_control.loop_get_volume_slider({0,0})', '1.0')
+                do_execute('shoop_control.loop_set_volume_slider({0,0}, -1.0)')
+                verify_eq_lua('shoop_control.loop_get_volume_slider({0,0})', '0.0')
+            })
+        }
 
-        // function test_loop_set_get_balance() {
-        //     run_case('test_loop_set_get_balance', () => {
-        //         check_backend()
-        //         clear()
+        function test_loop_set_get_balance() {
+            run_case('test_loop_set_get_balance', () => {
+                check_backend()
+                clear()
 
-        //         do_execute('shoop_control.loop_set_balance({0,0}, 1.0)')
-        //         verify_eq_lua('shoop_control.loop_get_balance({0,0})', '1.0')
-        //         do_execute('shoop_control.loop_set_balance({0,0}, 0.5)')
-        //         verify_eq_lua('shoop_control.loop_get_balance({0,0})', '0.5')
-        //     })
-        // }
+                do_execute('shoop_control.loop_set_balance({0,0}, 1.0)')
+                verify_eq_lua('shoop_control.loop_get_balance({0,0})', '1.0')
+                do_execute('shoop_control.loop_set_balance({0,0}, 0.5)')
+                verify_eq_lua('shoop_control.loop_get_balance({0,0})', '0.5')
+            })
+        }
 
         // function test_loop_record_n() {
         //     run_case('test_loop_record_n', () => {
@@ -222,13 +226,23 @@ declare_global('shoop_format', require('shoop_format'))
         //     })
         // }
 
-        // function test_loop_select() {
-        //     run_case('test_loop_select', () => {
-        //         check_backend()
-        //         clear()
-        //         verify(false)
-        //     })
-        // }
+        function test_loop_select() {
+            run_case('test_loop_select', () => {
+                check_backend()
+                clear()
+                
+                do_execute('shoop_control.loop_select({0,0}, true)')
+                verify_eq_lua('shoop_control.loop_get_which_selected()', '{{0,0}}')
+                do_execute('shoop_control.loop_select({0,1}, true)')
+                verify_eq_lua('shoop_control.loop_get_which_selected()', '{{0,1}}')
+                do_execute('shoop_control.loop_select({0,0}, false)')
+                verify_eq_lua('shoop_control.loop_get_which_selected()', '{{0,0}, {0,1}}')
+                do_execute('shoop_control.loop_select({}, true)')
+                verify_eq_lua('shoop_control.loop_get_which_selected()', '{}')
+                do_execute('shoop_control.loop_select({{0,0}, {0,1}}, false)')
+                verify_eq_lua('shoop_control.loop_get_which_selected()', '{{0,0}, {0,1}}')
+            })
+        }
 
         // function test_loop_target() {
         //     run_case('test_loop_target', () => {
@@ -237,93 +251,3 @@ declare_global('shoop_format', require('shoop_format'))
         //         verify(false)
         //     })
         // }
-
-        // function test_loop_untarget_all() {
-        //     run_case('test_loop_untarget_all', () => {
-        //         check_backend()
-        //         clear()
-        //         verify(false)
-        //     })
-        // }
-
-        // function test_loop_toggle_selected() {
-        //     run_case('test_loop_toggle_selected', () => {
-        //         check_backend()
-        //         clear()
-        //         verify(false)
-        //     })
-        // }
-
-        // function test_loop_toggle_targeted() {
-        //     run_case('test_loop_toggle_targeted', () => {
-        //         check_backend()
-        //         clear()
-        //         verify(false)
-        //     })
-        // }
-
-        // function test_port_get_volume() {
-        //     run_case('test_port_get_volume', () => {
-        //         check_backend()
-        //         clear()
-        //         verify(false)
-        //     })
-        // }
-
-        // function test_port_get_muted() {
-        //     run_case('test_port_get_muted', () => {
-        //         check_backend()
-        //         clear()
-        //         verify(false)
-        //     })
-        // }
-
-        // function test_port_get_input_muted() {
-        //     run_case('test_port_get_input_muted', () => {
-        //         check_backend()
-        //         clear()
-        //         verify(false)
-        //     })
-        // }
-
-        // function test_port_mute() {
-        //     run_case('test_port_mute', () => {
-        //         check_backend()
-        //         clear()
-        //         verify(false)
-        //     })
-        // }
-
-        // function test_port_mute_input() {
-        //     run_case('test_port_mute_input', () => {
-        //         check_backend()
-        //         clear()
-        //         verify(false)
-        //     })
-        // }
-
-        // function test_port_unmute() {
-        //     run_case('test_port_unmute', () => {
-        //         check_backend()
-        //         clear()
-        //         verify(false)
-        //     })
-        // }
-
-        // function test_port_unmute_input() {
-        //     run_case('test_port_unmute_input', () => {
-        //         check_backend()
-        //         clear()
-        //         verify(false)
-        //     })
-        // }
-
-        // function test_port_set_volume() {
-        //     run_case('test_port_set_volume', () => {
-        //         check_backend()
-        //         clear()
-        //         verify(false)
-        //     })
-        // }
-    }
-}

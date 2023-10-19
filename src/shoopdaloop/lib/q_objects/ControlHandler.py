@@ -121,7 +121,6 @@ class ControlHandler(QQuickItem):
         [ 'loop_select', lua_loop_selector, lua_bool ],
         [ 'loop_target', lua_loop_selector ],
         [ 'loop_clear', lua_loop_selector ],
-        [ 'loop_untarget_all' ],
         [ 'track_get_volume', lua_track_selector ],
         [ 'track_set_volume', lua_track_selector, lua_float ],
         [ 'track_get_volume_slider', lua_track_selector ],
@@ -432,17 +431,7 @@ class ControlHandler(QQuickItem):
         @shoop_lua_fn_docstring.start
         shoop_control.loop_target(loop_selector)
         Target the specified loop. If the selector specifies more than one loop, a single loop in the set is chosen arbitrarily.
-        @shoop_lua_fn_docstring.end
-        """
-        pass
-
-    @Slot()
-    @allow_qml_override
-    def loop_untarget_all(self):
-        """
-        @shoop_lua_fn_docstring.start
-        shoop_control.loop_untarget_all()
-        Untarget the currently targeted loop, if any.
+        If nil or no loop is passed, the targeted loop is cleared.
         @shoop_lua_fn_docstring.end
         """
         pass

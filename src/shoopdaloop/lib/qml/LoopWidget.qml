@@ -340,6 +340,13 @@ Item {
         return chans
     }
 
+    function set_volume_slider(value) {
+        statusrect.volume_dial.set_as_range_fraction(value)
+    }
+    function get_volume_slider() {
+        return statusrect.volume_dial.position
+    }
+
     property real last_pushed_volume: initial_volume
     property real last_pushed_stereo_balance: initial_stereo_balance ? initial_stereo_balance : 0.0
 
@@ -473,6 +480,8 @@ Item {
         property var loop
         property bool hovered : area.containsMouse
         property string name : root.name
+
+        property alias volume_dial: volume_dial
 
         signal propagateMousePosition(var point)
         signal propagateMouseExited()
@@ -1059,6 +1068,9 @@ Item {
                     function set_from_linear(val) {
                         convert_volume.linear = val
                         value = convert_volume.dB
+                    }
+                    function set_as_range_fraction(val) {
+                        value = (val * (to - from)) + from
                     }
 
                     handle.width: 4

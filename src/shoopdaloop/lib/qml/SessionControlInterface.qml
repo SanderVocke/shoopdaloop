@@ -110,6 +110,9 @@ LuaControlInterface {
     function loop_get_volume_override(loop_selector) {
         return select_single_loop(loop_selector).last_pushed_volume
     }
+    function loop_get_volume_slider_override(loop_selector) {
+        return select_single_loop(loop_selector).get_volume_slider()
+    }
     function loop_get_balance_override(loop_selector) {
         return select_single_loop(loop_selector).last_pushed_stereo_balance
     }
@@ -123,6 +126,9 @@ LuaControlInterface {
     }
     function loop_set_volume_override(loop_selector, volume) {
         select_loops(loop_selector).forEach((h) => { h.push_volume(volume) } )
+    }
+    function loop_set_volume_slider_override(loop_selector, volume) {
+        select_loops(loop_selector).forEach((h) => { h.set_volume_slider(volume) } )
     }
     function loop_set_balance_override(loop_selector, balance) {
         select_loops(loop_selector).forEach((h) => { h.push_stereo_balance(balance) } )
