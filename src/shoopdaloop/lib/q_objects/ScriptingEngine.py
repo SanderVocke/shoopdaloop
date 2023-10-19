@@ -58,6 +58,7 @@ class ScriptingEngine(QObject):
         end
         ''')
         self.execute_builtin_script('system/runtime_init.lua', True)
+        self.global_registrar = self.evaluate('return function(name, val) declare_global(name, val) end', None, None, True, False)
 
     def execute_builtin_script(self, filename, sandboxed=True):
         self.logger.debug(lambda: 'Running built-in script: {}'.format(filename))
