@@ -2,7 +2,7 @@ import QtQuick 6.3
 import QtQuick.Controls 6.3
 
 Item {
-    property Registry registry
+    property var registry
     property string key
     property var object : null
 

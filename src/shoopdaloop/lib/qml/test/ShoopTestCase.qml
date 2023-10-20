@@ -10,8 +10,17 @@ TestCase {
     property string name : 'UnnamedTestCase'
     property string filename : 'UnknownTestFile'
     property var logger : PythonLogger { name: `Test.` + root.name }
+    
+    // It seems the built-in test function filter of the QML test runner is not working.
+    // Provide a means to only run a subset of tests.
+    property var testfn_filter: null
 
-    Component.onCompleted: logger.info(() => ("Testcase " + name + " created."))
+    Component.onCompleted: {
+        logger.info(() => ("Testcase " + name + " created."))
+        if (testfn_filter) {
+            logger.warning(() => ("Testcase " + name + " has a test function filter: " + testfn_filter))
+        }
+    }
     Component.onDestruction: logger.info(() => ("Testcase " + name + " destroyed."))
 
     function verify_loop_cleared(loop) {
@@ -132,6 +141,10 @@ TestCase {
 
     function run_case(name, fn) {
         try {
+            if (testfn_filter && testfn_filter !== name) {
+                skip("Test function filter active, no match")
+                return
+            }
             start_test_fn(name)
             fn()
             end_test_fn(name)

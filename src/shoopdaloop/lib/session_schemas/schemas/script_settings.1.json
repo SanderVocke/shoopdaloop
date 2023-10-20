@@ -1,0 +1,29 @@
+{
+    "type": "object",
+    "properties": {
+        "schema": { "const": "script_settings.1" },
+        "configuration": {
+            "type": "object",
+            "properties": {
+                "known_scripts": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "path_or_filename": { "type": "string" },
+                            "is_builtin": { "type": "boolean" },
+                            "run": { "type": "string" }
+                        },
+                        "required": [
+                            "path_or_filename", "is_builtin", "run"
+                        ]
+                    }
+                }
+            },
+            "required": [
+                "known_scripts"
+            ]
+        }
+    },
+    "required": ["schema", "configuration"]
+}

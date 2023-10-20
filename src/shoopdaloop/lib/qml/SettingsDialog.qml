@@ -74,6 +74,10 @@ Dialog {
             'midi_settings': {
                 'schema': 'midi_settings.1',
                 'configuration': midi_settings.default_contents()
+            },
+            'script_settings': {
+                'schema': 'script_settings.1',
+                'configuration': script_settings.default_contents()
             }
         })
     }
@@ -94,6 +98,20 @@ Dialog {
                 'configuration': []
             }
         }) }
+    }
+
+    Settings {
+        id: script_settings
+        name: 'ScriptSettings'
+        schema_name: 'script_settings'
+        current_version: 1
+
+        contents: all_settings.contents.script_settings.configuration
+
+        function default_contents() { return ({
+                'known_scripts': []
+            })
+        }
     }
 
     component MIDISettingsUi : Item {
