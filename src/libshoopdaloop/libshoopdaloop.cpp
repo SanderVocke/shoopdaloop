@@ -833,9 +833,9 @@ midi_event_t *maybe_next_message(shoopdaloop_decoupled_midi_port_t *port) {
     auto &_port = *internal_decoupled_midi_port(port);
     auto m = _port.port->pop_incoming();
     if (m.has_value()) {
-        auto r = alloc_midi_event(m->size);
+        auto r = alloc_midi_event(m->data.size());
         r->time = 0;
-        r->size = m->size;
+        r->size = m->data.size();
         r->data = (uint8_t*)malloc(r->size);
         memcpy((void*)r->data, (void*)m->data.data(), r->size);
         return r;

@@ -67,14 +67,18 @@ class ScriptingEngine(QObject):
             script = f.read()
         return self.execute(script, None, filename, sandboxed)
 
+
     def to_lua_val(self, val):
         rval = val
-        if isinstance(val, QJSValue):
-            rval = val.toVariant()
-        if isinstance(val, list):
-            rval = self.py_list_to_lua_table([self.to_lua_val(v) for v in val])
-        elif isinstance(val, dict):
-            rval = self.py_dict_to_lua_table({k:self.to_lua_val(v) for k,v in val.items()})
+        if isinstance(rval, QJSValue):
+            if rval.isCallable():
+                rval = lambda *args: val.call(*args)
+            else:
+                rval = rval.toVariant()
+        if isinstance(rval, list):
+            rval = self.py_list_to_lua_table([self.to_lua_val(v) for v in rval])
+        elif isinstance(rval, dict):
+            rval = self.py_dict_to_lua_table({k:self.to_lua_val(v) for k,v in rval.items()})
         return rval
 
     ######################
@@ -162,9 +166,11 @@ class ScriptingEngine(QObject):
             else:
                 self.logger.error(lambda: 'Error executing statement: {}. Trace: {}'.format(str(e), traceback.format_exc()))
     
-    @Slot('QVariant', list, 'QVariant', result='QVariant')
-    def call(self, callable, args=[], context=None):
-        self.logger.trace(lambda: 'call callable in context {}:\n{}'.format(context, callable))
+    @Slot('QVariant', list, 'QVariant', bool, result='QVariant')
+    def call(self, callable, args=[], context=None, convert_args=False):
+        if convert_args:
+            args = [self.to_lua_val(a) for a in args]
+        self.logger.trace(lambda: 'call callable in context {}:\n{}, args {}'.format(context, callable, args))
         if context:
             prev_context = self.current_context()
             self.use_context(context)

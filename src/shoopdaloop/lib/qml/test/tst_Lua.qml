@@ -44,7 +44,7 @@ ShoopTestCase {
 
             let fn = script1.evaluate('return function() return my_var end')
             scripting_engine.use_context(script2.scripting_context)
-            verify_eq(scripting_engine.call(fn, [], null), 1)
+            verify_eq(scripting_engine.call(fn, [], null), 1, false)
 
             let context = script1.scripting_context
             script1.destroy()
@@ -63,7 +63,7 @@ ShoopTestCase {
                 true,
                 false
             ) })
-            verify_throw(() => { scripting_engine.call(fn, [], null) })
+            verify_throw(() => { scripting_engine.call(fn, [], null, false) })
         })
     }
 }

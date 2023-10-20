@@ -26,6 +26,8 @@ class AutoConnect(QQuickItem):
     ######################
     ## SIGNALS
     ######################
+    onlyExternalFound = Signal()
+    connected = Signal()
 
     ######################
     # PROPERTIES
@@ -68,11 +70,28 @@ class AutoConnect(QQuickItem):
     
     @Slot()
     def update(self):
-        if self._from_regex is None or self._to_regex is None:
-            return
+        from_candidates = None
+        to_candidates = None
+        any_external = False
+        any_internal = False
         
-        from_candidates = self._jack.find_ports(self._from_regex, None, jack.JackPortIsOutput)
-        to_candidates = self._jack.find_ports(self._to_regex, None, jack.JackPortIsInput)
+        if self._from_regex is not None:
+            from_candidates = self._jack.find_ports(self._from_regex, None, jack.JackPortIsOutput)
+            any_external = any_external or (from_candidates and len(from_candidates) > 0 and (True not in [self._jack.port_is_mine(p) for p in from_candidates]))
+            any_internal = any_internal or (from_candidates and len(from_candidates) > 0 and (True in [self._jack.port_is_mine(p) for p in from_candidates]))
+        
+        if self._to_regex is not None:
+            to_candidates = self._jack.find_ports(self._to_regex, None, jack.JackPortIsInput)
+            any_external = any_external or (to_candidates and len(to_candidates) > 0 and (True not in [self._jack.port_is_mine(p) for p in to_candidates]))
+            any_internal = any_internal or (to_candidates and len(to_candidates) > 0 and (True in [self._jack.port_is_mine(p) for p in to_candidates]))
+        
+        self.logger.trace(lambda: "AutoConnect update: from_candidates={}, to_candidates={}, any_external={}, any_internal={}".format(from_candidates, to_candidates, any_external, any_internal))
+        
+        if any_external and not any_internal:
+            self.onlyExternalFound.emit()
+        
+        if (from_candidates is None) or (to_candidates is None):
+            return
         
         if len(from_candidates) == 0 and len(to_candidates) == 0:
             return
@@ -86,3 +105,4 @@ class AutoConnect(QQuickItem):
                 if _to not in self._jack.all_port_connections(_from):
                     self.logger.info(lambda: "Autoconnecting {} to {}".format(_from, _to))
                     self._jack.connect_ports(_from, _to)
+                    self.connected.emit()

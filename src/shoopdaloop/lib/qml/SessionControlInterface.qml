@@ -1,6 +1,9 @@
 import QtQuick 6.3
 import ShoopDaLoop.PythonLogger
 
+import '../generated/types.js' as Types
+import '../midi.js' as Midi
+
 LuaControlInterface {
     id: root
     qml_instance: this
@@ -207,5 +210,89 @@ LuaControlInterface {
     }
     function track_set_input_muted_override(track_selector, muted) {
         return select_tracks(track_selector).forEach(t => {t.control_widget.monitor = !muted})
+    }
+
+    // Handle creation and deletion of dynamic MIDI control ports based on registered connection rules.
+    
+    // form { rule_id: port }
+    property var midi_control_ports: ({})
+
+    readonly property var midi_control_port_factory : Qt.createComponent("MidiControlPort.qml")
+
+    onMidiInputPortRulesChanged: {
+        for(var i=0; i<midi_input_port_rules.length; i++) {
+            let rule = midi_input_port_rules[i]
+            let id = rule.id
+            if (!Object.keys(midi_control_ports).includes(id)) {
+                if (midi_control_port_factory.status == Component.Error) {
+                    root.logger.error("Failed to load MIDI port factory: " + midi_control_port_factory.errorString())
+                    return
+                } else if (midi_control_port_factory.status != Component.Ready) {
+                    root.logger.error("MIDI port factory not ready.")
+                    return
+                } else {
+                    root.logger.debug(`Creating lazy port for autoconnect rule ${rule.id} (${rule.regex}).`)
+                    var port = midi_control_port_factory.createObject(root, {
+                        "may_open": false,
+                        "name_hint": "auto_control_" + rule.id,
+                        "autoconnect_regexes": [ rule.regex ],
+                        "direction": Types.PortDirection.Input,
+                        "parent": root
+                    });
+                    port.detectedExternalAutoconnectPartnerWhileClosed.connect((p=port) => {
+                        if (!p.may_open) {
+                            root.logger.debug(`Opening port for autoconnect rule ${rule.id} (${rule.regex}).`)
+                            p.may_open = true
+                        }
+                    })
+                    port.msgReceived.connect((msg, cb=rule.msg_cb) => {
+                        scripting_engine.call(cb, [Midi.parse_msg(msg), null], null, false) 
+                    })
+                    midi_control_ports[i] = port
+                    midi_control_portsChanged()
+                }
+            }
+        }
+    }
+
+    onMidiOutputPortRulesChanged: {
+        for(var i=0; i<midi_output_port_rules.length; i++) {
+            let rule = midi_output_port_rules[i]
+            let id = rule.id
+            if (!Object.keys(midi_control_ports).includes(id)) {
+                if (midi_control_port_factory.status == Component.Error) {
+                    root.logger.error("Failed to load MIDI port factory: " + midi_control_port_factory.errorString())
+                    return
+                } else if (midi_control_port_factory.status != Component.Ready) {
+                    root.logger.error("MIDI port factory not ready.")
+                    return
+                } else {
+                    root.logger.debug(`Creating lazy port for autoconnect rule ${rule.id} (${rule.regex}).`)
+                    var port = midi_control_port_factory.createObject(root, {
+                        "may_open": false,
+                        "name_hint": "auto_control_" + rule.id,
+                        "autoconnect_regexes": [ rule.regex ],
+                        "direction": Types.PortDirection.Output,
+                        "parent": root
+                    });
+                    port.initializedChanged.connect((initialized, cb=rule.opened_cb, p=port) => {
+                        if (initialized) {
+                            let send_fn = p.get_py_send_fn()
+                            scripting_engine.call(cb, [send_fn], null, true) }
+                    })
+                    port.connected.connect((cb=rule.connected_cb) => {
+                        scripting_engine.call(cb, [], null, false)
+                    })
+                    port.detectedExternalAutoconnectPartnerWhileClosed.connect((p=port) => {
+                        if (!p.may_open) {
+                            root.logger.debug(`Opening port for autoconnect rule ${rule.id} (${rule.regex}).`)
+                            p.may_open = true
+                        }
+                    })
+                    midi_control_ports[i] = port
+                    midi_control_portsChanged()
+                }
+            }
+        }
     }
 }

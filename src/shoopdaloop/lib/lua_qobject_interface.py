@@ -27,7 +27,7 @@ def as_str(lua_val):
     return str(lua_val)
 
 def as_callable(lua_val):
-    return lua_val # TODO
+    return lambda *args: lua_val(*args)
 
 lua_int = [ int, lua_passthrough ]
 lua_bool = [ bool, lua_passthrough ]

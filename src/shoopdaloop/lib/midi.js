@@ -49,3 +49,15 @@ function maybe_value(msg) {
 function channel(msg) {
   return msg[0] & 0x0F
 }
+
+function parse_msg(msg) {
+  return {
+      'bytes': msg,
+      'note': Midi.maybe_note(msg),
+      'channel': Midi.channel(msg),
+      'cc': Midi.maybe_cc(msg),
+      'program': Midi.maybe_program(msg),
+      'velocity': Midi.maybe_velocity(msg),
+      'value': Midi.maybe_value(msg)
+  }
+}

@@ -188,11 +188,6 @@ Item {
     }
     property alias targeted_loop : targeted_loop_lookup.object
 
-    SessionControlInterface {
-        id: control_interface
-        session: root
-    }
-
     RegisterInRegistry {
         registry: registries.state_registry
         key: 'control_interface'
@@ -204,6 +199,14 @@ Item {
         script_name: 'keyboard.lua'
         script_code: control_interface.ready ? file_io.read_file(
             file_io.get_installation_directory() + '/lib/lua/builtins/keyboard.lua'
+        ) : null
+    }
+
+    LuaScript {
+        when: control_interface.ready
+        script_name: 'akai_apc_mini_mk1.lua'
+        script_code: control_interface.ready ? file_io.read_file(
+            file_io.get_installation_directory() + '/lib/lua/builtins/akai_apc_mini_mk1.lua'
         ) : null
     }
 
@@ -260,6 +263,11 @@ Item {
         backend_argstring: root.backend_argstring
         id: session_backend
 
+        SessionControlInterface {
+            id: control_interface
+            session: root
+        }
+
         MidiControlPort {
             id: midi_control_port
             name_hint: "control"
@@ -272,6 +280,7 @@ Item {
             }
 
             autoconnect_regexes: lookup_autoconnect.object || []
+            may_open: true
 
             onMsgReceived: msg => midi_control.handle_midi(msg, midi_control_port)
         }

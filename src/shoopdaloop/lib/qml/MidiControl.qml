@@ -92,7 +92,7 @@ declare_in_context('shoop_format', require('shoop_format'))
             let _name = action_name
             return function(msg, port, _fn=fn, name=_name, _context=context) {
                 root.logger.debug(() => (`Running action ${name}`))
-                scripting_engine.call(_fn, [msg, port], _context)
+                scripting_engine.call(_fn, [msg, port], _context, false)
             }
         }
     }
@@ -109,15 +109,7 @@ declare_in_context('shoop_format', require('shoop_format'))
 
         root.logger.debug(() => (`Received: [${msg}]. Matching against ${configuration.contents.length} action items.`))
 
-        let msg_object = {
-            'bytes': msg,
-            'note': Midi.maybe_note(msg),
-            'channel': Midi.channel(msg),
-            'cc': Midi.maybe_cc(msg),
-            'program': Midi.maybe_program(msg),
-            'velocity': Midi.maybe_velocity(msg),
-            'value': Midi.maybe_value(msg)
-        }
+        let msg_object = Midi.parse_msg(msg)
 
         for(var i=0; i<configuration.contents.length; i++) {
             const filters = configuration.contents[i].filters

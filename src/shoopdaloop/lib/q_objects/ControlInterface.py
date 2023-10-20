@@ -29,7 +29,8 @@ class ControlInterface(ControlHandler):
         return rval
     
     lua_interfaces = ControlHandler.lua_interfaces + [
-        ['register_midi_event_cb', lua_str, lua_callable ],
+        ['auto_open_device_specific_midi_control_input', lua_str, lua_callable ],
+        ['auto_open_device_specific_midi_control_output', lua_str, lua_callable, lua_callable ],
         ['register_keyboard_event_cb', lua_callable ],
     ]
     
@@ -47,8 +48,12 @@ class ControlInterface(ControlHandler):
     def __init__(self, parent=None):
         super(ControlInterface, self).__init__(parent)
         self._keyboard_callbacks = []
-        self._midi_callbacks = []
+        self._midi_input_port_rules = []
+        self._midi_output_port_rules = []
+        self._rule_id = 0
         self.logger = Logger('Frontend.ControlInterface')
+    
+    # Functions not meant for Lua use
     
     @Slot(int, int)
     def key_pressed(self, key, modifiers):
@@ -60,16 +65,55 @@ class ControlInterface(ControlHandler):
         for cb in self._keyboard_callbacks:
             cb(KeyEventType.Released, key, modifiers)
             
+    
+    midiInputPortRulesChanged = Signal()
+    @Property('QVariant', notify=midiInputPortRulesChanged)
+    def midi_input_port_rules(self):
+        return self._midi_input_port_rules
+    
+    midiOutputPortRulesChanged = Signal()
+    @Property('QVariant', notify=midiOutputPortRulesChanged)
+    def midi_output_port_rules(self):
+        return self._midi_output_port_rules
+    
+    # Functions meant for Lua use
+            
     @Slot(str, 'QVariant')
-    def register_midi_event_cb(self, device_name_filter_regex, cb):
+    def auto_open_device_specific_midi_control_input(self, device_name_filter_regex, msg_cb):
         """
         @shoop_lua_fn_docstring.start
-        shoop_control.register_midi_event_cb(device_name_filter_regex, callback)
-        Register a callback for MIDI events. See midi_callback for details.
+        shoop_control.auto_open_device_specific_midi_control_input(device_name_filter_regex, message_callback)
+        Instruct the application to automatically open a MIDI control input port if a device matching the regex appears, and connect to it.
+        Also registers a callback for received MIDI events on such a port. See midi_callback for details.
         @shoop_lua_fn_docstring.end
         """
-        self.logger.debug(lambda: "Registering MIDI event callback for device '{}'".format(device_name_filter_regex))
-        self._midi_callbacks.append([device_name_filter_regex, cb])
+        self.logger.debug(lambda: "Registering MIDI input control port rule for devices '{}'".format(device_name_filter_regex))
+        self._midi_input_port_rules.append({
+            'id': self._rule_id,
+            'regex': device_name_filter_regex,
+            'msg_cb': msg_cb
+        })
+        self.midiInputPortRulesChanged.emit()
+        self._rule_id += 1
+    
+    @Slot(str, 'QVariant', 'QVariant')
+    def auto_open_device_specific_midi_control_output(self, device_name_filter_regex, opened_cb, connected_cb):
+        """
+        @shoop_lua_fn_docstring.start
+        shoop_control.auto_open_device_specific_midi_control_output(device_name_filter_regex, opened_callback)
+        Instruct the application to automatically open a MIDI control output port if a device matching the regex appears, and connect to it.
+        Also registers a callback for when the port is opened and connected. This callback just passes a port object which has a 'send' method to send bytes.
+        @shoop_lua_fn_docstring.end
+        """
+        self.logger.debug(lambda: "Registering MIDI output control port rule for devices '{}'".format(device_name_filter_regex))
+        self._midi_output_port_rules.append({
+            'id': self._rule_id,
+            'regex': device_name_filter_regex,
+            'opened_cb': opened_cb,
+            'connected_cb': connected_cb
+        })
+        self.midiOutputPortRulesChanged.emit()
+        self._rule_id += 1
     
     @Slot('QVariant')
     def register_keyboard_event_cb(self, cb):

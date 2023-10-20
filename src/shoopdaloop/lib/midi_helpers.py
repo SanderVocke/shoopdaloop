@@ -1,26 +1,26 @@
 def channel(msg):
-    return msg['data'][0] & 0x0F
+    return msg[0] & 0x0F
 
 def note(msg):
-    return msg['data'][1]
+    return msg[1]
 
 def velocity(msg):
-    return msg['data'][2]
+    return msg[2]
 
 def is_noteOn(msg):
-    return (msg['data'][0] & 0xF0) == 0x90
+    return (msg[0] & 0xF0) == 0x90
 
 def is_noteOff(msg):
-    return (msg['data'][0] & 0xF0) == 0x80
+    return (msg[0] & 0xF0) == 0x80
 
 def is_cc(msg):
-    return (msg['data'][0] & 0xF0) == 0xB0
+    return (msg[0] & 0xF0) == 0xB0
 
 def is_all_notes_off(msg):
-    return is_cc(msg) and msg['data'][1] == 123
+    return is_cc(msg) and msg[1] == 123
 
 def is_all_sound_off(msg):
-    return is_cc(msg) and msg['data'][1] == 120
+    return is_cc(msg) and msg[1] == 120
 
 def msgs_to_notes(msgs):
     active_note_times = [None for i in range(128 * 16)] # Track all notes on all channels
