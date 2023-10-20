@@ -197,7 +197,7 @@ Item {
         object: control_interface
     }
 
-    LuaUserScript {
+    LuaScript {
         when: control_interface.ready
         script_name: 'keyboard.lua'
         script_code: control_interface.ready ? file_io.read_file(

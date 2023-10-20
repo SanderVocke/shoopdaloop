@@ -251,7 +251,6 @@ Item {
         var selected_ids = include_selected ? new Set(registries.state_registry.maybe_get('selected_loop_ids', new Set())) : new Set()
         selected_ids.add(obj_id)
         var objects = Array.from(selected_ids).map(id => registries.objects_registry.maybe_get(id, undefined)).filter(v => v != undefined)
-        root.logger.warning(`Transition ${Array.from(selected_ids)} (${objects})`)
         transition_loops(objects, mode, delay, wait_for_sync)
     }
     function play_solo_in_track() {

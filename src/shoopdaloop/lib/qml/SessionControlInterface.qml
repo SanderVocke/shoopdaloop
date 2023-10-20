@@ -114,13 +114,13 @@ LuaControlInterface {
         select_loops(loop_selector).forEach((h) => { h.transition(mode, cycles_delay, registries.state_registry.get('sync_active'), false) } )
     }
     function loop_get_volume_override(loop_selector) {
-        return select_single_loop(loop_selector).last_pushed_volume
+        return select_loops(loop_selector).map(l => l.last_pushed_volume)
     }
     function loop_get_volume_slider_override(loop_selector) {
-        return select_single_loop(loop_selector).get_volume_slider()
+        return select_loops(loop_selector).map(l => l.get_volume_slider())
     }
     function loop_get_balance_override(loop_selector) {
-        return select_single_loop(loop_selector).last_pushed_stereo_balance
+        return select_loops(loop_selector).map(l => l.last_pushed_stereo_balance)
     }
     function loop_record_n_override(loop_selector, n, cycles_delay) {
         select_loops(loop_selector).forEach((h) => { h.record_n(cycles_delay, n) } )

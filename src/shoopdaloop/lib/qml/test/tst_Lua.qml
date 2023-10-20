@@ -10,20 +10,20 @@ ShoopTestCase {
     filename : TestFilename.test_filename()
     when: script1.ready && script2.ready
 
-    LuaUserScript {
+    LuaScript {
         id: script1
         script_name: "script1"
         script_code: "declare_in_context('my_var', 1)\n" +
                      "declare_global('my_global', 5)"
         catch_errors: false
     }
-    LuaUserScript {
+    LuaScript {
         id: script2
         script_name: "script2"
         script_code: "declare_in_context('my_var', 2)"
         catch_errors: false
     }
-    LuaUserScript {
+    LuaScript {
         id: script3
         script_name: "script3"
         script_code: "declare_in_context('other_var', 4)"

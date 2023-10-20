@@ -100,18 +100,9 @@ Dialog {
         }) }
     }
 
-    Settings {
+    ScriptSettings {
         id: script_settings
-        name: 'ScriptSettings'
-        schema_name: 'script_settings'
-        current_version: 1
-
         contents: all_settings.contents.script_settings.configuration
-
-        function default_contents() { return ({
-                'known_scripts': []
-            })
-        }
     }
 
     component MIDISettingsUi : Item {

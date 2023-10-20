@@ -6,7 +6,7 @@ Item {
 
     property bool when: true
 
-    readonly property PythonLogger logger : PythonLogger { name: "Frontend.Qml.LuaUserScript" }
+    readonly property PythonLogger logger : PythonLogger { name: "Frontend.Qml.LuaScript" }
 
     // Inputs
     property var script_code: null // Set the script code directly
