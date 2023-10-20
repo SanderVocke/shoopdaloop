@@ -22,8 +22,8 @@ Item {
     property alias input_volume_dB_min: input_slider.from
     property alias input_balance: input_balance_dial.value
     property alias output_balance: output_balance_dial.value
-    property real volume_slider_position: volume_slider.valueAt(volume_dB)
-    property real input_slider_position: input_slider.valueAt(input_volume_dB)
+    property real volume_slider_position: volume_slider.position
+    property real input_slider_position: input_slider.position
     property bool monitor : false
     property bool mute : false
 
@@ -212,14 +212,14 @@ Item {
         }
         return null;
     }
-    function set_all_gains(gain) {
-        audio_out_ports.forEach((p) => p.set_volume(gain))
+    function set_gain(gain) {
+        volume_dB = Math.min(Math.max(volume_slider.gainToDb(gain), volume_slider.from), volume_slider.to)
     }
     function set_volume_slider(value) {
         volume_slider.value = volume_slider.valueAt(value)
     }
-    function set_all_input_gains(gain) {
-        audio_in_ports.forEach((p) => p.set_volume(gain))
+    function set_input_gain(gain) {
+        input_volume_dB = Math.min(Math.max(input_slider.gainToDb(gain), input_slider.from), input_slider.to)
     }
     function set_input_volume_slider(value) {
         input_slider.value = input_slider.valueAt(value)

@@ -24,6 +24,8 @@ Item {
     property var backend_type : global_args.backend_type
     property var backend_argstring : global_args.backend_argstring
 
+    property bool settings_io_enabled: false
+
     function actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) {
         return GenerateSession.generate_session(
             app_metadata.version_string,
@@ -289,6 +291,7 @@ Item {
             id: app_controls
 
             backend: session_backend
+            settings_io_enabled: root.settings_io_enabled
 
             anchors {
                 top: parent.top

@@ -69,6 +69,8 @@ LuaControlInterface {
                 // Form [track_idx1, track_idx2, ...]
                 rval = track_selector.map((idx) => tracks_widget.tracks[idx])
             }
+        } else if (Number.isInteger(track_selector)) {
+            return [tracks_widget.tracks[track_selector]]
         } else {
             // Form [track_select_fn]
             rval = tracks.filter((t) => track_selector(t))
@@ -85,7 +87,7 @@ LuaControlInterface {
         return handlers[0]
     }
 
-    // Interface overrides
+    // Loop interface overrides
     function loop_count_override(loop_selector) {
         return select_loops(loop_selector).filter(l => l != null).length
     }
@@ -169,15 +171,15 @@ LuaControlInterface {
         select_loops(loop_selector).forEach((h) => { h.loop_toggle_targeted(loop_selector) } )
     }
 
-    
+    // Track interface overrides
     function track_set_volume_override(track_selector, vol) {
-        select_tracks(track_selector).forEach(t => t.control_widget.set_all_gains(vol))
+        select_tracks(track_selector).forEach(t => t.control_widget.set_gain(vol))
     }
     function track_set_volume_slider_override(track_selector, vol) {
         select_tracks(track_selector).forEach(t => t.control_widget.set_volume_slider(vol))
     }
     function track_set_input_volume_override(track_selector, vol) {
-        select_tracks(track_selector).forEach(t => t.control_widget.set_all_input_gains(vol))
+        select_tracks(track_selector).forEach(t => t.control_widget.set_input_gain(vol))
     }
     function track_set_input_volume_slider_override(track_selector, vol) {
         select_tracks(track_selector).forEach(t => t.control_widget.set_input_volume_slider(vol))
@@ -193,5 +195,17 @@ LuaControlInterface {
     }
     function track_get_input_volume_slider_override(track_selector) {
         return select_tracks(track_selector).map(t => t.control_widget.input_slider_position)
+    }
+    function track_get_muted_override(track_selector) {
+        return select_tracks(track_selector).map(t => t.control_widget.mute)
+    }
+    function track_set_muted_override(track_selector, muted) {
+        return select_tracks(track_selector).forEach(t => {t.control_widget.mute = muted})
+    }
+    function track_get_input_muted_override(track_selector) {
+        return select_tracks(track_selector).map(t => !t.control_widget.monitor)
+    }
+    function track_set_input_muted_override(track_selector, muted) {
+        return select_tracks(track_selector).forEach(t => {t.control_widget.monitor = !muted})
     }
 }

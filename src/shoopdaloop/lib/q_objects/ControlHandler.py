@@ -518,6 +518,17 @@ class ControlHandler(QQuickItem):
         @shoop_lua_fn_docstring.end
         """
         pass
+    
+    @Slot('QVariant', bool)
+    @allow_qml_override
+    def track_set_muted(self, track_selector, muted):
+        """
+        @shoop_lua_fn_docstring.start
+        shoop_control.track_set_muted(track_selector, bool)
+        Set whether the given track is muted.
+        @shoop_lua_fn_docstring.end
+        """
+        pass
 
     @Slot('QVariant', result=list)
     @allow_qml_override
@@ -536,7 +547,7 @@ class ControlHandler(QQuickItem):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.track_set_input_muted(track_selector, muted)
-        Set whether the given tracks' input(s) is/are muted.
+        Set whether the given track's input is muted.
         @shoop_lua_fn_docstring.end
         """
         pass
@@ -547,7 +558,7 @@ class ControlHandler(QQuickItem):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.track_set_volume(track_selector, vol)
-        Set the given tracks' volume as a gain factor.
+        Set the given track's volume as a gain factor.
         @shoop_lua_fn_docstring.end
         """
         pass
@@ -558,7 +569,7 @@ class ControlHandler(QQuickItem):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.track_set_volume_slider(track_selector, vol)
-        Set the given tracks' volume as a fraction of its total range (0-1).
+        Set the given track's volume as a fraction of its total range (0-1).
         @shoop_lua_fn_docstring.end
         """
         pass
@@ -569,7 +580,7 @@ class ControlHandler(QQuickItem):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.track_set_input_volume(track_selector, vol)
-        Set the given tracks' input volume as a gain factor.
+        Set the given track's input volume as a gain factor.
         @shoop_lua_fn_docstring.end
         """
         pass
@@ -580,7 +591,7 @@ class ControlHandler(QQuickItem):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.track_set_input_volume_slider(track_selector, vol)
-        Set the given tracks' input volume as a fraction of its total range (0-1).
+        Set the given track's input volume as a fraction of its total range (0-1).
         @shoop_lua_fn_docstring.end
         """
         pass

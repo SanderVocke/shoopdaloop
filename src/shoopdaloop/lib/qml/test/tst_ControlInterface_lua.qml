@@ -390,16 +390,64 @@ declare_global('shoop_format', require('shoop_format'))
             })
         }
 
-        // track_get_input_muted
-        // track_get_input_volume
-        // track_get_input_volume_slider
-        // track_get_muted
-        // track_get_volume
-        // track_get_volume_slider
-        // track_set_input_muted
-        // track_set_input_volume
-        // track_set_input_volume_slider
-        // track_set_volume
-        // track_set_volume_slider
+        function test_track_set_get_input_volume() {
+            run_case('test_track_set_get_input_volume', () => {
+                check_backend()
+                clear()
+                
+                do_execute('shoop_control.track_set_input_volume(0, 1.0)')
+                do_execute('shoop_control.track_set_input_volume(1, 1.0)')
+                verify_eq_lua('shoop_control.track_get_input_volume(0)', '{1.0}')
+                do_execute('shoop_control.track_set_input_volume(0, 0.5)')
+                verify_eq_lua('shoop_control.track_get_input_volume(0)', '{0.5}')
+                verify_eq_lua('shoop_control.track_get_input_volume({1,0})', '{1.0, 0.5}')
+            })
+        }
+
+        function test_track_set_get_input_volume_slider() {
+            run_case('test_track_set_get_input_volume_slider', () => {
+                check_backend()
+                clear()
+                
+                do_execute('shoop_control.track_set_input_volume_slider(0, 1.0)')
+                verify_eq_lua('shoop_control.track_get_input_volume_slider(0)', '{1.0}')
+                do_execute('shoop_control.track_set_input_volume_slider(0, 0.5)')
+                verify_eq_lua('shoop_control.track_get_input_volume_slider(0)', '{0.5}')
+                do_execute('shoop_control.track_set_input_volume_slider(0, 2.0)')
+                verify_eq_lua('shoop_control.track_get_input_volume_slider(0)', '{1.0}')
+                do_execute('shoop_control.track_set_input_volume_slider(0, -1.0)')
+                verify_eq_lua('shoop_control.track_get_input_volume_slider(0)', '{0.0}')
+            })
+        }
+
+        function test_track_set_get_muted() {
+            run_case('test_track_set_get_muted', () => {
+                check_backend()
+                clear()
+                
+                do_execute('shoop_control.track_set_muted(0, true)')
+                do_execute('shoop_control.track_set_muted(1, true)')
+                verify_eq_lua('shoop_control.track_get_muted(0)', '{true}')
+                verify_eq_lua('shoop_control.track_get_muted({1,0})', '{true, true}')
+                do_execute('shoop_control.track_set_muted(0, false)')
+                verify_eq_lua('shoop_control.track_get_muted(0)', '{false}')
+                verify_eq_lua('shoop_control.track_get_muted({1,0})', '{true, false}')
+            })
+        }
+
+        function test_track_set_get_input_muted() {
+            run_case('test_track_set_get_input_muted', () => {
+                check_backend()
+                clear()
+                
+                do_execute('shoop_control.track_set_input_muted(0, true)')
+                do_execute('shoop_control.track_set_input_muted(1, true)')
+                verify_eq_lua('shoop_control.track_get_input_muted(0)', '{true}')
+                verify_eq_lua('shoop_control.track_get_input_muted({1,0})', '{true, true}')
+                do_execute('shoop_control.track_set_input_muted(0, false)')
+                verify_eq_lua('shoop_control.track_get_input_muted(0)', '{false}')
+                verify_eq_lua('shoop_control.track_get_input_muted({1,0})', '{true, false}')
+            })
+        }
     }
 }

@@ -16,6 +16,8 @@ Item {
     property alias sync_active : sync_active_button.sync_active
     property var backend : null
 
+    property bool settings_io_enabled: false
+
     function update() {
         registries.state_registry.replace('sync_active', sync_active)
     }
@@ -164,5 +166,6 @@ Item {
 
     SettingsDialog {
         id: settings_dialog
+        io_enabled: root.settings_io_enabled
     }
 }

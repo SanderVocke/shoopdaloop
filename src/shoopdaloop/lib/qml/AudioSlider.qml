@@ -48,4 +48,8 @@ Slider {
         anchors.fill: parent
         acceptedButtons: Qt.NoButton
     }
+
+    function gainToDb(gain) {
+        return 20 * Math.log10(gain)
+    }
 }
