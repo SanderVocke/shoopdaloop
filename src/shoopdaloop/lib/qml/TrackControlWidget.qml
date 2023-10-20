@@ -22,6 +22,8 @@ Item {
     property alias input_volume_dB_min: input_slider.from
     property alias input_balance: input_balance_dial.value
     property alias output_balance: output_balance_dial.value
+    property real volume_slider_position: volume_slider.valueAt(volume_dB)
+    property real input_slider_position: input_slider.valueAt(input_volume_dB)
     property bool monitor : false
     property bool mute : false
 
@@ -222,6 +224,10 @@ Item {
     function set_input_volume_slider(value) {
         input_slider.value = input_slider.valueAt(value)
     }
+    function convert_volume_to_linear(volume) {
+        convert_volume.dB = volume
+        return convert_volume.linear
+    }
     function push_volume(volume, target, gain_factor = 1.0) {
         convert_volume.dB = volume
         var v = convert_volume.linear * gain_factor
@@ -256,12 +262,15 @@ Item {
             }
         }
     }
+    property var last_pushed_in_gain: null
+    property var last_pushed_gain: null
     function push_in_volumes() {
         audio_in_ports.forEach((p, idx) => {
             if (idx == 0 && in_is_stereo) { push_volume(input_volume_dB, p, in_balance_volume_factor_l) }
             else if (idx == 1 && in_is_stereo) { push_volume(input_volume_dB, p, in_balance_volume_factor_r) }
-            else { push_volume(volume_dB, p) }
+            else { push_volume(input_volume_dB, p) }
         })
+        last_pushed_in_gain = convert_volume_to_linear(input_volume_dB)
     }
     function push_out_volumes() {
         audio_out_ports.forEach((p, idx) => {
@@ -269,6 +278,7 @@ Item {
             else if (idx == 1 && out_is_stereo) { push_volume(volume_dB, p, out_balance_volume_factor_r) }
             else { push_volume(volume_dB, p) }
         })
+        last_pushed_gain = convert_volume_to_linear(volume_dB)
     }
     function push_mute() {
         audio_out_ports.forEach((p) => p.set_muted(mute))

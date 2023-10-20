@@ -464,67 +464,67 @@ class ControlHandler(QQuickItem):
     # - fn              (fn is (track) => true/false, applied to tracks of all tracks)
 
     # track getter interfaces
-    @Slot('QVariant', result=float)
+    @Slot('QVariant', result=list)
     @allow_qml_override
     def track_get_volume(self, track_selector):
         """
         @shoop_lua_fn_docstring.start
-        shoop_control.track_get_volume(track_selector) -> float
+        shoop_control.track_get_volume(track_selector) -> list[float]
         Get the volume of the given track(s) as a gain factor.
         @shoop_lua_fn_docstring.end
         """
         pass
     
-    @Slot('QVariant', result=float)
+    @Slot('QVariant', result=list)
     @allow_qml_override
     def track_get_volume_slider(self, track_selector):
         """
         @shoop_lua_fn_docstring.start
-        shoop_control.track_get_volume_slider(track_selector) -> float
+        shoop_control.track_get_volume_slider(track_selector) -> list[float]
         Get the volume of the given track(s) as a fraction of its total range (0-1).
         @shoop_lua_fn_docstring.end
         """
         pass
     
-    @Slot('QVariant', result=float)
+    @Slot('QVariant', result=list)
     @allow_qml_override
     def track_get_input_volume(self, track_selector):
         """
         @shoop_lua_fn_docstring.start
-        shoop_control.track_get_input_volume(track_selector) -> float
+        shoop_control.track_get_input_volume(track_selector) -> list[float]
         Get the input volume of the given track(s) as a gain factor.
         @shoop_lua_fn_docstring.end
         """
         pass
     
-    @Slot('QVariant', result=float)
+    @Slot('QVariant', result=list)
     @allow_qml_override
     def track_get_input_volume_slider(self, track_selector):
         """
         @shoop_lua_fn_docstring.start
-        shoop_control.track_get_input_volume_slider(track_selector) -> float
+        shoop_control.track_get_input_volume_slider(track_selector) -> list[float]
         Get the input volume of the given track(s) as a fraction of its total range (0-1).
         @shoop_lua_fn_docstring.end
         """
         pass
 
-    @Slot('QVariant', result=bool)
+    @Slot('QVariant', result=list)
     @allow_qml_override
     def track_get_muted(self, track_selector):
         """
         @shoop_lua_fn_docstring.start
-        shoop_control.track_get_muted(track_selector) -> bool
+        shoop_control.track_get_muted(track_selector) -> list[bool]
         Get whether the given track(s) is/are muted.
         @shoop_lua_fn_docstring.end
         """
         pass
 
-    @Slot('QVariant', result=bool)
+    @Slot('QVariant', result=list)
     @allow_qml_override
     def track_get_input_muted(self, track_selector):
         """
         @shoop_lua_fn_docstring.start
-        shoop_control.track_get_input_muted(track_selector) -> bool
+        shoop_control.track_get_input_muted(track_selector) -> list[bool]
         Get whether the given tracks' input(s) is/are muted.
         @shoop_lua_fn_docstring.end
         """
