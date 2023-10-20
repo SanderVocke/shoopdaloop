@@ -102,12 +102,12 @@ class FileIO(QThread):
             for d in datas:
                 lengths.add(len(d))
             if len(lengths) > 1:
-                self.logger.error('Cannot save audio: channel lengths are not equal ({})'.format(list(lengths)))
+                self.logger.error(lambda: 'Cannot save audio: channel lengths are not equal ({})'.format(list(lengths)))
                 return
             # Soundfile wants NcxNs, not NsxNc
             data = np.swapaxes(datas, 0, 1)
             sf.write(filename, data, sample_rate)
-            self.logger.info("Saved {}-channel audio to {} ({} samples)".format(len(channels), filename, len(datas[0])))
+            self.logger.info(lambda: "Saved {}-channel audio to {} ({} samples)".format(len(channels), filename, len(datas[0])))
         finally:
             self.doneSavingFile.emit()
     
@@ -136,7 +136,7 @@ class FileIO(QThread):
             # TODO: append an End-Of-Track message to determine the length
             
             mido_file.save(filename)
-            self.logger.info("Saved MIDI channel to {} ({} messages)".format(filename, len(msgs)))
+            self.logger.info(lambda: "Saved MIDI channel to {} ({} messages)".format(filename, len(msgs)))
         finally:
             self.doneSavingFile.emit()
     
@@ -188,7 +188,7 @@ class FileIO(QThread):
             if maybe_set_n_preplay_samples != None:
                 channel.set_n_preplay_samples(maybe_set_n_preplay_samples)
             
-            self.logger.info("Loaded MIDI from {} into channel ({} messages, {} samples)".format(filename, len(backend_msgs), total_sample_time))
+            self.logger.info(lambda: "Loaded MIDI from {} into channel ({} messages, {} samples)".format(filename, len(backend_msgs), total_sample_time))
         finally:
             self.doneLoadingFile.emit()
     
@@ -262,11 +262,11 @@ class FileIO(QThread):
             file_sample_rate = int(file_sample_rate)
             resampled = data
             if target_sample_rate != file_sample_rate:
-                self.logger.debug("Resampling {} from {} to {}".format(filename, file_sample_rate, target_sample_rate))
+                self.logger.debug(lambda: "Resampling {} from {} to {}".format(filename, file_sample_rate, target_sample_rate))
                 resampled = resampy.resample(data, file_sample_rate, target_sample_rate)
             
             if len(channels_to_loop_channels) > len(resampled):
-                self.logger.error("Need {} channels, but loaded file only has {}".format(len(channels_to_loop_channels), len(resampled)))
+                self.logger.error(lambda: "Need {} channels, but loaded file only has {}".format(len(channels_to_loop_channels), len(resampled)))
                 return
 
             for d in resampled:
@@ -284,12 +284,12 @@ class FileIO(QThread):
                         channel.set_start_offset(maybe_set_start_offset)
                     if maybe_set_n_preplay_samples != None:
                         channel.set_n_preplay_samples(maybe_set_n_preplay_samples)
-                    self.logger.debug("load channel: {} samples, result {}".format(len(data_channel), channel.data_length))  
+                    self.logger.debug(lambda: "load channel: {} samples, result {}".format(len(data_channel), channel.data_length))  
                     
             if maybe_update_loop_to_datalength != None:
                 maybe_update_loop_to_datalength.set_length(len(resampled[0]))
        
-            self.logger.info("Loaded {}-channel audio from {} ({} samples)".format(len(resampled), filename, len(resampled[0])))
+            self.logger.info(lambda: "Loaded {}-channel audio from {} ({} samples)".format(len(resampled), filename, len(resampled[0])))
         finally:
             self.doneLoadingFile.emit()
     

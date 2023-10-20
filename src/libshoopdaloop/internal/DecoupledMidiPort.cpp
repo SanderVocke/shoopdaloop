@@ -40,6 +40,11 @@ void DecoupledMidiPort<TimeType, SizeType>::PROC_process(size_t n_frames) {
 }
 
 template <typename TimeType, typename SizeType>
+const char* DecoupledMidiPort<TimeType, SizeType>::name() const {
+    return port->name();
+}
+
+template <typename TimeType, typename SizeType>
 std::optional<typename DecoupledMidiPort<TimeType, SizeType>::Message>
 DecoupledMidiPort<TimeType, SizeType>::pop_incoming() {
     if (direction != PortDirection::Input) {

@@ -1,21 +1,12 @@
 import QtQuick 6.3
-import ShoopDaLoop.PythonControlInterface
 import ShoopDaLoop.PythonLogger
 
-PythonControlInterface {
+LuaControlInterface {
     id: root
     qml_instance: this
-    property bool ready: false
     property var session: null
 
-    Component.onCompleted: {
-        // Register ourselves as "shoop" in the LUA environment
-        scripting_engine.use_context(null)
-        scripting_engine.create_lua_qobject_interface_in_current_context('shoop', root)
-        ready = true
-    }
-
-    property PythonLogger logger : PythonLogger { name: "Frontend.Session.ControlInterface" }
+    property PythonLogger logger : PythonLogger { name: "Frontend.Qml.SessionControlInterface" }
 
     property list<var> selected_loop_idxs : session.selected_loops ? session.selected_loops.map((l) => [l.track_idx, l.idx_in_track]) : []
     property var targeted_loop_idx: session.targeted_loop ? [session.targeted_loop.track_idx, session.targeted_loop.idx_in_track] : null
@@ -37,9 +28,15 @@ PythonControlInterface {
                             return null
                         }
                     })
-                } else {
+                } else if (loop_selector.length == 2) {
                     // form [x, y]
-                    rval = [ tracks_widget.tracks[loop_selector[0]].loops[loop_selector[1]] ]
+                    let maybe_track = tracks_widget.tracks[loop_selector[0]]
+                    rval = maybe_track ?
+                        [ tracks_widget.tracks[loop_selector[0]].loops[loop_selector[1]] ] :
+                        []
+                } else {
+                    logger.warning(() => (`Invalid loop selector: ${JSON.stringify(loop_selector)}`))        
+                    rval = []
                 }
             }
         } else {
@@ -52,7 +49,7 @@ PythonControlInterface {
                 }
             }
         }
-        logger.debug(`Selected loops for selector ${JSON.stringify(loop_selector)}: ${JSON.stringify(rval.map(l => l ? l.obj_id : null))}.`)
+        logger.debug(() => (`Selected loops for selector ${JSON.stringify(loop_selector)}: ${JSON.stringify(rval.map(l => l ? l.obj_id : null))}.`))
         return rval
     }
 
@@ -64,33 +61,33 @@ PythonControlInterface {
         return handlers[0]
     }
 
-    function select_ports(port_selector) {
+    function select_tracks(track_selector) {
         var rval = []
-        if (Array.isArray(port_selector)) {
-            if (port_selector.length == 0) { rval = [] }
+        if (Array.isArray(track_selector)) {
+            if (track_selector.length == 0) { rval = [] }
             else {
-                // Form [track_idx, port_select_fn]
-                rval = tracks_widget.tracks[port_selector[0]].ports.filter((p) => port_selector[1](p))
+                // Form [track_idx1, track_idx2, ...]
+                rval = track_selector.map((idx) => tracks_widget.tracks[idx])
             }
+        } else if (Number.isInteger(track_selector)) {
+            return [tracks_widget.tracks[track_selector]]
         } else {
-            // Form [port_select_fn]
-            tracks_widget.tracks.forEach((t) => {
-                rval = rval.concat(t.ports.filter((p) => port_selector(p)).map((p) => p.control_handler))
-            })
+            // Form [track_select_fn]
+            rval = tracks.filter((t) => track_selector(t))
         }
-        logger.debug(`Selected ${rval.length} target port(s).`)
+        logger.debug(() => (`Selected ${rval.length} target track(s).`))
         return rval
     }
 
-    function select_single_port(port_selector) {
-        var handlers = select_loops(port_selector)
+    function select_single_track(track_selector) {
+        var handlers = select_tracks(track_selector)
         if (handlers.length != 1) {
-            logger.throw_error('Handling port call: multiple ports yielded while only one expected')
+            logger.throw_error('Handling track call: multiple tracks yielded while only one expected')
         }
         return handlers[0]
     }
 
-    // Interface overrides
+    // Loop interface overrides
     function loop_count_override(loop_selector) {
         return select_loops(loop_selector).filter(l => l != null).length
     }
@@ -116,13 +113,16 @@ PythonControlInterface {
         return select_loops((l) => l.track_idx == track_idx).map(((l) => [l.track_idx, l.idx_in_track]))
     }
     function loop_transition_override(loop_selector, mode, cycles_delay) {
-        select_loops(loop_selector).forEach((h) => { h.transition(mode, cycles_delay, state_registry.get('sync_active'), false) } )
+        select_loops(loop_selector).forEach((h) => { h.transition(mode, cycles_delay, registries.state_registry.get('sync_active'), false) } )
     }
     function loop_get_volume_override(loop_selector) {
-        return select_single_loop(loop_selector).loop_get_volume(loop_selector)
+        return select_loops(loop_selector).map(l => l.last_pushed_volume)
+    }
+    function loop_get_volume_slider_override(loop_selector) {
+        return select_loops(loop_selector).map(l => l.get_volume_slider())
     }
     function loop_get_balance_override(loop_selector) {
-        return select_single_loop(loop_selector).loop_get_balance(loop_selector)
+        return select_loops(loop_selector).map(l => l.last_pushed_stereo_balance)
     }
     function loop_record_n_override(loop_selector, n, cycles_delay) {
         select_loops(loop_selector).forEach((h) => { h.record_n(cycles_delay, n) } )
@@ -133,10 +133,13 @@ PythonControlInterface {
         }
     }
     function loop_set_volume_override(loop_selector, volume) {
-        select_loops(loop_selector).forEach((h) => { h.loop_set_volume(loop_selector, volume) } )
+        select_loops(loop_selector).forEach((h) => { h.push_volume(volume) } )
+    }
+    function loop_set_volume_slider_override(loop_selector, volume) {
+        select_loops(loop_selector).forEach((h) => { h.set_volume_slider(volume) } )
     }
     function loop_set_balance_override(loop_selector, balance) {
-        select_loops(loop_selector).forEach((h) => { h.loop_set_balance(loop_selector, balance) } )
+        select_loops(loop_selector).forEach((h) => { h.push_stereo_balance(balance) } )
     }
     function loop_select_override(loop_selector, deselect_others) {
         var selection = new Set(select_loops(loop_selector).map((l) => l ? l.obj_id : null))
@@ -144,22 +147,22 @@ PythonControlInterface {
         if (!deselect_others && session.selected_loop_ids) {
             session.selected_loop_ids.forEach((id) => { selection.add(id) })
         }
-        state_registry.replace('selected_loop_ids', selection)
+        registries.state_registry.replace('selected_loop_ids', selection)
     }
     function loop_target_override(loop_selector) {
         for(const loop of select_loops(loop_selector)) {
             if (loop) {
-                state_registry.replace('targeted_loop', loop)
+                registries.state_registry.replace('targeted_loop', loop)
                 return
             }
         }
-        state_registry.replace('targeted_loop_id', null)
+        registries.state_registry.replace('targeted_loop', null)
     }
     function loop_clear_override(loop_selector) {
         select_loops(loop_selector).forEach((h) => { h.clear() } )
     }
     function loop_untarget_all_override() {
-        state_registry.replace('targeted_loop', null)
+        registries.state_registry.replace('targeted_loop', null)
     }
     function loop_toggle_selected_override(loop_selector) {
         select_loops(loop_selector).forEach((h) => { h.loop_toggle_selected(loop_selector) } )
@@ -167,28 +170,42 @@ PythonControlInterface {
     function loop_toggle_targeted_override(loop_selector) {
         select_loops(loop_selector).forEach((h) => { h.loop_toggle_targeted(loop_selector) } )
     }
-    function port_get_volume_override(port_selector) {
-        return select_ports(port_selector).port_get_volume(port_selector)
+
+    // Track interface overrides
+    function track_set_volume_override(track_selector, vol) {
+        select_tracks(track_selector).forEach(t => t.control_widget.set_gain(vol))
     }
-    function port_get_muted_override(port_selector) {
-        return select_ports(port_selector).port_get_muted(port_selector)
+    function track_set_volume_slider_override(track_selector, vol) {
+        select_tracks(track_selector).forEach(t => t.control_widget.set_volume_slider(vol))
     }
-    function port_get_input_muted_override(port_selector) {
-        return select_ports(port_selector).port_get_input_muted(port_selector)
+    function track_set_input_volume_override(track_selector, vol) {
+        select_tracks(track_selector).forEach(t => t.control_widget.set_input_gain(vol))
     }
-    function port_mute_override(port_selector) {
-        select_ports(port_selector).port_mute(port_selector)
+    function track_set_input_volume_slider_override(track_selector, vol) {
+        select_tracks(track_selector).forEach(t => t.control_widget.set_input_volume_slider(vol))
     }
-    function port_mute_input_override(port_selector) {
-        select_ports(port_selector).port_mute_input(port_selector)
+    function track_get_volume_override(track_selector) {
+        return select_tracks(track_selector).map(t => t.control_widget.last_pushed_gain)
     }
-    function port_unmute_override(port_selector) {
-        select_ports(port_selector).port_unmute(port_selector)
+    function track_get_volume_slider_override(track_selector) {
+        return select_tracks(track_selector).map(t => t.control_widget.volume_slider_position)
     }
-    function port_unmute_input_override(port_selector) {
-        select_ports(port_selector).port_unmute_input(port_selector)
+    function track_get_input_volume_override(track_selector) {
+        return select_tracks(track_selector).map(t => t.control_widget.last_pushed_in_gain)
     }
-    function port_set_volume_override(port_selector, vol) {
-        select_ports(port_selector).port_set_volume(port_selector, vol)
+    function track_get_input_volume_slider_override(track_selector) {
+        return select_tracks(track_selector).map(t => t.control_widget.input_slider_position)
+    }
+    function track_get_muted_override(track_selector) {
+        return select_tracks(track_selector).map(t => t.control_widget.mute)
+    }
+    function track_set_muted_override(track_selector, muted) {
+        return select_tracks(track_selector).forEach(t => {t.control_widget.mute = muted})
+    }
+    function track_get_input_muted_override(track_selector) {
+        return select_tracks(track_selector).map(t => !t.control_widget.monitor)
+    }
+    function track_set_input_muted_override(track_selector, muted) {
+        return select_tracks(track_selector).forEach(t => {t.control_widget.monitor = !muted})
     }
 }

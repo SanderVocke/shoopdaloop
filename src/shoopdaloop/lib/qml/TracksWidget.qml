@@ -18,8 +18,6 @@ ScrollView {
     id: root
 
     property var initial_track_descriptors : []
-    property Registry objects_registry : null
-    property Registry state_registry : null
 
     property bool loaded : false
     property int n_loaded : 0
@@ -33,7 +31,7 @@ ScrollView {
     }
 
     RegisterInRegistry {
-        registry: root.state_registry
+        registry: registries.state_registry
         key: 'track_descriptors'
         object: track_initial_descriptors
     }
@@ -42,7 +40,7 @@ ScrollView {
 
     RegistryLookup {
         id: selected_loops_lookup
-        registry: state_registry
+        registry: registries.state_registry
         key: 'selected_loop_ids'
     }
     property alias selected_loop_ids : selected_loops_lookup.object
@@ -56,7 +54,7 @@ ScrollView {
     }
 
     function queue_load_tasks(data_files_dir, add_tasks_to) {
-        root.logger.debug(`Queue load tasks for ${root.tracks.length} tracks`)
+        root.logger.debug(() => (`Queue load tasks for ${root.tracks.length} tracks`))
         for(var i=0; i<root.tracks.length; i++) {
             tracks[i].queue_load_tasks(data_files_dir, add_tasks_to)
         }
@@ -132,9 +130,7 @@ ScrollView {
         // Instantiate initial tracks
         root.initial_track_descriptors.forEach(desc => {
             var track = root.add_track({
-                initial_descriptor: desc,
-                objects_registry: root.objects_registry,
-                state_registry: root.state_registry
+                initial_descriptor: desc
             });
             if (track.loaded) { _n_loaded += 1 }
         })
@@ -202,8 +198,6 @@ ScrollView {
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.horizontalCenter: parent.horizontalCenter
                     initial_track_descriptor: a_track.mapped_item.initial_descriptor
-                    objects_registry: root.objects_registry
-                    state_registry: root.state_registry
                 }
             }
         }
@@ -265,9 +259,7 @@ ScrollView {
         id: newtrackdialog
         onAddTrackDescriptor: (desc) => {
             root.add_track({
-                initial_descriptor: desc,
-                objects_registry: root.objects_registry,
-                state_registry: root.state_registry
+                initial_descriptor: desc
             })
         }
     }

@@ -26,27 +26,27 @@ class Logger(QObject):
     ## SLOTS
     ###########
 
-    @Slot(str)
+    @Slot('QVariant')
     def trace(self, msg):
         self.logger.trace(msg)
     
-    @Slot(str)
+    @Slot('QVariant')
     def debug(self, msg):
         self.logger.debug(msg)
     
-    @Slot(str)
+    @Slot('QVariant')
     def info(self, msg):
         self.logger.info(msg)
     
-    @Slot(str)
+    @Slot('QVariant')
     def warning(self, msg):
         self.logger.warning(msg)
     
-    @Slot(str)
+    @Slot('QVariant')
     def error(self, msg):
         self.logger.error(msg)
     
-    @Slot(str)
+    @Slot('QVariant')
     def throw_error(self, msg):
         self.logger.error(msg)
         raise Exception(msg)

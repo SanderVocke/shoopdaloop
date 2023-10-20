@@ -1,5 +1,6 @@
 {
     "clangd.arguments": [
         "--compile-commands-dir=${workspaceFolder}/build"
-    ]
+    ],
+    "cmake.configureOnOpen": false
 }

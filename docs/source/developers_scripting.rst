@@ -51,9 +51,40 @@ Globals and context variables
     * ...
 
 
-API
-^^^
+API and Libraries
+^^^^^^^^^^^^^^^^^
+
+The API consists of globally available functions and constants, in addition to functions and constants available through built-in libraries. Built-in libraries should be included in scripts using the `require` function. Check `lib/lua/builtins/keyboard.lua` for an example.
+
+**globally available functions**:
 
 * **print(msg)**, **print_debug(msg)**, **print_error(msg)**, **print_info(msg)**: Print a message to the Frontend.LuaScript logger. Respective log levels are info (default), debug, error.
-* For the rest of the API, there are plans to auto-generate documentation, but for now the available interfaces can be found in the source files `ControlHandler.py` and `ControlInterface.py`. Look for functions with a docstring. These functios are exposed in the LUA environment as shoop.<function_name>.
-* Check `lib/lua/keyboard.lua` for an example.
+
+**type midi_control_port**: a type used to access state related to a specific MIDI control port.
+
+.. shoop_function_docstrings::
+   src/shoopdaloop/lib/q_objects/MidiControlPort.py
+
+**library shoop_control**: provides basic interfacing with **ShoopDaLoop**. Note that these functions are provided as bindings into the application - they are not written in Lua.
+
+.. shoop_function_docstrings::
+   src/shoopdaloop/lib/q_objects/ControlHandler.py
+
+.. shoop_function_docstrings::
+   src/shoopdaloop/lib/q_objects/ControlInterface.py
+
+
+**library shoop_coords**: provides helper functions to manipulate loop and track coordinates. Implemented in `shoop_coords.lua`.
+
+.. shoop_function_docstrings::
+   src/shoopdaloop/lib/lua/lib/shoop_coords.lua
+
+**library shoop_helpers**: provides helper functions for advanced control. Implemented in `shoop_helpers.lua`.
+
+.. shoop_function_docstrings::
+   src/shoopdaloop/lib/lua/lib/shoop_helpers.lua
+
+**library shoop_format**: provides helper functions for formatting strings. Implemented in `shoop_format.lua`.
+
+.. shoop_function_docstrings::
+   src/shoopdaloop/lib/lua/lib/shoop_format.lua

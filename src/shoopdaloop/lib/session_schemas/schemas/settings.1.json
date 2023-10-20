@@ -1,0 +1,29 @@
+{
+    "type": "object",
+    "properties": {
+        "schema": { "const": "settings.1" },
+        "configuration": {
+            "type": "object",
+            "properties": {
+                "midi_settings": {
+                    "type": "object",
+                    "properties": {
+                        "schema": { "const": "midi_settings.1", "$comment": "see midi_settings.1 schema" }
+                    },
+                    "required": ["schema"]
+                },
+                "script_settings": {
+                    "type": "object",
+                    "properties": {
+                        "schema": { "const": "script_settings.1", "$comment": "see script_settings.1 schema" }
+                    },
+                    "required": ["schema"]
+                }
+            },
+            "required": [
+                "midi_settings", "script_settings"
+            ]
+        }
+    },
+    "required": ["schema", "configuration"]
+}

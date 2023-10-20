@@ -12,20 +12,18 @@ Item {
     property var hovered_scene_id: null
 
     property var initial_scene_descriptors: []
-    property Registry objects_registry: null
-    property Registry state_registry: null
 
     property var actual_scene_descriptors: initial_scene_descriptors
 
     RegisterInRegistry {
         id: reg_entry
-        registry: root.state_registry
+        registry: registries.state_registry
         key: 'scenes_widget'
         object: root
     }
 
     RegisterInRegistry {
-        registry: root.state_registry
+        registry: registries.state_registry
         key: "scene_descriptors"
         object: root.actual_scene_descriptors
     }

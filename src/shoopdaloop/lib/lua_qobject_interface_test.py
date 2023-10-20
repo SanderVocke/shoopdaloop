@@ -9,7 +9,7 @@ import pytest
 
 def test_init():
     eng = ScriptingEngine()
-    create_lua_qobject_interface('testinterface', eng, QObject())
+    create_lua_qobject_interface(eng, QObject())
 
 def test_callback():
     class TestHandler(QObject):
@@ -36,8 +36,8 @@ def test_callback():
     
     obj = TestHandler()
     eng = ScriptingEngine()
-    create_lua_qobject_interface('testy', eng, obj)
+    eng.create_lua_qobject_interface_as_sandboxed_global('testy', obj)
 
-    assert(eng.eval('return testy.foo()') == 'bar')
-    assert(eng.eval('return testy.foz("baz")') == 'baz')
-    assert(eng.eval('return testy.constants.const1') == 'hello')
+    assert(eng.evaluate('return testy.foo()') == 'bar')
+    assert(eng.evaluate('return testy.foz("baz")') == 'baz')
+    assert(eng.evaluate('return testy.constants.const1') == 'hello')

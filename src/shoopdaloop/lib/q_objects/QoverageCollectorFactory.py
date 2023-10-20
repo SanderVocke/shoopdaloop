@@ -18,7 +18,7 @@ class QoverageFileCollector(QObject):
     
     @Slot()
     def report(self):
-        self.logger.info(
+        self.logger.info(lambda: 
             '<QOVERAGERESULT file="{}">{}</QOVERAGERESULT>'.format(
                 self.filename,
                 json.dumps(self.lines_data)
@@ -29,7 +29,7 @@ class QoverageCollectorFactory(QObject):
     def __init__(self, parent=None):
         super(QoverageCollectorFactory, self).__init__(parent)
         self.logger = Logger("QoverageCollectorFactory")
-        self.logger.debug("Initialized")
+        self.logger.debug(lambda: "Initialized")
         self.file_collectors = {}
     
     @Slot(str, list, result='QVariant')
@@ -38,17 +38,17 @@ class QoverageCollectorFactory(QObject):
         # collectors re-requested. Ensure we pass back the existing collectors such that
         # total coverage is added, not reset from scratch.
         if filename in self.file_collectors:
-            self.logger.debug("Request existing collector for {}".format(filename))
+            self.logger.debug(lambda: "Request existing collector for {}".format(filename))
             return self.file_collectors[filename]
         else:
-            self.logger.debug("New collector requested for {}".format(filename))
+            self.logger.debug(lambda: "New collector requested for {}".format(filename))
             rval = QoverageFileCollector(filename, initial_lines_data, self)
             self.file_collectors[filename] = rval
             return rval
     
     def report_all(self):
-        self.logger.debug("Reporting all")
+        self.logger.debug(lambda: "Reporting all")
         if len(self.file_collectors.items()) > 0:
-            self.logger.info('Reporting {} file collectors'.format(len(self.file_collectors)))
+            self.logger.info(lambda: 'Reporting {} file collectors'.format(len(self.file_collectors)))
             for fc in self.file_collectors.values():
                 fc.report()

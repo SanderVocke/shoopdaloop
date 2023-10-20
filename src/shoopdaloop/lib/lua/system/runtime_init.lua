@@ -54,6 +54,10 @@ function __shoop_use_context(id)
   __shoop_current_context = id
 end
 
+function __shoop_delete_context(id)
+  __shoop_contexts[id] = nil
+end
+
 function __shoop_set_context (name, v)
   if (not have_context()) then
     error("internal error: attempt to set context var while no context loaded.")
@@ -66,6 +70,14 @@ function __shoop_get_context (name)
     error("internal error: attempt to get context var while no context loaded.")
   end
   return __shoop_contexts[__shoop_current_context][name]
+end
+
+function __shoop_context_exists (id)
+  if (not __shoop_contexts[id]) then
+    return false
+  else
+    return true
+  end
 end
 
 function exists_in_context (name)

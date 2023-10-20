@@ -11,40 +11,58 @@ import '..'
 Session {
     id: session
 
-    objects_registry: ObjectsRegistry {}
-    state_registry: StateRegistry {}
-
     anchors.fill: parent
-    initial_descriptor: GenerateSession.generate_default_session(app_metadata.version_string, 2)
+    initial_descriptor: {
+        var master_track = GenerateSession.generate_default_track("Master", 2, 'master', true, 'master_loop', 0, 0, 2, false, false, false, undefined)
+        var extra_track = GenerateSession.generate_default_track("Other", 2, 'other', false, 'other_loop', 0, 0, 2, false, false, false, undefined)
+        return GenerateSession.generate_session(app_metadata.version_string, [master_track, extra_track], [], [],
+        [], [])
+    }
 
     ShoopSessionTestCase {
         id: testcase
         name: 'ControlInterface'
         filename : TestFilename.test_filename()
         session: session
-        when: session.control_interface.ready
+        when: session.control_interface.ready && registries.state_registry
 
-        function master_loop() {
-            return session.tracks[0].loops[0]
+        function loop_at(track, idx) {
+            return session.tracks[track].loops[idx]
         }
 
-        function other_loop() {
-            return session.tracks[0].loops[1]
+        property bool done_imports: false
+        function prepare_imports() {
+            if (!done_imports) {
+                scripting_engine.execute(`
+declare_global('shoop_control', require('shoop_control'))
+declare_global('shoop_coords', require('shoop_coords'))
+declare_global('shoop_helpers', require('shoop_helpers'))
+declare_global('shoop_format', require('shoop_format'))
+`, null, 'MidiControl', true, true)
+                done_imports = true
+            }
         }
 
         function clear() {
-            master_loop().clear()
-            other_loop().clear()
-            session.state_registry.replace('sync_active', false)
-            master_loop().deselect()
-            other_loop().deselect()
-            testcase.wait(100)
-            verify_loop_cleared(master_loop())
-            verify_loop_cleared(other_loop())
+            loop_at(0,0).clear()
+            loop_at(0,1).clear()
+            loop_at(1,0).clear()
+            loop_at(1,1).clear()
+            registries.state_registry.replace('sync_active', false)
+            loop_at(0,0).deselect()
+            loop_at(0,1).deselect()
+            loop_at(1,0).deselect()
+            loop_at(1,1).deselect()
+            testcase.wait(50)
+            verify_loop_cleared(loop_at(0,0))
+            verify_loop_cleared(loop_at(0,1))
+            verify_loop_cleared(loop_at(1,0))
+            verify_loop_cleared(loop_at(1,1))
         }
 
         function do_eval(code) {
-            return scripting_engine.eval(
+            prepare_imports()
+            return scripting_engine.evaluate(
                 code,
                 null,
                 'test',
@@ -54,6 +72,7 @@ Session {
         }
 
         function do_execute(code) {
+            prepare_imports()
             scripting_engine.execute(
                 code,
                 null,
@@ -94,11 +113,11 @@ Session {
                 check_backend()
                 clear()
                 
-                verify_eq(do_eval('return shoop.loop_count({})'), 0)
-                verify_eq(do_eval('return shoop.loop_count({-1, -1})'), 0)
-                verify_eq(do_eval('return shoop.loop_count({0, 0})'), 1)
-                verify_eq(do_eval('return shoop.loop_count({{0, 0}})'), 1)
-                verify_eq(do_eval('return shoop.loop_count({{0, 0}, {0, 1}})'), 2)
+                verify_eq(do_eval('return shoop_control.loop_count({})'), 0)
+                verify_eq(do_eval('return shoop_control.loop_count({-1, -1})'), 0)
+                verify_eq(do_eval('return shoop_control.loop_count({0, 0})'), 1)
+                verify_eq(do_eval('return shoop_control.loop_count({{0, 0}})'), 1)
+                verify_eq(do_eval('return shoop_control.loop_count({{0, 0}, {0, 1}})'), 2)
             })
         }
 
@@ -107,11 +126,11 @@ Session {
                 check_backend()
                 clear()
 
-                verify_eq_lua('shoop.loop_get_which_selected()', '{}')
-                master_loop().select()
-                verify_eq_lua('shoop.loop_get_which_selected()', '{{0, 0}}')
-                other_loop().select()
-                verify_eq_lua('shoop.loop_get_which_selected()', '{{0, 0}, {0, 1}}')
+                verify_eq_lua('shoop_control.loop_get_which_selected()', '{}')
+                loop_at(0,0).select()
+                verify_eq_lua('shoop_control.loop_get_which_selected()', '{{0, 0}}')
+                loop_at(0,1).select()
+                verify_eq_lua('shoop_control.loop_get_which_selected()', '{{0, 0}, {0, 1}}')
             })
         }
 
@@ -120,11 +139,11 @@ Session {
                 check_backend()
                 clear()
                 
-                verify_eq_lua('shoop.loop_get_which_targeted()', 'nil')
-                master_loop().target()
-                verify_eq_lua('shoop.loop_get_which_targeted()', '{0, 0}')
-                other_loop().target()
-                verify_eq_lua('shoop.loop_get_which_targeted()', '{0, 1}')
+                verify_eq_lua('shoop_control.loop_get_which_targeted()', 'nil')
+                loop_at(0,0).target()
+                verify_eq_lua('shoop_control.loop_get_which_targeted()', '{0, 0}')
+                loop_at(0,1).target()
+                verify_eq_lua('shoop_control.loop_get_which_targeted()', '{0, 1}')
             })
         }
 
@@ -133,11 +152,13 @@ Session {
                 check_backend()
                 clear()
                 
-                verify_eq_lua('shoop.loop_get_mode({0,0})', '{ shoop.constants.LoopMode_Stopped }')
-                master_loop().transition(Types.LoopMode.Recording, 0, false)
+                verify_eq_lua('shoop_control.loop_get_mode({0,0})', '{ shoop_control.constants.LoopMode_Stopped }')
+                loop_at(0,0).transition(Types.LoopMode.Recording, 0, false)
                 wait(50)
-                verify_eq_lua('shoop.loop_get_mode({0,0})', '{ shoop.constants.LoopMode_Recording }')
-                verify_eq_lua('shoop.loop_get_mode({0,1})', '{ shoop.constants.LoopMode_Stopped }')
+                verify_eq_lua('shoop_control.loop_get_mode({0,0})', '{ shoop_control.constants.LoopMode_Recording }')
+                verify_eq_lua('shoop_control.loop_get_mode({0,1})', '{ shoop_control.constants.LoopMode_Stopped }')
+                verify_eq_lua('shoop_control.loop_get_mode({{1,0},{0,0}})', '{ shoop_control.constants.LoopMode_Stopped, shoop_control.constants.LoopMode_Recording }')
+                verify_eq_lua('shoop_control.loop_get_mode({})', '{}')
             })
         }
 
@@ -146,34 +167,64 @@ Session {
                 check_backend()
                 clear()
 
-                verify_eq(master_loop().mode, Types.LoopMode.Stopped)
-                do_execute('shoop.loop_transition({0,0}, shoop.constants.LoopMode_Recording, 0)')
+                verify_eq(loop_at(0,0).mode, Types.LoopMode.Stopped)
+                do_execute('shoop_control.loop_transition({0,0}, shoop_control.constants.LoopMode_Recording, 0)')
                 wait(50)
-                verify_eq(master_loop().mode, Types.LoopMode.Recording)
-                verify_eq(other_loop().mode, Types.LoopMode.Stopped)
-                do_execute('shoop.loop_transition({0,1}, shoop.constants.LoopMode_Recording, 0)')
+                verify_eq(loop_at(0,0).mode, Types.LoopMode.Recording)
+                verify_eq(loop_at(0,1).mode, Types.LoopMode.Stopped)
+                do_execute('shoop_control.loop_transition({0,1}, shoop_control.constants.LoopMode_Recording, 0)')
                 wait(50)
-                verify_eq(master_loop().mode, Types.LoopMode.Recording)
-                verify_eq(other_loop().mode, Types.LoopMode.Recording)
+                verify_eq(loop_at(0,0).mode, Types.LoopMode.Recording)
+                verify_eq(loop_at(0,1).mode, Types.LoopMode.Recording)
             })
         }
 
-        // function test_loop_get_volume() {
-        //     run_case('test_loop_get_volume', () => {
-        //         check_backend()
-        //         clear()
-        //         verify(false)
-        //     })
-        // }
+        function test_loop_set_get_volume() {
+            run_case('test_loop_set_get_volume', () => {
+                check_backend()
+                clear()
+                
+                do_execute('shoop_control.loop_set_volume({0,0}, 1.0)')
+                do_execute('shoop_control.loop_set_volume({1,0}, 1.0)')
+                verify_eq_lua('shoop_control.loop_get_volume({0,0})', '{1.0}')
+                do_execute('shoop_control.loop_set_volume({0,0}, 0.5)')
+                verify_eq_lua('shoop_control.loop_get_volume({0,0})', '{0.5}')
+                verify_eq_lua('shoop_control.loop_get_volume({{1,0},{0,0}})', '{1.0, 0.5}')
+            })
+        }
 
-        // function test_loop_get_balance() {
-        //     run_case('test_loop_get_balance', () => {
-        //         check_backend()
-        //         clear()
-        //         verify(false)
-        //     })
-        // }
+        function test_loop_set_get_volume_slider() {
+            run_case('test_loop_set_get_volume_slider', () => {
+                check_backend()
+                clear()
+                
+                do_execute('shoop_control.loop_set_volume_slider({0,0}, 1.0)')
+                verify_eq_lua('shoop_control.loop_get_volume_slider({0,0})', '{1.0}')
+                do_execute('shoop_control.loop_set_volume_slider({0,0}, 0.5)')
+                verify_eq_lua('shoop_control.loop_get_volume_slider({0,0})', '{0.5}')
+                do_execute('shoop_control.loop_set_volume_slider({0,0}, 2.0)')
+                verify_eq_lua('shoop_control.loop_get_volume_slider({0,0})', '{1.0}')
+                do_execute('shoop_control.loop_set_volume_slider({0,0}, -1.0)')
+                verify_eq_lua('shoop_control.loop_get_volume_slider({0,0})', '{0.0}')
+            })
+        }
 
+        function test_loop_set_get_balance() {
+            run_case('test_loop_set_get_balance', () => {
+                check_backend()
+                clear()
+
+                do_execute('shoop_control.loop_set_balance({0,0}, 1.0)')
+                do_execute('shoop_control.loop_set_balance({1,0}, 1.0)')
+                verify_eq_lua('shoop_control.loop_get_balance({0,0})', '{1.0}')
+                do_execute('shoop_control.loop_set_balance({0,0}, 0.5)')
+                verify_eq_lua('shoop_control.loop_get_balance({0,0})', '{0.5}')
+                verify_eq_lua('shoop_control.loop_get_balance({{0,0},{1,0}})', '{0.5, 1.0}')
+            })
+        }
+
+        // TODO: harder to test because this requires loops to
+        // trigger each other
         // function test_loop_record_n() {
         //     run_case('test_loop_record_n', () => {
         //         check_backend()
@@ -182,6 +233,8 @@ Session {
         //     })
         // }
 
+        // TODO: harder to test because this requires loops to
+        // trigger each other
         // function test_loop_record_with_targeted() {
         //     run_case('test_loop_record_with_targeted', () => {
         //         check_backend()
@@ -190,124 +243,211 @@ Session {
         //     })
         // }
 
-        // function test_loop_set_volume() {
-        //     run_case('test_loop_set_volume', () => {
-        //         check_backend()
-        //         clear()
-        //         verify(false)
-        //     })
-        // }
+        function test_loop_select() {
+            run_case('test_loop_select', () => {
+                check_backend()
+                clear()
+                
+                do_execute('shoop_control.loop_select({0,0}, true)')
+                verify_eq_lua('shoop_control.loop_get_which_selected()', '{{0,0}}')
+                do_execute('shoop_control.loop_select({0,1}, true)')
+                verify_eq_lua('shoop_control.loop_get_which_selected()', '{{0,1}}')
+                do_execute('shoop_control.loop_select({0,0}, false)')
+                verify_eq_lua('shoop_control.loop_get_which_selected()', '{{0,0}, {0,1}}')
+                do_execute('shoop_control.loop_select({}, true)')
+                verify_eq_lua('shoop_control.loop_get_which_selected()', '{}')
+                do_execute('shoop_control.loop_select({{0,0}, {0,1}}, false)')
+                verify_eq_lua('shoop_control.loop_get_which_selected()', '{{0,0}, {0,1}}')
+            })
+        }
 
-        // function test_loop_set_balance() {
-        //     run_case('test_loop_set_balance', () => {
-        //         check_backend()
-        //         clear()
-        //         verify(false)
-        //     })
-        // }
+        function test_loop_target() {
+            run_case('test_loop_target', () => {
+                check_backend()
+                clear()
+                
+                do_execute('shoop_control.loop_target({0,0})')
+                verify_eq_lua('shoop_control.loop_get_which_targeted()', '{0,0}')
+                do_execute('shoop_control.loop_target({0,1})')
+                verify_eq_lua('shoop_control.loop_get_which_targeted()', '{0,1}')
+                do_execute('shoop_control.loop_target({})')
+                verify_eq_lua('shoop_control.loop_get_which_targeted()', 'nil')
+                do_execute('shoop_control.loop_target(nil)')
+                verify_eq_lua('shoop_control.loop_get_which_targeted()', 'nil')
+            })
+        }
 
-        // function test_loop_select() {
-        //     run_case('test_loop_select', () => {
-        //         check_backend()
-        //         clear()
-        //         verify(false)
-        //     })
-        // }
+        function test_loop_clear() {
+            run_case('test_loop_clear', () => {
+                check_backend()
+                clear()
 
-        // function test_loop_target() {
-        //     run_case('test_loop_target', () => {
-        //         check_backend()
-        //         clear()
-        //         verify(false)
-        //     })
-        // }
+                loop_at(0,0).set_length(100)
+                loop_at(0,1).set_length(100)
+                wait(50)
+                
+                do_execute('shoop_control.loop_clear({0,0})')
+                wait(50)
 
-        // function test_loop_untarget_all() {
-        //     run_case('test_loop_untarget_all', () => {
-        //         check_backend()
-        //         clear()
-        //         verify(false)
-        //     })
-        // }
+                verify_loop_cleared(loop_at(0,0))
+                verify(loop_at(0,1).length > 0)
 
-        // function test_loop_toggle_selected() {
-        //     run_case('test_loop_toggle_selected', () => {
-        //         check_backend()
-        //         clear()
-        //         verify(false)
-        //     })
-        // }
+                do_execute('shoop_control.loop_clear({0,1})')
+                wait(50)
 
-        // function test_loop_toggle_targeted() {
-        //     run_case('test_loop_toggle_targeted', () => {
-        //         check_backend()
-        //         clear()
-        //         verify(false)
-        //     })
-        // }
+                verify_loop_cleared(loop_at(0,0))
+                verify_loop_cleared(loop_at(0,1))
 
-        // function test_port_get_volume() {
-        //     run_case('test_port_get_volume', () => {
-        //         check_backend()
-        //         clear()
-        //         verify(false)
-        //     })
-        // }
+                loop_at(0,0).set_length(100)
+                loop_at(0,1).set_length(100)
+                loop_at(1,0).set_length(100)
+                loop_at(1,1).set_length(100)
+                wait(50)
 
-        // function test_port_get_muted() {
-        //     run_case('test_port_get_muted', () => {
-        //         check_backend()
-        //         clear()
-        //         verify(false)
-        //     })
-        // }
+                do_execute('shoop_control.loop_clear({{0,0}, {0,1}, {1,0}, {1,1}})')
+                wait(50)
 
-        // function test_port_get_input_muted() {
-        //     run_case('test_port_get_input_muted', () => {
-        //         check_backend()
-        //         clear()
-        //         verify(false)
-        //     })
-        // }
+                verify_loop_cleared(loop_at(0,0))
+                verify_loop_cleared(loop_at(0,1))
+                verify_loop_cleared(loop_at(1,0))
+                verify_loop_cleared(loop_at(1,1))
+            })
+        }
 
-        // function test_port_mute() {
-        //     run_case('test_port_mute', () => {
-        //         check_backend()
-        //         clear()
-        //         verify(false)
-        //     })
-        // }
+        function test_loop_get_all() {
+            run_case('test_loop_get_all', () => {
+                check_backend()
+                clear()
+                
+                verify_eq_lua('shoop_control.loop_get_all()', '{{0,0}, {0,1}, {1,0}, {1,1}}')
+            })
+        }
 
-        // function test_port_mute_input() {
-        //     run_case('test_port_mute_input', () => {
-        //         check_backend()
-        //         clear()
-        //         verify(false)
-        //     })
-        // }
+        function test_loop_get_by_mode() {
+            run_case('test_loop_get_by_mode', () => {
+                check_backend()
+                clear()
+                
+                verify_eq_lua('shoop_control.loop_get_by_mode(shoop_control.constants.LoopMode_Stopped)', '{{0,0}, {0,1}, {1,0}, {1,1}}')
+                loop_at(0,0).transition(Types.LoopMode.Recording, 0, false)
+                wait(50)
+                verify_eq_lua('shoop_control.loop_get_by_mode(shoop_control.constants.LoopMode_Stopped)', '{{0,1},{1,0},{1,1}}')
+                verify_eq_lua('shoop_control.loop_get_by_mode(shoop_control.constants.LoopMode_Recording)', '{{0,0}}')
+            })
+        }
 
-        // function test_port_unmute() {
-        //     run_case('test_port_unmute', () => {
-        //         check_backend()
-        //         clear()
-        //         verify(false)
-        //     })
-        // }
+        function test_loop_get_by_track() {
+            run_case('test_loop_get_by_track', () => {
+                check_backend()
+                clear()
+                
+                verify_eq_lua('shoop_control.loop_get_by_track(0)', '{{0,0}, {0,1}}')
+                verify_eq_lua('shoop_control.loop_get_by_track(1)', '{{1,0}, {1,1}}')
+            })
+        }
 
-        // function test_port_unmute_input() {
-        //     run_case('test_port_unmute_input', () => {
-        //         check_backend()
-        //         clear()
-        //         verify(false)
-        //     })
-        // }
+        function test_loop_get_length() {
+            run_case('test_loop_get_length', () => {
+                check_backend()
+                clear()
+                
+                verify_eq_lua('shoop_control.loop_get_length({0,0})', '{0}')
 
-        // function test_port_set_volume() {
-        //     run_case('test_port_set_volume', () => {
-        //         check_backend()
-        //         clear()
-        //         verify(false)
-        //     })
-        // }
+                loop_at(1,1).set_length(100)
+                wait(50)
+
+                verify_eq_lua('shoop_control.loop_get_length({1,1})', '{100}')
+            })
+        }
+
+        function test_track_set_get_volume() {
+            run_case('test_track_set_get_volume', () => {
+                check_backend()
+                clear()
+                
+                do_execute('shoop_control.track_set_volume(0, 1.0)')
+                do_execute('shoop_control.track_set_volume(1, 1.0)')
+                verify_eq_lua('shoop_control.track_get_volume(0)', '{1.0}')
+                do_execute('shoop_control.track_set_volume(0, 0.5)')
+                verify_eq_lua('shoop_control.track_get_volume(0)', '{0.5}')
+                verify_eq_lua('shoop_control.track_get_volume({1,0})', '{1.0, 0.5}')
+            })
+        }
+
+        function test_track_set_get_volume_slider() {
+            run_case('test_track_set_get_volume_slider', () => {
+                check_backend()
+                clear()
+                
+                do_execute('shoop_control.track_set_volume_slider(0, 1.0)')
+                verify_eq_lua('shoop_control.track_get_volume_slider(0)', '{1.0}')
+                do_execute('shoop_control.track_set_volume_slider(0, 0.5)')
+                verify_eq_lua('shoop_control.track_get_volume_slider(0)', '{0.5}')
+                do_execute('shoop_control.track_set_volume_slider(0, 2.0)')
+                verify_eq_lua('shoop_control.track_get_volume_slider(0)', '{1.0}')
+                do_execute('shoop_control.track_set_volume_slider(0, -1.0)')
+                verify_eq_lua('shoop_control.track_get_volume_slider(0)', '{0.0}')
+            })
+        }
+
+        function test_track_set_get_input_volume() {
+            run_case('test_track_set_get_input_volume', () => {
+                check_backend()
+                clear()
+                
+                do_execute('shoop_control.track_set_input_volume(0, 1.0)')
+                do_execute('shoop_control.track_set_input_volume(1, 1.0)')
+                verify_eq_lua('shoop_control.track_get_input_volume(0)', '{1.0}')
+                do_execute('shoop_control.track_set_input_volume(0, 0.5)')
+                verify_eq_lua('shoop_control.track_get_input_volume(0)', '{0.5}')
+                verify_eq_lua('shoop_control.track_get_input_volume({1,0})', '{1.0, 0.5}')
+            })
+        }
+
+        function test_track_set_get_input_volume_slider() {
+            run_case('test_track_set_get_input_volume_slider', () => {
+                check_backend()
+                clear()
+                
+                do_execute('shoop_control.track_set_input_volume_slider(0, 1.0)')
+                verify_eq_lua('shoop_control.track_get_input_volume_slider(0)', '{1.0}')
+                do_execute('shoop_control.track_set_input_volume_slider(0, 0.5)')
+                verify_eq_lua('shoop_control.track_get_input_volume_slider(0)', '{0.5}')
+                do_execute('shoop_control.track_set_input_volume_slider(0, 2.0)')
+                verify_eq_lua('shoop_control.track_get_input_volume_slider(0)', '{1.0}')
+                do_execute('shoop_control.track_set_input_volume_slider(0, -1.0)')
+                verify_eq_lua('shoop_control.track_get_input_volume_slider(0)', '{0.0}')
+            })
+        }
+
+        function test_track_set_get_muted() {
+            run_case('test_track_set_get_muted', () => {
+                check_backend()
+                clear()
+                
+                do_execute('shoop_control.track_set_muted(0, true)')
+                do_execute('shoop_control.track_set_muted(1, true)')
+                verify_eq_lua('shoop_control.track_get_muted(0)', '{true}')
+                verify_eq_lua('shoop_control.track_get_muted({1,0})', '{true, true}')
+                do_execute('shoop_control.track_set_muted(0, false)')
+                verify_eq_lua('shoop_control.track_get_muted(0)', '{false}')
+                verify_eq_lua('shoop_control.track_get_muted({1,0})', '{true, false}')
+            })
+        }
+
+        function test_track_set_get_input_muted() {
+            run_case('test_track_set_get_input_muted', () => {
+                check_backend()
+                clear()
+                
+                do_execute('shoop_control.track_set_input_muted(0, true)')
+                do_execute('shoop_control.track_set_input_muted(1, true)')
+                verify_eq_lua('shoop_control.track_get_input_muted(0)', '{true}')
+                verify_eq_lua('shoop_control.track_get_input_muted({1,0})', '{true, true}')
+                do_execute('shoop_control.track_set_input_muted(0, false)')
+                verify_eq_lua('shoop_control.track_get_input_muted(0)', '{false}')
+                verify_eq_lua('shoop_control.track_get_input_muted({1,0})', '{true, false}')
+            })
+        }
     }
 }

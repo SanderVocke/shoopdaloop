@@ -830,7 +830,6 @@ shoopdaloop_decoupled_midi_port_t *open_decoupled_midi_port(shoopdaloop_backend_
 
 midi_event_t *maybe_next_message(shoopdaloop_decoupled_midi_port_t *port) {
     init_log();
-    g_logger->debug("maybe_next_message");
     auto &_port = *internal_decoupled_midi_port(port);
     auto m = _port.port->pop_incoming();
     if (m.has_value()) {
@@ -857,6 +856,12 @@ void close_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *port) {
             ports.end()
         );
     });
+}
+
+const char* get_decoupled_midi_port_name(shoopdaloop_decoupled_midi_port_t *port) {
+    init_log();
+    g_logger->debug("get_decoupled_midi_port_name");
+    return internal_decoupled_midi_port(port)->port->name();
 }
 
 void send_decoupled_midi(shoopdaloop_decoupled_midi_port_t *port, unsigned length, unsigned char *data) {
@@ -1344,6 +1349,12 @@ void shoopdaloop_log(shoopdaloop_logger_t *logger, log_level_t level, const char
     ((logging::logger*)logger)->log_no_filter(
         level_convert.at(level), msg
     );
+}
+
+unsigned shoopdaloop_should_log(shoopdaloop_logger_t *logger, log_level_t level) {
+    return ((logging::logger*)logger)->should_log(
+        level_convert.at(level)
+    ) ? 1 : 0;
 }
 
 void dummy_audio_port_queue_data(shoopdaloop_audio_port_t *port, size_t n_frames, audio_sample_t const* data) {

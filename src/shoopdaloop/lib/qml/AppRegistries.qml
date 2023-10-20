@@ -1,6 +1,3 @@
-
-
-
 import QtQuick 6.3
 
 Item {
@@ -23,7 +20,11 @@ Item {
     // - one to keep track of FX chain states caching
     // - one to keep track of any important objects by ID.
     property Registry fx_chain_states_registry: Registry { verbose: true }
-    Component.onCompleted: {
-        state_registry.register('fx_chain_states_registry', fx_chain_states_registry)
-    }
+
+    // Component.onCompleted: {
+    //     // Store in global context
+    //     registries.state_registry = state_registry
+    //     registries.objects_registry = objects_registry
+    //     registries.fx_chain_states_registry = fx_chain_states_registry
+    // }
 }

@@ -14,8 +14,6 @@ Item {
     property var track_widget
 
     property var initial_descriptor : null
-    property Registry objects_registry : null
-    property Registry state_registry : null
 
     property int track_idx : -1
     property int idx_in_track : -1
@@ -24,17 +22,10 @@ Item {
     onIdx_in_trackChanged: print_coords()
 
     function print_coords() {
-        logger.debug(`Loop @ (${track_idx},${idx_in_track})`)
+        logger.debug(() => (`Loop @ (${track_idx},${idx_in_track})`))
     }
 
     property PythonLogger logger : PythonLogger { name: "Frontend.Qml.Loop" }
-
-    RegistryLookup {
-        id: fx_chain_states_registry_lookup
-        registry: root.state_registry
-        key: 'fx_chain_states_registry'
-    }
-    property alias fx_chain_states_registry : fx_chain_states_registry_lookup.object
 
     readonly property string obj_id: initial_descriptor.id
     property string name: initial_descriptor.name
@@ -53,12 +44,12 @@ Item {
                     c.recording_started_at = now
                     if (c.mode == Types.ChannelMode.Wet && track_widget.maybe_fx_chain) {
                         if (!fx_chain_desc_id) {
-                            fx_chain_desc_id = fx_chain_states_registry.generate_id('fx_chain_state')
+                            fx_chain_desc_id = registries.fx_chain_states_registry.generate_id('fx_chain_state')
                             var fx_chain_desc = track_widget.maybe_fx_chain.actual_session_descriptor()
                             delete fx_chain_desc.ports // Port descriptions not needed for state caching, this is track-dependent
                             fx_chain_desc.title = ""   // No title indicates elsewhere that this is not a snapshot that the user can directly see in the list.
                             fx_chain_desc.id = fx_chain_desc_id
-                            fx_chain_states_registry.register (fx_chain_desc_id, fx_chain_desc)
+                            registries.fx_chain_states_registry.register (fx_chain_desc_id, fx_chain_desc)
                         }
                         c.recording_fx_chain_state_id = fx_chain_desc_id
                     }
@@ -113,17 +104,17 @@ Item {
     function queue_load_tasks(data_files_dir, add_tasks_to) {
         var have_data_files = channels ? channels.map(c => {
             let r = c.has_data_file()
-            if (r) { root.logger.debug(`${obj_id} has data file for channel ${c.obj_id}`) }
-            else   { root.logger.debug(`${obj_id} has no data file for channel ${c.obj_id}`) }
+            if (r) { root.logger.debug(() => (`${obj_id} has data file for channel ${c.obj_id}`)) }
+            else   { root.logger.debug(() => (`${obj_id} has no data file for channel ${c.obj_id}`)) }
             return r
         }) : []
         let have_any = have_data_files.filter(d => d == true).length > 0
         if (have_any) {
-            root.logger.debug(`${obj_id} has data files, queueing load tasks.`)
+            root.logger.debug(() => (`${obj_id} has data files, queueing load tasks.`))
             force_load_backend()
             channels.forEach((c) => c.queue_load_tasks(data_files_dir, add_tasks_to))
         } else {
-            root.logger.debug(`${obj_id} has no data files, not queueing load tasks.`)
+            root.logger.debug(() => (`${obj_id} has no data files, not queueing load tasks.`))
         }
     }
 
@@ -133,14 +124,14 @@ Item {
 
     RegistryLookup {
         id: master_loop_lookup
-        registry: state_registry
+        registry: registries.state_registry
         key: 'master_loop'
     }
     property alias master_loop : master_loop_lookup.object
 
     RegistryLookup {
         id: targeted_loop_lookup
-        registry: state_registry
+        registry: registries.state_registry
         key: 'targeted_loop'
     }
     property alias targeted_loop : targeted_loop_lookup.object
@@ -148,7 +139,7 @@ Item {
 
     RegistryLookup {
         id: hovered_scene_loops_lookup
-        registry: state_registry
+        registry: registries.state_registry
         key: 'hovered_scene_loop_ids'
     }
     property alias hovered_scene_loop_ids : hovered_scene_loops_lookup.object
@@ -156,7 +147,7 @@ Item {
 
     RegistryLookup {
         id: selected_scene_loops_lookup
-        registry: state_registry
+        registry: registries.state_registry
         key: 'selected_scene_loop_ids'
     }
     property alias selected_scene_loop_ids : selected_scene_loops_lookup.object
@@ -164,14 +155,14 @@ Item {
 
     RegistryLookup {
         id: scenes_widget_lookup
-        registry: state_registry
+        registry: registries.state_registry
         key: 'scenes_widget'
     }
     property alias scenes_widget : scenes_widget_lookup.object
 
     RegistryLookup {
         id: selected_loops_lookup
-        registry: state_registry
+        registry: registries.state_registry
         key: 'selected_loop_ids'
     }
     property alias selected_loop_ids : selected_loops_lookup.object
@@ -187,13 +178,13 @@ Item {
         id: obj_reg_entry
         object: root
         key: obj_id
-        registry: root.objects_registry
+        registry: registries.objects_registry
     }
 
     RegisterInRegistry {
         id: master_reg_entry
         enabled: initial_descriptor.is_master
-        registry: root.state_registry
+        registry: registries.state_registry
         key: 'master_loop'
         object: root
     }
@@ -204,7 +195,7 @@ Item {
 
     property var additional_context_menu_options : null // dict of option name -> functor
 
-    onIs_loadedChanged: if(is_loaded) { root.logger.debug("Loaded back-end loop.") }
+    onIs_loadedChanged: if(is_loaded) { root.logger.debug(() => ("Loaded back-end loop.")) }
 
     // Internally controlled
     readonly property DynamicLoop maybe_loop : dynamic_loop
@@ -257,18 +248,18 @@ Item {
     }
     function transition(mode, delay, wait_for_sync, include_selected=true) {
         // Do the transition for this loop and all selected loops, if any
-        var selected_ids = include_selected ? new Set(state_registry.maybe_get('selected_loop_ids', new Set())) : new Set()
+        var selected_ids = include_selected ? new Set(registries.state_registry.maybe_get('selected_loop_ids', new Set())) : new Set()
         selected_ids.add(obj_id)
-        var objects = Array.from(selected_ids).map(id => objects_registry.maybe_get(id, undefined)).filter(v => v != undefined)
+        var objects = Array.from(selected_ids).map(id => registries.objects_registry.maybe_get(id, undefined)).filter(v => v != undefined)
         transition_loops(objects, mode, delay, wait_for_sync)
     }
     function play_solo_in_track() {
         // Gather all selected loops
-        var _selected_ids = new Set(state_registry.maybe_get('selected_loop_ids', new Set()))
+        var _selected_ids = new Set(registries.state_registry.maybe_get('selected_loop_ids', new Set()))
         _selected_ids.add(obj_id)
         // Gather all other loops that are in the same track(s)
         var _selected_loops = []
-        _selected_ids.forEach(id => _selected_loops.push(objects_registry.get(id)))
+        _selected_ids.forEach(id => _selected_loops.push(registries.objects_registry.get(id)))
         var _all_track_loops = []
         _selected_loops.forEach(loop => {
             for(var i=0; i<loop.track_widget.loops.length; i++) {
@@ -298,25 +289,25 @@ Item {
     function select(clear = false) {
         untarget()
         if (!clear) {
-            state_registry.add_to_set('selected_loop_ids', obj_id)
+            registries.state_registry.add_to_set('selected_loop_ids', obj_id)
         } else {
-            state_registry.replace('selected_loop_ids', new Set([obj_id]))
+            registries.state_registry.replace('selected_loop_ids', new Set([obj_id]))
         }
     }
     function deselect(clear = false) {
         if (!clear) {
-            state_registry.remove_from_set('selected_loop_ids', obj_id)
+            registries.state_registry.remove_from_set('selected_loop_ids', obj_id)
         } else {
-            state_registry.replace('selected_loop_ids', new Set())
+            registries.state_registry.replace('selected_loop_ids', new Set())
         }
     }
     function target() {
         deselect()
-        state_registry.replace('targeted_loop', root)
+        registries.state_registry.replace('targeted_loop', root)
     }
     function untarget() {
         if (targeted) {
-            state_registry.replace('targeted_loop', null)
+            registries.state_registry.replace('targeted_loop', null)
         }
     }
     function toggle_selected(clear_if_select = false) {
@@ -347,6 +338,13 @@ Item {
         if (chans.length != 2) { throw new Error("attempting to get stereo channels, no stereo found") }
         chans.sort((a, b) => a.obj_id.localeCompare(b.obj_id))
         return chans
+    }
+
+    function set_volume_slider(value) {
+        statusrect.volume_dial.set_as_range_fraction(value)
+    }
+    function get_volume_slider() {
+        return statusrect.volume_dial.position
     }
 
     property real last_pushed_volume: initial_volume
@@ -427,8 +425,6 @@ Item {
             LoopAudioChannel {
                 loop: dynamic_loop.maybe_loop
                 descriptor: root.audio_channel_descriptors[index]
-                objects_registry: root.objects_registry
-                state_registry: root.state_registry
                 onRequestBackendInit: root.force_load_backend()
                 onInitializedChanged: root.channelInitializedChanged()
             }
@@ -440,8 +436,6 @@ Item {
             LoopMidiChannel {
                 loop: dynamic_loop.maybe_loop
                 descriptor: root.midi_channel_descriptors[index]
-                objects_registry: root.objects_registry
-                state_registry: root.state_registry
                 onRequestBackendInit: root.force_load_backend()
                 onInitializedChanged: root.channelInitializedChanged()
             }
@@ -450,7 +444,7 @@ Item {
 
     RegistryLookups {
         keys: root.initial_descriptor ? root.initial_descriptor.channels.map(c => c.id) : []
-        registry: root.objects_registry
+        registry: registries.objects_registry
         id: lookup_channels
     }
     property alias channels: lookup_channels.objects
@@ -459,7 +453,7 @@ Item {
 
     RegistryLookup {
         id: lookup_sync_active
-        registry: root.state_registry
+        registry: registries.state_registry
         key: 'sync_active'
     }
     property alias sync_active: lookup_sync_active.object
@@ -486,6 +480,8 @@ Item {
         property var loop
         property bool hovered : area.containsMouse
         property string name : root.name
+
+        property alias volume_dial: volume_dial
 
         signal propagateMousePosition(var point)
         signal propagateMouseExited()
@@ -1073,6 +1069,9 @@ Item {
                         convert_volume.linear = val
                         value = convert_volume.dB
                     }
+                    function set_as_range_fraction(val) {
+                        value = (val * (to - from)) + from
+                    }
 
                     handle.width: 4
                     handle.height: 4
@@ -1434,7 +1433,7 @@ Item {
                         .filter(c => c.recording_fx_chain_state_id != undefined)
                         .map(c => c.recording_fx_chain_state_id);
                     return channel_states.length > 0 ? 
-                        root.fx_chain_states_registry.maybe_get(channel_states[0], undefined)
+                        registries.fx_chain_states_registry.maybe_get(channel_states[0], undefined)
                         : undefined
                 }
 
@@ -1515,18 +1514,18 @@ Item {
             property var channels: []
             onAccepted: {
                 if (!root.maybe_loaded_loop) { 
-                    root.logger.error("Cannot save: loop not loaded")
+                    root.logger.error(() => ("Cannot save: loop not loaded"))
                     return;
                 }
                 close()
-                root.state_registry.save_action_started()
+                registries.state_registry.save_action_started()
                 try {
                     var filename = selectedFile.toString().replace('file://', '')
                     var samplerate = root.maybe_loaded_loop.backend.get_sample_rate()
                     var task = file_io.save_channels_to_soundfile_async(filename, samplerate, channels)
-                    task.when_finished(() => root.state_registry.save_action_finished())
+                    task.when_finished(() => registries.state_registry.save_action_finished())
                 } catch (e) {
-                    root.state_registry.save_action_finished()
+                    registries.state_registry.save_action_finished()
                     throw e;
                 }
             }
@@ -1540,7 +1539,7 @@ Item {
             property var channel: null
             onAccepted: {
                 if (!root.maybe_loaded_loop) { 
-                    root.logger.error("Cannot save: loop not loaded")
+                    root.logger.error(() => ("Cannot save: loop not loaded"))
                     return;
                 }
                 close()
@@ -1617,10 +1616,10 @@ Item {
 
             onAccepted: {
                 if (!root.maybe_loaded_loop) { 
-                    root.logger.error("Cannot load: loop not loaded")
+                    root.logger.error(() => ("Cannot load: loop not loaded"))
                     return;
                 }
-                root.state_registry.load_action_started()
+                registries.state_registry.load_action_started()
                 try {
                     close()
                     var samplerate = root.maybe_loaded_loop.backend.get_sample_rate()
@@ -1634,9 +1633,9 @@ Item {
                     }
                     var task = file_io.load_soundfile_to_channels_async(filename, samplerate, null,
                         mapping, 0, 0, root.maybe_loaded_loop)
-                    task.when_finished( () => root.state_registry.load_action_finished() )
+                    task.when_finished( () => registries.state_registry.load_action_finished() )
                 } catch(e) {
-                    root.state_registry.load_action_finished()
+                    registries.state_registry.load_action_finished()
                     throw e
                 }
             }

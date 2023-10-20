@@ -12,17 +12,8 @@ Item {
     id: root
 
     property var initial_descriptor : null
-    property Registry objects_registry : null
-    property Registry state_registry : null
 
     property int track_idx: -1
-
-    RegistryLookup {
-        id: fx_chain_states_registry_lookup
-        registry: root.state_registry
-        key: 'fx_chain_states_registry'
-    }
-    property alias fx_chain_states_registry : fx_chain_states_registry_lookup.object
 
     readonly property string obj_id : initial_descriptor.id
 
@@ -106,10 +97,17 @@ Item {
 
     RegisterInRegistry {
         id: reg_entry
-        registry: root.objects_registry
+        registry: registries.objects_registry
         object: root
         key: root.obj_id
     }
+
+    RegistryLookup {
+        id: lookup_control_widget
+        registry: registries.objects_registry
+        key: root.obj_id + "_control_widget"
+    }
+    property alias control_widget: lookup_control_widget.object
 
     Component.onCompleted: {
         loaded = false
@@ -118,8 +116,6 @@ Item {
         root.loop_descriptors.forEach((desc, idx) => {
             var loop = root.add_loop({
                 initial_descriptor: desc,
-                objects_registry: root.objects_registry,
-                state_registry: root.state_registry,
                 track_widget: root,
                 track_idx: Qt.binding( () => { return root.track_idx } )
             });
@@ -164,9 +160,7 @@ Item {
         var loop_descriptor = GenerateSession.generate_loop(id, name, 0, false, channel_descriptors)
 
         root.add_loop({
-            initial_descriptor: loop_descriptor,
-            objects_registry: root.objects_registry,
-            state_registry: root.state_registry
+            initial_descriptor: loop_descriptor
         });
 
         rowAdded()
@@ -178,8 +172,6 @@ Item {
 
         AudioPort {
             descriptor: root.audio_port_descriptors[index]
-            state_registry: root.state_registry
-            objects_registry: root.objects_registry
             is_internal: false
         }
     }
@@ -189,8 +181,6 @@ Item {
 
         MidiPort {
             descriptor: root.midi_port_descriptors[index]
-            state_registry: root.state_registry
-            objects_registry: root.objects_registry
             is_internal: false
         }
     }
@@ -198,7 +188,7 @@ Item {
     // Use registry lookup to find our ports back dynamically
     RegistryLookups {
         id: lookup_ports
-        registry: root.objects_registry
+        registry: registries.objects_registry
         keys: root.initial_descriptor ? root.initial_descriptor.ports.map((p) => p.id) : []
     }
     property alias ports : lookup_ports.objects
@@ -225,8 +215,6 @@ Item {
         FXChain {
             id: chain
             descriptor: root.fx_chain_descriptor
-            state_registry: root.state_registry
-            objects_registry: root.objects_registry
 
             Component.onCompleted: {
                 root.fx_ready = Qt.binding(() => this.ready)
@@ -324,9 +312,9 @@ Item {
                                     property var data
                                     title: "Choose a name"
                                     onAcceptedInput: name => {
-                                        var id = root.fx_chain_states_registry.generate_id("fx_chain_state")
+                                        var id = registries.fx_chain_states_registry.generate_id("fx_chain_state")
                                         data.title = name
-                                        root.fx_chain_states_registry.register(id, JSON.parse(JSON.stringify(data)))
+                                        registries.fx_chain_states_registry.register(id, JSON.parse(JSON.stringify(data)))
                                     }
                                 }
                             }
@@ -337,7 +325,7 @@ Item {
                                 enabled: root.maybe_fx_chain != undefined && fx_states.length > 0
 
                                 RegistrySelects {
-                                    registry: root.fx_chain_states_registry
+                                    registry: registries.fx_chain_states_registry
                                     select_fn: r => true
                                     values_only: true
                                     id: all_chain_states

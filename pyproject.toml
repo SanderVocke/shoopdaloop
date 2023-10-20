@@ -21,7 +21,8 @@ dependencies = [
   "numpy",
   "pyjacklib",
   "pyside6==6.4.2",
-  "lupa"
+  "lupa",
+  "appdirs"
 ]
 
 keywords = ['music', 'midi', 'jack', 'looping']

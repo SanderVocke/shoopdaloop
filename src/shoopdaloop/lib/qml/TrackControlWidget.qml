@@ -14,8 +14,6 @@ Item {
 
     // Input properties
     property var initial_track_descriptor : null
-    property Registry objects_registry : null
-    property Registry state_registry : null
 
     // UI-controlled properties
     property alias volume_dB: volume_slider.value
@@ -24,6 +22,8 @@ Item {
     property alias input_volume_dB_min: input_slider.from
     property alias input_balance: input_balance_dial.value
     property alias output_balance: output_balance_dial.value
+    property real volume_slider_position: volume_slider.position
+    property real input_slider_position: input_slider.position
     property bool monitor : false
     property bool mute : false
 
@@ -138,6 +138,14 @@ Item {
     onFx_out_portsChanged: logic.trigger_signals()
     onMuteChanged: push_mute()
 
+    // Registration
+    RegisterInRegistry {
+        id: reg_entry
+        registry: registries.objects_registry
+        object: root
+        key: root.initial_track_descriptor.id + "_control_widget"
+    }
+
     // Helpers
     TrackControlLogic {
         id: logic
@@ -148,22 +156,22 @@ Item {
     }
     RegistryLookups {
         id: lookup_loops
-        registry: root.objects_registry
+        registry: registries.objects_registry
         keys: root.initial_track_descriptor ? root.initial_track_descriptor.loops.map((l) => l.id) : []
     }
     RegistryLookups {
         id: lookup_ports
-        registry: root.objects_registry
+        registry: registries.objects_registry
         keys: initial_track_descriptor ? initial_track_descriptor.ports.map((p) => p.id) : []
     }
     RegistryLookups {
         id: lookup_fx_ports
-        registry: root.objects_registry
+        registry: registries.objects_registry
         keys: initial_track_descriptor && 'fx_chain' in initial_track_descriptor ? initial_track_descriptor.fx_chain.ports.map((p) => p.id) : []
     }
     RegistryLookup {
         id: lookup_fx_chain
-        registry: root.objects_registry
+        registry: registries.objects_registry
         key: initial_track_descriptor && 'fx_chain' in initial_track_descriptor ? initial_track_descriptor.fx_chain.id : null
     }
     LinearDbConversion {
@@ -204,10 +212,26 @@ Item {
         }
         return null;
     }
+    function set_gain(gain) {
+        volume_dB = Math.min(Math.max(volume_slider.gainToDb(gain), volume_slider.from), volume_slider.to)
+    }
+    function set_volume_slider(value) {
+        volume_slider.value = volume_slider.valueAt(value)
+    }
+    function set_input_gain(gain) {
+        input_volume_dB = Math.min(Math.max(input_slider.gainToDb(gain), input_slider.from), input_slider.to)
+    }
+    function set_input_volume_slider(value) {
+        input_slider.value = input_slider.valueAt(value)
+    }
+    function convert_volume_to_linear(volume) {
+        convert_volume.dB = volume
+        return convert_volume.linear
+    }
     function push_volume(volume, target, gain_factor = 1.0) {
         convert_volume.dB = volume
         var v = convert_volume.linear * gain_factor
-        logger.trace("Pushing gain " + v + " to " + target.obj_id)
+        logger.trace(() => ("Pushing gain " + v + " to " + target.obj_id))
         if (target && target.volume != v) { target.set_volume(v) }
     }
     function toggle_muted() { mute = !mute }
@@ -238,12 +262,15 @@ Item {
             }
         }
     }
+    property var last_pushed_in_gain: null
+    property var last_pushed_gain: null
     function push_in_volumes() {
         audio_in_ports.forEach((p, idx) => {
             if (idx == 0 && in_is_stereo) { push_volume(input_volume_dB, p, in_balance_volume_factor_l) }
             else if (idx == 1 && in_is_stereo) { push_volume(input_volume_dB, p, in_balance_volume_factor_r) }
-            else { push_volume(volume_dB, p) }
+            else { push_volume(input_volume_dB, p) }
         })
+        last_pushed_in_gain = convert_volume_to_linear(input_volume_dB)
     }
     function push_out_volumes() {
         audio_out_ports.forEach((p, idx) => {
@@ -251,6 +278,7 @@ Item {
             else if (idx == 1 && out_is_stereo) { push_volume(volume_dB, p, out_balance_volume_factor_r) }
             else { push_volume(volume_dB, p) }
         })
+        last_pushed_gain = convert_volume_to_linear(volume_dB)
     }
     function push_mute() {
         audio_out_ports.forEach((p) => p.set_muted(mute))

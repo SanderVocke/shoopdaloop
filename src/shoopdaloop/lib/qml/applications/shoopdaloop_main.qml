@@ -20,5 +20,6 @@ ApplicationWindow {
     Session {
         anchors.fill: parent
         initial_descriptor: GenerateSession.generate_default_session(app_metadata.version_string)
+        settings_io_enabled: true
     }
 }

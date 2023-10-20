@@ -13,13 +13,13 @@ Item {
 
     property bool loading_session : false
     property bool saving_session : false
-    property Registry state_registry
-    property Registry objects_registry
     property alias sync_active : sync_active_button.sync_active
     property var backend : null
 
+    property bool settings_io_enabled: false
+
     function update() {
-        state_registry.replace('sync_active', sync_active)
+        registries.state_registry.replace('sync_active', sync_active)
     }
 
     onSync_activeChanged: update()
@@ -47,7 +47,7 @@ Item {
                 id: mainmenu
 
                 MenuItem {
-                    text: "Save copy of session"
+                    text: "Save session"
                     onClicked: { savesessiondialog.open() }
                 }
                 MenuItem {
@@ -57,6 +57,10 @@ Item {
                 MenuItem {
                     text: "Profiling"
                     onClicked: profilingwindow.visible = true
+                }
+                MenuItem {
+                    text: "Settings"
+                    onClicked: settings_dialog.open()
                 }
                 MenuItem {
                     text: "Debug Inspection"
@@ -97,7 +101,6 @@ Item {
 
             DebugInspectionMainWindow {
                 id: debugwindow
-                objects_registry: root.objects_registry
             }
         }
 
@@ -107,7 +110,7 @@ Item {
             height: 40
             width: 30
             onClicked: {
-                var loops = root.objects_registry.select_values(o => o instanceof LoopWidget)
+                var loops = registries.objects_registry.select_values(o => o instanceof LoopWidget)
                 var backend_loops = loops.map(o => o.maybe_loaded_loop).filter(o => o != undefined)
                 if(backend_loops.length > 0) {
                     backend_loops[0].transition_multiple(backend_loops, Types.LoopMode.Stopped, 0, root.sync_active)
@@ -144,7 +147,7 @@ Item {
             id: deselect_button
             height: 40
             width: 30
-            onClicked: root.state_registry.clear_set('selected_loop_ids')
+            onClicked: registries.state_registry.clear_set('selected_loop_ids')
 
             MaterialDesignIcon {
                 size: Math.min(parent.width, parent.height) - 10
@@ -153,5 +156,16 @@ Item {
                 color: Material.foreground
             }
         }
+    }
+
+    RegistryLookup {
+        id: registry_lookup
+        registry: registries.state_registry
+        key: 'midi_control_port'
+    }
+
+    SettingsDialog {
+        id: settings_dialog
+        io_enabled: root.settings_io_enabled
     }
 }

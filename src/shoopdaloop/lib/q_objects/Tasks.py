@@ -23,7 +23,7 @@ class Tasks(QObject):
     
     @Slot('QVariant')
     def add_task(self, task):
-        self.logger.debug('Adding task {}, anything to do: {}'.format(task, not self.calc_all_done()))
+        self.logger.debug(lambda: 'Adding task {}, anything to do: {}'.format(task, not self.calc_all_done()))
         prev_all_done = self.calc_all_done()
         self._tasks.append(task)
         if not task.anything_to_do:
@@ -36,7 +36,7 @@ class Tasks(QObject):
     
     @Slot(bool)
     def task_changed(self, anything_to_do):
-        self.logger.debug('Task changed, anything to do: {}'.format(not self.calc_all_done()))
+        self.logger.debug(lambda: 'Task changed, anything to do: {}'.format(not self.calc_all_done()))
         prev_all_done = self.calc_all_done()
         if not anything_to_do:
             self._n_done = self._n_done + 1
@@ -49,7 +49,7 @@ class Tasks(QObject):
     @Slot('QVariant')
     def when_finished(self, fn):
         def exec_fn():
-            self.logger.debug('All tasks finished, calling callback')
+            self.logger.debug(lambda: 'All tasks finished, calling callback')
             if callable(fn):
                 fn()
             elif isinstance(fn, QJSValue):

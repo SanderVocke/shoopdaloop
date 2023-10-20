@@ -1,0 +1,32 @@
+{
+    "type": "object",
+    "properties": {
+        "schema": { "const": "midi_settings.1" },
+        "configuration": {
+            "type": "object",
+            "properties": {
+                "autoconnect_input_regexes": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                },
+                "autoconnect_output_regexes": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                },
+                "midi_control_configuration": {
+                    "type": "object",
+                    "properties": {
+                        "schema": { "const": "midi_control_configuration.1", "$comment": "see midi_control_configuration.1 schema" }
+                    },
+                    "required": [ "schema" ]
+                }
+            },
+            "required": [
+                "autoconnect_input_regexes",
+                "autoconnect_output_regexes",
+                "midi_control_configuration"
+            ]
+        }
+    },
+    "required": ["schema", "configuration"]
+}

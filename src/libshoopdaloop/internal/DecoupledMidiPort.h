@@ -28,6 +28,7 @@ public:
 
     // Call this on the process thread to update message queues.
     void PROC_process(size_t n_frames);
+    const char* name() const;
 
     std::optional<Message> pop_incoming();
     void push_outgoing (Message m);

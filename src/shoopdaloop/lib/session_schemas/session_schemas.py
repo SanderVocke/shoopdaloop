@@ -31,8 +31,11 @@ def validate_single_object(obj):
     if not os.path.isfile(schema_filename):
         raise ValidationError("schema file not found: {}".format(schema_filename))
     schema = None
-    with open(schema_filename, 'r') as f:
-        schema = json.load(f)
+    try:
+        with open(schema_filename, 'r') as f:
+            schema = json.load(f)
+    except Exception as e:
+        raise ValidationError("error loading schema file {}: {}".format(schema_filename, e)) from e
     validate(instance=obj, schema=schema)
 
 def validate_session_object(obj, schemaname):

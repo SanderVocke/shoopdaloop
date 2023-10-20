@@ -44,7 +44,7 @@ Item {
             })
             // Reparent channels to the actual loop
             children_holder.parent = loop
-            logger.debug("Loaded back-end loop")
+            logger.debug(() => ("Loaded back-end loop"))
             maybe_loop = loop
             root.backendLoopLoaded()
         }
@@ -52,7 +52,7 @@ Item {
     Component.onCompleted: if(force_load) load()
     Component.onDestruction: {
         qml_close()
-        logger.debug("destroy")
+        logger.debug(() => ("destroy"))
     }
     onForce_loadChanged: if(force_load) load()
     
@@ -104,8 +104,8 @@ Item {
 
     function set_length(length) {
         if (!maybe_loop) {
-            logger.debug("Setting length to " + length + " before loop is loaded")
-            logger.debug((new Error).stack)
+            logger.debug(() => ("Setting length to " + length + " before loop is loaded"))
+            logger.debug(() => (new Error).stack)
         }
         load()
         maybe_loop.set_length(length)

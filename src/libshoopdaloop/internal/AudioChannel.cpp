@@ -1,4 +1,3 @@
-#include <cstdlib>
 #define IMPLEMENT_AUDIOCHANNEL_H
 #include "AudioChannel.h"
 

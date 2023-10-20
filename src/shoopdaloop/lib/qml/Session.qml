@@ -9,7 +9,7 @@ import ShoopDaLoop.PythonControlInterface
 import "../generate_session.js" as GenerateSession
 import "../generated/types.js" as Types
 
-AppRegistries {
+Item {
     id: root
     objectName: 'session'
 
@@ -24,6 +24,8 @@ AppRegistries {
     property var backend_type : global_args.backend_type
     property var backend_argstring : global_args.backend_argstring
 
+    property bool settings_io_enabled: false
+
     function actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) {
         return GenerateSession.generate_session(
             app_metadata.version_string,
@@ -31,7 +33,7 @@ AppRegistries {
             [],
             scenes_widget.actual_scene_descriptors,
             [],
-            fx_chain_states_registry.all_values()
+            registries.fx_chain_states_registry.all_values()
         );
     }
 
@@ -42,8 +44,8 @@ AppRegistries {
         id: validator
     }
 
-    readonly property bool saving : state_registry.n_saving_actions_active > 0
-    readonly property bool loading : state_registry.n_loading_actions_active > 0
+    readonly property bool saving : registries.state_registry.n_saving_actions_active > 0
+    readonly property bool loading : registries.state_registry.n_loading_actions_active > 0
     readonly property bool doing_io : saving || loading
     readonly property var backend : session_backend
     property alias control_interface: control_interface
@@ -76,8 +78,8 @@ AppRegistries {
     TasksFactory { id: tasks_factory }
 
     function save_session(filename) {
-        state_registry.reset_saving_loading()
-        state_registry.save_action_started()
+        registries.state_registry.reset_saving_loading()
+        registries.state_registry.save_action_started()
         var tempdir = file_io.create_temporary_folder()
         var tasks = tasks_factory.create_tasks_obj(root)
         var session_filename = tempdir + '/session.json'
@@ -90,9 +92,9 @@ AppRegistries {
             try {
                 // TODO make this step asynchronous
                 file_io.make_tarfile(filename, tempdir, false)
-                root.logger.info("Session written to: " + filename)
+                root.logger.info(() => ("Session written to: " + filename))
             } finally {
-                state_registry.save_action_finished()
+                registries.state_registry.save_action_finished()
                 file_io.delete_recursive(tempdir)
                 tasks.parent = null
                 tasks.deleteLater()
@@ -101,11 +103,11 @@ AppRegistries {
     }
 
     function reload() {
-        state_registry.clear([
+        registries.state_registry.clear([
             'sync_active',
             'scenes_widget'
         ])
-        objects_registry.clear()
+        registries.objects_registry.clear()
         tracks_widget.reload()
     }
 
@@ -118,15 +120,15 @@ AppRegistries {
     }
 
     function load_session(filename) {
-        state_registry.reset_saving_loading()
-        state_registry.load_action_started()
+        registries.state_registry.reset_saving_loading()
+        registries.state_registry.load_action_started()
         var tempdir = file_io.create_temporary_folder()
 
         try {
             var tasks = tasks_factory.create_tasks_obj(root)
 
             file_io.extract_tarfile(filename, tempdir)
-            root.logger.debug(`Extracted files: ${JSON.stringify(file_io.glob(tempdir + '/*', true), null, 2)}`)
+            root.logger.debug(() => (`Extracted files: ${JSON.stringify(file_io.glob(tempdir + '/*', true), null, 2)}`))
 
             var session_filename = tempdir + '/session.json'
             var session_file_contents = file_io.read_file(session_filename)
@@ -134,19 +136,19 @@ AppRegistries {
 
             schema_validator.validate_schema(descriptor, validator.schema)
             root.initial_descriptor = descriptor
-            root.logger.debug("Reloading session")
+            root.logger.debug(() => ("Reloading session"))
             reload()
-            state_registry.load_action_started()
+            registries.state_registry.load_action_started()
 
             let finish_fn = () => {
-                root.logger.debug("Queueing load tasks")
+                root.logger.debug(() => ("Queueing load tasks"))
                 queue_load_tasks(tempdir, tasks)
 
                 tasks.when_finished(() => {
                     try {
                         file_io.delete_recursive(tempdir)
                     } finally {
-                        state_registry.load_action_finished()
+                        registries.state_registry.load_action_finished()
                         tasks.parent = null
                         tasks.deleteLater()
                     }
@@ -173,15 +175,15 @@ AppRegistries {
 
     RegistryLookup {
         id: selected_loops_lookup
-        registry: state_registry
+        registry: registries.state_registry
         key: 'selected_loop_ids'
     }
     property alias selected_loop_ids : selected_loops_lookup.object
-    property list<var> selected_loops : selected_loop_ids ? Array.from(selected_loop_ids).map((id) => objects_registry.get(id)) : []
+    property list<var> selected_loops : selected_loop_ids ? Array.from(selected_loop_ids).map((id) => registries.objects_registry.get(id)) : []
 
     RegistryLookup {
         id: targeted_loop_lookup
-        registry: state_registry
+        registry: registries.state_registry
         key: 'targeted_loop'
     }
     property alias targeted_loop : targeted_loop_lookup.object
@@ -192,16 +194,31 @@ AppRegistries {
     }
 
     RegisterInRegistry {
-        registry: root.state_registry
+        registry: registries.state_registry
         key: 'control_interface'
         object: control_interface
     }
 
-    LuaUserScript {
+    LuaScript {
+        when: control_interface.ready
         script_name: 'keyboard.lua'
         script_code: control_interface.ready ? file_io.read_file(
-            file_io.get_installation_directory() + '/lib/lua/keyboard.lua'
+            file_io.get_installation_directory() + '/lib/lua/builtins/keyboard.lua'
         ) : null
+    }
+
+    MidiControl {
+        id: midi_control
+        when: control_interface.ready
+        configuration: lookup_midi_configuration.object || fallback
+
+        MidiControlConfiguration { id: fallback }
+
+        RegistryLookup {
+            registry: registries.state_registry
+            key: 'midi_control_configuration'
+            id: lookup_midi_configuration
+        }
     }
 
     MouseArea {
@@ -216,17 +233,12 @@ AppRegistries {
         focus: true
         id: session_focus_item
 
-        //Keys.onLeftPressed: tracks_widget.navigate('left')
-        //Keys.onRightPressed: tracks_widget.navigate('right')
-        //Keys.onUpPressed: tracks_widget.navigate('up')
-        //Keys.onDownPressed: tracks_widget.navigate('down')\
-
         Keys.onPressed: (event) => control_interface.key_pressed(event.key, event.modifiers)
         Keys.onReleased: (event) => control_interface.key_released(event.key, event.modifiers)
 
         property var focusItem : Window.activeFocusItem
         onFocusItemChanged: {
-            root.logger.debug("Focus item changed: " + focusItem)
+            root.logger.debug(() => ("Focus item changed: " + focusItem))
             if (!focusItem || focusItem == Window.contentItem) {
                 takeFocus.trigger()
             }
@@ -248,6 +260,28 @@ AppRegistries {
         backend_argstring: root.backend_argstring
         id: session_backend
 
+        MidiControlPort {
+            id: midi_control_port
+            name_hint: "control"
+            direction: Types.PortDirection.Input
+
+            RegistryLookup {
+                id: lookup_autoconnect
+                registry: registries.state_registry
+                key: 'autoconnect_input_regexes'
+            }
+
+            autoconnect_regexes: lookup_autoconnect.object || []
+
+            onMsgReceived: msg => midi_control.handle_midi(msg, midi_control_port)
+        }
+
+        RegisterInRegistry {
+            registry: registries.state_registry
+            key: 'midi_control_port'
+            object: midi_control_port
+        }
+
         anchors {
             fill: parent
             margins: 6
@@ -257,6 +291,7 @@ AppRegistries {
             id: app_controls
 
             backend: session_backend
+            settings_io_enabled: root.settings_io_enabled
 
             anchors {
                 top: parent.top
@@ -271,17 +306,12 @@ AppRegistries {
 
             onLoadSession: (filename) => root.load_session(filename)
             onSaveSession: (filename) => root.save_session(filename)
-
-            state_registry: root.state_registry
-            objects_registry: root.objects_registry
         }
 
         ScenesWidget {
             id: scenes_widget
 
             initial_scene_descriptors: root.initial_descriptor.scenes
-            objects_registry: root.objects_registry
-            state_registry: root.state_registry
             
             width: 140
             anchors {
@@ -305,8 +335,6 @@ AppRegistries {
             }
 
             initial_track_descriptors: root.initial_descriptor.tracks
-            objects_registry: root.objects_registry
-            state_registry: root.state_registry
         }
 
         Item {
