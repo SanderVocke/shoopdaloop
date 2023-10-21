@@ -97,11 +97,11 @@ local push_loop_color = function(coords, event)
     if send_fn == nil then return end
 
     local prev_color = nil
-    if loop_colors[coords[0]] == nil then
-        loop_colors[coords[0]] = {}
+    if loop_colors[coords[1]] == nil then
+        loop_colors[coords[1]] = {}
     end
-    if loop_colors[coords[0]][coords[1]] ~= nil then
-        prev_color = loop_colors[coords[0]][coords[1]]
+    if loop_colors[coords[1]][coords[2]] ~= nil then
+        prev_color = loop_colors[coords[1]][coords[2]]
     end
 
     local color = LED_off
@@ -117,14 +117,14 @@ local push_loop_color = function(coords, event)
 
     if prev_color ~= color then
         set_led(coords, color)
-        loop_colors[coords[0]][coords[1]] = color
+        loop_colors[coords[1]][coords[2]] = color
     end
 end
 
 local get_loop_color = function(coords)
-    if loop_colors[coords[0]] ~= nil then
-        if loop_colors[coords[1]] ~= nil then
-            return loop_colors[coords[0]][coords[1]]
+    if loop_colors[coords[1]] ~= nil then
+        if loop_colors[coords[2]] ~= nil then
+            return loop_colors[coords[1]][coords[2]]
         end
     end
     return nil
@@ -165,8 +165,6 @@ end
 
 -- Handle loop events
 local handle_loop_event = function(coords, event)
-    print_warning(event)
-    print_warning(coords)
     push_loop_color(coords, event)
 end
 

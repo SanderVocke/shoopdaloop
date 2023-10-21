@@ -75,7 +75,6 @@ class ControlInterface(ControlHandler):
             coords = coords.toVariant()
         if scripting_engine:
             coords = scripting_engine.to_lua_val(coords)
-            event = scripting_engine.to_lua_val(event)
         for cb in self._loop_callbacks:
             cb(coords, event)
             
