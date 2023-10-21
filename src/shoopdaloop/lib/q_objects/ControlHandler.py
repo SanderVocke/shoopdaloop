@@ -82,6 +82,7 @@ class ControlHandler(QQuickItem):
         self.clear_call_cache()
         self._qml_instance = None
         self._methods = dict()
+        self._scripting_engine = None
         self.qml_instance_changed.connect(self.introspect)
         self.introspect()
     

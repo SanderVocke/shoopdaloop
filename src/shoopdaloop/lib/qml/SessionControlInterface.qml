@@ -295,4 +295,36 @@ LuaControlInterface {
             }
         }
     }
+
+    // Gather and forward loop events
+    RegistrySelects {
+        registry: registries.objects_registry
+        select_fn: (obj) => obj && obj.object_schema && obj.object_schema.match(/loop.[0-9]+/)
+        id: lookup_loops
+        values_only: true
+    }
+
+    Repeater { 
+        model: lookup_loops.objects
+        Item {
+            property var mapped_item: lookup_loops.objects[index]
+            property list<int> coords: [mapped_item.track_idx, mapped_item.idx_in_track]
+            function send_event() {
+                let event = {
+                    'mode': mapped_item.mode,
+                    'length': mapped_item.length,
+                    'selected': mapped_item.selected,
+                    'targeted': mapped_item.targeted,
+                }
+                control_interface.loop_event(coords, event, scripting_engine)
+            }
+            Connections {
+                target: mapped_item
+                function onModeChanged() { send_event() }
+                function onLengthChanged() { send_event() }
+                function onSelectedChanged() { send_event() }
+                function onTargetedChanged() { send_event() }
+            }
+        }
+    }
 }

@@ -32,6 +32,7 @@ class ControlInterface(ControlHandler):
         ['auto_open_device_specific_midi_control_input', lua_str, lua_callable ],
         ['auto_open_device_specific_midi_control_output', lua_str, lua_callable, lua_callable ],
         ['register_keyboard_event_cb', lua_callable ],
+        ['register_loop_event_cb', lua_callable ]
     ]
     
     # @shoop_lua_enum_docstring.start
@@ -50,6 +51,7 @@ class ControlInterface(ControlHandler):
         self._keyboard_callbacks = []
         self._midi_input_port_rules = []
         self._midi_output_port_rules = []
+        self._loop_callbacks = []
         self._rule_id = 0
         self.logger = Logger('Frontend.ControlInterface')
     
@@ -64,8 +66,19 @@ class ControlInterface(ControlHandler):
     def key_released(self, key, modifiers):
         for cb in self._keyboard_callbacks:
             cb(KeyEventType.Released, key, modifiers)
-            
     
+    @Slot(list, 'QVariant', 'QVariant')
+    def loop_event(self, coords, event, scripting_engine):
+        if isinstance(event, QJSValue):
+            event = event.toVariant()
+        if isinstance(coords, QJSValue):
+            coords = coords.toVariant()
+        if scripting_engine:
+            coords = scripting_engine.to_lua_val(coords)
+            event = scripting_engine.to_lua_val(event)
+        for cb in self._loop_callbacks:
+            cb(coords, event)
+            
     midiInputPortRulesChanged = Signal()
     @Property('QVariant', notify=midiInputPortRulesChanged)
     def midi_input_port_rules(self):
@@ -140,3 +153,14 @@ class ControlInterface(ControlHandler):
     # type midi_message
     # MIDI message type. Fields are: bytes (array of message bytes), note, channel, cc, value, program, velocity (only those fields which apply to the particular message).
     # @shoop_lua_fn_docstring.end
+
+    @Slot('QVariant')
+    def register_loop_event_cb(self, cb):
+        """
+        @shoop_lua_fn_docstring.start
+        shoop_control.register_loop_event_cb(callback)
+        Register a callback for loop events. See loop_callback for details.
+        @shoop_lua_fn_docstring.end
+        """
+        self.logger.debug(lambda: "Registering loop event callback")
+        self._loop_callbacks.append(cb)

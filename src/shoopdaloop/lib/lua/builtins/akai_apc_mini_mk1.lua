@@ -61,7 +61,6 @@ local handle_noteOn = function(msg, port)
 
     if maybe_loop ~= nil then
         shoop_helpers.default_loop_action({maybe_loop})
-        set_led(maybe_loop, LED_green)
     end
 end
 
@@ -90,10 +89,66 @@ local push_fader_setting = function()
     if send_fn == nil then return end
 end
 
+-- Track the colors we sent already.
+local loop_colors = {}
+
+-- Push a mode light color to a loop
+local push_loop_color = function(coords, event)
+    if send_fn == nil then return end
+
+    local prev_color = nil
+    if loop_colors[coords[0]] == nil then
+        loop_colors[coords[0]] = {}
+    end
+    if loop_colors[coords[0]][coords[1]] ~= nil then
+        prev_color = loop_colors[coords[0]][coords[1]]
+    end
+
+    local color = LED_off
+    if event.mode == shoop_control.constants.LoopMode_Playing or
+       event.mode == shoop_control.constants.LoopMode_PlayingDryThroughWet then
+        color = LED_green
+    elseif event.mode == shoop_control.constants.LoopMode_Recording or
+           event.mode == shoop_control.constants.LoopMode_RecordingDryIntoWet then
+        color = LED_red
+    elseif event.length > 0 then
+        color = LED_yellow
+    end
+
+    if prev_color ~= color then
+        set_led(coords, color)
+        loop_colors[coords[0]][coords[1]] = color
+    end
+end
+
+local get_loop_color = function(coords)
+    if loop_colors[coords[0]] ~= nil then
+        if loop_colors[coords[1]] ~= nil then
+            return loop_colors[coords[0]][coords[1]]
+        end
+    end
+    return nil
+end
+
+-- Push all our known loop colors to the device lights
+local push_all_loop_colors = function()
+    for i = 0, 7 do
+        for j = 0, 7 do
+            local coords = {i,j}
+            local color = get_loop_color(coords)
+            if color == nil then
+                color = LED_off
+            end
+            set_led(coords, color)
+        end
+    end
+end
+
 -- Push all our known state to the device lights
 local push_all_state = function()
     if send_fn == nil then return end
     push_fader_setting()
+    push_all_loop_colors()
     pushed_all = true
 end
 
@@ -108,5 +163,16 @@ local on_output_port_connected = function()
     if not pushed_all then push_all_state() end
 end
 
+-- Handle loop events
+local handle_loop_event = function(coords, event)
+    print_warning(event)
+    print_warning(coords)
+    push_loop_color(coords, event)
+end
+
+-- Open ports
 shoop_control.auto_open_device_specific_midi_control_output(".*APC MINI MIDI.*", on_output_port_opened, on_output_port_connected)
 shoop_control.auto_open_device_specific_midi_control_input(".*APC MINI MIDI.*", on_midi_in)
+
+-- Register for loop callbacks
+shoop_control.register_loop_event_cb(handle_loop_event)
