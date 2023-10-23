@@ -15,7 +15,7 @@ Item {
         ready: false
         function update() {
             if (root.control_interface) {
-                create_lua_qobject_interface_as_global('__shoop_control_interface', root)
+                create_lua_qobject_interface_as_global('__shoop_control_interface', root.control_interface)
             }
             ready = true
         }
@@ -24,6 +24,7 @@ Item {
 
     function initialize() {
         if (!lua_engine) { return; }
+        if (!lua_engine.ready) { return; }
         if (initialized) { return; }
 
         // Include all the shoop libraries so that their functions can be used
