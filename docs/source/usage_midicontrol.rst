@@ -5,7 +5,9 @@ MIDI Controllers
 
 To configure MIDI settings, open the Settings dialog and go to the **MIDI Control** tab:
 
-(screenshot)
+.. image:: resources/midi_settings.png
+   :width: 500px
+   :align: center
 
 
 Autoconnect
@@ -13,7 +15,9 @@ Autoconnect
 
 In most cases, you will want **ShoopDaLoop** to connect automatically to your controller via the **JACK** patchbay. To do this, enter a regular expression for your device name into the respective autoconnect regex field:
 
-(screenshot)
+.. image:: resources/autoconnect.png
+   :width: 300px
+   :align: center
 
 Save your configuration and try it out. When connecting your device, **ShoopDaLoop** should automatically connect to it.
 
@@ -31,7 +35,9 @@ First, ensure your device is automatically or manually connected to **ShoopDaLoo
 
 Next, click the "+" to add a new MIDI trigger. A filter dialog greets you:
 
-(screenshot)
+.. image:: resources/midi_filter.png
+   :width: 400px
+   :align: center
 
 Here we configure the filter selecting our incoming MIDI message which will trigger our action. Rather than choosing the filter manually, press a button on your MIDI controller. A notification should appear of what was just received:
 
@@ -42,4 +48,18 @@ Click (TODO) to use the received message as a filter. If you wish, you may modif
 A new trigger has been added to the list. From the "Do:" dropdown, choose "Default Loop Action". Leave the newly appeared "loops" input set to "selection".
 
 Save your configuration and test it out: Close the settings window, use the mouse or keyboard to select a loop (it will light up yellow) and press the same button on your MIDI controller. It should now (try to) transition to Recording.
+
+Example 2: Advanced note-to-loop mapping
+""""""""""""""""""""""""""""""""""""""""
+
+Some midi controllers have row(s) or grid(s) of buttons that can be used to trigger loops. In that case it is cumbersome to set up individual rules for every button.
+
+Instead, we can use a single rule that maps the incoming note to the loop number. This can be done by using a Lua expression in the filter.
+
+As in example 1, set up your device so it is connected and open the filter dialog for a new trigger rule. Try out a few buttons on your controller and note down the note number received. You will need to work out the formula that calculates the **ShoopDaLoop** loop coordinates (row, column) from the note number. In our example, let's assume we
+worked out that the row will be the note divided by 8, and the column will be the remainder.
+
+Again, let's choose the Default Loop Action, but now, for the "loops" input, choose "custom":
+
+
 
