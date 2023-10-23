@@ -1,5 +1,6 @@
 Lua Scripting
 -----------------
+.. _lua_scripting:
 
 Introduction
 ^^^^^^^^^^^^^^^^^^^^^^^^
