@@ -119,6 +119,8 @@ void RenderAudioWaveform::preprocess() {
         reduce();
     }
 
+    update();
+
     auto t2 = std::chrono::high_resolution_clock::now();
 
     //std::cout << "Preprocess cost: " << std::chrono::duration_cast<std::chrono::milliseconds>(t2-t1).count() << "ms.\n";
