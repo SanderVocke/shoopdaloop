@@ -381,6 +381,7 @@ Dialog {
         Component.onCompleted: {
             onKnown_scriptsChanged.connect(() => {
                 script_settings.contents.known_scripts = known_scripts
+                script_settings.contentsChanged()
             })
         }
 
