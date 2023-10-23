@@ -237,7 +237,8 @@ LuaControlInterface {
                         "name_hint": "auto_control_" + rule.id,
                         "autoconnect_regexes": [ rule.regex ],
                         "direction": Types.PortDirection.Input,
-                        "parent": root
+                        "parent": root,
+                        'lua_engine': rule.engine
                     });
                     port.detectedExternalAutoconnectPartnerWhileClosed.connect((p=port) => {
                         if (!p.may_open) {
@@ -245,8 +246,8 @@ LuaControlInterface {
                             p.may_open = true
                         }
                     })
-                    port.msgReceived.connect((msg, cb=rule.msg_cb) => {
-                        lua_engine.call(cb, [Midi.parse_msg(msg), null], null, false) 
+                    port.msgReceived.connect((msg, cb=rule.msg_cb, p=port) => {
+                        p.lua_engine.call(cb, [Midi.parse_msg(msg), null], false) 
                     })
                     midi_control_ports[i] = port
                     midi_control_portsChanged()
@@ -278,10 +279,16 @@ LuaControlInterface {
                     port.initializedChanged.connect((initialized, cb=rule.opened_cb, p=port) => {
                         if (initialized) {
                             let send_fn = p.get_py_send_fn()
-                            lua_engine.call(cb, [send_fn], null, true) }
+                            p.lua_engine.call(cb, [send_fn], null, true) }
                     })
-                    port.connected.connect((cb=rule.connected_cb) => {
-                        lua_engine.call(cb, [], null, false)
+                    port.connected.connect((cb=rule.connected_cb, p=port) => {
+                        if (p.lua_engine) {
+                            p.lua_engine.call(cb, [], null, false)
+                        } else {
+                            p.onLua_engineChanged.connect((p=p, cb=cb) => {
+                                p.lua_engine.call(cb, [], null, false)
+                            })
+                        }
                     })
                     port.detectedExternalAutoconnectPartnerWhileClosed.connect((p=port) => {
                         if (!p.may_open) {

@@ -378,10 +378,11 @@ Dialog {
         id: script_ui
         property list<var> known_scripts: script_settings.contents ? script_settings.contents.known_scripts : []
 
-        Component.onCompleted: {
-            onKnown_scriptsChanged.connect(() => {
-                script_settings.contents.known_scripts = known_scripts
-            })
+        signal updateKnownScripts(var known_scripts)
+
+        onUpdateKnownScripts: (scripts) => {
+            all_settings.contents.script_settings.configuration.known_scripts = scripts
+            all_settings.contentsChanged()
         }
 
         RegistryLookup {
@@ -485,11 +486,12 @@ Dialog {
         }
 
         function add_script(filename) {
-            known_scripts.push({
+            var new_known_scripts = JSON.parse(JSON.stringify(known_scripts))
+            new_known_scripts.push({
                 'path_or_filename': filename,
                 'run': false
             })
-            known_scriptsChanged()
+            updateKnownScripts(new_known_scripts)
         }
 
         Label {
@@ -573,8 +575,9 @@ Dialog {
                                     } else if (running && !run) {
                                         script_ui.kill(mapped_item.path_or_filename)
                                     }
-                                    mapped_item.run = run
-                                    script_ui.known_scriptsChanged()
+                                    var new_known_scripts = JSON.parse(JSON.stringify(script_ui.known_scripts))
+                                    new_known_scripts[index].run = run
+                                    script_ui.updateKnownScripts(new_known_scripts)
                                 }
                             }
                         }
@@ -651,8 +654,9 @@ Dialog {
                                     }
                                     onClicked: {
                                         script_ui.kill(mapped_item.path_or_filename)
-                                        script_ui.known_scripts.splice(index, 1)
-                                        script_ui.known_scriptsChanged()
+                                        var new_known_scripts = JSON.parse(JSON.stringify(script_ui.known_scripts))
+                                        new_known_scripts.splice(index, 1)
+                                        script_ui.updateKnownScripts(new_known_scripts)
                                     }
                                 }
                             }
