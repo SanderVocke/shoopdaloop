@@ -7,65 +7,28 @@ Introduction
 **ShoopDaLoop** supports embedded **Lua scripts** for querying and controlling the application. For example, these are used to define how **ShoopDaLoop** reacts to control MIDI events.
 Lua scripts can be provided by the user and don't require a re-installation of the software.
 
-
-
-Lua Environment
-^^^^^^^^^^^^^^^^^^^^^^^^
-
-The following things should be kept in mind when writing **Lua** snippets or scripts for **ShoopDaLoop**.
-
-Globals and context variables
-""""""""""""""""""""""""""""""
-
-* **Lua**'s behavior regarding global declarations is slightly altered within **ShoopDaLoop** scripts:
-
-  * Globals should be declared with:
-  
-    * `declare_global("myvar", "myinitvalue")` (ignored if the variable already exists), or
-
-    * `declare_new_global("myvar", "myinitvalue")` (error if the variable already exists)
-
-  * Attempting to declare a global by a simple assignent statement (e.g. `x = 3`) will fail. This prevents accidents with typos.
-  
-  * Attempting to reference (read) a non-existing global will also fail.
-
-  * Global state is preserved between script calls.
-
-  * After a global is declared, it can be modified or read with direct assignment / reference, no special syntax or functions needed.
-
-  * In most cases, globals are a bad idea. Use context variables (see below) instead. Otherwise, e.g. your MIDI controller handlers for different controllers can see each other's global variables.
-
-* **Contexts** are introduced. These act just like globals, except they are valid only for scripts/commands called with the same **context**.
-  These are useful for creating pseudo-global state, which will be invisible to scripts run in different contexts.
-
-  * Instead of `declare_<>new_>global("a", "b")`, `declare_<new_>in_context("a", "b")` is used for context state.
-
-  * All other rules match those of globals (can be used normally after declaration).
-
-  * Context variables are persisted between calls to the same script. You can see them as similar to "static variables" in C.
-  
-  * If you write scripts, you don't need to manage contexts directly. **ShoopDaLoop** will ensure that:
-
-    * Scripts associated with the same MIDI controller profile share a context
-
-    * ...
-
+**Lua** inside **ShoopDaLoop** is sandboxed for security making a large part of the standard libary unavailable. Only a whitelisted list of functions can be used. See **sandbox.lua** for details. Most notably: not any module can be imported through **require**. Only **ShoopDaLoop**-provided modules can be used.
 
 API and Libraries
 ^^^^^^^^^^^^^^^^^
 
 The API consists of globally available functions and constants, in addition to functions and constants available through built-in libraries. Built-in libraries should be included in scripts using the `require` function. Check `lib/lua/builtins/keyboard.lua` for an example.
 
-**globally available functions**:
+Globally available APIs
+"""""""""""""""""""""""
 
 * **print(msg)**, **print_debug(msg)**, **print_error(msg)**, **print_info(msg)**: Print a message to the Frontend.LuaScript logger. Respective log levels are info (default), debug, error.
 
-**type midi_control_port**: a type used to access state related to a specific MIDI control port.
+type: midi_control_port
+"""""""""""""""""""""""
 
 .. shoop_function_docstrings::
    src/shoopdaloop/lib/q_objects/MidiControlPort.py
 
-**library shoop_control**: provides basic interfacing with **ShoopDaLoop**. Note that these functions are provided as bindings into the application - they are not written in Lua.
+module: shoop_control
+"""""""""""""""""""""
+
+Provides basic interfacing with **ShoopDaLoop**. Note that these functions are provided as bindings into the application - they are not written in Lua.
 
 .. shoop_function_docstrings::
    src/shoopdaloop/lib/q_objects/ControlHandler.py
@@ -74,17 +37,26 @@ The API consists of globally available functions and constants, in addition to f
    src/shoopdaloop/lib/q_objects/ControlInterface.py
 
 
-**library shoop_coords**: provides helper functions to manipulate loop and track coordinates. Implemented in `shoop_coords.lua`.
+module: shoop_coords
+""""""""""""""""""""
+
+Provides helper functions to manipulate loop and track coordinates. Implemented in `shoop_coords.lua`.
 
 .. shoop_function_docstrings::
    src/shoopdaloop/lib/lua/lib/shoop_coords.lua
 
-**library shoop_helpers**: provides helper functions for advanced control. Implemented in `shoop_helpers.lua`.
+module: shoop_helpers
+"""""""""""""""""""""
+
+Provides helper functions for advanced control. Implemented in `shoop_helpers.lua`.
 
 .. shoop_function_docstrings::
    src/shoopdaloop/lib/lua/lib/shoop_helpers.lua
 
-**library shoop_format**: provides helper functions for formatting strings. Implemented in `shoop_format.lua`.
+module: shoop_format
+""""""""""""""""""""
+
+Provides helper functions for formatting strings. Implemented in `shoop_format.lua`.
 
 .. shoop_function_docstrings::
    src/shoopdaloop/lib/lua/lib/shoop_format.lua
