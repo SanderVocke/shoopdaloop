@@ -41,9 +41,11 @@ Next, click the "+" to add a new MIDI trigger. A filter dialog greets you:
 
 Here we configure the filter selecting our incoming MIDI message which will trigger our action. Rather than choosing the filter manually, press a button on your MIDI controller. A notification should appear of what was just received:
 
-(screenshot)
+.. image:: resources/midi_learn.png
+   :width: 300px
+   :align: center
 
-Click (TODO) to use the received message as a filter. If you wish, you may modify the filter (such as making it independent of channel by setting the channel to Any). Press OK to accept the trigger.
+Click "Use" to use the received message as a filter. If you wish, you may modify the filter (such as making it independent of channel by setting the channel to Any). Press OK to accept the trigger.
 
 A new trigger has been added to the list. From the "Do:" dropdown, choose "Default Loop Action". Leave the newly appeared "loops" input set to "selection".
 

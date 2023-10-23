@@ -81,7 +81,6 @@ shoop_format = require('shoop_format')
             prepare_imports()
             return lua_engine.evaluate(
                 code,
-                null,
                 'test',
                 true,
                 false
@@ -92,7 +91,6 @@ shoop_format = require('shoop_format')
             prepare_imports()
             lua_engine.execute(
                 code,
-                null,
                 'test',
                 true,
                 false

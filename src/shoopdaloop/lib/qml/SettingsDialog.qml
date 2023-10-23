@@ -471,7 +471,7 @@ Dialog {
             if (fullpath == null) {
                 return null
             }
-            let docstring = script_manager.maybe_docstring(fullpath)
+            let docstring = script_manager ? script_manager.maybe_docstring(fullpath) : ''
             return docstring
         }
         
