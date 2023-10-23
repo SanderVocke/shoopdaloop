@@ -492,165 +492,190 @@ Dialog {
             known_scriptsChanged()
         }
 
-        Column {
-            width: parent.width
-            spacing: 10
+        Label {
+            id: lua_label
+            anchors.top: parent.top
+            text: 'For detailed information about Lua settings, see the <a href="unknown.html">help</a>.'
+            onLinkActivated: (link) => Qt.openUrlExternally(link)
+        }
 
-            Label {
-                text: 'For detailed information about Lua settings, see the <a href="unknown.html">help</a>.'
-                onLinkActivated: (link) => Qt.openUrlExternally(link)
-            }
+        ScrollView {
+            width: script_ui.width
+            anchors.bottom: parent.bottom
+            anchors.top: lua_label.bottom
 
-            Label {
-                text: 'Scripts:'
-            }
+            Column {
+                width: script_ui.width
+                spacing: 10
 
-            GroupBox {
-                anchors.left: parent.left
-                anchors.right: parent.right
+                GroupBox {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
 
-                Grid {
-                    rows: script_ui.known_scripts.length + 1
-                    rowSpacing: 5
-                    columnSpacing: 15
-                    flow: Grid.TopToBottom
-                    verticalItemAlignment: Grid.AlignVCenter
-                    
-                    // column
-                    Label {
-                        text: 'Name'
-                        font.bold: true
-                    }
-                    Mapper {
-                        model : script_ui.known_scripts
+                    Grid {
+                        rows: script_ui.known_scripts.length + 1
+                        rowSpacing: 5
+                        columnSpacing: 15
+                        flow: Grid.TopToBottom
+                        verticalItemAlignment: Grid.AlignVCenter
+                        
+                        // column
                         Label {
-                            property var mapped_item
-                            property int index
-                            text: file_io.basename(mapped_item.path_or_filename)
+                            text: 'Name'
+                            font.bold: true
                         }
-                    }
-
-                    // column
-                    Label {
-                        text: 'Kind'
-                        font.bold: true
-                    }
-                    Mapper {
-                        model : script_ui.known_scripts
-                        Label {
-                            property var mapped_item
-                            property int index
-                            property string script_name: mapped_item.path_or_filename
-                            text: script_ui.kind(script_name)
-                            Connections {
-                                target: script_ui.script_manager
-                                function onChanged() { text = Qt.binding(() => script_ui.kind(script_name)) }
+                        Mapper {
+                            model : script_ui.known_scripts
+                            Label {
+                                property var mapped_item
+                                property int index
+                                text: file_io.basename(mapped_item.path_or_filename)
                             }
                         }
-                    }
 
-                    // column
-                    Label {
-                        text: 'Run?'
-                        font.bold: true
-                    }
-                    Mapper {
-                        model : script_ui.known_scripts
-                        ComboBox {
-                            height: 40
-                            model: ['Yes', 'No']
-                            property var mapped_item
-                            property int index
-                            currentIndex: mapped_item.run ? 0 : 1
-                            onActivated: (idx) => {
-                                let running = mapped_item.run
-                                let run = (idx == 0)
-                                if (!running && run) {
-                                    script_ui.restart(mapped_item.path_or_filename)
-                                } else if (running && !run) {
-                                    script_ui.kill(mapped_item.path_or_filename)
-                                }
-                                mapped_item.run = run
-                                script_ui.known_scriptsChanged()
-                            }
-                        }
-                    }
-
-                    // column
-                    Label {
-                        text: 'Status'
-                        font.bold: true
-                    }
-                    Mapper {
-                        model : script_ui.known_scripts
+                        // column
                         Label {
-                            property var mapped_item
-                            property int index
-                            property string script_name: mapped_item.path_or_filename
-                            text: script_ui.status(script_name)
-                            Connections {
-                                target: script_ui.script_manager
-                                function onChanged() { text = Qt.binding(() => script_ui.status(script_name)) }
-                            }
+                            text: 'Kind'
+                            font.bold: true
                         }
-                    }
-
-                    // column
-                    Item {
-                        width: 1
-                        height: 1
-                    }
-                    Mapper {
-                        model : script_ui.known_scripts
-                        Row {
-                            property var mapped_item
-                            property int index
-                            property var maybe_docstring : script_ui.docstring(mapped_item.path_or_filename)
-                            Connections {
-                                target: script_ui.script_manager
-                                function onChanged() { 
-                                    maybe_docstring = Qt.binding(() => script_ui.docstring(mapped_item.path_or_filename))
+                        Mapper {
+                            model : script_ui.known_scripts
+                            Label {
+                                property var mapped_item
+                                property int index
+                                property string script_name: mapped_item.path_or_filename
+                                text: script_ui.kind(script_name)
+                                Connections {
+                                    target: script_ui.script_manager
+                                    function onChanged() { text = Qt.binding(() => script_ui.kind(script_name)) }
                                 }
                             }
-                            ExtendedButton {
-                                tooltip: maybe_docstring ? 'Open documentation' : 'No documentation available' 
-                                width: 30
+                        }
+
+                        // column
+                        Label {
+                            text: 'Run?'
+                            font.bold: true
+                        }
+                        Mapper {
+                            model : script_ui.known_scripts
+                            ComboBox {
                                 height: 40
-                                enabled: maybe_docstring
-                                MaterialDesignIcon {
-                                    size: 20
-                                    name: 'help'
-                                    color: enabled ? Material.foreground : 'grey'
-                                    anchors.centerIn: parent
+                                model: ['Yes', 'No']
+                                property var mapped_item
+                                property int index
+                                currentIndex: mapped_item.run ? 0 : 1
+                                onActivated: (idx) => {
+                                    let running = mapped_item.run
+                                    let run = (idx == 0)
+                                    if (!running && run) {
+                                        script_ui.restart(mapped_item.path_or_filename)
+                                    } else if (running && !run) {
+                                        script_ui.kill(mapped_item.path_or_filename)
+                                    }
+                                    mapped_item.run = run
+                                    script_ui.known_scriptsChanged()
                                 }
-                                onClicked: {
-                                    var window = script_doc_dialog_factory.createObject(root.parent, {
-                                        script_name: file_io.basename(mapped_item.path_or_filename),
-                                        docstring: maybe_docstring,
-                                        visible: true
-                                    })
+                            }
+                        }
+
+                        // column
+                        Label {
+                            text: 'Status'
+                            font.bold: true
+                        }
+                        Mapper {
+                            model : script_ui.known_scripts
+                            Label {
+                                property var mapped_item
+                                property int index
+                                property string script_name: mapped_item.path_or_filename
+                                text: script_ui.status(script_name)
+                                Connections {
+                                    target: script_ui.script_manager
+                                    function onChanged() { text = Qt.binding(() => script_ui.status(script_name)) }
+                                }
+                            }
+                        }
+
+                        // column
+                        Item {
+                            width: 1
+                            height: 1
+                        }
+                        Mapper {
+                            model : script_ui.known_scripts
+                            Row {
+                                spacing: 5
+                                property var mapped_item
+                                property int index
+                                property var maybe_docstring : script_ui.docstring(mapped_item.path_or_filename)
+                                property bool is_builtin: script_ui.kind(mapped_item.path_or_filename) == 'built-in'
+                                Connections {
+                                    target: script_ui.script_manager
+                                    function onChanged() { 
+                                        maybe_docstring = Qt.binding(() => script_ui.docstring(mapped_item.path_or_filename))
+                                        is_builtin = Qt.binding(() => script_ui.kind(mapped_item.path_or_filename) == 'built-in')
+                                    }
+                                }
+                                ExtendedButton {
+                                    tooltip: maybe_docstring ? 'Open documentation' : 'No documentation available' 
+                                    width: 30
+                                    height: 40
+                                    enabled: maybe_docstring
+                                    MaterialDesignIcon {
+                                        size: 20
+                                        name: 'help'
+                                        color: enabled ? Material.foreground : 'grey'
+                                        anchors.centerIn: parent
+                                    }
+                                    onClicked: {
+                                        var window = script_doc_dialog_factory.createObject(root.parent, {
+                                            script_name: file_io.basename(mapped_item.path_or_filename),
+                                            docstring: maybe_docstring,
+                                            visible: true
+                                        })
+                                    }
+                                }
+
+                                ExtendedButton {
+                                    tooltip: 'Forget script'
+                                    width: 30
+                                    height: 40
+                                    visible: !is_builtin
+                                    MaterialDesignIcon {
+                                        size: 20
+                                        name: 'eject'
+                                        color: Material.foreground
+                                        anchors.centerIn: parent
+                                    }
+                                    onClicked: {
+                                        script_ui.kill(mapped_item.path_or_filename)
+                                        script_ui.known_scripts.splice(index, 1)
+                                        script_ui.known_scriptsChanged()
+                                    }
                                 }
                             }
                         }
                     }
                 }
-            }
 
-            Button {
-                text: 'Add user script'
-                onClicked: userscriptdialog.open()
+                Button {
+                    text: 'Add user script'
+                    onClicked: userscriptdialog.open()
 
-                FileDialog {
-                    id: userscriptdialog
-                    fileMode: FileDialog.OpenFile
-                    acceptLabel: 'Load LUA script'
-                    nameFilters: ["LUA script files (*.lua)"]
-                    onAccepted: {
-                        close()
-                        var filename = selectedFile.toString().replace('file://', '');
-                        script_ui.add_script(filename)
+                    FileDialog {
+                        id: userscriptdialog
+                        fileMode: FileDialog.OpenFile
+                        acceptLabel: 'Load LUA script'
+                        nameFilters: ["LUA script files (*.lua)"]
+                        onAccepted: {
+                            close()
+                            var filename = selectedFile.toString().replace('file://', '');
+                            script_ui.add_script(filename)
+                        }
+                        options: FileDialog.DontUseNativeDialog
                     }
-                    options: FileDialog.DontUseNativeDialog
                 }
             }
         }
