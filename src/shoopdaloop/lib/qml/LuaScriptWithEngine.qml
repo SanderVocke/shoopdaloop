@@ -10,11 +10,20 @@ Item {
     property alias script_path: script.script_path
     property alias catch_errors: script.catch_errors
     property alias ready: script.ready
+    property alias maybe_script_docstring : script.maybe_script_docstring
+
+    property bool ran: false
+    property bool listening: false
 
     LuaScript {
         id: script
         when: engine.ready
         lua_engine: engine
+
+        onRanScript: {
+            ran = true
+            listening = (control_interface.engine_registered(engine))
+        }
     }
 
     LuaEngine {
@@ -27,6 +36,11 @@ Item {
             ready = true
         }
         Component.onCompleted: update()
+        Component.onDestruction: root.control_interface.unregister_lua_engine(engine)
+    }
+
+    function stop() {
+        engine.stop()
     }
 }
 

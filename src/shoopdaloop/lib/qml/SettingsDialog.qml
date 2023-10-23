@@ -10,13 +10,12 @@ Dialog {
     id: root
     modal: true
     title: 'Settings'
-    standardButtons: Dialog.Save | Dialog.Discard | Dialog.Close
+    standardButtons: Dialog.Save | Dialog.Close
     property bool io_enabled: false
 
     readonly property PythonLogger logger: PythonLogger { name: "Frontend.Qml.SettingsDialog" }
 
     onAccepted: all_settings.save()
-    onDiscarded: { all_settings.load(); close() }
 
     width: Overlay.overlay ? Overlay.overlay.width - 50 : 800
     height: Overlay.overlay ? Overlay.overlay.height - 50 : 500
@@ -34,6 +33,9 @@ Dialog {
             TabButton {
                 text: 'MIDI Control'
             }
+            TabButton {
+                text: 'LUA scripts'
+            }
         }
 
         StackLayout {
@@ -45,6 +47,9 @@ Dialog {
 
             MIDISettingsUi {
                 id: midi_settings_being_edited
+            }
+            ScriptSettingsUi {
+                id: lua_settings_being_edited
             }
         }
     }
@@ -66,11 +71,13 @@ Dialog {
         }
 
         function load() {
-            if (!io_enabled) return
+            if (io_enabled) {
+                logger.debug(() => ("Loading settings."))
+                let loaded_settings = settings_io.load_settings(null)
+                if (loaded_settings != null) { from_dict(loaded_settings) }
+            }
 
-            logger.debug(() => ("Loading settings."))
-            let loaded_settings = settings_io.load_settings(null)
-            if (loaded_settings != null) { from_dict(loaded_settings) }
+            lua_settings_being_edited.sync()
         }
 
         Component.onCompleted: load()
@@ -103,11 +110,6 @@ Dialog {
                 'configuration': []
             }
         }) }
-    }
-
-    ScriptSettings {
-        id: script_settings
-        contents: all_settings.contents.script_settings.configuration
     }
 
     component MIDISettingsUi : Item {
@@ -327,6 +329,262 @@ Dialog {
                                 registry: registries.state_registry
                                 key: 'midi_control_configuration'
                                 object: edit_midi_control.configuration
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Settings {
+        id: script_settings
+        contents: all_settings.contents.script_settings.configuration
+
+        schema_name: 'script_settings'
+        current_version: 1
+
+        function default_contents() { return ({
+                'known_scripts': []
+            })
+        }
+
+        Component.onCompleted: {
+            let builtins_dir = file_io.get_installation_directory() + '/lib/lua/builtins'
+            let builtins = file_io.glob(builtins_dir + '/**/*.lua', true)
+            let default_run = ['keyboard.lua']
+            for (let builtin of builtins) {
+                let builtin_name = file_io.basename(builtin)
+                var found = false
+                for (let script of contents.known_scripts) {
+                    if (script.path_or_filename == builtin || script.path_or_filename == builtin_name) {
+                        found = true
+                        break
+                    }
+                }
+                if (!found) {
+                    contents.known_scripts.push({
+                        'path_or_filename': builtin,
+                        'run': default_run.includes(builtin_name)
+                    })
+                }
+            }
+            contentsChanged()
+        }
+    }
+
+    component ScriptSettingsUi : Item {
+        id: script_ui
+        property list<var> known_scripts: script_settings.contents ? script_settings.contents.known_scripts : []
+
+        Component.onCompleted: {
+            onKnown_scriptsChanged.connect(() => {
+                script_settings.contents.known_scripts = known_scripts
+            })
+        }
+
+        RegistryLookup {
+            id: lookup_script_manager
+            key: 'lua_script_manager'
+            registry: registries.state_registry
+        }
+        property alias script_manager: lookup_script_manager.object
+
+        function full_path(script_name) {
+            var fullpath = script_name
+            if (!file_io.is_absolute(fullpath)) {
+                fullpath = file_io.get_installation_directory() + '/lib/lua/builtins/' + fullpath
+            }
+            if (!file_io.exists(fullpath)) {
+                return null
+            }
+            return file_io.realpath(fullpath)
+        }
+
+        function status(script_name) {
+            let fullpath = full_path(script_name)
+            if (fullpath == null) {
+                return 'Not found'
+            }
+            if (script_manager == null) {
+                return 'Not loaded'
+            }
+            return script_manager.get_status(fullpath)
+        }
+
+        function restart(script_name) {
+            let fullpath = full_path(script_name)
+            if (fullpath == null) {
+                return
+            }
+            if (script_manager == null) {
+                return
+            }
+            script_manager.start_script(fullpath)
+        }
+
+        function kill(script_name) {
+             let fullpath = full_path(script_name)
+            if (fullpath == null) {
+                return
+            }
+            if (script_manager == null) {
+                return
+            }
+            script_manager.kill(fullpath)
+        }
+
+        function restart_all() {
+            if (script_manager == null) {
+                onScript_managerChanged.connect(() => { this.restart_all() })
+                return
+            }
+            script_manager.kill_all()
+            for (let script of known_scripts) {
+                if (script.run) {
+                    restart(full_path(script.path_or_filename))
+                }
+            }
+        }
+
+        function sync() {
+            if (script_manager == null) {
+                onScript_managerChanged.connect(() => { this.sync() })
+                return
+            }
+            var scripts = []
+            for (let script of known_scripts) {
+                if (script.run) {
+                    scripts.push(full_path(script.path_or_filename))
+                }
+            }
+            script_manager.sync(scripts)
+        }
+
+        function docstring(script_name) {
+            let fullpath = full_path(script_name)
+            if (fullpath == null) {
+                return null
+            }
+            let docstring = script_manager.maybe_docstring(fullpath)
+            return docstring
+        }
+
+        Column {
+            width: parent.width
+            spacing: 10
+
+            Label {
+                text: 'For detailed information about Lua settings, see the <a href="unknown.html">help</a>.'
+                onLinkActivated: (link) => Qt.openUrlExternally(link)
+            }
+
+            Label {
+                text: 'Scripts:'
+            }
+
+            GroupBox {
+                anchors.left: parent.left
+                anchors.right: parent.right
+
+                Grid {
+                    rows: script_ui.known_scripts.length + 1
+                    rowSpacing: 5
+                    columnSpacing: 15
+                    flow: Grid.TopToBottom
+                    verticalItemAlignment: Grid.AlignVCenter
+                    
+                    // column
+                    Label {
+                        text: 'Name'
+                        font.bold: true
+                    }
+                    Mapper {
+                        model : script_ui.known_scripts
+                        Label {
+                            property var mapped_item
+                            property int index
+                            text: file_io.basename(mapped_item.path_or_filename)
+                        }
+                    }
+
+                    // column
+                    Label {
+                        text: 'Run?'
+                        font.bold: true
+                    }
+                    Mapper {
+                        model : script_ui.known_scripts
+                        ComboBox {
+                            height: 40
+                            model: ['Yes', 'No']
+                            property var mapped_item
+                            property int index
+                            currentIndex: mapped_item.run ? 0 : 1
+                            onActivated: (idx) => {
+                                let running = mapped_item.run
+                                let run = (idx == 0)
+                                if (!running && run) {
+                                    script_ui.restart(mapped_item.path_or_filename)
+                                } else if (running && !run) {
+                                    script_ui.kill(mapped_item.path_or_filename)
+                                }
+                                mapped_item.run = run
+                                script_ui.known_scriptsChanged()
+                            }
+                        }
+                    }
+
+                    // column
+                    Label {
+                        text: 'Status'
+                        font.bold: true
+                    }
+                    Mapper {
+                        model : script_ui.known_scripts
+                        Label {
+                            property var mapped_item
+                            property int index
+                            property string script_name: mapped_item.path_or_filename
+                            text: script_ui.status(script_name)
+                            Connections {
+                                target: script_ui.script_manager
+                                function onChanged() { text = Qt.binding(() => script_ui.status(script_name)) }
+                            }
+                        }
+                    }
+
+                    // column
+                    Label {
+                        text: 'Controls'
+                        font.bold: true
+                    }
+                    Mapper {
+                        model : script_ui.known_scripts
+                        Row {
+                            property var mapped_item
+                            property int index
+                            property var maybe_docstring : script_ui.docstring(mapped_item.path_or_filename)
+                            Connections {
+                                target: script_ui.script_manager
+                                function onChanged() { 
+                                    maybe_docstring = Qt.binding(() => script_ui.docstring(mapped_item.path_or_filename))
+                                }
+                            }
+                            ExtendedButton {
+                                tooltip: maybe_docstring ? 'Open documentation' : 'No documentation available' 
+                                width: 30
+                                height: 40
+                                enabled: maybe_docstring
+                                MaterialDesignIcon {
+                                    size: 20
+                                    name: 'help'
+                                    color: enabled ? Material.foreground : 'grey'
+                                    anchors.centerIn: parent
+                                }
+                                onClicked: {
+                                    // bla
+                                }
                             }
                         }
                     }

@@ -1,6 +1,6 @@
 print_debug("Init keyboard.lua")
 
-docstring = [[
+_script_docstring = [[
 keyboard.lua: Handle keyboard events.
 
 This script allows controlling ShoopDaLoop through keyboard keys.

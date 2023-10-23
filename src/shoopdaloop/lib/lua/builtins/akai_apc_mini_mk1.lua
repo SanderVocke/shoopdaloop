@@ -1,6 +1,6 @@
 print_debug("Init akai_apc_mini_mk1.lua")
 
-docstring = [[
+_script_docstring = [[
 akai_apc_mini_mk1.lua: Deep integration for the Akai APC Mini MK1.
 ]]
 

@@ -56,18 +56,28 @@ class ControlInterface(ControlHandler):
         self.logger = Logger('Frontend.ControlInterface')
     
     # Functions not meant for Lua use
+
+    engineRegisteredCallback = Signal('QVariant')
+    engineUnregisteredAll = Signal('QVariant')
+
+    @Slot('QVariant', result=bool)
+    def engine_registered(self, engine):
+        return any([cb[1] == engine for cb in self._keyboard_callbacks]) or \
+            any([cb['engine'] == engine for cb in self._midi_input_port_rules]) or \
+            any([cb['engine'] == engine for cb in self._midi_output_port_rules]) or \
+            any([cb[1] == engine for cb in self._loop_callbacks])
     
     @Slot(int, int)
     def key_pressed(self, key, modifiers):
         self.logger.trace(lambda: "Key pressed: {} ({})".format(key, modifiers))
         for cb in self._keyboard_callbacks:
-            cb(KeyEventType.Pressed, key, modifiers)
+            cb[0](KeyEventType.Pressed, key, modifiers)
     
     @Slot(int, int)
     def key_released(self, key, modifiers):
         self.logger.trace(lambda: "Key pressed: {} ({})".format(key, modifiers))
         for cb in self._keyboard_callbacks:
-            cb(KeyEventType.Released, key, modifiers)
+            cb[0](KeyEventType.Released, key, modifiers)
     
     @Slot(list, 'QVariant')
     def loop_event(self, coords, event):
@@ -76,7 +86,7 @@ class ControlInterface(ControlHandler):
         if isinstance(coords, QJSValue):
             coords = coords.toVariant()
         for cb in self._loop_callbacks:
-            cb(coords, event)
+            cb[0](coords, event)
             
     midiInputPortRulesChanged = Signal()
     @Property('QVariant', notify=midiInputPortRulesChanged)
@@ -89,6 +99,17 @@ class ControlInterface(ControlHandler):
         return self._midi_output_port_rules
     
     # Functions meant for Lua use
+    
+    @Slot('QVariant')
+    def unregister_lua_engine(self, engine):
+        self.logger.debug(lambda: "Unregistering Lua engine")
+        self._keyboard_callbacks = [cb for cb in self._keyboard_callbacks if cb[1] != engine]
+        self._midi_input_port_rules = [cb for cb in self._midi_input_port_rules if cb['engine'] != engine]
+        self._midi_output_port_rules = [cb for cb in self._midi_output_port_rules if cb['engine'] != engine]
+        self._loop_callbacks = [cb for cb in self._loop_callbacks if cb[1] != engine]
+        self.midiInputPortRulesChanged.emit()
+        self.midiOutputPortRulesChanged.emit()
+        self.engineUnregisteredAll.emit(engine)
             
     @Slot(list, 'QVariant')
     def auto_open_device_specific_midi_control_input(self, args, lua_engine):
@@ -105,10 +126,12 @@ class ControlInterface(ControlHandler):
         self._midi_input_port_rules.append({
             'id': self._rule_id,
             'regex': device_name_filter_regex,
-            'msg_cb': msg_cb
+            'msg_cb': msg_cb,
+            'engine': lua_engine
         })
         self.midiInputPortRulesChanged.emit()
         self._rule_id += 1
+        self.engineRegisteredCallback.emit(lua_engine)
     
     @Slot(list, 'QVariant')
     def auto_open_device_specific_midi_control_output(self, args, lua_engine):
@@ -127,10 +150,12 @@ class ControlInterface(ControlHandler):
             'id': self._rule_id,
             'regex': device_name_filter_regex,
             'opened_cb': opened_cb,
-            'connected_cb': connected_cb
+            'connected_cb': connected_cb,
+            'engine': lua_engine
         })
         self.midiOutputPortRulesChanged.emit()
         self._rule_id += 1
+        self.engineRegisteredCallback.emit(lua_engine)
     
     @Slot(list, 'QVariant')
     def register_keyboard_event_cb(self, args, lua_engine):
@@ -142,7 +167,8 @@ class ControlInterface(ControlHandler):
         """
         cb = args[0]
         self.logger.debug(lambda: "Registering keyboard event callback")
-        self._keyboard_callbacks.append(cb)
+        self._keyboard_callbacks.append([cb, lua_engine])
+        self.engineRegisteredCallback.emit(lua_engine)
         
     # @shoop_lua_fn_docstring.start
     # midi_callback(message : midi_message, port : midi_control_port)
@@ -174,4 +200,5 @@ class ControlInterface(ControlHandler):
         """
         cb = lambda coords, event, _lua_engine=lua_engine, _cb=args[0]: _cb(_lua_engine.to_lua_val(coords), event)
         self.logger.debug(lambda: "Registering loop event callback")
-        self._loop_callbacks.append(cb)
+        self._loop_callbacks.append([cb, lua_engine])
+        self.engineRegisteredCallback.emit(lua_engine)

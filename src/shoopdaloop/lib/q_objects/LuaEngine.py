@@ -129,10 +129,12 @@ class LuaEngine(QObject):
         self.logger.debug(lambda: 'Creating Lua interface for QObject: {}'.format(qobject))
         module = create_lua_qobject_interface(self, qobject)
         self._G_registrar(name, module)
+    
+    @Slot()
+    def stop(self):
+        del self.lua
+        self.logger.debug(lambda: 'Lua runtime closed.')
 
     ##########
     ## INTERNAL MEMBERS
     ##########
-
-    def __del__(self):
-        self.logger.debug(lambda: 'LuaEngine: deleted.')

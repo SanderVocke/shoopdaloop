@@ -194,20 +194,30 @@ Item {
         object: control_interface
     }
 
-    LuaScriptWithEngine {
-        script_name: 'keyboard.lua'
-        script_code: file_io.read_file(
-            file_io.get_installation_directory() + '/lib/lua/builtins/keyboard.lua'
-        )
-        control_interface: control_interface
-    }
+    // LuaScriptWithEngine {
+    //     script_name: 'keyboard.lua'
+    //     script_code: file_io.read_file(
+    //         file_io.get_installation_directory() + '/lib/lua/builtins/keyboard.lua'
+    //     )
+    //     control_interface: control_interface
+    // }
 
-    LuaScriptWithEngine {
-        script_name: 'akai_apc_mini_mk1.lua'
-        script_code: file_io.read_file(
-            file_io.get_installation_directory() + '/lib/lua/builtins/akai_apc_mini_mk1.lua'
-        )
+    // LuaScriptWithEngine {
+    //     script_name: 'akai_apc_mini_mk1.lua'
+    //     script_code: file_io.read_file(
+    //         file_io.get_installation_directory() + '/lib/lua/builtins/akai_apc_mini_mk1.lua'
+    //     )
+    //     control_interface: control_interface
+    // }
+
+    LuaScriptManager {
         control_interface: control_interface
+
+        RegisterInRegistry {
+            object: parent
+            key: 'lua_script_manager'
+            registry: registries.state_registry
+        }
     }
 
     MidiControl {
