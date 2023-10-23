@@ -41,12 +41,24 @@ Item {
     }
 
     function maybe_docstring(script_path) {
-        if (script_path in active_scripts) {
-            if (active_scripts[script_path].maybe_script_docstring) {
-                return active_scripts[script_path].maybe_script_docstring
+        let contents = file_io.read_file(script_path)
+        let lines = contents.split("\n")
+        let docstring = ""
+        var found = false
+
+        for(let line of lines) {
+            let m = line.match(/^\s*--\s*(.*)$/)
+            if (m) {
+                docstring += m[1] + "\n"
+                found = true
+            } else if (line.match(/^\s*$/)) {
+                continue
+            } else {
+                break
             }
         }
-        return null
+
+        return found ? docstring : null
     }
 
     function kill(script_path) {

@@ -3,6 +3,7 @@ import QtQuick.Controls 6.3
 import QtQuick.Layouts 6.3
 import QtQuick.Controls.Material 6.3
 import Qt.labs.qmlmodels 1.0
+import QtQuick.Dialogs
 
 import ShoopDaLoop.PythonLogger
 
@@ -390,10 +391,14 @@ Dialog {
         }
         property alias script_manager: lookup_script_manager.object
 
+        function builtins_path() {
+            return file_io.realpath(file_io.get_installation_directory() + '/lib/lua/builtins')
+        }
+
         function full_path(script_name) {
             var fullpath = script_name
             if (!file_io.is_absolute(fullpath)) {
-                fullpath = file_io.get_installation_directory() + '/lib/lua/builtins/' + fullpath
+                fullpath = builtins_path() + '/' + fullpath
             }
             if (!file_io.exists(fullpath)) {
                 return null
@@ -469,6 +474,23 @@ Dialog {
             let docstring = script_manager.maybe_docstring(fullpath)
             return docstring
         }
+        
+        function kind(script_name) {
+            let fullpath = full_path(script_name)
+            if (fullpath == null) {
+                return 'n/a'
+            }
+            let is_builtin = fullpath.startsWith(builtins_path())
+            return is_builtin ? 'built-in' : 'user'
+        }
+
+        function add_script(filename) {
+            known_scripts.push({
+                'path_or_filename': filename,
+                'run': false
+            })
+            known_scriptsChanged()
+        }
 
         Column {
             width: parent.width
@@ -505,6 +527,25 @@ Dialog {
                             property var mapped_item
                             property int index
                             text: file_io.basename(mapped_item.path_or_filename)
+                        }
+                    }
+
+                    // column
+                    Label {
+                        text: 'Kind'
+                        font.bold: true
+                    }
+                    Mapper {
+                        model : script_ui.known_scripts
+                        Label {
+                            property var mapped_item
+                            property int index
+                            property string script_name: mapped_item.path_or_filename
+                            text: script_ui.kind(script_name)
+                            Connections {
+                                target: script_ui.script_manager
+                                function onChanged() { text = Qt.binding(() => script_ui.kind(script_name)) }
+                            }
                         }
                     }
 
@@ -555,9 +596,9 @@ Dialog {
                     }
 
                     // column
-                    Label {
-                        text: 'Controls'
-                        font.bold: true
+                    Item {
+                        width: 1
+                        height: 1
                     }
                     Mapper {
                         model : script_ui.known_scripts
@@ -583,11 +624,58 @@ Dialog {
                                     anchors.centerIn: parent
                                 }
                                 onClicked: {
-                                    // bla
+                                    var window = script_doc_dialog_factory.createObject(root.parent, {
+                                        script_name: file_io.basename(mapped_item.path_or_filename),
+                                        docstring: maybe_docstring,
+                                        visible: true
+                                    })
                                 }
                             }
                         }
                     }
+                }
+            }
+
+            Button {
+                text: 'Add user script'
+                onClicked: userscriptdialog.open()
+
+                FileDialog {
+                    id: userscriptdialog
+                    fileMode: FileDialog.OpenFile
+                    acceptLabel: 'Load LUA script'
+                    nameFilters: ["LUA script files (*.lua)"]
+                    onAccepted: {
+                        close()
+                        var filename = selectedFile.toString().replace('file://', '');
+                        script_ui.add_script(filename)
+                    }
+                    options: FileDialog.DontUseNativeDialog
+                }
+            }
+        }
+    }
+
+    Component {
+        id: script_doc_dialog_factory
+        ApplicationWindow {
+            id: window
+            property string script_name: '<unknown script>'
+            property string docstring: ''
+            title: `${script_name} documentation`
+
+            width: 500
+            height: 500
+            minimumWidth: 100
+            minimumHeight: 100
+            
+            Material.theme: Material.Dark
+
+            ScrollView {
+                anchors.fill: parent
+                id: view
+                Label {
+                    text: window.docstring
                 }
             }
         }

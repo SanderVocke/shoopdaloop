@@ -10,7 +10,6 @@ Item {
     property alias script_path: script.script_path
     property alias catch_errors: script.catch_errors
     property alias ready: script.ready
-    property alias maybe_script_docstring : script.maybe_script_docstring
 
     property bool ran: false
     property bool listening: false

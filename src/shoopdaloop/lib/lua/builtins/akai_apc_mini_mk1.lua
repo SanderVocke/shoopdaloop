@@ -1,8 +1,15 @@
-print_debug("Init akai_apc_mini_mk1.lua")
+-- akai_apc_mini_mk1.lua: Deep integration for the Akai APC Mini MK1.
+--
+-- This script will automatically open MIDI ports and connect to the APC Mini.
+--
+-- Once connected:
+--
+-- - Grid buttons will light up to indicate the state of each loop.
+-- - Faders will control the track output volumes.
+-- - Clicking a grid button will perform the default loop action
+--   (see generic ShoopDaLoop documentation) for that loop.
 
-_script_docstring = [[
-akai_apc_mini_mk1.lua: Deep integration for the Akai APC Mini MK1.
-]]
+print_debug("Init akai_apc_mini_mk1.lua")
 
 local shoop_control = require('shoop_control')
 local shoop_helpers = require('shoop_helpers')

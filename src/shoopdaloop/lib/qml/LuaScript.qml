@@ -20,11 +20,6 @@ Item {
 
     property bool ready : false
 
-    property var maybe_script_docstring: null
-    onMaybe_script_docstringChanged: {
-            logger.warning(() => ("Script docstring: " + maybe_script_docstring))
-    }
-
     signal ranScript()
 
     function accept() {
@@ -50,9 +45,7 @@ Item {
 
     onAccepted_script_codeChanged: {
         logger.trace(() => ("Accepted code: " + accepted_script_code))
-        execute(accepted_script_code, true, script_name)
-        let maybe_docstring = evaluate("if type(_script_docstring) != 'nil' then return _script_docstring else return nil end")
-        if (maybe_docstring) { maybe_script_docstring = maybe_docstring }
+        execute(accepted_script_code, true, script_name, catch_errors)
         ready = true
         ranScript()
     }
