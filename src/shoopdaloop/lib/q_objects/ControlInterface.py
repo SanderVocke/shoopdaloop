@@ -59,22 +59,22 @@ class ControlInterface(ControlHandler):
     
     @Slot(int, int)
     def key_pressed(self, key, modifiers):
+        self.logger.trace(lambda: "Key pressed: {} ({})".format(key, modifiers))
         for cb in self._keyboard_callbacks:
             cb(KeyEventType.Pressed, key, modifiers)
     
     @Slot(int, int)
     def key_released(self, key, modifiers):
+        self.logger.trace(lambda: "Key pressed: {} ({})".format(key, modifiers))
         for cb in self._keyboard_callbacks:
             cb(KeyEventType.Released, key, modifiers)
     
-    @Slot(list, 'QVariant', 'QVariant')
-    def loop_event(self, coords, event, scripting_engine):
+    @Slot(list, 'QVariant')
+    def loop_event(self, coords, event):
         if isinstance(event, QJSValue):
             event = event.toVariant()
         if isinstance(coords, QJSValue):
             coords = coords.toVariant()
-        if scripting_engine:
-            coords = scripting_engine.to_lua_val(coords)
         for cb in self._loop_callbacks:
             cb(coords, event)
             
@@ -90,8 +90,8 @@ class ControlInterface(ControlHandler):
     
     # Functions meant for Lua use
             
-    @Slot(str, 'QVariant')
-    def auto_open_device_specific_midi_control_input(self, device_name_filter_regex, msg_cb):
+    @Slot(list, 'QVariant')
+    def auto_open_device_specific_midi_control_input(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.auto_open_device_specific_midi_control_input(device_name_filter_regex, message_callback)
@@ -99,6 +99,8 @@ class ControlInterface(ControlHandler):
         Also registers a callback for received MIDI events on such a port. See midi_callback for details.
         @shoop_lua_fn_docstring.end
         """
+        device_name_filter_regex = args[0]
+        msg_cb = args[1]
         self.logger.debug(lambda: "Registering MIDI input control port rule for devices '{}'".format(device_name_filter_regex))
         self._midi_input_port_rules.append({
             'id': self._rule_id,
@@ -108,15 +110,18 @@ class ControlInterface(ControlHandler):
         self.midiInputPortRulesChanged.emit()
         self._rule_id += 1
     
-    @Slot(str, 'QVariant', 'QVariant')
-    def auto_open_device_specific_midi_control_output(self, device_name_filter_regex, opened_cb, connected_cb):
+    @Slot(list, 'QVariant')
+    def auto_open_device_specific_midi_control_output(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
-        shoop_control.auto_open_device_specific_midi_control_output(device_name_filter_regex, opened_callback)
+        shoop_control.auto_open_device_specific_midi_control_output(device_name_filter_regex, opened_callback, connected_callback)
         Instruct the application to automatically open a MIDI control output port if a device matching the regex appears, and connect to it.
-        Also registers a callback for when the port is opened and connected. This callback just passes a port object which has a 'send' method to send bytes.
+        Also registers callbacks for when the port is opened and connected. This callbacks just pass a port object which has a 'send' method to send bytes.
         @shoop_lua_fn_docstring.end
         """
+        device_name_filter_regex = args[0]
+        opened_cb = args[1]
+        connected_cb = args[2]
         self.logger.debug(lambda: "Registering MIDI output control port rule for devices '{}'".format(device_name_filter_regex))
         self._midi_output_port_rules.append({
             'id': self._rule_id,
@@ -127,14 +132,15 @@ class ControlInterface(ControlHandler):
         self.midiOutputPortRulesChanged.emit()
         self._rule_id += 1
     
-    @Slot('QVariant')
-    def register_keyboard_event_cb(self, cb):
+    @Slot(list, 'QVariant')
+    def register_keyboard_event_cb(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.register_keyboard_event_cb(callback)
         Register a callback for keyboard events. See keyboard_callback for details.
         @shoop_lua_fn_docstring.end
         """
+        cb = args[0]
         self.logger.debug(lambda: "Registering keyboard event callback")
         self._keyboard_callbacks.append(cb)
         
@@ -153,13 +159,19 @@ class ControlInterface(ControlHandler):
     # MIDI message type. Fields are: bytes (array of message bytes), note, channel, cc, value, program, velocity (only those fields which apply to the particular message).
     # @shoop_lua_fn_docstring.end
 
-    @Slot('QVariant')
-    def register_loop_event_cb(self, cb):
+    # @shoop_lua_fn_docstring.start
+    # type loop_callback
+    # Loop event callback type. The callback takes arguments (coords, event), where coords is [x, y] coordinates of the event, and event is a table containing fields 'mode' (mode), 'selected' (bool), 'targeted' (bool) and 'length' (int).
+    # @shoop_lua_fn_docstring.end
+
+    @Slot(list, 'QVariant')
+    def register_loop_event_cb(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.register_loop_event_cb(callback)
         Register a callback for loop events. See loop_callback for details.
         @shoop_lua_fn_docstring.end
         """
+        cb = lambda coords, event, _lua_engine=lua_engine, _cb=args[0]: _cb(_lua_engine.to_lua_val(coords), event)
         self.logger.debug(lambda: "Registering loop event callback")
         self._loop_callbacks.append(cb)

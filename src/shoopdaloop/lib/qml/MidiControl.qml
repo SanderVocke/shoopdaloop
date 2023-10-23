@@ -6,24 +6,34 @@ import '../midi_control.js' as Js
 
 Item {
     id: root
-    property bool when: false
     property bool ready: false
     property bool initialized: false
+    property var control_interface: null
+
+    LuaEngine {
+        id: lua_engine
+        ready: false
+        function update() {
+            if (root.control_interface) {
+                create_lua_qobject_interface_as_global('__shoop_control_interface', root)
+            }
+            ready = true
+        }
+        Component.onCompleted: update()
+    }
 
     function initialize() {
-        if (!when) { return; }
+        if (!lua_engine) { return; }
         if (initialized) { return; }
-
-        scripting_context = scripting_engine.new_context()
 
         // Include all the shoop libraries so that their functions can be used
         // without having to require them explicitly.
-        scripting_engine.execute(`
-declare_in_context('shoop_control', require('shoop_control'))
-declare_in_context('shoop_coords', require('shoop_coords'))
-declare_in_context('shoop_helpers', require('shoop_helpers'))
-declare_in_context('shoop_format', require('shoop_format'))
-`, scripting_context, 'MidiControl', true, true)
+        lua_engine.execute(`
+shoop_control = require('shoop_control')
+shoop_coords = require('shoop_coords')
+shoop_helpers = require('shoop_helpers')
+shoop_format = require('shoop_format')
+`, 'MidiControl', true, true)
 
         update_all_handlers()
 
@@ -33,17 +43,12 @@ declare_in_context('shoop_format', require('shoop_format'))
         initialized = true
     }
 
-    onWhenChanged: initialize()
     Component.onCompleted: initialize()
-    onConfigurationChanged: update_all_handlers()
-
-    property var scripting_context: null
-
-    Component.onDestruction: {
-        if (scripting_context !== null) {
-            scripting_engine.delete_context(scripting_context)
-        }
+    Connections {
+        target: lua_engine
+        function onReadyChanged() { root.initialize() }
     }
+    onConfigurationChanged: update_all_handlers()
 
     // The configuration is a list of [ [...filters], action ]
     // TODO: some optimization in the implementation so that we don't have to iterate over all the filters
@@ -58,11 +63,9 @@ declare_in_context('shoop_format', require('shoop_format'))
         property string action_name: 'unknown'
 
         readonly property var callable: {
-            if (action_or_script === null || configuration === null || root.scripting_context === null) {
+            if (action_or_script === null || configuration === null) {
                 return null
             }
-
-            let context = root.scripting_context
 
             let base_script = (typeof action_or_script === 'string') ? action_or_script : action_or_script.script
             let inputs = (typeof action_or_script === 'string') ? {} : action_or_script.inputs
@@ -88,11 +91,11 @@ declare_in_context('shoop_format', require('shoop_format'))
             script += ` end`
             root.logger.trace(() => ('Generated script: ' + script))
 
-            let fn = scripting_engine.evaluate(script, context, 'MidiControl', true, true)
+            let fn = lua_engine.evaluate(script, 'MidiControl', true, true)
             let _name = action_name
-            return function(msg, port, _fn=fn, name=_name, _context=context) {
+            return function(msg, port, _fn=fn, name=_name) {
                 root.logger.debug(() => (`Running action ${name}`))
-                scripting_engine.call(_fn, [msg, port], _context, false)
+                lua_engine.call(_fn, [msg, port], false)
             }
         }
     }

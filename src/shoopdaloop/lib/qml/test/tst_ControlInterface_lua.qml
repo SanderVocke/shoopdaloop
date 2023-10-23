@@ -33,12 +33,12 @@ Session {
         property bool done_imports: false
         function prepare_imports() {
             if (!done_imports) {
-                scripting_engine.execute(`
-declare_global('shoop_control', require('shoop_control'))
-declare_global('shoop_coords', require('shoop_coords'))
-declare_global('shoop_helpers', require('shoop_helpers'))
-declare_global('shoop_format', require('shoop_format'))
-`, null, 'MidiControl', true, true)
+                lua_engine.execute(`
+shoop_control = require('shoop_control')
+shoop_coords = require('shoop_coords')
+shoop_helpers = require('shoop_helpers')
+shoop_format = require('shoop_format')
+`, 'MidiControl', true, true)
                 done_imports = true
             }
         }
@@ -62,7 +62,7 @@ declare_global('shoop_format', require('shoop_format'))
 
         function do_eval(code) {
             prepare_imports()
-            return scripting_engine.evaluate(
+            return lua_engine.evaluate(
                 code,
                 null,
                 'test',
@@ -73,7 +73,7 @@ declare_global('shoop_format', require('shoop_format'))
 
         function do_execute(code) {
             prepare_imports()
-            scripting_engine.execute(
+            lua_engine.execute(
                 code,
                 null,
                 'test',

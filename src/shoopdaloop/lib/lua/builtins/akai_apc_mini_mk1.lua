@@ -1,8 +1,8 @@
 print_debug("Init akai_apc_mini_mk1.lua")
 
-declare_in_context('docstring', [[
+docstring = [[
 akai_apc_mini_mk1.lua: Deep integration for the Akai APC Mini MK1.
-]])
+]]
 
 local shoop_control = require('shoop_control')
 local shoop_helpers = require('shoop_helpers')

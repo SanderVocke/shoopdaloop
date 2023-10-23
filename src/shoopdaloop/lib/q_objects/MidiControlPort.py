@@ -141,9 +141,9 @@ class MidiControlPort(QQuickItem):
     ###########
     
     @Slot('QVariant')
-    def register_lua_interface(self, scripting_engine):
+    def register_lua_interface(self, lua_engine):
         # Create a Lua interface for ourselves
-        self._lua_obj = create_lua_qobject_interface(scripting_engine, self)
+        self._lua_obj = create_lua_qobject_interface(lua_engine, self)
     
     @Slot(int, int, result='QVariant')
     def get_cc_state(self, channel, cc):

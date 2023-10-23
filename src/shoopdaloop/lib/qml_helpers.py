@@ -23,7 +23,7 @@ from .q_objects.KeyModifiers import KeyModifiers
 from .q_objects.ApplicationMetadata import ApplicationMetadata
 from .q_objects.Logger import Logger
 from .q_objects.ControlHandler import ControlHandler
-from .q_objects.ScriptingEngine import ScriptingEngine
+from .q_objects.LuaEngine import LuaEngine
 from .q_objects.DictTreeModel import DictTreeModelFactory
 from .q_objects.ReleaseFocusNotifier import ReleaseFocusNotifier
 from .q_objects.ControlInterface import ControlInterface
@@ -56,7 +56,7 @@ def register_shoopdaloop_qml_classes():
     register_qml_class(KeyModifiers, 'KeyModifiers')
     register_qml_class(ApplicationMetadata, 'ApplicationMetadata')
     register_qml_class(Logger, 'Logger')
-    register_qml_class(ScriptingEngine, 'ScriptingEngine')
+    register_qml_class(LuaEngine, 'LuaEngine')
     register_qml_class(DictTreeModelFactory, 'DictTreeModelFactory')
     register_qml_class(ControlHandler, 'ControlHandler')
     register_qml_class(ReleaseFocusNotifier, 'ReleaseFocusNotifier')
@@ -81,7 +81,6 @@ def create_and_populate_root_context(engine, global_args, additional_items={}):
         'app_metadata': ApplicationMetadata(parent=engine),
         'default_logger': Logger(),
         'tree_model_factory': DictTreeModelFactory(parent=engine),
-        'scripting_engine': ScriptingEngine(parent=engine),
         'release_focus_notifier': ReleaseFocusNotifier(parent=engine),
         'global_args': global_args,
         'settings_io': SettingsIO(parent=engine),

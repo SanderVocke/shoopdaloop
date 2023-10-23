@@ -20,11 +20,4 @@ Item {
     // - one to keep track of FX chain states caching
     // - one to keep track of any important objects by ID.
     property Registry fx_chain_states_registry: Registry { verbose: true }
-
-    // Component.onCompleted: {
-    //     // Store in global context
-    //     registries.state_registry = state_registry
-    //     registries.objects_registry = objects_registry
-    //     registries.fx_chain_states_registry = fx_chain_states_registry
-    // }
 }

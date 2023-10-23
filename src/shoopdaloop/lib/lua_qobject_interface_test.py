@@ -1,5 +1,5 @@
 
-from .q_objects.ScriptingEngine import ScriptingEngine
+from .q_objects.LuaEngine import LuaEngine
 from .q_objects.ControlHandler import ControlHandler
 from .lua_qobject_interface import create_lua_qobject_interface, lua_str
 
@@ -8,7 +8,7 @@ from PySide6.QtCore import QObject, Slot
 import pytest
 
 def test_init():
-    eng = ScriptingEngine()
+    eng = LuaEngine()
     create_lua_qobject_interface(eng, QObject())
 
 def test_callback():
@@ -35,8 +35,8 @@ def test_callback():
             return arg
     
     obj = TestHandler()
-    eng = ScriptingEngine()
-    eng.create_lua_qobject_interface_as_sandboxed_global('testy', obj)
+    eng = LuaEngine()
+    eng.create_lua_qobject_interface_as_global('testy', obj)
 
     assert(eng.evaluate('return testy.foo()') == 'bar')
     assert(eng.evaluate('return testy.foz("baz")') == 'baz')

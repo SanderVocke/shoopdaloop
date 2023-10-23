@@ -1,6 +1,6 @@
 print_debug("Init keyboard.lua")
 
-declare_in_context('docstring', [[
+docstring = [[
 keyboard.lua: Handle keyboard events.
 
 This script allows controlling ShoopDaLoop through keyboard keys.
@@ -40,7 +40,7 @@ Note that for the loop-transitioning keys in the list above, whether the loop
 transitions instantly or in sync with the master loop depends on the global
 "synchronization active" state. This can be toggled in the UI or momentarily
 toggled by holding the Ctrl button.
-]])
+]]
 
 local shoop_control = require('shoop_control')
 local shoop_helpers = require('shoop_helpers')

@@ -194,25 +194,25 @@ Item {
         object: control_interface
     }
 
-    LuaScript {
-        when: control_interface.ready
+    LuaScriptWithEngine {
         script_name: 'keyboard.lua'
-        script_code: control_interface.ready ? file_io.read_file(
+        script_code: file_io.read_file(
             file_io.get_installation_directory() + '/lib/lua/builtins/keyboard.lua'
-        ) : null
+        )
+        control_interface: control_interface
     }
 
-    LuaScript {
-        when: control_interface.ready
+    LuaScriptWithEngine {
         script_name: 'akai_apc_mini_mk1.lua'
-        script_code: control_interface.ready ? file_io.read_file(
+        script_code: file_io.read_file(
             file_io.get_installation_directory() + '/lib/lua/builtins/akai_apc_mini_mk1.lua'
-        ) : null
+        )
+        control_interface: control_interface
     }
 
     MidiControl {
         id: midi_control
-        when: control_interface.ready
+        control_interface: control_interface
         configuration: lookup_midi_configuration.object || fallback
 
         MidiControlConfiguration { id: fallback }

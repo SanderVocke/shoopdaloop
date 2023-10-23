@@ -246,7 +246,7 @@ LuaControlInterface {
                         }
                     })
                     port.msgReceived.connect((msg, cb=rule.msg_cb) => {
-                        scripting_engine.call(cb, [Midi.parse_msg(msg), null], null, false) 
+                        lua_engine.call(cb, [Midi.parse_msg(msg), null], null, false) 
                     })
                     midi_control_ports[i] = port
                     midi_control_portsChanged()
@@ -278,10 +278,10 @@ LuaControlInterface {
                     port.initializedChanged.connect((initialized, cb=rule.opened_cb, p=port) => {
                         if (initialized) {
                             let send_fn = p.get_py_send_fn()
-                            scripting_engine.call(cb, [send_fn], null, true) }
+                            lua_engine.call(cb, [send_fn], null, true) }
                     })
                     port.connected.connect((cb=rule.connected_cb) => {
-                        scripting_engine.call(cb, [], null, false)
+                        lua_engine.call(cb, [], null, false)
                     })
                     port.detectedExternalAutoconnectPartnerWhileClosed.connect((p=port) => {
                         if (!p.may_open) {
@@ -316,7 +316,7 @@ LuaControlInterface {
                     'selected': mapped_item.selected,
                     'targeted': mapped_item.targeted,
                 }
-                control_interface.loop_event(coords, event, scripting_engine)
+                control_interface.loop_event(coords, event)
             }
             Connections {
                 target: mapped_item
