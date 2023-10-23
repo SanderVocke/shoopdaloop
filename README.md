@@ -34,7 +34,7 @@ To summarize why ShoopDaLoop exists and what the goals and plans are, a short co
 | Designed for live use       | ✅                        | ✅               | ✅                      | ❌                      |
 | Plugin Host                 | ✅ <sup>(1)</sup>         | ❌               | ❌                      | ✅                      |
 | Song/performance sequencing | ❌ (planned)              | ❌               | ❌                      | ✅ (not sure of details) |
-| MIDI controller support     | ❌ (planned v. LUA scripts) | ✅ (MIDI learn)  | ✅ (not sure of method) | ✅ (not sure of method) |
+| MIDI controller support     | ✅ (learn / script)       | ✅ (MIDI learn)  | ✅ (not sure of method) | ✅ (not sure of method) |
 | NSM Session Management      | ✅                        | ✅               | ✅                      | ✅                      |
 | Overdubbing                 | ❌ (planned)              | ✅               | ✅                      | ?                      |
 | Plugin scripts              | ✅ <sup>(3)</sup>         | ❌               | ❌                      | ✅                     |
