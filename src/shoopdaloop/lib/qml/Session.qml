@@ -282,7 +282,8 @@ Item {
             id: midi_control_port
             name_hint: "control"
             direction: Types.PortDirection.Input
-
+            lua_engine: midi_control.lua_engine
+            
             RegistryLookup {
                 id: lookup_autoconnect
                 registry: registries.state_registry

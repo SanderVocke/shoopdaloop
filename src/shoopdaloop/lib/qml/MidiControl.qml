@@ -9,9 +9,10 @@ Item {
     property bool ready: false
     property bool initialized: false
     property var control_interface: null
+    property var lua_engine: _lua_engine
 
     LuaEngine {
-        id: lua_engine
+        id: _lua_engine
         ready: false
         function update() {
             if (root.control_interface) {
@@ -29,7 +30,7 @@ Item {
 
         // Include all the shoop libraries so that their functions can be used
         // without having to require them explicitly.
-        lua_engine.execute(`
+        _lua_engine.execute(`
 shoop_control = require('shoop_control')
 shoop_coords = require('shoop_coords')
 shoop_helpers = require('shoop_helpers')
@@ -46,7 +47,7 @@ shoop_format = require('shoop_format')
 
     Component.onCompleted: initialize()
     Connections {
-        target: lua_engine
+        target: _lua_engine
         function onReadyChanged() { root.initialize() }
     }
     onConfigurationChanged: update_all_handlers()
@@ -92,11 +93,11 @@ shoop_format = require('shoop_format')
             script += ` end`
             root.logger.trace(() => ('Generated script: ' + script))
 
-            let fn = lua_engine.evaluate(script, 'MidiControl', true, true)
+            let fn = _lua_engine.evaluate(script, 'MidiControl', true, true)
             let _name = action_name
             return function(msg, port, _fn=fn, name=_name) {
                 root.logger.debug(() => (`Running action ${name}`))
-                lua_engine.call(_fn, [msg, port], false)
+                _lua_engine.call(_fn, [msg, port], false)
             }
         }
     }
