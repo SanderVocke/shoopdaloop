@@ -19,26 +19,46 @@ Session {
         [], [])
     }
 
+    LuaEngine {
+        id: lua_engine
+        ready: false
+        function update() {
+            if (session.control_interface) {
+                create_lua_qobject_interface_as_global('__shoop_control_interface', session.control_interface)
+                ready = true
+            }
+        }
+        Component.onCompleted: update()
+        Component.onDestruction: session.control_interface.unregister_lua_engine(engine)
+    }
+    Connections {
+        target: session
+        function onControl_interfaceChanged() { lua_engine.update() }
+    }
+
     ShoopSessionTestCase {
         id: testcase
         name: 'ControlInterface'
         filename : TestFilename.test_filename()
         session: session
-        when: session.control_interface.ready && registries.state_registry
+        when: lua_engine.ready && registries.state_registry && loop_at(0,0) && loop_at(0,1) && loop_at(1,0) && loop_at(1,1)
 
         function loop_at(track, idx) {
-            return session.tracks[track].loops[idx]
+            if (session.tracks.length > track && session.tracks[track].loops.length > idx) {
+                return session.tracks[track].loops[idx]
+            }
+            return null
         }
 
         property bool done_imports: false
         function prepare_imports() {
             if (!done_imports) {
-                scripting_engine.execute(`
-declare_global('shoop_control', require('shoop_control'))
-declare_global('shoop_coords', require('shoop_coords'))
-declare_global('shoop_helpers', require('shoop_helpers'))
-declare_global('shoop_format', require('shoop_format'))
-`, null, 'MidiControl', true, true)
+                lua_engine.execute(`
+shoop_control = require('shoop_control')
+shoop_coords = require('shoop_coords')
+shoop_helpers = require('shoop_helpers')
+shoop_format = require('shoop_format')
+`, 'MidiControl', true, true)
                 done_imports = true
             }
         }
@@ -62,9 +82,8 @@ declare_global('shoop_format', require('shoop_format'))
 
         function do_eval(code) {
             prepare_imports()
-            return scripting_engine.evaluate(
+            return lua_engine.evaluate(
                 code,
-                null,
                 'test',
                 true,
                 false
@@ -73,9 +92,8 @@ declare_global('shoop_format', require('shoop_format'))
 
         function do_execute(code) {
             prepare_imports()
-            scripting_engine.execute(
+            lua_engine.execute(
                 code,
-                null,
                 'test',
                 true,
                 false

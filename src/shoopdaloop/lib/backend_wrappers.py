@@ -489,6 +489,13 @@ class BackendDecoupledMidiPort:
         if self._c_handle:
             close_decoupled_midi_port(self._c_handle)
     
+    def send_midi(self, msg):
+        data_type = c_ubyte * len(msg)
+        arr = data_type()
+        for i in range(len(msg)):
+            arr[i] = msg[i]
+        send_decoupled_midi(self._c_handle, len(msg), arr)
+    
     def __del__(self):
         self.destroy()
             

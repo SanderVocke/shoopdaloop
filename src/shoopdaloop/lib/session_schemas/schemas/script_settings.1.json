@@ -11,11 +11,10 @@
                         "type": "object",
                         "properties": {
                             "path_or_filename": { "type": "string" },
-                            "is_builtin": { "type": "boolean" },
-                            "run": { "type": "string" }
+                            "run": { "type": "boolean" }
                         },
                         "required": [
-                            "path_or_filename", "is_builtin", "run"
+                            "path_or_filename", "run"
                         ]
                     }
                 }

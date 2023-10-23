@@ -202,11 +202,11 @@ class ControlHandler(QQuickItem):
             func(self, *args, **kwargs)
             if self.qml_instance:
                 try:
-                    return self._methods[func.__name__ + "_override"]['call_qml'](*args)
+                    return self._methods[func.__name__ + "_override"]['call_qml'](*args[0])
                 except RuntimeError as e:
                     self.logger.error(lambda: "Failed to call QML override: {}".format(str(e)))
 
-            self.cache_call([func.__name__, *args])
+            self.cache_call([func.__name__, *args[0]])
             raise NotImplementedError(
                 "ControlHandler interface {0} not or incorrectly overridden.".format(func.__name__)
             )
@@ -224,18 +224,9 @@ class ControlHandler(QQuickItem):
             self._qml_instance = val
             self.qml_instance_changed.emit(val)
 
-    # LOOPS
-    # loop_selector selects the loop(s) to target.
-    # For some interfaces only one loop may be selected (e.g. getters).
-    # For some interfaces, the selector may yield multiple loops (e.g. transitions).
-    # The selector can be one of:
-    # - [track_idx, loop_idx]   (select single by coords)
-    # - [[track_idx, loop_idx], [track_idx, loop_idx], ...]  (select multiple by coords)
-    # - (loop) => <true/false> (functor which is passed the loop widget and should return true/false)
-
-    @Slot('QVariant', result=int)
+    @Slot(list, 'QVariant', result=int)
     @allow_qml_override
-    def loop_count(self, loop_selector):
+    def loop_count(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.loop_count(loop_selector) -> int
@@ -244,9 +235,9 @@ class ControlHandler(QQuickItem):
         """
         pass
 
-    @Slot('QVariant', result=list)
+    @Slot(list, 'QVariant', result=list)
     @allow_qml_override
-    def loop_get_mode(self, loop_selector):
+    def loop_get_mode(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.loop_get_mode(loop_selector) -> list[LoopMode]
@@ -255,9 +246,9 @@ class ControlHandler(QQuickItem):
         """
         pass
 
-    @Slot('QVariant', result=list)
+    @Slot(list, 'QVariant', result=list)
     @allow_qml_override
-    def loop_get_length(self, loop_selector):
+    def loop_get_length(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.loop_get_length(loop_selector) -> list[int]
@@ -266,9 +257,9 @@ class ControlHandler(QQuickItem):
         """
         pass
     
-    @Slot(result='QVariant')
+    @Slot(list, 'QVariant', result='QVariant')
     @allow_qml_override
-    def loop_get_which_selected(self):
+    def loop_get_which_selected(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.loop_get_which_selected() -> [[x1,y1],[x2,y2],...]
@@ -277,9 +268,9 @@ class ControlHandler(QQuickItem):
         """
         pass
 
-    @Slot(result='QVariant')
+    @Slot(list, 'QVariant', result='QVariant')
     @allow_qml_override
-    def loop_get_all(self):
+    def loop_get_all(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.loop_get_all() -> [[x1,y1],[x2,y2],...]
@@ -288,9 +279,9 @@ class ControlHandler(QQuickItem):
         """
         pass
     
-    @Slot(result='QVariant')
+    @Slot(list, 'QVariant', result='QVariant')
     @allow_qml_override
-    def loop_get_which_targeted(self):
+    def loop_get_which_targeted(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.loop_get_which_targeted() -> [x,y] | nil
@@ -299,9 +290,9 @@ class ControlHandler(QQuickItem):
         """
         pass
 
-    @Slot(int, result='QVariant')
+    @Slot(list, 'QVariant', result='QVariant')
     @allow_qml_override
-    def loop_get_by_mode(self, mode):
+    def loop_get_by_mode(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.loop_get_by_mode(mode) -> [[x1,y1],[x2,y2],...]
@@ -310,9 +301,9 @@ class ControlHandler(QQuickItem):
         """
         pass
 
-    @Slot(int, result='QVariant')
+    @Slot(list, 'QVariant', result='QVariant')
     @allow_qml_override
-    def loop_get_by_track(self, track):
+    def loop_get_by_track(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.loop_get_by_track(track) -> [[x1,y1],[x2,y2],...]
@@ -321,9 +312,9 @@ class ControlHandler(QQuickItem):
         """
         pass
 
-    @Slot('QVariant', result=list)
+    @Slot(list, 'QVariant', result=list)
     @allow_qml_override
-    def loop_get_volume(self, loop_selector):
+    def loop_get_volume(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.loop_get_volume(loop_selector) -> list[float]
@@ -332,9 +323,9 @@ class ControlHandler(QQuickItem):
         """
         pass
     
-    @Slot('QVariant', result=list)
+    @Slot(list, 'QVariant', result=list)
     @allow_qml_override
-    def loop_get_volume_slider(self, loop_selector):
+    def loop_get_volume_slider(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.loop_get_volume(loop_selector) -> list[float]
@@ -343,9 +334,9 @@ class ControlHandler(QQuickItem):
         """
         pass
     
-    @Slot('QVariant', float)
+    @Slot(list, 'QVariant')
     @allow_qml_override
-    def loop_set_volume(self, loop_selector, volume):
+    def loop_set_volume(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.loop_set_volume(loop_selector, volume)
@@ -354,9 +345,9 @@ class ControlHandler(QQuickItem):
         """
         pass
     
-    @Slot('QVariant', float)
+    @Slot(list, 'QVariant')
     @allow_qml_override
-    def loop_set_volume_slider(self, loop_selector, volume):
+    def loop_set_volume_slider(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.loop_set_volume(loop_selector)
@@ -365,9 +356,9 @@ class ControlHandler(QQuickItem):
         """
         pass
 
-    @Slot('QVariant', result=list)
+    @Slot(list, 'QVariant', result=list)
     @allow_qml_override
-    def loop_get_balance(self, loop_selector):
+    def loop_get_balance(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.loop_get_balance(loop_selector) -> list[float]
@@ -377,9 +368,9 @@ class ControlHandler(QQuickItem):
         pass
 
     # Loop action interfaces
-    @Slot('QVariant', int, int)
+    @Slot(list, 'QVariant')
     @allow_qml_override
-    def loop_transition(self, loop_selector, mode, cycles_delay):
+    def loop_transition(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.loop_transition(loop_selector, mode, cycles_delay)
@@ -388,9 +379,9 @@ class ControlHandler(QQuickItem):
         """
         pass
 
-    @Slot('QVariant', int, int)
+    @Slot(list, 'QVariant')
     @allow_qml_override
-    def loop_record_n(self, loop_selector, n_cycles, cycles_delay):
+    def loop_record_n(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.loop_record_n(loop_selector, n_cycles, cycles_delay)
@@ -399,9 +390,9 @@ class ControlHandler(QQuickItem):
         """
         pass
 
-    @Slot('QVariant')
+    @Slot(list, 'QVariant')
     @allow_qml_override
-    def loop_record_with_targeted(self, loop_selector):
+    def loop_record_with_targeted(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.loop_record_with_targeted(loop_selector)
@@ -410,9 +401,9 @@ class ControlHandler(QQuickItem):
         """
         pass
 
-    @Slot('QVariant', float)
+    @Slot(list, 'QVariant')
     @allow_qml_override
-    def loop_set_balance(self, loop_selector, balance):
+    def loop_set_balance(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.loop_set_balance(loop_selector, balance)
@@ -421,9 +412,9 @@ class ControlHandler(QQuickItem):
         """
         pass
 
-    @Slot('QVariant', bool)
+    @Slot(list, 'QVariant')
     @allow_qml_override
-    def loop_select(self, loop_selector, deselect_others):
+    def loop_select(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.loop_select(loop_selector)
@@ -432,9 +423,9 @@ class ControlHandler(QQuickItem):
         """
         pass
 
-    @Slot('QVariant')
+    @Slot(list, 'QVariant')
     @allow_qml_override
-    def loop_target(self, loop_selector):
+    def loop_target(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.loop_target(loop_selector)
@@ -444,9 +435,9 @@ class ControlHandler(QQuickItem):
         """
         pass
 
-    @Slot('QVariant')
+    @Slot(list, 'QVariant')
     @allow_qml_override
-    def loop_clear(self, loop_selector):
+    def loop_clear(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.loop_clear(loop_selector)
@@ -455,18 +446,10 @@ class ControlHandler(QQuickItem):
         """
         pass
 
-    # track
-    # track_selector selects the track(s) to target.
-    # For some interfaces only one track may be selected (e.g. getters).
-    # For some interfaces, the selector may yield multiple tracks (e.g. set volume).
-    # The selector can be one of:
-    # - [track_idx, fn] (fn is (track) => true/false, applied to tracks of track)
-    # - fn              (fn is (track) => true/false, applied to tracks of all tracks)
-
     # track getter interfaces
-    @Slot('QVariant', result=list)
+    @Slot(list, 'QVariant', result=list)
     @allow_qml_override
-    def track_get_volume(self, track_selector):
+    def track_get_volume(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.track_get_volume(track_selector) -> list[float]
@@ -475,9 +458,9 @@ class ControlHandler(QQuickItem):
         """
         pass
     
-    @Slot('QVariant', result=list)
+    @Slot(list, 'QVariant', result=list)
     @allow_qml_override
-    def track_get_volume_slider(self, track_selector):
+    def track_get_volume_slider(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.track_get_volume_slider(track_selector) -> list[float]
@@ -486,9 +469,9 @@ class ControlHandler(QQuickItem):
         """
         pass
     
-    @Slot('QVariant', result=list)
+    @Slot(list, 'QVariant', result=list)
     @allow_qml_override
-    def track_get_input_volume(self, track_selector):
+    def track_get_input_volume(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.track_get_input_volume(track_selector) -> list[float]
@@ -497,9 +480,9 @@ class ControlHandler(QQuickItem):
         """
         pass
     
-    @Slot('QVariant', result=list)
+    @Slot(list, 'QVariant', result=list)
     @allow_qml_override
-    def track_get_input_volume_slider(self, track_selector):
+    def track_get_input_volume_slider(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.track_get_input_volume_slider(track_selector) -> list[float]
@@ -508,9 +491,9 @@ class ControlHandler(QQuickItem):
         """
         pass
 
-    @Slot('QVariant', result=list)
+    @Slot(list, 'QVariant', result=list)
     @allow_qml_override
-    def track_get_muted(self, track_selector):
+    def track_get_muted(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.track_get_muted(track_selector) -> list[bool]
@@ -519,9 +502,9 @@ class ControlHandler(QQuickItem):
         """
         pass
     
-    @Slot('QVariant', bool)
+    @Slot(list, 'QVariant')
     @allow_qml_override
-    def track_set_muted(self, track_selector, muted):
+    def track_set_muted(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.track_set_muted(track_selector, bool)
@@ -530,9 +513,9 @@ class ControlHandler(QQuickItem):
         """
         pass
 
-    @Slot('QVariant', result=list)
+    @Slot(list, 'QVariant', result=list)
     @allow_qml_override
-    def track_get_input_muted(self, track_selector):
+    def track_get_input_muted(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.track_get_input_muted(track_selector) -> list[bool]
@@ -541,9 +524,9 @@ class ControlHandler(QQuickItem):
         """
         pass
 
-    @Slot('QVariant', bool)
+    @Slot(list, 'QVariant')
     @allow_qml_override
-    def track_set_input_muted(self, track_selector, muted):
+    def track_set_input_muted(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.track_set_input_muted(track_selector, muted)
@@ -552,9 +535,9 @@ class ControlHandler(QQuickItem):
         """
         pass
 
-    @Slot('QVariant', float)
+    @Slot(list, 'QVariant')
     @allow_qml_override
-    def track_set_volume(self, track_selector, vol):
+    def track_set_volume(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.track_set_volume(track_selector, vol)
@@ -563,9 +546,9 @@ class ControlHandler(QQuickItem):
         """
         pass
     
-    @Slot('QVariant', float)
+    @Slot(list, 'QVariant')
     @allow_qml_override
-    def track_set_volume_slider(self, track_selector, vol):
+    def track_set_volume_slider(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.track_set_volume_slider(track_selector, vol)
@@ -574,9 +557,9 @@ class ControlHandler(QQuickItem):
         """
         pass
     
-    @Slot('QVariant', float)
+    @Slot(list, 'QVariant')
     @allow_qml_override
-    def track_set_input_volume(self, track_selector, vol):
+    def track_set_input_volume(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.track_set_input_volume(track_selector, vol)
@@ -585,9 +568,9 @@ class ControlHandler(QQuickItem):
         """
         pass
     
-    @Slot('QVariant', float)
+    @Slot(list, 'QVariant')
     @allow_qml_override
-    def track_set_input_volume_slider(self, track_selector, vol):
+    def track_set_input_volume_slider(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.track_set_input_volume_slider(track_selector, vol)

@@ -6,7 +6,6 @@
 // The intended use cases is controllers, where the time is
 // not very relevant.
 struct DecoupledMidiMessage {
-    uint32_t size;
     std::vector<uint8_t> data;
 };
 

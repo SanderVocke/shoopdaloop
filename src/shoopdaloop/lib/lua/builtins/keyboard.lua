@@ -1,46 +1,44 @@
+-- keyboard.lua: Handle keyboard events.
+--
+-- This script allows controlling ShoopDaLoop through keyboard keys.
+--
+-- -  Arrow keys: Move the selection around. If the selection is empty, select the
+--                loop at the origin. If multiple loops are selected, move all of
+--                them as long as the group does not go out of bounds.
+--                Holding the Ctrl key while pressing an arrow key will expand the
+--                selection instead of moving it.
+-- -  Escape key: Clear the selection.
+-- -  Space key:  Perform the default action on the selected loop(s). The default
+--                action is to cycle between recording, playing and stopped modes
+--                respectively.
+-- -  R key:      Set the selected loop(s) to recording mode.
+--                If none selected, select all recording loops.
+-- -  P key:      Set the selected loop(s) to playing mode.
+--                If none selected, select all playing loops.
+-- -  S key:      Set the selected loop(s) to stopped mode.
+--                If none selected, stop all loops.
+-- -  L key:      Set the selected loop(s) to playing dry through wet mode.
+--                If none selected, select all "playing dry through wet" loops.
+-- -  M key:      Set the selected loop(s) to recording dry into wet mode.
+--                If none selected, select all "recording dry into wet" loops.
+-- -  N key:      "Record next": Queue recording into the first empty loop of the
+--                currently selected/recording track.
+-- -  O key:      "Overdub": Queue recording into the first empty loop of the
+--                currently selected/recording track while playing back currently
+--                recording loops.
+-- -  T key:      Target the selected loop. If more than one loop is selected, one
+--                of the selected loops is arbitrarily chosen.
+-- -  U key:      Untarget all loops.
+-- -  W key:      Record the selected loop(s) in sync with the targeted loop(s).
+-- -  C key:      Clear the selected loop(s).
+-- -  0-9 keys:   Record the selected loop(s) for N cycles.
+--
+-- Note that for the loop-transitioning keys in the list above, whether the loop
+-- transitions instantly or in sync with the master loop depends on the global
+-- "synchronization active" state. This can be toggled in the UI or momentarily
+-- toggled by holding the Ctrl button.
+
 print_debug("Init keyboard.lua")
-
-declare_in_context('docstring', [[
-keyboard.lua: Handle keyboard events.
-
-This script allows controlling ShoopDaLoop through keyboard keys.
-
--  Arrow keys: Move the selection around. If the selection is empty, select the
-               loop at the origin. If multiple loops are selected, move all of
-               them as long as the group does not go out of bounds.
-               Holding the Ctrl key while pressing an arrow key will expand the
-               selection instead of moving it.
--  Escape key: Clear the selection.
--  Space key:  Perform the default action on the selected loop(s). The default
-               action is to cycle between recording, playing and stopped modes
-               respectively.
--  R key:      Set the selected loop(s) to recording mode.
-               If none selected, select all recording loops.
--  P key:      Set the selected loop(s) to playing mode.
-               If none selected, select all playing loops.
--  S key:      Set the selected loop(s) to stopped mode.
-               If none selected, stop all loops.
--  L key:      Set the selected loop(s) to playing dry through wet mode.
-               If none selected, select all "playing dry through wet" loops.
--  M key:      Set the selected loop(s) to recording dry into wet mode.
-               If none selected, select all "recording dry into wet" loops.
--  N key:      "Record next": Queue recording into the first empty loop of the
-               currently selected/recording track.
--  O key:      "Overdub": Queue recording into the first empty loop of the
-               currently selected/recording track while playing back currently
-               recording loops.
--  T key:      Target the selected loop. If more than one loop is selected, one
-               of the selected loops is arbitrarily chosen.
--  U key:      Untarget all loops.
--  W key:      Record the selected loop(s) in sync with the targeted loop(s).
--  C key:      Clear the selected loop(s).
--  0-9 keys:   Record the selected loop(s) for N cycles.
-
-Note that for the loop-transitioning keys in the list above, whether the loop
-transitions instantly or in sync with the master loop depends on the global
-"synchronization active" state. This can be toggled in the UI or momentarily
-toggled by holding the Ctrl button.
-]])
 
 local shoop_control = require('shoop_control')
 local shoop_helpers = require('shoop_helpers')

@@ -82,6 +82,13 @@ class JackControlClient(QQuickItem):
     def find_ports(self, maybe_name_regex=None, maybe_type_regex=None, flags=0):
         ports = c_char_p_p_to_list(jack.get_ports(self._client, maybe_name_regex, maybe_type_regex, flags))
         return ports
+    
+    @Slot(str, result=bool)
+    def port_is_mine(self, port_name):
+        port = jack.port_by_name(self._client, port_name)
+        if port:
+            return bool(jack.port_is_mine(self._client, port))
+        return False
 
     @Slot(str, result=list)
     def all_port_connections(self, port_name):

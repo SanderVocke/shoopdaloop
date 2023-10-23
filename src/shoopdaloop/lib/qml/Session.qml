@@ -188,28 +188,41 @@ Item {
     }
     property alias targeted_loop : targeted_loop_lookup.object
 
-    SessionControlInterface {
-        id: control_interface
-        session: root
-    }
-
     RegisterInRegistry {
         registry: registries.state_registry
         key: 'control_interface'
         object: control_interface
     }
 
-    LuaScript {
-        when: control_interface.ready
-        script_name: 'keyboard.lua'
-        script_code: control_interface.ready ? file_io.read_file(
-            file_io.get_installation_directory() + '/lib/lua/builtins/keyboard.lua'
-        ) : null
+    // LuaScriptWithEngine {
+    //     script_name: 'keyboard.lua'
+    //     script_code: file_io.read_file(
+    //         file_io.get_installation_directory() + '/lib/lua/builtins/keyboard.lua'
+    //     )
+    //     control_interface: control_interface
+    // }
+
+    // LuaScriptWithEngine {
+    //     script_name: 'akai_apc_mini_mk1.lua'
+    //     script_code: file_io.read_file(
+    //         file_io.get_installation_directory() + '/lib/lua/builtins/akai_apc_mini_mk1.lua'
+    //     )
+    //     control_interface: control_interface
+    // }
+
+    LuaScriptManager {
+        control_interface: control_interface
+
+        RegisterInRegistry {
+            object: parent
+            key: 'lua_script_manager'
+            registry: registries.state_registry
+        }
     }
 
     MidiControl {
         id: midi_control
-        when: control_interface.ready
+        control_interface: control_interface
         configuration: lookup_midi_configuration.object || fallback
 
         MidiControlConfiguration { id: fallback }
@@ -260,6 +273,11 @@ Item {
         backend_argstring: root.backend_argstring
         id: session_backend
 
+        SessionControlInterface {
+            id: control_interface
+            session: root
+        }
+
         MidiControlPort {
             id: midi_control_port
             name_hint: "control"
@@ -272,6 +290,7 @@ Item {
             }
 
             autoconnect_regexes: lookup_autoconnect.object || []
+            may_open: true
 
             onMsgReceived: msg => midi_control.handle_midi(msg, midi_control_port)
         }

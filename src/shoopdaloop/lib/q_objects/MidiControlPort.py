@@ -5,6 +5,7 @@ from ..logging import Logger as BaseLogger
 from ..findFirstParent import findFirstParent
 
 from .AutoConnect import AutoConnect
+
 from ..backend_wrappers import *
 from ..midi_helpers import *
 
@@ -27,6 +28,7 @@ class MidiControlPort(QQuickItem):
         self._backend = None
         self._autoconnect_regexes = []
         self._name = None
+        self._may_open = False
         
         # Track CC states
         self._cc_states = [[ None for cc in range(128)] for channel in range(128)]
@@ -37,6 +39,7 @@ class MidiControlPort(QQuickItem):
         self.nameChanged.connect(self.autoconnect_update)
         self.autoconnect_regexesChanged.connect(self.autoconnect_update)
         self.directionChanged.connect(self.autoconnect_update)
+        self.autoconnect_update()
     
         self._lua_obj = None
         
@@ -48,6 +51,8 @@ class MidiControlPort(QQuickItem):
     ## SIGNALS
     ######################
     msgReceived = Signal(list)
+    detectedExternalAutoconnectPartnerWhileClosed = Signal()
+    connected = Signal()
 
     ######################
     # PROPERTIES
@@ -100,6 +105,18 @@ class MidiControlPort(QQuickItem):
             self.directionChanged.emit(l)
             self.maybe_init()
     
+    # may_open
+    mayOpenChanged = Signal(bool)
+    @Property(bool, notify=mayOpenChanged)
+    def may_open(self):
+        return self._may_open
+    @may_open.setter
+    def may_open(self, l):
+        if l != self._may_open:
+            self._may_open = l
+            self.mayOpenChanged.emit(l)
+            self.maybe_init()
+    
     # initialized
     initializedChanged = Signal(bool)
     @Property(bool, notify=initializedChanged)
@@ -116,7 +133,7 @@ class MidiControlPort(QQuickItem):
         elif is_noteOff(msg):
             self._active_notes.discard((channel(msg), note(msg)))
         elif is_cc(msg):
-            self._cc_states[channel(msg)][msg['data'][1]] = msg['data'][2]
+            self._cc_states[channel(msg)][msg[1]] = msg[2]
         self.msgReceived.emit(msg)
     
     ###########
@@ -124,9 +141,9 @@ class MidiControlPort(QQuickItem):
     ###########
     
     @Slot('QVariant')
-    def register_lua_interface(self, scripting_engine):
+    def register_lua_interface(self, lua_engine):
         # Create a Lua interface for ourselves
-        self._lua_obj = create_lua_qobject_interface(scripting_engine, self)
+        self._lua_obj = create_lua_qobject_interface(lua_engine, self)
     
     @Slot(int, int, result='QVariant')
     def get_cc_state(self, channel, cc):
@@ -148,9 +165,16 @@ class MidiControlPort(QQuickItem):
         """
         return [list(_tuple) for _tuple in self._active_notes]
     
+    @Slot(list)
+    def send_msg(self, msg):
+        # NOTE: not for direct use from Lua.
+        # Sends the given bytes as a MIDI message.
+        if self._direction == PortDirection.Output.value and self._backend_obj:
+            self._backend_obj.send_midi(msg)
+    
     @Slot()
     def autoconnect_update(self):
-        if self._name and self._autoconnect_regexes and self._direction != None:
+        if self._autoconnect_regexes and self._direction != None:
             for conn in self._autoconnecters:
                 conn.destroy()
             self._autoconnecters = []
@@ -158,14 +182,18 @@ class MidiControlPort(QQuickItem):
             if self._direction == PortDirection.Input.value:
                 for regex in self._autoconnect_regexes:
                     conn = AutoConnect(self)
+                    conn.connected.connect(self.connected)
                     conn.from_regex = regex
-                    conn.to_regex = self._name.replace('.', '\.')
+                    conn.to_regex = self._name.replace('.', '\.') if self._name else None
+                    conn.onlyExternalFound.connect(self.detectedExternalAutoconnectPartnerWhileClosed)
                     self._autoconnecters.append(conn)
             else:
                 for regex in self._autoconnect_regexes:
                     conn = AutoConnect(self)
-                    conn.from_regex = self._name.replace('.', '\.')
+                    conn.connected.connect(self.connected)
+                    conn.from_regex = self._name.replace('.', '\.') if self._name else None
                     conn.to_regex = regex
+                    conn.onlyExternalFound.connect(self.detectedExternalAutoconnectPartnerWhileClosed)
                     self._autoconnecters.append(conn)
     
     @Slot()
@@ -189,7 +217,7 @@ class MidiControlPort(QQuickItem):
         if self._backend and not self._backend.get_backend_obj():
             self._backend.initializedChanged.connect(self.maybe_init)
             return
-        if self._name_hint and self._backend and self._direction != None:
+        if self._name_hint and self._backend and self._direction != None and self._may_open:
             if self._backend_obj:
                 return
             
@@ -203,11 +231,18 @@ class MidiControlPort(QQuickItem):
             self._name = self._backend_obj.name()
             self.nameChanged.emit(self._name)
             
-            self.timer = QTimer(self)
-            self.timer.setSingleShot(False)
-            self.timer.setInterval(0)
-            self.timer.timeout.connect(self.poll)
-            self.timer.start()
+            if self._direction == PortDirection.Input.value:
+                self.timer = QTimer(self)
+                self.timer.setSingleShot(False)
+                self.timer.setInterval(0)
+                self.timer.timeout.connect(self.poll)
+                self.timer.start()
             
             self.initializedChanged.emit(True)
     
+    @Slot(result='QVariant')
+    def get_py_send_fn(self):
+        def send_fn(msg, self=self):
+            _msg = list(msg.values())
+            self.send_msg(_msg)
+        return lambda msg, fn=send_fn: fn(msg)

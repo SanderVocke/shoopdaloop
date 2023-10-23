@@ -60,17 +60,17 @@ Item {
 
     function select_scene(actual_descriptor) {
         selected_scene_id = actual_descriptor ? actual_descriptor.id : null
-        state_registry.replace ('selected_scene_loop_ids', actual_descriptor ? new Set(actual_descriptor.loop_ids) : new Set())
+        registries.state_registry.replace ('selected_scene_loop_ids', actual_descriptor ? new Set(actual_descriptor.loop_ids) : new Set())
     }
 
     function select_scene_loops(actual_descriptor) {
         selected_scene_id = actual_descriptor ? actual_descriptor.id : null
-        state_registry.replace ('selected_loop_ids', actual_descriptor ? new Set(actual_descriptor.loop_ids) : new Set())
+        registries.state_registry.replace ('selected_loop_ids', actual_descriptor ? new Set(actual_descriptor.loop_ids) : new Set())
     }
 
     function hover_scene(actual_descriptor) {
         hovered_scene_id = actual_descriptor ? actual_descriptor.id : null
-        state_registry.replace ('hovered_scene_loop_ids', actual_descriptor ? new Set(actual_descriptor.loop_ids) : new Set())
+        registries.state_registry.replace ('hovered_scene_loop_ids', actual_descriptor ? new Set(actual_descriptor.loop_ids) : new Set())
     }
 
     function selected_scene() {

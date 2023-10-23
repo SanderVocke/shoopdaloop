@@ -152,6 +152,22 @@ class FileIO(QThread):
         t = Thread(target=do_save)
         t.start()
         return task
+
+    @Slot(str, result=str)
+    def basename(self, path):
+        return os.path.basename(path)
+    
+    @Slot(str, result=bool)
+    def is_absolute(self, path):
+        return os.path.isabs(path)
+
+    @Slot(str, result=str)
+    def realpath(self, path):
+        return os.path.realpath(path)
+
+    @Slot(str, result=bool)
+    def exists(self, path):
+        return os.path.exists(path)
     
     @Slot(str, int, 'QVariant', 'QVariant', 'QVariant')
     def load_midi_to_channel(self, 

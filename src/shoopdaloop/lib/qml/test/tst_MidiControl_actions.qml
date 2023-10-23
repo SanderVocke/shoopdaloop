@@ -6,10 +6,7 @@ import '../../midi_control.js' as MidiControl
 import './testfilename.js' as TestFilename
 import '..'
 
-MidiControl {
-    id: ctl
-    when: itf.ready
-
+Item {
     // A dummy control interface which logs calls for testing
     component Interface: LuaControlInterface {
         property var logged_calls: []
@@ -32,51 +29,57 @@ MidiControl {
 
     Interface {
         id: itf
+
+        MidiControl {
+            id: ctl
+            control_interface: itf
+
+            configuration: MidiControlConfiguration {
+                id: config
+                contents: [
+                    { 
+                        'filters': [MidiControl.match_type(Midi.NoteOn), MidiControl.match_note(1)],
+                        'action': 'shoop_control.loop_count({{0, 0}})'
+                    },
+                    {
+                        'filters': [MidiControl.match_type(Midi.NoteOn), MidiControl.match_note(2)],
+                        'action': 'Loop Transition',
+                        'inputs': {
+                            'loops': 'all'
+                        },
+                    },
+                    {
+                        'filters': [MidiControl.match_type(Midi.NoteOn), MidiControl.match_note(3)],
+                        'action': 'Loop Transition',
+                        'inputs': {
+                            'loops': 'selection'
+                        }
+                    },
+                    {
+                        'filters': [MidiControl.match_type(Midi.NoteOn), MidiControl.match_note(4)],
+                        'action': 'Loop Transition',
+                        'inputs': {
+                            'loops': '{{1, 1}}'
+                        }
+                    },
+                    {
+                        'filters': [MidiControl.match_type(Midi.NoteOn), MidiControl.match_note(5)],
+                        'action': 'Loop Transition',
+                        'condition': 'false'
+                    },
+                    {
+                        'filters': [MidiControl.match_type(Midi.NoteOn), MidiControl.match_note(6)],
+                        'action': 'Loop Transition',
+                        'inputs': {
+                            'loops': 'all'
+                        },
+                        'condition': 'true'
+                    },
+                ]
+            }
+        }
     }
 
-    configuration: MidiControlConfiguration {
-        id: config
-        contents: [
-            { 
-                'filters': [MidiControl.match_type(Midi.NoteOn), MidiControl.match_note(1)],
-                'action': 'shoop_control.loop_count({{0, 0}})'
-            },
-            {
-                'filters': [MidiControl.match_type(Midi.NoteOn), MidiControl.match_note(2)],
-                'action': 'Loop Transition',
-                'inputs': {
-                    'loops': 'all'
-                },
-            },
-            {
-                'filters': [MidiControl.match_type(Midi.NoteOn), MidiControl.match_note(3)],
-                'action': 'Loop Transition',
-                'inputs': {
-                    'loops': 'selection'
-                }
-            },
-            {
-                'filters': [MidiControl.match_type(Midi.NoteOn), MidiControl.match_note(4)],
-                'action': 'Loop Transition',
-                'inputs': {
-                    'loops': '{{1, 1}}'
-                }
-            },
-            {
-                'filters': [MidiControl.match_type(Midi.NoteOn), MidiControl.match_note(5)],
-                'action': 'Loop Transition',
-                'condition': 'false'
-            },
-            {
-                'filters': [MidiControl.match_type(Midi.NoteOn), MidiControl.match_note(6)],
-                'action': 'Loop Transition',
-                'inputs': {
-                    'loops': 'all'
-                },
-                'condition': 'true'
-            },
-        ]
-    }
 
     ShoopTestCase {
         name: 'MidiControl_actions'

@@ -1,6 +1,7 @@
 #include "JackMidiPort.h"
 #include <string>
 #include "PortInterface.h"
+#include "LoggingBackend.h"
 #include <stdexcept>
 
 template class GenericJackMidiPort<JackApi>;

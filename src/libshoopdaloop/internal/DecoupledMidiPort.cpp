@@ -1,8 +1,10 @@
 #define IMPLEMENT_DECOUPLEDMIDIPORT_H
 #include "DecoupledMidiPort.h"
 #include "PortInterface.h"
+#include "LoggingBackend.h"
 #include <optional>
 #include <cstring>
+#include <iostream>
 template class DecoupledMidiPort<uint32_t, uint16_t>;
 template class DecoupledMidiPort<uint32_t, uint32_t>;
 template class DecoupledMidiPort<uint16_t, uint16_t>;
@@ -25,16 +27,15 @@ void DecoupledMidiPort<TimeType, SizeType>::PROC_process(size_t n_frames) {
             uint32_t time;
             uint32_t size;
             buf.PROC_get_event_reference(idx).get(size, time, data);
-            m.size = size;
-            m.data = std::vector<uint8_t>(m.size);
-            memcpy((void *)m.data.data(), (void *)data, m.size);
+            m.data = std::vector<uint8_t>(size);
+            memcpy((void *)m.data.data(), (void *)data, size);
             ma_queue.push(m);
         }
     } else {
         auto &buf = port->PROC_get_write_buffer(n_frames);
         Message m;
         while (ma_queue.pop(m)) {
-            buf.PROC_write_event_value(m.size, 0, m.data.data());
+            buf.PROC_write_event_value(m.data.size(), 0, m.data.data());
         }
     }
 }

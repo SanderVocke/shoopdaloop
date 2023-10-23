@@ -38,7 +38,6 @@ local env = {
     print_error = __shoop_print_error,
     rawset = rawset,
     rawget = rawget,
-    require = require,
     package = package
 }
 
