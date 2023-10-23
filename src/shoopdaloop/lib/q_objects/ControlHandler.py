@@ -206,7 +206,7 @@ class ControlHandler(QQuickItem):
                 except RuntimeError as e:
                     self.logger.error(lambda: "Failed to call QML override: {}".format(str(e)))
 
-            self.cache_call([func.__name__, *args])
+            self.cache_call([func.__name__, *args[0]])
             raise NotImplementedError(
                 "ControlHandler interface {0} not or incorrectly overridden.".format(func.__name__)
             )
@@ -502,7 +502,7 @@ class ControlHandler(QQuickItem):
         """
         pass
     
-    @Slot(list, 'QVariant', bool)
+    @Slot(list, 'QVariant')
     @allow_qml_override
     def track_set_muted(self, args, lua_engine):
         """

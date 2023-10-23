@@ -4,6 +4,7 @@ from PySide6.QtQml import QJSValue
 import lupa
 import copy
 import traceback
+import glob
 
 from ..logging import Logger
 from ..lua_qobject_interface import create_lua_qobject_interface
@@ -29,9 +30,12 @@ class LuaEngine(QObject):
         self._G_registrar('__shoop_print_info', lambda s, l=self.lua_logger: l.info('{}'.format(s)))
         self._G_registrar('__shoop_print_warning', lambda s, l=self.lua_logger: l.warning('{}'.format(s)))
         self._G_registrar('__shoop_print_error', lambda s, l=self.lua_logger: l.error('{}'.format(s)))
+        self.preload_libs()
         self.execute_builtin_script('system/sandbox.lua', False)
         self.run_sandboxed = self.lua.eval('function (code) return __shoop_run_sandboxed(code) end')
         self.execute('package.path = package.path .. ";{}"'.format(lua_scriptdir + '/lib/?.lua'), None, True, False)
+        self._G_registrar = lambda name, val: self.evaluate('return function(val) {} = val end'.format(name), None, True, False)(val)
+        self._G_registrar('require', lambda s, self=self: self.require(s))
         self.py_list_to_lua_table = self.lua.eval('''
         function(val)
             local t = {}
@@ -50,6 +54,25 @@ class LuaEngine(QObject):
             return t
         end
         ''')
+    
+    def preload_libs(self):
+        self.preloaded_libs = dict()
+        libs = glob.glob(lua_scriptdir + '/lib/*.lua')
+        for lib in libs:
+            name = os.path.basename(lib).split('.')[0]
+            self.logger.debug(lambda: 'Preloading Lua library: {}'.format(lib))
+            content = None
+            with open(lib, 'r') as f:
+                content = f.read()
+            self.preloaded_libs[name] = content
+
+    def require(self, name):
+        if name == 'shoop_control':
+            # special case
+            return self.evaluate('return __shoop_control_interface', None, True, False)
+        if not name in self.preloaded_libs.keys():
+            raise Exception('No such library in curated "require"-list: {}'.format(name))
+        return self.evaluate(self.preloaded_libs[name], None, True, False)
 
     def execute_builtin_script(self, filename, sandboxed=True):
         self.logger.debug(lambda: 'Running built-in script: {}'.format(filename))

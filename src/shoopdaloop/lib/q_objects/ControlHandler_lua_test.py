@@ -9,6 +9,8 @@ def test_control_handler_loop_selector_coords():
     eng.create_lua_qobject_interface_as_global('shoop', obj)
 
     eng.evaluate('shoop.loop_get_mode({4,5})')
+
+    print(obj.cached_calls())
     
     assert(obj.cached_calls() == [
         ['loop_get_mode', [4,5]]

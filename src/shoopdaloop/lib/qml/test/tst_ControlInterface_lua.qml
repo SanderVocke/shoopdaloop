@@ -19,12 +19,29 @@ Session {
         [], [])
     }
 
+    LuaEngine {
+        id: lua_engine
+        ready: false
+        function update() {
+            if (session.control_interface) {
+                create_lua_qobject_interface_as_global('__shoop_control_interface', session.control_interface)
+                ready = true
+            }
+        }
+        Component.onCompleted: update()
+        Component.onDestruction: session.control_interface.unregister_lua_engine(engine)
+    }
+    Connections {
+        target: session
+        function onControl_interfaceChanged() { lua_engine.update() }
+    }
+
     ShoopSessionTestCase {
         id: testcase
         name: 'ControlInterface'
         filename : TestFilename.test_filename()
         session: session
-        when: session.control_interface.ready && registries.state_registry
+        when: lua_engine.ready && registries.state_registry
 
         function loop_at(track, idx) {
             return session.tracks[track].loops[idx]
