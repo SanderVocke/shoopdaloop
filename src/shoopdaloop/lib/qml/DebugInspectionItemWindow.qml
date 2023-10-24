@@ -40,8 +40,11 @@ ApplicationWindow {
             active: true
         }
     }
-
-    readonly property var window_factory : Qt.createComponent("DebugInspectionItemWindow.qml")
+    
+    Component {
+        id: window_factory
+        DebugInspectionItemWindow {}
+    }
     function spawn_window(object) {
         if (window_factory.status == Component.Error) {
             throw new Error("DebugInspectionMainWindow: Failed to load window factory: " + window_factory.errorString())

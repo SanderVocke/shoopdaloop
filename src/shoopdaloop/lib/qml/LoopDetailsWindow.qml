@@ -6,8 +6,9 @@ import ShoopDaLoop.PythonLogger
 import '../mode_helpers.js' as ModeHelpers
 
 ApplicationWindow {
-    property var loop
-    property var master_loop
+    property var loop_widget
+    property var maybe_backend_loop : loop_widget.maybe_backend_loop
+    property var master_loop_widget
 
     property PythonLogger logger : PythonLogger { name: default_logger.name + '.LoopDetails' }
     
@@ -20,13 +21,21 @@ ApplicationWindow {
     
     Material.theme: Material.Dark
 
-    LoopContentWidget {
-        visible: root.visible
-        id: waveform
-        anchors.fill: parent
-        anchors.margins: 5
-        loop: root.loop
-        master_loop: root.master_loop
-        logger: root.logger
+    Loader {
+        active: root.maybe_backend_loop
+        sourceComponent: loop_content_widget
+    }
+
+    Component {
+        id: loop_content_widget
+        LoopContentWidget {
+            visible: root.visible
+            id: waveform
+            anchors.fill: parent
+            anchors.margins: 5
+            loop: root.loop_widget
+            master_loop: root.master_loop_widget
+            logger: root.logger
+        }
     }
 }

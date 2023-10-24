@@ -133,7 +133,7 @@ Dialog {
             tooltip: "Sets clicks per minute so that the chosen # of clicks fits the current loop length."
             onClicked: () => {
                 if (dialog.loop) {
-                    dialog.loop.force_load_backend()
+                    dialog.loop.create_backend_loop()
                     var srate = dialog.loop.maybe_loaded_loop.get_backend().get_sample_rate()
                     var _bpm = n_beats / (dialog.loop.length / srate / 60.0)
                     bpm_field.text = _bpm.toFixed(2)

@@ -25,39 +25,10 @@ Item {
         logger.debug(() => (`Loop @ (${track_idx},${idx_in_track})`))
     }
 
-    property PythonLogger logger : PythonLogger { name: "Frontend.Qml.Loop" }
+    property PythonLogger logger : PythonLogger { name: "Frontend.Qml.LoopWidget" }
 
     readonly property string obj_id: initial_descriptor.id
     property string name: initial_descriptor.name
-
-    // TODO: kind of a bad place to put this.
-    // When the loop starts recording, ensure all channels have their
-    // "recording started at" updated and also our FX chain state is
-    // cached for wet channels.
-    property var prev_mode: mode
-    onModeChanged: {
-        if (prev_mode != mode) {
-            var now = (new Date()).toISOString()
-            var fx_chain_desc_id = null
-            channels.forEach(c => {
-                if (ModeHelpers.is_recording_mode_for(mode, c.mode)) {
-                    c.recording_started_at = now
-                    if (c.mode == Types.ChannelMode.Wet && track_widget.maybe_fx_chain) {
-                        if (!fx_chain_desc_id) {
-                            fx_chain_desc_id = registries.fx_chain_states_registry.generate_id('fx_chain_state')
-                            var fx_chain_desc = track_widget.maybe_fx_chain.actual_session_descriptor()
-                            delete fx_chain_desc.ports // Port descriptions not needed for state caching, this is track-dependent
-                            fx_chain_desc.title = ""   // No title indicates elsewhere that this is not a snapshot that the user can directly see in the list.
-                            fx_chain_desc.id = fx_chain_desc_id
-                            registries.fx_chain_states_registry.register (fx_chain_desc_id, fx_chain_desc)
-                        }
-                        c.recording_fx_chain_state_id = fx_chain_desc_id
-                    }
-                }
-            })
-        }
-        prev_mode = mode
-    }
 
     // The "loop volume" refers to the output volume from the wet
     // and/or direct channels. Volume of the dry channels is always
@@ -87,10 +58,6 @@ Item {
         schema: root.object_schema
     }
 
-    function force_load_backend() {
-        dynamic_loop.force_load = true
-    }
-
     function actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) {
         return {
             'schema': 'loop.1',
@@ -111,15 +78,13 @@ Item {
         let have_any = have_data_files.filter(d => d == true).length > 0
         if (have_any) {
             root.logger.debug(() => (`${obj_id} has data files, queueing load tasks.`))
-            force_load_backend()
+            create_backend_loop()
             channels.forEach((c) => c.queue_load_tasks(data_files_dir, add_tasks_to))
         } else {
             root.logger.debug(() => (`${obj_id} has no data files, not queueing load tasks.`))
         }
     }
 
-    readonly property var audio_channel_descriptors: initial_descriptor.channels.filter(c => c.type == 'audio')
-    readonly property var midi_channel_descriptors: initial_descriptor.channels.filter(c => c.type == 'midi')
     property bool loaded : false
 
     RegistryLookup {
@@ -190,17 +155,19 @@ Item {
     }
 
     Component.onCompleted: {
+        if (is_master) { create_backend_loop() }
         loaded = true
     }
 
     property var additional_context_menu_options : null // dict of option name -> functor
 
     onIs_loadedChanged: if(is_loaded) { root.logger.debug(() => ("Loaded back-end loop.")) }
+    onIs_masterChanged: if(is_master) { create_backend_loop() }
 
     // Internally controlled
-    readonly property DynamicLoop maybe_loop : dynamic_loop
-    readonly property Loop maybe_loaded_loop : dynamic_loop.maybe_loop
-    readonly property bool is_loaded : dynamic_loop.ready
+    property var maybe_loop : null
+    readonly property var maybe_backend_loop : (maybe_loop && maybe_loop.maybe_backend_loop) ? maybe_loop.maybe_backend_loop : null
+    readonly property bool is_loaded : maybe_loop
     readonly property bool is_master: master_loop && master_loop == this
     readonly property var delay_for_targeted : {
         // This property is used for synchronizing to the targeted loop.
@@ -228,23 +195,24 @@ Item {
     }
     readonly property int use_delay : delay_for_targeted != undefined ? delay_for_targeted : 0
 
-    property int n_multiples_of_master_length: master_loop ?
-        Math.ceil(dynamic_loop.length / master_loop.maybe_loop.length) : 1
-    property int current_cycle: master_loop ?
-        Math.floor(dynamic_loop.position / master_loop.maybe_loop.length) : 0
+    property int n_multiples_of_master_length: (master_loop && maybe_loop) ?
+        Math.ceil(maybe_loop.length / master_loop.length) : 1
+    property int current_cycle: (master_loop && maybe_loop) ?
+        Math.floor(maybe_loop.position / master_loop.length) : 0
 
     // Signals
-    signal channelInitializedChanged()
     signal cycled
 
     // Methods
     function transition_loops(loops, mode, delay, wait_for_sync) {
         loops.forEach(loop => {
             // Force to load all loops involved
-            loop.force_load_backend()
+            loop.create_backend_loop()
         })
-        var backend_loops = loops.map(o => o.maybe_loaded_loop)
-        backend_loops[0].transition_multiple(backend_loops, mode, delay, wait_for_sync)
+        var backend_loops = loops.filter(o => o.maybe_backend_loop).map(o => o.maybe_backend_loop)
+        var other_loops = loops.filter(o => o.maybe_loop && !o.maybe_backend_loop).map(o => o.maybe_loop)
+        if (backend_loops.length > 0) { backend_loops[0].transition_multiple(backend_loops, mode, delay, wait_for_sync) }
+        other_loops.forEach(o => o.transition(mode, delay, wait_for_sync))
     }
     function transition(mode, delay, wait_for_sync, include_selected=true) {
         // Do the transition for this loop and all selected loops, if any
@@ -272,18 +240,12 @@ Item {
         transition_loops(_selected_loops, Types.LoopMode.Playing, use_delay, root.sync_active)
     }
     function clear(length=0, emit=true) {
-        dynamic_loop.clear(length);
+        maybe_loop && maybe_loop.clear(length);
     }
     function qml_close() {
         obj_reg_entry.close()
         master_reg_entry.close()
-        for(var i=0; i<audio_channels.model; i++) {
-            audio_channels.itemAt(i).qml_close();
-        }
-        for(var i=0; i<midi_channels.model; i++) {
-            midi_channels.itemAt(i).qml_close();
-        }
-        dynamic_loop.qml_close();
+        maybe_loop && maybe_loop.qml_close()
     }
 
     function select(clear = false) {
@@ -318,11 +280,11 @@ Item {
     }
 
     function get_audio_channels() {
-        return Array.from(Array(audio_channels.model).keys()).map((i) => audio_channels.itemAt(i))
+        return maybe_loop ? maybe_loop.get_audio_channels() : []
     }
 
     function get_midi_channels() {
-        return Array.from(Array(midi_channels.model).keys()).map((i) => midi_channels.itemAt(i))
+        return maybe_loop ? maybe_loop.get_midi_channels() : []
     }
 
     function get_audio_output_channels() {
@@ -378,9 +340,7 @@ Item {
     }
 
     function set_length(length) {
-        if (maybe_loaded_loop) {
-            maybe_loaded_loop.set_length(length)
-        }
+        maybe_loop && maybe_loop.set_length(length)
     }
 
     function record_n(delay_start, n) {
@@ -406,39 +366,30 @@ Item {
     height: childrenRect.height
     clip: true
 
-    property alias length : dynamic_loop.length
-    property alias position : dynamic_loop.position
-    property alias mode : dynamic_loop.mode
-    property alias next_mode : dynamic_loop.next_mode
-    property alias next_transition_delay : dynamic_loop.next_transition_delay
-    DynamicLoop {
-        id: dynamic_loop
-        force_load : is_master // Master loop should always be there to sync to
-        sync_source : root.master_loop && !root.is_master ? root.master_loop.maybe_loaded_loop : null;
-        onBackendLoopLoaded: set_length(initial_descriptor.length)
-        onCycled: root.cycled()
-
-        Repeater {
-            id: audio_channels
-            model : root.audio_channel_descriptors.length
-
-            LoopAudioChannel {
-                loop: dynamic_loop.maybe_loop
-                descriptor: root.audio_channel_descriptors[index]
-                onRequestBackendInit: root.force_load_backend()
-                onInitializedChanged: root.channelInitializedChanged()
-            }
+    readonly property int length : maybe_loop ? maybe_loop.length : 0
+    readonly property int position : maybe_loop ? maybe_loop.position : 0
+    readonly property int mode : maybe_loop ? maybe_loop.mode : Types.LoopMode.Stopped
+    readonly property int next_mode : maybe_loop ? maybe_loop.next_mode : Types.LoopMode.Stopped
+    readonly property int next_transition_delay : maybe_loop ? maybe_loop.next_transition_delay : -1
+    
+    Component {
+        id: loop_factory
+        BackendLoopWithChannels {}
+    }
+    function create_backend_loop() {
+        if (maybe_loop) {
+            return
         }
-        Repeater {
-            id: midi_channels
-            model : root.midi_channel_descriptors.length
-
-            LoopMidiChannel {
-                loop: dynamic_loop.maybe_loop
-                descriptor: root.midi_channel_descriptors[index]
-                onRequestBackendInit: root.force_load_backend()
-                onInitializedChanged: root.channelInitializedChanged()
-            }
+        if (loop_factory.status == Component.Error) {
+            throw new Error("BackendLoopWithChannels: Failed to load factory: " + loop_factory.errorString())
+        } else if (loop_factory.status != Component.Ready) {
+            throw new Error("BackendLoopWithChannels: Factory not ready: " + loop_factory.status.toString())
+        } else {
+            maybe_loop = loop_factory.createObject(root, {
+                'initial_descriptor': Qt.binding(() => root.initial_descriptor),
+                'sync_source': (!is_master && root.master_loop && root.master_loop.maybe_backend_loop) ? root.master_loop.maybe_backend_loop : null,
+            })
+            maybe_loop.onCycled.connect(root.cycled)
         }
     }
 
@@ -448,9 +399,9 @@ Item {
         id: lookup_channels
     }
     property alias channels: lookup_channels.objects
-    property var audio_channels: channels.filter(c => c && c.descriptor.type == 'audio')
-    property var midi_channels: channels.filter(c => c && c.descriptor.type == 'midi')
-
+    property var audio_channels : (maybe_loop && maybe_loop.audio_channels) ? maybe_loop.audio_channels : []
+    property var midi_channels : (maybe_loop && maybe_loop.midi_channels) ? maybe_loop.midi_channels : []
+   
     RegistryLookup {
         id: lookup_sync_active
         registry: registries.state_registry
@@ -466,8 +417,8 @@ Item {
         LoopDetailsWindow {
             id: detailswindow
             title: root.initial_descriptor.id + " details"
-            loop: root
-            master_loop: root.master_loop
+            loop_widget: root
+            master_loop_widget: root.master_loop
         }
 
         ContextMenu {
@@ -489,7 +440,7 @@ Item {
         width: loopitem.width
         height: loopitem.height
 
-        color: (loop.length > 0) ? '#000044' : Material.background
+        color: (loop && loop.length > 0) ? '#000044' : Material.background
 
         border.color: {
             var default_color = 'grey'
@@ -539,7 +490,7 @@ Item {
             AudioLevelMeterModel {
                 id: output_peak_meter_l
                 max_dt: 0.1
-                input: root.maybe_loop.display_peaks.length >= 1 ? root.maybe_loop.display_peaks[0] : 0.0
+                input: (root.maybe_loop && root.maybe_loop.display_peaks.length >= 1) ? root.maybe_loop.display_peaks[0] : 0.0
             }
 
             from: -50.0
@@ -574,7 +525,7 @@ Item {
             AudioLevelMeterModel {
                 id: output_peak_meter_r
                 max_dt: 0.1
-                input: root.maybe_loop.display_peaks.length >= 2 ? root.maybe_loop.display_peaks[1] : 0.0
+                input: (root.maybe_loop && root.maybe_loop.display_peaks.length >= 2) ? root.maybe_loop.display_peaks[1] : 0.0
             }
 
             from: -50.0
@@ -608,7 +559,7 @@ Item {
             AudioLevelMeterModel {
                 id: output_peak_meter_overall
                 max_dt: 0.1
-                input: root.maybe_loop.display_peaks.length > 0 ? Math.max(...root.maybe_loop.display_peaks) : 0.0
+                input: (root.maybe_loop && root.maybe_loop.display_peaks.length > 0) ? Math.max(...root.maybe_loop.display_peaks) : 0.0
             }
 
             from: -30.0
@@ -683,7 +634,7 @@ Item {
                     y: 0
                     anchors.horizontalCenter: iconitem.horizontalCenter
                     muted: false
-                    empty: statusrect.loop.length == 0
+                    empty: !statusrect.loop || statusrect.loop.length == 0
                     onDoubleClicked: (event) => {
                             if (event.button === Qt.LeftButton) { root.target() }
                         }
@@ -1194,7 +1145,7 @@ Item {
         }
 
         Rectangle {
-            visible: root.maybe_loop.display_midi_notes_active > 0
+            visible: root.maybe_loop ? root.maybe_loop.display_midi_notes_active > 0 : false
             anchors {
                 right: parent.right
                 top: parent.top
@@ -1206,7 +1157,7 @@ Item {
         }
 
         Rectangle {
-            visible: root.maybe_loop.display_midi_events_triggered > 0
+            visible: root.maybe_loop ? root.maybe_loop.display_midi_events_triggered > 0 : false
             anchors {
                 right: parent.right
                 top: parent.top
@@ -1331,7 +1282,7 @@ Item {
             onAcceptedClickTrack: (filename) => {
                                     loadoptionsdialog.filename = filename
                                     close()
-                                    root.force_load_backend()
+                                    root.create_backend_loop()
                                     loadoptionsdialog.update()
                                     loadoptionsdialog.open()
                                   }
@@ -1561,7 +1512,7 @@ Item {
             onAccepted: {
                 loadoptionsdialog.filename = selectedFile.toString().replace('file://', '')
                 close()
-                root.force_load_backend()
+                root.create_backend_loop()
                 loadoptionsdialog.update()
                 loadoptionsdialog.open()
             }
@@ -1716,7 +1667,7 @@ Item {
             property string filename
             property var channel : null
             function doLoad(update_loop_length) {
-                root.force_load_backend()
+                root.create_backend_loop()
                 var samplerate = root.maybe_loaded_loop.backend.get_sample_rate()
                 file_io.load_midi_to_channel_async(filename, samplerate, channel, update_loop_length ?
                     root.maybe_loaded_loop : null)

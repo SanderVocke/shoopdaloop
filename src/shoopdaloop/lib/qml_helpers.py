@@ -30,6 +30,8 @@ from .q_objects.ControlInterface import ControlInterface
 from .q_objects.MidiControlPort import MidiControlPort
 from .q_objects.SettingsIO import SettingsIO
 
+import time
+
 # Read version from the version.txt file (will be present when packaged)
 pkg_version = None
 with open(script_dir + '/../version.txt', 'r') as f:
@@ -71,6 +73,10 @@ def create_and_populate_root_context(engine, global_args, additional_items={}):
     
     # QML instantiations
     registries_comp = QQmlComponent(engine, QUrl.fromLocalFile(script_dir + '/qml/AppRegistries.qml'))
+    while registries_comp.status() == QQmlComponent.Loading:
+        time.sleep(0.05)
+    if registries_comp.status() != QQmlComponent.Ready:
+        raise Exception('Failed to load AppRegistries.qml: ' + str(registries_comp.errorString()))
     registries = registries_comp.create()
 
     items = {
