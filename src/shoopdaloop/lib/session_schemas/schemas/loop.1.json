@@ -13,7 +13,27 @@
                 "properties": { "schema": { "const": "channel.1", "$comment": "see channel.1 schema" } },
                 "required": ["schema"]
             }
+        },
+        "composition": {
+            "type": "object",
+            "properties": {
+                "playlists": {
+                    "type": "array",
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "delay": { "type": "integer" },
+                                "loop_id": { "type": "string" }
+                            },
+                            "required": ["delay", "loop_id"]
+                        }
+                    }
+                }
+            },
+            "required": ["playlists"]
         }
     },
-    "required": ["schema", "id", "name", "length", "channels", "is_master"]
+    "required": ["schema", "id", "name", "length", "is_master"]
 }

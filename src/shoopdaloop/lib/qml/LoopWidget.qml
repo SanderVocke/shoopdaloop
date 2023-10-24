@@ -59,14 +59,20 @@ Item {
     }
 
     function actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) {
-        return {
+        var rval = {
             'schema': 'loop.1',
             'id': obj_id,
             'name': name,
-            'length': maybe_loop.length,
-            'is_master': is_master,
-            'channels': channels.map((c) => c.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to))
+            'length': maybe_loop ? maybe_loop.length : 0,
+            'is_master': is_master
         }
+
+        if (maybe_backend_loop) {
+            rval['channels'] = maybe_backend_loop.channels.map((c) => c.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to))
+        } else if (maybe_composite_loop) {
+            rval['composition'] = maybe_composite_loop.actual_composition_descriptor()
+        }
+        return rval
     }
     function queue_load_tasks(data_files_dir, add_tasks_to) {
         var have_data_files = channels ? channels.map(c => {
@@ -425,6 +431,7 @@ Item {
             throw new Error("CompositeLoop: Factory not ready: " + composite_loop_factory.status.toString())
         } else {
             maybe_loop = composite_loop_factory.createObject(root, {
+                initial_composition_descriptor: { 'playlists': [] }
             })
             maybe_loop.onCycled.connect(root.cycled)
         }
@@ -1510,6 +1517,7 @@ Item {
         FileDialog {
             id: savedialog
             fileMode: FileDialog.SaveFile
+            options: FileDialog.DontUseNativeDialog
             acceptLabel: 'Save'
             nameFilters: Object.entries(file_io.get_soundfile_formats()).map((e) => {
                 var extension = e[0]
@@ -1539,6 +1547,7 @@ Item {
         FileDialog {
             id: midisavedialog
             fileMode: FileDialog.SaveFile
+            options: FileDialog.DontUseNativeDialog
             acceptLabel: 'Save'
             nameFilters: ["MIDI files (*.mid)"]
             property var channel: null
@@ -1557,6 +1566,7 @@ Item {
         FileDialog {
             id: loaddialog
             fileMode: FileDialog.OpenFile
+            options: FileDialog.DontUseNativeDialog
             acceptLabel: 'Load'
             nameFilters: [
                 'Supported sound files ('
@@ -1705,6 +1715,7 @@ Item {
         FileDialog {
             id: midiloaddialog
             fileMode: FileDialog.OpenFile
+            options: FileDialog.DontUseNativeDialog
             acceptLabel: 'Load'
             nameFilters: ["Midi files (*.mid)"]
             onAccepted: {

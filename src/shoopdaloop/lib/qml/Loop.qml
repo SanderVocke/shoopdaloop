@@ -46,14 +46,6 @@ PythonLoop {
         close()
     }
 
-    function get_audio_channels() {
-        return Array.from(Array(audio_channels.model).keys()).map((i) => audio_channels.itemAt(i))
-    }
-
-    function get_midi_channels() {
-        return Array.from(Array(midi_channels.model).keys()).map((i) => midi_channels.itemAt(i))
-    }
-
     property var initial_descriptor: null
     RegistryLookups {
         keys: (root.initial_descriptor && root.initial_descriptor.channels) ? root.initial_descriptor.channels.map(c => c.id) : []

@@ -79,6 +79,12 @@ Item {
         loop.set_length(length)
     }
 
+    function qml_close() {
+        get_audio_channels().forEach(c => c.qml_close())
+        get_midi_channels().forEach(c => c.qml_close())
+        loop.qml_close()
+    }
+
     Repeater {
         id: audio_channels
         model: root.audio_channel_descriptors.length
