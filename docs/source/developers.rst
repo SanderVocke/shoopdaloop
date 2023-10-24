@@ -1,6 +1,6 @@
 For Developers / Advanced Users
 ================================
 
-.. include:: developers_connections.rst
-.. include:: developers_scripting.rst
-.. include:: developers_software.rst
+.. include:: developers.connections.rst
+.. include:: developers.scripting.rst
+.. include:: developers.software.rst

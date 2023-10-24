@@ -61,7 +61,17 @@ Instead, we can use a single rule that maps the incoming note to the loop number
 As in example 1, set up your device so it is connected and open the filter dialog for a new trigger rule. Try out a few buttons on your controller and note down the note number received. You will need to work out the formula that calculates the **ShoopDaLoop** loop coordinates (row, column) from the note number. In our example, let's assume we
 worked out that the row will be the note divided by 8, and the column will be the remainder.
 
-Again, let's choose the Default Loop Action, but now, for the "loops" input, choose "custom":
+Again, let's choose the Default Loop Action, but now, for the "loops" input, choose "custom".
+
+A box appears where a Lua expression can be entered. In Lua:
+
+- Division is done with the "//" operator
+- Remainder is done with the "%" operator
+- An array is specified with curly braces "{}".
+
+So our loop coordinates expression in this case is: "{note//8, note%8}". Press OK to accept the trigger.
+
+Your loop buttons should now be mapped to ShoopDaLoop's grid.
 
 
 
