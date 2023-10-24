@@ -24,6 +24,7 @@ extensions = ['sphinxcontrib.fulltoc',
 
 templates_path = []
 exclude_patterns = []
+include_patterns = ['index.rst','developers.rst','usage.rst','concept.rst']
 
 
 
