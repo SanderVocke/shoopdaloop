@@ -118,6 +118,20 @@ Item {
     property alias selected_scene_loop_ids : selected_scene_loops_lookup.object
     property bool is_in_selected_scene : selected_scene_loop_ids && selected_scene_loop_ids.has(obj_id)
 
+    property var single_selected_composite_loop: {
+        if (selected_loop_ids && selected_loop_ids.size == 1) {
+            let selected_loop = registries.objects_registry.get(selected_loop_ids.values().next().value)
+            if (selected_loop.maybe_composite_loop) {
+                return selected_loop
+            }
+        }
+        return null
+    }
+    property var loops_in_single_selected_composite_loop: (single_selected_composite_loop &&
+        single_selected_composite_loop.maybe_composite_loop &&
+        single_selected_composite_loop.maybe_composite_loop.all_loops) ? single_selected_composite_loop.maybe_composite_loop.all_loops : new Set()
+    property bool is_in_selected_composite_loop : loops_in_single_selected_composite_loop.has(root)
+
     RegistryLookup {
         id: scenes_widget_lookup
         registry: registries.state_registry
@@ -167,6 +181,7 @@ Item {
     // Internally controlled
     property var maybe_loop : null
     readonly property var maybe_backend_loop : (maybe_loop && maybe_loop.maybe_backend_loop) ? maybe_loop.maybe_backend_loop : null
+    readonly property var maybe_composite_loop : (maybe_loop && maybe_loop instanceof CompositeLoop) ? maybe_loop : null
     readonly property bool is_loaded : maybe_loop
     readonly property bool is_master: master_loop && master_loop == this
     readonly property var delay_for_targeted : {
@@ -373,21 +388,43 @@ Item {
     readonly property int next_transition_delay : maybe_loop ? maybe_loop.next_transition_delay : -1
     
     Component {
-        id: loop_factory
+        id: backend_loop_factory
         BackendLoopWithChannels {}
     }
     function create_backend_loop() {
         if (maybe_loop) {
             return
         }
-        if (loop_factory.status == Component.Error) {
-            throw new Error("BackendLoopWithChannels: Failed to load factory: " + loop_factory.errorString())
-        } else if (loop_factory.status != Component.Ready) {
-            throw new Error("BackendLoopWithChannels: Factory not ready: " + loop_factory.status.toString())
+        if (backend_loop_factory.status == Component.Error) {
+            throw new Error("BackendLoopWithChannels: Failed to load factory: " + backend_loop_factory.errorString())
+        } else if (backend_loop_factory.status != Component.Ready) {
+            throw new Error("BackendLoopWithChannels: Factory not ready: " + backend_loop_factory.status.toString())
         } else {
-            maybe_loop = loop_factory.createObject(root, {
+            maybe_loop = backend_loop_factory.createObject(root, {
                 'initial_descriptor': Qt.binding(() => root.initial_descriptor),
                 'sync_source': (!is_master && root.master_loop && root.master_loop.maybe_backend_loop) ? root.master_loop.maybe_backend_loop : null,
+            })
+            maybe_loop.onCycled.connect(root.cycled)
+        }
+    }
+
+    Component {
+        id: composite_loop_factory
+        CompositeLoop {}
+    }
+    function create_composite_loop() {
+        if (maybe_backend_loop) {
+            root.logger.error("Unimplemented: convert backend loop to composite")
+        }
+        if (maybe_loop) {
+            return
+        }
+        if (composite_loop_factory.status == Component.Error) {
+            throw new Error("CompositeLoop: Failed to load factory: " + composite_loop_factory.errorString())
+        } else if (composite_loop_factory.status != Component.Ready) {
+            throw new Error("CompositeLoop: Factory not ready: " + composite_loop_factory.status.toString())
+        } else {
+            maybe_loop = composite_loop_factory.createObject(root, {
             })
             maybe_loop.onCycled.connect(root.cycled)
         }
@@ -440,25 +477,31 @@ Item {
         width: loopitem.width
         height: loopitem.height
 
-        color: (loop && loop.length > 0) ? '#000044' : Material.background
+        color: {
+            if (loop && root.maybe_composite_loop) {
+                return 'pink'
+            } else if (loop && loop.length > 0) {
+                return '#000044'
+            }
+            return Material.background
+        }
 
         border.color: {
             var default_color = 'grey'
-            if (!statusrect.loop) {
-                return default_color;
-            }
 
             if (root.targeted) {
                 return "orange";
-            } if (root.selected) {
+            } else if (root.selected) {
                 return 'yellow';
             } else if (root.is_in_hovered_scene) {
                 return 'blue';
             } else if (root.is_in_selected_scene) {
                 return 'red';
+            } else if (root.is_in_selected_composite_loop) {
+                return 'pink';
             }
 
-            if (statusrect.loop.length == 0) {
+            if (!statusrect.loop || statusrect.loop.length == 0) {
                 return default_color;
             }
 
@@ -490,7 +533,7 @@ Item {
             AudioLevelMeterModel {
                 id: output_peak_meter_l
                 max_dt: 0.1
-                input: (root.maybe_loop && root.maybe_loop.display_peaks.length >= 1) ? root.maybe_loop.display_peaks[0] : 0.0
+                input: (root.maybe_loop && root.maybe_loop.display_peaks && root.maybe_loop.display_peaks.length >= 1) ? root.maybe_loop.display_peaks[0] : 0.0
             }
 
             from: -50.0
@@ -525,7 +568,7 @@ Item {
             AudioLevelMeterModel {
                 id: output_peak_meter_r
                 max_dt: 0.1
-                input: (root.maybe_loop && root.maybe_loop.display_peaks.length >= 2) ? root.maybe_loop.display_peaks[1] : 0.0
+                input: (root.maybe_loop && root.maybe_loop.display_peaks && root.maybe_loop.display_peaks.length >= 2) ? root.maybe_loop.display_peaks[1] : 0.0
             }
 
             from: -50.0
@@ -559,7 +602,7 @@ Item {
             AudioLevelMeterModel {
                 id: output_peak_meter_overall
                 max_dt: 0.1
-                input: (root.maybe_loop && root.maybe_loop.display_peaks.length > 0) ? Math.max(...root.maybe_loop.display_peaks) : 0.0
+                input: (root.maybe_loop && root.maybe_loop.display_peaks && root.maybe_loop.display_peaks.length > 0) ? Math.max(...root.maybe_loop.display_peaks) : 0.0
             }
 
             from: -30.0
@@ -636,11 +679,21 @@ Item {
                     muted: false
                     empty: !statusrect.loop || statusrect.loop.length == 0
                     onDoubleClicked: (event) => {
-                            if (event.button === Qt.LeftButton) { root.target() }
+                            if (!key_modifiers.alt_pressed && event.button === Qt.LeftButton) { root.target() }
                         }
                     onClicked: (event) => {
                             if (event.button === Qt.LeftButton) { 
-                                if (root.targeted) { root.untarget(); root.deselect() }
+                                if (key_modifiers.alt_pressed) {
+                                    if (root.selected_loop_ids.size == 1) {
+                                        let selected = registries.objects_registry.get(root.selected_loop_ids.values().next().value)
+                                        if (selected != root) {
+                                            selected.create_composite_loop()
+                                            if (selected.maybe_composite_loop) {
+                                                selected.maybe_composite_loop.add_loop(root, 0)
+                                            }
+                                        }
+                                    }
+                                } else if (root.targeted) { root.untarget(); root.deselect() }
                                 else { root.toggle_selected(!key_modifiers.control_pressed) }
                             }
                             else if (event.button === Qt.MiddleButton) { root.toggle_in_current_scene() }
@@ -658,6 +711,7 @@ Item {
                     anchors.right : loopstateicon.right
                     anchors.bottom : loopstateicon.bottom
                     visible: parent.show_next_mode
+                    onClicked: (event) => loopstateicon.clicked(event)
                 }
                 Text {
                     text: statusrect.loop ? (statusrect.loop.next_transition_delay + 1).toString(): ''
