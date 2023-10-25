@@ -672,6 +672,8 @@ Item {
                 property bool show_next_mode: 
                     statusrect.loop &&
                         statusrect.loop.next_mode != null &&
+                        statusrect.loop.next_transition_delay != null &&
+                        statusrect.loop.next_transition_delay >= 0 &&
                         statusrect.loop.mode != statusrect.loop.next_mode
 
                 LoopStateIcon {
