@@ -698,7 +698,13 @@ Item {
                                         if (selected != root) {
                                             selected.create_composite_loop()
                                             if (selected.maybe_composite_loop) {
-                                                selected.maybe_composite_loop.add_loop(root, 0)
+                                                // Add the selected loop to the currently selected composite loop.
+                                                // If ctrl pressed, as a new parallel timeline; otherwise at the end of the default timeline.
+                                                if (key_modifiers.control_pressed) {
+                                                    selected.maybe_composite_loop.add_loop(root, 0, selected.maybe_composite_loop.playlists.length)
+                                                } else {
+                                                    selected.maybe_composite_loop.add_loop(root, 0)
+                                                }
                                             }
                                         }
                                     }

@@ -23,7 +23,7 @@ Item {
     signal cycled()
 
     function add_loop(loop, delay, playlist_idx=0) {
-        root.logger.debug("Adding loop " + loop.obj_id + " with delay " + delay)
+        root.logger.debug(`Adding loop ${loop.obj_id} to playlist ${playlist_idx} with delay ${delay}`)
         while (playlist_idx >= playlists.length) {
             playlists.push([])
         }
@@ -46,7 +46,8 @@ Item {
         var rval = {}
         for (var pidx=0; pidx < playlists.length; pidx++) {
             let playlist = playlists[pidx]
-            var _it = 0
+            var _it
+            _it = 0
             for (var i=0; i<playlist.length; i++) {
                 let elem = playlist[i]
                 let loop = registries.objects_registry.value_or(elem.loop_id, undefined)
