@@ -2,10 +2,15 @@ import ShoopDaLoop.PythonLoop
 import ShoopDaLoop.PythonLogger
 import QtQuick 6.3
 
+import '../generated/types.js' as Types
+
 PythonLoop {
     property bool loaded : initialized
 
     readonly property PythonLogger logger: PythonLogger { name: "Frontend.Qml.Loop" }
+
+    // Gives a nice full progress bar when recording
+    readonly property int display_position: mode == Types.LoopMode.Recording ? length : position
 
     // TODO: kind of a bad place to put this.
     // When the loop starts recording, ensure all channels have their

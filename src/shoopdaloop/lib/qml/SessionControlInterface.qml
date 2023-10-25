@@ -109,6 +109,22 @@ LuaControlInterface {
     function loop_get_mode_override(loop_selector) {
         return select_loops(loop_selector).map((l) => l.mode)
     }
+    function loop_get_next_mode_override(loop_selector) {
+        return select_loops(loop_selector).map((l) => {
+            if (l.next_mode !== null && l.next_transition_delay !== null && l.next_transition_delay >= 0) {
+                return l.next_mode
+            }
+            return null
+        })
+    }
+    function loop_get_next_mode_delay_override(loop_selector) {
+        return select_loops(loop_selector).map((l) => {
+            if (l.next_mode !== null && l.next_transition_delay !== null && l.next_transition_delay >= 0) {
+                return l.next_transition_delay
+            }
+            return null
+        })
+    }
     function loop_get_length_override(loop_selector) {
         return select_loops(loop_selector).map((l) => l.length)
     }

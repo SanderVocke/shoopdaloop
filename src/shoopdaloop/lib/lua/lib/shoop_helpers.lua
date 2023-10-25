@@ -107,14 +107,26 @@ function shoop_helpers.default_loop_action(loops)
     end
     local modes = list_to_set(shoop_control.loop_get_mode(loops))
     local lengths = list_to_set(shoop_control.loop_get_length(loops))
+    local next_modes_list = shoop_control.loop_get_next_mode(loops)
+    local next_modes_with_nil_and_stopped = next_modes_list
+    table.insert(next_modes_with_nil_and_stopped, shoop_control.constants.LoopMode_Stopped)
+    table.insert(next_modes_with_nil_and_stopped, nil)
+    next_modes_with_nil_and_stopped = list_to_set(next_modes_with_nil_and_stopped)
     local new_mode = nil
-    if sets_equal(modes, list_to_set({ shoop_control.constants.LoopMode_Recording })) then
+    local all_recording = sets_equal(modes, list_to_set({ shoop_control.constants.LoopMode_Recording }))
+    local all_empty = sets_equal(lengths, list_to_set({ 0 })) and sets_equal(modes, list_to_set({ shoop_control.constants.LoopMode_Stopped }))
+    local all_stopped = not sets_equal(lengths, list_to_set({ 0 })) and sets_equal(modes, list_to_set({ shoop_control.constants.LoopMode_Stopped }))
+    local any_transition_planned = not sets_equal(next_modes_with_nil_and_stopped, list_to_set({ shoop_control.constants.LoopMode_Stopped, nil }))
+    if any_transition_planned then
+        print_debug("Default loop action: Cancel planned transitions")
+        new_mode = shoop_control.constants.LoopMode_Stopped
+    elseif all_recording then
         print_debug("Default loop action: Recording -> Playing")
         new_mode = shoop_control.constants.LoopMode_Playing
-    elseif sets_equal(lengths, list_to_set({ 0 })) and sets_equal(modes, list_to_set({ shoop_control.constants.LoopMode_Stopped })) then
+    elseif all_empty then
         print_debug("Default loop action: Empty -> Recording")
         new_mode = shoop_control.constants.LoopMode_Recording
-    elseif not sets_equal(lengths, list_to_set({ 0 })) and sets_equal(modes, list_to_set({ shoop_control.constants.LoopMode_Stopped })) then
+    elseif all_stopped then
         print_debug("Default loop action: Stopped -> Playing")
         new_mode = shoop_control.constants.LoopMode_Playing
     else

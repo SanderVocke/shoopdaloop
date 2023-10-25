@@ -109,6 +109,8 @@ class ControlHandler(QQuickItem):
     lua_interfaces = [
         [ 'loop_count', lua_loop_selector ],
         [ 'loop_get_mode', lua_loop_selector ],
+        [ 'loop_get_next_mode', lua_loop_selector ],
+        [ 'loop_get_next_mode_delay', lua_loop_selector ],
         [ 'loop_get_length', lua_loop_selector ],
         [ 'loop_get_which_selected' ],
         [ 'loop_get_which_targeted' ],
@@ -242,6 +244,28 @@ class ControlHandler(QQuickItem):
         @shoop_lua_fn_docstring.start
         shoop_control.loop_get_mode(loop_selector) -> list[LoopMode]
         Get the current mode of the specified loops.
+        @shoop_lua_fn_docstring.end
+        """
+        pass
+
+    @Slot(list, 'QVariant', result=list)
+    @allow_qml_override
+    def loop_get_next_mode(self, args, lua_engine):
+        """
+        @shoop_lua_fn_docstring.start
+        shoop_control.loop_get_next_mode(loop_selector) -> list[ LoopMode or nil ]
+        For the specified loops, get the upcoming mode transition, if any.
+        @shoop_lua_fn_docstring.end
+        """
+        pass
+
+    @Slot(list, 'QVariant', result=list)
+    @allow_qml_override
+    def loop_get_next_mode_delay(self, args, lua_engine):
+        """
+        @shoop_lua_fn_docstring.start
+        shoop_control.loop_get_next_mode_delay(loop_selector) -> list[ int or nil ]
+        For the specified loops, get the upcoming mode transition delay in cycles, if any.
         @shoop_lua_fn_docstring.end
         """
         pass

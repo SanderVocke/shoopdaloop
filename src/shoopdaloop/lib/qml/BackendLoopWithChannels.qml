@@ -16,6 +16,7 @@ Item {
     property alias mode: loop.mode
     property alias length: loop.length
     property alias position: loop.position
+    property alias display_position: loop.display_position
     property alias next_mode: loop.next_mode
     property alias next_transition_delay: loop.next_transition_delay
     property alias display_peaks: loop.display_peaks

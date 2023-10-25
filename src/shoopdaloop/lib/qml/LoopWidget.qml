@@ -1175,9 +1175,7 @@ Item {
             function getRightMargin() {
                 var st = loopprogressrect.loop
                 if(st && st.length && st.length > 0) {
-                    return st.mode == Types.LoopMode.Recording ?
-                        0.0 :
-                        (1.0 - (st.position / st.length)) * parent.width
+                    return (1.0 - (st.display_position / st.length)) * parent.width
                 }
                 return parent.width
             }
