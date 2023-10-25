@@ -1065,6 +1065,7 @@ Item {
                 // Display the volume dial always
                 AudioDial {
                     id: volume_dial
+                    visible: root.maybe_loop && root.maybe_backend_loop
                     anchors.fill: parent
                     from: -30.0
                     to:   20.0
@@ -1136,6 +1137,7 @@ Item {
                     y: 0
 
                     AudioDial {
+                        visible: root.maybe_loop && root.maybe_backend_loop
                         id: balance_dial
                         from: -1.0
                         to:   1.0
