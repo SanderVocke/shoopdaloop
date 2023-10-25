@@ -11,6 +11,7 @@ from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
 from PySide6.QtQuick import QQuickItem
 
 from .Backend import Backend
+from ..logging import Logger
 
 from ..findFirstParent import findFirstParent
 
@@ -18,7 +19,7 @@ from ..findFirstParent import findFirstParent
 class Port(QQuickItem):
     def __init__(self, parent=None):
         super(Port, self).__init__(parent)
-        self._name_hint = ''
+        self._name_hint = None
         self._backend_obj = None
         self._direction = None
         self._initialized = False
@@ -29,6 +30,8 @@ class Port(QQuickItem):
         self._muted = None
         self._passthrough_muted = None
         self._is_internal = None
+        self._ever_initialized = False
+        self.__logger = Logger("Frontend.Port")
         
         self.rescan_parents()
         if not self._backend:
@@ -64,11 +67,11 @@ class Port(QQuickItem):
     nameHintChanged = Signal(str)
     @Property(str, notify=nameHintChanged)
     def name_hint(self):
-        return self._name_hint
+        return self._name_hint if self._name_hint != None else ''
     @name_hint.setter
     def name_hint(self, n):
         if n != self._name_hint:
-            if self._name_hint != '':
+            if self._name_hint != None:
                 raise Exception('Port name hint may only be set once.')
             self._name_hint = n
             self.maybe_initialize()
@@ -163,6 +166,7 @@ class Port(QQuickItem):
     @Slot()
     def close(self):
         if self._backend_obj:
+            self.__logger.debug(lambda: "{}: Closing port {}".format(self, self._name))
             self._backend_obj.destroy()
             self._backend_obj = None
             self._initialized = False
@@ -186,8 +190,9 @@ class Port(QQuickItem):
     
     @Slot()
     def maybe_initialize(self):
-        if not self._backend_obj and \
-            self._name_hint != '' and \
+        if (not self._backend_obj) and \
+            (not self._ever_initialized) and \
+            self._name_hint != None and \
             self._direction != None and \
             self._is_internal != None and \
             self._muted != None and \
@@ -195,11 +200,14 @@ class Port(QQuickItem):
             self._backend and \
             self._backend.initialized:
             
+            self.__logger.debug(lambda: "{}: Initializing port {}".format(self, self._name_hint))
+            
             self.maybe_initialize_impl(self._name_hint, self._direction, self._is_internal)
             if self._backend_obj:
                 self._initialized = True
                 self._backend.registerBackendObject(self)
                 self.initializedChanged.emit(True)
+                self._ever_initialized = True
 
     @Slot(str)
     def connect_external_port(self, name):

@@ -1,5 +1,6 @@
 #include "JackAudioSystem.h"
 #include "JackMidiPort.h"
+#include "LoggingBackend.h"
 #include "MidiPortInterface.h"
 #include "PortInterface.h"
 #include "JackAudioPort.h"
@@ -43,6 +44,18 @@ template<typename API>
 void GenericJackAudioSystem<API>::PROC_port_rename_cb_static(jack_port_id_t port, const char *old_name, const char *new_name, void *arg) {
     auto &inst = *((GenericJackAudioSystem<API> *)arg);
     inst.PROC_update_ports_cb_inst();
+}
+
+template<typename API>
+void GenericJackAudioSystem<API>::error_cb_static(const char *msg) {
+    std::string _msg = "JACK error: " + std::string(msg);
+    logging::get_logger("Backend.JackAudioSystem").log(logging::LogLevel::err, _msg.c_str());
+}
+
+template<typename API>
+void GenericJackAudioSystem<API>::info_cb_static(const char *msg) {
+    std::string _msg = "JACK error: " + std::string(msg);
+    logging::get_logger("Backend.JackAudioSystem").log(logging::LogLevel::info, _msg.c_str());
 }
 
 template<typename API>
@@ -99,6 +112,8 @@ GenericJackAudioSystem<API>::GenericJackAudioSystem(std::string client_name,
     API::set_port_rename_callback(m_client,
                                    GenericJackAudioSystem<API>::PROC_port_rename_cb_static,
                                    (void *)this);
+    API::set_error_function(GenericJackAudioSystem<API>::error_cb_static);
+    API::set_info_function(GenericJackAudioSystem<API>::info_cb_static);
     
     m_all_ports_tracker->update(m_client);
 }

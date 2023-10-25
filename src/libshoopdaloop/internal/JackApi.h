@@ -30,6 +30,8 @@ public:
     static auto set_port_connect_callback(auto ...args) { return jack_set_port_connect_callback(args...); }
     static auto set_port_registration_callback(auto ...args) { return jack_set_port_registration_callback(args...); }
     static auto set_port_rename_callback(auto ...args) { return jack_set_port_rename_callback(args...); }
+    static auto set_error_function(void (*fn)(const char*)) { return jack_set_error_function((void*)fn); }
+    static auto set_info_function(void (*fn)(const char*)) { return jack_set_info_function((void*)fn); }
     static auto port_register(auto ...args) { return jack_port_register(args...); }
     static auto port_unregister(auto ...args) { return jack_port_unregister(args...); }
     static auto port_name(auto ...args) { return jack_port_name(args...); }

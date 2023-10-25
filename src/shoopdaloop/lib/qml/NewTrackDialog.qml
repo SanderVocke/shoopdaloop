@@ -23,11 +23,11 @@ Dialog {
     property alias is_drywet_carla : select_processing_kind.is_carla
     property alias drywet_carla_type : select_processing_kind.carla_type
     property alias is_drywet_jack : select_processing_kind.is_jack
-    readonly property int n_direct_audio_channels : is_drywet ? 0 : custom_direct_audio_channels.value
-    readonly property int n_dry_audio_channels : is_drywet ? custom_dry_audio_channels.value : 0
-    readonly property int n_wet_audio_channels : is_drywet ? custom_wet_audio_channels.value : 0
-    readonly property bool has_direct_midi : is_drywet ? false : direct_midi_checkbox.checked
-    readonly property bool has_dry_midi : is_drywet ? dry_midi_checkbox.checked : false
+    readonly property int n_direct_audio_channels : is_composite ? 0 : (is_drywet ? 0 : custom_direct_audio_channels.value)
+    readonly property int n_dry_audio_channels : is_composite ? 0 : (is_drywet ? custom_dry_audio_channels.value : 0)
+    readonly property int n_wet_audio_channels : is_composite ? 0 : (is_drywet ? custom_wet_audio_channels.value : 0)
+    readonly property bool has_direct_midi : is_composite ? 0 : (is_drywet ? false : direct_midi_checkbox.checked)
+    readonly property bool has_dry_midi : is_composite ? 0 : (is_drywet ? dry_midi_checkbox.checked : false)
     property string port_name_base : track_name.toLowerCase().replace(' ', '_')
 
     function open_for_new_track() {

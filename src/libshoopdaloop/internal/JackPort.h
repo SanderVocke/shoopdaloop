@@ -1,6 +1,7 @@
 #pragma once
 #include <jack/types.h>
 #include "JackTestApi.h"
+#include "LoggingEnabled.h"
 #include "PortInterface.h"
 #include "JackAllPorts.h"
 #include "JackApi.h"
@@ -8,7 +9,8 @@
 
 template<typename API>
 class GenericJackPort :
-    public virtual PortInterface
+    public virtual PortInterface,
+    protected ModuleLoggingEnabled
 {
 protected:
     jack_port_t* m_port;
@@ -17,6 +19,8 @@ protected:
     PortDirection m_direction;
     PortType m_type;
     std::shared_ptr<GenericJackAllPorts<API>> m_all_ports_tracker;
+
+    std::string log_module_name() const override;
 
 public:
     const char* name() const override;

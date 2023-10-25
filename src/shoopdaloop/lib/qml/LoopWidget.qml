@@ -51,6 +51,7 @@ Item {
         if (channels.length != 2) { throw new Error("Could not find stereo channels") }
         return Stereo.balance(channels[0].volume, channels[1].volume)
     }
+    readonly property bool has_audio: !maybe_composite_loop && initial_descriptor.channels.filter(c => c.type == "audio").length > 0
 
     readonly property string object_schema : 'loop.1'
     SchemaCheck {
@@ -81,11 +82,17 @@ Item {
             else   { root.logger.debug(() => (`${obj_id} has no data file for channel ${c.obj_id}`)) }
             return r
         }) : []
-        let have_any = have_data_files.filter(d => d == true).length > 0
-        if (have_any) {
+        let have_any_data = have_data_files.filter(d => d == true).length > 0
+        let have_composite = ('composition' in initial_descriptor)
+        if (have_any_data && have_composite) {
+            root.logger.error("Loop cannot both have channel data and composition information.")
+            return
+        } else if (have_any_data) {
             root.logger.debug(() => (`${obj_id} has data files, queueing load tasks.`))
             create_backend_loop()
             channels.forEach((c) => c.queue_load_tasks(data_files_dir, add_tasks_to))
+        } else if (have_composite) {
+            create_composite_loop()
         } else {
             root.logger.debug(() => (`${obj_id} has no data files, not queueing load tasks.`))
         }
@@ -431,7 +438,7 @@ Item {
             throw new Error("CompositeLoop: Factory not ready: " + composite_loop_factory.status.toString())
         } else {
             maybe_loop = composite_loop_factory.createObject(root, {
-                initial_composition_descriptor: { 'playlists': [] }
+                initial_composition_descriptor: initial_descriptor.composition
             })
             maybe_loop.onCycled.connect(root.cycled)
         }
@@ -1065,7 +1072,7 @@ Item {
                 // Display the volume dial always
                 AudioDial {
                     id: volume_dial
-                    visible: root.maybe_loop && root.maybe_backend_loop
+                    visible: root.has_audio
                     anchors.fill: parent
                     from: -30.0
                     to:   20.0
@@ -1137,7 +1144,7 @@ Item {
                     y: 0
 
                     AudioDial {
-                        visible: root.maybe_loop && root.maybe_backend_loop
+                        visible: root.has_audio
                         id: balance_dial
                         from: -1.0
                         to:   1.0

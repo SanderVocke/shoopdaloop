@@ -2,6 +2,7 @@ import QtQuick 6.3
 import QtQuick.Controls 6.3
 import QtQuick.Controls.Material 6.3
 import QtQuick.Window
+import ShoopDaLoop.PythonLogger
 
 import '../generated/types.js' as Types
 import "../generate_session.js" as GenerateSession
@@ -13,13 +14,14 @@ Item {
 
     property var initial_descriptor : null
 
+    readonly property PythonLogger logger : PythonLogger { name: "Frontend.Qml.TrackWidget" }
+
     property int track_idx: -1
 
     readonly property string obj_id : initial_descriptor.id
 
-    property bool loaded : false
+    property bool loaded : audio_ports_repeater.loaded && midi_ports_repeater.loaded && loops.loaded
     property int n_loops_loaded : 0
-    //audio_ports_repeater.loaded && midi_ports_repeater.loaded && loops.loaded
 
     signal rowAdded()
     signal requestDelete()
@@ -166,21 +168,29 @@ Item {
         rowAdded()
     }
 
-    RepeaterWithLoadedDetection {
+    MapperWithLoadedDetection {
         id : audio_ports_repeater
-        model : root.audio_port_descriptors.length
+        model : root.audio_port_descriptors
+
+        onAboutToAdd: (descriptor, index) => root.logger.debug(`Track ${root}: Creating audio port ${descriptor.id} with name hint ${descriptor.name_parts.join('')}`)
 
         AudioPort {
-            descriptor: root.audio_port_descriptors[index]
+            property var mapped_item
+            property int index
+            descriptor: mapped_item
             is_internal: false
         }
     }
-    RepeaterWithLoadedDetection {
+    MapperWithLoadedDetection {
         id : midi_ports_repeater
-        model : root.midi_port_descriptors.length
+        model : root.midi_port_descriptors
+
+        onAboutToAdd: (descriptor, index) => root.logger.debug(`Track ${root}: Creating MIDI port ${descriptor.id} with name hint ${descriptor.name_parts.join('')}`)
 
         MidiPort {
-            descriptor: root.midi_port_descriptors[index]
+            property var mapped_item
+            property int index
+            descriptor: mapped_item
             is_internal: false
         }
     }
