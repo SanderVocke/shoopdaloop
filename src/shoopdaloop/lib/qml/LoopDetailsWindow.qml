@@ -21,10 +21,10 @@ ApplicationWindow {
     
     Material.theme: Material.Dark
 
-    Component.onCompleted: root.logger.error("FIXME")
     Loader {
         active: root.maybe_backend_loop
         sourceComponent: loop_content_widget
+        anchors.fill: parent
     }
 
     Component {
@@ -32,7 +32,6 @@ ApplicationWindow {
         LoopContentWidget {
             visible: root.visible
             id: waveform
-            anchors.fill: parent
             anchors.margins: 5
             loop: root.loop_widget
             master_loop: root.master_loop_widget

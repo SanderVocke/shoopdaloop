@@ -55,28 +55,29 @@ AppRegistries {
             filename : TestFilename.test_filename()
             session: session
 
-            property var dt : session.tracks[1]
-            property var dwt: session.tracks[2]
-            property var dt_loop : dt ? dt.loops[0] : null
-            property var dwt_loop : dwt ? dwt.loops[0] : null
+            function dt() { return session.tracks[1] }
+            function dwt() { return session.tracks[2] }
+            function dt_loop() { return dt() ? dt().loops[0] : null }
+            function dwt_loop() { return dwt() ? dwt().loops[0] : null }
+
 
             function dt_loop_channels() {
-                if (!dt_loop) return []
-                var r = dt_loop.get_audio_output_channels()
+                if (!dt_loop()) return []
+                var r = dt_loop().get_audio_output_channels()
                 r.sort((a,b) => a.obj_id.localeCompare(b.obj_id))
                 return r
             }
 
             function dwt_dry_loop_channels() {
-                if (!dwt_loop) return []
-                var r = dwt_loop.get_audio_channels().filter(c => c.obj_id.match(/.*_dry_.*/))
+                if (!dwt_loop()) return []
+                var r = dwt_loop().get_audio_channels().filter(c => c.obj_id.match(/.*_dry_.*/))
                 r.sort((a,b) => a.obj_id.localeCompare(b.obj_id))
                 return r
             }
 
             function dwt_wet_loop_channels() {
-                if (!dwt_loop) return []
-                var r = dwt_loop.get_audio_channels().filter(c => c.obj_id.match(/.*_wet_.*/))
+                if (!dwt_loop()) return []
+                var r = dwt_loop().get_audio_channels().filter(c => c.obj_id.match(/.*_wet_.*/))
                 r.sort((a,b) => a.obj_id.localeCompare(b.obj_id))
                 return r
             }
@@ -91,10 +92,12 @@ AppRegistries {
             function initTestCase() {
                 run_case("initTestCase" , () => {
                     session.backend.dummy_enter_controlled_mode()
-                    verify_true(dt)
-                    verify_true(dwt)
-                    verify_true(dt_loop)
-                    verify_true(dwt_loop)
+                    verify_true(dt())
+                    verify_true(dwt())
+                    verify_true(dt_loop())
+                    verify_true(dwt_loop())
+                    dt_loop().create_backend_loop()
+                    dwt_loop().create_backend_loop()
                     verify_eq(dt_loop_channels().length, 2)
                     verify_eq(dwt_dry_loop_channels().length, 2)
                     verify_eq(dwt_wet_loop_channels().length, 2)
@@ -111,20 +114,20 @@ AppRegistries {
                     dwt_dry_loop_channels()[1].load_data([0.8, 0.7, 0.6, 0.5])
                     dwt_wet_loop_channels()[0].load_data([0.9, 0.10, 0.11, 0.12])
                     dwt_wet_loop_channels()[1].load_data([0.12, 0.11, 0.10, 0.9])
-                    dt_loop.set_length(2)
+                    dt_loop().set_length(2)
                     dt_loop_channels()[0].set_n_preplay_samples(1)
                     dt_loop_channels()[0].set_start_offset(2)
                     dt_loop_channels()[1].set_n_preplay_samples(1)
                     dt_loop_channels()[1].set_start_offset(2)
-                    dwt_loop.set_length(4)
+                    dwt_loop().set_length(4)
                     testcase.wait(50)
 
                     var filename = file_io.generate_temporary_filename() + '.shl'
                     session.save_session(filename)
 
                     testcase.wait(500)
-                    dt_loop.clear()
-                    dwt_loop.clear()
+                    dt_loop().clear()
+                    dwt_loop().clear()
                     testcase.wait(50)
                     
                     verify_eq(dt_loop_channels()[0].get_data(), [])

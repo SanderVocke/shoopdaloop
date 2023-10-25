@@ -25,7 +25,7 @@ from ...custom_qt_msg_handler import *
 script_dir = os.path.dirname(__file__)
 
 class Application(QGuiApplication):
-    def __init__(self, title, main_qml, backend_type, backend_argstring, qml_debug_port=None, qml_debug_wait=False):
+    def __init__(self, title, main_qml, backend_type, backend_argstring, load_session=None, qml_debug_port=None, qml_debug_wait=False):
         super(Application, self).__init__([])
         
         pkg_version = None
@@ -66,7 +66,8 @@ class Application(QGuiApplication):
 
         global_args = {
             'backend_type': backend_type.value,
-            'backend_argstring': backend_argstring
+            'backend_argstring': backend_argstring,
+            'load_session_on_startup': load_session
         }
         
         self.root_context_items = create_and_populate_root_context(self.engine, global_args)

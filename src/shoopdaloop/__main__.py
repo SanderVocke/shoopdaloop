@@ -26,6 +26,7 @@ def main():
         parser.add_argument('-m', '--main', type=str, default='shoopdaloop_main', help='Choose a specific app main window to open. Any choice other than the default is usually for debugging. Available windows: {}'.format(', '.join(mains)))
         parser.add_argument('-b', '--backend', type=str, default='jack', help='Choose an audio backend to use. Available backends (default = jack): {}'.format(', '.join([b.name.lower() for b in BackendType])))
         parser.add_argument('-j', '--jack-server', type=str, default='default', help='Choose a JACK server to connect to. (default = default)')
+        parser.add_argument('session_filename', type=str, default=None, nargs='?', help='(optional) Load a session from a file upon startup.')
         args = parser.parse_args()
 
         backends_map = {b.name.lower(): b for b in BackendType}
@@ -43,6 +44,7 @@ def main():
             '{}/lib/qml/applications/{}.qml'.format(script_pwd, args.main),
             args.backend,
             args.jack_server if args.backend == BackendType.Jack else '',
+            args.session_filename,
             args.qml_debug,
             args.debug_wait
             )

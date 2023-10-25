@@ -36,7 +36,6 @@ class LoopChannel(QQuickItem):
         self._n_preplay_samples = 0
         self._played_back_sample = None
         self.__logger = Logger('Frontend.LoopChannel')
-        self.__logger.warning("INITED LOOPCHANNEL.PY")
     
     requestBackendInit = Signal() # This signal requests the loop to be instantiated in the backend
 
@@ -57,13 +56,10 @@ class LoopChannel(QQuickItem):
     loopChanged = Signal('QVariant')
     @Property('QVariant', notify=loopChanged)
     def loop(self):
-        self.__logger.warning('YIELD {}'.format(self._loop))
         return self._loop
     @loop.setter
     def loop(self, l):
-        self.__logger.warning('loop may change')
         if l and l != self._loop:
-            self.__logger.warning('loop will change')
             if self._loop or self._backend_obj:
                 raise Exception('May not change loop of existing channel')
             self._loop = l
@@ -76,7 +72,6 @@ class LoopChannel(QQuickItem):
     loopModeChanged = Signal(int)
     @Property(int, notify=loopModeChanged)
     def loop_mode(self):
-        self.__logger.warning("MODE")
         return (self._loop.mode if self._loop else 0)
 
     # recording_started_at

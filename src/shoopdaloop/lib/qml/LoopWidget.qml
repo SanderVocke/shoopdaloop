@@ -14,7 +14,6 @@ Item {
     property var track_widget
 
     property var initial_descriptor : null
-    onInitial_descriptorChanged: root.logger.error(`newdesc ${initial_descriptor}`)
 
     property int track_idx : -1
     property int idx_in_track : -1
@@ -73,7 +72,6 @@ Item {
         }
 
         if (maybe_backend_loop) {
-            root.logger.error(`Channels: ${maybe_backend_loop.channels.length}`)
             rval['channels'] = maybe_backend_loop.channels.map((c) => c.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to))
         } else if (maybe_composite_loop) {
             rval['composition'] = maybe_composite_loop.actual_composition_descriptor()
@@ -198,7 +196,7 @@ Item {
 
     // Internally controlled
     property var maybe_loop : null
-    readonly property var maybe_backend_loop : (maybe_loop && maybe_loop.maybe_backend_loop) ? maybe_loop.maybe_backend_loop : null
+    readonly property var maybe_backend_loop : (maybe_loop && maybe_loop instanceof Loop) ? maybe_loop : null
     readonly property var maybe_composite_loop : (maybe_loop && maybe_loop instanceof CompositeLoop) ? maybe_loop : null
     readonly property bool is_loaded : maybe_loop
     readonly property bool is_master: master_loop && master_loop == this
@@ -418,7 +416,6 @@ Item {
         } else if (backend_loop_factory.status != Component.Ready) {
             throw new Error("BackendLoopWithChannels: Factory not ready: " + backend_loop_factory.status.toString())
         } else {
-            root.logger.error(`instantiate ${initial_descriptor}`)
             maybe_loop = backend_loop_factory.createObject(root, {
                 'initial_descriptor': root.initial_descriptor,
                 'sync_source': (!is_master && root.master_loop && root.master_loop.maybe_backend_loop) ? root.master_loop.maybe_backend_loop : null,
@@ -445,20 +442,14 @@ Item {
         } else if (composite_loop_factory.status != Component.Ready) {
             throw new Error("CompositeLoop: Factory not ready: " + composite_loop_factory.status.toString())
         } else {
-            root.logger.error(`widget ${JSON.stringify(composition)}`)
             maybe_loop = composite_loop_factory.createObject(root, {
                 initial_composition_descriptor: composition
             })
             maybe_loop.onCycled.connect(root.cycled)
         }
     }
-
-    RegistryLookups {
-        keys: (root.initial_descriptor && root.initial_descriptor.channels) ? root.initial_descriptor.channels.map(c => c.id) : []
-        registry: registries.objects_registry
-        id: lookup_channels
-    }
-    property alias channels: lookup_channels.objects
+    property bool initialized : maybe_loop ? (maybe_loop.initialized ? true : false) : false
+    property var channels: (maybe_loop && maybe_loop.channels) ? maybe_loop.channels : []
     property var audio_channels : (maybe_loop && maybe_loop.audio_channels) ? maybe_loop.audio_channels : []
     property var midi_channels : (maybe_loop && maybe_loop.midi_channels) ? maybe_loop.midi_channels : []
    
@@ -1550,7 +1541,7 @@ Item {
             })
             property var channels: []
             onAccepted: {
-                if (!root.maybe_loaded_loop) { 
+                if (!root.maybe_backend_loop) { 
                     root.logger.error(() => ("Cannot save: loop not loaded"))
                     return;
                 }
@@ -1558,7 +1549,7 @@ Item {
                 registries.state_registry.save_action_started()
                 try {
                     var filename = selectedFile.toString().replace('file://', '')
-                    var samplerate = root.maybe_loaded_loop.backend.get_sample_rate()
+                    var samplerate = root.maybe_backend_loop.backend.get_sample_rate()
                     var task = file_io.save_channels_to_soundfile_async(filename, samplerate, channels)
                     task.when_finished(() => registries.state_registry.save_action_finished())
                 } catch (e) {
@@ -1576,13 +1567,13 @@ Item {
             nameFilters: ["MIDI files (*.mid)"]
             property var channel: null
             onAccepted: {
-                if (!root.maybe_loaded_loop) { 
+                if (!root.maybe_backend_loop) { 
                     root.logger.error(() => ("Cannot save: loop not loaded"))
                     return;
                 }
                 close()
                 var filename = selectedFile.toString().replace('file://', '')
-                var samplerate = root.maybe_loaded_loop.backend.get_sample_rate()
+                var samplerate = root.maybe_backend_loop.backend.get_sample_rate()
                 file_io.save_channel_to_midi_async(filename, samplerate, channel)
             }
         }
@@ -1621,7 +1612,7 @@ Item {
             readonly property int n_channels : channels_to_load.length
             property int n_file_channels : 0
             property int file_sample_rate : 0
-            property int backend_sample_rate : root.maybe_loaded_loop ? root.maybe_loaded_loop.backend.get_sample_rate() : 0
+            property int backend_sample_rate : root.maybe_backend_loop ? root.maybe_backend_loop.backend.get_sample_rate() : 0
             property bool will_resample : file_sample_rate != backend_sample_rate
 
             width: 300
@@ -1654,14 +1645,14 @@ Item {
             }
 
             onAccepted: {
-                if (!root.maybe_loaded_loop) { 
+                if (!root.maybe_backend_loop) { 
                     root.logger.error(() => ("Cannot load: loop not loaded"))
                     return;
                 }
                 registries.state_registry.load_action_started()
                 try {
                     close()
-                    var samplerate = root.maybe_loaded_loop.backend.get_sample_rate()
+                    var samplerate = root.maybe_backend_loop.backend.get_sample_rate()
                     // Distribute file channels round-robin over loop channels.
                     // TODO: provide other options
                     var mapping = Array.from(Array(n_file_channels).keys()).map(v => [])
@@ -1671,7 +1662,7 @@ Item {
                         fidx = (fidx + 1) % n_file_channels
                     }
                     var task = file_io.load_soundfile_to_channels_async(filename, samplerate, null,
-                        mapping, 0, 0, root.maybe_loaded_loop)
+                        mapping, 0, 0, root.maybe_backend_loop)
                     task.when_finished( () => registries.state_registry.load_action_finished() )
                 } catch(e) {
                     registries.state_registry.load_action_finished()
@@ -1757,9 +1748,9 @@ Item {
             property var channel : null
             function doLoad(update_loop_length) {
                 root.create_backend_loop()
-                var samplerate = root.maybe_loaded_loop.backend.get_sample_rate()
+                var samplerate = root.maybe_backend_loop.backend.get_sample_rate()
                 file_io.load_midi_to_channel_async(filename, samplerate, channel, update_loop_length ?
-                    root.maybe_loaded_loop : null)
+                    root.maybe_backend_loop : null)
             }
 
             onAccepted: doLoad(true)

@@ -138,6 +138,8 @@ Item {
     onFx_out_portsChanged: logic.trigger_signals()
     onMuteChanged: push_mute()
 
+    property string object_schema : ''
+
     // Registration
     RegisterInRegistry {
         id: reg_entry

@@ -35,6 +35,7 @@ ApplicationWindow {
                 object: object,
                 visible: true
             })
+            window.spawn_window.connect(root.spawn_window)
         }
     }
 

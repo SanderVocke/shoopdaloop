@@ -3,6 +3,7 @@ import ShoopDaLoop.PythonLogger
 import QtQuick 6.3
 
 import '../generated/types.js' as Types
+import '../mode_helpers.js' as ModeHelpers
 
 PythonLoop {
     property bool loaded : initialized
@@ -42,25 +43,17 @@ PythonLoop {
     }
 
     function qml_close() {
-        for(var i=0; i<audio_channels.model; i++) {
-            audio_channels.itemAt(i).qml_close();
-        }
-        for(var i=0; i<midi_channels.model; i++) {
-            midi_channels.itemAt(i).qml_close();
-        }
+        get_audio_channels().forEach(c => c.qml_close())
+        get_midi_channels().forEach(c => c.qml_close())
         close()
     }
 
     property var initial_descriptor: null
+    property string obj_id: initial_descriptor ? initial_descriptor.id : null
     RegistryLookups {
         keys: (root.initial_descriptor && root.initial_descriptor.channels) ? root.initial_descriptor.channels.map(c => c.id) : []
         registry: registries.objects_registry
         id: lookup_channels
     }
     property alias channels: lookup_channels.objects
-    property var audio_channels: channels.filter(c => c && c.descriptor.type == 'audio')
-    property var midi_channels: channels.filter(c => c && c.descriptor.type == 'midi')
-
-    onChannelsChanged: root.logger.error(`chans ${channels.length}`)
-    onInitial_descriptorChanged: root.logger.error(`desc ${JSON.stringify(initial_descriptor)}`)
 }

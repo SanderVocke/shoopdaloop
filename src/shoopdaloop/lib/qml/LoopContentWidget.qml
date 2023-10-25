@@ -217,8 +217,6 @@ Item {
 
         Column {
             id: channels_column
-            anchors.fill: parent
-
             Mapper {
                 id: channel_mapper
                 model: loop.channels
@@ -233,10 +231,7 @@ Item {
                     property int index
 
                     height: 100
-                    anchors {
-                        left: channels_column.left
-                        right: channels_column.right
-                    }
+                    width: root.width
 
                     channel: mapped_item
 

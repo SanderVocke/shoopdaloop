@@ -13,6 +13,8 @@ Item {
 
     property var initial_composition_descriptor: null
 
+    readonly property bool initialized: true
+
     Component.onCompleted: root.logger.error(`${JSON.stringify(initial_composition_descriptor)}`)
     onInitial_composition_descriptorChanged: root.logger.error(`${JSON.stringify(initial_composition_descriptor)}`)
 

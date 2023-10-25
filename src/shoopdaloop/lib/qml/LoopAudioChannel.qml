@@ -35,7 +35,6 @@ PythonLoopAudioChannel {
         if (recording_started_at) { rval['recording_started_at'] = recording_started_at }
         if (recording_fx_chain_state_id) { rval['recording_fx_chain_state_id'] = recording_fx_chain_state_id }
 
-        root.logger.warning(`${do_save_data_files} ${data_files_dir}`)
         if (do_save_data_files && data_length > 0) {
             var filename = obj_id + '.flac'
             var full_filename = data_files_dir + '/' + filename;
@@ -93,7 +92,6 @@ PythonLoopAudioChannel {
         function onInitializedChanged() { root.initialize() }
     }
     Component.onCompleted: {
-        root.logger.error("FIXME")
         root.logger.debug(() => `Created with ${JSON.stringify(descriptor)}`)
         set_mode(initial_mode)
         set_volume(initial_volume)
