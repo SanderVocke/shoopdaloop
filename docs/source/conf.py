@@ -20,7 +20,7 @@ author = 'Sander Vocke'
 
 extensions = ['sphinxcontrib.fulltoc',
               'sphinxcontrib.plantuml',
-              'shoop_function_docstrings']
+              'shoop_docstrings']
 
 templates_path = []
 exclude_patterns = []
