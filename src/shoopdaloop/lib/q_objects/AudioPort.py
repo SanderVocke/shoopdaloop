@@ -16,8 +16,6 @@ from ..findFirstParent import findFirstParent
 from ..findChildItems import findChildItems
 from ..logging import Logger
 
-import traceback
-
 # Wraps a back-end port.
 class AudioPort(Port):
     def __init__(self, parent=None):

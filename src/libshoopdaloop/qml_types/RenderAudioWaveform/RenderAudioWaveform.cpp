@@ -72,7 +72,10 @@ RenderAudioWaveform::~RenderAudioWaveform() {
 }
 
 void RenderAudioWaveform::update_lines() {
-    m_render_lines.resize((size_t)std::ceil(width()));
+    auto n_lines = (size_t)std::ceil(
+        std::max(0.0, std::min(8192.0, width()))
+    );
+    m_render_lines.resize(n_lines);
 }
 
 void RenderAudioWaveform::preprocess() {

@@ -60,4 +60,7 @@ PythonLoop {
     property alias channels: lookup_channels.objects
     property var audio_channels: channels.filter(c => c && c.descriptor.type == 'audio')
     property var midi_channels: channels.filter(c => c && c.descriptor.type == 'midi')
+
+    onChannelsChanged: root.logger.error(`chans ${channels.length}`)
+    onInitial_descriptorChanged: root.logger.error(`desc ${JSON.stringify(initial_descriptor)}`)
 }

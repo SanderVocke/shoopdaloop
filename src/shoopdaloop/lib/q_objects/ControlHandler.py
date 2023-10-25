@@ -118,9 +118,9 @@ class ControlHandler(QQuickItem):
         [ 'loop_get_by_track', lua_int ],
         [ 'loop_get_all' ],
         [ 'loop_get_volume', lua_loop_selector ],
-        [ 'loop_get_volume_slider', lua_loop_selector ],
+        [ 'loop_get_volume_fader', lua_loop_selector ],
         [ 'loop_set_volume', lua_loop_selector, lua_float ],
-        [ 'loop_set_volume_slider', lua_loop_selector, lua_float ],
+        [ 'loop_set_volume_fader', lua_loop_selector, lua_float ],
         [ 'loop_get_balance', lua_loop_selector ],
         [ 'loop_set_balance', lua_loop_selector, lua_float ],
         [ 'loop_transition', lua_loop_selector, lua_int, lua_int ],
@@ -131,12 +131,12 @@ class ControlHandler(QQuickItem):
         [ 'loop_clear', lua_loop_selector ],
         [ 'track_get_volume', lua_track_selector ],
         [ 'track_set_volume', lua_track_selector, lua_float ],
-        [ 'track_get_volume_slider', lua_track_selector ],
-        [ 'track_set_volume_slider', lua_track_selector, lua_float ],
+        [ 'track_get_volume_fader', lua_track_selector ],
+        [ 'track_set_volume_fader', lua_track_selector, lua_float ],
         [ 'track_get_input_volume', lua_track_selector ],
         [ 'track_set_input_volume', lua_track_selector, lua_float ],
-        [ 'track_get_input_volume_slider', lua_track_selector ],
-        [ 'track_set_input_volume_slider', lua_track_selector, lua_float ],
+        [ 'track_get_input_volume_fader', lua_track_selector ],
+        [ 'track_set_input_volume_fader', lua_track_selector, lua_float ],
         [ 'track_get_balance', lua_track_selector ],
         [ 'track_set_balance', lua_track_selector, lua_float ],
         [ 'track_get_muted', lua_track_selector ],
@@ -349,11 +349,11 @@ class ControlHandler(QQuickItem):
     
     @Slot(list, 'QVariant', result=list)
     @allow_qml_override
-    def loop_get_volume_slider(self, args, lua_engine):
+    def loop_get_volume_fader(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.loop_get_volume(loop_selector) -> list[float]
-        Get the output audio volume slider position as a fraction of its total range (0-1) of the given loop.
+        Get the output audio volume fader position as a fraction of its total range (0-1) of the given loop.
         @shoop_lua_fn_docstring.end
         """
         pass
@@ -371,11 +371,11 @@ class ControlHandler(QQuickItem):
     
     @Slot(list, 'QVariant')
     @allow_qml_override
-    def loop_set_volume_slider(self, args, lua_engine):
+    def loop_set_volume_fader(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.loop_set_volume(loop_selector)
-        Set the output audio volume slider position as a fraction of its total range (0-1) of the given loop.
+        Set the output audio volume fader position as a fraction of its total range (0-1) of the given loop.
         @shoop_lua_fn_docstring.end
         """
         pass
@@ -484,10 +484,10 @@ class ControlHandler(QQuickItem):
     
     @Slot(list, 'QVariant', result=list)
     @allow_qml_override
-    def track_get_volume_slider(self, args, lua_engine):
+    def track_get_volume_fader(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
-        shoop_control.track_get_volume_slider(track_selector) -> list[float]
+        shoop_control.track_get_volume_fader(track_selector) -> list[float]
         Get the volume of the given track(s) as a fraction of its total range (0-1).
         @shoop_lua_fn_docstring.end
         """
@@ -506,10 +506,10 @@ class ControlHandler(QQuickItem):
     
     @Slot(list, 'QVariant', result=list)
     @allow_qml_override
-    def track_get_input_volume_slider(self, args, lua_engine):
+    def track_get_input_volume_fader(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
-        shoop_control.track_get_input_volume_slider(track_selector) -> list[float]
+        shoop_control.track_get_input_volume_fader(track_selector) -> list[float]
         Get the input volume of the given track(s) as a fraction of its total range (0-1).
         @shoop_lua_fn_docstring.end
         """
@@ -572,10 +572,10 @@ class ControlHandler(QQuickItem):
     
     @Slot(list, 'QVariant')
     @allow_qml_override
-    def track_set_volume_slider(self, args, lua_engine):
+    def track_set_volume_fader(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
-        shoop_control.track_set_volume_slider(track_selector, vol)
+        shoop_control.track_set_volume_fader(track_selector, vol)
         Set the given track's volume as a fraction of its total range (0-1).
         @shoop_lua_fn_docstring.end
         """
@@ -594,10 +594,10 @@ class ControlHandler(QQuickItem):
     
     @Slot(list, 'QVariant')
     @allow_qml_override
-    def track_set_input_volume_slider(self, args, lua_engine):
+    def track_set_input_volume_fader(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
-        shoop_control.track_set_input_volume_slider(track_selector, vol)
+        shoop_control.track_set_input_volume_fader(track_selector, vol)
         Set the given track's input volume as a fraction of its total range (0-1).
         @shoop_lua_fn_docstring.end
         """

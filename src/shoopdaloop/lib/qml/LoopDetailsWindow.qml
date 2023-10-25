@@ -21,6 +21,7 @@ ApplicationWindow {
     
     Material.theme: Material.Dark
 
+    Component.onCompleted: root.logger.error("FIXME")
     Loader {
         active: root.maybe_backend_loop
         sourceComponent: loop_content_widget

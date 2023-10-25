@@ -51,6 +51,7 @@ class FetchChannelData(QQuickItem):
             self._channel = l
             if self._channel:
                 self._loop = self._channel.loop
+                self._channel.loopChanged.connect(self.set_loop)
                 self._channel.dataDirtyChanged.connect(self.set_dirty)
                 self._channel.initializedChanged.connect(self.maybe_start_fetch)
                 self._channel.loopModeChanged.connect(self.maybe_start_fetch)
@@ -136,6 +137,10 @@ class FetchChannelData(QQuickItem):
     @Slot(bool)
     def set_dirty(self, dirty):
         self.dirty = dirty
+        
+    @Slot('QVariant')
+    def set_loop(self, loop):
+        self.loop = loop
 
     @Slot('QVariant', int)
     def fetch_finished(self, data, seq_nr):
@@ -151,6 +156,8 @@ class FetchChannelData(QQuickItem):
         if not self.channel.initialized:
             return
         if not self.channel.loop:
+            return
+        if not self.channel.loop.initialized:
             return
         if is_recording_mode(self.channel.loop_mode):
             return

@@ -18,7 +18,7 @@ PythonLoopAudioChannel {
         schema: root.object_schema
     }
 
-    readonly property PythonLogger logger : PythonLogger { name: "Frontend.LoopAudioChannel" }
+    readonly property PythonLogger logger : PythonLogger { name: "Frontend.Qml.LoopAudioChannel" }
 
     function actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) {
         var rval = {
@@ -35,6 +35,7 @@ PythonLoopAudioChannel {
         if (recording_started_at) { rval['recording_started_at'] = recording_started_at }
         if (recording_fx_chain_state_id) { rval['recording_fx_chain_state_id'] = recording_fx_chain_state_id }
 
+        root.logger.warning(`${do_save_data_files} ${data_files_dir}`)
         if (do_save_data_files && data_length > 0) {
             var filename = obj_id + '.flac'
             var full_filename = data_files_dir + '/' + filename;
@@ -86,9 +87,17 @@ PythonLoopAudioChannel {
         registry: registries.objects_registry
     }
 
+    onLoopChanged: if (loop) { initialize() }
+    Connections {
+        target: root.loop ? root.loop : null
+        function onInitializedChanged() { root.initialize() }
+    }
     Component.onCompleted: {
+        root.logger.error("FIXME")
+        root.logger.debug(() => `Created with ${JSON.stringify(descriptor)}`)
         set_mode(initial_mode)
         set_volume(initial_volume)
+        initialize()
     }
     function qml_close() {
         reg_entry.close()

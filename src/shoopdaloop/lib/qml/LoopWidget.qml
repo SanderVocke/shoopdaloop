@@ -14,6 +14,7 @@ Item {
     property var track_widget
 
     property var initial_descriptor : null
+    onInitial_descriptorChanged: root.logger.error(`newdesc ${initial_descriptor}`)
 
     property int track_idx : -1
     property int idx_in_track : -1
@@ -37,13 +38,15 @@ Item {
     // channel volumes to a "volume + balance" combination for the
     // overall loop.
     readonly property real initial_volume: {
-        var volumes = initial_descriptor.channels
+        var volumes = (initial_descriptor.channels || [])
             .filter(c => ['direct', 'wet'].includes(c.mode))
             .map(c => ('volume' in c) ? c.volume : undefined)
             .filter(c => c != undefined)
         return volumes.length > 0 ? Math.max(...volumes) : 1.0
     }
-    readonly property bool is_stereo: initial_descriptor.channels.filter(c => ['direct', 'wet'].includes(c.mode)).length == 2
+    readonly property bool is_stereo: initial_descriptor.channels ?
+        (initial_descriptor.channels.filter(c => ['direct', 'wet'].includes(c.mode)).length == 2) :
+        false
     readonly property var initial_stereo_balance : {
         if (!is_stereo) { return undefined; }
         var channels = initial_descriptor.channels.filter(c => ['direct', 'wet'].includes(c.mode) && c.type == "audio")
@@ -51,7 +54,8 @@ Item {
         if (channels.length != 2) { throw new Error("Could not find stereo channels") }
         return Stereo.balance(channels[0].volume, channels[1].volume)
     }
-    readonly property bool has_audio: !maybe_composite_loop && initial_descriptor.channels.filter(c => c.type == "audio").length > 0
+    readonly property bool has_audio: (initial_descriptor && !initial_descriptor.composition && initial_descriptor.channels) ?
+        (initial_descriptor.channels.filter(c => c.type == "audio").length > 0) : false
 
     readonly property string object_schema : 'loop.1'
     SchemaCheck {
@@ -69,6 +73,7 @@ Item {
         }
 
         if (maybe_backend_loop) {
+            root.logger.error(`Channels: ${maybe_backend_loop.channels.length}`)
             rval['channels'] = maybe_backend_loop.channels.map((c) => c.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to))
         } else if (maybe_composite_loop) {
             rval['composition'] = maybe_composite_loop.actual_composition_descriptor()
@@ -92,7 +97,7 @@ Item {
             create_backend_loop()
             channels.forEach((c) => c.queue_load_tasks(data_files_dir, add_tasks_to))
         } else if (have_composite) {
-            create_composite_loop()
+            create_composite_loop(initial_descriptor.composition)
         } else {
             root.logger.debug(() => (`${obj_id} has no data files, not queueing load tasks.`))
         }
@@ -330,10 +335,10 @@ Item {
         return chans
     }
 
-    function set_volume_slider(value) {
+    function set_volume_fader(value) {
         statusrect.volume_dial.set_as_range_fraction(value)
     }
-    function get_volume_slider() {
+    function get_volume_fader() {
         return statusrect.volume_dial.position
     }
 
@@ -413,8 +418,9 @@ Item {
         } else if (backend_loop_factory.status != Component.Ready) {
             throw new Error("BackendLoopWithChannels: Factory not ready: " + backend_loop_factory.status.toString())
         } else {
+            root.logger.error(`instantiate ${initial_descriptor}`)
             maybe_loop = backend_loop_factory.createObject(root, {
-                'initial_descriptor': Qt.binding(() => root.initial_descriptor),
+                'initial_descriptor': root.initial_descriptor,
                 'sync_source': (!is_master && root.master_loop && root.master_loop.maybe_backend_loop) ? root.master_loop.maybe_backend_loop : null,
             })
             maybe_loop.onCycled.connect(root.cycled)
@@ -425,7 +431,9 @@ Item {
         id: composite_loop_factory
         CompositeLoop {}
     }
-    function create_composite_loop() {
+    function create_composite_loop(composition={
+        'playlists': []
+    }) {
         if (maybe_backend_loop) {
             root.logger.error("Unimplemented: convert backend loop to composite")
         }
@@ -437,15 +445,16 @@ Item {
         } else if (composite_loop_factory.status != Component.Ready) {
             throw new Error("CompositeLoop: Factory not ready: " + composite_loop_factory.status.toString())
         } else {
+            root.logger.error(`widget ${JSON.stringify(composition)}`)
             maybe_loop = composite_loop_factory.createObject(root, {
-                initial_composition_descriptor: initial_descriptor.composition
+                initial_composition_descriptor: composition
             })
             maybe_loop.onCycled.connect(root.cycled)
         }
     }
 
     RegistryLookups {
-        keys: root.initial_descriptor ? root.initial_descriptor.channels.map(c => c.id) : []
+        keys: (root.initial_descriptor && root.initial_descriptor.channels) ? root.initial_descriptor.channels.map(c => c.id) : []
         registry: registries.objects_registry
         id: lookup_channels
     }

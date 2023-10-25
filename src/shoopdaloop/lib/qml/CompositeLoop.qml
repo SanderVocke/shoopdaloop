@@ -13,10 +13,14 @@ Item {
 
     property var initial_composition_descriptor: null
 
+    Component.onCompleted: root.logger.error(`${JSON.stringify(initial_composition_descriptor)}`)
+    onInitial_composition_descriptorChanged: root.logger.error(`${JSON.stringify(initial_composition_descriptor)}`)
+
     // The sequence is stored as a set of "playlists". Each playlist represents a parallel
     // timeline, stored as a list of { delay: int, loop_id: str }, where the delay can be
     // used to insert blank spots in-between sequential loops.
-    property var playlists: initial_composition_descriptor.playlists
+    property var playlists: (initial_composition_descriptor && initial_composition_descriptor.playlists) ?
+        initial_composition_descriptor.playlists : []
 
     readonly property PythonLogger logger: PythonLogger { name: "Frontend.Qml.CompositeLoop" }
 
@@ -90,7 +94,7 @@ Item {
     onMaster_emptyChanged: update_schedule()
 
     // Calculated properties
-    readonly property int n_cycles: Math.max(...Object.keys(schedule))
+    readonly property int n_cycles: schedule ? Math.max(...Object.keys(schedule)) : 0
     readonly property int master_position: master_loop ? master_loop.position : 0
     readonly property int length: n_cycles * cycle_length
     readonly property int position: iteration * cycle_length + (ModeHelpers.is_running_mode(mode) ? master_position : 0)

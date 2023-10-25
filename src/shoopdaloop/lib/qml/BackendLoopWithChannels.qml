@@ -10,7 +10,9 @@ Item {
 
     Loop {
         id: loop
+        onInitializedChanged: root.logger.warning(`loop inited ${initialized}`)
     }
+    readonly property var the_loop : loop
 
     readonly property PythonLogger logger : PythonLogger { name:"Frontend.Qml.BackendLoopWithChannels" }
     property alias mode: loop.mode
@@ -22,6 +24,7 @@ Item {
     property alias display_peaks: loop.display_peaks
     property alias display_midi_notes_active: loop.display_midi_notes_active
     property alias sync_source: loop.sync_source
+    property alias channels: loop.channels
 
     readonly property var maybe_backend_loop: loop
 
@@ -29,6 +32,9 @@ Item {
     readonly property var audio_channel_descriptors: (initial_descriptor && initial_descriptor.channels) ? initial_descriptor.channels.filter(c => c.type == 'audio') : []
     readonly property var midi_channel_descriptors: (initial_descriptor && initial_descriptor.channels) ? initial_descriptor.channels.filter(c => c.type == 'midi') : []
     
+    onInitial_descriptorChanged: root.logger.warning(`descriptor ${JSON.stringify(initial_descriptor)}`)
+    onAudio_channel_descriptorsChanged: root.logger.warning(`audio channels: ${JSON.stringify(audio_channel_descriptors)}`)
+
     signal cycled();
     onParentChanged: (p) => loop.parentChanged(loop.parent)
 
@@ -86,22 +92,26 @@ Item {
         loop.qml_close()
     }
 
-    Repeater {
+    Mapper {
         id: audio_channels
-        model: root.audio_channel_descriptors.length
+        model: root.audio_channel_descriptors
 
         LoopAudioChannel {
-            loop: loop
-            descriptor: root.audio_channel_descriptors[index]
+            property var mapped_item
+            property int index
+            loop: the_loop
+            descriptor: mapped_item
         }
     }
-    Repeater {
+    Mapper {
         id: midi_channels
-        model : root.midi_channel_descriptors.length
+        model : root.midi_channel_descriptors
 
         LoopMidiChannel {
+            property var mapped_item
+            property int index
             loop: loop
-            descriptor: root.midi_channel_descriptors[index]
+            descriptor: mapped_item
         }
     }
 

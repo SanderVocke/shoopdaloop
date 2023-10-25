@@ -137,8 +137,8 @@ LuaControlInterface {
     function loop_get_volume_override(loop_selector) {
         return select_loops(loop_selector).map(l => l.last_pushed_volume)
     }
-    function loop_get_volume_slider_override(loop_selector) {
-        return select_loops(loop_selector).map(l => l.get_volume_slider())
+    function loop_get_volume_fader_override(loop_selector) {
+        return select_loops(loop_selector).map(l => l.get_volume_fader())
     }
     function loop_get_balance_override(loop_selector) {
         return select_loops(loop_selector).map(l => l.last_pushed_stereo_balance)
@@ -154,8 +154,8 @@ LuaControlInterface {
     function loop_set_volume_override(loop_selector, volume) {
         select_loops(loop_selector).forEach((h) => { h.push_volume(volume) } )
     }
-    function loop_set_volume_slider_override(loop_selector, volume) {
-        select_loops(loop_selector).forEach((h) => { h.set_volume_slider(volume) } )
+    function loop_set_volume_fader_override(loop_selector, volume) {
+        select_loops(loop_selector).forEach((h) => { h.set_volume_fader(volume) } )
     }
     function loop_set_balance_override(loop_selector, balance) {
         select_loops(loop_selector).forEach((h) => { h.push_stereo_balance(balance) } )
@@ -194,26 +194,26 @@ LuaControlInterface {
     function track_set_volume_override(track_selector, vol) {
         select_tracks(track_selector).forEach(t => t.control_widget.set_gain(vol))
     }
-    function track_set_volume_slider_override(track_selector, vol) {
-        select_tracks(track_selector).forEach(t => t.control_widget.set_volume_slider(vol))
+    function track_set_volume_fader_override(track_selector, vol) {
+        select_tracks(track_selector).forEach(t => t.control_widget.set_volume_fader(vol))
     }
     function track_set_input_volume_override(track_selector, vol) {
         select_tracks(track_selector).forEach(t => t.control_widget.set_input_gain(vol))
     }
-    function track_set_input_volume_slider_override(track_selector, vol) {
-        select_tracks(track_selector).forEach(t => t.control_widget.set_input_volume_slider(vol))
+    function track_set_input_volume_fader_override(track_selector, vol) {
+        select_tracks(track_selector).forEach(t => t.control_widget.set_input_volume_fader(vol))
     }
     function track_get_volume_override(track_selector) {
         return select_tracks(track_selector).map(t => t.control_widget.last_pushed_gain)
     }
-    function track_get_volume_slider_override(track_selector) {
-        return select_tracks(track_selector).map(t => t.control_widget.volume_slider_position)
+    function track_get_volume_fader_override(track_selector) {
+        return select_tracks(track_selector).map(t => t.control_widget.volume_fader_position)
     }
     function track_get_input_volume_override(track_selector) {
         return select_tracks(track_selector).map(t => t.control_widget.last_pushed_in_gain)
     }
-    function track_get_input_volume_slider_override(track_selector) {
-        return select_tracks(track_selector).map(t => t.control_widget.input_slider_position)
+    function track_get_input_volume_fader_override(track_selector) {
+        return select_tracks(track_selector).map(t => t.control_widget.input_fader_position)
     }
     function track_get_muted_override(track_selector) {
         return select_tracks(track_selector).map(t => t.control_widget.mute)

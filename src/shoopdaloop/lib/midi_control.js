@@ -90,7 +90,7 @@ const builtin_actions = ({
     },
     'Set Track Volume': {
         'description': 'Set volume level of (a) track(s)',
-        'script': 'shoop_control.track_set_volume_slider(track, value)',
+        'script': 'shoop_control.track_set_volume_fader(track, value)',
         'inputs': {
           'track': track_input('0'),
           'value': volume_conversion_input('cc/vel')
