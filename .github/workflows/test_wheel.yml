@@ -10,7 +10,7 @@ on:
         required: false
         type: string
         default: 'sandervocke/shoopdaloop_run_base:latest'
-      artifact_name:
+      wheel_artifact_name:
         required: true
         type: string
       run_cmd_prefix:
@@ -45,7 +45,7 @@ jobs:
     - name: Retrieve wheel
       uses: actions/download-artifact@v3
       with:
-        name: ${{ inputs.artifact_name }}
+        name: ${{ inputs.wheel_artifact_name }}
         path: ~/wheel
     
     - name: Install wheel

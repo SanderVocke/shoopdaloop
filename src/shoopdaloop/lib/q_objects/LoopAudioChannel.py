@@ -31,7 +31,7 @@ class LoopAudioChannel(LoopChannel):
             self.logger.debug(lambda: "Initialized back-end channel")
             self.initializedChanged.emit(True)
             self.set_volume(self._volume)
-
+    
     ######################
     # PROPERTIES
     ######################

@@ -76,8 +76,15 @@ PythonLoopMidiChannel {
         object: root
     }
 
+    onLoopChanged: initialize()
+    Connections {
+        target: loop
+        function onInitializedChanged() { root.initialize() }
+    }
     Component.onCompleted: {
+        root.logger.debug(() => `Created with ${descriptor}`)
         set_mode(initial_mode)
+        initialize()
     }
     function qml_close() {
         reg_entry.close()

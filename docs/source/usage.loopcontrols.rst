@@ -50,5 +50,37 @@ For this reason, loops in **ShoopDaLoop** are already **pre-recording** in the c
 
 To hear the pre-recorded part back, you need to enable **pre-playback**. This is done in the loop details window (opened from the loop context menu when right-clicking it).
 
-TODO: describe in detail with pictures
+..
+  TODO: describe in detail with pictures
 
+Composite Loops
+^^^^^^^^^^^^^^^
+
+A **composite loop** can be created by selecting an empty slot, then holding **Alt** and clicking another loop. The other loop is added to the composite loop composition:
+
+* Normally at the end of the current sequence. Note that the same loop may also be clicked multiple times to add it repeatedly.
+* If **Ctrl** is also held, it is added in parallel of the current sequence.
+
+Note that **Alt**+click will append to the first "timeline". So for example, if a short loop is composed in parallel with a long one, **Alt**-click will add an additional loop to play right after the short one.
+
+For advanced editing of the sequence, the loop details window should be used (note that at the time of writing this, that is unimplemented).
+
+Composite loops are shown in pink; if a composite loop is (solely) selected, all its sub-loops are highlighted with a pink border.
+
+..
+    TODO: pictures
+
+Playback
+""""""""
+
+Playing back a composite loop will play the loops as sequenced. Empty sub-loops are skipped. The psrogress indicator on the composite loop shows the total progress. The playback will cycle back around to the start of the sequence.
+
+
+Recording
+"""""""""
+
+In order to record a composite loop, the sub-loops must already have contents so their lengths can be determined. That means you will first need to record the subloops separately or manually set their lenghts.
+
+When this is the case, pressing "record" on the composite loop will re-record the subloops in sequence.
+
+Note that there is a special case if the same subloop is sequenced multiple times. It will not re-record multiple times. Instead, after re-recording it the first time, additional occurrences in the sequence are skipped with the subloop idle.

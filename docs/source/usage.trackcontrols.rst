@@ -13,7 +13,7 @@ Volume Controls
 Both volume controls come with:
 
 * A **balance knob** if the in-/outputs are stereo for this track.
-* A **mute button** to mute the track's in-/outputs. For the input this differs from the volume slider in that it only affects monitoring, not recording.
+* A **mute button** to mute the track's in-/outputs. For the input this differs from the volume fader in that it only affects monitoring, not recording.
 
 Track Configuration
 ^^^^^^^^^^^^^^^^^^^^

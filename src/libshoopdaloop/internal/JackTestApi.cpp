@@ -190,6 +190,9 @@ int JackTestApi::set_port_registration_callback(jack_client_t* client, JackPortR
     return 0;
 }
 
+void JackTestApi::set_error_function(void (*fn)(const char*)) {}
+void JackTestApi::set_info_function(void (*fn)(const char*)) {}
+
 int JackTestApi::connect(jack_client_t* client, const char* src, const char* dst) {
     auto &_src = Port::from_ptr(port_by_name(client, src));
     auto &_dst = Port::from_ptr(port_by_name(client, dst));

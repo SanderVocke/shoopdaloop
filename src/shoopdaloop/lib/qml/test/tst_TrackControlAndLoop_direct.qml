@@ -131,7 +131,7 @@ AppRegistries {
                     tut_control().monitor = false
                     tut_control().mute = false
                     lut.transition(Types.LoopMode.Recording, 0, false)
-                    testcase.wait(50)
+                    testcase.wait_updated(session.backend)
 
                     input_port_1.dummy_queue_data([1, 2, 3, 4])
                     input_port_2.dummy_queue_data([4, 3, 2, 1])
@@ -161,7 +161,7 @@ AppRegistries {
                     tut_control().monitor = false
                     tut_control().mute = false
                     lut.transition(Types.LoopMode.Recording, 0, false)
-                    testcase.wait(50)
+                    testcase.wait_updated(session.backend)
 
                     let input = [
                         { 'time': 0, 'data': [0x90, 100, 100] },
@@ -203,7 +203,7 @@ AppRegistries {
                     tut_control().monitor = true
                     tut_control().mute = false
                     lut.transition(Types.LoopMode.Recording, 0, false)
-                    testcase.wait(50)
+                    testcase.wait_updated(session.backend)
 
                     input_port_1.dummy_queue_data([1, 2, 3, 4])
                     input_port_2.dummy_queue_data([4, 3, 2, 1])
@@ -233,7 +233,7 @@ AppRegistries {
                     tut_control().monitor = true
                     tut_control().mute = false
                     lut.transition(Types.LoopMode.Recording, 0, false)
-                    testcase.wait(50)
+                    testcase.wait_updated(session.backend)
 
                     let input = [
                         { 'time': 0, 'data': [0x90, 100, 100] },
@@ -279,7 +279,7 @@ AppRegistries {
                     chans[1].load_data([8, 7, 6, 5])
                     lut.set_length(4)
                     lut.transition(Types.LoopMode.Playing, 0, false)
-                    testcase.wait(50)
+                    testcase.wait_updated(session.backend)
 
                     input_port_1.dummy_queue_data([1, 2, 3, 4])
                     input_port_2.dummy_queue_data([4, 3, 2, 1])
@@ -321,7 +321,7 @@ AppRegistries {
                     chan.load_data(loop)
                     lut.set_length(4)
                     lut.transition(Types.LoopMode.Playing, 0, false)
-                    testcase.wait(50)
+                    testcase.wait_updated(session.backend)
 
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
@@ -355,7 +355,7 @@ AppRegistries {
                     chans[1].load_data([8, 7, 6, 5])
                     lut.set_length(4)
                     lut.transition(Types.LoopMode.Playing, 0, false)
-                    testcase.wait(50)
+                    testcase.wait_updated(session.backend)
 
                     input_port_1.dummy_queue_data([1, 2, 3, 4])
                     input_port_2.dummy_queue_data([4, 3, 2, 1])
@@ -402,7 +402,7 @@ AppRegistries {
                     chan.load_data(loop)
                     lut.set_length(4)
                     lut.transition(Types.LoopMode.Playing, 0, false)
-                    testcase.wait(50)
+                    testcase.wait_updated(session.backend)
 
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()

@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   
-  build_release_whl:
+  build_release:
     runs-on: ubuntu-latest
     container:
       image: sandervocke/shoopdaloop_build_base:latest
@@ -29,12 +29,14 @@ jobs:
       uses: ./.github/actions/build_wheel
       with:
         variant_name: release
-        artifact_name: release_wheel
-        install: false
+        pip_install_extra_args: --break-system-packages
+        wheel_artifact_name: release_wheel
+        #pyinstaller: true
+        #pyinstaller_artifact_name: release_pyinstaller
   
   test_release_whl:
     runs-on: ubuntu-latest
-    needs: build_release_whl
+    needs: build_release
     container:
       image: sandervocke/shoopdaloop_run_base:latest
       options: --user root --workdir /
@@ -98,7 +100,7 @@ jobs:
       uses: ./.github/actions/build_wheel
       with:
         variant_name: asan
-        artifact_name: asan_wheel
+        wheel_artifact_name: asan_wheel
         pypa_build_extra_args: -C--local=pyproject.toml.debug_asan_overrides
         pip_install_extra_args: --break-system-packages
         whl_suffix: asan
@@ -143,7 +145,7 @@ jobs:
       uses: ./.github/actions/build_wheel
       with:
         variant_name: debug
-        artifact_name: debug_wheel
+        wheel_artifact_name: debug_wheel
         pypa_build_extra_args: -C--local=pyproject.toml.debug_overrides
         whl_suffix: debug
         install: false
@@ -163,7 +165,7 @@ jobs:
       uses: ./.github/actions/build_wheel
       with:
         variant_name: coverage
-        artifact_name: coverage_wheel
+        wheel_artifact_name: coverage_wheel
         pypa_build_extra_args: --skip-dependency-check -C--local=pyproject.toml.coverage_overrides
         pip_install_extra_args: --break-system-packages
         whl_suffix: coverage

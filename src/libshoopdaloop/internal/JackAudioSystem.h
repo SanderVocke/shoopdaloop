@@ -36,6 +36,9 @@ private:
     int PROC_xrun_cb_inst ();
     void PROC_update_ports_cb_inst();
 
+    static void error_cb_static(const char* msg);
+    static void info_cb_static(const char* msg);
+
 public:
     GenericJackAudioSystem(
         std::string client_name,

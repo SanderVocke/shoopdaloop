@@ -217,8 +217,6 @@ Item {
 
         Column {
             id: channels_column
-            anchors.fill: parent
-
             Mapper {
                 id: channel_mapper
                 model: loop.channels
@@ -233,10 +231,7 @@ Item {
                     property int index
 
                     height: 100
-                    anchors {
-                        left: channels_column.left
-                        right: channels_column.right
-                    }
+                    width: root.width
 
                     channel: mapped_item
 
@@ -245,7 +240,7 @@ Item {
                     property int first_pixel_sample: (channel ? channel.start_offset : 0) + channels_combine_range.data_start
 
                     samples_offset: scroll.position * channels_combine_range.data_length + first_pixel_sample
-                    loop_length: root.loop.length
+                    loop_length: root.loop ? root.loop.length : 0
 
                     property var maybe_cursor_display_x: {
                         var r = hover_ma.containsMouse ? hover_ma.mouseX : channel_mapper.maybe_cursor_display_x

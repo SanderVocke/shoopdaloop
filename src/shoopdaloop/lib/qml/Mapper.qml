@@ -15,10 +15,13 @@ Item {
 
     property list<var> instances : []
 
+    signal aboutToAdd(var model_elem, int index)
+
     width: childrenRect.width
     height: childrenRect.height
 
     function instantiate_delegate(model_elem, index) {
+        aboutToAdd(model_elem, index)
         return delegate.createObject(root.parent, {
             mapped_item : model_elem,
             index : index

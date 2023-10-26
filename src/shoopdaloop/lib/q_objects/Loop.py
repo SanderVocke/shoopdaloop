@@ -150,12 +150,12 @@ class Loop(QQuickItem):
     ###########
 
     @Slot(result=list)
-    def audio_channels(self):
+    def get_audio_channels(self):
         from .LoopAudioChannel import LoopAudioChannel
         return findChildItems(self, lambda c: isinstance(c, LoopAudioChannel))
     
     @Slot(result=list)
-    def midi_channels(self):
+    def get_midi_channels(self):
         from .LoopMidiChannel import LoopMidiChannel
         return findChildItems(self, lambda c: isinstance(c, LoopMidiChannel))
 
@@ -164,12 +164,11 @@ class Loop(QQuickItem):
     def update(self):
         if not self.initialized:
             return
-        for channel in self.audio_channels():
+        for channel in self.get_audio_channels():
             channel.update()
-        for channel in self.midi_channels():
+        for channel in self.get_midi_channels():
             channel.update()
 
-        prev_before_halway = (self._length > 0 and self._position < self._length/2)
         prev_position = self._position
         prev_mode = self._mode
         prev_length = self._length
@@ -185,9 +184,9 @@ class Loop(QQuickItem):
         self._position = state.position
         self._next_mode = (state.maybe_next_mode if state.maybe_next_mode != None else state.mode)
         self._next_transition_delay = (state.maybe_next_delay if state.maybe_next_delay != None else -1)
-        self._display_peaks = [c.output_peak for c in [a for a in self.audio_channels() if a.mode in [ChannelMode.Direct.value, ChannelMode.Wet.value]]]
-        self._display_midi_notes_active = (sum([c.n_notes_active for c in self.midi_channels()]) if len(self.midi_channels()) > 0 else 0)
-        self._display_midi_events_triggered = (sum([c.n_events_triggered for c in self.midi_channels()]) if len(self.midi_channels()) > 0 else 0)
+        self._display_peaks = [c.output_peak for c in [a for a in self.get_audio_channels() if a.mode in [ChannelMode.Direct.value, ChannelMode.Wet.value]]]
+        self._display_midi_notes_active = (sum([c.n_notes_active for c in self.get_midi_channels()]) if len(self.get_midi_channels()) > 0 else 0)
+        self._display_midi_events_triggered = (sum([c.n_events_triggered for c in self.get_midi_channels()]) if len(self.get_midi_channels()) > 0 else 0)
 
         if prev_mode != self._mode:
             self.logger.debug(lambda: 'mode -> {}'.format(LoopMode(self._mode)))

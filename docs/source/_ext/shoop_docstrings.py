@@ -62,9 +62,35 @@ class FunctionDocstrings(Directive):
             bullet_list += item    
                 
         return [root]
+    
+class LuaScriptDocstring(Directive):
+    required_arguments = 1  
+    
+    def run(self):
+        filename = self.arguments[0]
+        full_filename = base_path + '/' + filename
+        lines = None
+        with open(full_filename, 'r') as f:
+            lines = f.readlines()
+
+        text = ''
+        for line in lines:
+            m = re.match(r'^\s*--\s*(.*)$', line)
+            if m:
+                text += m.group(1) + '\n'
+            elif re.match(r'^\s*$', line):
+                continue
+            else:
+                break
+        
+        root = nodes.paragraph()
+        root += nodes.literal_block(text=text)
+                
+        return [root]
 
 def setup(app):
     app.add_directive("shoop_function_docstrings", FunctionDocstrings)
+    app.add_directive("shoop_lua_docstring", LuaScriptDocstring)
 
     return {
         'version': '1.0',

@@ -71,8 +71,9 @@ Item {
             FileDialog {
                 id: savesessiondialog
                 fileMode: FileDialog.SaveFile
+                options: FileDialog.DontUseNativeDialog
                 acceptLabel: 'Save'
-                nameFilters: ["ShoopDaLoop session files (*.shl)(*.shl)"]
+                nameFilters: ["ShoopDaLoop session files (*.shl)", "All files (*)"]
                 defaultSuffix: 'shl'
                 onAccepted: {
                     close()
@@ -84,8 +85,9 @@ Item {
             FileDialog {
                 id: loadsessiondialog
                 fileMode: FileDialog.OpenFile
+                options: FileDialog.DontUseNativeDialog
                 acceptLabel: 'Load'
-                nameFilters: ["ShoopDaLoop session files (*.shl)(*.shl)", "All files (*)"]
+                nameFilters: ["ShoopDaLoop session files (*.shl)", "All files (*)"]
                 onAccepted: {
                     close()
                     var filename = selectedFile.toString().replace('file://', '');

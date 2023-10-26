@@ -18,7 +18,7 @@ PythonLoopAudioChannel {
         schema: root.object_schema
     }
 
-    readonly property PythonLogger logger : PythonLogger { name: "Frontend.LoopAudioChannel" }
+    readonly property PythonLogger logger : PythonLogger { name: "Frontend.Qml.LoopAudioChannel" }
 
     function actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) {
         var rval = {
@@ -86,9 +86,16 @@ PythonLoopAudioChannel {
         registry: registries.objects_registry
     }
 
+    onLoopChanged: if (loop) { initialize() }
+    Connections {
+        target: root.loop ? root.loop : null
+        function onInitializedChanged() { root.initialize() }
+    }
     Component.onCompleted: {
+        root.logger.debug(() => `Created with ${JSON.stringify(descriptor)}`)
         set_mode(initial_mode)
         set_volume(initial_volume)
+        initialize()
     }
     function qml_close() {
         reg_entry.close()

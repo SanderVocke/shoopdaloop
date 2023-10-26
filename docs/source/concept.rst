@@ -33,14 +33,15 @@ Tracks
 **ShoopDaLoop**'s loops are divided over **tracks**. Loops in the same **track** share their input/output port connections, volume/balance and effects/synthesis. Therefore, typically a track per instrument/part is used.
 
 
-Scenes
--------
+Composition and Sequencing
+--------------------------
 
-Multiple loops can be grouped together into a **scene**. They don't have to be in the same row or column on the grid, and loops can be in multiple **scenes**.
+Any loop slot in **ShoopDaLoop** can be used as a **composite loop**. That means the loop wraps a combination of other loops. Use-cases:
 
-Loops of a scene can be easily selected together to perform the same action on them (e.g. play them back together).
-
-
+* As a **scene**: trigger multiple loops to play together.
+* As a **sequence**: trigger multiple loops to play one after the other (e.g. to represent a verse / chorus).
+* Combine them hierarchically to create entire **songs**.
+* **Planned recording**: recording into a composite loop automatically records into all its children - e.g. to record an entire track while each part of what you play gets stored in the correct sub-loop.
 
 Effects / Synthesis
 ---------------------
@@ -57,9 +58,9 @@ Effects / Synthesis
 
    Signal flow when using external FX/Synthesis.
 
-**ShoopDaLoop** supports two track port connection modes: **direct** and **dry/wet**.
+**ShoopDaLoop** supports two track port connection modes: **regular** and **dry/wet**.
 
-In **direct** mode, there is simply an input and an output.
+In **regular** mode, there is simply an input and an output.
 
 In **dry/wet** mode, an effects and/or synthesis chain can be inserted for the track. When recording loops, the dry and wet signals are simultaneously recorded. This enables tricks such as re-playing the dry loop through live effects, playing back the wet while disabling the effects for CPU savings and re-synthesizing with different virtual instruments.
 
@@ -71,12 +72,3 @@ There are advantages to using plugins if possible:
 
 * Dry, fx/synthesis and wet are all processed in a single audio process iteration. This saves one period of latency w.r.t. external, where the back-end will usually take two cycles to pass the signal back into ShoopDaLoop and out again.
 * Internal plugin state can be remembered by ShoopDaLoop and saved with the session. With external FX/synthesis this would only be possible with e.g. NSM.
-
-
-
-Sequencing
------------------
-
-There is no sequencing available yet, but the plan is for ShoopDaLoop to offer it. It will be possible to sequence different scenes to play back, sequence individual loop transitions or even sequence recording/replacing.
-
-As such, it will be possible to construct songs and/or scripted live performances.

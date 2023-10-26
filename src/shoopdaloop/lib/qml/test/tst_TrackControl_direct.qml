@@ -122,7 +122,7 @@ AppRegistries {
                     reset()
                     tut_control().monitor = true
                     tut_control().mute = false
-                    testcase.wait(50)
+                    testcase.wait_updated(session.backend)
 
                     audio_input_port_1.dummy_queue_data([1, 2, 3, 4])
                     audio_input_port_2.dummy_queue_data([4, 3, 2, 1])
@@ -146,7 +146,7 @@ AppRegistries {
                     reset()
                     tut_control().monitor = true
                     tut_control().mute = false
-                    testcase.wait(50)
+                    testcase.wait_updated(session.backend)
 
                     let msgs = [
                         { 'time': 0, 'data': [0x90, 100, 100] },
@@ -191,7 +191,7 @@ AppRegistries {
                     tut_control().monitor = true
                     tut_control().mute = false
                     tut_control().input_volume_dB = 6.0
-                    testcase.wait(50)
+                    testcase.wait_updated(session.backend)
 
                     audio_input_port_1.dummy_queue_data([1, 2, 3, 4])
                     audio_input_port_2.dummy_queue_data([4, 3, 2, 1])
@@ -216,7 +216,7 @@ AppRegistries {
                     tut_control().monitor = true
                     tut_control().mute = false
                     tut_control().volume_dB = 6.0
-                    testcase.wait(50)
+                    testcase.wait_updated(session.backend)
 
                     audio_input_port_1.dummy_queue_data([1, 2, 3, 4])
                     audio_input_port_2.dummy_queue_data([4, 3, 2, 1])
@@ -242,7 +242,7 @@ AppRegistries {
                     tut_control().mute = false
                     tut_control().output_balance = -1.0
                     tut_control().volume_dB = 6.0
-                    testcase.wait(50)
+                    testcase.wait_updated(session.backend)
 
                     audio_input_port_1.dummy_queue_data([1, 2, 3, 4])
                     audio_input_port_2.dummy_queue_data([4, 3, 2, 1])
@@ -268,7 +268,7 @@ AppRegistries {
                     tut_control().mute = false
                     tut_control().output_balance = 1.0
                     tut_control().volume_dB = 6.0
-                    testcase.wait(50)
+                    testcase.wait_updated(session.backend)
 
                     audio_input_port_1.dummy_queue_data([1, 2, 3, 4])
                     audio_input_port_2.dummy_queue_data([4, 3, 2, 1])
@@ -292,7 +292,7 @@ AppRegistries {
                     reset()
                     tut_control().monitor = false
                     tut_control().mute = false
-                    testcase.wait(50)
+                    testcase.wait_updated(session.backend)
 
                     audio_input_port_1.dummy_queue_data([1, 2, 3, 4])
                     audio_input_port_2.dummy_queue_data([4, 3, 2, 1])
@@ -316,7 +316,7 @@ AppRegistries {
                     reset()
                     tut_control().monitor = false
                     tut_control().mute = false
-                    testcase.wait(50)
+                    testcase.wait_updated(session.backend)
 
                     let msgs = [
                         { 'time': 0, 'data': [0x90, 100, 100] },
@@ -353,7 +353,7 @@ AppRegistries {
                     reset()
                     tut_control().monitor = true
                     tut_control().mute = true
-                    testcase.wait(50)
+                    testcase.wait_updated(session.backend)
 
                     audio_input_port_1.dummy_queue_data([1, 2, 3, 4])
                     audio_input_port_2.dummy_queue_data([4, 3, 2, 1])
@@ -377,7 +377,7 @@ AppRegistries {
                     reset()
                     tut_control().monitor = true
                     tut_control().mute = true
-                    testcase.wait(50)
+                    testcase.wait_updated(session.backend)
 
                     let msgs = [
                         { 'time': 0, 'data': [0x90, 100, 100] },

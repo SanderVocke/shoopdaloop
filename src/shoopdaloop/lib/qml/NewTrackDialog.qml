@@ -19,14 +19,15 @@ Dialog {
 
     property alias track_name : name_field.text
     property alias is_drywet : select_type.is_drywet
+    property alias is_composite : select_type.is_composite
     property alias is_drywet_carla : select_processing_kind.is_carla
     property alias drywet_carla_type : select_processing_kind.carla_type
     property alias is_drywet_jack : select_processing_kind.is_jack
-    readonly property int n_direct_audio_channels : is_drywet ? 0 : custom_direct_audio_channels.value
-    readonly property int n_dry_audio_channels : is_drywet ? custom_dry_audio_channels.value : 0
-    readonly property int n_wet_audio_channels : is_drywet ? custom_wet_audio_channels.value : 0
-    readonly property bool has_direct_midi : is_drywet ? false : direct_midi_checkbox.checked
-    readonly property bool has_dry_midi : is_drywet ? dry_midi_checkbox.checked : false
+    readonly property int n_direct_audio_channels : is_composite ? 0 : (is_drywet ? 0 : custom_direct_audio_channels.value)
+    readonly property int n_dry_audio_channels : is_composite ? 0 : (is_drywet ? custom_dry_audio_channels.value : 0)
+    readonly property int n_wet_audio_channels : is_composite ? 0 : (is_drywet ? custom_wet_audio_channels.value : 0)
+    readonly property bool has_direct_midi : is_composite ? 0 : (is_drywet ? false : direct_midi_checkbox.checked)
+    readonly property bool has_dry_midi : is_composite ? 0 : (is_drywet ? dry_midi_checkbox.checked : false)
     property string port_name_base : track_name.toLowerCase().replace(' ', '_')
 
     function open_for_new_track() {
@@ -75,31 +76,33 @@ Dialog {
             textRole: "text"
             valueRole: "value"
             model: [
-                { value: 'direct', text: "Direct" },
+                { value: 'direct', text: "Regular" },
                 { value: 'drywet', text: "Dry + Wet" },
+                { value: 'composite', text: "Trigger-only" }
             ]
             property bool is_drywet : currentValue == 'drywet'
+            property bool is_composite : currentValue == 'composite'
         }
 
         // START CONTROLS FOR DIRECT LOOP TYPE
 
         Label {
             text: "Audio:"
-            visible: !is_drywet
+            visible: !is_drywet && !is_composite
         }
         AudioTypeSelect {
             id: select_direct_audio_type
-            visible: !is_drywet
+            visible: !is_drywet && !is_composite
             onChangeNChannels: (n) => custom_direct_audio_channels.value = n
         }
 
         Label {
             text: "Audio channels:"
-            visible: !is_drywet && select_direct_audio_type.show_custom
+            visible: !is_drywet && !is_composite && select_direct_audio_type.show_custom
         }
         SpinBox {
             id: custom_direct_audio_channels
-            visible: !is_drywet && select_direct_audio_type.show_custom
+            visible: !is_drywet && !is_composite && select_direct_audio_type.show_custom
             value: 2
             from: 0
             to: 10
@@ -108,23 +111,23 @@ Dialog {
 
         Label {
             text: "MIDI:"
-            visible: !is_drywet
+            visible: !is_drywet && !is_composite
         }
         CheckBox {
             id: direct_midi_checkbox
             tristate: false
-            visible: !is_drywet
+            visible: !is_drywet && !is_composite
         }
 
         // START CONTROLS FOR DRY/WET LOOP TYPE
 
         Label {
             text: "Processing Kind:"
-            visible: is_drywet
+            visible: is_drywet && !is_composite
         }
         ShoopComboBox {
             id: select_processing_kind
-            visible: is_drywet
+            visible: is_drywet && !is_composite
             textRole: "text"
             valueRole: "value"
             model: [
@@ -141,21 +144,21 @@ Dialog {
 
         Label {
             text: "Dry audio:"
-            visible: is_drywet
+            visible: is_drywet && !is_composite
         }
         AudioTypeSelect {
             id: select_dry_audio_type
-            visible: is_drywet
+            visible: is_drywet && !is_composite
             onChangeNChannels: (n) => custom_dry_audio_channels.value = n
         }
 
         Label {
             text: "Dry audio channels:"
-            visible: is_drywet && select_dry_audio_type.show_custom
+            visible: is_drywet && !is_composite && select_dry_audio_type.show_custom
         }
         SpinBox {
             id: custom_dry_audio_channels
-            visible: is_drywet && select_dry_audio_type.show_custom
+            visible: is_drywet && !is_composite && select_dry_audio_type.show_custom
             value: 2
             from: 0
             to: 10
@@ -164,31 +167,31 @@ Dialog {
 
         Label {
             text: "Dry MIDI:"
-            visible: is_drywet
+            visible: is_drywet && !is_composite
         }
         CheckBox {
             id: dry_midi_checkbox
             tristate: false
-            visible: is_drywet
+            visible: is_drywet && !is_composite
         }
 
         Label {
             text: "Wet audio:"
-            visible: is_drywet
+            visible: is_drywet && !is_composite
         }
         AudioTypeSelect {
             id: select_wet_audio_type
-            visible: is_drywet
+            visible: is_drywet && !is_composite
             onChangeNChannels: (n) => custom_wet_audio_channels.value = n
         }
 
         Label {
             text: "Wet audio channels:"
-            visible: is_drywet && select_wet_audio_type.show_custom
+            visible: is_drywet && !is_composite && select_wet_audio_type.show_custom
         }
         SpinBox {
             id: custom_wet_audio_channels
-            visible: is_drywet && select_wet_audio_type.show_custom
+            visible: is_drywet && !is_composite && select_wet_audio_type.show_custom
             value: 2
             from: 0
             to: 10

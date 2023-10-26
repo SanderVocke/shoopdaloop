@@ -100,6 +100,9 @@ public:
     static const char** port_get_connections(const jack_port_t* port);
     static int set_port_registration_callback(jack_client_t* client, JackPortRegistrationCallback cb, void* arg);
 
+    static void set_error_function(void (*fn)(const char*));
+    static void set_info_function(void (*fn)(const char*));
+
     static jack_port_t* port_register(
         jack_client_t* client,
         const char* port_name,

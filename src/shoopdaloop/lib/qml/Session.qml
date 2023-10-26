@@ -24,6 +24,16 @@ Item {
     property var backend_type : global_args.backend_type
     property var backend_argstring : global_args.backend_argstring
 
+    onLoadedChanged: {
+        if (loaded) {
+            if (global_args.load_session_on_startup) {
+                var filename = global_args.load_session_on_startup
+                global_args.load_session_on_startup = null
+                load_session(filename)
+            }
+        }
+    }
+
     property bool settings_io_enabled: false
 
     function actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) {
@@ -148,6 +158,7 @@ Item {
                     try {
                         file_io.delete_recursive(tempdir)
                     } finally {
+                        root.logger.info(() => ("Session loaded from: " + filename))
                         registries.state_registry.load_action_finished()
                         tasks.parent = null
                         tasks.deleteLater()
@@ -193,22 +204,6 @@ Item {
         key: 'control_interface'
         object: control_interface
     }
-
-    // LuaScriptWithEngine {
-    //     script_name: 'keyboard.lua'
-    //     script_code: file_io.read_file(
-    //         file_io.get_installation_directory() + '/lib/lua/builtins/keyboard.lua'
-    //     )
-    //     control_interface: control_interface
-    // }
-
-    // LuaScriptWithEngine {
-    //     script_name: 'akai_apc_mini_mk1.lua'
-    //     script_code: file_io.read_file(
-    //         file_io.get_installation_directory() + '/lib/lua/builtins/akai_apc_mini_mk1.lua'
-    //     )
-    //     control_interface: control_interface
-    // }
 
     LuaScriptManager {
         control_interface: control_interface

@@ -114,6 +114,8 @@ class MidiPort(Port):
                     raise Exception('Input ports (FX outputs) of MIDI type not supported')
 
     def maybe_initialize_external(self, name_hint, direction):
+        if self._backend_obj:
+            return # never initialize more than once
         self._backend_obj = self.backend.get_backend_obj().open_jack_midi_port(name_hint, direction)
         self.push_state()
 

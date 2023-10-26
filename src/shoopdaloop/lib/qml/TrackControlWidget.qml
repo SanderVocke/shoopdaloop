@@ -16,14 +16,14 @@ Item {
     property var initial_track_descriptor : null
 
     // UI-controlled properties
-    property alias volume_dB: volume_slider.value
-    property alias input_volume_dB: input_slider.value
-    property alias volume_dB_min: volume_slider.from
-    property alias input_volume_dB_min: input_slider.from
+    property alias volume_dB: volume_fader.value
+    property alias input_volume_dB: input_fader.value
+    property alias volume_dB_min: volume_fader.from
+    property alias input_volume_dB_min: input_fader.from
     property alias input_balance: input_balance_dial.value
     property alias output_balance: output_balance_dial.value
-    property real volume_slider_position: volume_slider.position
-    property real input_slider_position: input_slider.position
+    property real volume_fader_position: volume_fader.position
+    property real input_fader_position: input_fader.position
     property bool monitor : false
     property bool mute : false
 
@@ -102,12 +102,12 @@ Item {
 
     // Handlers
     onInitial_volumeChanged: {
-        // Will lead to updating the sliders
+        // Will lead to updating the faders
         convert_volume.linear = initial_volume
         initial_volume_dB = convert_volume.dB
     }
     onInitial_input_volumeChanged: {
-        // Will lead to updating the sliders
+        // Will lead to updating the faders
         convert_volume.linear = initial_input_volume
         initial_input_volume_dB = convert_volume.dB
     }
@@ -137,6 +137,8 @@ Item {
     onMaybe_fx_chainChanged: logic.trigger_signals()
     onFx_out_portsChanged: logic.trigger_signals()
     onMuteChanged: push_mute()
+
+    property string object_schema : ''
 
     // Registration
     RegisterInRegistry {
@@ -213,16 +215,16 @@ Item {
         return null;
     }
     function set_gain(gain) {
-        volume_dB = Math.min(Math.max(volume_slider.gainToDb(gain), volume_slider.from), volume_slider.to)
+        volume_dB = Math.min(Math.max(volume_fader.gainToDb(gain), volume_fader.from), volume_fader.to)
     }
-    function set_volume_slider(value) {
-        volume_slider.value = volume_slider.valueAt(value)
+    function set_volume_fader(value) {
+        volume_fader.value = volume_fader.valueAt(value)
     }
     function set_input_gain(gain) {
-        input_volume_dB = Math.min(Math.max(input_slider.gainToDb(gain), input_slider.from), input_slider.to)
+        input_volume_dB = Math.min(Math.max(input_fader.gainToDb(gain), input_fader.from), input_fader.to)
     }
-    function set_input_volume_slider(value) {
-        input_slider.value = input_slider.valueAt(value)
+    function set_input_volume_fader(value) {
+        input_fader.value = input_fader.valueAt(value)
     }
     function convert_volume_to_linear(volume) {
         convert_volume.dB = volume
@@ -492,7 +494,7 @@ Item {
                 Item {
                     width: 18
                     height: width
-                    anchors.verticalCenter: volume_slider.verticalCenter
+                    anchors.verticalCenter: volume_fader.verticalCenter
 
                     Rectangle {
                         anchors.fill: parent
@@ -528,7 +530,7 @@ Item {
                     }
                 }
                 AudioSlider {
-                    id: volume_slider
+                    id: volume_fader
                     orientation: Qt.Horizontal
                     width: root.out_is_stereo ? 70 : 85
                     height: 20
@@ -560,7 +562,7 @@ Item {
                     width: 18
                     height: 18
 
-                    anchors.verticalCenter: volume_slider.verticalCenter
+                    anchors.verticalCenter: volume_fader.verticalCenter
 
                     property alias initial_value: root.initial_balance
                     onInitial_valueChanged: value = initial_value
@@ -747,7 +749,7 @@ Item {
                 Item {
                     width: 18
                     height: width
-                    anchors.verticalCenter: input_slider.verticalCenter
+                    anchors.verticalCenter: input_fader.verticalCenter
 
                     Rectangle {
                         anchors.fill: parent
@@ -783,7 +785,7 @@ Item {
                     }
                 }
                 AudioSlider {
-                    id: input_slider
+                    id: input_fader
                     orientation: Qt.Horizontal
                     width: root.in_is_stereo ? 70 : 85
                     height: 20
@@ -819,7 +821,7 @@ Item {
                     onInitial_valueChanged: value = initial_value
                     Component.onCompleted: value = initial_value
 
-                    anchors.verticalCenter: input_slider.verticalCenter
+                    anchors.verticalCenter: input_fader.verticalCenter
 
                     handle.width: 4
                     handle.height: 4

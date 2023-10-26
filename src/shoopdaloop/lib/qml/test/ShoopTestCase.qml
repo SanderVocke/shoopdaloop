@@ -67,9 +67,9 @@ TestCase {
         verify(false)
     }
 
-    function verify_true(a) {
+    function verify_true(a, msg=`verify_true failed`) {
         var result = Boolean(a)
-        let failstring = `verify_true failed (v = ${a})`
+        let failstring = `${msg} (v = ${a})`
         if (!result) {
             logger.error(() => (format_error(failstring)))
         }
@@ -153,5 +153,40 @@ TestCase {
             logger.error(() => (format_error(failstring, e.stack)))
             throw e
         }
+    }
+
+    function wait_condition(condition, timeout=2000, msg=`condition not met in time`) {
+        var waited = 20
+        wait(waited)
+        while(!condition() && waited <= timeout) {
+            wait(20)
+            waited += 20
+        }
+        verify_true(condition(), msg)
+    }
+
+    function wait_session_loaded(session) {
+        wait_condition(() => session.loaded, 2000, `session not loaded in time`)
+    }
+
+    function wait_session_io_done() {
+        wait_condition(() => registries.state_registry.n_saving_actions_active == 0 && registries.state_registry.n_loading_actions_active == 0, 2000, "Session I/O not finished in time")
+    }
+
+    function connectOnce(sig, slot) {
+        var f = function() {
+            slot.apply(this, arguments)
+            sig.disconnect(f)
+        }
+        sig.connect(f)
+    }
+
+    function wait_updated(backend) {
+        var done = false
+        function updated() {
+            done = true
+        }
+        connectOnce(backend.updated, updated)
+        wait_condition(() => done == true, 200, "Backend not updated in time")
     }
 }

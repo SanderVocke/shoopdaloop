@@ -40,20 +40,8 @@ ApplicationWindow {
             active: true
         }
     }
-
-    readonly property var window_factory : Qt.createComponent("DebugInspectionItemWindow.qml")
-    function spawn_window(object) {
-        if (window_factory.status == Component.Error) {
-            throw new Error("DebugInspectionMainWindow: Failed to load window factory: " + window_factory.errorString())
-        } else if (window_factory.status != Component.Ready) {
-            throw new Error("DebugInspectionMainWindow: Factory not ready")
-        } else {
-            var window = window_factory.createObject(root.parent, {
-                object: object,
-                visible: true
-            })
-        }
-    }
+    
+    signal spawn_window(var object)
 
     component ItemRow: Row {
         spacing: 5
@@ -177,7 +165,7 @@ ApplicationWindow {
 
                 ItemRow {
                     label: "recording started:"
-                    Label { text: object.recording_started_at }
+                    Label { text: object.recording_started_at !== undefined ? object.recording_started_at : "n/a" }
                 }
 
                 ItemRow {
@@ -192,7 +180,7 @@ ApplicationWindow {
 
                 ItemRow {
                     label: "last played:"
-                    Label { text: object.played_back_sample }
+                    Label { text: object.played_back_sample !== undefined ? object.played_back_sample : "n/a" }
                 }
 
                 ItemRow {
@@ -228,11 +216,11 @@ ApplicationWindow {
                 }
 
                 ItemRow {
-                    label: "ports to conn:"
+                    label: "ports:"
                     Row {
                         spacing: 3
                         Mapper {
-                            model: object.ports_to_connect
+                            model: object.ports
                             Text {
                                 property var mapped_item
                                 property int index
@@ -321,6 +309,21 @@ ApplicationWindow {
                         text: object.sync_source ? "<a href=\"bla\">" + object.sync_source.obj_id + "</a>" : "none"
                         onLinkActivated: root.spawn_window(object.sync_source)
                         color: Material.foreground
+                    }
+                }
+
+                ItemRow {
+                    label: "channels:"
+                    Mapper {
+                        model: object.channels
+                        Text {
+                            property var mapped_item
+                            property int index
+
+                            text: mapped_item ? "<a href=\"bla\">" + mapped_item.obj_id + "</a>" : "none"
+                            onLinkActivated: root.spawn_window(mapped_item)
+                            color: Material.foreground
+                        }
                     }
                 }
 
