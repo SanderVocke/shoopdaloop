@@ -33,6 +33,7 @@ python3-virtualenv
 python3-pytest
 python3-pip
 python3-coverage
+pipx
 
 # not sure why exactly these are needed
 libgl1-mesa-dev

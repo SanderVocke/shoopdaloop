@@ -3,13 +3,16 @@ import os
 
 script_pwd = os.path.dirname(__file__)
 
+import shoopdaloop.lib
+module_pwd = os.path.dirname(shoopdaloop.lib.__file__) + '/..' 
+
 import traceback
 import argparse
 import glob
 
-from .lib.q_objects.Application import Application
-from .lib.logging import *
-from .lib.backend_wrappers import *
+from shoopdaloop.lib.q_objects.Application import Application
+from shoopdaloop.lib.logging import *
+from shoopdaloop.lib.backend_wrappers import *
 
 def main():
     logger = Logger("Frontend.Main")    
@@ -41,7 +44,7 @@ def main():
             exit(0)
     
         app = Application('ShoopDaLoop',
-            '{}/lib/qml/applications/{}.qml'.format(script_pwd, args.main),
+            '{}/lib/qml/applications/{}.qml'.format(module_pwd, args.main),
             args.backend,
             args.jack_server if args.backend == BackendType.Jack else '',
             args.session_filename,
@@ -52,3 +55,7 @@ def main():
     except Exception as e:
         logger.error(lambda: "Exception: " + str(e) + "\n" + traceback.format_exc())
         exit()
+
+
+if __name__ == "__main__":
+    main()

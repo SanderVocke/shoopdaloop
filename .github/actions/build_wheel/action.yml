@@ -11,13 +11,20 @@ inputs:
   whl_suffix:
     required: false
     type: string
-  artifact_name:
+  wheel_artifact_name:
     required: true
     type: string
   install:
     required: false
     type: boolean
     default: false
+  pyinstaller:
+    required: false
+    type: boolean
+    default: false
+  pyinstaller_artifact_name:
+    required: false
+    type: string
   pip_install_extra_args:
     required: false
     type: string
@@ -64,17 +71,45 @@ runs:
     if: ${{ !env.ACT }}
     uses: actions/upload-artifact@v3
     with:
-      name: ${{ inputs.artifact_name }}
+      name: ${{ inputs.wheel_artifact_name }}
       path: ${{ steps.find.outputs.name }}
   
   - name: Install wheel
     shell: bash
     id: install
-    if: ${{ inputs.install == 'true' }}
+    if: ${{ inputs.install == 'true' || inputs.pyinstaller == 'true' }}
     run: |
       mkdir -p install
       export PYTHONPATH="$PYTHONPATH:$(pwd)/pip"
       ASAN_OPTIONS=detect_leaks=0 ${{ steps.build.outputs.run_cmd_prefix }} python3 -m pip install ${{ inputs.pip_install_extra_args }} ${{ steps.find.outputs.name }}
       ASAN_OPTIONS=detect_leaks=0 ${{ steps.build.outputs.run_cmd_prefix }} python3 -m pip install --target=./pip --force-reinstall --no-deps ${{ inputs.pip_install_extra_args }} ${{ steps.find.outputs.name }}
       echo "install_dir=$(ASAN_OPTIONS=detect_leaks=0 ${{ steps.build.outputs.run_cmd_prefix }} pip/bin/shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g')" | tee -a $GITHUB_OUTPUT
+  
+  - name: Prepare PyInstaller
+    shell: bash
+    id: prepare_pyinstaller
+    if: ${{ inputs.pyinstaller == 'true' }}
+    run: |
+      echo "pyinstaller_dir=$(pwd)/pyinstaller" | tee -a $GITHUB_OUTPUT
+
+  - name: PyInstaller
+    shell: bash
+    id: pyinstaller
+    if: ${{ inputs.pyinstaller == 'true' }}
+    run: |
+      cd ${{ steps.install.outputs.install_dir }}
+      pipx install pyinstaller
+      pyinstaller __main__.py -n shoopdaloop --collect-all shoopdaloop --collect-all lupa --distpath ${{ steps.prepare_pyinstaller.outputs.pyinstaller_dir }} --clean
+  
+  - name: Upload PyInstaller distribution (${{ inputs.variant_name }})
+    if: ${{ !env.ACT }}
+    uses: actions/upload-artifact@v3
+    with:
+      name: ${{ inputs.pyinstaller_artifact_name }}
+      path: ${{ steps.prepare_pyinstaller.outputs.pyinstaller_dir }}
+    
+
+
+
+  
 
