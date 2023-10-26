@@ -73,8 +73,11 @@ Item {
 
         if (maybe_backend_loop) {
             rval['channels'] = maybe_backend_loop.channels.map((c) => c.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to))
-        } else if (maybe_composite_loop) {
-            rval['composition'] = maybe_composite_loop.actual_composition_descriptor()
+        } else {
+            rval['channels'] = initial_descriptor.channels
+            if (maybe_composite_loop) {
+                rval['composition'] = maybe_composite_loop.actual_composition_descriptor()
+            }
         }
         return rval
     }
@@ -1586,6 +1589,7 @@ Item {
                     throw e;
                 }
             }
+            
         }
 
         FileDialog {
@@ -1605,6 +1609,7 @@ Item {
                 var samplerate = root.maybe_backend_loop.backend.get_sample_rate()
                 file_io.save_channel_to_midi_async(filename, samplerate, channel)
             }
+            
         }
 
         FileDialog {
@@ -1624,6 +1629,7 @@ Item {
                 loadoptionsdialog.update()
                 loadoptionsdialog.open()
             }
+            
         }
 
         Dialog {
@@ -1632,6 +1638,7 @@ Item {
             parent: Overlay.overlay
             x: (parent.width - width) / 2
             y: (parent.height - height) / 2
+            
             modal: true
             property string filename: ''
             property var channels_to_load : []
