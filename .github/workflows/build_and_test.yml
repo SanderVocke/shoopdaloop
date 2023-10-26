@@ -31,8 +31,8 @@ jobs:
         variant_name: release
         pip_install_extra_args: --break-system-packages
         wheel_artifact_name: release_wheel
-        pyinstaller: true
-        pyinstaller_artifact_name: release_pyinstaller
+        #pyinstaller: true
+        #pyinstaller_artifact_name: release_pyinstaller
   
   test_release_whl:
     runs-on: ubuntu-latest
