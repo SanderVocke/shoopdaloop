@@ -102,7 +102,7 @@ runs:
       pyinstaller __main__.py -n shoopdaloop --collect-all shoopdaloop --collect-all lupa --distpath ${{ steps.prepare_pyinstaller.outputs.pyinstaller_dir }} --clean
   
   - name: Upload PyInstaller distribution (${{ inputs.variant_name }})
-    if: ${{ !env.ACT }}
+    if: ${{ !env.ACT && inputs.pyinstaller == 'true' }}
     uses: actions/upload-artifact@v3
     with:
       name: ${{ inputs.pyinstaller_artifact_name }}

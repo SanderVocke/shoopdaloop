@@ -29,6 +29,7 @@ jobs:
       uses: ./.github/actions/build_wheel
       with:
         variant_name: release
+        pip_install_extra_args: --break-system-packages
         wheel_artifact_name: release_wheel
         pyinstaller: true
         pyinstaller_artifact_name: release_pyinstaller
