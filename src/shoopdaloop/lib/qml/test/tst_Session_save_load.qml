@@ -134,15 +134,15 @@ AppRegistries {
                     dt_loop_channels()[1].set_n_preplay_samples(1)
                     dt_loop_channels()[1].set_start_offset(2)
                     dwt_loop().set_length(4)
-                    testcase.wait(50)
+                    testcase.wait_updated(session.backend)
 
                     var filename = file_io.generate_temporary_filename() + '.shl'
                     session.save_session(filename)
 
-                    testcase.wait_condition(() => registries.state_registry.n_saving_actions_active == 0, 2000, "Saving not finished in time")
+                    testcase.wait_session_io_done()
                     dt_loop().clear()
                     dwt_loop().clear()
-                    testcase.wait(20)
+                    testcase.wait_updated(session.backend)
                     
                     verify_eq(dt_loop_channels()[0].get_data(), [])
                     verify_eq(dt_loop_channels()[1].get_data(), [])
@@ -152,8 +152,7 @@ AppRegistries {
                     verify_eq(dwt_wet_loop_channels()[1].get_data(), [])
 
                     session.load_session(filename)
-                    testcase.wait(50)
-                    testcase.wait_condition(() => session.loaded, 2000, "Session not loaded in time")
+                    testcase.wait_session_loaded(session)
 
                     verify_true(dt_loop_2().maybe_composite_loop)
                     verify_true(dwt_loop_2().maybe_composite_loop)

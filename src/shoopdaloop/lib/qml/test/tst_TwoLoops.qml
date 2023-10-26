@@ -31,7 +31,7 @@ Session {
         function clear() {
             master_loop().clear()
             other_loop().clear()
-            testcase.wait(100)
+            testcase.wait_updated(session.backend)
             verify_loop_cleared(master_loop())
             verify_loop_cleared(other_loop())
         }
@@ -50,7 +50,7 @@ Session {
                 check_backend()
 
                 master_loop().transition(Types.LoopMode.Recording, 0, true)
-                testcase.wait(100)
+                testcase.wait_updated(session.backend)
                 verify_eq(master_loop().mode, Types.LoopMode.Recording)
                 verify_gt(master_loop().length, 0)
                 verify_loop_cleared(other_loop())
@@ -65,7 +65,7 @@ Session {
 
                 master_loop().set_length(48000)
                 master_loop().transition(Types.LoopMode.Playing, 0, true)
-                testcase.wait(100)
+                testcase.wait_updated(session.backend)
                 verify_eq(master_loop().mode, Types.LoopMode.Playing)
                 verify_eq(master_loop().length, 48000)
                 verify_loop_cleared(other_loop())

@@ -32,6 +32,7 @@ class Backend(QQuickItem):
         self.logger = Logger('Frontend.Backend')
     
     update = Signal()
+    updated = Signal()
 
     ######################
     # PROPERTIES
@@ -142,6 +143,7 @@ class Backend(QQuickItem):
         for r in toRemove:
             self._backend_child_objects.remove(r)
         self.update.emit()
+        self.updated.emit()
     
     @Slot(result=int)
     def get_sample_rate(self):

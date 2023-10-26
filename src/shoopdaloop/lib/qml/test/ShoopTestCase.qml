@@ -164,4 +164,29 @@ TestCase {
         }
         verify_true(condition(), msg)
     }
+
+    function wait_session_loaded(session) {
+        wait_condition(() => session.loaded, 2000, `session not loaded in time`)
+    }
+
+    function wait_session_io_done() {
+        wait_condition(() => registries.state_registry.n_saving_actions_active == 0 && registries.state_registry.n_loading_actions_active == 0, 2000, "Session I/O not finished in time")
+    }
+
+    function connectOnce(sig, slot) {
+        var f = function() {
+            slot.apply(this, arguments)
+            sig.disconnect(f)
+        }
+        sig.connect(f)
+    }
+
+    function wait_updated(backend) {
+        var done = false
+        function updated() {
+            done = true
+        }
+        connectOnce(backend.updated, updated)
+        wait_condition(() => done == true, 200, "Backend not updated in time")
+    }
 }
