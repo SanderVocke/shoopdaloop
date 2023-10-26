@@ -108,6 +108,9 @@ Item {
     }
     property alias master_loop : master_loop_lookup.object
 
+    readonly property int cycle_length: master_loop ? master_loop.length : 0
+    readonly property int n_cycles: cycle_length ? Math.ceil(length / cycle_length) : 0
+
     RegistryLookup {
         id: targeted_loop_lookup
         registry: registries.state_registry
@@ -448,7 +451,8 @@ Item {
             throw new Error("CompositeLoop: Factory not ready: " + composite_loop_factory.status.toString())
         } else {
             maybe_loop = composite_loop_factory.createObject(root, {
-                initial_composition_descriptor: composition
+                initial_composition_descriptor: composition,
+                widget: root
             })
             maybe_loop.onCycled.connect(root.cycled)
         }

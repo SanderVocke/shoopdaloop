@@ -1,4 +1,6 @@
 import QtQuick 6.3
+import QtQuick.Controls 6.3
+import QtQuick.Controls.Material 6.3
 import ShoopDaLoop.PythonLogger
 
 import '../generated/types.js' as Types
@@ -12,6 +14,7 @@ Item {
     onIterationChanged: root.logger.trace(() => `iteration: ${iteration}`)
 
     property var initial_composition_descriptor: null
+    property var widget : null
 
     readonly property bool initialized: true
 
@@ -59,7 +62,7 @@ Item {
                     continue
                 }
                 let loop_start = _it + elem.delay
-                let loop_cycles =  Math.ceil(loop.length / cycle_length)
+                let loop_cycles =  loop.n_cycles
                 let loop_end = loop_start + loop_cycles
 
                 if (!rval[loop_start]) { rval[loop_start] = { loops_start: new Set(), loops_end: new Set(), loops_ignored: new Set() } }
@@ -75,6 +78,15 @@ Item {
                 _it += elem.delay + loop_cycles
             }
         }
+        // For any loops that repeatedly play, just remove intermediate start and end entries.
+        Object.keys(rval).map(k => {
+            for (var starting of rval[k].loops_start) {
+                if (rval[k].loops_end.has(starting)) {
+                    rval[k].loops_end.delete(starting)
+                    rval[k].loops_start.delete(starting)
+                }
+            }
+        })
         root.logger.trace(() => `full schedule:\n${
             Array.from(Object.entries(rval)).map(([k,v]) => 
                 `- ${k}: stop [${Array.from(v.loops_end).map(l => l.obj_id)}], start [${Array.from(v.loops_start).map(l => l.obj_id)}], ignore [${Array.from(v.loops_ignored).map(l => l.obj_id)}]`
@@ -123,6 +135,78 @@ Item {
     Connections {
         target: all_loops_found ? null : registries.objects_registry
         function onItemAdded(id, val) { if (all_loop_ids.has(id)) { playlistsChanged() } }
+    }
+
+    // If we did find all our loops, listen to length changes to update the schedule
+    Mapper {
+        model: Array.from(all_loops)
+        Connections {
+            property var mapped_item
+            property int index
+            target: mapped_item
+            function onN_cyclesChanged() { update_schedule() }
+        }
+    }
+
+    // Rendering the schedule over the loops if selected
+    Mapper {
+        model: Array.from(all_loops)
+        Item {
+            property var mapped_item
+            property int index
+
+            function update_coords() {
+                let other_coords = mapped_item.mapToItem(Overlay.overlay, 0, 0)
+                x = other_coords.x
+                y = other_coords.y
+                root.logger.warning(`${other_coords}`)
+            }
+            Component.onCompleted: update_coords()
+            onVisibleChanged: update_coords()
+            parent: Overlay.overlay
+
+            z: 100
+
+            visible: root.widget.selected
+
+            width: root.widget.width
+            height: root.widget.height
+            Rectangle {
+                anchors.right: parent.right
+                anchors.rightMargin: -8
+                y: -8
+                width: childrenRect.width + 6
+                height: childrenRect.height + 6
+                color: Material.background
+                border.width: 1
+                border.color: 'pink'
+                radius: 4
+
+                Label {
+                    x: 3
+                    y: 3
+                    color: Material.foreground
+                    text: {
+                        var rval = ''
+                        for(var k of Object.keys(schedule)) {
+                            if (schedule[k].loops_start.has(mapped_item)) {
+                                let start = k
+                                var end = start
+                                for(var k2 of Object.keys(schedule)) {
+                                    if (k2 > k && schedule[k2].loops_end.has(mapped_item)) {
+                                        end = k2
+                                        break
+                                    }
+                                }
+                                if (rval != '') { rval += ', ' }
+                                rval += `${start}-${end}`
+                            }
+                        }
+                        return rval
+                    }
+                }
+            }
+        }
     }
 
     RegistryLookup {
