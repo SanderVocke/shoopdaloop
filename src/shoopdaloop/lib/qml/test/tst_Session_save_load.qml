@@ -155,6 +155,10 @@ AppRegistries {
                     testcase.wait(50)
                     testcase.wait_condition(() => session.loaded, 2000, "Session not loaded in time")
 
+                    verify_true(dt_loop_2().maybe_composite_loop)
+                    verify_true(dwt_loop_2().maybe_composite_loop)
+                    verify_eq(dt_loop_2().maybe_composite_loop.all_loops, new Set([dt_loop(), dwt_loop()]))
+                    verify_eq(dwt_loop_2().maybe_composite_loop.all_loops, new Set())
                     verify_approx(dt_loop_channels()[0].get_data(), [0.1, 0.2, 0.3, 0.4])
                     verify_approx(dt_loop_channels()[1].get_data(), [0.4, 0.3, 0.2, 0.1])
                     verify_approx(dwt_dry_loop_channels()[0].get_data(), [0.5, 0.6, 0.7, 0.8])
