@@ -15,9 +15,6 @@ Item {
 
     readonly property bool initialized: true
 
-    Component.onCompleted: root.logger.error(`${JSON.stringify(initial_composition_descriptor)}`)
-    onInitial_composition_descriptorChanged: root.logger.error(`${JSON.stringify(initial_composition_descriptor)}`)
-
     // The sequence is stored as a set of "playlists". Each playlist represents a parallel
     // timeline, stored as a list of { delay: int, loop_id: str }, where the delay can be
     // used to insert blank spots in-between sequential loops.
@@ -249,4 +246,6 @@ Item {
             }
         }
     }
+
+    function qml_close() {}
 }

@@ -17,7 +17,7 @@ AppRegistries {
             let base = GenerateSession.generate_default_session(app_metadata.version_string, 1)
             let direct_track = GenerateSession.generate_default_track(
                 "dt",
-                1,
+                2,
                 "dt",
                 false,
                 "dt",
@@ -31,7 +31,7 @@ AppRegistries {
                 )
             let drywet_track = GenerateSession.generate_default_track(
                 "dwt",
-                1,
+                2,
                 "dwt",
                 false,
                 "dwt",
@@ -43,6 +43,15 @@ AppRegistries {
                 false,
                 "test2x2x1"
                 )
+            direct_track.loops[1]['composition'] = {
+                'playlists': [
+                    [ {"delay": 0, "loop_id": "dt_loop_0"}, {"delay": 1, "loop_id": "dwt_loop_0"} ],
+                    [ {"delay": 3, "loop_id": "dwt_loop_1"} ]
+                ]
+            }
+            drywet_track.loops[1]['composition'] = {
+                'playlists': []
+            }
             base.tracks.push(direct_track)
             base.tracks.push(drywet_track)
             testcase.logger.debug(() => ("session descriptor: " + JSON.stringify(base, null, 2)))
@@ -59,7 +68,8 @@ AppRegistries {
             function dwt() { return session.tracks[2] }
             function dt_loop() { return dt() ? dt().loops[0] : null }
             function dwt_loop() { return dwt() ? dwt().loops[0] : null }
-
+            function dt_loop_2() { return dt() ? dt().loops[1] : null }
+            function dwt_loop_2() { return dwt() ? dwt().loops[1] : null }
 
             function dt_loop_channels() {
                 if (!dt_loop()) return []
@@ -101,6 +111,10 @@ AppRegistries {
                     verify_eq(dt_loop_channels().length, 2)
                     verify_eq(dwt_dry_loop_channels().length, 2)
                     verify_eq(dwt_wet_loop_channels().length, 2)
+                    verify_true(dt_loop_2().maybe_composite_loop)
+                    verify_true(dwt_loop_2().maybe_composite_loop)
+                    verify_eq(dt_loop_2().maybe_composite_loop.all_loops, new Set([dt_loop(), dwt_loop()]))
+                    verify_eq(dwt_loop_2().maybe_composite_loop.all_loops, new Set())
                 })
             }
 

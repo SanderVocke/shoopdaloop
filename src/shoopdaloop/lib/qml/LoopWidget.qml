@@ -94,8 +94,6 @@ Item {
             root.logger.debug(() => (`${obj_id} has data files, queueing load tasks.`))
             create_backend_loop()
             channels.forEach((c) => c.queue_load_tasks(data_files_dir, add_tasks_to))
-        } else if (have_composite) {
-            create_composite_loop(initial_descriptor.composition)
         } else {
             root.logger.debug(() => (`${obj_id} has no data files, not queueing load tasks.`))
         }
@@ -184,10 +182,17 @@ Item {
         object: root
     }
 
-    Component.onCompleted: {
+    function init() {
         if (is_master) { create_backend_loop() }
+        if ('composition' in initial_descriptor) {
+            root.logger.debug(() => (`${obj_id} has composition, creating composite loop.`))
+            create_composite_loop(initial_descriptor.composition)
+        } 
         loaded = true
     }
+
+    Component.onCompleted: init()
+    onInitial_descriptorChanged: init()
 
     property var additional_context_menu_options : null // dict of option name -> functor
 
