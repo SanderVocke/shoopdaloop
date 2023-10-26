@@ -17,7 +17,6 @@ PortDirection GenericJackPort<API>::direction() const { return m_direction; }
 template<typename API>
 void GenericJackPort<API>::close() {
     if (m_port) {
-        log<logging::LogLevel::debug>(fmt::runtime("Closing port: {}"), m_name);
         API::port_unregister(m_client, m_port);
         m_port = nullptr;
     }

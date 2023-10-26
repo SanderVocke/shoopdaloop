@@ -33,7 +33,6 @@ runs:
       ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0
       QT_QPA_PLATFORM=vnc
       QT_ASSUME_STDERR_HAS_CONSOLE=1
-      QT_LOGGING_RULES="*.debug=true"
       ${{ inputs.run_cmd_prefix }}
       ${{ inputs.python_command }}
       ${{ inputs.root_path }}/run_qml_tests.py
