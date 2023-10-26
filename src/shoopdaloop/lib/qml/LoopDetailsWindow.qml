@@ -8,6 +8,7 @@ import '../mode_helpers.js' as ModeHelpers
 ApplicationWindow {
     property var loop_widget
     property var maybe_backend_loop : loop_widget.maybe_backend_loop
+    property var maybe_composite_loop : loop_widget.maybe_composite_loop
     property var master_loop_widget
 
     property PythonLogger logger : PythonLogger { name: default_logger.name + '.LoopDetails' }

@@ -331,4 +331,9 @@ Item {
     }
 
     function qml_close() {}
+
+    function clear() {
+        playlists = []
+        playlistsChanged()
+    }
 }

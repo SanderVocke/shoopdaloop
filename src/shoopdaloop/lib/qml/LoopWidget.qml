@@ -279,12 +279,25 @@ Item {
         transition_loops(_selected_loops, Types.LoopMode.Playing, use_delay, root.sync_active)
     }
     function clear(length=0, emit=true) {
-        maybe_loop && maybe_loop.clear(length);
+        if(maybe_loop) {
+            maybe_loop.clear(length);
+            if (maybe_composite_loop) {
+                maybe_loop.qml_close()
+                maybe_loop.destroy(30)
+                maybe_loop.parent = null
+                maybe_loop = null
+            }
+        }
     }
     function qml_close() {
         obj_reg_entry.close()
         master_reg_entry.close()
-        maybe_loop && maybe_loop.qml_close()
+        if (maybe_loop) {
+            maybe_loop.qml_close()
+            maybe_loop.destroy(30)
+            maybe_loop.parent = null
+            maybe_loop = null
+        }
     }
 
     function select(clear = false) {
@@ -440,7 +453,16 @@ Item {
         'playlists': []
     }) {
         if (maybe_backend_loop) {
-            root.logger.error("Unimplemented: convert backend loop to composite")
+            if (!is_master && maybe_backend_loop.is_all_empty()) {
+                // Empty backend loop can be converted to composite loop.
+                maybe_loop.qml_close()
+                maybe_loop.destroy(30)
+                maybe_loop.parent = null
+                maybe_loop = null
+            } else {
+                root.logger.error("Non-empty or master loop cannot be converted to composite")
+                return
+            }
         }
         if (maybe_loop) {
             return
@@ -1455,9 +1477,7 @@ Item {
             MenuItem {
                 text: "Clear"
                 onClicked: () => {
-                    if (root.maybe_loop) {
-                        root.maybe_loop.clear(0);
-                    }
+                    root.clear(0)
                 }
             }
             MenuItem {

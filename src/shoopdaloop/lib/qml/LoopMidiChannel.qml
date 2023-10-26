@@ -17,6 +17,8 @@ PythonLoopMidiChannel {
         schema: root.object_schema
     }
 
+    function is_empty() { return data_length == 0 }
+
     function actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) {
         var rval = {
             'schema': 'channel.1',

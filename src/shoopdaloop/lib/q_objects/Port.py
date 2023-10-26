@@ -167,6 +167,8 @@ class Port(QQuickItem):
     def close(self):
         if self._backend_obj:
             self.__logger.debug(lambda: "{}: Closing port {}".format(self, self._name))
+            if self._backend:
+                self._backend.unregisterBackendObject(self)
             self._backend_obj.destroy()
             self._backend_obj = None
             self._initialized = False

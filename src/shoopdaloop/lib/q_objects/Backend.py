@@ -123,6 +123,10 @@ class Backend(QQuickItem):
     @Slot('QVariant')
     def registerBackendObject(self, obj):
         self._backend_child_objects.add(weakref.ref(obj))
+    
+    @Slot('QVariant')
+    def unregisterBackendObject(self, obj):
+        self._backend_child_objects.remove(weakref.ref(obj))
 
     @Slot()
     def doUpdate(self):

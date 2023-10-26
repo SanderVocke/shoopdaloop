@@ -257,6 +257,8 @@ class Loop(QQuickItem):
     def close(self):
         if self._backend_loop:
             self.logger.debug(lambda: 'close')
+            if self._backend:
+                self._backend.unregisterBackendObject(self)
             self._backend_loop.destroy()
             self._backend_loop = None
             self._initialized = False
