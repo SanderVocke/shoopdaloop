@@ -159,7 +159,6 @@ Item {
                 let other_coords = mapped_item.mapToItem(Overlay.overlay, 0, 0)
                 x = other_coords.x
                 y = other_coords.y
-                root.logger.warning(`${other_coords}`)
             }
             Component.onCompleted: update_coords()
             onVisibleChanged: update_coords()
