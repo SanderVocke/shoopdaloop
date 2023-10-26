@@ -117,6 +117,7 @@ AppRegistries {
                 verify_true(fx)
                 verify_true(lut)
                 verify_true(tut)
+                lut.create_backend_loop()
                 verify_true(midi_channel())
                 reset()
             }

@@ -29,7 +29,7 @@ Session {
             }
         }
         Component.onCompleted: update()
-        Component.onDestruction: session.control_interface.unregister_lua_engine(engine)
+        Component.onDestruction: session.control_interface.unregister_lua_engine(lua_engine)
     }
     Connections {
         target: session
@@ -64,6 +64,10 @@ shoop_format = require('shoop_format')
         }
 
         function clear() {
+            loop_at(0,0).create_backend_loop()
+            loop_at(0,1).create_backend_loop()
+            loop_at(1,0).create_backend_loop()
+            loop_at(1,1).create_backend_loop()
             loop_at(0,0).clear()
             loop_at(0,1).clear()
             loop_at(1,0).clear()

@@ -67,9 +67,9 @@ TestCase {
         verify(false)
     }
 
-    function verify_true(a) {
+    function verify_true(a, msg=`verify_true failed`) {
         var result = Boolean(a)
-        let failstring = `verify_true failed (v = ${a})`
+        let failstring = `${msg} (v = ${a})`
         if (!result) {
             logger.error(() => (format_error(failstring)))
         }
@@ -153,5 +153,15 @@ TestCase {
             logger.error(() => (format_error(failstring, e.stack)))
             throw e
         }
+    }
+
+    function wait_condition(condition, timeout=2000, msg=`condition not met in time`) {
+        var waited = 20
+        wait(waited)
+        while(!condition() && waited <= timeout) {
+            wait(20)
+            waited += 20
+        }
+        verify_true(condition(), msg)
     }
 }

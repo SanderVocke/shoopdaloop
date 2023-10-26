@@ -125,10 +125,10 @@ AppRegistries {
                     var filename = file_io.generate_temporary_filename() + '.shl'
                     session.save_session(filename)
 
-                    testcase.wait(500)
+                    testcase.wait_condition(() => registries.state_registry.n_saving_actions_active == 0, 2000, "Saving not finished in time")
                     dt_loop().clear()
                     dwt_loop().clear()
-                    testcase.wait(50)
+                    testcase.wait(20)
                     
                     verify_eq(dt_loop_channels()[0].get_data(), [])
                     verify_eq(dt_loop_channels()[1].get_data(), [])
@@ -138,7 +138,8 @@ AppRegistries {
                     verify_eq(dwt_wet_loop_channels()[1].get_data(), [])
 
                     session.load_session(filename)
-                    testcase.wait(500)
+                    testcase.wait(50)
+                    testcase.wait_condition(() => session.loaded, 2000, "Session not loaded in time")
 
                     verify_approx(dt_loop_channels()[0].get_data(), [0.1, 0.2, 0.3, 0.4])
                     verify_approx(dt_loop_channels()[1].get_data(), [0.4, 0.3, 0.2, 0.1])
