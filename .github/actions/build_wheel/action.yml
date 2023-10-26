@@ -98,7 +98,7 @@ runs:
     if: ${{ inputs.pyinstaller == 'true' }}
     run: |
       cd ${{ steps.install.outputs.install_dir }}
-      pipx install pyinstaller
+      python3 -m pip install ${{ inputs.pip_install_extra_args }} pyinstaller
       $HOME/.local/bin/pyinstaller __main__.py -n shoopdaloop --collect-all shoopdaloop --collect-all lupa --distpath ${{ steps.prepare_pyinstaller.outputs.pyinstaller_dir }} --clean
   
   - name: Upload PyInstaller distribution (${{ inputs.variant_name }})
