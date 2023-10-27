@@ -15,7 +15,7 @@ requires-python = ">=3.7"
 dependencies = [
   "pydub",
   "soundfile",
-  "resampy",
+  "samplerate",
   "mido",
   "jsonschema",
   "numpy",
