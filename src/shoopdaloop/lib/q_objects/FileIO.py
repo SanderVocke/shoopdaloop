@@ -272,29 +272,30 @@ class FileIO(QThread):
             data, file_sample_rate = sf.read(filename, dtype='float32')
             if data.ndim == 1:
                 # Mono
-                data = [data]
-            else:
-                # Sf gives NcxNs, we want NsxNc
-                data = np.swapaxes(data, 0, 1)
+                data = np.expand_dims(data, axis=1)
 
             target_sample_rate = int(target_sample_rate)
             file_sample_rate = int(file_sample_rate)
             resampled = data
             if target_sample_rate != file_sample_rate:
                 self.logger.debug(lambda: "Resampling {} from {} to {}".format(filename, file_sample_rate, target_sample_rate))
-                self.logger.trace(lambda: "Data: {}".format(data))
+                self.logger.trace(lambda: "Data shape before resample: {}".format(data.shape))
                 ratio = target_sample_rate / file_sample_rate
                 resampled = samplerate.resample(data, ratio, 'sinc_fastest')
-            
+                self.logger.trace(lambda: "Data shape after resample: {}".format(resampled.shape))
+
             if len(channels_to_loop_channels) > len(resampled):
                 self.logger.error(lambda: "Need {} channels, but loaded file only has {}".format(len(channels_to_loop_channels), len(resampled)))
                 return
 
-            for d in resampled:
-                if maybe_target_data_length != None and len(d) > maybe_target_data_length:
-                    del d[maybe_target_data_length:]
-                while maybe_target_data_length != None and len(d) < maybe_target_data_length:
-                    d.append(d[len(d)-1])
+            if maybe_target_data_length != None:
+                prev_shape = resampled.shape
+                new_shape = (maybe_target_data_length, prev_shape[1])
+                resampled = np.resize(resampled, new_shape)
+                self.logger.trace(lambda: "Data shape after resize: {}".format(resampled.shape))
+
+            # We work with separate channel arrays
+            resampled = np.swapaxes(resampled, 0, 1)
 
             for idx, data_channel in enumerate(resampled):
                 channels = channels_to_loop_channels[idx]
