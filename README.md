@@ -104,7 +104,7 @@ This project is only made possible due to many libraries and tools, including bu
    - numpy;
    - scipy;
    - soundfile;
-   - resampy;
+   - (lib-)samplerate;
    - boost::ut;
    - qoverage, coverage for QML / Python code coverage, resp.;
    - many others (see submodules and dependencies)

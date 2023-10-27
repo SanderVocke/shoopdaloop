@@ -6,7 +6,7 @@ import time
 from threading import Thread
 import soundfile as sf
 import numpy as np
-import resampy
+import samplerate
 import mido
 import math
 import glob
@@ -279,7 +279,8 @@ class FileIO(QThread):
             resampled = data
             if target_sample_rate != file_sample_rate:
                 self.logger.debug(lambda: "Resampling {} from {} to {}".format(filename, file_sample_rate, target_sample_rate))
-                resampled = resampy.resample(data, file_sample_rate, target_sample_rate)
+                ratio = target_sample_rate / file_sample_rate
+                resampled = samplerate.resample(data, ratio, 'sinc_fastest')
             
             if len(channels_to_loop_channels) > len(resampled):
                 self.logger.error(lambda: "Need {} channels, but loaded file only has {}".format(len(channels_to_loop_channels), len(resampled)))

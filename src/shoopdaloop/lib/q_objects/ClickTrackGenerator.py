@@ -1,6 +1,7 @@
 import os
 import tempfile
-import playsound
+from pydub import AudioSegment
+from pydub.playback import play
 
 from PySide6.QtCore import QObject, Slot
 
@@ -29,5 +30,5 @@ class ClickTrackGenerator(QObject):
 
     @Slot(str)
     def preview(self, wav_filename):
-        playsound.playsound(wav_filename)
+        play(AudioSegment.from_wav(wav_filename))
 
