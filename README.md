@@ -21,7 +21,7 @@ For currently open known issues, check the GitHub Issues page.
 
 # In a nutshell
 
-To summarize why ShoopDaLoop exists and what the goals and plans are, a short comparison table with similar software gives a good picture:
+To summarize why ShoopDaLoop exists and what the goals and plans are, a short comparison table with similar software gives a good picture. Of course, the devil is in the details: the other listed software is great and in many ways different and better. The aim here is not to take away from them in any way.
 
 |                             | ShoopDaLoop               | SooperLooper     | Luppp                  | Ardour                   |
 |-----------------------------|---------------------------|------------------|------------------------|--------------------------|
