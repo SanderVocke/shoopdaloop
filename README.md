@@ -66,7 +66,8 @@ These features are explained in detail in the [docs](https://sandervocke.github.
 
 # Status
 
-ShoopDaLoop is in early development. The basics work but not nearly all of its intended functionality is finished yet (see below), and there are bugs.
+ShoopDaLoop is in early development. The basics work but not nearly all of its intended functionality is finished yet (see below).
+The intent is for the master branch to always work and pass CI tests, but at the moment, some significant bugs will probably come and go. Check the issues list for currently known issues and please add any you encounter yourself.
 As such, it obviously has not been used for on-stage performing and definitely shouldn't until after doing some serious testing.
 Note however that having automated testing with high coverage is among the project goals.
 
