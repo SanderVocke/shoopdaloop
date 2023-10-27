@@ -33,7 +33,7 @@ To summarize why ShoopDaLoop exists and what the goals and plans are, a short co
 | Scenes support              | ✅ (any loop combination) | ❌              | ✅ (grid row = scene)    | ?                      |
 | Designed for live use       | ✅                        | ✅               | ✅                      | ❌                      |
 | Plugin Host                 | ✅ <sup>(1)</sup>         | ❌               | ❌                      | ✅                      |
-| Song/performance sequencing | ❌ (planned)              | ❌               | ❌                      | ✅ (not sure of details) |
+| Song/performance sequencing | ✅ <sup>(4)</sup>         | ❌               | ❌                      | ✅ (not sure of details) |
 | MIDI controller support     | ✅ (learn / script)       | ✅ (MIDI learn)  | ✅ (not sure of method) | ✅ (not sure of method) |
 | NSM Session Management      | ✅                        | ✅               | ✅                      | ✅                      |
 | Overdubbing                 | ❌ (planned)              | ✅               | ✅                      | ?                      |
@@ -43,6 +43,7 @@ To summarize why ShoopDaLoop exists and what the goals and plans are, a short co
 (1): ShoopDaLoop has built-in support to host Carla through LV2, relying on Carla as a proxy to support other plugin types such as VST(3). <br>
 (2): Focus is on Linux for now until it is reasonably feature-complete. The design does not prevent moving to Mac + Windows in the future. <br>
 (3): ShoopDaLoop plug-in scripts are written in LUA. Currently the main goal is to support deep MIDI controller integrations and custom keyboard control scripts and opening/managing additional MIDI control ports. Future goals could be integration with the future song/performance sequencer or integration with the outside world by e.g. network.
+(4): ShooDaLoop supports "composite loops", allowing you to combine sequences of loops into other loops hierarchically. Through this method, complex sequences and simple songs can be constructed.
 
 Disclaimers:
 
