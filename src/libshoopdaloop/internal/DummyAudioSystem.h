@@ -163,7 +163,7 @@ public:
         std::string client_name,
         std::function<void(size_t)> process_cb,
         DummyAudioSystemMode mode = DummyAudioSystemMode::Automatic,
-        size_t sample_rate = 480000,
+        size_t sample_rate = 48000,
         size_t buffer_size = 256
     );
 
