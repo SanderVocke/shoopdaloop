@@ -11,7 +11,7 @@ ShoopDaLoop is a live looping application for Linux with a few DAW-like features
 
 The main intended use is for quickly expressing musical ideas without needing to record full end-to-end tracks for a whole song. It makes for a fun way to jam by oneself.
 
-Live performance could also be a good use-case, although it is not quite battle-tested enough to recommend that.
+Live performance could also be a good use-case, although it is not battle-tested and stable enough yet to recommend that.
 
 For currently open known issues, check the GitHub Issues page.
 
@@ -61,6 +61,7 @@ As seen in the comparison table, ShoopDaLoop is closest to Luppp in what it offe
 - **Synchronization**: every loop is synced to the "master loop", which typically holds a beat, click-track or just fixed-length silence. Loops may also be a multiple of the master loop length.
 - **Click tracks**: can be generated via a dialog in the app.
 - **NSM**: Non/New Session Manager support (experimental).
+- **Hackable**: Users can run their own Lua scripts to control the application in new ways.
 
 These features are explained in detail in the [docs](https://sandervocke.github.io/shoopdaloop/).
 
@@ -73,10 +74,15 @@ Note however that having automated testing with high coverage is among the proje
 
 # Roadmap
 
-The following items are being worked on:
+All the basic features needed for a 1.0 release are there. The following items are planned before a first release:
 
-- **Scripting**: Integrate a LUA scripting engine so that users can add their own functionality. The first use-case for this is for handling MIDI controllers / MIDI learn.
-- **Sequencing**: Add a means to sequence loop actions (e.g. to build a song or a pre-scripted performance session).
+- **Polishing**: Many features are there but some need to be tweaked and improved.
+- **Distribution**: Currently the build process is quite convoluted and error-prone. This will be improved and tested for several repos.
+- **Bugfixing**: Fix the most critical bugs in the list. Improve test coverage.
+
+After first release:
+
+- **OS support**: Plan to include Windows and Mac. 
 
 # Installation
 
