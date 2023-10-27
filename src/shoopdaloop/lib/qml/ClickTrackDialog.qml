@@ -145,7 +145,6 @@ Dialog {
             tooltip: "Listen to a preview of the chosen click track."
             text: "Preview"
             onClicked: () => {
-                           default_logger.error("Re-implement preview without saving to wav file")
                            var out = generate()
                            click_track_generator.preview(out)
                        }
