@@ -6,7 +6,7 @@ import time
 from threading import Thread
 import soundfile as sf
 import numpy as np
-import resampy
+import samplerate
 import mido
 import math
 import glob
@@ -92,24 +92,27 @@ class FileIO(QThread):
         with tarfile.open(filename, flags) as tar:
             tar.extractall(target_dir)
 
-
     @Slot(str, int, list)
-    def save_channels_to_soundfile(self, filename, sample_rate, channels):
+    def save_data_to_soundfile(self, filename, sample_rate, data):
         self.startSavingFile.emit()
         try:
-            datas = [c.get_data() for c in channels]
             lengths = set()
-            for d in datas:
+            for d in data:
                 lengths.add(len(d))
             if len(lengths) > 1:
                 self.logger.error(lambda: 'Cannot save audio: channel lengths are not equal ({})'.format(list(lengths)))
                 return
             # Soundfile wants NcxNs, not NsxNc
-            data = np.swapaxes(datas, 0, 1)
-            sf.write(filename, data, sample_rate)
-            self.logger.info(lambda: "Saved {}-channel audio to {} ({} samples)".format(len(channels), filename, len(datas[0])))
+            _data = np.swapaxes(data, 0, 1)
+            sf.write(filename, _data, sample_rate)
         finally:
             self.doneSavingFile.emit()
+
+    @Slot(str, int, list)
+    def save_channels_to_soundfile(self, filename, sample_rate, channels):
+        datas = [c.get_data() for c in channels]
+        self.save_data_to_soundfile(filename, sample_rate, datas)
+        self.logger.info(lambda: "Saved {}-channel audio to {} ({} samples)".format(len(channels), filename, len(datas[0])))
     
     @Slot(str, int, 'QVariant')
     def save_channel_to_midi(self, filename, sample_rate, channel):
@@ -269,27 +272,30 @@ class FileIO(QThread):
             data, file_sample_rate = sf.read(filename, dtype='float32')
             if data.ndim == 1:
                 # Mono
-                data = [data]
-            else:
-                # Sf gives NcxNs, we want NsxNc
-                data = np.swapaxes(data, 0, 1)
+                data = np.expand_dims(data, axis=1)
 
             target_sample_rate = int(target_sample_rate)
             file_sample_rate = int(file_sample_rate)
             resampled = data
             if target_sample_rate != file_sample_rate:
                 self.logger.debug(lambda: "Resampling {} from {} to {}".format(filename, file_sample_rate, target_sample_rate))
-                resampled = resampy.resample(data, file_sample_rate, target_sample_rate)
-            
+                self.logger.trace(lambda: "Data shape before resample: {}".format(data.shape))
+                ratio = target_sample_rate / file_sample_rate
+                resampled = samplerate.resample(data, ratio, 'sinc_fastest')
+                self.logger.trace(lambda: "Data shape after resample: {}".format(resampled.shape))
+
             if len(channels_to_loop_channels) > len(resampled):
                 self.logger.error(lambda: "Need {} channels, but loaded file only has {}".format(len(channels_to_loop_channels), len(resampled)))
                 return
 
-            for d in resampled:
-                if maybe_target_data_length != None and len(d) > maybe_target_data_length:
-                    del d[maybe_target_data_length:]
-                while maybe_target_data_length != None and len(d) < maybe_target_data_length:
-                    d.append(d[len(d)-1])
+            if maybe_target_data_length != None:
+                prev_shape = resampled.shape
+                new_shape = (maybe_target_data_length, prev_shape[1])
+                resampled = np.resize(resampled, new_shape)
+                self.logger.trace(lambda: "Data shape after resize: {}".format(resampled.shape))
+
+            # We work with separate channel arrays
+            resampled = np.swapaxes(resampled, 0, 1)
 
             for idx, data_channel in enumerate(resampled):
                 channels = channels_to_loop_channels[idx]

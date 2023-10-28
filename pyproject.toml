@@ -13,9 +13,9 @@ maintainers = [
 requires-python = ">=3.7"
 
 dependencies = [
-  "playsound",
+  "pydub",
   "soundfile",
-  "resampy",
+  "samplerate",
   "mido",
   "jsonschema",
   "numpy",

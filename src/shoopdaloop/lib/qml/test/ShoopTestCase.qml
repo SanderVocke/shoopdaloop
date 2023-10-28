@@ -103,12 +103,15 @@ TestCase {
         verify(result, failstring)
     }
 
-    function verify_approx(a, b) {
+    function verify_approx(a, b, do_print=true) {
         var result;
         let compare = (a,b) => a == b || ((a - b) < Math.max(a,b) / 10000.0)
-        let failstring = `verify_approx failed (a = ${a}, b = ${b})`
+        let failstring = `verify_approx failed`
+        if (do_print) {
+            failstring += ` (a = ${a}, b = ${b})`
+        }
         if (Array.isArray(a) && Array.isArray(b)) {
-            result = TestDeepEqual.testArraysCompare(a, b, compare);
+            result = TestDeepEqual.testArraysCompare(a, b, compare, do_print ? console.log : (msg) => {});
         } else {
             result = compare(a, b)
         }
@@ -182,11 +185,15 @@ TestCase {
     }
 
     function wait_updated(backend) {
-        var done = false
-        function updated() {
-            done = true
+        function wait_once() {
+            var done = false
+            function updated() {
+                done = true
+            }
+            connectOnce(backend.updated, updated)
+            wait_condition(() => done == true, 200, "Backend not updated in time")
         }
-        connectOnce(backend.updated, updated)
-        wait_condition(() => done == true, 200, "Backend not updated in time")
+        wait_once()
+        wait_once()
     }
 }

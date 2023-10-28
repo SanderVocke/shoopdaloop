@@ -11,7 +11,7 @@ ShoopDaLoop is a live looping application for Linux with a few DAW-like features
 
 The main intended use is for quickly expressing musical ideas without needing to record full end-to-end tracks for a whole song. It makes for a fun way to jam by oneself.
 
-Live performance could also be a good use-case, although it is not quite battle-tested enough to recommend that.
+Live performance could also be a good use-case, although it is not battle-tested and stable enough yet to recommend that.
 
 For currently open known issues, check the GitHub Issues page.
 
@@ -21,7 +21,7 @@ For currently open known issues, check the GitHub Issues page.
 
 # In a nutshell
 
-To summarize why ShoopDaLoop exists and what the goals and plans are, a short comparison table with similar software gives a good picture:
+To summarize why ShoopDaLoop exists and what the goals and plans are, a short comparison table with similar software gives a good picture. Of course, the devil is in the details: the other listed software is great and in many ways different and better. The aim here is not to take away from them in any way.
 
 |                             | ShoopDaLoop               | SooperLooper     | Luppp                  | Ardour                   |
 |-----------------------------|---------------------------|------------------|------------------------|--------------------------|
@@ -33,7 +33,7 @@ To summarize why ShoopDaLoop exists and what the goals and plans are, a short co
 | Scenes support              | ✅ (any loop combination) | ❌              | ✅ (grid row = scene)    | ?                      |
 | Designed for live use       | ✅                        | ✅               | ✅                      | ❌                      |
 | Plugin Host                 | ✅ <sup>(1)</sup>         | ❌               | ❌                      | ✅                      |
-| Song/performance sequencing | ❌ (planned)              | ❌               | ❌                      | ✅ (not sure of details) |
+| Song/performance sequencing | ✅ <sup>(4)</sup>         | ❌               | ❌                      | ✅ (not sure of details) |
 | MIDI controller support     | ✅ (learn / script)       | ✅ (MIDI learn)  | ✅ (not sure of method) | ✅ (not sure of method) |
 | NSM Session Management      | ✅                        | ✅               | ✅                      | ✅                      |
 | Overdubbing                 | ❌ (planned)              | ✅               | ✅                      | ?                      |
@@ -43,6 +43,7 @@ To summarize why ShoopDaLoop exists and what the goals and plans are, a short co
 (1): ShoopDaLoop has built-in support to host Carla through LV2, relying on Carla as a proxy to support other plugin types such as VST(3). <br>
 (2): Focus is on Linux for now until it is reasonably feature-complete. The design does not prevent moving to Mac + Windows in the future. <br>
 (3): ShoopDaLoop plug-in scripts are written in LUA. Currently the main goal is to support deep MIDI controller integrations and custom keyboard control scripts and opening/managing additional MIDI control ports. Future goals could be integration with the future song/performance sequencer or integration with the outside world by e.g. network.
+(4): ShooDaLoop supports "composite loops", allowing you to combine sequences of loops into other loops hierarchically. Through this method, complex sequences and simple songs can be constructed.
 
 Disclaimers:
 
@@ -61,21 +62,28 @@ As seen in the comparison table, ShoopDaLoop is closest to Luppp in what it offe
 - **Synchronization**: every loop is synced to the "master loop", which typically holds a beat, click-track or just fixed-length silence. Loops may also be a multiple of the master loop length.
 - **Click tracks**: can be generated via a dialog in the app.
 - **NSM**: Non/New Session Manager support (experimental).
+- **Hackable**: Users can run their own Lua scripts to control the application in new ways.
 
 These features are explained in detail in the [docs](https://sandervocke.github.io/shoopdaloop/).
 
 # Status
 
-ShoopDaLoop is in early development. The basics work but not nearly all of its intended functionality is finished yet (see below), and there are bugs.
+ShoopDaLoop is in early development. The basics work but not nearly all of its intended functionality is finished yet (see below).
+The intent is for the master branch to always work and pass CI tests, but at the moment, some significant bugs will probably come and go. Check the issues list for currently known issues and please add any you encounter yourself.
 As such, it obviously has not been used for on-stage performing and definitely shouldn't until after doing some serious testing.
 Note however that having automated testing with high coverage is among the project goals.
 
 # Roadmap
 
-The following items are being worked on:
+All the basic features needed for a 1.0 release are there. The following items are planned before a first release:
 
-- **Scripting**: Integrate a LUA scripting engine so that users can add their own functionality. The first use-case for this is for handling MIDI controllers / MIDI learn.
-- **Sequencing**: Add a means to sequence loop actions (e.g. to build a song or a pre-scripted performance session).
+- **Polishing**: Many features are there but some need to be tweaked and improved.
+- **Distribution**: Currently the build process is quite convoluted and error-prone. This will be improved and tested for several repos.
+- **Bugfixing**: Fix the most critical bugs in the list. Improve test coverage.
+
+After first release:
+
+- **OS support**: Plan to include Windows and Mac. 
 
 # Installation
 
@@ -96,7 +104,7 @@ This project is only made possible due to many libraries and tools, including bu
    - numpy;
    - scipy;
    - soundfile;
-   - resampy;
+   - (lib-)samplerate;
    - boost::ut;
    - qoverage, coverage for QML / Python code coverage, resp.;
    - many others (see submodules and dependencies)

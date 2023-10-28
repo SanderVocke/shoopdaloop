@@ -554,6 +554,7 @@ AppRegistries {
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_wait_process()
+                    testcase.wait_updated(session.backend)
 
                     let l = session.get_track_control_widget(1).control_logic
 
@@ -620,6 +621,7 @@ AppRegistries {
                     session.backend.dummy_wait_process()
                     session.backend.dummy_request_controlled_frames(2)
                     session.backend.dummy_wait_process()
+                    testcase.wait_updated(session.backend)
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
@@ -727,6 +729,7 @@ AppRegistries {
                     session.backend.dummy_wait_process()
                     session.backend.dummy_request_controlled_frames(2)
                     session.backend.dummy_wait_process()
+                    testcase.wait_updated(session.backend)
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
@@ -769,6 +772,7 @@ AppRegistries {
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_wait_process()
+                    testcase.wait_updated(session.backend)
 
                     let l = session.get_track_control_widget(1).control_logic
 
@@ -835,6 +839,7 @@ AppRegistries {
                     session.backend.dummy_wait_process()
                     session.backend.dummy_request_controlled_frames(2)
                     session.backend.dummy_wait_process()
+                    testcase.wait_updated(session.backend)
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
@@ -877,6 +882,7 @@ AppRegistries {
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_wait_process()
+                    testcase.wait_updated(session.backend)
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
@@ -942,6 +948,7 @@ AppRegistries {
                     session.backend.dummy_wait_process()
                     session.backend.dummy_request_controlled_frames(2)
                     session.backend.dummy_wait_process()
+                    testcase.wait_updated(session.backend)
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
