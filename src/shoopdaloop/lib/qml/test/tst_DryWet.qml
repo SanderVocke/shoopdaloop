@@ -13,34 +13,34 @@ Session {
 
     anchors.fill: parent
     initial_descriptor: {
-        var rval = GenerateSession.generate_default_session(app_metadata.version_string, 2)
+        var rval = GenerateSession.generate_default_session(app_metadata.version_string, 1)
         var drywet_audio_track = GenerateSession.generate_default_track(
-            'drywet', //name
+            'dwa', //name
             1, //loops
-            'drywet'. //id
+            'dwa', //id
             false, // first loop is master
-            'drywet', //port name base
+            'dwa', //port name base
             2, // n dry audio channels
             2, // n wet audio channels
             0, // n direct audio channels
             false, // have dry midi
             false, // have direct midi
             false, // have send/return ports
-            'text2x2x1' // drywet type
+            'test2x2x1' // drywet type
         )
         var drywet_midi_track = GenerateSession.generate_default_track(
-            'drywet', //name
+            'dwm', //name
             1, //loops
-            'drywet'. //id
+            'dwm', //id
             false, // first loop is master
-            'drywet', //port name base
+            'dwm', //port name base
             0, // n dry audio channels
             1, // n wet audio channels
             0, // n direct audio channels
             true, // have dry midi
             false, // have direct midi
             false, // have send/return ports
-            'text2x2x1' // drywet type
+            'test2x2x1' // drywet type
         )
         rval.tracks.push(drywet_audio_track)
         rval.tracks.push(drywet_midi_track)
