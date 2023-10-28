@@ -45,7 +45,7 @@ DummyAudioPort::DummyAudioPort(std::string name, PortDirection direction)
     : AudioPortInterface<audio_sample_t>(name, direction), m_name(name),
       DummyPort(name, direction, PortType::Audio),
       m_direction(direction),
-      m_queued_data(256) { log_init(); }
+      m_queued_data(128) { log_init(); }
 
 std::string DummyAudioPort::log_module_name() const {
     return "Backend.DummyAudioPort";
