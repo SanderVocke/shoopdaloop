@@ -185,11 +185,15 @@ TestCase {
     }
 
     function wait_updated(backend) {
-        var done = false
-        function updated() {
-            done = true
+        function wait_once() {
+            var done = false
+            function updated() {
+                done = true
+            }
+            connectOnce(backend.updated, updated)
+            wait_condition(() => done == true, 200, "Backend not updated in time")
         }
-        connectOnce(backend.updated, updated)
-        wait_condition(() => done == true, 200, "Backend not updated in time")
+        wait_once()
+        wait_once()
     }
 }
