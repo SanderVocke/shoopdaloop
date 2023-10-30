@@ -40,3 +40,6 @@
 [submodule "third_party/sord"]
 	path = third_party/sord
 	url = https://github.com/drobilla/sord.git
+[submodule "src/shoopdaloop/third_party/QtMaterialDesignIcons"]
+	path = src/shoopdaloop/third_party/QtMaterialDesignIcons
+	url = https://github.com/sthlm58/QtMaterialDesignIcons.git
