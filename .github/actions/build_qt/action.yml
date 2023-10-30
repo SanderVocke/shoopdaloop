@@ -19,7 +19,6 @@ runs:
     - name: Cache
       id: cache-qt
       uses: actions/cache@v3
-      shell: bash
       with:
         path: qt.tar.gz
         key: qt-6.5.3-${{ steps.find_os.outputs.os_version }}-1
