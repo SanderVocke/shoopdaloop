@@ -85,7 +85,8 @@ Session {
                 verify_true(!other_loop().maybe_backend_loop)
                 verify_true(other_loop().maybe_composite_loop)
                 verify_true('composition' in other_loop().actual_session_descriptor())
-                verify_true(!('channels' in other_loop().actual_session_descriptor()))
+                verify_true('channels' in other_loop().actual_session_descriptor())
+                verify_true(other_loop().actual_session_descriptor().channels.every((channel) => channel.length == 0))
 
                 // master is never composite
                 master_loop().clear()
@@ -98,7 +99,8 @@ Session {
                 other_loop().clear()
                 verify_true(!other_loop().maybe_composite_loop)
                 verify_true(!('composition' in other_loop().actual_session_descriptor()))
-                verify_true(!('channels' in other_loop().actual_session_descriptor()))
+                verify_true('channels' in other_loop().actual_session_descriptor())
+                verify_true(other_loop().actual_session_descriptor().channels.every((channel) => channel.length == 0))
             })
         }
     }
