@@ -12,34 +12,69 @@ runs:
   steps:
     - name: Determine OS version
       id: find_os
+      shell: bash
       run: |
         echo "os_version=$(cat /etc/os-release | grep PRETTY_NAME | cut -d'=' -f2 | tr -d '"' | tr -d ' ' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
     - name: Cache
       id: cache-qt
       uses: actions/cache@v3
+      shell: bash
       with:
         path: qt.tar.gz
         key: qt-6.5.3-${{ steps.find_os.outputs.os_version }}-1
     
     - if: ${{ inputs.force-rebuild == 'true' || steps.cache-qt.outputs.cache-hit != 'true' }}
-        name: Download Qt sources
-        run: |
-            wget https://download.qt.io/official_releases/qt/6.5/6.5.3/single/qt-everywhere-src-6.5.3.tar.xz
-            tar -xf qt-everywhere-src-6.5.3.tar.xz
-            mv qt-everywhere-src-6.5.3 qt
+      name: Download Qt sources
+      shell: bash
+      run: |
+        wget https://download.qt.io/archive/qt/6.5/6.5.3/submodules/qtbase-everywhere-src-6.5.3.tar.xz
+        wget https://download.qt.io/archive/qt/6.5/6.5.3/submodules/qtdeclarative-everywhere-src-6.5.3.tar.xz
+        tar -xf qtbase-everywhere-src-6.5.3.tar.xz
+        mv qtbase-everywhere-src-6.5.3 qtbase
+        cd qtbase
+        tar -xf ../qtdeclarative-everywhere-src-6.5.3.tar.xz
+        mv qtdeclarative-everywhere-src-6.5.3 qtdeclarative
     
     - if: ${{ inputs.force-rebuild == 'true' || steps.cache-qt.outputs.cache-hit != 'true' }}
-        name: Configure Qt
-        run: |
-            mkdir qt-build
-            cd qt-build
-            ../qt/configure -submodules qtbase,qtdeclarative -release
-            ls -la
-            ls -la *
+      name: Configure Qt
+      shell: bash
+      run: |
+        cmake -B qtbuild -S qtbase -G Ninja \
+          -DCMAKE_INSTALL_PREFIX=/usr \
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+          -DINSTALL_BINDIR=lib/qt6/bin \
+          -DINSTALL_PUBLICBINDIR=usr/bin \
+          -DINSTALL_LIBEXECDIR=lib/qt6 \
+          -DINSTALL_DOCDIR=share/doc/qt6 \
+          -DINSTALL_ARCHDATADIR=lib/qt6 \
+          -DINSTALL_DATADIR=share/qt6 \
+          -DINSTALL_INCLUDEDIR=include/qt6 \
+          -DINSTALL_MKSPECSDIR=lib/qt6/mkspecs \
+          -DINSTALL_EXAMPLESDIR=share/doc/qt6/examples \
+          -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON \
+          -DCMAKE_MESSAGE_LOG_LEVEL=STATUS
     
     - if: ${{ inputs.force-rebuild == 'true' || steps.cache-qmldom.outputs.cache-hit != 'true' }}
-        name: Build Qt
-        run: |
-            cd qt-build
-            cmake --build . --parallel 4
+      name: Build Qt
+      shell: bash
+      run: |
+        cmake --build qtbuild --parallel 4
+        DESTDIR=qt-installed cmake --install qtbuild
+    
+    - if: ${{ inputs.force-rebuild == 'true' || steps.cache-qmldom.outputs.cache-hit != 'true' }}
+      name: Compress Qt for caching
+      shell: bash
+      run: |
+         tar czvf qt.tar.gz qt-installed
+    
+    - name: Upload Qt
+      uses: actions/upload-artifact@v3
+      with:
+        name: qt
+        path: qt.tar.gz
+
+    - name: Install Qt
+      shell: bash
+      run: |
+        sudo tar xzvf qt.tar.gz -C /
