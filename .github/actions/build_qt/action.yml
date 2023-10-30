@@ -6,6 +6,14 @@ inputs:
     required: false
     type: boolean
     default: false
+  install:
+    required: false
+    type: boolean
+    default: true
+  upload:
+    required: false
+    type: boolean
+    default: false
 
 runs:
   using: "composite"
@@ -67,13 +75,15 @@ runs:
       run: |
          tar czvf qt.tar.gz qt-installed
     
-    - name: Upload Qt
+    - if: ${{ inputs.upload == 'true' }}
+      name: Upload Qt
       uses: actions/upload-artifact@v3
       with:
         name: qt
         path: qt.tar.gz
 
-    - name: Install Qt
+    - if: ${{ inputs.install == 'true' }}
+      name: Install Qt
       shell: bash
       run: |
         sudo tar xzvf qt.tar.gz -C /
