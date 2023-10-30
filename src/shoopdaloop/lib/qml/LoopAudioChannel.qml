@@ -63,6 +63,9 @@ PythonLoopAudioChannel {
     function has_data_file() {
         return Object.keys(descriptor).includes("data_file")
     }
+    function is_empty() {
+        return data_length == 0
+    }
 
     readonly property int initial_mode : Conversions.parse_channel_mode(descriptor.mode)
     readonly property real initial_volume : ('volume' in descriptor) ? descriptor.volume : 1.0

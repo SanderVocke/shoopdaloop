@@ -17,6 +17,8 @@ PythonLoopMidiChannel {
         schema: root.object_schema
     }
 
+    function is_empty() { return data_length == 0 }
+
     function actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) {
         var rval = {
             'schema': 'channel.1',
@@ -32,7 +34,7 @@ PythonLoopMidiChannel {
         if (recording_fx_chain_state_id) { rval['recording_fx_chain_state_id'] = recording_fx_chain_state_id }
 
         if (do_save_data_files && data_length > 0) {
-            var filename = obj_id + '.mid'
+            var filename = obj_id + '.smf'
             var full_filename = data_files_dir + '/' + filename;
             var task = file_io.save_channel_to_midi_async(full_filename, get_backend().get_sample_rate(), root)
             add_tasks_to.add_task(task)
@@ -82,7 +84,6 @@ PythonLoopMidiChannel {
         function onInitializedChanged() { root.initialize() }
     }
     Component.onCompleted: {
-        root.logger.debug(() => `Created with ${descriptor}`)
         set_mode(initial_mode)
         initialize()
     }

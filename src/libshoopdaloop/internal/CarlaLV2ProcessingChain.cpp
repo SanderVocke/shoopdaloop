@@ -379,7 +379,7 @@ template <typename TimeType, typename SizeType>
 void CarlaLV2ProcessingChain<TimeType, SizeType>::instantiate(
     size_t sample_rate) {
     if (m_instance) {
-        throw std::runtime_error("Cannot re-instantiate plugin");
+        throw std::runtime_error("Cannot re-instantiate Carla chain");
     }
 
     // Instantiate asynchronously.

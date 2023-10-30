@@ -183,3 +183,8 @@ class FXChain(QQuickItem):
                 self.update()
                 self._backend.registerBackendObject(self)
                 self.initializedChanged.emit(True)
+    
+    @Slot()
+    def close(self):
+        if self._backend:
+            self._backend.unregisterBackendObject(self)

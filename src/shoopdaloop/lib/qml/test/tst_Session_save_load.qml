@@ -43,6 +43,20 @@ AppRegistries {
                 false,
                 "test2x2x1"
                 )
+            let midi_track = GenerateSession.generate_default_track(
+                "mt",
+                2,
+                "mt",
+                false,
+                "mt",
+                0,
+                0,
+                0,
+                false,
+                true,
+                false,
+                undefined
+                )
             direct_track.loops[1]['composition'] = {
                 'playlists': [
                     [ {"delay": 0, "loop_id": "dt_loop_0"}, {"delay": 1, "loop_id": "dwt_loop_0"} ],
@@ -54,6 +68,7 @@ AppRegistries {
             }
             base.tracks.push(direct_track)
             base.tracks.push(drywet_track)
+            base.tracks.push(midi_track)
             testcase.logger.debug(() => ("session descriptor: " + JSON.stringify(base, null, 2)))
             return base
         }
@@ -66,16 +81,24 @@ AppRegistries {
 
             function dt() { return session.tracks[1] }
             function dwt() { return session.tracks[2] }
+            function mt() { return session.tracks[3] }
             function dt_loop() { return dt() ? dt().loops[0] : null }
             function dwt_loop() { return dwt() ? dwt().loops[0] : null }
+            function mt_loop() { return mt() ? mt().loops[0] : null }
             function dt_loop_2() { return dt() ? dt().loops[1] : null }
             function dwt_loop_2() { return dwt() ? dwt().loops[1] : null }
+            function mt_loop_2() { return mt() ? mt().loops[1] : null }
 
             function dt_loop_channels() {
                 if (!dt_loop()) return []
                 var r = dt_loop().get_audio_output_channels()
                 r.sort((a,b) => a.obj_id.localeCompare(b.obj_id))
                 return r
+            }
+
+            function mt_midi_channels() {
+                if (!mt_loop()) return null
+                return mt_loop().get_midi_channels()
             }
 
             function dwt_dry_loop_channels() {
@@ -104,13 +127,18 @@ AppRegistries {
                     session.backend.dummy_enter_controlled_mode()
                     verify_true(dt())
                     verify_true(dwt())
+                    verify_true(mt())
                     verify_true(dt_loop())
                     verify_true(dwt_loop())
+                    verify_true(mt_loop())
+                    verify_true(mt_loop_2())
                     dt_loop().create_backend_loop()
                     dwt_loop().create_backend_loop()
+                    mt_loop().create_backend_loop()
                     verify_eq(dt_loop_channels().length, 2)
                     verify_eq(dwt_dry_loop_channels().length, 2)
                     verify_eq(dwt_wet_loop_channels().length, 2)
+                    verify_eq(mt_midi_channels().length, 1)
                     verify_true(dt_loop_2().maybe_composite_loop)
                     verify_true(dwt_loop_2().maybe_composite_loop)
                     verify_eq(dt_loop_2().maybe_composite_loop.all_loops, new Set([dt_loop(), dwt_loop()]))
@@ -118,10 +146,75 @@ AppRegistries {
                 })
             }
 
-            function test_save_load_with_audio() {
-                run_case("test_save_load_session_audio" , () => {
+            function test_save_load_non_sample_accurate_midi() {
+                run_case("test_save_load_non_sample_accurate_midi", () => {
                     check_backend()
 
+                    let midichan = [
+                        { 'time': 101, 'data': [0x90, 70,  70]  },
+                        { 'time': 201, 'data': [0x80, 60,  60]  }
+                    ]
+                    mt_midi_channels()[0].load_data(midichan)
+                    testcase.wait_updated(session.backend)
+                    var filename = file_io.generate_temporary_filename() + '.mid'
+                    file_io.save_channel_to_midi(filename, 48000, mt_midi_channels()[0])
+
+                    mt_loop().clear()
+                    testcase.wait_updated(session.backend)
+                    verify_eq(mt_midi_channels()[0].get_data(), [])
+
+                    file_io.load_midi_to_channel(filename, 48000, mt_midi_channels()[0], null, null)
+                    testcase.wait_updated(session.backend)
+
+                    // Storing in MIDI files is not sample-accurate but should be quite close
+                    let data = mt_midi_channels()[0].get_data()
+                    verify_eq(data.length, 2)
+                    verify_true(data[0].time >= 100 && data[0].time <= 102)
+                    verify_true(data[1].time >= 200 && data[0].time <= 202)
+                    verify_eq(data[0].data, [0x90, 70,  70])
+                    verify_eq(data[1].data, [0x80, 60,  60])
+                })
+            }
+
+            function test_save_load_sample_accurate_midi() {
+                run_case("test_save_load_sample_accurate_midi", () => {
+                    check_backend()
+
+                    let midichan = [
+                        { 'time': 101, 'data': [0x90, 70,  70]  },
+                        { 'time': 201, 'data': [0x80, 60,  60]  }
+                    ]
+                    mt_midi_channels()[0].load_data(midichan)
+                    testcase.wait_updated(session.backend)
+                    var filename = file_io.generate_temporary_filename() + '.smf'
+                    file_io.save_channel_to_midi(filename, 48000, mt_midi_channels()[0])
+
+                    mt_loop().clear()
+                    testcase.wait_updated(session.backend)
+                    verify_eq(mt_midi_channels()[0].get_data(), [])
+
+                    file_io.load_midi_to_channel(filename, 48000, mt_midi_channels()[0], null, null)
+                    testcase.wait_updated(session.backend)
+
+                    // Storing in MIDI files is not sample-accurate but should be quite close
+                    let data = mt_midi_channels()[0].get_data()
+                    verify_eq(data.length, 2)
+                    verify_true(data[0].time >= 100 && data[0].time <= 102)
+                    verify_true(data[1].time >= 200 && data[0].time <= 202)
+                    verify_eq(data[0].data, [0x90, 70,  70])
+                    verify_eq(data[1].data, [0x80, 60,  60])
+                })
+            }
+
+            function test_save_load_with_audio_and_midi() {
+                run_case("test_save_load_session_audio_and_midi" , () => {
+                    check_backend()
+
+                    let midichan = [
+                        { 'time': 101, 'data': [0x90, 70,  70]  },
+                        { 'time': 201, 'data': [0x80, 60,  60]  }
+                    ]
+                    mt_midi_channels()[0].load_data(midichan)
                     dt_loop_channels()[0].load_data([0.1, 0.2, 0.3, 0.4])
                     dt_loop_channels()[1].load_data([0.4, 0.3, 0.2, 0.1])
                     dwt_dry_loop_channels()[0].load_data([0.5, 0.6, 0.7, 0.8])
@@ -142,10 +235,12 @@ AppRegistries {
                     testcase.wait_session_io_done()
                     dt_loop().clear()
                     dwt_loop().clear()
+                    mt_loop().clear()
                     testcase.wait_updated(session.backend)
                     
                     verify_eq(dt_loop_channels()[0].get_data(), [])
                     verify_eq(dt_loop_channels()[1].get_data(), [])
+                    verify_eq(mt_midi_channels()[0].get_data(), [])
                     verify_eq(dwt_dry_loop_channels()[0].get_data(), [])
                     verify_eq(dwt_dry_loop_channels()[1].get_data(), [])
                     verify_eq(dwt_wet_loop_channels()[0].get_data(), [])
@@ -153,6 +248,7 @@ AppRegistries {
 
                     session.load_session(filename)
                     testcase.wait_session_loaded(session)
+                    testcase.wait_updated(session.backend)
 
                     verify_true(dt_loop_2().maybe_composite_loop)
                     verify_true(dwt_loop_2().maybe_composite_loop)
@@ -164,6 +260,7 @@ AppRegistries {
                     verify_approx(dwt_dry_loop_channels()[1].get_data(), [0.8, 0.7, 0.6, 0.5])
                     verify_approx(dwt_wet_loop_channels()[0].get_data(), [0.9, 0.10, 0.11, 0.12])
                     verify_approx(dwt_wet_loop_channels()[1].get_data(), [0.12, 0.11, 0.10, 0.9])
+                    verify_eq(mt_midi_channels()[0].get_data(), midichan)
                 })
             }
         }

@@ -394,9 +394,13 @@ std::shared_ptr<ConnectedFXChain> Backend::create_fx_chain(fx_chain_type_t type,
                     out_buf_1.resize(std::max(n, out_buf_1.size()));
                     out_buf_2.resize(std::max(n, out_buf_2.size()));
 
-                    // Audio: copy straight from input to output
-                    memcpy((void*)out_buf_1.data(), (void*)ins[0]->PROC_get_buffer(n), n*sizeof(float));
-                    memcpy((void*)out_buf_2.data(), (void*)ins[1]->PROC_get_buffer(n), n*sizeof(float));
+                    // Audio: for any audio sample, divide it by 2.
+                    auto in_1 = ins[0]->PROC_get_buffer(n);
+                    auto in_2 = ins[1]->PROC_get_buffer(n);
+                    for (size_t i = 0; i < n; i++) {
+                        out_buf_1[i] = in_1[i] / 2.0f;
+                        out_buf_2[i] = in_2[i] / 2.0f;
+                    }
 
                     // Midi: for any MIDI message, synthesize a single sample on the timestamp of the message.
                     // Its value will be (3rd msg byte / 0xFF).
@@ -414,7 +418,6 @@ std::shared_ptr<ConnectedFXChain> Backend::create_fx_chain(fx_chain_type_t type,
                             out_buf_2[time] += val;
                         }
                     }
-
                     memcpy((void*)outs[0]->PROC_get_buffer(n), (void*)out_buf_1.data(), n*sizeof(float));
                     memcpy((void*)outs[1]->PROC_get_buffer(n), (void*)out_buf_2.data(), n*sizeof(float));
                 }

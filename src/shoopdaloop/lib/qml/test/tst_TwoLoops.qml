@@ -39,15 +39,15 @@ Session {
         function test_two_loops_cleared() {
             run_case('test_two_loops_cleared', () => {
                 check_backend()
-
                 clear()
-
             })
         }
 
         function test_two_loops_master_record() {
             run_case('test_two_loops_master_record', () => {
                 check_backend()
+                clear()
+                testcase.wait_updated(session.backend)
 
                 master_loop().transition(Types.LoopMode.Recording, 0, true)
                 testcase.wait_updated(session.backend)
@@ -71,6 +71,41 @@ Session {
                 verify_loop_cleared(other_loop())
 
                 clear()
+            })
+        }
+
+        function test_switch_between_backend_and_composite() {
+            run_case('test_switch_between_backend_and_composite', () => {
+                clear()
+                testcase.wait_updated(session.backend)
+                verify_true(master_loop().maybe_backend_loop)
+                other_loop().create_backend_loop()
+                verify_true(other_loop().maybe_backend_loop)
+
+                other_loop().clear()
+                testcase.wait_updated(session.backend)
+                other_loop().create_composite_loop()
+                verify_true(!other_loop().maybe_backend_loop)
+                verify_true(other_loop().maybe_composite_loop)
+                verify_true('composition' in other_loop().actual_session_descriptor())
+                verify_true('channels' in other_loop().actual_session_descriptor())
+                verify_true(other_loop().actual_session_descriptor().channels.every((channel) => channel.data_length == 0))
+
+                // master is never composite
+                master_loop().clear()
+                testcase.wait_updated(session.backend)
+                verify_true(master_loop().maybe_backend_loop)
+                verify_throw(() => master_loop.create_composite_loop())
+                verify_true(!master_loop().maybe_composite_loop)
+                verify_true(!('composition' in master_loop().actual_session_descriptor()))
+                verify_true('channels' in master_loop().actual_session_descriptor())
+
+                other_loop().clear()
+                testcase.wait_updated(session.backend)
+                verify_true(!other_loop().maybe_composite_loop)
+                verify_true(!('composition' in other_loop().actual_session_descriptor()))
+                verify_true('channels' in other_loop().actual_session_descriptor())
+                verify_true(other_loop().actual_session_descriptor().channels.every((channel) => channel.data_length == 0))
             })
         }
     }

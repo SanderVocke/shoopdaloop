@@ -66,7 +66,7 @@ class LoopMidiChannel(LoopChannel):
 
     @Slot(result=list)
     def get_notes(self):
-        return msgs_to_notes(self.get_msgs())
+        return msgs_to_notes(self.get_data())
 
     @Slot(list)
     def load_data(self, data):

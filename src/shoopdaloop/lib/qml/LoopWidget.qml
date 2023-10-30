@@ -73,8 +73,11 @@ Item {
 
         if (maybe_backend_loop) {
             rval['channels'] = maybe_backend_loop.channels.map((c) => c.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to))
-        } else if (maybe_composite_loop) {
-            rval['composition'] = maybe_composite_loop.actual_composition_descriptor()
+        } else {
+            rval['channels'] = initial_descriptor.channels
+            if (maybe_composite_loop) {
+                rval['composition'] = maybe_composite_loop.actual_composition_descriptor()
+            }
         }
         return rval
     }
@@ -279,12 +282,25 @@ Item {
         transition_loops(_selected_loops, Types.LoopMode.Playing, use_delay, root.sync_active)
     }
     function clear(length=0, emit=true) {
-        maybe_loop && maybe_loop.clear(length);
+        if(maybe_loop) {
+            maybe_loop.clear(length);
+            if (maybe_composite_loop) {
+                maybe_loop.qml_close()
+                maybe_loop.destroy(30)
+                maybe_loop.parent = null
+                maybe_loop = null
+            }
+        }
     }
     function qml_close() {
         obj_reg_entry.close()
         master_reg_entry.close()
-        maybe_loop && maybe_loop.qml_close()
+        if (maybe_loop) {
+            maybe_loop.qml_close()
+            maybe_loop.destroy(30)
+            maybe_loop.parent = null
+            maybe_loop = null
+        }
     }
 
     function select(clear = false) {
@@ -440,7 +456,16 @@ Item {
         'playlists': []
     }) {
         if (maybe_backend_loop) {
-            root.logger.error("Unimplemented: convert backend loop to composite")
+            if (!is_master && maybe_backend_loop.is_all_empty()) {
+                // Empty backend loop can be converted to composite loop.
+                maybe_loop.qml_close()
+                maybe_loop.destroy(30)
+                maybe_loop.parent = null
+                maybe_loop = null
+            } else {
+                root.logger.error("Non-empty or master loop cannot be converted to composite")
+                return
+            }
         }
         if (maybe_loop) {
             return
@@ -1455,9 +1480,7 @@ Item {
             MenuItem {
                 text: "Clear"
                 onClicked: () => {
-                    if (root.maybe_loop) {
-                        root.maybe_loop.clear(0);
-                    }
+                    root.clear(0)
                 }
             }
             MenuItem {
@@ -1566,6 +1589,7 @@ Item {
                     throw e;
                 }
             }
+            
         }
 
         FileDialog {
@@ -1573,7 +1597,7 @@ Item {
             fileMode: FileDialog.SaveFile
             options: FileDialog.DontUseNativeDialog
             acceptLabel: 'Save'
-            nameFilters: ["MIDI files (*.mid)"]
+            nameFilters: ["MIDI files (*.mid)", "Sample-accurate Shoop MIDI (*.smf)"]
             property var channel: null
             onAccepted: {
                 if (!root.maybe_backend_loop) { 
@@ -1585,6 +1609,7 @@ Item {
                 var samplerate = root.maybe_backend_loop.backend.get_sample_rate()
                 file_io.save_channel_to_midi_async(filename, samplerate, channel)
             }
+            
         }
 
         FileDialog {
@@ -1604,6 +1629,7 @@ Item {
                 loadoptionsdialog.update()
                 loadoptionsdialog.open()
             }
+            
         }
 
         Dialog {
@@ -1612,6 +1638,7 @@ Item {
             parent: Overlay.overlay
             x: (parent.width - width) / 2
             y: (parent.height - height) / 2
+            
             modal: true
             property string filename: ''
             property var channels_to_load : []

@@ -164,8 +164,6 @@ Item {
             onVisibleChanged: update_coords()
             parent: Overlay.overlay
 
-            z: 100
-
             visible: root.widget.selected
 
             width: root.widget.width
@@ -218,10 +216,11 @@ Item {
     property var running_loops : new Set()
 
     function do_triggers(iteration, mode) {
-        root.logger.trace(() => `do_triggers(${iteration}, ${mode})`)
+        root.logger.debug(() => `do_triggers(${iteration}, ${mode})`)
         if (iteration in schedule) {
             let elem = schedule[iteration]
             for (var loop of elem.loops_end) {
+                root.logger.debug(() => `loop end: ${loop.obj_id}`)
                 loop.transition(Types.LoopMode.Stopped, 0, true, false)
                 running_loops.delete(loop)
             }
@@ -250,6 +249,7 @@ Item {
                     }
                     if (handled) { continue }
 
+                    root.logger.debug(() => `loop start: ${loop.obj_id}`)
                     loop.transition(mode, 0, true, false)
                     running_loops.add(loop)
                 }
@@ -258,6 +258,7 @@ Item {
     }
 
     function cancel_all() {
+        root.logger.trace(() => `cancel_all()`)
         for (var loop of running_loops) {
             loop.transition(Types.LoopMode.Stopped, 0, true, false)
         }
@@ -286,7 +287,6 @@ Item {
     function handle_transition(mode) {
         next_transition_delay = -1
         if (mode != root.mode) {
-            cancel_all()
             root.mode = mode
             if (!ModeHelpers.is_running_mode(mode)) {
                 root.iteration = 0
@@ -331,4 +331,9 @@ Item {
     }
 
     function qml_close() {}
+
+    function clear() {
+        playlists = []
+        playlistsChanged()
+    }
 }

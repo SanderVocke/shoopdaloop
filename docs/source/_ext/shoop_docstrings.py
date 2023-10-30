@@ -1,7 +1,6 @@
 from docutils import nodes
 from docutils.parsers.rst import Directive
 import os
-import pydoc
 import re
 
 script_path = os.path.dirname(os.path.realpath(__file__))

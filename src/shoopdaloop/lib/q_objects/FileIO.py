@@ -10,6 +10,7 @@ import samplerate
 import mido
 import math
 import glob
+import json
 
 from PySide6.QtCore import QObject, Slot, Signal, QThread
 from PySide6.QtQml import QJSValue
@@ -118,27 +119,39 @@ class FileIO(QThread):
     def save_channel_to_midi(self, filename, sample_rate, channel):
         self.startSavingFile.emit()
         try:
-            msgs = channel.get_msgs()
-            length = channel.data_length
-            mido_track = mido.MidiTrack()
-            mido_file = mido.MidiFile()
-            mido_file.tracks.append(mido_track)
-            current_tick = 0
+            msgs = channel.get_data()
+            if os.path.splitext(filename)[1] == '.smf':
+                for m in msgs:
+                    m['time'] = float(m['time']) / float(sample_rate)
+                length = float(channel.data_length) / float(sample_rate)
+                # Internal sample-accurate MIDI format
+                js = {
+                    'messages': msgs,
+                    'length': length
+                }
+                with open(filename, 'w') as f:
+                    f.write(json.dumps(js, indent=2))
+            else:
+                mido_track = mido.MidiTrack()
+                mido_file = mido.MidiFile()
+                mido_file.tracks.append(mido_track)
+                current_tick = 0
 
-            for msg in msgs:
-                beat_length_s = mido.bpm2tempo(120) / 1000000.0
-                abstime_s = msg['time'] / float(sample_rate)
-                abstime_ticks = int(abstime_s / beat_length_s * mido_file.ticks_per_beat)
-                d_ticks = abstime_ticks - current_tick
-                mido_msg = mido.Message.from_bytes(bytes(msg['data']))
-                mido_msg.time = d_ticks
-                if not mido_msg.is_meta and not mido_msg.is_realtime:
-                    current_tick += d_ticks
-                    mido_track.append(mido_msg)
-            
-            # TODO: append an End-Of-Track message to determine the length
-            
-            mido_file.save(filename)
+                for msg in msgs:
+                    beat_length_s = mido.bpm2tempo(120) / 1000000.0
+                    abstime_s = msg['time'] / float(sample_rate)
+                    abstime_ticks = int(abstime_s / beat_length_s * mido_file.ticks_per_beat)
+                    d_ticks = abstime_ticks - current_tick
+                    mido_msg = mido.Message.from_bytes(bytes(msg['data']))
+                    mido_msg.time = d_ticks
+                    self.logger.trace(lambda: "save MIDI msg: {} (time={}, abs_s={}, abs={}, bl={}, tpb={})".format(mido_msg, d_ticks, abstime_s, abstime_ticks, beat_length_s, mido_file.ticks_per_beat))
+                    if not mido_msg.is_meta and not mido_msg.is_realtime:
+                        current_tick += d_ticks
+                        mido_track.append(mido_msg)
+                
+                # TODO: append an End-Of-Track message to determine the length
+                
+                mido_file.save(filename)
             self.logger.info(lambda: "Saved MIDI channel to {} ({} messages)".format(filename, len(msgs)))
         finally:
             self.doneSavingFile.emit()
@@ -181,24 +194,37 @@ class FileIO(QThread):
                              maybe_set_start_offset):
         self.startLoadingFile.emit()
         try:
-            mido_file = mido.MidiFile(filename)
-            mido_msgs = [msg for msg in mido_file]
-            total_time = 0.0
-            total_sample_time = 0
             backend_msgs = []
-            
-            for msg in mido_msgs:
-                msg_bytes = msg.bytes()
-                total_time += msg.time
+            total_sample_time = 0
+            if os.path.splitext(filename)[1] == '.smf':
+                # Internal sample-accurate MIDI format
+                js = None
+                with open(filename, 'r') as f:
+                    contents = f.read()
+                    js = json.loads(contents)
+                backend_msgs = js['messages']
+                for msg in backend_msgs:
+                    msg['time'] = round(msg['time'] * sample_rate)
+                total_sample_time = round(js['length'] * sample_rate)
+            else:
+                mido_file = mido.MidiFile(filename)
+                mido_msgs = [msg for msg in mido_file]
+                self.logger.trace(lambda: "loading {} messages".format(len(mido_msgs)))
+                total_time = 0.0
+                
+                for msg in mido_msgs:
+                    msg_bytes = msg.bytes()
+                    total_time += msg.time
 
-                if msg.is_meta or msg.bytes()[0] == 0xFF:
-                    continue
-                    
-                total_sample_time = int(total_time * sample_rate)
-                backend_msgs.append({
-                    'time': total_sample_time,
-                    'data': [int(byte) for byte in msg_bytes]
-                })
+                    if msg.is_meta or msg.bytes()[0] == 0xFF:
+                        continue
+                        
+                    total_sample_time = int(total_time * sample_rate)
+                    self.logger.trace(lambda: "load MIDI msg: {} (time={})".format(msg, total_sample_time))
+                    backend_msgs.append({
+                        'time': total_sample_time,
+                        'data': [int(byte) for byte in msg_bytes]
+                    })
             
             channel.load_data(backend_msgs)
             
@@ -236,19 +262,6 @@ class FileIO(QThread):
         def do_save():
             try:
                 self.save_channels_to_soundfile(filename, sample_rate, channels)
-            finally:
-                task.done()
-        
-        t = Thread(target=do_save)
-        t.start()
-        return task
-
-    @Slot(str, int, 'QVariant', result=Task)
-    def save_channel_to_midi_async(self, filename, sample_rate, channel):
-        task = Task(parent=self)
-        def do_save():
-            try:
-                self.save_channel_to_midi(filename, sample_rate, channel)
             finally:
                 task.done()
         

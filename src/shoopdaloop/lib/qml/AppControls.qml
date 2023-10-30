@@ -80,6 +80,7 @@ Item {
                     var filename = selectedFile.toString().replace('file://', '');
                     root.saveSession(filename)
                 }
+                
             }
 
             FileDialog {
@@ -93,7 +94,7 @@ Item {
                     var filename = selectedFile.toString().replace('file://', '');
                     root.loadSession(filename)
                 }
-
+                
             }
 
             ProfilingWindow {
@@ -113,10 +114,7 @@ Item {
             width: 30
             onClicked: {
                 var loops = registries.objects_registry.select_values(o => o instanceof LoopWidget)
-                var backend_loops = loops.map(o => o.maybe_loaded_loop).filter(o => o != undefined)
-                if(backend_loops.length > 0) {
-                    backend_loops[0].transition_multiple(backend_loops, Types.LoopMode.Stopped, 0, root.sync_active)
-                }
+                loops[0].transition_loops(loops, Types.LoopMode.Stopped, 0, root.sync_active)
             }
 
             MaterialDesignIcon {

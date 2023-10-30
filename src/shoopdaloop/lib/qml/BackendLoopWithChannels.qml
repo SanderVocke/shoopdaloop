@@ -29,6 +29,10 @@ Loop {
         qml_close()
     }
 
+    function is_all_empty() {
+        return length == 0 && audio_channels.every(c => c.is_empty()) && midi_channels.every(c => c.is_empty())
+    }
+
     Mapper {
         id: audio_channels_mapper
         model: root.audio_channel_descriptors
