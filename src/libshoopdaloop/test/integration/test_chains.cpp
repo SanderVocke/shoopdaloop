@@ -154,6 +154,7 @@ suite chains_tests = []() {
         expect(eq(result_data.size(), 4));
         expect(eq(tst.int_dummy_input_port->get_queue_empty(), false));
         auto expect_output_1 = std::vector<float>(input_data.begin(), input_data.begin() + 4);
+        for (auto &v: expect_output_1) { v /= 2.0f; }
         expect(eq(result_data, expect_output_1));
         result_data.clear();
 
@@ -170,6 +171,7 @@ suite chains_tests = []() {
         expect(eq(tst.int_dummy_input_port->get_queue_empty(), true));
         auto expect_output_2 = std::vector<float>(input_data.begin() + 4, input_data.end());
         expect_output_2.insert(expect_output_2.end(), input_data2.begin(), input_data2.end());
+        for (auto &v: expect_output_2) { v /= 2.0f; }
         expect(eq(result_data, expect_output_2));
 
         tst.int_dummy_audio_system->close();
@@ -186,8 +188,10 @@ suite chains_tests = []() {
         tst.int_dummy_output_port->request_data(8);
         tst.int_dummy_audio_system->controlled_mode_run_request();
 
+        auto expect_data = input_data;
+        for (auto &v: expect_data) { v /= 2.0f; }
         expect(eq(tst.int_dry_audio_chan->get_data(true), input_data));
-        expect(eq(tst.int_wet_audio_chan->get_data(true), input_data));
+        expect(eq(tst.int_wet_audio_chan->get_data(true), expect_data));
 
         tst.int_dummy_audio_system->close();
     };
@@ -238,13 +242,15 @@ suite chains_tests = []() {
         
         std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
         std::vector<float> expected({0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4});
+        auto expected_wet = expected;
+        for (auto &v: expected_wet) { v /= 2.0f; }
         tst.int_dummy_input_port->queue_data(8, input_data.data());
         tst.int_dummy_audio_system->controlled_mode_request_samples(8);
         tst.int_dummy_output_port->request_data(8);
         tst.int_dummy_audio_system->controlled_mode_run_request();
 
         expect(eq(tst.int_dry_audio_chan->get_data(true), expected));
-        expect(eq(tst.int_wet_audio_chan->get_data(true), expected));
+        expect(eq(tst.int_wet_audio_chan->get_data(true), expected_wet));
 
         tst.int_dummy_audio_system->close();
     };
@@ -311,7 +317,9 @@ suite chains_tests = []() {
         tst.int_dummy_audio_system->controlled_mode_run_request();
 
         auto result_data = tst.int_dummy_output_port->dequeue_data(4);
-        expect(eq(result_data, dry_data));
+        auto expected = dry_data;
+        for (auto &v: expected) { v /= 2.0f; }
+        expect(eq(result_data, expected));
 
         tst.int_dummy_audio_system->close();
     };
@@ -334,7 +342,9 @@ suite chains_tests = []() {
         tst.int_dummy_audio_system->controlled_mode_run_request();
 
         auto result_data = tst.int_dummy_output_port->dequeue_data(4);
-        expect(eq(result_data, half_dry));
+        auto expected = half_dry;
+        for (auto &v: expected) { v /= 2.0f; }
+        expect(eq(result_data, expected));
 
         tst.int_dummy_audio_system->close();
     };
@@ -357,7 +367,9 @@ suite chains_tests = []() {
         tst.int_dummy_audio_system->controlled_mode_run_request();
 
         auto result_data = tst.int_dummy_output_port->dequeue_data(4);
-        expect(eq(result_data, dry_data));
+        auto expected = dry_data;
+        for (auto &v: expected) { v /= 2.0f; }
+        expect(eq(result_data, expected));
 
         tst.int_dummy_audio_system->close();
     };
@@ -380,7 +392,9 @@ suite chains_tests = []() {
         tst.int_dummy_audio_system->controlled_mode_run_request();
 
         auto result_data = tst.int_dummy_output_port->dequeue_data(4);
-        expect(eq(result_data, dry_data));
+        auto expected = dry_data;
+        for (auto &v: expected) { v /= 2.0f; }
+        expect(eq(result_data, expected));
 
         tst.int_dummy_audio_system->close();
     };
