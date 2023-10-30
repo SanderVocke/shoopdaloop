@@ -12,9 +12,4 @@ USER build
 WORKDIR /home/build
 COPY dependencies dependencies
 
-RUN sudo DEBIAN_FRONTEND=noninteractive apt-get update -y && \
-    sudo DEBIAN_FRONTEND=noninteractive apt-get -y install software-properties-common && \
-    sudo add-apt-repository "deb https://deb.debian.org/debian experimental main" && \
-    sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
 RUN sudo DEBIAN_FRONTEND=noninteractive apt-get -y install $(dependencies/get_dependencies.sh build_base)
-RUN sudo DEBIAN_FRONTEND=noninteractive apt-get -y -t experimental install $(dependencies/get_dependencies.sh build_base_experimental)

@@ -1,0 +1,12 @@
+name: Build Qt
+description: Build Qt from sources
+
+runs:
+  using: "composite"
+  steps:
+    - name: Cache
+      id: cache-qt
+      uses: actions/cache@v3
+      with:
+        path: build
+        key: qt
