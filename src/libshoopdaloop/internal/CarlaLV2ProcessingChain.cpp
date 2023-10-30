@@ -19,6 +19,11 @@ template class CarlaLV2ProcessingChain<uint32_t, uint32_t>;
 template class CarlaLV2ProcessingChain<uint16_t, uint16_t>;
 template class CarlaLV2ProcessingChain<uint16_t, uint32_t>;
 
+namespace carla_constants {
+    constexpr size_t max_buffer_size = 8192;
+    constexpr size_t min_buffer_size = 1;
+}
+
 LV2StateString::LV2StateString(decltype(chain) _chain,
                                decltype(map_urid) _map_urid,
                                decltype(unmap_urid) _unmap_urid)
@@ -253,10 +258,13 @@ CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
 
     // Set up URID mapping feature and map some URIs we need.
     m_urid_map.clear();
-    // Map URIs we know we will need
+    // Map URIs we know we will need.
     m_midi_event_type = map_urid(LV2_MIDI__MidiEvent);
     m_atom_chunk_type = map_urid(LV2_ATOM__Chunk);
     m_atom_sequence_type = map_urid(LV2_ATOM__Sequence);
+    m_atom_int_type = map_urid(LV2_ATOM__Int);
+    m_maxbuffersize_type = map_urid(LV2_BUF_SIZE__maxBlockLength);
+    m_minbuffersize_type = map_urid(LV2_BUF_SIZE__minBlockLength);
 
     // Set up the plugin ports
     {
@@ -385,9 +393,13 @@ void CarlaLV2ProcessingChain<TimeType, SizeType>::instantiate(
     // Instantiate asynchronously.
     std::thread instantiate_thread([this, sample_rate]() {
         // Set up required features.
-        // Options feature
-        LV2_Options_Option end{LV2_OPTIONS_INSTANCE, 0, 0, 0, 0, nullptr};
-        LV2_Feature options_feature{.URI = LV2_OPTIONS__options, .data = &end};
+        // Options feature with buffer size
+        LV2_Options_Option options[] = {
+            {LV2_OPTIONS_INSTANCE, 0, m_maxbuffersize_type, sizeof(decltype(carla_constants::max_buffer_size)), m_atom_int_type, &carla_constants::max_buffer_size },
+            {LV2_OPTIONS_INSTANCE, 0, m_minbuffersize_type, sizeof(decltype(carla_constants::min_buffer_size)), m_atom_int_type, &carla_constants::min_buffer_size },
+            {LV2_OPTIONS_INSTANCE, 0, 0, 0, 0, nullptr}
+        };
+        LV2_Feature options_feature{.URI = LV2_OPTIONS__options, .data = options};
 
         m_map_handle = {
             .handle = (LV2_URID_Map_Handle)this,
@@ -523,21 +535,29 @@ template <typename TimeType, typename SizeType>
 void CarlaLV2ProcessingChain<TimeType, SizeType>::process(size_t frames) {
     profiling::stopwatch(
         [&, this]() {
-            if (!m_active || !m_instance) {
-                for (auto &port : m_output_audio_ports) {
-                    port->zero();
-                }
-                return;
-            }
+            size_t processed = 0;
 
-            if (frames > m_internal_buffers_size) {
-                throw std::runtime_error(
-                    "Carla processing chain: requesting to process more "
-                    "than buffer size.");
+            while (processed < frames) {
+                auto process = std::min(frames - processed,
+                                        carla_constants::max_buffer_size);
+                if (!m_active || !m_instance) {
+                    for (auto &port : m_output_audio_ports) {
+                        port->zero();
+                    }
+                    return;
+                }
+
+                if (frames > m_internal_buffers_size) {
+                    throw std::runtime_error(
+                        "Carla processing chain: requesting to process more "
+                        "than buffer size.");
+                }
+                lilv_instance_activate(m_instance);
+                lilv_instance_run(m_instance, process);
+                lilv_instance_deactivate(m_instance);
+
+                processed += process;
             }
-            lilv_instance_activate(m_instance);
-            lilv_instance_run(m_instance, frames);
-            lilv_instance_deactivate(m_instance);
         },
         m_maybe_profiling_item);
 }

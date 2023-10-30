@@ -13,6 +13,7 @@
 #include <lv2/core/lv2.h>
 #include <lv2/urid/urid.h>
 #include <lv2/options/options.h>
+#include <lv2/buf-size/buf-size.h>
 #include <lv2/ui/ui.h>
 #include <lv2/instance-access/instance-access.h>
 #include <lv2_external_ui.h>
@@ -94,7 +95,7 @@ private:
     std::vector<const LilvPort*> m_audio_in_lilv_ports, m_audio_out_lilv_ports, m_midi_in_lilv_ports, m_midi_out_lilv_ports;
     std::vector<uint32_t> m_audio_in_port_indices, m_audio_out_port_indices, m_midi_in_port_indices, m_midi_out_port_indices;
     size_t m_internal_buffers_size;
-    LV2_URID m_midi_event_type, m_atom_chunk_type, m_atom_sequence_type;
+    LV2_URID m_midi_event_type, m_atom_chunk_type, m_atom_sequence_type, m_atom_int_type, m_maxbuffersize_type, m_minbuffersize_type;
     LV2_External_UI_Host m_ui_host;
     LV2_State_Interface *m_state_iface;
     const LilvUI *m_ui;
