@@ -1,0 +1,5 @@
+# note: qt6 needed to build because of its CMake build system
+# providing simple means to register custom QML types. At runtime,
+# having the PyPi PySide6 package is enough.
+qt6-base-dev
+qt6-declarative-dev
