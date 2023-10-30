@@ -266,6 +266,10 @@ class BackendLoopAudioChannel:
         if self.shoop_c_handle:
             clear_audio_channel_data_dirty(self.shoop_c_handle)
 
+    def clear(self, length=0):
+        if self.shoop_c_handle:
+            clear_audio_channel(self.shoop_c_handle, length)
+
     def __del__(self):
         self.destroy()
     
@@ -325,6 +329,10 @@ class BackendLoopMidiChannel:
     def clear_data_dirty(self):
         if self.shoop_c_handle:
             clear_audio_channel_data_dirty(self.shoop_c_handle)
+    
+    def clear(self):
+        if self.shoop_c_handle:
+            clear_midi_channel(self.shoop_c_handle)
 
     def __del__(self):
         self.destroy()

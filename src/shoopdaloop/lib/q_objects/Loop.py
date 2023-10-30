@@ -227,6 +227,10 @@ class Loop(QQuickItem):
         if self.initialized:
             self.logger.debug(lambda: 'clear')
             self._backend_loop.clear(length)
+            for c in self.get_audio_channels():
+                c.clear()
+            for c in self.get_midi_channels():
+                c.clear()
     
     @Slot(int, result=BackendLoopMidiChannel)
     def add_audio_channel(self, mode):

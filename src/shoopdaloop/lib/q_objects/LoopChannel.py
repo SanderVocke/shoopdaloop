@@ -183,6 +183,14 @@ class LoopChannel(QQuickItem):
     ######################
 
     @Slot()
+    def clear(self):
+        if self._backend_obj:
+            self.__logger.debug(lambda: 'Clear')
+            self._backend_obj.clear()
+        else:
+            self.initializedChanged.connect(lambda: self.clear())
+
+    @Slot()
     def initialize(self):
         self.maybe_initialize()
 

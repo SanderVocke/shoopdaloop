@@ -84,7 +84,6 @@ PythonLoopMidiChannel {
         function onInitializedChanged() { root.initialize() }
     }
     Component.onCompleted: {
-        root.logger.debug(() => `Created with ${descriptor}`)
         set_mode(initial_mode)
         initialize()
     }

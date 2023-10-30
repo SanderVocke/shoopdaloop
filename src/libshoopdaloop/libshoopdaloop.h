@@ -30,7 +30,7 @@ void              set_loop_position        (shoopdaloop_loop_t *loop, size_t pos
 void              set_loop_sync_source     (shoopdaloop_loop_t *loop, shoopdaloop_loop_t *sync_source);
 
 // Loop channels
-void                   clear_audio_channel      (shoopdaloop_loop_audio_channel_t *channel);
+void                   clear_audio_channel      (shoopdaloop_loop_audio_channel_t *channel, size_t length);
 void                   clear_midi_channel       (shoopdaloop_loop_midi_channel_t  *channel);
 void                   connect_audio_output     (shoopdaloop_loop_audio_channel_t *channel, shoopdaloop_audio_port_t *port);
 void                   connect_midi_output      (shoopdaloop_loop_midi_channel_t  *channel, shoopdaloop_midi_port_t *port);

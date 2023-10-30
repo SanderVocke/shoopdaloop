@@ -163,8 +163,8 @@ AppRegistries {
                     lut.transition(Types.LoopMode.Recording, 0, false)
                     testcase.wait_updated(session.backend)
 
-                    input_port_1.dummy_queue_data([1, 2, 3, 4])
-                    input_port_2.dummy_queue_data([4, 3, 2, 1])
+                    input_port_1.dummy_queue_data([2, 4, 6, 8])
+                    input_port_2.dummy_queue_data([8, 6, 4, 2])
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
@@ -180,8 +180,8 @@ AppRegistries {
 
                     verify_eq(out1, [0, 0, 0, 0])
                     verify_eq(out2, [0, 0, 0, 0])
-                    verify_eq(dry1, [1, 2, 3, 4])
-                    verify_eq(dry2, [4, 3, 2, 1])
+                    verify_eq(dry1, [2, 4, 6, 8])
+                    verify_eq(dry2, [8, 6, 4, 2])
                     verify_eq(wet1, [1, 2, 3, 4])
                     verify_eq(wet2, [4, 3, 2, 1])
 
@@ -255,8 +255,8 @@ AppRegistries {
                     lut.transition(Types.LoopMode.Recording, 0, false)
                     testcase.wait_updated(session.backend)
 
-                    input_port_1.dummy_queue_data([1, 2, 3, 4])
-                    input_port_2.dummy_queue_data([4, 3, 2, 1])
+                    input_port_1.dummy_queue_data([2, 4, 6, 8])
+                    input_port_2.dummy_queue_data([8, 6, 4, 2])
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
@@ -272,8 +272,8 @@ AppRegistries {
 
                     verify_eq(out1, [1, 2, 3, 4])
                     verify_eq(out2, [4, 3, 2, 1])
-                    verify_eq(dry1, [1, 2, 3, 4])
-                    verify_eq(dry2, [4, 3, 2, 1])
+                    verify_eq(dry1, [2, 4, 6, 8])
+                    verify_eq(dry2, [8, 6, 4, 2])
                     verify_eq(wet1, [1, 2, 3, 4])
                     verify_eq(wet2, [4, 3, 2, 1])
 
@@ -447,8 +447,8 @@ AppRegistries {
                     lut.transition(Types.LoopMode.Playing, 0, false)
                     testcase.wait_updated(session.backend)
 
-                    input_port_1.dummy_queue_data([1, 2, 3, 4])
-                    input_port_2.dummy_queue_data([4, 3, 2, 1])
+                    input_port_1.dummy_queue_data([2, 4, 6, 8])
+                    input_port_2.dummy_queue_data([8, 6, 4, 2])
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
@@ -566,8 +566,8 @@ AppRegistries {
                     let wet2 = wet_channels()[1].get_data()
 
                     verify_true(fx.active)
-                    verify_eq(out1, [50, 60, 70, 80])
-                    verify_eq(out2, [80, 70, 60, 50])
+                    verify_eq(out1, [25, 30, 35, 40])
+                    verify_eq(out2, [40, 35, 30, 25])
                     verify_eq(dry1, [50, 60, 70, 80])
                     verify_eq(dry2, [80, 70, 60, 50])
                     verify_eq(wet1, [5, 6, 7, 8])
@@ -658,8 +658,8 @@ AppRegistries {
                     lut.transition(Types.LoopMode.PlayingDryThroughWet, 0, false)
                     testcase.wait_updated(session.backend)
 
-                    input_port_1.dummy_queue_data([1, 2, 3, 4])
-                    input_port_2.dummy_queue_data([4, 3, 2, 1])
+                    input_port_1.dummy_queue_data([2, 4, 6, 8])
+                    input_port_2.dummy_queue_data([8, 6, 4, 2])
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
@@ -673,8 +673,8 @@ AppRegistries {
                     let wet2 = wet_channels()[1].get_data()
 
                     verify_true(fx.active)
-                    verify_eq(out1, [51, 62, 73, 84])
-                    verify_eq(out2, [84, 73, 62, 51])
+                    verify_eq(out1, [26, 32, 38, 44])
+                    verify_eq(out2, [44, 38, 32, 26])
                     verify_eq(dry1, [50, 60, 70, 80])
                     verify_eq(dry2, [80, 70, 60, 50])
                     verify_eq(wet1, [5, 6, 7, 8])
@@ -784,12 +784,12 @@ AppRegistries {
                     let wet2 = wet_channels()[1].get_data()
 
                     verify_true(fx.active)
-                    verify_eq(out1, [50, 60, 70, 80])
-                    verify_eq(out2, [80, 70, 60, 50])
+                    verify_eq(out1, [25, 30, 35, 40])
+                    verify_eq(out2, [40, 35, 30, 25])
                     verify_eq(dry1, [50, 60, 70, 80])
                     verify_eq(dry2, [80, 70, 60, 50])
-                    verify_eq(wet1, [50, 60, 70, 80])
-                    verify_eq(wet2, [80, 70, 60, 50])
+                    verify_eq(wet1, [25, 30, 35, 40])
+                    verify_eq(wet2, [40, 35, 30, 25])
 
                 })
             }
@@ -892,12 +892,12 @@ AppRegistries {
                     let wet2 = wet_channels()[1].get_data()
 
                     verify_true(fx.active)
-                    verify_eq(out1, [50, 60, 70, 80])
-                    verify_eq(out2, [80, 70, 60, 50])
+                    verify_eq(out1, [25, 30, 35, 40])
+                    verify_eq(out2, [40, 35, 30, 25])
                     verify_eq(dry1, [50, 60, 70, 80])
                     verify_eq(dry2, [80, 70, 60, 50])
-                    verify_eq(wet1, [50, 60, 70, 80])
-                    verify_eq(wet2, [80, 70, 60, 50])
+                    verify_eq(wet1, [25, 30, 35, 40])
+                    verify_eq(wet2, [40, 35, 30, 25])
 
                 })
             }
