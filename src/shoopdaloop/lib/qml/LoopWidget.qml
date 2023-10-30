@@ -1597,7 +1597,7 @@ Item {
             fileMode: FileDialog.SaveFile
             options: FileDialog.DontUseNativeDialog
             acceptLabel: 'Save'
-            nameFilters: ["MIDI files (*.mid)"]
+            nameFilters: ["MIDI files (*.mid)", "Sample-accurate Shoop MIDI (*.smf)"]
             property var channel: null
             onAccepted: {
                 if (!root.maybe_backend_loop) { 
