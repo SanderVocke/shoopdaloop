@@ -1,12 +1,45 @@
 name: Build Qt
 description: Build Qt from sources
 
+inputs:
+  force-rebuild:
+    required: false
+    type: boolean
+    default: false
+
 runs:
   using: "composite"
   steps:
+    - name: Determine OS version
+      id: find_os
+      run: |
+        echo "os_version=$(cat /etc/os-release | grep PRETTY_NAME | cut -d'=' -f2 | tr -d '"' | tr -d ' ' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
     - name: Cache
       id: cache-qt
       uses: actions/cache@v3
       with:
-        path: build
-        key: qt
+        path: qt.tar.gz
+        key: qt-6.5.3-${{ steps.find_os.outputs.os_version }}-1
+    
+    - if: ${{ inputs.force-rebuild == 'true' || steps.cache-qt.outputs.cache-hit != 'true' }}
+        name: Download Qt sources
+        run: |
+            wget https://download.qt.io/official_releases/qt/6.5/6.5.3/single/qt-everywhere-src-6.5.3.tar.xz
+            tar -xf qt-everywhere-src-6.5.3.tar.xz
+            mv qt-everywhere-src-6.5.3 qt
+    
+    - if: ${{ inputs.force-rebuild == 'true' || steps.cache-qt.outputs.cache-hit != 'true' }}
+        name: Configure Qt
+        run: |
+            mkdir qt-build
+            cd qt-build
+            ../qt/configure -submodules qtbase,qtdeclarative -release
+            ls -la
+            ls -la *
+    
+    - if: ${{ inputs.force-rebuild == 'true' || steps.cache-qmldom.outputs.cache-hit != 'true' }}
+        name: Build Qt
+        run: |
+            cd qt-build
+            cmake --build . --parallel 4

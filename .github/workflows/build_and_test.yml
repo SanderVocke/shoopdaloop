@@ -25,6 +25,8 @@ jobs:
       uses: actions/checkout@v3
       with:
         submodules: recursive
+    - name: Build or retrieve Qt
+      uses: ./.github/actions/build_qt
     - name: Build and upload
       uses: ./.github/actions/build_wheel
       with:
