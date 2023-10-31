@@ -28,8 +28,8 @@ runs:
       id: cache-qt
       uses: actions/cache@v3
       with:
-        path: /
-        key: qt-6.5.3-${{ steps.find_os.outputs.os_version }}-4
+        path: qt.tar.gz
+        key: qt-6.5.3-${{ steps.find_os.outputs.os_version }}-5
     
     - if: ${{ inputs.force-rebuild == 'true' || steps.cache-qt.outputs.cache-hit != 'true' }}
       name: Download Qt sources
@@ -95,10 +95,23 @@ runs:
         cmake --build qtdeclarativebuild --parallel 4
         DESTDIR=qt-installed cmake --install qtdeclarativebuild
         DESTDIR=/ cmake --install qtdeclarativebuild
+
+    - if: ${{ inputs.force-rebuild == 'true' || steps.cache-qt.outputs.cache-hit != 'true' }}
+      name: Compress Qt for caching
+      shell: bash
+      run: |
+         cd qt-installed
+         tar czvf ../qt.tar.gz *
     
     - if: ${{ inputs.upload == 'true' }}
       name: Upload Qt
       uses: actions/upload-artifact@v3
       with:
         name: qt
-        path: qt-installed
+        path: qt.tar.gz
+    
+    - if: ${{ steps.cache-qt.outputs.cache-hit == 'true' && inputs.install == 'true' }}
+      name: Install Qt from cache
+      shell: bash
+      run: |
+        tar -xzf qt.tar.gz -C /
