@@ -12,4 +12,4 @@ USER build
 WORKDIR /home/build
 COPY dependencies dependencies
 
-RUN sudo DEBIAN_FRONTEND=noninteractive apt-get -y install $(dependencies/get_dependencies.sh run_base)
+RUN sudo DEBIAN_FRONTEND=noninteractive apt-get -y install $(dependencies/get_dependencies.sh build_base_debian)

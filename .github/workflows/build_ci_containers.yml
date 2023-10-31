@@ -7,7 +7,14 @@ permissions:
   checks: write
 
 jobs:
-  build_base:
+  build:
+    strategy:
+      matrix:
+        os: [ debian_stable, ubuntu_latest ]
+        variant: [ run_base ]
+        include:
+          - os: debian_stable
+            variant: build_base
     runs-on: ubuntu-latest
     steps:
       -
@@ -34,42 +41,8 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           context: distribution
-          file: distribution/dockerfiles/build_base.Dockerfile
+          file: distribution/dockerfiles/${{ matrix.variant }}_${{ matrix.os }}.Dockerfile
           push: true
           tags: |
-            sandervocke/shoopdaloop_build_base:latest
-            sandervocke/shoopdaloop_build_base:${{ env.UNIQUETAG }}
-  
-  run_base:
-    runs-on: ubuntu-latest
-    steps:
-      -
-        name: Checkout
-        uses: actions/checkout@v3
-      -
-        name: Prepare tag name
-        run: |
-          echo "UNIQUETAG=$(date +"%Y%m%d")_git_$(git rev-parse HEAD | cut -c1-8)" | tee -a $GITHUB_ENV
-      -
-        name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
-      -
-        name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-      -
-        name: Login to Docker Hub
-        uses: docker/login-action@v2
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      -
-        name: Build and push builder
-        uses: docker/build-push-action@v4
-        with:
-          context: distribution
-          file: distribution/dockerfiles/run_base.Dockerfile
-          push: true
-          tags: |
-            sandervocke/shoopdaloop_run_base:latest
-            sandervocke/shoopdaloop_run_base:${{ env.UNIQUETAG }}
-  
+            sandervocke/shoopdaloop_${{ matrix.variant }}_${{ matrix.os }}:latest
+            sandervocke/shoopdaloop_${{ matrix.variant }}_${{ matrix.os }}:${{ env.UNIQUETAG }}

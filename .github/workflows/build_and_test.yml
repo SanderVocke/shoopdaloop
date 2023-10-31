@@ -37,8 +37,11 @@ jobs:
   test_release_whl:
     runs-on: ubuntu-latest
     needs: build_release
+    strategy:
+      matrix:
+        os: [ debian_stable, ubuntu_latest ]
     container:
-      image: sandervocke/shoopdaloop_run_base:latest
+      image: sandervocke/shoopdaloop_run_base_${{ matrix.os }}:latest
       options: --user root --workdir /
     steps:
     - name: Checkout
