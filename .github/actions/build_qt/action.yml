@@ -29,7 +29,7 @@ runs:
       uses: actions/cache@v3
       with:
         path: qt.tar.gz
-        key: qt-6.5.3-${{ steps.find_os.outputs.os_version }}-1
+        key: qt-6.5.3-${{ steps.find_os.outputs.os_version }}-2
     
     - if: ${{ inputs.force-rebuild == 'true' || steps.cache-qt.outputs.cache-hit != 'true' }}
       name: Download Qt sources
@@ -62,18 +62,19 @@ runs:
           -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON \
           -DCMAKE_MESSAGE_LOG_LEVEL=STATUS
     
-    - if: ${{ inputs.force-rebuild == 'true' || steps.cache-qmldom.outputs.cache-hit != 'true' }}
+    - if: ${{ inputs.force-rebuild == 'true' || steps.cache-qt.outputs.cache-hit != 'true' }}
       name: Build Qt
       shell: bash
       run: |
         cmake --build qtbuild --parallel 4
         DESTDIR=qt-installed cmake --install qtbuild
     
-    - if: ${{ inputs.force-rebuild == 'true' || steps.cache-qmldom.outputs.cache-hit != 'true' }}
+    - if: ${{ inputs.force-rebuild == 'true' || steps.cache-qt.outputs.cache-hit != 'true' }}
       name: Compress Qt for caching
       shell: bash
       run: |
-         tar czvf qt.tar.gz qt-installed
+         cd qt-installed
+         tar czvf ../qt.tar.gz *
     
     - if: ${{ inputs.upload == 'true' }}
       name: Upload Qt
