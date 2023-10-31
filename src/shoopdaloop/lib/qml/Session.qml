@@ -24,13 +24,61 @@ Item {
     property var backend_type : global_args.backend_type
     property var backend_argstring : global_args.backend_argstring
 
+    ExecuteNextCycle {
+        id: auto_session_loader
+        property string filename
+        interval: 10
+        onExecute: {
+            load_session(filename)
+        }
+    }
     onLoadedChanged: {
         if (loaded) {
             if (global_args.load_session_on_startup) {
                 var filename = global_args.load_session_on_startup
                 global_args.load_session_on_startup = null
-                load_session(filename)
+                auto_session_loader.filename = filename
+                root.logger.debug(() => ("Loading session on startup: " + filename))
+                auto_session_loader.trigger()
             }
+            if (global_args.test_grab_screens) {
+                test_grab_screens_and_quit(global_args.test_grab_screens)
+            }
+        }
+    }
+
+    ExecuteNextCycle {
+        id: test_screen_grab_trigger
+        property string output_folder
+        onExecute: {
+            screen_grabber.grab_all(output_folder)
+            root.logger.info(() => ("Screenshots written to: " + output_folder + ". Quitting."))
+            Qt.quit()
+        }
+    }
+    RegistrySelects {
+        registry: registries.objects_registry
+        select_fn: (obj) => obj && obj.object_schema && obj.object_schema.match(/loop.[0-9]+/)
+        id: lookup_loops
+        values_only: true
+    }
+    property alias loops : lookup_loops.objects
+    function test_grab_screens_and_quit(output_folder) {
+        // We are supposed to take screenshots of application windows, output them
+        // and exit.        
+        if (loops.length > 0) {
+            let clicks = click_track_generator.generate([click_track_generator.get_possible_clicks()[0]], 120, 4, 0);
+            var load_task = file_io.load_soundfile_to_channels_async(clicks, root.backend.get_sample_rate(), null,
+                            [[loops[0].channels[0]], []], 0, 0, loops[0])
+            // Make sure there is something interesting to show in the master loop details window.
+            load_task.when_finished(() => {
+                // Trigger the grabs.
+                test_screen_grab_trigger.output_folder = output_folder
+                test_screen_grab_trigger.trigger()
+            })
+        } else {
+            test_screen_grab_trigger.output_folder = output_folder
+            test_screen_grab_trigger.trigger()
         }
     }
 

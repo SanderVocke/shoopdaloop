@@ -39,17 +39,16 @@ runs:
         wget https://download.qt.io/archive/qt/6.5/6.5.3/submodules/qtdeclarative-everywhere-src-6.5.3.tar.xz
         tar -xf qtbase-everywhere-src-6.5.3.tar.xz
         mv qtbase-everywhere-src-6.5.3 qtbase
-        cd qtbase
-        tar -xf ../qtdeclarative-everywhere-src-6.5.3.tar.xz
+        tar -xf qtdeclarative-everywhere-src-6.5.3.tar.xz
         mv qtdeclarative-everywhere-src-6.5.3 qtdeclarative
     
     - if: ${{ inputs.force-rebuild == 'true' || steps.cache-qt.outputs.cache-hit != 'true' }}
-      name: Configure Qt
+      name: Configure Qt Base
       shell: bash
       run: |
         cmake -B qtbuild -S qtbase -G Ninja \
           -DCMAKE_INSTALL_PREFIX=/usr \
-          -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+          -DCMAKE_BUILD_TYPE=Release \
           -DINSTALL_BINDIR=lib/qt6/bin \
           -DINSTALL_PUBLICBINDIR=usr/bin \
           -DINSTALL_LIBEXECDIR=lib/qt6 \
@@ -63,11 +62,37 @@ runs:
           -DCMAKE_MESSAGE_LOG_LEVEL=STATUS
     
     - if: ${{ inputs.force-rebuild == 'true' || steps.cache-qt.outputs.cache-hit != 'true' }}
-      name: Build Qt
+      name: Build Qt Base
       shell: bash
       run: |
         cmake --build qtbuild --parallel 4
         DESTDIR=qt-installed cmake --install qtbuild
+    
+    - if: ${{ inputs.force-rebuild == 'true' || steps.cache-qt.outputs.cache-hit != 'true' }}
+      name: Configure Qt Declarative
+      shell: bash
+      run: |
+        cmake -B qtdeclarativebuild -S qtdeclarative -G Ninja \
+          -DCMAKE_INSTALL_PREFIX=/usr \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DINSTALL_BINDIR=lib/qt6/bin \
+          -DINSTALL_PUBLICBINDIR=usr/bin \
+          -DINSTALL_LIBEXECDIR=lib/qt6 \
+          -DINSTALL_DOCDIR=share/doc/qt6 \
+          -DINSTALL_ARCHDATADIR=lib/qt6 \
+          -DINSTALL_DATADIR=share/qt6 \
+          -DINSTALL_INCLUDEDIR=include/qt6 \
+          -DINSTALL_MKSPECSDIR=lib/qt6/mkspecs \
+          -DINSTALL_EXAMPLESDIR=share/doc/qt6/examples \
+          -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON \
+          -DCMAKE_MESSAGE_LOG_LEVEL=STATUS
+    
+    - if: ${{ inputs.force-rebuild == 'true' || steps.cache-qt.outputs.cache-hit != 'true' }}
+      name: Build Qt Declarative
+      shell: bash
+      run: |
+        cmake --build qtdeclarativebuild --parallel 4
+        DESTDIR=qt-installed cmake --install qtdeclarativebuild
     
     - if: ${{ inputs.force-rebuild == 'true' || steps.cache-qt.outputs.cache-hit != 'true' }}
       name: Compress Qt for caching

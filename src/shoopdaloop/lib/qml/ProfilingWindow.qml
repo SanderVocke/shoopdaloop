@@ -7,6 +7,7 @@ import ShoopDaLoop.PythonLogger
 // and select a generated click track clip.
 ApplicationWindow {
     id: root
+    title: "Profiling"
 
     width: 400
     height: 450
