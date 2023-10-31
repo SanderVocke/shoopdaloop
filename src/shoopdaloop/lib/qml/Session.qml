@@ -53,7 +53,7 @@ Item {
         onExecute: {
             screen_grabber.grab_all(output_folder)
             root.logger.info(() => ("Screenshots written to: " + output_folder + ". Quitting."))
-            Qt.quit()
+            Qt.callLater(Qt.quit())
         }
     }
     RegistrySelects {
@@ -66,22 +66,8 @@ Item {
     function test_grab_screens_and_quit(output_folder) {
         // We are supposed to take screenshots of application windows, output them
         // and exit.        
-        if (loops.length > 0) {
-            let clicks = click_track_generator.generate([click_track_generator.get_possible_clicks()[0]], 120, 4, 0);
-            let loop = loops[0]
-            var load_task = file_io.load_soundfile_to_channels_async(clicks, root.backend.get_sample_rate(), null,
-                            [[loop.channels[0]], []], 0, 0, loop)
-            // Make sure there is something interesting to show in the master loop details window.
-            load_task.when_finished(() => {
-                // Trigger the grabs.
-                loop.details_window.visible = true
-                test_screen_grab_trigger.output_folder = output_folder
-                test_screen_grab_trigger.trigger()
-            })
-        } else {
-            test_screen_grab_trigger.output_folder = output_folder
-            test_screen_grab_trigger.trigger()
-        }
+        test_screen_grab_trigger.output_folder = output_folder
+        test_screen_grab_trigger.trigger()
     }
 
     property bool settings_io_enabled: false

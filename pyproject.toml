@@ -20,7 +20,7 @@ dependencies = [
   "jsonschema",
   "numpy",
   "pyjacklib",
-  "pyside6~=6.5.3",
+  "pyside6-essentials~=6.5.3",
   "lupa",
   "appdirs"
 ]
