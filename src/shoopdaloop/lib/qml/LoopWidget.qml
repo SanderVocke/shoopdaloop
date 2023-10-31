@@ -123,22 +123,6 @@ Item {
     property alias targeted_loop : targeted_loop_lookup.object
     property bool targeted : targeted_loop == root
 
-    RegistryLookup {
-        id: hovered_scene_loops_lookup
-        registry: registries.state_registry
-        key: 'hovered_scene_loop_ids'
-    }
-    property alias hovered_scene_loop_ids : hovered_scene_loops_lookup.object
-    property bool is_in_hovered_scene : hovered_scene_loop_ids && hovered_scene_loop_ids.has(obj_id)
-
-    RegistryLookup {
-        id: selected_scene_loops_lookup
-        registry: registries.state_registry
-        key: 'selected_scene_loop_ids'
-    }
-    property alias selected_scene_loop_ids : selected_scene_loops_lookup.object
-    property bool is_in_selected_scene : selected_scene_loop_ids && selected_scene_loop_ids.has(obj_id)
-
     property var single_selected_composite_loop: {
         if (selected_loop_ids && selected_loop_ids.size == 1) {
             let selected_loop = registries.objects_registry.get(selected_loop_ids.values().next().value)
@@ -154,25 +138,12 @@ Item {
     property bool is_in_selected_composite_loop : loops_in_single_selected_composite_loop.has(root)
 
     RegistryLookup {
-        id: scenes_widget_lookup
-        registry: registries.state_registry
-        key: 'scenes_widget'
-    }
-    property alias scenes_widget : scenes_widget_lookup.object
-
-    RegistryLookup {
         id: selected_loops_lookup
         registry: registries.state_registry
         key: 'selected_loop_ids'
     }
     property alias selected_loop_ids : selected_loops_lookup.object
     property bool selected : selected_loop_ids ? selected_loop_ids.has(obj_id) : false
-
-    function toggle_in_current_scene() {
-        if (scenes_widget) {
-            scenes_widget.toggle_loop_in_current_scene (obj_id)
-        }
-    }
 
     RegisterInRegistry {
         id: obj_reg_entry
@@ -260,9 +231,15 @@ Item {
     function transition(mode, delay, wait_for_sync, include_selected=true) {
         // Do the transition for this loop and all selected loops, if any
         var selected_ids = include_selected ? new Set(registries.state_registry.maybe_get('selected_loop_ids', new Set())) : new Set()
-        selected_ids.add(obj_id)
-        var objects = Array.from(selected_ids).map(id => registries.objects_registry.maybe_get(id, undefined)).filter(v => v != undefined)
-        transition_loops(objects, mode, delay, wait_for_sync)
+        
+        if (selected_ids.has (root.obj_id)) {
+            // If we are part of the selection, transition them all as a group.
+            var objects = Array.from(selected_ids).map(id => registries.objects_registry.maybe_get(id, undefined)).filter(v => v != undefined)
+            transition_loops(objects, mode, delay, wait_for_sync)
+        } else {
+            // If we are not part of the selection, transition ourselves only.
+            transition_loops([root], mode, delay, wait_for_sync)
+        }        
     }
     function play_solo_in_track() {
         // Gather all selected loops
@@ -542,10 +519,6 @@ Item {
                 return "orange";
             } else if (root.selected) {
                 return 'yellow';
-            } else if (root.is_in_hovered_scene) {
-                return 'blue';
-            } else if (root.is_in_selected_scene) {
-                return 'red';
             } else if (root.is_in_selected_composite_loop) {
                 return 'pink';
             }
@@ -753,7 +726,6 @@ Item {
                                 } else if (root.targeted) { root.untarget(); root.deselect() }
                                 else { root.toggle_selected(!key_modifiers.control_pressed) }
                             }
-                            else if (event.button === Qt.MiddleButton) { root.toggle_in_current_scene() }
                             else if (event.button === Qt.RightButton) { contextmenu.popup() }
                         }
                 }
@@ -1005,31 +977,31 @@ Item {
                                     Menu {
                                         id: recordn_menu
                                         title: 'Select # of cycles'
-                                        MenuItem {
+                                        ShoopMenuItem {
                                             text: "1 cycle"
                                             onClicked: () => { root.record_n(0, 1) }
                                         }
-                                        MenuItem {
+                                        ShoopMenuItem {
                                             text: "2 cycles"
                                             onClicked: () => { root.record_n(0, 2) }
                                         }
-                                        MenuItem {
+                                        ShoopMenuItem {
                                             text: "3 cycles"
                                             onClicked: () => { root.record_n(0, 3) }
                                         }
-                                        MenuItem {
+                                        ShoopMenuItem {
                                             text: "4 cycles"
                                             onClicked: () => { root.record_n(0, 4) }
                                         }
-                                        MenuItem {
+                                        ShoopMenuItem {
                                             text: "6 cycles"
                                             onClicked: () => { root.record_n(0, 6) }
                                         }
-                                        MenuItem {
+                                        ShoopMenuItem {
                                             text: "8 cycles"
                                             onClicked: () => { root.record_n(0, 8) }
                                         }
-                                        MenuItem {
+                                        ShoopMenuItem {
                                             text: "16 cycles"
                                             onClicked: () => { root.record_n(0, 16) }
                                         }
@@ -1410,7 +1382,8 @@ Item {
                 n_midi_channels = root.midi_channels.length
             }
 
-            MenuItem {
+            ShoopMenuItem {
+                height: 50
                 Row {
                     anchors.fill: parent
                     spacing: 5
@@ -1432,25 +1405,26 @@ Item {
                     }
                 }
             }
-            MenuItem {
+            MenuSeparator {}
+            ShoopMenuItem {
                 text: "Loop details window"
                 onClicked: () => { detailswindow.visible = true }
             }
-            MenuItem {
+            ShoopMenuItem {
                text: "Generate click loop..."
                onClicked: () => clicktrackdialog.open()
             }
-            MenuItem {
+            ShoopMenuItem {
                 text: "Save audio..."
                 onClicked: presavedialog.open()
                 enabled: menu.n_audio_channels > 0
             }
-            MenuItem {
+            ShoopMenuItem {
                 text: "Load audio..."
                 onClicked: loaddialog.open()
                 enabled: menu.n_audio_channels > 0
             }
-            MenuItem {
+            ShoopMenuItem {
                 text: "Load MIDI..."
                 enabled: menu.n_midi_channels > 0
                 onClicked: {
@@ -1461,7 +1435,7 @@ Item {
                     midiloaddialog.open()
                 }
             }
-            MenuItem {
+            ShoopMenuItem {
                 text: "Save MIDI..."
                 enabled: menu.n_midi_channels > 0
                 onClicked: {
@@ -1472,19 +1446,19 @@ Item {
                     midisavedialog.open()
                 }
             }
-            MenuItem {
+            ShoopMenuItem {
                 text: "Push Master Loop Length"
                 onClicked: {
                     if (master_loop) { master_loop.set_length(root.length) }
                 }
             }
-            MenuItem {
+            ShoopMenuItem {
                 text: "Clear"
                 onClicked: () => {
                     root.clear(0)
                 }
             }
-            MenuItem {
+            ShoopMenuItem {
                 id: restore_fx_state_button
 
                 property var cached_fx_state: {

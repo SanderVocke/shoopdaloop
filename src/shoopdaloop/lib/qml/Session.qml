@@ -91,7 +91,6 @@ Item {
             app_metadata.version_string,
             tracks_widget.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to),
             [],
-            scenes_widget.actual_scene_descriptors,
             [],
             registries.fx_chain_states_registry.all_values()
         );
@@ -164,8 +163,7 @@ Item {
 
     function reload() {
         registries.state_registry.clear([
-            'sync_active',
-            'scenes_widget'
+            'sync_active'
         ])
         registries.objects_registry.clear()
         tracks_widget.reload()
@@ -373,28 +371,14 @@ Item {
             onSaveSession: (filename) => root.save_session(filename)
         }
 
-        ScenesWidget {
-            id: scenes_widget
-
-            initial_scene_descriptors: root.initial_descriptor.scenes
-            
-            width: 140
-            anchors {
-                top: app_controls.bottom
-                left: parent.left
-                bottom: logo_menu_area.top
-                rightMargin: 6
-            }
-        }
-
         TracksWidget {
             id: tracks_widget
 
             anchors {
                 top: app_controls.bottom
-                left: scenes_widget.right
+                left: parent.left
                 bottom: parent.bottom
-                right: parent.right
+                right: logo_menu_area.left
                 bottomMargin: 4
                 leftMargin: 4
             }
@@ -407,7 +391,7 @@ Item {
 
             anchors {
                 bottom: parent.bottom
-                right: tracks_widget.left
+                right: parent.right
             }
 
             width: 160

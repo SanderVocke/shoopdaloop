@@ -30,7 +30,7 @@ To summarize why ShoopDaLoop exists and what the goals and plans are, a short co
 | Audio+MIDI co-recording     | ✅                        | ❌              | ❌                       | ?                      |
 | Audio dry+wet co-recording  | ✅                        | manual setup     | ✅                      | ?                      |
 | Loop Organization           | Grid                      | Separate loopers | Grid                     | Grid                   |
-| Scenes support              | ✅ (any loop combination) | ❌              | ✅ (grid row = scene)    | ?                      |
+| Scenes support              | ✅ (5) | ❌              | ✅ (grid row = scene)    | ?                      |
 | Designed for live use       | ✅                        | ✅               | ✅                      | ❌                      |
 | Plugin Host                 | ✅ <sup>(1)</sup>         | ❌               | ❌                      | ✅                      |
 | Song/performance sequencing | ✅ <sup>(4)</sup>         | ❌               | ❌                      | ✅ (not sure of details) |
@@ -44,6 +44,7 @@ To summarize why ShoopDaLoop exists and what the goals and plans are, a short co
 (2): Focus is on Linux for now until it is reasonably feature-complete. The design does not prevent moving to Mac + Windows in the future. <br>
 (3): ShoopDaLoop plug-in scripts are written in LUA. Currently the main goal is to support deep MIDI controller integrations and custom keyboard control scripts and opening/managing additional MIDI control ports. Future goals could be integration with the future song/performance sequencer or integration with the outside world by e.g. network.
 (4): ShooDaLoop supports "composite loops", allowing you to combine sequences of loops into other loops hierarchically. Through this method, complex sequences and simple songs can be constructed.
+(5): See (4): composite loops can be used as scenes.
 
 Disclaimers:
 
@@ -58,7 +59,6 @@ As seen in the comparison table, ShoopDaLoop is closest to Luppp in what it offe
 - **Tracks**: loops are organized into tracks, which share inputs/outputs and effects/synthesis.
 - **MIDI and audio**: can both be looped, including alongside each other in the same loop.
 - **FX/synthesis**: can be inserted into a loop via external JACK connections or by using plugins. The same loop can simultaneously record "dry" and "wet", akin to [Luppp](http://openavproductions.com/luppp/), to save precious CPU during playback.
-- **Scenes**: scenes are named groups of loops. They can be started/stopped simultaneously. Typical use is for sections of a song.
 - **Synchronization**: every loop is synced to the "master loop", which typically holds a beat, click-track or just fixed-length silence. Loops may also be a multiple of the master loop length.
 - **Click tracks**: can be generated via a dialog in the app.
 - **NSM**: Non/New Session Manager support (experimental).

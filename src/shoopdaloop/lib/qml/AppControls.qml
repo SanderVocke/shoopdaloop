@@ -46,23 +46,23 @@ Item {
             Menu {
                 id: mainmenu
 
-                MenuItem {
+                ShoopMenuItem {
                     text: "Save session"
                     onClicked: { savesessiondialog.open() }
                 }
-                MenuItem {
+                ShoopMenuItem {
                     text: "Load session"
                     onClicked: loadsessiondialog.open()
                 }
-                MenuItem {
+                ShoopMenuItem {
                     text: "Profiling"
                     onClicked: profilingwindow.visible = true
                 }
-                MenuItem {
+                ShoopMenuItem {
                     text: "Settings"
                     onClicked: settings_dialog.open()
                 }
-                MenuItem {
+                ShoopMenuItem {
                     text: "Debug Inspection"
                     onClicked: debugwindow.visible = true
                 }
