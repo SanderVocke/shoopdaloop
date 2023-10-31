@@ -102,6 +102,11 @@ jobs:
         variant_name: release
         run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH=${{ env.qtlibpath }}
         root_path: ${{ steps.install.outputs.install_dir }}
+    - name: Screenshots
+      uses: ./.github/actions/screenshots_test
+      with:
+        root_path: ${{ steps.install.outputs.install_dir }}
+        screenshots_path: /tmp/screenshots
     - name: Test App
       uses: ./.github/actions/app_run_test
       with:

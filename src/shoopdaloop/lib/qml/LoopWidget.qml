@@ -14,6 +14,7 @@ Item {
     property var track_widget
 
     property var initial_descriptor : null
+    property var details_window : detailswindow
 
     property int track_idx : -1
     property int idx_in_track : -1

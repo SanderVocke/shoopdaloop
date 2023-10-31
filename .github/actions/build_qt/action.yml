@@ -29,7 +29,7 @@ runs:
       uses: actions/cache@v3
       with:
         path: qt.tar.gz
-        key: qt-6.5.3-${{ steps.find_os.outputs.os_version }}-2
+        key: qt-6.5.3-${{ steps.find_os.outputs.os_version }}-3
     
     - if: ${{ inputs.force-rebuild == 'true' || steps.cache-qt.outputs.cache-hit != 'true' }}
       name: Download Qt sources
