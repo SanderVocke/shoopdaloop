@@ -13,6 +13,8 @@ jobs:
       image: sandervocke/shoopdaloop_build_qt_manylinux_2_28:latest
       options: --user root --workdir /
     steps:
+    - name: Checkout
+      uses: actions/checkout@v3
     - name: Build or retrieve Qt
       uses: ./.github/actions/build_qt
       with:
