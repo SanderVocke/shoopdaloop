@@ -48,8 +48,8 @@ jobs:
     steps:
     - name: Define constants
       run: |
-        echo "python=${{ fromJSON("{\"debian_stable\": \"python3\", \"ubuntu_latest\": \"python3\", \"arch\": \"python\"}")[matrix.os] }}" | tee -a $GITHUB_ENV
-        echo "pip_extra_args=${{ fromJSON("{\"debian_stable\": \"--break-system-packages\", \"ubuntu_latest\": \"\", \"arch\": \"--break-system-packages\"}")[matrix.os] }}" | tee -a $GITHUB_ENV
+        echo "python=${{ fromJSON('{"debian_stable": "python3", "ubuntu_latest": "python3", "arch": "python"}')[matrix.os] }}" | tee -a $GITHUB_ENV
+        echo "pip_extra_args=${{ fromJSON('{"debian_stable": "--break-system-packages", "ubuntu_latest": "", "arch": "--break-system-packages"}'')[matrix.os] }}" | tee -a $GITHUB_ENV
     - name: Checkout
       uses: actions/checkout@v3
     - name: Retrieve wheel
