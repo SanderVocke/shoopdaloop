@@ -40,6 +40,7 @@ jobs:
   test_release_whl:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         os:
           - name: debian_stable
