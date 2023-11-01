@@ -53,6 +53,9 @@ runs:
         ../qt/configure -release -submodules qtdeclarative,qtshadertools
 
     - if: ${{ inputs.force-rebuild == 'true' || inputs.cache == 'false' || (inputs.cache == 'true' && steps.cache-qt.outputs.cache-hit != 'true') }}
+      name: Build Qt
+      shell: bash
+      run: |
         cmake --build qt-build --parallel 4
         DESTDIR=qt-installed cmake --install qt-build
         DESTDIR=/ cmake --install qt-build
