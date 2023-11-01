@@ -10,7 +10,7 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [ debian_stable, ubuntu_latest ]
+        os: [ debian_stable, ubuntu_latest, arch ]
         variant: [ run_base ]
         include:
           - os: debian_stable

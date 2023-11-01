@@ -1,0 +1,22 @@
+name: Build and push CI containers
+
+on: workflow_dispatch
+
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  build_qt:
+    runs-on: ubuntu-latest
+    container:
+      image: sandervocke/shoopdaloop_build_qt:latest
+      options: --user root --workdir /
+    steps:
+    - name: Build or retrieve Qt
+      uses: ./.github/actions/build_qt
+      with:
+        install: false
+        upload: true
+        cache: false
+  
