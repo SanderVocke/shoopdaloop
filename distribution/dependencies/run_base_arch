@@ -1,0 +1,12 @@
+# Dependencies needed in order to run the .whl
+# Assumption is that PyPi packages are used wherever possible.
+
+x-server
+python
+python-pip
+wget
+fontconfig
+libxkbcommon
+
+# scripting stuff
+procps-ng
