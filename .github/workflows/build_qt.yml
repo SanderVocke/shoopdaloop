@@ -10,7 +10,7 @@ jobs:
   build_qt:
     runs-on: ubuntu-latest
     container:
-      image: sandervocke/shoopdaloop_build_qt:latest
+      image: sandervocke/shoopdaloop_build_qt_manylinux_2_28:latest
       options: --user root --workdir /
     steps:
     - name: Build or retrieve Qt
