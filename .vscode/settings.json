@@ -3,5 +3,5 @@
         "--compile-commands-dir=${workspaceFolder}/build"
     ],
     "cmake.configureOnOpen": false,
-    "cmake.sourceDirectory": "/home/vagrant/shoopdaloop/src"
+    "cmake.sourceDirectory": "/home/sander/dev/shoopdaloop/third_party/fmt"
 }

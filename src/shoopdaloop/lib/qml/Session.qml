@@ -24,14 +24,50 @@ Item {
     property var backend_type : global_args.backend_type
     property var backend_argstring : global_args.backend_argstring
 
+    ExecuteNextCycle {
+        id: auto_session_loader
+        property string filename
+        interval: 10
+        onExecute: {
+            load_session(filename)
+        }
+    }
     onLoadedChanged: {
         if (loaded) {
             if (global_args.load_session_on_startup) {
                 var filename = global_args.load_session_on_startup
                 global_args.load_session_on_startup = null
-                load_session(filename)
+                auto_session_loader.filename = filename
+                root.logger.debug(() => ("Loading session on startup: " + filename))
+                auto_session_loader.trigger()
+            }
+            if (global_args.test_grab_screens) {
+                test_grab_screens_and_quit(global_args.test_grab_screens)
             }
         }
+    }
+
+    ExecuteNextCycle {
+        id: test_screen_grab_trigger
+        property string output_folder
+        onExecute: {
+            screen_grabber.grab_all(output_folder)
+            root.logger.info(() => ("Screenshots written to: " + output_folder + ". Quitting."))
+            Qt.callLater(Qt.quit())
+        }
+    }
+    RegistrySelects {
+        registry: registries.objects_registry
+        select_fn: (obj) => obj && obj.object_schema && obj.object_schema.match(/loop.[0-9]+/)
+        id: lookup_loops
+        values_only: true
+    }
+    property alias loops : lookup_loops.objects
+    function test_grab_screens_and_quit(output_folder) {
+        // We are supposed to take screenshots of application windows, output them
+        // and exit.        
+        test_screen_grab_trigger.output_folder = output_folder
+        test_screen_grab_trigger.trigger()
     }
 
     property bool settings_io_enabled: false
@@ -41,7 +77,6 @@ Item {
             app_metadata.version_string,
             tracks_widget.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to),
             [],
-            scenes_widget.actual_scene_descriptors,
             [],
             registries.fx_chain_states_registry.all_values()
         );
@@ -114,8 +149,7 @@ Item {
 
     function reload() {
         registries.state_registry.clear([
-            'sync_active',
-            'scenes_widget'
+            'sync_active'
         ])
         registries.objects_registry.clear()
         tracks_widget.reload()
@@ -323,28 +357,14 @@ Item {
             onSaveSession: (filename) => root.save_session(filename)
         }
 
-        ScenesWidget {
-            id: scenes_widget
-
-            initial_scene_descriptors: root.initial_descriptor.scenes
-            
-            width: 140
-            anchors {
-                top: app_controls.bottom
-                left: parent.left
-                bottom: logo_menu_area.top
-                rightMargin: 6
-            }
-        }
-
         TracksWidget {
             id: tracks_widget
 
             anchors {
                 top: app_controls.bottom
-                left: scenes_widget.right
+                left: parent.left
                 bottom: parent.bottom
-                right: parent.right
+                right: logo_menu_area.left
                 bottomMargin: 4
                 leftMargin: 4
             }
@@ -357,7 +377,7 @@ Item {
 
             anchors {
                 bottom: parent.bottom
-                right: tracks_widget.left
+                right: parent.right
             }
 
             width: 160

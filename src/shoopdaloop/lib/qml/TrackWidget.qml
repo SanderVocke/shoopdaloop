@@ -297,17 +297,17 @@ Item {
                         Menu {
                             id: menu
 
-                            MenuItem {
+                            ShoopMenuItem {
                                 text: "Connections..."
                                 onClicked: { connectionsdialog.open() }
                             }
 
-                            MenuItem {
+                            ShoopMenuItem {
                                 text: "Delete Track"
                                 onClicked: { root.requestDelete() }
                             }
 
-                            MenuItem {
+                            ShoopMenuItem {
                                 text: "Snapshot FX State"
                                 enabled: root.maybe_fx_chain != undefined
                                 onClicked: {
@@ -330,6 +330,7 @@ Item {
                             }
 
                             Menu {
+                                height: 30
                                 id: restore_submenu
                                 title: "Restore FX State"
                                 enabled: root.maybe_fx_chain != undefined && fx_states.length > 0
@@ -347,7 +348,7 @@ Item {
                                 Repeater {
                                     model: restore_submenu.fx_states.length
 
-                                    MenuItem {
+                                    ShoopMenuItem {
                                         property var mapped_item: restore_submenu.fx_states[index]
                                         text: mapped_item.title
                                         enabled: root.fx_chain_descriptor && (mapped_item.type == root.fx_chain_descriptor.type)
