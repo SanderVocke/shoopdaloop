@@ -40,15 +40,12 @@ runs:
       name: Download Qt sources
       shell: bash
       run: |
-        wget https://download.qt.io/archive/qt/6.5/6.5.3/submodules/qtbase-everywhere-src-6.5.3.tar.xz
-        wget https://download.qt.io/archive/qt/6.5/6.5.3/submodules/qtdeclarative-everywhere-src-6.5.3.tar.xz
-        wget https://download.qt.io/archive/qt/6.5/6.5.3/submodules/qtshadertools-everywhere-src-6.5.3.tar.xz
-        tar -xf qtbase-everywhere-src-6.5.3.tar.xz
-        mv qtbase-everywhere-src-6.5.3 qtbase
-        tar -xf qtdeclarative-everywhere-src-6.5.3.tar.xz
-        mv qtdeclarative-everywhere-src-6.5.3 qtdeclarative
-        tar -xf qtshadertools-everywhere-src-6.5.3.tar.xz
-        mv qtshadertools-everywhere-src-6.5.3 qtshadertools
+        curl https://download.qt.io/archive/qt/6.5/6.5.3/submodules/qtbase-everywhere-src-6.5.3.tar.xz --output qtbase.tar.xz
+        curl https://download.qt.io/archive/qt/6.5/6.5.3/submodules/qtdeclarative-everywhere-src-6.5.3.tar.xz --output qtdeclarative.tar.xz
+        curl https://download.qt.io/archive/qt/6.5/6.5.3/submodules/qtshadertools-everywhere-src-6.5.3.tar.xz --output qtshadertools.tar.xz
+        tar -xf qtbase.tar.xz
+        tar -xf qtdeclarative.tar.xz
+        tar -xf qtshadertools.tar.xz
     
     - if: ${{ inputs.force-rebuild == 'true' || inputs.cache == 'false' || (inputs.cache == 'true' && steps.cache-qt.outputs.cache-hit != 'true') }}
       name: Configure Qt Base
