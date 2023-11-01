@@ -5,6 +5,7 @@ x-server
 python
 python-pip
 wget
+curl
 fontconfig
 libxkbcommon
 
