@@ -10,6 +10,9 @@ pkgconf
 lcov
 
 # libraries
+libglib2.0-0
+libdbus-1-3
+jackd2stribution/dependencies/build_base
 libxkbcommon-dev
 libboost-dev
 libjack-jackd2-dev
