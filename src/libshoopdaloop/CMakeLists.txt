@@ -112,7 +112,8 @@ target_link_libraries(shoopdaloop PUBLIC
                       jack_wrappers
                       ${LV2_LIBRARIES}
                       ${LILV_LIBRARIES}
-                      ${fmt_LIBRARY})
+                      ${fmt_LIBRARY}
+                      dl)
 target_include_directories(shoopdaloop
                         PRIVATE
                         ${CMAKE_SOURCE_DIR}/../third_party/lv2_evbuf
