@@ -14,8 +14,8 @@ permissions:
   checks: write
 
 jobs:
-  
-  build_release:
+
+  build_qt:
     runs-on: ubuntu-latest
     container:
       image: sandervocke/shoopdaloop_build_base:latest
@@ -25,18 +25,42 @@ jobs:
       uses: actions/checkout@v3
       with:
         submodules: recursive
+    - name: Build or retrieve Qt
+      uses: ./.github/actions/build_qt
+      with:
+        install: false
+        upload: true
+  
+  build_release:
+    runs-on: ubuntu-latest
+    needs: build_qt
+    container:
+      image: sandervocke/shoopdaloop_build_base:latest
+      options: --user root --workdir /
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        submodules: recursive
+    - name: Build or retrieve Qt
+      uses: ./.github/actions/build_qt
+      with:
+        install: true
+        upload: false
     - name: Build and upload
       uses: ./.github/actions/build_wheel
       with:
         variant_name: release
         pip_install_extra_args: --break-system-packages
         wheel_artifact_name: release_wheel
-        #pyinstaller: true
-        #pyinstaller_artifact_name: release_pyinstaller
+        pyinstaller: true
+        pyinstaller_artifact_name: release_pyinstaller
   
   test_release_whl:
     runs-on: ubuntu-latest
-    needs: build_release
+    needs:
+    - build_release
+    - build_qt
     container:
       image: sandervocke/shoopdaloop_run_base:latest
       options: --user root --workdir /
@@ -78,6 +102,11 @@ jobs:
         variant_name: release
         run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH=${{ env.qtlibpath }}
         root_path: ${{ steps.install.outputs.install_dir }}
+    - name: Screenshots
+      uses: ./.github/actions/screenshots_test
+      with:
+        root_path: ${{ steps.install.outputs.install_dir }}
+        screenshots_path: /tmp/screenshots
     - name: Test App
       uses: ./.github/actions/app_run_test
       with:
@@ -87,6 +116,7 @@ jobs:
         
   asan:
     runs-on: ubuntu-latest
+    needs: build_qt
     container:
       image: sandervocke/shoopdaloop_build_base:latest
       options: --user root --workdir /
@@ -95,6 +125,11 @@ jobs:
       uses: actions/checkout@v3
       with:
         submodules: recursive
+    - name: Build or retrieve Qt
+      uses: ./.github/actions/build_qt
+      with:
+        install: true
+        upload: false
     - name: Build, install and upload
       id: build
       uses: ./.github/actions/build_wheel
@@ -133,6 +168,7 @@ jobs:
   
   build_debug_whl:
     runs-on: ubuntu-latest
+    needs: build_qt
     container:
       image: sandervocke/shoopdaloop_build_base:latest
       options: --user root --workdir /
@@ -141,6 +177,11 @@ jobs:
       uses: actions/checkout@v3
       with:
         submodules: recursive
+    - name: Build or retrieve Qt
+      uses: ./.github/actions/build_qt
+      with:
+        install: true
+        upload: false
     - name: Build and upload
       uses: ./.github/actions/build_wheel
       with:
@@ -152,6 +193,7 @@ jobs:
   
   coverage:
     runs-on: ubuntu-latest
+    needs: build_qt
     container:
       image: sandervocke/shoopdaloop_build_base:latest
       options: --user root --workdir /
@@ -160,6 +202,11 @@ jobs:
       uses: actions/checkout@v3
       with:
         submodules: recursive
+    - name: Build or retrieve Qt
+      uses: ./.github/actions/build_qt
+      with:
+        install: true
+        upload: false
     - name: Build, install and upload
       id: build
       uses: ./.github/actions/build_wheel

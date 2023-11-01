@@ -80,24 +80,14 @@ function generate_scripts(scripts, active_script_id) {
     }
 }
 
-function generate_session(app_version, tracks, ports, scenes, scripts, fx_chain_states) {
+function generate_session(app_version, tracks, ports, scripts, fx_chain_states) {
     return {
         'schema': 'session.1',
         'app_version': app_version,
         'tracks': tracks,
         'ports': ports,
-        'scenes': scenes,
         'scripts': scripts,
         'fx_chain_states': fx_chain_states
-    }
-}
-
-function generate_scene(id, name, loop_ids) {
-    return {
-        'schema': 'scene.1',
-        'id': id,
-        'name': name,
-        'loop_ids': loop_ids
     }
 }
 
@@ -123,16 +113,6 @@ function generate_script_element(name, duration, actions) {
 function generate_script_loop_action(target_ids, action, delay_cycles, args) {
     return {
         'schema': 'script_loop_action.1',
-        'target_ids': target_ids,
-        'action': action,
-        'delay_cycles': delay_cycles,
-        'args': args
-    }
-}
-
-function generate_script_scene_action(target_ids, action, delay_cycles, args) {
-    return {
-        'schema': 'script_scene_action.1',
         'target_ids': target_ids,
         'action': action,
         'delay_cycles': delay_cycles,

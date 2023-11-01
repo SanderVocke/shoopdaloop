@@ -10,13 +10,13 @@ pkgconf
 lcov
 
 # libraries
+libglib2.0-0
+libdbus-1-3
+jackd2
+libgl1-mesa-dev
 libxkbcommon-dev
 libboost-dev
 libjack-jackd2-dev
-# note: qt6 needed to build because of its CMake build system
-# providing simple means to register custom QML types. At runtime,
-# having the PyPi PySide6 package is enough.
-qt6-declarative-dev
 # note: lv2, sord and serd needed at build-time only because it makes
 # it very convenient to build lilv, serd and sord as static libraries.
 # As static versions will be linked in, not needed at run-time.

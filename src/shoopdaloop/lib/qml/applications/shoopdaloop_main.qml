@@ -13,7 +13,6 @@ ApplicationWindow {
     minimumWidth: 500
     minimumHeight: 350
     title: "ShoopDaLoop"
-    id: appWindow
 
     Material.theme: Material.Dark
 
