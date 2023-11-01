@@ -43,7 +43,7 @@ add_custom_target(
   )
 
 # Generate javascript copy of enums into source dir
-set(OUR_PYTHONPATH "$ENV{PYTHONPATH}:${CMAKE_CURRENT_BINARY_DIR}:${PY_BUILD_CMAKE_MODULE_NAME}/..")
+set(OUR_PYTHONPATH "$ENV{PYTHONPATH}:${CMAKE_CURRENT_BINARY_DIR}:${PY_BUILD_CMAKE_MODULE_NAME}/..:${CMAKE_CURRENT_SOURCE_DIR}/shoopdaloop")
 set(GENERATED_TYPES_JS ${CMAKE_CURRENT_BINARY_DIR}/types.js)
 add_custom_command(
   OUTPUT ${GENERATED_TYPES_JS}
