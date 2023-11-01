@@ -32,6 +32,9 @@ inputs:
     required: false
     type: string
     default: python3
+  prepend_build_cmd:
+    required: false
+    type: string
 
 outputs:
   run_cmd_prefix:
@@ -52,7 +55,7 @@ runs:
     shell: bash
     id: build
     run: |
-      ${{ inputs.python }} -m build -w ${{ inputs.pypa_build_extra_args }}
+      ${{ inputs.prepend_build_cmd }} ${{ inputs.python }} -m build -w ${{ inputs.pypa_build_extra_args }}
       echo "run_cmd_prefix=$(find . -name run_cmd_prefix.txt -exec cat {} \;)" | tee -a $GITHUB_OUTPUT
       echo "source_dir=$(pwd)" | tee -a $GITHUB_OUTPUT
       echo "build_dir=$(realpath build/cp*/)" | tee -a $GITHUB_OUTPUT

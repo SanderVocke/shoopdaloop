@@ -1,0 +1,23 @@
+name: prepare_manylinux_2_28
+description: Prepare manylinux for building Shoopdaloop wheels
+
+runs:
+  using: "composite"
+  steps:
+  - name: Manylinux prep
+    shell: bash
+    run: |
+      ln -s /usr/local/bin/python3.8 /usr/local/bin/python
+      ln -s /usr/local/bin/python3.8 /usr/local/bin/python3
+      dnf -y install ninja-build
+      git clone https://github.com/jackaudio/jack2.git
+      cd jack2
+      ./waf configure
+      ./waf
+      ./waf install
+      curl -L https://boostorg.jfrog.io/artifactory/main/release/1.82.0/source/boost_1_82_0.tar.gz --output boost.tar.gz
+      tar -xzf boost.tar.gz
+      cp -r boost_1_82_0/boost /usr/include/boost
+      curl -L https://github.com/nlohmann/json/releases/download/v3.11.2/include.zip --output include.zip
+      unzip include.zip
+      cp -r include/* /usr/include/

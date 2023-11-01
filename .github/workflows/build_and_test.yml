@@ -28,15 +28,17 @@ jobs:
         submodules: recursive
     - name: Install Qt
       uses: ./.github/actions/download_qt
+    - name: Prepare manylinux environment
+      uses: ./.github/actions/prepare_manylinux_2_28
     - name: Build and upload
       uses: ./.github/actions/build_wheel
       with:
         variant_name: release
-        pip_install_extra_args: --break-system-packages
         wheel_artifact_name: release_wheel
         pyinstaller: true
         pyinstaller_artifact_name: release_pyinstaller
         python: python3.8
+        prepend_build_cmd: CMAKE_PREFIX_PATH=/usr/local/Qt-6.5.3 
   
   test_release_whl:
     runs-on: ubuntu-latest
