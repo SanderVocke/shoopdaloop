@@ -10,7 +10,7 @@ authors = [
 maintainers = [
   { name = "Sander Vocke", email = "sandervocke@gmail.com" },
 ]
-requires-python = ">=3.7"
+requires-python = ">=3.8"
 
 dependencies = [
   "pydub",
@@ -31,11 +31,11 @@ classifiers = [
   "Development Status :: 2 - Pre-Alpha",
   "License :: OSI Approved :: GNU Lesser General Public License v2 or later (LGPLv2+)",
   "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.7",
   "Programming Language :: Python :: 3.8",
   "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
   "Topic :: Multimedia :: Sound/Audio :: Capture/Recording",
   "Operating System :: POSIX :: Linux",
 ]
@@ -68,7 +68,7 @@ exclude = ['codegen', 'dist', 'third_party']
 
 [build-system]
 requires = [
-  "py-build-cmake~=0.1.8", 
+  "py-build-cmake~=0.2.0a7", 
   "ctypesgen",
   "meson",
   "pycparser"
@@ -86,6 +86,8 @@ build_args = ["-j4"]
 install_components = ["package_install"]
 options = { "STATIC_DEPENDENCIES" = "On" }
 build_path = "build"
+python_abi = "abi3"
+abi3_minimum_cpython_version = 38
 
 [tool.py-build-cmake.editable]
 mode = "symlink"

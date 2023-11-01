@@ -28,6 +28,10 @@ inputs:
   pip_install_extra_args:
     required: false
     type: string
+  python:
+    required: false
+    type: string
+    default: python3
 
 outputs:
   run_cmd_prefix:
@@ -48,7 +52,7 @@ runs:
     shell: bash
     id: build
     run: |
-      python3 -m build -w ${{ inputs.pypa_build_extra_args }}
+      ${{ inputs.python }} -m build -w ${{ inputs.pypa_build_extra_args }}
       echo "run_cmd_prefix=$(find . -name run_cmd_prefix.txt -exec cat {} \;)" | tee -a $GITHUB_OUTPUT
       echo "source_dir=$(pwd)" | tee -a $GITHUB_OUTPUT
       echo "build_dir=$(realpath build/cp*/)" | tee -a $GITHUB_OUTPUT
@@ -81,8 +85,8 @@ runs:
     run: |
       mkdir -p install
       export PYTHONPATH="$PYTHONPATH:$(pwd)/pip"
-      ASAN_OPTIONS=detect_leaks=0 ${{ steps.build.outputs.run_cmd_prefix }} python3 -m pip install ${{ inputs.pip_install_extra_args }} ${{ steps.find.outputs.name }}
-      ASAN_OPTIONS=detect_leaks=0 ${{ steps.build.outputs.run_cmd_prefix }} python3 -m pip install --target=./pip --force-reinstall --no-deps ${{ inputs.pip_install_extra_args }} ${{ steps.find.outputs.name }}
+      ASAN_OPTIONS=detect_leaks=0 ${{ steps.build.outputs.run_cmd_prefix }} ${{ inputs.python }} -m pip install ${{ inputs.pip_install_extra_args }} ${{ steps.find.outputs.name }}
+      ASAN_OPTIONS=detect_leaks=0 ${{ steps.build.outputs.run_cmd_prefix }} ${{ inputs.python }} -m pip install --target=./pip --force-reinstall --no-deps ${{ inputs.pip_install_extra_args }} ${{ steps.find.outputs.name }}
       echo "install_dir=$(ASAN_OPTIONS=detect_leaks=0 ${{ steps.build.outputs.run_cmd_prefix }} pip/bin/shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g')" | tee -a $GITHUB_OUTPUT
   
   - name: Prepare PyInstaller
@@ -98,7 +102,7 @@ runs:
     if: ${{ inputs.pyinstaller == 'true' }}
     run: |
       cd ${{ steps.install.outputs.install_dir }}
-      python3 -m pip install ${{ inputs.pip_install_extra_args }} pyinstaller
+      ${{ inputs.python }} -m pip install ${{ inputs.pip_install_extra_args }} pyinstaller
       pyinstaller __main__.py -n shoopdaloop --collect-all shoopdaloop --collect-all lupa --distpath ${{ steps.prepare_pyinstaller.outputs.pyinstaller_dir }} --clean
   
   - name: Upload PyInstaller distribution (${{ inputs.variant_name }})
