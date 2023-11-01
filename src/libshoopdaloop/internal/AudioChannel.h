@@ -94,7 +94,8 @@ private:
         ProcessingCommandDetails details;
     };
 
-    boost::lockfree::spsc_queue<ProcessingCommand, boost::lockfree::capacity<16>> mp_proc_queue;
+    using ProcessingQueue = boost::lockfree::spsc_queue<ProcessingCommand, boost::lockfree::capacity<16>>;
+    ProcessingQueue mp_proc_queue;
 
     void throw_if_commands_queued() const;
 
