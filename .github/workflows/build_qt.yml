@@ -1,4 +1,4 @@
-name: Build and push CI containers
+name: Build Qt
 
 on: workflow_dispatch
 
