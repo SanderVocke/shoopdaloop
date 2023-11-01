@@ -6,6 +6,7 @@ python
 python-pip
 wget
 fontconfig
+libxkbcommon
 
 # scripting stuff
 procps-ng
