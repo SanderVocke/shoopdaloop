@@ -26,43 +26,59 @@ ExternalProject_Add(lv2
   CONFIGURE_COMMAND
     python -m mesonbuild.mesonmain setup -Ddefault_library=static --prefix=${STATIC_DEPS_PREFIX} <BINARY_DIR> <SOURCE_DIR>
   BUILD_COMMAND
-    python -m mesonbuild.mesonmain compile lv2
+    python -m mesonbuild.mesonmain compile
   INSTALL_COMMAND
-    python -m mesonbuild.mesonmain install --prefix=${STATIC_DEPS_PREFIX} lv2
+    python -m mesonbuild.mesonmain install
 )
 
 ExternalProject_Add(serd
   SOURCE_DIR ${CMAKE_SOURCE_DIR}/../third_party/serd
   BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/serd_build
   CONFIGURE_COMMAND
-    python -m mesonbuild.mesonmain setup -Ddefault_library=static --prefix=${STATIC_DEPS_PREFIX} <BINARY_DIR> <SOURCE_DIR>
+    PKG_CONFIG_PATH=${STATIC_DEPS_PREFIX}/lib64/pkgconfig python -m mesonbuild.mesonmain setup -Ddefault_library=static --prefix=${STATIC_DEPS_PREFIX} <BINARY_DIR> <SOURCE_DIR>
   BUILD_COMMAND
-    python -m mesonbuild.mesonmain compile serd-0
+    python -m mesonbuild.mesonmain compile
   INSTALL_COMMAND
-    python -m mesonbuild.mesonmain install --prefix=${STATIC_DEPS_PREFIX} serd-0
+    python -m mesonbuild.mesonmain install
+  DEPENDS lv2
 )
 
 ExternalProject_Add(sord
   SOURCE_DIR ${CMAKE_SOURCE_DIR}/../third_party/sord
   BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/sord_build
   CONFIGURE_COMMAND
-    python -m mesonbuild.mesonmain setup -Ddefault_library=static --prefix=${STATIC_DEPS_PREFIX} <BINARY_DIR> <SOURCE_DIR>
+    PKG_CONFIG_PATH=${STATIC_DEPS_PREFIX}/lib64/pkgconfig python -m mesonbuild.mesonmain setup -Ddefault_library=static --prefix=${STATIC_DEPS_PREFIX} <BINARY_DIR> <SOURCE_DIR>
   BUILD_COMMAND
-    python -m mesonbuild.mesonmain compile sord-0
+    python -m mesonbuild.mesonmain compile
   INSTALL_COMMAND
-    python -m mesonbuild.mesonmain install --prefix=${STATIC_DEPS_PREFIX} sord-0
+    python -m mesonbuild.mesonmain install
+  DEPENDS lv2 serd
+)
+
+ExternalProject_Add(sratom
+  SOURCE_DIR ${CMAKE_SOURCE_DIR}/../third_party/sratom
+  BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/sratom_build
+  CONFIGURE_COMMAND
+    PKG_CONFIG_PATH=${STATIC_DEPS_PREFIX}/lib64/pkgconfig python -m mesonbuild.mesonmain setup -Ddefault_library=static --prefix=${STATIC_DEPS_PREFIX} <BINARY_DIR> <SOURCE_DIR>
+  BUILD_COMMAND
+    python -m mesonbuild.mesonmain compile
+  INSTALL_COMMAND
+    python -m mesonbuild.mesonmain install
+  DEPENDS lv2 serd sord
 )
 
 ExternalProject_Add(lilv
   SOURCE_DIR ${CMAKE_SOURCE_DIR}/../third_party/lilv
   BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/lilv_build
   CONFIGURE_COMMAND
-    python -m mesonbuild.mesonmain setup -Ddefault_library=static --prefix=${STATIC_DEPS_PREFIX} <BINARY_DIR> <SOURCE_DIR>
+    PKG_CONFIG_PATH=${STATIC_DEPS_PREFIX}/lib64/pkgconfig python -m mesonbuild.mesonmain setup -Ddefault_library=static --prefix=${STATIC_DEPS_PREFIX} <BINARY_DIR> <SOURCE_DIR>
   BUILD_COMMAND
-    python -m mesonbuild.mesonmain compile lilv-0
+    python -m mesonbuild.mesonmain compile
   INSTALL_COMMAND
-    python -m mesonbuild.mesonmain install --prefix=${STATIC_DEPS_PREFIX} lilv-0
+    python -m mesonbuild.mesonmain install
+  DEPENDS lv2 serd sord sratom
 )
 set(LILV_INCLUDE_DIRS ${CMAKE_SOURCE_DIR}/../third_party/lilv/include)
 set(LILV_LIBRARIES ${CMAKE_CURRENT_BINARY_DIR}/lilv_build/liblilv-0.a ${CMAKE_CURRENT_BINARY_DIR}/serd_build/libserd-0.a ${CMAKE_CURRENT_BINARY_DIR}/sord_build/libsord-0.a)
-set(DEPEND_ON_LILV serd sord lilv)
+set(LV2_INCLUDE_DIRS ${STATIC_DEPS_PREFIX}/include)
+set(DEPEND_ON_LILV lv2 serd sord sratom lilv)

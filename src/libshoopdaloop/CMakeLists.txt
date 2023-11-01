@@ -94,6 +94,9 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 # Subdirs
 add_subdirectory(${CMAKE_SOURCE_DIR}/../third_party/lv2_evbuf lv2_evbuf)
 target_compile_options(lv2_evbuf PUBLIC -fPIC)
+if (STATIC_DEPENDENCIES)
+  add_dependencies(lv2_evbuf lv2)
+endif()
 
 add_subdirectory(test)
 add_subdirectory(qml_types)

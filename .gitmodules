@@ -43,3 +43,6 @@
 [submodule "src/shoopdaloop/third_party/QtMaterialDesignIcons"]
 	path = src/shoopdaloop/third_party/QtMaterialDesignIcons
 	url = https://github.com/sthlm58/QtMaterialDesignIcons.git
+[submodule "third_party/sratom"]
+	path = third_party/sratom
+	url = https://github.com/lv2/sratom.git
