@@ -40,7 +40,10 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        os: [ debian_stable, ubuntu_latest, arch ]
+        os:
+          - name: debian_stable
+          - name: ubuntu_latest
+          - name: arch
     needs: build_release
     container:
       image: sandervocke/shoopdaloop_run_base_${{ matrix.os }}:latest
