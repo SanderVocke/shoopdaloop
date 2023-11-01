@@ -40,9 +40,9 @@ runs:
       name: Download Qt sources
       shell: bash
       run: |
-        curl https://download.qt.io/archive/qt/6.5/6.5.3/submodules/qtbase-everywhere-src-6.5.3.tar.xz --output qtbase.tar.xz
-        curl https://download.qt.io/archive/qt/6.5/6.5.3/submodules/qtdeclarative-everywhere-src-6.5.3.tar.xz --output qtdeclarative.tar.xz
-        curl https://download.qt.io/archive/qt/6.5/6.5.3/submodules/qtshadertools-everywhere-src-6.5.3.tar.xz --output qtshadertools.tar.xz
+        curl -L https://download.qt.io/archive/qt/6.5/6.5.3/submodules/qtbase-everywhere-src-6.5.3.tar.xz --output qtbase.tar.xz
+        curl -L https://download.qt.io/archive/qt/6.5/6.5.3/submodules/qtdeclarative-everywhere-src-6.5.3.tar.xz --output qtdeclarative.tar.xz
+        curl -L https://download.qt.io/archive/qt/6.5/6.5.3/submodules/qtshadertools-everywhere-src-6.5.3.tar.xz --output qtshadertools.tar.xz
         tar -xf qtbase.tar.xz
         tar -xf qtdeclarative.tar.xz
         tar -xf qtshadertools.tar.xz
