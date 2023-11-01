@@ -51,7 +51,7 @@ runs:
       name: Configure Qt Base
       shell: bash
       run: |
-        cmake -B qtbuild -S qtbase -G Ninja \
+        cmake -B qtbuild -S qtbase \
           -DCMAKE_INSTALL_PREFIX=/usr \
           -DCMAKE_BUILD_TYPE=Release \
           -DINSTALL_BINDIR=lib/qt6/bin \
@@ -78,7 +78,7 @@ runs:
       name: Configure Qt Shadertools
       shell: bash
       run: |
-        cmake -B qtshadertoolsbuild -S qtshadertools -G Ninja \
+        cmake -B qtshadertoolsbuild -S qtshadertools \
           -DCMAKE_INSTALL_PREFIX=/usr \
           -DCMAKE_BUILD_TYPE=Release \
           -DINSTALL_BINDIR=lib/qt6/bin \
@@ -104,7 +104,7 @@ runs:
       name: Configure Qt Declarative
       shell: bash
       run: |
-        cmake -B qtdeclarativebuild -S qtdeclarative -G Ninja \
+        cmake -B qtdeclarativebuild -S qtdeclarative \
           -DCMAKE_INSTALL_PREFIX=/usr \
           -DCMAKE_BUILD_TYPE=Release \
           -DINSTALL_BINDIR=lib/qt6/bin \
