@@ -91,6 +91,7 @@ jobs:
       with:
         root_path: ${{ steps.install.outputs.install_dir }}
         screenshots_path: /tmp/screenshots
+        artifact_name: screenshots_${{ matrix.os }}
     - name: Test App
       uses: ./.github/actions/app_run_test
       with:
