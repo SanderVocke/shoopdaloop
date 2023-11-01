@@ -48,7 +48,8 @@ jobs:
     steps:
     - name: Define constants
       run: |
-        echo "python="
+        echo "python=${{ fromJSON("{\"debian_stable\": \"python3\", \"ubuntu_latest\": \"python3\", \"arch\": \"python\"}")[matrix.os] }}" | tee -a $GITHUB_ENV
+        echo "pip_extra_args=${{ fromJSON("{\"debian_stable\": \"--break-system-packages\", \"ubuntu_latest\": \"\", \"arch\": \"--break-system-packages\"}")[matrix.os] }}" | tee -a $GITHUB_ENV
     - name: Checkout
       uses: actions/checkout@v3
     - name: Retrieve wheel
@@ -59,7 +60,7 @@ jobs:
     - name: Install wheel
       id: install
       run: |
-        python3 -m pip install --force-reinstall --break-system-packages ~/wheel/*.whl
+        ${{ env.python }} -m pip install --force-reinstall ${{ env.pip_extra_args }} ~/wheel/*.whl
         echo "install_dir=$(shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g')" | tee -a $GITHUB_OUTPUT
     - name: Find Qt
       shell: bash
@@ -80,12 +81,14 @@ jobs:
         variant_name: release
         run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH=${{ env.qtlibpath }}
         root_path: ${{ steps.install.outputs.install_dir }}
+        pytest_command: ${{ env.python }} -m pytest
     - name: Test QML
       uses: ./.github/actions/qml_test
       with:
         variant_name: release
         run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH=${{ env.qtlibpath }}
         root_path: ${{ steps.install.outputs.install_dir }}
+        python_command: ${{ env.python}}
     - name: Screenshots
       uses: ./.github/actions/screenshots_test
       with:
