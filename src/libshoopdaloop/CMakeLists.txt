@@ -33,7 +33,7 @@ set(OVERRIDE_COMPILE_LOG_LEVEL "" CACHE STRING "If set, overrides the compile-ti
 option(STATIC_DEPENDENCIES "Use static linkage for non-Python dependencies.")
 
 # Find pkgs
-find_package(Boost COMPONENTS ALL REQUIRED)
+find_package(Boost REQUIRED)
 
 # Generate a wrapper for libjack which allows dynamic loading using dlopen
 find_package(Jack REQUIRED)
