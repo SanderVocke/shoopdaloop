@@ -21,7 +21,7 @@ n_nonzero_exit = 0
 for i in range(args.iterations):
     print('''
 =====================================================
-== TEST_RUN_APP: RUN {} of {}
+== REPEAT_RUN_APP: RUN {} of {}
 =====================================================       
 '''.format(i+1, args.iterations))
     
@@ -39,39 +39,39 @@ for i in range(args.iterations):
     
     # Check if the process is still running unexpectedly
     if process.poll() is None and not args.expect_stay_open:
-        print('== TEST_RUN_APP ERROR: Process is still running unexpectedly.')
+        print('== REPEAT_RUN_APP ERROR: Process is still running unexpectedly.')
         n_unexpected_open += 1
     elif process.poll() is not None and args.expect_stay_open:
-        print('== TEST_RUN_APP ERROR: Process exited unexpectedly.')
+        print('== REPEAT_RUN_APP ERROR: Process exited unexpectedly.')
         n_unexpected_closed += 1
     
     # Try to terminate the process gracefully
-    print('== TEST_RUN_APP: Send SIGQUIT')
+    print('== REPEAT_RUN_APP: Send SIGQUIT')
     process.terminate()
     if wait_and_poll(process, args.wait_ms_before_kill) is None:
         # Process is still running, so we'll use SIGKILL to force it to exit
-        print('== TEST_RUN_APP ERROR: Process did not exit gracefully, killing with SIGKILL')
+        print('== REPEAT_RUN_APP ERROR: Process did not exit gracefully, killing with SIGKILL')
         process.kill()
         n_had_to_kill += 1
     else:
         # Process exited gracefully
-        print('== TEST_RUN_APP: Process exited gracefully after SIGTERM')
+        print('== REPEAT_RUN_APP: Process exited gracefully after SIGTERM')
     
     if process.poll() is not None and process.poll() != 0:
-        print('== TEST_RUN_APP ERROR: Process exited with nonzero exit code {}'.format(process.poll()))
+        print('== REPEAT_RUN_APP ERROR: Process exited with nonzero exit code {}'.format(process.poll()))
         n_nonzero_exit += 1
 
 if n_unexpected_open == 0 and n_unexpected_closed == 0 and n_nonzero_exit == 0 and n_had_to_kill == 0:
     print('''
 =====================================================
-== TEST_RUN_APP: ALL OK
+== REPEAT_RUN_APP: ALL OK
 =====================================================       
 ''')
     exit(0)
 else:
     print('''
 =====================================================
-== TEST_RUN_APP: FAILURE
+== REPEAT_RUN_APP: FAILURE
 == - Iterations: {}
 == - App was unexpectedly open: {}
 == - App was unexpectedly closed: {}

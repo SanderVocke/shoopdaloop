@@ -18,6 +18,6 @@ runs:
   - name: run app (${{ inputs.variant_name }})
     shell: bash
     run: |
-        ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0 QT_QPA_PLATFORM=vnc ${{ inputs.run_cmd_prefix }} ${{ inputs.root_path }}/scripts/test_run_app.py --iterations=6 --wait-ms-before-close=5000 --wait-ms-before-kill=10000 --expect-stay-open=1 shoopdaloop -b dummy
+        ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0 QT_QPA_PLATFORM=vnc ${{ inputs.run_cmd_prefix }} ${{ inputs.root_path }}/scripts/repeat_run_app.py --iterations=6 --wait-ms-before-close=5000 --wait-ms-before-kill=10000 --expect-stay-open=1 shoopdaloop -b dummy
 
 
