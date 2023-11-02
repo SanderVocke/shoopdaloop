@@ -31,7 +31,7 @@ ExternalProject_Add(lv2
     python -m mesonbuild.mesonmain compile
   INSTALL_COMMAND
     python -m mesonbuild.mesonmain install
-    COMMAND ${GLOB_CMD} ${STATIC_DEPS_PREFIX}/**/pkgconfig > ${PKGDIR_FILE}
+    COMMAND ${GLOB_CMD} directory ${STATIC_DEPS_PREFIX}/**/lv2.pc > ${PKGDIR_FILE}
 )
 
 ExternalProject_Add(serd
