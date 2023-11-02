@@ -7,8 +7,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED YES)
 set(CMAKE_CXX_EXTENSIONS NO)
 set(CMAKE_EXPORT_COMPILE_COMMANDS YES)
 
+set(PYTHON_CMD python)
 set(GLOB_CMD python3 "${CMAKE_SOURCE_DIR}/../scripts/do_glob.py")
-set(RUN_WITH_ENV_CMD python3 "${CMAKE_SOURCE_DIR}/../scripts/run_with_env_from_files.py")
+set(RUN_WITH_ENV_CMD ${PYTHON_CMD} "${CMAKE_SOURCE_DIR}/../scripts/run_with_env_from_files.py")
 
 # Qt6 is required for custom QML types.
 find_package(Qt6 REQUIRED COMPONENTS Core Qml Gui Quick Widgets QuickTest)
@@ -93,7 +94,7 @@ install(FILES ${CMAKE_CURRENT_BINARY_DIR}/version.txt ${CMAKE_CURRENT_BINARY_DIR
   
 
 # Include app test scripts
-install(FILES ${CMAKE_SOURCE_DIR}/../scripts/test_run_app.sh
+install(FILES ${CMAKE_SOURCE_DIR}/../scripts/test_run_app.py
         EXCLUDE_FROM_ALL
         COMPONENT package_install
         PERMISSIONS WORLD_EXECUTE OWNER_EXECUTE GROUP_EXECUTE GROUP_WRITE OWNER_WRITE GROUP_READ OWNER_READ WORLD_READ

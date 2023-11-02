@@ -7,10 +7,13 @@ runs:
   - name: Manylinux prep
     shell: bash
     run: |
+      if [ -f /manylinux_prepared ]; then
+        exit 0
+      fi
       ln -s /usr/local/bin/python3.8 /usr/local/bin/python
       ln -s /usr/local/bin/python3.8 /usr/local/bin/python3
       echo "export PATH=\"\$PATH:$(find /opt/_internal -name "cpython-3.8.*")/bin\"" >> $HOME/.bashrc
-      dnf -y install ninja-build libsndfile libsamplerate
+      dnf -y install ninja-build libsndfile libsamplerate gcc-toolset-12-libasan-devel
       git clone https://github.com/jackaudio/jack2.git
       cd jack2
       ./waf configure
@@ -22,3 +25,4 @@ runs:
       curl -L https://github.com/nlohmann/json/releases/download/v3.11.2/include.zip --output include.zip
       unzip include.zip
       cp -r include/* /usr/include/
+      touch /manylinux_prepared

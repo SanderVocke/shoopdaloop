@@ -39,7 +39,7 @@ ExternalProject_Add(serd
   SOURCE_DIR ${CMAKE_SOURCE_DIR}/../third_party/serd
   BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/serd_build
   CONFIGURE_COMMAND
-    ${WITH_PKGCONF_CMD} python -m mesonbuild.mesonmain setup -Ddefault_library=static --prefix=${STATIC_DEPS_PREFIX} <BINARY_DIR> <SOURCE_DIR>
+    ${WITH_PKGCONF_CMD} ${PYTHON_CMD} -m mesonbuild.mesonmain setup -Ddefault_library=static --prefix=${STATIC_DEPS_PREFIX} <BINARY_DIR> <SOURCE_DIR>
   BUILD_COMMAND
     python -m mesonbuild.mesonmain compile
   INSTALL_COMMAND
@@ -52,7 +52,7 @@ ExternalProject_Add(sord
   SOURCE_DIR ${CMAKE_SOURCE_DIR}/../third_party/sord
   BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/sord_build
   CONFIGURE_COMMAND
-    ${WITH_PKGCONF_CMD} python -m mesonbuild.mesonmain setup -Ddefault_library=static --prefix=${STATIC_DEPS_PREFIX} <BINARY_DIR> <SOURCE_DIR>
+    ${WITH_PKGCONF_CMD} ${PYTHON_CMD} -m mesonbuild.mesonmain setup -Ddefault_library=static --prefix=${STATIC_DEPS_PREFIX} <BINARY_DIR> <SOURCE_DIR>
   BUILD_COMMAND
     python -m mesonbuild.mesonmain compile
   INSTALL_COMMAND
@@ -64,7 +64,7 @@ ExternalProject_Add(sratom
   SOURCE_DIR ${CMAKE_SOURCE_DIR}/../third_party/sratom
   BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/sratom_build
   CONFIGURE_COMMAND
-    ${WITH_PKGCONF_CMD} python -m mesonbuild.mesonmain setup -Ddefault_library=static --prefix=${STATIC_DEPS_PREFIX} <BINARY_DIR> <SOURCE_DIR>
+    ${WITH_PKGCONF_CMD} ${PYTHON_CMD} -m mesonbuild.mesonmain setup -Ddefault_library=static --prefix=${STATIC_DEPS_PREFIX} <BINARY_DIR> <SOURCE_DIR>
   BUILD_COMMAND
     python -m mesonbuild.mesonmain compile
   INSTALL_COMMAND
@@ -76,7 +76,7 @@ ExternalProject_Add(lilv
   SOURCE_DIR ${CMAKE_SOURCE_DIR}/../third_party/lilv
   BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/lilv_build
   CONFIGURE_COMMAND
-    ${WITH_PKGCONF_CMD} python -m mesonbuild.mesonmain setup -Ddefault_library=static --prefix=${STATIC_DEPS_PREFIX} <BINARY_DIR> <SOURCE_DIR>
+    ${WITH_PKGCONF_CMD} ${PYTHON_CMD} -m mesonbuild.mesonmain setup -Ddefault_library=static --prefix=${STATIC_DEPS_PREFIX} <BINARY_DIR> <SOURCE_DIR>
   BUILD_COMMAND
     python -m mesonbuild.mesonmain compile
   INSTALL_COMMAND
