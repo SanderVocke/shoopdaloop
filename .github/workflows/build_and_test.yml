@@ -163,7 +163,8 @@ jobs:
       shell: bash
       id: findqt
       run: |
-        echo "qtlibpath=$(dirname $(find /usr/local/lib/python3.11/dist-packages -name libQt6Core.so.6))" | tee -a $GITHUB_ENV
+        PKGDIR=$(python3 -m pip show pyside6-essentials | grep Location | sed -r 's/Location:[ ]*//g')
+        echo "qtlibpath=$(dirname $(find $PKGDIR -name libQt6Core.so.6))" | tee -a $GITHUB_ENV
     - name: Test back-end
       uses: ./.github/actions/backend_test
       with:
@@ -216,7 +217,8 @@ jobs:
       shell: bash
       id: findqt
       run: |
-        echo "qtlibpath=$(dirname $(find /usr/local/lib/python3.11/dist-packages -name libQt6Core.so.6))" | tee -a $GITHUB_ENV
+        PKGDIR=$(python3 -m pip show pyside6-essentials | grep Location | sed -r 's/Location:[ ]*//g')
+        echo "qtlibpath=$(dirname $(find $PKGDIR -name libQt6Core.so.6))" | tee -a $GITHUB_ENV
     - name: Back-end tests with coverage
       uses: ./.github/actions/backend_test
       with:
