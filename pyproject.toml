@@ -71,7 +71,8 @@ requires = [
   "py-build-cmake~=0.2.0a8", 
   "ctypesgen",
   "meson",
-  "pycparser"
+  "pycparser",
+  "toml"
 ]
 build-backend = "py_build_cmake.build"
 
