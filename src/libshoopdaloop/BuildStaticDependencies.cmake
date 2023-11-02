@@ -1,6 +1,7 @@
 set(STATIC_DEPS_PREFIX ${CMAKE_CURRENT_BINARY_DIR}/static-deps)
 set(PKGDIR_FILE ${CMAKE_CURRENT_BINARY_DIR}/pkgdir)
 set(WITH_PKGCONF_CMD ${RUN_WITH_ENV_CMD} PKG_CONFIG_PATH=${PKGDIR_FILE} -- )
+set(FIND_PKGCONF_DIRS ${GLOB_CMD} directory separator ":" ${STATIC_DEPS_PREFIX}/**/*.pc > ${PKGDIR_FILE})
 
 ##################
 ## fmt
@@ -31,7 +32,7 @@ ExternalProject_Add(lv2
     python -m mesonbuild.mesonmain compile
   INSTALL_COMMAND
     python -m mesonbuild.mesonmain install
-    COMMAND ${GLOB_CMD} directory ${STATIC_DEPS_PREFIX}/**/lv2.pc > ${PKGDIR_FILE}
+    COMMAND ${FIND_PKGCONF_DIRS}
 )
 
 ExternalProject_Add(serd
@@ -43,6 +44,7 @@ ExternalProject_Add(serd
     python -m mesonbuild.mesonmain compile
   INSTALL_COMMAND
     python -m mesonbuild.mesonmain install
+    COMMAND ${FIND_PKGCONF_DIRS}
   DEPENDS lv2
 )
 

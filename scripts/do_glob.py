@@ -4,16 +4,27 @@ import glob
 import sys
 import os
 
-arg = sys.argv[1]
+arg_idx = 1
 directory = False
-if arg == 'directory':
-    directory = True
-    arg = sys.argv[2]
+separator = None
+
+for arg in sys.argv[arg_idx:]:
+    if arg == 'directory':
+        directory = True
+        arg_idx += 1
+    elif arg == 'separator':
+        arg_idx += 1
+        separator = sys.argv[arg_idx]
+        arg_idx += 1
+    else:
+        break
 
 results = glob.glob(sys.argv[1], recursive=True)
+if directory:
+    results = [(os.path.dirname(r) if os.path.isfile(r) else r) for r in results]
 
-for r in results:
-    if os.path.isfile(r) and directory:
-        print(os.path.dirname(r))
-    else:
+if separator:
+    print(separator.join(results))
+else:
+    for r in results:
         print(r)
