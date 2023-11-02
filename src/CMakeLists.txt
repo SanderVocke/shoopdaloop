@@ -7,6 +7,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED YES)
 set(CMAKE_CXX_EXTENSIONS NO)
 set(CMAKE_EXPORT_COMPILE_COMMANDS YES)
 
+set(GLOB_CMD python3 "${CMAKE_SOURCE_DIR}/../scripts/do_glob.py")
+set(RUN_WITH_ENV_CMD python3 "${CMAKE_SOURCE_DIR}/../scripts/run_with_env_from_files.py")
+
 # Qt6 is required for custom QML types.
 find_package(Qt6 REQUIRED COMPONENTS Core Qml Gui Quick Widgets QuickTest)
 qt_standard_project_setup()
