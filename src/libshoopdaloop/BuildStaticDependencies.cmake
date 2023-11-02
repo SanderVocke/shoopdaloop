@@ -32,7 +32,7 @@ ExternalProject_Add(lv2
 )
 
 find_path (STATIC_PKGCONFIGS
-  NAMES ${STATIC_DEPS_PREFIX}/lib64/pkgconfig/lv2.pc ${STATIC_DEPS_PREFIX}/lib/pkgconfig/lv2.pc)
+  NAMES ${STATIC_DEPS_PREFIX}/lib64/pkgconfig/lv2.pc ${STATIC_DEPS_PREFIX}/lib/pkgconfig/lv2.pc ${STATIC_DEPS_PREFIX}/lib/x86_64-linux-gnu/pkgconfig/lv2.pc)
 
 ExternalProject_Add(serd
   SOURCE_DIR ${CMAKE_SOURCE_DIR}/../third_party/serd
