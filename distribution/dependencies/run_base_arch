@@ -12,6 +12,7 @@ libxkbcommon
 libsamplerate
 libsndfile
 jack2
+mesa
 
 # scripting stuff
 procps-ng
