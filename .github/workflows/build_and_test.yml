@@ -158,6 +158,7 @@ jobs:
         pip_install_extra_args: --break-system-packages
         whl_suffix: asan
         install: true
+        prepend_build_cmd: CMAKE_PREFIX_PATH=/usr/local/Qt-6.5.3
     - name: Find Qt
       shell: bash
       id: findqt
@@ -206,6 +207,7 @@ jobs:
         pip_install_extra_args: --break-system-packages
         whl_suffix: coverage
         install: true
+        prepend_build_cmd: CMAKE_PREFIX_PATH=/usr/local/Qt-6.5.3
     - name: Install Qoverage
       uses: ./.github/actions/install_qoverage
     - name: Qoverage - Instrument QML files
