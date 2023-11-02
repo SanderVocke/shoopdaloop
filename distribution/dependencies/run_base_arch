@@ -4,6 +4,7 @@
 x-server
 python
 python-pip
+python-pytest
 wget
 curl
 fontconfig
