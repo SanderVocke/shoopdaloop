@@ -88,11 +88,8 @@ runs:
     run: |
       mkdir -p install
       export PYTHONPATH="$PYTHONPATH:$(pwd)/pip"
-      ASAN_OPTIONS=detect_leaks=0 ${{ steps.build.outputs.run_cmd_prefix }} ${{ inputs.python }} -m pip install --target=./pip ${{ inputs.pip_install_extra_args }} ${{ steps.find.outputs.name }}
-      echo "install_dir=$(ASAN_OPTIONS=detect_leaks=0 ${{ steps.build.outputs.run_cmd_prefix }} pip/bin/shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g')" | tee -a $GITHUB_OUTPUT
-  
-
-    # ASAN_OPTIONS=detect_leaks=0 ${{ steps.build.outputs.run_cmd_prefix }} ${{ inputs.python }} -m pip install ${{ inputs.pip_install_extra_args }} ${{ steps.find.outputs.name }}
+      ASAN_OPTIONS=detect_leaks=0 ${{ steps.build.outputs.run_cmd_prefix }} ${{ inputs.python }} -m pip install ${{ inputs.pip_install_extra_args }} ${{ steps.find.outputs.name }}
+      echo "install_dir=$(ASAN_OPTIONS=detect_leaks=0 ${{ steps.build.outputs.run_cmd_prefix }} ${{ inputs.python }} -m shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g')" | tee -a $GITHUB_OUTPUT
 
 
 
