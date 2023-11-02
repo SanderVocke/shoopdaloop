@@ -1,10 +1,15 @@
 name: Qoverage Instrument
 description: instrument the QML sources.
 
+inputs:
+  package_path:
+    type: string
+    required: true
+
 runs:
   using: "composite"
   steps:
   - name: run
     shell: bash
     run: |
-      qoverage instrument --glob "pip/shoopdaloop/lib/qml/*.qml" --in-place --store-intermediates --verbose
+      qoverage instrument --glob "${{ inputs.package_path }}/lib/qml/*.qml" --in-place --store-intermediates --verbose

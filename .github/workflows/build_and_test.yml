@@ -217,6 +217,8 @@ jobs:
       uses: ./.github/actions/install_qoverage
     - name: Qoverage - Instrument QML files
       uses: ./.github/actions/qoverage_instrument
+      with:
+        package_path: ${{ steps.build.outputs.install_dir }}/shoopdaloop
     - name: Find Qt
       shell: bash
       id: findqt
@@ -283,6 +285,7 @@ jobs:
       uses: ./.github/actions/qoverage_generate_report
       with:
         strip: ".*/pip/shoopdaloop"
+        package_path: ${{ steps.build.outputs.install_dir }}/shoopdaloop
     - name: Upload back-end coverage to CodeCov
       if: ${{ !env.ACT }}
       uses: codecov/codecov-action@v3
