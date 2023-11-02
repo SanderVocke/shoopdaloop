@@ -10,6 +10,7 @@ fontconfig
 libxkbcommon
 libsamplerate
 libsndfile
+jack2
 
 # scripting stuff
 procps-ng
