@@ -35,10 +35,33 @@ jobs:
       with:
         variant_name: release
         wheel_artifact_name: release_wheel
-        # pyinstaller: true
-        # pyinstaller_artifact_name: release_pyinstaller
         python: python3.8
-        prepend_build_cmd: CMAKE_PREFIX_PATH=/usr/local/Qt-6.5.3 
+        prepend_build_cmd: CMAKE_PREFIX_PATH=/usr/local/Qt-6.5.3
+  
+  build_debug:
+    runs-on: ubuntu-latest
+    container:
+      image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
+      options: --user root --workdir /
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        submodules: recursive
+    - name: Install Qt
+      uses: ./.github/actions/download_qt
+    - name: Prepare manylinux environment
+      uses: ./.github/actions/prepare_manylinux_2_28
+    - name: Build and upload
+      uses: ./.github/actions/build_wheel
+      with:
+        variant_name: debug
+        wheel_artifact_name: debug_wheel
+        pypa_build_extra_args: -C--local=pyproject.toml.debug_overrides
+        whl_suffix: debug
+        install: false
+        python: python3.8
+        prepend_build_cmd: CMAKE_PREFIX_PATH=/usr/local/Qt-6.5.3
   
   test_release_whl:
     runs-on: ubuntu-latest
@@ -116,7 +139,7 @@ jobs:
   asan:
     runs-on: ubuntu-latest
     container:
-      image: sandervocke/shoopdaloop_build_base:latest
+      image: sandervocke/shoopdaloop_build_base_debian_stable:latest
       options: --user root --workdir /
     steps:
     - name: Checkout
@@ -161,31 +184,10 @@ jobs:
         run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH=${{ env.qtlibpath }}
         root_path: ${{ steps.build.outputs.install_dir }}
   
-  build_debug_whl:
-    runs-on: ubuntu-latest
-    container:
-      image: sandervocke/shoopdaloop_build_base:latest
-      options: --user root --workdir /
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v3
-      with:
-        submodules: recursive
-    - name: Install Qt
-      uses: ./.github/actions/download_qt
-    - name: Build and upload
-      uses: ./.github/actions/build_wheel
-      with:
-        variant_name: debug
-        wheel_artifact_name: debug_wheel
-        pypa_build_extra_args: -C--local=pyproject.toml.debug_overrides
-        whl_suffix: debug
-        install: false
-  
   coverage:
     runs-on: ubuntu-latest
     container:
-      image: sandervocke/shoopdaloop_build_base:latest
+      image: sandervocke/shoopdaloop_build_base_debian_stable:latest
       options: --user root --workdir /
     steps:
     - name: Checkout
