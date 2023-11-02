@@ -102,6 +102,7 @@ jobs:
         export PKGDIR=$(${{ matrix.os.pip }} show pyside6-essentials | grep Location | sed -r 's/Location:[ ]*//g')
         echo "qtlibpath=$(dirname $(find $PKGDIR -name libQt6Core.so.6))" | tee -a $GITHUB_ENV
     - name: Test back-end
+      if: ${{ success() || failure() }}
       uses: ./.github/actions/backend_test
       with:
         variant_name: release
@@ -110,6 +111,7 @@ jobs:
         run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
         test_runner_dir: ${{ steps.install.outputs.install_dir }}
     - name: Test Python
+      if: ${{ success() || failure() }}
       uses: ./.github/actions/python_test
       with:
         variant_name: release
@@ -117,6 +119,7 @@ jobs:
         root_path: ${{ steps.install.outputs.install_dir }}
         pytest_command: ${{ matrix.os.python }} -m pytest
     - name: Test QML
+      if: ${{ success() || failure() }}
       uses: ./.github/actions/qml_test
       with:
         variant_name: release
@@ -124,12 +127,14 @@ jobs:
         root_path: ${{ steps.install.outputs.install_dir }}
         python_command: ${{ matrix.os.python }}
     - name: Screenshots
+      if: ${{ success() || failure() }}
       uses: ./.github/actions/screenshots_test
       with:
         root_path: ${{ steps.install.outputs.install_dir }}
         screenshots_path: /tmp/screenshots
         artifact_name: screenshots_${{ matrix.os.name }}
     - name: Test App
+      if: ${{ success() || failure() }}
       uses: ./.github/actions/app_run_test
       with:
         variant_name: release
