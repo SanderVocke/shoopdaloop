@@ -8,6 +8,8 @@ wget
 curl
 fontconfig
 libxkbcommon
+libsamplerate
+libsndfile
 
 # scripting stuff
 procps-ng
