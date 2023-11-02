@@ -19,7 +19,7 @@ for arg in sys.argv[arg_idx:]:
     else:
         break
 
-results = glob.glob(sys.argv[1], recursive=True)
+results = glob.glob(sys.argv[arg_idx], recursive=True)
 if directory:
     results = [(os.path.dirname(r) if os.path.isfile(r) else r) for r in results]
 
