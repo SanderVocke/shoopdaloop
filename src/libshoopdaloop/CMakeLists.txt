@@ -49,17 +49,29 @@ find_package(Jack REQUIRED)
 get_filename_component(JACK_SONAME ${JACK_LIBRARIES} NAME)
 add_custom_command(
   OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.c ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.h
-  COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers && ${CMAKE_SOURCE_DIR}/../third_party/dynload-wrapper/generate-wrapper.py
-    --include ${JACK_INCLUDE_DIRS}/jack/jack.h
-    --include ${JACK_INCLUDE_DIRS}/jack/midiport.h
+  COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers
+  COMMAND "${PYTHON_CMD}
+    \"${CMAKE_SOURCE_DIR}/../third_party/dynload-wrapper/generate-wrapper.py\"
+    --include \"${JACK_INCLUDE_DIRS}/jack/jack.h\"
+    --include \"${JACK_INCLUDE_DIRS}/jack/midiport.h\"
     --sys-include '<jack/jack.h>'
     --sys-include '<jack/midiport.h>'
-    --soname ${JACK_SONAME}
+    --soname \"${JACK_SONAME}\"
     --init-name jack_wrappers
-    --output-header ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.h
-    --output-implementation ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.c
+    --output-header \"${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.h\"
+    --output-implementation \"${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.c\""
   COMMENT "Generating libjack dynload wrapper"
 )
+message( "${PYTHON_CMD}
+    \"${CMAKE_SOURCE_DIR}/../third_party/dynload-wrapper/generate-wrapper.py\"
+    --include \"${JACK_INCLUDE_DIRS}/jack/jack.h\"
+    --include \"${JACK_INCLUDE_DIRS}/jack/midiport.h\"
+    --sys-include '<jack/jack.h>'
+    --sys-include '<jack/midiport.h>'
+    --soname \"${JACK_SONAME}\"
+    --init-name jack_wrappers
+    --output-header \"${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.h\"
+    --output-implementation \"${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.c\"")
 add_custom_target(
   jack_wrappers_impl
   ALL

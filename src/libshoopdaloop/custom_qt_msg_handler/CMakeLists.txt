@@ -6,7 +6,7 @@ target_include_directories(custom_qt_msg_handler PRIVATE ${fmt_INCLUDE_DIR} ${SP
 # Generate C bindings
 add_custom_command(
   OUTPUT custom_qt_msg_handler.py
-  COMMAND ${RUN_CMD_PREFIX} ASAN_OPTIONS=detect_leaks=0 ${CTYPESGEN_COMMAND} -lcustom_qt_msg_handler ${CMAKE_CURRENT_SOURCE_DIR}/custom_qt_msg_handler.h -o custom_qt_msg_handler.py
+  COMMAND ${RUN_CMD_PREFIX} ${CMAKE_COMMAND} -E env ASAN_OPTIONS=detect_leaks=0 ${CTYPESGEN_COMMAND} -lcustom_qt_msg_handler ${CMAKE_CURRENT_SOURCE_DIR}/custom_qt_msg_handler.h -o custom_qt_msg_handler.py
   DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/custom_qt_msg_handler.h
   COMMENT "Generating C bindings for custom Qt message handler."
   )

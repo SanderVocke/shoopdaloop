@@ -6,6 +6,7 @@ python3-pip
 python3-pytest
 python3-venv
 python3-virtualenv
+python-is-python3
 
 libglib2.0-0
 libdbus-1-3
