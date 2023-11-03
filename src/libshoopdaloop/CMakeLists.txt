@@ -28,7 +28,7 @@ if(ENABLE_ASAN)
       string(FIND ${ASAN_DSO_CONTENT} "GNU ld script" FOUND_LD_SCRIPT)
       if(NOT ${FOUND_LD_SCRIPT} EQUAL -1)
         # Pointed to a linker script, find the actual lib
-        string(REGEX MATCH ".*INPUT[ ]*\([ ]*([^ ]*)[ ]*\).*" FOUND_ASAN_SO ${ASAN_DSO_CONTENT})
+        string(REGEX MATCH ".*INPUT[ ]*\([ ]*([^\)^ ]+)[ ]*\).*" FOUND_ASAN_SO ${ASAN_DSO_CONTENT})
         set(ASAN_DSO ${CMAKE_MATCH_1})
         message("Found that libasan.so is a linker script pointing to ${ASAN_DSO}.")
       endif()
