@@ -140,6 +140,7 @@ jobs:
         variant_name: release
         run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH=${{ env.qtlibpath }}
         root_path: ${{ steps.install.outputs.install_dir }}
+        python: ${{ matrix.os.python }}
         
   asan:
     runs-on: ubuntu-latest
