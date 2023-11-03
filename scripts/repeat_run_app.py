@@ -10,7 +10,7 @@ parser.add_argument('-i', '--iterations', type=int, default=1, help='Amount of i
 parser.add_argument('-w', '--wait-ms-before-close', type=int, default=100, help='How long to wait before closing a run')
 parser.add_argument('-k', '--wait-ms-before-kill', type=int, default=2000, help='How long to wait before killing a run')
 parser.add_argument('-o', '--expect-stay-open', type=bool, default=False, help='Whether to expect the app to stay open until closed')
-parser.add_argument('command', nargs='+', help='Command to run')
+parser.add_argument('command', nargs=argparse.REMAINDER, help='Command to run')
 args = parser.parse_args()
 
 n_unexpected_open = 0
