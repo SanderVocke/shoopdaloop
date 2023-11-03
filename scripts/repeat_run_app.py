@@ -1,5 +1,8 @@
 #!/usr/bin/python
 
+# Script for repeatedly running an application and seeing if it
+# fails, closes unexpectedly or remains unexpectedly open.
+
 import argparse
 import signal
 import time

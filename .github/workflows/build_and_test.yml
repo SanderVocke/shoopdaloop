@@ -205,6 +205,9 @@ jobs:
         submodules: recursive
     - name: Prepare manylinux environment
       uses: ./.github/actions/prepare_manylinux_2_28
+    - name: Install coverage
+      shell: bash
+      run: python3 -m pip install coverage
     - name: Install Qt
       uses: ./.github/actions/download_qt
     - name: Build, install and upload

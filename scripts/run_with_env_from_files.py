@@ -1,4 +1,12 @@
 #!/usr/bin/python
+
+# Helper script useful in Cmake when a build step needs an env setting based on
+# the output of another env step.
+
+# Usage: run_with_env_from_files.py env1=file1 env2=file2 -- command
+# Will run the command with the env variables indicated set to the values loaded
+# from the given files.
+
 import sys
 import subprocess
 import os
