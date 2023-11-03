@@ -59,7 +59,7 @@ jobs:
       uses: MarkusJx/install-boost@v2.4.4
       id: install-boost
       with:
-        boost_version: 1.73.0
+        boost_version: 1.83.0
         boost_install_dir: C:\boost
         platform_version: 2019
         toolset: msvc
