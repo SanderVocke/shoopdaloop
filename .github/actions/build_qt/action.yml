@@ -36,100 +36,31 @@ runs:
         path: qt.tar.gz
         key: qt-6.5.3-${{ steps.find_os.outputs.os_version }}-6
     
-    - if: ${{ inputs.force-rebuild == 'true' || (inputs.cache == 'true' && steps.cache-qt.outputs.cache-hit != 'true') }}
+    - if: ${{ inputs.force-rebuild == 'true' || inputs.cache == 'false' || (inputs.cache == 'true' && steps.cache-qt.outputs.cache-hit != 'true') }}
       name: Download Qt sources
       shell: bash
       run: |
-        wget https://download.qt.io/archive/qt/6.5/6.5.3/submodules/qtbase-everywhere-src-6.5.3.tar.xz
-        wget https://download.qt.io/archive/qt/6.5/6.5.3/submodules/qtdeclarative-everywhere-src-6.5.3.tar.xz
-        wget https://download.qt.io/archive/qt/6.5/6.5.3/submodules/qtshadertools-everywhere-src-6.5.3.tar.xz
-        tar -xf qtbase-everywhere-src-6.5.3.tar.xz
-        mv qtbase-everywhere-src-6.5.3 qtbase
-        tar -xf qtdeclarative-everywhere-src-6.5.3.tar.xz
-        mv qtdeclarative-everywhere-src-6.5.3 qtdeclarative
-        tar -xf qtshadertools-everywhere-src-6.5.3.tar.xz
-        mv qtshadertools-everywhere-src-6.5.3 qtshadertools
-    
-    - if: ${{ inputs.force-rebuild == 'true' || (inputs.cache == 'true' && steps.cache-qt.outputs.cache-hit != 'true') }}
-      name: Configure Qt Base
-      shell: bash
-      run: |
-        cmake -B qtbuild -S qtbase -G Ninja \
-          -DCMAKE_INSTALL_PREFIX=/usr \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DINSTALL_BINDIR=lib/qt6/bin \
-          -DINSTALL_PUBLICBINDIR=usr/bin \
-          -DINSTALL_LIBEXECDIR=lib/qt6 \
-          -DINSTALL_DOCDIR=share/doc/qt6 \
-          -DINSTALL_ARCHDATADIR=lib/qt6 \
-          -DINSTALL_DATADIR=share/qt6 \
-          -DINSTALL_INCLUDEDIR=include/qt6 \
-          -DINSTALL_MKSPECSDIR=lib/qt6/mkspecs \
-          -DINSTALL_EXAMPLESDIR=share/doc/qt6/examples \
-          -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON \
-          -DCMAKE_MESSAGE_LOG_LEVEL=STATUS
-    
-    - if: ${{ inputs.force-rebuild == 'true' || (inputs.cache == 'true' && steps.cache-qt.outputs.cache-hit != 'true') }}
-      name: Build Qt Base
-      shell: bash
-      run: |
-        cmake --build qtbuild --parallel 4
-        DESTDIR=qt-installed cmake --install qtbuild
-        DESTDIR=/ cmake --install qtbuild
+        curl -L https://download.qt.io/archive/qt/6.5/6.5.3/single/qt-everywhere-src-6.5.3.tar.xz --output qt-everywhere-src-6.5.3.tar.xz
+        tar -xf qt-everywhere-src-6.5.3.tar.xz
+        mv qt-everywhere-src-6.5.3 qt
 
-    - if: ${{ inputs.force-rebuild == 'true' || (inputs.cache == 'true' && steps.cache-qt.outputs.cache-hit != 'true') }}
-      name: Configure Qt Shadertools
+    - if: ${{ inputs.force-rebuild == 'true' || inputs.cache == 'false' || (inputs.cache == 'true' && steps.cache-qt.outputs.cache-hit != 'true') }}
+      name: Configure Qt
       shell: bash
       run: |
-        cmake -B qtshadertoolsbuild -S qtshadertools -G Ninja \
-          -DCMAKE_INSTALL_PREFIX=/usr \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DINSTALL_BINDIR=lib/qt6/bin \
-          -DINSTALL_PUBLICBINDIR=usr/bin \
-          -DINSTALL_LIBEXECDIR=lib/qt6 \
-          -DINSTALL_DOCDIR=share/doc/qt6 \
-          -DINSTALL_ARCHDATADIR=lib/qt6 \
-          -DINSTALL_DATADIR=share/qt6 \
-          -DINSTALL_INCLUDEDIR=include/qt6 \
-          -DINSTALL_MKSPECSDIR=lib/qt6/mkspecs \
-          -DINSTALL_EXAMPLESDIR=share/doc/qt6/examples \
-          -DCMAKE_MESSAGE_LOG_LEVEL=STATUS
-    
-    - if: ${{ inputs.force-rebuild == 'true' || (inputs.cache == 'true' && steps.cache-qt.outputs.cache-hit != 'true') }}
-      name: Build Qt Shadertools
-      shell: bash
-      run: |
-        cmake --build qtshadertoolsbuild --parallel 4
-        DESTDIR=qt-installed cmake --install qtshadertoolsbuild
-        DESTDIR=/ cmake --install qtshadertoolsbuild
-    
-    - if: ${{ inputs.force-rebuild == 'true' || (inputs.cache == 'true' && steps.cache-qt.outputs.cache-hit != 'true') }}
-      name: Configure Qt Declarative
-      shell: bash
-      run: |
-        cmake -B qtdeclarativebuild -S qtdeclarative -G Ninja \
-          -DCMAKE_INSTALL_PREFIX=/usr \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DINSTALL_BINDIR=lib/qt6/bin \
-          -DINSTALL_PUBLICBINDIR=usr/bin \
-          -DINSTALL_LIBEXECDIR=lib/qt6 \
-          -DINSTALL_DOCDIR=share/doc/qt6 \
-          -DINSTALL_ARCHDATADIR=lib/qt6 \
-          -DINSTALL_DATADIR=share/qt6 \
-          -DINSTALL_INCLUDEDIR=include/qt6 \
-          -DINSTALL_MKSPECSDIR=lib/qt6/mkspecs \
-          -DINSTALL_EXAMPLESDIR=share/doc/qt6/examples \
-          -DCMAKE_MESSAGE_LOG_LEVEL=STATUS
-    
-    - if: ${{ inputs.force-rebuild == 'true' || (inputs.cache == 'true' && steps.cache-qt.outputs.cache-hit != 'true') }}
-      name: Build Qt Declarative
-      shell: bash
-      run: |
-        cmake --build qtdeclarativebuild --parallel 4
-        DESTDIR=qt-installed cmake --install qtdeclarativebuild
-        DESTDIR=/ cmake --install qtdeclarativebuild
+        mkdir qt-build
+        cd qt-build
+        ../qt/configure -release -submodules qtdeclarative,qtshadertools
 
-    - if: ${{ inputs.force-rebuild == 'true' || (inputs.cache == 'true' && steps.cache-qt.outputs.cache-hit != 'true') }}
+    - if: ${{ inputs.force-rebuild == 'true' || inputs.cache == 'false' || (inputs.cache == 'true' && steps.cache-qt.outputs.cache-hit != 'true') }}
+      name: Build Qt
+      shell: bash
+      run: |
+        cmake --build qt-build --parallel 4
+        DESTDIR=qt-installed cmake --install qt-build
+        DESTDIR=/ cmake --install qt-build
+
+    - if: ${{ inputs.force-rebuild == 'true' || inputs.cache == 'false' || (inputs.cache == 'true' && steps.cache-qt.outputs.cache-hit != 'true') }}
       name: Compress Qt for caching
       shell: bash
       run: |

@@ -4,9 +4,15 @@
 x-server
 python
 python-pip
+python-pytest
 wget
+curl
 fontconfig
 libxkbcommon
+libsamplerate
+libsndfile
+jack2
+mesa
 
 # scripting stuff
 procps-ng

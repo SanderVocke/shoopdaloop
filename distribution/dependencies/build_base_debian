@@ -16,13 +16,6 @@ jackd2
 libxkbcommon-dev
 libboost-dev
 libjack-jackd2-dev
-# note: lv2, sord and serd needed at build-time only because it makes
-# it very convenient to build lilv, serd and sord as static libraries.
-# As static versions will be linked in, not needed at run-time.
-libserd-dev
-libsord-dev
-libsratom-dev
-lv2-dev
 nlohmann-json3-dev
 
 # python
@@ -40,6 +33,7 @@ libvulkan-dev
 # scripting stuff
 procps
 wget
+curl
 
 # for Github Actions
 nodejs

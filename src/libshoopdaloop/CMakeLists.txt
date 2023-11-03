@@ -14,15 +14,24 @@ if(ENABLE_ASAN)
         add_compile_options(-fsanitize=address -shared-libasan)
         add_link_options(-fsanitize=address -shared-libasan)
         execute_process(COMMAND clang -print-file-name=libclang_rt.asan-x86_64.so OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE ASAN_DSO)
-        set(RUN_CMD_PREFIX LD_PRELOAD=${ASAN_DSO} ${RUN_CMD_PREFIX})
     elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
         add_compile_options(-fsanitize=address)
         add_link_options(-fsanitize=address)
         execute_process(COMMAND gcc -print-file-name=libasan.so OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE ASAN_DSO)
-        set(RUN_CMD_PREFIX LD_PRELOAD=${ASAN_DSO} ${RUN_CMD_PREFIX})
     else()
         message(FATAL_ERROR "Address sanitizer is only supported on Clang and GCC")
     endif()
+    if (EXISTS ${ASAN_DSO})
+      file(READ ${ASAN_DSO} ASAN_DSO_CONTENT)
+      string(FIND ${ASAN_DSO_CONTENT} "GNU ld script" FOUND_LD_SCRIPT)
+      if(NOT ${FOUND_LD_SCRIPT} EQUAL -1)
+        # Pointed to a linker script, find the actual lib
+        string(REGEX MATCH ".*INPUT[ ]*\\([ ]*([^\)^ ]+)[ ]*\\).*" FOUND_ASAN_SO ${ASAN_DSO_CONTENT})
+        set(ASAN_DSO ${CMAKE_MATCH_1})
+        message("Found that libasan.so is a linker script pointing to ${ASAN_DSO}.")
+      endif()
+    endif()
+    set(RUN_CMD_PREFIX LD_PRELOAD=${ASAN_DSO} ${RUN_CMD_PREFIX})
     set(RUN_CMD_PREFIX ${RUN_CMD_PREFIX} PARENT_SCOPE)
 endif()
 option(ENABLE_PROCESS_PROFILING "Enable internal audio processing profiling" ON)
@@ -33,7 +42,7 @@ set(OVERRIDE_COMPILE_LOG_LEVEL "" CACHE STRING "If set, overrides the compile-ti
 option(STATIC_DEPENDENCIES "Use static linkage for non-Python dependencies.")
 
 # Find pkgs
-find_package(Boost COMPONENTS ALL REQUIRED)
+find_package(Boost REQUIRED)
 
 # Generate a wrapper for libjack which allows dynamic loading using dlopen
 find_package(Jack REQUIRED)
@@ -94,6 +103,9 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 # Subdirs
 add_subdirectory(${CMAKE_SOURCE_DIR}/../third_party/lv2_evbuf lv2_evbuf)
 target_compile_options(lv2_evbuf PUBLIC -fPIC)
+if (STATIC_DEPENDENCIES)
+  add_dependencies(lv2_evbuf lv2)
+endif()
 
 add_subdirectory(test)
 add_subdirectory(qml_types)
@@ -109,7 +121,8 @@ target_link_libraries(shoopdaloop PUBLIC
                       jack_wrappers
                       ${LV2_LIBRARIES}
                       ${LILV_LIBRARIES}
-                      ${fmt_LIBRARY})
+                      ${fmt_LIBRARY}
+                      dl)
 target_include_directories(shoopdaloop
                         PRIVATE
                         ${CMAKE_SOURCE_DIR}/../third_party/lv2_evbuf

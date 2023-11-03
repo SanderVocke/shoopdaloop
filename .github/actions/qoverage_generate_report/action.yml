@@ -4,6 +4,9 @@ description: instrument the QML sources. Implemented in a very non-flexible way 
 inputs:
   strip:
     type: string
+  package_path:
+    type: string
+    required: true
 
 runs:
   using: "composite"
@@ -11,4 +14,4 @@ runs:
   - name: run
     shell: bash
     run: |
-      qoverage collect --report qoverage-report.xml --files-path pip/shoopdaloop --input qoverage-console-output.log --strip-paths-expr "${{ inputs.strip }}" --report-prefix src/shoopdaloop/ --verbose
+      qoverage collect --report qoverage-report.xml --files-path ${{ inputs.package_path }} --input qoverage-console-output.log --strip-paths-expr "${{ inputs.strip }}" --report-prefix src/shoopdaloop/ --verbose

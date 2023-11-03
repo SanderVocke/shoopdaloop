@@ -7,6 +7,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED YES)
 set(CMAKE_CXX_EXTENSIONS NO)
 set(CMAKE_EXPORT_COMPILE_COMMANDS YES)
 
+set(PYTHON_CMD python)
+set(GLOB_CMD python3 "${CMAKE_SOURCE_DIR}/../scripts/do_glob.py")
+set(RUN_WITH_ENV_CMD ${PYTHON_CMD} "${CMAKE_SOURCE_DIR}/../scripts/run_with_env_from_files.py")
+
 # Qt6 is required for custom QML types.
 find_package(Qt6 REQUIRED COMPONENTS Core Qml Gui Quick Widgets QuickTest)
 qt_standard_project_setup()
@@ -43,7 +47,7 @@ add_custom_target(
   )
 
 # Generate javascript copy of enums into source dir
-set(OUR_PYTHONPATH "$ENV{PYTHONPATH}:${CMAKE_CURRENT_BINARY_DIR}:${PY_BUILD_CMAKE_MODULE_NAME}/..")
+set(OUR_PYTHONPATH "$ENV{PYTHONPATH}:${CMAKE_CURRENT_BINARY_DIR}:${PY_BUILD_CMAKE_MODULE_NAME}/..:${CMAKE_CURRENT_SOURCE_DIR}/shoopdaloop")
 set(GENERATED_TYPES_JS ${CMAKE_CURRENT_BINARY_DIR}/types.js)
 add_custom_command(
   OUTPUT ${GENERATED_TYPES_JS}
@@ -70,14 +74,14 @@ install(FILES ${GENERATED_TYPES_JS}
 # Generate and install version.txt and description.txt
 add_custom_command(
   OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/version.txt
-  COMMAND bash -c "bash ${CMAKE_SOURCE_DIR}/../scripts/parse_pyproject_toml.sh ${CMAKE_SOURCE_DIR}/../pyproject.toml version >version.txt"
+  COMMAND ${PYTHON_CMD} ${CMAKE_SOURCE_DIR}/../scripts/parse_pyproject_toml.py ${CMAKE_SOURCE_DIR}/../pyproject.toml project::version > version.txt
   COMMENT "Generating version.txt"
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
 add_custom_target(version_txt ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/version.txt)
 add_custom_command(
   OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/description.txt
-  COMMAND bash -c "bash ${CMAKE_SOURCE_DIR}/../scripts/parse_pyproject_toml.sh ${CMAKE_SOURCE_DIR}/../pyproject.toml description >description.txt"
+  COMMAND ${PYTHON_CMD} ${CMAKE_SOURCE_DIR}/../scripts/parse_pyproject_toml.py ${CMAKE_SOURCE_DIR}/../pyproject.toml project::description > description.txt
   COMMENT "Generating description.txt"
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
@@ -90,7 +94,7 @@ install(FILES ${CMAKE_CURRENT_BINARY_DIR}/version.txt ${CMAKE_CURRENT_BINARY_DIR
   
 
 # Include app test scripts
-install(FILES ${CMAKE_SOURCE_DIR}/../scripts/test_run_app.sh
+install(FILES ${CMAKE_SOURCE_DIR}/../scripts/repeat_run_app.py
         EXCLUDE_FROM_ALL
         COMPONENT package_install
         PERMISSIONS WORLD_EXECUTE OWNER_EXECUTE GROUP_EXECUTE GROUP_WRITE OWNER_WRITE GROUP_READ OWNER_READ WORLD_READ

@@ -17,7 +17,8 @@ add_executable(test_runner
     )
 target_link_libraries(test_runner PRIVATE
                       ${BOOST_LIBRARIES}
-                      shoopdaloop)
+                      shoopdaloop
+                      pthread)
 target_include_directories(test_runner
                         PRIVATE
                         ${BOOST_INCLUDE_DIRS}

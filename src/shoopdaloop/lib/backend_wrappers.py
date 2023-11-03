@@ -146,7 +146,7 @@ class MidiPortState:
 class MidiEvent:
     time: int
     size: int
-    data: list[int]
+    data: List[int]
     
     def __init__(self, backend_event : 'midi_event_t'):
         self.time = backend_event.time
@@ -181,7 +181,7 @@ class ProfilingReportItem:
 
 @dataclass
 class ProfilingReport:
-    items : list[ProfilingReportItem]
+    items : List[ProfilingReportItem]
 
     def __init__(self, backend_obj : 'profiling_report_t'):
         self.items = [ProfilingReportItem(backend_obj.items[i]) for i in range(backend_obj.n_items)]
@@ -230,7 +230,7 @@ class BackendLoopAudioChannel:
         load_audio_channel_data(self.shoop_c_handle, backend_data)
         destroy_audio_channel_data(backend_data)
     
-    def get_data(self) -> list[float]:
+    def get_data(self) -> List[float]:
         r = get_audio_channel_data(self.shoop_c_handle)
         data = [float(r[0].data[i]) for i in range(r[0].n_samples)]
         destroy_audio_channel_data(r)

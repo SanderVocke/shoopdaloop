@@ -67,6 +67,24 @@ def as_track_selector(lua_val):
 lua_loop_selector = [ 'QVariant', as_loop_selector ]
 lua_track_selector = [ 'QVariant', as_track_selector ]
 
+def allow_qml_override(func):
+    def wrapper(self, *args, **kwargs):
+        self.logger.debug(lambda: "Call ControlHandler {} with args {}".format(func.__name__, str(args)))
+        # Call func() in most cases just for code coverage
+        func(self, *args, **kwargs)
+        if self.qml_instance:
+            try:
+                return self._methods[func.__name__ + "_override"]['call_qml'](*args[0])
+            except RuntimeError as e:
+                self.logger.error(lambda: "Failed to call QML override: {}".format(str(e)))
+
+        self.cache_call([func.__name__, *args[0]])
+        raise NotImplementedError(
+            "ControlHandler interface {0} not or incorrectly overridden.".format(func.__name__)
+        )
+    wrapper.__name__ = func.__name__
+    wrapper.__doc__ = func.__doc__
+    return wrapper
 class ControlHandler(QQuickItem):
     """
     Defines the API through which ShoopDaLoop can be controlled externally
@@ -195,26 +213,6 @@ class ControlHandler(QQuickItem):
             self._methods[str(method.name(), 'ascii')] = {
                 'call_qml': call_qml
             }
-
-    @staticmethod
-    def allow_qml_override(func):
-        def wrapper(self, *args, **kwargs):
-            self.logger.debug(lambda: "Call ControlHandler {} with args {}".format(func.__name__, str(args)))
-            # Call func() in most cases just for code coverage
-            func(self, *args, **kwargs)
-            if self.qml_instance:
-                try:
-                    return self._methods[func.__name__ + "_override"]['call_qml'](*args[0])
-                except RuntimeError as e:
-                    self.logger.error(lambda: "Failed to call QML override: {}".format(str(e)))
-
-            self.cache_call([func.__name__, *args[0]])
-            raise NotImplementedError(
-                "ControlHandler interface {0} not or incorrectly overridden.".format(func.__name__)
-            )
-        wrapper.__name__ = func.__name__
-        wrapper.__doc__ = func.__doc__
-        return wrapper
 
     qml_instance_changed = Signal('QVariant')
     @Property('QVariant', notify=qml_instance_changed)

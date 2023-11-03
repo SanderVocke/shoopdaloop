@@ -19,7 +19,7 @@ jobs:
   build_release:
     runs-on: ubuntu-latest
     container:
-      image: sandervocke/shoopdaloop_build_base:latest
+      image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
       options: --user root --workdir /
     steps:
     - name: Checkout
@@ -28,14 +28,40 @@ jobs:
         submodules: recursive
     - name: Install Qt
       uses: ./.github/actions/download_qt
+    - name: Prepare manylinux environment
+      uses: ./.github/actions/prepare_manylinux_2_28
     - name: Build and upload
       uses: ./.github/actions/build_wheel
       with:
         variant_name: release
-        pip_install_extra_args: --break-system-packages
         wheel_artifact_name: release_wheel
-        pyinstaller: true
-        pyinstaller_artifact_name: release_pyinstaller
+        python: python3.8
+        prepend_build_cmd: CMAKE_PREFIX_PATH=/usr/local/Qt-6.5.3
+  
+  build_debug:
+    runs-on: ubuntu-latest
+    container:
+      image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
+      options: --user root --workdir /
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        submodules: recursive
+    - name: Install Qt
+      uses: ./.github/actions/download_qt
+    - name: Prepare manylinux environment
+      uses: ./.github/actions/prepare_manylinux_2_28
+    - name: Build and upload
+      uses: ./.github/actions/build_wheel
+      with:
+        variant_name: debug
+        wheel_artifact_name: debug_wheel
+        pypa_build_extra_args: -C--local=pyproject.toml.debug_overrides
+        whl_suffix: debug
+        install: false
+        python: python3.8
+        prepend_build_cmd: CMAKE_PREFIX_PATH=/usr/local/Qt-6.5.3
   
   test_release_whl:
     runs-on: ubuntu-latest
@@ -73,8 +99,10 @@ jobs:
       shell: bash
       id: findqt
       run: |
-        echo "qtlibpath=$(dirname $(find /usr/local/lib/python3.11/dist-packages -name libQt6Core.so.6))" | tee -a $GITHUB_ENV
+        export PKGDIR=$(${{ matrix.os.pip }} show pyside6-essentials | grep Location | sed -r 's/Location:[ ]*//g')
+        echo "qtlibpath=$(dirname $(find $PKGDIR -name libQt6Core.so.6))" | tee -a $GITHUB_ENV
     - name: Test back-end
+      if: ${{ success() || failure() }}
       uses: ./.github/actions/backend_test
       with:
         variant_name: release
@@ -83,6 +111,7 @@ jobs:
         run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
         test_runner_dir: ${{ steps.install.outputs.install_dir }}
     - name: Test Python
+      if: ${{ success() || failure() }}
       uses: ./.github/actions/python_test
       with:
         variant_name: release
@@ -90,6 +119,7 @@ jobs:
         root_path: ${{ steps.install.outputs.install_dir }}
         pytest_command: ${{ matrix.os.python }} -m pytest
     - name: Test QML
+      if: ${{ success() || failure() }}
       uses: ./.github/actions/qml_test
       with:
         variant_name: release
@@ -97,28 +127,33 @@ jobs:
         root_path: ${{ steps.install.outputs.install_dir }}
         python_command: ${{ matrix.os.python }}
     - name: Screenshots
+      if: ${{ success() || failure() }}
       uses: ./.github/actions/screenshots_test
       with:
         root_path: ${{ steps.install.outputs.install_dir }}
         screenshots_path: /tmp/screenshots
         artifact_name: screenshots_${{ matrix.os.name }}
     - name: Test App
+      if: ${{ success() || failure() }}
       uses: ./.github/actions/app_run_test
       with:
         variant_name: release
         run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH=${{ env.qtlibpath }}
         root_path: ${{ steps.install.outputs.install_dir }}
+        python: ${{ matrix.os.python }}
         
   asan:
     runs-on: ubuntu-latest
     container:
-      image: sandervocke/shoopdaloop_build_base:latest
+      image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
       options: --user root --workdir /
     steps:
     - name: Checkout
       uses: actions/checkout@v3
       with:
         submodules: recursive
+    - name: Prepare manylinux environment
+      uses: ./.github/actions/prepare_manylinux_2_28
     - name: Install Qt
       uses: ./.github/actions/download_qt
     - name: Build, install and upload
@@ -131,11 +166,13 @@ jobs:
         pip_install_extra_args: --break-system-packages
         whl_suffix: asan
         install: true
+        prepend_build_cmd: CMAKE_PREFIX_PATH=/usr/local/Qt-6.5.3
     - name: Find Qt
       shell: bash
       id: findqt
       run: |
-        echo "qtlibpath=$(dirname $(find /usr/local/lib/python3.11/dist-packages -name libQt6Core.so.6))" | tee -a $GITHUB_ENV
+        PKGDIR=$(python3 -m pip show pyside6-essentials | grep Location | sed -r 's/Location:[ ]*//g')
+        echo "qtlibpath=$(dirname $(find $PKGDIR -name libQt6Core.so.6))" | tee -a $GITHUB_ENV
     - name: Test back-end
       uses: ./.github/actions/backend_test
       with:
@@ -154,40 +191,21 @@ jobs:
       uses: ./.github/actions/qml_test
       with:
         variant_name: asan
-        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH=${{ env.qtlibpath }}
+        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH="${{ env.qtlibpath }};/usr/local/lib"
         root_path: ${{ steps.build.outputs.install_dir }}
-  
-  build_debug_whl:
-    runs-on: ubuntu-latest
-    container:
-      image: sandervocke/shoopdaloop_build_base:latest
-      options: --user root --workdir /
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v3
-      with:
-        submodules: recursive
-    - name: Install Qt
-      uses: ./.github/actions/download_qt
-    - name: Build and upload
-      uses: ./.github/actions/build_wheel
-      with:
-        variant_name: debug
-        wheel_artifact_name: debug_wheel
-        pypa_build_extra_args: -C--local=pyproject.toml.debug_overrides
-        whl_suffix: debug
-        install: false
   
   coverage:
     runs-on: ubuntu-latest
     container:
-      image: sandervocke/shoopdaloop_build_base:latest
+      image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
       options: --user root --workdir /
     steps:
     - name: Checkout
       uses: actions/checkout@v3
       with:
         submodules: recursive
+    - name: Prepare manylinux environment
+      uses: ./.github/actions/prepare_manylinux_2_28
     - name: Install Qt
       uses: ./.github/actions/download_qt
     - name: Build, install and upload
@@ -200,15 +218,19 @@ jobs:
         pip_install_extra_args: --break-system-packages
         whl_suffix: coverage
         install: true
+        prepend_build_cmd: CMAKE_PREFIX_PATH=/usr/local/Qt-6.5.3
     - name: Install Qoverage
       uses: ./.github/actions/install_qoverage
     - name: Qoverage - Instrument QML files
       uses: ./.github/actions/qoverage_instrument
+      with:
+        package_path: ${{ steps.build.outputs.install_dir }}
     - name: Find Qt
       shell: bash
       id: findqt
       run: |
-        echo "qtlibpath=$(dirname $(find /usr/local/lib/python3.11/dist-packages -name libQt6Core.so.6))" | tee -a $GITHUB_ENV
+        PKGDIR=$(python3 -m pip show pyside6-essentials | grep Location | sed -r 's/Location:[ ]*//g')
+        echo "qtlibpath=$(dirname $(find $PKGDIR -name libQt6Core.so.6))" | tee -a $GITHUB_ENV
     - name: Back-end tests with coverage
       uses: ./.github/actions/backend_test
       with:
@@ -258,7 +280,7 @@ jobs:
           REPORTNAME=qmltest
           BUILDDIR=${{ steps.build.outputs.build_dir }}
           DO_GENHTML=0
-          LD_LIBRARY_PATH=${{ env.qtlibpath }}
+          LD_LIBRARY_PATH="${{ env.qtlibpath }};/usr/local/lib"
           ${{ steps.build.outputs.install_dir }}/scripts/run_and_generate_coverage.sh
     - name: Generate QML Python coverage report
       run: |
@@ -269,6 +291,7 @@ jobs:
       uses: ./.github/actions/qoverage_generate_report
       with:
         strip: ".*/pip/shoopdaloop"
+        package_path: ${{ steps.build.outputs.install_dir }}
     - name: Upload back-end coverage to CodeCov
       if: ${{ !env.ACT }}
       uses: codecov/codecov-action@v3

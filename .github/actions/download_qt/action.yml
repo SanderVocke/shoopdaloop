@@ -5,7 +5,7 @@ inputs:
   url:
     required: false
     type: string
-    default: https://github.com/SanderVocke/shoopdaloop/releases/download/qt-6.5.3-1/qt-6.5.3-shoopdaloop.tar.gz
+    default: https://github.com/SanderVocke/shoopdaloop/releases/download/qt-6.5.3-1/qt-6.5.3-manylinux_2_28.tar.gz
 
 runs:
   using: "composite"
@@ -13,6 +13,6 @@ runs:
     - name: Download and install
       shell: bash
       run: |
-        wget ${{ inputs.url }} -O qt.tar.gz
+        curl -L ${{ inputs.url }} --output qt.tar.gz
         tar -xzf qt.tar.gz -C /
 

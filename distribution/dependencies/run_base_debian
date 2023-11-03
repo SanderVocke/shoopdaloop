@@ -13,6 +13,7 @@ libxkbcommon0
 libgl1-mesa-dev
 jackd2
 libsamplerate0
+libsndfile1
 
 # scripting stuff
 procps
