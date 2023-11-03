@@ -89,7 +89,7 @@ runs:
       mkdir -p install
       export PYTHONPATH="$PYTHONPATH:$(pwd)/pip"
       ASAN_OPTIONS=detect_leaks=0 ${{ steps.build.outputs.run_cmd_prefix }} ${{ inputs.python }} -m pip install ${{ inputs.pip_install_extra_args }} ${{ steps.find.outputs.name }}
-      echo "install_dir=$(${{ inputs.python }} -m pip show shoopdaloop | grep Location | sed -r 's/Location:[ ]*//g')" | tee -a $GITHUB_OUTPUT
+      echo "install_dir=$(${{ inputs.python }} -m pip show shoopdaloop | grep Location | sed -r 's/Location:[ ]*//g')/shoopdaloop" | tee -a $GITHUB_OUTPUT
 
 
 
