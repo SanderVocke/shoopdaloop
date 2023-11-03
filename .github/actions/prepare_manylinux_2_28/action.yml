@@ -20,7 +20,11 @@ runs:
       # Official packages needed
       dnf -y install ninja-build libsndfile libsamplerate libasan8 gcc-toolset-12-libasan-devel.x86_64 perl-Time-HiRes perl-Capture-Tiny perl-Module-Load-Conditional perl-DateTime perl-JSON perl-JSON-XS
 
-      # libasan hack, not sure why needed
+      # libasan hacks, not sure why needed.
+      # the libasan from the gcc-toolset-12 package is reported as having an invalid ELF header.
+      # the libasan_preinit.so is needed though.
+      # libasan.so.8 from the libasan8 package does seem to work.
+      rm -f /opt/rh/gcc-toolset-12/root/usr/lib/gcc/x86_64-redhat-linux/12/libasan.so
       ln -s /lib64/libasan.so.8 /lib64/libasan.so
 
       # Build and install Jack
