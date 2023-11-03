@@ -191,7 +191,7 @@ jobs:
       uses: ./.github/actions/qml_test
       with:
         variant_name: asan
-        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH=${{ env.qtlibpath }}
+        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH="${{ env.qtlibpath }};/usr/local/lib"
         root_path: ${{ steps.build.outputs.install_dir }}
   
   coverage:
@@ -280,7 +280,7 @@ jobs:
           REPORTNAME=qmltest
           BUILDDIR=${{ steps.build.outputs.build_dir }}
           DO_GENHTML=0
-          LD_LIBRARY_PATH=${{ env.qtlibpath }}
+          LD_LIBRARY_PATH="${{ env.qtlibpath }};/usr/local/lib"
           ${{ steps.build.outputs.install_dir }}/scripts/run_and_generate_coverage.sh
     - name: Generate QML Python coverage report
       run: |
