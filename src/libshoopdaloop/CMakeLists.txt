@@ -1,13 +1,5 @@
 set(RUN_CMD_PREFIX "")
 
-if(EXISTS /etc/os-release)
-  file(READ /etc/os-release OS_RELEASE)
-  string(FIND ${OS_RELEASE} almalinux FOUND_ALMALINUX)
-  if(NOT ${FOUND_ALMALINUX} EQUAL -1)
-    set(ON_ALMALINUX 1)
-  endif()
-endif()
-
 # Options
 option(ENABLE_PERFTOOLS "Link to pprof profiling library")
 if(ENABLE_PERFTOOLS)
@@ -18,11 +10,6 @@ if(ENABLE_PERFTOOLS)
 endif()
 option(ENABLE_ASAN "Enable address sanitizer" OFF)
 if(ENABLE_ASAN)
-    set(LIBASAN_SO libasan.so)
-    if (DEFINED ON_ALMALINUX)
-        # Hack, but the standard method of finding the right libasan.so seems to not work in this case.
-        set(LIBASAN_SO libasan.so.8)
-    endif
     if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
         add_compile_options(-fsanitize=address -shared-libasan)
         add_link_options(-fsanitize=address -shared-libasan)
