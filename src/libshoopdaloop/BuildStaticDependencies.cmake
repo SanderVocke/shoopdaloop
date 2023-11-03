@@ -27,7 +27,7 @@ ExternalProject_Add(lv2
   SOURCE_DIR ${CMAKE_SOURCE_DIR}/../third_party/lv2
   BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/lv2_build
   CONFIGURE_COMMAND
-    python -m mesonbuild.mesonmain setup -Ddefault_library=static --libdir=lib --prefix=${STATIC_DEPS_PREFIX} <BINARY_DIR> <SOURCE_DIR>
+    python -m mesonbuild.mesonmain setup -Ddefault_library=static --prefix=${STATIC_DEPS_PREFIX} <BINARY_DIR> <SOURCE_DIR>
   BUILD_COMMAND
     python -m mesonbuild.mesonmain compile
   INSTALL_COMMAND

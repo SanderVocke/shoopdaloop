@@ -44,43 +44,36 @@ option(STATIC_DEPENDENCIES "Use static linkage for non-Python dependencies.")
 # Find pkgs
 find_package(Boost REQUIRED)
 
-# Generate a wrapper for libjack which allows dynamic loading using dlopen
-find_package(Jack REQUIRED)
-get_filename_component(JACK_SONAME ${JACK_LIBRARIES} NAME)
-add_custom_command(
-  OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.c ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.h
-  COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers
-  COMMAND "${PYTHON_CMD}
-    \"${CMAKE_SOURCE_DIR}/../third_party/dynload-wrapper/generate-wrapper.py\"
-    --include \"${JACK_INCLUDE_DIRS}/jack/jack.h\"
-    --include \"${JACK_INCLUDE_DIRS}/jack/midiport.h\"
-    --sys-include '<jack/jack.h>'
-    --sys-include '<jack/midiport.h>'
-    --soname \"${JACK_SONAME}\"
-    --init-name jack_wrappers
-    --output-header \"${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.h\"
-    --output-implementation \"${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.c\""
-  COMMENT "Generating libjack dynload wrapper"
-)
-message( "${PYTHON_CMD}
-    \"${CMAKE_SOURCE_DIR}/../third_party/dynload-wrapper/generate-wrapper.py\"
-    --include \"${JACK_INCLUDE_DIRS}/jack/jack.h\"
-    --include \"${JACK_INCLUDE_DIRS}/jack/midiport.h\"
-    --sys-include '<jack/jack.h>'
-    --sys-include '<jack/midiport.h>'
-    --soname \"${JACK_SONAME}\"
-    --init-name jack_wrappers
-    --output-header \"${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.h\"
-    --output-implementation \"${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.c\"")
-add_custom_target(
-  jack_wrappers_impl
-  ALL
-  DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.c ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.h
+if (BACKEND_JACK)
+  # Generate a wrapper for libjack which allows dynamic loading using dlopen
+  find_package(Jack REQUIRED)
+  get_filename_component(JACK_SONAME ${JACK_LIBRARIES} NAME)
+  add_custom_command(
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.c ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.h
+    COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers
+    COMMAND "${PYTHON_CMD}
+      \"${CMAKE_SOURCE_DIR}/../third_party/dynload-wrapper/generate-wrapper.py\"
+      --include \"${JACK_INCLUDE_DIRS}/jack/jack.h\"
+      --include \"${JACK_INCLUDE_DIRS}/jack/midiport.h\"
+      --sys-include '<jack/jack.h>'
+      --sys-include '<jack/midiport.h>'
+      --soname \"${JACK_SONAME}\"
+      --init-name jack_wrappers
+      --output-header \"${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.h\"
+      --output-implementation \"${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.c\""
+    COMMENT "Generating libjack dynload wrapper"
   )
-set(JACKWRAPPERS_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers})
-add_library(jack_wrappers STATIC ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.c)
-set_property(TARGET jack_wrappers PROPERTY POSITION_INDEPENDENT_CODE ON)
-target_include_directories(jack_wrappers PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers)
+  add_custom_target(
+    jack_wrappers_impl
+    ALL
+    DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.c ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.h
+    )
+  set(JACKWRAPPERS_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers})
+  add_library(jack_wrappers STATIC ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.c)
+  set_property(TARGET jack_wrappers PROPERTY POSITION_INDEPENDENT_CODE ON)
+  target_include_directories(jack_wrappers PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers)
+endif()
+
 
 # Generate the run cmd prefix so that it can be referred to after the build (e.g. when running tests)
 add_custom_command(
@@ -125,12 +118,14 @@ add_subdirectory(custom_qt_msg_handler)
 
 # Backend lib
 file(GLOB INTERNAL_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/internal/*.cpp)
+
+# TODO jack
+
 add_library(shoopdaloop SHARED libshoopdaloop.cpp ${INTERNAL_SOURCES})
-add_dependencies(shoopdaloop jack_wrappers ${DEPEND_ON_LILV})
+add_dependencies(shoopdaloop ${DEPEND_ON_LILV})
 target_link_libraries(shoopdaloop PUBLIC
                       lv2_evbuf
                       ${BOOST_LIBRARIES}
-                      jack_wrappers
                       ${LV2_LIBRARIES}
                       ${LILV_LIBRARIES}
                       ${fmt_LIBRARY}
@@ -143,11 +138,15 @@ target_include_directories(shoopdaloop
                         ${BOOST_INCLUDE_DIRS}
                         ${LV2_INCLUDE_DIRS}
                         ${LILV_INCLUDE_DIRS}
-                        ${JACKWRAPPERS_INCLUDE_DIRS}
                         ${fmt_INCLUDE_DIR}
                         ${SPDLOG_INCLUDE_DIR}
                         ${CMAKE_SOURCE_DIR}/../third_party/lv2_external_ui
                         )
+if (BACKEND_JACK)
+  add_dependencies(shoopdaloop jack_wrappers)
+  target_link_libraries(shoopdaloop PUBLIC jack_wrappers)
+  target_include_directories(shoopdaloop PRIVATE ${JACKWRAPPERS_INCLUDE_DIRS})
+endif ()
 install(TARGETS shoopdaloop
         EXCLUDE_FROM_ALL
         COMPONENT package_install

@@ -1,9 +1,7 @@
 #include "Backend.h"
 #include "LoggingBackend.h"
 #include "ProcessProfiling.h"
-#include "JackAudioSystem.h"
 #include "DummyAudioSystem.h"
-#include <jack_wrappers.h>
 #include "ConnectedPort.h"
 #include "ConnectedFXChain.h"
 #include "ProcessingChainInterface.h"
@@ -20,6 +18,11 @@
 #include "AudioMidiLoop.h"
 #include "shoop_globals.h"
 #include "types.h"
+
+#ifdef BACKEND_JACK
+#include "JackAudioSystem.h"
+#include <jack_wrappers.h>
+#endif
 
 using namespace logging;
 using namespace shoop_types;
@@ -69,6 +72,7 @@ void Backend::start() {
         auto weak_self = weak_from_this();
         try {
             switch (m_audio_system_type) {
+#ifdef BACKEND_JACK:
             case Jack:
                 log<LogLevel::debug>("Initializing JACK audio system.");
                 audio_system = std::unique_ptr<AudioSystem>(
@@ -93,6 +97,11 @@ void Backend::start() {
                         }
                     })));
                 break;
+#else
+            case Jack:
+            case JackTest:
+                log<LogLevel::warn>("JACK backend requested but not supported.");
+#endif
             case Dummy:
                 // Dummy is also the fallback option - intiialized below
                 break;
@@ -134,7 +143,11 @@ void Backend::start() {
 
 backend_state_info_t Backend::get_state() {
     backend_state_info_t rval;
+#ifdef BACKEND_JACK
     rval.dsp_load_percent = (maybe_jack_client_handle() && m_audio_system_type == Jack) ? JackApi::cpu_load(maybe_jack_client_handle()) : 0.0f;
+#else
+    rval.dsp_load_percent = 0.0f;
+#endif
     rval.xruns_since_last = audio_system->get_xruns();
     rval.actual_type = m_audio_system_type;
     audio_system->reset_xruns();
@@ -143,7 +156,7 @@ backend_state_info_t Backend::get_state() {
 
 #warning delete destroyed ports
 // MEMBER FUNCTIONS
-void Backend::PROC_process (jack_nframes_t nframes) {
+void Backend::PROC_process (size_t nframes) {
     log<LogLevel::trace>("Process {}: start", nframes);
     profiling::stopwatch(
         [this, &nframes]() {
@@ -340,11 +353,11 @@ void Backend::terminate() {
     }
 }
 
-jack_client_t *Backend::maybe_jack_client_handle() {
+void *Backend::maybe_jack_client_handle() {
     if (!audio_system || m_audio_system_type != Jack) {
         return nullptr;
     }
-    return (jack_client_t*)audio_system->maybe_client_handle();
+    return audio_system->maybe_client_handle();
 }
 
 const char* Backend::get_client_name() {

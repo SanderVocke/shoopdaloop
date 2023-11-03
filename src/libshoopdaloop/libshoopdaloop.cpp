@@ -11,7 +11,7 @@
 #include "ExternalUIInterface.h"
 #include "AudioPortInterface.h"
 #include "AudioSystemInterface.h"
-#include "JackMidiPort.h"
+
 #include "LoggingBackend.h"
 #include "MidiChannel.h"
 #include "MidiMessage.h"
@@ -30,15 +30,18 @@
 #include "ConnectedFXChain.h"
 #include "ConnectedDecoupledMidiPort.h"
 #include "ConnectedLoop.h"
-#include "JackAudioSystem.h"
 #include "DummyAudioSystem.h"
+
+#ifdef BACKEND_JACK
+#include "JackAudioSystem.h"
+#include "JackMidiPort.h"
 #include "JackAudioPort.h"
+#endif
 
 // System
 #include <boost/lockfree/spsc_queue.hpp>
 #include <chrono>
 #include <cmath>
-#include <jack/types.h>
 #include <math.h>
 #include <memory>
 #include <stdexcept>
@@ -185,9 +188,13 @@ PortDirection internal_port_direction(port_direction_t d) {
 std::optional<audio_system_type_t> audio_system_type(AudioSystem *sys) {
     if (!sys) {
         return std::nullopt;
-    } else if (dynamic_cast<JackAudioSystem*>(sys)) {
+    }
+#ifdef BACKEND_JACK
+    else if (dynamic_cast<JackAudioSystem*>(sys)) {
         return Jack;
-    } else if (dynamic_cast<_DummyAudioSystem*>(sys)) {
+    } 
+#endif
+    else if (dynamic_cast<_DummyAudioSystem*>(sys)) {
         return Dummy;
     } else {
         throw std::runtime_error("Unimplemented");
@@ -235,7 +242,7 @@ void terminate(shoopdaloop_backend_instance_t *backend) {
     g_active_backends.erase(_backend);
 }
 
-jack_client_t *maybe_jack_client_handle(shoopdaloop_backend_instance_t* backend) {
+void* maybe_jack_client_handle(shoopdaloop_backend_instance_t* backend) {
     return internal_backend(backend)->maybe_jack_client_handle();
 }
 
@@ -720,7 +727,8 @@ void disconnect_external_midi_port(shoopdaloop_midi_port_t *ours, const char* ex
     internal_midi_port(ours)->maybe_midi()->disconnect_external(std::string(external_port_name));
 }
 
-jack_port_t *get_audio_port_jack_handle(shoopdaloop_audio_port_t *port) {
+void *get_audio_port_jack_handle(shoopdaloop_audio_port_t *port) {
+#ifdef BACKEND_JACK
     auto pi = internal_audio_port(port);
     auto _audio = pi->maybe_audio();
     if (pi->get_backend().m_audio_system_type != Jack) { return nullptr; }
@@ -728,11 +736,15 @@ jack_port_t *get_audio_port_jack_handle(shoopdaloop_audio_port_t *port) {
         [pi, _audio]() { return std::dynamic_pointer_cast<JackAudioPort>(_audio)->get_jack_port(); },
         _audio != nullptr,
         pi->backend.lock()->cmd_queue);
+#else
+    g_logger.warning("Requesting JACK handle but no JACK support built in.");
+    return nullptr;
+#endif
 }
 
-shoopdaloop_midi_port_t *open_jack_midi_port (shoopdaloop_backend_instance_t *backend, const char* name_hint, port_direction_t direction) {
+shoopdaloop_midi_port_t *open_midi_port (shoopdaloop_backend_instance_t *backend, const char* name_hint, port_direction_t direction) {
     init_log();
-    g_logger->debug("open_jack_midi_port");
+    g_logger->debug("open_midi_port");
     auto _backend = internal_backend(backend);
     auto port = _backend->audio_system->open_midi_port(name_hint, internal_port_direction(direction));
     auto pi = std::make_shared<ConnectedPort>(port, _backend,
@@ -758,13 +770,19 @@ void close_midi_port (shoopdaloop_midi_port_t *port) {
         );
     });
 }
-jack_port_t *get_midi_port_jack_handle(shoopdaloop_midi_port_t *port) {
+
+void *get_midi_port_jack_handle(shoopdaloop_midi_port_t *port) {
+#ifdef BACKEND_JACK
     auto pi = internal_midi_port(port);
     auto _midi = pi->maybe_midi();
     return evaluate_before_or_after_process<jack_port_t*>(
         [pi, _midi]() { return std::dynamic_pointer_cast<JackMidiPort>(_midi)->get_jack_port(); },
         _midi != nullptr,
         pi->backend.lock()->cmd_queue);
+#else
+    g_logger.warning("Requesting JACK handle but no JACK support built in.");
+    return nullptr;
+#endif
 }
 
 void add_audio_port_passthrough(shoopdaloop_audio_port_t *from, shoopdaloop_audio_port_t *to) {

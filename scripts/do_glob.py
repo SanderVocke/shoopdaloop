@@ -23,6 +23,8 @@ results = glob.glob(sys.argv[arg_idx], recursive=True)
 if directory:
     results = [(os.path.dirname(r) if os.path.isfile(r) else r) for r in results]
 
+results = list(set([os.path.realpath(r) for r in results]))
+
 if separator:
     print(separator.join(results))
 else:

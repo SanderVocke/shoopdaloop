@@ -1,4 +1,3 @@
-#include <jack/types.h>
 #include "types.h"
 
 #ifdef __cplusplus
@@ -8,7 +7,7 @@ extern "C" {
 // General
 shoopdaloop_backend_instance_t *initialize (audio_system_type_t audio_system_type, const char* client_name_hint, const char* argstring);
 void terminate (shoopdaloop_backend_instance_t *backend);
-jack_client_t *maybe_jack_client_handle(shoopdaloop_backend_instance_t *backend);
+void* maybe_jack_client_handle(shoopdaloop_backend_instance_t *backend);
 const char *get_client_name(shoopdaloop_backend_instance_t *backend);
 unsigned get_sample_rate(shoopdaloop_backend_instance_t *backend);
 unsigned get_buffer_size(shoopdaloop_backend_instance_t *backend);
@@ -93,9 +92,10 @@ audio_port_state_info_t *get_audio_port_state(shoopdaloop_audio_port_t *port);
 port_connections_state_t *get_audio_port_connections_state(shoopdaloop_audio_port_t *port);
 void connect_external_audio_port(shoopdaloop_audio_port_t *ours, const char* external_port_name);
 void disconnect_external_audio_port(shoopdaloop_audio_port_t *ours, const char* external_port_name);
-// For JACK audio ports only
 shoopdaloop_audio_port_t *open_audio_port (shoopdaloop_backend_instance_t *backend, const char* name_hint, port_direction_t direction);
-jack_port_t *get_audio_port_jack_handle(shoopdaloop_audio_port_t *port);
+
+// For JACK audio ports only
+void* get_audio_port_jack_handle(shoopdaloop_audio_port_t *port);
 
 // Midi ports
 midi_port_state_info_t *get_midi_port_state(shoopdaloop_midi_port_t *port);
@@ -105,9 +105,10 @@ void add_midi_port_passthrough(shoopdaloop_midi_port_t *from, shoopdaloop_midi_p
 port_connections_state_t *get_midi_port_connections_state(shoopdaloop_midi_port_t *port);
 void connect_external_midi_port(shoopdaloop_midi_port_t *ours, const char* external_port_name);
 void disconnect_external_midi_port(shoopdaloop_midi_port_t *ours, const char* external_port_name);
+shoopdaloop_midi_port_t *open_midi_port (shoopdaloop_backend_instance_t *backend, const char* name_hint, port_direction_t direction);
+
 // For JACK midi ports only
-shoopdaloop_midi_port_t *open_jack_midi_port (shoopdaloop_backend_instance_t *backend, const char* name_hint, port_direction_t direction);
-jack_port_t *get_midi_port_jack_handle(shoopdaloop_midi_port_t *port);
+void* get_midi_port_jack_handle(shoopdaloop_midi_port_t *port);
 
 // Decoupled midi ports
 shoopdaloop_decoupled_midi_port_t *open_decoupled_midi_port(shoopdaloop_backend_instance_t *backend, const char* name_hint, port_direction_t direction);

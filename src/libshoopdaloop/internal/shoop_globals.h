@@ -2,7 +2,6 @@
 #include "CustomProcessingChain.h"
 #include <cstddef>
 #include <cstdint>
-#include <jack/types.h>
 #include <memory>
 #include <functional>
 
@@ -53,8 +52,8 @@ using DefaultAudioBuffer = AudioBuffer<audio_sample_t>;
 using AudioBufferPool = ObjectPool<DefaultAudioBuffer>;
 using Time = uint32_t;
 using Size = uint16_t;
-using AudioSystem = AudioSystemInterface<jack_nframes_t, size_t>;
-using _DummyAudioSystem = DummyAudioSystem<jack_nframes_t, size_t>;
+using AudioSystem = AudioSystemInterface<size_t, size_t>;
+using _DummyAudioSystem = DummyAudioSystem<size_t, size_t>;
 using LoopAudioChannel = AudioChannel<audio_sample_t>;
 using LoopMidiChannel = MidiChannel<uint32_t, uint16_t>;
 using AudioPort = AudioPortInterface<audio_sample_t>;

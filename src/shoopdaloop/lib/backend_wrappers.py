@@ -653,7 +653,7 @@ class Backend:
 
     def open_jack_midi_port(self, name_hint : str, direction : int) -> 'BackendMidiPort':
         _dir = (Input if direction == PortDirection.Input.value else Output)
-        handle = open_jack_midi_port(self._c_handle, name_hint.encode('ascii'), _dir)
+        handle = open_midi_port(self._c_handle, name_hint.encode('ascii'), _dir)
         port = BackendMidiPort(handle, direction)
         return port
 

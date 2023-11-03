@@ -5,7 +5,6 @@
 #include "CommandQueue.h"
 #include "shoop_globals.h"
 #include "types.h"
-#include <jack/types.h>
 
 namespace profiling {
 class Profiler;
@@ -57,10 +56,10 @@ public:
     Backend(audio_system_type_t audio_system_type, std::string client_name_hint, std::string argstring);
     ~Backend();
 
-    void PROC_process(jack_nframes_t nframes);
+    void PROC_process(size_t nframes);
     void PROC_process_decoupled_midi_ports(size_t nframes);
     void terminate();
-    jack_client_t *maybe_jack_client_handle();
+    void* maybe_jack_client_handle();
     const char *get_client_name();
     unsigned get_sample_rate();
     unsigned get_buffer_size();
