@@ -49,4 +49,7 @@ runs:
       make install
       popd
 
+      # Additional Python packages
+      python3 -m pip install coverage pytest
+
       touch /manylinux_prepared
