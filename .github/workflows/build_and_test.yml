@@ -55,6 +55,14 @@ jobs:
         dir: ${{ runner.temp }}
         modules: qtquick qtqml
         setup-python: true
+    - name: Install boost
+      uses: MarkusJx/install-boost@v2.4.4
+      id: install-boost
+      with:
+        boost_version: 1.73.0
+        boost_install_dir: C:\boost
+        platform_version: 2019
+        toolset: msvc
     - name: Set up MSVC shell
       uses: egor-tensin/vs-shell@v2
       with:
@@ -67,7 +75,7 @@ jobs:
         variant_name: release_win64
         wheel_artifact_name: release_wheel_win64
         python: python
-        #prepend_build_cmd: CMAKE_PREFIX_PATH=C:/Qt/6.5.3/msvc2019_64/lib/cmake
+        prepend_build_cmd: BOOST_ROOT=C:\boost
         pip_install_extra_args: --no-build-isolation --no-clean
         whl_suffix: win_x64
         install: false
