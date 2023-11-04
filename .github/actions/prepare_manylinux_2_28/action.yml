@@ -32,11 +32,6 @@ runs:
       ./waf
       ./waf install
 
-      # Install nlohmann JSON
-      curl -L https://github.com/nlohmann/json/releases/download/v3.11.2/include.zip --output include.zip
-      unzip include.zip
-      cp -r include/* /usr/include/
-
       # Build and install lcov
       curl -L https://github.com/linux-test-project/lcov/releases/download/v2.0/lcov-2.0.tar.gz --output lcov-2.0.tar.gz
       tar -xzf lcov-2.0.tar.gz
