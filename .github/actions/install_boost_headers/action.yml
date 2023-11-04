@@ -27,6 +27,7 @@ runs:
       # Install Boost
       curl -L https://boostorg.jfrog.io/artifactory/main/release/1.82.0/source/boost_1_82_0.tar.gz --output boost.tar.gz
       tar -xzf boost.tar.gz
+      mkdir -p ${{ inputs.dir }}
       cp -r boost_1_82_0/boost ${{ inputs.dir }}/boost
 
       touch /boost_headers_installed
