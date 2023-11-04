@@ -3,6 +3,7 @@
 #include "types.h"
 #include <bits/chrono.h>
 #include <chrono>
+#include <cstdint>
 #include <thread>
 #define IMPLEMENT_DUMMYAUDIOSYSTEM_H
 #include "DummyAudioSystem.h"
@@ -15,6 +16,7 @@ template class DummyAudioSystem<uint32_t, uint32_t>;
 template class DummyAudioSystem<uint16_t, uint16_t>;
 template class DummyAudioSystem<uint16_t, uint32_t>;
 template class DummyAudioSystem<uint32_t, uint64_t>;
+template class DummyAudioSystem<uint64_t, uint64_t>;
 
 const std::map<DummyAudioSystemMode, const char*> mode_names = {
     {DummyAudioSystemMode::Automatic, "Automatic"},
