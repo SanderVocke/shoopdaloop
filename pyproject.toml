@@ -68,7 +68,7 @@ exclude = ['codegen', 'dist', 'third_party']
 
 [build-system]
 requires = [
-  "py-build-cmake~=0.2.0a8", 
+  "py-build-cmake~=0.1.8", 
   "ctypesgen",
   "meson",
   "pycparser",
