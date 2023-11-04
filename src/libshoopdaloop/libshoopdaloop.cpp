@@ -339,12 +339,12 @@ shoopdaloop_loop_midi_channel_t *add_midi_channel (shoopdaloop_loop_t *loop, cha
     return external_midi_channel(r);
 }
 
-shoopdaloop_loop_audio_channel_t *get_audio_channel (shoopdaloop_loop_t *loop, size_t idx) {
+shoopdaloop_loop_audio_channel_t *get_audio_channel (shoopdaloop_loop_t *loop, unsigned idx) {
     throw std::runtime_error("get_audio_channel not implemented\n");
     //return external_audio_channel(internal_loop(loop)->loop->audio_channel<audio_sample_t>(idx));
 }
 
-shoopdaloop_loop_midi_channel_t *get_midi_channel (shoopdaloop_loop_t *loop, size_t idx) {
+shoopdaloop_loop_midi_channel_t *get_midi_channel (shoopdaloop_loop_t *loop, unsigned idx) {
     throw std::runtime_error("get_midi_channel not implemented\n");
     //return external_midi_channel(internal_loop(loop)->loop->midi_channel<Time, Size>(idx));
 }
@@ -372,14 +372,14 @@ void delete_midi_channel(shoopdaloop_loop_t *loop, shoopdaloop_loop_midi_channel
     loop_info.delete_midi_channel(internal_midi_channel(channel));
 }
 
-void delete_audio_channel_idx(shoopdaloop_loop_t *loop, size_t idx) {
+void delete_audio_channel_idx(shoopdaloop_loop_t *loop, unsigned idx) {
     init_log();
     g_logger->debug("delete_audio_channel_idx");
     auto &loop_info = *internal_loop(loop);
     loop_info.delete_audio_channel_idx(idx);
 }
 
-void delete_midi_channel_idx(shoopdaloop_loop_t *loop, size_t idx) {
+void delete_midi_channel_idx(shoopdaloop_loop_t *loop, unsigned idx) {
     init_log();
     g_logger->debug("delete_midi_channel_idx");
     auto &loop_info = *internal_loop(loop);
@@ -557,7 +557,7 @@ void clear_midi_channel_data_dirty (shoopdaloop_loop_midi_channel_t * channel) {
 
 void loop_transition(shoopdaloop_loop_t *loop,
                       loop_mode_t mode,
-                      size_t delay, // In # of triggers
+                      unsigned delay, // In # of triggers
                       unsigned wait_for_sync) {
     init_log();
     g_logger->debug("loop_transition");
@@ -570,7 +570,7 @@ void loop_transition(shoopdaloop_loop_t *loop,
 void loops_transition(unsigned int n_loops,
                       shoopdaloop_loop_t **loops,
                       loop_mode_t mode,
-                      size_t delay, // In # of triggers
+                      unsigned delay, // In # of triggers
                       unsigned wait_for_sync) {
     init_log();
     g_logger->debug("loops_transition");
@@ -591,7 +591,7 @@ void loops_transition(unsigned int n_loops,
     });
 }
 
-void clear_loop (shoopdaloop_loop_t *loop, size_t length) {
+void clear_loop (shoopdaloop_loop_t *loop, unsigned length) {
     init_log();
     g_logger->debug("clear_loop");
     internal_loop(loop)->get_backend().cmd_queue.queue([=]() {
@@ -608,7 +608,7 @@ void clear_loop (shoopdaloop_loop_t *loop, size_t length) {
     });
 }
 
-void set_loop_length (shoopdaloop_loop_t *loop, size_t length) {
+void set_loop_length (shoopdaloop_loop_t *loop, unsigned length) {
     init_log();
     g_logger->debug("set_loop_length");
     internal_loop(loop)->get_backend().cmd_queue.queue([=]() {
@@ -617,7 +617,7 @@ void set_loop_length (shoopdaloop_loop_t *loop, size_t length) {
     });
 }
 
-void set_loop_position (shoopdaloop_loop_t *loop, size_t position) {
+void set_loop_position (shoopdaloop_loop_t *loop, unsigned position) {
     init_log();
     g_logger->debug("set_loop_position");
     internal_loop(loop)->get_backend().cmd_queue.queue([=]() {
@@ -626,7 +626,7 @@ void set_loop_position (shoopdaloop_loop_t *loop, size_t position) {
     });
 }
 
-void clear_audio_channel (shoopdaloop_loop_audio_channel_t *channel, size_t length) {
+void clear_audio_channel (shoopdaloop_loop_audio_channel_t *channel, unsigned length) {
     init_log();
     g_logger->debug("clear_audio_channel");
     internal_audio_channel(channel)->get_backend().cmd_queue.queue([=]() {
@@ -737,7 +737,7 @@ void *get_audio_port_jack_handle(shoopdaloop_audio_port_t *port) {
         _audio != nullptr,
         pi->backend.lock()->cmd_queue);
 #else
-    g_logger.warning("Requesting JACK handle but no JACK support built in.");
+    g_logger->warn("Requesting JACK handle but no JACK support built in.");
     return nullptr;
 #endif
 }
@@ -780,7 +780,7 @@ void *get_midi_port_jack_handle(shoopdaloop_midi_port_t *port) {
         _midi != nullptr,
         pi->backend.lock()->cmd_queue);
 #else
-    g_logger.warning("Requesting JACK handle but no JACK support built in.");
+    g_logger->warn("Requesting JACK handle but no JACK support built in.");
     return nullptr;
 #endif
 }
@@ -892,7 +892,7 @@ void send_decoupled_midi(shoopdaloop_decoupled_midi_port_t *port, unsigned lengt
     _port.port->push_outgoing(m);
 }
 
-midi_event_t *alloc_midi_event(size_t data_bytes) {
+midi_event_t *alloc_midi_event(unsigned data_bytes) {
     auto r = new midi_event_t;
     r->size = data_bytes;
     r->time = 0;
@@ -900,7 +900,7 @@ midi_event_t *alloc_midi_event(size_t data_bytes) {
     return r;
 }
 
-midi_sequence_t *alloc_midi_sequence(size_t n_events) {
+midi_sequence_t *alloc_midi_sequence(unsigned n_events) {
     auto r = new midi_sequence_t;
     r->n_events = n_events;
     r->events = (midi_event_t**)malloc (sizeof(midi_event_t*) * n_events);
@@ -908,7 +908,7 @@ midi_sequence_t *alloc_midi_sequence(size_t n_events) {
     return r;
 }
 
-audio_channel_data_t *alloc_audio_channel_data(size_t n_samples) {
+audio_channel_data_t *alloc_audio_channel_data(unsigned n_samples) {
     auto r = new audio_channel_data_t;
     r->n_samples = n_samples;
     r->data = (audio_sample_t*) malloc(sizeof(audio_sample_t) * n_samples);
@@ -1375,7 +1375,7 @@ unsigned shoopdaloop_should_log(shoopdaloop_logger_t *logger, log_level_t level)
     ) ? 1 : 0;
 }
 
-void dummy_audio_port_queue_data(shoopdaloop_audio_port_t *port, size_t n_frames, audio_sample_t const* data) {
+void dummy_audio_port_queue_data(shoopdaloop_audio_port_t *port, unsigned n_frames, audio_sample_t const* data) {
     init_log();
     g_logger->debug("dummy_audio_port_queue_data");
     auto maybe_dummy = std::dynamic_pointer_cast<DummyAudioPort>(internal_audio_port(port)->maybe_audio());
@@ -1386,7 +1386,7 @@ void dummy_audio_port_queue_data(shoopdaloop_audio_port_t *port, size_t n_frames
     }
 }
 
-void dummy_audio_port_dequeue_data(shoopdaloop_audio_port_t *port, size_t n_frames, audio_sample_t *store_in) {
+void dummy_audio_port_dequeue_data(shoopdaloop_audio_port_t *port, unsigned n_frames, audio_sample_t *store_in) {
     init_log();
     g_logger->debug("dummy_audio_port_dequeue_data");
     auto maybe_dummy = std::dynamic_pointer_cast<DummyAudioPort>(internal_audio_port(port)->maybe_audio());
@@ -1435,7 +1435,7 @@ midi_sequence_t *dummy_midi_port_dequeue_data(shoopdaloop_midi_port_t *port) {
         return nullptr;
     }
 }
-void dummy_midi_port_request_data(shoopdaloop_midi_port_t* port, size_t n_frames) {
+void dummy_midi_port_request_data(shoopdaloop_midi_port_t* port, unsigned n_frames) {
     init_log();
     g_logger->debug("dummy_midi_port_queue_data");
     auto maybe_dummy = std::dynamic_pointer_cast<DummyMidiPort>(internal_midi_port(port)->maybe_midi());
@@ -1453,7 +1453,7 @@ void dummy_midi_port_clear_queues(shoopdaloop_midi_port_t* port) {
     }
 }
 
-void dummy_audio_port_request_data(shoopdaloop_audio_port_t* port, size_t n_frames) {
+void dummy_audio_port_request_data(shoopdaloop_audio_port_t* port, unsigned n_frames) {
     init_log();
     g_logger->debug("dummy_audio_port_request_data");
     auto maybe_dummy = std::dynamic_pointer_cast<DummyAudioPort>(internal_audio_port(port)->maybe_audio());
@@ -1498,7 +1498,7 @@ unsigned dummy_audio_is_in_controlled_mode(shoopdaloop_backend_instance_t *backe
     }
 }
 
-void dummy_audio_request_controlled_frames(shoopdaloop_backend_instance_t *backend, size_t n_frames) {
+void dummy_audio_request_controlled_frames(shoopdaloop_backend_instance_t *backend, unsigned n_frames) {
     init_log();
     g_logger->debug("dummy_audio_request_controlled_frames");
     auto _backend = internal_backend(backend);
@@ -1509,7 +1509,7 @@ void dummy_audio_request_controlled_frames(shoopdaloop_backend_instance_t *backe
     }
 }
 
-size_t dummy_audio_n_requested_frames(shoopdaloop_backend_instance_t *backend) {
+unsigned dummy_audio_n_requested_frames(shoopdaloop_backend_instance_t *backend) {
     init_log();
     g_logger->debug("dummy_audio_n_requested_frames");
     auto _backend = internal_backend(backend);

@@ -18,18 +18,18 @@ profiling_report_t* get_profiling_report(shoopdaloop_backend_instance_t *backend
 shoopdaloop_loop_t *create_loop(shoopdaloop_backend_instance_t *backend);
 shoopdaloop_loop_audio_channel_t *add_audio_channel (shoopdaloop_loop_t *loop, channel_mode_t mode);
 shoopdaloop_loop_midi_channel_t  *add_midi_channel  (shoopdaloop_loop_t *loop, channel_mode_t mode);
-shoopdaloop_loop_audio_channel_t *get_audio_channel (shoopdaloop_loop_t *loop, size_t idx);
-shoopdaloop_loop_midi_channel_t  *get_midi_channel  (shoopdaloop_loop_t *loop, size_t idx);
+shoopdaloop_loop_audio_channel_t *get_audio_channel (shoopdaloop_loop_t *loop, unsigned idx);
+shoopdaloop_loop_midi_channel_t  *get_midi_channel  (shoopdaloop_loop_t *loop, unsigned idx);
 unsigned          get_n_audio_channels     (shoopdaloop_loop_t *loop);
 unsigned          get_n_midi_channels      (shoopdaloop_loop_t *loop);
-void              clear_loop               (shoopdaloop_loop_t *loop, size_t length);
+void              clear_loop               (shoopdaloop_loop_t *loop, unsigned length);
 loop_state_info_t *get_loop_state          (shoopdaloop_loop_t *loop);
-void              set_loop_length          (shoopdaloop_loop_t *loop, size_t length);
-void              set_loop_position        (shoopdaloop_loop_t *loop, size_t position);
+void              set_loop_length          (shoopdaloop_loop_t *loop, unsigned length);
+void              set_loop_position        (shoopdaloop_loop_t *loop, unsigned position);
 void              set_loop_sync_source     (shoopdaloop_loop_t *loop, shoopdaloop_loop_t *sync_source);
 
 // Loop channels
-void                   clear_audio_channel      (shoopdaloop_loop_audio_channel_t *channel, size_t length);
+void                   clear_audio_channel      (shoopdaloop_loop_audio_channel_t *channel, unsigned length);
 void                   clear_midi_channel       (shoopdaloop_loop_midi_channel_t  *channel);
 void                   connect_audio_output     (shoopdaloop_loop_audio_channel_t *channel, shoopdaloop_audio_port_t *port);
 void                   connect_midi_output      (shoopdaloop_loop_midi_channel_t  *channel, shoopdaloop_midi_port_t *port);
@@ -61,12 +61,12 @@ void                   clear_midi_channel_data_dirty (shoopdaloop_loop_midi_chan
 
 void loop_transition(shoopdaloop_loop_t *loop,
                       loop_mode_t mode,
-                      size_t delay, // In # of triggers
+                      unsigned delay, // In # of triggers
                       unsigned wait_for_sync);
 void loops_transition(unsigned int n_loops,
                       shoopdaloop_loop_t **loops,
                       loop_mode_t mode,
-                      size_t delay, // In # of triggers
+                      unsigned delay, // In # of triggers
                       unsigned wait_for_sync);
 
 // FX chains
@@ -141,9 +141,9 @@ void destroy_string(const char* s);
 void destroy_port_connections_state(port_connections_state_t *d);
 
 // Helpers for allocating data objects
-midi_event_t *alloc_midi_event(size_t data_bytes);
-midi_sequence_t *alloc_midi_sequence(size_t n_events);
-audio_channel_data_t *alloc_audio_channel_data(size_t n_samples);
+midi_event_t *alloc_midi_event(unsigned data_bytes);
+midi_sequence_t *alloc_midi_sequence(unsigned n_events);
+audio_channel_data_t *alloc_audio_channel_data(unsigned n_samples);
 
 // Logging
 shoopdaloop_logger_t *get_logger(const char* name);
@@ -154,18 +154,18 @@ void shoopdaloop_log(shoopdaloop_logger_t *logger, log_level_t level, const char
 unsigned shoopdaloop_should_log(shoopdaloop_logger_t *logger, log_level_t level);
 
 // For testing purposes
-void dummy_audio_port_queue_data(shoopdaloop_audio_port_t *port, size_t n_frames, audio_sample_t const* data);
-void dummy_audio_port_dequeue_data(shoopdaloop_audio_port_t *port, size_t n_frames, audio_sample_t * store_in);
-void dummy_audio_port_request_data(shoopdaloop_audio_port_t* port, size_t n_frames);
+void dummy_audio_port_queue_data(shoopdaloop_audio_port_t *port, unsigned n_frames, audio_sample_t const* data);
+void dummy_audio_port_dequeue_data(shoopdaloop_audio_port_t *port, unsigned n_frames, audio_sample_t * store_in);
+void dummy_audio_port_request_data(shoopdaloop_audio_port_t* port, unsigned n_frames);
 void dummy_audio_enter_controlled_mode(shoopdaloop_backend_instance_t *backend);
 void dummy_audio_enter_automatic_mode(shoopdaloop_backend_instance_t *backend);
 unsigned dummy_audio_is_in_controlled_mode(shoopdaloop_backend_instance_t *backend);
-void dummy_audio_request_controlled_frames(shoopdaloop_backend_instance_t *backend, size_t n_frames);
-size_t dummy_audio_n_requested_frames(shoopdaloop_backend_instance_t *backend);
+void dummy_audio_request_controlled_frames(shoopdaloop_backend_instance_t *backend, unsigned n_frames);
+unsigned dummy_audio_n_requested_frames(shoopdaloop_backend_instance_t *backend);
 void dummy_audio_wait_process(shoopdaloop_backend_instance_t *backend);
 void dummy_midi_port_queue_data(shoopdaloop_midi_port_t *port, midi_sequence_t* events);
 midi_sequence_t   *dummy_midi_port_dequeue_data(shoopdaloop_midi_port_t *port);
-void dummy_midi_port_request_data(shoopdaloop_midi_port_t* port, size_t n_frames);
+void dummy_midi_port_request_data(shoopdaloop_midi_port_t* port, unsigned n_frames);
 void dummy_midi_port_clear_queues(shoopdaloop_midi_port_t* port);
 
 #ifdef __cplusplus
