@@ -1,0 +1,34 @@
+name: Install Boost headers
+description: Install boost headers
+
+inputs:
+  dir:
+    description: "Directory where boost headers will be installed"
+    required: false
+    default: "/usr/include"
+
+outputs:
+  include_dir:
+    description: "Place where headers of boost can be found"
+    value: ${{ steps.boost.outputs.include_dir }}
+
+runs:
+  using: "composite"
+  steps:
+  - name: Install Boost headers
+    id: boost
+    shell: bash
+    run: |
+      # Skip if already done (local act builds)
+      if [ -f /boost_headers_installed ]; then
+        exit 0
+      fi
+
+      # Install Boost
+      curl -L https://boostorg.jfrog.io/artifactory/main/release/1.82.0/source/boost_1_82_0.tar.gz --output boost.tar.gz
+      tar -xzf boost.tar.gz
+      cp -r boost_1_82_0/boost ${{ inputs.dir }}/boost
+
+      touch /boost_headers_installed
+
+      echo "include_dir=${{ inputs.dir }}" | tee -a $GITHUB_OUTPUT
