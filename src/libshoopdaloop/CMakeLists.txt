@@ -39,7 +39,6 @@ if(ENABLE_PROCESS_PROFILING)
     add_compile_options(-DSHOOP_PROFILING)
 endif()
 set(OVERRIDE_COMPILE_LOG_LEVEL "" CACHE STRING "If set, overrides the compile-time log level filter. Valid options are LOG_LEVEL_[TRACE, DEBUG, INFO, WARNING, ERROR].")
-option(STATIC_DEPENDENCIES "Use static linkage for non-Python dependencies.")
 
 # Find pkgs
 find_package(Boost REQUIRED)
@@ -51,16 +50,7 @@ if (BACKEND_JACK)
   add_custom_command(
     OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.c ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.h
     COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers
-    COMMAND "${PYTHON_CMD}
-      \"${CMAKE_SOURCE_DIR}/../third_party/dynload-wrapper/generate-wrapper.py\"
-      --include \"${JACK_INCLUDE_DIRS}/jack/jack.h\"
-      --include \"${JACK_INCLUDE_DIRS}/jack/midiport.h\"
-      --sys-include '<jack/jack.h>'
-      --sys-include '<jack/midiport.h>'
-      --soname \"${JACK_SONAME}\"
-      --init-name jack_wrappers
-      --output-header \"${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.h\"
-      --output-implementation \"${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.c\""
+    COMMAND "${PYTHON_CMD} \"${CMAKE_SOURCE_DIR}/../third_party/dynload-wrapper/generate-wrapper.py\" --include \"${JACK_INCLUDE_DIRS}/jack/jack.h\" --include \"${JACK_INCLUDE_DIRS}/jack/midiport.h\" --sys-include \"<jack/jack.h>\" --sys-include \"<jack/midiport.h>\" --soname \"${JACK_SONAME}\" --init-name jack_wrappers --output-header \"${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.h\" --output-implementation \"${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.c\""
     COMMENT "Generating libjack dynload wrapper"
   )
   add_custom_target(
@@ -87,19 +77,8 @@ add_custom_target(
   DEPENDS ${CMAKE_BINARY_DIR}/run_cmd_prefix.txt
 )
 
-if(STATIC_DEPENDENCIES)
-
-  include (${CMAKE_CURRENT_SOURCE_DIR}/BuildStaticDependencies.cmake)
-
-else()
-  set(DEPEND_ON_LILV)
-
-  # Find dynamic versions
-  find_package(spdlog REQUIRED)
-  find_package(fmt REQUIRED)
-  find_package(Lilv REQUIRED)
-
-endif()
+set(STATIC_DEPS_PREFIX ${CMAKE_CURRENT_BINARY_DIR}/static-deps)
+include (${CMAKE_CURRENT_SOURCE_DIR}/BuildStaticDependencies.cmake)
 
 # Includes
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal)
@@ -109,9 +88,7 @@ include_directories(${CMAKE_SOURCE_DIR}/../third_party/nlohmann_json)
 # Subdirs
 add_subdirectory(${CMAKE_SOURCE_DIR}/../third_party/lv2_evbuf lv2_evbuf)
 target_compile_options(lv2_evbuf PUBLIC -fPIC)
-if (STATIC_DEPENDENCIES)
-  add_dependencies(lv2_evbuf lv2)
-endif()
+add_dependencies(lv2_evbuf lv2)
 
 add_subdirectory(test)
 add_subdirectory(qml_types)
