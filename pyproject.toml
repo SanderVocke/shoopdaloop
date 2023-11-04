@@ -89,7 +89,8 @@ options = { "STATIC_DEPENDENCIES" = "On" }
 build_path = "build"
 python_abi = "abi3"
 abi3_minimum_cpython_version = 38
-build_tool_args = ["-v:detailed", "-p:BuildInParallel=false", "-p:StopOnFirstFailure=true"]
+generator = "ninja"
+#build_tool_args = ["-v:detailed", "-p:BuildInParallel=false", "-p:StopOnFirstFailure=true"]
 
 [tool.py-build-cmake.editable]
 mode = "symlink"
