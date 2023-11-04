@@ -1,0 +1,22 @@
+name: Install JACK2
+description: Install JACK2
+
+runs:
+  using: "composite"
+  steps:
+  - name: Install JACK2
+    id: jack
+    shell: bash
+    run: |
+      # Skip if already done (local act builds)
+      if [ -f /jack2_installed ]; then
+        exit 0
+      fi
+
+      git clone https://github.com/jackaudio/jack2.git
+      cd jack2
+      ./waf configure
+      ./waf
+      ./waf install
+
+      touch /jack2_installed

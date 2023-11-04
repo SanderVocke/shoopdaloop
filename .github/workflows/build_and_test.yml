@@ -76,12 +76,10 @@ jobs:
         pip_install_extra_args: --no-build-isolation --no-clean
         whl_suffix: win_x64
         install: false
-    - name: Setup upterm session
-      uses: lhotari/action-upterm@v1
+    - name: Setup tmate session
       if: ${{ failure() }}
-      with:
-        ## If no one connects after 5 minutes, shut down server.
-        wait-timeout-minutes: 5
+      uses: mxschmitt/action-tmate@v3
+      timeout-minutes: 10
 
   # build_debug:
   #   runs-on: ubuntu-latest
