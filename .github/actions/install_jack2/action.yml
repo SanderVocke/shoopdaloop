@@ -9,7 +9,7 @@ runs:
     shell: bash
     run: |
       # Skip if already done (local act builds)
-      if [ -f /jack2_installed ]; then
+      if [ -f _jack2_installed ]; then
         exit 0
       fi
 
@@ -19,4 +19,4 @@ runs:
       ./waf
       ./waf install
 
-      touch /jack2_installed
+      touch _jack2_installed

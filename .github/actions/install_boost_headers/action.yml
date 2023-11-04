@@ -20,7 +20,7 @@ runs:
     shell: bash
     run: |
       # Skip if already done (local act builds)
-      if [ -f /boost_headers_installed ]; then
+      if [ -f _boost_headers_installed ]; then
         exit 0
       fi
 
@@ -30,6 +30,6 @@ runs:
       mkdir -p ${{ inputs.dir }}
       cp -r boost_1_82_0/boost ${{ inputs.dir }}/boost
 
-      touch /boost_headers_installed
+      touch _boost_headers_installed
 
       echo "include_dir=${{ inputs.dir }}" | tee -a $GITHUB_OUTPUT

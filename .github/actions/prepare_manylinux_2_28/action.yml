@@ -31,7 +31,7 @@ runs:
     shell: bash
     run: |
       # Skip if already done (local act builds)
-      if [ -f /manylinux_prepared ]; then
+      if [ -f _manylinux_prepared ]; then
         exit 0
       fi
 
@@ -45,4 +45,4 @@ runs:
       # Additional Python packages
       python3 -m pip install coverage pytest
 
-      touch /manylinux_prepared
+      touch _manylinux_prepared
