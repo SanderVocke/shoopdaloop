@@ -23,7 +23,7 @@ jobs:
     runs-on: ${{ matrix.os.base_os }}
     container:
       image: ${{ matrix.os.container_image }}
-      options: ${{ matrix.os.container_options }}
+      options: ${{ matrix.os.container_options || null }}
     steps:
     - name: Checkout
       uses: actions/checkout@v3
