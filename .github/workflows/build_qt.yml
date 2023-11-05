@@ -68,3 +68,7 @@ jobs:
       with:
         name: qt-${{ matrix.os.name }}
         path: qt.tar.gz
+    
+    - name: Setup tmate session
+      if: ${{ failure() && matrix.os.name == 'windows' }}
+      uses: mxschmitt/action-tmate@v3
