@@ -20,7 +20,7 @@ logger &logging_logger();
 spdlog::level::level_enum g_loggers_level = spdlog::level::level_enum::info;
 std::map<std::string, LogLevel> g_maybe_module_levels;
 struct Logger {
-    spdlog::sink_ptr stdout;
+    spdlog::sink_ptr m_stdout;
     std::shared_ptr<logger> m_logger;
 
     void update_level() {
@@ -45,7 +45,7 @@ logger &get_logger_impl(std::string name) {
     if (g_loggers.find(name) == g_loggers.end()) {
         spdlog::sink_ptr _stdout = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
         g_loggers[name] = Logger {
-            .stdout = _stdout,
+            .m_stdout = _stdout,
             .m_logger = std::make_shared<logger>(std::make_shared<spdlog::logger>(name, _stdout))
         };
         g_loggers.at(name).update_level();
