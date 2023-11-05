@@ -19,6 +19,8 @@ runs:
     id: boost
     shell: bash
     run: |
+      set -x
+      
       # Skip if already done (local act builds)
       if [ -f _boost_headers_installed ]; then
         exit 0
