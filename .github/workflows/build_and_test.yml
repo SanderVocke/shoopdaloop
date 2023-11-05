@@ -74,7 +74,7 @@ jobs:
         variant_name: release_win64
         wheel_artifact_name: release_wheel_win64
         python: python
-        prepend_build_cmd: CMAKE_INCLUDE_PATH=${{ github.workspace }}/includes;$PWD/includes CPLUS_INCLUDE_PATH=${{ github.workspace }}/includes;$PWD/includes
+        prepend_build_cmd: CMAKE_INCLUDE_PATH="$PWD/includes"
         pip_install_extra_args: --no-build-isolation --no-clean
         pypa_build_extra_args: -C--local=pyproject.toml.nojack_overrides
         whl_suffix: win_x64
