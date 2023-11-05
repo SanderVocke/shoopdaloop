@@ -15,15 +15,12 @@ jobs:
           - name: manylinux_2_28
             base_os: ubuntu-latest
             container_image: quay.io/pypa/manylinux_2_28_x86_64
-            container_options: --user root
           - name: windows
             base_os: windows-2022
             container_image: null
-            container_options: null
     runs-on: ${{ matrix.os.base_os }}
     container:
       image: ${{ matrix.os.container_image }}
-      options: ${{ matrix.os.container_options || null }}
     steps:
     - name: Checkout
       uses: actions/checkout@v3
