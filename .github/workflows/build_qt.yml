@@ -35,6 +35,18 @@ jobs:
         curl -L https://github.com/ninja-build/ninja/releases/download/v1.11.1/ninja-win.zip --output ninja-win.zip
         unzip ninja-win.zip
         cp ninja.exe /usr/bin
+    
+    - name: Prepare manylinux
+      if: ${{ matrix.os.name == 'manylinux_2_28' }}
+      shell: bash
+      run: |
+        dnf -y install ninja-build
+    
+    - name: Prepare MacOS
+      if: ${{ matrix.os.name == 'macos' }}
+      shell: bash
+      run: |
+        brew install ninja
 
     - name: Download Qt sources
       shell: bash
