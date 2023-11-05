@@ -64,6 +64,9 @@ jobs:
       run: |
         python -m pip install build virtualenv pytest meson
         choco install --yes --no-progress --allow-empty-checksums pkgconfiglite
+        curl -L https://github.com/ninja-build/ninja/releases/download/v1.11.1/ninja-win.zip --output ninja-win.zip
+        unzip ninja-win.zip
+        cp ninja.exe /usr/bin
     - name: Prepare py-build-cmake settings
       run: echo "cmake.args = [\"--log-level=verbose\", \"-DCMAKE_INCLUDE_PATH=${{ github.workspace }}/includes\"]" > py-build-cmake.local.toml
     - name: Build and upload
@@ -72,7 +75,6 @@ jobs:
         variant_name: release_win64
         wheel_artifact_name: release_wheel_win64
         python: python
-        prepend_build_cmd: CMAKE_INCLUDE_PATH="$PWD/includes"
         pip_install_extra_args: --no-build-isolation --no-clean
         pypa_build_extra_args: -C--local=pyproject.toml.nojack_overrides
         whl_suffix: win_x64
