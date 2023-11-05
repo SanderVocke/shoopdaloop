@@ -9,7 +9,6 @@
 #include "DummyAudioSystem.h"
 #include <map>
 #include <algorithm>
-#include <fmt/ranges.h>
 
 template class DummyAudioSystem<uint32_t, uint16_t>;
 template class DummyAudioSystem<uint32_t, uint32_t>;
@@ -119,15 +118,13 @@ DummyMidiPort::PROC_get_event_reference(size_t idx) {
     try {
         if (!m_queued_msgs.empty()) {
             auto &m =  m_queued_msgs.at(idx);
-            std::vector<uint8_t> pd{m.get_data(), m.get_data()+m.get_size()};
             uint32_t time = m.get_time();
-            log<logging::LogLevel::debug>("Read queued midi message @ {}: {}", time, pd);
+            log<logging::LogLevel::debug>("Read queued midi message @ {}", time);
             return m;
         } else {
             auto &m =  m_buffer_data.at(idx);
-            std::vector<uint8_t> pd{m.get_data(), m.get_data()+m.get_size()};
             uint32_t time = m.get_time();
-            log<logging::LogLevel::debug>("Read buffer midi message @ {}: {}", time, pd);
+            log<logging::LogLevel::debug>("Read buffer midi message @ {}", time);
             return m;
         }
     } catch (std::out_of_range &e) {
@@ -140,8 +137,7 @@ void DummyMidiPort::PROC_write_event_value(uint32_t size, uint32_t time,
 {
     if (time < n_requested_frames) {
         size_t new_time = time + (n_original_requested_frames - n_requested_frames);
-        std::vector<uint8_t> pd{data, data+size};
-        log<logging::LogLevel::debug>("Write midi message value to external queue @ {} -> {}: {}", time, new_time, pd);
+        log<logging::LogLevel::debug>("Write midi message value to external queue @ {} -> {}", time, new_time);
         m_written_requested_msgs.push_back(StoredMessage(new_time, size, std::vector<uint8_t>(data, data + size)));
     }
     log<logging::LogLevel::debug>("Write midi message value to internal buffer @ {}", time);
@@ -151,9 +147,8 @@ void DummyMidiPort::PROC_write_event_value(uint32_t size, uint32_t time,
 void DummyMidiPort::PROC_write_event_reference(
     MidiSortableMessageInterface const &m)
 {
-    std::vector<uint8_t> pd{m.get_data(), m.get_data()+m.get_size()};
     uint32_t t = m.get_time();
-    log<logging::LogLevel::debug>("Write midi message reference @ {}: {}", t, pd);
+    log<logging::LogLevel::debug>("Write midi message reference @ {}", t);
     PROC_write_event_value(m.get_size(), m.get_time(), m.get_data());    
 }
 
@@ -178,8 +173,7 @@ void DummyMidiPort::clear_queues() {
 }
 
 void DummyMidiPort::queue_msg(uint32_t size, uint32_t time, uint8_t const *data) {
-    std::vector<uint8_t> pd{data, data+size};
-    log<logging::LogLevel::debug>("Queueing midi message @ {}: {}", time, pd);
+    log<logging::LogLevel::debug>("Queueing midi message @ {}", time);
     m_queued_msgs.push_back(StoredMessage(time, size, std::vector<uint8_t>(data, data + size)));
     std::stable_sort(m_queued_msgs.begin(), m_queued_msgs.end(), [](StoredMessage const& a, StoredMessage const& b) {
         return a.time < b.time;

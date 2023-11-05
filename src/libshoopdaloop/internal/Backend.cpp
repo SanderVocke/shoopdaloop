@@ -74,7 +74,7 @@ void Backend::start() {
         auto weak_self = weak_from_this();
         try {
             switch (m_audio_system_type) {
-#ifdef SHOOP_HAVE_BACKEND_JACK:
+#ifdef SHOOP_HAVE_BACKEND_JACK
             case Jack:
                 log<LogLevel::debug>("Initializing JACK audio system.");
                 audio_system = std::unique_ptr<AudioSystem>(
