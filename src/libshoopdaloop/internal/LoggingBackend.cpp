@@ -66,9 +66,11 @@ logger &get_logger(std::string name) {
 void set_filter_level(LogLevel level) {
     std::lock_guard<std::recursive_mutex> guard(g_loggers_mutex);
 
-    logging_logger().debug("Set global logging level to {}", level);
+    int _level = (int)level;
+    logging_logger().debug("Set global logging level to {}", _level);
     if (level < CompileTimeLogLevel) {
-        logging_logger().warn("Compile-time log filtering is set at {}. To get level {} messages of back-end, please compile a debug version.", CompileTimeLogLevel, level);
+        int _compiletime = (int)CompileTimeLogLevel;
+        logging_logger().warn("Compile-time log filtering is set at {}. To get level {} messages of back-end, please compile a debug version.", _compiletime, _level);
     }
 
     g_loggers_level = level;
@@ -81,9 +83,11 @@ void set_module_filter_level(std::string name, std::optional<LogLevel> level) {
     std::lock_guard<std::recursive_mutex> guard(g_loggers_mutex);
 
     if (level.has_value()) {
-        logging_logger().debug("Set logging level override of module {} to {}", name, level.value());
+        int _level = (int)level.value();
+        logging_logger().debug("Set logging level override of module {} to {}", name, _level);
         if (level.value() < CompileTimeLogLevel) {
-            logging_logger().warn("Compile-time log filtering is set at {}. To get level {} messages of back-end, please compile a debug version.", CompileTimeLogLevel, level.value());
+            int _compiletime = (int)CompileTimeLogLevel;
+            logging_logger().warn("Compile-time log filtering is set at {}. To get level {} messages of back-end, please compile a debug version.", _compiletime, _level);
         }
     } else {
         logging_logger().debug("Remove logging level override of module {}", name);

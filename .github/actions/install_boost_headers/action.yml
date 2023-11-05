@@ -24,12 +24,14 @@ runs:
         exit 0
       fi
 
+      set includes_dir=$(cygpath ${{ inputs.dir }})
+
       # Install Boost
       curl -L https://boostorg.jfrog.io/artifactory/main/release/1.82.0/source/boost_1_82_0.tar.gz --output boost.tar.gz
       tar -xzf boost.tar.gz
-      mkdir -p ${{ inputs.dir }}
-      cp -r boost_1_82_0/boost ${{ inputs.dir }}/boost
+      mkdir -p $includes_dir
+      cp -r boost_1_82_0/boost $includes_dir/boost
 
       touch _boost_headers_installed
 
-      echo "include_dir=$(cygpath ${{ inputs.dir }})" | tee -a $GITHUB_OUTPUT
+      echo "include_dir=$includes_dir" | tee -a $GITHUB_OUTPUT

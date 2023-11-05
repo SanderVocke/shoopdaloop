@@ -12,12 +12,6 @@ set(fmt_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/../third_party/fmt/include)
 
 
 ###################
-# "Build" spdlog (just a single-header)
-###################
-set(SPDLOG_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/../third_party/spdlog/include)
-
-
-###################
 # Build Lilv (including serd, sord)
 ###################
 include(ExternalProject)

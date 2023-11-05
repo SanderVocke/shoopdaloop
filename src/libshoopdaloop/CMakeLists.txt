@@ -43,6 +43,9 @@ set(OVERRIDE_COMPILE_LOG_LEVEL "" CACHE STRING "If set, overrides the compile-ti
 # Find pkgs
 find_package(Boost REQUIRED)
 
+# "Build" spdlog (just a single-header)
+set(SPDLOG_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/../third_party/spdlog/include)
+
 if (BACKEND_JACK)
   # Generate a wrapper for libjack which allows dynamic loading using dlopen
   find_package(Jack REQUIRED)
