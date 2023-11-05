@@ -25,7 +25,12 @@ endif()
 
 option(BACKEND_JACK "Enable JACK audio backend" ON)
 if(BACKEND_JACK)
-  add_compile_definitions(-DBACKEND_JACK)
+  add_compile_definitions(-DSHOOP_HAVE_BACKEND_JACK)
+endif()
+
+option(HAVE_LV2 "Enable LV2 plugin hosting" ON)
+if(HAVE_LV2)
+  add_compile_definitions(-DSHOOP_HAVE_LV2)
 endif()
 
 set(CTYPESGEN_COMMAND ctypesgen)

@@ -68,6 +68,10 @@ jobs:
         curl -L https://github.com/ninja-build/ninja/releases/download/v1.11.1/ninja-win.zip --output ninja-win.zip
         unzip ninja-win.zip
         cp ninja.exe /usr/bin
+    - name: Prepare py-build-cmake options
+      shell: bash
+      run: |
+        echo 'cmake.options = { "BACKEND_JACK" = "Off", "HAVE_LV2" = "Off" }' > py-build-cmake-overrides.toml
     - name: Build and upload
       uses: ./.github/actions/build_wheel
       with:
@@ -76,7 +80,7 @@ jobs:
         python: python
         prepend_build_cmd: CMAKE_INCLUDE_PATH="$PWD/includes"
         pip_install_extra_args: --no-build-isolation --no-clean
-        pypa_build_extra_args: -C--local=pyproject.toml.nojack_overrides
+        pypa_build_extra_args: -C--local=py-build-cmake-overrides.toml
         whl_suffix: win_x64
         install: false
     - name: Setup tmate session

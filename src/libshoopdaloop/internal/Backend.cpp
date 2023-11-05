@@ -9,9 +9,7 @@
 #include "ConnectedLoop.h"
 #include "ConnectedChannel.h"
 #include "ConnectedDecoupledMidiPort.h"
-#include "LV2.h"
 #include "ChannelInterface.h"
-#include "CarlaLV2ProcessingChain.h"
 #include "DecoupledMidiPort.h"
 #include "AudioBuffer.h"
 #include "ObjectPool.h"
@@ -19,18 +17,22 @@
 #include "shoop_globals.h"
 #include "types.h"
 
-#ifdef BACKEND_JACK
+#ifdef SHOOP_HAVE_BACKEND_JACK
 #include "JackAudioSystem.h"
 #include <jack_wrappers.h>
+#endif
+
+#ifdef SHOOP_HAVE_LV2
+#include "LV2.h"
+#include "CarlaLV2ProcessingChain.h"
+namespace {
+LV2 g_lv2;
+}
 #endif
 
 using namespace logging;
 using namespace shoop_types;
 using namespace shoop_constants;
-
-namespace {
-LV2 g_lv2;
-}
 
 std::string Backend::log_module_name() const { return "Backend"; }
 
@@ -72,7 +74,7 @@ void Backend::start() {
         auto weak_self = weak_from_this();
         try {
             switch (m_audio_system_type) {
-#ifdef BACKEND_JACK:
+#ifdef SHOOP_HAVE_BACKEND_JACK:
             case Jack:
                 log<LogLevel::debug>("Initializing JACK audio system.");
                 audio_system = std::unique_ptr<AudioSystem>(
@@ -143,7 +145,7 @@ void Backend::start() {
 
 backend_state_info_t Backend::get_state() {
     backend_state_info_t rval;
-#ifdef BACKEND_JACK
+#ifdef SHOOP_HAVE_BACKEND_JACK
     rval.dsp_load_percent = (maybe_jack_client_handle() && m_audio_system_type == Jack) ? JackApi::cpu_load(maybe_jack_client_handle()) : 0.0f;
 #else
     rval.dsp_load_percent = 0.0f;
@@ -393,6 +395,7 @@ std::shared_ptr<ConnectedLoop> Backend::create_loop() {
 std::shared_ptr<ConnectedFXChain> Backend::create_fx_chain(fx_chain_type_t type, const char* title) {
     std::shared_ptr<ProcessingChainInterface<Time, Size>> chain;
     switch(type) {
+#ifdef SHOOP_HAVE_LV2
         case Carla_Rack:
         case Carla_Patchbay:
         case Carla_Patchbay_16x:
@@ -400,6 +403,13 @@ std::shared_ptr<ConnectedFXChain> Backend::create_fx_chain(fx_chain_type_t type,
                 type, get_sample_rate(), std::string(title), profiler
             );
             break;
+#else
+        case Carla_Rack:
+        case Carla_Patchbay:
+        case Carla_Patchbay_16x:
+            throw_error<std::runtime_error>("LV2 plugin hosting not available");
+            break;
+#endif
         case Test2x2x1:
             chain = std::make_shared<CustomProcessingChain<Time, Size>>(
                 2, 2, 1, [this, &chain](size_t n, auto &ins, auto &outs, auto &midis) {

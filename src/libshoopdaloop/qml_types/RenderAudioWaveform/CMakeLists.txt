@@ -23,7 +23,7 @@ install(FILES ${CMAKE_CURRENT_BINARY_DIR}/qmldir ${CMAKE_CURRENT_BINARY_DIR}/Ren
         EXCLUDE_FROM_ALL
         COMPONENT package_install
         DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME}/qml_types/RenderAudioWaveform/)
-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/libRenderAudioWaveform.so
+install(FILES $<TARGET_FILE:RenderAudioWaveform>
         DESTINATION
         EXCLUDE_FROM_ALL
         COMPONENT package_install

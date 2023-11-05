@@ -32,4 +32,4 @@ runs:
 
       touch _boost_headers_installed
 
-      echo "include_dir=${{ inputs.dir }}" | tee -a $GITHUB_OUTPUT
+      echo "include_dir=$(cygpath ${{ inputs.dir }})" | tee -a $GITHUB_OUTPUT

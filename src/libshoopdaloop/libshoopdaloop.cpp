@@ -32,7 +32,7 @@
 #include "ConnectedLoop.h"
 #include "DummyAudioSystem.h"
 
-#ifdef BACKEND_JACK
+#ifdef SHOOP_HAVE_BACKEND_JACK
 #include "JackAudioSystem.h"
 #include "JackMidiPort.h"
 #include "JackAudioPort.h"
@@ -189,7 +189,7 @@ std::optional<audio_system_type_t> audio_system_type(AudioSystem *sys) {
     if (!sys) {
         return std::nullopt;
     }
-#ifdef BACKEND_JACK
+#ifdef SHOOP_HAVE_BACKEND_JACK
     else if (dynamic_cast<JackAudioSystem*>(sys)) {
         return Jack;
     } 
@@ -728,7 +728,7 @@ void disconnect_external_midi_port(shoopdaloop_midi_port_t *ours, const char* ex
 }
 
 void *get_audio_port_jack_handle(shoopdaloop_audio_port_t *port) {
-#ifdef BACKEND_JACK
+#ifdef SHOOP_HAVE_BACKEND_JACK
     auto pi = internal_audio_port(port);
     auto _audio = pi->maybe_audio();
     if (pi->get_backend().m_audio_system_type != Jack) { return nullptr; }
@@ -772,7 +772,7 @@ void close_midi_port (shoopdaloop_midi_port_t *port) {
 }
 
 void *get_midi_port_jack_handle(shoopdaloop_midi_port_t *port) {
-#ifdef BACKEND_JACK
+#ifdef SHOOP_HAVE_BACKEND_JACK
     auto pi = internal_midi_port(port);
     auto _midi = pi->maybe_midi();
     return evaluate_before_or_after_process<jack_port_t*>(

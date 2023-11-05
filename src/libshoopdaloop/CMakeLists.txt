@@ -62,6 +62,7 @@ if (BACKEND_JACK)
   add_library(jack_wrappers STATIC ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.c)
   set_property(TARGET jack_wrappers PROPERTY POSITION_INDEPENDENT_CODE ON)
   target_include_directories(jack_wrappers PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers)
+  add_compile_definitions(-DSHOOP_HAVE_BACKEND_JACK)
 endif()
 
 
@@ -78,17 +79,18 @@ add_custom_target(
 )
 
 set(STATIC_DEPS_PREFIX ${CMAKE_CURRENT_BINARY_DIR}/static-deps)
-include (${CMAKE_CURRENT_SOURCE_DIR}/BuildStaticDependencies.cmake)
+
+if(HAVE_LV2)
+  include (${CMAKE_CURRENT_SOURCE_DIR}/BuildStaticDependencies.cmake)
+  add_subdirectory(${CMAKE_SOURCE_DIR}/../third_party/lv2_evbuf lv2_evbuf)
+  target_compile_options(lv2_evbuf PUBLIC -fPIC)
+  add_dependencies(lv2_evbuf lv2)
+endif()
 
 # Includes
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 include_directories(${CMAKE_SOURCE_DIR}/../third_party/nlohmann_json)
-
-# Subdirs
-add_subdirectory(${CMAKE_SOURCE_DIR}/../third_party/lv2_evbuf lv2_evbuf)
-target_compile_options(lv2_evbuf PUBLIC -fPIC)
-add_dependencies(lv2_evbuf lv2)
 
 add_subdirectory(test)
 add_subdirectory(qml_types)
@@ -100,26 +102,31 @@ file(GLOB INTERNAL_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/internal/*.cpp)
 # TODO jack
 
 add_library(shoopdaloop SHARED libshoopdaloop.cpp ${INTERNAL_SOURCES})
-add_dependencies(shoopdaloop ${DEPEND_ON_LILV})
 target_link_libraries(shoopdaloop PUBLIC
-                      lv2_evbuf
-                      ${BOOST_LIBRARIES}
-                      ${LV2_LIBRARIES}
-                      ${LILV_LIBRARIES}
-                      ${fmt_LIBRARY}
-                      dl)
+                      ${fmt_LIBRARY})
 target_include_directories(shoopdaloop
                         PRIVATE
-                        ${CMAKE_SOURCE_DIR}/../third_party/lv2_evbuf
                         ${CMAKE_SOURCE_DIR}/../third_party/base64/include
                         ${CMAKE_CURRENT_BINARY_DIR}
-                        ${BOOST_INCLUDE_DIRS}
-                        ${LV2_INCLUDE_DIRS}
-                        ${LILV_INCLUDE_DIRS}
+                        ${Boost_INCLUDE_DIR}
                         ${fmt_INCLUDE_DIR}
                         ${SPDLOG_INCLUDE_DIR}
-                        ${CMAKE_SOURCE_DIR}/../third_party/lv2_external_ui
                         )
+if (HAVE_LV2)
+  add_dependencies(shoopdaloop ${DEPEND_ON_LILV})
+  target_link_libraries(shoopdaloop PUBLIC
+                        lv2_evbuf
+                        ${LV2_LIBRARIES}
+                        ${LILV_LIBRARIES}
+                        dl)
+  target_include_directories(shoopdaloop
+                          PRIVATE
+                          ${CMAKE_SOURCE_DIR}/../third_party/lv2_evbuf
+                          ${LV2_INCLUDE_DIRS}
+                          ${LILV_INCLUDE_DIRS}
+                          ${CMAKE_SOURCE_DIR}/../third_party/lv2_external_ui
+                          )
+endif()
 if (BACKEND_JACK)
   add_dependencies(shoopdaloop jack_wrappers)
   target_link_libraries(shoopdaloop PUBLIC jack_wrappers)

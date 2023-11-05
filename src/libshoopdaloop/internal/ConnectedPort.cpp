@@ -2,7 +2,6 @@
 #include "AudioPortInterface.h"
 #include "MidiPortInterface.h"
 #include "InternalAudioPort.h"
-#include "InternalLV2MidiOutputPort.h"
 #include <memory>
 #include <stdexcept>
 #include <algorithm>
@@ -12,6 +11,10 @@
 #include "DummyAudioSystem.h"
 #include "shoop_globals.h"
 #include <fmt/ranges.h>
+
+#ifdef SHOOP_HAVE_LV2
+#include "InternalLV2MidiOutputPort.h"
+#endif
 
 using namespace shoop_types;
 using namespace shoop_constants;
@@ -37,8 +40,13 @@ ConnectedPort::ConnectedPort (std::shared_ptr<PortInterface> const& port,
     ma_process_when(process_when) {
     log_init();
 
+#ifdef SHOOP_HAVE_LV2
     bool is_internal = (dynamic_cast<InternalAudioPort<float>*>(port.get()) ||
                         dynamic_cast<InternalLV2MidiOutputPort*>(port.get()));
+#else
+    bool is_internal = (dynamic_cast<InternalAudioPort<float>*>(port.get()));
+#endif
+
     bool is_fx_in = is_internal && (port->direction() == PortDirection::Output);
     bool is_ext_in = !is_internal && (port->direction() == PortDirection::Input);
 

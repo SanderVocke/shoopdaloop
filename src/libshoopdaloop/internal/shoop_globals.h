@@ -21,9 +21,13 @@ class ConnectedLoop;
 class ConnectedChannel;
 class ConnectedFXChain;
 class ConnectedDecoupledMidiPort;
-template<typename A, typename B> class CarlaLV2ProcessingChain;
+
 template<typename A, typename B> class MidiMessage;
 template<typename A, typename B> class DecoupledMidiPort;
+
+#ifdef SHOOP_HAVE_LV2
+template<typename A, typename B> class CarlaLV2ProcessingChain;
+#endif
 
 namespace shoop_constants {
 
