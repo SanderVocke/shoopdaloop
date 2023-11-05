@@ -10,7 +10,6 @@
 #include "Backend.h"
 #include "DummyAudioSystem.h"
 #include "shoop_globals.h"
-#include <fmt/ranges.h>
 
 #ifdef SHOOP_HAVE_LV2
 #include "InternalLV2MidiOutputPort.h"
@@ -162,11 +161,10 @@ void ConnectedPort::PROC_passthrough_midi(size_t n_frames, ConnectedPort &to) {
     if(!muted && !passthrough_muted) {
         for(size_t i=0; i<maybe_midi_input_buffer->PROC_get_n_events(); i++) {
             auto &msg = maybe_midi_input_buffer->PROC_get_event_reference(i);
-            std::vector<uint8_t> pd{msg.get_data(), msg.get_data() + msg.get_size()};
             uint32_t t = msg.get_time();
             void* to_ptr = &to;
             auto to_ptr_fmt = fmt::ptr(to_ptr);
-            log<logging::LogLevel::debug>("Passthrough midi message reference to {} @ {}: {}", to_ptr_fmt, t, pd);
+            log<logging::LogLevel::debug>("Passthrough midi message reference to {} @ {}", to_ptr_fmt, t);
             to.maybe_midi_output_merging_buffer->PROC_write_event_reference(msg);
         }
     }
@@ -194,8 +192,7 @@ void ConnectedPort::PROC_finalize_process(size_t n_frames) {
                     uint32_t size, time;
                     const uint8_t* data;
                     maybe_midi_output_merging_buffer->PROC_get_event_reference(i).get(size, time, data);
-                    std::vector<uint8_t> pd{data, data + size};
-                    log<logging::LogLevel::trace>("Output midi message reference @ {}: {}", time, pd);
+                    log<logging::LogLevel::trace>("Output midi message reference @ {}", time);
                     maybe_midi_output_buffer->PROC_write_event_value(size, time, data);
                     maybe_midi_state->process_msg(data);
                 }

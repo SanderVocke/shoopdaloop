@@ -146,7 +146,7 @@ void Backend::start() {
 backend_state_info_t Backend::get_state() {
     backend_state_info_t rval;
 #ifdef SHOOP_HAVE_BACKEND_JACK
-    rval.dsp_load_percent = (maybe_jack_client_handle() && m_audio_system_type == Jack) ? JackApi::cpu_load(maybe_jack_client_handle()) : 0.0f;
+    rval.dsp_load_percent = (maybe_jack_client_handle() && m_audio_system_type == Jack) ? JackApi::cpu_load((jack_client_t*)maybe_jack_client_handle()) : 0.0f;
 #else
     rval.dsp_load_percent = 0.0f;
 #endif
