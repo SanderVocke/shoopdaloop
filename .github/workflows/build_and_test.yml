@@ -61,7 +61,9 @@ jobs:
       with:
         dir: includes
     - name: Install dependencies
-      run: python -m pip install build virtualenv pytest meson
+      run: |
+        python -m pip install build virtualenv pytest meson
+        choco install --yes --no-progress pkgconfiglite
     - name: Build and upload
       uses: ./.github/actions/build_wheel
       with:
