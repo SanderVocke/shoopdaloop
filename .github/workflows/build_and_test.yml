@@ -68,14 +68,14 @@ jobs:
       run: python -m pip install build virtualenv pytest
     - name: print PATH
       shell: bash
-      run: echo $PATH
+      run: echo $PATH; echo $(dirname $(which cl))
     - name: Build and upload
       uses: ./.github/actions/build_wheel
       with:
         variant_name: release_win64
         wheel_artifact_name: release_wheel_win64
         python: python
-        prepend_build_cmd: CMAKE_INCLUDE_PATH="$PWD/includes" CMAKE_GENERATOR_PLATFORM=
+        prepend_build_cmd: PATH="$(dirname $(which cl));$PATH" CMAKE_INCLUDE_PATH="$PWD/includes" CMAKE_GENERATOR_PLATFORM=
         pip_install_extra_args: --no-build-isolation --no-clean
         pypa_build_extra_args: -C--local=pyproject.toml.nojack_overrides
         whl_suffix: win_x64
