@@ -8,18 +8,54 @@ permissions:
 
 jobs:
   build_qt:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - name: manylinux_2_28
+            base_os: ubuntu-latest
+            container_image: quay.io/pypa/manylinux_2_28_x86_64
+            container_options: --user root
+          - name: windows
+            base_os: windows-2022
+            container_image: null
+            container_options: null
+    runs-on: ${{ matrix.os.base_os }}
     container:
-      image: sandervocke/shoopdaloop_build_qt_manylinux_2_28:latest
-      options: --user root --workdir /
+      image: ${{ matrix.os.container_image }}
+      options: ${{ matrix.os.container_options }}
     steps:
     - name: Checkout
       uses: actions/checkout@v3
+    - name: Download Qt sources
+      shell: bash
+      run: |
+        curl -L https://download.qt.io/archive/qt/6.5/6.5.3/single/qt-everywhere-src-6.5.3.tar.xz --output qt-everywhere-src-6.5.3.tar.xz
+        tar -xf qt-everywhere-src-6.5.3.tar.xz
+        mv qt-everywhere-src-6.5.3 qt
+
+    - name: Configure Qt
+      shell: bash
+      run: |
+        mkdir qt-build
+        cd qt-build
+        ../qt/configure -release -submodules qtdeclarative,qtshadertools
+
     - name: Build Qt
-      uses: ./.github/actions/build_qt
+      shell: bash
+      run: |
+        cmake --build qt-build --parallel 4
+        DESTDIR=qt-installed cmake --install qt-build
+        DESTDIR=/ cmake --install qt-build
+
+    - name: Compress Qt for caching
+      shell: bash
+      run: |
+         cd qt-installed
+         tar czvf ../qt.tar.gz *
+    
+    - name: Upload Qt
+      uses: actions/upload-artifact@v3
       with:
-        install: false
-        upload: true
-        cache: false
-        force-rebuild: true
-  
+        name: qt-${{ matrix.os.name }}
+        path: qt.tar.gz
