@@ -101,6 +101,16 @@ add_subdirectory(custom_qt_msg_handler)
 
 # Backend lib
 file(GLOB INTERNAL_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/internal/*.cpp)
+if (HAVE_LV2)
+  file(GLOB LV2_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/lv2/*.cpp)
+  set(INTERNAL_SOURCES ${INTERNAL_SOURCES} ${LV2_SOURCES})
+  include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal/lv2)
+endif()
+if (BACKEND_JACK)
+  file(GLOB JACK_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/jack/*.cpp)
+  set(INTERNAL_SOURCES ${INTERNAL_SOURCES} ${JACK_SOURCES})
+  include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal/jack)
+endif()
 
 # TODO jack
 

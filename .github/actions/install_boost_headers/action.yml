@@ -24,7 +24,8 @@ runs:
         exit 0
       fi
 
-      set includes_dir=$(cygpath ${{ inputs.dir }})
+      export includes_dir=$(cygpath ${{ inputs.dir }})
+      echo "Installing boost headers to $includes_dir"
 
       # Install Boost
       curl -L https://boostorg.jfrog.io/artifactory/main/release/1.82.0/source/boost_1_82_0.tar.gz --output boost.tar.gz
