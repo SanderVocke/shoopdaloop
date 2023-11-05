@@ -39,7 +39,7 @@ jobs:
       run: |
         mkdir qt-build
         cd qt-build
-        ../qt/configure -release -submodules qtdeclarative,qtshadertools
+        CMAKE_GENERATOR=Ninja ../qt/configure -release -submodules qtdeclarative,qtshadertools
 
     - name: Build Qt
       shell: bash
