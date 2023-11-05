@@ -24,7 +24,7 @@ runs:
         exit 0
       fi
 
-      export includes_dir=$(cygpath ${{ inputs.dir }})
+      export includes_dir="$(cygpath ${{ inputs.dir }})"
       echo "Installing boost headers to $includes_dir"
 
       # Install Boost

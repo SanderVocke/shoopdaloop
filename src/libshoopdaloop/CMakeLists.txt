@@ -49,11 +49,11 @@ set(SPDLOG_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/../third_party/spdlog/include)
 if (BACKEND_JACK)
   # Generate a wrapper for libjack which allows dynamic loading using dlopen
   find_package(Jack REQUIRED)
-  get_filename_component(JACK_SONAME ${JACK_LIBRARIES} NAME)
+  get_filename_component(JACK_LIBNAME ${JACK_LIBRARIES} NAME)
   add_custom_command(
     OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.c ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.h
     COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers
-    COMMAND "${PYTHON_CMD} \"${CMAKE_SOURCE_DIR}/../third_party/dynload-wrapper/generate-wrapper.py\" --include \"${JACK_INCLUDE_DIRS}/jack/jack.h\" --include \"${JACK_INCLUDE_DIRS}/jack/midiport.h\" --sys-include \"<jack/jack.h>\" --sys-include \"<jack/midiport.h>\" --soname \"${JACK_SONAME}\" --init-name jack_wrappers --output-header \"${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.h\" --output-implementation \"${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.c\""
+    COMMAND "${PYTHON_CMD} \"${CMAKE_SOURCE_DIR}/../third_party/dynload-wrapper/generate-wrapper.py\" --include \"${JACK_INCLUDE_DIRS}/jack/jack.h\" --include \"${JACK_INCLUDE_DIRS}/jack/midiport.h\" --sys-include \"<jack/jack.h>\" --sys-include \"<jack/midiport.h>\" --soname \"${JACK_LIBNAME}\" --init-name jack_wrappers --output-header \"${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.h\" --output-implementation \"${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.c\""
     COMMENT "Generating libjack dynload wrapper"
   )
   add_custom_target(
