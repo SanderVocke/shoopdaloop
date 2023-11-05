@@ -55,7 +55,6 @@ runs:
     shell: bash
     id: build
     run: |
-      ${{ inputs.prepend_build_cmd }} echo "MY PATH IS: $PATH"
       ${{ inputs.prepend_build_cmd }} ${{ inputs.python }} -m build -w ${{ inputs.pypa_build_extra_args }}
       echo "run_cmd_prefix=$(find . -name run_cmd_prefix.txt -exec cat {} \;)" | tee -a $GITHUB_OUTPUT
       echo "source_dir=$(pwd)" | tee -a $GITHUB_OUTPUT
