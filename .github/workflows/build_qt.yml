@@ -18,6 +18,9 @@ jobs:
           - name: windows
             base_os: windows-2022
             container_image: null
+          - name: macos
+            base_os: macos-12
+            container_image: null
     runs-on: ${{ matrix.os.base_os }}
     container:
       image: ${{ matrix.os.container_image }}
