@@ -59,7 +59,7 @@ jobs:
       id: install_boost
       uses: ./.github/actions/install_boost_headers
       with:
-        dir: ${{ github.workspace }}/includes
+        dir: includes
     - name: Install dependencies
       shell: bash
       run: |
@@ -78,7 +78,7 @@ jobs:
         variant_name: release_win64
         wheel_artifact_name: release_wheel_win64
         python: python
-        prepend_build_cmd: CMAKE_INCLUDE_PATH="$PWD/includes"
+        prepend_build_cmd: CMAKE_INCLUDE_PATH="${{ steps.install_boost.include_dir }}"
         pip_install_extra_args: --no-build-isolation --no-clean
         pypa_build_extra_args: -C--local=py-build-cmake-overrides.toml
         whl_suffix: win_x64
