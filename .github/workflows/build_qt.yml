@@ -48,12 +48,6 @@ jobs:
         cp ninja.exe /usr/bin
         echo "C:\\mingw64\\usr\\bin" | tee -a $GITHUB_PATH
     
-    - name: Prepare Windows 2
-      if: ${{ matrix.os.name == 'windows' }}
-      shell: bash
-      run: |
-        echo $PATH
-    
     - name: Prepare manylinux
       if: ${{ matrix.os.name == 'manylinux_2_28' }}
       shell: bash
@@ -82,6 +76,7 @@ jobs:
         mv ${{ env.extracted_folder }} qt
     
     - uses: actions/cache/save@v3
+      if: ${{ steps.cache-qt-src.outputs.cache-hit != 'true' }}
       with:
         path: qt
         key: ${{ env.cache_key }}
@@ -91,7 +86,7 @@ jobs:
       run: |
         mkdir qt-build
         cd qt-build
-        ${{ env.configure_shell }} -C '../qt/configure -release -submodules qtdeclarative,qtshadertools -cmake-generator Ninja'
+        ${{ matrix.os.configure_shell }} -C '../qt/configure -release -submodules qtdeclarative,qtshadertools -cmake-generator Ninja'
 
     - name: Build Qt
       shell: bash
