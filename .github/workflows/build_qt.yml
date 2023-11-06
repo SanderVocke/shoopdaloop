@@ -44,6 +44,7 @@ jobs:
         unzip ninja-win.zip
         cp ninja.exe /usr/bin
         echo "C:\\mingw64\\usr\\bin" | tee -a $GITHUB_PATH
+        rm -rf "/c/Program Files\Git"
     
     - name: Prepare Windows 2
       if: ${{ matrix.os.name == 'windows' }}
