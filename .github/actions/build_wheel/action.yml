@@ -35,6 +35,10 @@ inputs:
   prepend_build_cmd:
     required: false
     type: string
+  windows:
+    required: false
+    type: boolean
+    default: false
 
 outputs:
   run_cmd_prefix:
@@ -52,10 +56,23 @@ runs:
   using: "composite"
   steps:
   - name: Build wheel (${{ inputs.variant_name }})
+    if: ${{ !inputs.windows }}
     shell: bash
     id: build
     run: |
       ${{ inputs.prepend_build_cmd }} ${{ inputs.python }} -m build -w ${{ inputs.pypa_build_extra_args }}
+
+  - name: Build wheel (${{ inputs.variant_name }}) (Windows)
+    if: ${{ inputs.windows }}
+    shell: cmd.exe
+    id: build-windows
+    run: |
+      ${{ inputs.prepend_build_cmd }} ${{ inputs.python }} -m build -w ${{ inputs.pypa_build_extra_args }}
+
+  - name: Find wheel (${{ inputs.variant_name }})
+    shell: bash
+    id: find_wheel
+    run: |
       echo "run_cmd_prefix=$(find . -name run_cmd_prefix.txt -exec cat {} \;)" | tee -a $GITHUB_OUTPUT
       echo "source_dir=$(pwd)" | tee -a $GITHUB_OUTPUT
       echo "build_dir=$(realpath build/cp*/)" | tee -a $GITHUB_OUTPUT
@@ -88,7 +105,7 @@ runs:
     run: |
       mkdir -p install
       export PYTHONPATH="$PYTHONPATH:$(pwd)/pip"
-      ASAN_OPTIONS=detect_leaks=0 ${{ steps.build.outputs.run_cmd_prefix }} ${{ inputs.python }} -m pip install ${{ inputs.pip_install_extra_args }} ${{ steps.find.outputs.name }}
+      ASAN_OPTIONS=detect_leaks=0 ${{ steps.find_wheel.outputs.run_cmd_prefix }} ${{ inputs.python }} -m pip install ${{ inputs.pip_install_extra_args }} ${{ steps.find.outputs.name }}
       echo "install_dir=$(${{ inputs.python }} -m pip show shoopdaloop | grep Location | sed -r 's/Location:[ ]*//g')/shoopdaloop" | tee -a $GITHUB_OUTPUT
 
 
