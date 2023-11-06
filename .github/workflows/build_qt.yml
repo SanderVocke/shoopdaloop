@@ -19,11 +19,16 @@ jobs:
         host: windows
         target: desktop
         arch: win64_mingw
-        dir: ${{ runner.temp }}
+        dir: qt
         archives: icu qtbase qtdeclarative qtsvg qtimageformats qtquickcontrols qtquickcontrols2 qtsvg
-    - name: Setup tmate session
-      if: ${{ always() }}
-      uses: mxschmitt/action-tmate@v3
+    - name: Compress
+      shell: bash
+      run: tar -czf qt.tar.gz qt
+    - name: Upload Qt
+      uses: actions/upload-artifact@v3
+      with:
+        name: qt-windows
+        path: qt.tar.gz
 
   build_qt_unixlike:
     strategy:
@@ -87,14 +92,14 @@ jobs:
         key: ${{ env.cache_key }}
 
     - name: Configure Qt
-      shell: C:\msys64\usr\bin\bash.exe -e -o pipefail {0}
+      shell: bash
       run: |
         mkdir qt-build
         cd qt-build
         ../qt/configure -release -submodules qtdeclarative,qtshadertools -cmake-generator Ninja
 
     - name: Build Qt
-      shell: C:\msys64\usr\bin\bash.exe -e -o pipefail {0}
+      shell: bash
       run: |
         cmake --build qt-build --parallel 4
         DESTDIR=qt-installed cmake --install qt-build
