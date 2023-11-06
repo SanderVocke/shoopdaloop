@@ -51,7 +51,7 @@ jobs:
         version: "6.5.3"
         host: windows
         target: desktop
-        arch: win64_mingw
+        arch: win64_msvc2019_64
         dir: ${{ runner.temp }}
         setup-python: true
     - name: Install boost
@@ -71,7 +71,7 @@ jobs:
       shell: bash
       run: |
         echo 'cmake.options = { "BACKEND_JACK" = "Off", "HAVE_LV2" = "Off" }' > py-build-cmake-overrides.toml
-        echo 'cmake.generator = { "MinGW Makefiles" }' > py-build-cmake-overrides.toml
+        echo 'cmake.generator = "MinGW Makefiles"' >> py-build-cmake-overrides.toml
     - name: Build and upload
       uses: ./.github/actions/build_wheel
       with:
