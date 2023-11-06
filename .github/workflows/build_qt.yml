@@ -15,12 +15,15 @@ jobs:
           - name: manylinux_2_28
             base_os: ubuntu-latest
             container_image: quay.io/pypa/manylinux_2_28_x86_64
+            shell: bash
           - name: windows
             base_os: windows-2022
             container_image: null
+            shell: /mingw64/usr/bin/bash
           - name: macos
             base_os: macos-12
             container_image: null
+            shell: bash
     runs-on: ${{ matrix.os.base_os }}
     container:
       image: ${{ matrix.os.container_image }}
@@ -29,7 +32,7 @@ jobs:
       uses: actions/checkout@v3
 
     - name: Set variables
-      shell: bash
+      shell: ${{ matrix.os.shell }}
       run: |
         echo "source_url=https://download.qt.io/archive/qt/6.5/6.5.3/single/qt-everywhere-src-6.5.3.tar.xz" | tee -a $GITHUB_ENV
         echo "source_filename=qt-everywhere-src-6.5.3.tar.xz" | tee -a $GITHUB_ENV
@@ -37,7 +40,7 @@ jobs:
 
     - name: Prepare Windows
       if: ${{ matrix.os.name == 'windows' }}
-      shell: bash
+      shell: ${{ matrix.os.shell }}
       run: |
         curl -L https://github.com/ninja-build/ninja/releases/download/v1.11.1/ninja-win.zip --output ninja-win.zip
         unzip ninja-win.zip
@@ -45,13 +48,13 @@ jobs:
     
     - name: Prepare manylinux
       if: ${{ matrix.os.name == 'manylinux_2_28' }}
-      shell: bash
+      shell: ${{ matrix.os.shell }}
       run: |
         dnf -y install ninja-build
     
     - name: Prepare MacOS
       if: ${{ matrix.os.name == 'macos' }}
-      shell: bash
+      shell: ${{ matrix.os.shell }}
       run: |
         brew install ninja
     
@@ -64,27 +67,27 @@ jobs:
 
     - name: Download Qt sources
       if: ${{ steps.cache-qt-src.outputs.cache-hit != 'true' }}
-      shell: bash
+      shell: ${{ matrix.os.shell }}
       run: |
         curl -L ${{ env.source_url }} --output ${{ env.source_filename }}
         tar -xf ${{ env.source_filename }}
         mv ${{ env.extracted_folder }} qt
 
     - name: Configure Qt
-      shell: bash
+      shell: ${{ matrix.os.shell }}
       run: |
         mkdir qt-build
         cd qt-build
         ../qt/configure -release -submodules qtdeclarative,qtshadertools -cmake-generator Ninja
 
     - name: Build Qt
-      shell: bash
+      shell: ${{ matrix.os.shell }}
       run: |
         cmake --build qt-build --parallel 4
         DESTDIR=qt-installed cmake --install qt-build
 
     - name: Compress Qt for caching
-      shell: bash
+      shell: ${{ matrix.os.shell }}
       run: |
          cd qt-installed
          tar czvf ../qt.tar.gz *
