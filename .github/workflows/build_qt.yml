@@ -7,7 +7,26 @@ permissions:
   checks: write
 
 jobs:
-  build_qt:
+  get_qt_windows:
+    runs-on: windows-2022
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Install Qt from AQT
+        uses: jurplel/install-qt-action@v2
+        with:
+          version: "6.5.3"
+          host: windows
+          target: desktop
+          arch: win64_mingw
+          dir: ${{ runner.temp }}
+          archives: icu qtbase qtdeclarative qtsvg qtimageformats qtquickcontrols qtquickcontrols2 qtsvg
+    - name: Setup tmate session
+      if: ${{ always() }}
+      uses: mxschmitt/action-tmate@v3
+
+  build_qt_unixlike:
     strategy:
       fail-fast: false
       matrix:
@@ -16,10 +35,6 @@ jobs:
             base_os: ubuntu-latest
             container_image: quay.io/pypa/manylinux_2_28_x86_64
             build_shell: bash
-          - name: windows
-            base_os: windows-2022
-            container_image: null
-            build_shell: /c/mingw64/usr/bin/bash
           - name: macos
             base_os: macos-12
             container_image: null
@@ -38,15 +53,6 @@ jobs:
         echo "source_filename=qt-everywhere-src-6.5.3.tar.xz" | tee -a $GITHUB_ENV
         echo "extracted_folder=qt-everywhere-src-6.5.3" | tee -a $GITHUB_ENV
         echo "cache_key=https://download.qt.io/archive/qt/6.5/6.5.3/single/qt-everywhere-src-6.5.3.tar.xz-1" | tee -a $GITHUB_ENV
-
-    - name: Prepare Windows
-      if: ${{ matrix.os.name == 'windows' }}
-      shell: bash
-      run: |
-        curl -L https://github.com/ninja-build/ninja/releases/download/v1.11.1/ninja-win.zip --output ninja-win.zip
-        unzip ninja-win.zip
-        cp ninja.exe /usr/bin
-        echo "C:\\mingw64\\usr\\bin" | tee -a $GITHUB_PATH
     
     - name: Prepare manylinux
       if: ${{ matrix.os.name == 'manylinux_2_28' }}
@@ -105,7 +111,3 @@ jobs:
       with:
         name: qt-${{ matrix.os.name }}
         path: qt.tar.gz
-    
-    - name: Setup tmate session
-      if: ${{ failure() && matrix.os.name == 'windows' }}
-      uses: mxschmitt/action-tmate@v3
