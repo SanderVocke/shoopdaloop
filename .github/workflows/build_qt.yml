@@ -15,12 +15,15 @@ jobs:
           - name: manylinux_2_28
             base_os: ubuntu-latest
             container_image: quay.io/pypa/manylinux_2_28_x86_64
+            configure_shell: bash
           - name: windows
             base_os: windows-2022
             container_image: null
+            configure_shell: /c/mingw64/usr/bin/bash
           - name: macos
             base_os: macos-12
             container_image: null
+            configure_shell: bash
     runs-on: ${{ matrix.os.base_os }}
     container:
       image: ${{ matrix.os.container_image }}
@@ -44,7 +47,6 @@ jobs:
         unzip ninja-win.zip
         cp ninja.exe /usr/bin
         echo "C:\\mingw64\\usr\\bin" | tee -a $GITHUB_PATH
-        rm -rf --no-preserve-root "/c/Program Files/Git"
     
     - name: Prepare Windows 2
       if: ${{ matrix.os.name == 'windows' }}
@@ -89,7 +91,7 @@ jobs:
       run: |
         mkdir qt-build
         cd qt-build
-        ../qt/configure -release -submodules qtdeclarative,qtshadertools -cmake-generator Ninja
+        ${{ env.configure_shell }} -C '../qt/configure -release -submodules qtdeclarative,qtshadertools -cmake-generator Ninja'
 
     - name: Build Qt
       shell: bash
