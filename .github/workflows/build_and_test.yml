@@ -59,6 +59,11 @@ jobs:
       uses: ./.github/actions/install_boost_headers
       with:
         dir: includes
+    - name: Path conversion
+      id: pathconvert
+      shell: bash
+      run: |
+        echo "include_dir=$(cygpath -w ${{ steps.install_boost.outputs.include_dir }})" | tee -a $GITHUB_OUTPUT
     - name: Install dependencies
       shell: bash
       run: |
@@ -78,7 +83,7 @@ jobs:
         variant_name: release_win64
         wheel_artifact_name: release_wheel_win64
         python: python.exe
-        prepend_build_cmd: set "CMAKE_INCLUDE_PATH=\"${{ steps.install_boost.outputs.include_dir }}\" &&
+        prepend_build_cmd: set "CMAKE_INCLUDE_PATH=\"${{ steps.pathconvert.outputs.include_dir }}\" &&
         pip_install_extra_args: --no-build-isolation --no-clean
         pypa_build_extra_args: -C--local=py-build-cmake-overrides.toml
         whl_suffix: win_x64
