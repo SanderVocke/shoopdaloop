@@ -86,12 +86,12 @@ jobs:
       run: |
         mkdir qt-build
         cd qt-build
-        ${{ matrix.os.build_shell }} -C '../qt/configure -release -submodules qtdeclarative,qtshadertools -cmake-generator Ninja'
+        ${{ matrix.os.build_shell }} -c '../qt/configure -release -submodules qtdeclarative,qtshadertools -cmake-generator Ninja'
 
     - name: Build Qt
       shell: bash
       run: |
-        ${{ matrix.os.build_shell }} -C 'cmake --build qt-build --parallel 4'
+        ${{ matrix.os.build_shell }} -c 'cmake --build qt-build --parallel 4'
         DESTDIR=qt-installed cmake --install qt-build
 
     - name: Compress Qt for caching
