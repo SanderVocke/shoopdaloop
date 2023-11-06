@@ -64,7 +64,7 @@ runs:
 
   - name: Build wheel (${{ inputs.variant_name }}) (Windows)
     if: ${{ inputs.windows }}
-    shell: cmd.exe
+    shell: cmd
     id: build-windows
     run: |
       ${{ inputs.prepend_build_cmd }} ${{ inputs.python }} -m build -w ${{ inputs.pypa_build_extra_args }}
