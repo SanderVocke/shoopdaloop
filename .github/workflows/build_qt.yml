@@ -6,6 +6,11 @@ permissions:
   contents: read
   checks: write
 
+env:
+  source_url: https://download.qt.io/archive/qt/6.5/6.5.3/single/qt-everywhere-src-6.5.3.tar.xz
+  source_filename: qt-everywhere-src-6.5.3.tar.xz
+  extracted_folder: qt-everywhere-src-6.5.3
+
 jobs:
   build_qt:
     strategy:
@@ -47,13 +52,21 @@ jobs:
       shell: bash
       run: |
         brew install ninja
+    
+    - name: Cache Qt sources
+      id: cache-qt-src
+      uses: actions/cache@v3
+      with:
+        path: $source_filename
+        key: $source_url-1
 
     - name: Download Qt sources
+      if: ${{ steps.cache-qt-src.outputs.cache-hit != 'true' }}
       shell: bash
       run: |
-        curl -L https://download.qt.io/archive/qt/6.5/6.5.3/single/qt-everywhere-src-6.5.3.tar.xz --output qt-everywhere-src-6.5.3.tar.xz
-        tar -xf qt-everywhere-src-6.5.3.tar.xz
-        mv qt-everywhere-src-6.5.3 qt
+        curl -L $source_url --output $source_filename
+        tar -xf $source_filename
+        mv $extracted_folder qt
 
     - name: Configure Qt
       shell: bash
@@ -67,7 +80,6 @@ jobs:
       run: |
         cmake --build qt-build --parallel 4
         DESTDIR=qt-installed cmake --install qt-build
-        DESTDIR=/ cmake --install qt-build
 
     - name: Compress Qt for caching
       shell: bash
