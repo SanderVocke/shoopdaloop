@@ -12,16 +12,15 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v3
-
     - name: Install Qt from AQT
-        uses: jurplel/install-qt-action@v2
-        with:
-          version: "6.5.3"
-          host: windows
-          target: desktop
-          arch: win64_mingw
-          dir: ${{ runner.temp }}
-          archives: icu qtbase qtdeclarative qtsvg qtimageformats qtquickcontrols qtquickcontrols2 qtsvg
+      uses: jurplel/install-qt-action@v2
+      with:
+        version: "6.5.3"
+        host: windows
+        target: desktop
+        arch: win64_mingw
+        dir: ${{ runner.temp }}
+        archives: icu qtbase qtdeclarative qtsvg qtimageformats qtquickcontrols qtquickcontrols2 qtsvg
     - name: Setup tmate session
       if: ${{ always() }}
       uses: mxschmitt/action-tmate@v3
