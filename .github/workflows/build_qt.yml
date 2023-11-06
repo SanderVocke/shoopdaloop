@@ -45,6 +45,12 @@ jobs:
         cp ninja.exe /usr/bin
         echo "C:\\mingw64\\usr\\bin" | tee -a $GITHUB_PATH
     
+    - name: Prepare Windows 2
+      if: ${{ matrix.os.name == 'windows' }}
+      shell: bash
+      run: |
+        echo $PATH
+    
     - name: Prepare manylinux
       if: ${{ matrix.os.name == 'manylinux_2_28' }}
       shell: bash
