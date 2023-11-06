@@ -37,6 +37,7 @@ jobs:
         echo "source_url=https://download.qt.io/archive/qt/6.5/6.5.3/single/qt-everywhere-src-6.5.3.tar.xz" | tee -a $GITHUB_ENV
         echo "source_filename=qt-everywhere-src-6.5.3.tar.xz" | tee -a $GITHUB_ENV
         echo "extracted_folder=qt-everywhere-src-6.5.3" | tee -a $GITHUB_ENV
+        echo "cache_key=https://download.qt.io/archive/qt/6.5/6.5.3/single/qt-everywhere-src-6.5.3.tar.xz-1"
 
     - name: Prepare Windows
       if: ${{ matrix.os.name == 'windows' }}
@@ -63,7 +64,7 @@ jobs:
       uses: actions/cache@v3
       with:
         path: qt
-        key: ${{ env.source_url }}-1
+        key: ${{ env.cache_key }}
 
     - name: Download Qt sources
       if: ${{ steps.cache-qt-src.outputs.cache-hit != 'true' }}
@@ -72,6 +73,12 @@ jobs:
         curl -L ${{ env.source_url }} --output ${{ env.source_filename }}
         tar -xf ${{ env.source_filename }}
         mv ${{ env.extracted_folder }} qt
+    
+    - uses: actions/cache/save@v3
+      if: always()
+      with:
+        path: qt
+        key: ${{ env.cache_key }}
 
     - name: Configure Qt
       shell: ${{ matrix.os.shell }}
