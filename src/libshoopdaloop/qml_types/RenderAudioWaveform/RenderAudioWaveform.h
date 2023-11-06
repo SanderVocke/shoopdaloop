@@ -9,7 +9,15 @@
 #include <QVariant>
 #include <vector>
 
-class RenderAudioWaveform : public QQuickPaintedItem {
+#include <QtCore/QtGlobal>
+
+#if defined(READAUDIOWAVEFORM_LIBRARY)
+#  define _EXPORT Q_DECL_EXPORT
+#else
+#  define _EXPORT Q_DECL_IMPORT
+#endif
+
+_EXPORT class RenderAudioWaveform : public QQuickPaintedItem {
     Q_OBJECT
     QML_ELEMENT
 
