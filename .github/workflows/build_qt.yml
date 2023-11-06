@@ -34,7 +34,7 @@ jobs:
         echo "source_url=https://download.qt.io/archive/qt/6.5/6.5.3/single/qt-everywhere-src-6.5.3.tar.xz" | tee -a $GITHUB_ENV
         echo "source_filename=qt-everywhere-src-6.5.3.tar.xz" | tee -a $GITHUB_ENV
         echo "extracted_folder=qt-everywhere-src-6.5.3" | tee -a $GITHUB_ENV
-        echo "cache_key=https://download.qt.io/archive/qt/6.5/6.5.3/single/qt-everywhere-src-6.5.3.tar.xz-1"
+        echo "cache_key=https://download.qt.io/archive/qt/6.5/6.5.3/single/qt-everywhere-src-6.5.3.tar.xz-1" | tee -a $GITHUB_ENV
 
     - name: Prepare Windows
       if: ${{ matrix.os.name == 'windows' }}
