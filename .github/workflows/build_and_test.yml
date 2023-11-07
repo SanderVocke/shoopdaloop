@@ -27,18 +27,42 @@ jobs:
             pip: python3 -m pip
             container_image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
             prepare: 'manylinux_2_28'
+            overrides: '.github/overrides/linux_release_overrides.toml'
           - name: linux_barebones
             os: ubuntu-latest
             python: python3.8
             pip: python3 -m pip
             container_image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
             prepare: 'manylinux_2_28'
+            overrides: '.github/overrides/linux_barebones_overrides.toml'
+          - name: linux_debug
+            os: ubuntu-latest
+            python: python3.8
+            pip: python3 -m pip
+            container_image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
+            prepare: 'manylinux_2_28'
+            overrides: '.github/overrides/linux_debug_overrides.toml'
+          - name: linux_asan
+            os: ubuntu-latest
+            python: python3.8
+            pip: python3 -m pip
+            container_image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
+            prepare: 'manylinux_2_28'
+            overrides: '.github/overrides/linux_asan_overrides.toml'
+          - name: linux_coverage
+            os: ubuntu-latest
+            python: python3.8
+            pip: python3 -m pip
+            container_image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
+            prepare: 'manylinux_2_28'
+            overrides: '.github/overrides/linux_coverage_overrides.toml'
           - name: windows_release
             os: windows-2022
             python: python.exe
             pip: python.exe -m pip
             container_image: null
             prepare: 'windows'
+            overrides: '.github/overrides/linux_debug_overrides.toml'
     runs-on: ${{ matrix.kind.os}}
     container:
       image: ${{ matrix.kind.container_image }}
@@ -59,134 +83,9 @@ jobs:
         wheel_artifact_name: ${{ matrix.kind.name }}_wheel
         python: ${{ matrix.kind.python}}
         prepend_build_cmd: ${{ steps.prepare.outputs.prepend_build_cmd }}
-        pypa_build_extra_args: -C--local=.github/overrides/${{ matrix.kind.name }}_overrides.toml
+        pypa_build_extra_args: -C--local=${{ matrix.kind.overrides}}
         install: false
         windows: ${{ matrix.kind.prepare == 'windows' && 'true' || 'false' }}
-
-  
-  # build_release_linux:
-  #   runs-on: ubuntu-latest
-  #   container:
-  #     image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
-  #     options: --user root --workdir /
-  #   steps:
-  #   - name: Checkout
-  #     uses: actions/checkout@v3
-  #     with:
-  #       submodules: recursive
-  #   - name: Install Qt
-  #     uses: ./.github/actions/install_qt
-  #   - name: Prepare manylinux environment
-  #     uses: ./.github/actions/prepare_manylinux_2_28
-  #   - name: Build and upload
-  #     uses: ./.github/actions/build_wheel
-  #     with:
-  #       variant_name: release
-  #       wheel_artifact_name: release_wheel
-  #       python: python3.8
-  #       prepend_build_cmd: CMAKE_PREFIX_PATH=/usr/local/Qt-6.5.3
-
-  # build_barebones_linux:
-  # runs-on: ubuntu-latest
-  # container:
-  #   image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
-  #   options: --user root --workdir /
-  # steps:
-  # - name: Checkout
-  #   uses: actions/checkout@v3
-  #   with:
-  #     submodules: recursive
-  # - name: Install Qt
-  #   uses: ./.github/actions/install_qt
-  # - name: Prepare manylinux environment
-  #   uses: ./.github/actions/prepare_manylinux_2_28
-  # - name: Prepare py-build-cmake options
-  #     shell: bash
-  #     run: |
-  #       echo 'cmake.options = { "BACKEND_JACK" = "Off", "HAVE_LV2" = "Off", "BUILD_QML_EXTENSIONS" = "Off" }' > py-build-cmake-overrides.toml
-  # - name: Build and upload
-  #   uses: ./.github/actions/build_wheel
-  #   with:
-  #     variant_name: barebones
-  #     wheel_artifact_name: barebones_wheel
-  #     python: python3.8
-  #     prepend_build_cmd: CMAKE_PREFIX_PATH=/usr/local/Qt-6.5.3
-    
-  # build_release_windows:
-  #   runs-on: windows-2022
-  #   steps:
-  #   - name: Checkout
-  #     uses: actions/checkout@v3
-  #     with:
-  #       submodules: recursive
-  #   - name: Install Qt
-  #     uses: jurplel/install-qt-action@v3
-  #     with:
-  #       version: "6.5.3"
-  #       host: windows
-  #       target: desktop
-  #       arch: win64_mingw
-  #       dir: ${{ runner.temp }}
-  #       setup-python: true
-  #       archives: icu qtbase qtdeclarative qtsvg qtimageformats qtquickcontrols qtquickcontrols2 qtsvg
-  #   - name: Install boost
-  #     id: install_boost
-  #     uses: ./.github/actions/install_boost_headers
-  #     with:
-  #       dir: includes
-  #   - name: Path conversion
-  #     id: pathconvert
-  #     shell: bash
-  #     run: |
-  #       echo "include_dir=$(cygpath -w ${{ steps.install_boost.outputs.include_dir }})" | tee -a $GITHUB_OUTPUT
-  #   - name: Install dependencies
-  #     shell: bash
-  #     run: |
-  #       python -m pip install build virtualenv pytest meson
-  #   - name: Prepare py-build-cmake options
-  #     shell: bash
-  #     run: |
-  #       echo 'cmake.options = { "BACKEND_JACK" = "Off", "HAVE_LV2" = "Off", "BUILD_QML_EXTENSIONS" = "Off" }' > py-build-cmake-overrides.toml
-  #       echo 'cmake.generator = "MinGW Makefiles"' >> py-build-cmake-overrides.toml
-  #   - name: Build and upload
-  #     uses: ./.github/actions/build_wheel
-  #     with:
-  #       variant_name: release_win64
-  #       wheel_artifact_name: release_wheel_win64
-  #       python: python.exe
-  #       prepend_build_cmd: set "CMAKE_INCLUDE_PATH=${{ steps.pathconvert.outputs.include_dir }}" &&
-  #       pypa_build_extra_args: -C--local=py-build-cmake-overrides.toml
-  #       whl_suffix: win_x64
-  #       windows: true
-  #       install: false
-  #   - name: Setup tmate session
-  #     if: ${{ failure() }}
-  #     uses: mxschmitt/action-tmate@v3
-
-  # build_debug:
-  #   runs-on: ubuntu-latest
-  #   container:
-  #     image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
-  #     options: --user root --workdir /
-  #   steps:
-  #   - name: Checkout
-  #     uses: actions/checkout@v3
-  #     with:
-  #       submodules: recursive
-  #   - name: Install Qt
-  #     uses: ./.github/actions/install_qt
-  #   - name: Prepare manylinux environment
-  #     uses: ./.github/actions/prepare_manylinux_2_28
-  #   - name: Build and upload
-  #     uses: ./.github/actions/build_wheel
-  #     with:
-  #       variant_name: debug
-  #       wheel_artifact_name: debug_wheel
-  #       pypa_build_extra_args: -C--local=pyproject.toml.debug_overrides
-  #       whl_suffix: debug
-  #       install: false
-  #       python: python3.8
-  #       prepend_build_cmd: CMAKE_PREFIX_PATH=/usr/local/Qt-6.5.3
   
   test_release_whls:
     runs-on: ubuntu-latest
