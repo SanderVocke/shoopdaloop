@@ -16,7 +16,7 @@ permissions:
 
 jobs:
 
-  build_wheels:
+  build:
     strategy:
       fail-fast: false
       matrix:
@@ -95,25 +95,29 @@ jobs:
         install: false
         windows: ${{ matrix.kind.prepare == 'windows' && 'true' || 'false' }}
   
-  test_release_whls:
-    runs-on: ubuntu-latest
+  test:
     strategy:
       fail-fast: false
       matrix:
-        os:
+        kind:
           - name: debian_stable
             python: python3
             pip: python3 -m pip
+            container: sandervocke/shoopdaloop_run_base_debian_stable:latest
+            os: ubuntu-latest
           - name: ubuntu_latest
             python: python3
             pip: python3 -m pip
+            container: sandervocke/shoopdaloop_run_base_ubuntu_latest:latest
+            os: ubuntu-latest
           - name: arch
             python: python
             pip: python -m pip
-    needs: build_wheels
-    container:
-      image: sandervocke/shoopdaloop_run_base_${{ matrix.os.name }}:latest
-      options: --user root --workdir /
+            container: sandervocke/shoopdaloop_run_base_arch:latest
+            os: ubuntu_latest
+    runs-on: ${{ matrix.kind.os }}
+    needs: build
+    container: ${{ matrix.kind.container }}}
     steps:
     - name: Checkout
       uses: actions/checkout@v3
@@ -125,13 +129,13 @@ jobs:
     - name: Install wheel
       id: install
       run: |
-        ${{ matrix.os.pip }} install --force-reinstall ~/wheel/*.whl
+        ${{ matrix.kind.pip }} install --force-reinstall ~/wheel/*.whl
         echo "install_dir=$(shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g')" | tee -a $GITHUB_OUTPUT
     - name: Find Qt
       shell: bash
       id: findqt
       run: |
-        export PKGDIR=$(${{ matrix.os.pip }} show pyside6-essentials | grep Location | sed -r 's/Location:[ ]*//g')
+        export PKGDIR=$(${{ matrix.kind.pip }} show pyside6-essentials | grep Location | sed -r 's/Location:[ ]*//g')
         echo "qtlibpath=$(dirname $(find $PKGDIR -name libQt6Core.so.6))" | tee -a $GITHUB_ENV
     - name: Test back-end
       if: ${{ success() || failure() }}
@@ -164,7 +168,7 @@ jobs:
       with:
         root_path: ${{ steps.install.outputs.install_dir }}
         screenshots_path: /tmp/screenshots
-        artifact_name: screenshots_${{ matrix.os.name }}
+        artifact_name: screenshots_${{ matrix.kind.name }}
     - name: Test App
       if: ${{ success() || failure() }}
       uses: ./.github/actions/test_run_app
@@ -172,7 +176,7 @@ jobs:
         variant_name: release
         run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH=${{ env.qtlibpath }}
         root_path: ${{ steps.install.outputs.install_dir }}
-        python: ${{ matrix.os.python }}
+        python: ${{ matrix.kind.python }}
         
   # asan:
   #   runs-on: ubuntu-latest
