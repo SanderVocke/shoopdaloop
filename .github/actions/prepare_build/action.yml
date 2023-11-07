@@ -28,4 +28,4 @@ runs:
     id: collect
     shell: bash
     run: |
-      echo "prepend_build_cmd=$(cat prepend_build_cmd.txt)" | tee -a GITHUB_OUTPUT
+      echo "prepend_build_cmd=$(cat prepend_build_cmd.txt)" | tee -a $GITHUB_OUTPUT
