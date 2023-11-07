@@ -8,13 +8,13 @@ runs:
     shell: bash
     run: |
       # Skip if already done (local act builds)
-      if [ -f /macos_prepared ]; then
+      if [ -f _macos_prepared ]; then
         exit 0
       fi
 
       # Install packages
       brew install ninja libsndfile libsamplerate libtool automake autoconf cmake
-      brew install jack liblo
+      brew install jack liblo coreutils
       brew install python@3.8
 
       # Install Python packages
@@ -32,5 +32,5 @@ runs:
   - name: Set outputs
     shell: bash
     run: |
-      touch /macos_prepared
+      touch _macos_prepared
       echo "CMAKE_PREFIX_PATH=${{ github.workspace }}/usr/local/Qt-6.5.3 CMAKE_INCLUDE_PATH=${{ github.workspace }}/includes" > prepend_build_cmd.txt
