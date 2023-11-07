@@ -51,4 +51,4 @@ runs:
   - name: Set outputs
     shell: bash
     run: |
-      echo "prepend_build_cmd=CMAKE_PREFIX_PATH=/usr/local/Qt-6.5.3" | tee -a GITHUB_OUTPUT
+      echo "CMAKE_PREFIX_PATH=/usr/local/Qt-6.5.3" > prepend_build_cmd.txt

@@ -7,6 +7,11 @@ inputs:
     required: true
     type: string
 
+outputs:
+  prepend_build_cmd:
+    description: "Command-line prefix to use when running the apps in the built wheel"
+    value: ${{ steps.collect.outputs.prepend_build_cmd }}
+
 runs:
   using: "composite"
   steps:
@@ -19,3 +24,8 @@ runs:
   - name: Prepare Windows
     if: ${{ inputs.variant == 'windows' }}
     uses: ./.github/actions/prepare_build_windows
+  - name: Collect information
+    id: collect
+    shell: bash
+    run: |
+      echo "prepend_build_cmd=$(cat prepend_build_cmd.txt)" | tee -a GITHUB_OUTPUT
