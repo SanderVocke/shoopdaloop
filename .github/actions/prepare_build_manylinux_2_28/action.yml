@@ -1,9 +1,11 @@
-name: prepare_manylinux_2_28
+name: prepare_build_manylinux_2_28
 description: Prepare manylinux for building Shoopdaloop wheels
 
 runs:
   using: "composite"
   steps:
+  - name: Install Qt
+    uses: ./.github/actions/install_qt
   - name: Basic prep steps
     shell: bash
     run: |
@@ -46,3 +48,7 @@ runs:
       python3 -m pip install coverage pytest
 
       touch _manylinux_prepared
+  - name: Set outputs
+    shell: bash
+    run: |
+      echo "prepend_build_cmd=CMAKE_PREFIX_PATH=/usr/local/Qt-6.5.3" | tee -a GITHUB_OUTPUT

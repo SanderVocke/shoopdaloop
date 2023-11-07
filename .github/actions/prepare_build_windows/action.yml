@@ -1,0 +1,10 @@
+name: prepare_build_windows
+description: Prepare Windows for building Shoopdaloop wheels
+
+runs:
+  using: "composite"
+  steps:
+  - name: Set outputs
+    shell: bash
+    run: |
+      false

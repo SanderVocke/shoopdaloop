@@ -1,0 +1,10 @@
+name: prepare_build_macos
+description: Prepare MacOS for building Shoopdaloop wheels
+
+runs:
+  using: "composite"
+  steps:
+  - name: Set outputs
+    shell: bash
+    run: |
+      false
