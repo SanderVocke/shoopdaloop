@@ -27,42 +27,42 @@ jobs:
             pip: python3 -m pip
             container_image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
             prepare: 'manylinux_2_28'
-            overrides: '.github/overrides/linux_release_overrides.toml'
+            overrides: 'overrides/linux_release_overrides.toml'
           - name: linux_barebones
             os: ubuntu-latest
             python: python3.8
             pip: python3 -m pip
             container_image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
             prepare: 'manylinux_2_28'
-            overrides: '.github/overrides/linux_barebones_overrides.toml'
+            overrides: 'overrides/linux_barebones_overrides.toml'
           - name: linux_debug
             os: ubuntu-latest
             python: python3.8
             pip: python3 -m pip
             container_image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
             prepare: 'manylinux_2_28'
-            overrides: '.github/overrides/linux_debug_overrides.toml'
+            overrides: 'overrides/linux_debug_overrides.toml'
           - name: linux_asan
             os: ubuntu-latest
             python: python3.8
             pip: python3 -m pip
             container_image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
             prepare: 'manylinux_2_28'
-            overrides: '.github/overrides/linux_asan_overrides.toml'
+            overrides: 'overrides/linux_asan_overrides.toml'
           - name: linux_coverage
             os: ubuntu-latest
             python: python3.8
             pip: python3 -m pip
             container_image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
             prepare: 'manylinux_2_28'
-            overrides: '.github/overrides/linux_coverage_overrides.toml'
+            overrides: 'overrides/linux_coverage_overrides.toml'
           - name: windows_release
             os: windows-2022
             python: python.exe
             pip: python.exe -m pip
             container_image: null
             prepare: 'windows'
-            overrides: '.github/overrides/linux_debug_overrides.toml'
+            overrides: 'overrides/linux_debug_overrides.toml'
     runs-on: ${{ matrix.kind.os}}
     container:
       image: ${{ matrix.kind.container_image }}
