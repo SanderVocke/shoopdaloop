@@ -18,6 +18,7 @@ jobs:
 
   build_wheels:
     strategy:
+      fail-fast: false
       matrix:
         kind:
           - name: linux_release
