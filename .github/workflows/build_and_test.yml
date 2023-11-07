@@ -74,7 +74,7 @@ jobs:
       # Note: -j1 seems to be needed in order to not trigger a dependency bug in the qml custom type adding
       # of the Qt CMake implementation.
       run: |
-        echo 'cmake.options = { "BACKEND_JACK" = "Off", "HAVE_LV2" = "Off" }' > py-build-cmake-overrides.toml
+        echo 'cmake.options = { "BACKEND_JACK" = "Off", "HAVE_LV2" = "Off", "BUILD_QML_EXTENSIONS" = "Off" }' > py-build-cmake-overrides.toml
         echo 'cmake.generator = "MinGW Makefiles"' >> py-build-cmake-overrides.toml
         echo 'cmake.build_args = [ "-j1" ]'
     - name: Build and upload
