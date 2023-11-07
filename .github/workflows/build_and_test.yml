@@ -61,7 +61,7 @@ jobs:
         prepend_build_cmd: ${{ steps.prepare.outputs.prepend_build_cmd }}
         pypa_build_extra_args: -C--local=.github/overrides/${{ matrix.kind.name }}_overrides.toml
         install: false
-        windows: ${{ matrix.kind.prepare == 'windows' }}
+        windows: ${{ matrix.kind.prepare == 'windows' && 'true' || 'false' }}
 
   
   # build_release_linux:

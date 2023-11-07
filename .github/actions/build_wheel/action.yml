@@ -37,8 +37,8 @@ inputs:
     type: string
   windows:
     required: false
-    type: boolean
-    default: false
+    type: string
+    default: 'false'
 
 outputs:
   run_cmd_prefix:
@@ -56,14 +56,14 @@ runs:
   using: "composite"
   steps:
   - name: Build wheel (${{ inputs.variant_name }})
-    if: ${{ !inputs.windows }}
+    if: ${{ inputs.windows != 'true' }}
     shell: bash
     id: build
     run: |
       ${{ inputs.prepend_build_cmd }} ${{ inputs.python }} -m build -w ${{ inputs.pypa_build_extra_args }}
 
   - name: Build wheel (${{ inputs.variant_name }}) (Windows)
-    if: ${{ inputs.windows }}
+    if: ${{ inputs.windows == 'true' }}
     shell: cmd
     id: build-windows
     run: |
