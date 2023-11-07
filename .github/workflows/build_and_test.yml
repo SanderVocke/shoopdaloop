@@ -202,7 +202,7 @@ jobs:
           - name: arch
             python: python
             pip: python -m pip
-    needs: build_wheel
+    needs: build_wheels
     container:
       image: sandervocke/shoopdaloop_run_base_${{ matrix.os.name }}:latest
       options: --user root --workdir /
