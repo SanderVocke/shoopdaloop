@@ -1,7 +1,0 @@
-module RenderAudioWaveform
-linktarget RenderAudioWaveform
-optional plugin RenderAudioWaveform
-classname RenderAudioWaveformPlugin
-typeinfo RenderAudioWaveform.qmltypes
-depends QtQuick
-prefer :/RenderAudioWaveform/
