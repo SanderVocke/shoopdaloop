@@ -10,6 +10,7 @@ qt_add_qml_module(RenderAudioWaveform
     SOURCES
         RenderAudioWaveform.cpp RenderAudioWaveform.h
     DEPENDENCIES QtQuick
+    SHARED
 )
 
 target_link_libraries(RenderAudioWaveform PRIVATE Qt6::Quick)
