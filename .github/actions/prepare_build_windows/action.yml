@@ -4,7 +4,28 @@ description: Prepare Windows for building Shoopdaloop wheels
 runs:
   using: "composite"
   steps:
-  - name: Set outputs
+  - name: Install Qt
+    uses: jurplel/install-qt-action@v3
+    with:
+      version: "6.5.3"
+      host: windows
+      target: desktop
+      arch: win64_mingw
+      dir: ${{ runner.temp }}
+      setup-python: true
+      archives: icu qtbase qtdeclarative qtsvg qtimageformats qtquickcontrols qtquickcontrols2 qtsvg
+  - name: Install boost
+    id: install_boost
+    uses: ./.github/actions/install_boost_headers
+    with:
+      dir: includes
+  - name: Path conversion
+    id: pathconvert
     shell: bash
     run: |
-      false
+      echo "include_dir=$(cygpath -w ${{ steps.install_boost.outputs.include_dir }})" | tee -a $GITHUB_OUTPUT
+  - name: Install dependencies and provide build command prefix
+    shell: bash
+    run: |
+      python -m pip install build virtualenv pytest meson
+      echo "set \"CMAKE_INCLUDE_PATH=${{ steps.pathconvert.outputs.include_dir }}\" &&" > prepend_build_cmd.txt
