@@ -63,6 +63,14 @@ jobs:
             container_image: null
             prepare: 'windows'
             overrides: 'overrides/linux_debug_overrides.toml'
+          - name: macos_release
+            os: macos-12
+            python: python
+            pip: python -m pip
+            container_image: null
+            prepare: 'macos'
+            overrides: 'overrides/macos_release_overrides.toml'
+
     runs-on: ${{ matrix.kind.os}}
     container:
       image: ${{ matrix.kind.container_image }}

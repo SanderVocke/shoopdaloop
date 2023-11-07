@@ -4,7 +4,33 @@ description: Prepare MacOS for building Shoopdaloop wheels
 runs:
   using: "composite"
   steps:
+  - name: Install packages
+    shell: bash
+    run: |
+      # Skip if already done (local act builds)
+      if [ -f /macos_prepared ]; then
+        exit 0
+      fi
+
+      # Install packages
+      brew install ninja libsndfile libsamplerate libtool automake autoconf cmake
+      brew install jack liblo
+      brew install python@3.8
+      brew install boost
+
+      # Install Python packages
+      python3 -m pip install coverage pytest
+  - name: Install Qt
+    uses: ./.github/actions/install_qt
+    with:
+      - url: https://github.com/SanderVocke/shoopdaloop/releases/download/qt-6.5.3-1/qt-6.5.3-macos.tar.gz
+  - name: Install boost
+    id: install_boost
+    uses: ./.github/actions/install_boost_headers
+    with:
+      dir: /usr/include
   - name: Set outputs
     shell: bash
     run: |
-      false
+      touch /macos_prepared
+      echo "" > prepend_build_cmd.txt
