@@ -17,7 +17,7 @@
 #  define _EXPORT Q_DECL_IMPORT
 #endif
 
-_EXPORT class RenderAudioWaveform : public QQuickPaintedItem {
+class _EXPORT RenderAudioWaveform : public QQuickPaintedItem {
     Q_OBJECT
     QML_ELEMENT
 

@@ -2,9 +2,17 @@ from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
 from PySide6.QtQuick import QQuickItem
 
 from ..logging import Logger as BaseLogger
-from .JackControlClient import JackControlClient
 
-import jacklib as jack
+JackControlClient = None
+jack = None
+
+try:
+    from .JackControlClient import JackControlClient as client
+    import jacklib as _jack
+    jack = _jack
+    JackControlClient = client
+except:
+    pass
 
 class AutoConnect(QQuickItem):
     def __init__(self, parent=None):
@@ -13,15 +21,16 @@ class AutoConnect(QQuickItem):
         self._from_regex = None
         self._to_regex = None
         
-        self._jack = JackControlClient.get_instance()
-        self._jack.portRegistered.connect(self.update)
-        self._jack.portRenamed.connect(self.update)
+        if jack:
+            self._jack = JackControlClient.get_instance()
+            self._jack.portRegistered.connect(self.update)
+            self._jack.portRenamed.connect(self.update)
         
-        self._timer = QTimer()
-        self._timer.setSingleShot(False)
-        self._timer.setInterval(1000)
-        self._timer.timeout.connect(self.update)
-        self._timer.start()
+            self._timer = QTimer()
+            self._timer.setSingleShot(False)
+            self._timer.setInterval(1000)
+            self._timer.timeout.connect(self.update)
+            self._timer.start()
     
     ######################
     ## SIGNALS
@@ -70,6 +79,9 @@ class AutoConnect(QQuickItem):
     
     @Slot()
     def update(self):
+        if not self._jack:
+            return
+        
         from_candidates = None
         to_candidates = None
         any_external = False

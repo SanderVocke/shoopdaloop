@@ -1,10 +1,15 @@
 from PySide6.QtQml import qmlRegisterType, QQmlComponent
 from PySide6.QtCore import QUrl
+from PySide6.QtQuick import QQuickItem
 
 import weakref
 
 import sys
 import os
+import glob
+import re
+import importlib
+
 script_dir = os.path.dirname(__file__)
 sys.path.append(script_dir + '/..')
 
@@ -32,6 +37,8 @@ from .q_objects.ControlInterface import ControlInterface
 from .q_objects.MidiControlPort import MidiControlPort
 from .q_objects.SettingsIO import SettingsIO
 from .q_objects.TestScreenGrabber import TestScreenGrabber
+
+from .logging import Logger as BareLogger
 
 import time
 
@@ -71,16 +78,38 @@ def register_shoopdaloop_qml_classes():
     register_qml_class(TestScreenGrabber, 'TestScreenGrabber')
 
 def create_and_populate_root_context(engine, global_args, additional_items={}):
+    def create_component(path):
+        comp = QQmlComponent(engine, QUrl.fromLocalFile(path))
+        while comp.status() == QQmlComponent.Loading:
+            time.sleep(0.05)
+        if comp.status() != QQmlComponent.Ready:
+            raise Exception('Failed to load {}: {}'.format(path, str(comp.errorString())))
+        return comp
+
     # Set import path to predefined classes
     engine.addImportPath(script_dir + '/../qml_types')
     engine.addPluginPath(script_dir + '/../qml_plugins')
+
+    # Check if our C++ extensions are available. If not, provide fallbacks.
+    for path in glob.glob(script_dir + '/qml/extension_checks/check_*.qml'):
+        filename = os.path.basename(path)
+        match = re.match(r'^check_(.+)\.qml$', filename)
+        if not match:
+            raise Exception('Invalid extension check file: ' + path)
+        extension_name = match.group(1)
+        l = BareLogger('Frontend.ExtensionCheck')
+        try:
+            create_component(path)
+        except:
+            l.warning(lambda: 'QML extension {} not available. Using fallback.'.format(extension_name))
+            l.debug(lambda: 'Exception: {}'.format(sys.exc_info()[1]))
+            module_name = 'shoopdaloop.lib.q_objects.extension_fallbacks.{}'.format(extension_name)
+            module = importlib.import_module(module_name)
+            cl = getattr(module, extension_name)
+            qmlRegisterType(cl, extension_name, 1, 0, extension_name)
     
     # QML instantiations
-    registries_comp = QQmlComponent(engine, QUrl.fromLocalFile(script_dir + '/qml/AppRegistries.qml'))
-    while registries_comp.status() == QQmlComponent.Loading:
-        time.sleep(0.05)
-    if registries_comp.status() != QQmlComponent.Ready:
-        raise Exception('Failed to load AppRegistries.qml: ' + str(registries_comp.errorString()))
+    registries_comp = create_component(script_dir + '/qml/AppRegistries.qml')
     registries = registries_comp.create()
 
     items = {

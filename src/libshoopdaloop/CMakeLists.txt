@@ -83,7 +83,7 @@ add_custom_target(
 
 set(STATIC_DEPS_PREFIX ${CMAKE_CURRENT_BINARY_DIR}/static-deps)
 
-if(HAVE_LV2)
+if (HAVE_LV2)
   include (${CMAKE_CURRENT_SOURCE_DIR}/BuildStaticDependencies.cmake)
   add_subdirectory(${CMAKE_SOURCE_DIR}/../third_party/lv2_evbuf lv2_evbuf)
   target_compile_options(lv2_evbuf PUBLIC -fPIC)
@@ -105,13 +105,14 @@ endif()
 # Backend lib
 file(GLOB INTERNAL_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/internal/*.cpp)
 if (HAVE_LV2)
-  file(GLOB LV2_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/lv2/*.cpp)
-  set(INTERNAL_SOURCES ${INTERNAL_SOURCES} ${LV2_SOURCES})
+  file(GLOB LV2_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/internal/lv2/*.cpp)
+  list(APPEND INTERNAL_SOURCES ${LV2_SOURCES})
+  message(${INTERNAL_SOURCES})
   include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal/lv2)
 endif()
 if (BACKEND_JACK)
-  file(GLOB JACK_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/jack/*.cpp)
-  set(INTERNAL_SOURCES ${INTERNAL_SOURCES} ${JACK_SOURCES})
+  file(GLOB JACK_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/internal/jack/*.cpp)
+  list(APPEND INTERNAL_SOURCES ${JACK_SOURCES})
   include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal/jack)
 endif()
 
