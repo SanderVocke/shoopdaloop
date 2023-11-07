@@ -49,8 +49,8 @@ jobs:
     - name: Prepare
       id: prepare
       uses: ./.github/actions/prepare_build
-        with:
-          variant: ${{ matrix.kind.prepare }}
+      with:
+        variant: ${{ matrix.kind.prepare }}
     - name: Build and upload
       uses: ./.github/actions/build_wheel
       with:
