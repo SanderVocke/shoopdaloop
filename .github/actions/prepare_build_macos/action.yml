@@ -16,21 +16,21 @@ runs:
       brew install ninja libsndfile libsamplerate libtool automake autoconf cmake
       brew install jack liblo
       brew install python@3.8
-      brew install boost
 
       # Install Python packages
-      python3 -m pip install coverage pytest
+      python3 -m pip install build
   - name: Install Qt
     uses: ./.github/actions/install_qt
     with:
       url: https://github.com/SanderVocke/shoopdaloop/releases/download/qt-6.5.3-1/qt-6.5.3-macos.tar.gz
+      dir: qt
   - name: Install boost
     id: install_boost
     uses: ./.github/actions/install_boost_headers
     with:
-      dir: /usr/include
+      dir: includes
   - name: Set outputs
     shell: bash
     run: |
       touch /macos_prepared
-      echo "" > prepend_build_cmd.txt
+      echo "CMAKE_PREFIX_PATH=${{ github.workspace }}/qt/usr/local/Qt-6.5.3 CMAKE_INCLUDE_PATH=${{ github.workspace }}/includes" > prepend_build_cmd.txt

@@ -6,6 +6,10 @@ inputs:
     required: false
     type: string
     default: https://github.com/SanderVocke/shoopdaloop/releases/download/qt-6.5.3-1/qt-6.5.3-manylinux_2_28.tar.gz
+  dir:
+    required: false
+    type: string
+    default: /
 
 runs:
   using: "composite"
@@ -14,5 +18,5 @@ runs:
       shell: bash
       run: |
         curl -L ${{ inputs.url }} --output qt.tar.gz
-        tar -xzf qt.tar.gz -C /
+        tar -xzf qt.tar.gz -C ${{ inputs.dir }}
 
