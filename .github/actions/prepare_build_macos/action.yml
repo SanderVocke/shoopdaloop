@@ -22,7 +22,7 @@ runs:
   - name: Install Qt
     uses: ./.github/actions/install_qt
     with:
-      url: https://github.com/SanderVocke/shoopdaloop/releases/download/qt-6.5.3-1/qt-6.5.3-macos.tar.gz
+      url: https://github.com/SanderVocke/shoopdaloop/releases/download/qt-6.6.0-1/qt-6.6.0-macos.tar.gz
       dir: ${{ github.workspace }}
   - name: Install boost
     id: install_boost
@@ -33,4 +33,4 @@ runs:
     shell: bash
     run: |
       touch _macos_prepared
-      echo "CMAKE_PREFIX_PATH=${{ github.workspace }}/usr/local/Qt-6.5.3 CMAKE_INCLUDE_PATH=${{ github.workspace }}/includes" > prepend_build_cmd.txt
+      echo "CMAKE_PREFIX_PATH=${{ github.workspace }}/usr/local/Qt-6.6.0 CMAKE_INCLUDE_PATH=${{ github.workspace }}/includes" > prepend_build_cmd.txt

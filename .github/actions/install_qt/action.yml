@@ -5,7 +5,7 @@ inputs:
   url:
     required: false
     type: string
-    default: https://github.com/SanderVocke/shoopdaloop/releases/download/qt-6.5.3-1/qt-6.5.3-manylinux_2_28.tar.gz
+    default: https://github.com/SanderVocke/shoopdaloop/releases/download/qt-6.6.0-1/qt-6.6.0-manylinux_2_28.tar.gz
   dir:
     required: false
     type: string

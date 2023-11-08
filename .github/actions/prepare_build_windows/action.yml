@@ -7,7 +7,7 @@ runs:
   - name: Install Qt
     uses: jurplel/install-qt-action@v3
     with:
-      version: "6.5.3"
+      version: "6.6.0"
       host: windows
       target: desktop
       arch: win64_mingw
