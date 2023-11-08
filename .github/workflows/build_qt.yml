@@ -27,38 +27,7 @@ jobs:
         echo "qt_version=6.6.0" | tee -a $GITHUB_ENV
         echo "qt_major_version=6" | tee -a $GITHUB_ENV
         echo "qt_minor_patch_versions=6.0" | tee -a $GITHUB_ENV
-    - name: Install PySide6 from PyPi
-      shell: bash
-      run: |
-        python -m pip install --no-deps --target=pyside6 pyside6-essentials==${{ env.qt_version }}
-        echo "pyside_qt=$(pwd)/pyside6/PySide6" | tee -a $GITHUB_ENV
         echo "full_qt=$(pwd)/qt/Qt/6.6.0/msvc2019_64" | tee -a $GITHUB_ENV
-    - name: Merge Qt installations
-      shell: bash
-      run: |
-        rm ${{ env.full_qt }}/lib/*.lib
-        cd ${{ env.full_qt }}
-        for f in ${{ env.pyside_qt }}/Qt6*.dll; do
-          if [ -f ./bin/$(basename $f) ]; then
-            # overwrite the dll by the PySide-built one if PySide has it.
-            echo "Replacing $(basename $f) by PySide version and removing $(basename $f .dll)d.dll."
-            cp $f ./bin/$(basename $f)
-            rm ./bin/$(basename $f .dll)d.dll || true
-            rm ./lib/cmake/$(basename $f .dll)/$(basename $f .dll)Targets-debug.cmake || true
-            rm ./lib/cmake/$(basename $f .dll)/$(basename $f .dll)Targets-relwithdebinfo.cmake || true
-          fi
-        done
-        for f in ${{ env.full_qt }}/bin/Qt6*.dll; do
-          if [ -f ${{ env.pyside_qt }}/$(basename $f) -o -f ${{ env.pyside_qt }}/$(basename $f d.dll).dll ]; then
-            echo "$(basename $f) was patched."
-          else
-            # remove from our installation if PySide doesn't have it
-            echo "Removing $(basename $f .dll) because not present in PySide."
-            rm $f
-            rm ./lib/$(basename $f .dll).lib || true
-            rm -r ./lib/cmake/$(basename $f .dll) || true
-          fi
-        done
     - name: Sanity check that Qt CMake helpers can be found
       shell: bash
       run: |

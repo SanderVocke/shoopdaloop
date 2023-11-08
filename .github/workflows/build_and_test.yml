@@ -64,7 +64,7 @@ jobs:
             prepare: 'windows'
             overrides: 'overrides/windows_release_overrides.toml'
           - name: macos_release
-            os: macos-12
+            os: macos-11
             python: python3.8
             pip: python3.8 -m pip
             container_image: null
