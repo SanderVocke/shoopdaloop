@@ -1,4 +1,4 @@
-name: Build Qt
+name: Package Qt For CI
 
 on: workflow_dispatch
 
