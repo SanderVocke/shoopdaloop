@@ -74,6 +74,7 @@ jobs:
     runs-on: ${{ matrix.kind.os}}
     container:
       image: ${{ matrix.kind.container_image }}
+      options: --user root --workdir /
     steps:
     - name: Checkout
       uses: actions/checkout@v3
@@ -139,7 +140,9 @@ jobs:
             wheel: macos_release_wheel
     runs-on: ${{ matrix.kind.os }}
     needs: build
-    container: ${{ matrix.kind.container }}
+    container:
+      image: ${{ matrix.kind.container }}
+      options: --user root --workdir /
     steps:
     - name: Checkout
       uses: actions/checkout@v3
