@@ -19,6 +19,10 @@ runs:
     uses: ./.github/actions/install_boost_headers
     with:
       dir: includes
+  - name: Install winget
+    uses: Cyberboss/install-winget@v1
+  - name: Install pkgconfig lite
+    run: winget install --id=bloodrock.pkg-config-lite --disable-interactivity --accept-source-agreements
   - name: Path conversion
     id: pathconvert
     shell: bash
