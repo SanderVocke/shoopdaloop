@@ -21,10 +21,16 @@ jobs:
         arch: win64_msvc2019_64
         dir: qt
         archives: icu qtbase qtdeclarative qtsvg qtimageformats qtquickcontrols qtquickcontrols2 qtsvg
+    - name: Env settings
+      shell: bash
+      run: |
+        echo "qt_version=6.5.3" | tee -a $GITHUB_ENV
+        echo "qt_major_version=6" | tee -a $GITHUB_ENV
+        echo "qt_minor_patch_versions=5.3" | tee -a $GITHUB_ENV
     - name: Install PySide6 and copy files into it
       shell: bash
       run: |
-        pip install --no-deps --target=pyside6 pyside6-essentials=${{ env.qt_version }}
+        python -m pip install --no-deps --target=pyside6 pyside6-essentials==${{ env.qt_version }}
         echo "pyside_qt=pyside6/PySide6" | tee -a $GITHUB_ENV
         echo "full_qt=qt/Qt/6.5.3/msvc2019_64" | tee -a $GITHUB_ENV
     - name: Merge Qt installations
@@ -140,7 +146,7 @@ jobs:
     - name: Install PySide6
       shell: bash
       run: |
-        ${{ matrix.os.pip }} install --no-deps --target=pyside6 pyside6-essentials=${{ env.qt_version }}
+        ${{ matrix.os.pip }} install --no-deps --target=pyside6 pyside6-essentials==${{ env.qt_version }}
         echo "pyside_qt=pyside6/PySide6/Qt" | tee -a $GITHUB_ENV
 
     - name: Copy files from built Qt into PySide6 Qt
