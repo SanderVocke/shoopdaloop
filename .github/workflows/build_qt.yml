@@ -27,7 +27,7 @@ jobs:
         echo "qt_version=6.5.3" | tee -a $GITHUB_ENV
         echo "qt_major_version=6" | tee -a $GITHUB_ENV
         echo "qt_minor_patch_versions=5.3" | tee -a $GITHUB_ENV
-    - name: Install PySide6 and copy files into it
+    - name: Install PySide6 from PyPi
       shell: bash
       run: |
         python -m pip install --no-deps --target=pyside6 pyside6-essentials==${{ env.qt_version }}
@@ -40,10 +40,17 @@ jobs:
         for f in ${{ env.pyside_qt }}/Qt6*.dll; do
           if [ -f ./bin/$(basename $f) ]; then
             # overwrite the dll by the PySide-built one if PySide has it.
+            echo "Replacing $(basename f) by PySide version."
             cp $f ./bin/$(basename $f)
+          fi
+        done
+        for f in ${{ env.full_qt }}/bin/Qt6*.dll; do
+          if [ -f ${{ env.pyside_qt }}/$(basename $f) ]; then
+            echo "$(basename $f) was patched."
           else
             # remove from our installation if PySide doesn't have it
-            rm ./bin/$(basename $f) || true
+            echo "Removing $(basename $f .dll) because not present in PySide."
+            rm $f
             rm ./lib/$(basename $f .dll).lib || true
             rm -r ./lib/cmake/$(basename $f .dll) || true
           fi
@@ -55,6 +62,7 @@ jobs:
         cd qt_test
         cmake -DQt6_DIR=${{ env.full_qt }}/lib/cmake/Qt6 ../src/qt_test_project
         echo "Qt with PySide DLLs was found by CMake at: $(cat CMakeCache.txt | grep Qt6_DIR)"
+        echo "Total installation size: $(du -sh ${{ env.full_qt }})"
     - name: Compress
       shell: bash
       run: tar -czf qt.tar.gz qt
