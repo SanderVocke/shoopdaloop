@@ -34,7 +34,7 @@ jobs:
         mkdir qt_test
         cd qt_test
         cmake -DQt6_DIR=${{ env.full_qt }}/lib/cmake/Qt6 ../src/qt_test_project
-        echo "Qt with PySide DLLs was found by CMake at: $(cat CMakeCache.txt | grep Qt6_DIR)"
+        echo "Qt was found by CMake at: $(cat CMakeCache.txt | grep Qt6_DIR)"
         echo "Total installation size: $(du -sh ${{ env.full_qt }})"
     - name: Compress
       shell: bash
@@ -74,9 +74,6 @@ jobs:
         echo "source_filename=qt-everywhere-src-6.6.0.tar.xz" | tee -a $GITHUB_ENV
         echo "extracted_folder=qt-everywhere-src-6.6.0" | tee -a $GITHUB_ENV
         echo "cache_key=https://download.qt.io/archive/qt/6.6/6.6.0/single/qt-everywhere-src-6.6.0.tar.xz-1" | tee -a $GITHUB_ENV
-        echo "qt_version=6.6.0" | tee -a $GITHUB_ENV
-        echo "qt_major_version=6" | tee -a $GITHUB_ENV
-        echo "qt_minor_patch_versions=6.0" | tee -a $GITHUB_ENV
     
     - name: Prepare manylinux
       if: ${{ matrix.os.name == 'manylinux_2_28' }}
@@ -124,36 +121,36 @@ jobs:
         cmake --build qt-build --parallel 4
         DESTDIR=qt-installed cmake --install qt-build
     
-    - name: Install PySide6
-      shell: bash
-      run: |
-        ${{ matrix.os.pip }} install --no-deps --target=pyside6 pyside6-essentials==${{ env.qt_version }}
-        echo "pyside_qt=pyside6/PySide6/Qt" | tee -a $GITHUB_ENV
+    # - name: Install PySide6
+    #   shell: bash
+    #   run: |
+    #     ${{ matrix.os.pip }} install --no-deps --target=pyside6 pyside6-essentials==${{ env.qt_version }}
+    #     echo "pyside_qt=pyside6/PySide6/Qt" | tee -a $GITHUB_ENV
 
-    - name: Copy files from built Qt into PySide6 Qt
-      shell: bash
-      run: |
-        cp -r qt-installed/usr/local/Qt-${{ env.qt_version }}/include ${{ env.pyside_qt }}/include
-        cp -r qt-installed/usr/local/Qt-${{ env.qt_version }}/lib/cmake ${{ env.pyside_qt }}/lib/cmake
-        cp -r qt-installed/usr/local/Qt-${{ env.qt_version }}/lib/pkgconfig ${{ env.pyside_qt }}/lib/pkgconfig
-        cp -r qt-installed/usr/local/Qt-${{ env.qt_version }}/mkspecs ${{ env.pyside_qt }}/mkspecs
-        cp -r qt-installed/usr/local/Qt-${{ env.qt_version }}/metatypes/* ${{ env.pyside_qt }}/metatypes/
-        cp -r qt-installed/usr/local/Qt-${{ env.qt_version }}/libexec/* ${{ env.pyside_qt }}/libexec/
-        cp -r qt-installed/usr/local/Qt-${{ env.qt_version }}/bin ${{ env.pyside_qt }}/bin
+    # - name: Copy files from built Qt into PySide6 Qt
+    #   shell: bash
+    #   run: |
+    #     cp -r qt-installed/usr/local/Qt-${{ env.qt_version }}/include ${{ env.pyside_qt }}/include
+    #     cp -r qt-installed/usr/local/Qt-${{ env.qt_version }}/lib/cmake ${{ env.pyside_qt }}/lib/cmake
+    #     cp -r qt-installed/usr/local/Qt-${{ env.qt_version }}/lib/pkgconfig ${{ env.pyside_qt }}/lib/pkgconfig
+    #     cp -r qt-installed/usr/local/Qt-${{ env.qt_version }}/mkspecs ${{ env.pyside_qt }}/mkspecs
+    #     cp -r qt-installed/usr/local/Qt-${{ env.qt_version }}/metatypes/* ${{ env.pyside_qt }}/metatypes/
+    #     cp -r qt-installed/usr/local/Qt-${{ env.qt_version }}/libexec/* ${{ env.pyside_qt }}/libexec/
+    #     cp -r qt-installed/usr/local/Qt-${{ env.qt_version }}/bin ${{ env.pyside_qt }}/bin
 
-        # PySide comes with libQt6*.so.6 only, make them into full libQt6*.so.6.6.0
-        for f in ${{ env.pyside_qt }}/lib/*.so.${{ env.qt_major_version }}; do
-          mv $f $f.${{ env.qt_minor_patch_versions }}
-          ln -s $f.${{ env.qt_minor_patch_versions }} $f
-        done
+    #     # PySide comes with libQt6*.so.6 only, make them into full libQt6*.so.6.6.0
+    #     for f in ${{ env.pyside_qt }}/lib/*.so.${{ env.qt_major_version }}; do
+    #       mv $f $f.${{ env.qt_minor_patch_versions }}
+    #       ln -s $f.${{ env.qt_minor_patch_versions }} $f
+    #     done
     
-    - name: Sanity check that Qt CMake helpers can be found
-      shell: bash
-      run: |
-        mkdir qt_test
-        cd qt_test
-        cmake -DQt6_DIR=${{ env.pyside_qt }}/lib/cmake/Qt6 ../src/qt_test_project
-        echo "Patched PySide Qt was found by CMake at: $(cat CMakeCache.txt | grep Qt6_DIR)"
+    # - name: Sanity check that Qt CMake helpers can be found
+    #   shell: bash
+    #   run: |
+    #     mkdir qt_test
+    #     cd qt_test
+    #     cmake -DQt6_DIR=${{ env.pyside_qt }}/lib/cmake/Qt6 ../src/qt_test_project
+    #     echo "Patched PySide Qt was found by CMake at: $(cat CMakeCache.txt | grep Qt6_DIR)"
 
     - name: Compress Qt for caching
       shell: bash

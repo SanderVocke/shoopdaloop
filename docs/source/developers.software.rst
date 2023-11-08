@@ -64,21 +64,17 @@ A source package cannot be built - only a wheel directly. Please refer to the bu
 
 For a build on the same system where ShoopDaLoop is to be used, the building is pretty much a "straightforward" py-build-cmake build.
 
-For the official release wheels though, the setup is more complicated:
+For the official release wheels though, the setup is more complicated.
 
-* We want to be sure that our wheel is compatible with the PyPi version of PySide6, using the Qt libraries shipped with PySide6.
-* This includes the C++ extensions we build against Qt6.
-* PySide6 does not ship with the necessary C++ headers and CMake helper files to compile an extension against its Qt6 libraries.
-
-Therefore, the approach taken in our CI is:
-
-* Build or download a full Qt installation (depending on OS).
-* Install PySide6 from PyPi.
-* Merge the two together, resulting in (mostly) the binaries from PySide6 with (mostly) the auxiliary files from the full Qt6.
-* The result is stored as a pseudo-release in our GitHub repo, and this is what ShoopDaLoop builds against.
-
-This way, binary compatibility is achieved and any issues in this regard should arise during CI build and test, rather than on the end user's system.
-
+* For Linux:
+  * The aim is to distribute both as a Python wheel and as a PyInstaller standalone app.
+  * We want to be sure that our wheel is compatible with the PyPi version of PySide6, using the Qt libraries shipped with PySide6.
+  * This includes the C++ extensions we build against Qt6.
+  * PySide6 does not ship with the necessary C++ headers and CMake helper files to compile an extension against its Qt6 libraries.
+  * Therefore, our CI Qt build is made by combining a self-built Qt with the Qt binaries from PyPi's PySide6. This way we can build extensions but also trigger any binary compatibility issues early in the build, and have confidence that the end result will work with PyPi's PySide6.
+* For Windows:
+  * The Python wheel is not seen as something to be distributed, because binary compatibility with the PySide6 package is made harder. PySide6's binaries cannot simply be combined with a self-built or prebuilt Qt, because PySide does not ship with .lib or .def files.
+  * Therefore, we only distribute a PyInstaller standalone app. We still need to be careful about which DLLs are grabbed because PySide and Qt are both involved.
 
 Debugging
 ^^^^^^^^^^
