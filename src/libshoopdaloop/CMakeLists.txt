@@ -116,16 +116,6 @@ if (BACKEND_JACK)
   include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal/jack)
 endif()
 
-# TODO jack
-
-add_library(testy SHARED internal/MidiChannel.cpp)
-target_include_directories(testy
-                          PRIVATE
-                          ${Boost_INCLUDE_DIR}
-                          ${fmt_INCLUDE_DIR}
-                          ${SPDLOG_INCLUDE_DIR}
-                          )
-
 add_library(shoopdaloop SHARED libshoopdaloop.cpp ${INTERNAL_SOURCES})
 target_link_libraries(shoopdaloop PUBLIC
                       ${fmt_LIBRARY})
