@@ -213,6 +213,10 @@ jobs:
         run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH=${{ env.qtlibpath }}
         root_path: ${{ steps.install.outputs.install_dir }}
         python: ${{ matrix.kind.python }}
+    - name: Sleep 5m on failure
+      if: ${{ failure() }}
+      run: sleep 300s
+      shell: bash
         
   # asan:
   #   runs-on: ubuntu-latest
