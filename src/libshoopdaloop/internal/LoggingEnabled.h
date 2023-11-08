@@ -1,7 +1,7 @@
 #pragma once
 #include "LoggingBackend.h"
-#include <source_location>
 #include <spdlog/common.h>
+#include <boost/assert/source_location.hpp>
 
 template<logging::LogLevel LevelFilter>
 class LoggingEnabled {
@@ -31,9 +31,9 @@ public:
         throw Exception("Error");
     }
 
-    void log_trace(const char* fn = std::source_location::current().function_name(),
-                   const char* fl = std::source_location::current().file_name(),
-                   uint32_t ln = std::source_location::current().line()) const {
+    void log_trace(const char* fn = BOOST_CURRENT_LOCATION.function_name(),
+                   const char* fl = BOOST_CURRENT_LOCATION.file_name(),
+                   uint32_t ln = BOOST_CURRENT_LOCATION.line()) const {
         if (!m_logger) { throw std::runtime_error("Uninitialized, ensure you have called log_init()." ); }
         if (logging::LogLevel::trace >= LevelFilter) {
             auto _t = fmt::ptr((void*)this);
