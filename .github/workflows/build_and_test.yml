@@ -65,8 +65,8 @@ jobs:
             overrides: 'overrides/linux_debug_overrides.toml'
           - name: macos_release
             os: macos-12
-            python: python
-            pip: python -m pip
+            python: python3.8
+            pip: python3.8 -m pip
             container_image: null
             prepare: 'macos'
             overrides: 'overrides/macos_release_overrides.toml'
