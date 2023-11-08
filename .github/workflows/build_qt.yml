@@ -36,13 +36,16 @@ jobs:
     - name: Merge Qt installations
       shell: bash
       run: |
+        rm ${{ env.full_qt }}/lib/*.lib
         cd ${{ env.full_qt }}
         for f in ${{ env.pyside_qt }}/Qt6*.dll; do
           if [ -f ./bin/$(basename $f) ]; then
             # overwrite the dll by the PySide-built one if PySide has it.
-            echo "Replacing $(basename $f) by PySide version and copying to $(basename $f .dll)d.dll."
+            echo "Replacing $(basename $f) by PySide version and removing $(basename $f .dll)d.dll."
             cp $f ./bin/$(basename $f)
-            cp $f ./bin/$(basename $f .dll)d.dll
+            rm ./bin/$(basename $f .dll)d.dll
+            rm ./lib/cmake/$(basename $f .dll)Targets-debug.cmake
+            rm ./lib/cmake/$(basename $f .dll)Targets-relwithdebinfo.cmake
           fi
         done
         for f in ${{ env.full_qt }}/bin/Qt6*.dll; do
