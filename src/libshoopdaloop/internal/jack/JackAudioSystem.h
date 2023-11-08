@@ -70,3 +70,6 @@ public:
 
 using JackAudioSystem = GenericJackAudioSystem<JackApi>;
 using JackTestAudioSystem = GenericJackAudioSystem<JackTestApi>;
+
+extern template class GenericJackAudioSystem<JackApi>;
+extern template class GenericJackAudioSystem<JackTestApi>;

@@ -8,13 +8,6 @@
 #include <map>
 #include <algorithm>
 
-template class DummyAudioSystem<uint32_t, uint16_t>;
-template class DummyAudioSystem<uint32_t, uint32_t>;
-template class DummyAudioSystem<uint16_t, uint16_t>;
-template class DummyAudioSystem<uint16_t, uint32_t>;
-template class DummyAudioSystem<uint32_t, uint64_t>;
-template class DummyAudioSystem<uint64_t, uint64_t>;
-
 const std::map<DummyAudioSystemMode, const char*> mode_names = {
     {DummyAudioSystemMode::Automatic, "Automatic"},
     {DummyAudioSystemMode::Controlled, "Controlled"}
@@ -452,3 +445,10 @@ void DummyAudioSystem<Time, Size>::controlled_mode_run_request(size_t timeout) {
         log<logging::LogLevel::err>("DummyAudioSystem: run request timed out");
     }
 }
+
+template class DummyAudioSystem<uint32_t, uint16_t>;
+template class DummyAudioSystem<uint32_t, uint32_t>;
+template class DummyAudioSystem<uint16_t, uint16_t>;
+template class DummyAudioSystem<uint16_t, uint32_t>;
+template class DummyAudioSystem<uint32_t, uint64_t>;
+template class DummyAudioSystem<uint64_t, uint64_t>;

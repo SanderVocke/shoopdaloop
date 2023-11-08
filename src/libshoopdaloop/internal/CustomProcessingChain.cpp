@@ -1,10 +1,6 @@
 #include "shoop_globals.h"
 #include "CustomProcessingChain.h"
 #include "DummyAudioSystem.h"
-template class CustomProcessingChain<uint32_t, uint16_t>;
-template class CustomProcessingChain<uint32_t, uint32_t>;
-template class CustomProcessingChain<uint16_t, uint16_t>;
-template class CustomProcessingChain<uint16_t, uint32_t>;
 
 template<typename TimeType, typename SizeType>
 std::string CustomProcessingChain<TimeType, SizeType>::log_module_name() const {
@@ -107,3 +103,7 @@ size_t CustomProcessingChain<TimeType, SizeType>::buffers_size() const {
 template <typename TimeType, typename SizeType>
 void CustomProcessingChain<TimeType, SizeType>::stop() {}
 
+template class CustomProcessingChain<uint32_t, uint16_t>;
+template class CustomProcessingChain<uint32_t, uint32_t>;
+template class CustomProcessingChain<uint16_t, uint16_t>;
+template class CustomProcessingChain<uint16_t, uint32_t>;

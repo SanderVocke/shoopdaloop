@@ -5,9 +5,6 @@
 #include <cstring>
 #include <iostream>
 
-template class InternalAudioPort<float>;
-template class InternalAudioPort<int>;
-
 template <typename SampleT>
 InternalAudioPort<SampleT>::InternalAudioPort(std::string name,
                                               PortDirection direction,
@@ -64,3 +61,6 @@ template <typename SampleT> void InternalAudioPort<SampleT>::close() {}
 template <typename SampleT> void InternalAudioPort<SampleT>::zero() {
     memset((void *)m_buffer.data(), 0, sizeof(float) * m_buffer.size());
 }
+
+template class InternalAudioPort<float>;
+template class InternalAudioPort<int>;

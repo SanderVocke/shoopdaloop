@@ -5,9 +5,6 @@
 #include <algorithm>
 #include <stdexcept>
 
-template class GenericJackPort<JackApi>;
-template class GenericJackPort<JackTestApi>;
-
 template<typename API>
 const char* GenericJackPort<API>::name() const { return m_name.c_str(); }
 
@@ -118,3 +115,6 @@ void GenericJackPort<API>::disconnect_external(std::string name) {
 
 template<typename API>
 std::string GenericJackPort<API>::log_module_name() const { return "Backend.JackPort"; }
+
+template class GenericJackPort<JackApi>;
+template class GenericJackPort<JackTestApi>;

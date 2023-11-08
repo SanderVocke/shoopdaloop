@@ -4,10 +4,6 @@
 #include <optional>
 #include <cstring>
 #include <iostream>
-template class DecoupledMidiPort<uint32_t, uint16_t>;
-template class DecoupledMidiPort<uint32_t, uint32_t>;
-template class DecoupledMidiPort<uint16_t, uint16_t>;
-template class DecoupledMidiPort<uint16_t, uint32_t>;
 
 template <typename TimeType, typename SizeType>
 DecoupledMidiPort<TimeType, SizeType>::DecoupledMidiPort(
@@ -63,3 +59,8 @@ void DecoupledMidiPort<TimeType, SizeType>::push_outgoing(
     typename DecoupledMidiPort<TimeType, SizeType>::Message m) {
     ma_queue.push(m);
 }
+
+template class DecoupledMidiPort<uint32_t, uint16_t>;
+template class DecoupledMidiPort<uint32_t, uint32_t>;
+template class DecoupledMidiPort<uint16_t, uint16_t>;
+template class DecoupledMidiPort<uint16_t, uint32_t>;

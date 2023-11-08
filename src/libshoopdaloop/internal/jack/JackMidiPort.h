@@ -58,3 +58,6 @@ public:
 
 using JackMidiPort = GenericJackMidiPort<JackApi>;
 using JackTestMidiPort = GenericJackMidiPort<JackTestApi>;
+
+extern template class GenericJackMidiPort<JackApi>;
+extern template class GenericJackMidiPort<JackTestApi>;

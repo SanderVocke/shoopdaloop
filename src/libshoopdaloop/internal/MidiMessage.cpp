@@ -1,10 +1,5 @@
 #include "MidiMessage.h"
 
-template class MidiMessage<uint32_t, uint16_t>;
-template class MidiMessage<uint32_t, uint32_t>;
-template class MidiMessage<uint16_t, uint16_t>;
-template class MidiMessage<uint16_t, uint32_t>;
-
 template <typename TimeType, typename SizeType>
 MidiMessage<TimeType, SizeType>::MidiMessage(decltype(time) time,
                                              decltype(size) size,
@@ -35,3 +30,8 @@ void MidiMessage<TimeType, SizeType>::get(uint32_t &size_out,
     time_out = time;
     data_out = data.data();
 }
+
+template class MidiMessage<uint32_t, uint16_t>;
+template class MidiMessage<uint32_t, uint32_t>;
+template class MidiMessage<uint16_t, uint16_t>;
+template class MidiMessage<uint16_t, uint32_t>;

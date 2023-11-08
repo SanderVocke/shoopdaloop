@@ -13,9 +13,6 @@
 #include <chrono>
 #include <boost/lockfree/spsc_queue.hpp>
 
-template class AudioChannel<float>;
-template class AudioChannel<int>;
-
 using namespace std::chrono_literals;
 using namespace logging;
 
@@ -684,3 +681,6 @@ AudioChannel<SampleT>::get_new_buffer() const {
     }
     return buf;
 }
+
+template class AudioChannel<float>;
+template class AudioChannel<int>;

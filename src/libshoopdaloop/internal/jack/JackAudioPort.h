@@ -21,3 +21,6 @@ public:
 
 using JackAudioPort = GenericJackAudioPort<JackApi>;
 using JackTestAudioPort = GenericJackAudioPort<JackTestApi>;
+
+extern template class GenericJackAudioPort<JackApi>;
+extern template class GenericJackAudioPort<JackTestApi>;

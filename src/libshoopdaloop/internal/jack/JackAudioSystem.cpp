@@ -8,9 +8,6 @@
 #include <memory>
 #include <atomic>
 
-template class GenericJackAudioSystem<JackApi>;
-template class GenericJackAudioSystem<JackTestApi>;
-
 template<typename API>
 std::string GenericJackAudioSystem<API>::log_module_name() const {
     return "Backend.JackAudioSystem";
@@ -182,3 +179,6 @@ size_t GenericJackAudioSystem<API>::get_xruns() const { return m_xruns; }
 
 template<typename API>
 void GenericJackAudioSystem<API>::reset_xruns() { m_xruns = 0; }
+
+template class GenericJackAudioSystem<JackApi>;
+template class GenericJackAudioSystem<JackTestApi>;

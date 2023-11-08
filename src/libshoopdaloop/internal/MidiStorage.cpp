@@ -9,23 +9,6 @@
 #include <stdio.h>
 #include <vector>
 
-template class MidiStorageElem<uint32_t, uint16_t>;
-template class MidiStorageElem<uint32_t, uint32_t>;
-template class MidiStorageElem<uint16_t, uint16_t>;
-template class MidiStorageElem<uint16_t, uint32_t>;
-template class MidiStorageCursor<uint32_t, uint16_t>;
-template class MidiStorageCursor<uint32_t, uint32_t>;
-template class MidiStorageCursor<uint16_t, uint16_t>;
-template class MidiStorageCursor<uint16_t, uint32_t>;
-template class MidiStorageBase<uint32_t, uint16_t>;
-template class MidiStorageBase<uint32_t, uint32_t>;
-template class MidiStorageBase<uint16_t, uint16_t>;
-template class MidiStorageBase<uint16_t, uint32_t>;
-template class MidiStorage<uint32_t, uint16_t>;
-template class MidiStorage<uint32_t, uint32_t>;
-template class MidiStorage<uint16_t, uint16_t>;
-template class MidiStorage<uint16_t, uint32_t>;
-
 using namespace logging;
 
 template <typename TimeType, typename SizeType>
@@ -415,3 +398,20 @@ void MidiStorage<TimeType, SizeType>::for_each_msg(
             "Attempting to retrieve contents of destructed storage");
     }
 }
+
+template class MidiStorageElem<uint32_t, uint16_t>;
+template class MidiStorageElem<uint32_t, uint32_t>;
+template class MidiStorageElem<uint16_t, uint16_t>;
+template class MidiStorageElem<uint16_t, uint32_t>;
+template class MidiStorageCursor<uint32_t, uint16_t>;
+template class MidiStorageCursor<uint32_t, uint32_t>;
+template class MidiStorageCursor<uint16_t, uint16_t>;
+template class MidiStorageCursor<uint16_t, uint32_t>;
+template class MidiStorageBase<uint32_t, uint16_t>;
+template class MidiStorageBase<uint32_t, uint32_t>;
+template class MidiStorageBase<uint16_t, uint16_t>;
+template class MidiStorageBase<uint16_t, uint32_t>;
+template class MidiStorage<uint32_t, uint16_t>;
+template class MidiStorage<uint32_t, uint32_t>;
+template class MidiStorage<uint16_t, uint16_t>;
+template class MidiStorage<uint16_t, uint32_t>;

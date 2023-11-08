@@ -8,11 +8,6 @@
 #include <chrono>
 #include <thread>
 
-template class MidiChannel<uint32_t, uint16_t>;
-template class MidiChannel<uint32_t, uint32_t>;
-template class MidiChannel<uint16_t, uint16_t>;
-template class MidiChannel<uint16_t, uint32_t>;
-
 using namespace std::chrono_literals;
 using namespace logging;
 
@@ -665,3 +660,8 @@ MidiChannel<TimeType, SizeType>::get_start_offset() const { return ma_start_offs
 template <typename TimeType, typename SizeType>
 std::optional<size_t>
 MidiChannel<TimeType, SizeType>::get_played_back_sample() const { return std::nullopt; }
+
+template class MidiChannel<uint32_t, uint16_t>;
+template class MidiChannel<uint32_t, uint32_t>;
+template class MidiChannel<uint16_t, uint16_t>;
+template class MidiChannel<uint16_t, uint32_t>;

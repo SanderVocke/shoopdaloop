@@ -96,7 +96,7 @@ jobs:
       run: |
         mkdir qt-build
         cd qt-build
-        ../qt/configure -release -submodules qtdeclarative,qtshadertools -cmake-generator Ninja
+        ../qt/configure -release -submodules qtdeclarative,qtshadertools -cmake-generator Ninja -nomake tools -nomake tests -nomake examples -no-pch
 
     - name: Build Qt
       shell: bash

@@ -4,9 +4,6 @@
 #include "LoggingBackend.h"
 #include <stdexcept>
 
-template class GenericJackMidiPort<JackApi>;
-template class GenericJackMidiPort<JackTestApi>;
-
 template<typename API>
 GenericJackMidiPort<API>::ReadMessage::ReadMessage(jack_midi_event_t e) {
     time = e.time;
@@ -81,3 +78,6 @@ MidiWriteableBufferInterface &GenericJackMidiPort<API>::PROC_get_write_buffer(si
     API::midi_clear_buffer(m_jack_write_buf);
     return *(static_cast<MidiWriteableBufferInterface *>(this));
 }
+
+template class GenericJackMidiPort<JackApi>;
+template class GenericJackMidiPort<JackTestApi>;

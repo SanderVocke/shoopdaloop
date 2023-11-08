@@ -26,3 +26,6 @@ public:
 
 using JackAllPorts = GenericJackAllPorts<JackApi>;
 using JackTestAllPorts = GenericJackAllPorts<JackTestApi>;
+
+extern template class GenericJackAllPorts<JackApi>;
+extern template class GenericJackAllPorts<JackTestApi>;

@@ -13,11 +13,6 @@
 #include <nlohmann/json.hpp>
 #include <base64.hpp>
 
-template class CarlaLV2ProcessingChain<uint32_t, uint16_t>;
-template class CarlaLV2ProcessingChain<uint32_t, uint32_t>;
-template class CarlaLV2ProcessingChain<uint16_t, uint16_t>;
-template class CarlaLV2ProcessingChain<uint16_t, uint32_t>;
-
 namespace carla_constants {
     constexpr size_t max_buffer_size = 8192;
     constexpr size_t min_buffer_size = 1;
@@ -667,3 +662,8 @@ std::string CarlaLV2ProcessingChain<TimeType, SizeType>::serialize_state() {
                         LV2_STATE_IS_POD | LV2_STATE_IS_PORTABLE, features);
     return s.serialize();
 }
+
+template class CarlaLV2ProcessingChain<uint32_t, uint16_t>;
+template class CarlaLV2ProcessingChain<uint32_t, uint32_t>;
+template class CarlaLV2ProcessingChain<uint16_t, uint16_t>;
+template class CarlaLV2ProcessingChain<uint16_t, uint32_t>;
