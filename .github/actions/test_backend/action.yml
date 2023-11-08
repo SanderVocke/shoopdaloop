@@ -8,7 +8,7 @@ inputs:
   run_cmd_prefix:
     type: string
     description: "Command-line prefix to use when running the test runner"
-  test_runner_dir:
+  test_runner:
     type: string
     required: true
 
@@ -25,7 +25,7 @@ runs:
     shell: bash
     run: |
       mkdir -p reports
-      ${{ inputs.run_cmd_prefix }} ${{ inputs.test_runner_dir }}/test_runner --reporter junit --out ${{ env.results_xml }}
+      ${{ inputs.run_cmd_prefix }} ${{ inputs.test_runner }} --reporter junit --out ${{ env.results_xml }}
       echo "Back-end test results file: $(ls -la ${{ env.results_xml }})"
   
   - name: Publish Back-end Test Report
