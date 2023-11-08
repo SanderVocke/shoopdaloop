@@ -1,4 +1,4 @@
-from PySide6.QtQml import qmlRegisterType, QQmlComponent
+from PySide6.QtQml import qmlRegisterType, qmlTypeId, QQmlComponent
 from PySide6.QtCore import QUrl
 from PySide6.QtQuick import QQuickItem
 
@@ -99,14 +99,16 @@ def create_and_populate_root_context(engine, global_args, additional_items={}):
         extension_name = match.group(1)
         l = BareLogger('Frontend.ExtensionCheck')
         try:
-            create_component(path)
-        except:
-            l.warning(lambda: 'QML extension {} not available. Using fallback.'.format(extension_name))
-            l.debug(lambda: 'Exception: {}'.format(sys.exc_info()[1]))
-            module_name = 'shoopdaloop.lib.q_objects.extension_fallbacks.{}'.format(extension_name)
-            module = importlib.import_module(module_name)
-            cl = getattr(module, extension_name)
-            qmlRegisterType(cl, extension_name, 1, 0, extension_name)
+            #create_component(path)
+            type_id = qmlTypeId(extension_name, 1, 0, extension_name)
+            if type_id < 0:
+                raise Exception('boo')
+        except Exception as e:
+            l.warning(lambda: 'QML extension {} not available. Using fallback. Exception: {}'.format(extension_name, str(e)))
+            # module_name = 'shoopdaloop.lib.q_objects.extension_fallbacks.{}'.format(extension_name)
+            # module = importlib.import_module(module_name)
+            # cl = getattr(module, extension_name)
+            # qmlRegisterType(cl, extension_name, 1, 0, extension_name)
     
     # QML instantiations
     registries_comp = create_component(script_dir + '/qml/AppRegistries.qml')

@@ -16,6 +16,8 @@ qt_add_qml_module(RenderAudioWaveform
 target_link_libraries(RenderAudioWaveform PRIVATE Qt6::Quick)
 target_compile_definitions(RenderAudioWaveform PRIVATE -DRENDERAUDIOWAVEFORM_LIBRARY)
 
+set(QMLDIR_FILE ${CMAKE_CURRENT_BINARY_DIR}/qmldir)
+set(QMLTYPES_FILE ${CMAKE_CURRENT_BINARY_DIR}/RenderAudioWaveform.qmltypes)
 # Install the type
 install(FILES ${QMLDIR_FILE} ${QMLTYPES_FILE}
         DESTINATION

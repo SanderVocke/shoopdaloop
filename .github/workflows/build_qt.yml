@@ -57,6 +57,7 @@ jobs:
         echo "source_filename=qt-everywhere-src-6.5.3.tar.xz" | tee -a $GITHUB_ENV
         echo "extracted_folder=qt-everywhere-src-6.5.3" | tee -a $GITHUB_ENV
         echo "cache_key=https://download.qt.io/archive/qt/6.5/6.5.3/single/qt-everywhere-src-6.5.3.tar.xz-1" | tee -a $GITHUB_ENV
+        echo "qt_version=6.5.3" | tee -a $GITHUB_ENV
     
     - name: Prepare manylinux
       if: ${{ matrix.os.name == 'manylinux_2_28' }}
@@ -103,11 +104,36 @@ jobs:
       run: |
         cmake --build qt-build --parallel 4
         DESTDIR=qt-installed cmake --install qt-build
+    
+    - name: Install PySide6 and copy files into it
+      shell: bash
+      run: |
+        pip install --no-deps --target=pyside6 pyside6-essentials=${{ env.qt_version }}
+        echo "pyside_qt=pyside6/PySide6/Qt" | tee -a $GITHUB_ENV
+
+    - name: Copy files from built Qt into PySide6 Qt
+      shell: bash
+      run: |
+        cp -r qt-installed/usr/local/Qt-${{ env.qt_version }}/include ${{ env.pyside_qt }}/include
+        cp -r qt-installed/usr/local/Qt-${{ env.qt_version }}/lib/cmake ${{ env.pyside_qt }}/lib/cmake
+        cp -r qt-installed/usr/local/Qt-${{ env.qt_version }}/lib/pkgconfig ${{ env.pyside_qt }}/lib/pkgconfig
+        cp -r qt-installed/usr/local/Qt-${{ env.qt_version }}/mkspecs ${{ env.pyside_qt }}/mkspecs
+        cp -r qt-installed/usr/local/Qt-${{ env.qt_version }}/metatypes/* ${{ env.pyside_qt }}/metatypes/
+        cp -r qt-installed/usr/local/Qt-${{ env.qt_version }}/libexec/* ${{ env.pyside_qt }}/libexec/
+        cp -r qt-installed/usr/local/Qt-${{ env.qt_version }}/bin ${{ env.pyside_qt }}/bin
+    
+    - name: Sanity check that Qt CMake helpers can be found
+      shell: bash
+      run: |
+        mkdir qt_test
+        cd qt_test
+        cmake -DQt6_DIR=${{ env.pyside_qt }}/lib/cmake/Qt6 ../src/qt_test_project
+        echo "Modified PySide Qt was found at: $(cat CMakeCache.txt | grep Qt6_DIR)"
 
     - name: Compress Qt for caching
       shell: bash
       run: |
-         cd qt-installed
+         cd ${{ env.pyside_qt }}
          tar czvf ../qt.tar.gz *
     
     - name: Upload Qt
