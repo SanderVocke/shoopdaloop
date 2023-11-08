@@ -43,9 +43,9 @@ jobs:
             cp $f ./bin/$(basename $f)
           else
             # remove from our installation if PySide doesn't have it
-            rm ./bin/$(basename $f)
-            rm ./lib/$(basename $f .dll).lib
-            rm -r ./lib/cmake/$(basename $f .dll)
+            rm ./bin/$(basename $f) || true
+            rm ./lib/$(basename $f .dll).lib || true
+            rm -r ./lib/cmake/$(basename $f .dll) || true
           fi
         done
     - name: Sanity check that Qt CMake helpers can be found
