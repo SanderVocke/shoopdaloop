@@ -40,12 +40,13 @@ jobs:
         for f in ${{ env.pyside_qt }}/Qt6*.dll; do
           if [ -f ./bin/$(basename $f) ]; then
             # overwrite the dll by the PySide-built one if PySide has it.
-            echo "Replacing $(basename $f) by PySide version."
+            echo "Replacing $(basename $f) by PySide version and copying to $(basename $f .dll)d.dll."
             cp $f ./bin/$(basename $f)
+            cp $f ./bin/$(basename $f .dll)d.dll
           fi
         done
         for f in ${{ env.full_qt }}/bin/Qt6*.dll; do
-          if [ -f ${{ env.pyside_qt }}/$(basename $f) -o -f ${{ env.pyside_qt }}/$(basename $f .dll)d.dll ]; then
+          if [ -f ${{ env.pyside_qt }}/$(basename $f) -o -f ${{ env.pyside_qt }}/$(basename $f d.dll).dll ]; then
             echo "$(basename $f) was patched."
           else
             # remove from our installation if PySide doesn't have it
