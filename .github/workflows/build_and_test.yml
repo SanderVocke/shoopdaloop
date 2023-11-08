@@ -207,7 +207,7 @@ jobs:
         python: ${{ matrix.kind.python }}
     - name: TMate failure session
       if: ${{ failure() }}
-      uses: mxschmitt/action-tmate@v3
+      uses: SanderVocke/action-tmate@master
       with:
         detached: true
         
