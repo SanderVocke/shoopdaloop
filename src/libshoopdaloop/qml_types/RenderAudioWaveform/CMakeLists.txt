@@ -18,6 +18,7 @@ target_compile_definitions(RenderAudioWaveform PRIVATE -DRENDERAUDIOWAVEFORM_LIB
 
 set(QMLDIR_FILE ${CMAKE_CURRENT_BINARY_DIR}/qmldir)
 set(QMLTYPES_FILE ${CMAKE_CURRENT_BINARY_DIR}/RenderAudioWaveform.qmltypes)
+
 # Install the type
 install(FILES ${QMLDIR_FILE} ${QMLTYPES_FILE}
         DESTINATION

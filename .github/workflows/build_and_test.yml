@@ -79,10 +79,6 @@ jobs:
       uses: actions/checkout@v3
       with:
         submodules: recursive
-    - name: Setup tmate session
-      uses: mxschmitt/action-tmate@v3
-      with:
-        detached: true
     - name: Prepare
       id: prepare
       uses: ./.github/actions/prepare_build
@@ -149,10 +145,6 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v3
-    - name: Setup tmate session
-      uses: mxschmitt/action-tmate@v3
-      with:
-        detached: true
     - name: Retrieve wheel
       uses: actions/download-artifact@v3
       with:
@@ -213,10 +205,11 @@ jobs:
         run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH=${{ env.qtlibpath }}
         root_path: ${{ steps.install.outputs.install_dir }}
         python: ${{ matrix.kind.python }}
-    - name: Sleep 5m on failure
+    - name: TMate failure session
       if: ${{ failure() }}
-      run: sleep 300s
-      shell: bash
+      uses: mxschmitt/action-tmate@v3
+      with:
+        detached: true
         
   # asan:
   #   runs-on: ubuntu-latest
