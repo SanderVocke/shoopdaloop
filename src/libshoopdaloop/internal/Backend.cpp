@@ -16,6 +16,7 @@
 #include "AudioMidiLoop.h"
 #include "shoop_globals.h"
 #include "types.h"
+#include "process_when.h"
 
 #ifdef SHOOP_HAVE_BACKEND_JACK
 #include "JackAudioSystem.h"

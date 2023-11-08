@@ -1,4 +1,3 @@
-#define IMPLEMENT_INTERNALAUDIOPORT_H
 #include "InternalAudioPort.h"
 #include <string>
 #include "PortInterface.h"

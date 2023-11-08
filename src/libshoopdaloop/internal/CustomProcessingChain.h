@@ -51,9 +51,7 @@ public:
     void stop() override;
 };
 
-#ifndef IMPLEMENT_CustomProcessingChain_H
 extern template class CustomProcessingChain<uint32_t, uint16_t>;
 extern template class CustomProcessingChain<uint32_t, uint32_t>;
 extern template class CustomProcessingChain<uint16_t, uint16_t>;
 extern template class CustomProcessingChain<uint16_t, uint32_t>;
-#endif

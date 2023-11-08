@@ -2,6 +2,7 @@
 #include "ConnectedPort.h"
 #include "ConnectedChannel.h"
 #include "shoop_globals.h"
+#include "process_when.h"
 
 using namespace shoop_types;
 using namespace shoop_constants;

@@ -35,9 +35,7 @@ public:
     void push_outgoing (Message m);
 };
 
-#ifndef IMPLEMENT_DECOUPLEDMIDIPORT_H
 extern template class DecoupledMidiPort<uint32_t, uint16_t>;
 extern template class DecoupledMidiPort<uint32_t, uint32_t>;
 extern template class DecoupledMidiPort<uint16_t, uint16_t>;
 extern template class DecoupledMidiPort<uint16_t, uint32_t>;
-#endif

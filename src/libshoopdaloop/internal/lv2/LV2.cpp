@@ -1,4 +1,3 @@
-#define IMPLEMENT_LV2_H
 #include "LV2.h"
 #include "ProcessProfiling.h"
 #include "types.h"

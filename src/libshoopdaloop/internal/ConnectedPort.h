@@ -5,6 +5,7 @@
 #include "MidiPortInterface.h"
 #include "LoggingEnabled.h"
 #include "shoop_globals.h"
+#include "process_when.h"
 
 class Backend;
 class PortInterface;

@@ -1,4 +1,3 @@
-#define IMPLEMENT_MIDISTORAGE_H
 #include "MidiStorage.h"
 #include <atomic>
 #include <cstdint>
@@ -10,7 +9,6 @@
 #include <stdio.h>
 #include <vector>
 
-#ifndef IMPLEMENT_MIDIMESSAGE_H
 template class MidiStorageElem<uint32_t, uint16_t>;
 template class MidiStorageElem<uint32_t, uint32_t>;
 template class MidiStorageElem<uint16_t, uint16_t>;
@@ -27,7 +25,6 @@ template class MidiStorage<uint32_t, uint16_t>;
 template class MidiStorage<uint32_t, uint32_t>;
 template class MidiStorage<uint16_t, uint16_t>;
 template class MidiStorage<uint16_t, uint32_t>;
-#endif
 
 using namespace logging;
 

@@ -220,11 +220,9 @@ public:
     void wait_process();
 };
 
-#ifndef IMPLEMENT_DUMMYAUDIOSYSTEM_H
 extern template class DummyAudioSystem<uint32_t, uint16_t>;
 extern template class DummyAudioSystem<uint32_t, uint32_t>;
 extern template class DummyAudioSystem<uint16_t, uint16_t>;
 extern template class DummyAudioSystem<uint16_t, uint32_t>;
 extern template class DummyAudioSystem<uint32_t, uint64_t>;
 extern template class DummyAudioSystem<uint64_t, uint64_t>;
-#endif

@@ -4,7 +4,6 @@
 #include <chrono>
 #include <cstdint>
 #include <thread>
-#define IMPLEMENT_DUMMYAUDIOSYSTEM_H
 #include "DummyAudioSystem.h"
 #include <map>
 #include <algorithm>

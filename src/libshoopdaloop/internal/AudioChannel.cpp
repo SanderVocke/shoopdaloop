@@ -1,6 +1,4 @@
-#define IMPLEMENT_AUDIOCHANNEL_H
 #include "AudioChannel.h"
-
 #include "types.h"
 #include "channel_mode_helpers.h"
 #include <boost/lockfree/policies.hpp>

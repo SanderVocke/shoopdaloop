@@ -57,7 +57,6 @@ class AudioMidiLoop : public BasicLoop {
     void PROC_handle_poi() override;
 };
 
-#ifndef IMPLEMENT_AUDIOMIDILOOP_H
 extern template std::shared_ptr<AudioChannel<float>> AudioMidiLoop::add_audio_channel(
     std::shared_ptr<ObjectPool<AudioBuffer<float>>> const &buffer_pool,
     size_t initial_max_buffers, channel_mode_t mode,
@@ -78,4 +77,3 @@ extern template std::shared_ptr<MidiChannel<uint32_t, uint16_t>> AudioMidiLoop::
 extern template std::shared_ptr<MidiChannel<uint32_t, uint32_t>> AudioMidiLoop::midi_channel<uint32_t, uint32_t>(size_t idx, bool thread_safe);
 extern template std::shared_ptr<MidiChannel<uint16_t, uint16_t>> AudioMidiLoop::midi_channel<uint16_t, uint16_t>(size_t idx, bool thread_safe);
 extern template std::shared_ptr<MidiChannel<uint16_t, uint32_t>> AudioMidiLoop::midi_channel<uint16_t, uint32_t>(size_t idx, bool thread_safe);
-#endif

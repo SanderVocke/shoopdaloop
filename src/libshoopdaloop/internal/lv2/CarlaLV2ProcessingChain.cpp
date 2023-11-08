@@ -1,4 +1,3 @@
-#define IMPLEMENT_CARLALV2PROCESSINGCHAIN_H
 #include "CarlaLV2ProcessingChain.h"
 #include "random_string.h"
 #include <cstring>

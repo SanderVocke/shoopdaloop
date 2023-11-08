@@ -171,9 +171,7 @@ public:
     std::string serialize_state() override;
 };
 
-#ifndef IMPLEMENT_CARLALV2PROCESSINGCHAIN_H
 extern template class CarlaLV2ProcessingChain<uint32_t, uint16_t>;
 extern template class CarlaLV2ProcessingChain<uint32_t, uint32_t>;
 extern template class CarlaLV2ProcessingChain<uint16_t, uint16_t>;
 extern template class CarlaLV2ProcessingChain<uint16_t, uint32_t>;
-#endif

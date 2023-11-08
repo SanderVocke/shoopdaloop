@@ -33,7 +33,5 @@ public:
     void disconnect_external(std::string name) override;
 };
 
-#ifndef IMPLEMENT_INTERNALAUDIOPORT_H
 extern template class InternalAudioPort<float>;
 extern template class InternalAudioPort<int>;
-#endif

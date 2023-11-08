@@ -175,9 +175,7 @@ public:
     std::optional<size_t> get_played_back_sample() const override;
 };
 
-#ifndef IMPLEMENT_MIDICHANNEL_H
 extern template class MidiChannel<uint32_t, uint16_t>;
 extern template class MidiChannel<uint32_t, uint32_t>;
 extern template class MidiChannel<uint16_t, uint16_t>;
 extern template class MidiChannel<uint16_t, uint32_t>;
-#endif

@@ -1,5 +1,4 @@
 #include "shoop_globals.h"
-#define IMPLEMENT_CustomProcessingChain_H
 #include "CustomProcessingChain.h"
 #include "DummyAudioSystem.h"
 template class CustomProcessingChain<uint32_t, uint16_t>;

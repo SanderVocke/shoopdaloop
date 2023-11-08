@@ -3,6 +3,7 @@
 #include <vector>
 #include <atomic>
 #include "shoop_globals.h"
+#include "process_when.h"
 
 class ChannelInterface;
 class ConnectedLoop;

@@ -1,4 +1,3 @@
-#define IMPLEMENT_AUDIOMIDILOOP_H
 #include "AudioMidiLoop.h"
 #include "WithCommandQueue.h"
 #include "ObjectPool.h"

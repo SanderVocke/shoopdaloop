@@ -1,4 +1,3 @@
-#define IMPLEMENT_DECOUPLEDMIDIPORT_H
 #include "DecoupledMidiPort.h"
 #include "PortInterface.h"
 #include "LoggingBackend.h"

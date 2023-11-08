@@ -124,7 +124,6 @@ public:
     void for_each_msg(std::function<void(TimeType t, SizeType s, uint8_t* data)> cb);
 };
 
-#ifndef IMPLEMENT_MIDISTORAGE_H
 extern template class MidiStorageElem<uint32_t, uint16_t>;
 extern template class MidiStorageElem<uint32_t, uint32_t>;
 extern template class MidiStorageElem<uint16_t, uint16_t>;
@@ -141,4 +140,3 @@ extern template class MidiStorage<uint32_t, uint16_t>;
 extern template class MidiStorage<uint32_t, uint32_t>;
 extern template class MidiStorage<uint16_t, uint16_t>;
 extern template class MidiStorage<uint16_t, uint32_t>;
-#endif

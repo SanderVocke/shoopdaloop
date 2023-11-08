@@ -1,4 +1,3 @@
-#define IMPLEMENT_MIDIMESSAGE_H
 #include "MidiMessage.h"
 
 template class MidiMessage<uint32_t, uint16_t>;
