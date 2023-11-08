@@ -87,8 +87,8 @@ build_args = ["-j4"]
 args = ["--log-level=verbose"]
 install_components = ["package_install"]
 build_path = "build"
-#python_abi = "abi3"
-#abi3_minimum_cpython_version = 38
+python_abi = "abi3"
+abi3_minimum_cpython_version = 38
 generator = "Ninja"
 
 [tool.py-build-cmake.editable]
