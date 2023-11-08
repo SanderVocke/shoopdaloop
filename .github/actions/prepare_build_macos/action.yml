@@ -14,7 +14,7 @@ runs:
 
       # Install packages
       brew install ninja libsndfile libsamplerate libtool automake autoconf cmake
-      brew install jack liblo coreutils
+      brew install jack liblo coreutils gcc
       brew install python@3.8
 
       # Install Python packages
