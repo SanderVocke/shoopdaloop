@@ -31,13 +31,13 @@ jobs:
       shell: bash
       run: |
         python -m pip install --no-deps --target=pyside6 pyside6-essentials==${{ env.qt_version }}
-        echo "pyside_qt=pyside6/PySide6" | tee -a $GITHUB_ENV
-        echo "full_qt=qt/Qt/6.5.3/msvc2019_64" | tee -a $GITHUB_ENV
+        echo "pyside_qt=$(pwd)/pyside6/PySide6" | tee -a $GITHUB_ENV
+        echo "full_qt=$(pwd)/qt/Qt/6.5.3/msvc2019_64" | tee -a $GITHUB_ENV
     - name: Merge Qt installations
       shell: bash
       run: |
         cd ${{ env.full_qt }}
-        for f in $(find ${{ env.pyside_qt }}/ -name "Qt6*.dll"); do
+        for f in ${{ env.pyside_qt }}/Qt6*.dll; do
           if [ -f ./bin/$(basename $f) ]; then
             # overwrite the dll by the PySide-built one if PySide has it.
             cp $f ./bin/$(basename $f)
