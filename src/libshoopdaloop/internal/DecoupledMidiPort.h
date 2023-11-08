@@ -1,12 +1,14 @@
 #include "MidiPortInterface.h"
 #include <memory>
+#include <vector>
+#include <stdint.h>
 #include <boost/lockfree/spsc_queue.hpp>
 
 // We discard time information for decoupled midi messages.
 // The intended use cases is controllers, where the time is
 // not very relevant.
 struct DecoupledMidiMessage {
-    std::vector<uint8_t> data;
+    std::vector<unsigned char> data;
 };
 
 // A decoupled MIDI port is a MIDI port with message queues attached to it.
