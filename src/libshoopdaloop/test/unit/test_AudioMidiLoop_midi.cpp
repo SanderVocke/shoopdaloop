@@ -8,7 +8,6 @@
 #include "helpers.h"
 #include "types.h"
 #include "process_loops.h"
-#include <ranges>
 #include <string>
 #include <valarray>
 #include "midi_helpers.h"
@@ -16,6 +15,15 @@
 
 using namespace boost::ut;
 using namespace std::chrono_literals;
+
+template<typename Elem>
+std::vector<Elem> filter_vector(std::vector<Elem> const& v, std::function<bool(Elem const&)> f) {
+    std::vector<Elem> r;
+    for (auto const& e: v) {
+        if (f(e)) { r.push_back(e); }
+    }
+    return r;
+}
 
 template<typename MessageA, typename MessageB>
 inline void check_msgs_equal(
@@ -572,30 +580,30 @@ suite AudioMidiLoop_midi_tests = []() {
         // - then subsequently the same sequence of pitch wheel changes we put in
         //   (10 + position).
         auto &msgs = play_buf.written;
-        auto channel_0_view = play_buf.written |
-            std::ranges::views::filter([](Msg &msg) {
+        auto channel_0 = filter_vector<Msg>(msgs,
+            [](Msg const& msg) {
                 return msg.size == 3 && channel(msg.data.data()) == 0;
-            });
-        auto channel_0 = std::vector<Msg>(channel_0_view.begin(), channel_0_view.end());
+            }
+        );
         check_msg_vectors_equal(
             channel_0, expect_channel_0,
             "(samples " + std::to_string(playback_from) + " -> " + std::to_string(playback_to) + ")"
             );
 
-        auto channel_10_view = play_buf.written |
-            std::ranges::views::filter([](Msg &msg) {
+        auto channel_10 = filter_vector<Msg>(msgs,
+            [](Msg const& msg) {
                 return msg.size == 3 && channel(msg.data.data()) == 10;
-            });
-        auto channel_10 = std::vector<Msg>(channel_10_view.begin(), channel_10_view.end());
+            }
+        );
         check_msg_vectors_equal(channel_10, expect_channel_10, 
         "(samples " + std::to_string(playback_from) + " -> " + std::to_string(playback_to) + ")"
         );
 
-        auto channel_1_view = play_buf.written |
-            std::ranges::views::filter([](Msg &msg) {
+        auto channel_1 = filter_vector<Msg>(msgs,
+            [](Msg const& msg) {
                 return msg.size == 3 && channel(msg.data.data()) == 1;
-            });
-        auto channel_1 = std::vector<Msg>(channel_1_view.begin(), channel_1_view.end());
+            }
+        );
         check_msg_vectors_equal(channel_1, expect_channel_1,
         "(samples " + std::to_string(playback_from) + " -> " + std::to_string(playback_to) + ")"
         );
