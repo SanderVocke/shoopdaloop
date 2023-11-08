@@ -5,6 +5,7 @@
 #include "WithCommandQueue.h"
 #include "ProcessProfiling.h"
 #include "LoggingEnabled.h"
+#include <stdint.h>
 
 template<typename SampleT>
 class AudioChannel : public ChannelInterface,

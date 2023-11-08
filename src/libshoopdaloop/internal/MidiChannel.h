@@ -7,6 +7,7 @@
 #include "MidiStateDiffTracker.h"
 #include "LoggingEnabled.h"
 #include "ProcessProfiling.h"
+#include <stdint.h>
 
 template<typename TimeType, typename SizeType>
 class MidiChannel : public ChannelInterface,

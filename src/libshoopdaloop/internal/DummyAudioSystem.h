@@ -20,6 +20,7 @@
 #include <vector>
 #include <boost/lockfree/spsc_queue.hpp>
 #include <memory>
+#include <stdint.h>
 
 class DummyPort : public virtual PortInterface {
 protected:
