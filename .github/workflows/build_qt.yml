@@ -67,10 +67,12 @@ jobs:
             base_os: ubuntu-latest
             container_image: quay.io/pypa/manylinux_2_28_x86_64
             build_shell: bash
+            pip: python -m pip
           - name: macos
             base_os: macos-12
             container_image: null
             build_shell: bash
+            pip: python3 -m pip
     runs-on: ${{ matrix.os.base_os }}
     container:
       image: ${{ matrix.os.container_image }}
@@ -138,7 +140,7 @@ jobs:
     - name: Install PySide6
       shell: bash
       run: |
-        pip install --no-deps --target=pyside6 pyside6-essentials=${{ env.qt_version }}
+        ${{ matrix.os.pip }} install --no-deps --target=pyside6 pyside6-essentials=${{ env.qt_version }}
         echo "pyside_qt=pyside6/PySide6/Qt" | tee -a $GITHUB_ENV
 
     - name: Copy files from built Qt into PySide6 Qt

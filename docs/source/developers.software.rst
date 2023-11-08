@@ -55,12 +55,29 @@ The **LUA scripts** are meant for parts that may need to be added/modified by in
 Build And Packaging
 ^^^^^^^^^^^^^^^^^^^^
 
-The combination of different languages has resulted in a slightly complex build approach.
+The combination of different languages, OSes and the dual dependency on Qt and PySide has resulted in a complex build approach.
 As the project is packaged as a Python package, an approach based on **pyproject.toml** has been taken.
 For the C++ parts, **CMake** is used.
 For combining the two, a tool called **py-build-cmake** is used.
 The **CMake** part cannot be run trivially without the **py-build-cmake** integration because there is also some code generation taking place which requires both sides of the equation.
 A source package cannot be built - only a wheel directly. Please refer to the build instructions for details.
+
+For a build on the same system where ShoopDaLoop is to be used, the building is pretty much a "straightforward" py-build-cmake build.
+
+For the official release wheels though, the setup is more complicated:
+
+* We want to be sure that our wheel is compatible with the PyPi version of PySide6, using the Qt libraries shipped with PySide6.
+* This includes the C++ extensions we build against Qt6.
+* PySide6 does not ship with the necessary C++ headers and CMake helper files to compile an extension against its Qt6 libraries.
+
+Therefore, the approach taken in our CI is:
+
+* Build or download a full Qt installation (depending on OS).
+* Install PySide6 from PyPi.
+* Merge the two together, resulting in (mostly) the binaries from PySide6 with (mostly) the auxiliary files from the full Qt6.
+* The result is stored as a pseudo-release in our GitHub repo, and this is what ShoopDaLoop builds against.
+
+This way, binary compatibility is achieved and any issues in this regard should arise during CI build and test, rather than on the end user's system.
 
 
 Debugging
