@@ -117,7 +117,7 @@ jobs:
             python: python
             pip: python -m pip
             container: sandervocke/shoopdaloop_run_base_arch:latest
-            os: ubuntu_latest
+            os: ubuntu-latest
             wheel: linux_release_wheel
           - name: release_macos11
             python: python3.8
