@@ -18,7 +18,7 @@ runs:
       brew install python@3.8
 
       # Install Python packages
-      python3 -m pip install build
+      python3.8 -m pip install build
   - name: Install Qt
     uses: ./.github/actions/install_qt
     with:
