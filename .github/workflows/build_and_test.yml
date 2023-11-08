@@ -155,6 +155,10 @@ jobs:
       run: |
         ${{ matrix.kind.pip }} install --force-reinstall ~/wheel/*.whl
         echo "install_dir=$(shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g')" | tee -a $GITHUB_OUTPUT
+    - name: Install Pytest
+      shell: bash
+      run: |
+        ${{ matrix.kind.pip }} install pytest
     - name: Find Qt
       shell: bash
       id: findqt
@@ -177,7 +181,7 @@ jobs:
         variant_name: release
         run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH=${{ env.qtlibpath }}
         root_path: ${{ steps.install.outputs.install_dir }}
-        pytest_command: ${{ matrix.os.python }} -m pytest
+        pytest_command: ${{ matrix.kind.python }} -m pytest
     - name: Test QML
       if: ${{ success() || failure() }}
       uses: ./.github/actions/test_qml
@@ -185,7 +189,7 @@ jobs:
         variant_name: release
         run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH=${{ env.qtlibpath }}
         root_path: ${{ steps.install.outputs.install_dir }}
-        python_command: ${{ matrix.os.python }}
+        python_command: ${{ matrix.kind.python }}
     - name: Screenshots
       if: ${{ success() || failure() }}
       uses: ./.github/actions/test_screenshots
