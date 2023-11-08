@@ -7,7 +7,7 @@ permissions:
   checks: write
 
 jobs:
-  get_qt_windows:
+  get_and_patch_qt_windows:
     runs-on: windows-2022
     steps:
     - name: Checkout
@@ -72,7 +72,7 @@ jobs:
         name: qt-windows
         path: qt.tar.gz
 
-  build_qt_unixlike:
+  build_and_patch_qt_unixlike:
     strategy:
       fail-fast: false
       matrix:
