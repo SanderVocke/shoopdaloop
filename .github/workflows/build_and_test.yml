@@ -62,7 +62,7 @@ jobs:
             pip: python.exe -m pip
             container_image: null
             prepare: 'windows'
-            overrides: 'overrides/linux_debug_overrides.toml'
+            overrides: 'overrides/windows_release_overrides.toml'
           - name: macos_release
             os: macos-12
             python: python3.8
