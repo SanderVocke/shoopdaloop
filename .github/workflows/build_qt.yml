@@ -43,9 +43,9 @@ jobs:
             # overwrite the dll by the PySide-built one if PySide has it.
             echo "Replacing $(basename $f) by PySide version and removing $(basename $f .dll)d.dll."
             cp $f ./bin/$(basename $f)
-            rm ./bin/$(basename $f .dll)d.dll
-            rm ./lib/cmake/$(basename $f .dll)Targets-debug.cmake
-            rm ./lib/cmake/$(basename $f .dll)Targets-relwithdebinfo.cmake
+            rm ./bin/$(basename $f .dll)d.dll || true
+            rm ./lib/cmake/$(basename $f .dll)/$(basename $f .dll)Targets-debug.cmake || true
+            rm ./lib/cmake/$(basename $f .dll)/$(basename $f .dll)Targets-relwithdebinfo.cmake || true
           fi
         done
         for f in ${{ env.full_qt }}/bin/Qt6*.dll; do
