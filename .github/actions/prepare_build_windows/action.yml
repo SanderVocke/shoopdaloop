@@ -26,11 +26,12 @@ runs:
     uses: ./.github/actions/install_boost_headers
     with:
       dir: includes
-  - name: Install winget
-    uses: Cyberboss/install-winget@v1
   - name: Install pkgconfig lite
-    shell: pwsh
-    run: winget install --disable-interactivity --id=bloodrock.pkg-config-lite --disable-interactivity --accept-source-agreements
+    shell: bash
+    run: |
+      curl -L https://github.com/SanderVocke/shoopdaloop/releases/download/qt-6.6.0-1/pkg-config-lite-0.28-1_bin-win32.zip --output pkg-config-lite-0.28-1_bin-win32.zip
+      unzip pkg-config-lite-0.28-1_bin-win32.zip
+      cp pkg-config-lite-0.28-1_bin-win32/bin/* /c/mingw64/bin
   - name: Path conversion
     id: pathconvert
     shell: bash
