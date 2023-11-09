@@ -38,4 +38,4 @@ runs:
     shell: bash
     run: |
       touch _macos_prepared
-      echo "CMAKE_PREFIX_PATH=${{ steps.install_qt.outputs.install_dir }}/lib/cmake/Qt6 CMAKE_INCLUDE_PATH=${{ github.workspace }}/includes" > prepend_build_cmd.txt
+      echo "MACOSX_DEPLOYMENT_TARGET=10.16 CMAKE_PREFIX_PATH=${{ steps.install_qt.outputs.install_dir }}/lib/cmake/Qt6 CMAKE_INCLUDE_PATH=${{ github.workspace }}/includes" > prepend_build_cmd.txt
