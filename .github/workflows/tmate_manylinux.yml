@@ -7,7 +7,7 @@ permissions:
   checks: write
 
 jobs:
-  tmat:
+  tmate:
     runs-on: ubuntu-latest
     container:
       image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest

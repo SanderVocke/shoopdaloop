@@ -84,7 +84,7 @@ runs:
     run: |
       cd dist
       before=$(ls *.whl)
-      for f in *.whl; do mv $f $(echo $f | sed -r ${{ inputs.rename_wheel_sed }}); done
+      for f in *.whl; do mv $f $(echo $f | sed -r ${{ inputs.rename_wheel_sed }}) || true; done
       after=$(ls *.whl)
       echo "Renamed wheel from $before to $after"
   

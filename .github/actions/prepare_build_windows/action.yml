@@ -7,6 +7,10 @@ runs:
   - uses: actions/setup-python@v4
     with:
       python-version: '3.8' 
+  - name: Report python version
+    shell: bash
+    run: |
+      echo "Default python version is $(python --version)"
   - name: Install Qt
     uses: jurplel/install-qt-action@v3
     with:
@@ -26,7 +30,7 @@ runs:
     uses: Cyberboss/install-winget@v1
   - name: Install pkgconfig lite
     shell: pwsh
-    run: winget install --id=bloodrock.pkg-config-lite --disable-interactivity --accept-source-agreements
+    run: winget install --disable-interactivity --id=bloodrock.pkg-config-lite --disable-interactivity --accept-source-agreements
   - name: Path conversion
     id: pathconvert
     shell: bash
