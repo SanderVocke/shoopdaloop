@@ -119,6 +119,7 @@ jobs:
             wheel: linux_release_wheel
             qtlib: libQt6Core.so.6
             testrunner: test_runner
+            qpa_platform: vnc
           - name: release_ubuntu_latest
             python: python3
             pip: python3 -m pip
@@ -127,6 +128,7 @@ jobs:
             wheel: linux_release_wheel
             qtlib: libQt6Core.so.6
             testrunner: test_runner
+            qpa_platform: vnc
           - name: release_arch
             python: python
             pip: python -m pip
@@ -135,6 +137,7 @@ jobs:
             wheel: linux_release_wheel
             qtlib: libQt6Core.so.6
             testrunner: test_runner
+            qpa_platform: vnc
           - name: release_macos11
             python: python3
             pip: python3 -m pip
@@ -143,6 +146,7 @@ jobs:
             wheel: macos_release_wheel
             qtlib: libQt6Core.so.6
             testrunner: test_runner
+            qpa_platform: offscreen
           - name: release_macos12
             python: python3
             pip: python3 -m pip
@@ -151,6 +155,7 @@ jobs:
             wheel: macos_release_wheel
             qtlib: libQt6Core.so.6
             testrunner: test_runner
+            qpa_platform: offscreen
           - name: release_macos13
             python: python3
             pip: python3 -m pip
@@ -159,6 +164,7 @@ jobs:
             wheel: macos_release_wheel
             qtlib: libQt6Core.so.6
             testrunner: test_runner
+            qpa_platform: offscreen
           - name: windows
             python: python.exe
             pip: python.exe -m pip
@@ -167,6 +173,7 @@ jobs:
             wheel: windows_release_wheel
             qtlib: Qt6Core.dll
             testrunner: test_runner.exe
+            qpa_platform: vnc
     runs-on: ${{ matrix.kind.os }}
     needs: build
     container:
