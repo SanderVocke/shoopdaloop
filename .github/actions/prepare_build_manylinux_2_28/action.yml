@@ -59,4 +59,4 @@ runs:
   - name: Set outputs
     shell: bash
     run: |
-      echo "CMAKE_PREFIX_PATH=${{ steps.install_qt.outputs.install_dir }}/lib/cmake/Qt6" > prepend_build_cmd.txt
+      echo "CMAKE_QT6_DIR=${{ steps.install_qt.outputs.install_dir }}/lib/cmake/Qt6" > prepend_build_cmd.txt

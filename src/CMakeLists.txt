@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.22)
 project(shoopdaloop)
 
+# Env settings
+if(DEFINED ENV{CMAKE_QT6_DIR})
+  set(Qt6_DIR $ENV{CMAKE_QT6_DIR})
+endif()
+
 # Set up language settings
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
