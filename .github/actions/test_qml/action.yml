@@ -41,7 +41,7 @@ runs:
     if: ${{ inputs.macos_rpath_patch }}
     shell: bash
     run: |
-      install_name_tool -add_rpath @executable_path/../PySide6/Qt/lib ${{ inputs.root_path }}/libqml_tests.dylib
+      install_name_tool -add_rpath ${{ inputs.root_path }}/../PySide6/Qt/lib ${{ inputs.root_path }}/libqml_tests.dylib
 
   - name: QML test (${{ inputs.variant_name }})
     shell: bash
