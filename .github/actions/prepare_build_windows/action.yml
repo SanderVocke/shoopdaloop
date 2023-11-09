@@ -11,7 +11,10 @@ runs:
   steps:
   - uses: actions/setup-python@v4
     with:
-      python-version: '3.8' 
+      python-version: '3.8'
+  - name: Path conversion
+    shell: bash
+    run: echo "qt_install_dir=$(cygpath -u ${{ inputs.qt_install_dir }})" | tee -a $GITHUB_OUTPUT
   - name: Report python version
     shell: bash
     run: |
@@ -21,6 +24,7 @@ runs:
     id: install_qt
     with:
       url: https://github.com/SanderVocke/shoopdaloop/releases/download/qt-6.6.0-1/qt-6.6.0-windows.tar.gz
+      dir: ${{ steps.pathconvert.outputs.qt_install_dir }}
   - name: Install boost
     id: install_boost
     uses: ./.github/actions/install_boost_headers
