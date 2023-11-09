@@ -703,7 +703,7 @@ class Backend:
         dummy_audio_wait_process(self._c_handle)
 
     def terminate(self):
-        terminate(self._c_handle)
+        terminate_backend(self._c_handle)
 
 def init_backend(backend_type : Type[BackendType], client_name_hint : str, argstring : str):
     _ptr = initialize(backend_type.value, client_name_hint.encode('ascii'), argstring.encode('ascii'))

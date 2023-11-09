@@ -10,7 +10,7 @@ from shiboken6 import Shiboken
 script_dir = os.path.dirname(__file__)
 sys.path.append(script_dir + '/..')
 
-from shoopdaloop.libshoopdaloop_bindings import terminate as terminate_backend
+from shoopdaloop.libshoopdaloop_bindings import terminate_backend
 from shoopdaloop.lib.qml_helpers import *
 from shoopdaloop.lib.q_objects.SchemaValidator import SchemaValidator
 from shoopdaloop.lib.logging import Logger

@@ -234,7 +234,7 @@ shoopdaloop_backend_instance_t *initialize (
     return rval;
 }
 
-void terminate(shoopdaloop_backend_instance_t *backend) {
+void terminate_backend(shoopdaloop_backend_instance_t *backend) {
     init_log();
     g_logger->debug("terminate");
     auto _backend = internal_backend(backend);

@@ -6,7 +6,7 @@ extern "C" {
 
 // General
 shoopdaloop_backend_instance_t *initialize (audio_system_type_t audio_system_type, const char* client_name_hint, const char* argstring);
-void terminate (shoopdaloop_backend_instance_t *backend);
+void terminate_backend (shoopdaloop_backend_instance_t *backend);
 void* maybe_jack_client_handle(shoopdaloop_backend_instance_t *backend);
 const char *get_client_name(shoopdaloop_backend_instance_t *backend);
 unsigned get_sample_rate(shoopdaloop_backend_instance_t *backend);
