@@ -4,6 +4,9 @@ description: Prepare Windows for building Shoopdaloop wheels
 runs:
   using: "composite"
   steps:
+  - uses: actions/setup-python@v4
+    with:
+    python-version: '3.8' 
   - name: Install Qt
     uses: jurplel/install-qt-action@v3
     with:
