@@ -16,8 +16,8 @@ PythonBackend {
         name: 'JackBackend'
         filename : TestFilename.test_filename()
 
-        function test_backend() {
-            run_case('test_backend', () => {
+        function test_backend_jack() {
+            run_case('test_backend_jack', () => {
                 if(!backend.backend_type_is_supported(Types.BackendType.JackTest)) {
                     skip("Backend was built without Jack support")
                 }
