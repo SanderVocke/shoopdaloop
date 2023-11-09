@@ -20,6 +20,11 @@ set(RUN_WITH_ENV_CMD ${PYTHON_CMD} "${CMAKE_SOURCE_DIR}/../scripts/run_with_env_
 find_package(Qt6 REQUIRED COMPONENTS Core Qml Gui Quick Widgets QuickTest)
 qt_standard_project_setup()
 
+# MacOS needs boost::atomic_flag, on Windows std::atomic_flag is more straightforward to use.
+if (APPLE)
+  add_compile_definitions(-DUSE_BOOST_ATOMIC_FLAG)
+endif()
+
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}/cmake")
 
 option(ENABLE_COVERAGE "Enable code coverage" OFF)
