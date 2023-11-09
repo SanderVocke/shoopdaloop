@@ -7,7 +7,6 @@
 
 template<typename SampleT> class AudioBuffer;
 template<typename Obj> class ObjectPool;
-template<typename A, typename B> class AudioSystemInterface;
 template<typename A, typename B> class DummyAudioSystem;
 class AudioMidiLoop;
 class ChannelInterface;
@@ -31,20 +30,20 @@ template<typename A, typename B> class CarlaLV2ProcessingChain;
 
 namespace shoop_constants {
 
-constexpr size_t initial_max_loops = 512;
-constexpr size_t initial_max_ports = 1024;
-constexpr size_t initial_max_fx_chains = 128;
-constexpr size_t initial_max_decoupled_midi_ports = 512;
-constexpr size_t n_buffers_in_pool = 128;
-constexpr size_t audio_buffer_size = 32768;
-constexpr size_t command_queue_size = 2048;
-constexpr size_t audio_channel_initial_buffers = 128;
-constexpr size_t midi_storage_size = 65536;
-constexpr size_t default_max_port_mappings = 8;
-constexpr size_t default_max_midi_channels = 8;
-constexpr size_t default_max_audio_channels = 8;
-constexpr size_t decoupled_midi_port_queue_size = 256;
-constexpr size_t default_audio_dummy_buffer_size = 16384;
+constexpr uint32_t initial_max_loops = 512;
+constexpr uint32_t initial_max_ports = 1024;
+constexpr uint32_t initial_max_fx_chains = 128;
+constexpr uint32_t initial_max_decoupled_midi_ports = 512;
+constexpr uint32_t n_buffers_in_pool = 128;
+constexpr uint32_t audio_buffer_size = 32768;
+constexpr uint32_t command_queue_size = 2048;
+constexpr uint32_t audio_channel_initial_buffers = 128;
+constexpr uint32_t midi_storage_size = 65536;
+constexpr uint32_t default_max_port_mappings = 8;
+constexpr uint32_t default_max_midi_channels = 8;
+constexpr uint32_t default_max_audio_channels = 8;
+constexpr uint32_t decoupled_midi_port_queue_size = 256;
+constexpr uint32_t default_audio_dummy_buffer_size = 16384;
 
 }
 
@@ -56,7 +55,6 @@ using DefaultAudioBuffer = AudioBuffer<audio_sample_t>;
 using AudioBufferPool = ObjectPool<DefaultAudioBuffer>;
 using Time = uint32_t;
 using Size = uint16_t;
-using AudioSystem = AudioSystemInterface<uint32_t, uint32_t>;
 using _DummyAudioSystem = DummyAudioSystem<uint32_t, uint32_t>;
 using LoopAudioChannel = AudioChannel<audio_sample_t>;
 using LoopMidiChannel = MidiChannel<uint32_t, uint16_t>;

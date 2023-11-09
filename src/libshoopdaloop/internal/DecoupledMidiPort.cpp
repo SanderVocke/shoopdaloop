@@ -7,16 +7,16 @@
 
 template <typename TimeType, typename SizeType>
 DecoupledMidiPort<TimeType, SizeType>::DecoupledMidiPort(
-    std::shared_ptr<MidiPortInterface> port, size_t queue_size,
+    std::shared_ptr<MidiPortInterface> port, uint32_t queue_size,
     PortDirection direction)
     : port(port), ma_queue(queue_size), direction(direction){};
 
 template <typename TimeType, typename SizeType>
-void DecoupledMidiPort<TimeType, SizeType>::PROC_process(size_t n_frames) {
+void DecoupledMidiPort<TimeType, SizeType>::PROC_process(uint32_t n_frames) {
     if (direction == PortDirection::Input) {
         auto &buf = port->PROC_get_read_buffer(n_frames);
         auto n = buf.PROC_get_n_events();
-        for (size_t idx = 0; idx < n; idx++) {
+        for (uint32_t idx = 0; idx < n; idx++) {
             Message m;
             const uint8_t *data;
             uint32_t time;

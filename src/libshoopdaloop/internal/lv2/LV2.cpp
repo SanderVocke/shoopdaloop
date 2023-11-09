@@ -12,7 +12,7 @@ LV2::~LV2() { lilv_world_free(m_world); }
 
 template <typename TimeType, typename SizeType>
 std::shared_ptr<CarlaLV2ProcessingChain<TimeType, SizeType>>
-LV2::create_carla_chain(fx_chain_type_t type, size_t sample_rate,
+LV2::create_carla_chain(fx_chain_type_t type, uint32_t sample_rate,
                         std::string title,
                         std::shared_ptr<profiling::Profiler> maybe_profiler) {
     return std::make_shared<CarlaLV2ProcessingChain<TimeType, SizeType>>(
@@ -21,17 +21,17 @@ LV2::create_carla_chain(fx_chain_type_t type, size_t sample_rate,
 
 template std::shared_ptr<CarlaLV2ProcessingChain<uint32_t, uint16_t>>
 LV2::create_carla_chain(
-    fx_chain_type_t type, size_t sample_rate, std::string title,
+    fx_chain_type_t type, uint32_t sample_rate, std::string title,
     std::shared_ptr<profiling::Profiler> maybe_profiler = nullptr);
 template std::shared_ptr<CarlaLV2ProcessingChain<uint32_t, uint32_t>>
 LV2::create_carla_chain(
-    fx_chain_type_t type, size_t sample_rate, std::string title,
+    fx_chain_type_t type, uint32_t sample_rate, std::string title,
     std::shared_ptr<profiling::Profiler> maybe_profiler = nullptr);
 template std::shared_ptr<CarlaLV2ProcessingChain<uint16_t, uint16_t>>
 LV2::create_carla_chain(
-    fx_chain_type_t type, size_t sample_rate, std::string title,
+    fx_chain_type_t type, uint32_t sample_rate, std::string title,
     std::shared_ptr<profiling::Profiler> maybe_profiler = nullptr);
 template std::shared_ptr<CarlaLV2ProcessingChain<uint16_t, uint32_t>>
 LV2::create_carla_chain(
-    fx_chain_type_t type, size_t sample_rate, std::string title,
+    fx_chain_type_t type, uint32_t sample_rate, std::string title,
     std::shared_ptr<profiling::Profiler> maybe_profiler = nullptr);

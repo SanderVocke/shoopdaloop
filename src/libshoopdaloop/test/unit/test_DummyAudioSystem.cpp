@@ -9,10 +9,10 @@
 using namespace boost::ut;
 
 struct Tracker {
-    std::atomic<size_t> total_samples_processed;
-    std::vector<size_t> each_n_samples_processed;
+    std::atomic<uint32_t> total_samples_processed;
+    std::vector<uint32_t> each_n_samples_processed;
 
-    void process(size_t n_samples) {
+    void process(uint32_t n_samples) {
         each_n_samples_processed.push_back(n_samples);
         total_samples_processed += n_samples;
     }
@@ -30,11 +30,11 @@ struct TrackedDummyAudioSystem : public DummyAudioSystem<Time, Size> {
     TrackedDummyAudioSystem(
         std::string client_name,
         DummyAudioSystemMode mode,
-        std::function<void(size_t)> process_cb = nullptr,
-        size_t sample_rate = 48000,
-        size_t buffer_size = 256) : DummyAudioSystem<Time, Size>(
+        std::function<void(uint32_t)> process_cb = nullptr,
+        uint32_t sample_rate = 48000,
+        uint32_t buffer_size = 256) : DummyAudioSystem<Time, Size>(
             client_name,
-            [process_cb, this](size_t n) {
+            [process_cb, this](uint32_t n) {
                 if (process_cb) {
                     process_cb(n);
                 }
@@ -45,7 +45,7 @@ struct TrackedDummyAudioSystem : public DummyAudioSystem<Time, Size> {
             buffer_size
             ) {}
     
-    std::set<size_t> get_unique_n_samples_processed() { return std::set (tracker.each_n_samples_processed.begin(), tracker.each_n_samples_processed.end()); }
+    std::set<uint32_t> get_unique_n_samples_processed() { return std::set (tracker.each_n_samples_processed.begin(), tracker.each_n_samples_processed.end()); }
 };
 
 suite DummyAudioSystem_tests = []() {
@@ -81,7 +81,7 @@ suite DummyAudioSystem_tests = []() {
         dut.pause();
         
         expect(eq(dut.tracker.total_samples_processed.load(), 0));
-        expect(eq(dut.get_unique_n_samples_processed(), std::set<size_t>({0})));
+        expect(eq(dut.get_unique_n_samples_processed(), std::set<uint32_t>({0})));
 
         dut.controlled_mode_request_samples(64);
         dut.tracker.reset();
@@ -92,7 +92,7 @@ suite DummyAudioSystem_tests = []() {
         dut.pause();
 
         expect(eq(dut.tracker.total_samples_processed.load(), 64));
-        expect(eq(dut.get_unique_n_samples_processed(), std::set<size_t>({64, 0})));
+        expect(eq(dut.get_unique_n_samples_processed(), std::set<uint32_t>({64, 0})));
         expect(eq(dut.get_controlled_mode_samples_to_process(), 0));
 
         dut.close();

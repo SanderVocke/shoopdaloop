@@ -27,11 +27,11 @@ BasicLoop::BasicLoop() :
 
 BasicLoop::~BasicLoop() {}
 
-std::optional<size_t> BasicLoop::PROC_get_next_poi() const {
-    return mp_next_poi.has_value() ? mp_next_poi.value().when : (std::optional<size_t>)std::nullopt;
+std::optional<uint32_t> BasicLoop::PROC_get_next_poi() const {
+    return mp_next_poi.has_value() ? mp_next_poi.value().when : (std::optional<uint32_t>)std::nullopt;
 }
 
-std::optional<size_t> BasicLoop::PROC_predicted_next_trigger_eta() const {
+std::optional<uint32_t> BasicLoop::PROC_predicted_next_trigger_eta() const {
     return mp_next_trigger;
 }
 
@@ -131,18 +131,18 @@ bool BasicLoop::PROC_is_triggering_now() {
 void BasicLoop::PROC_process_channels(
     loop_mode_t mode,
     std::optional<loop_mode_t> maybe_next_mode,
-    std::optional<size_t> maybe_next_mode_delay_cycles,
-    std::optional<size_t> maybe_next_mode_eta,
-    size_t n_samples,
-    size_t pos_before,
-    size_t pos_after,
-    size_t length_before,
-    size_t length_after
+    std::optional<uint32_t> maybe_next_mode_delay_cycles,
+    std::optional<uint32_t> maybe_next_mode_eta,
+    uint32_t n_samples,
+    uint32_t pos_before,
+    uint32_t pos_after,
+    uint32_t length_before,
+    uint32_t length_after
 ) {
     log_trace();
 }
 
-void BasicLoop::PROC_process(size_t n_samples) {
+void BasicLoop::PROC_process(uint32_t n_samples) {
     log_trace();
 
     if (mp_next_poi && n_samples > mp_next_poi.value().when) {
@@ -153,10 +153,10 @@ void BasicLoop::PROC_process(size_t n_samples) {
     ma_triggering_now = false;
     ma_already_triggered = false;
 
-    size_t pos_before = ma_position;
-    size_t pos_after = ma_position;
-    size_t length_before = ma_length;
-    size_t length_after = ma_length;
+    uint32_t pos_before = ma_position;
+    uint32_t pos_after = ma_position;
+    uint32_t length_before = ma_length;
+    uint32_t length_after = ma_length;
 
     loop_mode_t process_channel_mode = ma_mode;
 
@@ -182,7 +182,7 @@ void BasicLoop::PROC_process(size_t n_samples) {
 
     PROC_process_channels(process_channel_mode,
         ma_maybe_next_planned_mode,
-        ma_maybe_next_planned_delay == -1 ? std::optional<size_t>(std::nullopt) : ma_maybe_next_planned_delay.load(),
+        ma_maybe_next_planned_delay == -1 ? std::optional<uint32_t>(std::nullopt) : ma_maybe_next_planned_delay.load(),
         ma_maybe_next_planned_delay == 0 ? PROC_predicted_next_trigger_eta() : std::nullopt,
         n_samples, pos_before, pos_after,
         length_before, length_after);
@@ -191,7 +191,7 @@ void BasicLoop::PROC_process(size_t n_samples) {
     ma_position = pos_after;
     ma_length = length_after;
     if (mp_next_trigger.has_value()) {
-        mp_next_trigger = (size_t)(std::max(0, (int)mp_next_trigger.value() - (int)n_samples));
+        mp_next_trigger = (uint32_t)(std::max(0, (int)mp_next_trigger.value() - (int)n_samples));
         if (mp_next_trigger.value() == 0) { mp_next_trigger = std::nullopt; }
     }
     PROC_handle_poi();
@@ -292,17 +292,17 @@ void BasicLoop::PROC_handle_transition(loop_mode_t new_state) {
     }
 }
 
-size_t BasicLoop::get_n_planned_transitions(bool thread_safe) {
+uint32_t BasicLoop::get_n_planned_transitions(bool thread_safe) {
     if (thread_safe) {
-        size_t rval;
+        uint32_t rval;
         exec_process_thread_command([this, &rval]() { rval = mp_planned_states.size(); });
         return rval;
     }
     return mp_planned_states.size();
 }
 
-size_t BasicLoop::get_planned_transition_delay(size_t idx, bool thread_safe) {
-    size_t rval;
+uint32_t BasicLoop::get_planned_transition_delay(uint32_t idx, bool thread_safe) {
+    uint32_t rval;
     auto fn = [this,idx,&rval]() {
         if(idx >= mp_planned_state_countdowns.size()) {
             throw std::runtime_error("Attempted to get out-of-bounds planned transition");
@@ -317,7 +317,7 @@ size_t BasicLoop::get_planned_transition_delay(size_t idx, bool thread_safe) {
     return rval;
 }
 
-loop_mode_t BasicLoop::get_planned_transition_state(size_t idx, bool thread_safe) {
+loop_mode_t BasicLoop::get_planned_transition_state(uint32_t idx, bool thread_safe) {
     loop_mode_t rval;
     auto fn = [this, idx, &rval]() {
         if(idx >= mp_planned_states.size()) {
@@ -348,7 +348,7 @@ void BasicLoop::clear_planned_transitions(bool thread_safe) {
     }
 }
 
-void BasicLoop::plan_transition(loop_mode_t mode, size_t n_cycles_delay, bool wait_for_sync, bool thread_safe) {
+void BasicLoop::plan_transition(loop_mode_t mode, uint32_t n_cycles_delay, bool wait_for_sync, bool thread_safe) {
     log_trace();
     
     auto fn = [this, mode, wait_for_sync, n_cycles_delay]() {
@@ -362,7 +362,7 @@ void BasicLoop::plan_transition(loop_mode_t mode, size_t n_cycles_delay, bool wa
             mp_planned_states.clear();
             mp_planned_state_countdowns.clear();
         } else {
-            size_t insertion_point;
+            uint32_t insertion_point;
             for (insertion_point=0; insertion_point <= mp_planned_state_countdowns.size(); insertion_point++) {
                 if (insertion_point < mp_planned_state_countdowns.size() &&
                     mp_planned_state_countdowns[insertion_point] >= n_cycles_delay) { break; }
@@ -385,11 +385,11 @@ void BasicLoop::plan_transition(loop_mode_t mode, size_t n_cycles_delay, bool wa
     else { fn(); }
 }
 
-size_t BasicLoop::get_position() const {
+uint32_t BasicLoop::get_position() const {
     return ma_position;
 }
 
-void BasicLoop::set_position(size_t position, bool thread_safe) {
+void BasicLoop::set_position(uint32_t position, bool thread_safe) {
     log_trace();
 
     auto fn = [this, position]() {
@@ -405,7 +405,7 @@ void BasicLoop::set_position(size_t position, bool thread_safe) {
     else { fn(); }
 }
 
-size_t BasicLoop::get_length() const {
+uint32_t BasicLoop::get_length() const {
     return ma_length;
 }
 
@@ -413,7 +413,7 @@ loop_mode_t BasicLoop::get_mode() const {
     return ma_mode;
 }
 
-void BasicLoop::get_first_planned_transition(loop_mode_t &maybe_mode_out, size_t &delay_out) {
+void BasicLoop::get_first_planned_transition(loop_mode_t &maybe_mode_out, uint32_t &delay_out) {
     loop_mode_t maybe_mode = ma_maybe_next_planned_mode;
     int maybe_delay = ma_maybe_next_planned_delay;
     if (maybe_delay >= 0 && maybe_mode != LOOP_MODE_INVALID) {
@@ -425,7 +425,7 @@ void BasicLoop::get_first_planned_transition(loop_mode_t &maybe_mode_out, size_t
     }
 }
 
-void BasicLoop::set_length(size_t len, bool thread_safe) {
+void BasicLoop::set_length(uint32_t len, bool thread_safe) {
     log_trace();
 
     auto fn = [this, len]() {

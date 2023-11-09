@@ -70,7 +70,7 @@ jobs:
             overrides: 'overrides/windows_release_overrides.toml'
             rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
           - name: macos_release
-            os: macos-12
+            os: macos-11
             python: python3.8
             pip: python3.8 -m pip
             container_image: null

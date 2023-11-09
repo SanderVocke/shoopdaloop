@@ -217,7 +217,7 @@ void MidiStateDiffTracker::clear_diff() { m_diffs.clear(); }
 
 void MidiStateDiffTracker::resolve_to(
     MidiStateTracker *to,
-    std::function<void(size_t size, uint8_t *data)> put_message_cb, bool notes,
+    std::function<void(uint32_t size, uint8_t *data)> put_message_cb, bool notes,
     bool controls, bool programs) {
     if (to != m_a.get() && to != m_b.get()) {
         return;
@@ -281,12 +281,12 @@ void MidiStateDiffTracker::resolve_to(
 }
 
 void MidiStateDiffTracker::resolve_to_a(
-    std::function<void(size_t size, uint8_t *data)> put_message_cb, bool notes,
+    std::function<void(uint32_t size, uint8_t *data)> put_message_cb, bool notes,
     bool controls, bool programs) {
     return resolve_to(m_a.get(), put_message_cb, notes, controls, programs);
 }
 void MidiStateDiffTracker::resolve_to_b(
-    std::function<void(size_t size, uint8_t *data)> put_message_cb, bool notes,
+    std::function<void(uint32_t size, uint8_t *data)> put_message_cb, bool notes,
     bool controls, bool programs) {
     return resolve_to(m_b.get(), put_message_cb, notes, controls, programs);
 }

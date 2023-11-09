@@ -29,8 +29,8 @@ private:
     std::set<std::weak_ptr<Subscriber>, std::owner_less<std::weak_ptr<Subscriber>>> m_subscribers;
 
 
-    static size_t note_index (uint8_t channel, uint8_t note);
-    static size_t cc_index (uint8_t channel, uint8_t cc);
+    static uint32_t note_index (uint8_t channel, uint8_t note);
+    static uint32_t cc_index (uint8_t channel, uint8_t cc);
     void process_noteOn(uint8_t channel, uint8_t note, uint8_t velocity);
     void process_noteOff(uint8_t channel, uint8_t note);
     void process_cc(uint8_t channel, uint8_t controller, uint8_t value);
@@ -49,7 +49,7 @@ public:
     void process_msg(const uint8_t *data);
 
     bool tracking_notes() const;
-    size_t n_notes_active() const;
+    uint32_t n_notes_active() const;
     std::optional<uint8_t> maybe_current_note_velocity(uint8_t channel, uint8_t note) const;
 
     bool tracking_controls() const;

@@ -3,6 +3,7 @@
 #include <vector>
 #include "LoggingEnabled.h"
 #include "CommandQueue.h"
+#include "AudioSystemInterface.h"
 #include "shoop_globals.h"
 #include "types.h"
 
@@ -29,7 +30,7 @@ public:
     std::vector<std::shared_ptr<ConnectedDecoupledMidiPort>> decoupled_midi_ports;
     CommandQueue cmd_queue;
     std::shared_ptr<AudioBufferPool> audio_buffer_pool;
-    std::unique_ptr<AudioSystem> audio_system;
+    std::unique_ptr<AudioSystemInterface> audio_system;
     std::shared_ptr<profiling::Profiler> profiler;
     std::shared_ptr<profiling::ProfilingItem> top_profiling_item;
     std::shared_ptr<profiling::ProfilingItem> ports_profiling_item;
@@ -56,8 +57,8 @@ public:
     Backend(audio_system_type_t audio_system_type, std::string client_name_hint, std::string argstring);
     ~Backend();
 
-    void PROC_process(size_t nframes);
-    void PROC_process_decoupled_midi_ports(size_t nframes);
+    void PROC_process(uint32_t nframes);
+    void PROC_process_decoupled_midi_ports(uint32_t nframes);
     void terminate();
     void* maybe_jack_client_handle();
     const char *get_client_name();

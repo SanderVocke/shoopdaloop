@@ -126,7 +126,7 @@ struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled {
     }
 };
 
-std::vector<float> zeroes(size_t n) { return std::vector<float>(n, 0); }
+std::vector<float> zeroes(uint32_t n) { return std::vector<float>(n, 0); }
 
 audio_channel_data_t to_api_data(std::vector<float> &vec) {
     audio_channel_data_t rval;

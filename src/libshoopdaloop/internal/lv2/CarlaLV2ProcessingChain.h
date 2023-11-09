@@ -94,13 +94,13 @@ private:
     bool m_visible = false;
     std::vector<const LilvPort*> m_audio_in_lilv_ports, m_audio_out_lilv_ports, m_midi_in_lilv_ports, m_midi_out_lilv_ports;
     std::vector<uint32_t> m_audio_in_port_indices, m_audio_out_port_indices, m_midi_in_port_indices, m_midi_out_port_indices;
-    size_t m_internal_buffers_size;
-    LV2_URID m_midi_event_type, m_atom_chunk_type, m_atom_sequence_type, m_atom_int_type, m_maxbuffersize_type, m_minbuffersize_type;
+    uint32_t m_internal_buffers_size;
+    LV2_URID m_midi_event_type, m_atom_chunk_type, m_atom_sequence_type, m_atom_int_type, m_maxbufferuint32_type, m_minbufferuint32_type;
     LV2_External_UI_Host m_ui_host;
     LV2_State_Interface *m_state_iface;
     const LilvUI *m_ui;
     std::string m_plugin_uri;
-    const size_t mc_midi_buf_capacities = 8192;
+    const uint32_t mc_midi_buf_capacities = 8192;
     LV2_URID_Map m_map_handle;
     LV2_URID_Unmap m_unmap_handle;
     std::string m_human_name;
@@ -141,12 +141,12 @@ public:
     CarlaLV2ProcessingChain(
         LilvWorld *lilv_world,
         fx_chain_type_t type,
-        size_t sample_rate,
+        uint32_t sample_rate,
         std::string human_name,
         std::shared_ptr<profiling::Profiler> maybe_profiler = nullptr
     );
 
-    void instantiate(size_t sample_rate);
+    void instantiate(uint32_t sample_rate);
     bool visible() const override;
     void show() override;
     void hide() override;
@@ -154,7 +154,7 @@ public:
     bool is_ready() const override;
     bool is_active() const override;
     void set_active(bool active) override;
-    void process(size_t frames) override;
+    void process(uint32_t frames) override;
 
     std::vector<SharedInternalAudioPort> const& input_audio_ports() const override;
     std::vector<SharedInternalAudioPort> const& output_audio_ports() const override;
@@ -162,8 +162,8 @@ public:
     bool is_freewheeling() const override;
     void set_freewheeling(bool enabled) override;
 
-    void ensure_buffers(size_t size) override;
-    size_t buffers_size() const override;
+    void ensure_buffers(uint32_t size) override;
+    uint32_t buffers_size() const override;
 
     virtual ~CarlaLV2ProcessingChain();
 

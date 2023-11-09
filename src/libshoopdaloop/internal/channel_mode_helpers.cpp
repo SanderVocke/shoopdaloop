@@ -47,10 +47,10 @@ unsigned loop_mode_to_channel_process_flags(
 channel_process_params get_channel_process_params(
     loop_mode_t loop_mode,
     std::optional<loop_mode_t> maybe_next_mode,
-    std::optional<size_t> maybe_next_mode_delay_cycles,
-    std::optional<size_t> maybe_next_mode_eta,
+    std::optional<uint32_t> maybe_next_mode_delay_cycles,
+    std::optional<uint32_t> maybe_next_mode_eta,
     int position,
-    size_t start_offset,
+    uint32_t start_offset,
     channel_mode_t channel_mode
     ) {
     channel_process_params rval {

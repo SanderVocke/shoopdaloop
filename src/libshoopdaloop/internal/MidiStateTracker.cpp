@@ -11,11 +11,11 @@
 
 using namespace logging;
 
-size_t MidiStateTracker::note_index(uint8_t channel, uint8_t note) {
-    return (size_t)channel * 128 + (size_t)note;
+uint32_t MidiStateTracker::note_index(uint8_t channel, uint8_t note) {
+    return (uint32_t)channel * 128 + (uint32_t)note;
 }
-size_t MidiStateTracker::cc_index(uint8_t channel, uint8_t cc) {
-    return (size_t)channel * 128 + (size_t)cc;
+uint32_t MidiStateTracker::cc_index(uint8_t channel, uint8_t cc) {
+    return (uint32_t)channel * 128 + (uint32_t)cc;
 }
 
 void MidiStateTracker::process_noteOn(uint8_t channel, uint8_t note,
@@ -177,7 +177,7 @@ void MidiStateTracker::copy_relevant_state(MidiStateTracker const &other) {
 void MidiStateTracker::clear() {
     log<LogLevel::debug>("Clear");
 
-    for (size_t i = 0; i < m_notes_active_velocities.size(); i++) {
+    for (uint32_t i = 0; i < m_notes_active_velocities.size(); i++) {
         m_notes_active_velocities[i].reset();
     }
     m_n_notes_active = 0;
@@ -206,11 +206,11 @@ void MidiStateTracker::process_msg(const uint8_t *data) {
         auto _note = note(data);
         process_noteOff(_channel, _note);
     } else if (auto chan = is_all_notes_off_for_channel(data)) {
-        for (size_t i = 0; i < 128; i++) {
+        for (uint32_t i = 0; i < 128; i++) {
             process_noteOff(*chan, i);
         }
     } else if (auto chan = is_all_sound_off_for_channel(data)) {
-        for (size_t i = 0; i < 128; i++) {
+        for (uint32_t i = 0; i < 128; i++) {
             process_noteOff(*chan, i);
         }
     } else if (is_pitch_wheel(data)) {
@@ -229,7 +229,7 @@ bool MidiStateTracker::tracking_notes() const {
     return m_notes_active_velocities.size() > 0;
 }
 
-size_t MidiStateTracker::n_notes_active() const { return m_n_notes_active; }
+uint32_t MidiStateTracker::n_notes_active() const { return m_n_notes_active; }
 
 std::optional<uint8_t>
 MidiStateTracker::maybe_current_note_velocity(uint8_t channel,

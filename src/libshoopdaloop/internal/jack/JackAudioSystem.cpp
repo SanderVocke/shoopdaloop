@@ -58,7 +58,7 @@ void GenericJackAudioSystem<API>::info_cb_static(const char *msg) {
 template<typename API>
 int GenericJackAudioSystem<API>::PROC_process_cb_inst(jack_nframes_t nframes) {
     if (m_process_cb) {
-        m_process_cb((size_t)nframes);
+        m_process_cb((uint32_t)nframes);
     }
     return 0;
 }
@@ -76,7 +76,7 @@ void GenericJackAudioSystem<API>::PROC_update_ports_cb_inst() {
 
 template<typename API>
 GenericJackAudioSystem<API>::GenericJackAudioSystem(std::string client_name,
-                                 std::function<void(size_t)> process_cb)
+                                 std::function<void(uint32_t)> process_cb)
     : AudioSystemInterface(client_name, process_cb), m_client_name(client_name),
       m_process_cb(process_cb), m_all_ports_tracker(std::make_shared<GenericJackAllPorts<API>>()) {
     log_init();
@@ -149,12 +149,12 @@ std::shared_ptr<MidiPortInterface> GenericJackAudioSystem<API>::open_midi_port(s
 }
 
 template<typename API>
-size_t GenericJackAudioSystem<API>::get_sample_rate() const {
+uint32_t GenericJackAudioSystem<API>::get_sample_rate() const {
     return API::get_sample_rate(m_client);
 }
 
 template<typename API>
-size_t GenericJackAudioSystem<API>::get_buffer_size() const {
+uint32_t GenericJackAudioSystem<API>::get_buffer_size() const {
     return API::get_buffer_size(m_client);
 }
 
@@ -175,7 +175,7 @@ void GenericJackAudioSystem<API>::close() {
 }
 
 template<typename API>
-size_t GenericJackAudioSystem<API>::get_xruns() const { return m_xruns; }
+uint32_t GenericJackAudioSystem<API>::get_xruns() const { return m_xruns; }
 
 template<typename API>
 void GenericJackAudioSystem<API>::reset_xruns() { m_xruns = 0; }

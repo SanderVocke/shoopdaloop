@@ -8,12 +8,12 @@
 template <typename SampleT>
 InternalAudioPort<SampleT>::InternalAudioPort(std::string name,
                                               PortDirection direction,
-                                              size_t n_frames)
+                                              uint32_t n_frames)
     : AudioPortInterface<SampleT>(name, direction), m_name(name),
       m_direction(direction), m_buffer(n_frames) {}
 
 template <typename SampleT>
-SampleT *InternalAudioPort<SampleT>::PROC_get_buffer(size_t n_frames, bool do_zero) {
+SampleT *InternalAudioPort<SampleT>::PROC_get_buffer(uint32_t n_frames, bool do_zero) {
     if (n_frames > m_buffer.size()) {
         throw std::runtime_error(
             "Requesting oversized buffer from internal port");
@@ -47,12 +47,12 @@ template <typename SampleT>
 PortType InternalAudioPort<SampleT>::type() const { return PortType::Audio; }
 
 template <typename SampleT>
-void InternalAudioPort<SampleT>::reallocate_buffer(size_t n_frames) {
+void InternalAudioPort<SampleT>::reallocate_buffer(uint32_t n_frames) {
     m_buffer = std::vector<SampleT>(n_frames);
 }
 
 template <typename SampleT>
-size_t InternalAudioPort<SampleT>::buffer_size() const {
+uint32_t InternalAudioPort<SampleT>::buffer_size() const {
     return m_buffer.size();
 }
 

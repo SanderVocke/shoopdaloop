@@ -14,8 +14,8 @@
 #include <base64.hpp>
 
 namespace carla_constants {
-    constexpr size_t max_buffer_size = 8192;
-    constexpr size_t min_buffer_size = 1;
+    constexpr uint32_t max_buffer_size = 8192;
+    constexpr uint32_t min_buffer_size = 1;
 }
 
 LV2StateString::LV2StateString(decltype(chain) _chain,
@@ -82,7 +82,7 @@ std::string LV2StateString::serialize() const {
     nlohmann::json obj;
     for (auto &pair : data) {
         std::string str(pair.second.second.size(), '_');
-        for (size_t i = 0; i < pair.second.second.size(); i++) {
+        for (uint32_t i = 0; i < pair.second.second.size(); i++) {
             str[i] = (char)pair.second.second[i];
         }
         obj[pair.first] = {
@@ -176,24 +176,24 @@ void CarlaLV2ProcessingChain<TimeType, SizeType>::static_ui_closed_fn(
 
 template <typename TimeType, typename SizeType>
 void CarlaLV2ProcessingChain<TimeType, SizeType>::reconnect_ports() {
-    for (size_t i = 0; i < m_input_audio_ports.size(); i++) {
+    for (uint32_t i = 0; i < m_input_audio_ports.size(); i++) {
         lilv_instance_connect_port(
             m_instance, m_audio_in_port_indices[i],
             m_input_audio_ports[i]->PROC_get_buffer(m_internal_buffers_size));
     }
-    for (size_t i = 0; i < m_output_audio_ports.size(); i++) {
+    for (uint32_t i = 0; i < m_output_audio_ports.size(); i++) {
         lilv_instance_connect_port(
             m_instance, m_audio_out_port_indices[i],
             m_output_audio_ports[i]->PROC_get_buffer(m_internal_buffers_size, true));
     }
-    for (size_t i = 0; i < m_input_midi_ports.size(); i++) {
+    for (uint32_t i = 0; i < m_input_midi_ports.size(); i++) {
         auto &midi_in = *m_input_midi_ports[i];
         auto &buf = midi_in.PROC_get_write_buffer(m_internal_buffers_size);
         lilv_instance_connect_port(
             m_instance, m_midi_in_port_indices[i],
             lv2_evbuf_get_buffer(midi_in.internal_evbuf()));
     }
-    for (size_t i = 0; i < m_output_midi_ports.size(); i++) {
+    for (uint32_t i = 0; i < m_output_midi_ports.size(); i++) {
         auto midi_out = m_output_midi_ports[i];
         lv2_evbuf_reset(midi_out, false);
         lilv_instance_connect_port(m_instance, m_midi_out_port_indices[i],
@@ -223,7 +223,7 @@ void CarlaLV2ProcessingChain<TimeType, SizeType>::maybe_cleanup_ui() {
 
 template <typename TimeType, typename SizeType>
 CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
-    LilvWorld *lilv_world, fx_chain_type_t type, size_t sample_rate,
+    LilvWorld *lilv_world, fx_chain_type_t type, uint32_t sample_rate,
     std::string human_name, std::shared_ptr<profiling::Profiler> maybe_profiler)
     : m_internal_buffers_size(0), m_human_name(human_name),
       m_unique_name(human_name + "_" + random_string(6)) {
@@ -257,17 +257,17 @@ CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
     m_atom_chunk_type = map_urid(LV2_ATOM__Chunk);
     m_atom_sequence_type = map_urid(LV2_ATOM__Sequence);
     m_atom_int_type = map_urid(LV2_ATOM__Int);
-    m_maxbuffersize_type = map_urid(LV2_BUF_SIZE__maxBlockLength);
-    m_minbuffersize_type = map_urid(LV2_BUF_SIZE__minBlockLength);
+    m_maxbufferuint32_type = map_urid(LV2_BUF_SIZE__maxBlockLength);
+    m_minbufferuint32_type = map_urid(LV2_BUF_SIZE__minBlockLength);
 
     // Set up the plugin ports
     {
         std::vector<std::string> audio_in_port_symbols, audio_out_port_symbols,
             midi_in_port_symbols, midi_out_port_symbols;
-        size_t n_audio = (type == Carla_Rack || type == Carla_Patchbay) ? 2
+        uint32_t n_audio = (type == Carla_Rack || type == Carla_Patchbay) ? 2
                          : (type == Carla_Patchbay_16x)                 ? 16
                                                                         : 0;
-        for (size_t i = 0; i < n_audio; i++) {
+        for (uint32_t i = 0; i < n_audio; i++) {
             audio_in_port_symbols.push_back("lv2_audio_in_" +
                                             std::to_string(i + 1));
             audio_out_port_symbols.push_back("lv2_audio_out_" +
@@ -379,7 +379,7 @@ CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
 
 template <typename TimeType, typename SizeType>
 void CarlaLV2ProcessingChain<TimeType, SizeType>::instantiate(
-    size_t sample_rate) {
+    uint32_t sample_rate) {
     if (m_instance) {
         throw std::runtime_error("Cannot re-instantiate Carla chain");
     }
@@ -389,8 +389,8 @@ void CarlaLV2ProcessingChain<TimeType, SizeType>::instantiate(
         // Set up required features.
         // Options feature with buffer size
         LV2_Options_Option options[] = {
-            {LV2_OPTIONS_INSTANCE, 0, m_maxbuffersize_type, sizeof(decltype(carla_constants::max_buffer_size)), m_atom_int_type, &carla_constants::max_buffer_size },
-            {LV2_OPTIONS_INSTANCE, 0, m_minbuffersize_type, sizeof(decltype(carla_constants::min_buffer_size)), m_atom_int_type, &carla_constants::min_buffer_size },
+            {LV2_OPTIONS_INSTANCE, 0, m_maxbufferuint32_type, sizeof(decltype(carla_constants::max_buffer_size)), m_atom_int_type, &carla_constants::max_buffer_size },
+            {LV2_OPTIONS_INSTANCE, 0, m_minbufferuint32_type, sizeof(decltype(carla_constants::min_buffer_size)), m_atom_int_type, &carla_constants::min_buffer_size },
             {LV2_OPTIONS_INSTANCE, 0, 0, 0, 0, nullptr}
         };
         LV2_Feature options_feature{.URI = LV2_OPTIONS__options, .data = options};
@@ -526,10 +526,10 @@ void CarlaLV2ProcessingChain<TimeType, SizeType>::set_active(bool active) {
 }
 
 template <typename TimeType, typename SizeType>
-void CarlaLV2ProcessingChain<TimeType, SizeType>::process(size_t frames) {
+void CarlaLV2ProcessingChain<TimeType, SizeType>::process(uint32_t frames) {
     profiling::stopwatch(
         [&, this]() {
-            size_t processed = 0;
+            uint32_t processed = 0;
 
             while (processed < frames) {
                 auto process = std::min(frames - processed,
@@ -587,7 +587,7 @@ void CarlaLV2ProcessingChain<TimeType, SizeType>::set_freewheeling(
     bool enabled) {}
 
 template <typename TimeType, typename SizeType>
-void CarlaLV2ProcessingChain<TimeType, SizeType>::ensure_buffers(size_t size) {
+void CarlaLV2ProcessingChain<TimeType, SizeType>::ensure_buffers(uint32_t size) {
     if (size > m_internal_buffers_size) {
         for (auto &port : m_input_audio_ports) {
             port->reallocate_buffer(size);
@@ -603,7 +603,7 @@ void CarlaLV2ProcessingChain<TimeType, SizeType>::ensure_buffers(size_t size) {
 }
 
 template <typename TimeType, typename SizeType>
-size_t CarlaLV2ProcessingChain<TimeType, SizeType>::buffers_size() const {
+uint32_t CarlaLV2ProcessingChain<TimeType, SizeType>::buffers_size() const {
     throw std::runtime_error("Buffer size getting not yet implemented");
 }
 

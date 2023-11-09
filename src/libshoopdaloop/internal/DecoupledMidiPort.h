@@ -24,11 +24,11 @@ class DecoupledMidiPort : public std::enable_shared_from_this<DecoupledMidiPort<
     Queue ma_queue;
 public:
     DecoupledMidiPort (std::shared_ptr<MidiPortInterface> port,
-                       size_t queue_size,
+                       uint32_t queue_size,
                        PortDirection direction);
 
     // Call this on the process thread to update message queues.
-    void PROC_process(size_t n_frames);
+    void PROC_process(uint32_t n_frames);
     const char* name() const;
 
     std::optional<Message> pop_incoming();

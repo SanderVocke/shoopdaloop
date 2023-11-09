@@ -99,16 +99,11 @@ def create_and_populate_root_context(engine, global_args, additional_items={}):
         extension_name = match.group(1)
         l = BareLogger('Frontend.ExtensionCheck')
         try:
-            #create_component(path)
             type_id = qmlTypeId(extension_name, 1, 0, extension_name)
             if type_id < 0:
-                raise Exception('boo')
+                raise Exception()
         except Exception as e:
-            l.warning(lambda: 'QML extension {} not available. Using fallback. Exception: {}'.format(extension_name, str(e)))
-            # module_name = 'shoopdaloop.lib.q_objects.extension_fallbacks.{}'.format(extension_name)
-            # module = importlib.import_module(module_name)
-            # cl = getattr(module, extension_name)
-            # qmlRegisterType(cl, extension_name, 1, 0, extension_name)
+            l.warning(lambda: 'QML extension {} not available. Using dummy fallback.'.format(extension_name))
     
     # QML instantiations
     registries_comp = create_component(script_dir + '/qml/AppRegistries.qml')

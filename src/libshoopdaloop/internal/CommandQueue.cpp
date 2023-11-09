@@ -10,8 +10,8 @@ uint64_t CommandQueue::millis_since_epoch() {
            std::chrono::milliseconds(1);
 }
 
-CommandQueue::CommandQueue(size_t fixed_size, size_t timeout_ms,
-                           size_t poll_interval_us)
+CommandQueue::CommandQueue(uint32_t fixed_size, uint32_t timeout_ms,
+                           uint32_t poll_interval_us)
     : Queue(fixed_size), ma_timeout_ms(timeout_ms),
       ma_poll_interval_us(poll_interval_us), ma_last_processed(0) {}
 

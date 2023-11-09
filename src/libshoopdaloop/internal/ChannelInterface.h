@@ -14,31 +14,31 @@ public:
     // A point of interest is the first point until when the loop can be processed
     // without updating its state.
     // Returning a nullopt_t indicates that the loop may be processed indefinitely.
-    virtual std::optional<size_t> PROC_get_next_poi(loop_mode_t mode,
+    virtual std::optional<uint32_t> PROC_get_next_poi(loop_mode_t mode,
                                                std::optional<loop_mode_t> maybe_next_mode,
-                                               std::optional<size_t> maybe_next_mode_delay_cycles,
-                                               std::optional<size_t> maybe_next_mode_eta,
-                                               size_t length,
-                                               size_t position) const = 0;
+                                               std::optional<uint32_t> maybe_next_mode_delay_cycles,
+                                               std::optional<uint32_t> maybe_next_mode_eta,
+                                               uint32_t length,
+                                               uint32_t position) const = 0;
 
     // Handle the current point of interest, leading to any internal state change
     // necessary. If the loop is not currently exactly at a point of interest,
     // nothing happens.
     virtual void PROC_handle_poi(loop_mode_t mode,
-                            size_t length,
-                            size_t position) = 0;
+                            uint32_t length,
+                            uint32_t position) = 0;
 
     // Process the channel according to the loop state.
     virtual void PROC_process(
         loop_mode_t mode,
         std::optional<loop_mode_t> maybe_next_mode,
-        std::optional<size_t> maybe_next_mode_delay_cycles,
-        std::optional<size_t> maybe_next_mode_eta,
-        size_t n_samples,
-        size_t pos_before,
-        size_t pos_after,
-        size_t length_before,
-        size_t length_after
+        std::optional<uint32_t> maybe_next_mode_delay_cycles,
+        std::optional<uint32_t> maybe_next_mode_eta,
+        uint32_t n_samples,
+        uint32_t pos_before,
+        uint32_t pos_after,
+        uint32_t length_before,
+        uint32_t length_after
     ) = 0;
 
     // Finalize processing. For some channels, the processing step defers some
@@ -51,8 +51,8 @@ public:
     virtual channel_mode_t get_mode() const = 0;
 
     // Set/get the channel length
-    virtual void PROC_set_length(size_t length) = 0;
-    virtual size_t get_length() const = 0;
+    virtual void PROC_set_length(uint32_t length) = 0;
+    virtual uint32_t get_length() const = 0;
 
     // Set/get the playback start offset.
     // This offset is the sample # which starts playing at the moment
@@ -65,11 +65,11 @@ public:
     // silently already recording. This "pre-recording" can be used e.g. to
     // play a fill or riff leading into the loop. When pre-play samples is >0,
     // these pre-recorded samples will also be pre-played.
-    virtual void set_pre_play_samples(size_t samples) = 0;
-    virtual size_t get_pre_play_samples() const = 0;
+    virtual void set_pre_play_samples(uint32_t samples) = 0;
+    virtual uint32_t get_pre_play_samples() const = 0;
 
     // Get the last played back sample, if any.
-    virtual std::optional<size_t> get_played_back_sample() const = 0;
+    virtual std::optional<uint32_t> get_played_back_sample() const = 0;
 
     // Get a sequence number which increments whenever the content, of this channel changes.
     // Can be used for e.g. "dirty" detection.

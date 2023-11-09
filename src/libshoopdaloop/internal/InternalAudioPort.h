@@ -15,15 +15,15 @@ public:
     InternalAudioPort(
         std::string name,
         PortDirection direction,
-        size_t n_frames
+        uint32_t n_frames
     );
     
-    SampleT *PROC_get_buffer(size_t n_frames, bool do_zero=false) override;
+    SampleT *PROC_get_buffer(uint32_t n_frames, bool do_zero=false) override;
 
     const char* name() const override;
     PortDirection direction() const override;
-    void reallocate_buffer(size_t n_frames);
-    size_t buffer_size() const;
+    void reallocate_buffer(uint32_t n_frames);
+    uint32_t buffer_size() const;
     void close() override;
     PortType type() const override;
     void zero();

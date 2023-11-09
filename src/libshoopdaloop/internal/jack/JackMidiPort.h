@@ -17,11 +17,11 @@ class GenericJackMidiPort :
     
     void * m_jack_read_buf;
     void * m_jack_write_buf;
-    static constexpr size_t n_event_storage = 1024;
+    static constexpr uint32_t n_event_storage = 1024;
     
     struct ReadMessage : public MidiSortableMessageInterface {
         jack_nframes_t    time;
-	    size_t            size;
+	    uint32_t            size;
 	    jack_midi_data_t *buffer;
 
         ReadMessage(jack_midi_event_t e);
@@ -36,8 +36,8 @@ class GenericJackMidiPort :
     std::vector<ReadMessage> m_temp_midi_storage;
 public:
 
-    size_t PROC_get_n_events() const override;
-    MidiSortableMessageInterface &PROC_get_event_reference(size_t idx) override;
+    uint32_t PROC_get_n_events() const override;
+    MidiSortableMessageInterface &PROC_get_event_reference(uint32_t idx) override;
     void PROC_write_event_value(uint32_t size,
                         uint32_t time,
                         const uint8_t* data) override;
@@ -52,8 +52,8 @@ public:
         std::shared_ptr<GenericJackAllPorts<API>> all_ports_tracker
     );
 
-    MidiReadableBufferInterface &PROC_get_read_buffer (size_t n_frames) override;
-    MidiWriteableBufferInterface &PROC_get_write_buffer (size_t n_frames) override;
+    MidiReadableBufferInterface &PROC_get_read_buffer (uint32_t n_frames) override;
+    MidiWriteableBufferInterface &PROC_get_write_buffer (uint32_t n_frames) override;
 };
 
 using JackMidiPort = GenericJackMidiPort<JackApi>;

@@ -16,7 +16,7 @@ public:
         std::shared_ptr<GenericJackAllPorts<API>> all_ports_tracker
     );
     
-    float *PROC_get_buffer(size_t n_frames, bool do_zero=false) override;
+    float *PROC_get_buffer(uint32_t n_frames, bool do_zero=false) override;
 };
 
 using JackAudioPort = GenericJackAudioPort<JackApi>;

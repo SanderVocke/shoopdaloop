@@ -16,15 +16,15 @@ public:
     InternalLV2MidiOutputPort(
         std::string name,
         PortDirection direction,
-        size_t capacity,
+        uint32_t capacity,
         uint32_t atom_chunk_urid,
         uint32_t atom_sequence_urid,
         uint32_t midi_event_type_urid
     );
 
-    MidiReadableBufferInterface &PROC_get_read_buffer  (size_t n_frames) override;
+    MidiReadableBufferInterface &PROC_get_read_buffer  (uint32_t n_frames) override;
 
-    MidiWriteableBufferInterface &PROC_get_write_buffer (size_t n_frames) override;
+    MidiWriteableBufferInterface &PROC_get_write_buffer (uint32_t n_frames) override;
 
     const char* name() const override;
     PortDirection direction() const override;

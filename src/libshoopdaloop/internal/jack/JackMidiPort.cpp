@@ -28,12 +28,12 @@ void GenericJackMidiPort<API>::ReadMessage::get(uint32_t &size_out, uint32_t &ti
 }
 
 template<typename API>
-size_t GenericJackMidiPort<API>::PROC_get_n_events() const {
+uint32_t GenericJackMidiPort<API>::PROC_get_n_events() const {
     return API::midi_get_event_count(m_jack_read_buf);
 }
 
 template<typename API>
-MidiSortableMessageInterface &GenericJackMidiPort<API>::PROC_get_event_reference(size_t idx) {
+MidiSortableMessageInterface &GenericJackMidiPort<API>::PROC_get_event_reference(uint32_t idx) {
     jack_midi_event_t evt;
     API::midi_event_get(&evt, m_jack_read_buf, idx);
     m_temp_midi_storage.push_back(ReadMessage(evt));
@@ -66,14 +66,14 @@ GenericJackMidiPort<API>::GenericJackMidiPort(std::string name, PortDirection di
 }
 
 template<typename API>
-MidiReadableBufferInterface &GenericJackMidiPort<API>::PROC_get_read_buffer(size_t n_frames) {
+MidiReadableBufferInterface &GenericJackMidiPort<API>::PROC_get_read_buffer(uint32_t n_frames) {
     m_temp_midi_storage.clear();
     m_jack_read_buf = API::port_get_buffer(m_port, n_frames);
     return *(static_cast<MidiReadableBufferInterface *>(this));
 }
 
 template<typename API>
-MidiWriteableBufferInterface &GenericJackMidiPort<API>::PROC_get_write_buffer(size_t n_frames) {
+MidiWriteableBufferInterface &GenericJackMidiPort<API>::PROC_get_write_buffer(uint32_t n_frames) {
     m_jack_write_buf = API::port_get_buffer(m_port, n_frames);
     API::midi_clear_buffer(m_jack_write_buf);
     return *(static_cast<MidiWriteableBufferInterface *>(this));

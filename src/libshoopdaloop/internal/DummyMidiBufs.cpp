@@ -1,10 +1,10 @@
 #include "DummyMidiBufs.h"
 #include <stdexcept>
 
-size_t DummyReadMidiBuf::PROC_get_n_events() const { return 0; }
+uint32_t DummyReadMidiBuf::PROC_get_n_events() const { return 0; }
 
 MidiSortableMessageInterface &
-DummyReadMidiBuf::PROC_get_event_reference(size_t idx) {
+DummyReadMidiBuf::PROC_get_event_reference(uint32_t idx) {
     throw std::runtime_error("Attempt to read from dummy buffer");
 }
 

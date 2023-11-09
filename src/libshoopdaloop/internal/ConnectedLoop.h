@@ -22,12 +22,12 @@ struct ConnectedLoop : public std::enable_shared_from_this<ConnectedLoop> {
         mp_midi_channels.reserve(shoop_constants::default_max_midi_channels);
     }
 
-    void delete_audio_channel_idx(size_t idx, bool thread_safe=true);
-    void delete_midi_channel_idx(size_t idx, bool thread_safe=true);
+    void delete_audio_channel_idx(uint32_t idx, bool thread_safe=true);
+    void delete_midi_channel_idx(uint32_t idx, bool thread_safe=true);
     void delete_audio_channel(std::shared_ptr<ConnectedChannel> chan, bool thread_safe=true);
     void delete_midi_channel(std::shared_ptr<ConnectedChannel> chan, bool thread_safe=true);
     void delete_all_channels(bool thread_safe=true);
-    void PROC_prepare_process(size_t n_frames);
+    void PROC_prepare_process(uint32_t n_frames);
     void PROC_finalize_process();
     Backend &get_backend();
 };

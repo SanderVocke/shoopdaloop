@@ -12,7 +12,7 @@ class CustomProcessingChain : public ProcessingChainInterface<TimeType, SizeType
 public:
     using SharedInternalAudioPort = typename ProcessingChainInterface<TimeType, SizeType>::SharedInternalAudioPort;
     using SharedMidiPort = typename ProcessingChainInterface<TimeType, SizeType>::SharedMidiPort;
-    using ProcessFunctor = std::function<void(size_t,
+    using ProcessFunctor = std::function<void(uint32_t,
         std::vector<SharedInternalAudioPort> &,
         std::vector<SharedInternalAudioPort> &,
         std::vector<SharedMidiPort> &)>;
@@ -29,9 +29,9 @@ private:
 
 public:
 
-    CustomProcessingChain(size_t n_audio_inputs,
-                          size_t n_audio_outputs,
-                          size_t n_midi_inputs,
+    CustomProcessingChain(uint32_t n_audio_inputs,
+                          uint32_t n_audio_outputs,
+                          uint32_t n_midi_inputs,
                           ProcessFunctor process_callback);
     
     std::vector<SharedInternalAudioPort> const& input_audio_ports() const override;
@@ -40,13 +40,13 @@ public:
 
     bool is_freewheeling() const override;
     void set_freewheeling(bool enabled) override;
-    void process(size_t frames) override;
+    void process(uint32_t frames) override;
     bool is_ready() const override;
     bool is_active() const override;
     void set_active(bool active) override;
 
-    void ensure_buffers(size_t size) override;
-    size_t buffers_size() const override;
+    void ensure_buffers(uint32_t size) override;
+    uint32_t buffers_size() const override;
 
     void stop() override;
 };

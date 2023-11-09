@@ -20,7 +20,7 @@ class ObjectPool {
     std::atomic_flag m_none_available_flag;
 
 public:
-    ObjectPool(size_t target_n_objects, size_t objects_size) :
+    ObjectPool(uint32_t target_n_objects, uint32_t objects_size) :
         m_target_n_objects(target_n_objects),
         m_objects_size(objects_size),
         m_actual_n_objects(0),
@@ -39,7 +39,7 @@ public:
     ~ObjectPool() {
         m_finish = true;
         m_replenish_flag.test_and_set();
-        m_replenish_flag.notify_all();
+        m_replenish_flag.notify_one();
         m_replenish_thread.join();
 
         Object *buf;
@@ -56,7 +56,7 @@ public:
         if (m_queue.pop(buf)) {
             m_actual_n_objects--;
             m_replenish_flag.test_and_set();
-            m_replenish_flag.notify_all();
+            m_replenish_flag.notify_one();
             return buf;
         }
         else {
@@ -65,7 +65,7 @@ public:
         }
     }
 
-    size_t object_size() const { return m_objects_size; }
+    uint32_t object_size() const { return m_objects_size; }
 
 protected:
     void push() {
@@ -75,7 +75,7 @@ protected:
 
     void fill() {
         auto n_replenish = m_target_n_objects - m_actual_n_objects;
-        for(size_t idx=0; idx<n_replenish; idx++) {
+        for(uint32_t idx=0; idx<n_replenish; idx++) {
             push();
         }
     }

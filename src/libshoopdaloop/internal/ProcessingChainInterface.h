@@ -34,10 +34,10 @@ public:
     virtual bool is_freewheeling() const = 0;
     virtual void set_freewheeling(bool enabled) = 0;
 
-    virtual void ensure_buffers(size_t size) = 0;
-    virtual size_t buffers_size() const = 0;
+    virtual void ensure_buffers(uint32_t size) = 0;
+    virtual uint32_t buffers_size() const = 0;
 
-    virtual void process(size_t frames) = 0;
+    virtual void process(uint32_t frames) = 0;
 
     // When a processing chain is instantiated, it may not immediately be
     // ready to process.

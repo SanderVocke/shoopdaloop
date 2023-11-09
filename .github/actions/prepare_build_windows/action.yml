@@ -31,7 +31,7 @@ runs:
     run: |
       curl -L https://github.com/SanderVocke/shoopdaloop/releases/download/qt-6.6.0-1/pkg-config-lite-0.28-1_bin-win32.zip --output pkg-config-lite-0.28-1_bin-win32.zip
       unzip pkg-config-lite-0.28-1_bin-win32.zip
-      cp pkg-config-lite-0.28-1_bin-win32/bin/* /c/mingw64/bin
+      cp pkg-config-lite-0.28-1/bin/* /c/mingw64/bin
   - name: Path conversion
     id: pathconvert
     shell: bash

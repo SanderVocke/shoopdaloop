@@ -20,9 +20,9 @@ void RenderAudioWaveform::paint(QPainter *painter) {
     if (subsampled_by > 0) {
         draw_lines = true;
         auto const& samples = m_subsampling_pyramid[subsampled_by];
-        for(size_t idx=0; idx < m_render_lines.size(); idx++) {
+        for(uint32_t idx=0; idx < m_render_lines.size(); idx++) {
             float sample_idx = ((float)idx + ((float)m_samples_offset)/((float)m_samples_per_bin)) * (float)m_samples_per_bin / (float) subsampled_by;
-            size_t nearest_idx = std::min(std::max(0, (int)std::round(sample_idx)), (int)samples.size());
+            uint32_t nearest_idx = std::min(std::max(0, (int)std::round(sample_idx)), (int)samples.size());
             float sample = samples.size() > nearest_idx ? samples[nearest_idx] : 0.0f;
             if (sample_idx < 0.0f || sample_idx > (float)samples.size()) {
                 // Out of range, render no audio
@@ -72,7 +72,7 @@ RenderAudioWaveform::~RenderAudioWaveform() {
 }
 
 void RenderAudioWaveform::update_lines() {
-    auto n_lines = (size_t)std::ceil(
+    auto n_lines = (uint32_t)std::ceil(
         std::max(0.0, std::min(8192.0, width()))
     );
     m_render_lines.resize(n_lines);
@@ -95,7 +95,7 @@ void RenderAudioWaveform::preprocess() {
 
     std::vector<float> data(maybe_floats.size());
 
-    size_t idx=0;
+    uint32_t idx=0;
     for(auto const& v : maybe_floats) {
         data[idx++] = v.value<float>();
     }
@@ -111,13 +111,13 @@ void RenderAudioWaveform::preprocess() {
 
     // Subsample by 2.
     auto reduce = [&]() {
-        for(size_t idx=0; idx<data.size()/2; idx++) {
+        for(uint32_t idx=0; idx<data.size()/2; idx++) {
             data[idx] = (data[2*idx] + data[2*idx+1]) / 2.0f;
         }
         data.resize(data.size() / 2);
     };
 
-    for(size_t subsampled_by = 1; subsampled_by <= 2048; subsampled_by *= 2) {
+    for(uint32_t subsampled_by = 1; subsampled_by <= 2048; subsampled_by *= 2) {
         m_subsampling_pyramid[subsampled_by] = data;
         reduce();
     }

@@ -43,14 +43,14 @@ std::string DummyAudioPort::log_module_name() const {
     return "Backend.DummyAudioPort";
 }
 
-float *DummyAudioPort::PROC_get_buffer(size_t n_frames, bool do_zero) {
-    m_buffer_data.resize(std::max(m_buffer_data.size(), n_frames));
+float *DummyAudioPort::PROC_get_buffer(uint32_t n_frames, bool do_zero) {
+    m_buffer_data.resize(std::max(m_buffer_data.size(), (size_t)n_frames));
     auto rval = m_buffer_data.data();
-    size_t filled = 0;
+    uint32_t filled = 0;
     while (!m_queued_data.empty() && filled < n_frames) {
         auto &front = m_queued_data.front();
-        size_t to_copy = std::min(n_frames - filled, front.size());
-        size_t total_copyable = m_queued_data.front().size();
+        uint32_t to_copy = std::min((size_t)(n_frames - filled), front.size());
+        uint32_t total_copyable = m_queued_data.front().size();
         log<logging::LogLevel::debug>("Dequeueing {} of {} samples", to_copy, total_copyable);
         memcpy((void *)(rval + filled), (void *)front.data(),
                sizeof(audio_sample_t) * to_copy);
@@ -71,7 +71,7 @@ float *DummyAudioPort::PROC_get_buffer(size_t n_frames, bool do_zero) {
     return rval;
 }
 
-void DummyAudioPort::queue_data(size_t n_frames, audio_sample_t const *data) {
+void DummyAudioPort::queue_data(uint32_t n_frames, audio_sample_t const *data) {
     m_queued_data.push(
         std::vector<audio_sample_t>(data, data + n_frames)
     );
@@ -83,19 +83,19 @@ bool DummyAudioPort::get_queue_empty() {
 
 DummyAudioPort::~DummyAudioPort() { DummyPort::close(); }
 
-void DummyAudioPort::PROC_post_process(float* buf, size_t n_frames) {
-    size_t to_store = std::min(n_frames, m_n_requested_samples.load());
+void DummyAudioPort::PROC_post_process(float* buf, uint32_t n_frames) {
+    uint32_t to_store = std::min(n_frames, m_n_requested_samples.load());
     if (to_store > 0) {
         log<logging::LogLevel::debug>("Storing {} samples", to_store);
         m_retained_samples.insert(m_retained_samples.end(), buf, buf+to_store);
     }
 }
 
-void DummyAudioPort::request_data(size_t n_frames) {
+void DummyAudioPort::request_data(uint32_t n_frames) {
     m_n_requested_samples += n_frames;
 }
 
-std::vector<audio_sample_t> DummyAudioPort::dequeue_data(size_t n) {
+std::vector<audio_sample_t> DummyAudioPort::dequeue_data(uint32_t n) {
     if (n > m_retained_samples.size()) {
         throw_error<std::runtime_error>("Not enough retained samples");
     }
@@ -105,7 +105,7 @@ std::vector<audio_sample_t> DummyAudioPort::dequeue_data(size_t n) {
 }
 
 MidiSortableMessageInterface &
-DummyMidiPort::PROC_get_event_reference(size_t idx) {
+DummyMidiPort::PROC_get_event_reference(uint32_t idx) {
     try {
         if (!m_queued_msgs.empty()) {
             auto &m =  m_queued_msgs.at(idx);
@@ -127,7 +127,7 @@ void DummyMidiPort::PROC_write_event_value(uint32_t size, uint32_t time,
                                            const uint8_t *data)
 {
     if (time < n_requested_frames) {
-        size_t new_time = time + (n_original_requested_frames - n_requested_frames);
+        uint32_t new_time = time + (n_original_requested_frames - n_requested_frames);
         log<logging::LogLevel::debug>("Write midi message value to external queue @ {} -> {}", time, new_time);
         m_written_requested_msgs.push_back(StoredMessage(new_time, size, std::vector<uint8_t>(data, data + size)));
     }
@@ -175,7 +175,7 @@ bool DummyMidiPort::get_queue_empty() {
     return m_queued_msgs.empty();
 }
 
-void DummyMidiPort::request_data(size_t n_frames) {
+void DummyMidiPort::request_data(uint32_t n_frames) {
     if (n_requested_frames > 0) {
         throw std::runtime_error("Previous request not yet completed");
     }
@@ -184,10 +184,10 @@ void DummyMidiPort::request_data(size_t n_frames) {
 }
 
 MidiReadableBufferInterface &
-DummyMidiPort::PROC_get_read_buffer(size_t n_frames) {
+DummyMidiPort::PROC_get_read_buffer(uint32_t n_frames) {
     current_buf_frames = n_frames;
 
-    size_t update_queue_by = m_update_queue_by_frames_pending;
+    uint32_t update_queue_by = m_update_queue_by_frames_pending;
     if (update_queue_by > 0) {
         // The queue was used last pass and needs to be truncated now for the current pass.
         // (first erase msgs that will end up having a negative timestamp)
@@ -204,21 +204,21 @@ DummyMidiPort::PROC_get_read_buffer(size_t n_frames) {
 }
 
 MidiWriteableBufferInterface &
-DummyMidiPort::PROC_get_write_buffer(size_t n_frames) {
+DummyMidiPort::PROC_get_write_buffer(uint32_t n_frames) {
     current_buf_frames = n_frames;
     m_buffer_data.clear();
     return *(static_cast<MidiWriteableBufferInterface *>(this));
 }
 
-void DummyMidiPort::PROC_post_process(size_t n_frames) {
+void DummyMidiPort::PROC_post_process(uint32_t n_frames) {
     // Decrement timestamps of all midi messages.
 
     n_requested_frames -= std::min(n_requested_frames.load(), n_frames);
     m_update_queue_by_frames_pending = n_frames;
 }
 
-size_t DummyMidiPort::PROC_get_n_events() const {
-    size_t r = 0;
+uint32_t DummyMidiPort::PROC_get_n_events() const {
+    uint32_t r = 0;
     if (!m_queued_msgs.empty()) {
         for (auto it = m_queued_msgs.begin(); it != m_queued_msgs.end(); ++it) {
             if (it->time < current_buf_frames) {
@@ -278,25 +278,25 @@ DummyAudioSystemMode DummyAudioSystem<Time, Size>::get_mode() const {
 }
 
 template <typename Time, typename Size>
-void DummyAudioSystem<Time, Size>::controlled_mode_request_samples(size_t samples) {
+void DummyAudioSystem<Time, Size>::controlled_mode_request_samples(uint32_t samples) {
     m_controlled_mode_samples_to_process += samples;
-    size_t requested = m_controlled_mode_samples_to_process.load();
+    uint32_t requested = m_controlled_mode_samples_to_process.load();
     log<logging::LogLevel::debug>("DummyAudioSystem: request {} samples ({} total)", samples, requested);
 }
 
 template <typename Time, typename Size>
-size_t DummyAudioSystem<Time, Size>::get_controlled_mode_samples_to_process() const {
+uint32_t DummyAudioSystem<Time, Size>::get_controlled_mode_samples_to_process() const {
     return m_controlled_mode_samples_to_process;
 }
 
 
 template <typename Time, typename Size>
 DummyAudioSystem<Time, Size>::DummyAudioSystem(
-    std::string client_name, std::function<void(size_t)> process_cb,
+    std::string client_name, std::function<void(uint32_t)> process_cb,
     DummyAudioSystemMode mode,
-    size_t sample_rate,
-    size_t buffer_size)
-    : AudioSystemInterface<Time, Size>(client_name, process_cb),
+    uint32_t sample_rate,
+    uint32_t buffer_size)
+    : AudioSystemInterface(client_name, process_cb),
       WithCommandQueue<20, 1000, 1000>(),
       m_process_cb(process_cb), mc_buffer_size(buffer_size), mc_sample_rate(sample_rate),
       m_finish(false), m_client_name(client_name),
@@ -322,14 +322,14 @@ void DummyAudioSystem<Time, Size>::start() {
         ));
         auto bufs_per_second = mc_sample_rate / mc_buffer_size;
         auto interval = 1.0f / ((float)bufs_per_second);
-        auto micros = size_t(interval * 1000000.0f);
+        auto micros = uint32_t(interval * 1000000.0f);
         while (!this->m_finish) {
             std::this_thread::sleep_for(std::chrono::microseconds(micros));
             PROC_handle_command_queue();
             if (!m_paused) {
                 auto mode = m_mode.load();
                 auto samples_to_process = m_controlled_mode_samples_to_process.load();
-                size_t to_process = mode == DummyAudioSystemMode::Controlled ?
+                uint32_t to_process = mode == DummyAudioSystemMode::Controlled ?
                     std::min(samples_to_process, mc_buffer_size) :
                     mc_buffer_size;
                 log<logging::LogLevel::trace>("DummyAudioSystem: process {}", to_process);
@@ -383,12 +383,12 @@ DummyAudioSystem<Time, Size>::open_midi_port(std::string name,
 }
 
 template <typename Time, typename Size>
-size_t DummyAudioSystem<Time, Size>::get_sample_rate() const {
+uint32_t DummyAudioSystem<Time, Size>::get_sample_rate() const {
     return mc_sample_rate;
 }
 
 template <typename Time, typename Size>
-size_t DummyAudioSystem<Time, Size>::get_buffer_size() const {
+uint32_t DummyAudioSystem<Time, Size>::get_buffer_size() const {
     return mc_buffer_size;
 }
 
@@ -415,7 +415,7 @@ void DummyAudioSystem<Time, Size>::close() {
 }
 
 template <typename Time, typename Size>
-size_t DummyAudioSystem<Time, Size>::get_xruns() const {
+uint32_t DummyAudioSystem<Time, Size>::get_xruns() const {
     return 0;
 }
 
@@ -423,7 +423,7 @@ template <typename Time, typename Size>
 void DummyAudioSystem<Time, Size>::reset_xruns(){};
 
 template <typename Time, typename Size>
-void DummyAudioSystem<Time, Size>::controlled_mode_run_request(size_t timeout) {
+void DummyAudioSystem<Time, Size>::controlled_mode_run_request(uint32_t timeout) {
     log<logging::LogLevel::debug>("DummyAudioSystem: run request");
     auto s = std::chrono::high_resolution_clock::now();
     auto timed_out = [this, &timeout, &s]() {

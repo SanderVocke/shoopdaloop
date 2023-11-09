@@ -25,7 +25,7 @@ class _EXPORT RenderAudioWaveform : public QQuickPaintedItem {
     float m_samples_per_bin;
     int m_samples_offset;
     std::vector<QLine> m_render_lines;
-    std::map<size_t, std::vector<float>> m_subsampling_pyramid;
+    std::map<uint32_t, std::vector<float>> m_subsampling_pyramid;
 
 public:
     explicit RenderAudioWaveform(QQuickItem *parent = nullptr);

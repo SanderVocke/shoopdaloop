@@ -5,8 +5,8 @@
 // sort them efficiently and output them in order.
 class MidiMergingBuffer : public MidiReadableBufferInterface,
                           public MidiWriteableBufferInterface {
-    static constexpr size_t buffer_size = 1024;
-    static constexpr size_t stored_messages_size = 256;
+    static constexpr uint32_t buffer_size = 1024;
+    static constexpr uint32_t stored_messages_size = 256;
 
     using Message = MaxSizeMidiMessage<uint32_t, uint32_t, 3>;
 
@@ -17,9 +17,9 @@ class MidiMergingBuffer : public MidiReadableBufferInterface,
 public:
     MidiMergingBuffer();
 
-    size_t PROC_get_n_events() const override;
+    uint32_t PROC_get_n_events() const override;
 
-    MidiSortableMessageInterface const & PROC_get_event_reference(size_t idx) override;
+    MidiSortableMessageInterface const & PROC_get_event_reference(uint32_t idx) override;
 
     void PROC_sort();
 

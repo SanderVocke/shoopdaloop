@@ -143,7 +143,7 @@ midi_sequence_t *external_midi_data(std::vector<_MidiMessage> m) {
     auto d = new midi_sequence_t;
     d->n_events = m.size();
     d->events = (midi_event_t**) malloc(sizeof(midi_event_t*) * m.size());
-    for (size_t idx=0; idx < m.size(); idx++) {
+    for (uint32_t idx=0; idx < m.size(); idx++) {
         auto e = alloc_midi_event(m[idx].size);
         e->size = m[idx].size;
         e->time = m[idx].time;
@@ -161,7 +161,7 @@ std::vector<float> internal_audio_data(audio_channel_data_t const& d) {
 
 std::vector<_MidiMessage> internal_midi_data(midi_sequence_t const& d) {
     auto r = std::vector<_MidiMessage>(d.n_events);
-    for (size_t idx=0; idx < d.n_events; idx++) {
+    for (uint32_t idx=0; idx < d.n_events; idx++) {
         auto &from = *d.events[idx];
         _MidiMessage m(
             from.time,
@@ -185,7 +185,7 @@ PortDirection internal_port_direction(port_direction_t d) {
     return d == Input ? PortDirection::Input : PortDirection::Output;
 }
 
-std::optional<audio_system_type_t> audio_system_type(AudioSystem *sys) {
+std::optional<audio_system_type_t> audio_system_type(AudioSystemInterface *sys) {
     if (!sys) {
         return std::nullopt;
     }
@@ -276,7 +276,7 @@ profiling_report_t *get_profiling_report(shoopdaloop_backend_instance_t *backend
 
     auto rval = new profiling_report_t;
     auto items = new profiling_report_item_t[r.size()];
-    for (size_t idx=0; idx<r.size(); idx++) {
+    for (uint32_t idx=0; idx<r.size(); idx++) {
         auto name_str = (char*) malloc(r[idx].key.size() + 1);
         strcpy(name_str, r[idx].key.c_str());
         items[idx].key = name_str;
@@ -361,7 +361,7 @@ void delete_audio_channel(shoopdaloop_loop_t *loop, shoopdaloop_loop_audio_chann
     init_log();
     g_logger->debug("delete_audio_channel");
     auto &loop_info = *internal_loop(loop);
-    size_t idx;
+    uint32_t idx;
     loop_info.delete_audio_channel(internal_audio_channel(channel));
 }
 
@@ -575,16 +575,16 @@ void loops_transition(unsigned int n_loops,
     init_log();
     g_logger->debug("loops_transition");
     auto internal_loops = std::make_shared<std::vector<std::shared_ptr<ConnectedLoop>>>(n_loops);
-    for(size_t idx=0; idx<n_loops; idx++) {
+    for(uint32_t idx=0; idx<n_loops; idx++) {
         (*internal_loops)[idx] = internal_loop(loops[idx]);
     }
     internal_loop(loops[0])->get_backend().cmd_queue.queue([=]() {
-        for (size_t idx=0; idx<n_loops; idx++) {
+        for (uint32_t idx=0; idx<n_loops; idx++) {
             auto &loop_info = *(*internal_loops)[idx];
             loop_info.loop->plan_transition(mode, delay, wait_for_sync, false);
         }
         // Ensure that sync is fully propagated
-        for (size_t idx=0; idx<n_loops; idx++) {
+        for (uint32_t idx=0; idx<n_loops; idx++) {
             auto &loop_info = *(*internal_loops)[idx];
             loop_info.loop->PROC_handle_sync();
         }
@@ -679,7 +679,7 @@ port_connections_state_t *get_audio_port_connections_state(shoopdaloop_audio_por
     auto rval = new port_connections_state_t;
     rval->n_ports = connections.size();
     rval->ports = new port_maybe_connection_t[rval->n_ports];
-    size_t idx = 0;
+    uint32_t idx = 0;
     for (auto &pair : connections) {
         rval->ports[idx].name = strdup(pair.first.c_str());
         rval->ports[idx].connected = pair.second;
@@ -702,7 +702,7 @@ port_connections_state_t *get_midi_port_connections_state(shoopdaloop_midi_port_
     auto rval = new port_connections_state_t;
     rval->n_ports = connections.size();
     rval->ports = new port_maybe_connection_t[rval->n_ports];
-    size_t idx = 0;
+    uint32_t idx = 0;
     for (auto &pair : connections) {
         rval->ports[idx].name = strdup(pair.first.c_str());
         rval->ports[idx].connected = pair.second;
@@ -712,7 +712,7 @@ port_connections_state_t *get_midi_port_connections_state(shoopdaloop_midi_port_
 }
 
 void destroy_port_connections_state(port_connections_state_t *d) {
-    for (size_t idx=0; idx<d->n_ports; idx++) {
+    for (uint32_t idx=0; idx<d->n_ports; idx++) {
         free((void*)d->ports[idx].name);
     }
     delete[] d->ports;
@@ -1054,7 +1054,7 @@ loop_state_info_t *get_loop_state(shoopdaloop_loop_t *loop) {
     r->position = _loop->loop->get_position();
     r->length = _loop->loop->get_length();
     loop_mode_t next_mode;
-    size_t next_delay;
+    uint32_t next_delay;
     _loop->loop->get_first_planned_transition(next_mode, next_delay);
     r->maybe_next_mode = next_mode;
     r->maybe_next_mode_delay = next_delay;
@@ -1187,7 +1187,7 @@ void destroy_midi_event(midi_event_t *e) {
 }
 
 void destroy_midi_sequence(midi_sequence_t *d) {
-    for(size_t idx=0; idx<d->n_events; idx++) {
+    for(uint32_t idx=0; idx<d->n_events; idx++) {
         destroy_midi_event(d->events[idx]);
     }
     free(d->events);
@@ -1319,7 +1319,7 @@ void destroy_backend_state_info(backend_state_info_t *d) {
 }
 
 void destroy_profiling_report(profiling_report_t *d) {
-    for(size_t idx=0; idx < d->n_items; idx++) {
+    for(uint32_t idx=0; idx < d->n_items; idx++) {
         free ((void*)d->items[idx].key);
     }
     free(d->items);
@@ -1402,7 +1402,7 @@ void dummy_midi_port_queue_data(shoopdaloop_midi_port_t *port, midi_sequence_t* 
     g_logger->debug("dummy_midi_port_queue_data");
     auto maybe_dummy = std::dynamic_pointer_cast<DummyMidiPort>(internal_midi_port(port)->maybe_midi());
     if (maybe_dummy) {
-        for(size_t i=0; i<events->n_events; i++) {
+        for(uint32_t i=0; i<events->n_events; i++) {
             auto &e = events->events[i];
             maybe_dummy->queue_msg(
                 e->size, e->time, e->data
@@ -1420,7 +1420,7 @@ midi_sequence_t *dummy_midi_port_dequeue_data(shoopdaloop_midi_port_t *port) {
     if (maybe_dummy) {
         auto msgs = maybe_dummy->get_written_requested_msgs();
         midi_sequence_t *rval = alloc_midi_sequence(msgs.size());
-        for (size_t i=0; i<msgs.size(); i++) {
+        for (uint32_t i=0; i<msgs.size(); i++) {
             auto &e = msgs[i];
             rval->events[i] = alloc_midi_event(e.get_size());
             rval->events[i]->size = e.get_size();

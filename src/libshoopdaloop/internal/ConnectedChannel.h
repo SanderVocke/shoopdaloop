@@ -34,8 +34,8 @@ struct ConnectedChannel : public std::enable_shared_from_this<ConnectedChannel> 
     void disconnect_output_ports(bool thread_safe=true);
     void disconnect_input_port(std::shared_ptr<ConnectedPort> port, bool thread_safe=true);
     void disconnect_input_ports(bool thread_safe=true);
-    void PROC_prepare_process_audio(size_t n_frames);
-    void PROC_prepare_process_midi(size_t n_frames);
+    void PROC_prepare_process_audio(uint32_t n_frames);
+    void PROC_prepare_process_midi(uint32_t n_frames);
     void PROC_finalize_process_audio();
     void PROC_finalize_process_midi();
     Backend &get_backend();

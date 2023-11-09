@@ -78,10 +78,10 @@ void Backend::start() {
 #ifdef SHOOP_HAVE_BACKEND_JACK
             case Jack:
                 log<LogLevel::debug>("Initializing JACK audio system.");
-                audio_system = std::unique_ptr<AudioSystem>(
-                    dynamic_cast<AudioSystem *>(new JackAudioSystem(
+                audio_system = std::unique_ptr<AudioSystemInterface>(
+                    dynamic_cast<AudioSystemInterface *>(new JackAudioSystem(
                         std::string(m_client_name_hint),
-                        [weak_self] (size_t n_frames) {
+                        [weak_self] (uint32_t n_frames) {
                         if (auto self = weak_self.lock()) {
                             self->log<LogLevel::trace>("Jack process: {}", n_frames);
                             self->PROC_process(n_frames);
@@ -90,10 +90,10 @@ void Backend::start() {
                 break;
             case JackTest:
                 log<LogLevel::debug>("Initializing JackTest mock audio system.");
-                audio_system = std::unique_ptr<AudioSystem>(
-                    dynamic_cast<AudioSystem *>(new JackTestAudioSystem(
+                audio_system = std::unique_ptr<AudioSystemInterface>(
+                    dynamic_cast<AudioSystemInterface *>(new JackTestAudioSystem(
                         std::string(m_client_name_hint),
-                        [weak_self] (size_t n_frames) {
+                        [weak_self] (uint32_t n_frames) {
                         if (auto self = weak_self.lock()) {
                             self->log<LogLevel::trace>("Jack test process: {}", n_frames);
                             self->PROC_process(n_frames);
@@ -111,6 +111,10 @@ void Backend::start() {
             default:
                 throw_error<std::runtime_error>("Unimplemented backend type");
             }
+
+            if (m_audio_system_type != Dummy && !audio_system) {
+                log<LogLevel::warn>("Failed to initialize primary audio system.");
+            }
         } catch (std::exception &e) {
             log<LogLevel::err>("Failed to initialize audio system.");
             log<LogLevel::info>(fmt::runtime("Failure info: " + std::string(e.what())));
@@ -124,10 +128,10 @@ void Backend::start() {
         if (!audio_system || m_audio_system_type == Dummy) {
             m_audio_system_type = Dummy;
             log<LogLevel::debug>("Initializing dummy audio system.");
-            audio_system = std::unique_ptr<AudioSystem>(
-                dynamic_cast<AudioSystem *>(new _DummyAudioSystem(
+            audio_system = std::unique_ptr<AudioSystemInterface>(
+                dynamic_cast<AudioSystemInterface *>(new _DummyAudioSystem(
                     std::string(m_client_name_hint),
-                    [weak_self] (size_t n_frames) {
+                    [weak_self] (uint32_t n_frames) {
                         if (auto self = weak_self.lock()) {
                             self->log<LogLevel::trace>("dummy process: {}", n_frames);
                             self->PROC_process(n_frames);
@@ -159,7 +163,7 @@ backend_state_info_t Backend::get_state() {
 
 #warning delete destroyed ports
 // MEMBER FUNCTIONS
-void Backend::PROC_process (size_t nframes) {
+void Backend::PROC_process (uint32_t nframes) {
     log<LogLevel::trace>("Process {}: start", nframes);
     profiling::stopwatch(
         [this, &nframes]() {
@@ -338,7 +342,7 @@ void Backend::PROC_process (size_t nframes) {
     );
 }
 
-void Backend::PROC_process_decoupled_midi_ports(size_t nframes) {
+void Backend::PROC_process_decoupled_midi_ports(uint32_t nframes) {
     for (auto &elem : decoupled_midi_ports) {
         elem->port->PROC_process(nframes);
     }
@@ -413,15 +417,15 @@ std::shared_ptr<ConnectedFXChain> Backend::create_fx_chain(fx_chain_type_t type,
 #endif
         case Test2x2x1:
             chain = std::make_shared<CustomProcessingChain<Time, Size>>(
-                2, 2, 1, [this, &chain](size_t n, auto &ins, auto &outs, auto &midis) {
+                2, 2, 1, [this, &chain](uint32_t n, auto &ins, auto &outs, auto &midis) {
                     static std::vector<audio_sample_t> out_buf_1, out_buf_2;
-                    out_buf_1.resize(std::max(n, out_buf_1.size()));
-                    out_buf_2.resize(std::max(n, out_buf_2.size()));
+                    out_buf_1.resize(std::max((size_t)n, out_buf_1.size()));
+                    out_buf_2.resize(std::max((size_t)n, out_buf_2.size()));
 
                     // Audio: for any audio sample, divide it by 2.
                     auto in_1 = ins[0]->PROC_get_buffer(n);
                     auto in_2 = ins[1]->PROC_get_buffer(n);
-                    for (size_t i = 0; i < n; i++) {
+                    for (uint32_t i = 0; i < n; i++) {
                         out_buf_1[i] = in_1[i] / 2.0f;
                         out_buf_2[i] = in_2[i] / 2.0f;
                     }
@@ -431,7 +435,7 @@ std::shared_ptr<ConnectedFXChain> Backend::create_fx_chain(fx_chain_type_t type,
                     auto &midi = midis[0];
                     auto &readbuf = midi->PROC_get_read_buffer(n);
                     auto n_msgs = readbuf.PROC_get_n_events();
-                    for (size_t i = 0; i < n_msgs; i++) {
+                    for (uint32_t i = 0; i < n_msgs; i++) {
                         auto &msg = readbuf.PROC_get_event_reference(i);
                         auto time = msg.get_time();
                         auto data = msg.get_data();

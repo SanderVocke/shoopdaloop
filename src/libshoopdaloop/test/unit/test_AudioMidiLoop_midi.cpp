@@ -36,7 +36,7 @@ inline void check_msgs_equal(
 {
     expect(eq(a.time, b.time+time_offset), sl) << " (time) " << info;
     expect(eq(a.size, b.size), sl) << " (size) " << info;
-    for (size_t i=0; i<a.size && i<b.size; i++) {
+    for (uint32_t i=0; i<a.size && i<b.size; i++) {
         expect(eq((int)a.data[i], (int)b.data[i]), sl) << " (data [" << i << "]) " << info;
     }
 }
@@ -49,13 +49,13 @@ inline void check_msg_vectors_equal(
     const boost::ut::reflection::source_location sl = boost::ut::reflection::source_location::current())
 {
     expect(eq(a.size(), b.size()), sl) << " (size) " << info;
-    for (size_t i=0; i<a.size() && i < b.size(); i++) {
+    for (uint32_t i=0; i<a.size() && i < b.size(); i++) {
         check_msgs_equal(a[i], b[i], 0, "(msg " + std::to_string(i) + ") " + info, sl);
     }
 }
 
 template<typename Message>
-inline Message with_time (Message const& msg, size_t time) {
+inline Message with_time (Message const& msg, uint32_t time) {
     Message m = msg;
     m.time = time;
     return m;
@@ -71,14 +71,14 @@ std::vector<uint8_t> pitch_wheel_bytes (uint8_t channel, uint16_t val) {
 }
 
 inline
-Msg pitch_wheel_msg(size_t time, uint8_t channel, uint16_t val) {
+Msg pitch_wheel_msg(uint32_t time, uint8_t channel, uint16_t val) {
     return Msg(time, 3, pitch_wheel_bytes(channel, val));
 }
 
-inline Msg note_on_msg (size_t time, uint8_t channel, uint8_t note, uint8_t velocity) {
+inline Msg note_on_msg (uint32_t time, uint8_t channel, uint8_t note, uint8_t velocity) {
     return Msg(time, 3, {(uint8_t)(0x90 | channel), note, velocity});
 }
-inline Msg note_off_msg (size_t time, uint8_t channel, uint8_t note, uint8_t velocity) {
+inline Msg note_off_msg (uint32_t time, uint8_t channel, uint8_t note, uint8_t velocity) {
     return Msg(time, 3, {(uint8_t)(0x80 | channel), note, velocity});
 };
 
@@ -133,7 +133,7 @@ suite AudioMidiLoop_midi_tests = []() {
         expect(eq(loop.get_length(), 20));
         expect(eq(loop.get_position(), 0));
 
-        size_t length = loop.get_length();
+        uint32_t length = loop.get_length();
         auto msgs = channel.retrieve_contents(false);
         expect(eq(length, 20));
         expect(eq(msgs.size(), 2));
@@ -167,7 +167,7 @@ suite AudioMidiLoop_midi_tests = []() {
         expect(eq(loop.get_length(), 120));
         expect(eq(loop.get_position(), 0));
 
-        size_t length = loop.get_length();
+        uint32_t length = loop.get_length();
         auto msgs = channel.retrieve_contents(false);
         expect(eq(msgs.size(), 2));
         expect(eq(length, 120));
@@ -301,8 +301,8 @@ suite AudioMidiLoop_midi_tests = []() {
         expect(eq(loop.get_position(), 0));
         auto msgs = channel.retrieve_contents(false);
         expect(eq(msgs.size(), 6));
-        for (size_t i=0; i<3; i++) { check_msgs_equal(msgs.at(i), contents.at(i)); }
-        for (size_t i=3; i<6; i++) { check_msgs_equal(msgs.at(i), source_buf.read.at(i-3), 25); }
+        for (uint32_t i=0; i<3; i++) { check_msgs_equal(msgs.at(i), contents.at(i)); }
+        for (uint32_t i=3; i<6; i++) { check_msgs_equal(msgs.at(i), source_buf.read.at(i-3), 25); }
     };
 
     "ml_3_playback"_test = []() {
@@ -418,7 +418,7 @@ suite AudioMidiLoop_midi_tests = []() {
         auto &loop = *loop_ptr;
         auto sync_source = std::make_shared<AudioMidiLoop>();
 
-        auto process = [&](size_t n_samples) {
+        auto process = [&](uint32_t n_samples) {
             process_loops<AudioMidiLoop>({loop_ptr, sync_source}, n_samples);
         };
 
@@ -435,7 +435,7 @@ suite AudioMidiLoop_midi_tests = []() {
 
         using Message = MidiChannel<uint32_t, uint16_t>::Message;
         std::vector<Message> data;
-        for(size_t idx=0; idx<256; idx++) {
+        for(uint32_t idx=0; idx<256; idx++) {
             data.push_back(
                 Message {
                     (unsigned)idx,
@@ -485,9 +485,9 @@ suite AudioMidiLoop_midi_tests = []() {
         auto msgs = play_buf.written;
         expect(eq(msgs.size(), 118));
 
-        size_t input_msg_idx = 10;
-        size_t output_msg_idx = 0;
-        for (size_t t=0; t<128; t++) {
+        uint32_t input_msg_idx = 10;
+        uint32_t output_msg_idx = 0;
+        for (uint32_t t=0; t<128; t++) {
             if (t < 10) { input_msg_idx++; continue; }
             Message exp = data.at(input_msg_idx++);
             exp.time = t;
@@ -496,10 +496,10 @@ suite AudioMidiLoop_midi_tests = []() {
     };
 
     "ml_6_state_tracking"_test = [](auto args) {
-        size_t playback_from = std::get<0>(args);
-        size_t playback_to   = std::get<1>(args);
-        size_t start_offset  = std::get<2>(args);
-        size_t n_preplay_samples = std::get<3>(args);
+        uint32_t playback_from = std::get<0>(args);
+        uint32_t playback_to   = std::get<1>(args);
+        uint32_t start_offset  = std::get<2>(args);
+        uint32_t n_preplay_samples = std::get<3>(args);
         std::vector<Msg> expect_channel_0 = std::get<4>(args);
         std::vector<Msg> expect_channel_1 = std::get<5>(args);
         std::vector<Msg> expect_channel_10 = std::get<6>(args);
@@ -518,10 +518,10 @@ suite AudioMidiLoop_midi_tests = []() {
         // - note off every 10 ticks @ offset 5
         // - sequence divided over 10 buffers of 10 ticks each
         std::vector<MidiTestBuffer> input_buffers;
-        for(size_t i=0; i<10; i++) {
+        for(uint32_t i=0; i<10; i++) {
             input_buffers.push_back(MidiTestBuffer());
             auto &buf = input_buffers.back();
-            for(size_t j=0; j<10; j++) {
+            for(uint32_t j=0; j<10; j++) {
                 buf.read.push_back( pitch_wheel_msg(j, 0, 10 + i*10+j) );
                 if (j == 2) {
                     buf.read.push_back( note_on_msg(j, 0, 50, 100) );
@@ -562,7 +562,7 @@ suite AudioMidiLoop_midi_tests = []() {
 
         // Now, play back the first 10 samples.
         MidiTestBuffer play_buf;
-        size_t n_samples = playback_to - playback_from;
+        uint32_t n_samples = playback_to - playback_from;
         loop.plan_transition(Playing, 0, false, false);
         chan.set_start_offset(start_offset);
         chan.set_pre_play_samples(n_preplay_samples);
@@ -607,7 +607,7 @@ suite AudioMidiLoop_midi_tests = []() {
         check_msg_vectors_equal(channel_1, expect_channel_1,
         "(samples " + std::to_string(playback_from) + " -> " + std::to_string(playback_to) + ")"
         );
-    } | std::vector<std::tuple<size_t, size_t, size_t, size_t, std::vector<Msg>, std::vector<Msg>, std::vector<Msg>>> {
+    } | std::vector<std::tuple<uint32_t, uint32_t, uint32_t, uint32_t, std::vector<Msg>, std::vector<Msg>, std::vector<Msg>>> {
     // Test case 1: playback from first sample.
     {
         0,  // playback from

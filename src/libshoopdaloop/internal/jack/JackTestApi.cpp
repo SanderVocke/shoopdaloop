@@ -49,7 +49,7 @@ const char** JackTestApi::port_get_connections(const jack_port_t* port) {
     auto &p = Port::from_ptr((jack_port_t*) port);
     auto &conns = p.get_connections();
     auto rval = new const char*[conns.size() + 1];
-    size_t i=0;
+    uint32_t i=0;
     for (auto it = conns.begin(); it != conns.end(); it++, i++) {
         rval[i] = strdup(it->c_str());
     }
@@ -100,7 +100,7 @@ const char** JackTestApi::get_ports(jack_client_t * client,
     ports.erase(it, ports.end());
 
     const char** port_names = new const char*[ports.size() + 1];
-    for (size_t i=0; i<ports.size(); i++) {
+    for (uint32_t i=0; i<ports.size(); i++) {
         auto &c = ports[i]->client;
         auto name = c.name + ":" + ports[i]->name;
         port_names[i] = strdup(name.c_str());

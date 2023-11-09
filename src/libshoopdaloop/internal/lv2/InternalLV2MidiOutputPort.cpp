@@ -8,7 +8,7 @@
 #include <vector>
 
 InternalLV2MidiOutputPort::InternalLV2MidiOutputPort(
-    std::string name, PortDirection direction, size_t capacity,
+    std::string name, PortDirection direction, uint32_t capacity,
     uint32_t atom_chunk_urid, uint32_t atom_sequence_urid,
     uint32_t midi_event_type_urid)
     : MidiPortInterface(name, direction), m_name(name), m_direction(direction),
@@ -16,13 +16,13 @@ InternalLV2MidiOutputPort::InternalLV2MidiOutputPort(
       m_midi_event_type_urid(midi_event_type_urid) {}
 
 MidiReadableBufferInterface &
-InternalLV2MidiOutputPort::PROC_get_read_buffer(size_t n_frames) {
+InternalLV2MidiOutputPort::PROC_get_read_buffer(uint32_t n_frames) {
     throw std::runtime_error(
         "Internal LV2 MIDI output port does not support reading.");
 }
 
 MidiWriteableBufferInterface &
-InternalLV2MidiOutputPort::PROC_get_write_buffer(size_t n_frames) {
+InternalLV2MidiOutputPort::PROC_get_write_buffer(uint32_t n_frames) {
     lv2_evbuf_reset(m_evbuf, true);
     m_iter = lv2_evbuf_begin(m_evbuf);
     return *(static_cast<MidiWriteableBufferInterface *>(this));

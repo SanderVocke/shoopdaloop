@@ -12,7 +12,7 @@
 using namespace logging;
 
 template <typename TimeType, typename SizeType>
-size_t MidiStorageElem<TimeType, SizeType>::total_size_of(size_t size) {
+uint32_t MidiStorageElem<TimeType, SizeType>::total_size_of(uint32_t size) {
     return sizeof(MidiStorageElem<TimeType, SizeType>) + size;
 }
 
@@ -46,20 +46,20 @@ void MidiStorageElem<TimeType, SizeType>::get(uint32_t &size_out,
 }
 
 template <typename TimeType, typename SizeType>
-bool MidiStorageBase<TimeType, SizeType>::valid_elem_at(size_t offset) const {
+bool MidiStorageBase<TimeType, SizeType>::valid_elem_at(uint32_t offset) const {
     return m_n_events > 0 &&
            (m_head > m_tail ? (offset >= m_tail && offset < m_head)
                             : (offset < m_head || offset >= m_tail));
 }
 
 template <typename TimeType, typename SizeType>
-std::optional<size_t>
+std::optional<uint32_t>
 MidiStorageBase<TimeType, SizeType>::maybe_next_elem_offset(Elem *e) const {
     if (!e) {
         return std::nullopt;
     }
-    size_t m_data_offset = (uint8_t *)e - (uint8_t *)m_data.data();
-    size_t next_m_data_offset =
+    uint32_t m_data_offset = (uint8_t *)e - (uint8_t *)m_data.data();
+    uint32_t next_m_data_offset =
         (m_data_offset + Elem::total_size_of(e->size)) % m_data.size();
 
     if (!valid_elem_at(next_m_data_offset)) {
@@ -70,18 +70,18 @@ MidiStorageBase<TimeType, SizeType>::maybe_next_elem_offset(Elem *e) const {
 
 template <typename TimeType, typename SizeType>
 typename MidiStorageBase<TimeType, SizeType>::Elem *
-MidiStorageBase<TimeType, SizeType>::unsafe_at(size_t offset) const {
+MidiStorageBase<TimeType, SizeType>::unsafe_at(uint32_t offset) const {
     return (Elem *)&(m_data.at(offset));
 }
 
 template <typename TimeType, typename SizeType>
-size_t MidiStorageBase<TimeType, SizeType>::bytes_size() const {
+uint32_t MidiStorageBase<TimeType, SizeType>::bytes_size() const {
     return (m_head > m_tail) ? m_head - m_tail
                              : (m_head + m_data.size()) - m_tail;
 }
 
 template <typename TimeType, typename SizeType>
-void MidiStorageBase<TimeType, SizeType>::store_unsafe(size_t offset,
+void MidiStorageBase<TimeType, SizeType>::store_unsafe(uint32_t offset,
                                                        TimeType t, SizeType s,
                                                        const uint8_t *d) {
     static Elem elem;
@@ -99,7 +99,7 @@ std::string MidiStorageBase<TimeType, SizeType>::log_module_name() const {
 }
 
 template <typename TimeType, typename SizeType>
-MidiStorageBase<TimeType, SizeType>::MidiStorageBase(size_t data_size)
+MidiStorageBase<TimeType, SizeType>::MidiStorageBase(uint32_t data_size)
     : // MIDI storage is tied to a channel. For log readability we use that
       // name.
       m_head(0), m_tail(0), m_head_start(0), m_n_events(0), m_data(data_size) {
@@ -107,7 +107,7 @@ MidiStorageBase<TimeType, SizeType>::MidiStorageBase(size_t data_size)
 }
 
 template <typename TimeType, typename SizeType>
-size_t MidiStorageBase<TimeType, SizeType>::bytes_capacity() const {
+uint32_t MidiStorageBase<TimeType, SizeType>::bytes_capacity() const {
     return m_data.size();
 }
 
@@ -117,7 +117,7 @@ void MidiStorageBase<TimeType, SizeType>::clear() {
 }
 
 template <typename TimeType, typename SizeType>
-size_t MidiStorageBase<TimeType, SizeType>::bytes_occupied() const {
+uint32_t MidiStorageBase<TimeType, SizeType>::bytes_occupied() const {
     if (m_head > m_tail) {
         return m_head - m_tail;
     } else if (m_head == m_tail && m_n_events > 0) {
@@ -129,19 +129,19 @@ size_t MidiStorageBase<TimeType, SizeType>::bytes_occupied() const {
 }
 
 template <typename TimeType, typename SizeType>
-size_t MidiStorageBase<TimeType, SizeType>::bytes_free() const {
+uint32_t MidiStorageBase<TimeType, SizeType>::bytes_free() const {
     return m_data.size() - bytes_occupied();
 }
 
 template <typename TimeType, typename SizeType>
-size_t MidiStorageBase<TimeType, SizeType>::n_events() const {
+uint32_t MidiStorageBase<TimeType, SizeType>::n_events() const {
     return m_n_events;
 }
 
 template <typename TimeType, typename SizeType>
 bool MidiStorageBase<TimeType, SizeType>::append(TimeType time, SizeType size,
                                                  const uint8_t *data) {
-    size_t sz = Elem::total_size_of(size);
+    uint32_t sz = Elem::total_size_of(size);
     if (sz > bytes_free()) {
         log<LogLevel::warn>("Ignoring store of MIDI message: buffer full.");
         return false;
@@ -164,7 +164,7 @@ bool MidiStorageBase<TimeType, SizeType>::append(TimeType time, SizeType size,
 template <typename TimeType, typename SizeType>
 bool MidiStorageBase<TimeType, SizeType>::prepend(TimeType time, SizeType size,
                                                   const uint8_t *data) {
-    size_t sz = sizeof(time) + sizeof(sz) + size;
+    uint32_t sz = sizeof(time) + sizeof(sz) + size;
     if (sz > bytes_free()) {
         return false;
     }
@@ -176,7 +176,7 @@ bool MidiStorageBase<TimeType, SizeType>::prepend(TimeType time, SizeType size,
 
     int new_tail = (int)m_tail - (int)sz;
     m_tail =
-        new_tail < 0 ? (size_t)(new_tail + m_data.size()) : (size_t)new_tail;
+        new_tail < 0 ? (uint32_t)(new_tail + m_data.size()) : (uint32_t)new_tail;
     m_n_events++;
 
     store_unsafe(m_tail, time, size, data);
@@ -194,8 +194,8 @@ void MidiStorageBase<TimeType, SizeType>::copy(
         memcpy((void *)(to.m_data.data()), (void *)&(m_data.at(m_tail)),
                m_head - m_tail);
     } else {
-        size_t first_copy = m_data.size() - m_tail;
-        size_t second_copy = m_head;
+        uint32_t first_copy = m_data.size() - m_tail;
+        uint32_t second_copy = m_head;
         memcpy((void *)(to.m_data.data()), (void *)&(m_data.at(m_tail)),
                first_copy);
         memcpy((void *)(to.m_data.at(first_copy)), (void *)m_data.data(),
@@ -218,12 +218,12 @@ bool MidiStorageCursor<TimeType, SizeType>::valid() const {
 }
 
 template <typename TimeType, typename SizeType>
-std::optional<size_t> MidiStorageCursor<TimeType, SizeType>::offset() const {
+std::optional<uint32_t> MidiStorageCursor<TimeType, SizeType>::offset() const {
     return m_offset;
 }
 
 template <typename TimeType, typename SizeType>
-std::optional<size_t>
+std::optional<uint32_t>
 MidiStorageCursor<TimeType, SizeType>::prev_offset() const {
     return m_prev_offset;
 }
@@ -240,8 +240,8 @@ bool MidiStorageCursor<TimeType, SizeType>::is_at_start() const {
 }
 
 template <typename TimeType, typename SizeType>
-void MidiStorageCursor<TimeType, SizeType>::overwrite(size_t offset,
-                                                      size_t prev_offset) {
+void MidiStorageCursor<TimeType, SizeType>::overwrite(uint32_t offset,
+                                                      uint32_t prev_offset) {
     m_offset = offset;
     m_prev_offset = prev_offset;
 }
@@ -258,7 +258,7 @@ void MidiStorageCursor<TimeType, SizeType>::reset() {
 
 template <typename TimeType, typename SizeType>
 typename MidiStorageCursor<TimeType, SizeType>::Elem *
-MidiStorageCursor<TimeType, SizeType>::get(size_t raw_offset) const {
+MidiStorageCursor<TimeType, SizeType>::get(uint32_t raw_offset) const {
     auto e = (Elem *)(&m_storage->m_data.at(raw_offset));
     return (Elem *)(&m_storage->m_data.at(raw_offset));
 }
@@ -287,16 +287,16 @@ void MidiStorageCursor<TimeType, SizeType>::next() {
 }
 
 template <typename TimeType, typename SizeType>
-size_t MidiStorageCursor<TimeType, SizeType>::find_time_forward(
-    size_t time, std::function<void(Elem *)> maybe_skip_msg_callback) {
+uint32_t MidiStorageCursor<TimeType, SizeType>::find_time_forward(
+    uint32_t time, std::function<void(Elem *)> maybe_skip_msg_callback) {
     if (!valid()) {
         reset();
     }
     if (!valid()) {
         return 0;
     }
-    std::optional<size_t> prev = m_offset;
-    size_t n_processed = 0;
+    std::optional<uint32_t> prev = m_offset;
+    uint32_t n_processed = 0;
     for (auto next_offset = m_offset, prev = m_prev_offset;
          next_offset.has_value(); prev = next_offset,
               next_offset = m_storage->maybe_next_elem_offset(
@@ -328,7 +328,7 @@ size_t MidiStorageCursor<TimeType, SizeType>::find_time_forward(
 }
 
 template <typename TimeType, typename SizeType>
-MidiStorage<TimeType, SizeType>::MidiStorage(size_t data_size)
+MidiStorage<TimeType, SizeType>::MidiStorage(uint32_t data_size)
     : MidiStorageBase<TimeType, SizeType>(data_size) {
     m_cursors.reserve(n_starting_cursors);
 }
