@@ -14,7 +14,7 @@ runs:
       python-version: '3.8'
   - name: Path conversion
     shell: bash
-    run: echo "qt_install_dir=$(cygpath -u ${{ inputs.qt_install_dir }})" | tee -a $GITHUB_OUTPUT
+    run: echo "qt_install_dir=$(pwd)/qt" | tee -a $GITHUB_OUTPUT
   - name: Report python version
     shell: bash
     run: |
