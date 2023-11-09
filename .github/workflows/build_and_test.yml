@@ -228,7 +228,7 @@ jobs:
         root_path: ${{ steps.install.outputs.install_dir }}
         screenshots_path: /tmp/screenshots
         artifact_name: screenshots_${{ matrix.kind.name }}
-    - name: Test App
+    - name: Test Run App
       if: ${{ success() || failure() }}
       uses: ./.github/actions/test_run_app
       with:
