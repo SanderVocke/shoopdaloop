@@ -1,5 +1,6 @@
 #pragma once
 #include <boost/lockfree/queue.hpp>
+#include <boost/atomic/atomic_flag.hpp>
 #include <memory>
 #include <thread>
 #include <atomic>
@@ -16,11 +17,11 @@ class ObjectPool {
     std::atomic<unsigned> m_actual_n_objects;
     std::atomic<bool> m_finish;
     std::thread m_replenish_thread;
-    std::atomic_flag m_replenish_flag;
-    std::atomic_flag m_none_available_flag;
+    boost::atomic_flag m_replenish_flag;
+    boost::atomic_flag m_none_available_flag;
 
 public:
-    ObjectPool(uint32_t target_n_objects, uint32_t objects_size) :
+    ObjectPool(size_t target_n_objects, size_t objects_size) :
         m_target_n_objects(target_n_objects),
         m_objects_size(objects_size),
         m_actual_n_objects(0),
@@ -65,7 +66,7 @@ public:
         }
     }
 
-    uint32_t object_size() const { return m_objects_size; }
+    size_t object_size() const { return m_objects_size; }
 
 protected:
     void push() {
@@ -75,7 +76,7 @@ protected:
 
     void fill() {
         auto n_replenish = m_target_n_objects - m_actual_n_objects;
-        for(uint32_t idx=0; idx<n_replenish; idx++) {
+        for(size_t idx=0; idx<n_replenish; idx++) {
             push();
         }
     }
