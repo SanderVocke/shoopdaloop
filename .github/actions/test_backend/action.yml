@@ -21,11 +21,21 @@ runs:
       mkdir -p reports
       echo "results_xml=reports/test_runner_${{ inputs.variant_name }}_results.xml" | tee -a $GITHUB_ENV
 
+  - name: Expand prefix for Mac
+    shell: bash
+    id: runcmdprefix
+    run: |
+      if [[ "$RUNNER_OS" == "macOS" ]]; then
+        echo "run_cmd_prefix=${{ inputs.run_cmd_prefix }} DYLD_FALLBACK_LIBRARY_PATH=$(dirname ${{ inputs.test_runner }})" | tee -a $GITHUB_OUTPUTS
+      else
+        echo "run_cmd_prefix=${{ inputs.run_cmd_prefix }}" | tee -a $GITHUB_OUTPUTS
+      fi
+
   - name: test_runner (${{ inputs.variant_name }})
     shell: bash
     run: |
       mkdir -p reports
-      ${{ inputs.run_cmd_prefix }} ${{ inputs.test_runner }} --reporter junit --out ${{ env.results_xml }}
+      ${{ steps.runcmdprefix.outputs.run_cmd_prefix }} ${{ inputs.test_runner }} --reporter junit --out ${{ env.results_xml }}
       echo "Back-end test results file: $(ls -la ${{ env.results_xml }})"
   
   - name: Publish Back-end Test Report
