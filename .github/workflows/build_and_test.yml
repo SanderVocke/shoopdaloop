@@ -21,46 +21,46 @@ jobs:
       fail-fast: false
       matrix:
         kind:
-          - name: linux_release
-            os: ubuntu-latest
-            python: python3.8
-            pip: python3 -m pip
-            container_image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
-            prepare: 'manylinux_2_28'
-            overrides: 'overrides/linux_release_overrides.toml'
-            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
-          - name: linux_barebones
-            os: ubuntu-latest
-            python: python3.8
-            pip: python3 -m pip
-            container_image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
-            prepare: 'manylinux_2_28'
-            overrides: 'overrides/linux_barebones_overrides.toml'
-            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
-          - name: linux_debug
-            os: ubuntu-latest
-            python: python3.8
-            pip: python3 -m pip
-            container_image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
-            prepare: 'manylinux_2_28'
-            overrides: 'overrides/linux_debug_overrides.toml'
-            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
-          - name: linux_asan
-            os: ubuntu-latest
-            python: python3.8
-            pip: python3 -m pip
-            container_image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
-            prepare: 'manylinux_2_28'
-            overrides: 'overrides/linux_asan_overrides.toml'
-            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
-          - name: linux_coverage
-            os: ubuntu-latest
-            python: python3.8
-            pip: python3 -m pip
-            container_image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
-            prepare: 'manylinux_2_28'
-            overrides: 'overrides/linux_coverage_overrides.toml'
-            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+          # - name: linux_release
+          #   os: ubuntu-latest
+          #   python: python3.8
+          #   pip: python3 -m pip
+          #   container_image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
+          #   prepare: 'manylinux_2_28'
+          #   overrides: 'overrides/linux_release_overrides.toml'
+          #   rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+          # - name: linux_barebones
+          #   os: ubuntu-latest
+          #   python: python3.8
+          #   pip: python3 -m pip
+          #   container_image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
+          #   prepare: 'manylinux_2_28'
+          #   overrides: 'overrides/linux_barebones_overrides.toml'
+          #   rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+          # - name: linux_debug
+          #   os: ubuntu-latest
+          #   python: python3.8
+          #   pip: python3 -m pip
+          #   container_image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
+          #   prepare: 'manylinux_2_28'
+          #   overrides: 'overrides/linux_debug_overrides.toml'
+          #   rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+          # - name: linux_asan
+          #   os: ubuntu-latest
+          #   python: python3.8
+          #   pip: python3 -m pip
+          #   container_image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
+          #   prepare: 'manylinux_2_28'
+          #   overrides: 'overrides/linux_asan_overrides.toml'
+          #   rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+          # - name: linux_coverage
+          #   os: ubuntu-latest
+          #   python: python3.8
+          #   pip: python3 -m pip
+          #   container_image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
+          #   prepare: 'manylinux_2_28'
+          #   overrides: 'overrides/linux_coverage_overrides.toml'
+          #   rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
           - name: windows_release
             os: windows-2022
             python: python.exe
@@ -104,6 +104,9 @@ jobs:
         install: false
         windows: ${{ matrix.kind.prepare == 'windows' && 'true' || 'false' }}
         rename_wheel_sed: ${{ matrix.kind.rename_wheel_sed }}
+    - name: TMate failure session
+      if: ${{ failure() }}
+      uses: SanderVocke/action-tmate@master
   
   test:
     if: ${{ always() }}
@@ -111,51 +114,51 @@ jobs:
       fail-fast: false
       matrix:
         kind:
-          - name: release_debian_stable
-            python: python3
-            pip: python3 -m pip
-            container: sandervocke/shoopdaloop_run_base_debian_stable:latest
-            os: ubuntu-latest
-            wheel: linux_release_wheel
-            qtlib: libQt6Core.so.6
-            testrunner: test_runner
-            qpa_platform: vnc
-          - name: release_ubuntu_latest
-            python: python3
-            pip: python3 -m pip
-            container: sandervocke/shoopdaloop_run_base_ubuntu_latest:latest
-            os: ubuntu-latest
-            wheel: linux_release_wheel
-            qtlib: libQt6Core.so.6
-            testrunner: test_runner
-            qpa_platform: vnc
-          - name: release_arch
-            python: python
-            pip: python -m pip
-            container: sandervocke/shoopdaloop_run_base_arch:latest
-            os: ubuntu-latest
-            wheel: linux_release_wheel
-            qtlib: libQt6Core.so.6
-            testrunner: test_runner
-            qpa_platform: vnc
-          - name: release_macos11
-            python: python3
-            pip: python3 -m pip
-            container: null
-            os: macos-11
-            wheel: macos_release_wheel
-            qtlib: libQt6Core.so.6
-            testrunner: test_runner
-            qpa_platform: offscreen
-          - name: release_macos12
-            python: python3
-            pip: python3 -m pip
-            container: null
-            os: macos-12
-            wheel: macos_release_wheel
-            qtlib: libQt6Core.so.6
-            testrunner: test_runner
-            qpa_platform: offscreen
+          # - name: release_debian_stable
+          #   python: python3
+          #   pip: python3 -m pip
+          #   container: sandervocke/shoopdaloop_run_base_debian_stable:latest
+          #   os: ubuntu-latest
+          #   wheel: linux_release_wheel
+          #   qtlib: libQt6Core.so.6
+          #   testrunner: test_runner
+          #   qpa_platform: vnc
+          # - name: release_ubuntu_latest
+          #   python: python3
+          #   pip: python3 -m pip
+          #   container: sandervocke/shoopdaloop_run_base_ubuntu_latest:latest
+          #   os: ubuntu-latest
+          #   wheel: linux_release_wheel
+          #   qtlib: libQt6Core.so.6
+          #   testrunner: test_runner
+          #   qpa_platform: vnc
+          # - name: release_arch
+          #   python: python
+          #   pip: python -m pip
+          #   container: sandervocke/shoopdaloop_run_base_arch:latest
+          #   os: ubuntu-latest
+          #   wheel: linux_release_wheel
+          #   qtlib: libQt6Core.so.6
+          #   testrunner: test_runner
+          #   qpa_platform: vnc
+          # - name: release_macos11
+          #   python: python3
+          #   pip: python3 -m pip
+          #   container: null
+          #   os: macos-11
+          #   wheel: macos_release_wheel
+          #   qtlib: libQt6Core.so.6
+          #   testrunner: test_runner
+          #   qpa_platform: offscreen
+          # - name: release_macos12
+          #   python: python3
+          #   pip: python3 -m pip
+          #   container: null
+          #   os: macos-12
+          #   wheel: macos_release_wheel
+          #   qtlib: libQt6Core.so.6
+          #   testrunner: test_runner
+          #   qpa_platform: offscreen
           - name: release_macos13
             python: python3
             pip: python3 -m pip
@@ -246,11 +249,9 @@ jobs:
         root_path: ${{ steps.install.outputs.install_dir }}
         python: ${{ matrix.kind.python }}
         qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
-    # - name: TMate failure session
-    #   if: ${{ failure() }}
-    #   uses: SanderVocke/action-tmate@master
-    #   with:
-    #     detached: true
+    - name: TMate failure session
+      if: ${{ failure() }}
+      uses: SanderVocke/action-tmate@master
         
   # asan:
   #   runs-on: ubuntu-latest
