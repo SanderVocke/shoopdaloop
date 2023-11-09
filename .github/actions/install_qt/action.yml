@@ -3,20 +3,26 @@ description: Download Qt from GitHub release page
 
 inputs:
   url:
-    required: false
+    required: true
     type: string
-    default: https://github.com/SanderVocke/shoopdaloop/releases/download/qt-6.6.0-1/qt-6.6.0-manylinux_2_28.tar.gz
   dir:
     required: false
     type: string
-    default: /
+    default: ${{ github.workspace }}/qt
+
+outputs:
+  install_dir:
+    description: "Installation directory"
+    value: ${{ steps.install.outputs.install_dir }}
 
 runs:
   using: "composite"
   steps:
     - name: Download and install
+      id: install
       shell: bash
       run: |
         curl -L ${{ inputs.url }} --output qt.tar.gz
         tar -xzf qt.tar.gz -C ${{ inputs.dir }}
+        echo "install_dir=${{ inputs.dir }}" | tee -a $GITHUB_OUTPUT
 
