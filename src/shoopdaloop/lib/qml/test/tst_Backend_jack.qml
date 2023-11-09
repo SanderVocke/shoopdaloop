@@ -18,10 +18,14 @@ PythonBackend {
 
         function test_backend() {
             run_case('test_backend', () => {
+                if(!backend.backend_type_is_supported(Types.BackendType.JackTest)) {
+                    skip("Backend was built without Jack support")
+                }
+
                 verify(backend.initialized)
                 wait(1000)
                 if(backend.actual_backend_type != Types.BackendType.JackTest) {
-                    skip("Was not able to start a Jack test backend")
+                    compare(1, 0, "Was not able to start a Jack test backend even though support should be available")
                 }
             })
         }

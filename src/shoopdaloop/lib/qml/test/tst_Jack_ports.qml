@@ -83,6 +83,9 @@ Backend {
 
         function test_backend() {
             run_case('test_available_ports', () => {
+                if(!backend.backend_type_is_supported(Types.BackendType.JackTest)) {
+                    skip("Backend was built without Jack support")
+                }
                 verify(backend.initialized)
 
                 wait(100)

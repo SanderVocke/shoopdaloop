@@ -217,6 +217,10 @@ class Backend(QQuickItem):
                 dct[item.key] = report_item_to_dict(item)
             return dct
         return []
+
+    @Slot(int, result=bool)
+    def backend_type_is_supported(self, type):
+        return backend_type_is_supported(BackendType(type))
     
     ################
     ## INTERNAL METHODS
