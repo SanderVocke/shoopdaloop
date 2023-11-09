@@ -1,0 +1,20 @@
+name: Manylinux TMate test session
+
+on: workflow_dispatch
+
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  tmat:
+    runs-on: ubuntu-latest
+    container:
+      image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
+      options: --user root --workdir /
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+    - name: Setup tmate session
+      uses: mxschmitt/action-tmate@v3
+  
