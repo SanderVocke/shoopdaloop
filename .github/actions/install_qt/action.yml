@@ -23,6 +23,7 @@ runs:
       shell: bash
       run: |
         curl -L ${{ inputs.url }} --output qt.tar.gz
+        mkdir -p ${{ inputs.dir }}
         tar -xzf qt.tar.gz -C ${{ inputs.dir }}
         echo "install_dir=${{ inputs.dir }}" | tee -a $GITHUB_OUTPUT
 
