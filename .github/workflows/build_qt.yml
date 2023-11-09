@@ -155,8 +155,9 @@ jobs:
     - name: Compress Qt for caching
       shell: bash
       run: |
-         cd ${{ env.pyside_qt }}
-         tar czvf ../qt.tar.gz *
+         workdir=$(pwd)
+         cd qt-installed/usr/local/Qt-6.6.0
+         tar czvf $workdir/qt.tar.gz *
     
     - name: Upload Qt
       uses: actions/upload-artifact@v3
