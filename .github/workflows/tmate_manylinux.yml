@@ -1,4 +1,4 @@
-name: Windows TMate test session
+name: Manylinux TMate test session
 
 on: workflow_dispatch
 
