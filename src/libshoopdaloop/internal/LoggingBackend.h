@@ -10,7 +10,7 @@
 #define LOG_LEVEL_ERROR logging::LogLevel::err;
 
 #ifndef COMPILE_LOG_LEVEL
-#define COMPILE_LOG_LEVEL logging::LogLevel::info
+#define COMPILE_LOG_LEVEL logging::LogLevel::debug
 #else
 
 // #define HELPER(x) #x
