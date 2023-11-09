@@ -17,6 +17,9 @@ inputs:
   tee_all_output_to:
     type: string
     default: /dev/null
+  qt_qpa_platform:
+    type: string
+    default: vnc
 
 runs:
   using: "composite"
@@ -31,7 +34,7 @@ runs:
     shell: bash
     run: >
       ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0
-      QT_QPA_PLATFORM=vnc
+      QT_QPA_PLATFORM=${{ inputs.qt_qpa_platform }}
       QT_ASSUME_STDERR_HAS_CONSOLE=1
       ${{ inputs.run_cmd_prefix }}
       ${{ inputs.python_command }}

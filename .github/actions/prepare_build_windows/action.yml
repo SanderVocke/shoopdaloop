@@ -12,9 +12,9 @@ runs:
   - uses: actions/setup-python@v4
     with:
       python-version: '3.8'
-  - name: Path conversion
+  - name: Set Qt install path
     shell: bash
-    id: pathconvert
+    id: setqtpath
     run: echo "qt_install_dir=$(pwd)/qt" | tee -a $GITHUB_OUTPUT
   - name: Report python version
     shell: bash
@@ -25,7 +25,7 @@ runs:
     id: install_qt
     with:
       url: https://github.com/SanderVocke/shoopdaloop/releases/download/qt-6.6.0-1/qt-6.6.0-windows.tar.gz
-      dir: ${{ steps.pathconvert.outputs.qt_install_dir }}
+      dir: ${{ steps.setqtpath.outputs.qt_install_dir }}
   - name: Install boost
     id: install_boost
     uses: ./.github/actions/install_boost_headers

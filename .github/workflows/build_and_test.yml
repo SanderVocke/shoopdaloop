@@ -228,6 +228,7 @@ jobs:
         run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH=${{ env.qtlibpath }}
         root_path: ${{ steps.install.outputs.install_dir }}
         python_command: ${{ matrix.kind.python }}
+        qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
     - name: Screenshots
       if: ${{ success() || failure() }}
       uses: ./.github/actions/test_screenshots
@@ -235,6 +236,7 @@ jobs:
         root_path: ${{ steps.install.outputs.install_dir }}
         screenshots_path: /tmp/screenshots
         artifact_name: screenshots_${{ matrix.kind.name }}
+        qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
     - name: Test Run App
       if: ${{ success() || failure() }}
       uses: ./.github/actions/test_run_app
@@ -243,11 +245,12 @@ jobs:
         run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH=${{ env.qtlibpath }}
         root_path: ${{ steps.install.outputs.install_dir }}
         python: ${{ matrix.kind.python }}
-    - name: TMate failure session
-      if: ${{ failure() }}
-      uses: SanderVocke/action-tmate@master
-      with:
-        detached: true
+        qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
+    # - name: TMate failure session
+    #   if: ${{ failure() }}
+    #   uses: SanderVocke/action-tmate@master
+    #   with:
+    #     detached: true
         
   # asan:
   #   runs-on: ubuntu-latest

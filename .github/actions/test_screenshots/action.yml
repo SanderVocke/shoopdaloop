@@ -12,6 +12,9 @@ inputs:
   artifact_name:
     required: true
     type: string
+  qt_qpa_platform:
+    type: string
+    default: vnc
 
 runs:
   using: "composite"
@@ -19,7 +22,7 @@ runs:
   - name: Save screenshots
     shell: bash
     run: |
-        LIBGL_ALWAYS_SOFTWARE=1 QT_QPA_PLATFORM=vnc SHOOP_LOG=Frontend.TestScreenGrabber=debug shoopdaloop -b dummy --test-grab-screens ${{ inputs.screenshots_path }}
+        LIBGL_ALWAYS_SOFTWARE=1 QT_QPA_PLATFORM=${{ inputs.qt_qpa_platform }} SHOOP_LOG=Frontend.TestScreenGrabber=debug shoopdaloop -b dummy --test-grab-screens ${{ inputs.screenshots_path }}
   
   - name: Upload screenshots
     uses: actions/upload-artifact@v3
