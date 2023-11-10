@@ -31,6 +31,7 @@
 #include "ConnectedDecoupledMidiPort.h"
 #include "ConnectedLoop.h"
 #include "DummyAudioSystem.h"
+#include <mutex>
 
 #ifdef SHOOP_HAVE_BACKEND_JACK
 #include "JackAudioSystem.h"
@@ -48,6 +49,7 @@
 #include <map>
 #include <set>
 #include <thread>
+#include <algorithm>
 
 #include "libshoopdaloop_test_if.h"
 
@@ -222,12 +224,12 @@ shoopdaloop_backend_instance_t *initialize (
     g_active_backends.insert(backend);
 
     auto rval = external_backend(backend);
-    logging::log<"Backend.API", debug>("initialize"); // TODO fmt fix to print pointer
+    logging::log_with_ptr<"Backend.API", debug>(rval, "initialize");
     return rval;
 }
 
 void terminate_backend(shoopdaloop_backend_instance_t *backend) {
-    logging::log<"Backend.API", debug>("terminate");
+    logging::log_with_ptr<"Backend.API", debug>(backend, "terminate");
     auto _backend = internal_backend(backend);
     _backend->terminate();
     g_active_backends.erase(_backend);
@@ -1257,48 +1259,36 @@ shoopdaloop_logger_t *get_logger(const char* name) {
         logging::parse_conf_from_env();
         first = false;
     }
-    return (shoopdaloop_logger_t*) nullptr; //TODO
-    //(&logging::get_logger(std::string(name)));
+    return (shoopdaloop_logger_t*) strdup(name);
 }
-
-const std::map<log_level_t, log_level_t> level_convert = {
-    {trace, trace},
-    {debug, debug},
-    {info, info},
-    {warning, warning},
-    {error, error}
-};
 
 void set_global_logging_level(log_level_t level) {
     logging::log<"Backend.API", debug>("set_global_logging_level");
-    logging::set_filter_level(level_convert.at(level));
+    logging::set_filter_level(level);
 }
 
 void reset_logger_level_override(shoopdaloop_logger_t *logger) {
     logging::log<"Backend.API", debug>("reset_logger_level_override");
-    #warning TODO
-    //auto name = ((logging::logger*)logger)->name();
-    //set_module_filter_level(std::string(name), std::nullopt);
+    auto name = (const char*)logger;
+    set_module_filter_level(name, std::nullopt);
 }
 
 void set_logger_level_override(shoopdaloop_logger_t *logger, log_level_t level) {
     logging::log<"Backend.API", debug>("set_logger_level_override");
-    //auto name = ((logging::logger*)logger)->name();
-    //set_module_filter_level(std::string(name), level_convert.at(level));
+    auto name = (const char*)logger;
+    set_module_filter_level(name, level);
 }
 
 void shoopdaloop_log(shoopdaloop_logger_t *logger, log_level_t level, const char *msg) {
-    // ((logging::logger*)logger)->log_no_filter(
-    //     level_convert.at(level), msg
-    // );
-    #warning TODO
-    logging::log<"TODOUNKNOWN", warning>(msg);
+    auto name = (const char*)logger;
+    logging::log(name, level, msg);
 }
 
 unsigned shoopdaloop_should_log(shoopdaloop_logger_t *logger, log_level_t level) {
-    // return ((logging::logger*)logger)->should_log(
-    //     level_convert.at(level)
-    // ) ? 1 : 0;
+    auto name = (const char*)logger;
+    return logging::should_log(
+        name, level
+    ) ? 1 : 0;
     return true;
 }
 
@@ -1444,4 +1434,8 @@ void dummy_audio_wait_process(shoopdaloop_backend_instance_t *backend) {
     } else {
         logging::log<"Backend.API", error>("dummy_audio_wait_process called on non-dummy backend");
     }
+}
+
+void destroy_logger(shoopdaloop_logger_t* logger) {
+    delete ((const char*)logger);
 }

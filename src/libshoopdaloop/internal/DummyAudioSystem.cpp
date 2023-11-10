@@ -297,7 +297,6 @@ DummyAudioSystem<Time, Size>::DummyAudioSystem(
 template <typename Time, typename Size>
 void DummyAudioSystem<Time, Size>::start() {
     m_proc_thread = std::thread([this] {
-        // TODO: use fmt properly
         log<debug>("DummyAudioSystem: starting process thread - {}", mode_names.at(m_mode));
         auto bufs_per_second = mc_sample_rate / mc_buffer_size;
         auto interval = 1.0f / ((float)bufs_per_second);

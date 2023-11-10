@@ -139,6 +139,7 @@ void destroy_fx_chain_state(fx_chain_state_info_t *d);
 void destroy_profiling_report(profiling_report_t *d);
 void destroy_string(const char* s);
 void destroy_port_connections_state(port_connections_state_t *d);
+void destroy_logger(shoopdaloop_logger_t *logger);
 
 // Helpers for allocating data objects
 midi_event_t *alloc_midi_event(unsigned data_bytes);

@@ -9,8 +9,8 @@ public:
     template<log_level_t Level, typename... Args>
     void log(std::string_view fmt, Args &&... args) const
     {
-        if (Level >= LevelFilter) {
-            logging::log<Name, Level>(fmt, args...);
+        if constexpr (Level >= LevelFilter) {
+            logging::log_with_ptr<Name, Level>(this, fmt, args...);
         }
     }
 
@@ -26,7 +26,7 @@ public:
                    uint32_t ln = BOOST_CURRENT_LOCATION.line()) const
     {
         if (trace >= LevelFilter) {
-            log<trace>("[{}] {}:{} - {}", this, fl, ln, fn);
+            log<trace>( "{}:{} - {}", fl, ln, fn);
         }
     }
 
