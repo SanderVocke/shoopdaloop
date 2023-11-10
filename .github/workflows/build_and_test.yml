@@ -123,6 +123,15 @@ jobs:
           #   qtlib: libQt6Core.so.6
           #   testrunner: test_runner
           #   qpa_platform: vnc
+          # - name: barebones_debian_stable
+          #   python: python3
+          #   pip: python3 -m pip
+          #   container: sandervocke/shoopdaloop_run_base_debian_stable:latest
+          #   os: ubuntu-latest
+          #   wheel: linux_barebones_wheel
+          #   qtlib: libQt6Core.so.6
+          #   testrunner: test_runner
+          #   qpa_platform: vnc
           # - name: release_ubuntu_latest
           #   python: python3
           #   pip: python3 -m pip
@@ -232,6 +241,7 @@ jobs:
         root_path: ${{ steps.install.outputs.install_dir }}
         python_command: ${{ matrix.kind.python }}
         qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
+        macos_rpath_patch: ${{ contains(matrix.kind.name, 'macos') }}
     - name: Screenshots
       if: ${{ success() || failure() }}
       uses: ./.github/actions/test_screenshots

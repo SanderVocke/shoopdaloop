@@ -68,6 +68,15 @@ Backend::Backend(audio_system_type_t audio_system_type, std::string client_name_
 {
 }
 
+std::vector<audio_system_type_t> Backend::get_supported_audio_system_types() {
+    std::vector<audio_system_type_t> rval = { Dummy };
+    #ifdef SHOOP_HAVE_BACKEND_JACK
+    rval.push_back(Jack);
+    rval.push_back(JackTest);
+    #endif
+    return rval;
+}
+
 void Backend::start() {
         auto weak_self = weak_from_this();
         try {

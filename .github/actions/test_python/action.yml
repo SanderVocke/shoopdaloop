@@ -31,7 +31,7 @@ runs:
       echo "Python test results file: $(ls -la ${{ env.results_xml }})"
   
   - name: Publish Python Test Report
-    if: ${{ !env.ACT }} && (success() || failure())
+    if: ${{ !env.ACT && (success() || failure()) }}
     uses: mikepenz/action-junit-report@v3
     with:
       report_paths: ${{ env.results_xml }}

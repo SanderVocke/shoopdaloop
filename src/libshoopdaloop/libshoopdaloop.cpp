@@ -251,6 +251,11 @@ unsigned get_buffer_size(shoopdaloop_backend_instance_t *backend) {
     return internal_backend(backend)->get_buffer_size();
 }
 
+unsigned has_audio_system_support(audio_system_type_t audio_system_type) {
+    auto supported_types = Backend::get_supported_audio_system_types();
+    return std::find(supported_types.begin(), supported_types.end(), audio_system_type) != supported_types.end();
+}
+
 backend_state_info_t *get_backend_state(shoopdaloop_backend_instance_t *backend) {
     auto val = internal_backend(backend)->get_state();
     auto rval = new backend_state_info_t;

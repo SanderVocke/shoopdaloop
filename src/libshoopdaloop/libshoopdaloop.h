@@ -13,6 +13,7 @@ unsigned get_sample_rate(shoopdaloop_backend_instance_t *backend);
 unsigned get_buffer_size(shoopdaloop_backend_instance_t *backend);
 backend_state_info_t *get_backend_state(shoopdaloop_backend_instance_t *backend);
 profiling_report_t* get_profiling_report(shoopdaloop_backend_instance_t *backend);
+unsigned has_audio_system_support(audio_system_type_t audio_system_type);
 
 // Loops
 shoopdaloop_loop_t *create_loop(shoopdaloop_backend_instance_t *backend);

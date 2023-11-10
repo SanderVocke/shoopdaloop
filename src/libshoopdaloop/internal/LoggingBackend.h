@@ -17,7 +17,7 @@
 #define LOG_LEVEL_ERROR error;
 
 #ifndef COMPILE_LOG_LEVEL
-#define COMPILE_LOG_LEVEL info
+#define COMPILE_LOG_LEVEL debug
 #else
 
 // #define HELPER(x) #x

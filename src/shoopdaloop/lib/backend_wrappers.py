@@ -709,3 +709,6 @@ def init_backend(backend_type : Type[BackendType], client_name_hint : str, argst
     _ptr = initialize(backend_type.value, client_name_hint.encode('ascii'), argstring.encode('ascii'))
     b = Backend(_ptr)
     return b
+
+def backend_type_is_supported(backend_type : Type[BackendType]):
+    return bool(has_audio_system_support(backend_type.value))

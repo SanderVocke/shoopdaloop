@@ -20,6 +20,10 @@ inputs:
   qt_qpa_platform:
     type: string
     default: vnc
+  macos_rpath_patch:
+    type: boolean
+    required: false
+    default: false
 
 runs:
   using: "composite"
@@ -29,6 +33,15 @@ runs:
     run: |
       mkdir -p reports
       echo "results_xml=reports/qml_test_${{ inputs.variant_name }}_results.xml" | tee -a $GITHUB_ENV
+    
+  # On MacOS, the qml test library won't be able to find and link to the Qt libraries packaged with
+  # PySide6. This is because the Qt libraries are not in the default search path. We can fix this by
+  # adding the path to the Qt libraries to the rpath of the qml test library.
+  - name: rpath patch
+    if: ${{ inputs.macos_rpath_patch }}
+    shell: bash
+    run: |
+      install_name_tool -add_rpath ${{ inputs.root_path }}/../PySide6/Qt/lib ${{ inputs.root_path }}/libqml_tests.dylib
 
   - name: QML test (${{ inputs.variant_name }})
     shell: bash
@@ -50,7 +63,7 @@ runs:
       echo "QML test results file: $(ls -la ${{ env.results_xml }})"
   
   - name: Publish QML Test Report
-    if: ${{ !env.ACT }} && ( success() || failure() )
+    if: ${{ !env.ACT && ( success() || failure() ) }}
     uses: mikepenz/action-junit-report@v3
     with:
       report_paths: ${{ env.results_xml }}
