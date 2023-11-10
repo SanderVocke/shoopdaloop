@@ -7,15 +7,9 @@
 #include "shoop_globals.h"
 #include "process_when.h"
 
-class Backend;
-class PortInterface;
-class MidiReadableBufferInterface;
-class MidiWriteableBufferInterface;
-class MidiMergingBuffer;
-class MidiStateTracker;
-
-struct ConnectedPort : public std::enable_shared_from_this<ConnectedPort>,
+class ConnectedPort : public std::enable_shared_from_this<ConnectedPort>,
                        private ModuleLoggingEnabled<"Backend.ConnectedPort"> {
+public:
     
     const std::shared_ptr<PortInterface> port;
     std::weak_ptr<Backend> backend;

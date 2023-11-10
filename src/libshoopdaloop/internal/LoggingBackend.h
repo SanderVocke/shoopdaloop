@@ -37,9 +37,9 @@ struct ModuleName {
 
 auto constexpr CompileTimeLogLevel = COMPILE_LOG_LEVEL;
 
-extern std::recursive_mutex g_log_mutex;
-extern std::unique_ptr<log_level_t> g_maybe_global_level;
-extern std::map<std::string, std::unique_ptr<log_level_t>> g_module_log_levels;
+extern std::recursive_mutex* g_log_mutex;
+extern std::unique_ptr<log_level_t>* g_maybe_global_level;
+extern std::map<std::string, std::unique_ptr<log_level_t>>* g_module_log_levels;
 
 namespace internal {
 
@@ -78,14 +78,14 @@ void do_log(Ptr maybe_ptr, Args &&... args) {
 }
 
 #define SHOULD_LOG_IMPL \
-    std::lock_guard<std::recursive_mutex> lock(g_log_mutex);                  \
+    std::lock_guard<std::recursive_mutex> lock((*g_log_mutex));                  \
     auto compile_time_allows = (level >= logging::CompileTimeLogLevel);       \
     auto global_allows =                                                      \
-        (!g_maybe_global_level) || (level >= *g_maybe_global_level.get());    \
+        (!(*g_maybe_global_level)) || (level >= *(*g_maybe_global_level).get());    \
     if(compile_time_allows && global_allows) {                                \
-        auto maybe_module_level = g_module_log_levels.find(module_name);      \
+        auto maybe_module_level = (*g_module_log_levels).find(module_name);      \
         auto module_allows =                                                  \
-            (maybe_module_level == g_module_log_levels.end()) ||              \
+            (maybe_module_level == (*g_module_log_levels).end()) ||              \
             (level >= *maybe_module_level->second.get());                     \
         return module_allows;                                                 \
     }                                                                         \
@@ -126,15 +126,15 @@ template<ModuleName Name, log_level_t level, typename Ptr, typename ...Args>
 void log_impl(Ptr maybe_ptr, std::string_view str, Args &&... args) {
     static log_level_t* _level = nullptr;
     if constexpr (level >= logging::CompileTimeLogLevel) {
-        std::lock_guard<std::recursive_mutex> lock(g_log_mutex);
+        std::lock_guard<std::recursive_mutex> lock((*g_log_mutex));
         if (!_level) {
-            auto maybe_module_level = g_module_log_levels.find(std::string(Name.value));
-            if (maybe_module_level != g_module_log_levels.end()) {
+            auto maybe_module_level = (*g_module_log_levels).find(std::string(Name.value));
+            if (maybe_module_level != (*g_module_log_levels).end()) {
                 _level = maybe_module_level->second.get();
             }
         }
         if ( (_level && level >= *_level) ||
-            (g_maybe_global_level && level >= *g_maybe_global_level.get())) {
+            ((*g_maybe_global_level) && level >= *(*g_maybe_global_level).get())) {
             internal::do_log<Name, Ptr, level>(maybe_ptr, str, args...);
         }
     }
@@ -142,10 +142,10 @@ void log_impl(Ptr maybe_ptr, std::string_view str, Args &&... args) {
 } // namespace internal
 
 inline bool should_log(std::string module_name, log_level_t level) {
-    std::lock_guard<std::recursive_mutex> lock(g_log_mutex);
-    auto maybe_module_level = g_module_log_levels.find(module_name);
-    if ( (maybe_module_level != g_module_log_levels.end() && level >= *maybe_module_level->second.get()) ||
-        (g_maybe_global_level && level >= *g_maybe_global_level.get())) {
+    std::lock_guard<std::recursive_mutex> lock((*g_log_mutex));
+    auto maybe_module_level = (*g_module_log_levels).find(module_name);
+    if ( (maybe_module_level != (*g_module_log_levels).end() && level >= *maybe_module_level->second.get()) ||
+        ((*g_maybe_global_level) && level >= *(*g_maybe_global_level).get())) {
         return true;
     }
     return false;
@@ -179,16 +179,16 @@ void log_with_ptr(Ptr ptr, std::string_view str, Args &&... args) {
 // Set the global runtime filter level.
 // Does not override already set module filter levels.
 inline void set_filter_level(log_level_t level) {
-    std::lock_guard<std::recursive_mutex> lock(g_log_mutex);
-    if (!g_maybe_global_level) { g_maybe_global_level = std::make_unique<log_level_t>(level); }
-    else { *g_maybe_global_level = level; }
+    std::lock_guard<std::recursive_mutex> lock((*g_log_mutex));
+    if (!(*g_maybe_global_level)) { (*g_maybe_global_level) = std::make_unique<log_level_t>(level); }
+    else { *(*g_maybe_global_level) = level; }
 }
 
 // Set a module filter level.
 // Always overrides the global level - reset by passing nullopt.
 inline void set_module_filter_level(std::string name, std::optional<log_level_t> level) {
-    std::lock_guard<std::recursive_mutex> lock(g_log_mutex);
-    auto &maybe_level = g_module_log_levels[name];
+    std::lock_guard<std::recursive_mutex> lock((*g_log_mutex));
+    auto &maybe_level = (*g_module_log_levels)[name];
     if (!maybe_level) { maybe_level = std::make_unique<log_level_t>(level.value()); }
     else { *maybe_level = level.value(); }
 }

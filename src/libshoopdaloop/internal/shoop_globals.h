@@ -20,6 +20,11 @@ class ConnectedLoop;
 class ConnectedChannel;
 class ConnectedFXChain;
 class ConnectedDecoupledMidiPort;
+class Backend;
+class MidiReadableBufferInterface;
+class MidiWriteableBufferInterface;
+class MidiMergingBuffer;
+class MidiStateTracker;
 
 template<typename A, typename B> class MidiMessage;
 template<typename A, typename B> class DecoupledMidiPort;

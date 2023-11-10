@@ -3,9 +3,8 @@
 #include <memory>
 #include "shoop_globals.h"
 
-class Backend;
-
-struct ConnectedFXChain : public std::enable_shared_from_this<ConnectedFXChain> {
+class ConnectedFXChain : public std::enable_shared_from_this<ConnectedFXChain> {
+public:
     const std::shared_ptr<shoop_types::FXChain> chain;
     std::weak_ptr<Backend> backend;
 

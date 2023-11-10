@@ -7,7 +7,8 @@ class AudioMidiLoop;
 class ConnectedChannel;
 class Backend;
 
-struct ConnectedLoop : public std::enable_shared_from_this<ConnectedLoop> {
+class ConnectedLoop : public std::enable_shared_from_this<ConnectedLoop> {
+public:
 
     const std::shared_ptr<AudioMidiLoop> loop;
     std::vector<std::shared_ptr<ConnectedChannel>> mp_audio_channels;

@@ -10,9 +10,10 @@
 #include <vector>
 namespace logging {
 
-std::recursive_mutex g_log_mutex;
-std::unique_ptr<log_level_t> g_maybe_global_level = std::make_unique<log_level_t>(info);
-std::map<std::string, std::unique_ptr<log_level_t>> g_module_log_levels;
+# warning intentionally leaky globals because of de-initialization problems. Find a better solution.
+std::recursive_mutex* g_log_mutex = new std::recursive_mutex();
+std::unique_ptr<log_level_t>* g_maybe_global_level = new std::unique_ptr<log_level_t>(std::make_unique<log_level_t>(info));
+std::map<std::string, std::unique_ptr<log_level_t>>* g_module_log_levels = new std::map<std::string, std::unique_ptr<log_level_t>>();
 
 const std::map<std::string, log_level_t> level_names = {
     {"trace", trace},

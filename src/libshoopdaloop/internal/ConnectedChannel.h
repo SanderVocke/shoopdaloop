@@ -5,14 +5,8 @@
 #include "shoop_globals.h"
 #include "process_when.h"
 
-class ChannelInterface;
-class ConnectedLoop;
-class ConnectedPort;
-class Backend;
-template<typename SampleT> class AudioChannel;
-template<typename A, typename B> class MidiChannel;
-
-struct ConnectedChannel : public std::enable_shared_from_this<ConnectedChannel> {
+class ConnectedChannel : public std::enable_shared_from_this<ConnectedChannel> {
+public:
     std::shared_ptr<ChannelInterface> channel;
     std::weak_ptr<ConnectedLoop> loop;
     std::weak_ptr<ConnectedPort> mp_input_port_mapping;
