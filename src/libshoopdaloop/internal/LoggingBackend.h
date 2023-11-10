@@ -9,6 +9,7 @@
 #include "types.h"
 #include <algorithm>
 #include <array>
+#include "export.h"
 
 #define LOG_LEVEL_TRACE trace;
 #define LOG_LEVEL_DEBUG debug;
@@ -37,9 +38,9 @@ struct ModuleName {
 
 auto constexpr CompileTimeLogLevel = COMPILE_LOG_LEVEL;
 
-extern std::recursive_mutex* g_log_mutex;
-extern std::unique_ptr<log_level_t>* g_maybe_global_level;
-extern std::map<std::string, std::unique_ptr<log_level_t>>* g_module_log_levels;
+SHOOP_EXPORT extern std::recursive_mutex* g_log_mutex;
+SHOOP_EXPORT extern std::unique_ptr<log_level_t>* g_maybe_global_level;
+SHOOP_EXPORT extern std::map<std::string, std::unique_ptr<log_level_t>>* g_module_log_levels;
 
 namespace internal {
 
@@ -209,9 +210,9 @@ inline void set_module_filter_level(std::string name, std::optional<log_level_t>
 // Modules are registered by the code doing the logging, but the Logging
 // module has debug statements by the logging framework itself. For example:
 // each logger that is registered produces a debug message.
-void parse_conf_string(std::string s);
+SHOOP_EXPORT void parse_conf_string(std::string s);
 
 // Parse configure string from the SHOOP_LOG env variable.
-void parse_conf_from_env();
+SHOOP_EXPORT void parse_conf_from_env();
 
 }

@@ -1442,5 +1442,5 @@ void dummy_audio_wait_process(shoopdaloop_backend_instance_t *backend) {
 }
 
 void destroy_logger(shoopdaloop_logger_t* logger) {
-    delete ((const char*)logger);
+    free ((void*)logger);
 }

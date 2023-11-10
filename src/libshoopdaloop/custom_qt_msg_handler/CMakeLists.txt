@@ -1,6 +1,7 @@
 add_library(custom_qt_msg_handler SHARED custom_qt_msg_handler.cpp)
 set_property(TARGET custom_qt_msg_handler PROPERTY POSITION_INDEPENDENT_CODE ON)
 target_link_libraries(custom_qt_msg_handler PRIVATE Qt6::Core shoopdaloop)
+target_include_directories(custom_qt_msg_handler PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../internal)
 
 # Generate C bindings
 add_custom_command(

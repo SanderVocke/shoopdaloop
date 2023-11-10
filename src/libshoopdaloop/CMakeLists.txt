@@ -115,15 +115,16 @@ endif()
 
 add_library(shoopdaloop_internals OBJECT libshoopdaloop.cpp ${INTERNAL_SOURCES})
 set_target_properties(shoopdaloop_internals PROPERTIES POSITION_INDEPENDENT_CODE ON)
-
-add_library(shoopdaloop SHARED)
-target_link_libraries(shoopdaloop PRIVATE shoopdaloop_internals)
-target_include_directories(shoopdaloop
+target_include_directories(shoopdaloop_internals
                         PRIVATE
                         ${CMAKE_SOURCE_DIR}/../third_party/base64/include
                         ${CMAKE_CURRENT_BINARY_DIR}
                         ${Boost_INCLUDE_DIR}
                         )
+
+add_library(shoopdaloop SHARED)
+target_link_libraries(shoopdaloop PRIVATE shoopdaloop_internals)
+
 if (HAVE_LV2)
   add_dependencies(shoopdaloop ${DEPEND_ON_LILV})
   target_link_libraries(shoopdaloop PUBLIC
