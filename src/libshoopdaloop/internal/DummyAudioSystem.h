@@ -47,8 +47,7 @@ public:
 
 class DummyAudioPort : public virtual AudioPortInterface<audio_sample_t>,
                        public DummyPort,
-                       private ModuleLoggingEnabled {
-    std::string log_module_name() const override;
+                       private ModuleLoggingEnabled<"Backend.DummyAudioPort"> {
 
     std::string m_name;
     PortDirection m_direction;
@@ -80,12 +79,11 @@ class DummyMidiPort : public virtual MidiPortInterface,
                       public DummyPort,
                       public MidiReadableBufferInterface,
                       public MidiWriteableBufferInterface,
-                      private ModuleLoggingEnabled {
+                      private ModuleLoggingEnabled<"Backend.DummyMidiPort"> {
 public:
     using StoredMessage = MidiMessage<uint32_t, uint32_t>;
     
 private:
-    std::string log_module_name() const override;
 
     // Queued messages as external input to the port
     std::vector<StoredMessage> m_queued_msgs;
@@ -139,9 +137,8 @@ enum class DummyAudioSystemMode {
 
 template<typename Time, typename Size>
 class DummyAudioSystem : public AudioSystemInterface,
-                         private ModuleLoggingEnabled,
+                         private ModuleLoggingEnabled<"Backend.DummyAudioSystem">,
                          public WithCommandQueue<20, 1000, 1000> {
-    std::string log_module_name() const override;
 
     std::function<void(uint32_t)> m_process_cb;
     const uint32_t mc_sample_rate;

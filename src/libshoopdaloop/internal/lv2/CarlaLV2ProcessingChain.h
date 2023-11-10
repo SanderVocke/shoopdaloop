@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <thread>
 #include <types.h>
 #include <lilv/lilv.h>
 #include <lv2/core/lv2.h>
@@ -71,7 +72,7 @@ public:
 
 template<typename TimeType, typename SizeType>
 class CarlaLV2ProcessingChain : public ProcessingChainInterface<TimeType, SizeType>,
-                                public ModuleLoggingEnabled,
+                                public ModuleLoggingEnabled<"Backend.CarlaLV2">,
                                 public ExternalUIInterface,
                                 public SerializeableStateInterface {
 public:
@@ -81,8 +82,6 @@ public:
     using SharedMidiOutputPort = std::shared_ptr<MidiOutputPort>;
     using MidiPort = typename ProcessingChainInterface<TimeType, SizeType>::MidiPort;
     using SharedMidiPort = typename ProcessingChainInterface<TimeType, SizeType>::SharedMidiPort;
-
-    std::string log_module_name() const override;
 
 private:
     const LilvPlugin * m_plugin = nullptr;

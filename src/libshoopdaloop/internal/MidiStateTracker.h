@@ -1,5 +1,6 @@
 #pragma once
 #include <set>
+#include <vector>
 #include "LoggingEnabled.h"
 
 // If you feed MidiStateTracker a sequence of MIDI messages, it will keep track of current state
@@ -8,7 +9,7 @@
 // - CC values
 // - Progam changes
 // - Pitch wheel and channel pressure
-class MidiStateTracker : public ModuleLoggingEnabled {
+class MidiStateTracker : public ModuleLoggingEnabled<"Backend.MidiStateTracker"> {
 public:
     class Subscriber {
     public:
@@ -37,7 +38,6 @@ private:
     void process_program(uint8_t channel, uint8_t value);
     void process_pitch_wheel(uint8_t channel, uint16_t value);
     void process_channel_pressure(uint8_t channel, uint8_t value);
-    std::string log_module_name() const override;
 
 public:
     MidiStateTracker(bool track_notes=false, bool track_controls=false, bool track_programs=false);

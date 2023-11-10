@@ -35,10 +35,8 @@ GenericJackPort<API>::GenericJackPort(std::string name,
                    jack_client_t *client,
                    std::shared_ptr<GenericJackAllPorts<API>> all_ports_tracker)
     : m_client(client), m_type(type), m_direction(direction), m_all_ports_tracker(all_ports_tracker) {
-    
-    log_init();
 
-    log<logging::LogLevel::debug>(fmt::runtime("Opening port: {}"), name);
+    log<debug>("Opening port: {}", name);
 
     auto p = API::port_register(
         m_client,
@@ -112,9 +110,6 @@ void GenericJackPort<API>::disconnect_external(std::string name) {
         API::disconnect(m_client, API::port_name(m_port), name.c_str());
     }
 }
-
-template<typename API>
-std::string GenericJackPort<API>::log_module_name() const { return "Backend.JackPort"; }
 
 template class GenericJackPort<JackApi>;
 template class GenericJackPort<JackTestApi>;

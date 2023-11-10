@@ -1,6 +1,8 @@
 #pragma once
 #include "MidiPortInterface.h"
 #include "LoggingEnabled.h"
+#include <vector>
+#include <functional>
 
 // We need a variable-sized struct that also supports interface inheritance.
 // This cannot really be done in C++, so instead we just make a fixed-size
@@ -32,7 +34,7 @@ class MidiStorageCursor;
 
 template<typename TimeType, typename SizeType>
 class MidiStorageBase : public std::enable_shared_from_this<MidiStorageBase<TimeType, SizeType>>,
-                        private ModuleLoggingEnabled {
+                        private ModuleLoggingEnabled<"Backend.MidiChannel.Storage"> {
 public:
     using Elem = MidiStorageElem<TimeType, SizeType>;
     Elem dummy_elem; // Prevents incomplete template type in debug build
@@ -51,7 +53,6 @@ protected:
     Elem *unsafe_at(uint32_t offset) const;
     uint32_t bytes_size() const;
     void store_unsafe(uint32_t offset, TimeType t, SizeType s, const uint8_t* d);
-    std::string log_module_name() const override;
 
 public:
     MidiStorageBase(uint32_t data_size);

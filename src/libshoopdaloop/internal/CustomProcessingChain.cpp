@@ -3,11 +3,6 @@
 #include "DummyAudioSystem.h"
 
 template<typename TimeType, typename SizeType>
-std::string CustomProcessingChain<TimeType, SizeType>::log_module_name() const {
-    return "Backend.CustomProcessingChain";
-}
-
-template<typename TimeType, typename SizeType>
 CustomProcessingChain<TimeType, SizeType>::CustomProcessingChain(
     uint32_t n_audio_inputs,
     uint32_t n_audio_outputs,
@@ -17,7 +12,6 @@ CustomProcessingChain<TimeType, SizeType>::CustomProcessingChain(
     m_freewheeling(false),
     m_process_callback(process_callback)
 {
-    log_init();
     for(uint32_t i=0; i<n_audio_inputs; i++) {
         m_input_audio_ports.push_back(std::make_shared<InternalAudioPort<shoop_types::audio_sample_t>>("audio_in_" + std::to_string(i+1), PortDirection::Output, 4096));
     }

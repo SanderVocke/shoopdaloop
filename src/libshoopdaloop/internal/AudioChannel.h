@@ -10,14 +10,13 @@
 template<typename SampleT>
 class AudioChannel : public ChannelInterface,
                             private WithCommandQueue<20, 1000, 1000>,
-                            private ModuleLoggingEnabled {
+                            private ModuleLoggingEnabled<"Backend.AudioChannel"> {
 public:
     typedef AudioBuffer<SampleT> BufferObj;
     typedef ObjectPool<BufferObj> BufferPool;
     typedef std::shared_ptr<BufferObj> Buffer;
     
 private:
-    std::string log_module_name() const override;
 
     struct Buffers;
 
@@ -65,8 +64,7 @@ private:
         bool update_absmax;
     };
 
-    struct Buffers : private ModuleLoggingEnabled {
-        std::string log_module_name() const override;
+    struct Buffers : private ModuleLoggingEnabled<"Backend.AudioChannel.Buffers"> {
 
         uint32_t buffers_size;
         std::vector<Buffer> buffers;

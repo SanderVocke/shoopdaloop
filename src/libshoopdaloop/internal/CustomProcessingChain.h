@@ -6,8 +6,7 @@
 
 template<typename TimeType, typename SizeType>
 class CustomProcessingChain : public ProcessingChainInterface<TimeType, SizeType>,
-                              private ModuleLoggingEnabled {
-    std::string log_module_name() const override;
+                              private ModuleLoggingEnabled<"Backend.CustomProcessingChain"> {
     
 public:
     using SharedInternalAudioPort = typename ProcessingChainInterface<TimeType, SizeType>::SharedInternalAudioPort;

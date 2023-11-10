@@ -23,9 +23,7 @@ enum BasicPointOfInterestFlags {
 // mode transitions etc.
 class BasicLoop : public LoopInterface,
                   protected WithCommandQueue<100, 1000, 1000>,
-                  protected ModuleLoggingEnabled {
-
-    virtual std::string log_module_name() const override;
+                  protected ModuleLoggingEnabled<"Backend.Loop"> {
 
 public:
     struct PointOfInterest {

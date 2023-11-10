@@ -17,20 +17,9 @@ using namespace std::chrono_literals;
 using namespace logging;
 
 template <typename SampleT>
-std::string AudioChannel<SampleT>::log_module_name() const {
-    return "Backend.AudioChannel";
-}
-
-template <typename SampleT>
-std::string AudioChannel<SampleT>::Buffers::log_module_name() const {
-    return "Backend.AudioChannel.Buffers";
-}
-
-template <typename SampleT>
 AudioChannel<SampleT>::Buffers::Buffers(std::shared_ptr<BufferPool> pool,
                                         uint32_t initial_max_buffers)
     : pool(pool), buffers_size(pool->object_size()) {
-    log_init();
     log_trace();
     buffers.reserve(initial_max_buffers);
     reset();
@@ -43,7 +32,6 @@ template <typename SampleT> void AudioChannel<SampleT>::Buffers::reset() {
 }
 
 template <typename SampleT> AudioChannel<SampleT>::Buffers::Buffers() {
-    log_init();
     log_trace();
 }
 
@@ -136,7 +124,6 @@ AudioChannel<SampleT>::AudioChannel(
       mp_buffers(buffer_pool, initial_max_buffers),
       mp_prerecord_buffers(buffer_pool, initial_max_buffers),
       mp_prev_process_flags(0), ma_last_played_back_sample(-1) {
-    log_init();
     log_trace();
     if (maybe_profiler) {
         mp_profiling_item = maybe_profiler->maybe_get_profiling_item(
@@ -218,13 +205,13 @@ void AudioChannel<SampleT>::PROC_process(
                 // make our pre-recorded buffers into our main buffers.
                 // Otherwise, just discard them.
                 if (process_flags & ChannelRecord) {
-                    log<LogLevel::debug>(
+                    log<debug>(
                         "Pre-record end -> carry over to record");
                     mp_buffers = mp_prerecord_buffers;
                     ma_buffers_data_length = ma_start_offset =
                         mp_prerecord_buffers_data_length.load();
                 } else {
-                    log<LogLevel::debug>("Pre-record end -> discard");
+                    log<debug>("Pre-record end -> discard");
                 }
                 mp_prerecord_buffers.reset();
                 mp_prerecord_buffers_data_length = 0;
@@ -252,7 +239,7 @@ void AudioChannel<SampleT>::PROC_process(
             }
             if (process_flags & ChannelPreRecord) {
                 if (!(mp_prev_process_flags & ChannelPreRecord)) {
-                    log<LogLevel::debug>("Pre-record start");
+                    log<debug>("Pre-record start");
                 }
                 PROC_process_record(n_samples, mp_prerecord_buffers_data_length,
                                     mp_prerecord_buffers,

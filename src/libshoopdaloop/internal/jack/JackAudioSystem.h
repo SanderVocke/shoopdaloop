@@ -12,11 +12,9 @@
 template<typename API>
 class GenericJackAudioSystem :
     public AudioSystemInterface,
-    private ModuleLoggingEnabled
+    private ModuleLoggingEnabled<"Backend.JackAudioSystem">
 {
 private:
-    std::string log_module_name() const override;
-
     jack_client_t * m_client;
     std::string m_client_name;
     uint32_t m_sample_rate;

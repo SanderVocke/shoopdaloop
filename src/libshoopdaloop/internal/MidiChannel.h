@@ -12,14 +12,13 @@
 template<typename TimeType, typename SizeType>
 class MidiChannel : public ChannelInterface,
                     private WithCommandQueue<20, 1000, 1000>,
-                    private ModuleLoggingEnabled {
+                    private ModuleLoggingEnabled<"Backend.MidiChannel"> {
 public:
     using Storage = MidiStorage<TimeType, SizeType>;
     using StorageCursor = typename Storage::Cursor;
     using Message = MidiMessage<TimeType, SizeType>;
 
 private:
-    std::string log_module_name() const override;
 
     struct ExternalBufState {
         uint32_t n_events_total;

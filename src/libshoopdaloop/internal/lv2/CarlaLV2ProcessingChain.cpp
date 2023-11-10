@@ -108,12 +108,6 @@ void LV2StateString::deserialize(std::string str) {
 }
 
 template <typename TimeType, typename SizeType>
-std::string
-CarlaLV2ProcessingChain<TimeType, SizeType>::log_module_name() const {
-    return "Backend.LV2";
-}
-
-template <typename TimeType, typename SizeType>
 LV2_URID CarlaLV2ProcessingChain<TimeType, SizeType>::map_urid(
     LV2_URID_Map_Handle handle, const char *uri) {
     auto &instance = *((CarlaLV2ProcessingChain<TimeType, SizeType> *)handle);
@@ -227,7 +221,6 @@ CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
     std::string human_name, std::shared_ptr<profiling::Profiler> maybe_profiler)
     : m_internal_buffers_size(0), m_human_name(human_name),
       m_unique_name(human_name + "_" + random_string(6)) {
-    log_init();
 
     if (maybe_profiler) {
         m_maybe_profiling_item = maybe_profiler->maybe_get_profiling_item(
@@ -359,7 +352,7 @@ CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
             throw_error<std::runtime_error>(
                 "Could not load UI library {}: {}", ui_binary_path, error_message);
         }
-        log<logging::LogLevel::debug>("Loading UI library: {}",
+        log<debug>("Loading UI library: {}",
                                       ui_binary_path);
         LV2UI_DescriptorFunction _get_ui_descriptor =
             (LV2UI_DescriptorFunction)dlsym(ui_lib_handle, "lv2ui_descriptor");

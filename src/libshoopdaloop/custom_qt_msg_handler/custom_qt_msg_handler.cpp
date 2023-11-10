@@ -7,7 +7,6 @@ extern "C" {
 #include <memory>
 
 bool g_abort_on_fatal = true;
-logging::logger *g_qt_msg_logger;
 
 void QtMsgHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg) {
     QByteArray localMsg = msg.toLocal8Bit();
@@ -16,27 +15,25 @@ void QtMsgHandler(QtMsgType type, const QMessageLogContext &context, const QStri
     auto line = context.line ? context.line : 0;
     auto category = context.category ? context.category : "";
 
-    auto formatted = fmt::format(fmt::runtime("{}:{}:{}:{}: {}"), file, function, line, category, localMsg.constData());
-
     switch (type) {
         case QtDebugMsg:
-            g_qt_msg_logger->debug("{}", formatted);
+            logging::log<"Backend.QtInternal", debug>("{}:{}:{}:{}: {}", file, function, line, category, localMsg.constData());
             break;
         case QtInfoMsg:
-            g_qt_msg_logger->info("{}", formatted);
+            logging::log<"Backend.QtInternal", info>("{}:{}:{}:{}: {}", file, function, line, category, localMsg.constData());
             break;
         case QtWarningMsg:
-            g_qt_msg_logger->warn("{}", formatted);
+            logging::log<"Backend.QtInternal", warning>("{}:{}:{}:{}: {}", file, function, line, category, localMsg.constData());
             break;
         case QtCriticalMsg:
-            g_qt_msg_logger->error("{}", formatted);
+            logging::log<"Backend.QtInternal", error>("{}:{}:{}:{}: {}", file, function, line, category, localMsg.constData());
             break;
         case QtFatalMsg:
             if (g_abort_on_fatal) {
-                g_qt_msg_logger->error("FATAL: {}", formatted);
+                logging::log<"Backend.QtInternal", error>("FATAL {}:{}:{}:{}: {}", file, function, line, category, localMsg.constData());
                 abort();
             } else {
-                g_qt_msg_logger->error("FATAL (IGNORED): {}", formatted);
+                logging::log<"Backend.QtInternal", error>("FATAL (IGNORED) {}:{}:{}:{}: {}", file, function, line, category, localMsg.constData());
             }
             break;
     }
@@ -46,7 +43,6 @@ extern "C" {
 
 void install_custom_qt_msg_handler(unsigned abort_on_fatal) {
     g_abort_on_fatal = abort_on_fatal != 0;
-    g_qt_msg_logger = &logging::get_logger("Backend.QtInternal");
     qInstallMessageHandler(QtMsgHandler);
 }
 

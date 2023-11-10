@@ -15,8 +15,7 @@ class MidiMergingBuffer;
 class MidiStateTracker;
 
 struct ConnectedPort : public std::enable_shared_from_this<ConnectedPort>,
-                       private ModuleLoggingEnabled {
-    std::string log_module_name() const override;
+                       private ModuleLoggingEnabled<"Backend.ConnectedPort"> {
     
     const std::shared_ptr<PortInterface> port;
     std::weak_ptr<Backend> backend;

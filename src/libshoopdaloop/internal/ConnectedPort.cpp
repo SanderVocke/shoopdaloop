@@ -18,10 +18,6 @@
 using namespace shoop_types;
 using namespace shoop_constants;
 
-std::string ConnectedPort::log_module_name() const {
-    return "Backend.ConnectedPort";
-}
-
 ConnectedPort::ConnectedPort (std::shared_ptr<PortInterface> const& port,
                               std::shared_ptr<Backend> const& backend,
                               shoop_types::ProcessWhen process_when) :
@@ -37,7 +33,6 @@ ConnectedPort::ConnectedPort (std::shared_ptr<PortInterface> const& port,
     peak(0.0f),
     n_events_processed(0),
     ma_process_when(process_when) {
-    log_init();
 
 #ifdef SHOOP_HAVE_LV2
     bool is_internal = (dynamic_cast<InternalAudioPort<float>*>(port.get()) ||
@@ -163,8 +158,7 @@ void ConnectedPort::PROC_passthrough_midi(uint32_t n_frames, ConnectedPort &to) 
             auto &msg = maybe_midi_input_buffer->PROC_get_event_reference(i);
             uint32_t t = msg.get_time();
             void* to_ptr = &to;
-            auto to_ptr_fmt = fmt::ptr(to_ptr);
-            log<logging::LogLevel::debug>("Passthrough midi message reference to {} @ {}", to_ptr_fmt, t);
+            log<debug>("Passthrough midi message reference to {} @ {}", to_ptr, t);
             to.maybe_midi_output_merging_buffer->PROC_write_event_reference(msg);
         }
     }
@@ -192,7 +186,7 @@ void ConnectedPort::PROC_finalize_process(uint32_t n_frames) {
                     uint32_t size, time;
                     const uint8_t* data;
                     maybe_midi_output_merging_buffer->PROC_get_event_reference(i).get(size, time, data);
-                    log<logging::LogLevel::trace>("Output midi message reference @ {}", time);
+                    log<trace>("Output midi message reference @ {}", time);
                     maybe_midi_output_buffer->PROC_write_event_value(size, time, data);
                     maybe_midi_state->process_msg(data);
                 }

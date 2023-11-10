@@ -9,11 +9,6 @@
 #include <atomic>
 
 template<typename API>
-std::string GenericJackAudioSystem<API>::log_module_name() const {
-    return "Backend.JackAudioSystem";
-}
-
-template<typename API>
 int GenericJackAudioSystem<API>::PROC_process_cb_static(jack_nframes_t nframes, void *arg) {
     auto &inst = *((GenericJackAudioSystem<API> *)arg);
     return inst.PROC_process_cb_inst(nframes);
@@ -46,13 +41,13 @@ void GenericJackAudioSystem<API>::PROC_port_rename_cb_static(jack_port_id_t port
 template<typename API>
 void GenericJackAudioSystem<API>::error_cb_static(const char *msg) {
     std::string _msg = "JACK error: " + std::string(msg);
-    logging::get_logger("Backend.JackAudioSystem").log(logging::LogLevel::err, _msg.c_str());
+    logging::log<"Backend.JackAudioSystem", error>(_msg);
 }
 
 template<typename API>
 void GenericJackAudioSystem<API>::info_cb_static(const char *msg) {
     std::string _msg = "JACK error: " + std::string(msg);
-    logging::get_logger("Backend.JackAudioSystem").log(logging::LogLevel::info, _msg.c_str());
+    logging::log<"Backend.JackAudioSystem", info>(_msg.c_str());
 }
 
 template<typename API>
@@ -79,13 +74,12 @@ GenericJackAudioSystem<API>::GenericJackAudioSystem(std::string client_name,
                                  std::function<void(uint32_t)> process_cb)
     : AudioSystemInterface(client_name, process_cb), m_client_name(client_name),
       m_process_cb(process_cb), m_all_ports_tracker(std::make_shared<GenericJackAllPorts<API>>()) {
-    log_init();
 
     API::init();
 
     jack_status_t status;
 
-    log<logging::LogLevel::info>("Opening JACK client with name {}.", client_name);
+    log<info>("Opening JACK client with name {}.", client_name);
     m_client = API::client_open(client_name.c_str(), JackNullOption, &status);
 
     if (m_client == nullptr) {

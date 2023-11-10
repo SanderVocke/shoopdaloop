@@ -20,7 +20,7 @@ class ConnectedDecoupledMidiPort;
 using namespace shoop_types;
 
 class Backend : public std::enable_shared_from_this<Backend>,
-                 public ModuleLoggingEnabled {
+                 public ModuleLoggingEnabled<"Backend"> {
 
 public:
 
@@ -51,8 +51,6 @@ public:
     const std::string m_client_name_hint;
     const std::string m_argstring;
     audio_system_type_t m_audio_system_type;
-
-    std::string log_module_name() const override;
 
     Backend(audio_system_type_t audio_system_type, std::string client_name_hint, std::string argstring);
     ~Backend();

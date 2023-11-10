@@ -1,6 +1,7 @@
 #pragma once
 #include <boost/container/flat_set.hpp>
 #include "MidiStateTracker.h"
+#include <functional>
 
 enum class StateDiffTrackerAction {
     ScanDiff,

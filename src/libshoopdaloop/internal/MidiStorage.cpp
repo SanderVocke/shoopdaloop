@@ -94,16 +94,10 @@ void MidiStorageBase<TimeType, SizeType>::store_unsafe(uint32_t offset,
 }
 
 template <typename TimeType, typename SizeType>
-std::string MidiStorageBase<TimeType, SizeType>::log_module_name() const {
-    return "Backend.MidiChannel.Storage";
-}
-
-template <typename TimeType, typename SizeType>
 MidiStorageBase<TimeType, SizeType>::MidiStorageBase(uint32_t data_size)
     : // MIDI storage is tied to a channel. For log readability we use that
       // name.
       m_head(0), m_tail(0), m_head_start(0), m_n_events(0), m_data(data_size) {
-    log_init();
 }
 
 template <typename TimeType, typename SizeType>
@@ -143,12 +137,12 @@ bool MidiStorageBase<TimeType, SizeType>::append(TimeType time, SizeType size,
                                                  const uint8_t *data) {
     uint32_t sz = Elem::total_size_of(size);
     if (sz > bytes_free()) {
-        log<LogLevel::warn>("Ignoring store of MIDI message: buffer full.");
+        log<warning>("Ignoring store of MIDI message: buffer full.");
         return false;
     }
     if (m_n_events > 0 && unsafe_at(m_head_start)->storage_time > time) {
         // Don't store out-of-order messages
-        log<LogLevel::warn>("Ignoring store of out-of-order MIDI message.");
+        log<warning>("Ignoring store of out-of-order MIDI message.");
         return false;
     }
 
@@ -170,7 +164,7 @@ bool MidiStorageBase<TimeType, SizeType>::prepend(TimeType time, SizeType size,
     }
     if (m_n_events > 0 && unsafe_at(m_tail)->get_time() < time) {
         // Don't store out-of-order messages
-        log<LogLevel::warn>("Ignoring store of out-of-order MIDI message.");
+        log<warning>("Ignoring store of out-of-order MIDI message.");
         return false;
     }
 
