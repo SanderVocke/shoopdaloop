@@ -12,6 +12,10 @@ struct Tracker {
     std::atomic<uint32_t> total_samples_processed;
     std::vector<uint32_t> each_n_samples_processed;
 
+    Tracker() {
+        total_samples_processed = 0;
+    }
+    
     void process(uint32_t n_samples) {
         each_n_samples_processed.push_back(n_samples);
         total_samples_processed += n_samples;
