@@ -43,9 +43,6 @@ set(OVERRIDE_COMPILE_LOG_LEVEL "" CACHE STRING "If set, overrides the compile-ti
 # Find pkgs
 find_package(Boost REQUIRED)
 
-# "Build" spdlog (just a single-header)
-set(SPDLOG_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/../third_party/spdlog/include)
-
 if (BACKEND_JACK)
   # Generate a wrapper for libjack which allows dynamic loading using dlopen
   find_package(Jack REQUIRED)
@@ -86,7 +83,7 @@ set(STATIC_DEPS_PREFIX ${CMAKE_CURRENT_BINARY_DIR}/static-deps)
 if (HAVE_LV2)
   include (${CMAKE_CURRENT_SOURCE_DIR}/BuildStaticDependencies.cmake)
   add_subdirectory(${CMAKE_SOURCE_DIR}/../third_party/lv2_evbuf lv2_evbuf)
-  target_compile_options(lv2_evbuf PUBLIC -fPIC)
+  set_target_properties(lv2_evbuf PROPERTIES POSITION_INDEPENDENT_CODE ON)
   add_dependencies(lv2_evbuf lv2)
 endif()
 
@@ -116,16 +113,16 @@ if (BACKEND_JACK)
   include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal/jack)
 endif()
 
-add_library(shoopdaloop SHARED libshoopdaloop.cpp ${INTERNAL_SOURCES})
-target_link_libraries(shoopdaloop PUBLIC
-                      ${fmt_LIBRARY})
+add_library(shoopdaloop_internals OBJECT libshoopdaloop.cpp ${INTERNAL_SOURCES})
+set_target_properties(shoopdaloop_internals PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+add_library(shoopdaloop SHARED)
+target_link_libraries(shoopdaloop PRIVATE shoopdaloop_internals)
 target_include_directories(shoopdaloop
                         PRIVATE
                         ${CMAKE_SOURCE_DIR}/../third_party/base64/include
                         ${CMAKE_CURRENT_BINARY_DIR}
                         ${Boost_INCLUDE_DIR}
-                        ${fmt_INCLUDE_DIR}
-                        ${SPDLOG_INCLUDE_DIR}
                         )
 if (HAVE_LV2)
   add_dependencies(shoopdaloop ${DEPEND_ON_LILV})

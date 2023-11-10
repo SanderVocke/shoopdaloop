@@ -1,1 +1,2 @@
 cmake.build_type = "Debug"
+cmake.options = { "BACKEND_JACK" = "Off", "HAVE_LV2" = "Off", "BUILD_QML_EXTENSIONS" = "Off" }

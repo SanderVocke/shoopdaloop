@@ -16,12 +16,10 @@ add_executable(test_runner
     integration/test_chains.cpp
     )
 target_link_libraries(test_runner PRIVATE
-                      shoopdaloop
-                      pthread)
+                      shoopdaloop_internals)
 target_include_directories(test_runner
                         PRIVATE
                         ${Boost_INCLUDE_DIR}
-                        ${SPDLOG_INCLUDE_DIR}
                         ${CMAKE_CURRENT_SOURCE_DIR}
                         ${CMAKE_CURRENT_SOURCE_DIR}/..
                         ${CMAKE_SOURCE_DIR}/../third_party/ut/include
