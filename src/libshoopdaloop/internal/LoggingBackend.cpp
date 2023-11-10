@@ -11,7 +11,7 @@
 namespace logging {
 
 std::recursive_mutex g_log_mutex;
-std::unique_ptr<log_level_t> g_maybe_global_level;
+std::unique_ptr<log_level_t> g_maybe_global_level = std::make_unique<log_level_t>(info);
 std::map<std::string, std::unique_ptr<log_level_t>> g_module_log_levels;
 
 const std::map<std::string, log_level_t> level_names = {

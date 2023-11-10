@@ -35,4 +35,4 @@ public:
 };
 
 template<logging::ModuleName Name>
-using ModuleLoggingEnabled = LoggingEnabled<Name, logging::CompileTimelog_level_t>;
+using ModuleLoggingEnabled = LoggingEnabled<Name, logging::CompileTimeLogLevel>;

@@ -2,15 +2,6 @@ set(PKGDIR_FILE ${CMAKE_CURRENT_BINARY_DIR}/pkgdir)
 set(WITH_PKGCONF_CMD ${RUN_WITH_ENV_CMD} PKG_CONFIG_PATH=${PKGDIR_FILE} -- )
 set(FIND_PKGCONF_DIRS ${GLOB_CMD} directory separator ":" ${STATIC_DEPS_PREFIX}/**/*.pc > ${PKGDIR_FILE})
 
-##################
-## fmt
-##################
-add_library(fmtlib_static STATIC ${CMAKE_SOURCE_DIR}/../third_party/fmt/src/format.cc)
-target_include_directories(fmtlib_static PUBLIC ${CMAKE_SOURCE_DIR}/../third_party/fmt/include)
-set(fmt_LIBRARY fmtlib_static)
-set(fmt_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/../third_party/fmt/include)
-
-
 ###################
 # Build Lilv (including serd, sord)
 ###################
