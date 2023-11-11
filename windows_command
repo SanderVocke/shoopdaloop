@@ -1,1 +1,0 @@
-powershell -Command '$Env:CMAKE_PREFIX_PATH=\"C:\Qt\6.6.0\mingw_64\lib\cmake\"; $Env:JACK_ROOT=\"C:\Program Files\JACK2\"; $Env:INCLUDE=\"C:\Users\nx017926\dev\boost_1_82_0\"; python -m build --wheel . -C\"--local=pyproject.toml.nojack_overrides\"'

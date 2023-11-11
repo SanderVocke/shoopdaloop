@@ -19,7 +19,6 @@ install(TARGETS custom_qt_msg_handler
   EXCLUDE_FROM_ALL
   COMPONENT package_install
   DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME})
-install(FILES $<TARGET_PDB_FILE:custom_qt_msg_handler> DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME} OPTIONAL)
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/custom_qt_msg_handler.py
   EXCLUDE_FROM_ALL
   COMPONENT package_install

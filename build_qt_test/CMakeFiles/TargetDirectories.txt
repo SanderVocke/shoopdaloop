@@ -1,2 +1,0 @@
-/home/sander/shoopdaloop/build_qt_test/CMakeFiles/edit_cache.dir
-/home/sander/shoopdaloop/build_qt_test/CMakeFiles/rebuild_cache.dir

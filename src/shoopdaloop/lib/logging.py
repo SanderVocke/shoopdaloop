@@ -50,7 +50,8 @@ class Logger:
         raise Exception(msg)
     
     def __del__(self):
-        if self._backend_handle:
-            destroy_logger(self._backend_handle)
+        # TODO
+        #if self._backend_handle:
+        #    destroy_logger(self._backend_handle)
         self._backend_handle = None
         self._name = None
