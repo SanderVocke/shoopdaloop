@@ -61,7 +61,7 @@ if (BACKEND_JACK)
   set(JACKWRAPPERS_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers})
   add_library(jack_wrappers STATIC ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.c)
   set_property(TARGET jack_wrappers PROPERTY POSITION_INDEPENDENT_CODE ON)
-  target_include_directories(jack_wrappers PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers)
+  target_include_directories(jack_wrappers INTERFACE ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers)
   add_compile_definitions(-DSHOOP_HAVE_BACKEND_JACK)
 endif()
 
@@ -126,13 +126,13 @@ add_library(shoopdaloop SHARED)
 target_link_libraries(shoopdaloop PRIVATE shoopdaloop_internals)
 
 if (HAVE_LV2)
-  add_dependencies(shoopdaloop ${DEPEND_ON_LILV})
-  target_link_libraries(shoopdaloop PUBLIC
+  add_dependencies(shoopdaloop_internals ${DEPEND_ON_LILV})
+  target_link_libraries(shoopdaloop_internals PUBLIC
                         lv2_evbuf
                         ${LV2_LIBRARIES}
                         ${LILV_LIBRARIES}
                         dl)
-  target_include_directories(shoopdaloop
+  target_include_directories(shoopdaloop_internals
                           PRIVATE
                           ${CMAKE_SOURCE_DIR}/../third_party/lv2_evbuf
                           ${LV2_INCLUDE_DIRS}
@@ -141,9 +141,8 @@ if (HAVE_LV2)
                           )
 endif()
 if (BACKEND_JACK)
-  add_dependencies(shoopdaloop jack_wrappers)
-  target_link_libraries(shoopdaloop PUBLIC jack_wrappers)
-  target_include_directories(shoopdaloop PRIVATE ${JACKWRAPPERS_INCLUDE_DIRS})
+  add_dependencies(shoopdaloop_internals jack_wrappers)
+  target_link_libraries(shoopdaloop_internals PUBLIC jack_wrappers)
 endif ()
 install(TARGETS shoopdaloop
         EXCLUDE_FROM_ALL
@@ -153,12 +152,12 @@ install(TARGETS shoopdaloop
 if (OVERRIDE_COMPILE_LOG_LEVEL STREQUAL "")
   if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     message("Building in debug mode. Using compile time log level: LOG_LEVEL_TRACE")
-    target_compile_definitions(shoopdaloop PUBLIC -DCOMPILE_LOG_LEVEL=LOG_LEVEL_TRACE)
+    target_compile_definitions(shoopdaloop_internals PUBLIC -DCOMPILE_LOG_LEVEL=LOG_LEVEL_TRACE)
   else()
     message("Building in non-debug mode. Disabling trace messages. Using compile time log level: LOG_LEVEL_DEBUG")
-    target_compile_definitions(shoopdaloop PUBLIC -DCOMPILE_LOG_LEVEL=LOG_LEVEL_DEBUG)
+    target_compile_definitions(shoopdaloop_internals PUBLIC -DCOMPILE_LOG_LEVEL=LOG_LEVEL_DEBUG)
   endif()
 else()
   message(WARNING "Using overridden compile time log level: ${OVERRIDE_COMPILE_LOG_LEVEL}")
-  target_compile_definitions(shoopdaloop PUBLIC -DCOMPILE_LOG_LEVEL=${OVERRIDE_COMPILE_LOG_LEVEL})
+  target_compile_definitions(shoopdaloop_internals PUBLIC -DCOMPILE_LOG_LEVEL=${OVERRIDE_COMPILE_LOG_LEVEL})
 endif()
