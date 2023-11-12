@@ -130,9 +130,9 @@ jobs:
         install: false
         windows: ${{ matrix.kind.prepare == 'windows' && 'true' || 'false' }}
         rename_wheel_sed: ${{ matrix.kind.rename_wheel_sed }}
-    - name: TMate failure session
-      if: ${{ failure() }}
-      uses: SanderVocke/action-tmate@master
+    # - name: TMate failure session
+    #   if: ${{ failure() }}
+    #   uses: SanderVocke/action-tmate@master
   
   test:
     if: ${{ always() }}
@@ -303,9 +303,9 @@ jobs:
         root_path: ${{ steps.install.outputs.install_dir }}
         python: ${{ matrix.kind.python }}
         qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
-    - name: TMate failure session
-      if: ${{ failure() }}
-      uses: SanderVocke/action-tmate@master
+    # - name: TMate failure session
+    #   if: ${{ failure() }}
+    #   uses: SanderVocke/action-tmate@master
         
   # asan:
   #   runs-on: ubuntu-latest

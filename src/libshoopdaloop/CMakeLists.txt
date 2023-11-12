@@ -121,6 +121,7 @@ target_include_directories(shoopdaloop_internals
                         ${CMAKE_CURRENT_BINARY_DIR}
                         ${Boost_INCLUDE_DIR}
                         )
+target_link_libraries(shoopdaloop_internals PUBLIC Threads::Threads)
 
 add_library(shoopdaloop SHARED)
 target_link_libraries(shoopdaloop PRIVATE shoopdaloop_internals)
