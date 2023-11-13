@@ -253,6 +253,9 @@ jobs:
     - name: Test Qt available
       shell: bash
       run: SHOOP_LOG=debug ${{ matrix.kind.python }} scripts/test_qt_available.py
+    - name: TMate session
+      if: ${{ success() || failure() }}
+      uses: SanderVocke/action-tmate@master
     - name: Install Pytest
       shell: bash
       run: |
