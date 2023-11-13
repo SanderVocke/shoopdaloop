@@ -3,6 +3,12 @@
 import os
 import sys
 
+# Before importing the back-end library, we need to make sure that it will be able
+# to find the Qt libraries it needs. We do this by searching for the Qt libraries in the
+# PySide package.
+from shoopdaloop.lib.ensure_ld_qt import ensure_ld_qt
+ensure_ld_qt()
+
 from PySide6.QtCore import QObject, Slot
 from PySide6.QtQml import QQmlEngine
 from shiboken6 import Shiboken
@@ -18,14 +24,6 @@ from shoopdaloop.lib.backend_wrappers import BackendType
 from shoopdaloop.lib.q_objects.QoverageCollectorFactory import QoverageCollectorFactory
 
 from ctypes import *
-
-# Before importing the back-end test library, we need to make sure that it will be able
-# to find the Qt libraries it needs. We do this by searching for the Qt libraries in the
-# PySide package.
-from shoopdaloop.find_qt_lib import *
-find_qt_lib('Qt6QuickTest')
-find_qt_lib('Qt6Core')
-find_qt_lib('Qt6Test')
 
 import qml_tests
 

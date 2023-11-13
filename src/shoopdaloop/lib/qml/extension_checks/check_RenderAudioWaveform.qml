@@ -1,3 +1,0 @@
-import RenderAudioWaveform
-
-RenderAudioWaveform {}

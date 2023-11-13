@@ -47,8 +47,6 @@ if(HAVE_LV2)
   add_compile_definitions(-DSHOOP_HAVE_LV2)
 endif()
 
-option(BUILD_QML_EXTENSIONS "Enable C++ QML extensions (only turn off for debugging)" ON)
-
 set(CTYPESGEN_COMMAND ctypesgen)
 
 add_subdirectory(libshoopdaloop)
