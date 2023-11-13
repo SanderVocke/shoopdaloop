@@ -117,7 +117,7 @@ install(FILES ${CMAKE_CURRENT_BINARY_DIR}/version.txt ${CMAKE_CURRENT_BINARY_DIR
   
 
 # Include app test scripts
-install(FILES ${CMAKE_SOURCE_DIR}/../scripts/repeat_run_app.py
+install(FILES ${CMAKE_SOURCE_DIR}/../scripts/repeat_run_app.py ${CMAKE_SOURCE_DIR}/../scripts/test_qt_available.py
         EXCLUDE_FROM_ALL
         COMPONENT package_install
         PERMISSIONS WORLD_EXECUTE OWNER_EXECUTE GROUP_EXECUTE GROUP_WRITE OWNER_WRITE GROUP_READ OWNER_READ WORLD_READ
