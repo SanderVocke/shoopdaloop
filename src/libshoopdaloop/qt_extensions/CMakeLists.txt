@@ -1,5 +1,9 @@
 add_library(qt_extensions SHARED render_audio_waveform.cpp)
 target_link_libraries(qt_extensions PRIVATE Qt6::Quick)
+set_property(TARGET qt_extensions PROPERTY POSITION_INDEPENDENT_CODE ON)
+if(UNIX)
+  target_link_options(qt_extensions PRIVATE -static-libstdc++)
+endif()
 
 set(QT_EXTENSIONS_INTERFACE_HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/qt_extensions.h
