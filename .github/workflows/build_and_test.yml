@@ -248,6 +248,7 @@ jobs:
       shell: bash
       run: |
         ${{ matrix.kind.pip }} install --force-reinstall ~/wheel/*.whl
+        shoopdaloop --info
         echo "install_dir=$(shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g')" | tee -a $GITHUB_OUTPUT
     - name: Install Pytest
       shell: bash

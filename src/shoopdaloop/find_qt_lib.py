@@ -4,7 +4,7 @@ from ctypes.util import find_library
 import os
 
 def find_qt_lib(lib_name):
-    def get_package_path(package_name):
+    def get_package_path(package_name, verbose=False):
         try:
             dist = pkg_resources.get_distribution(package_name)
             return dist.location
@@ -13,7 +13,8 @@ def find_qt_lib(lib_name):
 
     _lib = find_library(lib_name)
     if _lib:
-        print("Found {} library in system at {}".format(lib_name, _lib))
+        if verbose:
+            print("Found {} library in system at {}".format(lib_name, _lib))
         return
 
     print("Did not find {} library in the standard search path. Attempting to find it in PySide.".format(lib_name))
@@ -40,4 +41,5 @@ def find_qt_lib(lib_name):
     _lib = find_library(lib_name)
     if not _lib:
         raise Exception("Could not find {} library in system or PySide. Aborting.".format(lib_name))
-    print("Found {} library in PySide at {}".format(lib_name, _lib))
+    if verbose:
+        print("Found {} library in PySide at {}".format(lib_name, _lib))
