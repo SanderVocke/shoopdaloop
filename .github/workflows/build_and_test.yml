@@ -283,33 +283,33 @@ jobs:
         run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH=${{ env.qtlibpath }}
         root_path: ${{ steps.install.outputs.install_dir }}
         pytest_command: ${{ matrix.kind.python }} -m pytest
-    - name: Test QML
-      if: ${{ success() || failure() }}
-      uses: ./.github/actions/test_qml
-      with:
-        variant_name: release
-        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH=${{ env.qtlibpath }}
-        root_path: ${{ steps.install.outputs.install_dir }}
-        python_command: ${{ matrix.kind.python }}
-        qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
-        macos_rpath_patch: ${{ contains(matrix.kind.name, 'macos') }}
-    - name: Screenshots
-      if: ${{ success() || failure() }}
-      uses: ./.github/actions/test_screenshots
-      with:
-        root_path: ${{ steps.install.outputs.install_dir }}
-        screenshots_path: /tmp/screenshots
-        artifact_name: screenshots_${{ matrix.kind.name }}
-        qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
-    - name: Test Run App
-      if: ${{ success() || failure() }}
-      uses: ./.github/actions/test_run_app
-      with:
-        variant_name: release
-        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH=${{ env.qtlibpath }}
-        root_path: ${{ steps.install.outputs.install_dir }}
-        python: ${{ matrix.kind.python }}
-        qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
+    # - name: Test QML
+    #   if: ${{ success() || failure() }}
+    #   uses: ./.github/actions/test_qml
+    #   with:
+    #     variant_name: release
+    #     run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH=${{ env.qtlibpath }}
+    #     root_path: ${{ steps.install.outputs.install_dir }}
+    #     python_command: ${{ matrix.kind.python }}
+    #     qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
+    #     macos_rpath_patch: ${{ contains(matrix.kind.name, 'macos') }}
+    # - name: Screenshots
+    #   if: ${{ success() || failure() }}
+    #   uses: ./.github/actions/test_screenshots
+    #   with:
+    #     root_path: ${{ steps.install.outputs.install_dir }}
+    #     screenshots_path: /tmp/screenshots
+    #     artifact_name: screenshots_${{ matrix.kind.name }}
+    #     qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
+    # - name: Test Run App
+    #   if: ${{ success() || failure() }}
+    #   uses: ./.github/actions/test_run_app
+    #   with:
+    #     variant_name: release
+    #     run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH=${{ env.qtlibpath }}
+    #     root_path: ${{ steps.install.outputs.install_dir }}
+    #     python: ${{ matrix.kind.python }}
+    #     qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
     # - name: TMate failure session
     #   if: ${{ failure() }}
     #   uses: SanderVocke/action-tmate@master

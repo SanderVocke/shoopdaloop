@@ -69,7 +69,7 @@ exclude = ['codegen', 'dist', 'third_party']
 [build-system]
 requires = [
   "py-build-cmake@git+https://github.com/tttapa/py-build-cmake@2fba7c5404cc0cf2a68914b780ae52b404aafd32",
-  "ctypesgen@git+https://github.com/SanderVocke/ctypesgen@cb17bee8db5c25d0d0bb72f6809794924f1d0b7f",
+  "ctypesgen@git+https://github.com/SanderVocke/ctypesgen@9b88a970cb85823de83423add2a4b21ea79b63d9",
   "meson",
   "pycparser",
   "toml"
