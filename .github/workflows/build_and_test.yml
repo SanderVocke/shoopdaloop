@@ -130,6 +130,9 @@ jobs:
         install: false
         windows: ${{ matrix.kind.prepare == 'windows' && 'true' || 'false' }}
         rename_wheel_sed: ${{ matrix.kind.rename_wheel_sed }}
+    - name: TMate session
+      if: ${{ success() || failure() }}
+      uses: SanderVocke/action-tmate@master
     # - name: TMate failure session
     #   if: ${{ failure() }}
     #   uses: SanderVocke/action-tmate@master
