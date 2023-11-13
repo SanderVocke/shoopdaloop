@@ -22,10 +22,10 @@ from ctypes import *
 # Before importing the back-end test library, we need to make sure that it will be able
 # to find the Qt libraries it needs. We do this by searching for the Qt libraries in the
 # PySide package.
-from .find_qt_lib import *
-find_qt_lib('Qt6QuickTest', True)
-find_qt_lib('Qt6Core', True)
-find_qt_lib('Qt6Test', True)
+from shoopdaloop.find_qt_lib import *
+find_qt_lib('Qt6QuickTest')
+find_qt_lib('Qt6Core')
+find_qt_lib('Qt6Test')
 
 import qml_tests
 

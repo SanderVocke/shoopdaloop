@@ -6,7 +6,7 @@ script_pwd = os.path.dirname(__file__)
 # Before importing the back-end library, we need to make sure that it will be able
 # to find the Qt libraries it needs. We do this by searching for the Qt libraries in the
 # PySide package.
-from .find_qt_lib import *
+from shoopdaloop.find_qt_lib import *
 find_qt_lib('Qt6Core')
 find_qt_lib('Qt6Quick')
 find_qt_lib('Qt6Qml')
