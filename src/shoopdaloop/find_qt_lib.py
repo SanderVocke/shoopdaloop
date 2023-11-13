@@ -3,8 +3,8 @@ import pkg_resources
 from ctypes.util import find_library
 import os
 
-def find_qt_lib(lib_name):
-    def get_package_path(package_name, verbose=False):
+def find_qt_lib(lib_name, verbose=False):
+    def get_package_path(package_name):
         try:
             dist = pkg_resources.get_distribution(package_name)
             return dist.location
