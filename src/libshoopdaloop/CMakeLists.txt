@@ -93,7 +93,6 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 include_directories(${CMAKE_SOURCE_DIR}/../third_party/nlohmann_json)
 
 add_subdirectory(test)
-add_subdirectory(custom_qt_msg_handler)
 
 if (BUILD_QML_EXTENSIONS)
   add_subdirectory(qml_types)

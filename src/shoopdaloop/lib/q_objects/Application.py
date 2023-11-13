@@ -22,8 +22,6 @@ from .ApplicationMetadata import ApplicationMetadata
 
 from ..logging import *
 
-from ...custom_qt_msg_handler import *
-
 script_dir = os.path.dirname(__file__)
 
 class Application(QGuiApplication):
@@ -39,8 +37,6 @@ class Application(QGuiApplication):
         self.setOrganizationName('ShoopDaLoop')
 
         self.logger = Logger("Frontend.Qml.App")
-
-        install_custom_qt_msg_handler(0)
 
         self.nsm_client = None
         self.title = title
