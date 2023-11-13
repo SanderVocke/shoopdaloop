@@ -21,21 +21,18 @@ def find_qt_lib(lib_name):
         return
 
     logger.debug("Did not find {} library in the standard search path. Attempting to find it in PySide.".format(lib_name))
-    pyside_path = getsitepackages() + '/PySide6'
+    pyside_paths = [p + '/PySide6' for p in getsitepackages()]
 
     _plat = platform.system()
     if _plat == "Windows":
-        qt6_path = pyside_path
-        logger.debug ("Adding to PATH: {}".format(qt6_path))
-        os.environ['PATH'] = qt6_path + ':' + os.environ.get('PATH', '')
+        os.environ['PATH'] = ':'.join(pyside_paths) + ';' + os.environ.get('PATH', '')
+        logger.debug("Modified PATH: {}".format(os.environ.get('PATH')))
     elif _plat == "Linux":
-        qt6_path = pyside_path + '/Qt/lib'
-        logger.debug ("Adding to LD_LIBRARY_PATH: {}".format(qt6_path))
-        os.environ['LD_LIBRARY_PATH'] = qt6_path + ':' + os.environ.get('LD_LIBRARY_PATH', '')
+        os.environ['LD_LIBRARY_PATH'] = ':'.join([p + '/Qt/lib' for p in pyside_paths]) + ':' + os.environ.get('LD_LIBRARY_PATH', '')
+        logger.debug("Modified LD_LIBRARY_PATH: {}".format(os.environ.get('LD_LIBRARY_PATH')))
     elif _plat == "Darwin":
-        qt6_path = pyside_path + '/Qt/lib'
-        logger.debug ("Adding to DYLD_LIBRARY_PATH: {}".format(qt6_path))
-        os.environ['DYLD_LIBRARY_PATH'] = qt6_path + ':' + os.environ.get('DYLD_LIBRARY_PATH', '')
+        os.environ['DYLD_LIBRARY_PATH'] = ':'.join([p + '/Qt/lib' for p in pyside_paths]) + ':' + os.environ.get('DYLD_LIBRARY_PATH', '')
+        logger.debug("Modified DYLD_LIBRARY_PATH: {}".format(os.environ.get('DYLD_LIBRARY_PATH')))
     
     # Now we should be able to find the library
     _lib = find_library(lib_name)
