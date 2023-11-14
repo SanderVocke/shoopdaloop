@@ -1,11 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 project(shoopdaloop)
 
-# Env settings
-if(DEFINED ENV{CMAKE_QT6_DIR})
-  set(Qt6_DIR $ENV{CMAKE_QT6_DIR})
-endif()
-
 # Set up language settings
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
@@ -17,10 +12,6 @@ set(CMAKE_VISIBILITY_INLINES_HIDDEN 1)
 set(PYTHON_CMD python)
 set(GLOB_CMD ${PYTHON_CMD} "${CMAKE_SOURCE_DIR}/../scripts/do_glob.py")
 set(RUN_WITH_ENV_CMD ${PYTHON_CMD} "${CMAKE_SOURCE_DIR}/../scripts/run_with_env_from_files.py")
-
-# Qt6 is required for custom QML types.
-find_package(Qt6 REQUIRED COMPONENTS Core Qml Gui Quick Widgets QuickTest)
-qt_standard_project_setup()
 
 find_package(Threads REQUIRED)
 
@@ -117,7 +108,7 @@ install(FILES ${CMAKE_CURRENT_BINARY_DIR}/version.txt ${CMAKE_CURRENT_BINARY_DIR
   
 
 # Include app test scripts
-install(FILES ${CMAKE_SOURCE_DIR}/../scripts/repeat_run_app.py ${CMAKE_SOURCE_DIR}/../scripts/test_qt_available.py
+install(FILES ${CMAKE_SOURCE_DIR}/../scripts/repeat_run_app.py
         EXCLUDE_FROM_ALL
         COMPONENT package_install
         PERMISSIONS WORLD_EXECUTE OWNER_EXECUTE GROUP_EXECUTE GROUP_WRITE OWNER_WRITE GROUP_READ OWNER_READ WORLD_READ

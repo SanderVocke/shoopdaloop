@@ -51,30 +51,33 @@ constexpr std::array<const char*, error+1> level_indicators = {
     "[\033[31merror\033[0m]",  // red
 };
 
+// if (maybe_ptr != nullptr) { std::cout << "[" << (size_t)maybe_ptr << "] "; };
 #define DO_LOG_IMPL \
     std::cout << "[\033[35m" << module_name << "\033[0m] ";        \
-    if (maybe_ptr) { std::cout << "[" << maybe_ptr << "] "; };     \
     std::cout << level_indicator << " ";                           \
     stream_format(std::cout, args...);                             \
     std::cout << std::endl;                  
 
 template<typename Ptr, typename ...Args>
-void do_log(std::string_view module_name, log_level_t level, Ptr maybe_ptr, Args &&... args) {
+void do_log(std::string_view module_name, log_level_t level, Ptr _maybe_ptr, Args &&... args) {
     auto level_indicator = level_indicators[level];
+    void* maybe_ptr = (void*)_maybe_ptr;
     DO_LOG_IMPL
 }
 
 template<typename Ptr, log_level_t level, typename ...Args>
-void do_log(std::string_view module_name, Ptr maybe_ptr, Args &&... args) {
+void do_log(std::string_view module_name, Ptr _maybe_ptr, Args &&... args) {
     constexpr auto level_indicator = level_indicators[level];
+    void* maybe_ptr = (void*)_maybe_ptr;
     DO_LOG_IMPL
 }
 
 template<ModuleName Name, typename Ptr, log_level_t level, typename ...Args>
-void do_log(Ptr maybe_ptr, Args &&... args) {
+void do_log(Ptr _maybe_ptr, Args &&... args) {
     constexpr auto level_indicator = level_indicators[level];
-    constexpr auto module_name = Name.value;
-    DO_LOG_IMPL
+    constexpr const char* module_name = Name.value;
+    void* maybe_ptr = (void*)_maybe_ptr;
+    DO_LOG_IMPL     
 }
 
 #define SHOULD_LOG_IMPL \

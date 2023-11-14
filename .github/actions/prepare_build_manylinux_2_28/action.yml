@@ -1,19 +1,9 @@
 name: prepare_build_manylinux_2_28
 description: Prepare manylinux for building Shoopdaloop wheels
 
-outputs:
-  qt_install_dir:
-    description: Place where Qt was installed
-    value: ${{ steps.install_qt.outputs.install_dir }}
-
 runs:
   using: "composite"
   steps:
-  - name: Install Qt
-    uses: ./.github/actions/install_qt
-    id: install_qt
-    with:
-      url: https://github.com/SanderVocke/shoopdaloop/releases/download/qt-6.6.0-1/qt-6.6.0-manylinux.tar.gz
   - name: Basic prep steps
     shell: bash
     run: |
@@ -56,7 +46,3 @@ runs:
       python3 -m pip install coverage pytest
 
       touch _manylinux_prepared
-  - name: Set outputs
-    shell: bash
-    run: |
-      echo "CMAKE_QT6_DIR=${{ steps.install_qt.outputs.install_dir }}/lib/cmake/Qt6" > prepend_build_cmd.txt

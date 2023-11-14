@@ -149,7 +149,6 @@ jobs:
             container: sandervocke/shoopdaloop_run_base_debian_stable:latest
             os: ubuntu-latest
             wheel: linux_release_wheel
-            qtlib: libQt6Core.so.6
             testrunner: test_runner
             qpa_platform: vnc
           # - name: barebones_debian_stable
@@ -158,7 +157,6 @@ jobs:
           #   container: sandervocke/shoopdaloop_run_base_debian_stable:latest
           #   os: ubuntu-latest
           #   wheel: linux_barebones_wheel
-          #   qtlib: libQt6Core.so.6
           #   testrunner: test_runner
           #   qpa_platform: vnc
           # - name: release_ubuntu_latest
@@ -167,7 +165,6 @@ jobs:
           #   container: sandervocke/shoopdaloop_run_base_ubuntu_latest:latest
           #   os: ubuntu-latest
           #   wheel: linux_release_wheel
-          #   qtlib: libQt6Core.so.6
           #   testrunner: test_runner
           #   qpa_platform: vnc
           # - name: release_arch
@@ -176,7 +173,6 @@ jobs:
           #   container: sandervocke/shoopdaloop_run_base_arch:latest
           #   os: ubuntu-latest
           #   wheel: linux_release_wheel
-          #   qtlib: libQt6Core.so.6
           #   testrunner: test_runner
           #   qpa_platform: vnc
           # - name: release_macos11
@@ -185,7 +181,6 @@ jobs:
           #   container: null
           #   os: macos-11
           #   wheel: macos_release_wheel
-          #   qtlib: libQt6Core.so.6
           #   testrunner: test_runner
           #   qpa_platform: offscreen
           # - name: release_macos12
@@ -194,7 +189,6 @@ jobs:
           #   container: null
           #   os: macos-12
           #   wheel: macos_release_wheel
-          #   qtlib: libQt6Core.so.6
           #   testrunner: test_runner
           #   qpa_platform: offscreen
           # - name: release_macos13
@@ -203,7 +197,6 @@ jobs:
           #   container: null
           #   os: macos-13
           #   wheel: macos_release_wheel
-          #   qtlib: libQt6Core.so.6
           #   testrunner: test_runner
           #   qpa_platform: offscreen
           # - name: debug_macos13
@@ -212,7 +205,6 @@ jobs:
           #   container: null
           #   os: macos-13
           #   wheel: macos_debug_wheel
-          #   qtlib: libQt6Core.so.6
           #   testrunner: test_runner
           #   qpa_platform: offscreen
           # - name: release_windows
@@ -221,7 +213,6 @@ jobs:
           #   container: null
           #   os: windows-2022
           #   wheel: windows_release_wheel
-          #   qtlib: Qt6Core.dll
           #   testrunner: test_runner.exe
           #   qpa_platform: vnc
           # - name: debug_windows
@@ -230,7 +221,6 @@ jobs:
           #   container: null
           #   os: windows-2022
           #   wheel: windows_debug_wheel
-          #   qtlib: Qt6Core.dll
           #   testrunner: test_runner.exe
           #   qpa_platform: vnc
     runs-on: ${{ matrix.kind.os }}
@@ -253,9 +243,6 @@ jobs:
         SHOOP_LOG=debug ${{ matrix.kind.pip }} install --force-reinstall ~/wheel/*.whl
         shoopdaloop --info
         echo "install_dir=$(shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g')" | tee -a $GITHUB_OUTPUT
-    - name: Test Qt available
-      shell: bash
-      run: SHOOP_LOG=debug ${{ matrix.kind.python }} scripts/test_qt_available.py
     - name: TMate session
       if: ${{ success() || failure() }}
       uses: SanderVocke/action-tmate@master
@@ -263,12 +250,6 @@ jobs:
       shell: bash
       run: |
         ${{ matrix.kind.pip }} install pytest
-    - name: Find Qt
-      shell: bash
-      id: findqt
-      run: |
-        export PKGDIR=$(${{ matrix.kind.pip }} show pyside6-essentials | grep Location | sed -r 's/Location:[ ]*//g')
-        echo "qtlibpath=$(dirname $(find $PKGDIR -name ${{ matrix.kind.qtlib }} ))" | tee -a $GITHUB_ENV
     - name: Test back-end
       if: ${{ success() || failure() }}
       uses: ./.github/actions/test_backend
@@ -283,7 +264,7 @@ jobs:
       uses: ./.github/actions/test_python
       with:
         variant_name: release
-        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH=${{ env.qtlibpath }}
+        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
         root_path: ${{ steps.install.outputs.install_dir }}
         pytest_command: ${{ matrix.kind.python }} -m pytest
     # - name: Test QML
@@ -291,7 +272,7 @@ jobs:
     #   uses: ./.github/actions/test_qml
     #   with:
     #     variant_name: release
-    #     run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH=${{ env.qtlibpath }}
+    #     run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
     #     root_path: ${{ steps.install.outputs.install_dir }}
     #     python_command: ${{ matrix.kind.python }}
     #     qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
@@ -309,7 +290,7 @@ jobs:
     #   uses: ./.github/actions/test_run_app
     #   with:
     #     variant_name: release
-    #     run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH=${{ env.qtlibpath }}
+    #     run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
     #     root_path: ${{ steps.install.outputs.install_dir }}
     #     python: ${{ matrix.kind.python }}
     #     qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
@@ -329,8 +310,6 @@ jobs:
   #       submodules: recursive
   #   - name: Prepare manylinux environment
   #     uses: ./.github/actions/prepare_build_manylinux_2_28
-  #   - name: Install Qt
-  #     uses: ./.github/actions/install_qt
   #   - name: Build, install and upload
   #     id: build
   #     uses: ./.github/actions/build_wheel
@@ -341,13 +320,6 @@ jobs:
   #       pip_install_extra_args: --break-system-packages
   #       whl_suffix: asan
   #       install: true
-  #       prepend_build_cmd: CMAKE_PREFIX_PATH=/usr/local/Qt-6.5.3
-  #   - name: Find Qt
-  #     shell: bash
-  #     id: findqt
-  #     run: |
-  #       PKGDIR=$(python3 -m pip show pyside6-essentials | grep Location | sed -r 's/Location:[ ]*//g')
-  #       echo "qtlibpath=$(dirname $(find $PKGDIR -name libQt6Core.so.6))" | tee -a $GITHUB_ENV
   #   - name: Test back-end
   #     uses: ./.github/actions/test_backend
   #     with:
@@ -360,13 +332,13 @@ jobs:
   #     uses: ./.github/actions/test_python
   #     with:
   #       variant_name: asan
-  #       run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH=${{ env.qtlibpath }}
+  #       run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
   #       root_path: ${{ steps.build.outputs.install_dir }}
   #   - name: Test QML
   #     uses: ./.github/actions/test_qml
   #     with:
   #       variant_name: asan
-  #       run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH="${{ env.qtlibpath }};/usr/local/lib"
+  #       run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH="/usr/local/lib"
   #       root_path: ${{ steps.build.outputs.install_dir }}
   
   # coverage:
@@ -381,8 +353,6 @@ jobs:
   #       submodules: recursive
   #   - name: Prepare manylinux environment
   #     uses: ./.github/actions/prepare_build_manylinux_2_28
-  #   - name: Install Qt
-  #     uses: ./.github/actions/install_qt
   #   - name: Build, install and upload
   #     id: build
   #     uses: ./.github/actions/build_wheel
@@ -393,19 +363,12 @@ jobs:
   #       pip_install_extra_args: --break-system-packages
   #       whl_suffix: coverage
   #       install: true
-  #       prepend_build_cmd: CMAKE_PREFIX_PATH=/usr/local/Qt-6.5.3
   #   - name: Install Qoverage
   #     uses: ./.github/actions/install_qoverage
   #   - name: Qoverage - Instrument QML files
   #     uses: ./.github/actions/qoverage_instrument
   #     with:
   #       package_path: ${{ steps.build.outputs.install_dir }}
-  #   - name: Find Qt
-  #     shell: bash
-  #     id: findqt
-  #     run: |
-  #       PKGDIR=$(python3 -m pip show pyside6-essentials | grep Location | sed -r 's/Location:[ ]*//g')
-  #       echo "qtlibpath=$(dirname $(find $PKGDIR -name libQt6Core.so.6))" | tee -a $GITHUB_ENV
   #   - name: Back-end tests with coverage
   #     uses: ./.github/actions/test_backend
   #     with:
@@ -434,7 +397,6 @@ jobs:
   #         REPORTNAME=pytest
   #         BUILDDIR=${{ steps.build.outputs.build_dir }}
   #         DO_GENHTML=0
-  #         LD_LIBRARY_PATH=${{ env.qtlibpath }}
   #         ${{ steps.build.outputs.install_dir}}/scripts/run_and_generate_coverage.sh
   #   - name: Generate Pytest coverage report
   #     run: |
@@ -455,7 +417,6 @@ jobs:
   #         REPORTNAME=qmltest
   #         BUILDDIR=${{ steps.build.outputs.build_dir }}
   #         DO_GENHTML=0
-  #         LD_LIBRARY_PATH="${{ env.qtlibpath }};/usr/local/lib"
   #         ${{ steps.build.outputs.install_dir }}/scripts/run_and_generate_coverage.sh
   #   - name: Generate QML Python coverage report
   #     run: |

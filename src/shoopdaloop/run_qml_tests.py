@@ -3,12 +3,6 @@
 import os
 import sys
 
-# Before importing the back-end library, we need to make sure that it will be able
-# to find the Qt libraries it needs. We do this by searching for the Qt libraries in the
-# PySide package.
-from shoopdaloop.lib.ensure_ld_qt import ensure_ld_qt
-ensure_ld_qt()
-
 from PySide6.QtCore import QObject, Slot
 from PySide6.QtQml import QQmlEngine
 from shiboken6 import Shiboken

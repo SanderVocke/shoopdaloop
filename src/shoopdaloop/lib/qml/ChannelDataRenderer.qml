@@ -2,7 +2,7 @@ import QtQuick 6.3
 import QtQuick.Controls 6.3
 import QtQuick.Controls.Material 6.3
 import ShoopDaLoop.PythonFetchChannelData
-import RenderAudioWaveform
+import ShoopDaLoop.PythonRenderAudioWaveform
 
 import '../mode_helpers.js' as ModeHelpers
 
@@ -124,7 +124,7 @@ Item {
             }
         }
         
-        RenderAudioWaveform {
+        PythonRenderAudioWaveform {
             id: render
             input_data: fetcher && fetcher.channel_data && root.visible ? fetcher.channel_data : []
             samples_per_bin: root.samples_per_pixel

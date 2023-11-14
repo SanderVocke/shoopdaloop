@@ -93,7 +93,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 include_directories(${CMAKE_SOURCE_DIR}/../third_party/nlohmann_json)
 
 add_subdirectory(test)
-add_subdirectory(qt_extensions)
+add_subdirectory(accelerate)
 
 # Backend lib
 file(GLOB INTERNAL_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/internal/*.cpp)

@@ -1,5 +1,5 @@
 name: Python Tests
-description: Unit tests for Python Qt extensions
+description: Unit tests for Python extensions
 
 inputs:
   variant_name:
