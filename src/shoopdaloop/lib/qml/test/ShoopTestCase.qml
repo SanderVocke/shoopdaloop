@@ -1,25 +1,43 @@
 import QtQuick 6.3
 import QtTest 1.0
 import ShoopDaLoop.PythonLogger
+import ShoopDaLoop.PythonTestCase
 
 import '../../generated/types.js' as Types
 import './testDeepEqual.js' as TestDeepEqual
 
-TestCase {
+PythonTestCase {
     id: root
-    property string name : 'UnnamedTestCase'
+    name : 'UnnamedTestCase'
     property string filename : 'UnknownTestFile'
-    property var logger : PythonLogger { name: `Test.` + root.name }
+    property var logger : PythonLogger { name: `ShoopTestCase.` + root.name }
     
     // It seems the built-in test function filter of the QML test runner is not working.
     // Provide a means to only run a subset of tests.
     property var testfn_filter: null
 
+    function get_all_test_methods() {
+        var metaObject = root.metaObject()
+        var methods = []
+
+        // Iterate over the methods and print their names
+        for (var i = 0; i < metaObject.methodCount(); i++) {
+            var method = metaObject.method(i)
+            methods.push(method.name())
+        }
+    }
+
+    property var test_fns: ({})
+
     Component.onCompleted: {
-        logger.info(() => ("Testcase " + name + " created."))
+        logger.info(() => ("Testcase " + name + ` created (${Object.keys(test_fns).length} tests).`))
+
         if (testfn_filter) {
+            logger.warning(() => "Unimplemented: filtering")
             logger.warning(() => ("Testcase " + name + " has a test function filter: " + testfn_filter))
         }
+
+        shoop_test_runner.register_testcase(root)
     }
     Component.onDestruction: logger.info(() => ("Testcase " + name + " destroyed."))
 
@@ -192,4 +210,33 @@ TestCase {
         wait_once()
         wait_once()
     }
+
+    property var current_testcase: null
+
+    function verify(condition, msg) {
+        current_testcase.checks += 1
+        if (!condition) {
+            current_testcase.failures += 1
+        } else {
+            current_testcase.passes += 1
+        }
+    }
+
+    function run() {
+        logger.info(() => (`Running testcase ${name}`))
+
+        for (var key in test_fns) {
+            current_testcase = {
+                'name': key,
+                'checks': 0,
+                'failures': 0,
+                'skips': 0,
+                'passes': 0
+            }
+            test_fns[key]()
+            logger.info(() => `Passed ${current_testcase.passes} of ${current_testcase.checks} checks in ${current_testcase.name}`)
+            current_testcase = null
+        }
+    }
+    onRun_signal: run()
 }

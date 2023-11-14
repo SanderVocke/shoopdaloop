@@ -43,15 +43,22 @@ def main():
             print('ShoopDaLoop {}'.format(version.strip()))
             print('Installed @ {}'.format(script_pwd))
             exit(0)
+        
+        global_args = {
+            'backend_type': args.backend.value,
+            'backend_argstring': args.jack_server if args.backend == BackendType.Jack else '',
+            'load_session_on_startup': args.session_filename,
+            'test_grab_screens': args.test_grab_screens
+        }
     
-        app = Application('ShoopDaLoop',
+        app = Application(
+            'ShoopDaLoop',
             '{}/lib/qml/applications/{}.qml'.format(module_pwd, args.main),
-            args.backend,
-            args.jack_server if args.backend == BackendType.Jack else '',
-            args.session_filename,
+            global_args,
+            dict(),
             args.qml_debug,
             args.debug_wait,
-            args.test_grab_screens
+            True
             )
         app.exec()
     except Exception as e:

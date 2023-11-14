@@ -25,7 +25,15 @@ from ..logging import *
 script_dir = os.path.dirname(__file__)
 
 class Application(QGuiApplication):
-    def __init__(self, title, main_qml, backend_type, backend_argstring, load_session=None, qml_debug_port=None, qml_debug_wait=False, test_grab_screens=False):
+    def __init__(self,
+                 title,
+                 main_qml,
+                 global_args = dict(),
+                 additional_root_context = dict(),
+                 qml_debug_port=None,
+                 qml_debug_wait=False,
+                 nsm=False
+                 ):
         super(Application, self).__init__([])
         
         pkg_version = None
@@ -61,15 +69,8 @@ class Application(QGuiApplication):
         self.engine.setOutputWarningsToStandardError(False)
         self.engine.objectCreated.connect(self.onQmlObjectCreated)
         self.engine.warnings.connect(self.onQmlWarnings)
-
-        global_args = {
-            'backend_type': backend_type.value,
-            'backend_argstring': backend_argstring,
-            'load_session_on_startup': load_session,
-            'test_grab_screens': test_grab_screens
-        }
         
-        self.root_context_items = create_and_populate_root_context(self.engine, global_args)
+        self.root_context_items = create_and_populate_root_context(self.engine, global_args, additional_root_context)
 
         if main_qml:
             self.engine.load(main_qml)
@@ -89,7 +90,10 @@ class Application(QGuiApplication):
                 except NSMNotRunningError as e:
                     pass
         
-        self.engine.rootObjects()[0].sceneGraphInitialized.connect(start_nsm)
+        if nsm:
+            if len(self.engine.rootObjects()) > 0:
+                self.engine.rootObjects()[0].sceneGraphInitialized.connect(start_nsm)
+        
         self.installEventFilter(self)
     
     def exit(self, retcode):
