@@ -127,6 +127,7 @@ jobs:
       uses: ./.github/actions/post_build
       with:
         variant: ${{ matrix.kind.prepare }}
+        wheel: ${{ steps.buildwheel.outputs.wheel_filename }}
     - name: Find wheel
       shell: bash
       id: find
