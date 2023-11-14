@@ -20,11 +20,11 @@ runs:
       wheel: ${{ inputs.wheel }}
   - name: Post-build MacOS
     if: ${{ inputs.variant == 'macos' }}
-    uses: ./.github/actions/post_build_build_macos
+    uses: ./.github/actions/post_build_macos
     with:
       wheel: ${{ inputs.wheel }}
   - name: Post-build Windows
     if: ${{ inputs.variant == 'windows' }}
-    uses: ./.github/actions/post_build_build_windows
+    uses: ./.github/actions/post_build_windows
     with:
       wheel: ${{ inputs.wheel }}
