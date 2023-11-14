@@ -1,8 +1,15 @@
 name: post_build_manylinux_2_28
 description: Steps after building wheel for manylinux.
 
+inputs:
+  wheel:
+    required: true
+    type: string
+    
 runs:
   using: "composite"
   steps:
-  - name: TMate session
-    uses: SanderVocke/action-tmate@master
+  - name: Auditwheel repair
+    shell: bash
+    run: |
+      auditwheel repair --plat manylinux_2_28_x86_64 --only-plat -w final_wheel ${{ inputs.wheel }}

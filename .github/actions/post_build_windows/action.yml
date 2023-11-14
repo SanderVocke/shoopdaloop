@@ -1,10 +1,18 @@
 name: post_build_windows
 description: Steps after building wheel for Windows
 
+inputs:
+  wheel:
+    required: true
+    type: string
+
 runs:
   using: "composite"
   steps:
-  - name: Delvewheel
+  - name: Passthrough
+    id: passthrough
     shell: bash
-    run: echo "TODO"
+    run: |
+      mkdir -p final_wheel
+      cp dist/*.whl final_wheel/
       

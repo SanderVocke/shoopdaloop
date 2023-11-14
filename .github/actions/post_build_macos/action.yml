@@ -1,10 +1,17 @@
 name: post_build_macos
 description: Steps after building wheel for MacOS
 
+inputs:
+  wheel:
+    required: true
+    type: string
+
 runs:
   using: "composite"
   steps:
-  - name: Delocate
+  - name: Passthrough
+    id: passthrough
     shell: bash
-    run: echo "TODO"
-      
+    run: |
+      mkdir -p final_wheel
+      cp dist/*.whl final_wheel/

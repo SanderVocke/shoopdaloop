@@ -127,18 +127,22 @@ jobs:
       uses: ./.github/actions/post_build
       with:
         variant: ${{ matrix.kind.prepare }}
+    - name: Find wheel
+      shell: bash
+      id: find
+      run: |
+        echo "name=$(ls final_wheel/*.whl)" | tee -a $GITHUB_OUTPUT
     - name: Upload wheel (${{ inputs.variant_name }})
       if: ${{ !env.ACT }}
       uses: actions/upload-artifact@v3
       with:
         name: ${{ matrix.kind.name }}_wheel
-        path: ${{ steps.buildwheel.outputs.wheel_filename }}
+        path: ${{ steps.find.outputs.name }}
     # - name: TMate failure session
     #   if: ${{ failure() }}
     #   uses: SanderVocke/action-tmate@master
   
   test:
-    if: ${{ always() }}
     strategy:
       fail-fast: false
       matrix:

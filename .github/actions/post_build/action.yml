@@ -6,6 +6,9 @@ inputs:
   variant:
     required: true
     type: string
+  wheel:
+    required: true
+    type: string
 
 runs:
   using: "composite"
@@ -13,9 +16,15 @@ runs:
   - name: Post-build manylinux
     if: ${{ inputs.variant == 'manylinux_2_28' }}
     uses: ./.github/actions/post_build_manylinux_2_28
+    with:
+      wheel: ${{ inputs.wheel }}
   - name: Post-build MacOS
     if: ${{ inputs.variant == 'macos' }}
     uses: ./.github/actions/post_build_build_macos
+    with:
+      wheel: ${{ inputs.wheel }}
   - name: Post-build Windows
     if: ${{ inputs.variant == 'windows' }}
     uses: ./.github/actions/post_build_build_windows
+    with:
+      wheel: ${{ inputs.wheel }}
