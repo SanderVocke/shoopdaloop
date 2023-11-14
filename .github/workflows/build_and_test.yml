@@ -45,14 +45,6 @@ jobs:
             prepare: 'manylinux_2_28'
             overrides: 'overrides/linux_barebones_overrides.toml'
             rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
-          - name: linux_debug
-            os: ubuntu-latest
-            python: python3.8
-            pip: python3 -m pip
-            container_image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
-            prepare: 'manylinux_2_28'
-            overrides: 'overrides/linux_debug_overrides.toml'
-            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
           - name: linux_asan
             os: ubuntu-latest
             python: python3.8
@@ -69,14 +61,14 @@ jobs:
             prepare: 'manylinux_2_28'
             overrides: 'overrides/linux_coverage_overrides.toml'
             rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
-          - name: windows_release
-            os: windows-2022
-            python: python.exe
-            pip: python.exe -m pip
-            container_image: null
-            prepare: 'windows'
-            overrides: 'overrides/windows_release_overrides.toml'
-            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+          # - name: windows_release
+          #   os: windows-2022
+          #   python: python.exe
+          #   pip: python.exe -m pip
+          #   container_image: null
+          #   prepare: 'windows'
+          #   overrides: 'overrides/windows_release_overrides.toml'
+          #   rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
           - name: windows_debug
             os: windows-2022
             python: python.exe
@@ -85,16 +77,16 @@ jobs:
             prepare: 'windows'
             overrides: 'overrides/windows_debug_overrides.toml'
             rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
-          - name: macos_release
-            os: macos-11
-            python: python3.8
-            pip: python3.8 -m pip
-            container_image: null
-            prepare: 'macos'
-            overrides: 'overrides/macos_release_overrides.toml'
-            # Note: for some reason, an incorrect MacOS identifier is generated (macos_11 instead of macos_11_0).
-            # Also remove the double dot if any.
-            rename_wheel_sed: "'s/(.*-macosx_[1-9]+_)(x86_64|arm64|universal2)[\\.]*whl/\\10_\\2.whl/g'"
+          # - name: macos_release
+          #   os: macos-11
+          #   python: python3.8
+          #   pip: python3.8 -m pip
+          #   container_image: null
+          #   prepare: 'macos'
+          #   overrides: 'overrides/macos_release_overrides.toml'
+          #   # Note: for some reason, an incorrect MacOS identifier is generated (macos_11 instead of macos_11_0).
+          #   # Also remove the double dot if any.
+          #   rename_wheel_sed: "'s/(.*-macosx_[1-9]+_)(x86_64|arm64|universal2)[\\.]*whl/\\10_\\2.whl/g'"
           - name: macos_debug
             os: macos-11
             python: python3.8
@@ -172,30 +164,30 @@ jobs:
             wheel: linux_release_wheel
             testrunner: test_runner
             qpa_platform: vnc
-          - name: release_macos11
-            python: python3
-            pip: python3 -m pip
-            container: null
-            os: macos-11
-            wheel: macos_release_wheel
-            testrunner: test_runner
-            qpa_platform: offscreen
-          - name: release_macos12
-            python: python3
-            pip: python3 -m pip
-            container: null
-            os: macos-12
-            wheel: macos_release_wheel
-            testrunner: test_runner
-            qpa_platform: offscreen
-          - name: release_macos13
-            python: python3
-            pip: python3 -m pip
-            container: null
-            os: macos-13
-            wheel: macos_release_wheel
-            testrunner: test_runner
-            qpa_platform: offscreen
+          # - name: release_macos11
+          #   python: python3
+          #   pip: python3 -m pip
+          #   container: null
+          #   os: macos-11
+          #   wheel: macos_release_wheel
+          #   testrunner: test_runner
+          #   qpa_platform: offscreen
+          # - name: release_macos12
+          #   python: python3
+          #   pip: python3 -m pip
+          #   container: null
+          #   os: macos-12
+          #   wheel: macos_release_wheel
+          #   testrunner: test_runner
+          #   qpa_platform: offscreen
+          # - name: release_macos13
+          #   python: python3
+          #   pip: python3 -m pip
+          #   container: null
+          #   os: macos-13
+          #   wheel: macos_release_wheel
+          #   testrunner: test_runner
+          #   qpa_platform: offscreen
           - name: debug_macos13
             python: python3
             pip: python3 -m pip
@@ -204,14 +196,14 @@ jobs:
             wheel: macos_debug_wheel
             testrunner: test_runner
             qpa_platform: offscreen
-          - name: release_windows
-            python: python.exe
-            pip: python.exe -m pip
-            container: null
-            os: windows-2022
-            wheel: windows_release_wheel
-            testrunner: test_runner.exe
-            qpa_platform: vnc
+          # - name: release_windows
+          #   python: python.exe
+          #   pip: python.exe -m pip
+          #   container: null
+          #   os: windows-2022
+          #   wheel: windows_release_wheel
+          #   testrunner: test_runner.exe
+          #   qpa_platform: vnc
           - name: debug_windows
             python: python.exe
             pip: python.exe -m pip

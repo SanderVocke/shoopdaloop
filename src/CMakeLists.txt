@@ -41,49 +41,6 @@ endif()
 set(CTYPESGEN_COMMAND ctypesgen)
 
 add_subdirectory(libshoopdaloop)
-
-# Generate libshoopdaloop Python bindings into source dir
-set(GENERATED_BINDINGS_PY ${CMAKE_CURRENT_BINARY_DIR}/libshoopdaloop_bindings.py)
-add_custom_command(
-  OUTPUT ${GENERATED_BINDINGS_PY}
-  COMMAND ${RUN_CMD_PREFIX} ${CMAKE_COMMAND} -E env ASAN_OPTIONS=detect_leaks=0 ${CTYPESGEN_COMMAND} --no-macro-warnings -lshoopdaloop ${CMAKE_CURRENT_SOURCE_DIR}/libshoopdaloop/libshoopdaloop.h ${CMAKE_CURRENT_SOURCE_DIR}/libshoopdaloop/types.h -o ${GENERATED_BINDINGS_PY}
-  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/libshoopdaloop/libshoopdaloop.h ${CMAKE_CURRENT_SOURCE_DIR}/libshoopdaloop/libshoopdaloop.cpp
-  COMMENT "Generating C bindings for libshoopdaloop."
-  )
-add_custom_target(
-  c_bindings
-  ALL
-  DEPENDS ${GENERATED_BINDINGS_PY}
-  )
-
-# Generate javascript copy of enums into source dir
-set(PATH_SEP ":")
-if (WIN32)
-  set(PATH_SEP $<SEMICOLON>)
-endif()
-set(OUR_PYTHONPATH "$ENV{PYTHONPATH}${PATH_SEP}${CMAKE_CURRENT_BINARY_DIR}${PATH_SEP}${PY_BUILD_CMAKE_MODULE_NAME}/..${PATH_SEP}${CMAKE_CURRENT_SOURCE_DIR}/shoopdaloop")
-set(GENERATED_TYPES_JS ${CMAKE_CURRENT_BINARY_DIR}/types.js)
-add_custom_command(
-  OUTPUT ${GENERATED_TYPES_JS}
-  COMMAND ${RUN_CMD_PREFIX} ${CMAKE_COMMAND} -E env ASAN_OPTIONS=detect_leaks=0 PYTHONPATH="${OUR_PYTHONPATH}" LD_LIBRARY_PATH="${CMAKE_CURRENT_BINARY_DIR}/libshoopdaloop" "${PYTHON_CMD}" gen_js_enums.py "${GENERATED_TYPES_JS}"
-  COMMENT "Generating Javascript types."
-  DEPENDS c_bindings shoopdaloop
-  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/codegen
-  )
-add_custom_target(
-  javascript_types
-  ALL
-  DEPENDS ${GENERATED_TYPES_JS}
-  )
-
-install(FILES ${GENERATED_BINDINGS_PY}
-    EXCLUDE_FROM_ALL
-    COMPONENT package_install
-    DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME})
-install(FILES ${GENERATED_TYPES_JS}
-    EXCLUDE_FROM_ALL
-    COMPONENT package_install
-    DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME}/lib/generated)
   
 # Generate and install version.txt and description.txt
 add_custom_command(
