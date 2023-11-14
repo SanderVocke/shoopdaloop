@@ -52,8 +52,8 @@ AppRegistries {
                 })
             }
 
-            function test_channels() {
-                run_case("test_channels" , () => {
+            test_fns: ({
+                "test_channels": () => {
                     check_backend()
                     let ori = session.initial_descriptor
 
@@ -75,8 +75,8 @@ AppRegistries {
                     verify_true(loop())
                     verify_eq(loop().actual_session_descriptor().channels.length, 2)
                     verify_eq(session.actual_session_descriptor(), ori)
-                })
-            }
+                }
+            })
         }
     }
 }

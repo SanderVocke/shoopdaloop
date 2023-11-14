@@ -36,7 +36,7 @@ AppRegistries {
         ShoopSessionTestCase {
             id: testcase
             name: 'Resample'
-            filename : TestFilename.test_filename()
+            filename : TestFilename.test_filename()\)\n\s+\}$
             session: session
 
             function loop() { return session.tracks[0].loops[0] }
@@ -50,8 +50,9 @@ AppRegistries {
                 return r
             }
 
-            function test_resample_1chan() {
-                run_case("test_resample_1chan" , () => {
+            test_fns: ({
+
+                "test_resample_1chan": () => {
                     check_backend()
 
                     let data = Array(6000)
@@ -71,11 +72,9 @@ AppRegistries {
 
                     let loaded = channel().get_data()
                     verify_eq(loaded.length, 12000)
-                })
-            }
+                },
 
-            function test_resample_1chan_resize() {
-                run_case("test_resample_1chan_resize" , () => {
+                "test_resample_1chan_resize": () => {
                     check_backend()
 
                     let data = Array(6000)
@@ -95,11 +94,9 @@ AppRegistries {
 
                     let loaded = channel().get_data()
                     verify_eq(loaded.length, 13000)
-                })
-            }
+                },
 
-            function test_resample_2chan_resize() {
-                run_case("test_resample_2chan_resize" , () => {
+                "test_resample_2chan_resize": () => {
                     check_backend()
                     loop2().create_backend_loop()
 
@@ -123,8 +120,8 @@ AppRegistries {
                     let datas = loop2_channels().map(m => m.get_data())
                     verify_eq(datas[0].length, 13000)
                     verify_eq(datas[1].length, 13000)
-                })
-            }
+                },
+            })
         }
     }
 }

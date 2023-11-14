@@ -63,38 +63,51 @@ class Application(QGuiApplication):
             QQmlDebuggingEnabler.startTcpDebugServer(qml_debug_port)
 
         register_shoopdaloop_qml_classes()
+        self.global_args = global_args
+        self.additional_root_context = additional_root_context
+        
+        self.installEventFilter(self)
+        self.engine = None
+        
+        if main_qml:
+            self.reload(main_qml)
+        
+            def start_nsm():
+                if have_nsm:
+                    try:
+                        self.nsm_client = NSMClient(
+                            prettyName = title,
+                            supportsSaveStatus = False,
+                            saveCallback = lambda path, session, client: self.save_session_handler(path, session, client),
+                            openOrNewCallback = lambda path, session, client: self.load_session_handler(path, session, client),
+                            exitProgramCallback = lambda path, session, client: self.nsm_exit_handler(),
+                            loggingLevel = 'info'
+                        )
+                        self.title = self.nsm_client.ourClientNameUnderNSM
+                    except NSMNotRunningError as e:
+                        pass
+        
+            if nsm:
+                if len(self.engine.rootObjects()) > 0:
+                    self.engine.rootObjects()[0].sceneGraphInitialized.connect(start_nsm)
+    
+    def reload(self, filename, quit_on_quit=True):
+        if self.engine:
+            self.engine.deleteLater()
+            self.engine = None
+            
         self.engine = QQmlApplicationEngine(parent=self)
-        self.engine.quit.connect(self.quit)
+        
+        if quit_on_quit:
+            self.engine.quit.connect(self.quit)
 
         self.engine.setOutputWarningsToStandardError(False)
         self.engine.objectCreated.connect(self.onQmlObjectCreated)
         self.engine.warnings.connect(self.onQmlWarnings)
         
-        self.root_context_items = create_and_populate_root_context(self.engine, global_args, additional_root_context)
-
-        if main_qml:
-            self.engine.load(main_qml)
+        self.root_context_items = create_and_populate_root_context(self.engine, self.global_args, self.additional_root_context)
         
-        def start_nsm():
-            if have_nsm:
-                try:
-                    self.nsm_client = NSMClient(
-                        prettyName = title,
-                        supportsSaveStatus = False,
-                        saveCallback = lambda path, session, client: self.save_session_handler(path, session, client),
-                        openOrNewCallback = lambda path, session, client: self.load_session_handler(path, session, client),
-                        exitProgramCallback = lambda path, session, client: self.nsm_exit_handler(),
-                        loggingLevel = 'info'
-                    )
-                    self.title = self.nsm_client.ourClientNameUnderNSM
-                except NSMNotRunningError as e:
-                    pass
-        
-        if nsm:
-            if len(self.engine.rootObjects()) > 0:
-                self.engine.rootObjects()[0].sceneGraphInitialized.connect(start_nsm)
-        
-        self.installEventFilter(self)
+        self.engine.load(filename)
     
     def exit(self, retcode):
         if self.nsm_client:

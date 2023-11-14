@@ -146,8 +146,9 @@ AppRegistries {
                 })
             }
 
-            function test_save_load_non_sample_accurate_midi() {
-                run_case("test_save_load_non_sample_accurate_midi", () => {
+            test_fns: ({
+
+                "test_save_load_non_sample_accurate_midi": () => {
                     check_backend()
 
                     let midichan = [
@@ -173,11 +174,9 @@ AppRegistries {
                     verify_true(data[1].time >= 200 && data[0].time <= 202)
                     verify_eq(data[0].data, [0x90, 70,  70])
                     verify_eq(data[1].data, [0x80, 60,  60])
-                })
-            }
+                },
 
-            function test_save_load_sample_accurate_midi() {
-                run_case("test_save_load_sample_accurate_midi", () => {
+                "test_save_load_sample_accurate_midi": () => {
                     check_backend()
 
                     let midichan = [
@@ -203,11 +202,9 @@ AppRegistries {
                     verify_true(data[1].time >= 200 && data[0].time <= 202)
                     verify_eq(data[0].data, [0x90, 70,  70])
                     verify_eq(data[1].data, [0x80, 60,  60])
-                })
-            }
+                },
 
-            function test_save_load_with_audio_and_midi() {
-                run_case("test_save_load_session_audio_and_midi" , () => {
+                "test_save_load_session_audio_and_midi": () => {
                     check_backend()
 
                     let midichan = [
@@ -261,8 +258,8 @@ AppRegistries {
                     verify_approx(dwt_wet_loop_channels()[0].get_data(), [0.9, 0.10, 0.11, 0.12])
                     verify_approx(dwt_wet_loop_channels()[1].get_data(), [0.12, 0.11, 0.10, 0.9])
                     verify_eq(mt_midi_channels()[0].get_data(), midichan)
-                })
-            }
+                },
+            })
         }
     }
 }

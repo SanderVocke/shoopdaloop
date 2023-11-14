@@ -36,27 +36,54 @@ global_args = {
 
 test_files = glob.glob(script_dir + '/**/tst_*.qml', recursive=True)
 
+runner = TestRunner()
+
+additional_root_context = {
+    'qoverage_collector_factory' : qoverage_collector_factory,
+    'shoop_test_runner': runner
+}
+
+app = Application(
+    'ShoopDaLoop QML Tests',
+    None,
+    global_args,
+    additional_root_context
+)
+
 for file in test_files:
     filename = os.path.basename(file)
     print()
     logger.info('===== Test file: {} ====='.format(filename))
     
-    runner = TestRunner()
+    app.reload(file, False)    
     
-    additional_root_context = {
-        'qoverage_collector_factory' : qoverage_collector_factory,
-        'shoop_test_runner': runner
-    }
-        
-    app = Application(
-        filename,
-        file,
-        global_args,
-        additional_root_context
-    )
-    
-    app.exec()
+    QTest.qWait(50)
+    while not runner.done:
+        QTest.qWait(20)
 
+# count totals
+passed = 0
+failed = 0
+skipped = 0
+
+results = runner.results
+for case, case_results in results:
+    for fn, fn_result in case_results:
+        if fn_result == 'pass':
+            passed += 1
+        elif fn_result == 'skip':
+            skipped += 1
+        elif fn_result == 'fail':
+            failed += 1
+        else:
+            raise Exception('Unknown result: {}'.format(fn_result))
+
+print('''
+Total:
+- Passed: {}
+- Failed: {}
+- Skipped: {}
+'''.format(passed, failed, skipped))
 
 # class Setup(QObject):
 #     def __init__(self, parent=None):

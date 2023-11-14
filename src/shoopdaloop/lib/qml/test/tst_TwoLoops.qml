@@ -36,15 +36,13 @@ Session {
             verify_loop_cleared(other_loop())
         }
 
-        function test_two_loops_cleared() {
-            run_case('test_two_loops_cleared', () => {
+        test_fns: ({
+            'test_two_loops_cleared': () => {
                 check_backend()
                 clear()
-            })
-        }
+            },
 
-        function test_two_loops_master_record() {
-            run_case('test_two_loops_master_record', () => {
+            'test_two_loops_master_record': () => {
                 check_backend()
                 clear()
                 testcase.wait_updated(session.backend)
@@ -56,11 +54,9 @@ Session {
                 verify_loop_cleared(other_loop())
 
                 clear()
-            })
-        }
+            },
 
-        function test_two_loops_master_playback() {
-            run_case('test_two_loops_master_playback', () => {
+            'test_two_loops_master_playback': () => {
                 check_backend()
 
                 master_loop().set_length(48000)
@@ -71,11 +67,9 @@ Session {
                 verify_loop_cleared(other_loop())
 
                 clear()
-            })
-        }
+            },
 
-        function test_switch_between_backend_and_composite() {
-            run_case('test_switch_between_backend_and_composite', () => {
+            'test_switch_between_backend_and_composite': () => {
                 clear()
                 testcase.wait_updated(session.backend)
                 verify_true(master_loop().maybe_backend_loop)
@@ -106,7 +100,7 @@ Session {
                 verify_true(!('composition' in other_loop().actual_session_descriptor()))
                 verify_true('channels' in other_loop().actual_session_descriptor())
                 verify_true(other_loop().actual_session_descriptor().channels.every((channel) => channel.data_length == 0))
-            })
-        }
+            },
+        })
     }
 }

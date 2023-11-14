@@ -116,8 +116,9 @@ AppRegistries {
                 session.backend.dummy_wait_process()
             }
 
-            function test_direct_audio_monitor() {
-                run_case('test_direct_audio_monitor', () => {
+            test_fns: ({
+
+                'test_direct_audio_monitor': () => {
                     check_backend()
                     reset()
                     tut_control().monitor = true
@@ -137,11 +138,9 @@ AppRegistries {
                     verify_eq(out1, [1, 2, 3, 4])
                     verify_eq(out2, [4, 3, 2, 1])
 
-                })
-            }
+                },
 
-            function test_direct_midi_monitor() {
-                run_case('test_direct_midi_monitor', () => {
+                'test_direct_midi_monitor': () => {
                     check_backend()
                     reset()
                     tut_control().monitor = true
@@ -181,11 +180,9 @@ AppRegistries {
 
                     verify_eq(out, expect_out1, true)
                     verify_eq(out2, expect_out2, true)
-                })
-            }
+                },
 
-            function test_direct_audio_monitor_input_volume() {
-                run_case('test_direct_audio_monitor_input_volume', () => {
+                'test_direct_audio_monitor_input_volume': () => {
                     check_backend()
                     reset()
                     tut_control().monitor = true
@@ -206,11 +203,9 @@ AppRegistries {
                     verify_eq(out1.map(o => Math.round(o)), [2, 4, 6, 8])
                     verify_eq(out2.map(o => Math.round(o)), [8, 6, 4, 2])
 
-                })
-            }
+                },
 
-            function test_direct_audio_monitor_output_volume() {
-                run_case('test_direct_audio_monitor_output_volume', () => {
+                'test_direct_audio_monitor_output_volume': () => {
                     check_backend()
                     reset()
                     tut_control().monitor = true
@@ -231,11 +226,9 @@ AppRegistries {
                     verify_eq(out1.map(o => Math.round(o)), [2, 4, 6, 8])
                     verify_eq(out2.map(o => Math.round(o)), [8, 6, 4, 2])
 
-                })
-            }
+                },
 
-            function test_direct_audio_monitor_output_balance_left() {
-                run_case('test_direct_audio_monitor_balance_left', () => {
+                'test_direct_audio_monitor_balance_left': () => {
                     check_backend()
                     reset()
                     tut_control().monitor = true
@@ -257,11 +250,9 @@ AppRegistries {
                     verify_eq(out1.map(o => Math.round(o)), [2, 4, 6, 8])
                     verify_eq(out2.map(o => Math.round(o)), [0, 0, 0, 0])
 
-                })
-            }
+                },
 
-            function test_direct_audio_monitor_output_balance_right() {
-                run_case('test_direct_audio_monitor_output_balance_right', () => {
+                'test_direct_audio_monitor_output_balance_right': () => {
                     check_backend()
                     reset()
                     tut_control().monitor = true
@@ -283,11 +274,9 @@ AppRegistries {
                     verify_eq(out1.map(o => Math.round(o)), [0, 0, 0, 0])
                     verify_eq(out2.map(o => Math.round(o)), [8, 6, 4, 2])
 
-                })
-            }
+                },
 
-            function test_direct_audio_no_monitor() {
-                run_case('test_direct_audio_no_monitor', () => {
+                'test_direct_audio_no_monitor': () => {
                     check_backend()
                     reset()
                     tut_control().monitor = false
@@ -307,11 +296,9 @@ AppRegistries {
                     verify_eq(out1, [0, 0, 0, 0])
                     verify_eq(out2, [0, 0, 0, 0])
 
-                })
-            }
+                },
 
-            function test_direct_midi_no_monitor() {
-                run_case('test_direct_midi_no_monitor', () => {
+                'test_direct_midi_no_monitor': () => {
                     check_backend()
                     reset()
                     tut_control().monitor = false
@@ -344,11 +331,9 @@ AppRegistries {
 
                     verify_eq(out, [], true)
                     verify_eq(out2, [], true)
-                })
-            }
+                },
 
-            function test_direct_audio_monitor_mute() {
-                run_case('test_direct_audio_monitor_mute', () => {
+                'test_direct_audio_monitor_mute': () => {
                     check_backend()
                     reset()
                     tut_control().monitor = true
@@ -368,11 +353,9 @@ AppRegistries {
                     verify_eq(out1, [0, 0, 0, 0])
                     verify_eq(out2, [0, 0, 0, 0])
 
-                })
-            }
+                },
 
-            function test_direct_midi_monitor_mute() {
-                run_case('test_direct_midi_monitor', () => {
+                'test_direct_midi_monitor': () => {
                     check_backend()
                     reset()
                     tut_control().monitor = true
@@ -405,8 +388,8 @@ AppRegistries {
 
                     verify_eq(out, [], true)
                     verify_eq(out2, [], true)
-                })
-            }
+                },
+            })
         }
     }
 }

@@ -16,6 +16,17 @@ PythonTestCase {
     // Provide a means to only run a subset of tests.
     property var testfn_filter: null
 
+    property bool when: true
+    property bool _internal_triggered: false
+    onWhenChanged: update_trigger()
+
+    function update_trigger() {
+        if (when && !_internal_triggered) {
+            _internal_triggered = true
+            shoop_test_runner.testcase_ready_to_start(root)
+        }
+    }
+
     function get_all_test_methods() {
         var metaObject = root.metaObject()
         var methods = []
@@ -38,6 +49,7 @@ PythonTestCase {
         }
 
         shoop_test_runner.register_testcase(root)
+        update_trigger()
     }
     Component.onDestruction: logger.info(() => ("Testcase " + name + " destroyed."))
 

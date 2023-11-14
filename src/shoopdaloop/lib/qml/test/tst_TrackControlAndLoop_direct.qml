@@ -124,8 +124,7 @@ AppRegistries {
                 session.backend.dummy_wait_process()
             }
 
-            function test_audio_direct_record_no_monitor() {
-                run_case('test_audio_direct_record_no_monitor', () => {
+                'test_audio_direct_record_no_monitor': () => {
                     check_backend()
                     reset()
                     tut_control().monitor = false
@@ -154,8 +153,7 @@ AppRegistries {
                 })
             }
 
-            function test_midi_direct_record_no_monitor() {
-                run_case('test_midi_direct_record_no_monitor', () => {
+                'test_midi_direct_record_no_monitor': () => {
                     check_backend()
                     reset()
                     tut_control().monitor = false
@@ -196,8 +194,8 @@ AppRegistries {
                 })
             }
 
-            function test_audio_direct_record_monitor() {
-                run_case('test_audio_direct_record_monitor', () => {
+            test_fns: ({
+                'test_audio_direct_record_monitor': () => {
                     check_backend()
                     reset()
                     tut_control().monitor = true
@@ -223,11 +221,9 @@ AppRegistries {
                     verify_eq(loop1, [1, 2, 3, 4])
                     verify_eq(loop2, [4, 3, 2, 1])
 
-                })
-            }
+                },
 
-            function test_midi_direct_record_monitor() {
-                run_case('test_midi_direct_record_monitor', () => {
+                'test_midi_direct_record_monitor': () => {
                     check_backend()
                     reset()
                     tut_control().monitor = true
@@ -265,11 +261,9 @@ AppRegistries {
 
                     verify_eq(out, expect_out, true)
                     verify_eq(chan_data, expect_loop, true)
-                })
-            }
+                },
 
-            function test_audio_direct_play_no_monitor() {
-                run_case('test_audio_direct_play_no_monitor', () => {
+                'test_audio_direct_play_no_monitor': () => {
                     check_backend()
                     reset()
                     tut_control().monitor = false
@@ -298,11 +292,9 @@ AppRegistries {
                     verify_eq(loop1, [5, 6, 7, 8])
                     verify_eq(loop2, [8, 7, 6, 5])
 
-                })
-            }
+                },
 
-            function test_midi_direct_play_no_monitor() {
-                run_case('test_midi_direct_play_no_monitor', () => {
+                'test_midi_direct_play_no_monitor': () => {
                     let input = [
                         { 'time': 0, 'data': [0x90, 100, 100] },
                         { 'time': 3, 'data': [0x90, 50,  50]  }
@@ -341,11 +333,9 @@ AppRegistries {
 
                     verify_eq(out, expect_out, true)
                     verify_eq(chan_data, loop, true)
-                })
-            }
+                },
 
-            function test_audio_direct_play_monitor() {
-                run_case('test_audio_direct_play_monitor', () => {
+                'test_audio_direct_play_monitor': () => {
                     check_backend()
                     reset()
                     tut_control().monitor = true
@@ -374,11 +364,9 @@ AppRegistries {
                     verify_eq(loop1, [5, 6, 7, 8])
                     verify_eq(loop2, [8, 7, 6, 5])
 
-                })
-            }
+                },
 
-            function test_midi_direct_play_monitor() {
-                run_case('test_midi_direct_play_monitor', () => {
+                'test_midi_direct_play_monitor': () => {
                     let input = [
                         { 'time': 0, 'data': [0x90, 100, 100] },
                         { 'time': 3, 'data': [0x90, 50,  50]  }
@@ -422,8 +410,8 @@ AppRegistries {
 
                     verify_eq(out, expect_out, true)
                     verify_eq(chan_data, loop, true)
-                })
-            }
+                },
+            })
         }
     }
 }

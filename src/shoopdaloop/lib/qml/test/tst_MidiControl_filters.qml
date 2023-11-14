@@ -56,20 +56,20 @@ Item {
         filename : TestFilename.test_filename()
         when: ctl.ready
 
-        function test_midi_control_filter_noteon() {
-            run_case('test_midi_control_filter_noteon', () => {
+        test_fns: ({
+            'test_midi_control_filter_noteon': () => {
                 itf.clear()
                 ctl.handle_midi([0, 0xF0, 0x90])
 
                 verify_eq(itf.logged_calls, new Set([ [0, 0], [1, 1] ]))
-            })
+            },
 
-            run_case('test_midi_control_filter_noteoff', () => {
+            'test_midi_control_filter_noteoff': () => {
                 itf.clear()
                 ctl.handle_midi([0, 0xF0, 0x80])
 
                 verify_eq(itf.logged_calls, new Set([ [0, 0], [2, 2] ]))
-            })
-        }
+            },
+        })
     }
 }

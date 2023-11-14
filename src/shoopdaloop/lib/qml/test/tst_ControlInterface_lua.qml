@@ -130,8 +130,9 @@ shoop_format = require('shoop_format')
             `))
         }
 
-        function test_loop_count() {
-            run_case('test_loop_count', () => {
+        test_fns: ({
+
+            'test_loop_count': () => {
                 check_backend()
                 clear()
                 
@@ -140,11 +141,9 @@ shoop_format = require('shoop_format')
                 verify_eq(do_eval('return shoop_control.loop_count({0, 0})'), 1)
                 verify_eq(do_eval('return shoop_control.loop_count({{0, 0}})'), 1)
                 verify_eq(do_eval('return shoop_control.loop_count({{0, 0}, {0, 1}})'), 2)
-            })
-        }
+            },
 
-        function test_loop_get_which_selected() {
-            run_case('test_loop_get_which_selected', () => {
+            'test_loop_get_which_selected': () => {
                 check_backend()
                 clear()
 
@@ -153,11 +152,9 @@ shoop_format = require('shoop_format')
                 verify_eq_lua('shoop_control.loop_get_which_selected()', '{{0, 0}}')
                 loop_at(0,1).select()
                 verify_eq_lua('shoop_control.loop_get_which_selected()', '{{0, 0}, {0, 1}}')
-            })
-        }
+            },
 
-        function test_loop_get_which_targeted() {
-            run_case('test_loop_get_which_targeted', () => {
+            'test_loop_get_which_targeted': () => {
                 check_backend()
                 clear()
                 
@@ -166,11 +163,9 @@ shoop_format = require('shoop_format')
                 verify_eq_lua('shoop_control.loop_get_which_targeted()', '{0, 0}')
                 loop_at(0,1).target()
                 verify_eq_lua('shoop_control.loop_get_which_targeted()', '{0, 1}')
-            })
-        }
+            },
 
-        function test_loop_get_mode() {
-            run_case('test_loop_get_mode', () => {
+            'test_loop_get_mode': () => {
                 check_backend()
                 clear()
                 
@@ -181,11 +176,9 @@ shoop_format = require('shoop_format')
                 verify_eq_lua('shoop_control.loop_get_mode({0,1})', '{ shoop_control.constants.LoopMode_Stopped }')
                 verify_eq_lua('shoop_control.loop_get_mode({{1,0},{0,0}})', '{ shoop_control.constants.LoopMode_Stopped, shoop_control.constants.LoopMode_Recording }')
                 verify_eq_lua('shoop_control.loop_get_mode({})', '{}')
-            })
-        }
+            },
 
-        function test_loop_transition() {
-            run_case('test_loop_transition', () => {
+            'test_loop_transition': () => {
                 check_backend()
                 clear()
 
@@ -198,11 +191,9 @@ shoop_format = require('shoop_format')
                 testcase.wait_updated(session.backend)
                 verify_eq(loop_at(0,0).mode, Types.LoopMode.Recording)
                 verify_eq(loop_at(0,1).mode, Types.LoopMode.Recording)
-            })
-        }
+            },
 
-        function test_loop_set_get_volume() {
-            run_case('test_loop_set_get_volume', () => {
+            'test_loop_set_get_volume': () => {
                 check_backend()
                 clear()
                 
@@ -212,11 +203,9 @@ shoop_format = require('shoop_format')
                 do_execute('shoop_control.loop_set_volume({0,0}, 0.5)')
                 verify_eq_lua('shoop_control.loop_get_volume({0,0})', '{0.5}')
                 verify_eq_lua('shoop_control.loop_get_volume({{1,0},{0,0}})', '{1.0, 0.5}')
-            })
-        }
+            },
 
-        function test_loop_set_get_volume_fader() {
-            run_case('test_loop_set_get_volume_fader', () => {
+            'test_loop_set_get_volume_fader': () => {
                 check_backend()
                 clear()
                 
@@ -228,11 +217,9 @@ shoop_format = require('shoop_format')
                 verify_eq_lua('shoop_control.loop_get_volume_fader({0,0})', '{1.0}')
                 do_execute('shoop_control.loop_set_volume_fader({0,0}, -1.0)')
                 verify_eq_lua('shoop_control.loop_get_volume_fader({0,0})', '{0.0}')
-            })
-        }
+            },
 
-        function test_loop_set_get_balance() {
-            run_case('test_loop_set_get_balance', () => {
+            'test_loop_set_get_balance': () => {
                 check_backend()
                 clear()
 
@@ -242,31 +229,27 @@ shoop_format = require('shoop_format')
                 do_execute('shoop_control.loop_set_balance({0,0}, 0.5)')
                 verify_eq_lua('shoop_control.loop_get_balance({0,0})', '{0.5}')
                 verify_eq_lua('shoop_control.loop_get_balance({{0,0},{1,0}})', '{0.5, 1.0}')
-            })
-        }
+            },
 
-        // TODO: harder to test because this requires loops to
-        // trigger each other
-        // function test_loop_record_n() {
-        //     run_case('test_loop_record_n', () => {
-        //         check_backend()
-        //         clear()
-        //         verify(false)
-        //     })
-        // }
+            // TODO: harder to test because this requires loops to
+            // trigger each other
+            // 'test_loop_record_n': () => {
+            //         check_backend()
+            //         clear()
+            //         verify(false)
+            //     })
+            // }
 
-        // TODO: harder to test because this requires loops to
-        // trigger each other
-        // function test_loop_record_with_targeted() {
-        //     run_case('test_loop_record_with_targeted', () => {
-        //         check_backend()
-        //         clear()
-        //         verify(false)
-        //     })
-        // }
+            // TODO: harder to test because this requires loops to
+            // trigger each other
+            // 'test_loop_record_with_targeted': () => {
+            //         check_backend()
+            //         clear()
+            //         verify(false)
+            //     })
+            // }
 
-        function test_loop_select() {
-            run_case('test_loop_select', () => {
+            'test_loop_select': () => {
                 check_backend()
                 clear()
                 
@@ -280,11 +263,9 @@ shoop_format = require('shoop_format')
                 verify_eq_lua('shoop_control.loop_get_which_selected()', '{}')
                 do_execute('shoop_control.loop_select({{0,0}, {0,1}}, false)')
                 verify_eq_lua('shoop_control.loop_get_which_selected()', '{{0,0}, {0,1}}')
-            })
-        }
+            },
 
-        function test_loop_target() {
-            run_case('test_loop_target', () => {
+            'test_loop_target': () => {
                 check_backend()
                 clear()
                 
@@ -296,11 +277,9 @@ shoop_format = require('shoop_format')
                 verify_eq_lua('shoop_control.loop_get_which_targeted()', 'nil')
                 do_execute('shoop_control.loop_target(nil)')
                 verify_eq_lua('shoop_control.loop_get_which_targeted()', 'nil')
-            })
-        }
+            },
 
-        function test_loop_clear() {
-            run_case('test_loop_clear', () => {
+            'test_loop_clear': () => {
                 check_backend()
                 clear()
 
@@ -333,20 +312,16 @@ shoop_format = require('shoop_format')
                 verify_loop_cleared(loop_at(0,1))
                 verify_loop_cleared(loop_at(1,0))
                 verify_loop_cleared(loop_at(1,1))
-            })
-        }
+            },
 
-        function test_loop_get_all() {
-            run_case('test_loop_get_all', () => {
+            'test_loop_get_all': () => {
                 check_backend()
                 clear()
                 
                 verify_eq_lua('shoop_control.loop_get_all()', '{{0,0}, {0,1}, {1,0}, {1,1}}')
-            })
-        }
+            },
 
-        function test_loop_get_by_mode() {
-            run_case('test_loop_get_by_mode', () => {
+            'test_loop_get_by_mode': () => {
                 check_backend()
                 clear()
                 
@@ -355,21 +330,17 @@ shoop_format = require('shoop_format')
                 testcase.wait_updated(session.backend)
                 verify_eq_lua('shoop_control.loop_get_by_mode(shoop_control.constants.LoopMode_Stopped)', '{{0,1},{1,0},{1,1}}')
                 verify_eq_lua('shoop_control.loop_get_by_mode(shoop_control.constants.LoopMode_Recording)', '{{0,0}}')
-            })
-        }
+            },
 
-        function test_loop_get_by_track() {
-            run_case('test_loop_get_by_track', () => {
+            'test_loop_get_by_track': () => {
                 check_backend()
                 clear()
                 
                 verify_eq_lua('shoop_control.loop_get_by_track(0)', '{{0,0}, {0,1}}')
                 verify_eq_lua('shoop_control.loop_get_by_track(1)', '{{1,0}, {1,1}}')
-            })
-        }
+            },
 
-        function test_loop_get_length() {
-            run_case('test_loop_get_length', () => {
+            'test_loop_get_length': () => {
                 check_backend()
                 clear()
                 
@@ -379,11 +350,9 @@ shoop_format = require('shoop_format')
                 testcase.wait_updated(session.backend)
 
                 verify_eq_lua('shoop_control.loop_get_length({1,1})', '{100}')
-            })
-        }
+            },
 
-        function test_track_set_get_volume() {
-            run_case('test_track_set_get_volume', () => {
+            'test_track_set_get_volume': () => {
                 check_backend()
                 clear()
                 
@@ -393,11 +362,9 @@ shoop_format = require('shoop_format')
                 do_execute('shoop_control.track_set_volume(0, 0.5)')
                 verify_eq_lua('shoop_control.track_get_volume(0)', '{0.5}')
                 verify_eq_lua('shoop_control.track_get_volume({1,0})', '{1.0, 0.5}')
-            })
-        }
+            },
 
-        function test_track_set_get_volume_fader() {
-            run_case('test_track_set_get_volume_fader', () => {
+            'test_track_set_get_volume_fader': () => {
                 check_backend()
                 clear()
                 
@@ -409,11 +376,9 @@ shoop_format = require('shoop_format')
                 verify_eq_lua('shoop_control.track_get_volume_fader(0)', '{1.0}')
                 do_execute('shoop_control.track_set_volume_fader(0, -1.0)')
                 verify_eq_lua('shoop_control.track_get_volume_fader(0)', '{0.0}')
-            })
-        }
+            },
 
-        function test_track_set_get_input_volume() {
-            run_case('test_track_set_get_input_volume', () => {
+            'test_track_set_get_input_volume': () => {
                 check_backend()
                 clear()
                 
@@ -423,11 +388,9 @@ shoop_format = require('shoop_format')
                 do_execute('shoop_control.track_set_input_volume(0, 0.5)')
                 verify_eq_lua('shoop_control.track_get_input_volume(0)', '{0.5}')
                 verify_eq_lua('shoop_control.track_get_input_volume({1,0})', '{1.0, 0.5}')
-            })
-        }
+            },
 
-        function test_track_set_get_input_volume_fader() {
-            run_case('test_track_set_get_input_volume_fader', () => {
+            'test_track_set_get_input_volume_fader': () => {
                 check_backend()
                 clear()
                 
@@ -439,11 +402,9 @@ shoop_format = require('shoop_format')
                 verify_eq_lua('shoop_control.track_get_input_volume_fader(0)', '{1.0}')
                 do_execute('shoop_control.track_set_input_volume_fader(0, -1.0)')
                 verify_eq_lua('shoop_control.track_get_input_volume_fader(0)', '{0.0}')
-            })
-        }
+            },
 
-        function test_track_set_get_muted() {
-            run_case('test_track_set_get_muted', () => {
+            'test_track_set_get_muted': () => {
                 check_backend()
                 clear()
                 
@@ -454,11 +415,9 @@ shoop_format = require('shoop_format')
                 do_execute('shoop_control.track_set_muted(0, false)')
                 verify_eq_lua('shoop_control.track_get_muted(0)', '{false}')
                 verify_eq_lua('shoop_control.track_get_muted({1,0})', '{true, false}')
-            })
-        }
+            },
 
-        function test_track_set_get_input_muted() {
-            run_case('test_track_set_get_input_muted', () => {
+            'test_track_set_get_input_muted': () => {
                 check_backend()
                 clear()
                 
@@ -469,7 +428,7 @@ shoop_format = require('shoop_format')
                 do_execute('shoop_control.track_set_input_muted(0, false)')
                 verify_eq_lua('shoop_control.track_get_input_muted(0)', '{false}')
                 verify_eq_lua('shoop_control.track_get_input_muted({1,0})', '{true, false}')
-            })
-        }
+            },
+        })
     }
 }

@@ -11,29 +11,53 @@ qtest = QTest()
 class TestRunner(QObject):
     def __init__(self, parent=None):
         super(TestRunner, self).__init__(parent)
-        self.registered_testcases = []
+        self.registered_testcases = set()
         self.logger = Logger('Frontend.TestRunner')
         self.running = None
-        self.ran = []
+        self.ran = set()
+        self._results = dict()
+        
+    def is_done(self):
+        return len(self.registered_testcases) > 0 and len(self.ran) == len(self.registered_testcases)
+    
+    # done
+    doneChanged = Signal()
+    @Property(bool, notify=doneChanged)
+    def done(self):
+        return self.is_done()
+    
+    # results
+    @Property('QVariant')
+    def results(self):
+        return self._results
         
     @Slot(TestCase)
     def register_testcase(self, testcase):
         self.logger.info('Registering testcase {}'.format(testcase))
-        self.registered_testcases.append(testcase)
-        self.update()
-        
-    @Slot()
-    def update(self):
-        if self.running == None and len(self.registered_testcases) > 0:
-            self.run(self.registered_testcases.pop(0))
+        self.registered_testcases.add(testcase)
     
+    @Slot(TestCase)
+    def testcase_ready_to_start(self, testcase):
+        self.logger.info('Testcase {} ready to start'.format(testcase))
+        self.run(testcase)
+    
+    @Slot(TestCase, str, bool, bool)
+    def testcase_ran_fn(self, testcase, fn_name, status):
+        name = testcase.name
+        while name in self._results:
+            name = '_' + name # TODO testcase filename
+        
+        if not name in self._results:
+            self._results[name] = dict()
+        self._results[testcase.name][fn_name] = status
+
     @Slot(TestCase)
     def run(self, testcase):
         self.logger.info('---- testcase {} ----'.format(testcase.name))
         self.running = testcase
         self.running.run()
         self.running = None
-        self.ran.append(testcase)
+        self.ran.add(testcase)
     
     @Slot(int)
     def wait(self, ms):
