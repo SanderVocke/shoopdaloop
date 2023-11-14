@@ -9,6 +9,11 @@ inputs:
 runs:
   using: "composite"
   steps:
+  - name: Delvewheel
+    shell: bash
+    run: |
+      python -m pip install delvewheel
+      delvewheel show ${{ inputs.wheel }}
   - name: Passthrough
     id: passthrough
     shell: bash
