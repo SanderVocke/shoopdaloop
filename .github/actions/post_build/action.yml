@@ -1,0 +1,21 @@
+name: prepare_build
+description: Prepare for building Shoopdaloop wheels
+
+
+inputs:
+  variant:
+    required: true
+    type: string
+
+runs:
+  using: "composite"
+  steps:
+  - name: Post-build manylinux
+    if: ${{ inputs.variant == 'manylinux_2_28' }}
+    uses: ./.github/actions/post_build_manylinux_2_28
+  - name: Post-build MacOS
+    if: ${{ inputs.variant == 'macos' }}
+    uses: ./.github/actions/post_build_build_macos
+  - name: Post-build Windows
+    if: ${{ inputs.variant == 'windows' }}
+    uses: ./.github/actions/post_build_build_windows

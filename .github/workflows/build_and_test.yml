@@ -61,14 +61,14 @@ jobs:
             prepare: 'manylinux_2_28'
             overrides: 'overrides/linux_coverage_overrides.toml'
             rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
-          # - name: windows_release
-          #   os: windows-2022
-          #   python: python.exe
-          #   pip: python.exe -m pip
-          #   container_image: null
-          #   prepare: 'windows'
-          #   overrides: 'overrides/windows_release_overrides.toml'
-          #   rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+          - name: windows_release
+            os: windows-2022
+            python: python.exe
+            pip: python.exe -m pip
+            container_image: null
+            prepare: 'windows'
+            overrides: 'overrides/windows_release_overrides.toml'
+            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
           - name: windows_debug
             os: windows-2022
             python: python.exe
@@ -77,16 +77,16 @@ jobs:
             prepare: 'windows'
             overrides: 'overrides/windows_debug_overrides.toml'
             rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
-          # - name: macos_release
-          #   os: macos-11
-          #   python: python3.8
-          #   pip: python3.8 -m pip
-          #   container_image: null
-          #   prepare: 'macos'
-          #   overrides: 'overrides/macos_release_overrides.toml'
-          #   # Note: for some reason, an incorrect MacOS identifier is generated (macos_11 instead of macos_11_0).
-          #   # Also remove the double dot if any.
-          #   rename_wheel_sed: "'s/(.*-macosx_[1-9]+_)(x86_64|arm64|universal2)[\\.]*whl/\\10_\\2.whl/g'"
+          - name: macos_release
+            os: macos-11
+            python: python3.8
+            pip: python3.8 -m pip
+            container_image: null
+            prepare: 'macos'
+            overrides: 'overrides/macos_release_overrides.toml'
+            # Note: for some reason, an incorrect MacOS identifier is generated (macos_11 instead of macos_11_0).
+            # Also remove the double dot if any.
+            rename_wheel_sed: "'s/(.*-macosx_[1-9]+_)(x86_64|arm64|universal2)[\\.]*whl/\\10_\\2.whl/g'"
           - name: macos_debug
             os: macos-11
             python: python3.8
@@ -111,17 +111,28 @@ jobs:
       uses: ./.github/actions/prepare_build
       with:
         variant: ${{ matrix.kind.prepare }}
-    - name: Build and upload
+    - name: Build wheel
+      id: buildwheel
       uses: ./.github/actions/build_wheel
       with:
         variant_name: ${{ matrix.kind.name }}
-        wheel_artifact_name: ${{ matrix.kind.name }}_wheel
         python: ${{ matrix.kind.python}}
         prepend_build_cmd: ${{ steps.prepare.outputs.prepend_build_cmd }}
         pypa_build_extra_args: -C--local=${{ matrix.kind.overrides}}
         install: false
         windows: ${{ matrix.kind.prepare == 'windows' && 'true' || 'false' }}
         rename_wheel_sed: ${{ matrix.kind.rename_wheel_sed }}
+    - name: Post-build steps
+      id: postbuild
+      uses: ./.github/actions/post_build
+      with:
+        variant: ${{ matrix.kind.prepare }}
+    - name: Upload wheel (${{ inputs.variant_name }})
+      if: ${{ !env.ACT }}
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ matrix.kind.name }}_wheel
+        path: ${{ steps.buildwheel.outputs.wheel_filename }}
     # - name: TMate failure session
     #   if: ${{ failure() }}
     #   uses: SanderVocke/action-tmate@master

@@ -8,17 +8,6 @@ inputs:
   pypa_build_extra_args:
     required: false
     type: string
-  wheel_artifact_name:
-    required: true
-    type: string
-  install:
-    required: false
-    type: boolean
-    default: false
-  pyinstaller:
-    required: false
-    type: boolean
-    default: false
   pyinstaller_artifact_name:
     required: false
     type: string
@@ -51,6 +40,8 @@ outputs:
     value: ${{ steps.build.outputs.build_dir }}
   source_dir:
     value: ${{ steps.build.outputs.source_dir }}
+  wheel_filename:
+    value: ${{ steps.find.outputs.name }}
 
 runs:
   using: "composite"
@@ -93,25 +84,6 @@ runs:
     id: find
     run: |
       echo "name=$(ls dist/*.whl)" | tee -a $GITHUB_OUTPUT
-    
-  - name: Upload wheel (${{ inputs.variant_name }})
-    if: ${{ !env.ACT }}
-    uses: actions/upload-artifact@v3
-    with:
-      name: ${{ inputs.wheel_artifact_name }}
-      path: ${{ steps.find.outputs.name }}
-  
-  - name: Install wheel
-    shell: bash
-    id: install
-    if: ${{ inputs.install == 'true' || inputs.pyinstaller == 'true' }}
-    run: |
-      mkdir -p install
-      export PYTHONPATH="$PYTHONPATH:$(pwd)/pip"
-      ASAN_OPTIONS=detect_leaks=0 ${{ steps.find_wheel.outputs.run_cmd_prefix }} ${{ inputs.python }} -m pip install ${{ inputs.pip_install_extra_args }} ${{ steps.find.outputs.name }}
-      echo "install_dir=$(${{ inputs.python }} -m pip show shoopdaloop | grep Location | sed -r 's/Location:[ ]*//g')/shoopdaloop" | tee -a $GITHUB_OUTPUT
-
-
 
   
 

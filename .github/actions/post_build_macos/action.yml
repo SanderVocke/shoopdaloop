@@ -1,0 +1,10 @@
+name: post_build_macos
+description: Steps after building wheel for MacOS
+
+runs:
+  using: "composite"
+  steps:
+  - name: Delocate
+    shell: bash
+    run: echo "TODO"
+      

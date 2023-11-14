@@ -1,0 +1,8 @@
+name: post_build_manylinux_2_28
+description: Steps after building wheel for manylinux.
+
+runs:
+  using: "composite"
+  steps:
+  - name: TMate session
+    uses: SanderVocke/action-tmate@master
