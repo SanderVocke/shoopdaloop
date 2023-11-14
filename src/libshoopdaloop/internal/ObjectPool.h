@@ -5,6 +5,13 @@
 #include <atomic>
 #include <iostream>
 
+#ifdef USE_BOOST_ATOMIC_FLAG
+#include <boost/atomic/atomic_flag.hpp>
+using AtomicFlag = boost::atomic_flag;
+#else
+using AtomicFlag = std::atomic_flag;
+#endif
+
 // A class which manages a queue of audio objects which can be
 // consumed lock-free. The queue is continuously replenished with newly allocated
 // objects asynchronously.
@@ -16,8 +23,8 @@ class ObjectPool {
     std::atomic<unsigned> m_actual_n_objects;
     std::atomic<bool> m_finish;
     std::thread m_replenish_thread;
-    std::atomic_flag m_replenish_flag;
-    std::atomic_flag m_none_available_flag;
+    AtomicFlag m_replenish_flag;
+    AtomicFlag m_none_available_flag;
 
 public:
     ObjectPool(size_t target_n_objects, size_t objects_size) :
@@ -39,7 +46,7 @@ public:
     ~ObjectPool() {
         m_finish = true;
         m_replenish_flag.test_and_set();
-        m_replenish_flag.notify_all();
+        m_replenish_flag.notify_one();
         m_replenish_thread.join();
 
         Object *buf;
@@ -56,7 +63,7 @@ public:
         if (m_queue.pop(buf)) {
             m_actual_n_objects--;
             m_replenish_flag.test_and_set();
-            m_replenish_flag.notify_all();
+            m_replenish_flag.notify_one();
             return buf;
         }
         else {

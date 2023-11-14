@@ -1,6 +1,8 @@
 #pragma once
 #include "MidiPortInterface.h"
 #include "LoggingEnabled.h"
+#include <vector>
+#include <functional>
 
 // We need a variable-sized struct that also supports interface inheritance.
 // This cannot really be done in C++, so instead we just make a fixed-size
@@ -14,7 +16,7 @@ struct MidiStorageElem : public MidiSortableMessageInterface {
     TimeType proc_time;    // time w.r.t. some reference point (position in this process iteration)
     SizeType size;
 
-    static size_t total_size_of(size_t size);
+    static uint32_t total_size_of(uint32_t size);
 
     uint8_t* data() const;
 
@@ -32,7 +34,7 @@ class MidiStorageCursor;
 
 template<typename TimeType, typename SizeType>
 class MidiStorageBase : public std::enable_shared_from_this<MidiStorageBase<TimeType, SizeType>>,
-                        private ModuleLoggingEnabled {
+                        private ModuleLoggingEnabled<"Backend.MidiChannel.Storage"> {
 public:
     using Elem = MidiStorageElem<TimeType, SizeType>;
     Elem dummy_elem; // Prevents incomplete template type in debug build
@@ -40,29 +42,28 @@ public:
 
 protected:
     std::vector<uint8_t> m_data;
-    size_t m_tail;
-    size_t m_head;
-    size_t m_head_start;
-    size_t m_n_events;
-    static constexpr size_t n_starting_cursors = 10;
+    uint32_t m_tail;
+    uint32_t m_head;
+    uint32_t m_head_start;
+    uint32_t m_n_events;
+    static constexpr uint32_t n_starting_cursors = 10;
 
-    bool valid_elem_at(size_t offset) const;
-    std::optional<size_t> maybe_next_elem_offset(Elem *e) const;
-    Elem *unsafe_at(size_t offset) const;
-    size_t bytes_size() const;
-    void store_unsafe(size_t offset, TimeType t, SizeType s, const uint8_t* d);
-    std::string log_module_name() const override;
+    bool valid_elem_at(uint32_t offset) const;
+    std::optional<uint32_t> maybe_next_elem_offset(Elem *e) const;
+    Elem *unsafe_at(uint32_t offset) const;
+    uint32_t bytes_size() const;
+    void store_unsafe(uint32_t offset, TimeType t, SizeType s, const uint8_t* d);
 
 public:
-    MidiStorageBase(size_t data_size);
+    MidiStorageBase(uint32_t data_size);
 
-    size_t bytes_capacity() const;
+    uint32_t bytes_capacity() const;
 
     void clear();
 
-    size_t bytes_occupied() const;
-    size_t bytes_free() const;
-    size_t n_events() const;
+    uint32_t bytes_occupied() const;
+    uint32_t bytes_free() const;
+    uint32_t n_events() const;
 
     bool append(TimeType time, SizeType size,  const uint8_t* data);
     bool prepend(TimeType time, SizeType size, const uint8_t* data);
@@ -77,8 +78,8 @@ public:
     Elem dummy_elem; // Prevents incomplete template type in debug build
 
 private:
-    std::optional<size_t> m_offset;
-    std::optional<size_t> m_prev_offset;
+    std::optional<uint32_t> m_offset;
+    std::optional<uint32_t> m_prev_offset;
     std::shared_ptr<const Storage> m_storage;
 
 public:
@@ -86,21 +87,21 @@ public:
 
     bool valid() const;
 
-    std::optional<size_t> offset() const;
-    std::optional<size_t> prev_offset() const;
+    std::optional<uint32_t> offset() const;
+    std::optional<uint32_t> prev_offset() const;
 
     void invalidate();
     bool is_at_start() const;
-    void overwrite(size_t offset, size_t prev_offset);
+    void overwrite(uint32_t offset, uint32_t prev_offset);
 
     void reset();
 
-    Elem *get(size_t raw_offset) const;
+    Elem *get(uint32_t raw_offset) const;
     Elem *get() const;
     Elem *get_prev() const;
     void next();
 
-    size_t find_time_forward(size_t time, std::function<void(Elem *)> maybe_skip_msg_callback = nullptr);
+    uint32_t find_time_forward(uint32_t time, std::function<void(Elem *)> maybe_skip_msg_callback = nullptr);
 };
 
 template<typename TimeType, typename SizeType>
@@ -112,10 +113,10 @@ public:
 
 private:
     std::vector<std::weak_ptr<Cursor>> m_cursors;
-    static constexpr size_t n_starting_cursors = 10;
+    static constexpr uint32_t n_starting_cursors = 10;
 
 public:
-    MidiStorage(size_t data_size);
+    MidiStorage(uint32_t data_size);
 
     SharedCursor create_cursor();
 
@@ -124,7 +125,6 @@ public:
     void for_each_msg(std::function<void(TimeType t, SizeType s, uint8_t* data)> cb);
 };
 
-#ifndef IMPLEMENT_MIDISTORAGE_H
 extern template class MidiStorageElem<uint32_t, uint16_t>;
 extern template class MidiStorageElem<uint32_t, uint32_t>;
 extern template class MidiStorageElem<uint16_t, uint16_t>;
@@ -141,4 +141,3 @@ extern template class MidiStorage<uint32_t, uint16_t>;
 extern template class MidiStorage<uint32_t, uint32_t>;
 extern template class MidiStorage<uint16_t, uint16_t>;
 extern template class MidiStorage<uint16_t, uint32_t>;
-#endif

@@ -20,6 +20,7 @@
 #include <vector>
 #include <boost/lockfree/spsc_queue.hpp>
 #include <memory>
+#include <stdint.h>
 
 class DummyPort : public virtual PortInterface {
 protected:
@@ -46,13 +47,12 @@ public:
 
 class DummyAudioPort : public virtual AudioPortInterface<audio_sample_t>,
                        public DummyPort,
-                       private ModuleLoggingEnabled {
-    std::string log_module_name() const override;
+                       private ModuleLoggingEnabled<"Backend.DummyAudioPort"> {
 
     std::string m_name;
     PortDirection m_direction;
     boost::lockfree::spsc_queue<std::vector<audio_sample_t>> m_queued_data;
-    std::atomic<size_t> m_n_requested_samples;
+    std::atomic<uint32_t> m_n_requested_samples;
     std::vector<audio_sample_t> m_retained_samples;
     std::vector<audio_sample_t> m_buffer_data;
 
@@ -61,45 +61,44 @@ public:
         std::string name,
         PortDirection direction);
     
-    audio_sample_t *PROC_get_buffer(size_t n_frames, bool do_zero=false) override;
+    audio_sample_t *PROC_get_buffer(uint32_t n_frames, bool do_zero=false) override;
     ~DummyAudioPort() override;
 
     // For input ports, queue up data to be read from the port.
-    void queue_data(size_t n_frames, audio_sample_t const* data);
+    void queue_data(uint32_t n_frames, audio_sample_t const* data);
     bool get_queue_empty(); 
 
     // For output ports, ensure the postprocess function is called
     // and samples can be requested/dequeued.
-    void PROC_post_process(audio_sample_t* buf, size_t n_frames);
-    void request_data(size_t n_frames);
-    std::vector<audio_sample_t> dequeue_data(size_t n);
+    void PROC_post_process(audio_sample_t* buf, uint32_t n_frames);
+    void request_data(uint32_t n_frames);
+    std::vector<audio_sample_t> dequeue_data(uint32_t n);
 };
 
 class DummyMidiPort : public virtual MidiPortInterface,
                       public DummyPort,
                       public MidiReadableBufferInterface,
                       public MidiWriteableBufferInterface,
-                      private ModuleLoggingEnabled {
+                      private ModuleLoggingEnabled<"Backend.DummyMidiPort"> {
 public:
     using StoredMessage = MidiMessage<uint32_t, uint32_t>;
     
 private:
-    std::string log_module_name() const override;
 
     // Queued messages as external input to the port
     std::vector<StoredMessage> m_queued_msgs;
-    std::atomic<size_t> current_buf_frames;
+    std::atomic<uint32_t> current_buf_frames;
     std::vector<StoredMessage> m_buffer_data;
 
     // Amount of frames requested for reading externally out of the port
-    std::atomic<size_t> n_requested_frames;
-    std::atomic<size_t> n_original_requested_frames;
-    std::atomic<size_t> m_update_queue_by_frames_pending = 0;
+    std::atomic<uint32_t> n_requested_frames;
+    std::atomic<uint32_t> n_original_requested_frames;
+    std::atomic<uint32_t> m_update_queue_by_frames_pending = 0;
     std::vector<StoredMessage> m_written_requested_msgs;
 
 public:
-    size_t PROC_get_n_events() const override;
-    virtual MidiSortableMessageInterface &PROC_get_event_reference(size_t idx) override;
+    uint32_t PROC_get_n_events() const override;
+    virtual MidiSortableMessageInterface &PROC_get_event_reference(uint32_t idx) override;
     void PROC_write_event_value(uint32_t size,
                                 uint32_t time,
                                 const uint8_t* data) override;
@@ -112,18 +111,18 @@ public:
         PortDirection direction
     );
 
-    MidiReadableBufferInterface &PROC_get_read_buffer (size_t n_frames) override;
-    MidiWriteableBufferInterface &PROC_get_write_buffer (size_t n_frames) override;
+    MidiReadableBufferInterface &PROC_get_read_buffer (uint32_t n_frames) override;
+    MidiWriteableBufferInterface &PROC_get_write_buffer (uint32_t n_frames) override;
 
     void queue_msg(uint32_t size, uint32_t time, const uint8_t* data);
     bool get_queue_empty();
     
     void clear_queues();
 
-    void PROC_post_process(size_t n_frames);
+    void PROC_post_process(uint32_t n_frames);
     // Request a certain number of frames to be stored.
     // Not allowed if previous request was not yet completed.
-    void request_data(size_t n_frames);
+    void request_data(uint32_t n_frames);
     // Dequeue messages written during the requested period.
     // Timestamps are relative to when the request was made.
     std::vector<StoredMessage> get_written_requested_msgs();
@@ -137,17 +136,16 @@ enum class DummyAudioSystemMode {
 };
 
 template<typename Time, typename Size>
-class DummyAudioSystem : public AudioSystemInterface<Time, Size>,
-                         private ModuleLoggingEnabled,
+class DummyAudioSystem : public AudioSystemInterface,
+                         private ModuleLoggingEnabled<"Backend.DummyAudioSystem">,
                          public WithCommandQueue<20, 1000, 1000> {
-    std::string log_module_name() const override;
 
-    std::function<void(size_t)> m_process_cb;
-    const size_t mc_sample_rate;
-    const size_t mc_buffer_size;
+    std::function<void(uint32_t)> m_process_cb;
+    const uint32_t mc_sample_rate;
+    const uint32_t mc_buffer_size;
     std::atomic<bool> m_finish;
     std::atomic<DummyAudioSystemMode> m_mode;
-    std::atomic<size_t> m_controlled_mode_samples_to_process;
+    std::atomic<uint32_t> m_controlled_mode_samples_to_process;
     std::atomic<bool> m_paused;
     std::thread m_proc_thread;
     std::set<std::shared_ptr<DummyAudioPort>> m_audio_ports;
@@ -161,10 +159,10 @@ public:
 
     DummyAudioSystem(
         std::string client_name,
-        std::function<void(size_t)> process_cb,
+        std::function<void(uint32_t)> process_cb,
         DummyAudioSystemMode mode = DummyAudioSystemMode::Automatic,
-        size_t sample_rate = 48000,
-        size_t buffer_size = 256
+        uint32_t sample_rate = 48000,
+        uint32_t buffer_size = 256
     );
 
     void start() override;
@@ -181,8 +179,8 @@ public:
         PortDirection direction
     ) override;
 
-    size_t get_sample_rate() const override;
-    size_t get_buffer_size() const override;
+    uint32_t get_sample_rate() const override;
+    uint32_t get_buffer_size() const override;
     void* maybe_client_handle() const override;
     const char* client_name() const override;
     void close() override;
@@ -190,7 +188,7 @@ public:
     void pause();
     void resume();
 
-    size_t get_xruns() const override;
+    uint32_t get_xruns() const override;
     void reset_xruns() override;
 
     // Usually the dummy audio system will automatically process samples
@@ -206,23 +204,22 @@ public:
     // processing. If the amount is larger than the default buffer size,
     // it is processed in multiple iterations. If it is smaller, the process
     // thread will process exactly this amount.
-    void controlled_mode_request_samples(size_t samples);
-    size_t get_controlled_mode_samples_to_process() const;
+    void controlled_mode_request_samples(uint32_t samples);
+    uint32_t get_controlled_mode_samples_to_process() const;
 
     // Run until the requested amount of samples has been completed.
-    void controlled_mode_run_request(size_t timeout_ms = 100);
+    void controlled_mode_run_request(uint32_t timeout_ms = 100);
 
     // Post process handler gets passed the amount of samples to process
     // and the amount of samples that were requested in controlled mode, if any
-    void install_post_process_handler(std::function<void(size_t, size_t)> cb);
+    void install_post_process_handler(std::function<void(uint32_t, uint32_t)> cb);
 
     void wait_process();
 };
 
-#ifndef IMPLEMENT_DUMMYAUDIOSYSTEM_H
 extern template class DummyAudioSystem<uint32_t, uint16_t>;
 extern template class DummyAudioSystem<uint32_t, uint32_t>;
 extern template class DummyAudioSystem<uint16_t, uint16_t>;
 extern template class DummyAudioSystem<uint16_t, uint32_t>;
 extern template class DummyAudioSystem<uint32_t, uint64_t>;
-#endif
+extern template class DummyAudioSystem<uint64_t, uint64_t>;

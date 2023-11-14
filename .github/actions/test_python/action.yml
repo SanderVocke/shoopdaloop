@@ -1,0 +1,41 @@
+name: Python Tests
+description: Unit tests for Python extensions
+
+inputs:
+  variant_name:
+    required: true
+    type: string
+  run_cmd_prefix:
+    type: string
+    description: "Command-line prefix to use when running the test runner"
+  root_path:
+    type: string
+    required: true
+  pytest_command:
+    type: string
+    default: "python3 -m pytest"
+
+runs:
+  using: "composite"
+  steps:
+  - name: prepare
+    shell: bash
+    run: |
+      mkdir -p reports
+      echo "results_xml=reports/pytest_${{ inputs.variant_name }}_results.xml" | tee -a $GITHUB_ENV
+
+  - name: pytest (${{ inputs.variant_name }})
+    shell: bash
+    run: |
+      ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0 ${{ inputs.run_cmd_prefix }} ${{ inputs.pytest_command }} ${{ inputs.root_path }} --junit-xml=${{ env.results_xml }}
+      echo "Python test results file: $(ls -la ${{ env.results_xml }})"
+  
+  - name: Publish Python Test Report
+    if: ${{ !env.ACT && (success() || failure()) }}
+    uses: mikepenz/action-junit-report@v3
+    with:
+      report_paths: ${{ env.results_xml }}
+      detailed_summary: true
+      include_passed: true
+      check_name: 'python test (${{ inputs.variant_name }})'
+

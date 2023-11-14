@@ -3,15 +3,10 @@
 #include <vector>
 #include <atomic>
 #include "shoop_globals.h"
+#include "process_when.h"
 
-class ChannelInterface;
-class ConnectedLoop;
-class ConnectedPort;
-class Backend;
-template<typename SampleT> class AudioChannel;
-template<typename A, typename B> class MidiChannel;
-
-struct ConnectedChannel : public std::enable_shared_from_this<ConnectedChannel> {
+class ConnectedChannel : public std::enable_shared_from_this<ConnectedChannel> {
+public:
     std::shared_ptr<ChannelInterface> channel;
     std::weak_ptr<ConnectedLoop> loop;
     std::weak_ptr<ConnectedPort> mp_input_port_mapping;
@@ -33,8 +28,8 @@ struct ConnectedChannel : public std::enable_shared_from_this<ConnectedChannel> 
     void disconnect_output_ports(bool thread_safe=true);
     void disconnect_input_port(std::shared_ptr<ConnectedPort> port, bool thread_safe=true);
     void disconnect_input_ports(bool thread_safe=true);
-    void PROC_prepare_process_audio(size_t n_frames);
-    void PROC_prepare_process_midi(size_t n_frames);
+    void PROC_prepare_process_audio(uint32_t n_frames);
+    void PROC_prepare_process_midi(uint32_t n_frames);
     void PROC_finalize_process_audio();
     void PROC_finalize_process_midi();
     Backend &get_backend();

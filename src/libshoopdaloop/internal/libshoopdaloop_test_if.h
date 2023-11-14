@@ -9,6 +9,7 @@
 #include "ConnectedFXChain.h"
 #include "ConnectedDecoupledMidiPort.h"
 #include "ObjectPool.h"
+#include "types.h"
 
 class Backend;
 

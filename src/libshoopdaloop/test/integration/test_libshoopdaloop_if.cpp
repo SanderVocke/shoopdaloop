@@ -11,7 +11,7 @@ suite libshoopdaloop_if_tests = []() {
         shoopdaloop_backend_instance_t * c_backend = initialize (Dummy, "dummy", "");
         auto weak_backend = std::weak_ptr<Backend>(internal_backend(c_backend));
         expect(neq(weak_backend.lock(), nullptr));
-        terminate(c_backend);
+        terminate_backend(c_backend);
         expect(eq(weak_backend.lock(), nullptr));
     };
 
@@ -24,7 +24,7 @@ suite libshoopdaloop_if_tests = []() {
             destroy_loop(c_loop);
             expect(eq(weak_loop.lock(), nullptr));
         }
-        terminate(c_backend);
+        terminate_backend(c_backend);
     };
 
     "lif_3_create_destroy_backend_loop_destroyed"_test = []() {
@@ -33,7 +33,7 @@ suite libshoopdaloop_if_tests = []() {
             auto c_loop = create_loop(c_backend);
             auto weak_loop = std::weak_ptr<ConnectedLoop>(internal_loop(c_loop));
             expect(neq(weak_loop.lock(), nullptr));
-            terminate(c_backend);
+            terminate_backend(c_backend);
             expect(eq(weak_loop.lock(), nullptr));
         }
     };
@@ -54,7 +54,7 @@ suite libshoopdaloop_if_tests = []() {
             destroy_loop(c_loop);
             expect(eq(weak_loop.lock(), nullptr));
             expect(eq(weak_chan.lock(), nullptr));
-            terminate(c_backend);
+            terminate_backend(c_backend);
         }
     };
 };

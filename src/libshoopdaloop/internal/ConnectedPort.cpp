@@ -2,7 +2,6 @@
 #include "AudioPortInterface.h"
 #include "MidiPortInterface.h"
 #include "InternalAudioPort.h"
-#include "InternalLV2MidiOutputPort.h"
 #include <memory>
 #include <stdexcept>
 #include <algorithm>
@@ -11,14 +10,13 @@
 #include "Backend.h"
 #include "DummyAudioSystem.h"
 #include "shoop_globals.h"
-#include <fmt/ranges.h>
+
+#ifdef SHOOP_HAVE_LV2
+#include "InternalLV2MidiOutputPort.h"
+#endif
 
 using namespace shoop_types;
 using namespace shoop_constants;
-
-std::string ConnectedPort::log_module_name() const {
-    return "Backend.ConnectedPort";
-}
 
 ConnectedPort::ConnectedPort (std::shared_ptr<PortInterface> const& port,
                               std::shared_ptr<Backend> const& backend,
@@ -35,10 +33,14 @@ ConnectedPort::ConnectedPort (std::shared_ptr<PortInterface> const& port,
     peak(0.0f),
     n_events_processed(0),
     ma_process_when(process_when) {
-    log_init();
 
+#ifdef SHOOP_HAVE_LV2
     bool is_internal = (dynamic_cast<InternalAudioPort<float>*>(port.get()) ||
                         dynamic_cast<InternalLV2MidiOutputPort*>(port.get()));
+#else
+    bool is_internal = (dynamic_cast<InternalAudioPort<float>*>(port.get()));
+#endif
+
     bool is_fx_in = is_internal && (port->direction() == PortDirection::Output);
     bool is_ext_in = !is_internal && (port->direction() == PortDirection::Input);
 
@@ -57,7 +59,7 @@ void ConnectedPort::PROC_reset_buffers() {
     maybe_midi_output_buffer = nullptr;
 }
 
-void ConnectedPort::PROC_ensure_buffer(size_t n_frames, bool do_zero) {
+void ConnectedPort::PROC_ensure_buffer(uint32_t n_frames, bool do_zero) {
     log_trace();
     auto maybe_midi = dynamic_cast<MidiPortInterface*>(port.get());
     auto maybe_audio = dynamic_cast<AudioPortInterface<shoop_types::audio_sample_t>*>(port.get());
@@ -68,7 +70,7 @@ void ConnectedPort::PROC_ensure_buffer(size_t n_frames, bool do_zero) {
             maybe_midi_input_buffer = &maybe_midi->PROC_get_read_buffer(n_frames);
             if (!muted) {
                 n_events_processed += maybe_midi_input_buffer->PROC_get_n_events();
-                for(size_t i=0; i<maybe_midi_input_buffer->PROC_get_n_events(); i++) {
+                for(uint32_t i=0; i<maybe_midi_input_buffer->PROC_get_n_events(); i++) {
                     auto &msg = maybe_midi_input_buffer->PROC_get_event_reference(i);
                     uint32_t size, time;
                     const uint8_t *data;
@@ -89,7 +91,7 @@ void ConnectedPort::PROC_ensure_buffer(size_t n_frames, bool do_zero) {
             if (muted) {
                 memset((void*)maybe_audio_buffer, 0, n_frames * sizeof(audio_sample_t));
             } else {
-                for(size_t i=0; i<n_frames; i++) {
+                for(uint32_t i=0; i<n_frames; i++) {
                     float vol = volume.load();
                     maybe_audio_buffer[i] *= vol;
                     max = std::max(max, std::abs(maybe_audio_buffer[i]));
@@ -126,7 +128,7 @@ bool ConnectedPort::PROC_check_buffer(bool raise_if_absent) {
     return (bool)result;
 }
 
-void ConnectedPort::PROC_passthrough(size_t n_frames) {
+void ConnectedPort::PROC_passthrough(uint32_t n_frames) {
     log_trace();
     if (port->direction() == PortDirection::Input) {
         for(auto & other : mp_passthrough_to) {
@@ -140,36 +142,34 @@ void ConnectedPort::PROC_passthrough(size_t n_frames) {
     }
 }
 
-void ConnectedPort::PROC_passthrough_audio(size_t n_frames, ConnectedPort &to) {
+void ConnectedPort::PROC_passthrough_audio(uint32_t n_frames, ConnectedPort &to) {
     log_trace();
     if (!muted && !passthrough_muted) {
-        for (size_t i=0; i<n_frames; i++) {
+        for (uint32_t i=0; i<n_frames; i++) {
             to.maybe_audio_buffer[i] += maybe_audio_buffer[i];
         }
     }
 }
 
-void ConnectedPort::PROC_passthrough_midi(size_t n_frames, ConnectedPort &to) {
+void ConnectedPort::PROC_passthrough_midi(uint32_t n_frames, ConnectedPort &to) {
     log_trace();
     if(!muted && !passthrough_muted) {
-        for(size_t i=0; i<maybe_midi_input_buffer->PROC_get_n_events(); i++) {
+        for(uint32_t i=0; i<maybe_midi_input_buffer->PROC_get_n_events(); i++) {
             auto &msg = maybe_midi_input_buffer->PROC_get_event_reference(i);
-            std::vector<uint8_t> pd{msg.get_data(), msg.get_data() + msg.get_size()};
             uint32_t t = msg.get_time();
             void* to_ptr = &to;
-            auto to_ptr_fmt = fmt::ptr(to_ptr);
-            log<logging::LogLevel::debug>("Passthrough midi message reference to {} @ {}: {}", to_ptr_fmt, t, pd);
+            log<debug>("Passthrough midi message reference to {} @ {}", to_ptr, t);
             to.maybe_midi_output_merging_buffer->PROC_write_event_reference(msg);
         }
     }
 }
 
-void ConnectedPort::PROC_finalize_process(size_t n_frames) {
+void ConnectedPort::PROC_finalize_process(uint32_t n_frames) {
     log_trace();
     if (auto a = dynamic_cast<AudioPortInterface<shoop_types::audio_sample_t>*>(port.get())) {
         if (a->direction() == PortDirection::Output) {
             float max = 0.0f;
-            for (size_t i=0; i<n_frames; i++) {
+            for (uint32_t i=0; i<n_frames; i++) {
                 float vol = volume.load();
                 maybe_audio_buffer[i] *= muted.load() ? 0.0f : vol;
                 max = std::max(std::abs(maybe_audio_buffer[i]), max);
@@ -179,15 +179,14 @@ void ConnectedPort::PROC_finalize_process(size_t n_frames) {
     } else if (auto m = dynamic_cast<MidiPortInterface*>(port.get())) {
         if (m->direction() == PortDirection::Output) {
             if (!muted) {
-                size_t n_events = maybe_midi_output_merging_buffer->PROC_get_n_events();
+                uint32_t n_events = maybe_midi_output_merging_buffer->PROC_get_n_events();
                 maybe_midi_output_merging_buffer->PROC_sort();
                 
-                for(size_t i=0; i<n_events; i++) {
+                for(uint32_t i=0; i<n_events; i++) {
                     uint32_t size, time;
                     const uint8_t* data;
                     maybe_midi_output_merging_buffer->PROC_get_event_reference(i).get(size, time, data);
-                    std::vector<uint8_t> pd{data, data + size};
-                    log<logging::LogLevel::trace>("Output midi message reference @ {}: {}", time, pd);
+                    log<trace>("Output midi message reference @ {}", time);
                     maybe_midi_output_buffer->PROC_write_event_value(size, time, data);
                     maybe_midi_state->process_msg(data);
                 }

@@ -31,7 +31,7 @@ set_package_properties(jack PROPERTIES
 find_package(PkgConfig)
 pkg_check_modules(PC_JACK QUIET jack)
 find_path(JACK_INCLUDE_DIRS NAMES jack/jack.h HINTS ${PC_JACK_INCLUDE_DIRS})
-find_library(JACK_LIBRARIES NAMES jack HINTS ${PC_JACK_LIBRARY_DIRS})
+find_library(JACK_LIBRARIES NAMES jack libjack libjack64 HINTS ${PC_JACK_LIBRARY_DIRS} PATH_SUFFIXES jack lib)
 
 set(JACK_DEFINITIONS ${PC_JACK_CFLAGS_OTHER})
 

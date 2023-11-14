@@ -131,15 +131,11 @@ TestCase {
     }
 
     function start_test_fn(name) {
-        logger.info(() => ("------------------------------------------------"))
-        logger.info(() => (`START ${name}`))
-        logger.info(() => ("------------------------------------------------"))
+        logger.info(() => (`===== TEST START ${name}`))
     }
 
     function end_test_fn(name) {
-        logger.info(() => ("------------------------------------------------"))
-        logger.info(() => (`END ${name}`))
-        logger.info(() => ("------------------------------------------------"))
+        logger.info(() => (`===== TEST END ${name}`))
     }
 
     function run_case(name, fn) {

@@ -20,7 +20,7 @@ dependencies = [
   "jsonschema",
   "numpy",
   "pyjacklib",
-  "pyside6-essentials~=6.5.3",
+  "pyside6-essentials~=6.6.0",
   "lupa",
   "appdirs"
 ]
@@ -68,8 +68,8 @@ exclude = ['codegen', 'dist', 'third_party']
 
 [build-system]
 requires = [
-  "py-build-cmake~=0.2.0a8", 
-  "ctypesgen",
+  "py-build-cmake@git+https://github.com/tttapa/py-build-cmake@2fba7c5404cc0cf2a68914b780ae52b404aafd32",
+  "ctypesgen@git+https://github.com/SanderVocke/ctypesgen@9b88a970cb85823de83423add2a4b21ea79b63d9",
   "meson",
   "pycparser",
   "toml"
@@ -84,11 +84,12 @@ minimum_version = "3.22"
 build_type = "Release"
 source_path = "src"
 build_args = ["-j4"]
+args = ["--log-level=verbose"]
 install_components = ["package_install"]
-options = { "STATIC_DEPENDENCIES" = "On" }
 build_path = "build"
 python_abi = "abi3"
 abi3_minimum_cpython_version = 38
+generator = "Ninja"
 
 [tool.py-build-cmake.editable]
 mode = "symlink"

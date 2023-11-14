@@ -2,8 +2,8 @@
 #include "MidiPortInterface.h"
 
 struct DummyReadMidiBuf : public MidiReadableBufferInterface {
-    size_t PROC_get_n_events() const override;
-    MidiSortableMessageInterface &PROC_get_event_reference(size_t idx) override;
+    uint32_t PROC_get_n_events() const override;
+    MidiSortableMessageInterface &PROC_get_event_reference(uint32_t idx) override;
 };
 
 

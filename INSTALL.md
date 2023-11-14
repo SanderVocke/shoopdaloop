@@ -20,7 +20,7 @@ The regular way to install ShoopDaLoop is to build a Python .whl package and ins
 Building the .whl:
 
 ```
-python3 -m build --no-isolation -wheel .
+python -m build --no-isolation -wheel .
 ```
 
 Note that ShoopDaLoop does not support generating a source distribution, hence the `--wheel` argument to build the .whl directly.

@@ -8,7 +8,9 @@ from PySide6.QtGui import QGuiApplication, QIcon
 from PySide6.QtCore import QTimer, QObject, Q_ARG, QMetaObject, Qt, QEvent, Slot, QtMsgType
 from PySide6.QtQml import QQmlDebuggingEnabler
 
-from ...third_party.pynsm.nsmclient import NSMClient, NSMNotRunningError
+have_nsm = os.name == 'posix'
+if have_nsm:
+    from ...third_party.pynsm.nsmclient import NSMClient, NSMNotRunningError
 
 from ..qml_helpers import *
 
@@ -19,8 +21,6 @@ from .KeyModifiers import KeyModifiers
 from .ApplicationMetadata import ApplicationMetadata
 
 from ..logging import *
-
-from ...custom_qt_msg_handler import *
 
 script_dir = os.path.dirname(__file__)
 
@@ -37,8 +37,6 @@ class Application(QGuiApplication):
         self.setOrganizationName('ShoopDaLoop')
 
         self.logger = Logger("Frontend.Qml.App")
-
-        install_custom_qt_msg_handler(0)
 
         self.nsm_client = None
         self.title = title
@@ -77,18 +75,19 @@ class Application(QGuiApplication):
             self.engine.load(main_qml)
         
         def start_nsm():
-            try:
-                self.nsm_client = NSMClient(
-                    prettyName = title,
-                    supportsSaveStatus = False,
-                    saveCallback = lambda path, session, client: self.save_session_handler(path, session, client),
-                    openOrNewCallback = lambda path, session, client: self.load_session_handler(path, session, client),
-                    exitProgramCallback = lambda path, session, client: self.nsm_exit_handler(),
-                    loggingLevel = 'info'
-                )
-                self.title = self.nsm_client.ourClientNameUnderNSM
-            except NSMNotRunningError as e:
-                pass
+            if have_nsm:
+                try:
+                    self.nsm_client = NSMClient(
+                        prettyName = title,
+                        supportsSaveStatus = False,
+                        saveCallback = lambda path, session, client: self.save_session_handler(path, session, client),
+                        openOrNewCallback = lambda path, session, client: self.load_session_handler(path, session, client),
+                        exitProgramCallback = lambda path, session, client: self.nsm_exit_handler(),
+                        loggingLevel = 'info'
+                    )
+                    self.title = self.nsm_client.ourClientNameUnderNSM
+                except NSMNotRunningError as e:
+                    pass
         
         self.engine.rootObjects()[0].sceneGraphInitialized.connect(start_nsm)
         self.installEventFilter(self)

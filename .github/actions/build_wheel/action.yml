@@ -8,20 +8,6 @@ inputs:
   pypa_build_extra_args:
     required: false
     type: string
-  whl_suffix:
-    required: false
-    type: string
-  wheel_artifact_name:
-    required: true
-    type: string
-  install:
-    required: false
-    type: boolean
-    default: false
-  pyinstaller:
-    required: false
-    type: boolean
-    default: false
   pyinstaller_artifact_name:
     required: false
     type: string
@@ -33,6 +19,13 @@ inputs:
     type: string
     default: python3
   prepend_build_cmd:
+    required: false
+    type: string
+  windows:
+    required: false
+    type: string
+    default: 'false'
+  rename_wheel_sed:
     required: false
     type: string
 
@@ -47,51 +40,50 @@ outputs:
     value: ${{ steps.build.outputs.build_dir }}
   source_dir:
     value: ${{ steps.build.outputs.source_dir }}
+  wheel_filename:
+    value: ${{ steps.find.outputs.name }}
 
 runs:
   using: "composite"
   steps:
   - name: Build wheel (${{ inputs.variant_name }})
+    if: ${{ inputs.windows != 'true' }}
     shell: bash
     id: build
     run: |
       ${{ inputs.prepend_build_cmd }} ${{ inputs.python }} -m build -w ${{ inputs.pypa_build_extra_args }}
+
+  - name: Build wheel (${{ inputs.variant_name }}) (Windows)
+    if: ${{ inputs.windows == 'true' }}
+    shell: cmd
+    id: build-windows
+    run: |
+      ${{ inputs.prepend_build_cmd }} ${{ inputs.python }} -m build -w ${{ inputs.pypa_build_extra_args }}
+
+  - name: Find wheel (${{ inputs.variant_name }})
+    shell: bash
+    id: find_wheel
+    run: |
       echo "run_cmd_prefix=$(find . -name run_cmd_prefix.txt -exec cat {} \;)" | tee -a $GITHUB_OUTPUT
       echo "source_dir=$(pwd)" | tee -a $GITHUB_OUTPUT
       echo "build_dir=$(realpath build/cp*/)" | tee -a $GITHUB_OUTPUT
   
   - name: Rename wheel
+    if: ${{ inputs.rename_wheel_sed }}
     shell: bash
     id: rename
-    run: | 
+    run: |
       cd dist
-      mkdir -p final
-      for f in *.whl; do mv -- "$f" "final/${f%.whl}.${{ inputs.whl_suffix }}.whl"; done
+      before=$(ls *.whl)
+      for f in *.whl; do mv $f $(echo $f | sed -r ${{ inputs.rename_wheel_sed }}) || true; done
+      after=$(ls *.whl)
+      echo "Renamed wheel from $before to $after"
   
   - name: Find wheel
     shell: bash
     id: find
     run: |
-      echo "name=$(ls dist/final/*.whl)" | tee -a $GITHUB_OUTPUT
-    
-  - name: Upload wheel (${{ inputs.variant_name }})
-    if: ${{ !env.ACT }}
-    uses: actions/upload-artifact@v3
-    with:
-      name: ${{ inputs.wheel_artifact_name }}
-      path: ${{ steps.find.outputs.name }}
-  
-  - name: Install wheel
-    shell: bash
-    id: install
-    if: ${{ inputs.install == 'true' || inputs.pyinstaller == 'true' }}
-    run: |
-      mkdir -p install
-      export PYTHONPATH="$PYTHONPATH:$(pwd)/pip"
-      ASAN_OPTIONS=detect_leaks=0 ${{ steps.build.outputs.run_cmd_prefix }} ${{ inputs.python }} -m pip install ${{ inputs.pip_install_extra_args }} ${{ steps.find.outputs.name }}
-      echo "install_dir=$(${{ inputs.python }} -m pip show shoopdaloop | grep Location | sed -r 's/Location:[ ]*//g')/shoopdaloop" | tee -a $GITHUB_OUTPUT
-
-
+      echo "name=$(ls dist/*.whl)" | tee -a $GITHUB_OUTPUT
 
   
 

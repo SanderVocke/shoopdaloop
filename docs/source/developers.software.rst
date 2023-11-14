@@ -55,14 +55,16 @@ The **LUA scripts** are meant for parts that may need to be added/modified by in
 Build And Packaging
 ^^^^^^^^^^^^^^^^^^^^
 
-The combination of different languages has resulted in a slightly complex build approach.
+The combination of different languages, OSes and the dual dependency on Qt and PySide has resulted in a complex build approach.
 As the project is packaged as a Python package, an approach based on **pyproject.toml** has been taken.
 For the C++ parts, **CMake** is used.
 For combining the two, a tool called **py-build-cmake** is used.
 The **CMake** part cannot be run trivially without the **py-build-cmake** integration because there is also some code generation taking place which requires both sides of the equation.
 A source package cannot be built - only a wheel directly. Please refer to the build instructions for details.
 
+For a build on the same system where ShoopDaLoop is to be used, the building is pretty much a "straightforward" py-build-cmake build.
 
+For the official release wheels though, the setup is more complicated because we need to be binary-compatible with the Qt libraries that ship with PySide. Documentation for this will be added in the future, when the still pending improvements to this build flow are finished.
 Debugging
 ^^^^^^^^^^
 

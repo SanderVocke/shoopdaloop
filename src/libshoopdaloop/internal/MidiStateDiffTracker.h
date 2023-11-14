@@ -1,6 +1,7 @@
 #pragma once
 #include <boost/container/flat_set.hpp>
 #include "MidiStateTracker.h"
+#include <functional>
 
 enum class StateDiffTrackerAction {
     ScanDiff,
@@ -22,7 +23,7 @@ class MidiStateDiffTracker : public MidiStateTracker::Subscriber, public std::en
     
     using DiffSet = boost::container::flat_set<DifferingState>;
 
-    static const size_t default_diffs_size = 256;
+    static const uint32_t default_diffs_size = 256;
 
     SharedTracker m_a, m_b;
     DiffSet m_diffs;
@@ -48,11 +49,11 @@ public:
     void check_pitch_wheel(uint8_t channel);
     void rescan_diff();
     void clear_diff();
-    void resolve_to(MidiStateTracker *to, std::function<void(size_t size, uint8_t *data)> put_message_cb,
+    void resolve_to(MidiStateTracker *to, std::function<void(uint32_t size, uint8_t *data)> put_message_cb,
         bool notes=true, bool controls=true, bool programs=true);
 
-    void resolve_to_a(std::function<void(size_t size, uint8_t *data)> put_message_cb, bool notes=true, bool controls=true, bool programs=true);
-    void resolve_to_b(std::function<void(size_t size, uint8_t *data)> put_message_cb, bool notes=true, bool controls=true, bool programs=true);
+    void resolve_to_a(std::function<void(uint32_t size, uint8_t *data)> put_message_cb, bool notes=true, bool controls=true, bool programs=true);
+    void resolve_to_b(std::function<void(uint32_t size, uint8_t *data)> put_message_cb, bool notes=true, bool controls=true, bool programs=true);
 
     void set_diff(DiffSet const& diff);
 

@@ -1,10 +1,15 @@
-from PySide6.QtQml import qmlRegisterType, QQmlComponent
+from PySide6.QtQml import qmlRegisterType, qmlTypeId, QQmlComponent
 from PySide6.QtCore import QUrl
+from PySide6.QtQuick import QQuickItem
 
 import weakref
 
 import sys
 import os
+import glob
+import re
+import importlib
+
 script_dir = os.path.dirname(__file__)
 sys.path.append(script_dir + '/..')
 
@@ -32,6 +37,9 @@ from .q_objects.ControlInterface import ControlInterface
 from .q_objects.MidiControlPort import MidiControlPort
 from .q_objects.SettingsIO import SettingsIO
 from .q_objects.TestScreenGrabber import TestScreenGrabber
+from .q_objects.RenderAudioWaveform import RenderAudioWaveform
+
+from .logging import Logger as BareLogger
 
 import time
 
@@ -69,18 +77,19 @@ def register_shoopdaloop_qml_classes():
     register_qml_class(MidiControlPort, 'MidiControlPort')
     register_qml_class(SettingsIO, 'SettingsIO')
     register_qml_class(TestScreenGrabber, 'TestScreenGrabber')
+    register_qml_class(RenderAudioWaveform, 'RenderAudioWaveform')
 
 def create_and_populate_root_context(engine, global_args, additional_items={}):
-    # Set import path to predefined classes
-    engine.addImportPath(script_dir + '/../qml_types')
-    engine.addPluginPath(script_dir + '/../qml_plugins')
+    def create_component(path):
+        comp = QQmlComponent(engine, QUrl.fromLocalFile(path))
+        while comp.status() == QQmlComponent.Loading:
+            time.sleep(0.05)
+        if comp.status() != QQmlComponent.Ready:
+            raise Exception('Failed to load {}: {}'.format(path, str(comp.errorString())))
+        return comp
     
     # QML instantiations
-    registries_comp = QQmlComponent(engine, QUrl.fromLocalFile(script_dir + '/qml/AppRegistries.qml'))
-    while registries_comp.status() == QQmlComponent.Loading:
-        time.sleep(0.05)
-    if registries_comp.status() != QQmlComponent.Ready:
-        raise Exception('Failed to load AppRegistries.qml: ' + str(registries_comp.errorString()))
+    registries_comp = create_component(script_dir + '/qml/AppRegistries.qml')
     registries = registries_comp.create()
 
     items = {

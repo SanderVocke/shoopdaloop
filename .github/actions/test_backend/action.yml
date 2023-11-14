@@ -1,0 +1,49 @@
+name: Back-end Tests
+description: Unit tests for libshoopdaloop
+
+inputs:
+  variant_name:
+    required: true
+    type: string
+  run_cmd_prefix:
+    type: string
+    description: "Command-line prefix to use when running the test runner"
+  test_runner:
+    type: string
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+  - name: prepare
+    shell: bash
+    run: |
+      mkdir -p reports
+      echo "results_xml=reports/test_runner_${{ inputs.variant_name }}_results.xml" | tee -a $GITHUB_ENV
+
+  - name: Expand prefix for Mac
+    shell: bash
+    id: runcmdprefix
+    run: |
+      if [[ "$RUNNER_OS" == "macOS" ]]; then
+        echo "run_cmd_prefix=${{ inputs.run_cmd_prefix }} DYLD_FALLBACK_LIBRARY_PATH=$(dirname ${{ inputs.test_runner }})" | tee -a $GITHUB_OUTPUT
+      else
+        echo "run_cmd_prefix=${{ inputs.run_cmd_prefix }}" | tee -a $GITHUB_OUTPUT
+      fi
+
+  - name: test_runner (${{ inputs.variant_name }})
+    shell: bash
+    run: |
+      mkdir -p reports
+      ${{ steps.runcmdprefix.outputs.run_cmd_prefix }} ${{ inputs.test_runner }} --reporter junit --out ${{ env.results_xml }}
+      echo "Back-end test results file: $(ls -la ${{ env.results_xml }})"
+  
+  - name: Publish Back-end Test Report
+    if: ${{ !env.ACT && (success() || failure()) }}
+    uses: mikepenz/action-junit-report@v3
+    with:
+      report_paths: ${{ env.results_xml }}
+      detailed_summary: true
+      include_passed: true
+      check_name: 'backend test (${{ inputs.variant_name }})'
+

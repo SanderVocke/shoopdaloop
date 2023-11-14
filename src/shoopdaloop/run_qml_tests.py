@@ -1,4 +1,4 @@
-#!/bin/python
+#!/usr/bin/python
 
 import os
 import sys
@@ -10,15 +10,16 @@ from shiboken6 import Shiboken
 script_dir = os.path.dirname(__file__)
 sys.path.append(script_dir + '/..')
 
-from shoopdaloop.libshoopdaloop_bindings import terminate as terminate_backend
+from shoopdaloop.libshoopdaloop_bindings import terminate_backend
 from shoopdaloop.lib.qml_helpers import *
 from shoopdaloop.lib.q_objects.SchemaValidator import SchemaValidator
 from shoopdaloop.lib.logging import Logger
 from shoopdaloop.lib.backend_wrappers import BackendType
 from shoopdaloop.lib.q_objects.QoverageCollectorFactory import QoverageCollectorFactory
 
-import qml_tests
 from ctypes import *
+
+import qml_tests
 
 qoverage_collector_factory = QoverageCollectorFactory()
 

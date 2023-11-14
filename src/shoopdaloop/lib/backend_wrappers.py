@@ -653,7 +653,7 @@ class Backend:
 
     def open_jack_midi_port(self, name_hint : str, direction : int) -> 'BackendMidiPort':
         _dir = (Input if direction == PortDirection.Input.value else Output)
-        handle = open_jack_midi_port(self._c_handle, name_hint.encode('ascii'), _dir)
+        handle = open_midi_port(self._c_handle, name_hint.encode('ascii'), _dir)
         port = BackendMidiPort(handle, direction)
         return port
 
@@ -703,9 +703,12 @@ class Backend:
         dummy_audio_wait_process(self._c_handle)
 
     def terminate(self):
-        terminate(self._c_handle)
+        terminate_backend(self._c_handle)
 
 def init_backend(backend_type : Type[BackendType], client_name_hint : str, argstring : str):
     _ptr = initialize(backend_type.value, client_name_hint.encode('ascii'), argstring.encode('ascii'))
     b = Backend(_ptr)
     return b
+
+def backend_type_is_supported(backend_type : Type[BackendType]):
+    return bool(has_audio_system_support(backend_type.value))

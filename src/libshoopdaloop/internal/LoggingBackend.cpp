@@ -2,108 +2,25 @@
 #include <cstdlib>
 #include <map>
 #include <optional>
-#include <spdlog/common.h>
-#include <spdlog/sinks/stdout_color_sinks.h>
-#include <spdlog/logger.h>
 #include <mutex>
 #include <iostream>
 #include <algorithm>
 #include <mutex>
 #include <optional>
-#include <spdlog/logger.h>
-#include "spdlog/sinks/stdout_color_sinks.h"
-
+#include <vector>
 namespace logging {
 
-logger &logging_logger();
+# warning intentionally leaky globals because of de-initialization problems. Find a better solution.
+std::recursive_mutex* g_log_mutex = new std::recursive_mutex();
+std::unique_ptr<log_level_t>* g_maybe_global_level = new std::unique_ptr<log_level_t>(std::make_unique<log_level_t>(info));
+std::map<std::string, std::unique_ptr<log_level_t>>* g_module_log_levels = new std::map<std::string, std::unique_ptr<log_level_t>>();
 
-spdlog::level::level_enum g_loggers_level = spdlog::level::level_enum::info;
-std::map<std::string, LogLevel> g_maybe_module_levels;
-struct Logger {
-    spdlog::sink_ptr stdout;
-    std::shared_ptr<logger> m_logger;
-
-    void update_level() {
-        auto maybe_override = g_maybe_module_levels.find(m_logger->m_logger->name());
-        m_logger->m_logger->set_level(
-            maybe_override != g_maybe_module_levels.end() ?
-            maybe_override->second :
-            g_loggers_level);
-    }
-
-    LogLevel get_level() const {
-        return m_logger->m_logger->level();
-    }
-};
-
-std::map<std::string, Logger> g_loggers;
-std::recursive_mutex g_loggers_mutex;
-
-logger &get_logger_impl(std::string name) {
-    std::lock_guard<std::recursive_mutex> guard(g_loggers_mutex);
-
-    if (g_loggers.find(name) == g_loggers.end()) {
-        spdlog::sink_ptr _stdout = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
-        g_loggers[name] = Logger {
-            .stdout = _stdout,
-            .m_logger = std::make_shared<logger>(std::make_shared<spdlog::logger>(name, _stdout))
-        };
-        g_loggers.at(name).update_level();
-    }
-
-    auto rval = g_loggers.at(name).m_logger;
-    return *rval;
-};
-
-logger &logging_logger() {
-    return get_logger_impl("Logging");
-}
-
-logger &get_logger(std::string name) {
-    return get_logger_impl(name);
-}
-
-void set_filter_level(LogLevel level) {
-    std::lock_guard<std::recursive_mutex> guard(g_loggers_mutex);
-
-    logging_logger().debug("Set global logging level to {}", level);
-    if (level < CompileTimeLogLevel) {
-        logging_logger().warn("Compile-time log filtering is set at {}. To get level {} messages of back-end, please compile a debug version.", CompileTimeLogLevel, level);
-    }
-
-    g_loggers_level = level;
-    for (auto &l : g_loggers) {
-        l.second.update_level();
-    }
-}
-
-void set_module_filter_level(std::string name, std::optional<LogLevel> level) {
-    std::lock_guard<std::recursive_mutex> guard(g_loggers_mutex);
-
-    if (level.has_value()) {
-        logging_logger().debug("Set logging level override of module {} to {}", name, level.value());
-        if (level.value() < CompileTimeLogLevel) {
-            logging_logger().warn("Compile-time log filtering is set at {}. To get level {} messages of back-end, please compile a debug version.", CompileTimeLogLevel, level.value());
-        }
-    } else {
-        logging_logger().debug("Remove logging level override of module {}", name);
-    }
-
-    if (level.has_value()) {
-        g_maybe_module_levels[name] = level.value();
-    } else {
-        g_maybe_module_levels.erase(name);
-    }
-    auto maybe_logger = g_loggers.find(name);
-    if (maybe_logger != g_loggers.end()) { maybe_logger->second.update_level(); }
-}
-
-const std::map<std::string, LogLevel> level_names = {
-    {"trace", LogLevel::trace},
-    {"debug", LogLevel::debug},
-    {"info",  LogLevel::info},
-    {"warning", LogLevel::warn},
-    {"error",   LogLevel::err}
+const std::map<std::string, log_level_t> level_names = {
+    {"trace", trace},
+    {"debug", debug},
+    {"info",  info},
+    {"warning", warning},
+    {"error",   error}
 };
 
 void parse_conf_string(std::string s) {
@@ -137,7 +54,7 @@ void parse_conf_string(std::string s) {
     for (auto &part : parts) {
         auto subparts = split(part, "=");
         if (subparts.size() == 1) { set_filter_level(level_names.at(subparts[0])); }
-        else if (subparts.size() == 2) { set_module_filter_level(subparts[0], level_names.at(subparts[1])); }
+        else if (subparts.size() == 2) { set_module_filter_level(subparts[0].c_str(), level_names.at(subparts[1])); }
         else {
             throw std::runtime_error("Invalid logging config: more than two dot separators in part");
         }

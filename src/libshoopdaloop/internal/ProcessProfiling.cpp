@@ -103,7 +103,7 @@ ProfilingReport Profiler::report() {
             rval.push_back(ProfilingReportItem {});
             auto &report_item = rval.back();
             report_item.key = key;
-            i->reset([&](size_t n, float avg, float worst, float last) {
+            i->reset([&](uint32_t n, float avg, float worst, float last) {
                 report_item.n_samples = n;
                 report_item.avg = avg;
                 report_item.worst = worst;

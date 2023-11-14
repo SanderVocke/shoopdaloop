@@ -112,7 +112,7 @@ void ConnectedChannel::disconnect_input_ports(bool thread_safe) {
     else { fn(); }
 }
 
-void ConnectedChannel::PROC_prepare_process_audio(size_t n_frames) {
+void ConnectedChannel::PROC_prepare_process_audio(uint32_t n_frames) {
     auto in_locked = mp_input_port_mapping.lock();
     if (in_locked) {
         auto chan = dynamic_cast<LoopAudioChannel*>(channel.get());
@@ -142,7 +142,7 @@ void ConnectedChannel::PROC_prepare_process_audio(size_t n_frames) {
 void ConnectedChannel::PROC_finalize_process_audio() {
 }
 
-void ConnectedChannel::PROC_prepare_process_midi(size_t n_frames) {
+void ConnectedChannel::PROC_prepare_process_midi(uint32_t n_frames) {
     auto in_locked = mp_input_port_mapping.lock();
     if (in_locked) {
         auto chan = dynamic_cast<LoopMidiChannel*>(channel.get());

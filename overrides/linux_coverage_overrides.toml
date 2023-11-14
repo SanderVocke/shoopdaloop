@@ -1,0 +1,3 @@
+
+cmake.build_type = "Debug"
+cmake.options = { "ENABLE_COVERAGE" = "On" }

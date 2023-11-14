@@ -10,16 +10,16 @@ class CommandQueue : private boost::lockfree::spsc_queue<std::function<void()>> 
     using Functor = std::function<void()>;
     using Queue = boost::lockfree::spsc_queue<Functor>;
 
-    const size_t ma_timeout_ms;
-    const size_t ma_poll_interval_us;
+    const uint32_t ma_timeout_ms;
+    const uint32_t ma_poll_interval_us;
     std::atomic<uint64_t> ma_last_processed; // Milliseconds since epoch
 
     uint64_t millis_since_epoch();
 
 public:
-    CommandQueue(size_t fixed_size,
-                 size_t timeout_ms,
-                 size_t poll_interval_us);
+    CommandQueue(uint32_t fixed_size,
+                 uint32_t timeout_ms,
+                 uint32_t poll_interval_us);
 
     void queue(std::function<void()> fn);
     void queue_and_wait(std::function<void()> fn);

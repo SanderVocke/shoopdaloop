@@ -7,7 +7,7 @@ on:
     branches: [ "master" ]
 
 env:
-  BUILD_TYPE: Debug
+  BUILD_TYPE: Release
   PIP_BREAK_SYSTEM_PACKAGES: 1
 
 permissions:
@@ -15,312 +15,452 @@ permissions:
   checks: write
 
 jobs:
-  
-  build_release:
-    runs-on: ubuntu-latest
-    container:
-      image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
-      options: --user root --workdir /
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v3
-      with:
-        submodules: recursive
-    - name: Install Qt
-      uses: ./.github/actions/download_qt
-    - name: Prepare manylinux environment
-      uses: ./.github/actions/prepare_manylinux_2_28
-    - name: Build and upload
-      uses: ./.github/actions/build_wheel
-      with:
-        variant_name: release
-        wheel_artifact_name: release_wheel
-        python: python3.8
-        prepend_build_cmd: CMAKE_PREFIX_PATH=/usr/local/Qt-6.5.3
-  
-  build_debug:
-    runs-on: ubuntu-latest
-    container:
-      image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
-      options: --user root --workdir /
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v3
-      with:
-        submodules: recursive
-    - name: Install Qt
-      uses: ./.github/actions/download_qt
-    - name: Prepare manylinux environment
-      uses: ./.github/actions/prepare_manylinux_2_28
-    - name: Build and upload
-      uses: ./.github/actions/build_wheel
-      with:
-        variant_name: debug
-        wheel_artifact_name: debug_wheel
-        pypa_build_extra_args: -C--local=pyproject.toml.debug_overrides
-        whl_suffix: debug
-        install: false
-        python: python3.8
-        prepend_build_cmd: CMAKE_PREFIX_PATH=/usr/local/Qt-6.5.3
-  
-  test_release_whl:
-    runs-on: ubuntu-latest
+
+  build:
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - name: debian_stable
+        kind:
+          - name: linux_release
+            os: ubuntu-latest
+            python: python3.8
+            pip: python3 -m pip
+            container_image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
+            prepare: 'manylinux_2_28'
+            overrides: 'overrides/linux_release_overrides.toml'
+            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+          - name: linux_debug
+            os: ubuntu-latest
+            python: python3.8
+            pip: python3 -m pip
+            container_image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
+            prepare: 'manylinux_2_28'
+            overrides: 'overrides/linux_debug_overrides.toml'
+            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+          - name: linux_barebones
+            os: ubuntu-latest
+            python: python3.8
+            pip: python3 -m pip
+            container_image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
+            prepare: 'manylinux_2_28'
+            overrides: 'overrides/linux_barebones_overrides.toml'
+            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+          - name: linux_asan
+            os: ubuntu-latest
+            python: python3.8
+            pip: python3 -m pip
+            container_image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
+            prepare: 'manylinux_2_28'
+            overrides: 'overrides/linux_asan_overrides.toml'
+            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+          - name: linux_coverage
+            os: ubuntu-latest
+            python: python3.8
+            pip: python3 -m pip
+            container_image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
+            prepare: 'manylinux_2_28'
+            overrides: 'overrides/linux_coverage_overrides.toml'
+            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+          - name: windows_release
+            os: windows-2022
+            python: python.exe
+            pip: python.exe -m pip
+            container_image: null
+            prepare: 'windows'
+            overrides: 'overrides/windows_release_overrides.toml'
+            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+          - name: windows_debug
+            os: windows-2022
+            python: python.exe
+            pip: python.exe -m pip
+            container_image: null
+            prepare: 'windows'
+            overrides: 'overrides/windows_debug_overrides.toml'
+            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+          - name: macos_release
+            os: macos-11
+            python: python3.8
+            pip: python3.8 -m pip
+            container_image: null
+            prepare: 'macos'
+            overrides: 'overrides/macos_release_overrides.toml'
+            # Note: for some reason, an incorrect MacOS identifier is generated (macos_11 instead of macos_11_0).
+            # Also remove the double dot if any.
+            rename_wheel_sed: "'s/(.*-macosx_[1-9]+_)(x86_64|arm64|universal2)[\\.]*whl/\\10_\\2.whl/g'"
+          - name: macos_debug
+            os: macos-11
+            python: python3.8
+            pip: python3.8 -m pip
+            container_image: null
+            prepare: 'macos'
+            overrides: 'overrides/macos_debug_overrides.toml'
+            # Note: for some reason, an incorrect MacOS identifier is generated (macos_11 instead of macos_11_0).
+            # Also remove the double dot if any.
+            rename_wheel_sed: "'s/(.*-macosx_[1-9]+_)(x86_64|arm64|universal2)[\\.]*whl/\\10_\\2.whl/g'"
+    runs-on: ${{ matrix.kind.os}}
+    container:
+      image: ${{ matrix.kind.container_image }}
+      options: --user root --workdir /
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        submodules: recursive
+    - name: Prepare
+      id: prepare
+      uses: ./.github/actions/prepare_build
+      with:
+        variant: ${{ matrix.kind.prepare }}
+    - name: Build wheel
+      id: buildwheel
+      uses: ./.github/actions/build_wheel
+      with:
+        variant_name: ${{ matrix.kind.name }}
+        python: ${{ matrix.kind.python}}
+        prepend_build_cmd: ${{ steps.prepare.outputs.prepend_build_cmd }}
+        pypa_build_extra_args: -C--local=${{ matrix.kind.overrides}}
+        windows: ${{ matrix.kind.prepare == 'windows' && 'true' || 'false' }}
+        rename_wheel_sed: ${{ matrix.kind.rename_wheel_sed }}
+    - name: Post-build steps
+      id: postbuild
+      uses: ./.github/actions/post_build
+      with:
+        variant: ${{ matrix.kind.prepare }}
+        wheel: ${{ steps.buildwheel.outputs.wheel_filename }}
+    - name: Find wheel
+      shell: bash
+      id: find
+      run: |
+        echo "name=$(ls final_wheel/*.whl)" | tee -a $GITHUB_OUTPUT
+    - name: Upload wheel (${{ inputs.variant_name }})
+      if: ${{ !env.ACT }}
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ matrix.kind.name }}_wheel
+        path: ${{ steps.find.outputs.name }}
+    # - name: TMate failure session
+    #   if: ${{ failure() }}
+    #   uses: SanderVocke/action-tmate@master
+  
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        kind:
+          - name: release_debian_stable
             python: python3
             pip: python3 -m pip
-          - name: ubuntu_latest
+            container: sandervocke/shoopdaloop_run_base_debian_stable:latest
+            os: ubuntu-latest
+            wheel: linux_release_wheel
+            testrunner: test_runner
+            qpa_platform: vnc
+          - name: barebones_debian_stable
             python: python3
             pip: python3 -m pip
-          - name: arch
+            container: sandervocke/shoopdaloop_run_base_debian_stable:latest
+            os: ubuntu-latest
+            wheel: linux_barebones_wheel
+            testrunner: test_runner
+            qpa_platform: vnc
+          - name: release_ubuntu_latest
+            python: python3
+            pip: python3 -m pip
+            container: sandervocke/shoopdaloop_run_base_ubuntu_latest:latest
+            os: ubuntu-latest
+            wheel: linux_release_wheel
+            testrunner: test_runner
+            qpa_platform: vnc
+          - name: release_arch
             python: python
             pip: python -m pip
-    needs: build_release
+            container: sandervocke/shoopdaloop_run_base_arch:latest
+            os: ubuntu-latest
+            wheel: linux_release_wheel
+            testrunner: test_runner
+            qpa_platform: vnc
+          - name: release_macos11
+            python: python3
+            pip: python3 -m pip
+            container: null
+            os: macos-11
+            wheel: macos_release_wheel
+            testrunner: test_runner
+            qpa_platform: offscreen
+          - name: release_macos12
+            python: python3
+            pip: python3 -m pip
+            container: null
+            os: macos-12
+            wheel: macos_release_wheel
+            testrunner: test_runner
+            qpa_platform: offscreen
+          - name: release_macos13
+            python: python3
+            pip: python3 -m pip
+            container: null
+            os: macos-13
+            wheel: macos_release_wheel
+            testrunner: test_runner
+            qpa_platform: offscreen
+          - name: debug_macos13
+            python: python3
+            pip: python3 -m pip
+            container: null
+            os: macos-13
+            wheel: macos_debug_wheel
+            testrunner: test_runner
+            qpa_platform: offscreen
+          # - name: release_windows
+          #   python: python.exe
+          #   pip: python.exe -m pip
+          #   container: null
+          #   os: windows-2022
+          #   wheel: windows_release_wheel
+          #   testrunner: test_runner.exe
+          #   qpa_platform: vnc
+          #   pathconvert: "| cygpath -u -f -"
+          # - name: debug_windows
+          #   python: python.exe
+          #   pip: python.exe -m pip
+          #   container: null
+          #   os: windows-2022
+          #   wheel: windows_debug_wheel
+          #   testrunner: test_runner.exe
+          #   qpa_platform: vnc
+          #   pathconvert: "| cygpath -u -f -"
+    runs-on: ${{ matrix.kind.os }}
+    needs: build
+    if: ${{ always() }}
     container:
-      image: sandervocke/shoopdaloop_run_base_${{ matrix.os.name }}:latest
-      options: --user root --workdir /
+      image: ${{ matrix.kind.container }}
+      options: --user root --workdir / # Note: this gets disregarded if container is null
     steps:
     - name: Checkout
       uses: actions/checkout@v3
     - name: Retrieve wheel
       uses: actions/download-artifact@v3
       with:
-        name: release_wheel
+        name: ${{ matrix.kind.wheel }}
         path: ~/wheel
     - name: Install wheel
       id: install
-      run: |
-        ${{ matrix.os.pip }} install --force-reinstall ~/wheel/*.whl
-        echo "install_dir=$(shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g')" | tee -a $GITHUB_OUTPUT
-    - name: Find Qt
       shell: bash
-      id: findqt
       run: |
-        export PKGDIR=$(${{ matrix.os.pip }} show pyside6-essentials | grep Location | sed -r 's/Location:[ ]*//g')
-        echo "qtlibpath=$(dirname $(find $PKGDIR -name libQt6Core.so.6))" | tee -a $GITHUB_ENV
+        SHOOP_LOG=debug ${{ matrix.kind.pip }} install --force-reinstall ~/wheel/*.whl
+        shoopdaloop --info
+        echo "install_dir=$(shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g' ${{ matrix.kind.pathconvert }})" | tee -a $GITHUB_OUTPUT
+    - name: Install Pytest
+      shell: bash
+      run: |
+        ${{ matrix.kind.pip }} install pytest
     - name: Test back-end
       if: ${{ success() || failure() }}
-      uses: ./.github/actions/backend_test
+      uses: ./.github/actions/test_backend
       with:
         variant_name: release
         # note: build step generates run_cmd_prefix output
         # for usage with shared ASAN library.
         run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
-        test_runner_dir: ${{ steps.install.outputs.install_dir }}
+        test_runner: ${{ steps.install.outputs.install_dir }}/${{ matrix.kind.testrunner }}
     - name: Test Python
       if: ${{ success() || failure() }}
-      uses: ./.github/actions/python_test
+      uses: ./.github/actions/test_python
       with:
         variant_name: release
-        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH=${{ env.qtlibpath }}
+        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
         root_path: ${{ steps.install.outputs.install_dir }}
-        pytest_command: ${{ matrix.os.python }} -m pytest
-    - name: Test QML
-      if: ${{ success() || failure() }}
-      uses: ./.github/actions/qml_test
-      with:
-        variant_name: release
-        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH=${{ env.qtlibpath }}
-        root_path: ${{ steps.install.outputs.install_dir }}
-        python_command: ${{ matrix.os.python }}
+        pytest_command: ${{ matrix.kind.python }} -m pytest
+    # - name: Test QML
+    #   if: ${{ success() || failure() }}
+    #   uses: ./.github/actions/test_qml
+    #   with:
+    #     variant_name: release
+    #     run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
+    #     root_path: ${{ steps.install.outputs.install_dir }}
+    #     python_command: ${{ matrix.kind.python }}
+    #     qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
+    #     macos_rpath_patch: ${{ contains(matrix.kind.name, 'macos') }}
     - name: Screenshots
       if: ${{ success() || failure() }}
-      uses: ./.github/actions/screenshots_test
+      uses: ./.github/actions/test_screenshots
       with:
         root_path: ${{ steps.install.outputs.install_dir }}
         screenshots_path: /tmp/screenshots
-        artifact_name: screenshots_${{ matrix.os.name }}
-    - name: Test App
+        artifact_name: screenshots_${{ matrix.kind.name }}
+        qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
+    - name: Test Run App
       if: ${{ success() || failure() }}
-      uses: ./.github/actions/app_run_test
+      uses: ./.github/actions/test_run_app
       with:
         variant_name: release
-        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH=${{ env.qtlibpath }}
-        root_path: ${{ steps.install.outputs.install_dir }}
-        python: ${{ matrix.os.python }}
-        
-  asan:
-    runs-on: ubuntu-latest
-    container:
-      image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
-      options: --user root --workdir /
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v3
-      with:
-        submodules: recursive
-    - name: Prepare manylinux environment
-      uses: ./.github/actions/prepare_manylinux_2_28
-    - name: Install Qt
-      uses: ./.github/actions/download_qt
-    - name: Build, install and upload
-      id: build
-      uses: ./.github/actions/build_wheel
-      with:
-        variant_name: asan
-        wheel_artifact_name: asan_wheel
-        pypa_build_extra_args: -C--local=pyproject.toml.debug_asan_overrides
-        pip_install_extra_args: --break-system-packages
-        whl_suffix: asan
-        install: true
-        prepend_build_cmd: CMAKE_PREFIX_PATH=/usr/local/Qt-6.5.3
-    - name: Find Qt
-      shell: bash
-      id: findqt
-      run: |
-        PKGDIR=$(python3 -m pip show pyside6-essentials | grep Location | sed -r 's/Location:[ ]*//g')
-        echo "qtlibpath=$(dirname $(find $PKGDIR -name libQt6Core.so.6))" | tee -a $GITHUB_ENV
-    - name: Test back-end
-      uses: ./.github/actions/backend_test
-      with:
-        variant_name: asan
-        # note: build step generates run_cmd_prefix output
-        # for usage with shared ASAN library.
         run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
-        test_runner_dir: ${{ steps.build.outputs.install_dir }}
-    - name: Test Python
-      uses: ./.github/actions/python_test
-      with:
-        variant_name: asan
-        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH=${{ env.qtlibpath }}
-        root_path: ${{ steps.build.outputs.install_dir }}
-    - name: Test QML
-      uses: ./.github/actions/qml_test
-      with:
-        variant_name: asan
-        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH="${{ env.qtlibpath }};/usr/local/lib"
-        root_path: ${{ steps.build.outputs.install_dir }}
+        root_path: ${{ steps.install.outputs.install_dir }}
+        python: ${{ matrix.kind.python }}
+        qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
+    # - name: TMate failure session
+    #   if: ${{ failure() }}
+    #   uses: SanderVocke/action-tmate@master
+        
+  # asan:
+  #   runs-on: ubuntu-latest
+  #   container:
+  #     image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
+  #     options: --user root --workdir /
+  #   steps:
+  #   - name: Checkout
+  #     uses: actions/checkout@v3
+  #     with:
+  #       submodules: recursive
+  #   - name: Prepare manylinux environment
+  #     uses: ./.github/actions/prepare_build_manylinux_2_28
+  #   - name: Build, install and upload
+  #     id: build
+  #     uses: ./.github/actions/build_wheel
+  #     with:
+  #       variant_name: asan
+  #       wheel_artifact_name: asan_wheel
+  #       pypa_build_extra_args: -C--local=pyproject.toml.debug_asan_overrides
+  #       pip_install_extra_args: --break-system-packages
+  #       whl_suffix: asan
+  #       install: true
+  #   - name: Test back-end
+  #     uses: ./.github/actions/test_backend
+  #     with:
+  #       variant_name: asan
+  #       # note: build step generates run_cmd_prefix output
+  #       # for usage with shared ASAN library.
+  #       run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
+  #       test_runner_dir: ${{ steps.build.outputs.install_dir }}
+  #   - name: Test Python
+  #     uses: ./.github/actions/test_python
+  #     with:
+  #       variant_name: asan
+  #       run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
+  #       root_path: ${{ steps.build.outputs.install_dir }}
+  #   - name: Test QML
+  #     uses: ./.github/actions/test_qml
+  #     with:
+  #       variant_name: asan
+  #       run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH="/usr/local/lib"
+  #       root_path: ${{ steps.build.outputs.install_dir }}
   
-  coverage:
-    runs-on: ubuntu-latest
-    container:
-      image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
-      options: --user root --workdir /
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v3
-      with:
-        submodules: recursive
-    - name: Prepare manylinux environment
-      uses: ./.github/actions/prepare_manylinux_2_28
-    - name: Install Qt
-      uses: ./.github/actions/download_qt
-    - name: Build, install and upload
-      id: build
-      uses: ./.github/actions/build_wheel
-      with:
-        variant_name: coverage
-        wheel_artifact_name: coverage_wheel
-        pypa_build_extra_args: --skip-dependency-check -C--local=pyproject.toml.coverage_overrides
-        pip_install_extra_args: --break-system-packages
-        whl_suffix: coverage
-        install: true
-        prepend_build_cmd: CMAKE_PREFIX_PATH=/usr/local/Qt-6.5.3
-    - name: Install Qoverage
-      uses: ./.github/actions/install_qoverage
-    - name: Qoverage - Instrument QML files
-      uses: ./.github/actions/qoverage_instrument
-      with:
-        package_path: ${{ steps.build.outputs.install_dir }}
-    - name: Find Qt
-      shell: bash
-      id: findqt
-      run: |
-        PKGDIR=$(python3 -m pip show pyside6-essentials | grep Location | sed -r 's/Location:[ ]*//g')
-        echo "qtlibpath=$(dirname $(find $PKGDIR -name libQt6Core.so.6))" | tee -a $GITHUB_ENV
-    - name: Back-end tests with coverage
-      uses: ./.github/actions/backend_test
-      with:
-        variant_name: coverage
-        test_runner_dir: ${{ steps.build.outputs.install_dir }}
-        run_cmd_prefix: >-
-          PYTHONPATH="$PYTHONPATH:$(pwd)/${{ steps.build.outputs.install_dir}}/.."
-          BASEDIR=${{ steps.build.outputs.source_dir }}
-          EXCLUDE=third_party,qt6,boost,c++
-          REPORTDIR=coverage_reports
-          REPORTNAME=test_runner
-          BUILDDIR=${{ steps.build.outputs.build_dir }}
-          DO_GENHTML=0
-          ${{ steps.build.outputs.install_dir}}/scripts/run_and_generate_coverage.sh
-    - name: Test Python with coverage
-      uses: ./.github/actions/python_test
-      with:
-        variant_name: coverage
-        root_path: ${{ steps.build.outputs.install_dir }}
-        pytest_command: python3 -m coverage run --source=shoopdaloop -m pytest
-        run_cmd_prefix: >-
-          PYTHONPATH="$PYTHONPATH:$(pwd)/${{ steps.build.outputs.install_dir}}/.."
-          BASEDIR=${{ steps.build.outputs.source_dir }}
-          EXCLUDE=third_party,qt6,boost,c++
-          REPORTDIR=coverage_reports
-          REPORTNAME=pytest
-          BUILDDIR=${{ steps.build.outputs.build_dir }}
-          DO_GENHTML=0
-          LD_LIBRARY_PATH=${{ env.qtlibpath }}
-          ${{ steps.build.outputs.install_dir}}/scripts/run_and_generate_coverage.sh
-    - name: Generate Pytest coverage report
-      run: |
-        python3 -m coverage xml -i -o coverage_reports/pytest.xml
-        sed -i 's/pip\/shoopdaloop/src\/shoopdaloop/g' coverage_reports/pytest.xml
-    - name: Test QML with coverage
-      uses: ./.github/actions/qml_test
-      with:
-        variant_name: coverage
-        root_path: ${{ steps.build.outputs.install_dir }}
-        tee_all_output_to: qoverage-console-output.log
-        python_command: python3 -m coverage run --source=shoopdaloop
-        run_cmd_prefix: >-
-          PYTHONPATH="$PYTHONPATH:$(pwd)/${{ steps.build.outputs.install_dir}}/.."
-          BASEDIR=${{ steps.build.outputs.source_dir }}
-          EXCLUDE=third_party,qt6,boost,c++
-          REPORTDIR=coverage_reports
-          REPORTNAME=qmltest
-          BUILDDIR=${{ steps.build.outputs.build_dir }}
-          DO_GENHTML=0
-          LD_LIBRARY_PATH="${{ env.qtlibpath }};/usr/local/lib"
-          ${{ steps.build.outputs.install_dir }}/scripts/run_and_generate_coverage.sh
-    - name: Generate QML Python coverage report
-      run: |
-        python3 -m coverage xml -i -o coverage_reports/qml.xml
-        sed -i 's/pip\/shoopdaloop/src\/shoopdaloop/g' coverage_reports/qml.xml
+  # coverage:
+  #   runs-on: ubuntu-latest
+  #   container:
+  #     image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
+  #     options: --user root --workdir /
+  #   steps:
+  #   - name: Checkout
+  #     uses: actions/checkout@v3
+  #     with:
+  #       submodules: recursive
+  #   - name: Prepare manylinux environment
+  #     uses: ./.github/actions/prepare_build_manylinux_2_28
+  #   - name: Build, install and upload
+  #     id: build
+  #     uses: ./.github/actions/build_wheel
+  #     with:
+  #       variant_name: coverage
+  #       wheel_artifact_name: coverage_wheel
+  #       pypa_build_extra_args: --skip-dependency-check -C--local=pyproject.toml.coverage_overrides
+  #       pip_install_extra_args: --break-system-packages
+  #       whl_suffix: coverage
+  #       install: true
+  #   - name: Install Qoverage
+  #     uses: ./.github/actions/install_qoverage
+  #   - name: Qoverage - Instrument QML files
+  #     uses: ./.github/actions/qoverage_instrument
+  #     with:
+  #       package_path: ${{ steps.build.outputs.install_dir }}
+  #   - name: Back-end tests with coverage
+  #     uses: ./.github/actions/test_backend
+  #     with:
+  #       variant_name: coverage
+  #       test_runner_dir: ${{ steps.build.outputs.install_dir }}
+  #       run_cmd_prefix: >-
+  #         PYTHONPATH="$PYTHONPATH:$(pwd)/${{ steps.build.outputs.install_dir}}/.."
+  #         BASEDIR=${{ steps.build.outputs.source_dir }}
+  #         EXCLUDE=third_party,qt6,boost,c++
+  #         REPORTDIR=coverage_reports
+  #         REPORTNAME=test_runner
+  #         BUILDDIR=${{ steps.build.outputs.build_dir }}
+  #         DO_GENHTML=0
+  #         ${{ steps.build.outputs.install_dir}}/scripts/run_and_generate_coverage.sh
+  #   - name: Test Python with coverage
+  #     uses: ./.github/actions/test_python
+  #     with:
+  #       variant_name: coverage
+  #       root_path: ${{ steps.build.outputs.install_dir }}
+  #       pytest_command: python3 -m coverage run --source=shoopdaloop -m pytest
+  #       run_cmd_prefix: >-
+  #         PYTHONPATH="$PYTHONPATH:$(pwd)/${{ steps.build.outputs.install_dir}}/.."
+  #         BASEDIR=${{ steps.build.outputs.source_dir }}
+  #         EXCLUDE=third_party,qt6,boost,c++
+  #         REPORTDIR=coverage_reports
+  #         REPORTNAME=pytest
+  #         BUILDDIR=${{ steps.build.outputs.build_dir }}
+  #         DO_GENHTML=0
+  #         ${{ steps.build.outputs.install_dir}}/scripts/run_and_generate_coverage.sh
+  #   - name: Generate Pytest coverage report
+  #     run: |
+  #       python3 -m coverage xml -i -o coverage_reports/pytest.xml
+  #       sed -i 's/pip\/shoopdaloop/src\/shoopdaloop/g' coverage_reports/pytest.xml
+  #   - name: Test QML with coverage
+  #     uses: ./.github/actions/test_qml
+  #     with:
+  #       variant_name: coverage
+  #       root_path: ${{ steps.build.outputs.install_dir }}
+  #       tee_all_output_to: qoverage-console-output.log
+  #       python_command: python3 -m coverage run --source=shoopdaloop
+  #       run_cmd_prefix: >-
+  #         PYTHONPATH="$PYTHONPATH:$(pwd)/${{ steps.build.outputs.install_dir}}/.."
+  #         BASEDIR=${{ steps.build.outputs.source_dir }}
+  #         EXCLUDE=third_party,qt6,boost,c++
+  #         REPORTDIR=coverage_reports
+  #         REPORTNAME=qmltest
+  #         BUILDDIR=${{ steps.build.outputs.build_dir }}
+  #         DO_GENHTML=0
+  #         ${{ steps.build.outputs.install_dir }}/scripts/run_and_generate_coverage.sh
+  #   - name: Generate QML Python coverage report
+  #     run: |
+  #       python3 -m coverage xml -i -o coverage_reports/qml.xml
+  #       sed -i 's/pip\/shoopdaloop/src\/shoopdaloop/g' coverage_reports/qml.xml
 
-    - name: Qoverage - Generate report
-      uses: ./.github/actions/qoverage_generate_report
-      with:
-        strip: ".*/pip/shoopdaloop"
-        package_path: ${{ steps.build.outputs.install_dir }}
-    - name: Upload back-end coverage to CodeCov
-      if: ${{ !env.ACT }}
-      uses: codecov/codecov-action@v3
-      with:
-        token: ${{ secrets.CODECOV_TOKEN }}
-        flags: back-end
-        files: coverage_reports/test_runner.info
-        verbose: true
-    - name: Upload Pytest coverage to CodeCov
-      if: ${{ !env.ACT }}
-      uses: codecov/codecov-action@v3
-      with:
-        token: ${{ secrets.CODECOV_TOKEN }}
-        flags: pytest
-        files: coverage_reports/pytest.info,coverage_reports/pytest.xml
-        verbose: true
-    - name: Upload QML test coverage to CodeCov
-      if: ${{ !env.ACT }}
-      uses: codecov/codecov-action@v3
-      with:
-        token: ${{ secrets.CODECOV_TOKEN }}
-        flags: qml
-        files: coverage_reports/qmltest.info,coverage_reports/qml.xml
-        verbose: true
-    - name: Upload QML coverage to CodeCov
-      if: ${{ !env.ACT }}
-      uses: codecov/codecov-action@v3
-      with:
-        token: ${{ secrets.CODECOV_TOKEN }}
-        flags: qml
-        files: qoverage-report.xml
-        verbose: true
+  #   - name: Qoverage - Generate report
+  #     uses: ./.github/actions/qoverage_generate_report
+  #     with:
+  #       strip: ".*/pip/shoopdaloop"
+  #       package_path: ${{ steps.build.outputs.install_dir }}
+  #   - name: Upload back-end coverage to CodeCov
+  #     if: ${{ !env.ACT }}
+  #     uses: codecov/codecov-action@v3
+  #     with:
+  #       token: ${{ secrets.CODECOV_TOKEN }}
+  #       flags: back-end
+  #       files: coverage_reports/test_runner.info
+  #       verbose: true
+  #   - name: Upload Pytest coverage to CodeCov
+  #     if: ${{ !env.ACT }}
+  #     uses: codecov/codecov-action@v3
+  #     with:
+  #       token: ${{ secrets.CODECOV_TOKEN }}
+  #       flags: pytest
+  #       files: coverage_reports/pytest.info,coverage_reports/pytest.xml
+  #       verbose: true
+  #   - name: Upload QML test coverage to CodeCov
+  #     if: ${{ !env.ACT }}
+  #     uses: codecov/codecov-action@v3
+  #     with:
+  #       token: ${{ secrets.CODECOV_TOKEN }}
+  #       flags: qml
+  #       files: coverage_reports/qmltest.info,coverage_reports/qml.xml
+  #       verbose: true
+  #   - name: Upload QML coverage to CodeCov
+  #     if: ${{ !env.ACT }}
+  #     uses: codecov/codecov-action@v3
+  #     with:
+  #       token: ${{ secrets.CODECOV_TOKEN }}
+  #       flags: qml
+  #       files: qoverage-report.xml
+  #       verbose: true

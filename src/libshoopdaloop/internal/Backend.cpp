@@ -1,9 +1,7 @@
 #include "Backend.h"
 #include "LoggingBackend.h"
 #include "ProcessProfiling.h"
-#include "JackAudioSystem.h"
 #include "DummyAudioSystem.h"
-#include <jack_wrappers.h>
 #include "ConnectedPort.h"
 #include "ConnectedFXChain.h"
 #include "ProcessingChainInterface.h"
@@ -11,25 +9,31 @@
 #include "ConnectedLoop.h"
 #include "ConnectedChannel.h"
 #include "ConnectedDecoupledMidiPort.h"
-#include "LV2.h"
 #include "ChannelInterface.h"
-#include "CarlaLV2ProcessingChain.h"
 #include "DecoupledMidiPort.h"
 #include "AudioBuffer.h"
 #include "ObjectPool.h"
 #include "AudioMidiLoop.h"
 #include "shoop_globals.h"
 #include "types.h"
+#include "process_when.h"
+
+#ifdef SHOOP_HAVE_BACKEND_JACK
+#include "JackAudioSystem.h"
+#include <jack_wrappers.h>
+#endif
+
+#ifdef SHOOP_HAVE_LV2
+#include "LV2.h"
+#include "CarlaLV2ProcessingChain.h"
+namespace {
+LV2 g_lv2;
+}
+#endif
 
 using namespace logging;
 using namespace shoop_types;
 using namespace shoop_constants;
-
-namespace {
-LV2 g_lv2;
-}
-
-std::string Backend::log_module_name() const { return "Backend"; }
 
 Backend::Backend(audio_system_type_t audio_system_type, std::string client_name_hint, std::string argstring)
         : cmd_queue(shoop_constants::command_queue_size, 1000, 1000),
@@ -62,62 +66,80 @@ Backend::Backend(audio_system_type_t audio_system_type, std::string client_name_
           m_client_name_hint(client_name_hint),
           m_argstring(argstring)
 {
-        log_init();
+}
+
+std::vector<audio_system_type_t> Backend::get_supported_audio_system_types() {
+    std::vector<audio_system_type_t> rval = { Dummy };
+    #ifdef SHOOP_HAVE_BACKEND_JACK
+    rval.push_back(Jack);
+    rval.push_back(JackTest);
+    #endif
+    return rval;
 }
 
 void Backend::start() {
         auto weak_self = weak_from_this();
         try {
             switch (m_audio_system_type) {
+#ifdef SHOOP_HAVE_BACKEND_JACK
             case Jack:
-                log<LogLevel::debug>("Initializing JACK audio system.");
-                audio_system = std::unique_ptr<AudioSystem>(
-                    dynamic_cast<AudioSystem *>(new JackAudioSystem(
+                log<debug>("Initializing JACK audio system.");
+                audio_system = std::unique_ptr<AudioSystemInterface>(
+                    dynamic_cast<AudioSystemInterface *>(new JackAudioSystem(
                         std::string(m_client_name_hint),
-                        [weak_self] (size_t n_frames) {
+                        [weak_self] (uint32_t n_frames) {
                         if (auto self = weak_self.lock()) {
-                            self->log<LogLevel::trace>("Jack process: {}", n_frames);
+                            self->log<trace>("Jack process: {}", n_frames);
                             self->PROC_process(n_frames);
                         }
                     })));
                 break;
             case JackTest:
-                log<LogLevel::debug>("Initializing JackTest mock audio system.");
-                audio_system = std::unique_ptr<AudioSystem>(
-                    dynamic_cast<AudioSystem *>(new JackTestAudioSystem(
+                log<debug>("Initializing JackTest mock audio system.");
+                audio_system = std::unique_ptr<AudioSystemInterface>(
+                    dynamic_cast<AudioSystemInterface *>(new JackTestAudioSystem(
                         std::string(m_client_name_hint),
-                        [weak_self] (size_t n_frames) {
+                        [weak_self] (uint32_t n_frames) {
                         if (auto self = weak_self.lock()) {
-                            self->log<LogLevel::trace>("Jack test process: {}", n_frames);
+                            self->log<trace>("Jack test process: {}", n_frames);
                             self->PROC_process(n_frames);
                         }
                     })));
                 break;
+#else
+            case Jack:
+            case JackTest:
+                log<warning>("JACK backend requested but not supported.");
+#endif
             case Dummy:
                 // Dummy is also the fallback option - intiialized below
                 break;
             default:
                 throw_error<std::runtime_error>("Unimplemented backend type");
             }
+
+            if (m_audio_system_type != Dummy && !audio_system) {
+                log<warning>("Failed to initialize primary audio system.");
+            }
         } catch (std::exception &e) {
-            log<LogLevel::err>("Failed to initialize audio system.");
-            log<LogLevel::info>(fmt::runtime("Failure info: " + std::string(e.what())));
-            log<LogLevel::info>("Attempting fallback to dummy audio system.");
+            log<error>("Failed to initialize audio system.");
+            log<info>("Failure info: " + std::string(e.what()));
+            log<info>("Attempting fallback to dummy audio system.");
         } catch (...) {
-            log<LogLevel::err>(
+            log<error>(
                 "Failed to initialize audio system: unknown exception");
-            log<LogLevel::info>("Attempting fallback to dummy audio system.");
+            log<info>("Attempting fallback to dummy audio system.");
         }
 
         if (!audio_system || m_audio_system_type == Dummy) {
             m_audio_system_type = Dummy;
-            log<LogLevel::debug>("Initializing dummy audio system.");
-            audio_system = std::unique_ptr<AudioSystem>(
-                dynamic_cast<AudioSystem *>(new _DummyAudioSystem(
+            log<debug>("Initializing dummy audio system.");
+            audio_system = std::unique_ptr<AudioSystemInterface>(
+                dynamic_cast<AudioSystemInterface *>(new _DummyAudioSystem(
                     std::string(m_client_name_hint),
-                    [weak_self] (size_t n_frames) {
+                    [weak_self] (uint32_t n_frames) {
                         if (auto self = weak_self.lock()) {
-                            self->log<LogLevel::trace>("dummy process: {}", n_frames);
+                            self->log<trace>("dummy process: {}", n_frames);
                             self->PROC_process(n_frames);
                         }
                     })));
@@ -134,7 +156,11 @@ void Backend::start() {
 
 backend_state_info_t Backend::get_state() {
     backend_state_info_t rval;
-    rval.dsp_load_percent = (maybe_jack_client_handle() && m_audio_system_type == Jack) ? JackApi::cpu_load(maybe_jack_client_handle()) : 0.0f;
+#ifdef SHOOP_HAVE_BACKEND_JACK
+    rval.dsp_load_percent = (maybe_jack_client_handle() && m_audio_system_type == Jack) ? JackApi::cpu_load((jack_client_t*)maybe_jack_client_handle()) : 0.0f;
+#else
+    rval.dsp_load_percent = 0.0f;
+#endif
     rval.xruns_since_last = audio_system->get_xruns();
     rval.actual_type = m_audio_system_type;
     audio_system->reset_xruns();
@@ -143,15 +169,15 @@ backend_state_info_t Backend::get_state() {
 
 #warning delete destroyed ports
 // MEMBER FUNCTIONS
-void Backend::PROC_process (jack_nframes_t nframes) {
-    log<LogLevel::trace>("Process {}: start", nframes);
+void Backend::PROC_process (uint32_t nframes) {
+    log<trace>("Process {}: start", nframes);
     profiling::stopwatch(
         [this, &nframes]() {
             
             profiler->next_iteration();
             
             // Execute queued commands
-            log<LogLevel::trace>("Process: execute commands");
+            log<trace>("Process: execute commands");
             profiling::stopwatch(
                 [this]() {
                     cmd_queue.PROC_exec_all();
@@ -159,7 +185,7 @@ void Backend::PROC_process (jack_nframes_t nframes) {
                 cmds_profiling_item
             );
 
-            log<LogLevel::trace>("Process: decoupled MIDI");
+            log<trace>("Process: decoupled MIDI");
             profiling::stopwatch(
                 [this, &nframes]() {
                     // Send/receive decoupled midi
@@ -167,7 +193,7 @@ void Backend::PROC_process (jack_nframes_t nframes) {
                 }, ports_decoupled_midi_profiling_item, ports_profiling_item);
             
 
-            log<LogLevel::trace>("Process: prepare");
+            log<trace>("Process: prepare");
             profiling::stopwatch(
                 [this, &nframes]() {
                     // Prepare ports:
@@ -194,7 +220,7 @@ void Backend::PROC_process (jack_nframes_t nframes) {
                     }
                 }, ports_prepare_profiling_item, ports_profiling_item);
             
-            log<LogLevel::trace>("Process: pre-FX passthrough");
+            log<trace>("Process: pre-FX passthrough");
             profiling::stopwatch(
                 [this, &nframes]() {
                     // Process passthrough on the input side (before FX chains)
@@ -210,7 +236,7 @@ void Backend::PROC_process (jack_nframes_t nframes) {
                 ports_profiling_item, ports_passthrough_profiling_item, ports_passthrough_input_profiling_item
             );
             
-            log<LogLevel::trace>("Process: process loops");
+            log<trace>("Process: process loops");
             profiling::stopwatch(
                 [this, &nframes]() {
                     // Process the loops. This queues deferred audio operations for post-FX channels.
@@ -231,7 +257,7 @@ void Backend::PROC_process (jack_nframes_t nframes) {
                 loops_profiling_item
             );
 
-            log<LogLevel::trace>("Process: finish pre-FX ports");
+            log<trace>("Process: finish pre-FX ports");
             profiling::stopwatch(
                 [this, &nframes]() {
                     // Finish processing any ports that come before FX.
@@ -247,7 +273,7 @@ void Backend::PROC_process (jack_nframes_t nframes) {
                 ports_profiling_item, ports_prepare_fx_profiling_item
             );
 
-            log<LogLevel::trace>("Process: FX");
+            log<trace>("Process: FX");
             profiling::stopwatch(
                 [this, &nframes]() {
                     // Process the FX chains.
@@ -258,7 +284,7 @@ void Backend::PROC_process (jack_nframes_t nframes) {
                 fx_profiling_item
             );
 
-            log<LogLevel::trace>("Process: post-FX passthrough");
+            log<trace>("Process: post-FX passthrough");
             profiling::stopwatch(
                 [this, &nframes]() {
                     // Process passthrough on the output side (after FX chains)
@@ -273,7 +299,7 @@ void Backend::PROC_process (jack_nframes_t nframes) {
                 ports_profiling_item, ports_passthrough_profiling_item, ports_passthrough_output_profiling_item
             );
 
-            log<LogLevel::trace>("Process: finish post-FX channels");
+            log<trace>("Process: finish post-FX channels");
             profiling::stopwatch(
                 [this, &nframes]() {
                     // Finish processing any channels that come after FX.
@@ -290,7 +316,7 @@ void Backend::PROC_process (jack_nframes_t nframes) {
                 loops_profiling_item
             );
 
-            log<LogLevel::trace>("Process: finish post-FX ports");
+            log<trace>("Process: finish post-FX ports");
             profiling::stopwatch(
                 [this, &nframes]() {
                     // Finish processing any ports that come after FX.
@@ -305,7 +331,7 @@ void Backend::PROC_process (jack_nframes_t nframes) {
                 ports_profiling_item, ports_finalize_profiling_item
             );
 
-            log<LogLevel::trace>("Process: finish loops");
+            log<trace>("Process: finish loops");
             profiling::stopwatch(
                 [this, &nframes]() {
                     // Finish processing loops.
@@ -322,7 +348,7 @@ void Backend::PROC_process (jack_nframes_t nframes) {
     );
 }
 
-void Backend::PROC_process_decoupled_midi_ports(size_t nframes) {
+void Backend::PROC_process_decoupled_midi_ports(uint32_t nframes) {
     for (auto &elem : decoupled_midi_ports) {
         elem->port->PROC_process(nframes);
     }
@@ -340,11 +366,11 @@ void Backend::terminate() {
     }
 }
 
-jack_client_t *Backend::maybe_jack_client_handle() {
+void *Backend::maybe_jack_client_handle() {
     if (!audio_system || m_audio_system_type != Jack) {
         return nullptr;
     }
-    return (jack_client_t*)audio_system->maybe_client_handle();
+    return audio_system->maybe_client_handle();
 }
 
 const char* Backend::get_client_name() {
@@ -380,6 +406,7 @@ std::shared_ptr<ConnectedLoop> Backend::create_loop() {
 std::shared_ptr<ConnectedFXChain> Backend::create_fx_chain(fx_chain_type_t type, const char* title) {
     std::shared_ptr<ProcessingChainInterface<Time, Size>> chain;
     switch(type) {
+#ifdef SHOOP_HAVE_LV2
         case Carla_Rack:
         case Carla_Patchbay:
         case Carla_Patchbay_16x:
@@ -387,17 +414,24 @@ std::shared_ptr<ConnectedFXChain> Backend::create_fx_chain(fx_chain_type_t type,
                 type, get_sample_rate(), std::string(title), profiler
             );
             break;
+#else
+        case Carla_Rack:
+        case Carla_Patchbay:
+        case Carla_Patchbay_16x:
+            throw_error<std::runtime_error>("LV2 plugin hosting not available");
+            break;
+#endif
         case Test2x2x1:
             chain = std::make_shared<CustomProcessingChain<Time, Size>>(
-                2, 2, 1, [this, &chain](size_t n, auto &ins, auto &outs, auto &midis) {
+                2, 2, 1, [this, &chain](uint32_t n, auto &ins, auto &outs, auto &midis) {
                     static std::vector<audio_sample_t> out_buf_1, out_buf_2;
-                    out_buf_1.resize(std::max(n, out_buf_1.size()));
-                    out_buf_2.resize(std::max(n, out_buf_2.size()));
+                    out_buf_1.resize(std::max((size_t)n, out_buf_1.size()));
+                    out_buf_2.resize(std::max((size_t)n, out_buf_2.size()));
 
                     // Audio: for any audio sample, divide it by 2.
                     auto in_1 = ins[0]->PROC_get_buffer(n);
                     auto in_2 = ins[1]->PROC_get_buffer(n);
-                    for (size_t i = 0; i < n; i++) {
+                    for (uint32_t i = 0; i < n; i++) {
                         out_buf_1[i] = in_1[i] / 2.0f;
                         out_buf_2[i] = in_2[i] / 2.0f;
                     }
@@ -407,7 +441,7 @@ std::shared_ptr<ConnectedFXChain> Backend::create_fx_chain(fx_chain_type_t type,
                     auto &midi = midis[0];
                     auto &readbuf = midi->PROC_get_read_buffer(n);
                     auto n_msgs = readbuf.PROC_get_n_events();
-                    for (size_t i = 0; i < n_msgs; i++) {
+                    for (uint32_t i = 0; i < n_msgs; i++) {
                         auto &msg = readbuf.PROC_get_event_reference(i);
                         auto time = msg.get_time();
                         auto data = msg.get_data();

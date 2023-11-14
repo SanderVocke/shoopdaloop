@@ -1,3 +1,0 @@
-
-cmake.build_type = "Debug"
-cmake.options = { "STATIC_DEPENDENCIES" = "On", "ENABLE_COVERAGE" = "On" }

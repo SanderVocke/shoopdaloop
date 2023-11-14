@@ -1,4 +1,4 @@
-from shoopdaloop.libshoopdaloop_bindings import get_logger, shoopdaloop_log, shoopdaloop_should_log
+from shoopdaloop.libshoopdaloop_bindings import destroy_logger, get_logger, shoopdaloop_log, shoopdaloop_should_log
 from shoopdaloop.libshoopdaloop_bindings import trace as _trace, debug as _debug, info as _info, warning as _warning, error as _error
 
 from PySide6.QtQml import QJSValue
@@ -48,3 +48,10 @@ class Logger:
     def throw_error(self, msg):
         self.log(msg, _error)
         raise Exception(msg)
+    
+    def __del__(self):
+        # TODO
+        #if self._backend_handle:
+        #    destroy_logger(self._backend_handle)
+        self._backend_handle = None
+        self._name = None

@@ -1,0 +1,31 @@
+name: prepare_build_macos
+description: Prepare MacOS for building Shoopdaloop wheels
+
+runs:
+  using: "composite"
+  steps:
+  - name: Install packages
+    shell: bash
+    run: |
+      # Skip if already done (local act builds)
+      if [ -f _macos_prepared ]; then
+        exit 0
+      fi
+
+      # Install packages
+      brew install ninja libsndfile libsamplerate libtool automake autoconf cmake
+      brew install jack liblo coreutils
+      brew install python@3.8
+
+      # Install Python packages
+      python3.8 -m pip install build
+  - name: Install boost
+    id: install_boost
+    uses: ./.github/actions/install_boost_headers
+    with:
+      dir: includes
+  - name: Set outputs
+    shell: bash
+    run: |
+      touch _macos_prepared
+      echo "MACOSX_DEPLOYMENT_TARGET=10.16 CMAKE_INCLUDE_PATH=${{ github.workspace }}/includes" > prepend_build_cmd.txt

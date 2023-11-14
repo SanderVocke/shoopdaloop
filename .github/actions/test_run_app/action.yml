@@ -1,0 +1,30 @@
+name: App run test
+description: Integration test which runs the full ShoopDaLoop app.
+
+inputs:
+  variant_name:
+    required: true
+    type: string
+  run_cmd_prefix:
+    type: string
+    description: "Command-line prefix to use when running the test runner"
+  root_path:
+    type: string
+    required: true
+  python:
+    type: string
+    required: false
+    default: python3
+  qt_qpa_platform:
+    type: string
+    default: vnc
+
+runs:
+  using: "composite"
+  steps:
+  - name: run app (${{ inputs.variant_name }})
+    shell: bash
+    run: |
+        ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0 QT_QPA_PLATFORM=${{ inputs.qt_qpa_platform }} ${{ inputs.run_cmd_prefix }} ${{ inputs.python }} ${{ inputs.root_path }}/scripts/repeat_run_app.py --iterations=6 --wait-ms-before-close=5000 --wait-ms-before-kill=10000 --expect-stay-open=1 shoopdaloop -b dummy
+
+

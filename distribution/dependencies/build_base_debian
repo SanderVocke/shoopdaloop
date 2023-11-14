@@ -16,7 +16,6 @@ jackd2
 libxkbcommon-dev
 libboost-dev
 libjack-jackd2-dev
-nlohmann-json3-dev
 
 # python
 python3-build

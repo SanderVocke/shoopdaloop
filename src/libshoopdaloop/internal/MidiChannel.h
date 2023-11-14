@@ -7,29 +7,29 @@
 #include "MidiStateDiffTracker.h"
 #include "LoggingEnabled.h"
 #include "ProcessProfiling.h"
+#include <stdint.h>
 
 template<typename TimeType, typename SizeType>
 class MidiChannel : public ChannelInterface,
                     private WithCommandQueue<20, 1000, 1000>,
-                    private ModuleLoggingEnabled {
+                    private ModuleLoggingEnabled<"Backend.MidiChannel"> {
 public:
     using Storage = MidiStorage<TimeType, SizeType>;
     using StorageCursor = typename Storage::Cursor;
     using Message = MidiMessage<TimeType, SizeType>;
 
 private:
-    std::string log_module_name() const override;
 
     struct ExternalBufState {
-        size_t n_events_total;
-        size_t n_frames_total;
-        size_t n_events_processed;
-        size_t n_frames_processed;
+        uint32_t n_events_total;
+        uint32_t n_frames_total;
+        uint32_t n_events_processed;
+        uint32_t n_frames_processed;
 
         ExternalBufState();
         
-        size_t frames_left() const;
-        size_t events_left() const;
+        uint32_t frames_left() const;
+        uint32_t events_left() const;
     };
 
     // Tracks or remembers a MIDI state (controls, pedals, etc).
@@ -48,7 +48,7 @@ private:
         void reset();
         bool valid() const;
         void set_valid(bool v);
-        void resolve_to_output(std::function<void(size_t size, uint8_t *data)> send_cb);
+        void resolve_to_output(std::function<void(uint32_t size, uint8_t *data)> send_cb);
     };
 
     // Process thread access only (mp*)
@@ -75,23 +75,23 @@ private:
     // keeping track of the state.
     TrackedState mp_pre_playback_state;
 
-    size_t mp_prev_pos_after;
+    uint32_t mp_prev_pos_after;
     unsigned mp_prev_process_flags;
 
     // Any thread access
     std::atomic<channel_mode_t> ma_mode;
-    std::atomic<size_t> ma_data_length; // Length in samples
-    std::atomic<size_t> ma_prerecord_data_length;
+    std::atomic<uint32_t> ma_data_length; // Length in samples
+    std::atomic<uint32_t> ma_prerecord_data_length;
     std::atomic<int> ma_start_offset;
-    std::atomic<size_t> ma_n_events_triggered;
+    std::atomic<uint32_t> ma_n_events_triggered;
     std::atomic<unsigned> ma_data_seq_nr;
-    std::atomic<size_t> ma_pre_play_samples;
+    std::atomic<uint32_t> ma_pre_play_samples;
     std::atomic<int> ma_last_played_back_sample;
 
     const Message all_sound_off_message_channel_0 = Message(0, 3, {0xB0, 120, 0});
 
 public:
-    MidiChannel(size_t data_size, channel_mode_t mode, std::shared_ptr<profiling::Profiler> maybe_profiler=nullptr);
+    MidiChannel(uint32_t data_size, channel_mode_t mode, std::shared_ptr<profiling::Profiler> maybe_profiler=nullptr);
     ~MidiChannel();
 
     // NOTE: only use on process thread
@@ -101,82 +101,80 @@ public:
 
     void data_changed();
 
-    size_t get_length() const override;
+    uint32_t get_length() const override;
     
-    void PROC_set_length_impl(Storage &storage, std::atomic<size_t> &storage_length, size_t length);
+    void PROC_set_length_impl(Storage &storage, std::atomic<uint32_t> &storage_length, uint32_t length);
     
-    void PROC_set_length(size_t length) override;
+    void PROC_set_length(uint32_t length) override;
 
-    void set_pre_play_samples(size_t samples) override;
+    void set_pre_play_samples(uint32_t samples) override;
     
-    size_t get_pre_play_samples() const override;
+    uint32_t get_pre_play_samples() const override;
 
     // MIDI channels process everything immediately. Deferred processing is not possible.
     void PROC_process(
         loop_mode_t mode,
         std::optional<loop_mode_t> maybe_next_mode,
-        std::optional<size_t> maybe_next_mode_delay_cycles,
-        std::optional<size_t> maybe_next_mode_eta,
-        size_t n_samples,
-        size_t pos_before,
-        size_t pos_after,
-        size_t length_before,
-        size_t length_after
+        std::optional<uint32_t> maybe_next_mode_delay_cycles,
+        std::optional<uint32_t> maybe_next_mode_eta,
+        uint32_t n_samples,
+        uint32_t pos_before,
+        uint32_t pos_after,
+        uint32_t length_before,
+        uint32_t length_after
         ) override;
 
     void PROC_finalize_process() override;
-    void PROC_process_input_messages(size_t n_samples);
+    void PROC_process_input_messages(uint32_t n_samples);
     void PROC_process_record(Storage &storage,
-                             std::atomic<size_t> &storage_data_length,
+                             std::atomic<uint32_t> &storage_data_length,
                              TrackedState &track_start_state,
-                             size_t record_from,
-                             size_t n_samples);
+                             uint32_t record_from,
+                             uint32_t n_samples);
 
     void clear(bool thread_safe=true);
     void PROC_send_all_sound_off();
 
     void PROC_send_message_ref(MidiWriteableBufferInterface &buf, MidiSortableMessageInterface const &event);
 
-    void PROC_send_message_value(MidiWriteableBufferInterface &buf, size_t time, size_t size, uint8_t *data);
-    void PROC_process_playback(size_t our_pos, size_t our_length, size_t n_samples, bool muted);
+    void PROC_send_message_value(MidiWriteableBufferInterface &buf, uint32_t time, uint32_t size, uint8_t *data);
+    void PROC_process_playback(uint32_t our_pos, uint32_t our_length, uint32_t n_samples, bool muted);
 
-    std::optional<size_t> PROC_get_next_poi(loop_mode_t mode,
+    std::optional<uint32_t> PROC_get_next_poi(loop_mode_t mode,
                                                std::optional<loop_mode_t> maybe_next_mode,
-                                               std::optional<size_t> maybe_next_mode_delay_cycles,
-                                               std::optional<size_t> maybe_next_mode_eta,
-                                               size_t length,
-                                               size_t position) const override;
+                                               std::optional<uint32_t> maybe_next_mode_delay_cycles,
+                                               std::optional<uint32_t> maybe_next_mode_eta,
+                                               uint32_t length,
+                                               uint32_t position) const override;
 
-    void PROC_set_playback_buffer(MidiWriteableBufferInterface *buffer, size_t n_frames);
+    void PROC_set_playback_buffer(MidiWriteableBufferInterface *buffer, uint32_t n_frames);
 
-    void PROC_set_recording_buffer(MidiReadableBufferInterface *buffer, size_t n_frames);
+    void PROC_set_recording_buffer(MidiReadableBufferInterface *buffer, uint32_t n_frames);
 
     std::vector<Message> retrieve_contents(bool thread_safe = true);
 
-    void set_contents(std::vector<Message> contents, size_t length_samples, bool thread_safe = true);
+    void set_contents(std::vector<Message> contents, uint32_t length_samples, bool thread_safe = true);
 
     void PROC_handle_poi(loop_mode_t mode,
-                    size_t length,
-                    size_t position) override;
+                    uint32_t length,
+                    uint32_t position) override;
 
     void set_mode(channel_mode_t mode) override;
 
     channel_mode_t get_mode() const override;
 
-    size_t get_n_notes_active() const;
+    uint32_t get_n_notes_active() const;
 
-    size_t get_n_events_triggered();
+    uint32_t get_n_events_triggered();
 
     void set_start_offset(int offset) override;
 
     int get_start_offset() const override;
 
-    std::optional<size_t> get_played_back_sample() const override;
+    std::optional<uint32_t> get_played_back_sample() const override;
 };
 
-#ifndef IMPLEMENT_MIDICHANNEL_H
 extern template class MidiChannel<uint32_t, uint16_t>;
 extern template class MidiChannel<uint32_t, uint32_t>;
 extern template class MidiChannel<uint16_t, uint16_t>;
 extern template class MidiChannel<uint16_t, uint32_t>;
-#endif

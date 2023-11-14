@@ -54,9 +54,7 @@ struct MaxSizeMidiMessage : public MidiSortableMessageInterface {
     }
 };
 
-#ifndef IMPLEMENT_MIDIMESSAGE_H
 extern template class MidiMessage<uint32_t, uint16_t>;
 extern template class MidiMessage<uint32_t, uint32_t>;
 extern template class MidiMessage<uint16_t, uint16_t>;
 extern template class MidiMessage<uint16_t, uint32_t>;
-#endif

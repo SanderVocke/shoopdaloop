@@ -3,7 +3,7 @@
 #include "AudioMidiLoop.h"
 #include "Backend.h"
 
-void ConnectedLoop::PROC_prepare_process(size_t n_frames) {
+void ConnectedLoop::PROC_prepare_process(uint32_t n_frames) {
     for (auto &chan : mp_audio_channels) {
         chan->PROC_prepare_process_audio(n_frames);
     }
@@ -21,14 +21,14 @@ void ConnectedLoop::PROC_finalize_process() {
     }
 }
 
-void ConnectedLoop::delete_audio_channel_idx(size_t idx, bool thread_safe) {
+void ConnectedLoop::delete_audio_channel_idx(uint32_t idx, bool thread_safe) {
     get_backend().cmd_queue.queue([this, idx]() {
         auto chaninfo = mp_audio_channels.at(idx);
         delete_midi_channel(chaninfo, false);
     });
 }
 
-void ConnectedLoop::delete_midi_channel_idx(size_t idx, bool thread_safe) {
+void ConnectedLoop::delete_midi_channel_idx(uint32_t idx, bool thread_safe) {
     get_backend().cmd_queue.queue([this, idx]() {
         auto chaninfo = mp_midi_channels.at(idx);
         delete_midi_channel(chaninfo, false);

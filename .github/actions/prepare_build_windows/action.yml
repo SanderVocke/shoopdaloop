@@ -1,0 +1,40 @@
+name: prepare_build_windows
+description: Prepare Windows for building Shoopdaloop wheels
+
+runs:
+  using: "composite"
+  steps:
+  - uses: actions/setup-python@v4
+    with:
+      python-version: '3.8'
+  - name: Report python version
+    shell: bash
+    run: |
+      echo "Default python version is $(python --version)"
+  - name: Install boost
+    id: install_boost
+    uses: ./.github/actions/install_boost_headers
+    with:
+      dir: includes
+  - name: Install pkgconfig lite
+    shell: bash
+    run: |
+      curl -L https://github.com/SanderVocke/shoopdaloop/releases/download/qt-6.6.0-1/pkg-config-lite-0.28-1_bin-win32.zip --output pkg-config-lite-0.28-1_bin-win32.zip
+      unzip pkg-config-lite-0.28-1_bin-win32.zip
+      cp pkg-config-lite-0.28-1/bin/* /c/mingw64/bin
+  - name: Path conversion
+    id: pathconvert
+    shell: bash
+    run: |
+      echo "include_dir=$(cygpath -w ${{ steps.install_boost.outputs.include_dir }})" | tee -a $GITHUB_OUTPUT
+  - name: Set up Clang
+    uses: egor-tensin/setup-clang@v1
+    with:
+      version: latest
+      platform: x64
+  - name: Install dependencies and provide build command prefix
+    shell: bash
+    run: |
+      python -m pip install build virtualenv pytest meson
+      choco install -y ninja
+      echo "set \"CMAKE_INCLUDE_PATH=${{ steps.pathconvert.outputs.include_dir }}\" &&" > prepend_build_cmd.txt

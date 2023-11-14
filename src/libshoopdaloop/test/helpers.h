@@ -9,30 +9,30 @@
 #include "LoggingBackend.h"
 
 template<typename S>
-std::vector<S> create_audio_buf(size_t size, std::function<S(size_t)> elem_fn) {
+std::vector<S> create_audio_buf(uint32_t size, std::function<S(uint32_t)> elem_fn) {
     std::vector<S> buf(size);
-    for(size_t idx=0; idx < buf.size(); idx++) {
+    for(uint32_t idx=0; idx < buf.size(); idx++) {
         buf[idx] = elem_fn(idx);
     }
     return buf;
 }
 
 template<typename Buf, typename S>
-void for_buf_elems(Buf const& buf, std::function<void(size_t,S const&)> fn,
+void for_buf_elems(Buf const& buf, std::function<void(uint32_t,S const&)> fn,
                    int start=0, int n=-1) {
     if(n < 0) { n = buf.size() - start; }
-    for(size_t idx=start; idx < (start+n); idx++) {
+    for(uint32_t idx=start; idx < (start+n); idx++) {
         fn(idx, buf.at(idx));
     }
 }
 
 template<typename Channel, typename S>
-void for_channel_elems(Channel &chan, std::function<void(size_t,S const&)> fn,
+void for_channel_elems(Channel &chan, std::function<void(uint32_t,S const&)> fn,
                    int start=0, int n=-1) {
     if(n < 0) { n = chan.get_length() - start; }
     
     auto elems = chan.get_data(false);
-    for(size_t idx=start; idx < (start+n); idx++) {
+    for(uint32_t idx=start; idx < (start+n); idx++) {
         fn(idx, elems[idx]);
     }
 }
@@ -43,14 +43,14 @@ class MidiTestBuffer : public MidiReadableBufferInterface,
 public:
     std::vector<Msg> read;
     std::vector<Msg> written;
-    size_t length;
+    uint32_t length;
 
 
-    size_t PROC_get_n_events() const override {
+    uint32_t PROC_get_n_events() const override {
         return read.size();
     }
 
-    MidiSortableMessageInterface const& PROC_get_event_reference(size_t idx) override
+    MidiSortableMessageInterface const& PROC_get_event_reference(uint32_t idx) override
     {
         return *dynamic_cast<const MidiSortableMessageInterface*>(&read.at(idx));
     }

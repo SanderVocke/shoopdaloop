@@ -1,10 +1,10 @@
 #include "midi_helpers.h"
 
-size_t channel(const uint8_t *msg_data) { return msg_data[0] & 0x0F; }
+uint32_t channel(const uint8_t *msg_data) { return msg_data[0] & 0x0F; }
 
-size_t note(const uint8_t *msg_data) { return msg_data[1]; }
+uint32_t note(const uint8_t *msg_data) { return msg_data[1]; }
 
-size_t velocity(const uint8_t *msg_data) { return msg_data[2]; }
+uint32_t velocity(const uint8_t *msg_data) { return msg_data[2]; }
 
 bool is_noteOn(const uint8_t *msg_data) { return (msg_data[0] & 0xF0) == 0x90; }
 
@@ -26,14 +26,14 @@ bool is_pitch_wheel(const uint8_t *msg_data) {
     return (msg_data[0] & 0xF0) == 0xE0;
 }
 
-std::optional<size_t> is_all_notes_off_for_channel(const uint8_t *msg_data) {
+std::optional<uint32_t> is_all_notes_off_for_channel(const uint8_t *msg_data) {
     if (is_cc(msg_data) && msg_data[1] == 123) {
         return channel(msg_data);
     }
     return std::nullopt;
 }
 
-std::optional<size_t> is_all_sound_off_for_channel(const uint8_t *msg_data) {
+std::optional<uint32_t> is_all_sound_off_for_channel(const uint8_t *msg_data) {
     if (is_cc(msg_data) && msg_data[1] == 120) {
         return channel(msg_data);
     }

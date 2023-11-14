@@ -18,10 +18,7 @@
 
 using namespace boost::ut;
 
-struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled {
-    std::string log_module_name() const override {
-        return "Test.SingleDryWetLoopTestChain";
-    }
+struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDryWetLoopTestChain"> {
 
     shoopdaloop_backend_instance_t *api_backend;
     std::shared_ptr<Backend> int_backend;
@@ -61,8 +58,6 @@ struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled {
     std::shared_ptr<shoop_types::LoopAudioChannel> int_wet_audio_chan;
 
     SingleDryWetLoopTestChain() {
-        log_init();
-
         api_backend = initialize(Dummy, "backend", "");
         int_backend = internal_backend(api_backend);
         int_dummy_audio_system = (shoop_types::_DummyAudioSystem*)int_backend->audio_system.get();
@@ -126,7 +121,7 @@ struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled {
     }
 };
 
-std::vector<float> zeroes(size_t n) { return std::vector<float>(n, 0); }
+std::vector<float> zeroes(uint32_t n) { return std::vector<float>(n, 0); }
 
 audio_channel_data_t to_api_data(std::vector<float> &vec) {
     audio_channel_data_t rval;

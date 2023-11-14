@@ -18,12 +18,12 @@ MidiMergingBuffer::MidiMergingBuffer() {
     stored_messages.reserve(stored_messages_size);
 }
 
-size_t MidiMergingBuffer::PROC_get_n_events() const {
+uint32_t MidiMergingBuffer::PROC_get_n_events() const {
     return references.size();
 }
 
 MidiSortableMessageInterface const &
-MidiMergingBuffer::PROC_get_event_reference(size_t idx) {
+MidiMergingBuffer::PROC_get_event_reference(uint32_t idx) {
     if (dirty) {
         throw std::runtime_error("Access in merging buffer which is unsorted");
     }
