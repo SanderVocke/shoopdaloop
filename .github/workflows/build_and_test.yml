@@ -127,6 +127,8 @@ jobs:
       with:
         variant: ${{ matrix.kind.prepare }}
         wheel: ${{ steps.buildwheel.outputs.wheel_filename }}
+    - name: TMate debug session
+      uses: SanderVocke/action-tmate@master
     - name: Find wheel
       shell: bash
       id: find
