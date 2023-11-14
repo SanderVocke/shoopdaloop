@@ -21,6 +21,11 @@ from shoopdaloop.lib.q_objects.QoverageCollectorFactory import QoverageCollector
 from shoopdaloop.lib.q_objects.Application import Application
 from shoopdaloop.lib.q_objects.TestRunner import TestRunner
 
+import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument('test_file_glob_pattern', nargs=argparse.REMAINDER, help='Glob pattern(s) for test QML files.')
+args = parser.parse_args()
+
 qoverage_collector_factory = QoverageCollectorFactory()
 
 logger = Logger('run_qml_tests.py')
@@ -35,6 +40,10 @@ global_args = {
 }
 
 test_files = glob.glob(script_dir + '/**/tst_*.qml', recursive=True)
+if len(args.test_file_glob_pattern):
+    test_files = []
+    for pattern in args.test_file_glob_pattern:
+        test_files += glob.glob(pattern, recursive=True)
 
 runner = TestRunner()
 
@@ -84,46 +93,3 @@ Total:
 - Failed: {}
 - Skipped: {}
 '''.format(passed, failed, skipped))
-
-# class Setup(QObject):
-#     def __init__(self, parent=None):
-#         super(Setup, self).__init__(parent)
-
-#     @Slot(QQmlEngine)
-#     def qmlEngineAvailable(self, engine):
-#         register_shoopdaloop_qml_classes()
-#         self.root_context_items = create_and_populate_root_context(
-#             engine,
-#             { 'backend_type': BackendType.Dummy.value, 'backend_argstring': '' },
-#             { 'qoverage_collector_factory' : qoverage_collector_factory }
-#             )
-
-# logger = Logger('Test.Runner')
-
-# # Add a -h option to the standard Qt options
-# for idx,arg in enumerate(sys.argv[1:]):
-#     if arg == '-h':
-#         sys.argv[idx+1] = '-help'
-
-# def to_c_chars(strings):
-#     numParams    = len(strings)
-#     strArrayType = c_char_p * numParams
-#     strArray     = strArrayType()
-#     for i, param in enumerate(strings):
-#         if isinstance(param, bytes):
-#             strArray[i] = c_char_p(param)
-#         else:
-#             strArray[i] = c_char_p(param.encode('utf-8'))
-#     return cast(strArray, POINTER(POINTER(c_char)))
-
-# setup = Setup(parent=None)
-
-# raw_setup = cast(Shiboken.getCppPointer(setup)[0], c_void_p)
-# exitcode = qml_tests.run_quick_test_main_with_setup(len(sys.argv), to_c_chars(sys.argv), 'shoopdaloop_tests', script_dir + '/..', raw_setup)
-
-# qoverage_collector_factory.report_all()
-
-# final_msg = 'Tests ran successfully' if exitcode == 0 else 'Test(s) failed or failed to run'
-# print('{}. Exiting with code {}'.format(final_msg, exitcode))
-
-# exit(exitcode)
