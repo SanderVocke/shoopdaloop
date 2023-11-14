@@ -36,7 +36,7 @@ AppRegistries {
         ShoopSessionTestCase {
             id: testcase
             name: 'Resample'
-            filename : TestFilename.test_filename()\)\n\s+\}$
+            filename : TestFilename.test_filename()
             session: session
 
             function loop() { return session.tracks[0].loops[0] }

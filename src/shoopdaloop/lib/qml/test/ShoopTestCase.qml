@@ -247,6 +247,17 @@ PythonTestCase {
             }
             test_fns[key]()
             logger.info(() => `Passed ${current_testcase.passes} of ${current_testcase.checks} checks in ${current_testcase.name}`)
+            var status = 'skip'
+            if(
+                current_testcase.passes > 0 &&
+                current_testcase.failures == 0 &&
+                current_testcase.skips == 0
+            ) {
+                status = 'pass'
+            } else if(current_testcase.failures > 0) {
+                status = 'fail'
+            }
+            shoop_test_runner.testcase_ran_fn(root, key, status)
             current_testcase = null
         }
     }

@@ -41,12 +41,9 @@ class TestRunner(QObject):
         self.logger.info('Testcase {} ready to start'.format(testcase))
         self.run(testcase)
     
-    @Slot(TestCase, str, bool, bool)
+    @Slot(TestCase, str, str)
     def testcase_ran_fn(self, testcase, fn_name, status):
-        name = testcase.name
-        while name in self._results:
-            name = '_' + name # TODO testcase filename
-        
+        name = testcase.name        
         if not name in self._results:
             self._results[name] = dict()
         self._results[testcase.name][fn_name] = status

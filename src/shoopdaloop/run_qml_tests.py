@@ -76,8 +76,9 @@ failed = 0
 skipped = 0
 
 results = runner.results
-for case, case_results in results:
-    for fn, fn_result in case_results:
+print(results)
+for case, case_results in results.items():
+    for fn, fn_result in case_results.items():
         if fn_result == 'pass':
             passed += 1
         elif fn_result == 'skip':
