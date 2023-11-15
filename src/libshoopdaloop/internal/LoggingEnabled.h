@@ -10,27 +10,27 @@ public:
     void log(std::format_string<First, Args...>&& fmt, First && first, Args &&... args) const
     {
         if constexpr (Level >= LevelFilter) {
-            logging::log<Name, Level>(std::nullopt, std::nullopt, "[{}] {}", (void*)this, std::format(fmt, std::forward<First>(first), std::forward<Args>(args)...));
+            logging::log<Name, Level>(std::nullopt, std::nullopt, "[@{}] {}", (void*)this, std::format(fmt, std::forward<First>(first), std::forward<Args>(args)...));
         }
     }
 
     template<log_level_t Level>
     void log(std::string const& str) const {
         if constexpr (Level >= LevelFilter) {
-            logging::log<Name, Level>(std::nullopt, std::nullopt, "[{}] {}", (void*)this, str);
+            logging::log<Name, Level>(std::nullopt, std::nullopt, "[@{}] {}", (void*)this, str);
         }
     }
 
     template<typename Exception, typename First, typename... Args>
     void throw_error(std::format_string<First, Args...>&& fmt, First && first, Args &&... args) const
     {
-        logging::log<Name, error>(std::nullopt, std::nullopt, "[{}] {}", (void*)this, std::format(fmt, std::forward<First>(first), std::forward<Args>(args)...));
+        logging::log<Name, error>(std::nullopt, std::nullopt, "[@{}] {}", (void*)this, std::format(fmt, std::forward<First>(first), std::forward<Args>(args)...));
         throw Exception("");
     }
 
     template<typename Exception>
     void throw_error(std::string const& str) const {
-        logging::log<Name, error>(std::nullopt, std::nullopt, "[{}] {}", (void*)this, str);
+        logging::log<Name, error>(std::nullopt, std::nullopt, "[@{}] {}", (void*)this, str);
         throw Exception("");
     }
 
