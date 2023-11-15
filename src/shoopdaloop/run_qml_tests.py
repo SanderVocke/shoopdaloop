@@ -13,7 +13,7 @@ import json
 script_dir = os.path.dirname(__file__)
 sys.path.append(script_dir + '/..')
 
-from shoopdaloop.libshoopdaloop_bindings import terminate_backend
+from shoopdaloop.libshoopdaloop_bindings import terminate_backend, set_global_logging_level
 from shoopdaloop.lib.qml_helpers import *
 from shoopdaloop.lib.q_objects.SchemaValidator import SchemaValidator
 from shoopdaloop.lib.logging import Logger
@@ -132,6 +132,9 @@ if skipped > 0:
 
 Skipped cases: {}
 '''.format(json.dumps(skipped_cases, indent=2))    
+
+# TODO: this is nasty, but it's a quick hack to get the test results to show up last
+set_global_logging_level('error')
 
 print('''
 ========================================================
