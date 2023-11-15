@@ -5,7 +5,7 @@
 #include <memory>
 #include <atomic>
 #include <map>
-#include "stream_format.h"
+#include <iostream>
 #include "types.h"
 #include <algorithm>
 #include <array>
@@ -51,48 +51,44 @@ constexpr std::array<const char*, error+1> level_indicators = {
     "[\033[32minfo\033[0m] ",  // green
     "[\033[33mwarning\033[0m] ",  // yellow
     "[\033[31merror\033[0m] ",  // red
-};
+};               
 
-// if (maybe_ptr != nullptr) { std::cout << "[" << (size_t)maybe_ptr << "] "; };
-#define DO_LOG_IMPL \
-    std::cout << "[\033[35m" << module_name << "\033[0m] ";        \
-    std::cout << level_indicator << " ";                           \
-    stream_format(std::cout, args...);                             \
-    std::cout << std::endl;                  
-
-#define SHOULD_LOG_IMPL \
-    std::lock_guard<std::recursive_mutex> lock((*g_log_mutex));                  \
-    auto compile_time_allows = (level >= logging::CompileTimeLogLevel);       \
-    auto global_allows =                                                      \
-        (!(*g_maybe_global_level)) || (level >= *(*g_maybe_global_level).get());    \
-    if(compile_time_allows && global_allows) {                                \
-        auto maybe_module_level = (*g_module_log_levels).find(module_name);      \
-        auto module_allows =                                                  \
-            (maybe_module_level == (*g_module_log_levels).end()) ||              \
-            (level >= *maybe_module_level->second.get());                     \
-        return module_allows;                                                 \
-    }                                                                         \
-    return false;
+template<typename Name, typename Level>
+bool should_log_impl(Name name, Level level) {
+    std::lock_guard<std::recursive_mutex> lock((*g_log_mutex));
+    auto compile_time_allows = (level >= logging::CompileTimeLogLevel);
+    auto maybe_module_level = (*g_module_log_levels).find(std::string(name));
+    auto module_level_set = maybe_module_level != (*g_module_log_levels).end();
+    auto global_allows =
+        (!(*g_maybe_global_level)) || (level >= *(*g_maybe_global_level).get());
+    auto module_allows =
+            (!module_level_set) ||
+            (level >= *maybe_module_level->second.get());
+    
+    return (module_level_set ? module_allows : global_allows) && compile_time_allows;
+}
 
 inline bool should_log(std::string module_name, log_level_t level) {
-    SHOULD_LOG_IMPL
+    return should_log_impl(module_name, level);
 }
 
 template<log_level_t level>
 inline bool should_log(std::string module_name) {
-    SHOULD_LOG_IMPL
+    constexpr log_level_t _level = level;
+    return should_log_impl(module_name, _level);
 }
 
 template<ModuleName Name>
 inline bool should_log(log_level_t level) {
-    auto module_name = Name.value;
-    SHOULD_LOG_IMPL
+    constexpr std::string_view name = Name.value;
+    return should_log_impl(name, level);
 }
 
 template<ModuleName Name, log_level_t level>
 inline bool should_log() {
-    auto module_name = Name.value;
-    SHOULD_LOG_IMPL
+    constexpr std::string_view name = Name.value;
+    constexpr log_level_t _level = level;
+    return should_log_impl(name, _level);
 }
 
 } // namespace internal
@@ -206,6 +202,7 @@ inline void set_filter_level(log_level_t level) {
     std::lock_guard<std::recursive_mutex> lock((*g_log_mutex));
     if (!(*g_maybe_global_level)) { (*g_maybe_global_level) = std::make_unique<log_level_t>(level); }
     else { *(*g_maybe_global_level) = level; }
+    log<"Backend.Logging", debug>(std::nullopt, std::nullopt, "Set global filter level to {}", (int)level);
 }
 
 // Set a module filter level.
@@ -215,6 +212,7 @@ inline void set_module_filter_level(std::string name, std::optional<log_level_t>
     auto &maybe_level = (*g_module_log_levels)[name];
     if (!maybe_level) { maybe_level = std::make_unique<log_level_t>(level.value()); }
     else { *maybe_level = level.value(); }
+    log<"Backend.Logging", debug>(std::nullopt, std::nullopt, "Set module filter level for {} to {}", name, (int)level.value());
 }
 
 // Configure using a configure string.

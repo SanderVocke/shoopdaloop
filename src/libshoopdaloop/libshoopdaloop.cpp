@@ -1443,5 +1443,9 @@ void dummy_audio_wait_process(shoopdaloop_backend_instance_t *backend) {
 }
 
 void destroy_logger(shoopdaloop_logger_t* logger) {
+#ifndef _WIN32
     free ((void*)logger);
+#else
+    #warning Leaking loggers on Windows because of unsolved segmentation fault.
+#endif
 }

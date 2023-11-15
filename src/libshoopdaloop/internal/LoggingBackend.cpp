@@ -65,6 +65,7 @@ void parse_conf_from_env() {
     auto e = std::getenv("SHOOP_LOG");
     if (e) {
         parse_conf_string(e);
+        log<"Backend.Logging", debug>(std::nullopt, std::nullopt, "Parsed logging config from environment: {}", e);
     }
 }
 

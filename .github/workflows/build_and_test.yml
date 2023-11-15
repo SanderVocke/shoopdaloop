@@ -211,24 +211,24 @@ jobs:
             wheel: macos_debug_wheel
             testrunner: test_runner
             qpa_platform: offscreen
-          # - name: release_windows
-          #   python: python.exe
-          #   pip: python.exe -m pip
-          #   container: null
-          #   os: windows-2022
-          #   wheel: windows_release_wheel
-          #   testrunner: test_runner.exe
-          #   qpa_platform: vnc
-          #   pathconvert: "| cygpath -u -f -"
-          # - name: debug_windows
-          #   python: python.exe
-          #   pip: python.exe -m pip
-          #   container: null
-          #   os: windows-2022
-          #   wheel: windows_debug_wheel
-          #   testrunner: test_runner.exe
-          #   qpa_platform: vnc
-          #   pathconvert: "| cygpath -u -f -"
+          - name: release_windows
+            python: python.exe
+            pip: python.exe -m pip
+            container: null
+            os: windows-2022
+            wheel: windows_release_wheel
+            testrunner: test_runner.exe
+            qpa_platform: vnc
+            pathconvert: "| cygpath -u -f -"
+          - name: debug_windows
+            python: python.exe
+            pip: python.exe -m pip
+            container: null
+            os: windows-2022
+            wheel: windows_debug_wheel
+            testrunner: test_runner.exe
+            qpa_platform: vnc
+            pathconvert: "| cygpath -u -f -"
     runs-on: ${{ matrix.kind.os }}
     needs: build
     if: ${{ always() }}
