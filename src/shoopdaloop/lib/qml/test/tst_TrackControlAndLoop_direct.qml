@@ -89,7 +89,7 @@ AppRegistries {
             }
             property alias midi_output_port: lookup_midi_output_port.object
 
-            function initTestCase() {
+            testcase_init_fn: () =>  {
                 session.backend.dummy_enter_controlled_mode()
                 verify_true(input_port_1)
                 verify_true(input_port_2)
@@ -124,6 +124,7 @@ AppRegistries {
                 session.backend.dummy_wait_process()
             }
 
+            test_fns: ({
                 'test_audio_direct_record_no_monitor': () => {
                     check_backend()
                     reset()
@@ -150,8 +151,7 @@ AppRegistries {
                     verify_eq(loop1, [1, 2, 3, 4])
                     verify_eq(loop2, [4, 3, 2, 1])
 
-                })
-            }
+                },
 
                 'test_midi_direct_record_no_monitor': () => {
                     check_backend()
@@ -191,10 +191,8 @@ AppRegistries {
 
                     verify_eq(out, expect_out, true)
                     verify_eq(chan_data, expect_loop, true)
-                })
-            }
+                },
 
-            test_fns: ({
                 'test_audio_direct_record_monitor': () => {
                     check_backend()
                     reset()

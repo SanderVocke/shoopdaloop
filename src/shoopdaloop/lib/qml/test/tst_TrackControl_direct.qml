@@ -88,7 +88,7 @@ AppRegistries {
             }
             property alias midi_output_port: lookup_midi_output_port.object
 
-            function initTestCase() {
+            testcase_init_fn: () =>  {
                 session.backend.dummy_enter_controlled_mode()
                 verify_true(audio_input_port_1)
                 verify_true(audio_input_port_2)

@@ -39,6 +39,7 @@ PythonTestCase {
     }
 
     property var test_fns: ({})
+    property var testcase_init_fn: () => {}
 
     Component.onCompleted: {
         logger.info(() => ("Testcase " + name + ` created (${Object.keys(test_fns).length} tests).`))
@@ -184,6 +185,10 @@ PythonTestCase {
         }
     }
 
+    function wait(ms) {
+        application.wait(ms)
+    }
+
     function wait_condition(condition, timeout=2000, msg=`condition not met in time`) {
         var waited = 20
         wait(waited)
@@ -223,7 +228,13 @@ PythonTestCase {
         wait_once()
     }
 
-    property var current_testcase: null
+    property var current_testcase: {
+        'name': 'none',
+        'checks': 0,
+        'failures': 0,
+        'skips': 0,
+        'passes': 0
+    }
 
     function verify(condition, msg) {
         current_testcase.checks += 1
@@ -234,28 +245,48 @@ PythonTestCase {
         }
     }
 
+    function should_skip(fn) {
+        let full_name = name + "::" + fn
+        return shoop_test_runner.should_skip(full_name)
+    }
+
     function run() {
         logger.info(() => (`Running testcase ${name}`))
 
+        logger.debug(() => "running testcase_init_fn")
+        testcase_init_fn()
+
         for (var key in test_fns) {
-            current_testcase = {
-                'name': key,
-                'checks': 0,
-                'failures': 0,
-                'skips': 0,
-                'passes': 0
-            }
-            test_fns[key]()
-            logger.info(() => `Passed ${current_testcase.passes} of ${current_testcase.checks} checks in ${current_testcase.name}`)
+            let fullname = root.name + "::" + key
+
             var status = 'skip'
-            if(
-                current_testcase.passes > 0 &&
-                current_testcase.failures == 0 &&
-                current_testcase.skips == 0
-            ) {
-                status = 'pass'
-            } else if(current_testcase.failures > 0) {
+            try {
+                current_testcase = {
+                    'name': key,
+                    'checks': 0,
+                    'failures': 0,
+                    'skips': 0,
+                    'passes': 0
+                }
+                if (!should_skip(key)) {
+                    logger.info(() => `running ${fullname}`)
+                    test_fns[key]()
+                    logger.debug(() => `Passed ${current_testcase.passes} of ${current_testcase.checks} checks in ${current_testcase.name}`)
+                } else {
+                    logger.info(() => `skipping ${fullname}`)
+                }
+                if(
+                    current_testcase.passes > 0 &&
+                    current_testcase.failures == 0 &&
+                    current_testcase.skips == 0
+                ) {
+                    status = 'pass'
+                } else if(current_testcase.failures > 0) {
+                    status = 'fail'
+                }
+            } catch(error) {
                 status = 'fail'
+                logger.error(error)
             }
             shoop_test_runner.testcase_ran_fn(root, key, status)
             current_testcase = null

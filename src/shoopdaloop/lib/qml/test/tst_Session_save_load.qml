@@ -122,7 +122,7 @@ AppRegistries {
             }
             property alias input_port_1: lookup_input_port_1.object
 
-            function initTestCase() {
+            testcase_init_fn: () => {
                 run_case("initTestCase" , () => {
                     session.backend.dummy_enter_controlled_mode()
                     verify_true(dt())

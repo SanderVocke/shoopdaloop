@@ -8,6 +8,7 @@ class TestCase(QQuickItem):
     def __init__(self, parent=None):
         super(TestCase, self).__init__(parent)
         self._name = ''
+        self._skip = False
     
     run_signal = Signal()
     wait_signal = Signal(int)
@@ -26,8 +27,4 @@ class TestCase(QQuickItem):
     @Slot()
     def run(self):
         self.run_signal.emit()
-        
-    @Slot(int)
-    def wait(self, ms):
-        self.wait_signal.emit(ms)
             

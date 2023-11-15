@@ -6,8 +6,6 @@ from .TestCase import TestCase
 
 from ..logging import Logger
 
-qtest = QTest()
-
 class TestRunner(QObject):
     def __init__(self, parent=None):
         super(TestRunner, self).__init__(parent)
@@ -16,6 +14,7 @@ class TestRunner(QObject):
         self.running = None
         self.ran = set()
         self._results = dict()
+        self.skip_fn = lambda fn: False
         
     def is_done(self):
         return len(self.registered_testcases) > 0 and len(self.ran) == len(self.registered_testcases)
@@ -48,15 +47,16 @@ class TestRunner(QObject):
             self._results[name] = dict()
         self._results[testcase.name][fn_name] = status
 
+    @Slot(str, result=bool)
+    def should_skip(self, fn):
+        return self.skip_fn(fn)
+
     @Slot(TestCase)
     def run(self, testcase):
-        self.logger.info('---- testcase {} ----'.format(testcase.name))
         self.running = testcase
+        self.logger.info('---- testcase {} ----'.format(testcase.name))
         self.running.run()
         self.running = None
+
         self.ran.add(testcase)
-    
-    @Slot(int)
-    def wait(self, ms):
-        qtest.qWait(ms)
 

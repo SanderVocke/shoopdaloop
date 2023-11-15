@@ -46,7 +46,7 @@ AppRegistries {
 
             function loop() { return track().loops[0] }
 
-            function initTestCase() {
+            testcase_init_fn: () =>  {
                 run_case("initTestCase" , () => {
                     session.backend.dummy_enter_controlled_mode()
                 })

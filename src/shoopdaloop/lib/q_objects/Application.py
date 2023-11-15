@@ -5,7 +5,7 @@ import time
 
 from PySide6.QtQml import QQmlApplicationEngine, QJSValue
 from PySide6.QtGui import QGuiApplication, QIcon
-from PySide6.QtCore import QTimer, QObject, Q_ARG, QMetaObject, Qt, QEvent, Slot, QtMsgType
+from PySide6.QtCore import QTimer, QObject, Q_ARG, QMetaObject, Qt, QEvent, Slot, QtMsgType, Signal
 from PySide6.QtQml import QQmlDebuggingEnabler
 
 have_nsm = os.name == 'posix'
@@ -25,6 +25,8 @@ from ..logging import *
 script_dir = os.path.dirname(__file__)
 
 class Application(QGuiApplication):
+    exit_handler_called = Signal()
+
     def __init__(self,
                  title,
                  main_qml,
@@ -65,6 +67,7 @@ class Application(QGuiApplication):
         register_shoopdaloop_qml_classes()
         self.global_args = global_args
         self.additional_root_context = additional_root_context
+        self.additional_root_context['application'] = self
         
         self.installEventFilter(self)
         self.engine = None
@@ -131,6 +134,7 @@ class Application(QGuiApplication):
         if self.engine:
             self.logger.warning(lambda: "EXIT HANDLER")
             QMetaObject.invokeMethod(self.engine, 'quit')
+            self.exit_handler_called.emit()
     
     # The following ensures the Python interpreter has a chance to run, which
     # would not happen otherwise once the Qt event loop starts - and this 
@@ -223,3 +227,9 @@ class Application(QGuiApplication):
                 self.logger.info(lambda: msg)
             else:
                 self.logger.error(lambda: msg)
+    
+    @Slot(int)
+    def wait(self, ms):
+        end = time.time() + ms * 0.001
+        while time.time() < end:
+            self.processEvents()

@@ -107,7 +107,7 @@ AppRegistries {
             }
             property alias fx: lookup_fx.object
 
-            function initTestCase() {
+            testcase_init_fn: () =>  {
                 session.backend.dummy_enter_controlled_mode()
                 verify_true(input_port_1)
                 verify_true(input_port_2)
