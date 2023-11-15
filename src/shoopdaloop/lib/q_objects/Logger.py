@@ -28,23 +28,23 @@ class Logger(QObject):
 
     @Slot('QVariant')
     def trace(self, msg):
-        self.logger.trace(msg)
+        self.logger.trace('[{}] {}'.format(id(self), msg))
     
     @Slot('QVariant')
     def debug(self, msg):
-        self.logger.debug(msg)
+        self.logger.debug('[{}] {}'.format(id(self), msg))
     
     @Slot('QVariant')
     def info(self, msg):
-        self.logger.info(msg)
+        self.logger.info('[{}] {}'.format(id(self), msg))
     
     @Slot('QVariant')
     def warning(self, msg):
-        self.logger.warning(msg)
+        self.logger.warning('[{}] {}'.format(id(self), msg))
     
     @Slot('QVariant')
     def error(self, msg):
-        self.logger.error(msg)
+        self.logger.error('[{}] {}'.format(id(self), msg))
     
     @Slot('QVariant')
     def throw_error(self, msg):
