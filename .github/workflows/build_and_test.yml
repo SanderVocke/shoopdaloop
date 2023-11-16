@@ -304,7 +304,6 @@ jobs:
         root_path: ${{ steps.install.outputs.install_dir }}
         python: ${{ matrix.kind.python }}
         qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
-        python: ${{ matrix.kind.python }}
     # - name: TMate failure session
     #   if: ${{ failure() }}
     #   uses: SanderVocke/action-tmate@master
