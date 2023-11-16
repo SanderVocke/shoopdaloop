@@ -233,7 +233,8 @@ PythonTestCase {
         'checks': 0,
         'failures': 0,
         'skips': 0,
-        'passes': 0
+        'passes': 0,
+        'time': 0.0
     }
 
     function verify(condition, msg) {
@@ -266,11 +267,15 @@ PythonTestCase {
                     'checks': 0,
                     'failures': 0,
                     'skips': 0,
-                    'passes': 0
+                    'passes': 0,
+                    'time': 0.0
                 }
                 if (!should_skip(key)) {
                     logger.info(() => `running ${fullname}`)
+                    var start = new Date()
                     test_fns[key]()
+                    var end = new Date()
+                    current_testcase.time = (end - start) * 0.001
                     logger.debug(() => `Passed ${current_testcase.passes} of ${current_testcase.checks} checks in ${current_testcase.name}`)
                 } else {
                     logger.info(() => `skipping ${fullname}`)

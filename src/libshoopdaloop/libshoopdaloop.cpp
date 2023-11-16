@@ -89,7 +89,7 @@ std::shared_ptr<ConnectedChannel> internal_midi_channel(shoopdaloop_loop_midi_ch
     return ((ConnectedChannel*)chan)->shared_from_this();
 }
 
-#warning make the handles point to globally stored weak pointers to avoid trying to access deleted shared object
+//TODO: make the handles point to globally stored weak pointers to avoid trying to access deleted shared object
 std::shared_ptr<ConnectedLoop> internal_loop(shoopdaloop_loop_t *loop) {
     return ((ConnectedLoop*)loop)->shared_from_this();
 }
@@ -1259,11 +1259,6 @@ void destroy_profiling_report(profiling_report_t *d) {
 }
 
 shoopdaloop_logger_t *get_logger(const char* name) {
-    static bool first = true;
-    if (first) {
-        logging::parse_conf_from_env();
-        first = false;
-    }
     return (shoopdaloop_logger_t*) strdup(name);
 }
 
@@ -1446,6 +1441,6 @@ void destroy_logger(shoopdaloop_logger_t* logger) {
 #ifndef _WIN32
     free ((void*)logger);
 #else
-    #warning Leaking loggers on Windows because of unsolved segmentation fault.
+    //TODO Leaking loggers on Windows because of unsolved segmentation fault.
 #endif
 }

@@ -49,16 +49,16 @@ for i in range(args.iterations):
         n_unexpected_closed += 1
     
     # Try to terminate the process gracefully
-    print('== REPEAT_RUN_APP: Send SIGQUIT')
+    print('== REPEAT_RUN_APP: Terminate')
     process.terminate()
     if wait_and_poll(process, args.wait_ms_before_kill) is None:
         # Process is still running, so we'll use SIGKILL to force it to exit
-        print('== REPEAT_RUN_APP ERROR: Process did not exit gracefully, killing with SIGKILL')
+        print('== REPEAT_RUN_APP ERROR: Process did not exit gracefully, hard-killing')
         process.kill()
         n_had_to_kill += 1
     else:
         # Process exited gracefully
-        print('== REPEAT_RUN_APP: Process exited gracefully after SIGTERM')
+        print('== REPEAT_RUN_APP: Process exited gracefully after termination')
     
     if process.poll() is not None and process.poll() != 0:
         print('== REPEAT_RUN_APP ERROR: Process exited with nonzero exit code {}'.format(process.poll()))
@@ -79,7 +79,7 @@ else:
 == - App was unexpectedly open: {}
 == - App was unexpectedly closed: {}
 == - App had nonzero exit code: {}
-== - Had to SIGKILL: {}
+== - Had to hard-kill: {}
 =====================================================
 '''.format(
     args.iterations,

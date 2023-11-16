@@ -167,7 +167,7 @@ backend_state_info_t Backend::get_state() {
     return rval;
 }
 
-#warning delete destroyed ports
+//TODO delete destroyed ports
 // MEMBER FUNCTIONS
 void Backend::PROC_process (uint32_t nframes) {
     log<trace>("Process {}: start", nframes);

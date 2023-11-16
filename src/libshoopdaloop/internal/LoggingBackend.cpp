@@ -10,10 +10,11 @@
 #include <vector>
 namespace logging {
 
-# warning intentionally leaky globals because of de-initialization problems. Find a better solution.
+//TODO intentionally leaky globals because of de-initialization problems. Find a better solution.
 std::recursive_mutex* g_log_mutex = new std::recursive_mutex();
 std::unique_ptr<log_level_t>* g_maybe_global_level = new std::unique_ptr<log_level_t>(std::make_unique<log_level_t>(info));
 std::map<std::string, std::unique_ptr<log_level_t>>* g_module_log_levels = new std::map<std::string, std::unique_ptr<log_level_t>>();
+std::atomic<bool> g_log_initialized = false;
 
 const std::map<std::string, log_level_t> level_names = {
     {"trace", trace},
@@ -27,28 +28,21 @@ void parse_conf_string(std::string s) {
     // remove spaces
     s.erase(std::remove_if(s.begin(), s.end(), [](char c) { return c == ' '; }), s.end());
 
-    auto split = [](std::string s, std::string delimiter) {
+    auto split = [](std::string_view s, std::string delimiter) {
         size_t pos = 0;
-        std::string token;
         std::vector<std::string> out;
-        bool done = false;
-        while (!done) {
-            if((pos = s.find(delimiter)) == std::string::npos) {
-                token = s;
-                done = true;
+        while (s.length() > 0) {
+            pos = s.find(delimiter);
+            if(pos == std::string::npos) {
+                if (s.length()) { out.push_back(std::string(s)); }
+                break;
             } else {
-                token = s.substr(0, pos);
-            }
-            if (token.length() > 0) {
-                out.push_back(token);
-            }
-            if (!done) {
-                s.erase(0, pos + delimiter.length());
+                if (pos > 0) { out.push_back(std::string(s.substr(0, pos))); }
+                s = s.substr(pos + 1);
             }
         }
         return out;
     };
-
     auto parts = split(s, ",");
 
     for (auto &part : parts) {
@@ -62,6 +56,8 @@ void parse_conf_string(std::string s) {
 }
 
 void parse_conf_from_env() {
+    if (g_log_initialized) { return; }
+    g_log_initialized = true;
     auto e = std::getenv("SHOOP_LOG");
     if (e) {
         parse_conf_string(e);

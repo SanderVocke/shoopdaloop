@@ -2,16 +2,14 @@ from shoopdaloop.libshoopdaloop_bindings import destroy_logger, get_logger, shoo
 from shoopdaloop.libshoopdaloop_bindings import trace as _trace, debug as _debug, info as _info, warning as _warning, error as _error
 
 from PySide6.QtQml import QJSValue
+
 class Logger:
     def __init__(self, module_name):
         self._name = module_name
         self._backend_handle = get_logger(self._name)
     
-    def name(self):
-        return self._name
-    
-    def log(self, msg, level):
-        _msg = msg
+    def resolve_log_msg(self, value, level):
+        _msg = value
         if isinstance(_msg, QJSValue):
             if _msg.isCallable():
                 _msg = _msg.call().toString()
@@ -19,16 +17,27 @@ class Logger:
                 _msg = _msg.toString()
         
         if isinstance(_msg, str):
-            shoopdaloop_log(self._backend_handle, level, _msg)
+            return _msg
         elif callable(_msg):
             if shoopdaloop_should_log(self._backend_handle, level):
                 __msg = _msg()
                 if isinstance(__msg, str):
-                    shoopdaloop_log(self._backend_handle, level, __msg)
+                    return __msg
                 else:
                     raise ValueError('msg to log must be a string or a callable -> string (callable yielded {})'.format(__msg))
+            else:
+                return None
         else:
             raise ValueError('msg to log must be a string or a callable -> string ({})'.format(_msg))
+    
+    def name(self):
+        return self._name
+    
+    def log(self, msg, level):
+        resolved = self.resolve_log_msg(msg, level)
+        if resolved:
+            print(resolved)
+            shoopdaloop_log(self._backend_handle, level, resolved)
     
     def trace(self, msg):
         self.log(msg, _trace)

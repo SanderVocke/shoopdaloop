@@ -3,6 +3,5 @@
 
 using namespace boost::ut;
 
-int main() {
-    logging::parse_conf_from_env();
+int main(int argc, char* argv[]) {
 }

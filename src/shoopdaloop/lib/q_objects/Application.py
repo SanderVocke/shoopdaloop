@@ -51,7 +51,8 @@ class Application(QGuiApplication):
         self.nsm_client = None
         self.title = title
         signal.signal(signal.SIGINT, self.exit_signal_handler)
-        signal.signal(signal.SIGQUIT, self.exit_signal_handler)
+        if hasattr(signal, 'SIGQUIT'):
+            signal.signal(signal.SIGQUIT, self.exit_signal_handler)
         signal.signal(signal.SIGTERM, self.exit_signal_handler)
         
         self.nsmtimer = QTimer(parent=self)
