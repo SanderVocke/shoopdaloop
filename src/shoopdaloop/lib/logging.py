@@ -33,28 +33,31 @@ class Logger:
     def name(self):
         return self._name
     
-    def log(self, msg, level):
+    def log(self, msg, level, _id=None):
         resolved = self.resolve_log_msg(msg, level)
         if resolved:
-            shoopdaloop_log(self._backend_handle, level, resolved)
+            if id:
+                shoopdaloop_log(self._backend_handle, level, '[@{}] {}'.format(_id, resolved))
+            else:
+                shoopdaloop_log(self._backend_handle, level, resolved)
     
-    def trace(self, msg):
-        self.log(msg, _trace)
+    def trace(self, msg, _id=None):
+        self.log(msg, _trace, _id)
     
-    def debug(self, msg):
-        self.log(msg, _debug)
+    def debug(self, msg, _id=None):
+        self.log(msg, _debug, _id)
     
-    def info(self, msg):
-        self.log(msg, _info)
+    def info(self, msg, _id=None):
+        self.log(msg, _info, _id)
     
-    def warning(self, msg):
-        self.log(msg, _warning)
+    def warning(self, msg, _id=None):
+        self.log(msg, _warning, _id)
     
-    def error(self, msg):
-        self.log(msg, _error)
+    def error(self, msg, _id=None):
+        self.log(msg, _error, _id)
     
-    def throw_error(self, msg):
-        self.log(msg, _error)
+    def throw_error(self, msg, _id=None):
+        self.log(msg, _error, _id)
         raise Exception(msg)
     
     def __del__(self):

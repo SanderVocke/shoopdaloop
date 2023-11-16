@@ -39,26 +39,26 @@ class Logger(QObject):
 
     @Slot('QVariant')
     def trace(self, msg):
-        self.logger.trace(msg, id=self._id)
+        self.logger.trace(msg, _id=self._id)
     
     @Slot('QVariant')
     def debug(self, msg):
-        self.logger.debug(msg, id=self._id)
+        self.logger.debug(msg, _id=self._id)
     
     @Slot('QVariant')
     def info(self, msg):
-        self.logger.info(msg, id=self._id)
+        self.logger.info(msg, _id=self._id)
     
     @Slot('QVariant')
     def warning(self, msg):
-        self.logger.warning(msg, id=self._id)
+        self.logger.warning(msg, _id=self._id)
     
     @Slot('QVariant')
     def error(self, msg):
-        self.logger.error(msg, id=self._id)
+        self.logger.error(msg, _id=self._id)
     
     @Slot('QVariant')
     def throw_error(self, msg):
-        self.logger.error(msg, id=self._id)
+        self.logger.error(msg, _id=self._id)
         raise Exception(resolved if resolved else 'Unknown error')
     
