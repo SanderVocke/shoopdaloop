@@ -68,6 +68,7 @@ float *DummyAudioPort::PROC_get_buffer(uint32_t n_frames, bool do_zero) {
 }
 
 void DummyAudioPort::queue_data(uint32_t n_frames, audio_sample_t const *data) {
+    log<debug>("Queueing {} samples", n_frames);
     m_queued_data.push(
         std::vector<audio_sample_t>(data, data + n_frames)
     );
@@ -82,8 +83,9 @@ DummyAudioPort::~DummyAudioPort() { DummyPort::close(); }
 void DummyAudioPort::PROC_post_process(float* buf, uint32_t n_frames) {
     uint32_t to_store = std::min(n_frames, m_n_requested_samples.load());
     if (to_store > 0) {
-        log<debug>("Storing {} samples", to_store);
+        log<debug>("Buffering {} samples ({} total)", to_store, m_retained_samples.size() + to_store);
         m_retained_samples.insert(m_retained_samples.end(), buf, buf+to_store);
+        m_n_requested_samples -= to_store;
     }
 }
 

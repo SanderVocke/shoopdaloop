@@ -290,7 +290,7 @@ jobs:
       timeout-minutes: 5
       with:
         root_path: ${{ steps.install.outputs.install_dir }}
-        screenshots_path: /tmp/screenshots
+        screenshots_path: _grabbed_screenshots
         artifact_name: screenshots_${{ matrix.kind.name }}
         qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
         python: ${{ matrix.kind.python }}

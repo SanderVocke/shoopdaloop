@@ -36,7 +36,7 @@ class Logger:
     def log(self, msg, level, _id=None):
         resolved = self.resolve_log_msg(msg, level)
         if resolved:
-            if id:
+            if _id:
                 shoopdaloop_log(self._backend_handle, level, '[@{}] {}'.format(_id, resolved))
             else:
                 shoopdaloop_log(self._backend_handle, level, resolved)

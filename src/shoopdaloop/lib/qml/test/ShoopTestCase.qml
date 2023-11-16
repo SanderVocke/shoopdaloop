@@ -10,7 +10,7 @@ PythonTestCase {
     id: root
     name : 'UnnamedTestCase'
     property string filename : 'UnknownTestFile'
-    property var logger : PythonLogger { name: `ShoopTestCase.` + root.name }
+    property var logger : PythonLogger { name: `Frontend.Qml.ShoopTestCase` }
     
     // It seems the built-in test function filter of the QML test runner is not working.
     // Provide a means to only run a subset of tests.
@@ -179,7 +179,7 @@ PythonTestCase {
             fn()
             end_test_fn(name)
         } catch (e) {
-            let failstring = `Uncaught exception: ${e.message} (${e.name}}`
+            let failstring = `Uncaught exception: ${e.message} (${e.name})`
             logger.error(() => (format_error(failstring, e.stack)))
             throw e
         }
@@ -249,6 +249,14 @@ PythonTestCase {
     function should_skip(fn) {
         let full_name = name + "::" + fn
         return shoop_test_runner.should_skip(full_name)
+    }
+
+    function skip(msg) {
+        if (current_testcase) {
+            let fullname = root.name + "::" + current_testcase.name
+            logger.info(() => `skipping ${fullname}`)
+            current_testcase.skips += 1
+        }
     }
 
     function run() {

@@ -20,6 +20,7 @@ PythonBackend {
             'test_backend_jack': () => {
                 if(!backend.backend_type_is_supported(Types.BackendType.JackTest)) {
                     skip("Backend was built without Jack support")
+                    return
                 }
 
                 verify(backend.initialized)
