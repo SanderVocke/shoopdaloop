@@ -38,6 +38,7 @@ set(CTYPESGEN_COMMAND ctypesgen)
 set(PREV_SETTING ${CMAKE_POSITION_INDEPENDENT_CODE})
 set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 add_subdirectory(third_party/fmt)
+add_subdirectory(third_party/Catch2)
 set(CMAKE_POSITION_INDEPENDENT_CODE ${PREV_SETTING})
 
 add_subdirectory(libshoopdaloop)

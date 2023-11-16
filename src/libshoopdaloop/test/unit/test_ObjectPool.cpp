@@ -1,16 +1,13 @@
-#include <boost/ut.hpp>
+#include <catch2/catch_test_macros.hpp>
 #include "ObjectPool.h"
 #include <memory>
 
-using namespace boost::ut;
 using namespace std::chrono_literals;
 
-suite ObjectPool_tests = []() {
-    "op_1_many_objects"_test = []() {
-        ObjectPool<int> pool(10, 256);
+TEST_CASE("ObjectPool - Many objects", "[ObjectPool]") {
+    ObjectPool<int> pool(10, 256);
 
-        for(uint32_t idx=0; idx<100; idx++) {
-            delete pool.get_object();
-        }
-    };
+    for(uint32_t idx=0; idx<100; idx++) {
+        delete pool.get_object();
+    }
 };

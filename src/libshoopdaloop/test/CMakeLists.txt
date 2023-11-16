@@ -1,10 +1,5 @@
-# Subdirs
-add_subdirectory(unit)
-add_subdirectory(integration)
-
 # Test runner
 add_executable(test_runner
-    test_runner.cpp
     unit/test_AudioMidiLoop_audio.cpp
     unit/test_AudioMidiLoop_midi.cpp
     unit/test_ObjectPool.cpp
@@ -15,7 +10,8 @@ add_executable(test_runner
     integration/test_chains.cpp
     )
 target_link_libraries(test_runner PRIVATE
-                      shoopdaloop_internals)
+                      shoopdaloop_internals
+                      Catch2::Catch2WithMain)
 target_include_directories(test_runner
                         PRIVATE
                         ${Boost_INCLUDE_DIR}

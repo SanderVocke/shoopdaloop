@@ -43,3 +43,6 @@
 [submodule "src/third_party/fmt"]
 	path = src/third_party/fmt
 	url = https://github.com/fmtlib/fmt.git
+[submodule "src/third_party/Catch2"]
+	path = src/third_party/Catch2
+	url = https://github.com/catchorg/Catch2.git
