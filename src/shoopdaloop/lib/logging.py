@@ -9,6 +9,9 @@ class Logger:
         self._backend_handle = get_logger(self._name)
     
     def resolve_log_msg(self, value, level):
+        if not shoopdaloop_should_log(self._backend_handle, level):
+            return None
+        
         _msg = value
         if isinstance(_msg, QJSValue):
             if _msg.isCallable():
@@ -19,14 +22,11 @@ class Logger:
         if isinstance(_msg, str):
             return _msg
         elif callable(_msg):
-            if shoopdaloop_should_log(self._backend_handle, level):
-                __msg = _msg()
-                if isinstance(__msg, str):
-                    return __msg
-                else:
-                    raise ValueError('msg to log must be a string or a callable -> string (callable yielded {})'.format(__msg))
+            __msg = _msg()
+            if isinstance(__msg, str):
+                return __msg
             else:
-                return None
+                raise ValueError('msg to log must be a string or a callable -> string (callable yielded {})'.format(__msg))
         else:
             raise ValueError('msg to log must be a string or a callable -> string ({})'.format(_msg))
     
@@ -36,7 +36,6 @@ class Logger:
     def log(self, msg, level):
         resolved = self.resolve_log_msg(msg, level)
         if resolved:
-            print(resolved)
             shoopdaloop_log(self._backend_handle, level, resolved)
     
     def trace(self, msg):

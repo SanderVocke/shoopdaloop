@@ -39,38 +39,26 @@ class Logger(QObject):
 
     @Slot('QVariant')
     def trace(self, msg):
-        resolved = self.logger.resolve_log_msg(msg, _trace)
-        if resolved:
-            self.logger.trace('[@{}] {}'.format(self._id, resolved))
+        self.logger.trace(msg, id=self._id)
     
     @Slot('QVariant')
     def debug(self, msg):
-        resolved = self.logger.resolve_log_msg(msg, _debug)
-        if resolved:
-            self.logger.debug('[@{}] {}'.format(self._id, resolved))
+        self.logger.debug(msg, id=self._id)
     
     @Slot('QVariant')
     def info(self, msg):
-        resolved = self.logger.resolve_log_msg(msg, _info)
-        if resolved:
-            self.logger.info('[@{}] {}'.format(self._id, resolved))
+        self.logger.info(msg, id=self._id)
     
     @Slot('QVariant')
     def warning(self, msg):
-        resolved = self.logger.resolve_log_msg(msg, _warning)
-        if resolved:
-            self.logger.warning('[@{}] {}'.format(self._id, resolved))
+        self.logger.warning(msg, id=self._id)
     
     @Slot('QVariant')
     def error(self, msg):
-        resolved = self.logger.resolve_log_msg(msg, _error)
-        if resolved:
-            self.logger.error('[@{}] {}'.format(self._id, resolved))
+        self.logger.error(msg, id=self._id)
     
     @Slot('QVariant')
     def throw_error(self, msg):
-        resolved = self.logger.resolve_log_msg(msg, _error)
-        if resolved:
-            self.logger.error('[@{}] {}'.format(self._id, resolved))
+        self.logger.error(msg, id=self._id)
         raise Exception(resolved if resolved else 'Unknown error')
     
