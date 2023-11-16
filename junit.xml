@@ -1,143 +1,76 @@
-<?xml version="1.0" ?>
-  <testsuites>
-    <testsuite name="DummyBackend">
-      <testcase name="test_backend" classname="DummyBackend"/>
-    </testsuite>
-    <testsuite name="JackBackend">
-      <testcase name="test_backend_jack" classname="JackBackend">
-        <failure/>
-      </testcase>
-    </testsuite>
-    <testsuite name="ControlInterface">
-      <testcase name="test_loop_count" classname="ControlInterface"/>
-      <testcase name="test_loop_get_which_selected" classname="ControlInterface"/>
-      <testcase name="test_loop_get_which_targeted" classname="ControlInterface"/>
-      <testcase name="test_loop_get_mode" classname="ControlInterface"/>
-      <testcase name="test_loop_transition" classname="ControlInterface"/>
-      <testcase name="test_loop_set_get_volume" classname="ControlInterface"/>
-      <testcase name="test_loop_set_get_volume_fader" classname="ControlInterface"/>
-      <testcase name="test_loop_set_get_balance" classname="ControlInterface"/>
-      <testcase name="test_loop_select" classname="ControlInterface"/>
-      <testcase name="test_loop_target" classname="ControlInterface"/>
-      <testcase name="test_loop_clear" classname="ControlInterface"/>
-      <testcase name="test_loop_get_all" classname="ControlInterface"/>
-      <testcase name="test_loop_get_by_mode" classname="ControlInterface"/>
-      <testcase name="test_loop_get_by_track" classname="ControlInterface"/>
-      <testcase name="test_loop_get_length" classname="ControlInterface"/>
-      <testcase name="test_track_set_get_volume" classname="ControlInterface"/>
-      <testcase name="test_track_set_get_volume_fader" classname="ControlInterface"/>
-      <testcase name="test_track_set_get_input_volume" classname="ControlInterface"/>
-      <testcase name="test_track_set_get_input_volume_fader" classname="ControlInterface"/>
-      <testcase name="test_track_set_get_muted" classname="ControlInterface"/>
-      <testcase name="test_track_set_get_input_muted" classname="ControlInterface"/>
-    </testsuite>
-    <testsuite name="JackPorts">
-      <testcase name="test_available_ports" classname="JackPorts">
-        <failure/>
-      </testcase>
-    </testsuite>
-    <testsuite name="MidiControl_actions">
-      <testcase name="test_validate_config" classname="MidiControl_actions"/>
-      <testcase name="test_midi_control_custom_action" classname="MidiControl_actions"/>
-      <testcase name="test_midi_control_default_action" classname="MidiControl_actions"/>
-      <testcase name="test_midi_control_action_with_input_preset" classname="MidiControl_actions"/>
-      <testcase name="test_midi_control_action_with_custom_input" classname="MidiControl_actions"/>
-      <testcase name="test_midi_control_action_with_condition_false" classname="MidiControl_actions"/>
-      <testcase name="test_midi_control_action_with_condition_true" classname="MidiControl_actions"/>
-    </testsuite>
-    <testsuite name="MidiControl_filters">
-      <testcase name="test_midi_control_filter_noteon" classname="MidiControl_filters"/>
-      <testcase name="test_midi_control_filter_noteoff" classname="MidiControl_filters"/>
-    </testsuite>
-    <testsuite name="Resample">
-      <testcase name="test_resample_1chan" classname="Resample">
-        <failure/>
-      </testcase>
-      <testcase name="test_resample_1chan_resize" classname="Resample"/>
-      <testcase name="test_resample_2chan_resize" classname="Resample"/>
-    </testsuite>
-    <testsuite name="SessionDescriptor_default">
-      <testcase name="test_session_descriptor_default" classname="SessionDescriptor_default"/>
-    </testsuite>
-    <testsuite name="Session_save_load">
-      <testcase name="test_channels" classname="Session_save_load"/>
-      <testcase name="test_save_load_non_sample_accurate_midi" classname="Session_save_load"/>
-      <testcase name="test_save_load_sample_accurate_midi" classname="Session_save_load"/>
-      <testcase name="test_save_load_session_audio_and_midi" classname="Session_save_load"/>
-    </testsuite>
-    <testsuite name="TrackControlAndLoop_direct">
-      <testcase name="test_audio_direct_record_no_monitor" classname="TrackControlAndLoop_direct"/>
-      <testcase name="test_midi_direct_record_no_monitor" classname="TrackControlAndLoop_direct"/>
-      <testcase name="test_audio_direct_record_monitor" classname="TrackControlAndLoop_direct">
-        <failure/>
-      </testcase>
-      <testcase name="test_midi_direct_record_monitor" classname="TrackControlAndLoop_direct"/>
-      <testcase name="test_audio_direct_play_no_monitor" classname="TrackControlAndLoop_direct">
-        <failure/>
-      </testcase>
-      <testcase name="test_midi_direct_play_no_monitor" classname="TrackControlAndLoop_direct"/>
-      <testcase name="test_audio_direct_play_monitor" classname="TrackControlAndLoop_direct">
-        <failure/>
-      </testcase>
-      <testcase name="test_midi_direct_play_monitor" classname="TrackControlAndLoop_direct"/>
-    </testsuite>
-    <testsuite name="TrackControlAndLoop_drywet">
-      <testcase name="test_drywet_audio_record_no_monitor" classname="TrackControlAndLoop_drywet"/>
-      <testcase name="test_drywet_midi_record_no_monitor" classname="TrackControlAndLoop_drywet"/>
-      <testcase name="test_drywet_audio_record_monitor" classname="TrackControlAndLoop_drywet"/>
-      <testcase name="test_drywet_midi_record_monitor" classname="TrackControlAndLoop_drywet"/>
-      <testcase name="test_drywet_audio_play_no_monitor" classname="TrackControlAndLoop_drywet"/>
-      <testcase name="test_drywet_midi_play_no_monitor" classname="TrackControlAndLoop_drywet"/>
-      <testcase name="test_drywet_audio_play_monitor" classname="TrackControlAndLoop_drywet"/>
-      <testcase name="test_drywet_midi_play_monitor" classname="TrackControlAndLoop_drywet"/>
-      <testcase name="test_drywet_audio_playdry_no_monitor" classname="TrackControlAndLoop_drywet"/>
-      <testcase name="test_drywet_midi_playdry_no_monitor" classname="TrackControlAndLoop_drywet"/>
-      <testcase name="test_drywet_audio_playdry_monitor" classname="TrackControlAndLoop_drywet"/>
-      <testcase name="test_drywet_midi_playdry_monitor" classname="TrackControlAndLoop_drywet"/>
-      <testcase name="test_drywet_audio_rerecord_no_monitor" classname="TrackControlAndLoop_drywet"/>
-      <testcase name="test_drywet_midi_rerecord_no_monitor" classname="TrackControlAndLoop_drywet"/>
-      <testcase name="test_drywet_audio_rerecord_monitor" classname="TrackControlAndLoop_drywet"/>
-      <testcase name="test_drywet_midi_rerecord_monitor" classname="TrackControlAndLoop_drywet"/>
-    </testsuite>
-    <testsuite name="TrackControl_direct">
-      <testcase name="test_direct_audio_monitor" classname="TrackControl_direct"/>
-      <testcase name="test_direct_midi_monitor" classname="TrackControl_direct"/>
-      <testcase name="test_direct_audio_monitor_input_volume" classname="TrackControl_direct">
-        <failure/>
-      </testcase>
-      <testcase name="test_direct_audio_monitor_output_volume" classname="TrackControl_direct">
-        <failure/>
-      </testcase>
-      <testcase name="test_direct_audio_monitor_balance_left" classname="TrackControl_direct">
-        <failure/>
-      </testcase>
-      <testcase name="test_direct_audio_monitor_output_balance_right" classname="TrackControl_direct">
-        <failure/>
-      </testcase>
-      <testcase name="test_direct_audio_no_monitor" classname="TrackControl_direct">
-        <failure/>
-      </testcase>
-      <testcase name="test_direct_midi_no_monitor" classname="TrackControl_direct"/>
-      <testcase name="test_direct_audio_monitor_mute" classname="TrackControl_direct">
-        <failure/>
-      </testcase>
-    </testsuite>
-    <testsuite name="TrackControl_drywet">
-      <testcase name="test_drywet_audio_monitor" classname="TrackControl_drywet"/>
-      <testcase name="test_drywet_midi_monitor" classname="TrackControl_drywet"/>
-      <testcase name="test_drywet_audio_monitor_input_volume" classname="TrackControl_drywet"/>
-      <testcase name="test_drywet_audio_monitor_output_volume" classname="TrackControl_drywet"/>
-      <testcase name="test_drywet_audio_monitor_balance_left" classname="TrackControl_drywet"/>
-      <testcase name="test_drywet_audio_monitor_output_balance_right" classname="TrackControl_drywet"/>
-      <testcase name="test_drywet_audio_no_monitor" classname="TrackControl_drywet"/>
-      <testcase name="test_drywet_midi_no_monitor" classname="TrackControl_drywet"/>
-      <testcase name="test_drywet_audio_monitor_mute" classname="TrackControl_drywet"/>
-      <testcase name="test_drywet_midi_mute" classname="TrackControl_drywet"/>
-    </testsuite>
-    <testsuite name="TwoLoops">
-      <testcase name="test_two_loops_cleared" classname="TwoLoops"/>
-      <testcase name="test_two_loops_master_record" classname="TwoLoops"/>
-      <testcase name="test_two_loops_master_playback" classname="TwoLoops"/>
-      <testcase name="test_switch_between_backend_and_composite" classname="TwoLoops"/>
-    </testsuite>
-  </testsuites>
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite name="test_runner.exe" errors="0" failures="0" skipped="0" tests="5023" hostname="tbd" time="3.224" timestamp="2023-11-16T22:00:59Z">
+    <properties>
+      <property name="random-seed" value="320380084"/>
+    </properties>
+    <testcase classname="test_runner.exe.global" name="AudioMidiLoop - Audio - Stop" time="0.001" status="run"/>
+    <testcase classname="test_runner.exe.global" name="AudioMidiLoop - Audio - Record" time="0.001" status="run"/>
+    <testcase classname="test_runner.exe.global" name="AudioMidiLoop - Audio - Record Beyond Ext. Buf" time="0.000" status="run"/>
+    <testcase classname="test_runner.exe.global" name="AudioMidiLoop - Audio - Record Multiple Target" time="0.008" status="run"/>
+    <testcase classname="test_runner.exe.global" name="AudioMidiLoop - Audio - Record Multiple Source" time="0.006" status="run"/>
+    <testcase classname="test_runner.exe.global" name="AudioMidiLoop - Audio - Record Onto Smaller" time="0.002" status="run"/>
+    <testcase classname="test_runner.exe.global" name="AudioMidiLoop - Audio - Record Onto Larger" time="0.001" status="run"/>
+    <testcase classname="test_runner.exe.global" name="AudioMidiLoop - Audio - Playback" time="0.002" status="run"/>
+    <testcase classname="test_runner.exe.global" name="AudioMidiLoop - Audio - Playback Multiple Target" time="0.008" status="run"/>
+    <testcase classname="test_runner.exe.global" name="AudioMidiLoop - Audio - Playback Shorter Data" time="0.001" status="run"/>
+    <testcase classname="test_runner.exe.global" name="AudioMidiLoop - Audio - Playback Wrap" time="0.001" status="run"/>
+    <testcase classname="test_runner.exe.global" name="AudioMidiLoop - Audio - Playback Wrap Longer Data" time="0.001" status="run"/>
+    <testcase classname="test_runner.exe.global" name="AudioMidiLoop - Audio - Replace" time="0.002" status="run"/>
+    <testcase classname="test_runner.exe.global" name="AudioMidiLoop - Audio - Replace Onto Smaller" time="0.001" status="run"/>
+    <testcase classname="test_runner.exe.global" name="AudioMidiLoop - Audio - Play Dry Through Wet" time="0.001" status="run"/>
+    <testcase classname="test_runner.exe.global" name="AudioMidiLoop - Audio - Record Dry Into Wet" time="0.004" status="run"/>
+    <testcase classname="test_runner.exe.global" name="AudioMidiLoop - Audio - Prerecord" time="0.002" status="run"/>
+    <testcase classname="test_runner.exe.global" name="AudioMidiLoop - Audio - Preplay" time="0.004" status="run"/>
+    <testcase classname="test_runner.exe.global" name="AudioMidiLoop - Midi - Stop" time="0.003" status="run"/>
+    <testcase classname="test_runner.exe.global" name="AudioMidiLoop - Midi - Record" time="0.002" status="run"/>
+    <testcase classname="test_runner.exe.global" name="AudioMidiLoop - Midi - Record Append Out-of-order" time="0.003" status="run">
+      <system-out>
+[\x1B[35mBackend.MidiChannel.Storage\x1B[0m] [\x1B[33mwarning\x1B[0m] [@0x20bf1dcf270] Ignoring store of out-of-order MIDI message.
+      </system-out>
+    </testcase>
+    <testcase classname="test_runner.exe.global" name="AudioMidiLoop - Midi - Record multiple source buffers" time="0.003" status="run"/>
+    <testcase classname="test_runner.exe.global" name="AudioMidiLoop - Midi - Record onto longer buffer" time="0.002" status="run"/>
+    <testcase classname="test_runner.exe.global" name="AudioMidiLoop - Midi - Playback" time="0.002" status="run"/>
+    <testcase classname="test_runner.exe.global" name="AudioMidiLoop - Midi - Prerecord" time="0.003" status="run"/>
+    <testcase classname="test_runner.exe.global" name="AudioMidiLoop - Midi - Preplay" time="0.010" status="run"/>
+    <testcase classname="test_runner.exe.global" name="AudioMidiLoop - Midi - State tracking" time="0.006" status="run"/>
+    <testcase classname="test_runner.exe.global" name="BasicLoop - Stop" time="0.000" status="run"/>
+    <testcase classname="test_runner.exe.global" name="BasicLoop - Record" time="0.000" status="run"/>
+    <testcase classname="test_runner.exe.global" name="BasicLoop - Planned Transition" time="0.000" status="run"/>
+    <testcase classname="test_runner.exe.global" name="BasicLoop - Planned Transition delayed" time="0.000" status="run"/>
+    <testcase classname="test_runner.exe.global" name="BasicLoop - Planned Transitions delayed" time="0.001" status="run"/>
+    <testcase classname="test_runner.exe.global" name="BasicLoop - Planned Transitions Cancellation 1" time="0.000" status="run"/>
+    <testcase classname="test_runner.exe.global" name="BasicLoop - Generate Trigger" time="0.000" status="run"/>
+    <testcase classname="test_runner.exe.global" name="BasicLoop - Generate Trigger on restart" time="0.000" status="run"/>
+    <testcase classname="test_runner.exe.global" name="BasicLoop - Playback 0 length" time="0.000" status="run"/>
+    <testcase classname="test_runner.exe.global" name="DummyAudioSystem - Automatic" time="0.015" status="run"/>
+    <testcase classname="test_runner.exe.global" name="DummyAudioSystem - Controlled" time="0.281" status="run"/>
+    <testcase classname="test_runner.exe.global" name="DummyAudioSystem - Input port default" time="0.000" status="run"/>
+    <testcase classname="test_runner.exe.global" name="DummyAudioSystem - Input port queue" time="0.000" status="run"/>
+    <testcase classname="test_runner.exe.global" name="DummyAudioSystem - Input port queue consume multiple" time="0.000" status="run"/>
+    <testcase classname="test_runner.exe.global" name="DummyAudioSystem - Input port queue consume combine" time="0.000" status="run"/>
+    <testcase classname="test_runner.exe.global" name="LibShoopdaloop - Create destroy back-end" time="0.011" status="run"/>
+    <testcase classname="test_runner.exe.global" name="LibShoopdaloop - Create destroy loop" time="0.013" status="run"/>
+    <testcase classname="test_runner.exe.global" name="LibShoopdaloop - Create destroy back-end loop destroyed" time="0.013" status="run"/>
+    <testcase classname="test_runner.exe.global" name="LibShoopdaloop - Channels not destroyed with loop" time="0.028" status="run"/>
+    <testcase classname="test_runner.exe.global" name="SyncedBasicLoops - Simple" time="0.000" status="run"/>
+    <testcase classname="test_runner.exe.global" name="SyncedBasicLoops - Loop Restart" time="0.000" status="run"/>
+    <testcase classname="test_runner.exe.global" name="SyncedBasicLoops - Loop Restart Playing" time="0.001" status="run"/>
+    <testcase classname="test_runner.exe.global" name="Chains - DryWet Basic" time="0.510" status="run"/>
+    <testcase classname="test_runner.exe.global" name="Chains - DryWet record basic" time="0.172" status="run"/>
+    <testcase classname="test_runner.exe.global" name="Chains - DryWet record passthrough muted" time="0.203" status="run"/>
+    <testcase classname="test_runner.exe.global" name="Chains - DryWet record muted" time="0.142" status="run"/>
+    <testcase classname="test_runner.exe.global" name="Chains - DryWet record volume" time="0.174" status="run"/>
+    <testcase classname="test_runner.exe.global" name="Chains - DryWet playback basic" time="0.219" status="run"/>
+    <testcase classname="test_runner.exe.global" name="Chains - DryWet playback volume" time="0.236" status="run"/>
+    <testcase classname="test_runner.exe.global" name="Chains - DryWet dry playback basic" time="0.251" status="run"/>
+    <testcase classname="test_runner.exe.global" name="Chains - DryWet dry playback volume" time="0.266" status="run"/>
+    <testcase classname="test_runner.exe.global" name="Chains - DryWet dry playback input passthrough muted" time="0.295" status="run"/>
+    <testcase classname="test_runner.exe.global" name="Chains - DryWet dry playback input muted" time="0.296" status="run"/>
+    <system-out>
+[\x1B[35mBackend.MidiChannel.Storage\x1B[0m] [\x1B[33mwarning\x1B[0m] [@0x20bf1dcf270] Ignoring store of out-of-order MIDI message.
+    </system-out>
+    <system-err/>
+  </testsuite>
+</testsuites>
