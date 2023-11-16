@@ -35,6 +35,7 @@ endif()
 
 set(CTYPESGEN_COMMAND ctypesgen)
 
+add_subdirectory(third_party/fmt)
 add_subdirectory(libshoopdaloop)
   
 # Generate and install version.txt and description.txt

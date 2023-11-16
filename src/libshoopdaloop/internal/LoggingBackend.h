@@ -9,7 +9,7 @@
 #include "types.h"
 #include <algorithm>
 #include <array>
-#include <format>
+#include <fmt/core.h>
 #include <utility>
 
 #define LOG_LEVEL_TRACE trace;
@@ -159,11 +159,11 @@ inline void log(std::optional<log_level_t> maybe_log_level,
 template<typename FirstFormatArg, typename ...RestFormatArgs>
 void log(std::optional<log_level_t> maybe_log_level,
          std::optional<std::string_view> maybe_module_name,
-         std::format_string<FirstFormatArg, RestFormatArgs...>&& str,
+         fmt::format_string<FirstFormatArg, RestFormatArgs...>&& str,
          FirstFormatArg &&first,
          RestFormatArgs &&... rest)
 {
-    log_impl<false, false, "", info>(maybe_log_level, maybe_module_name, std::format(str, std::forward<FirstFormatArg>(first), std::forward<RestFormatArgs>(rest)...));
+    log_impl<false, false, "", info>(maybe_log_level, maybe_module_name, fmt::format(str, std::forward<FirstFormatArg>(first), std::forward<RestFormatArgs>(rest)...));
 }
 template<ModuleName Name>
 void log(std::optional<log_level_t> maybe_log_level,
@@ -175,11 +175,11 @@ void log(std::optional<log_level_t> maybe_log_level,
 template<ModuleName Name, typename FirstFormatArg, typename ...RestFormatArgs>
 void log(std::optional<log_level_t> maybe_log_level,
          std::optional<std::string_view> maybe_module_name,
-         std::format_string<FirstFormatArg, RestFormatArgs...>&& str,
+         fmt::format_string<FirstFormatArg, RestFormatArgs...>&& str,
          FirstFormatArg &&first,
          RestFormatArgs &&... rest)
 {
-    log_impl<true, false, Name, info>(maybe_log_level, maybe_module_name, std::format(str, std::forward<FirstFormatArg>(first), std::forward<RestFormatArgs>(rest)...));
+    log_impl<true, false, Name, info>(maybe_log_level, maybe_module_name, fmt::format(str, std::forward<FirstFormatArg>(first), std::forward<RestFormatArgs>(rest)...));
 }
 template<log_level_t Level>
 void log(std::optional<log_level_t> maybe_log_level,
@@ -191,11 +191,11 @@ void log(std::optional<log_level_t> maybe_log_level,
 template<log_level_t Level, typename FirstFormatArg, typename ...RestFormatArgs>
 void log(std::optional<log_level_t> maybe_log_level,
          std::optional<std::string_view> maybe_module_name,
-         std::format_string<FirstFormatArg, RestFormatArgs...>&& str,
+         fmt::format_string<FirstFormatArg, RestFormatArgs...>&& str,
          FirstFormatArg &&first,
          RestFormatArgs &&... rest)
 {
-    log_impl<false, true, "", Level>(maybe_log_level, maybe_module_name, std::format(str, std::forward<FirstFormatArg>(first), std::forward<RestFormatArgs>(rest)...));
+    log_impl<false, true, "", Level>(maybe_log_level, maybe_module_name, fmt::format(str, std::forward<FirstFormatArg>(first), std::forward<RestFormatArgs>(rest)...));
 }
 template<ModuleName Name, log_level_t Level>
 void log(std::optional<log_level_t> maybe_log_level,
@@ -207,11 +207,11 @@ void log(std::optional<log_level_t> maybe_log_level,
 template<ModuleName Name, log_level_t Level, typename FirstFormatArg, typename ...RestFormatArgs>
 void log(std::optional<log_level_t> maybe_log_level,
          std::optional<std::string_view> maybe_module_name,
-         std::format_string<FirstFormatArg, RestFormatArgs...>&& str,
+         fmt::format_string<FirstFormatArg, RestFormatArgs...>&& str,
          FirstFormatArg &&first,
          RestFormatArgs &&... rest)
 {
-    log_impl<true, true, Name, Level>(maybe_log_level, maybe_module_name, std::format(str, std::forward<FirstFormatArg>(first), std::forward<RestFormatArgs>(rest)...));
+    log_impl<true, true, Name, Level>(maybe_log_level, maybe_module_name, fmt::format(str, std::forward<FirstFormatArg>(first), std::forward<RestFormatArgs>(rest)...));
 }
 
 // Set the global runtime filter level.

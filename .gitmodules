@@ -40,3 +40,6 @@
 [submodule "third_party/sratom"]
 	path = third_party/sratom
 	url = https://github.com/lv2/sratom.git
+[submodule "src/third_party/fmt"]
+	path = src/third_party/fmt
+	url = https://github.com/fmtlib/fmt.git
