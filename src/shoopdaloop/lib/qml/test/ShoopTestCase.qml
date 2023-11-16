@@ -258,8 +258,11 @@ PythonTestCase {
         testcase_init_fn()
 
         for (var key in test_fns) {
-            let fullname = root.name + "::" + key
+            shoop_test_runner.testcase_register_fn(root, key, status)
+        }
 
+        for (var key in test_fns) {        
+            let fullname = root.name + "::" + key
             var status = 'skip'
             try {
                 current_testcase = {

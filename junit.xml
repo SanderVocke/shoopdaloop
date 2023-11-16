@@ -1,0 +1,143 @@
+<?xml version="1.0" ?>
+  <testsuites>
+    <testsuite name="DummyBackend">
+      <testcase name="test_backend" classname="DummyBackend"/>
+    </testsuite>
+    <testsuite name="JackBackend">
+      <testcase name="test_backend_jack" classname="JackBackend">
+        <failure/>
+      </testcase>
+    </testsuite>
+    <testsuite name="ControlInterface">
+      <testcase name="test_loop_count" classname="ControlInterface"/>
+      <testcase name="test_loop_get_which_selected" classname="ControlInterface"/>
+      <testcase name="test_loop_get_which_targeted" classname="ControlInterface"/>
+      <testcase name="test_loop_get_mode" classname="ControlInterface"/>
+      <testcase name="test_loop_transition" classname="ControlInterface"/>
+      <testcase name="test_loop_set_get_volume" classname="ControlInterface"/>
+      <testcase name="test_loop_set_get_volume_fader" classname="ControlInterface"/>
+      <testcase name="test_loop_set_get_balance" classname="ControlInterface"/>
+      <testcase name="test_loop_select" classname="ControlInterface"/>
+      <testcase name="test_loop_target" classname="ControlInterface"/>
+      <testcase name="test_loop_clear" classname="ControlInterface"/>
+      <testcase name="test_loop_get_all" classname="ControlInterface"/>
+      <testcase name="test_loop_get_by_mode" classname="ControlInterface"/>
+      <testcase name="test_loop_get_by_track" classname="ControlInterface"/>
+      <testcase name="test_loop_get_length" classname="ControlInterface"/>
+      <testcase name="test_track_set_get_volume" classname="ControlInterface"/>
+      <testcase name="test_track_set_get_volume_fader" classname="ControlInterface"/>
+      <testcase name="test_track_set_get_input_volume" classname="ControlInterface"/>
+      <testcase name="test_track_set_get_input_volume_fader" classname="ControlInterface"/>
+      <testcase name="test_track_set_get_muted" classname="ControlInterface"/>
+      <testcase name="test_track_set_get_input_muted" classname="ControlInterface"/>
+    </testsuite>
+    <testsuite name="JackPorts">
+      <testcase name="test_available_ports" classname="JackPorts">
+        <failure/>
+      </testcase>
+    </testsuite>
+    <testsuite name="MidiControl_actions">
+      <testcase name="test_validate_config" classname="MidiControl_actions"/>
+      <testcase name="test_midi_control_custom_action" classname="MidiControl_actions"/>
+      <testcase name="test_midi_control_default_action" classname="MidiControl_actions"/>
+      <testcase name="test_midi_control_action_with_input_preset" classname="MidiControl_actions"/>
+      <testcase name="test_midi_control_action_with_custom_input" classname="MidiControl_actions"/>
+      <testcase name="test_midi_control_action_with_condition_false" classname="MidiControl_actions"/>
+      <testcase name="test_midi_control_action_with_condition_true" classname="MidiControl_actions"/>
+    </testsuite>
+    <testsuite name="MidiControl_filters">
+      <testcase name="test_midi_control_filter_noteon" classname="MidiControl_filters"/>
+      <testcase name="test_midi_control_filter_noteoff" classname="MidiControl_filters"/>
+    </testsuite>
+    <testsuite name="Resample">
+      <testcase name="test_resample_1chan" classname="Resample">
+        <failure/>
+      </testcase>
+      <testcase name="test_resample_1chan_resize" classname="Resample"/>
+      <testcase name="test_resample_2chan_resize" classname="Resample"/>
+    </testsuite>
+    <testsuite name="SessionDescriptor_default">
+      <testcase name="test_session_descriptor_default" classname="SessionDescriptor_default"/>
+    </testsuite>
+    <testsuite name="Session_save_load">
+      <testcase name="test_channels" classname="Session_save_load"/>
+      <testcase name="test_save_load_non_sample_accurate_midi" classname="Session_save_load"/>
+      <testcase name="test_save_load_sample_accurate_midi" classname="Session_save_load"/>
+      <testcase name="test_save_load_session_audio_and_midi" classname="Session_save_load"/>
+    </testsuite>
+    <testsuite name="TrackControlAndLoop_direct">
+      <testcase name="test_audio_direct_record_no_monitor" classname="TrackControlAndLoop_direct"/>
+      <testcase name="test_midi_direct_record_no_monitor" classname="TrackControlAndLoop_direct"/>
+      <testcase name="test_audio_direct_record_monitor" classname="TrackControlAndLoop_direct">
+        <failure/>
+      </testcase>
+      <testcase name="test_midi_direct_record_monitor" classname="TrackControlAndLoop_direct"/>
+      <testcase name="test_audio_direct_play_no_monitor" classname="TrackControlAndLoop_direct">
+        <failure/>
+      </testcase>
+      <testcase name="test_midi_direct_play_no_monitor" classname="TrackControlAndLoop_direct"/>
+      <testcase name="test_audio_direct_play_monitor" classname="TrackControlAndLoop_direct">
+        <failure/>
+      </testcase>
+      <testcase name="test_midi_direct_play_monitor" classname="TrackControlAndLoop_direct"/>
+    </testsuite>
+    <testsuite name="TrackControlAndLoop_drywet">
+      <testcase name="test_drywet_audio_record_no_monitor" classname="TrackControlAndLoop_drywet"/>
+      <testcase name="test_drywet_midi_record_no_monitor" classname="TrackControlAndLoop_drywet"/>
+      <testcase name="test_drywet_audio_record_monitor" classname="TrackControlAndLoop_drywet"/>
+      <testcase name="test_drywet_midi_record_monitor" classname="TrackControlAndLoop_drywet"/>
+      <testcase name="test_drywet_audio_play_no_monitor" classname="TrackControlAndLoop_drywet"/>
+      <testcase name="test_drywet_midi_play_no_monitor" classname="TrackControlAndLoop_drywet"/>
+      <testcase name="test_drywet_audio_play_monitor" classname="TrackControlAndLoop_drywet"/>
+      <testcase name="test_drywet_midi_play_monitor" classname="TrackControlAndLoop_drywet"/>
+      <testcase name="test_drywet_audio_playdry_no_monitor" classname="TrackControlAndLoop_drywet"/>
+      <testcase name="test_drywet_midi_playdry_no_monitor" classname="TrackControlAndLoop_drywet"/>
+      <testcase name="test_drywet_audio_playdry_monitor" classname="TrackControlAndLoop_drywet"/>
+      <testcase name="test_drywet_midi_playdry_monitor" classname="TrackControlAndLoop_drywet"/>
+      <testcase name="test_drywet_audio_rerecord_no_monitor" classname="TrackControlAndLoop_drywet"/>
+      <testcase name="test_drywet_midi_rerecord_no_monitor" classname="TrackControlAndLoop_drywet"/>
+      <testcase name="test_drywet_audio_rerecord_monitor" classname="TrackControlAndLoop_drywet"/>
+      <testcase name="test_drywet_midi_rerecord_monitor" classname="TrackControlAndLoop_drywet"/>
+    </testsuite>
+    <testsuite name="TrackControl_direct">
+      <testcase name="test_direct_audio_monitor" classname="TrackControl_direct"/>
+      <testcase name="test_direct_midi_monitor" classname="TrackControl_direct"/>
+      <testcase name="test_direct_audio_monitor_input_volume" classname="TrackControl_direct">
+        <failure/>
+      </testcase>
+      <testcase name="test_direct_audio_monitor_output_volume" classname="TrackControl_direct">
+        <failure/>
+      </testcase>
+      <testcase name="test_direct_audio_monitor_balance_left" classname="TrackControl_direct">
+        <failure/>
+      </testcase>
+      <testcase name="test_direct_audio_monitor_output_balance_right" classname="TrackControl_direct">
+        <failure/>
+      </testcase>
+      <testcase name="test_direct_audio_no_monitor" classname="TrackControl_direct">
+        <failure/>
+      </testcase>
+      <testcase name="test_direct_midi_no_monitor" classname="TrackControl_direct"/>
+      <testcase name="test_direct_audio_monitor_mute" classname="TrackControl_direct">
+        <failure/>
+      </testcase>
+    </testsuite>
+    <testsuite name="TrackControl_drywet">
+      <testcase name="test_drywet_audio_monitor" classname="TrackControl_drywet"/>
+      <testcase name="test_drywet_midi_monitor" classname="TrackControl_drywet"/>
+      <testcase name="test_drywet_audio_monitor_input_volume" classname="TrackControl_drywet"/>
+      <testcase name="test_drywet_audio_monitor_output_volume" classname="TrackControl_drywet"/>
+      <testcase name="test_drywet_audio_monitor_balance_left" classname="TrackControl_drywet"/>
+      <testcase name="test_drywet_audio_monitor_output_balance_right" classname="TrackControl_drywet"/>
+      <testcase name="test_drywet_audio_no_monitor" classname="TrackControl_drywet"/>
+      <testcase name="test_drywet_midi_no_monitor" classname="TrackControl_drywet"/>
+      <testcase name="test_drywet_audio_monitor_mute" classname="TrackControl_drywet"/>
+      <testcase name="test_drywet_midi_mute" classname="TrackControl_drywet"/>
+    </testsuite>
+    <testsuite name="TwoLoops">
+      <testcase name="test_two_loops_cleared" classname="TwoLoops"/>
+      <testcase name="test_two_loops_master_record" classname="TwoLoops"/>
+      <testcase name="test_two_loops_master_playback" classname="TwoLoops"/>
+      <testcase name="test_switch_between_backend_and_composite" classname="TwoLoops"/>
+    </testsuite>
+  </testsuites>

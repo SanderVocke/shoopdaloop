@@ -113,10 +113,6 @@ for case, case_results in results.items():
 
 app.quit()
 
-if args.junit_xml:
-    root = minidom.Document()
-    testsuites = root.createElement('testsuites')
-
 if args.list:
     exit(0)
 
@@ -153,5 +149,35 @@ Totals:
 - Failed: {}
 - Skipped: {}{}{}
 '''.format(final_result_readable, passed+failed+skipped, passed, failed, skipped, maybe_failures_string, maybe_skip_string))
+
+if args.junit_xml:
+    root = minidom.Document()
+    testsuites = root.createElement('testsuites')
+    root.appendChild(testsuites)
+
+    for case, case_results in results.items():
+        testsuite = root.createElement('testsuite')
+        testsuite.setAttribute('name', case)
+        testsuites.appendChild(testsuite)
+
+        for fn, fn_result in case_results.items():
+            testcase = root.createElement('testcase')
+            testcase.setAttribute('name', fn)
+            testcase.setAttribute('classname', case)
+            testsuite.appendChild(testcase)
+
+            if fn_result == 'pass':
+                pass
+            elif fn_result == 'skip':
+                skipped_elem = root.createElement('skipped')
+                testcase.appendChild(skipped_elem)
+            elif fn_result == 'fail':
+                failure_elem = root.createElement('failure')
+                testcase.appendChild(failure_elem)
+            else:
+                raise Exception('Unknown result: {}'.format(fn_result))
+    
+    print("Writing JUnit XML to {}".format(args.junit_xml))
+    root.writexml(open(args.junit_xml, 'w'), indent='  ', addindent='  ', newl='\n')
 
 exit(final_result)
