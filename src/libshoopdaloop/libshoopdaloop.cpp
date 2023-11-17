@@ -641,14 +641,18 @@ void close_audio_port (shoopdaloop_backend_instance_t *backend, shoopdaloop_audi
 
 port_connections_state_t *get_audio_port_connections_state(shoopdaloop_audio_port_t *port) {
     auto connections = internal_audio_port(port)->maybe_audio()->get_external_connection_status();
+    logging::log<"Backend.API", debug>(std::nullopt, std::nullopt, "get_audio_port_connections_state");
 
     auto rval = new port_connections_state_t;
     rval->n_ports = connections.size();
     rval->ports = new port_maybe_connection_t[rval->n_ports];
     uint32_t idx = 0;
     for (auto &pair : connections) {
-        rval->ports[idx].name = strdup(pair.first.c_str());
-        rval->ports[idx].connected = pair.second;
+        auto name = strdup(pair.first.c_str());
+        auto connected = pair.second;
+        rval->ports[idx].name = name;
+        rval->ports[idx].connected = connected;
+        logging::log<"Backend.API", trace>(std::nullopt, std::nullopt, "--> {} connected: {}", name, connected);
         idx++;
     }
     return rval;

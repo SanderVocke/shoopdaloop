@@ -79,7 +79,7 @@ Backend {
     ShoopTestCase {
         name: 'JackPorts'
         filename : TestFilename.test_filename()
-        when: audio_in.initialized
+        when: audio_in.initialized && audio_out.initialized && midi_in.initialized && midi_out.initialized
 
         test_fns: ({
             'test_available_ports': () => {
