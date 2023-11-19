@@ -1,5 +1,6 @@
 from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
 from PySide6.QtQml import QJSValue
+from PySide6.QtQuick import QQuickItem
 
 import lupa
 import copy
@@ -17,7 +18,7 @@ lua_scriptdir = script_pwd + '/../lua'
 class ScriptExecutionError(Exception):
     pass
 
-class LuaEngine(QObject):
+class LuaEngine(QQuickItem):
     def __init__(self, parent=None):
         super(LuaEngine, self).__init__(parent)
         self.logger = Logger('Frontend.LuaEngine')

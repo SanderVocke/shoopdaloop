@@ -11,7 +11,7 @@ ApplicationWindow {
     property var maybe_composite_loop : loop_widget.maybe_composite_loop
     property var master_loop_widget
 
-    property PythonLogger logger : PythonLogger { name: default_logger.name + '.LoopDetails' }
+    property PythonLogger logger : PythonLogger { name: 'Frontend.Qml.LoopDetailsWindow' }
     
     id: root
 

@@ -165,9 +165,14 @@ Dialog {
                         property int index
 
                         Label {
-                            property bool show: ( parent.index == 0 ||
-                                                  external_ports_mapper.model[parent.index-1].split(':')[0] != external_port_item.mapped_item.split(':')[0] ) ?
-                                                    20 : 0
+                            property bool show: {
+                                if (parent.index == 0) { return true; }
+                                let maybe_previous = external_ports_mapper.model[parent.index-1];
+                                let maybe_this = external_ports_mapper.model[parent.index];
+
+                                // Show a label grouping ports of the same client.
+                                return (maybe_this && maybe_previous && maybe_this.split(':')[0] != maybe_previous.split(':')[0]) ? true : false
+                            }
                             height: show ? 30 : 0
                             text: show ? external_port_item.mapped_item.split(':')[0] : ""
                             font.pixelSize : connections.font_size
@@ -208,13 +213,15 @@ Dialog {
                                     border.color: Material.foreground
                                     color: 'transparent'
 
-                                    property var connected : {
-                                        let our_port_conns = connections.port_connections[index]
-                                        if (our_port_conns.hasOwnProperty (external_port_item.mapped_item)) {
-                                            return our_port_conns[external_port_item.mapped_item]
-                                        }
-                                    }
-                                    property var connectable : connections.port_connections[index].hasOwnProperty(external_port_item.mapped_item)
+                                    property var connected: connections.port_connections &&
+                                                               connections.port_connections.length > index &&
+                                                               connections.port_connections[index] &&
+                                                               connections.port_connections[index].hasOwnProperty(external_port_item.mapped_item) &&
+                                                               connections.port_connections[index][external_port_item.mapped_item]
+                                    property var connectable : connections.port_connections &&
+                                                               connections.port_connections.length > index &&
+                                                               connections.port_connections[index] &&
+                                                               connections.port_connections[index].hasOwnProperty(external_port_item.mapped_item)
 
                                     MouseArea {
                                         hoverEnabled: false
