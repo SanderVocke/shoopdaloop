@@ -9,7 +9,7 @@
 #include "types.h"
 #include <algorithm>
 #include <array>
-#include <format>
+#include <fmt/core.h>
 #include <utility>
 
 #define LOG_LEVEL_TRACE trace;
@@ -42,6 +42,29 @@ auto constexpr CompileTimeLogLevel = COMPILE_LOG_LEVEL;
 extern std::recursive_mutex* g_log_mutex;
 extern std::unique_ptr<log_level_t>* g_maybe_global_level;
 extern std::map<std::string, std::unique_ptr<log_level_t>>* g_module_log_levels;
+extern std::atomic<bool> g_log_initialized;
+
+// Configure using a configure string.
+// String format example:
+//
+// info,MidiChannel=trace
+//
+// The string should be a comma-separated set of arguments.
+// Per argument:
+// - if there is no =, sets the global logging level.
+// - if there is a =, overrides the logging level for a particular module.
+//
+// Logging levels:
+// trace, debug, info, warning, error
+//
+// Modules are registered by the code doing the logging, but the Logging
+// module has debug statements by the logging framework itself. For example:
+// each logger that is registered produces a debug message.
+void parse_conf_string(std::string s);
+
+// Parse configure string from the SHOOP_LOG env variable.
+// Does nothing if this was already done.
+void parse_conf_from_env();
 
 namespace internal {
 
@@ -94,13 +117,7 @@ inline bool should_log() {
 } // namespace internal
 
 inline bool should_log(std::string module_name, log_level_t level) {
-    std::lock_guard<std::recursive_mutex> lock((*g_log_mutex));
-    auto maybe_module_level = (*g_module_log_levels).find(module_name);
-    if ( (maybe_module_level != (*g_module_log_levels).end() && level >= *maybe_module_level->second.get()) ||
-        ((*g_maybe_global_level) && level >= *(*g_maybe_global_level).get())) {
-        return true;
-    }
-    return false;
+    return internal::should_log(module_name, level);
 }
 
 // NEW
@@ -113,6 +130,7 @@ void log_impl(std::optional<log_level_t> maybe_log_level,
               std::string_view str)
 {
     auto _log_level = maybe_log_level.value_or(info);
+    parse_conf_from_env();
     if(UseCompileTimeLevel && UseCompileTimeModuleName && !internal::should_log<MaybeName, MaybeLevel>()) { return; }
     if(UseCompileTimeLevel && !UseCompileTimeModuleName && !internal::should_log<MaybeLevel>(std::string(*maybe_module_name))) { return; }
     if(!UseCompileTimeLevel && UseCompileTimeModuleName && !internal::should_log<MaybeName>(_log_level)) { return; }
@@ -141,11 +159,11 @@ inline void log(std::optional<log_level_t> maybe_log_level,
 template<typename FirstFormatArg, typename ...RestFormatArgs>
 void log(std::optional<log_level_t> maybe_log_level,
          std::optional<std::string_view> maybe_module_name,
-         std::format_string<FirstFormatArg, RestFormatArgs...>&& str,
+         fmt::format_string<FirstFormatArg, RestFormatArgs...>&& str,
          FirstFormatArg &&first,
          RestFormatArgs &&... rest)
 {
-    log_impl<false, false, "", info>(maybe_log_level, maybe_module_name, std::format(str, std::forward<FirstFormatArg>(first), std::forward<RestFormatArgs>(rest)...));
+    log_impl<false, false, "", info>(maybe_log_level, maybe_module_name, fmt::format(str, std::forward<FirstFormatArg>(first), std::forward<RestFormatArgs>(rest)...));
 }
 template<ModuleName Name>
 void log(std::optional<log_level_t> maybe_log_level,
@@ -157,11 +175,11 @@ void log(std::optional<log_level_t> maybe_log_level,
 template<ModuleName Name, typename FirstFormatArg, typename ...RestFormatArgs>
 void log(std::optional<log_level_t> maybe_log_level,
          std::optional<std::string_view> maybe_module_name,
-         std::format_string<FirstFormatArg, RestFormatArgs...>&& str,
+         fmt::format_string<FirstFormatArg, RestFormatArgs...>&& str,
          FirstFormatArg &&first,
          RestFormatArgs &&... rest)
 {
-    log_impl<true, false, Name, info>(maybe_log_level, maybe_module_name, std::format(str, std::forward<FirstFormatArg>(first), std::forward<RestFormatArgs>(rest)...));
+    log_impl<true, false, Name, info>(maybe_log_level, maybe_module_name, fmt::format(str, std::forward<FirstFormatArg>(first), std::forward<RestFormatArgs>(rest)...));
 }
 template<log_level_t Level>
 void log(std::optional<log_level_t> maybe_log_level,
@@ -173,11 +191,11 @@ void log(std::optional<log_level_t> maybe_log_level,
 template<log_level_t Level, typename FirstFormatArg, typename ...RestFormatArgs>
 void log(std::optional<log_level_t> maybe_log_level,
          std::optional<std::string_view> maybe_module_name,
-         std::format_string<FirstFormatArg, RestFormatArgs...>&& str,
+         fmt::format_string<FirstFormatArg, RestFormatArgs...>&& str,
          FirstFormatArg &&first,
          RestFormatArgs &&... rest)
 {
-    log_impl<false, true, "", Level>(maybe_log_level, maybe_module_name, std::format(str, std::forward<FirstFormatArg>(first), std::forward<RestFormatArgs>(rest)...));
+    log_impl<false, true, "", Level>(maybe_log_level, maybe_module_name, fmt::format(str, std::forward<FirstFormatArg>(first), std::forward<RestFormatArgs>(rest)...));
 }
 template<ModuleName Name, log_level_t Level>
 void log(std::optional<log_level_t> maybe_log_level,
@@ -189,11 +207,11 @@ void log(std::optional<log_level_t> maybe_log_level,
 template<ModuleName Name, log_level_t Level, typename FirstFormatArg, typename ...RestFormatArgs>
 void log(std::optional<log_level_t> maybe_log_level,
          std::optional<std::string_view> maybe_module_name,
-         std::format_string<FirstFormatArg, RestFormatArgs...>&& str,
+         fmt::format_string<FirstFormatArg, RestFormatArgs...>&& str,
          FirstFormatArg &&first,
          RestFormatArgs &&... rest)
 {
-    log_impl<true, true, Name, Level>(maybe_log_level, maybe_module_name, std::format(str, std::forward<FirstFormatArg>(first), std::forward<RestFormatArgs>(rest)...));
+    log_impl<true, true, Name, Level>(maybe_log_level, maybe_module_name, fmt::format(str, std::forward<FirstFormatArg>(first), std::forward<RestFormatArgs>(rest)...));
 }
 
 // Set the global runtime filter level.
@@ -214,26 +232,5 @@ inline void set_module_filter_level(std::string name, std::optional<log_level_t>
     else { *maybe_level = level.value(); }
     log<"Backend.Logging", debug>(std::nullopt, std::nullopt, "Set module filter level for {} to {}", name, (int)level.value());
 }
-
-// Configure using a configure string.
-// String format example:
-//
-// info,MidiChannel=trace
-//
-// The string should be a comma-separated set of arguments.
-// Per argument:
-// - if there is no =, sets the global logging level.
-// - if there is a =, overrides the logging level for a particular module.
-//
-// Logging levels:
-// trace, debug, info, warning, error
-//
-// Modules are registered by the code doing the logging, but the Logging
-// module has debug statements by the logging framework itself. For example:
-// each logger that is registered produces a debug message.
-void parse_conf_string(std::string s);
-
-// Parse configure string from the SHOOP_LOG env variable.
-void parse_conf_from_env();
 
 }

@@ -46,6 +46,13 @@ class TestRunner(QObject):
         if not name in self._results:
             self._results[name] = dict()
         self._results[testcase.name][fn_name] = status
+    
+    @Slot(TestCase, str)
+    def testcase_register_fn(self, testcase, fn_name):
+        name = testcase.name        
+        if not name in self._results:
+            self._results[name] = dict()
+        self._results[testcase.name][fn_name] = 'fail'
 
     @Slot(str, result=bool)
     def should_skip(self, fn):

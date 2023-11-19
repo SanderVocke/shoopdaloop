@@ -43,8 +43,7 @@ runs:
       ${{ inputs.run_cmd_prefix }}
       ${{ inputs.python_command }}
       ${{ inputs.root_path }}/run_qml_tests.py
-      -input ${{ inputs.root_path }}/lib/qml/test
-      -o ${{ env.results_xml }},junitxml
+      --junit ${{ env.results_xml }}
       2>&1 | tee ${{ inputs.tee_all_output_to }}
   
   - name: Report results filename

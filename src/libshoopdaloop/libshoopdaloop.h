@@ -65,7 +65,7 @@ SHOOP_EXPORT void                   set_audio_channel_n_preplay_samples (shoopda
 SHOOP_EXPORT void                   set_midi_channel_n_preplay_samples  (shoopdaloop_loop_midi_channel_t *channel, unsigned n);
 SHOOP_EXPORT void                   clear_audio_channel_data_dirty (shoopdaloop_loop_audio_channel_t * channel);
 SHOOP_EXPORT void                   clear_midi_channel_data_dirty (shoopdaloop_loop_midi_channel_t * channel);
-SHOOP_EXPORT 
+
 SHOOP_EXPORT void loop_transition(shoopdaloop_loop_t *loop,
                       loop_mode_t mode,
                       unsigned delay, // In # of triggers

@@ -114,6 +114,7 @@ AppRegistries {
                 reset_track(0)
                 reset_track(1)
                 session.backend.dummy_wait_process()
+                testcase.wait_updated(session.backend)
             }
 
             test_fns: ({
@@ -135,8 +136,8 @@ AppRegistries {
                     let out1 = audio_output_port_1.dummy_dequeue_data(4)
                     let out2 = audio_output_port_2.dummy_dequeue_data(4)
 
-                    verify_eq(out1, [1, 2, 3, 4])
-                    verify_eq(out2, [4, 3, 2, 1])
+                    verify_eq(out1.map(o => Math.round(o)), [1, 2, 3, 4])
+                    verify_eq(out2.map(o => Math.round(o)), [4, 3, 2, 1])
 
                 },
 

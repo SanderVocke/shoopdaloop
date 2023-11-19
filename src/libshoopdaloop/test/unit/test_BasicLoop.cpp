@@ -2,215 +2,211 @@
 #define BASICLOOP_EXPOSE_ALL_FOR_TEST
 #include "BasicLoop.h"
 
-#include <boost/ut.hpp>
+#include <catch2/catch_test_macros.hpp>
 #include <memory>
 #include <functional>
 #include <numeric>
 #include <iostream>
 
-using namespace boost::ut;
+TEST_CASE("BasicLoop - Stop", "[BasicLoop]") {
+    BasicLoop loop;
 
-suite BasicLoop_tests = []() {
-    "bl_1_stop"_test = []() {
-        BasicLoop loop;
+    REQUIRE(loop.get_mode() == Stopped);
+    REQUIRE(loop.PROC_get_next_poi() == std::nullopt);
+    REQUIRE(loop.get_length() == 0);
+    REQUIRE(loop.get_position() == 0);
 
-        expect(loop.get_mode() == Stopped);
-        expect(loop.PROC_get_next_poi() == std::nullopt);
-        expect(loop.get_length() == 0);
-        expect(loop.get_position() == 0);
+    loop.PROC_process(1000);
 
-        loop.PROC_process(1000);
+    REQUIRE(loop.get_mode() == Stopped);
+    REQUIRE(loop.PROC_get_next_poi() == std::nullopt);
+    REQUIRE(loop.get_length() == 0);
+    REQUIRE(loop.get_position() == 0);
+};
 
-        expect(loop.get_mode() == Stopped);
-        expect(loop.PROC_get_next_poi() == std::nullopt);
-        expect(loop.get_length() == 0);
-        expect(loop.get_position() == 0);
-    };
+TEST_CASE("BasicLoop - Record", "[BasicLoop]") {
+    BasicLoop loop;
+    loop.set_mode(Recording, false);
+    loop.PROC_update_poi();
 
-    "bl_2_record"_test = []() {
-        BasicLoop loop;
-        loop.set_mode(Recording, false);
-        loop.PROC_update_poi();
+    REQUIRE(loop.get_mode() == Recording);
+    REQUIRE(loop.PROC_get_next_poi() == std::nullopt);
+    REQUIRE(loop.get_length() == 0);
+    REQUIRE(loop.get_position() == 0);
 
-        expect(loop.get_mode() == Recording);
-        expect(loop.PROC_get_next_poi() == std::nullopt);
-        expect(loop.get_length() == 0);
-        expect(loop.get_position() == 0);
+    loop.PROC_process(20);
 
-        loop.PROC_process(20);
+    REQUIRE(loop.get_mode() == Recording);
+    REQUIRE(loop.PROC_get_next_poi() == std::nullopt);
+    REQUIRE(loop.get_length() == 20);
+    REQUIRE(loop.get_position() == 0);
+    
+};
 
-        expect(loop.get_mode() == Recording);
-        expect(loop.PROC_get_next_poi() == std::nullopt);
-        expect(eq(loop.get_length(), 20));
-        expect(eq(loop.get_position(), 0));
-        
-    };
+TEST_CASE("BasicLoop - Planned Transition", "[BasicLoop]") {
+    BasicLoop loop;
+    auto other = std::make_shared<BasicLoop>();
+    loop.set_sync_source(other);
+    loop.set_mode(Recording, false);
+    loop.set_length(10, false);
+    loop.PROC_update_poi();
 
-    "bl_3_planned_transition"_test = []() {
-        BasicLoop loop;
-        auto other = std::make_shared<BasicLoop>();
-        loop.set_sync_source(other);
-        loop.set_mode(Recording, false);
-        loop.set_length(10, false);
-        loop.PROC_update_poi();
+    loop.plan_transition(Playing, 0);
 
-        loop.plan_transition(Playing, 0);
+    REQUIRE(loop.PROC_get_next_poi().value_or(999) == 999);
+    REQUIRE(loop.get_mode() == Recording);
 
-        expect(eq(loop.PROC_get_next_poi().value_or(999), 999));
-        expect(eq(loop.get_mode(), Recording));
+    loop.PROC_trigger();
 
-        loop.PROC_trigger();
+    REQUIRE(loop.get_mode() == Playing);
+    REQUIRE(loop.PROC_get_next_poi().value_or(999) == 10); // End of loop
+};
 
-        expect(eq(loop.get_mode(), Playing));
-        expect(eq(loop.PROC_get_next_poi().value_or(999), 10)); // End of loop
-    };
+TEST_CASE("BasicLoop - Planned Transition delayed", "[BasicLoop]") {
+    BasicLoop loop;
+    auto other = std::make_shared<BasicLoop>();
+    loop.set_sync_source(other);
+    loop.set_mode(Recording, false);
+    loop.set_length(10, false);
+    loop.PROC_update_poi();
 
-    "bl_3_1_planned_transition_delayed"_test = []() {
-        BasicLoop loop;
-        auto other = std::make_shared<BasicLoop>();
-        loop.set_sync_source(other);
-        loop.set_mode(Recording, false);
-        loop.set_length(10, false);
-        loop.PROC_update_poi();
+    loop.plan_transition(Playing, 1);
 
-        loop.plan_transition(Playing, 1);
+    REQUIRE(loop.PROC_get_next_poi().value_or(999) == 999);
+    REQUIRE(loop.get_mode() == Recording);
 
-        expect(eq(loop.PROC_get_next_poi().value_or(999), 999));
-        expect(eq(loop.get_mode(), Recording));
+    loop.PROC_trigger();
+    loop.PROC_process(1); // Cannot trigger twice in same cycle
 
-        loop.PROC_trigger();
-        loop.PROC_process(1); // Cannot trigger twice in same cycle
+    REQUIRE(loop.PROC_get_next_poi().value_or(999) == 999);
+    REQUIRE(loop.get_mode() == Recording);
 
-        expect(eq(loop.PROC_get_next_poi().value_or(999), 999));
-        expect(eq(loop.get_mode(), Recording));
+    loop.PROC_trigger();
 
-        loop.PROC_trigger();
+    REQUIRE(loop.get_mode() == Playing);
+    REQUIRE(loop.PROC_get_next_poi().value_or(999) == 11); // End of loop
+};
 
-        expect(eq(loop.get_mode(), Playing));
-        expect(eq(loop.PROC_get_next_poi().value_or(999), 11)); // End of loop
-    };
+TEST_CASE("BasicLoop - Planned Transitions delayed", "[BasicLoop]") {
+    BasicLoop loop;
+    auto other = std::make_shared<BasicLoop>();
+    loop.set_sync_source(other);
+    loop.set_mode(Recording, false);
+    loop.set_length(10, false);
+    loop.PROC_update_poi();
 
-    "bl_3_2_planned_transitions_delayed"_test = []() {
-        BasicLoop loop;
-        auto other = std::make_shared<BasicLoop>();
-        loop.set_sync_source(other);
-        loop.set_mode(Recording, false);
-        loop.set_length(10, false);
-        loop.PROC_update_poi();
+    loop.plan_transition(Playing, 1);
+    loop.plan_transition(Recording, 3);
 
-        loop.plan_transition(Playing, 1);
-        loop.plan_transition(Recording, 3);
+    REQUIRE(loop.PROC_get_next_poi().value_or(999) == 999);
+    REQUIRE(loop.get_mode() == Recording);
 
-        expect(eq(loop.PROC_get_next_poi().value_or(999), 999));
-        expect(eq(loop.get_mode(), Recording));
+    loop.PROC_trigger();
 
-        loop.PROC_trigger();
+    REQUIRE(loop.PROC_get_next_poi().value_or(999) == 999);
+    REQUIRE(loop.get_mode() == Recording);
 
-        expect(eq(loop.PROC_get_next_poi().value_or(999), 999));
-        expect(eq(loop.get_mode(), Recording));
+    loop.PROC_process(1); // Cannot trigger twice in same cycle
+    loop.PROC_trigger();
 
-        loop.PROC_process(1); // Cannot trigger twice in same cycle
-        loop.PROC_trigger();
+    REQUIRE(loop.get_mode() == Playing);
+    REQUIRE(loop.PROC_get_next_poi().value_or(999) == 11); // End of loop
 
-        expect(eq(loop.get_mode(), Playing));
-        expect(eq(loop.PROC_get_next_poi().value_or(999), 11)); // End of loop
+    loop.PROC_process(1); // Cannot trigger twice in same cycle
+    loop.PROC_trigger();
 
-        loop.PROC_process(1); // Cannot trigger twice in same cycle
-        loop.PROC_trigger();
+    REQUIRE(loop.get_mode() == Playing);
+    REQUIRE(loop.PROC_get_next_poi().value_or(999) == 10); // End of loop
 
-        expect(eq(loop.get_mode(), Playing));
-        expect(eq(loop.PROC_get_next_poi().value_or(999), 10)); // End of loop
+    loop.PROC_process(1); // Cannot trigger twice in same cycle
+    loop.PROC_trigger();
+    
+    REQUIRE(loop.PROC_get_next_poi().value_or(999) == 999);
+    REQUIRE(loop.get_mode() == Recording);
+};
 
-        loop.PROC_process(1); // Cannot trigger twice in same cycle
-        loop.PROC_trigger();
-        
-        expect(eq(loop.PROC_get_next_poi().value_or(999), 999));
-        expect(eq(loop.get_mode(), Recording));
-    };
+TEST_CASE("BasicLoop - Planned Transitions Cancellation 1", "[BasicLoop]") {
+    BasicLoop loop;
+    auto other = std::make_shared<BasicLoop>();
+    loop.set_sync_source(other);
+    loop.set_mode(Recording, false);
+    loop.set_length(10, false);
+    loop.PROC_update_poi();
 
-    "bl_3_3_planned_transitions_cancellation_1"_test = []() {
-        BasicLoop loop;
-        auto other = std::make_shared<BasicLoop>();
-        loop.set_sync_source(other);
-        loop.set_mode(Recording, false);
-        loop.set_length(10, false);
-        loop.PROC_update_poi();
+    loop.plan_transition(Playing, 3);
+    loop.plan_transition(Stopped, 2);
 
-        loop.plan_transition(Playing, 3);
-        loop.plan_transition(Stopped, 2);
+    REQUIRE(loop.PROC_get_next_poi().value_or(999) == 999);
+    REQUIRE(loop.get_mode() == Recording);
 
-        expect(eq(loop.PROC_get_next_poi().value_or(999), 999));
-        expect(eq(loop.get_mode(), Recording));
+    loop.PROC_trigger();
+    loop.PROC_process(1); // Cannot trigger twice in same cycle
+    loop.PROC_trigger();
 
-        loop.PROC_trigger();
-        loop.PROC_process(1); // Cannot trigger twice in same cycle
-        loop.PROC_trigger();
+    REQUIRE(loop.PROC_get_next_poi().value_or(999) == 999);
+    REQUIRE(loop.get_mode() == Recording);
 
-        expect(eq(loop.PROC_get_next_poi().value_or(999), 999));
-        expect(eq(loop.get_mode(), Recording));
+    loop.PROC_process(1); // Cannot trigger twice in same cycle
+    loop.PROC_trigger();
 
-        loop.PROC_process(1); // Cannot trigger twice in same cycle
-        loop.PROC_trigger();
+    REQUIRE(loop.get_mode() == Stopped);
+    REQUIRE(loop.PROC_get_next_poi().value_or(999) == 999);
 
-        expect(eq(loop.get_mode(), Stopped));
-        expect(eq(loop.PROC_get_next_poi().value_or(999), 999));
+    loop.PROC_process(1); // Cannot trigger twice in same cycle
+    loop.PROC_trigger();
+    loop.PROC_process(1); // Cannot trigger twice in same cycle
+    loop.PROC_trigger();
 
-        loop.PROC_process(1); // Cannot trigger twice in same cycle
-        loop.PROC_trigger();
-        loop.PROC_process(1); // Cannot trigger twice in same cycle
-        loop.PROC_trigger();
+    REQUIRE(loop.get_mode() == Stopped);
+    REQUIRE(loop.PROC_get_next_poi().value_or(999) == 999);
+};
 
-        expect(eq(loop.get_mode(), Stopped));
-        expect(eq(loop.PROC_get_next_poi().value_or(999), 999));
-    };
+TEST_CASE("BasicLoop - Generate Trigger", "[BasicLoop]") {
+    BasicLoop loop;
+    loop.set_mode(Stopped, false);
+    loop.set_length(10, false);
+    loop.set_position(0, false);
+    
+    REQUIRE(loop.PROC_is_triggering_now() == false);
+    loop.PROC_trigger();
+    REQUIRE(loop.PROC_is_triggering_now() == true);
+};
 
-    "bl_4_generate_trigger"_test = []() {
-        BasicLoop loop;
-        loop.set_mode(Stopped, false);
-        loop.set_length(10, false);
-        loop.set_position(0, false);
-        
-        expect(eq(loop.PROC_is_triggering_now(), false));
-        loop.PROC_trigger();
-        expect(eq(loop.PROC_is_triggering_now(), true));
-    };
+TEST_CASE("BasicLoop - Generate Trigger on restart", "[BasicLoop]") {
+    BasicLoop loop;
+    REQUIRE(loop.PROC_is_triggering_now() == false);
 
-    "bl_4_1_generate_trigger_on_restart"_test = []() {
-        BasicLoop loop;
-        expect(eq(loop.PROC_is_triggering_now(), false));
+    loop.set_length(10, false);
+    loop.set_mode(Playing, false);
+    loop.PROC_process(1);
+    
+    REQUIRE(loop.PROC_is_triggering_now() == false);
 
-        loop.set_length(10, false);
-        loop.set_mode(Playing, false);
-        loop.PROC_process(1);
-        
-        expect(eq(loop.PROC_is_triggering_now(), false));
+    loop.PROC_update_poi();
+    loop.PROC_process(8);
 
-        loop.PROC_update_poi();
-        loop.PROC_process(8);
+    REQUIRE(loop.PROC_is_triggering_now() == false);
 
-        expect(eq(loop.PROC_is_triggering_now(), false));
+    loop.PROC_process(1);
+    REQUIRE(loop.PROC_is_triggering_now() == true);
 
-        loop.PROC_process(1);
-        expect(eq(loop.PROC_is_triggering_now(), true));
+    loop.PROC_handle_poi();
 
-        loop.PROC_handle_poi();
+    REQUIRE(loop.get_position() == 0);
 
-        expect(eq(loop.get_position(), 0));
+    loop.PROC_process(5);
 
-        loop.PROC_process(5);
+    REQUIRE(loop.PROC_is_triggering_now() == false);
+};
 
-        expect(eq(loop.PROC_is_triggering_now(), false));
-    };
+TEST_CASE("BasicLoop - Playback 0 length", "[BasicLoop]") {
+    BasicLoop loop;
+    loop.set_mode(Playing, false);
+    loop.set_length(0, false);
+    loop.set_position(0, false);
 
-    "bl_6_playback_0_length"_test = []() {
-        BasicLoop loop;
-        loop.set_mode(Playing, false);
-        loop.set_length(0, false);
-        loop.set_position(0, false);
+    loop.PROC_update_poi();
+    loop.PROC_process(10);
 
-        loop.PROC_update_poi();
-        loop.PROC_process(10);
-
-        expect(eq(loop.get_mode(), Stopped));
-    };
+    REQUIRE(loop.get_mode() == Stopped);
 };

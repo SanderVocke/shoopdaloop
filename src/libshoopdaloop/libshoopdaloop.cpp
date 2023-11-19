@@ -89,7 +89,7 @@ std::shared_ptr<ConnectedChannel> internal_midi_channel(shoopdaloop_loop_midi_ch
     return ((ConnectedChannel*)chan)->shared_from_this();
 }
 
-#warning make the handles point to globally stored weak pointers to avoid trying to access deleted shared object
+//TODO: make the handles point to globally stored weak pointers to avoid trying to access deleted shared object
 std::shared_ptr<ConnectedLoop> internal_loop(shoopdaloop_loop_t *loop) {
     return ((ConnectedLoop*)loop)->shared_from_this();
 }
@@ -641,14 +641,18 @@ void close_audio_port (shoopdaloop_backend_instance_t *backend, shoopdaloop_audi
 
 port_connections_state_t *get_audio_port_connections_state(shoopdaloop_audio_port_t *port) {
     auto connections = internal_audio_port(port)->maybe_audio()->get_external_connection_status();
+    logging::log<"Backend.API", debug>(std::nullopt, std::nullopt, "get_audio_port_connections_state");
 
     auto rval = new port_connections_state_t;
     rval->n_ports = connections.size();
     rval->ports = new port_maybe_connection_t[rval->n_ports];
     uint32_t idx = 0;
     for (auto &pair : connections) {
-        rval->ports[idx].name = strdup(pair.first.c_str());
-        rval->ports[idx].connected = pair.second;
+        auto name = strdup(pair.first.c_str());
+        auto connected = pair.second;
+        rval->ports[idx].name = name;
+        rval->ports[idx].connected = connected;
+        logging::log<"Backend.API", trace>(std::nullopt, std::nullopt, "--> {} connected: {}", name, connected);
         idx++;
     }
     return rval;
@@ -1259,11 +1263,6 @@ void destroy_profiling_report(profiling_report_t *d) {
 }
 
 shoopdaloop_logger_t *get_logger(const char* name) {
-    static bool first = true;
-    if (first) {
-        logging::parse_conf_from_env();
-        first = false;
-    }
     return (shoopdaloop_logger_t*) strdup(name);
 }
 
@@ -1446,6 +1445,6 @@ void destroy_logger(shoopdaloop_logger_t* logger) {
 #ifndef _WIN32
     free ((void*)logger);
 #else
-    #warning Leaking loggers on Windows because of unsolved segmentation fault.
+    //TODO Leaking loggers on Windows because of unsolved segmentation fault.
 #endif
 }

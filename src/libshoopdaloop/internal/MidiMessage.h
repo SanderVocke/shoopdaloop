@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include "MidiPortInterface.h"
 #include <cstring>
+#include <stdexcept>
 
 template<typename TimeType, typename SizeType>
 struct MidiMessage : public MidiSortableMessageInterface {

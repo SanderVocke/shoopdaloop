@@ -79,12 +79,13 @@ Backend {
     ShoopTestCase {
         name: 'JackPorts'
         filename : TestFilename.test_filename()
-        when: audio_in.initialized
+        when: audio_in.initialized && audio_out.initialized && midi_in.initialized && midi_out.initialized
 
         test_fns: ({
             'test_available_ports': () => {
                 if(!backend.backend_type_is_supported(Types.BackendType.JackTest)) {
                     skip("Backend was built without Jack support")
+                    return
                 }
                 verify(backend.initialized)
 

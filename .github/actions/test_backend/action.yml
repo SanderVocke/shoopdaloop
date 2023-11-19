@@ -35,7 +35,7 @@ runs:
     shell: bash
     run: |
       mkdir -p reports
-      ${{ steps.runcmdprefix.outputs.run_cmd_prefix }} ${{ inputs.test_runner }} --reporter junit --out ${{ env.results_xml }}
+      ${{ steps.runcmdprefix.outputs.run_cmd_prefix }} ${{ inputs.test_runner }} -r JUnit | tee ${{ env.results_xml }}
       echo "Back-end test results file: $(ls -la ${{ env.results_xml }})"
   
   - name: Publish Back-end Test Report

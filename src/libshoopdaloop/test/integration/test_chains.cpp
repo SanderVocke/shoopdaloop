@@ -1,4 +1,4 @@
-#include <boost/ut.hpp>
+#include <catch2/catch_test_macros.hpp>
 #include "DummyAudioSystem.h"
 #include "CustomProcessingChain.h"
 #include "AudioMidiLoop.h"
@@ -15,8 +15,6 @@
 #include <iostream>
 #include <thread>
 #include "LoggingEnabled.h"
-
-using namespace boost::ut;
 
 struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDryWetLoopTestChain"> {
 
@@ -130,267 +128,265 @@ audio_channel_data_t to_api_data(std::vector<float> &vec) {
     return rval;
 }
 
-suite chains_tests = []() {
-    "ch_1_drywet_basic"_test = []() {
-        SingleDryWetLoopTestChain tst;
-        
-        std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
-        std::vector<float> input_data2({-8, -7, -6, -5, -4, -3 , -2, -1});
-        tst.int_dummy_input_port->queue_data(8, input_data.data());
-        tst.int_dummy_input_port->queue_data(8, input_data2.data());
+TEST_CASE("Chains - DryWet Basic", "[Chains]") {
+    SingleDryWetLoopTestChain tst;
+    
+    std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
+    std::vector<float> input_data2({-8, -7, -6, -5, -4, -3 , -2, -1});
+    tst.int_dummy_input_port->queue_data(8, input_data.data());
+    tst.int_dummy_input_port->queue_data(8, input_data2.data());
 
-        tst.int_dummy_audio_system->controlled_mode_request_samples(4);
-        tst.int_dummy_output_port->request_data(4);
-        tst.int_dummy_audio_system->controlled_mode_run_request();
+    tst.int_dummy_audio_system->controlled_mode_request_samples(4);
+    tst.int_dummy_output_port->request_data(4);
+    tst.int_dummy_audio_system->controlled_mode_run_request();
 
-        tst.int_dummy_audio_system->pause();
+    tst.int_dummy_audio_system->pause();
 
-        auto result_data = tst.int_dummy_output_port->dequeue_data(4);
-        expect(eq(result_data.size(), 4));
-        expect(eq(tst.int_dummy_input_port->get_queue_empty(), false));
-        auto expect_output_1 = std::vector<float>(input_data.begin(), input_data.begin() + 4);
-        for (auto &v: expect_output_1) { v /= 2.0f; }
-        expect(eq(result_data, expect_output_1));
-        result_data.clear();
+    auto result_data = tst.int_dummy_output_port->dequeue_data(4);
+    REQUIRE(result_data.size() == 4);
+    REQUIRE(tst.int_dummy_input_port->get_queue_empty() == false);
+    auto expect_output_1 = std::vector<float>(input_data.begin(), input_data.begin() + 4);
+    for (auto &v: expect_output_1) { v /= 2.0f; }
+    REQUIRE(result_data == expect_output_1);
+    result_data.clear();
 
-        tst.int_dummy_audio_system->resume();
+    tst.int_dummy_audio_system->resume();
 
-        tst.int_dummy_audio_system->controlled_mode_request_samples(12);
-        tst.int_dummy_output_port->request_data(12);
-        tst.int_dummy_audio_system->controlled_mode_run_request();
+    tst.int_dummy_audio_system->controlled_mode_request_samples(12);
+    tst.int_dummy_output_port->request_data(12);
+    tst.int_dummy_audio_system->controlled_mode_run_request();
 
-        tst.int_dummy_audio_system->pause();
+    tst.int_dummy_audio_system->pause();
 
-        result_data = tst.int_dummy_output_port->dequeue_data(12);
-        expect(eq(result_data.size(), 12));
-        expect(eq(tst.int_dummy_input_port->get_queue_empty(), true));
-        auto expect_output_2 = std::vector<float>(input_data.begin() + 4, input_data.end());
-        expect_output_2.insert(expect_output_2.end(), input_data2.begin(), input_data2.end());
-        for (auto &v: expect_output_2) { v /= 2.0f; }
-        expect(eq(result_data, expect_output_2));
+    result_data = tst.int_dummy_output_port->dequeue_data(12);
+    REQUIRE(result_data.size() == 12);
+    REQUIRE(tst.int_dummy_input_port->get_queue_empty() == true);
+    auto expect_output_2 = std::vector<float>(input_data.begin() + 4, input_data.end());
+    expect_output_2.insert(expect_output_2.end(), input_data2.begin(), input_data2.end());
+    for (auto &v: expect_output_2) { v /= 2.0f; }
+    REQUIRE(result_data == expect_output_2);
 
-        tst.int_dummy_audio_system->close();
-    };
+    tst.int_dummy_audio_system->close();
+};
 
-    "ch_2_1_drywet_record_basic"_test = []() {
-        SingleDryWetLoopTestChain tst;
+TEST_CASE("Chains - DryWet record basic", "[Chains]") {
+    SingleDryWetLoopTestChain tst;
 
-        loop_transition(tst.api_loop, Recording, 0, 0);
-        
-        std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
-        tst.int_dummy_input_port->queue_data(8, input_data.data());
-        tst.int_dummy_audio_system->controlled_mode_request_samples(8);
-        tst.int_dummy_output_port->request_data(8);
-        tst.int_dummy_audio_system->controlled_mode_run_request();
+    loop_transition(tst.api_loop, Recording, 0, 0);
+    
+    std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
+    tst.int_dummy_input_port->queue_data(8, input_data.data());
+    tst.int_dummy_audio_system->controlled_mode_request_samples(8);
+    tst.int_dummy_output_port->request_data(8);
+    tst.int_dummy_audio_system->controlled_mode_run_request();
 
-        auto expect_data = input_data;
-        for (auto &v: expect_data) { v /= 2.0f; }
-        expect(eq(tst.int_dry_audio_chan->get_data(true), input_data));
-        expect(eq(tst.int_wet_audio_chan->get_data(true), expect_data));
+    auto expect_data = input_data;
+    for (auto &v: expect_data) { v /= 2.0f; }
+    REQUIRE(tst.int_dry_audio_chan->get_data(true) == input_data);
+    REQUIRE(tst.int_wet_audio_chan->get_data(true) == expect_data);
 
-        tst.int_dummy_audio_system->close();
-    };
+    tst.int_dummy_audio_system->close();
+};
 
-    "ch_2_2_drywet_record_passthroughMuted"_test = []() {
-        SingleDryWetLoopTestChain tst;
+TEST_CASE("Chains - DryWet record passthrough muted", "[Chains]") {
+    SingleDryWetLoopTestChain tst;
 
-        loop_transition(tst.api_loop, Recording, 0, 0);
-        set_audio_port_passthroughMuted(tst.api_input_port, 1);
-        
-        std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
-        tst.int_dummy_input_port->queue_data(8, input_data.data());
-        tst.int_dummy_audio_system->controlled_mode_request_samples(8);
-        tst.int_dummy_output_port->request_data(8);
-        tst.int_dummy_audio_system->controlled_mode_run_request();
+    loop_transition(tst.api_loop, Recording, 0, 0);
+    set_audio_port_passthroughMuted(tst.api_input_port, 1);
+    
+    std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
+    tst.int_dummy_input_port->queue_data(8, input_data.data());
+    tst.int_dummy_audio_system->controlled_mode_request_samples(8);
+    tst.int_dummy_output_port->request_data(8);
+    tst.int_dummy_audio_system->controlled_mode_run_request();
 
-        auto result_data = tst.int_dummy_output_port->dequeue_data(8);
-        expect(eq(tst.int_dry_audio_chan->get_data(true), input_data));
-        expect(eq(tst.int_wet_audio_chan->get_data(true), zeroes(8)));
-        expect(eq(result_data, zeroes(8)));
+    auto result_data = tst.int_dummy_output_port->dequeue_data(8);
+    REQUIRE(tst.int_dry_audio_chan->get_data(true) == input_data);
+    REQUIRE(tst.int_wet_audio_chan->get_data(true) == zeroes(8));
+    REQUIRE(result_data == zeroes(8));
 
-        tst.int_dummy_audio_system->close();
-    };
+    tst.int_dummy_audio_system->close();
+};
 
-    "ch_2_4_drywet_record_muted"_test = []() {
-        SingleDryWetLoopTestChain tst;
+TEST_CASE("Chains - DryWet record muted", "[Chains]") {
+    SingleDryWetLoopTestChain tst;
 
-        loop_transition(tst.api_loop, Recording, 0, 0);
-        set_audio_port_muted(tst.api_input_port, 1);
-        
-        std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
-        tst.int_dummy_input_port->queue_data(8, input_data.data());
-        tst.int_dummy_audio_system->controlled_mode_request_samples(8);
-        tst.int_dummy_output_port->request_data(8);
-        tst.int_dummy_audio_system->controlled_mode_run_request();
+    loop_transition(tst.api_loop, Recording, 0, 0);
+    set_audio_port_muted(tst.api_input_port, 1);
+    
+    std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
+    tst.int_dummy_input_port->queue_data(8, input_data.data());
+    tst.int_dummy_audio_system->controlled_mode_request_samples(8);
+    tst.int_dummy_output_port->request_data(8);
+    tst.int_dummy_audio_system->controlled_mode_run_request();
 
-        expect(eq(tst.int_dry_audio_chan->get_data(true), zeroes(8)));
-        expect(eq(tst.int_wet_audio_chan->get_data(true), zeroes(8)));
+    REQUIRE(tst.int_dry_audio_chan->get_data(true) == zeroes(8));
+    REQUIRE(tst.int_wet_audio_chan->get_data(true) == zeroes(8));
 
-        tst.int_dummy_audio_system->close();
-    };
+    tst.int_dummy_audio_system->close();
+};
 
-    "ch_2_5_drywet_record_volume"_test = []() {
-        SingleDryWetLoopTestChain tst;
+TEST_CASE("Chains - DryWet record volume", "[Chains]") {
+    SingleDryWetLoopTestChain tst;
 
-        loop_transition(tst.api_loop, Recording, 0, 0);
-        set_audio_port_volume(tst.api_input_port, 0.5);
-        
-        std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
-        std::vector<float> expected({0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4});
-        auto expected_wet = expected;
-        for (auto &v: expected_wet) { v /= 2.0f; }
-        tst.int_dummy_input_port->queue_data(8, input_data.data());
-        tst.int_dummy_audio_system->controlled_mode_request_samples(8);
-        tst.int_dummy_output_port->request_data(8);
-        tst.int_dummy_audio_system->controlled_mode_run_request();
+    loop_transition(tst.api_loop, Recording, 0, 0);
+    set_audio_port_volume(tst.api_input_port, 0.5);
+    
+    std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
+    std::vector<float> expected({0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4});
+    auto expected_wet = expected;
+    for (auto &v: expected_wet) { v /= 2.0f; }
+    tst.int_dummy_input_port->queue_data(8, input_data.data());
+    tst.int_dummy_audio_system->controlled_mode_request_samples(8);
+    tst.int_dummy_output_port->request_data(8);
+    tst.int_dummy_audio_system->controlled_mode_run_request();
 
-        expect(eq(tst.int_dry_audio_chan->get_data(true), expected));
-        expect(eq(tst.int_wet_audio_chan->get_data(true), expected_wet));
+    REQUIRE(tst.int_dry_audio_chan->get_data(true) == expected);
+    REQUIRE(tst.int_wet_audio_chan->get_data(true) == expected_wet);
 
-        tst.int_dummy_audio_system->close();
-    };
+    tst.int_dummy_audio_system->close();
+};
 
-    "ch_3_1_drywet_playback_basic"_test = []() {
-        SingleDryWetLoopTestChain tst;
+TEST_CASE("Chains - DryWet playback basic", "[Chains]") {
+    SingleDryWetLoopTestChain tst;
 
-        std::vector<float> dry_data({4, 3, 2, 1}), wet_data({1, 2, 3, 4});
-        auto api_dry_data = to_api_data(dry_data);
-        auto api_wet_data = to_api_data(wet_data);
-        load_audio_channel_data(tst.api_wet_chan, &api_wet_data);
-        load_audio_channel_data(tst.api_dry_chan, &api_dry_data);
-        tst.int_loop->loop->set_length(4, false);
+    std::vector<float> dry_data({4, 3, 2, 1}), wet_data({1, 2, 3, 4});
+    auto api_dry_data = to_api_data(dry_data);
+    auto api_wet_data = to_api_data(wet_data);
+    load_audio_channel_data(tst.api_wet_chan, &api_wet_data);
+    load_audio_channel_data(tst.api_dry_chan, &api_dry_data);
+    tst.int_loop->loop->set_length(4, false);
 
-        loop_transition(tst.api_loop, Playing, 0, 0);
-        
-        tst.int_dummy_audio_system->controlled_mode_request_samples(4);
-        tst.int_dummy_output_port->request_data(4);
-        tst.int_dummy_audio_system->controlled_mode_run_request();
+    loop_transition(tst.api_loop, Playing, 0, 0);
+    
+    tst.int_dummy_audio_system->controlled_mode_request_samples(4);
+    tst.int_dummy_output_port->request_data(4);
+    tst.int_dummy_audio_system->controlled_mode_run_request();
 
-        auto result_data = tst.int_dummy_output_port->dequeue_data(4);
-        expect(eq(result_data, wet_data));
+    auto result_data = tst.int_dummy_output_port->dequeue_data(4);
+    REQUIRE(result_data == wet_data);
 
-        tst.int_dummy_audio_system->close();
-    };
+    tst.int_dummy_audio_system->close();
+};
 
-    "ch_3_2_drywet_playback_volume"_test = []() {
-        SingleDryWetLoopTestChain tst;
+TEST_CASE("Chains - DryWet playback volume", "[Chains]") {
+    SingleDryWetLoopTestChain tst;
 
-        std::vector<float> dry_data({4, 3, 2, 1}), wet_data({1, 2, 3, 4}), half_wet({0.5, 1, 1.5, 2});
-        auto api_dry_data = to_api_data(dry_data);
-        auto api_wet_data = to_api_data(wet_data);
-        load_audio_channel_data(tst.api_wet_chan, &api_wet_data);
-        load_audio_channel_data(tst.api_dry_chan, &api_dry_data);
-        tst.int_loop->loop->set_length(4, false);
-        set_audio_port_volume(tst.api_output_port, 0.5);
+    std::vector<float> dry_data({4, 3, 2, 1}), wet_data({1, 2, 3, 4}), half_wet({0.5, 1, 1.5, 2});
+    auto api_dry_data = to_api_data(dry_data);
+    auto api_wet_data = to_api_data(wet_data);
+    load_audio_channel_data(tst.api_wet_chan, &api_wet_data);
+    load_audio_channel_data(tst.api_dry_chan, &api_dry_data);
+    tst.int_loop->loop->set_length(4, false);
+    set_audio_port_volume(tst.api_output_port, 0.5);
 
-        loop_transition(tst.api_loop, Playing, 0, 0);
-        
-        tst.int_dummy_audio_system->controlled_mode_request_samples(4);
-        tst.int_dummy_output_port->request_data(4);
-        tst.int_dummy_audio_system->controlled_mode_run_request();
+    loop_transition(tst.api_loop, Playing, 0, 0);
+    
+    tst.int_dummy_audio_system->controlled_mode_request_samples(4);
+    tst.int_dummy_output_port->request_data(4);
+    tst.int_dummy_audio_system->controlled_mode_run_request();
 
-        auto result_data = tst.int_dummy_output_port->dequeue_data(4);
-        expect(eq(result_data, half_wet));
+    auto result_data = tst.int_dummy_output_port->dequeue_data(4);
+    REQUIRE(result_data == half_wet);
 
-        tst.int_dummy_audio_system->close();
-    };
+    tst.int_dummy_audio_system->close();
+};
 
-    "ch_4_1_drywet_dryplayback_basic"_test = []() {
-        SingleDryWetLoopTestChain tst;
+TEST_CASE("Chains - DryWet dry playback basic", "[Chains]") {
+    SingleDryWetLoopTestChain tst;
 
-        std::vector<float> dry_data({4, 3, 2, 1}), wet_data({1, 2, 3, 4});
-        auto api_dry_data = to_api_data(dry_data);
-        auto api_wet_data = to_api_data(wet_data);
-        load_audio_channel_data(tst.api_wet_chan, &api_wet_data);
-        load_audio_channel_data(tst.api_dry_chan, &api_dry_data);
-        tst.int_loop->loop->set_length(4, false);
-        
-        loop_transition(tst.api_loop, PlayingDryThroughWet, 0, 0);
-        
-        tst.int_dummy_audio_system->controlled_mode_request_samples(4);
-        tst.int_dummy_output_port->request_data(4);
-        tst.int_dummy_audio_system->controlled_mode_run_request();
+    std::vector<float> dry_data({4, 3, 2, 1}), wet_data({1, 2, 3, 4});
+    auto api_dry_data = to_api_data(dry_data);
+    auto api_wet_data = to_api_data(wet_data);
+    load_audio_channel_data(tst.api_wet_chan, &api_wet_data);
+    load_audio_channel_data(tst.api_dry_chan, &api_dry_data);
+    tst.int_loop->loop->set_length(4, false);
+    
+    loop_transition(tst.api_loop, PlayingDryThroughWet, 0, 0);
+    
+    tst.int_dummy_audio_system->controlled_mode_request_samples(4);
+    tst.int_dummy_output_port->request_data(4);
+    tst.int_dummy_audio_system->controlled_mode_run_request();
 
-        auto result_data = tst.int_dummy_output_port->dequeue_data(4);
-        auto expected = dry_data;
-        for (auto &v: expected) { v /= 2.0f; }
-        expect(eq(result_data, expected));
+    auto result_data = tst.int_dummy_output_port->dequeue_data(4);
+    auto expected = dry_data;
+    for (auto &v: expected) { v /= 2.0f; }
+    REQUIRE(result_data == expected);
 
-        tst.int_dummy_audio_system->close();
-    };
+    tst.int_dummy_audio_system->close();
+};
 
-    "ch_4_2_drywet_dryplayback_volume"_test = []() {
-        SingleDryWetLoopTestChain tst;
+TEST_CASE("Chains - DryWet dry playback volume", "[Chains]") {
+    SingleDryWetLoopTestChain tst;
 
-        std::vector<float> dry_data({4, 3, 2, 1}), wet_data({1, 2, 3, 4}), half_dry({2, 1.5, 1, 0.5});
-        auto api_dry_data = to_api_data(dry_data);
-        auto api_wet_data = to_api_data(wet_data);
-        load_audio_channel_data(tst.api_wet_chan, &api_wet_data);
-        load_audio_channel_data(tst.api_dry_chan, &api_dry_data);
-        tst.int_loop->loop->set_length(4, true);
+    std::vector<float> dry_data({4, 3, 2, 1}), wet_data({1, 2, 3, 4}), half_dry({2, 1.5, 1, 0.5});
+    auto api_dry_data = to_api_data(dry_data);
+    auto api_wet_data = to_api_data(wet_data);
+    load_audio_channel_data(tst.api_wet_chan, &api_wet_data);
+    load_audio_channel_data(tst.api_dry_chan, &api_dry_data);
+    tst.int_loop->loop->set_length(4, true);
 
-        set_audio_port_volume(tst.api_output_port, 0.5);
-        loop_transition(tst.api_loop, PlayingDryThroughWet, 0, 0);
-        
-        tst.int_dummy_audio_system->controlled_mode_request_samples(4);
-        tst.int_dummy_output_port->request_data(4);
-        tst.int_dummy_audio_system->controlled_mode_run_request();
+    set_audio_port_volume(tst.api_output_port, 0.5);
+    loop_transition(tst.api_loop, PlayingDryThroughWet, 0, 0);
+    
+    tst.int_dummy_audio_system->controlled_mode_request_samples(4);
+    tst.int_dummy_output_port->request_data(4);
+    tst.int_dummy_audio_system->controlled_mode_run_request();
 
-        auto result_data = tst.int_dummy_output_port->dequeue_data(4);
-        auto expected = half_dry;
-        for (auto &v: expected) { v /= 2.0f; }
-        expect(eq(result_data, expected));
+    auto result_data = tst.int_dummy_output_port->dequeue_data(4);
+    auto expected = half_dry;
+    for (auto &v: expected) { v /= 2.0f; }
+    REQUIRE(result_data == expected);
 
-        tst.int_dummy_audio_system->close();
-    };
+    tst.int_dummy_audio_system->close();
+};
 
-    "ch_4_4_drywet_dryplayback_inputPassthroughMuted"_test = []() {
-        SingleDryWetLoopTestChain tst;
+TEST_CASE("Chains - DryWet dry playback input passthrough muted", "[Chains]") {
+    SingleDryWetLoopTestChain tst;
 
-        std::vector<float> dry_data({4, 3, 2, 1}), wet_data({1, 2, 3, 4});
-        auto api_dry_data = to_api_data(dry_data);
-        auto api_wet_data = to_api_data(wet_data);
-        load_audio_channel_data(tst.api_wet_chan, &api_wet_data);
-        load_audio_channel_data(tst.api_dry_chan, &api_dry_data);
-        tst.int_loop->loop->set_length(4, true);
+    std::vector<float> dry_data({4, 3, 2, 1}), wet_data({1, 2, 3, 4});
+    auto api_dry_data = to_api_data(dry_data);
+    auto api_wet_data = to_api_data(wet_data);
+    load_audio_channel_data(tst.api_wet_chan, &api_wet_data);
+    load_audio_channel_data(tst.api_dry_chan, &api_dry_data);
+    tst.int_loop->loop->set_length(4, true);
 
-        set_audio_port_passthroughMuted(tst.api_input_port, 1);
-        loop_transition(tst.api_loop, PlayingDryThroughWet, 0, 0);
-        
-        tst.int_dummy_audio_system->controlled_mode_request_samples(4);
-        tst.int_dummy_output_port->request_data(4);
-        tst.int_dummy_audio_system->controlled_mode_run_request();
+    set_audio_port_passthroughMuted(tst.api_input_port, 1);
+    loop_transition(tst.api_loop, PlayingDryThroughWet, 0, 0);
+    
+    tst.int_dummy_audio_system->controlled_mode_request_samples(4);
+    tst.int_dummy_output_port->request_data(4);
+    tst.int_dummy_audio_system->controlled_mode_run_request();
 
-        auto result_data = tst.int_dummy_output_port->dequeue_data(4);
-        auto expected = dry_data;
-        for (auto &v: expected) { v /= 2.0f; }
-        expect(eq(result_data, expected));
+    auto result_data = tst.int_dummy_output_port->dequeue_data(4);
+    auto expected = dry_data;
+    for (auto &v: expected) { v /= 2.0f; }
+    REQUIRE(result_data == expected);
 
-        tst.int_dummy_audio_system->close();
-    };
+    tst.int_dummy_audio_system->close();
+};
 
-    "ch_4_5_drywet_dryplayback_inputMuted"_test = []() {
-        SingleDryWetLoopTestChain tst;
+TEST_CASE("Chains - DryWet dry playback input muted", "[Chains]") {
+    SingleDryWetLoopTestChain tst;
 
-        std::vector<float> dry_data({4, 3, 2, 1}), wet_data({1, 2, 3, 4});
-        auto api_dry_data = to_api_data(dry_data);
-        auto api_wet_data = to_api_data(wet_data);
-        load_audio_channel_data(tst.api_wet_chan, &api_wet_data);
-        load_audio_channel_data(tst.api_dry_chan, &api_dry_data);
-        tst.int_loop->loop->set_length(4, true);
+    std::vector<float> dry_data({4, 3, 2, 1}), wet_data({1, 2, 3, 4});
+    auto api_dry_data = to_api_data(dry_data);
+    auto api_wet_data = to_api_data(wet_data);
+    load_audio_channel_data(tst.api_wet_chan, &api_wet_data);
+    load_audio_channel_data(tst.api_dry_chan, &api_dry_data);
+    tst.int_loop->loop->set_length(4, true);
 
-        set_audio_port_muted(tst.api_input_port, 1);
-        loop_transition(tst.api_loop, PlayingDryThroughWet, 0, 0);
-        
-        tst.int_dummy_audio_system->controlled_mode_request_samples(4);
-        tst.int_dummy_output_port->request_data(4);
-        tst.int_dummy_audio_system->controlled_mode_run_request();
+    set_audio_port_muted(tst.api_input_port, 1);
+    loop_transition(tst.api_loop, PlayingDryThroughWet, 0, 0);
+    
+    tst.int_dummy_audio_system->controlled_mode_request_samples(4);
+    tst.int_dummy_output_port->request_data(4);
+    tst.int_dummy_audio_system->controlled_mode_run_request();
 
-        auto result_data = tst.int_dummy_output_port->dequeue_data(4);
-        auto expected = dry_data;
-        for (auto &v: expected) { v /= 2.0f; }
-        expect(eq(result_data, expected));
+    auto result_data = tst.int_dummy_output_port->dequeue_data(4);
+    auto expected = dry_data;
+    for (auto &v: expected) { v /= 2.0f; }
+    REQUIRE(result_data == expected);
 
-        tst.int_dummy_audio_system->close();
-    };
+    tst.int_dummy_audio_system->close();
 };
