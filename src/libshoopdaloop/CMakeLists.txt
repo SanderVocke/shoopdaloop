@@ -105,7 +105,7 @@ target_link_libraries(shoopdaloop_internals PUBLIC Threads::Threads fmt::fmt)
 if (BACKEND_JACK)
   target_include_directories(shoopdaloop_internals PRIVATE ${JACK_INCLUDE_DIRS})
   if (UNIX)
-     target_link_libraries(shoopdaloop_internals PRIVATE dl)
+     target_link_libraries(shoopdaloop_internals INTERFACE dl)
   endif()
 endif()
 
@@ -128,9 +128,6 @@ if (HAVE_LV2)
                           ${LILV_INCLUDE_DIRS}
                           ${CMAKE_SOURCE_DIR}/../third_party/lv2_external_ui
                           )
-  if (UNIX)
-     target_link_libraries(shoopdaloop_internals PRIVATE dl)
-  endif()
 endif()
 install(TARGETS shoopdaloop
         EXCLUDE_FROM_ALL
