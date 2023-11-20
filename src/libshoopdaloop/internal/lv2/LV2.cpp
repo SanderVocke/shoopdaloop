@@ -3,9 +3,28 @@
 #include "types.h"
 #include <lilv/lilv.h>
 
+#ifdef _WIN32
+#include "Windows.h"
+#include <iostream>
+#endif
+
+namespace {
+    std::atomic<bool> g_initialized = false;
+}
+
 LV2::LV2() {
     m_world = lilv_world_new();
     lilv_world_load_all(m_world);
+
+    if (!::g_initialized) {
+#ifdef _WIN32
+        // Ensure we have default LV2 path set up
+        std::string current = getenv("LV2_PATH");
+        std::string newval = current + ";C:\\Program Files\\Common Files\\LV2";
+        SetEnvironmentVariable("LV2_PATH", newval.c_str());
+#endif
+        ::g_initialized = true;
+    }
 }
 
 LV2::~LV2() { lilv_world_free(m_world); }

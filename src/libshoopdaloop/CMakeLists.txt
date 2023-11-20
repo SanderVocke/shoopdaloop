@@ -61,13 +61,13 @@ add_custom_target(
   DEPENDS ${CMAKE_BINARY_DIR}/run_cmd_prefix.txt
 )
 
-set(STATIC_DEPS_PREFIX ${CMAKE_CURRENT_BINARY_DIR}/static-deps)
+set(EXTERNAL_DEPS_PREFIX ${CMAKE_CURRENT_BINARY_DIR}/external_deps)
 
 if (HAVE_LV2)
-  include (${CMAKE_CURRENT_SOURCE_DIR}/BuildStaticDependencies.cmake)
+  include (${CMAKE_CURRENT_SOURCE_DIR}/BuildLV2Projects.cmake)
   add_subdirectory(${CMAKE_SOURCE_DIR}/../third_party/lv2_evbuf lv2_evbuf)
   set_target_properties(lv2_evbuf PROPERTIES POSITION_INDEPENDENT_CODE ON)
-  add_dependencies(lv2_evbuf lv2)
+  add_dependencies(lv2_evbuf lv2_proj)
 endif()
 
 # Includes
@@ -117,11 +117,10 @@ if(UNIX)
 endif()
 
 if (HAVE_LV2)
-  add_dependencies(shoopdaloop_internals ${DEPEND_ON_LILV})
-  target_link_libraries(shoopdaloop_internals PUBLIC
+  target_link_libraries(shoopdaloop_internals PRIVATE
                         lv2_evbuf
                         ${LV2_LIBRARIES}
-                        ${LILV_LIBRARIES})
+                        ${LILV_TARGETS})
   target_include_directories(shoopdaloop_internals
                           PRIVATE
                           ${CMAKE_SOURCE_DIR}/../third_party/lv2_evbuf
@@ -175,10 +174,10 @@ set(OUR_PYTHONPATH "$ENV{PYTHONPATH}${PATH_SEP}${CMAKE_CURRENT_BINARY_DIR}${PATH
 set(GENERATED_TYPES_JS ${CMAKE_CURRENT_BINARY_DIR}/types.js)
 add_custom_command(
   OUTPUT ${GENERATED_TYPES_JS}
-  COMMAND ${RUN_CMD_PREFIX} ${CMAKE_COMMAND} -E env ASAN_OPTIONS=detect_leaks=0 PYTHONPATH="${OUR_PYTHONPATH}" "${PYTHON_CMD}" gen_js_enums.py "${GENERATED_TYPES_JS}"
+  COMMAND ${RUN_CMD_PREFIX} ${CMAKE_COMMAND} -E env ASAN_OPTIONS=detect_leaks=0 PYTHONPATH="${OUR_PYTHONPATH}" "${PYTHON_CMD}" ${CMAKE_SOURCE_DIR}/codegen/gen_js_enums.py "${GENERATED_TYPES_JS}"
   COMMENT "Generating Javascript types."
   DEPENDS c_bindings shoopdaloop
-  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/codegen
+  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/libshoopdaloop
   )
 add_custom_target(
   javascript_types
