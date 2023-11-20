@@ -5,6 +5,8 @@
 #include <atomic>
 #include <iostream>
 
+using AtomicFlag = std::atomic_flag;
+
 // A class which manages a queue of audio objects which can be
 // consumed lock-free. The queue is continuously replenished with newly allocated
 // objects asynchronously.
@@ -16,8 +18,8 @@ class ObjectPool {
     std::atomic<unsigned> m_actual_n_objects;
     std::atomic<bool> m_finish;
     std::thread m_replenish_thread;
-    std::atomic<bool> m_replenish_flag;
-    std::atomic<bool> m_none_available_flag;
+    AtomicFlag m_replenish_flag;
+    AtomicFlag m_none_available_flag;
 
 public:
     ObjectPool(size_t target_n_objects, size_t objects_size) :
@@ -28,8 +30,8 @@ public:
         m_queue(target_n_objects)
     {
         fill();
-        m_replenish_flag = false;
-        m_none_available_flag = false;
+        m_replenish_flag.clear();
+        m_none_available_flag.clear();
 
         // Start auto-replenishment
         m_replenish_thread = std::thread(
@@ -38,7 +40,8 @@ public:
 
     ~ObjectPool() {
         m_finish = true;
-        m_replenish_flag = true;
+        m_replenish_flag.test_and_set();
+        m_replenish_flag.notify_one();
         m_replenish_thread.join();
 
         Object *buf;
@@ -54,11 +57,12 @@ public:
         Object* buf = nullptr;
         if (m_queue.pop(buf)) {
             m_actual_n_objects--;
-            m_replenish_flag = true;
+            m_replenish_flag.test_and_set();
+            m_replenish_flag.notify_one();
             return buf;
         }
         else {
-            m_none_available_flag = true;
+            m_none_available_flag.test_and_set();
             return allocate();
         }
     }
@@ -81,10 +85,10 @@ protected:
     void replenish_thread_fn() {
         while(true) {
             if (this->m_finish) { break; }
-            while (!m_replenish_flag.load()) { std::this_thread::yield(); }
-            m_replenish_flag = false;
-            if (m_none_available_flag.load()) {
-                m_none_available_flag = false;
+            m_replenish_flag.wait(false);
+            m_replenish_flag.clear();
+            if (m_none_available_flag.test()) {
+                m_none_available_flag.clear();
                 std::cerr << "Warning: one or more audio objects were allocated on the processing thread because "
                              "no pre-allocated objects were available from the pool." << std::endl;
             }

@@ -45,6 +45,7 @@ ExternalProject_Add(serd_proj
     COMMAND ${FIND_PKGCONF_DIRS}
     COMMAND ${CMAKE_COMMAND} -E copy ${SERD_LIB} ${CMAKE_CURRENT_BINARY_DIR}
   DEPENDS lv2_proj
+  BUILD_BYPRODUCTS ${SERD_LIB}
 )
 
 ExternalProject_Add(sord_proj
@@ -58,6 +59,7 @@ ExternalProject_Add(sord_proj
     ${MESON_ENV} ${PYTHON_CMD} -m mesonbuild.mesonmain install
     COMMAND ${CMAKE_COMMAND} -E copy ${SORD_LIB} ${CMAKE_CURRENT_BINARY_DIR}
   DEPENDS lv2_proj serd_proj
+  BUILD_BYPRODUCTS ${SORD_LIB}
 )
 
 ExternalProject_Add(sratom_proj
@@ -71,6 +73,7 @@ ExternalProject_Add(sratom_proj
     ${MESON_ENV} ${PYTHON_CMD} -m mesonbuild.mesonmain install
     COMMAND ${CMAKE_COMMAND} -E copy ${SRATOM_LIB} ${CMAKE_CURRENT_BINARY_DIR}
   DEPENDS lv2_proj serd_proj sord_proj
+  BUILD_BYPRODUCTS ${SRATOM_LIB}
 )
 
 ExternalProject_Add(lilv_proj
@@ -84,6 +87,7 @@ ExternalProject_Add(lilv_proj
     ${MESON_ENV} ${PYTHON_CMD} -m mesonbuild.mesonmain install
     COMMAND ${CMAKE_COMMAND} -E copy ${LILV_LIB} ${CMAKE_CURRENT_BINARY_DIR}
   DEPENDS lv2_proj serd_proj sord_proj sratom_proj
+  BUILD_BYPRODUCTS ${LILV_LIB}
 )
 
 add_library(lilv SHARED IMPORTED)

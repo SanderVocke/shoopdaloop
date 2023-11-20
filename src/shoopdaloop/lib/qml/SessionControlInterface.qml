@@ -70,13 +70,15 @@ LuaControlInterface {
             if (track_selector.length == 0) { rval = [] }
             else {
                 // Form [track_idx1, track_idx2, ...]
-                rval = track_selector.map((idx) => tracks_widget.tracks[idx])
+                rval = track_selector.map((idx) => tracks_widget.tracks[idx]).filter(t => t != null && t != undefined)
             }
         } else if (Number.isInteger(track_selector)) {
-            return [tracks_widget.tracks[track_selector]]
+            if (tracks_widget.tracks.length > track_selector) {
+                return [tracks_widget.tracks[track_selector]]
+            } else { return [] }
         } else {
             // Form [track_select_fn]
-            rval = tracks.filter((t) => track_selector(t))
+            rval = tracks_widget.tracks.filter((t) => track_selector(t))
         }
         logger.debug(() => (`Selected ${rval.length} target track(s).`))
         return rval
