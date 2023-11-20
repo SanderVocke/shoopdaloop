@@ -30,12 +30,10 @@ void throw_if_dylib_error() {
     }
     SetLastError(0);
 #else
-    error = dlerror();
+    auto error = dlerror();
     if (error != NULL) {
-        auto _msg = fmt::format("Could not load JACK: code {}, msg {}", error, msg);
+        auto _msg = fmt::format("Could not load JACK: code {}", error);
         throw std::runtime_error(_msg);
-    } else {
-        throw std::runtime_error("Unknown error");
     }
 #endif  
 }
