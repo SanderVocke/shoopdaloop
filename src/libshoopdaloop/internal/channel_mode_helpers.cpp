@@ -8,34 +8,34 @@ unsigned loop_mode_to_channel_process_flags(
 {
     // Map the "advanced modes" of the loop to the simple subset of
     // [Stopped, Playing, Replacing, Recording].
-    if (channel_mode == Disabled) {
+    if (channel_mode == ChannelMode_Disabled) {
         return 0;
-    } else if (channel_mode == Dry && loop_mode == Playing) {
+    } else if (channel_mode == ChannelMode_Dry && loop_mode == LoopMode_Playing) {
         return 0;
-    } else if (channel_mode == Dry && (
-        (loop_mode == PlayingDryThroughWet) ||
-        (loop_mode == RecordingDryIntoWet)
+    } else if (channel_mode == ChannelMode_Dry && (
+        (loop_mode == LoopMode_PlayingDryThroughWet) ||
+        (loop_mode == LoopMode_RecordingDryIntoWet)
     )) {
         return ChannelPlayback;
-    } else if (channel_mode == Wet && loop_mode == PlayingDryThroughWet) {
+    } else if (channel_mode == ChannelMode_Wet && loop_mode == LoopMode_PlayingDryThroughWet) {
         return 0;
-    } else if (channel_mode == Wet && loop_mode == RecordingDryIntoWet) {
+    } else if (channel_mode == ChannelMode_Wet && loop_mode == LoopMode_RecordingDryIntoWet) {
         return ChannelReplace;
-    } else if (channel_mode == Direct && loop_mode == PlayingDryThroughWet) {
+    } else if (channel_mode == ChannelMode_Direct && loop_mode == LoopMode_PlayingDryThroughWet) {
         return ChannelPlayback;
-    } else if (channel_mode == Direct && loop_mode == RecordingDryIntoWet) {
+    } else if (channel_mode == ChannelMode_Direct && loop_mode == LoopMode_RecordingDryIntoWet) {
         return ChannelReplace;
     }
 
     // Special cases handled, now the straightforward ones
     switch(loop_mode) {
-        case Stopped:
+        case LoopMode_Stopped:
             return 0;
-        case Playing:
+        case LoopMode_Playing:
             return ChannelPlayback;
-        case Recording:
+        case LoopMode_Recording:
             return ChannelRecord;
-        case Replacing:
+        case LoopMode_Replacing:
             return ChannelReplace;
         default:
             break;

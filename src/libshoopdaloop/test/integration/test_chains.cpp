@@ -78,8 +78,8 @@ struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDryWe
         api_loop = create_loop(api_backend);
         int_loop = internal_loop(api_loop);
 
-        api_dry_chan = add_audio_channel(api_loop, Dry);
-        api_wet_chan = add_audio_channel(api_loop, Wet);
+        api_dry_chan = add_audio_channel(api_loop, ChannelMode_Dry);
+        api_wet_chan = add_audio_channel(api_loop, ChannelMode_Wet);
         int_dry_chan = internal_audio_channel(api_dry_chan);
         int_wet_chan = internal_audio_channel(api_wet_chan);
 
@@ -89,7 +89,7 @@ struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDryWe
         int_dry_audio_chan = std::dynamic_pointer_cast<shoop_types::LoopAudioChannel>(int_dry_chan->channel);
         int_wet_audio_chan = std::dynamic_pointer_cast<shoop_types::LoopAudioChannel>(int_wet_chan->channel);
 
-        if(!int_dry_audio_chan) { throw std::runtime_error("Dry audio channel is null"); }
+        if(!int_dry_audio_chan) { throw std::runtime_error("ChannelMode_Dry audio channel is null"); }
         if(!int_wet_audio_chan) { throw std::runtime_error("Wet audio channel is null"); }
 
         int_dummy_audio_system->enter_mode(DummyAudioSystemMode::Controlled);
@@ -172,7 +172,7 @@ TEST_CASE("Chains - DryWet Basic", "[Chains]") {
 TEST_CASE("Chains - DryWet record basic", "[Chains]") {
     SingleDryWetLoopTestChain tst;
 
-    loop_transition(tst.api_loop, Recording, 0, 0);
+    loop_transition(tst.api_loop, LoopMode_Recording, 0, 0);
     
     std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
     tst.int_dummy_input_port->queue_data(8, input_data.data());
@@ -191,7 +191,7 @@ TEST_CASE("Chains - DryWet record basic", "[Chains]") {
 TEST_CASE("Chains - DryWet record passthrough muted", "[Chains]") {
     SingleDryWetLoopTestChain tst;
 
-    loop_transition(tst.api_loop, Recording, 0, 0);
+    loop_transition(tst.api_loop, LoopMode_Recording, 0, 0);
     set_audio_port_passthroughMuted(tst.api_input_port, 1);
     
     std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
@@ -211,7 +211,7 @@ TEST_CASE("Chains - DryWet record passthrough muted", "[Chains]") {
 TEST_CASE("Chains - DryWet record muted", "[Chains]") {
     SingleDryWetLoopTestChain tst;
 
-    loop_transition(tst.api_loop, Recording, 0, 0);
+    loop_transition(tst.api_loop, LoopMode_Recording, 0, 0);
     set_audio_port_muted(tst.api_input_port, 1);
     
     std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
@@ -229,7 +229,7 @@ TEST_CASE("Chains - DryWet record muted", "[Chains]") {
 TEST_CASE("Chains - DryWet record volume", "[Chains]") {
     SingleDryWetLoopTestChain tst;
 
-    loop_transition(tst.api_loop, Recording, 0, 0);
+    loop_transition(tst.api_loop, LoopMode_Recording, 0, 0);
     set_audio_port_volume(tst.api_input_port, 0.5);
     
     std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
@@ -257,7 +257,7 @@ TEST_CASE("Chains - DryWet playback basic", "[Chains]") {
     load_audio_channel_data(tst.api_dry_chan, &api_dry_data);
     tst.int_loop->loop->set_length(4, false);
 
-    loop_transition(tst.api_loop, Playing, 0, 0);
+    loop_transition(tst.api_loop, LoopMode_Playing, 0, 0);
     
     tst.int_dummy_audio_system->controlled_mode_request_samples(4);
     tst.int_dummy_output_port->request_data(4);
@@ -280,7 +280,7 @@ TEST_CASE("Chains - DryWet playback volume", "[Chains]") {
     tst.int_loop->loop->set_length(4, false);
     set_audio_port_volume(tst.api_output_port, 0.5);
 
-    loop_transition(tst.api_loop, Playing, 0, 0);
+    loop_transition(tst.api_loop, LoopMode_Playing, 0, 0);
     
     tst.int_dummy_audio_system->controlled_mode_request_samples(4);
     tst.int_dummy_output_port->request_data(4);
@@ -302,7 +302,7 @@ TEST_CASE("Chains - DryWet dry playback basic", "[Chains]") {
     load_audio_channel_data(tst.api_dry_chan, &api_dry_data);
     tst.int_loop->loop->set_length(4, false);
     
-    loop_transition(tst.api_loop, PlayingDryThroughWet, 0, 0);
+    loop_transition(tst.api_loop, LoopMode_PlayingDryThroughWet, 0, 0);
     
     tst.int_dummy_audio_system->controlled_mode_request_samples(4);
     tst.int_dummy_output_port->request_data(4);
@@ -327,7 +327,7 @@ TEST_CASE("Chains - DryWet dry playback volume", "[Chains]") {
     tst.int_loop->loop->set_length(4, true);
 
     set_audio_port_volume(tst.api_output_port, 0.5);
-    loop_transition(tst.api_loop, PlayingDryThroughWet, 0, 0);
+    loop_transition(tst.api_loop, LoopMode_PlayingDryThroughWet, 0, 0);
     
     tst.int_dummy_audio_system->controlled_mode_request_samples(4);
     tst.int_dummy_output_port->request_data(4);
@@ -352,7 +352,7 @@ TEST_CASE("Chains - DryWet dry playback input passthrough muted", "[Chains]") {
     tst.int_loop->loop->set_length(4, true);
 
     set_audio_port_passthroughMuted(tst.api_input_port, 1);
-    loop_transition(tst.api_loop, PlayingDryThroughWet, 0, 0);
+    loop_transition(tst.api_loop, LoopMode_PlayingDryThroughWet, 0, 0);
     
     tst.int_dummy_audio_system->controlled_mode_request_samples(4);
     tst.int_dummy_output_port->request_data(4);
@@ -377,7 +377,7 @@ TEST_CASE("Chains - DryWet dry playback input muted", "[Chains]") {
     tst.int_loop->loop->set_length(4, true);
 
     set_audio_port_muted(tst.api_input_port, 1);
-    loop_transition(tst.api_loop, PlayingDryThroughWet, 0, 0);
+    loop_transition(tst.api_loop, LoopMode_PlayingDryThroughWet, 0, 0);
     
     tst.int_dummy_audio_system->controlled_mode_request_samples(4);
     tst.int_dummy_output_port->request_data(4);

@@ -13,7 +13,6 @@ maintainers = [
 requires-python = ">=3.8"
 
 dependencies = [
-  "pydub",
   "soundfile",
   "samplerate",
   "mido",
@@ -22,7 +21,8 @@ dependencies = [
   "pyjacklib",
   "pyside6-essentials~=6.6.0",
   "lupa",
-  "appdirs"
+  "appdirs",
+  "simpleaudio"
 ]
 
 keywords = ['music', 'midi', 'jack', 'looping']
@@ -71,7 +71,6 @@ requires = [
   "py-build-cmake@git+https://github.com/tttapa/py-build-cmake@2fba7c5404cc0cf2a68914b780ae52b404aafd32",
   "ctypesgen@git+https://github.com/SanderVocke/ctypesgen@9b88a970cb85823de83423add2a4b21ea79b63d9",
   "meson",
-  "pycparser",
   "toml"
 ]
 build-backend = "py_build_cmake.build"

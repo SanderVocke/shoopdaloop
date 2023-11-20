@@ -46,25 +46,8 @@ find_package(Boost REQUIRED)
 if (BACKEND_JACK)
   # Generate a wrapper for libjack which allows dynamic loading using dlopen
   find_package(Jack REQUIRED)
-  get_filename_component(JACK_LIBNAME ${JACK_LIBRARIES} NAME)
-  add_custom_command(
-    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.c ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.h
-    COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers
-    COMMAND ${PYTHON_CMD} "${CMAKE_SOURCE_DIR}/../third_party/dynload-wrapper/generate-wrapper.py" --include "${JACK_INCLUDE_DIRS}/jack/jack.h" --include "${JACK_INCLUDE_DIRS}/jack/midiport.h" --sys-include '<jack/jack.h>' --sys-include '<jack/midiport.h>' --soname "${JACK_LIBNAME}" --init-name jack_wrappers --output-header "${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.h" --output-implementation "${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.c"
-    COMMENT "Generating libjack dynload wrapper"
-  )
-  add_custom_target(
-    jack_wrappers_impl
-    ALL
-    DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.c ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.h
-    )
-  set(JACKWRAPPERS_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers})
-  add_library(jack_wrappers STATIC ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.c)
-  set_property(TARGET jack_wrappers PROPERTY POSITION_INDEPENDENT_CODE ON)
-  target_include_directories(jack_wrappers INTERFACE ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers)
   add_compile_definitions(-DSHOOP_HAVE_BACKEND_JACK)
 endif()
-
 
 # Generate the run cmd prefix so that it can be referred to after the build (e.g. when running tests)
 add_custom_command(
@@ -119,6 +102,13 @@ target_include_directories(shoopdaloop_internals
                         )
 target_link_libraries(shoopdaloop_internals PUBLIC Threads::Threads fmt::fmt)
 
+if (BACKEND_JACK)
+  target_include_directories(shoopdaloop_internals PRIVATE ${JACK_INCLUDE_DIRS})
+  if (UNIX)
+     target_link_libraries(shoopdaloop_internals PRIVATE dl)
+  endif()
+endif()
+
 add_library(shoopdaloop SHARED)
 target_link_libraries(shoopdaloop PRIVATE shoopdaloop_internals)
 set_property(TARGET shoopdaloop PROPERTY POSITION_INDEPENDENT_CODE ON)
@@ -131,8 +121,7 @@ if (HAVE_LV2)
   target_link_libraries(shoopdaloop_internals PUBLIC
                         lv2_evbuf
                         ${LV2_LIBRARIES}
-                        ${LILV_LIBRARIES}
-                        dl)
+                        ${LILV_LIBRARIES})
   target_include_directories(shoopdaloop_internals
                           PRIVATE
                           ${CMAKE_SOURCE_DIR}/../third_party/lv2_evbuf
@@ -140,11 +129,10 @@ if (HAVE_LV2)
                           ${LILV_INCLUDE_DIRS}
                           ${CMAKE_SOURCE_DIR}/../third_party/lv2_external_ui
                           )
+  if (UNIX)
+     target_link_libraries(shoopdaloop_internals PRIVATE dl)
+  endif()
 endif()
-if (BACKEND_JACK)
-  add_dependencies(shoopdaloop_internals jack_wrappers)
-  target_link_libraries(shoopdaloop_internals PUBLIC jack_wrappers)
-endif ()
 install(TARGETS shoopdaloop
         EXCLUDE_FROM_ALL
         COMPONENT package_install

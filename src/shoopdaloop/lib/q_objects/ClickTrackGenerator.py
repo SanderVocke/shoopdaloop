@@ -1,7 +1,6 @@
 import os
 import tempfile
-from pydub import AudioSegment
-from pydub.playback import play
+import simpleaudio as sa
 
 from PySide6.QtCore import QObject, Slot
 
@@ -30,5 +29,6 @@ class ClickTrackGenerator(QObject):
 
     @Slot(str)
     def preview(self, wav_filename):
-        play(AudioSegment.from_wav(wav_filename))
+        wave = sa.WaveObject.from_wave_file(wav_filename)
+        wave.play()
 

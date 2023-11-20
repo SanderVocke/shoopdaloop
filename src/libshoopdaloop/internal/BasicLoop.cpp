@@ -12,7 +12,7 @@ BasicLoop::BasicLoop() :
         WithCommandQueue<100, 1000, 1000>(),
         mp_next_poi(std::nullopt),
         mp_next_trigger(std::nullopt),
-        ma_mode(Stopped),
+        ma_mode(LoopMode_Stopped),
         mp_sync_source(nullptr),
         ma_triggering_now(false),
         ma_length(0),
@@ -35,10 +35,10 @@ std::optional<uint32_t> BasicLoop::PROC_predicted_next_trigger_eta() const {
 }
 
 inline bool is_playing_mode(loop_mode_t mode) {
-    return mode == Playing ||
-            mode == Replacing ||
-            mode == PlayingDryThroughWet ||
-            mode == RecordingDryIntoWet;
+    return mode == LoopMode_Playing ||
+            mode == LoopMode_Replacing ||
+            mode == LoopMode_PlayingDryThroughWet ||
+            mode == LoopMode_RecordingDryIntoWet;
 }
 
 void BasicLoop::PROC_update_trigger_eta() {
@@ -61,7 +61,7 @@ void BasicLoop::PROC_update_poi() {
     log_trace();
     if(is_playing_mode(ma_mode) && 
         ma_length == 0) {
-        PROC_handle_transition(Stopped);
+        PROC_handle_transition(LoopMode_Stopped);
     }
 
     if(mp_next_poi) {
@@ -160,19 +160,19 @@ void BasicLoop::PROC_process(uint32_t n_samples) {
     loop_mode_t process_channel_mode = ma_mode;
 
     switch(ma_mode) {
-        case Recording:
+        case LoopMode_Recording:
             length_after += n_samples;
             break;
-        case Replacing:
+        case LoopMode_Replacing:
             pos_after += n_samples;
             length_after = std::max(length_after, pos_after);
             break;
-        case Playing:
-        case PlayingDryThroughWet:
-        case RecordingDryIntoWet:
+        case LoopMode_Playing:
+        case LoopMode_PlayingDryThroughWet:
+        case LoopMode_RecordingDryIntoWet:
             pos_after = std::min(pos_after + n_samples, length_after);
             if (pos_after == pos_before) {
-                process_channel_mode = Stopped;
+                process_channel_mode = LoopMode_Stopped;
             }
             break;
         default:
@@ -269,7 +269,7 @@ void BasicLoop::PROC_handle_transition(loop_mode_t new_state) {
         if (!from_playing_to_playing) {
             set_position(0, false);
         }
-        if (new_state == Recording) {
+        if (new_state == LoopMode_Recording) {
             // Recording always resets the loop.
             // Don't bother clearing the channels.
             set_length(0, false);
@@ -278,7 +278,7 @@ void BasicLoop::PROC_handle_transition(loop_mode_t new_state) {
         if(ma_mode > LOOP_MODE_INVALID) {
             throw std::runtime_error ("Invalid mode");
         }
-        if (ma_mode == Stopped) { ma_position = 0; }
+        if (ma_mode == LoopMode_Stopped) { ma_position = 0; }
         if (is_playing_mode(ma_mode) &&
             ma_position == 0) {
                 ma_triggering_now = true;
@@ -350,7 +350,7 @@ void BasicLoop::plan_transition(loop_mode_t mode, uint32_t n_cycles_delay, bool 
     
     auto fn = [this, mode, wait_for_sync, n_cycles_delay]() {
         bool transitioning_immediately =
-            (!mp_sync_source && ma_mode != Playing) ||
+            (!mp_sync_source && ma_mode != LoopMode_Playing) ||
             (!wait_for_sync);
         if (transitioning_immediately) {
             // Un-synced loops transition immediately from non-playing

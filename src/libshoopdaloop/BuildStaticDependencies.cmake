@@ -11,11 +11,11 @@ ExternalProject_Add(lv2
   SOURCE_DIR ${CMAKE_SOURCE_DIR}/../third_party/lv2
   BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/lv2_build
   CONFIGURE_COMMAND
-    python -m mesonbuild.mesonmain setup -Ddefault_library=static -Ddocs=disabled --prefix=${STATIC_DEPS_PREFIX} <BINARY_DIR> <SOURCE_DIR>
+    ${PYTHON_CMD} -m mesonbuild.mesonmain setup -Ddefault_library=static -Ddocs=disabled --prefix=${STATIC_DEPS_PREFIX} <BINARY_DIR> <SOURCE_DIR>
   BUILD_COMMAND
-    python -m mesonbuild.mesonmain compile
+    ${PYTHON_CMD} -m mesonbuild.mesonmain compile
   INSTALL_COMMAND
-    python -m mesonbuild.mesonmain install
+    ${PYTHON_CMD} -m mesonbuild.mesonmain install
     COMMAND ${FIND_PKGCONF_DIRS}
 )
 
@@ -25,9 +25,9 @@ ExternalProject_Add(serd
   CONFIGURE_COMMAND
     ${WITH_PKGCONF_CMD} ${PYTHON_CMD} -m mesonbuild.mesonmain setup -Ddocs=disabled -Ddefault_library=static --prefix=${STATIC_DEPS_PREFIX} <BINARY_DIR> <SOURCE_DIR>
   BUILD_COMMAND
-    python -m mesonbuild.mesonmain compile
+    ${PYTHON_CMD} -m mesonbuild.mesonmain compile
   INSTALL_COMMAND
-    python -m mesonbuild.mesonmain install
+    ${PYTHON_CMD} -m mesonbuild.mesonmain install
     COMMAND ${FIND_PKGCONF_DIRS}
   DEPENDS lv2
 )
@@ -38,9 +38,9 @@ ExternalProject_Add(sord
   CONFIGURE_COMMAND
     ${WITH_PKGCONF_CMD} ${PYTHON_CMD} -m mesonbuild.mesonmain setup -Ddocs=disabled -Ddefault_library=static --prefix=${STATIC_DEPS_PREFIX} <BINARY_DIR> <SOURCE_DIR>
   BUILD_COMMAND
-    python -m mesonbuild.mesonmain compile
+    ${PYTHON_CMD} -m mesonbuild.mesonmain compile
   INSTALL_COMMAND
-    python -m mesonbuild.mesonmain install
+    ${PYTHON_CMD} -m mesonbuild.mesonmain install
   DEPENDS lv2 serd
 )
 
@@ -50,9 +50,9 @@ ExternalProject_Add(sratom
   CONFIGURE_COMMAND
     ${WITH_PKGCONF_CMD} ${PYTHON_CMD} -m mesonbuild.mesonmain setup -Ddocs=disabled -Ddefault_library=static --prefix=${STATIC_DEPS_PREFIX} <BINARY_DIR> <SOURCE_DIR>
   BUILD_COMMAND
-    python -m mesonbuild.mesonmain compile
+    ${PYTHON_CMD} -m mesonbuild.mesonmain compile
   INSTALL_COMMAND
-    python -m mesonbuild.mesonmain install
+    ${PYTHON_CMD} -m mesonbuild.mesonmain install
   DEPENDS lv2 serd sord
 )
 
@@ -62,9 +62,9 @@ ExternalProject_Add(lilv
   CONFIGURE_COMMAND
     ${WITH_PKGCONF_CMD} ${PYTHON_CMD} -m mesonbuild.mesonmain setup -Ddocs=disabled -Ddefault_library=static --prefix=${STATIC_DEPS_PREFIX} <BINARY_DIR> <SOURCE_DIR>
   BUILD_COMMAND
-    python -m mesonbuild.mesonmain compile
+    ${PYTHON_CMD} -m mesonbuild.mesonmain compile
   INSTALL_COMMAND
-    python -m mesonbuild.mesonmain install
+    ${PYTHON_CMD} -m mesonbuild.mesonmain install
   DEPENDS lv2 serd sord sratom
 )
 

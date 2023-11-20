@@ -43,7 +43,7 @@ TEST_CASE("LibShoopdaloop - Channels not destroyed with loop", "[LibShoopdaloop]
         shoopdaloop_loop_audio_channel_t* c_chan;
         {
             auto loop = internal_loop(c_loop);
-            c_chan = add_audio_channel(c_loop, Direct);
+            c_chan = add_audio_channel(c_loop, ChannelMode_Direct);
         }
         auto weak_chan = std::weak_ptr<ConnectedChannel>(internal_audio_channel(c_chan));
         auto weak_loop = std::weak_ptr<ConnectedLoop>(internal_loop(c_loop));

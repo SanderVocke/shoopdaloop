@@ -20,18 +20,18 @@ class PortDirection(Enum):
     Output = 1
 
 class LoopMode(Enum):
-    Unknown = Unknown
-    Stopped = Stopped
-    Playing = Playing
-    Recording = Recording
-    PlayingDryThroughWet = PlayingDryThroughWet
-    RecordingDryIntoWet = RecordingDryIntoWet
+    Unknown = LoopMode_Unknown
+    Stopped = LoopMode_Stopped
+    Playing = LoopMode_Playing
+    Recording = LoopMode_Recording
+    PlayingDryThroughWet = LoopMode_PlayingDryThroughWet
+    RecordingDryIntoWet = LoopMode_RecordingDryIntoWet
 
 class ChannelMode(Enum):
-    Disabled = Disabled
-    Direct = Direct
-    Dry = Dry
-    Wet = Wet
+    Disabled = ChannelMode_Disabled
+    Direct = ChannelMode_Direct
+    Dry = ChannelMode_Dry
+    Wet = ChannelMode_Wet
 
 class BackendType(Enum):
     Jack = Jack

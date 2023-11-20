@@ -8,11 +8,10 @@
 #include <atomic>
 #include <chrono>
 #include <iostream>
-#include <dlfcn.h>
 #include <thread>
 #include <nlohmann/json.hpp>
 #include <base64.hpp>
-
+#include "LoadDynamicLibrary.h"
 namespace carla_constants {
     constexpr uint32_t max_buffer_size = 8192;
     constexpr uint32_t min_buffer_size = 1;
@@ -346,16 +345,12 @@ CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
 
         const LilvNode *ui_binary_uri = lilv_ui_get_binary_uri(m_ui);
         const char *ui_binary_path = lilv_node_get_path(ui_binary_uri, nullptr);
-        void *ui_lib_handle = dlopen(ui_binary_path, RTLD_LAZY);
-        if (!ui_lib_handle) {
-            const char *error_message = dlerror();
-            throw_error<std::runtime_error>(
-                "Could not load UI library {}: {}", ui_binary_path, error_message);
-        }
+        _dylib_handle ui_lib_handle = load_dylib(ui_binary_path);
+        throw_if_dylib_error();
         log<debug>("Loading UI library: {}",
                                       ui_binary_path);
         LV2UI_DescriptorFunction _get_ui_descriptor =
-            (LV2UI_DescriptorFunction)dlsym(ui_lib_handle, "lv2ui_descriptor");
+            (LV2UI_DescriptorFunction)get_dylib_fn(ui_lib_handle, "lv2ui_descriptor");
         if (!_get_ui_descriptor) {
             throw_error<std::runtime_error>(
                 "Could not load UI descriptor entry point (lv2ui_descriptor symbol in {}).", ui_binary_path);

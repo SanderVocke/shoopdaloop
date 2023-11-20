@@ -14,13 +14,13 @@ typedef enum {
 
 // Modes a loop can be in.
 typedef enum {
-    Unknown,
-    Stopped,
-    Playing,
-    Recording,
-    Replacing,
-    PlayingDryThroughWet,
-    RecordingDryIntoWet,
+    LoopMode_Unknown,
+    LoopMode_Stopped,
+    LoopMode_Playing,
+    LoopMode_Recording,
+    LoopMode_Replacing,
+    LoopMode_PlayingDryThroughWet,
+    LoopMode_RecordingDryIntoWet,
     LOOP_MODE_INVALID
 } loop_mode_t;
 
@@ -37,11 +37,11 @@ typedef enum {
 typedef enum {
     // A disabled channel does not record or play back anything, regardless
     // of the loop mode.
-    Disabled,
+    ChannelMode_Disabled,
 
     // A direct channel is meant for regular looping. It follows the mode
     // of its loop (playback when Playing, record when Recording, etc.).
-    Direct,
+    ChannelMode_Direct,
 
     // A dry channel is meant to record a dry signal coming in, which will
     // be fed back around into a wet channel. It has some special behaviors:
@@ -54,7 +54,7 @@ typedef enum {
     // - When RecordingDryIntoWet, the dry channel will playback the dry signal
     //   so that it may be re-recorded into the wet channel. At the end of the
     //   loop, the channel's loop will go into Playing mode.
-    Dry,
+    ChannelMode_Dry,
 
     // A wet channel is meant to record a wet signal which has gone through effects/
     // processing/MIDI synthesis. It has some special behaviors:
@@ -65,7 +65,7 @@ typedef enum {
     //   heard and adjusted live.
     // - When RecordingDryIntoWet, the wet channel will replace its contents.
     //   At the end of the loop, the channel's loop will go into Playing mode.
-    Wet,
+    ChannelMode_Wet,
 
     CHANNEL_MODE_INVALID
 } channel_mode_t;

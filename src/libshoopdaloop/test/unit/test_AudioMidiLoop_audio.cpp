@@ -13,9 +13,9 @@ using namespace std::chrono_literals;
 TEST_CASE("AudioMidiLoop - Audio - Stop", "[AudioMidiLoop][audio]") {
     auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 256);
     AudioMidiLoop loop;
-    auto chan = loop.add_audio_channel<int>(pool, 10, Direct, false);
+    auto chan = loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
 
-    REQUIRE(loop.get_mode() == Stopped);
+    REQUIRE(loop.get_mode() == LoopMode_Stopped);
     REQUIRE(loop.PROC_get_next_poi() == std::nullopt);
     REQUIRE(loop.get_length() == 0);
     REQUIRE(loop.get_position() == 0);
@@ -23,7 +23,7 @@ TEST_CASE("AudioMidiLoop - Audio - Stop", "[AudioMidiLoop][audio]") {
     loop.PROC_process(1000);
     chan->PROC_finalize_process();
 
-    REQUIRE(loop.get_mode() == Stopped);
+    REQUIRE(loop.get_mode() == LoopMode_Stopped);
     REQUIRE(loop.PROC_get_next_poi() == std::nullopt);
     REQUIRE(loop.get_length() == 0);
     REQUIRE(loop.get_position() == 0);
@@ -32,19 +32,19 @@ TEST_CASE("AudioMidiLoop - Audio - Stop", "[AudioMidiLoop][audio]") {
 TEST_CASE("AudioMidiLoop - Audio - Record", "[AudioMidiLoop][audio]") {
     auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
     AudioMidiLoop loop;
-    loop.add_audio_channel<int>(pool, 10, Direct, false);
-    loop.add_audio_channel<int>(pool, 10, Dry, false);
-    loop.add_audio_channel<int>(pool, 10, Wet, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, false);
     std::vector<std::shared_ptr<AudioChannel<int>>> channels = 
         {loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2) };
 
     auto source_buf = create_audio_buf<int>(512, [](uint32_t position) { return position; }); 
-    loop.plan_transition(Recording);
+    loop.plan_transition(LoopMode_Recording);
     for (auto &c: channels) { c->PROC_set_recording_buffer(source_buf.data(), source_buf.size()); }
     loop.PROC_trigger();
     loop.PROC_update_poi();
 
-    REQUIRE(loop.get_mode()== Recording);
+    REQUIRE(loop.get_mode()== LoopMode_Recording);
     REQUIRE(loop.PROC_get_next_poi().value_or(999)== 512); // end of buffer
     REQUIRE(loop.get_length()== 0);
     REQUIRE(loop.get_position()== 0);
@@ -52,7 +52,7 @@ TEST_CASE("AudioMidiLoop - Audio - Record", "[AudioMidiLoop][audio]") {
     loop.PROC_process(20);
     for (auto &c: channels) { c->PROC_finalize_process(); }
 
-    REQUIRE(loop.get_mode()== Recording);
+    REQUIRE(loop.get_mode()== LoopMode_Recording);
     REQUIRE(loop.PROC_get_next_poi().value_or(999)== 492); // end of buffer
     REQUIRE(loop.get_length()== 20);
     REQUIRE(loop.get_position()== 0);
@@ -71,11 +71,11 @@ TEST_CASE("AudioMidiLoop - Audio - Record", "[AudioMidiLoop][audio]") {
 TEST_CASE("AudioMidiLoop - Audio - Record Beyond Ext. Buf", "[AudioMidiLoop][audio]") {
     auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 256);
     AudioMidiLoop loop;
-    loop.add_audio_channel<int>(pool, 10, Direct, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     auto &channel = *loop.audio_channel<int>(0);
     
     channel.PROC_set_recording_buffer(nullptr, 0);
-    loop.plan_transition(Recording);
+    loop.plan_transition(LoopMode_Recording);
     loop.PROC_trigger();
     loop.PROC_update_poi();
 
@@ -85,16 +85,16 @@ TEST_CASE("AudioMidiLoop - Audio - Record Beyond Ext. Buf", "[AudioMidiLoop][aud
 TEST_CASE("AudioMidiLoop - Audio - Record Multiple Target", "[AudioMidiLoop][audio]") {
     auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
     AudioMidiLoop loop;
-    loop.add_audio_channel<int>(pool, 10, Direct, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     auto &channel = *loop.audio_channel<int>(0);
 
     auto source_buf = create_audio_buf<int>(512, [](uint32_t position) { return position; }); 
-    loop.plan_transition(Recording);
+    loop.plan_transition(LoopMode_Recording);
     channel.PROC_set_recording_buffer(source_buf.data(), source_buf.size());
     loop.PROC_trigger();
     loop.PROC_update_poi();
 
-    REQUIRE(loop.get_mode() == Recording);
+    REQUIRE(loop.get_mode() == LoopMode_Recording);
     REQUIRE(loop.PROC_get_next_poi() == 512); // end of buffer
     REQUIRE(loop.get_length() == 0);
     REQUIRE(loop.get_position() == 0);
@@ -102,7 +102,7 @@ TEST_CASE("AudioMidiLoop - Audio - Record Multiple Target", "[AudioMidiLoop][aud
     loop.PROC_process(512);
     channel.PROC_finalize_process();
 
-    REQUIRE(loop.get_mode() == Recording);
+    REQUIRE(loop.get_mode() == LoopMode_Recording);
     REQUIRE(loop.PROC_get_next_poi() == 0); // end of buffer
     REQUIRE(loop.get_length()== 512);
     REQUIRE(loop.get_position()== 0);
@@ -117,16 +117,16 @@ TEST_CASE("AudioMidiLoop - Audio - Record Multiple Target", "[AudioMidiLoop][aud
 TEST_CASE("AudioMidiLoop - Audio - Record Multiple Source", "[AudioMidiLoop][audio]") {
     auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
     AudioMidiLoop loop;
-    loop.add_audio_channel<int>(pool, 10, Direct, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     auto &channel = *loop.audio_channel<int>(0);
 
     auto source_buf = create_audio_buf<int>(32, [](uint32_t position) { return position; });
-    loop.plan_transition(Recording);
+    loop.plan_transition(LoopMode_Recording);
     loop.PROC_trigger();
     channel.PROC_set_recording_buffer(source_buf.data(), source_buf.size());
     loop.PROC_update_poi();
 
-    REQUIRE(loop.get_mode() == Recording);
+    REQUIRE(loop.get_mode() == LoopMode_Recording);
     REQUIRE(loop.PROC_get_next_poi().value_or(999)== 32); // end of buffer
     REQUIRE(loop.get_length() == 0);
     REQUIRE(loop.get_position() == 0);
@@ -142,7 +142,7 @@ TEST_CASE("AudioMidiLoop - Audio - Record Multiple Source", "[AudioMidiLoop][aud
         loop.PROC_handle_poi();
     }
 
-    REQUIRE(loop.get_mode() == Recording);
+    REQUIRE(loop.get_mode() == LoopMode_Recording);
     REQUIRE(loop.PROC_get_next_poi().value_or(999)== 32); // end of buffer
     REQUIRE(loop.get_length()== 512);
     REQUIRE(loop.get_position()== 0);
@@ -157,11 +157,11 @@ TEST_CASE("AudioMidiLoop - Audio - Record Multiple Source", "[AudioMidiLoop][aud
 TEST_CASE("AudioMidiLoop - Audio - Record Onto Smaller", "[AudioMidiLoop][audio]") {
     auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
     AudioMidiLoop loop;
-    loop.add_audio_channel<int>(pool, 10, Direct, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     auto &channel = *loop.audio_channel<int>(0);
     auto data = create_audio_buf<int>(64, [](uint32_t position) { return -((int)position); });
     channel.load_data(data.data(), 64, false);
-    loop.plan_transition(Recording);
+    loop.plan_transition(LoopMode_Recording);
     loop.PROC_trigger();
     loop.set_length(128);
 
@@ -169,7 +169,7 @@ TEST_CASE("AudioMidiLoop - Audio - Record Onto Smaller", "[AudioMidiLoop][audio]
     channel.PROC_set_recording_buffer(source_buf.data(), source_buf.size());
     loop.PROC_update_poi();
 
-    REQUIRE(loop.get_mode()== Recording);
+    REQUIRE(loop.get_mode()== LoopMode_Recording);
     REQUIRE(loop.PROC_get_next_poi().value_or(999)== 512); // end of buffer
     REQUIRE(loop.get_length()== 128);
     REQUIRE(loop.get_position()== 0);
@@ -177,7 +177,7 @@ TEST_CASE("AudioMidiLoop - Audio - Record Onto Smaller", "[AudioMidiLoop][audio]
     loop.PROC_process(20);
     channel.PROC_finalize_process();
 
-    REQUIRE(loop.get_mode()== Recording);
+    REQUIRE(loop.get_mode()== LoopMode_Recording);
     REQUIRE(loop.PROC_get_next_poi().value_or(999)== 492); // end of buffer
     REQUIRE(loop.get_length()== 148);
     REQUIRE(loop.get_position()== 0);
@@ -213,11 +213,11 @@ TEST_CASE("AudioMidiLoop - Audio - Record Onto Smaller", "[AudioMidiLoop][audio]
 TEST_CASE("AudioMidiLoop - Audio - Record Onto Larger", "[AudioMidiLoop][audio]") {
     auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
     AudioMidiLoop loop;
-    loop.add_audio_channel<int>(pool, 10, Direct, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     auto &channel = *loop.audio_channel<int>(0);
     auto data = create_audio_buf<int>(128, [](uint32_t position) { return -((int)position); });
     channel.load_data(data.data(), 128, false);
-    loop.plan_transition(Recording);
+    loop.plan_transition(LoopMode_Recording);
     loop.PROC_trigger();
     loop.set_length(64);
 
@@ -225,7 +225,7 @@ TEST_CASE("AudioMidiLoop - Audio - Record Onto Larger", "[AudioMidiLoop][audio]"
     channel.PROC_set_recording_buffer(source_buf.data(), source_buf.size());
     loop.PROC_update_poi();
 
-    REQUIRE(loop.get_mode()== Recording);
+    REQUIRE(loop.get_mode()== LoopMode_Recording);
     REQUIRE(loop.PROC_get_next_poi().value_or(999)== 512); // end of buffer
     REQUIRE(loop.get_length()== 64);
     REQUIRE(loop.get_position()== 0);
@@ -233,7 +233,7 @@ TEST_CASE("AudioMidiLoop - Audio - Record Onto Larger", "[AudioMidiLoop][audio]"
     loop.PROC_process(64);
     channel.PROC_finalize_process();
 
-    REQUIRE(loop.get_mode()== Recording);
+    REQUIRE(loop.get_mode()== LoopMode_Recording);
     REQUIRE(loop.PROC_get_next_poi().value_or(999)== 448); // end of buffer
     REQUIRE(loop.get_length()== 128);
     REQUIRE(loop.get_position()== 0);
@@ -259,9 +259,9 @@ TEST_CASE("AudioMidiLoop - Audio - Record Onto Larger", "[AudioMidiLoop][audio]"
 TEST_CASE("AudioMidiLoop - Audio - Playback", "[AudioMidiLoop][audio]") {
     auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
     AudioMidiLoop loop;
-    loop.add_audio_channel<int>(pool, 10, Direct, false);
-    loop.add_audio_channel<int>(pool, 10, Dry, false);
-    loop.add_audio_channel<int>(pool, 10, Wet, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, false);
     std::vector<std::shared_ptr<AudioChannel<int>>> channels =
         {loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2)};
     
@@ -270,14 +270,14 @@ TEST_CASE("AudioMidiLoop - Audio - Playback", "[AudioMidiLoop][audio]") {
     loop.set_length(64);
     std::vector<std::vector<int>> play_bufs = { std::vector<int>(64), std::vector<int>(64), std::vector<int>(64) };
 
-    loop.plan_transition(Playing);
+    loop.plan_transition(LoopMode_Playing);
     for (uint32_t idx=0; idx<3; idx++) {
         channels[idx]->PROC_set_playback_buffer(play_bufs[idx].data(), play_bufs[idx].size());
     }
     loop.PROC_trigger();
     loop.PROC_update_poi();
 
-    REQUIRE(loop.get_mode() == Playing);
+    REQUIRE(loop.get_mode() == LoopMode_Playing);
     REQUIRE(loop.PROC_get_next_poi() == 64); // end of buffer
     REQUIRE(loop.get_position() == 0);
     REQUIRE(loop.get_length() == 64);
@@ -285,7 +285,7 @@ TEST_CASE("AudioMidiLoop - Audio - Playback", "[AudioMidiLoop][audio]") {
     loop.PROC_process(20);
     for (auto &c: channels) { c->PROC_finalize_process(); }
 
-    REQUIRE(loop.get_mode() == Playing);
+    REQUIRE(loop.get_mode() == LoopMode_Playing);
     REQUIRE(loop.PROC_get_next_poi() == 44); // end of buffer
     REQUIRE(loop.get_length()== 64);
     REQUIRE(loop.get_position()== 20);
@@ -303,18 +303,18 @@ TEST_CASE("AudioMidiLoop - Audio - Playback", "[AudioMidiLoop][audio]") {
 TEST_CASE("AudioMidiLoop - Audio - Playback Multiple Target", "[AudioMidiLoop][audio]") {
     auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
     AudioMidiLoop loop;
-    loop.add_audio_channel<int>(pool, 10, Direct, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     auto &channel = *loop.audio_channel<int>(0);
     
     auto data = create_audio_buf<int>(512, [](uint32_t position) { return position; });
     channel.load_data(data.data(), 512, false);
 
     loop.set_length(512);
-    loop.plan_transition(Playing);
+    loop.plan_transition(LoopMode_Playing);
     loop.PROC_trigger();
     loop.PROC_update_poi();
 
-    REQUIRE(loop.get_mode() == Playing);
+    REQUIRE(loop.get_mode() == LoopMode_Playing);
     REQUIRE(loop.get_position() == 0);
     REQUIRE(loop.get_length() == 512);
 
@@ -336,7 +336,7 @@ TEST_CASE("AudioMidiLoop - Audio - Playback Multiple Target", "[AudioMidiLoop][a
 TEST_CASE("AudioMidiLoop - Audio - Playback Shorter Data", "[AudioMidiLoop][audio]") {
     auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
     AudioMidiLoop loop;
-    loop.add_audio_channel<int>(pool, 10, Direct, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     auto &channel = *loop.audio_channel<int>(0);
     
     auto data = create_audio_buf<int>(32, [](uint32_t position) { return position; });
@@ -344,12 +344,12 @@ TEST_CASE("AudioMidiLoop - Audio - Playback Shorter Data", "[AudioMidiLoop][audi
     loop.set_length(64);
     auto play_buf = std::vector<int>(64);
 
-    loop.plan_transition(Playing);
+    loop.plan_transition(LoopMode_Playing);
     channel.PROC_set_playback_buffer(play_buf.data(), play_buf.size());
     loop.PROC_trigger();
     loop.PROC_update_poi();
 
-    REQUIRE(loop.get_mode() == Playing);
+    REQUIRE(loop.get_mode() == LoopMode_Playing);
     REQUIRE(loop.PROC_get_next_poi() == 64); // end of buffer
     REQUIRE(loop.get_position() == 0);
     REQUIRE(loop.get_length() == 64);
@@ -357,7 +357,7 @@ TEST_CASE("AudioMidiLoop - Audio - Playback Shorter Data", "[AudioMidiLoop][audi
     loop.PROC_process(62);
     channel.PROC_finalize_process();
 
-    REQUIRE(loop.get_mode() == Playing);
+    REQUIRE(loop.get_mode() == LoopMode_Playing);
     REQUIRE(loop.PROC_get_next_poi() == 2); // end of buffer
     REQUIRE(loop.get_length()== 64);
     REQUIRE(loop.get_position()== 62);
@@ -372,21 +372,21 @@ TEST_CASE("AudioMidiLoop - Audio - Playback Shorter Data", "[AudioMidiLoop][audi
 TEST_CASE("AudioMidiLoop - Audio - Playback Wrap", "[AudioMidiLoop][audio]") {
     auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
     AudioMidiLoop loop;
-    loop.add_audio_channel<int>(pool, 10, Direct, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     auto &channel = *loop.audio_channel<int>(0);
     
     auto data = create_audio_buf<int>(64, [](uint32_t position) { return position; });
     channel.load_data(data.data(), 64, false);
     loop.set_length(64);
-    loop.set_mode(Playing, false);
+    loop.set_mode(LoopMode_Playing, false);
     loop.set_position(48);
     auto play_buf = std::vector<int>(64);
 
-    REQUIRE(loop.get_mode()==Playing);
+    REQUIRE(loop.get_mode()==LoopMode_Playing);
     channel.PROC_set_playback_buffer(play_buf.data(), play_buf.size());
     loop.PROC_update_poi();
 
-    REQUIRE(loop.get_mode()==Playing);
+    REQUIRE(loop.get_mode()==LoopMode_Playing);
     REQUIRE(loop.PROC_get_next_poi() == (64-48)); // end of loop
     REQUIRE(loop.get_position()== 48);
     REQUIRE(loop.get_length()== 64);
@@ -395,7 +395,7 @@ TEST_CASE("AudioMidiLoop - Audio - Playback Wrap", "[AudioMidiLoop][audio]") {
     loop.PROC_handle_poi();
     channel.PROC_finalize_process();
 
-    REQUIRE(loop.get_mode() == Playing);
+    REQUIRE(loop.get_mode() == LoopMode_Playing);
     REQUIRE(loop.PROC_get_next_poi() == 48); // end of buffer
     REQUIRE(loop.get_length()== 64);
     REQUIRE(loop.get_position()== 0);
@@ -404,7 +404,7 @@ TEST_CASE("AudioMidiLoop - Audio - Playback Wrap", "[AudioMidiLoop][audio]") {
     loop.PROC_handle_poi();
     channel.PROC_finalize_process();
 
-    REQUIRE(loop.get_mode() == Playing);
+    REQUIRE(loop.get_mode() == LoopMode_Playing);
     REQUIRE(loop.PROC_get_next_poi() == 0); // end of buffer
     REQUIRE(loop.get_length()== 64);
     REQUIRE(loop.get_position()== 48);
@@ -420,20 +420,20 @@ TEST_CASE("AudioMidiLoop - Audio - Playback Wrap", "[AudioMidiLoop][audio]") {
 TEST_CASE("AudioMidiLoop - Audio - Playback Wrap Longer Data", "[AudioMidiLoop][audio]") {
     auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
     AudioMidiLoop loop;
-    loop.add_audio_channel<int>(pool, 10, Direct, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     auto &channel = *loop.audio_channel<int>(0);
     
     auto data = create_audio_buf<int>(128, [](uint32_t position) { return position; });
     channel.load_data(data.data(), 128, false);
     loop.set_length(64);
-    loop.set_mode(Playing, false);
+    loop.set_mode(LoopMode_Playing, false);
     loop.set_position(48);
     auto play_buf = std::vector<int>(64);
 
     channel.PROC_set_playback_buffer(play_buf.data(), play_buf.size());
     loop.PROC_update_poi();
 
-    REQUIRE(loop.get_mode() == Playing);
+    REQUIRE(loop.get_mode() == LoopMode_Playing);
     REQUIRE(loop.PROC_get_next_poi() == (64-48)); // end of loop
     REQUIRE(loop.get_position() == 48);
     REQUIRE(loop.get_length() == 64);
@@ -442,7 +442,7 @@ TEST_CASE("AudioMidiLoop - Audio - Playback Wrap Longer Data", "[AudioMidiLoop][
     loop.PROC_handle_poi();
     channel.PROC_finalize_process();
 
-    REQUIRE(loop.get_mode() == Playing);
+    REQUIRE(loop.get_mode() == LoopMode_Playing);
     REQUIRE(loop.PROC_get_next_poi() == 48); // end of buffer
     REQUIRE(loop.get_length()== 64);
     REQUIRE(loop.get_position()== 0);
@@ -451,7 +451,7 @@ TEST_CASE("AudioMidiLoop - Audio - Playback Wrap Longer Data", "[AudioMidiLoop][
     loop.PROC_handle_poi();
     channel.PROC_finalize_process();
 
-    REQUIRE(loop.get_mode() == Playing);
+    REQUIRE(loop.get_mode() == LoopMode_Playing);
     REQUIRE(loop.PROC_get_next_poi() == 0); // end of buffer
     REQUIRE(loop.get_length()== 64);
     REQUIRE(loop.get_position()== 48);
@@ -467,22 +467,22 @@ TEST_CASE("AudioMidiLoop - Audio - Playback Wrap Longer Data", "[AudioMidiLoop][
 TEST_CASE("AudioMidiLoop - Audio - Replace", "[AudioMidiLoop][audio]") {
     auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
     AudioMidiLoop loop;
-    loop.add_audio_channel<int>(pool, 10, Direct, false);
-    loop.add_audio_channel<int>(pool, 10, Dry, false);
-    loop.add_audio_channel<int>(pool, 10, Wet, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, false);
     std::vector<std::shared_ptr<AudioChannel<int>>> channels = 
         { loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2) };
     
     auto data = create_audio_buf<int>(64, [](uint32_t position) { return position; });
     for (auto &channel : channels) { channel->load_data(data.data(), 64, false); }
     loop.set_length(64);
-    loop.set_mode(Replacing, false);
+    loop.set_mode(LoopMode_Replacing, false);
     loop.set_position(16);
     auto input_buf = create_audio_buf<int>(64, [](uint32_t position) { return -((int)position); });
     for (auto &channel: channels) { channel->PROC_set_recording_buffer(input_buf.data(), input_buf.size()); }
     loop.PROC_update_poi();
 
-    REQUIRE(loop.get_mode() == Replacing);
+    REQUIRE(loop.get_mode() == LoopMode_Replacing);
     REQUIRE(loop.PROC_get_next_poi().value_or(0)== 64-16); // end of loop
     REQUIRE(loop.get_position() == 16);
     REQUIRE(loop.get_length() == 64);
@@ -490,7 +490,7 @@ TEST_CASE("AudioMidiLoop - Audio - Replace", "[AudioMidiLoop][audio]") {
     loop.PROC_process(32);
     for (auto &c: channels) { c->PROC_finalize_process(); }
 
-    REQUIRE(loop.get_mode() == Replacing);
+    REQUIRE(loop.get_mode() == LoopMode_Replacing);
     REQUIRE(loop.PROC_get_next_poi().value_or(0)== 64-32-16); // end of loop
     REQUIRE(loop.get_length()== 64);
     REQUIRE(loop.get_position()== 16+32);
@@ -512,19 +512,19 @@ TEST_CASE("AudioMidiLoop - Audio - Replace", "[AudioMidiLoop][audio]") {
 TEST_CASE("AudioMidiLoop - Audio - Replace Onto Smaller", "[AudioMidiLoop][audio]") {
     auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
     AudioMidiLoop loop;
-    loop.add_audio_channel<int>(pool, 10, Direct, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     auto &channel = *loop.audio_channel<int>(0);
     
     auto data = create_audio_buf<int>(64, [](uint32_t position) { return position; });
     channel.load_data(data.data(), 64, false);
     loop.set_length(64);
-    loop.set_mode(Replacing, false);
+    loop.set_mode(LoopMode_Replacing, false);
     loop.set_position(48);
     auto input_buf = create_audio_buf<int>(64, [](uint32_t position) { return -((int)position); });
     channel.PROC_set_recording_buffer(input_buf.data(), input_buf.size());
     loop.PROC_update_poi();
 
-    REQUIRE(loop.get_mode() == Replacing);
+    REQUIRE(loop.get_mode() == LoopMode_Replacing);
     REQUIRE(loop.PROC_get_next_poi().value_or(0)== 64-48); // end of loop
     REQUIRE(loop.get_position() == 48);
     REQUIRE(loop.get_length() == 64);
@@ -535,7 +535,7 @@ TEST_CASE("AudioMidiLoop - Audio - Replace Onto Smaller", "[AudioMidiLoop][audio
     loop.PROC_process(16);
     channel.PROC_finalize_process();
 
-    REQUIRE(loop.get_mode() == Replacing);
+    REQUIRE(loop.get_mode() == LoopMode_Replacing);
     REQUIRE(loop.PROC_get_next_poi().value_or(999)== 48);
     REQUIRE(loop.get_length()== 64); // Wrapped around
     REQUIRE(loop.get_position()== 16);
@@ -558,9 +558,9 @@ TEST_CASE("AudioMidiLoop - Audio - Replace Onto Smaller", "[AudioMidiLoop][audio
 TEST_CASE("AudioMidiLoop - Audio - Play Dry Through Wet", "[AudioMidiLoop][audio]") {
     auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
     AudioMidiLoop loop;
-    loop.add_audio_channel<int>(pool, 10, Direct, false);
-    loop.add_audio_channel<int>(pool, 10, Dry, false);
-    loop.add_audio_channel<int>(pool, 10, Wet, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, false);
     std::vector<std::shared_ptr<AudioChannel<int>>> channels =
         {loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2)};
     
@@ -569,14 +569,14 @@ TEST_CASE("AudioMidiLoop - Audio - Play Dry Through Wet", "[AudioMidiLoop][audio
     loop.set_length(64);
     std::vector<std::vector<int>> play_bufs = { std::vector<int>(64), std::vector<int>(64), std::vector<int>(64) };
 
-    loop.plan_transition(PlayingDryThroughWet);
+    loop.plan_transition(LoopMode_PlayingDryThroughWet);
     for (uint32_t idx=0; idx<3; idx++) {
         channels[idx]->PROC_set_playback_buffer(play_bufs[idx].data(), play_bufs[idx].size());
     }
     loop.PROC_trigger();
     loop.PROC_update_poi();
 
-    REQUIRE(loop.get_mode() == PlayingDryThroughWet);
+    REQUIRE(loop.get_mode() == LoopMode_PlayingDryThroughWet);
     REQUIRE(loop.PROC_get_next_poi() == 64); // end of buffer
     REQUIRE(loop.get_position() == 0);
     REQUIRE(loop.get_length() == 64);
@@ -584,7 +584,7 @@ TEST_CASE("AudioMidiLoop - Audio - Play Dry Through Wet", "[AudioMidiLoop][audio
     loop.PROC_process(20);
     for (auto &c: channels) { c->PROC_finalize_process(); }
 
-    REQUIRE(loop.get_mode() == PlayingDryThroughWet);
+    REQUIRE(loop.get_mode() == LoopMode_PlayingDryThroughWet);
     REQUIRE(loop.PROC_get_next_poi() == 44); // end of buffer
     REQUIRE(loop.get_length()== 64);
     REQUIRE(loop.get_position()== 20);
@@ -602,16 +602,16 @@ TEST_CASE("AudioMidiLoop - Audio - Play Dry Through Wet", "[AudioMidiLoop][audio
 TEST_CASE("AudioMidiLoop - Audio - Record Dry Into Wet", "[AudioMidiLoop][audio]") {
     auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>(10, 64);
     AudioMidiLoop loop;
-    loop.add_audio_channel<int>(pool, 10, Direct, false);
-    loop.add_audio_channel<int>(pool, 10, Dry, false);
-    loop.add_audio_channel<int>(pool, 10, Wet, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, false);
     std::vector<std::shared_ptr<AudioChannel<int>>> channels = 
         { loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2) };
     
     auto data = create_audio_buf<int>(64, [](uint32_t position) { return position; });
     for (auto &channel : channels) { channel->load_data(data.data(), 64, false); }
     loop.set_length(64);
-    loop.set_mode(RecordingDryIntoWet, false);
+    loop.set_mode(LoopMode_RecordingDryIntoWet, false);
     loop.set_position(16);
     auto input_buf = create_audio_buf<int>(64, [](uint32_t position) { return -((int)position); });
     for (auto &channel: channels) { channel->PROC_set_recording_buffer(input_buf.data(), input_buf.size()); }
@@ -621,7 +621,7 @@ TEST_CASE("AudioMidiLoop - Audio - Record Dry Into Wet", "[AudioMidiLoop][audio]
     }
     loop.PROC_update_poi();
 
-    REQUIRE(loop.get_mode() == RecordingDryIntoWet);
+    REQUIRE(loop.get_mode() == LoopMode_RecordingDryIntoWet);
     REQUIRE(loop.PROC_get_next_poi().value_or(999)== 32); // end of playback buffer
     REQUIRE(loop.get_position() == 16);
     REQUIRE(loop.get_length() == 64);
@@ -629,11 +629,11 @@ TEST_CASE("AudioMidiLoop - Audio - Record Dry Into Wet", "[AudioMidiLoop][audio]
     loop.PROC_process(32);
     for (auto &c: channels) { c->PROC_finalize_process(); }
 
-    REQUIRE(loop.get_mode() == RecordingDryIntoWet);
+    REQUIRE(loop.get_mode() == LoopMode_RecordingDryIntoWet);
     REQUIRE(loop.PROC_get_next_poi().value_or(999)== 0); // end of loop
     REQUIRE(loop.get_length()== 64);
     REQUIRE(loop.get_position()== 16+32);
-    // Direct channel does replacement
+    // ChannelMode_Direct channel does replacement
     for_channel_elems<AudioChannel<int>, int>(
         *channels[0], 
         [&](uint32_t position, int const& val) {
@@ -679,7 +679,7 @@ TEST_CASE("AudioMidiLoop - Audio - Prerecord", "[AudioMidiLoop][audio]") {
     AudioMidiLoop loop;
     auto sync_source = std::make_shared<AudioMidiLoop>();
     sync_source->set_length(100);
-    sync_source->plan_transition(Playing);
+    sync_source->plan_transition(LoopMode_Playing);
     REQUIRE(sync_source->PROC_predicted_next_trigger_eta().value_or(999)== 100);
 
     loop.set_sync_source(sync_source); // Needed because otherwise will immediately transition
@@ -687,18 +687,18 @@ TEST_CASE("AudioMidiLoop - Audio - Prerecord", "[AudioMidiLoop][audio]") {
     loop.PROC_update_trigger_eta();
     REQUIRE(loop.PROC_predicted_next_trigger_eta().value_or(999)== 100);
 
-    loop.add_audio_channel<int>(pool, 10, Direct, false);
-    loop.add_audio_channel<int>(pool, 10, Dry, false);
-    loop.add_audio_channel<int>(pool, 10, Wet, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, false);
     std::vector<std::shared_ptr<AudioChannel<int>>> channels = 
         {loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2) };
 
     auto source_buf = create_audio_buf<int>(512, [](uint32_t position) { return position; }); 
-    loop.plan_transition(Recording); // Not triggered yet
+    loop.plan_transition(LoopMode_Recording); // Not triggered yet
     for (auto &c: channels) { c->PROC_set_recording_buffer(source_buf.data(), source_buf.size()); }
     loop.PROC_update_poi();
 
-    REQUIRE(loop.get_mode()== Stopped);
+    REQUIRE(loop.get_mode()== LoopMode_Stopped);
     REQUIRE(loop.PROC_get_next_poi().value_or(999)== 512); // end of buffer
     REQUIRE(loop.get_length()== 0);
     REQUIRE(loop.get_position()== 0);
@@ -707,7 +707,7 @@ TEST_CASE("AudioMidiLoop - Audio - Prerecord", "[AudioMidiLoop][audio]") {
     for (auto &c: channels) { c->PROC_finalize_process(); }
 
     // By now, we are still stopped but the channels should have pre-recorded since recording is planned.
-    REQUIRE(loop.get_mode()== Stopped);
+    REQUIRE(loop.get_mode()== LoopMode_Stopped);
     REQUIRE(loop.PROC_get_next_poi().value_or(999)== 492); // end of buffer
     REQUIRE(loop.get_length()== 0);
     REQUIRE(loop.get_position()== 0);
@@ -718,7 +718,7 @@ TEST_CASE("AudioMidiLoop - Audio - Prerecord", "[AudioMidiLoop][audio]") {
     loop.PROC_process(20);
     for (auto &c: channels) { c->PROC_finalize_process(); }
 
-    REQUIRE(loop.get_mode()== Recording);
+    REQUIRE(loop.get_mode()== LoopMode_Recording);
     REQUIRE(loop.PROC_get_next_poi().value_or(999)== 472); // end of buffer
     REQUIRE(loop.get_length()== 20);
     REQUIRE(loop.get_position()== 0);
@@ -753,7 +753,7 @@ TEST_CASE("AudioMidiLoop - Audio - Preplay", "[AudioMidiLoop][audio]") {
     };
 
     sync_source->set_length(100);
-    sync_source->plan_transition(Playing);
+    sync_source->plan_transition(LoopMode_Playing);
     REQUIRE(sync_source->PROC_predicted_next_trigger_eta().value_or(999)== 100);
 
     loop.set_sync_source(sync_source); // Needed because otherwise will immediately transition
@@ -761,9 +761,9 @@ TEST_CASE("AudioMidiLoop - Audio - Preplay", "[AudioMidiLoop][audio]") {
     loop.PROC_update_trigger_eta();
     REQUIRE(loop.PROC_predicted_next_trigger_eta().value_or(999)== 100);
 
-    loop.add_audio_channel<int>(pool, 10, Direct, false);
-    loop.add_audio_channel<int>(pool, 10, Dry, false);
-    loop.add_audio_channel<int>(pool, 10, Wet, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, false);
     std::vector<std::shared_ptr<AudioChannel<int>>> channels = 
         {loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2) };
 
@@ -776,7 +776,7 @@ TEST_CASE("AudioMidiLoop - Audio - Preplay", "[AudioMidiLoop][audio]") {
     loop.set_length(128);
 
     std::vector<std::vector<int>> play_bufs = { std::vector<int>(128), std::vector<int>(128), std::vector<int>(128) };
-    loop.plan_transition(Playing);
+    loop.plan_transition(LoopMode_Playing);
     for (uint32_t idx=0; idx<3; idx++) {
         channels[idx]->PROC_set_playback_buffer(play_bufs[idx].data(), play_bufs[idx].size());
     }
@@ -784,21 +784,21 @@ TEST_CASE("AudioMidiLoop - Audio - Preplay", "[AudioMidiLoop][audio]") {
     // Pre-play part
     process(99);
 
-    REQUIRE(sync_source->get_mode()== Playing);
-    REQUIRE(loop.get_mode()== Stopped);
+    REQUIRE(sync_source->get_mode()== LoopMode_Playing);
+    REQUIRE(loop.get_mode()== LoopMode_Stopped);
 
     process(1);
 
     sync_source->PROC_handle_poi();
     loop.PROC_handle_sync();
-    REQUIRE(sync_source->get_mode()== Playing);
-    REQUIRE(loop.get_mode()== Playing);
+    REQUIRE(sync_source->get_mode()== LoopMode_Playing);
+    REQUIRE(loop.get_mode()== LoopMode_Playing);
 
     // Play part
     process(28);
 
-    REQUIRE(sync_source->get_mode()== Playing);
-    REQUIRE(loop.get_mode()== Playing);
+    REQUIRE(sync_source->get_mode()== LoopMode_Playing);
+    REQUIRE(loop.get_mode()== LoopMode_Playing);
 
     // Process the channels' queued operations
     for (auto &channel : channels) {
@@ -811,7 +811,7 @@ TEST_CASE("AudioMidiLoop - Audio - Preplay", "[AudioMidiLoop][audio]") {
         auto chan_mode = channel->get_mode();
 
         for (uint32_t p=0; p<128; p++) {
-            if (chan_mode != Dry) {
+            if (chan_mode != ChannelMode_Dry) {
                 REQUIRE(
                     buf[p] ==
                     (p < 10  ? 0 : // First 10 samples: nothing because we are before the pre_play_samples param

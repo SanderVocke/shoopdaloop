@@ -3,6 +3,24 @@
 
 #include "libshoopdaloop.h"
 
+// System
+#include <boost/lockfree/spsc_queue.hpp>
+#include <chrono>
+#include <cmath>
+#include <math.h>
+#include <memory>
+#include <stdexcept>
+#include <map>
+#include <set>
+#include <thread>
+#include <algorithm>
+
+#ifdef SHOOP_HAVE_BACKEND_JACK
+#include "JackAudioSystem.h"
+#include "JackMidiPort.h"
+#include "JackAudioPort.h"
+#endif
+
 // Internal
 #include "AudioBuffer.h"
 #include "AudioChannel.h"
@@ -32,24 +50,6 @@
 #include "ConnectedLoop.h"
 #include "DummyAudioSystem.h"
 #include <mutex>
-
-#ifdef SHOOP_HAVE_BACKEND_JACK
-#include "JackAudioSystem.h"
-#include "JackMidiPort.h"
-#include "JackAudioPort.h"
-#endif
-
-// System
-#include <boost/lockfree/spsc_queue.hpp>
-#include <chrono>
-#include <cmath>
-#include <math.h>
-#include <memory>
-#include <stdexcept>
-#include <map>
-#include <set>
-#include <thread>
-#include <algorithm>
 
 #include "libshoopdaloop_test_if.h"
 
@@ -569,7 +569,7 @@ void clear_loop (shoopdaloop_loop_t *loop, unsigned length) {
     internal_loop(loop)->get_backend().cmd_queue.queue([=]() {
         auto &_loop = *internal_loop(loop);
         _loop.loop->clear_planned_transitions(false);
-        _loop.loop->plan_transition(Stopped, 0, false, false);
+        _loop.loop->plan_transition(LoopMode_Stopped, 0, false, false);
         for (auto &chan : _loop.mp_audio_channels) {
             chan->maybe_audio()->PROC_clear(length);
         }
