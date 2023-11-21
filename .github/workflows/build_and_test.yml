@@ -21,54 +21,54 @@ jobs:
       fail-fast: false
       matrix:
         kind:
-          - name: linux_release
-            os: ubuntu-latest
-            python: python3.8
-            pip: python3 -m pip
-            container_image: quay.io/pypa/manylinux_2_28_x86_64:latest
-            prepare: 'manylinux_2_28'
-            overrides: 'overrides/linux_release_overrides.toml'
-            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
-          - name: linux_debug
-            os: ubuntu-latest
-            python: python3.8
-            pip: python3 -m pip
-            container_image: quay.io/pypa/manylinux_2_28_x86_64:latest
-            prepare: 'manylinux_2_28'
-            overrides: 'overrides/linux_debug_overrides.toml'
-            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
-          - name: linux_barebones
-            os: ubuntu-latest
-            python: python3.8
-            pip: python3 -m pip
-            container_image: quay.io/pypa/manylinux_2_28_x86_64:latest
-            prepare: 'manylinux_2_28'
-            overrides: 'overrides/linux_barebones_overrides.toml'
-            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
-          - name: linux_asan
-            os: ubuntu-latest
-            python: python3.8
-            pip: python3 -m pip
-            container_image: quay.io/pypa/manylinux_2_28_x86_64:latest
-            prepare: 'manylinux_2_28'
-            overrides: 'overrides/linux_asan_overrides.toml'
-            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
-          - name: linux_coverage
-            os: ubuntu-latest
-            python: python3.8
-            pip: python3 -m pip
-            container_image: quay.io/pypa/manylinux_2_28_x86_64:latest
-            prepare: 'manylinux_2_28'
-            overrides: 'overrides/linux_coverage_overrides.toml'
-            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
-          - name: windows_release
-            os: windows-2022
-            python: python.exe
-            pip: python.exe -m pip
-            container_image: null
-            prepare: 'windows'
-            overrides: 'overrides/windows_release_overrides.toml'
-            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+          # - name: linux_release
+          #   os: ubuntu-latest
+          #   python: python3.8
+          #   pip: python3 -m pip
+          #   container_image: quay.io/pypa/manylinux_2_28_x86_64:latest
+          #   prepare: 'manylinux_2_28'
+          #   overrides: 'overrides/linux_release_overrides.toml'
+          #   rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+          # - name: linux_debug
+          #   os: ubuntu-latest
+          #   python: python3.8
+          #   pip: python3 -m pip
+          #   container_image: quay.io/pypa/manylinux_2_28_x86_64:latest
+          #   prepare: 'manylinux_2_28'
+          #   overrides: 'overrides/linux_debug_overrides.toml'
+          #   rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+          # - name: linux_barebones
+          #   os: ubuntu-latest
+          #   python: python3.8
+          #   pip: python3 -m pip
+          #   container_image: quay.io/pypa/manylinux_2_28_x86_64:latest
+          #   prepare: 'manylinux_2_28'
+          #   overrides: 'overrides/linux_barebones_overrides.toml'
+          #   rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+          # - name: linux_asan
+          #   os: ubuntu-latest
+          #   python: python3.8
+          #   pip: python3 -m pip
+          #   container_image: quay.io/pypa/manylinux_2_28_x86_64:latest
+          #   prepare: 'manylinux_2_28'
+          #   overrides: 'overrides/linux_asan_overrides.toml'
+          #   rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+          # - name: linux_coverage
+          #   os: ubuntu-latest
+          #   python: python3.8
+          #   pip: python3 -m pip
+          #   container_image: quay.io/pypa/manylinux_2_28_x86_64:latest
+          #   prepare: 'manylinux_2_28'
+          #   overrides: 'overrides/linux_coverage_overrides.toml'
+          #   rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+          # - name: windows_release
+          #   os: windows-2022
+          #   python: python.exe
+          #   pip: python.exe -m pip
+          #   container_image: null
+          #   prepare: 'windows'
+          #   overrides: 'overrides/windows_release_overrides.toml'
+          #   rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
           - name: windows_debug
             os: windows-2022
             python: python.exe
@@ -77,26 +77,26 @@ jobs:
             prepare: 'windows'
             overrides: 'overrides/windows_debug_overrides.toml'
             rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
-          - name: macos_release
-            os: macos-11
-            python: python3.8
-            pip: python3.8 -m pip
-            container_image: null
-            prepare: 'macos'
-            overrides: 'overrides/macos_release_overrides.toml'
-            # Note: for some reason, an incorrect MacOS identifier is generated (macos_11 instead of macos_11_0).
-            # Also remove the double dot if any.
-            rename_wheel_sed: "'s/(.*-macosx_[1-9]+_)(x86_64|arm64|universal2)[\\.]*whl/\\10_\\2.whl/g'"
-          - name: macos_debug
-            os: macos-11
-            python: python3.8
-            pip: python3.8 -m pip
-            container_image: null
-            prepare: 'macos'
-            overrides: 'overrides/macos_debug_overrides.toml'
-            # Note: for some reason, an incorrect MacOS identifier is generated (macos_11 instead of macos_11_0).
-            # Also remove the double dot if any.
-            rename_wheel_sed: "'s/(.*-macosx_[1-9]+_)(x86_64|arm64|universal2)[\\.]*whl/\\10_\\2.whl/g'"
+          # - name: macos_release
+          #   os: macos-11
+          #   python: python3.8
+          #   pip: python3.8 -m pip
+          #   container_image: null
+          #   prepare: 'macos'
+          #   overrides: 'overrides/macos_release_overrides.toml'
+          #   # Note: for some reason, an incorrect MacOS identifier is generated (macos_11 instead of macos_11_0).
+          #   # Also remove the double dot if any.
+          #   rename_wheel_sed: "'s/(.*-macosx_[1-9]+_)(x86_64|arm64|universal2)[\\.]*whl/\\10_\\2.whl/g'"
+          # - name: macos_debug
+          #   os: macos-11
+          #   python: python3.8
+          #   pip: python3.8 -m pip
+          #   container_image: null
+          #   prepare: 'macos'
+          #   overrides: 'overrides/macos_debug_overrides.toml'
+          #   # Note: for some reason, an incorrect MacOS identifier is generated (macos_11 instead of macos_11_0).
+          #   # Also remove the double dot if any.
+          #   rename_wheel_sed: "'s/(.*-macosx_[1-9]+_)(x86_64|arm64|universal2)[\\.]*whl/\\10_\\2.whl/g'"
     runs-on: ${{ matrix.kind.os}}
     container:
       image: ${{ matrix.kind.container_image }}
@@ -139,174 +139,174 @@ jobs:
         name: ${{ matrix.kind.name }}_wheel
         path: ${{ steps.find.outputs.name }}
     - name: TMate failure session
-      if: ${{ failure() && (matrix.kind.name == 'windows_debug') }}
+      if: ${{ failure() }}
       uses: SanderVocke/action-tmate@master
   
-  test:
-    strategy:
-      fail-fast: false
-      matrix:
-        kind:
-          - name: release_debian_stable
-            python: python3
-            pip: python3 -m pip
-            container: sandervocke/shoopdaloop_run_base_debian_stable:latest
-            os: ubuntu-latest
-            wheel: linux_release_wheel
-            testrunner: test_runner
-            qpa_platform: vnc
-          - name: barebones_debian_stable
-            python: python3
-            pip: python3 -m pip
-            container: sandervocke/shoopdaloop_run_base_debian_stable:latest
-            os: ubuntu-latest
-            wheel: linux_barebones_wheel
-            testrunner: test_runner
-            qpa_platform: vnc
-          - name: release_ubuntu_latest
-            python: python3
-            pip: python3 -m pip
-            container: sandervocke/shoopdaloop_run_base_ubuntu_latest:latest
-            os: ubuntu-latest
-            wheel: linux_release_wheel
-            testrunner: test_runner
-            qpa_platform: vnc
-          - name: release_arch
-            python: python
-            pip: python -m pip
-            container: sandervocke/shoopdaloop_run_base_arch:latest
-            os: ubuntu-latest
-            wheel: linux_release_wheel
-            testrunner: test_runner
-            qpa_platform: vnc
-          - name: release_macos11
-            python: python3
-            pip: python3 -m pip
-            container: null
-            os: macos-11
-            wheel: macos_release_wheel
-            testrunner: test_runner
-            qpa_platform: offscreen
-          - name: release_macos12
-            python: python3
-            pip: python3 -m pip
-            container: null
-            os: macos-12
-            wheel: macos_release_wheel
-            testrunner: test_runner
-            qpa_platform: offscreen
-          - name: release_macos13
-            python: python3
-            pip: python3 -m pip
-            container: null
-            os: macos-13
-            wheel: macos_release_wheel
-            testrunner: test_runner
-            qpa_platform: offscreen
-          - name: debug_macos13
-            python: python3
-            pip: python3 -m pip
-            container: null
-            os: macos-13
-            wheel: macos_debug_wheel
-            testrunner: test_runner
-            qpa_platform: offscreen
-          - name: release_windows
-            python: python.exe
-            pip: python.exe -m pip
-            container: null
-            os: windows-2022
-            wheel: windows_release_wheel
-            testrunner: test_runner.exe
-            qpa_platform: offscreen
-            pathconvert: "| cygpath -u -f -"
-          - name: debug_windows
-            python: python.exe
-            pip: python.exe -m pip
-            container: null
-            os: windows-2022
-            wheel: windows_debug_wheel
-            testrunner: test_runner.exe
-            qpa_platform: offscreen
-            pathconvert: "| cygpath -u -f -"
-    runs-on: ${{ matrix.kind.os }}
-    needs: build
-    if: ${{ always() }}
-    container:
-      image: ${{ matrix.kind.container }}
-      options: --user root --workdir / # Note: this gets disregarded if container is null
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v3
-    - name: Retrieve wheel
-      uses: actions/download-artifact@v3
-      with:
-        name: ${{ matrix.kind.wheel }}
-        path: ~/wheel
-    - name: Install wheel
-      id: install
-      shell: bash
-      run: |
-        SHOOP_LOG=debug ${{ matrix.kind.pip }} install --force-reinstall ~/wheel/*.whl
-        shoopdaloop --info
-        echo "install_dir=$(shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g' ${{ matrix.kind.pathconvert }})" | tee -a $GITHUB_OUTPUT
-    - name: Install Pytest
-      shell: bash
-      run: |
-        ${{ matrix.kind.pip }} install pytest
-    - name: Test back-end
-      if: ${{ success() || failure() }}
-      uses: ./.github/actions/test_backend
-      timeout-minutes: 5
-      with:
-        variant_name: release
-        # note: build step generates run_cmd_prefix output
-        # for usage with shared ASAN library.
-        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
-        test_runner: ${{ steps.install.outputs.install_dir }}/${{ matrix.kind.testrunner }}
-    - name: Test Python
-      if: ${{ success() || failure() }}
-      uses: ./.github/actions/test_python
-      timeout-minutes: 5
-      with:
-        variant_name: release
-        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
-        root_path: ${{ steps.install.outputs.install_dir }}
-        pytest_command: ${{ matrix.kind.python }} -m pytest
-    - name: Test QML
-      if: ${{ success() || failure() }}
-      uses: ./.github/actions/test_qml
-      timeout-minutes: 20
-      with:
-        variant_name: release
-        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
-        root_path: ${{ steps.install.outputs.install_dir }}
-        python_command: ${{ matrix.kind.python }}
-        qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
-        macos_rpath_patch: ${{ contains(matrix.kind.name, 'macos') }}
-    - name: Screenshots
-      if: ${{ success() || failure() }}
-      uses: ./.github/actions/test_screenshots
-      timeout-minutes: 5
-      with:
-        root_path: ${{ steps.install.outputs.install_dir }}
-        screenshots_path: _grabbed_screenshots
-        artifact_name: screenshots_${{ matrix.kind.name }}
-        qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
-        python: ${{ matrix.kind.python }}
-    - name: Test Run App
-      if: ${{ success() || failure() }}
-      uses: ./.github/actions/test_run_app
-      timeout-minutes: 15
-      with:
-        variant_name: release
-        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
-        root_path: ${{ steps.install.outputs.install_dir }}
-        python: ${{ matrix.kind.python }}
-        qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
-    # - name: TMate failure session
-    #   if: ${{ failure() }}
-    #   uses: SanderVocke/action-tmate@master
+  # test:
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       kind:
+  #         - name: release_debian_stable
+  #           python: python3
+  #           pip: python3 -m pip
+  #           container: sandervocke/shoopdaloop_run_base_debian_stable:latest
+  #           os: ubuntu-latest
+  #           wheel: linux_release_wheel
+  #           testrunner: test_runner
+  #           qpa_platform: vnc
+  #         - name: barebones_debian_stable
+  #           python: python3
+  #           pip: python3 -m pip
+  #           container: sandervocke/shoopdaloop_run_base_debian_stable:latest
+  #           os: ubuntu-latest
+  #           wheel: linux_barebones_wheel
+  #           testrunner: test_runner
+  #           qpa_platform: vnc
+  #         - name: release_ubuntu_latest
+  #           python: python3
+  #           pip: python3 -m pip
+  #           container: sandervocke/shoopdaloop_run_base_ubuntu_latest:latest
+  #           os: ubuntu-latest
+  #           wheel: linux_release_wheel
+  #           testrunner: test_runner
+  #           qpa_platform: vnc
+  #         - name: release_arch
+  #           python: python
+  #           pip: python -m pip
+  #           container: sandervocke/shoopdaloop_run_base_arch:latest
+  #           os: ubuntu-latest
+  #           wheel: linux_release_wheel
+  #           testrunner: test_runner
+  #           qpa_platform: vnc
+  #         - name: release_macos11
+  #           python: python3
+  #           pip: python3 -m pip
+  #           container: null
+  #           os: macos-11
+  #           wheel: macos_release_wheel
+  #           testrunner: test_runner
+  #           qpa_platform: offscreen
+  #         - name: release_macos12
+  #           python: python3
+  #           pip: python3 -m pip
+  #           container: null
+  #           os: macos-12
+  #           wheel: macos_release_wheel
+  #           testrunner: test_runner
+  #           qpa_platform: offscreen
+  #         - name: release_macos13
+  #           python: python3
+  #           pip: python3 -m pip
+  #           container: null
+  #           os: macos-13
+  #           wheel: macos_release_wheel
+  #           testrunner: test_runner
+  #           qpa_platform: offscreen
+  #         - name: debug_macos13
+  #           python: python3
+  #           pip: python3 -m pip
+  #           container: null
+  #           os: macos-13
+  #           wheel: macos_debug_wheel
+  #           testrunner: test_runner
+  #           qpa_platform: offscreen
+  #         - name: release_windows
+  #           python: python.exe
+  #           pip: python.exe -m pip
+  #           container: null
+  #           os: windows-2022
+  #           wheel: windows_release_wheel
+  #           testrunner: test_runner.exe
+  #           qpa_platform: offscreen
+  #           pathconvert: "| cygpath -u -f -"
+  #         - name: debug_windows
+  #           python: python.exe
+  #           pip: python.exe -m pip
+  #           container: null
+  #           os: windows-2022
+  #           wheel: windows_debug_wheel
+  #           testrunner: test_runner.exe
+  #           qpa_platform: offscreen
+  #           pathconvert: "| cygpath -u -f -"
+  #   runs-on: ${{ matrix.kind.os }}
+  #   needs: build
+  #   if: ${{ always() }}
+  #   container:
+  #     image: ${{ matrix.kind.container }}
+  #     options: --user root --workdir / # Note: this gets disregarded if container is null
+  #   steps:
+  #   - name: Checkout
+  #     uses: actions/checkout@v3
+  #   - name: Retrieve wheel
+  #     uses: actions/download-artifact@v3
+  #     with:
+  #       name: ${{ matrix.kind.wheel }}
+  #       path: ~/wheel
+  #   - name: Install wheel
+  #     id: install
+  #     shell: bash
+  #     run: |
+  #       SHOOP_LOG=debug ${{ matrix.kind.pip }} install --force-reinstall ~/wheel/*.whl
+  #       shoopdaloop --info
+  #       echo "install_dir=$(shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g' ${{ matrix.kind.pathconvert }})" | tee -a $GITHUB_OUTPUT
+  #   - name: Install Pytest
+  #     shell: bash
+  #     run: |
+  #       ${{ matrix.kind.pip }} install pytest
+  #   - name: Test back-end
+  #     if: ${{ success() || failure() }}
+  #     uses: ./.github/actions/test_backend
+  #     timeout-minutes: 5
+  #     with:
+  #       variant_name: release
+  #       # note: build step generates run_cmd_prefix output
+  #       # for usage with shared ASAN library.
+  #       run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
+  #       test_runner: ${{ steps.install.outputs.install_dir }}/${{ matrix.kind.testrunner }}
+  #   - name: Test Python
+  #     if: ${{ success() || failure() }}
+  #     uses: ./.github/actions/test_python
+  #     timeout-minutes: 5
+  #     with:
+  #       variant_name: release
+  #       run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
+  #       root_path: ${{ steps.install.outputs.install_dir }}
+  #       pytest_command: ${{ matrix.kind.python }} -m pytest
+  #   - name: Test QML
+  #     if: ${{ success() || failure() }}
+  #     uses: ./.github/actions/test_qml
+  #     timeout-minutes: 20
+  #     with:
+  #       variant_name: release
+  #       run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
+  #       root_path: ${{ steps.install.outputs.install_dir }}
+  #       python_command: ${{ matrix.kind.python }}
+  #       qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
+  #       macos_rpath_patch: ${{ contains(matrix.kind.name, 'macos') }}
+  #   - name: Screenshots
+  #     if: ${{ success() || failure() }}
+  #     uses: ./.github/actions/test_screenshots
+  #     timeout-minutes: 5
+  #     with:
+  #       root_path: ${{ steps.install.outputs.install_dir }}
+  #       screenshots_path: _grabbed_screenshots
+  #       artifact_name: screenshots_${{ matrix.kind.name }}
+  #       qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
+  #       python: ${{ matrix.kind.python }}
+  #   - name: Test Run App
+  #     if: ${{ success() || failure() }}
+  #     uses: ./.github/actions/test_run_app
+  #     timeout-minutes: 15
+  #     with:
+  #       variant_name: release
+  #       run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
+  #       root_path: ${{ steps.install.outputs.install_dir }}
+  #       python: ${{ matrix.kind.python }}
+  #       qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
+  #   # - name: TMate failure session
+  #   #   if: ${{ failure() }}
+  #   #   uses: SanderVocke/action-tmate@master
         
   # asan:
   #   runs-on: ubuntu-latest
