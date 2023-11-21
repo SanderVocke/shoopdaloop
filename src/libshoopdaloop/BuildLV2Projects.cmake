@@ -55,7 +55,7 @@ ExternalProject_Add(serd_proj
   INSTALL_COMMAND
     ${MESON_ENV} ${PYTHON_CMD} -m mesonbuild.mesonmain install
     COMMAND ${FIND_PKGCONF_DIRS}
-    COMMAND ${PYTHON_CMD} ${CMAKE_SOURCE_DIR}/scripts/replace_symlink_by_target.py ${SERD_LIB}
+    COMMAND ${PYTHON_CMD} ${CMAKE_SOURCE_DIR}/../scripts/replace_symlink_by_target.py ${SERD_LIB}
     COMMAND ${CMAKE_COMMAND} -E copy ${SERD_LIB} ${CMAKE_CURRENT_BINARY_DIR}
   DEPENDS lv2_proj
   BUILD_BYPRODUCTS ${SERD_OUTPUTS}
@@ -70,7 +70,7 @@ ExternalProject_Add(sord_proj
     ${MESON_ENV} ${PYTHON_CMD} -m mesonbuild.mesonmain compile
   INSTALL_COMMAND
     ${MESON_ENV} ${PYTHON_CMD} -m mesonbuild.mesonmain install
-    COMMAND ${PYTHON_CMD} ${CMAKE_SOURCE_DIR}/scripts/replace_symlink_by_target.py ${SORD_LIB}
+    COMMAND ${PYTHON_CMD} ${CMAKE_SOURCE_DIR}/../scripts/replace_symlink_by_target.py ${SORD_LIB}
     COMMAND ${CMAKE_COMMAND} -E copy ${SORD_LIB} ${CMAKE_CURRENT_BINARY_DIR}
   DEPENDS lv2_proj serd_proj
   BUILD_BYPRODUCTS ${SORD_OUTPUTS}
@@ -85,7 +85,7 @@ ExternalProject_Add(sratom_proj
     ${MESON_ENV} ${PYTHON_CMD} -m mesonbuild.mesonmain compile
   INSTALL_COMMAND
     ${MESON_ENV} ${PYTHON_CMD} -m mesonbuild.mesonmain install
-    COMMAND ${PYTHON_CMD} ${CMAKE_SOURCE_DIR}/scripts/replace_symlink_by_target.py ${SRATOM_LIB}
+    COMMAND ${PYTHON_CMD} ${CMAKE_SOURCE_DIR}/../scripts/replace_symlink_by_target.py ${SRATOM_LIB}
     COMMAND ${CMAKE_COMMAND} -E copy ${SRATOM_LIB} ${CMAKE_CURRENT_BINARY_DIR}
   DEPENDS lv2_proj serd_proj sord_proj
   BUILD_BYPRODUCTS ${SRATOM_OUTPUTS}
@@ -100,7 +100,7 @@ ExternalProject_Add(lilv_proj
     ${MESON_ENV} ${PYTHON_CMD} -m mesonbuild.mesonmain compile
   INSTALL_COMMAND
     ${MESON_ENV} ${PYTHON_CMD} -m mesonbuild.mesonmain install
-    COMMAND ${PYTHON_CMD} ${CMAKE_SOURCE_DIR}/scripts/replace_symlink_by_target.py ${LILV_LIB}
+    COMMAND ${PYTHON_CMD} ${CMAKE_SOURCE_DIR}/../scripts/replace_symlink_by_target.py ${LILV_LIB}
     COMMAND ${CMAKE_COMMAND} -E copy ${LILV_LIB} ${CMAKE_CURRENT_BINARY_DIR}
   DEPENDS lv2_proj serd_proj sord_proj sratom_proj
   BUILD_BYPRODUCTS ${LILV_OUTPUTS}
