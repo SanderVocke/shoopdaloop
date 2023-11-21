@@ -23,10 +23,10 @@ if(WIN32)
   set(SORD_OUTPUTS ${SORD_LIB} ${SORD_IMPLIB})
   set(SRATOM_OUTPUTS ${SRATOM_LIB} ${SRATOM_IMPLIB})
 else()
-  set(LILV_LIB ${CMAKE_CURRENT_BINARY_DIR}/lilv_build/liblilv-0.so)
-  set(SERD_LIB ${CMAKE_CURRENT_BINARY_DIR}/serd_build/libserd-0.so)
-  set(SORD_LIB ${CMAKE_CURRENT_BINARY_DIR}/sord_build/libsord-0.so)
-  set(SRATOM_LIB ${CMAKE_CURRENT_BINARY_DIR}/sratom_build/libsratom-0.so)
+  set(LILV_LIB ${CMAKE_CURRENT_BINARY_DIR}/lilv_build/liblilv-0.so.0.24.20)
+  set(SERD_LIB ${CMAKE_CURRENT_BINARY_DIR}/serd_build/libserd-0.so.0.30.16)
+  set(SORD_LIB ${CMAKE_CURRENT_BINARY_DIR}/sord_build/libsord-0.so.0.16.14)
+  set(SRATOM_LIB ${CMAKE_CURRENT_BINARY_DIR}/sratom_build/libsratom-0.so.0.6.14)
   set(LILV_OUTPUTS ${LILV_LIB})
   set(SERD_OUTPUTS ${SERD_LIB})
   set(SORD_OUTPUTS ${SORD_LIB})
@@ -70,7 +70,6 @@ ExternalProject_Add(sord_proj
     ${MESON_ENV} ${PYTHON_CMD} -m mesonbuild.mesonmain compile
   INSTALL_COMMAND
     ${MESON_ENV} ${PYTHON_CMD} -m mesonbuild.mesonmain install
-    COMMAND ${PYTHON_CMD} ${CMAKE_SOURCE_DIR}/../scripts/replace_symlink_by_target.py ${SORD_LIB}
     COMMAND ${CMAKE_COMMAND} -E copy ${SORD_LIB} ${CMAKE_CURRENT_BINARY_DIR}
   DEPENDS lv2_proj serd_proj
   BUILD_BYPRODUCTS ${SORD_OUTPUTS}
@@ -85,7 +84,6 @@ ExternalProject_Add(sratom_proj
     ${MESON_ENV} ${PYTHON_CMD} -m mesonbuild.mesonmain compile
   INSTALL_COMMAND
     ${MESON_ENV} ${PYTHON_CMD} -m mesonbuild.mesonmain install
-    COMMAND ${PYTHON_CMD} ${CMAKE_SOURCE_DIR}/../scripts/replace_symlink_by_target.py ${SRATOM_LIB}
     COMMAND ${CMAKE_COMMAND} -E copy ${SRATOM_LIB} ${CMAKE_CURRENT_BINARY_DIR}
   DEPENDS lv2_proj serd_proj sord_proj
   BUILD_BYPRODUCTS ${SRATOM_OUTPUTS}
@@ -100,7 +98,6 @@ ExternalProject_Add(lilv_proj
     ${MESON_ENV} ${PYTHON_CMD} -m mesonbuild.mesonmain compile
   INSTALL_COMMAND
     ${MESON_ENV} ${PYTHON_CMD} -m mesonbuild.mesonmain install
-    COMMAND ${PYTHON_CMD} ${CMAKE_SOURCE_DIR}/../scripts/replace_symlink_by_target.py ${LILV_LIB}
     COMMAND ${CMAKE_COMMAND} -E copy ${LILV_LIB} ${CMAKE_CURRENT_BINARY_DIR}
   DEPENDS lv2_proj serd_proj sord_proj sratom_proj
   BUILD_BYPRODUCTS ${LILV_OUTPUTS}
