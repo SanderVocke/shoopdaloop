@@ -102,7 +102,7 @@ target_include_directories(shoopdaloop_internals
                         )
 target_link_libraries(shoopdaloop_internals PUBLIC Threads::Threads fmt::fmt)
 if (UNIX)
-    target_link_libraries(shoopdaloop PUBLIC dl)
+    target_link_libraries(shoopdaloop_internals PUBLIC dl)
 endif()
 
 if (BACKEND_JACK)
