@@ -1,25 +1,27 @@
 #pragma once
 #include <boost/lockfree/queue.hpp>
-#include <memory>
 #include <thread>
 #include <atomic>
-#include <iostream>
+#include <condition_variable>
+#include <mutex>
 
-using AtomicFlag = std::atomic_flag;
+#include "LoggingEnabled.h"
 
 // A class which manages a queue of audio objects which can be
 // consumed lock-free. The queue is continuously replenished with newly allocated
 // objects asynchronously.
 template<typename Object>
-class ObjectPool {
+class ObjectPool : public ModuleLoggingEnabled<"Backend.ObjectPool"> {
     boost::lockfree::queue<Object*> m_queue;
     const unsigned m_target_n_objects;
     unsigned m_objects_size;
     std::atomic<unsigned> m_actual_n_objects;
     std::atomic<bool> m_finish;
     std::thread m_replenish_thread;
-    AtomicFlag m_replenish_flag;
-    AtomicFlag m_none_available_flag;
+    std::atomic<bool> m_replenish;
+    std::atomic<bool> m_none_available;
+    std::mutex m_mutex;
+    std::condition_variable m_cv;
 
 public:
     ObjectPool(size_t target_n_objects, size_t objects_size) :
@@ -30,8 +32,8 @@ public:
         m_queue(target_n_objects)
     {
         fill();
-        m_replenish_flag.clear();
-        m_none_available_flag.clear();
+        m_replenish = false;
+        m_none_available = false;
 
         // Start auto-replenishment
         m_replenish_thread = std::thread(
@@ -40,8 +42,11 @@ public:
 
     ~ObjectPool() {
         m_finish = true;
-        m_replenish_flag.test_and_set();
-        m_replenish_flag.notify_one();
+        {
+            std::lock_guard lk(m_mutex);
+            m_replenish = true;
+        }
+        m_cv.notify_one();
         m_replenish_thread.join();
 
         Object *buf;
@@ -56,13 +61,18 @@ public:
     Object* get_object() {
         Object* buf = nullptr;
         if (m_queue.pop(buf)) {
-            m_actual_n_objects--;
-            m_replenish_flag.test_and_set();
-            m_replenish_flag.notify_one();
+            {
+                std::unique_lock lk(m_mutex, std::defer_lock);
+                if (lk.try_lock()) {
+                    m_actual_n_objects--;
+                    m_replenish = true;
+                }
+            }
+            m_cv.notify_one();
             return buf;
         }
         else {
-            m_none_available_flag.test_and_set();
+            m_none_available = true;
             return allocate();
         }
     }
@@ -85,12 +95,13 @@ protected:
     void replenish_thread_fn() {
         while(true) {
             if (this->m_finish) { break; }
-            m_replenish_flag.wait(false);
-            m_replenish_flag.clear();
-            if (m_none_available_flag.test()) {
-                m_none_available_flag.clear();
-                std::cerr << "Warning: one or more audio objects were allocated on the processing thread because "
-                             "no pre-allocated objects were available from the pool." << std::endl;
+            std::unique_lock lk(m_mutex);
+            m_cv.wait(lk, [&] { return m_replenish.load(); });
+            m_replenish = false;
+            if (m_none_available) {
+                m_none_available = false;
+                log<warning>("One or more audio objects were allocated on the processing thread because "
+                             "no pre-allocated objects were available from the pool.");
             }
             this->fill();
         }
