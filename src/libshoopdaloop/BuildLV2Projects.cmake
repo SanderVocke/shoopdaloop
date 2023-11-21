@@ -14,11 +14,24 @@ if(WIN32)
   set(SERD_LIB ${CMAKE_CURRENT_BINARY_DIR}/serd_build/serd-0.dll)
   set(SORD_LIB ${CMAKE_CURRENT_BINARY_DIR}/sord_build/sord-0.dll)
   set(SRATOM_LIB ${CMAKE_CURRENT_BINARY_DIR}/sratom_build/sratom-0.dll)
+  set(LILV_IMPLIB ${CMAKE_CURRENT_BINARY_DIR}/lilv_build/lilv.lib)
+  set(SERD_IMPLIB ${CMAKE_CURRENT_BINARY_DIR}/serd_build/serd.lib)
+  set(SORD_IMPLIB ${CMAKE_CURRENT_BINARY_DIR}/sord_build/sord.lib)
+  set(SRATOM_IMPLIB ${CMAKE_CURRENT_BINARY_DIR}/sratom_build/sratom.lib)
+  set(LILV_OUTPUTS ${LILV_LIB} ${LILV_IMPLIB})
+  set(SERD_OUTPUTS ${SERD_LIB} ${SERD_IMPLIB})
+  set(SORD_OUTPUTS ${SORD_LIB} ${SORD_IMPLIB})
+  set(SRATOM_OUTPUTS ${SRATOM_LIB} ${SRATOM_IMPLIB})
+endif()
 else()
   set(LILV_LIB ${CMAKE_CURRENT_BINARY_DIR}/lilv_build/liblilv-0.so)
   set(SERD_LIB ${CMAKE_CURRENT_BINARY_DIR}/serd_build/libserd-0.so)
   set(SORD_LIB ${CMAKE_CURRENT_BINARY_DIR}/sord_build/libsord-0.so)
   set(SRATOM_LIB ${CMAKE_CURRENT_BINARY_DIR}/sratom_build/libsratom-0.so)
+  set(LILV_OUTPUTS ${LILV_LIB})
+  set(SERD_OUTPUTS ${SERD_LIB})
+  set(SORD_OUTPUTS ${SORD_LIB})
+  set(SRATOM_OUTPUTS ${SRATOM_LIB})
 endif()
 
 ExternalProject_Add(lv2_proj
@@ -45,7 +58,7 @@ ExternalProject_Add(serd_proj
     COMMAND ${FIND_PKGCONF_DIRS}
     COMMAND ${CMAKE_COMMAND} -E copy ${SERD_LIB} ${CMAKE_CURRENT_BINARY_DIR}
   DEPENDS lv2_proj
-  BUILD_BYPRODUCTS ${SERD_LIB}
+  BUILD_BYPRODUCTS ${SERD_OUTPUTS}
 )
 
 ExternalProject_Add(sord_proj
@@ -59,7 +72,7 @@ ExternalProject_Add(sord_proj
     ${MESON_ENV} ${PYTHON_CMD} -m mesonbuild.mesonmain install
     COMMAND ${CMAKE_COMMAND} -E copy ${SORD_LIB} ${CMAKE_CURRENT_BINARY_DIR}
   DEPENDS lv2_proj serd_proj
-  BUILD_BYPRODUCTS ${SORD_LIB}
+  BUILD_BYPRODUCTS ${SORD_OUTPUTS}
 )
 
 ExternalProject_Add(sratom_proj
@@ -73,7 +86,7 @@ ExternalProject_Add(sratom_proj
     ${MESON_ENV} ${PYTHON_CMD} -m mesonbuild.mesonmain install
     COMMAND ${CMAKE_COMMAND} -E copy ${SRATOM_LIB} ${CMAKE_CURRENT_BINARY_DIR}
   DEPENDS lv2_proj serd_proj sord_proj
-  BUILD_BYPRODUCTS ${SRATOM_LIB}
+  BUILD_BYPRODUCTS ${SRATOM_OUTPUTS}
 )
 
 ExternalProject_Add(lilv_proj
@@ -87,7 +100,7 @@ ExternalProject_Add(lilv_proj
     ${MESON_ENV} ${PYTHON_CMD} -m mesonbuild.mesonmain install
     COMMAND ${CMAKE_COMMAND} -E copy ${LILV_LIB} ${CMAKE_CURRENT_BINARY_DIR}
   DEPENDS lv2_proj serd_proj sord_proj sratom_proj
-  BUILD_BYPRODUCTS ${LILV_LIB}
+  BUILD_BYPRODUCTS ${LILV_OUTPUTS}
 )
 
 add_library(lilv SHARED IMPORTED)
@@ -97,9 +110,6 @@ set_property(TARGET lilv PROPERTY IMPORTED_LOCATION ${LILV_LIB})
 set_property(TARGET serd PROPERTY IMPORTED_LOCATION ${SERD_LIB})
 set_property(TARGET sord PROPERTY IMPORTED_LOCATION ${SORD_LIB})
 if(WIN32)
-set(LILV_IMPLIB ${CMAKE_CURRENT_BINARY_DIR}/lilv_build/lilv.lib)
-set(SERD_IMPLIB ${CMAKE_CURRENT_BINARY_DIR}/serd_build/serd.lib)
-set(SORD_IMPLIB ${CMAKE_CURRENT_BINARY_DIR}/sord_build/sord.lib)
 set_property(TARGET lilv PROPERTY IMPORTED_IMPLIB ${LILV_IMPLIB})
 set_property(TARGET serd PROPERTY IMPORTED_IMPLIB ${SERD_IMPLIB})
 set_property(TARGET sord PROPERTY IMPORTED_IMPLIB ${SORD_IMPLIB})
