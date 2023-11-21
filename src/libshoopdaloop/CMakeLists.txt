@@ -117,7 +117,7 @@ if (HAVE_LV2)
   target_link_libraries(shoopdaloop_internals PRIVATE
                         lv2_evbuf
                         ${LV2_LIBRARIES}
-                        ${LILV_TARGETS})
+                        ${DEPEND_ON_LILV})
   target_include_directories(shoopdaloop_internals
                           PRIVATE
                           ${CMAKE_SOURCE_DIR}/../third_party/lv2_evbuf

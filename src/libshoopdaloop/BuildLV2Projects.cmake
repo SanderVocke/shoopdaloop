@@ -9,28 +9,34 @@ set(MESON_ENV ${CMAKE_COMMAND} -E env CXX=${CMAKE_CXX_COMPILER} CC=${CMAKE_C_COM
 ###################
 include(ExternalProject)
 
+set(LILV_BUILD_DIR ${CMAKE_CURRENT_BINARY_DIR}/lilv_build)
+set(SERD_BUILD_DIR ${CMAKE_CURRENT_BINARY_DIR}/serd_build)
+set(SORD_BUILD_DIR ${CMAKE_CURRENT_BINARY_DIR}/sord_build)
+set(SRATOM_BUILD_DIR ${CMAKE_CURRENT_BINARY_DIR}/sratom_build)
 if(WIN32)
-  set(LILV_LIB ${CMAKE_CURRENT_BINARY_DIR}/lilv_build/lilv-0.dll)
-  set(SERD_LIB ${CMAKE_CURRENT_BINARY_DIR}/serd_build/serd-0.dll)
-  set(SORD_LIB ${CMAKE_CURRENT_BINARY_DIR}/sord_build/sord-0.dll)
-  set(SRATOM_LIB ${CMAKE_CURRENT_BINARY_DIR}/sratom_build/sratom-0.dll)
-  set(LILV_IMPLIB ${CMAKE_CURRENT_BINARY_DIR}/lilv_build/lilv.lib)
-  set(SERD_IMPLIB ${CMAKE_CURRENT_BINARY_DIR}/serd_build/serd.lib)
-  set(SORD_IMPLIB ${CMAKE_CURRENT_BINARY_DIR}/sord_build/sord.lib)
-  set(SRATOM_IMPLIB ${CMAKE_CURRENT_BINARY_DIR}/sratom_build/sratom.lib)
+  set(LILV_LIB ${LILV_BUILD_DIR}/lilv-0.dll)
+  set(SERD_LIB ${SERD_BUILD_DIR}/serd-0.dll)
+  set(SORD_LIB ${SORD_BUILD_DIR}/sord-0.dll)
+  set(SRATOM_LIB ${SRATOM_BUILD_DIR}/sratom-0.dll)
+  set(LILV_IMPLIB ${LILV_BUILD_DIR}/lilv.lib)
+  set(SERD_IMPLIB ${SERD_BUILD_DIR}/serd.lib)
+  set(SORD_IMPLIB ${SORD_BUILD_DIR}/sord.lib)
+  set(SRATOM_IMPLIB ${SRATOM_BUILD_DIR}/sratom.lib)
   set(LILV_OUTPUTS ${LILV_LIB} ${LILV_IMPLIB})
   set(SERD_OUTPUTS ${SERD_LIB} ${SERD_IMPLIB})
   set(SORD_OUTPUTS ${SORD_LIB} ${SORD_IMPLIB})
   set(SRATOM_OUTPUTS ${SRATOM_LIB} ${SRATOM_IMPLIB})
+  set(GLOB_LIBS_PATTERN "*.dll")
 else()
-  set(LILV_LIB ${CMAKE_CURRENT_BINARY_DIR}/lilv_build/liblilv-0.so.0.24.20)
-  set(SERD_LIB ${CMAKE_CURRENT_BINARY_DIR}/serd_build/libserd-0.so.0.30.16)
-  set(SORD_LIB ${CMAKE_CURRENT_BINARY_DIR}/sord_build/libsord-0.so.0.16.14)
-  set(SRATOM_LIB ${CMAKE_CURRENT_BINARY_DIR}/sratom_build/libsratom-0.so.0.6.14)
+  set(LILV_LIB ${LILV_BUILD_DIR}/liblilv-0.so)
+  set(SERD_LIB ${SERD_BUILD_DIR}/libserd-0.so)
+  set(SORD_LIB ${SORD_BUILD_DIR}/libsord-0.so)
+  set(SRATOM_LIB ${SRATOM_BUILD_DIR}/libsratom-0.so)
   set(LILV_OUTPUTS ${LILV_LIB})
   set(SERD_OUTPUTS ${SERD_LIB})
   set(SORD_OUTPUTS ${SORD_LIB})
   set(SRATOM_OUTPUTS ${SRATOM_LIB})
+  set(GLOB_LIBS_PATTERN "*.so*")
 endif()
 
 ExternalProject_Add(lv2_proj
@@ -47,7 +53,7 @@ ExternalProject_Add(lv2_proj
 
 ExternalProject_Add(serd_proj
   SOURCE_DIR ${CMAKE_SOURCE_DIR}/../third_party/serd
-  BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/serd_build
+  BINARY_DIR ${SERD_BUILD_DIR}
   CONFIGURE_COMMAND
     ${MESON_ENV} ${WITH_PKGCONF_CMD} ${PYTHON_CMD} -m mesonbuild.mesonmain setup -Ddocs=disabled -Dtests=disabled --prefix=${EXTERNAL_DEPS_PREFIX} <BINARY_DIR> <SOURCE_DIR>
   BUILD_COMMAND
@@ -63,7 +69,7 @@ ExternalProject_Add(serd_proj
 
 ExternalProject_Add(sord_proj
   SOURCE_DIR ${CMAKE_SOURCE_DIR}/../third_party/sord
-  BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/sord_build
+  BINARY_DIR ${SORD_BUILD_DIR}
   CONFIGURE_COMMAND
     ${MESON_ENV} ${WITH_PKGCONF_CMD} ${PYTHON_CMD} -m mesonbuild.mesonmain setup -Ddocs=disabled -Dtests=disabled --prefix=${EXTERNAL_DEPS_PREFIX} <BINARY_DIR> <SOURCE_DIR>
   BUILD_COMMAND
@@ -77,7 +83,7 @@ ExternalProject_Add(sord_proj
 
 ExternalProject_Add(sratom_proj
   SOURCE_DIR ${CMAKE_SOURCE_DIR}/../third_party/sratom
-  BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/sratom_build
+  BINARY_DIR ${SRATOM_BUILD_DIR}
   CONFIGURE_COMMAND
     ${MESON_ENV} ${WITH_PKGCONF_CMD} ${PYTHON_CMD} -m mesonbuild.mesonmain setup -Ddocs=disabled -Dtests=disabled --prefix=${EXTERNAL_DEPS_PREFIX} <BINARY_DIR> <SOURCE_DIR>
   BUILD_COMMAND
@@ -91,7 +97,7 @@ ExternalProject_Add(sratom_proj
 
 ExternalProject_Add(lilv_proj
   SOURCE_DIR ${CMAKE_SOURCE_DIR}/../third_party/lilv
-  BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/lilv_build
+  BINARY_DIR ${LILV_BUILD_DIR}
   CONFIGURE_COMMAND
     ${MESON_ENV} ${WITH_PKGCONF_CMD} ${PYTHON_CMD} -m mesonbuild.mesonmain setup -Ddocs=disabled -Dtests=disabled --prefix=${EXTERNAL_DEPS_PREFIX} <BINARY_DIR> <SOURCE_DIR>
   BUILD_COMMAND
@@ -123,10 +129,23 @@ add_dependencies(sord sord_proj)
 add_dependencies(sratom sratom_proj)
 
 set(LILV_INCLUDE_DIRS ${CMAKE_SOURCE_DIR}/../third_party/lilv/include)
-set(LILV_TARGETS lilv sord serd sratom)
+if(WIN32)
+  set(DEPEND_ON_LILV lilv sord serd sratom)
+else()
+  # On UNIX, depend on the specific packaged version to avoid linkage issues on
+  # systems with other LV2 libs also installed
+  set(DEPEND_ON_LILV ${LILV_LIB} ${SERD_LIB} ${SORD_LIB} ${SRATOM_LIB})
+endif()
 set(LV2_INCLUDE_DIRS ${EXTERNAL_DEPS_PREFIX}/include)
 
-install(FILES ${LILV_LIB} ${SERD_LIB} ${SORD_LIB} ${SRATOM_LIB}
+if(WIN32)
+  set(FIND_LIBS_DIR ${EXTERNAL_DEPS_PREFIX}/bin)
+else()
+  set(FIND_LIBS_DIR ${EXTERNAL_DEPS_PREFIX}/lib)
+endif()
+
+install(DIRECTORY ${FIND_LIBS_DIR}/
     EXCLUDE_FROM_ALL
     COMPONENT package_install
-    DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME})
+    DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME}
+    FILES_MATCHING PATTERN ${GLOB_LIBS_PATTERN})
