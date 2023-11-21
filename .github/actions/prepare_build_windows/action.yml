@@ -23,7 +23,6 @@ runs:
       unzip pkg-config-lite-0.28-1_bin-win32.zip
       cp pkg-config-lite-0.28-1/bin/* /c/mingw64/bin
   - name: Install JACK
-    shell: bash
     run: |
       curl -L https://github.com/jackaudio/jack2-releases/releases/download/v1.9.22/jack2-win64-v1.9.22.exe --output jack.exe
       ./jack.exe /silent
