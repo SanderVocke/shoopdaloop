@@ -101,12 +101,12 @@ target_include_directories(shoopdaloop_internals
                         ${Boost_INCLUDE_DIR}
                         )
 target_link_libraries(shoopdaloop_internals PUBLIC Threads::Threads fmt::fmt)
+if (UNIX)
+    target_link_libraries(shoopdaloop PUBLIC dl)
+endif()
 
 if (BACKEND_JACK)
   target_include_directories(shoopdaloop_internals PRIVATE ${JACK_INCLUDE_DIRS})
-  if (UNIX)
-     target_link_libraries(shoopdaloop_internals INTERFACE dl)
-  endif()
 endif()
 
 add_library(shoopdaloop SHARED)
