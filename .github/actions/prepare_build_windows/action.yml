@@ -22,6 +22,11 @@ runs:
       curl -L https://github.com/SanderVocke/shoopdaloop/releases/download/qt-6.6.0-1/pkg-config-lite-0.28-1_bin-win32.zip --output pkg-config-lite-0.28-1_bin-win32.zip
       unzip pkg-config-lite-0.28-1_bin-win32.zip
       cp pkg-config-lite-0.28-1/bin/* /c/mingw64/bin
+  - name: Install JACK
+    shell: bash
+    run: |
+      curl -L https://github.com/jackaudio/jack2-releases/releases/download/v1.9.22/jack2-win64-v1.9.22.exe --output jack.exe
+      ./jack.exe /silent
   - name: Path conversion
     id: pathconvert
     shell: bash
@@ -37,4 +42,4 @@ runs:
     run: |
       python -m pip install build virtualenv pytest meson
       choco install -y ninja
-      echo "set \"CMAKE_INCLUDE_PATH=${{ steps.pathconvert.outputs.include_dir }}\" &&" > prepend_build_cmd.txt
+      echo "set \"CMAKE_INCLUDE_PATH=${{ steps.pathconvert.outputs.include_dir }}\" && set \"CMAKE_PREFIX_PATH=C:\\Program Files\\JACK2\"" > prepend_build_cmd.txt
