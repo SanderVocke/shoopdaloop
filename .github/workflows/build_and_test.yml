@@ -138,9 +138,9 @@ jobs:
       with:
         name: ${{ matrix.kind.name }}_wheel
         path: ${{ steps.find.outputs.name }}
-    # - name: TMate failure session
-    #   if: ${{ failure() }}
-    #   uses: SanderVocke/action-tmate@master
+    - name: TMate failure session
+      if: ${{ failure() && (matrix.kind.name == "windows_debug") }}
+      uses: SanderVocke/action-tmate@master
   
   test:
     strategy:
