@@ -105,23 +105,27 @@ ExternalProject_Add(lilv_proj
 add_library(lilv SHARED IMPORTED)
 add_library(serd SHARED IMPORTED)
 add_library(sord SHARED IMPORTED)
+add_library(sratom SHARED IMPORTED)
 set_property(TARGET lilv PROPERTY IMPORTED_LOCATION ${LILV_LIB})
 set_property(TARGET serd PROPERTY IMPORTED_LOCATION ${SERD_LIB})
 set_property(TARGET sord PROPERTY IMPORTED_LOCATION ${SORD_LIB})
+set_property(TARGET sratom PROPERTY IMPORTED_LOCATION ${SRATOM_LIB})
 if(WIN32)
 set_property(TARGET lilv PROPERTY IMPORTED_IMPLIB ${LILV_IMPLIB})
 set_property(TARGET serd PROPERTY IMPORTED_IMPLIB ${SERD_IMPLIB})
 set_property(TARGET sord PROPERTY IMPORTED_IMPLIB ${SORD_IMPLIB})
+set_property(TARGET sratom PROPERTY IMPORTED_IMPLIB ${SRATOM_IMPLIB})
 endif()
 add_dependencies(lilv lilv_proj)
 add_dependencies(serd serd_proj)
 add_dependencies(sord sord_proj)
+add_dependencies(sratom sratom_proj)
 
 set(LILV_INCLUDE_DIRS ${CMAKE_SOURCE_DIR}/../third_party/lilv/include)
-set(LILV_TARGETS lilv sord serd)
+set(LILV_TARGETS lilv sord serd sratom)
 set(LV2_INCLUDE_DIRS ${EXTERNAL_DEPS_PREFIX}/include)
 
-install(FILES ${LILV_LIB} ${SERD_LIB} ${SORD_LIB}
+install(FILES ${LILV_LIB} ${SERD_LIB} ${SORD_LIB} ${SRATOM_LIB}
     EXCLUDE_FROM_ALL
     COMPONENT package_install
     DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME})

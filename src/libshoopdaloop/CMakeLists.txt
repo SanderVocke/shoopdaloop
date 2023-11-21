@@ -112,9 +112,6 @@ endif()
 add_library(shoopdaloop SHARED)
 target_link_libraries(shoopdaloop PRIVATE shoopdaloop_internals)
 set_property(TARGET shoopdaloop PROPERTY POSITION_INDEPENDENT_CODE ON)
-if(UNIX)
-  target_link_options(shoopdaloop PRIVATE -static-libstdc++)
-endif()
 
 if (HAVE_LV2)
   target_link_libraries(shoopdaloop_internals PRIVATE
