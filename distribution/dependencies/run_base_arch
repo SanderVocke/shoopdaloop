@@ -13,6 +13,7 @@ libsamplerate
 libsndfile
 jack2
 mesa
+alsa-lib
 
 # scripting stuff
 procps-ng
