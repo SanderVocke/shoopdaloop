@@ -113,6 +113,17 @@ add_library(shoopdaloop SHARED)
 target_link_libraries(shoopdaloop PRIVATE shoopdaloop_internals)
 set_property(TARGET shoopdaloop PROPERTY POSITION_INDEPENDENT_CODE ON)
 
+if(UNIX)
+  set_target_properties(shoopdaloop PROPERTIES
+    INSTALL_RPATH "$ORIGIN/"  # Load .so's from same directory
+  )
+elseif(APPLE)
+  set_target_properties(shoopdaloop PROPERTIES
+      BUILD_WITH_INSTALL_RPATH TRUE
+      INSTALL_RPATH "@loader_path/"  # Load dylibs from same directory
+  )
+endif()
+
 if (HAVE_LV2)
   target_link_libraries(shoopdaloop_internals PRIVATE
                         lv2_evbuf
