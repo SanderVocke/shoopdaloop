@@ -3,6 +3,8 @@
 import os
 import sys
 import glob
+import atexit
+import signal
 
 from PySide6.QtCore import QObject, Slot
 from PySide6.QtQml import QQmlEngine
@@ -111,10 +113,8 @@ for case, case_results in results.items():
         else:
             raise Exception('Unknown result: {}'.format(fn_result))
 
-app.quit()
-
-if args.list:
-    exit(0)
+# Make sure we gather the results before exiting the app, so that if shutdown issues occur,
+# the user still gets to see the test overview.
 
 final_result = (
     1 if failed > 0 else 0
@@ -138,7 +138,7 @@ Skipped cases: {}
 # TODO: this is nasty, but it's a quick hack to get the test results to show up last
 set_global_logging_level(error)
 
-print('''
+exit_text = '''
 ========================================================
 Test run finished. Overall result: {}.
 ========================================================
@@ -148,7 +148,24 @@ Totals:
 - Passed: {}
 - Failed: {}
 - Skipped: {}{}{}
-'''.format(final_result_readable, passed+failed+skipped, passed, failed, skipped, maybe_failures_string, maybe_skip_string))
+'''.format(final_result_readable, passed+failed+skipped, passed, failed, skipped, maybe_failures_string, maybe_skip_string)
+exit_text_printed = False
+
+def exit_handler(reason=None):
+    global exit_text_printed
+    if not exit_text_printed:
+        if reason:
+            print("Failing because process abnormally terminated ({}). Test results overview:".format(reason))
+        print(exit_text)
+        exit_text_printed = True
+
+def signal_handler(signum, frame):
+    exit_handler('signal {}'.format(signum))
+
+atexit.register(exit_handler)
+signal.signal(signal.SIGTERM, signal_handler)
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGABRT, signal_handler)
 
 if args.junit_xml:
     root = minidom.Document()
@@ -179,5 +196,11 @@ if args.junit_xml:
     
     print("Writing JUnit XML to {}".format(args.junit_xml))
     root.writexml(open(args.junit_xml, 'w'), indent='  ', addindent='  ', newl='\n')
+
+
+
+app.quit()
+if args.list:
+    exit(0)
 
 exit(final_result)
