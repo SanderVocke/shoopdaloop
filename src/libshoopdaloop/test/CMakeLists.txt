@@ -11,7 +11,9 @@ add_executable(test_runner
     )
 target_link_libraries(test_runner PRIVATE
                       shoopdaloop_internals
-                      Catch2::Catch2WithMain)
+                      Catch2::Catch2WithMain
+                      fmt::fmt
+                      Threads::Threads)
 target_include_directories(test_runner
                         PRIVATE
                         ${Boost_INCLUDE_DIR}

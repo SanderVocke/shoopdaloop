@@ -92,24 +92,38 @@ if (BACKEND_JACK)
   include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal/jack)
 endif()
 
-add_library(shoopdaloop_internals OBJECT libshoopdaloop.cpp ${INTERNAL_SOURCES})
+add_library(shoopdaloop_internals STATIC libshoopdaloop.cpp ${INTERNAL_SOURCES})
 set_target_properties(shoopdaloop_internals PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_link_options(shoopdaloop_internals PRIVATE -static)
 target_include_directories(shoopdaloop_internals
                         PRIVATE
                         ${CMAKE_SOURCE_DIR}/../third_party/base64/include
                         ${CMAKE_CURRENT_BINARY_DIR}
                         ${Boost_INCLUDE_DIR}
                         )
-target_link_libraries(shoopdaloop_internals PUBLIC Threads::Threads fmt::fmt)
+target_link_libraries(shoopdaloop_internals PRIVATE Threads::Threads fmt::fmt)
 if (UNIX)
     target_link_libraries(shoopdaloop_internals PUBLIC dl)
 endif()
-
+if (HAVE_LV2)
+  target_link_libraries(shoopdaloop_internals PRIVATE
+                        lv2_evbuf
+                        ${LV2_LIBRARIES}
+                        ${DEPEND_ON_LILV})
+  target_include_directories(shoopdaloop_internals
+                          PRIVATE
+                          ${CMAKE_SOURCE_DIR}/../third_party/lv2_evbuf
+                          ${LV2_INCLUDE_DIRS}
+                          ${LILV_INCLUDE_DIRS}
+                          ${CMAKE_SOURCE_DIR}/../third_party/lv2_external_ui
+                          )
+endif()
 if (BACKEND_JACK)
   target_include_directories(shoopdaloop_internals PRIVATE ${JACK_INCLUDE_DIRS})
 endif()
 
-add_library(shoopdaloop SHARED)
+file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/empty.cpp "")
+add_library(shoopdaloop SHARED ${CMAKE_CURRENT_BINARY_DIR}/empty.cpp)
 target_link_libraries(shoopdaloop PRIVATE shoopdaloop_internals)
 set_property(TARGET shoopdaloop PROPERTY POSITION_INDEPENDENT_CODE ON)
 
@@ -124,19 +138,6 @@ elseif(APPLE)
   )
 endif()
 
-if (HAVE_LV2)
-  target_link_libraries(shoopdaloop_internals PRIVATE
-                        lv2_evbuf
-                        ${LV2_LIBRARIES}
-                        ${DEPEND_ON_LILV})
-  target_include_directories(shoopdaloop_internals
-                          PRIVATE
-                          ${CMAKE_SOURCE_DIR}/../third_party/lv2_evbuf
-                          ${LV2_INCLUDE_DIRS}
-                          ${LILV_INCLUDE_DIRS}
-                          ${CMAKE_SOURCE_DIR}/../third_party/lv2_external_ui
-                          )
-endif()
 install(TARGETS shoopdaloop
         EXCLUDE_FROM_ALL
         COMPONENT package_install
