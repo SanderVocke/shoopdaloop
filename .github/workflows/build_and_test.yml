@@ -21,14 +21,14 @@ jobs:
       fail-fast: false
       matrix:
         kind:
-          # - name: linux_release
-          #   os: ubuntu-latest
-          #   python: python3.8
-          #   pip: python3 -m pip
-          #   container_image: quay.io/pypa/manylinux_2_28_x86_64:latest
-          #   prepare: 'manylinux_2_28'
-          #   overrides: 'overrides/linux_release_overrides.toml'
-          #   rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+          - name: linux_release
+            os: ubuntu-latest
+            python: python3.8
+            pip: python3 -m pip
+            container_image: quay.io/pypa/manylinux_2_28_x86_64:latest
+            prepare: 'manylinux_2_28'
+            overrides: 'overrides/linux_release_overrides.toml'
+            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
           # - name: linux_debug
           #   os: ubuntu-latest
           #   python: python3.8
@@ -69,14 +69,14 @@ jobs:
           #   prepare: 'windows'
           #   overrides: 'overrides/windows_release_overrides.toml'
           #   rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
-          - name: windows_debug
-            os: windows-2022
-            python: python.exe
-            pip: python.exe -m pip
-            container_image: null
-            prepare: 'windows'
-            overrides: 'overrides/windows_debug_overrides.toml'
-            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+          # - name: windows_debug
+          #   os: windows-2022
+          #   python: python.exe
+          #   pip: python.exe -m pip
+          #   container_image: null
+          #   prepare: 'windows'
+          #   overrides: 'overrides/windows_debug_overrides.toml'
+          #   rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
           # - name: macos_release
           #   os: macos-11
           #   python: python3.8
