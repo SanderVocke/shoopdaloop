@@ -1,2 +1,2 @@
-cmake.options = { "BACKEND_JACK" = "Off", "HAVE_LV2" = "Off" }
+cmake.options = { "BACKEND_JACK" = "Off", "HAVE_LV2" = "On" }
 cmake.build_type = "Debug"
