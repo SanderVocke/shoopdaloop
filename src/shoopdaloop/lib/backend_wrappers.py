@@ -9,14 +9,16 @@ import copy
 import threading
 import time
 
+script_dir = os.path.dirname(__file__)
+
 try:
     # On Windows, shoopdaloop.dll depends on shared libraries in the same folder.
     # this folder needs to be added to the PATH before loading
-    script_dir = os.path.dirname(__file__)
     os.environ['PATH'] = os.environ['PATH'] + os.pathsep + os.path.join(script_dir, '..')
     from shoopdaloop.libshoopdaloop_bindings import *
 except:
     # during build we may need a different path
+    os.environ['PATH'] = os.environ['PATH'] + os.pathsep + script_dir
     from libshoopdaloop_bindings import *
 
 class PortDirection(Enum):
