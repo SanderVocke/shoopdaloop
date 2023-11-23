@@ -30,7 +30,7 @@ endif()
 
 option(HAVE_LV2 "Enable LV2 plugin hosting" ON)
 if(HAVE_LV2)
-  add_compile_definitions(-DSHOOP_HAVE_LV2)
+  #add_compile_definitions(-DSHOOP_HAVE_LV2)
 endif()
 
 set(CTYPESGEN_COMMAND ctypesgen)

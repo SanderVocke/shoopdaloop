@@ -13,10 +13,8 @@ namespace {
 }
 
 LV2::LV2() {
-    m_world = lilv_world_new();
-    lilv_world_load_all(m_world);
-
     if (!::g_initialized) {
+        initialize_lilv(1);
 #ifdef _WIN32
         // Ensure we have default LV2 path set up
         std::string current = getenv("LV2_PATH");
@@ -25,6 +23,9 @@ LV2::LV2() {
 #endif
         ::g_initialized = true;
     }
+
+    m_world = lilv_world_new();
+    lilv_world_load_all(m_world);
 }
 
 LV2::~LV2() { lilv_world_free(m_world); }
