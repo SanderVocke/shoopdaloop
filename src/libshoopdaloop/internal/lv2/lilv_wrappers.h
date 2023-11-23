@@ -164,7 +164,7 @@
 #define lilv_ui_is_supported lilv_ui_is_supported_dylibloader_orig_lv2
 #define lilv_ui_get_bundle_uri lilv_ui_get_bundle_uri_dylibloader_orig_lv2
 #define lilv_ui_get_binary_uri lilv_ui_get_binary_uri_dylibloader_orig_lv2
-#include <lilv/lilv.h>
+#include <lilv-0/lilv/lilv.h>
 #undef lv2_descriptor
 #undef lv2_lib_descriptor
 #undef lilv_free
@@ -639,7 +639,7 @@ extern bool (*lilv_ui_is_a_dylibloader_wrapper_lv2)(const LilvUI *, const LilvNo
 extern unsigned (*lilv_ui_is_supported_dylibloader_wrapper_lv2)(const LilvUI *, LilvUISupportedFunc, const LilvNode *, const LilvNode **);
 extern const LilvNode *(*lilv_ui_get_bundle_uri_dylibloader_wrapper_lv2)(const LilvUI *);
 extern const LilvNode *(*lilv_ui_get_binary_uri_dylibloader_wrapper_lv2)(const LilvUI *);
-int initialize_lv2(int verbose);
+int initialize_lilv(int verbose);
 #ifdef __cplusplus
 }
 #endif

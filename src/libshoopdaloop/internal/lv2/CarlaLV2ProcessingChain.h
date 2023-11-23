@@ -10,7 +10,7 @@
 #include <map>
 #include <thread>
 #include <types.h>
-#include "lv2_lilv_wrappers.h"
+#include "lilv_wrappers.h"
 #include <lv2/core/lv2.h>
 #include <lv2/urid/urid.h>
 #include <lv2/options/options.h>

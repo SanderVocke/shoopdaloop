@@ -162,7 +162,7 @@
 #define lilv_ui_is_supported lilv_ui_is_supported_dylibloader_orig_lv2
 #define lilv_ui_get_bundle_uri lilv_ui_get_bundle_uri_dylibloader_orig_lv2
 #define lilv_ui_get_binary_uri lilv_ui_get_binary_uri_dylibloader_orig_lv2
-#include <lilv/lilv.h>
+#include <lilv-0/lilv/lilv.h>
 #undef lv2_descriptor
 #undef lv2_lib_descriptor
 #undef lilv_free
@@ -484,7 +484,8 @@ const LilvNode *(*lilv_ui_get_binary_uri_dylibloader_wrapper_lv2)(const LilvUI *
 
 #include "LoadDynamicLibrary.h"
 
-int initialize_lv2(int verbose) {
+extern "C" {
+int initialize_lilv(int verbose) {
   _dylib_handle handle;
   char *error;
 #ifdef _WIN32
@@ -494,475 +495,476 @@ int initialize_lv2(int verbose) {
 #endif
   throw_if_dylib_error();
 // lv2_descriptor
-  *(void **) (&lv2_descriptor_dylibloader_wrapper_lv2) = dlsym(handle, "lv2_descriptor");
+  *(void **) (&lv2_descriptor_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lv2_descriptor");
   throw_if_dylib_error();
 // lv2_lib_descriptor
-  *(void **) (&lv2_lib_descriptor_dylibloader_wrapper_lv2) = dlsym(handle, "lv2_lib_descriptor");
+  *(void **) (&lv2_lib_descriptor_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lv2_lib_descriptor");
   throw_if_dylib_error();
 // lilv_free
-  *(void **) (&lilv_free_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_free");
+  *(void **) (&lilv_free_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_free");
   throw_if_dylib_error();
 // lilv_uri_to_path
-  *(void **) (&lilv_uri_to_path_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_uri_to_path");
+  *(void **) (&lilv_uri_to_path_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_uri_to_path");
   throw_if_dylib_error();
 // lilv_file_uri_parse
-  *(void **) (&lilv_file_uri_parse_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_file_uri_parse");
+  *(void **) (&lilv_file_uri_parse_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_file_uri_parse");
   throw_if_dylib_error();
 // lilv_new_uri
-  *(void **) (&lilv_new_uri_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_new_uri");
+  *(void **) (&lilv_new_uri_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_new_uri");
   throw_if_dylib_error();
 // lilv_new_file_uri
-  *(void **) (&lilv_new_file_uri_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_new_file_uri");
+  *(void **) (&lilv_new_file_uri_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_new_file_uri");
   throw_if_dylib_error();
 // lilv_new_string
-  *(void **) (&lilv_new_string_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_new_string");
+  *(void **) (&lilv_new_string_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_new_string");
   throw_if_dylib_error();
 // lilv_new_int
-  *(void **) (&lilv_new_int_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_new_int");
+  *(void **) (&lilv_new_int_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_new_int");
   throw_if_dylib_error();
 // lilv_new_float
-  *(void **) (&lilv_new_float_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_new_float");
+  *(void **) (&lilv_new_float_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_new_float");
   throw_if_dylib_error();
 // lilv_new_bool
-  *(void **) (&lilv_new_bool_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_new_bool");
+  *(void **) (&lilv_new_bool_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_new_bool");
   throw_if_dylib_error();
 // lilv_node_free
-  *(void **) (&lilv_node_free_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_node_free");
+  *(void **) (&lilv_node_free_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_node_free");
   throw_if_dylib_error();
 // lilv_node_duplicate
-  *(void **) (&lilv_node_duplicate_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_node_duplicate");
+  *(void **) (&lilv_node_duplicate_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_node_duplicate");
   throw_if_dylib_error();
 // lilv_node_equals
-  *(void **) (&lilv_node_equals_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_node_equals");
+  *(void **) (&lilv_node_equals_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_node_equals");
   throw_if_dylib_error();
 // lilv_node_get_turtle_token
-  *(void **) (&lilv_node_get_turtle_token_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_node_get_turtle_token");
+  *(void **) (&lilv_node_get_turtle_token_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_node_get_turtle_token");
   throw_if_dylib_error();
 // lilv_node_is_uri
-  *(void **) (&lilv_node_is_uri_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_node_is_uri");
+  *(void **) (&lilv_node_is_uri_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_node_is_uri");
   throw_if_dylib_error();
 // lilv_node_as_uri
-  *(void **) (&lilv_node_as_uri_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_node_as_uri");
+  *(void **) (&lilv_node_as_uri_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_node_as_uri");
   throw_if_dylib_error();
 // lilv_node_is_blank
-  *(void **) (&lilv_node_is_blank_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_node_is_blank");
+  *(void **) (&lilv_node_is_blank_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_node_is_blank");
   throw_if_dylib_error();
 // lilv_node_as_blank
-  *(void **) (&lilv_node_as_blank_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_node_as_blank");
+  *(void **) (&lilv_node_as_blank_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_node_as_blank");
   throw_if_dylib_error();
 // lilv_node_is_literal
-  *(void **) (&lilv_node_is_literal_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_node_is_literal");
+  *(void **) (&lilv_node_is_literal_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_node_is_literal");
   throw_if_dylib_error();
 // lilv_node_is_string
-  *(void **) (&lilv_node_is_string_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_node_is_string");
+  *(void **) (&lilv_node_is_string_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_node_is_string");
   throw_if_dylib_error();
 // lilv_node_as_string
-  *(void **) (&lilv_node_as_string_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_node_as_string");
+  *(void **) (&lilv_node_as_string_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_node_as_string");
   throw_if_dylib_error();
 // lilv_node_get_path
-  *(void **) (&lilv_node_get_path_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_node_get_path");
+  *(void **) (&lilv_node_get_path_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_node_get_path");
   throw_if_dylib_error();
 // lilv_node_is_float
-  *(void **) (&lilv_node_is_float_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_node_is_float");
+  *(void **) (&lilv_node_is_float_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_node_is_float");
   throw_if_dylib_error();
 // lilv_node_as_float
-  *(void **) (&lilv_node_as_float_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_node_as_float");
+  *(void **) (&lilv_node_as_float_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_node_as_float");
   throw_if_dylib_error();
 // lilv_node_is_int
-  *(void **) (&lilv_node_is_int_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_node_is_int");
+  *(void **) (&lilv_node_is_int_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_node_is_int");
   throw_if_dylib_error();
 // lilv_node_as_int
-  *(void **) (&lilv_node_as_int_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_node_as_int");
+  *(void **) (&lilv_node_as_int_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_node_as_int");
   throw_if_dylib_error();
 // lilv_node_is_bool
-  *(void **) (&lilv_node_is_bool_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_node_is_bool");
+  *(void **) (&lilv_node_is_bool_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_node_is_bool");
   throw_if_dylib_error();
 // lilv_node_as_bool
-  *(void **) (&lilv_node_as_bool_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_node_as_bool");
+  *(void **) (&lilv_node_as_bool_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_node_as_bool");
   throw_if_dylib_error();
 // lilv_plugin_classes_free
-  *(void **) (&lilv_plugin_classes_free_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_classes_free");
+  *(void **) (&lilv_plugin_classes_free_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_classes_free");
   throw_if_dylib_error();
 // lilv_plugin_classes_size
-  *(void **) (&lilv_plugin_classes_size_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_classes_size");
+  *(void **) (&lilv_plugin_classes_size_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_classes_size");
   throw_if_dylib_error();
 // lilv_plugin_classes_begin
-  *(void **) (&lilv_plugin_classes_begin_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_classes_begin");
+  *(void **) (&lilv_plugin_classes_begin_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_classes_begin");
   throw_if_dylib_error();
 // lilv_plugin_classes_get
-  *(void **) (&lilv_plugin_classes_get_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_classes_get");
+  *(void **) (&lilv_plugin_classes_get_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_classes_get");
   throw_if_dylib_error();
 // lilv_plugin_classes_next
-  *(void **) (&lilv_plugin_classes_next_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_classes_next");
+  *(void **) (&lilv_plugin_classes_next_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_classes_next");
   throw_if_dylib_error();
 // lilv_plugin_classes_is_end
-  *(void **) (&lilv_plugin_classes_is_end_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_classes_is_end");
+  *(void **) (&lilv_plugin_classes_is_end_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_classes_is_end");
   throw_if_dylib_error();
 // lilv_plugin_classes_get_by_uri
-  *(void **) (&lilv_plugin_classes_get_by_uri_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_classes_get_by_uri");
+  *(void **) (&lilv_plugin_classes_get_by_uri_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_classes_get_by_uri");
   throw_if_dylib_error();
 // lilv_scale_points_free
-  *(void **) (&lilv_scale_points_free_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_scale_points_free");
+  *(void **) (&lilv_scale_points_free_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_scale_points_free");
   throw_if_dylib_error();
 // lilv_scale_points_size
-  *(void **) (&lilv_scale_points_size_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_scale_points_size");
+  *(void **) (&lilv_scale_points_size_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_scale_points_size");
   throw_if_dylib_error();
 // lilv_scale_points_begin
-  *(void **) (&lilv_scale_points_begin_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_scale_points_begin");
+  *(void **) (&lilv_scale_points_begin_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_scale_points_begin");
   throw_if_dylib_error();
 // lilv_scale_points_get
-  *(void **) (&lilv_scale_points_get_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_scale_points_get");
+  *(void **) (&lilv_scale_points_get_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_scale_points_get");
   throw_if_dylib_error();
 // lilv_scale_points_next
-  *(void **) (&lilv_scale_points_next_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_scale_points_next");
+  *(void **) (&lilv_scale_points_next_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_scale_points_next");
   throw_if_dylib_error();
 // lilv_scale_points_is_end
-  *(void **) (&lilv_scale_points_is_end_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_scale_points_is_end");
+  *(void **) (&lilv_scale_points_is_end_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_scale_points_is_end");
   throw_if_dylib_error();
 // lilv_uis_free
-  *(void **) (&lilv_uis_free_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_uis_free");
+  *(void **) (&lilv_uis_free_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_uis_free");
   throw_if_dylib_error();
 // lilv_uis_size
-  *(void **) (&lilv_uis_size_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_uis_size");
+  *(void **) (&lilv_uis_size_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_uis_size");
   throw_if_dylib_error();
 // lilv_uis_begin
-  *(void **) (&lilv_uis_begin_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_uis_begin");
+  *(void **) (&lilv_uis_begin_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_uis_begin");
   throw_if_dylib_error();
 // lilv_uis_get
-  *(void **) (&lilv_uis_get_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_uis_get");
+  *(void **) (&lilv_uis_get_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_uis_get");
   throw_if_dylib_error();
 // lilv_uis_next
-  *(void **) (&lilv_uis_next_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_uis_next");
+  *(void **) (&lilv_uis_next_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_uis_next");
   throw_if_dylib_error();
 // lilv_uis_is_end
-  *(void **) (&lilv_uis_is_end_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_uis_is_end");
+  *(void **) (&lilv_uis_is_end_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_uis_is_end");
   throw_if_dylib_error();
 // lilv_uis_get_by_uri
-  *(void **) (&lilv_uis_get_by_uri_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_uis_get_by_uri");
+  *(void **) (&lilv_uis_get_by_uri_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_uis_get_by_uri");
   throw_if_dylib_error();
 // lilv_nodes_free
-  *(void **) (&lilv_nodes_free_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_nodes_free");
+  *(void **) (&lilv_nodes_free_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_nodes_free");
   throw_if_dylib_error();
 // lilv_nodes_size
-  *(void **) (&lilv_nodes_size_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_nodes_size");
+  *(void **) (&lilv_nodes_size_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_nodes_size");
   throw_if_dylib_error();
 // lilv_nodes_begin
-  *(void **) (&lilv_nodes_begin_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_nodes_begin");
+  *(void **) (&lilv_nodes_begin_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_nodes_begin");
   throw_if_dylib_error();
 // lilv_nodes_get
-  *(void **) (&lilv_nodes_get_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_nodes_get");
+  *(void **) (&lilv_nodes_get_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_nodes_get");
   throw_if_dylib_error();
 // lilv_nodes_next
-  *(void **) (&lilv_nodes_next_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_nodes_next");
+  *(void **) (&lilv_nodes_next_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_nodes_next");
   throw_if_dylib_error();
 // lilv_nodes_is_end
-  *(void **) (&lilv_nodes_is_end_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_nodes_is_end");
+  *(void **) (&lilv_nodes_is_end_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_nodes_is_end");
   throw_if_dylib_error();
 // lilv_nodes_get_first
-  *(void **) (&lilv_nodes_get_first_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_nodes_get_first");
+  *(void **) (&lilv_nodes_get_first_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_nodes_get_first");
   throw_if_dylib_error();
 // lilv_nodes_contains
-  *(void **) (&lilv_nodes_contains_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_nodes_contains");
+  *(void **) (&lilv_nodes_contains_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_nodes_contains");
   throw_if_dylib_error();
 // lilv_nodes_merge
-  *(void **) (&lilv_nodes_merge_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_nodes_merge");
+  *(void **) (&lilv_nodes_merge_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_nodes_merge");
   throw_if_dylib_error();
 // lilv_plugins_size
-  *(void **) (&lilv_plugins_size_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugins_size");
+  *(void **) (&lilv_plugins_size_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugins_size");
   throw_if_dylib_error();
 // lilv_plugins_begin
-  *(void **) (&lilv_plugins_begin_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugins_begin");
+  *(void **) (&lilv_plugins_begin_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugins_begin");
   throw_if_dylib_error();
 // lilv_plugins_get
-  *(void **) (&lilv_plugins_get_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugins_get");
+  *(void **) (&lilv_plugins_get_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugins_get");
   throw_if_dylib_error();
 // lilv_plugins_next
-  *(void **) (&lilv_plugins_next_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugins_next");
+  *(void **) (&lilv_plugins_next_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugins_next");
   throw_if_dylib_error();
 // lilv_plugins_is_end
-  *(void **) (&lilv_plugins_is_end_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugins_is_end");
+  *(void **) (&lilv_plugins_is_end_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugins_is_end");
   throw_if_dylib_error();
 // lilv_plugins_get_by_uri
-  *(void **) (&lilv_plugins_get_by_uri_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugins_get_by_uri");
+  *(void **) (&lilv_plugins_get_by_uri_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugins_get_by_uri");
   throw_if_dylib_error();
 // lilv_world_new
-  *(void **) (&lilv_world_new_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_world_new");
+  *(void **) (&lilv_world_new_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_world_new");
   throw_if_dylib_error();
 // lilv_world_set_option
-  *(void **) (&lilv_world_set_option_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_world_set_option");
+  *(void **) (&lilv_world_set_option_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_world_set_option");
   throw_if_dylib_error();
 // lilv_world_free
-  *(void **) (&lilv_world_free_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_world_free");
+  *(void **) (&lilv_world_free_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_world_free");
   throw_if_dylib_error();
 // lilv_world_load_all
-  *(void **) (&lilv_world_load_all_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_world_load_all");
+  *(void **) (&lilv_world_load_all_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_world_load_all");
   throw_if_dylib_error();
 // lilv_world_load_bundle
-  *(void **) (&lilv_world_load_bundle_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_world_load_bundle");
+  *(void **) (&lilv_world_load_bundle_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_world_load_bundle");
   throw_if_dylib_error();
 // lilv_world_load_specifications
-  *(void **) (&lilv_world_load_specifications_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_world_load_specifications");
+  *(void **) (&lilv_world_load_specifications_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_world_load_specifications");
   throw_if_dylib_error();
 // lilv_world_load_plugin_classes
-  *(void **) (&lilv_world_load_plugin_classes_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_world_load_plugin_classes");
+  *(void **) (&lilv_world_load_plugin_classes_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_world_load_plugin_classes");
   throw_if_dylib_error();
 // lilv_world_unload_bundle
-  *(void **) (&lilv_world_unload_bundle_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_world_unload_bundle");
+  *(void **) (&lilv_world_unload_bundle_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_world_unload_bundle");
   throw_if_dylib_error();
 // lilv_world_load_resource
-  *(void **) (&lilv_world_load_resource_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_world_load_resource");
+  *(void **) (&lilv_world_load_resource_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_world_load_resource");
   throw_if_dylib_error();
 // lilv_world_unload_resource
-  *(void **) (&lilv_world_unload_resource_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_world_unload_resource");
+  *(void **) (&lilv_world_unload_resource_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_world_unload_resource");
   throw_if_dylib_error();
 // lilv_world_get_plugin_class
-  *(void **) (&lilv_world_get_plugin_class_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_world_get_plugin_class");
+  *(void **) (&lilv_world_get_plugin_class_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_world_get_plugin_class");
   throw_if_dylib_error();
 // lilv_world_get_plugin_classes
-  *(void **) (&lilv_world_get_plugin_classes_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_world_get_plugin_classes");
+  *(void **) (&lilv_world_get_plugin_classes_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_world_get_plugin_classes");
   throw_if_dylib_error();
 // lilv_world_get_all_plugins
-  *(void **) (&lilv_world_get_all_plugins_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_world_get_all_plugins");
+  *(void **) (&lilv_world_get_all_plugins_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_world_get_all_plugins");
   throw_if_dylib_error();
 // lilv_world_find_nodes
-  *(void **) (&lilv_world_find_nodes_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_world_find_nodes");
+  *(void **) (&lilv_world_find_nodes_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_world_find_nodes");
   throw_if_dylib_error();
 // lilv_world_get
-  *(void **) (&lilv_world_get_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_world_get");
+  *(void **) (&lilv_world_get_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_world_get");
   throw_if_dylib_error();
 // lilv_world_ask
-  *(void **) (&lilv_world_ask_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_world_ask");
+  *(void **) (&lilv_world_ask_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_world_ask");
   throw_if_dylib_error();
 // lilv_world_get_symbol
-  *(void **) (&lilv_world_get_symbol_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_world_get_symbol");
+  *(void **) (&lilv_world_get_symbol_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_world_get_symbol");
   throw_if_dylib_error();
 // lilv_plugin_verify
-  *(void **) (&lilv_plugin_verify_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_verify");
+  *(void **) (&lilv_plugin_verify_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_verify");
   throw_if_dylib_error();
 // lilv_plugin_get_uri
-  *(void **) (&lilv_plugin_get_uri_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_get_uri");
+  *(void **) (&lilv_plugin_get_uri_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_get_uri");
   throw_if_dylib_error();
 // lilv_plugin_get_bundle_uri
-  *(void **) (&lilv_plugin_get_bundle_uri_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_get_bundle_uri");
+  *(void **) (&lilv_plugin_get_bundle_uri_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_get_bundle_uri");
   throw_if_dylib_error();
 // lilv_plugin_get_data_uris
-  *(void **) (&lilv_plugin_get_data_uris_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_get_data_uris");
+  *(void **) (&lilv_plugin_get_data_uris_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_get_data_uris");
   throw_if_dylib_error();
 // lilv_plugin_get_library_uri
-  *(void **) (&lilv_plugin_get_library_uri_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_get_library_uri");
+  *(void **) (&lilv_plugin_get_library_uri_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_get_library_uri");
   throw_if_dylib_error();
 // lilv_plugin_get_name
-  *(void **) (&lilv_plugin_get_name_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_get_name");
+  *(void **) (&lilv_plugin_get_name_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_get_name");
   throw_if_dylib_error();
 // lilv_plugin_get_class
-  *(void **) (&lilv_plugin_get_class_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_get_class");
+  *(void **) (&lilv_plugin_get_class_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_get_class");
   throw_if_dylib_error();
 // lilv_plugin_get_value
-  *(void **) (&lilv_plugin_get_value_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_get_value");
+  *(void **) (&lilv_plugin_get_value_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_get_value");
   throw_if_dylib_error();
 // lilv_plugin_has_feature
-  *(void **) (&lilv_plugin_has_feature_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_has_feature");
+  *(void **) (&lilv_plugin_has_feature_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_has_feature");
   throw_if_dylib_error();
 // lilv_plugin_get_supported_features
-  *(void **) (&lilv_plugin_get_supported_features_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_get_supported_features");
+  *(void **) (&lilv_plugin_get_supported_features_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_get_supported_features");
   throw_if_dylib_error();
 // lilv_plugin_get_required_features
-  *(void **) (&lilv_plugin_get_required_features_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_get_required_features");
+  *(void **) (&lilv_plugin_get_required_features_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_get_required_features");
   throw_if_dylib_error();
 // lilv_plugin_get_optional_features
-  *(void **) (&lilv_plugin_get_optional_features_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_get_optional_features");
+  *(void **) (&lilv_plugin_get_optional_features_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_get_optional_features");
   throw_if_dylib_error();
 // lilv_plugin_has_extension_data
-  *(void **) (&lilv_plugin_has_extension_data_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_has_extension_data");
+  *(void **) (&lilv_plugin_has_extension_data_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_has_extension_data");
   throw_if_dylib_error();
 // lilv_plugin_get_extension_data
-  *(void **) (&lilv_plugin_get_extension_data_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_get_extension_data");
+  *(void **) (&lilv_plugin_get_extension_data_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_get_extension_data");
   throw_if_dylib_error();
 // lilv_plugin_get_num_ports
-  *(void **) (&lilv_plugin_get_num_ports_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_get_num_ports");
+  *(void **) (&lilv_plugin_get_num_ports_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_get_num_ports");
   throw_if_dylib_error();
 // lilv_plugin_get_port_ranges_float
-  *(void **) (&lilv_plugin_get_port_ranges_float_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_get_port_ranges_float");
+  *(void **) (&lilv_plugin_get_port_ranges_float_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_get_port_ranges_float");
   throw_if_dylib_error();
 // lilv_plugin_get_num_ports_of_class
-  *(void **) (&lilv_plugin_get_num_ports_of_class_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_get_num_ports_of_class");
+  *(void **) (&lilv_plugin_get_num_ports_of_class_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_get_num_ports_of_class");
   throw_if_dylib_error();
 // lilv_plugin_get_num_ports_of_class_va
-  *(void **) (&lilv_plugin_get_num_ports_of_class_va_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_get_num_ports_of_class_va");
+  *(void **) (&lilv_plugin_get_num_ports_of_class_va_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_get_num_ports_of_class_va");
   throw_if_dylib_error();
 // lilv_plugin_has_latency
-  *(void **) (&lilv_plugin_has_latency_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_has_latency");
+  *(void **) (&lilv_plugin_has_latency_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_has_latency");
   throw_if_dylib_error();
 // lilv_plugin_get_latency_port_index
-  *(void **) (&lilv_plugin_get_latency_port_index_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_get_latency_port_index");
+  *(void **) (&lilv_plugin_get_latency_port_index_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_get_latency_port_index");
   throw_if_dylib_error();
 // lilv_plugin_get_port_by_index
-  *(void **) (&lilv_plugin_get_port_by_index_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_get_port_by_index");
+  *(void **) (&lilv_plugin_get_port_by_index_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_get_port_by_index");
   throw_if_dylib_error();
 // lilv_plugin_get_port_by_symbol
-  *(void **) (&lilv_plugin_get_port_by_symbol_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_get_port_by_symbol");
+  *(void **) (&lilv_plugin_get_port_by_symbol_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_get_port_by_symbol");
   throw_if_dylib_error();
 // lilv_plugin_get_port_by_designation
-  *(void **) (&lilv_plugin_get_port_by_designation_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_get_port_by_designation");
+  *(void **) (&lilv_plugin_get_port_by_designation_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_get_port_by_designation");
   throw_if_dylib_error();
 // lilv_plugin_get_project
-  *(void **) (&lilv_plugin_get_project_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_get_project");
+  *(void **) (&lilv_plugin_get_project_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_get_project");
   throw_if_dylib_error();
 // lilv_plugin_get_author_name
-  *(void **) (&lilv_plugin_get_author_name_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_get_author_name");
+  *(void **) (&lilv_plugin_get_author_name_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_get_author_name");
   throw_if_dylib_error();
 // lilv_plugin_get_author_email
-  *(void **) (&lilv_plugin_get_author_email_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_get_author_email");
+  *(void **) (&lilv_plugin_get_author_email_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_get_author_email");
   throw_if_dylib_error();
 // lilv_plugin_get_author_homepage
-  *(void **) (&lilv_plugin_get_author_homepage_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_get_author_homepage");
+  *(void **) (&lilv_plugin_get_author_homepage_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_get_author_homepage");
   throw_if_dylib_error();
 // lilv_plugin_is_replaced
-  *(void **) (&lilv_plugin_is_replaced_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_is_replaced");
+  *(void **) (&lilv_plugin_is_replaced_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_is_replaced");
   throw_if_dylib_error();
 // lilv_plugin_write_description
-  *(void **) (&lilv_plugin_write_description_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_write_description");
+  *(void **) (&lilv_plugin_write_description_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_write_description");
   throw_if_dylib_error();
 // lilv_plugin_write_manifest_entry
-  *(void **) (&lilv_plugin_write_manifest_entry_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_write_manifest_entry");
+  *(void **) (&lilv_plugin_write_manifest_entry_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_write_manifest_entry");
   throw_if_dylib_error();
 // lilv_plugin_get_related
-  *(void **) (&lilv_plugin_get_related_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_get_related");
+  *(void **) (&lilv_plugin_get_related_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_get_related");
   throw_if_dylib_error();
 // lilv_port_get_node
-  *(void **) (&lilv_port_get_node_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_port_get_node");
+  *(void **) (&lilv_port_get_node_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_port_get_node");
   throw_if_dylib_error();
 // lilv_port_get_value
-  *(void **) (&lilv_port_get_value_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_port_get_value");
+  *(void **) (&lilv_port_get_value_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_port_get_value");
   throw_if_dylib_error();
 // lilv_port_get
-  *(void **) (&lilv_port_get_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_port_get");
+  *(void **) (&lilv_port_get_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_port_get");
   throw_if_dylib_error();
 // lilv_port_get_properties
-  *(void **) (&lilv_port_get_properties_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_port_get_properties");
+  *(void **) (&lilv_port_get_properties_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_port_get_properties");
   throw_if_dylib_error();
 // lilv_port_has_property
-  *(void **) (&lilv_port_has_property_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_port_has_property");
+  *(void **) (&lilv_port_has_property_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_port_has_property");
   throw_if_dylib_error();
 // lilv_port_supports_event
-  *(void **) (&lilv_port_supports_event_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_port_supports_event");
+  *(void **) (&lilv_port_supports_event_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_port_supports_event");
   throw_if_dylib_error();
 // lilv_port_get_index
-  *(void **) (&lilv_port_get_index_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_port_get_index");
+  *(void **) (&lilv_port_get_index_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_port_get_index");
   throw_if_dylib_error();
 // lilv_port_get_symbol
-  *(void **) (&lilv_port_get_symbol_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_port_get_symbol");
+  *(void **) (&lilv_port_get_symbol_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_port_get_symbol");
   throw_if_dylib_error();
 // lilv_port_get_name
-  *(void **) (&lilv_port_get_name_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_port_get_name");
+  *(void **) (&lilv_port_get_name_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_port_get_name");
   throw_if_dylib_error();
 // lilv_port_get_classes
-  *(void **) (&lilv_port_get_classes_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_port_get_classes");
+  *(void **) (&lilv_port_get_classes_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_port_get_classes");
   throw_if_dylib_error();
 // lilv_port_is_a
-  *(void **) (&lilv_port_is_a_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_port_is_a");
+  *(void **) (&lilv_port_is_a_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_port_is_a");
   throw_if_dylib_error();
 // lilv_port_get_range
-  *(void **) (&lilv_port_get_range_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_port_get_range");
+  *(void **) (&lilv_port_get_range_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_port_get_range");
   throw_if_dylib_error();
 // lilv_port_get_scale_points
-  *(void **) (&lilv_port_get_scale_points_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_port_get_scale_points");
+  *(void **) (&lilv_port_get_scale_points_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_port_get_scale_points");
   throw_if_dylib_error();
 // lilv_state_new_from_world
-  *(void **) (&lilv_state_new_from_world_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_state_new_from_world");
+  *(void **) (&lilv_state_new_from_world_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_state_new_from_world");
   throw_if_dylib_error();
 // lilv_state_new_from_file
-  *(void **) (&lilv_state_new_from_file_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_state_new_from_file");
+  *(void **) (&lilv_state_new_from_file_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_state_new_from_file");
   throw_if_dylib_error();
 // lilv_state_new_from_string
-  *(void **) (&lilv_state_new_from_string_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_state_new_from_string");
+  *(void **) (&lilv_state_new_from_string_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_state_new_from_string");
   throw_if_dylib_error();
 // lilv_state_new_from_instance
-  *(void **) (&lilv_state_new_from_instance_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_state_new_from_instance");
+  *(void **) (&lilv_state_new_from_instance_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_state_new_from_instance");
   throw_if_dylib_error();
 // lilv_state_free
-  *(void **) (&lilv_state_free_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_state_free");
+  *(void **) (&lilv_state_free_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_state_free");
   throw_if_dylib_error();
 // lilv_state_equals
-  *(void **) (&lilv_state_equals_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_state_equals");
+  *(void **) (&lilv_state_equals_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_state_equals");
   throw_if_dylib_error();
 // lilv_state_get_num_properties
-  *(void **) (&lilv_state_get_num_properties_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_state_get_num_properties");
+  *(void **) (&lilv_state_get_num_properties_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_state_get_num_properties");
   throw_if_dylib_error();
 // lilv_state_get_plugin_uri
-  *(void **) (&lilv_state_get_plugin_uri_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_state_get_plugin_uri");
+  *(void **) (&lilv_state_get_plugin_uri_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_state_get_plugin_uri");
   throw_if_dylib_error();
 // lilv_state_get_uri
-  *(void **) (&lilv_state_get_uri_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_state_get_uri");
+  *(void **) (&lilv_state_get_uri_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_state_get_uri");
   throw_if_dylib_error();
 // lilv_state_get_label
-  *(void **) (&lilv_state_get_label_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_state_get_label");
+  *(void **) (&lilv_state_get_label_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_state_get_label");
   throw_if_dylib_error();
 // lilv_state_set_label
-  *(void **) (&lilv_state_set_label_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_state_set_label");
+  *(void **) (&lilv_state_set_label_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_state_set_label");
   throw_if_dylib_error();
 // lilv_state_set_metadata
-  *(void **) (&lilv_state_set_metadata_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_state_set_metadata");
+  *(void **) (&lilv_state_set_metadata_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_state_set_metadata");
   throw_if_dylib_error();
 // lilv_state_emit_port_values
-  *(void **) (&lilv_state_emit_port_values_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_state_emit_port_values");
+  *(void **) (&lilv_state_emit_port_values_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_state_emit_port_values");
   throw_if_dylib_error();
 // lilv_state_restore
-  *(void **) (&lilv_state_restore_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_state_restore");
+  *(void **) (&lilv_state_restore_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_state_restore");
   throw_if_dylib_error();
 // lilv_state_save
-  *(void **) (&lilv_state_save_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_state_save");
+  *(void **) (&lilv_state_save_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_state_save");
   throw_if_dylib_error();
 // lilv_state_to_string
-  *(void **) (&lilv_state_to_string_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_state_to_string");
+  *(void **) (&lilv_state_to_string_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_state_to_string");
   throw_if_dylib_error();
 // lilv_state_delete
-  *(void **) (&lilv_state_delete_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_state_delete");
+  *(void **) (&lilv_state_delete_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_state_delete");
   throw_if_dylib_error();
 // lilv_scale_point_get_label
-  *(void **) (&lilv_scale_point_get_label_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_scale_point_get_label");
+  *(void **) (&lilv_scale_point_get_label_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_scale_point_get_label");
   throw_if_dylib_error();
 // lilv_scale_point_get_value
-  *(void **) (&lilv_scale_point_get_value_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_scale_point_get_value");
+  *(void **) (&lilv_scale_point_get_value_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_scale_point_get_value");
   throw_if_dylib_error();
 // lilv_plugin_class_get_parent_uri
-  *(void **) (&lilv_plugin_class_get_parent_uri_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_class_get_parent_uri");
+  *(void **) (&lilv_plugin_class_get_parent_uri_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_class_get_parent_uri");
   throw_if_dylib_error();
 // lilv_plugin_class_get_uri
-  *(void **) (&lilv_plugin_class_get_uri_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_class_get_uri");
+  *(void **) (&lilv_plugin_class_get_uri_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_class_get_uri");
   throw_if_dylib_error();
 // lilv_plugin_class_get_label
-  *(void **) (&lilv_plugin_class_get_label_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_class_get_label");
+  *(void **) (&lilv_plugin_class_get_label_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_class_get_label");
   throw_if_dylib_error();
 // lilv_plugin_class_get_children
-  *(void **) (&lilv_plugin_class_get_children_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_class_get_children");
+  *(void **) (&lilv_plugin_class_get_children_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_class_get_children");
   throw_if_dylib_error();
 // lilv_plugin_instantiate
-  *(void **) (&lilv_plugin_instantiate_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_instantiate");
+  *(void **) (&lilv_plugin_instantiate_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_instantiate");
   throw_if_dylib_error();
 // lilv_instance_free
-  *(void **) (&lilv_instance_free_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_instance_free");
+  *(void **) (&lilv_instance_free_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_instance_free");
   throw_if_dylib_error();
 // lilv_plugin_get_uis
-  *(void **) (&lilv_plugin_get_uis_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_plugin_get_uis");
+  *(void **) (&lilv_plugin_get_uis_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_plugin_get_uis");
   throw_if_dylib_error();
 // lilv_ui_get_uri
-  *(void **) (&lilv_ui_get_uri_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_ui_get_uri");
+  *(void **) (&lilv_ui_get_uri_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_ui_get_uri");
   throw_if_dylib_error();
 // lilv_ui_get_classes
-  *(void **) (&lilv_ui_get_classes_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_ui_get_classes");
+  *(void **) (&lilv_ui_get_classes_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_ui_get_classes");
   throw_if_dylib_error();
 // lilv_ui_is_a
-  *(void **) (&lilv_ui_is_a_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_ui_is_a");
+  *(void **) (&lilv_ui_is_a_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_ui_is_a");
   throw_if_dylib_error();
 // lilv_ui_is_supported
-  *(void **) (&lilv_ui_is_supported_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_ui_is_supported");
+  *(void **) (&lilv_ui_is_supported_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_ui_is_supported");
   throw_if_dylib_error();
 // lilv_ui_get_bundle_uri
-  *(void **) (&lilv_ui_get_bundle_uri_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_ui_get_bundle_uri");
+  *(void **) (&lilv_ui_get_bundle_uri_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_ui_get_bundle_uri");
   throw_if_dylib_error();
 // lilv_ui_get_binary_uri
-  *(void **) (&lilv_ui_get_binary_uri_dylibloader_wrapper_lv2) = dlsym(handle, "lilv_ui_get_binary_uri");
+  *(void **) (&lilv_ui_get_binary_uri_dylibloader_wrapper_lv2) = get_dylib_fn(handle, "lilv_ui_get_binary_uri");
   throw_if_dylib_error();
 return 0;
+}
 }

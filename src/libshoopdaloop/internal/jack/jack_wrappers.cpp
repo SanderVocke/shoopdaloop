@@ -353,6 +353,7 @@ uint32_t (*jack_midi_get_lost_event_count_dylibloader_wrapper_jack_wrappers)( vo
 
 #include "LoadDynamicLibrary.h"
 
+extern "C" {
 int initialize_jack_wrappers(int verbose) {
   _dylib_handle handle;
   char *error;
@@ -696,4 +697,5 @@ int initialize_jack_wrappers(int verbose) {
   *(void **) (&jack_midi_get_lost_event_count_dylibloader_wrapper_jack_wrappers) = get_dylib_fn(handle, "jack_midi_get_lost_event_count");
   throw_if_dylib_error();
 return 0;
+}
 }

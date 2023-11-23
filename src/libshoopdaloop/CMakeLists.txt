@@ -63,11 +63,20 @@ add_custom_target(
 
 set(EXTERNAL_DEPS_PREFIX ${CMAKE_CURRENT_BINARY_DIR}/external_deps)
 
+# Backend lib
+file(GLOB INTERNAL_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/internal/*.cpp)
 if (HAVE_LV2)
   include (${CMAKE_CURRENT_SOURCE_DIR}/BuildLV2Projects.cmake)
-  add_subdirectory(${CMAKE_SOURCE_DIR}/../third_party/lv2_evbuf lv2_evbuf)
-  set_target_properties(lv2_evbuf PROPERTIES POSITION_INDEPENDENT_CODE ON)
-  add_dependencies(lv2_evbuf lv2_proj)
+  file(GLOB LV2_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/internal/lv2/*.cpp)
+  list(APPEND INTERNAL_SOURCES ${LV2_SOURCES}
+       ${CMAKE_SOURCE_DIR}/../third_party/lv2_evbuf/lv2_evbuf.c)
+  include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal/lv2
+                      ${CMAKE_SOURCE_DIR/../third_party/lv2_evbuf})
+endif()
+if (BACKEND_JACK)
+  file(GLOB JACK_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/internal/jack/*.cpp)
+  list(APPEND INTERNAL_SOURCES ${JACK_SOURCES})
+  include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal/jack)
 endif()
 
 # Includes
@@ -78,23 +87,8 @@ include_directories(${CMAKE_SOURCE_DIR}/../third_party/nlohmann_json)
 add_subdirectory(test)
 add_subdirectory(accelerate)
 
-# Backend lib
-file(GLOB INTERNAL_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/internal/*.cpp)
-if (HAVE_LV2)
-  file(GLOB LV2_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/internal/lv2/*.cpp)
-  list(APPEND INTERNAL_SOURCES ${LV2_SOURCES})
-  message(${INTERNAL_SOURCES})
-  include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal/lv2)
-endif()
-if (BACKEND_JACK)
-  file(GLOB JACK_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/internal/jack/*.cpp)
-  list(APPEND INTERNAL_SOURCES ${JACK_SOURCES})
-  include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal/jack)
-endif()
-
 add_library(shoopdaloop_internals STATIC libshoopdaloop.cpp ${INTERNAL_SOURCES})
 set_target_properties(shoopdaloop_internals PROPERTIES POSITION_INDEPENDENT_CODE ON)
-target_link_options(shoopdaloop_internals PRIVATE -static)
 target_include_directories(shoopdaloop_internals
                         PRIVATE
                         ${CMAKE_SOURCE_DIR}/../third_party/base64/include
@@ -106,26 +100,21 @@ if (UNIX)
     target_link_libraries(shoopdaloop_internals PUBLIC dl)
 endif()
 if (HAVE_LV2)
-  target_link_libraries(shoopdaloop_internals PRIVATE
-                        lv2_evbuf
-                        ${LV2_LIBRARIES}
-                        ${DEPEND_ON_LILV})
   target_include_directories(shoopdaloop_internals
                           PRIVATE
                           ${CMAKE_SOURCE_DIR}/../third_party/lv2_evbuf
                           ${LV2_INCLUDE_DIRS}
-                          ${LILV_INCLUDE_DIRS}
                           ${CMAKE_SOURCE_DIR}/../third_party/lv2_external_ui
                           )
+  add_dependencies(shoopdaloop_internals lilv_proj)
 endif()
 if (BACKEND_JACK)
   target_include_directories(shoopdaloop_internals PRIVATE ${JACK_INCLUDE_DIRS})
 endif()
 
-file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/empty.cpp "")
+file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/empty.cpp "#include \"libshoopdaloop.h\"")
 add_library(shoopdaloop SHARED ${CMAKE_CURRENT_BINARY_DIR}/empty.cpp)
-target_link_libraries(shoopdaloop PRIVATE shoopdaloop_internals)
-set_property(TARGET shoopdaloop PROPERTY POSITION_INDEPENDENT_CODE ON)
+target_link_libraries(shoopdaloop PRIVATE "$<LINK_LIBRARY:WHOLE_ARCHIVE,shoopdaloop_internals>")
 
 if(UNIX)
   set_target_properties(shoopdaloop PROPERTIES
