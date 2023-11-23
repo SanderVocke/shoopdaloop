@@ -26,9 +26,6 @@
 #ifdef SHOOP_HAVE_LV2
 #include "LV2.h"
 #include "CarlaLV2ProcessingChain.h"
-namespace {
-LV2 g_lv2;
-}
 #endif
 
 using namespace logging;
@@ -404,15 +401,24 @@ std::shared_ptr<ConnectedLoop> Backend::create_loop() {
 }
 
 std::shared_ptr<ConnectedFXChain> Backend::create_fx_chain(fx_chain_type_t type, const char* title) {
+#ifdef SHOOP_HAVE_LV2
+    static LV2 lv2;
+#endif
     std::shared_ptr<ProcessingChainInterface<Time, Size>> chain;
     switch(type) {
 #ifdef SHOOP_HAVE_LV2
         case Carla_Rack:
         case Carla_Patchbay:
         case Carla_Patchbay_16x:
-            chain = g_lv2.create_carla_chain<Time, Size>(
-                type, get_sample_rate(), std::string(title), profiler
-            );
+            try {
+                chain = lv2.create_carla_chain<Time, Size>(
+                    type, get_sample_rate(), std::string(title), profiler
+                );
+            } catch (const std::exception &exp) {
+                throw_error<std::runtime_error>("Failed to create a Carla LV2 instance: " + std::string(exp.what()));
+            } catch (...) {
+                throw_error<std::runtime_error>("Failed to create a Carla LV2 instance (unknown exception)");
+            }
             break;
 #else
         case Carla_Rack:

@@ -24,7 +24,7 @@ void throw_if_dylib_error() {
             0,
             NULL
         );
-        auto _msg = fmt::format("Could not load JACK: code {}, msg {}", error, (LPSTR)msg);
+        auto _msg = fmt::format("Could not load shared library: code {}, msg {}", error, (LPSTR)msg);
         LocalFree(msg);
         throw std::runtime_error(_msg);
     }

@@ -105,3 +105,8 @@ ExternalProject_Add(lilv_proj
 )
 
 set(LV2_INCLUDE_DIRS ${EXTERNAL_DEPS_PREFIX}/include)
+
+install(FILES ${LILV_LIB} ${SERD_LIB} ${SORD_LIB} ${SRATOM_LIB}
+    EXCLUDE_FROM_ALL
+    COMPONENT package_install
+    DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME})
