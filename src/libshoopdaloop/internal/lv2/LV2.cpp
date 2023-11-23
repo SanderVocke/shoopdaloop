@@ -26,8 +26,8 @@ LV2::create_carla_chain(fx_chain_type_t type, uint32_t sample_rate,
             initialize_lilv(1);
         #ifdef _WIN32
             // Ensure we have default LV2 path set up
-            std::string current = getenv("LV2_PATH");
-            std::string newval = current + ";C:\\Program Files\\Common Files\\LV2";
+            auto current = getenv("LV2_PATH");
+            std::string newval = (current ? std::string(current) : "") + ";C:\\Program Files\\Common Files\\LV2";
             SetEnvironmentVariable("LV2_PATH", newval.c_str());
         #endif
             ::g_initialized = true;
