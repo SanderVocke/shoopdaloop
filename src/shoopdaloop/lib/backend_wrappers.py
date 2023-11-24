@@ -21,6 +21,8 @@ except:
     os.environ['PATH'] = os.environ['PATH'] + os.pathsep + script_dir
     from libshoopdaloop_bindings import *
 
+initialize_logging()
+
 class PortDirection(Enum):
     Input = 0
     Output = 1
@@ -712,7 +714,7 @@ class Backend:
         terminate_backend(self._c_handle)
 
 def init_backend(backend_type : Type[BackendType], client_name_hint : str, argstring : str):
-    _ptr = initialize(backend_type.value, client_name_hint.encode('ascii'), argstring.encode('ascii'))
+    _ptr = create_backend(backend_type.value, client_name_hint.encode('ascii'), argstring.encode('ascii'))
     b = Backend(_ptr)
     return b
 

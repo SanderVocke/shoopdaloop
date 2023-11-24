@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <memory>
 #include <atomic>
+#include "run_in_thread_with_timeout.h"
 
 template<typename API>
 int GenericJackAudioSystem<API>::PROC_process_cb_static(jack_nframes_t nframes, void *arg) {
@@ -163,7 +164,12 @@ const char *GenericJackAudioSystem<API>::client_name() const {
 template<typename API>
 void GenericJackAudioSystem<API>::close() {
     if (m_client) {
-        API::client_close(m_client);
+        log<debug>("Closing JACK client.");
+        try {
+            run_in_thread_with_timeout_unsafe([this]() { API::client_close(m_client); }, 10000);
+        } catch (std::exception &e) {
+            log<warning>("Attempt to close JACK client failed: {}. Abandoning.", e.what());
+        }
         m_client = nullptr;
     }
 }

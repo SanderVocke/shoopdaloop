@@ -12,7 +12,7 @@ def test_init():
     create_lua_qobject_interface(eng, QObject())
 
 def test_callback():
-    class TestHandler(QObject):
+    class TestHandler(ShoopQObject):
         def __init__(self, parent=None):
             super(TestHandler, self).__init__(parent)
             pass

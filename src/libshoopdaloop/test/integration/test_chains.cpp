@@ -56,7 +56,7 @@ struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDryWe
     std::shared_ptr<shoop_types::LoopAudioChannel> int_wet_audio_chan;
 
     SingleDryWetLoopTestChain() {
-        api_backend = initialize(Dummy, "backend", "");
+        api_backend = create_backend(Dummy, "backend", "");
         int_backend = internal_backend(api_backend);
         int_dummy_audio_system = (shoop_types::_DummyAudioSystem*)int_backend->audio_system.get();
 

@@ -1,12 +1,13 @@
 from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
 from PySide6.QtQml import QJSValue
 from PySide6.QtTest import QTest
+from .ShoopPyObject import *
 
 from .TestCase import TestCase
 
 from ..logging import Logger
 
-class TestRunner(QObject):
+class TestRunner(ShoopQObject):
     def __init__(self, parent=None):
         super(TestRunner, self).__init__(parent)
         self.registered_testcases = set()

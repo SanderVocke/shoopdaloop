@@ -6,6 +6,8 @@ import json
 from typing import *
 import sys
 
+from .ShoopPyObject import *
+
 from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
 from PySide6.QtQuick import QQuickItem
 
@@ -17,7 +19,7 @@ from ..findChildItems import findChildItems
 from ..logging import Logger
 
 # Wraps a back-end loop.
-class Loop(QQuickItem):
+class Loop(ShoopQQuickItem):
     # Other signals
     cycled = Signal()
 

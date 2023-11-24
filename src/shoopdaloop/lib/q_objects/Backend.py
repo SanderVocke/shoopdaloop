@@ -6,15 +6,16 @@ import json
 import sys
 import weakref
 
-from PySide6.QtCore import Qt, QObject, Signal, Property, Slot, QTimer
-from PySide6.QtQuick import QQuickItem
+from PySide6.QtCore import Qt, Signal, Property, Slot, QTimer
+
+from .ShoopPyObject import *
 
 from ..backend_wrappers import *
 from ..findChildItems import findChildItems
 from ..logging import Logger
 
 # Wraps the back-end.
-class Backend(QQuickItem):
+class Backend(ShoopQQuickItem):
     def __init__(self, parent=None):
         super(Backend, self).__init__(parent)
         self._update_interval_ms = 50

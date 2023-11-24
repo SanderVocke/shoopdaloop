@@ -1,9 +1,11 @@
 from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
 import json
 
+from .ShoopPyObject import *
+
 from ..logging import Logger
 
-class QoverageFileCollector(QObject):
+class QoverageFileCollector(ShoopQObject):
     def __init__(self, filename, inital_lines_data, parent=None):
         super(QoverageFileCollector, self).__init__(parent)
         self.logger = Logger("Qoverage")
@@ -25,7 +27,7 @@ class QoverageFileCollector(QObject):
             )
         )
 
-class QoverageCollectorFactory(QObject):
+class QoverageCollectorFactory(ShoopQObject):
     def __init__(self, parent=None):
         super(QoverageCollectorFactory, self).__init__(parent)
         self.logger = Logger("QoverageCollectorFactory")

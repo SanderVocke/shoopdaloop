@@ -1,7 +1,8 @@
 from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, QEvent, Qt
 from PySide6.QtQml import QJSValue
 
-class ApplicationMetadata(QObject):
+from .ShoopPyObject import *
+class ApplicationMetadata(ShoopQObject):
     def __init__(self, parent=None):
         super(ApplicationMetadata, self).__init__(parent)
         self._version_string = ""

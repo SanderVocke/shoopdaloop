@@ -3,6 +3,8 @@ from ..logging import Logger
 
 import inspect
 
+from .ShoopPyObject import *
+
 from PySide6.QtCore import QObject, Signal, Property, Slot, Qt
 from enum import Enum
 

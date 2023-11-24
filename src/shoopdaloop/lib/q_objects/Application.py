@@ -8,6 +8,8 @@ from PySide6.QtGui import QGuiApplication, QIcon
 from PySide6.QtCore import QTimer, QObject, Q_ARG, QMetaObject, Qt, QEvent, Slot, QtMsgType, Signal
 from PySide6.QtQml import QQmlDebuggingEnabler
 
+from .ShoopPyObject import *
+
 have_nsm = os.name == 'posix'
 if have_nsm:
     from ...third_party.pynsm.nsmclient import NSMClient, NSMNotRunningError
@@ -24,7 +26,7 @@ from ..logging import *
 
 script_dir = os.path.dirname(__file__)
 
-class Application(QGuiApplication):
+class Application(ShoopQGuiApplication):
     exit_handler_called = Signal()
 
     def __init__(self,
@@ -103,7 +105,7 @@ class Application(QGuiApplication):
         self.engine = QQmlApplicationEngine(parent=self)
         
         if quit_on_quit:
-            self.engine.quit.connect(self.quit)
+            self.engine.quit.connect(self.do_quit)
 
         self.engine.setOutputWarningsToStandardError(False)
         self.engine.objectCreated.connect(self.onQmlObjectCreated)
@@ -234,3 +236,13 @@ class Application(QGuiApplication):
         end = time.time() + ms * 0.001
         while time.time() < end:
             self.processEvents()
+
+    @Slot()
+    def do_quit(self):
+        if self.engine:
+            self.engine.destroyed.connect(self.quit)
+            self.engine.collectGarbage()
+            self.engine.deleteLater()
+        else:
+            self.quit()
+        

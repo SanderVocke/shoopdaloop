@@ -3,10 +3,11 @@ import tempfile
 import simpleaudio as sa
 
 from PySide6.QtCore import QObject, Slot
+from .ShoopPyObject import *
 
 from ..gen_click_track import gen_click_track
 
-class ClickTrackGenerator(QObject):
+class ClickTrackGenerator(ShoopQObject):
     script_dir = os.path.dirname(os.path.abspath(__file__))
     clicks = {
         'click_high': script_dir + '/../../resources/click_high.wav',

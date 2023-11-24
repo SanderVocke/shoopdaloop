@@ -3,6 +3,8 @@ from PySide6.QtQuick import QQuickItem, QQuickPaintedItem
 from PySide6.QtGui import QPen, QPainter
 from PySide6.QtQml import QJSValue
 
+from .ShoopPyObject import *
+
 from ..logging import Logger
 import ctypes
 import math
@@ -43,7 +45,7 @@ class Pyramid:
     def __del__(self):
         self.destroy()
 
-class RenderAudioWaveform(QQuickPaintedItem):
+class RenderAudioWaveform(ShoopQQuickPaintedItem):
     def __init__(self, parent=None):
         super(RenderAudioWaveform, self).__init__(parent)
         self._input_data = []

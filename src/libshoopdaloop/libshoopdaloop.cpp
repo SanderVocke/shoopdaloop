@@ -214,7 +214,11 @@ RType evaluate_before_or_after_process(std::function<RType()> fn, bool predicate
 
 // API FUNCTIONS
 
-shoopdaloop_backend_instance_t *initialize (
+void initialize_logging() {
+    logging::parse_conf_from_env();
+}
+
+shoopdaloop_backend_instance_t *create_backend (
     audio_system_type_t audio_system,
     const char* client_name_hint,
     const char* argstring) {
@@ -224,7 +228,7 @@ shoopdaloop_backend_instance_t *initialize (
     g_active_backends.insert(backend);
 
     auto rval = external_backend(backend);
-    logging::log<"Backend.API", debug>(std::nullopt, std::nullopt, "initialize");
+    logging::log<"Backend.API", debug>(std::nullopt, std::nullopt, "create_backend");
     return rval;
 }
 

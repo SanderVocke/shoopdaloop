@@ -7,6 +7,8 @@ import json
 from typing import *
 import sys
 
+from .ShoopPyObject import *
+
 from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
 from PySide6.QtQuick import QQuickItem
 
@@ -16,7 +18,7 @@ from ..logging import Logger
 from ..findFirstParent import findFirstParent
 
 # Wraps a back-end port.
-class Port(QQuickItem):
+class Port(ShoopQQuickItem):
     def __init__(self, parent=None):
         super(Port, self).__init__(parent)
         self._name_hint = None

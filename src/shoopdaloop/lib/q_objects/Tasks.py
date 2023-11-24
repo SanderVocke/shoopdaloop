@@ -1,11 +1,12 @@
 from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
 from PySide6.QtQml import QJSValue
+from .ShoopPyObject import *
 
 from ..logging import Logger
 
 # Keep track of a set of tasks.
 # Can itself also be used as a Task.
-class Tasks(QObject):
+class Tasks(ShoopQObject):
     def __init__(self, parent=None):
         super(Tasks, self).__init__(parent)
         self._tasks = []

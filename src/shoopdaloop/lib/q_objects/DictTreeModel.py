@@ -1,6 +1,7 @@
 from PySide6.QtCore import QAbstractItemModel, QModelIndex, QObject, Slot, QByteArray
 from PySide6.QtQml import QJSValue
 import re
+from .ShoopPyObject import *
 
 # A tree model which can be used with e.g. QML TreeView.
 # The model is read-only and low-performance (not meant for large datasets).
@@ -93,7 +94,7 @@ class DictTreeModel(QAbstractItemModel):
             0: QByteArray('display')
         }
 
-class DictTreeModelFactory(QObject):
+class DictTreeModelFactory(ShoopQObject):
     def __init__(self, parent=None):
         super(DictTreeModelFactory, self).__init__(parent)
     

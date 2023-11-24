@@ -1,8 +1,9 @@
 from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
 from PySide6.QtQml import QJSValue
+from .ShoopPyObject import *
 
 # Simple object that keeps track of an asynchronous task's execution.
-class Task(QObject):
+class Task(ShoopQObject):
     def __init__(self, parent=None):
         super(Task, self).__init__(parent)
         self._anything_to_do = True

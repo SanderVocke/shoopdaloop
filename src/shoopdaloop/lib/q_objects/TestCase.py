@@ -1,10 +1,11 @@
 from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
 from PySide6.QtQml import QJSValue
 from PySide6.QtQuick import QQuickItem
+from .ShoopPyObject import *
 
 from ..logging import Logger
 
-class TestCase(QQuickItem):
+class TestCase(ShoopQQuickItem):
     def __init__(self, parent=None):
         super(TestCase, self).__init__(parent)
         self._name = ''

@@ -11,6 +11,8 @@ import sys
 from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
 from PySide6.QtQuick import QQuickItem
 
+from .ShoopPyObject import *
+
 from .AudioPort import AudioPort
 from .Loop import Loop
 
@@ -21,7 +23,7 @@ from ..logging import Logger
 import traceback
 
 # Wraps a back-end loop channel.
-class LoopChannel(QQuickItem):
+class LoopChannel(ShoopQQuickItem):
     def __init__(self, parent=None):
         super(LoopChannel, self).__init__(parent)
         self._backend_obj = None

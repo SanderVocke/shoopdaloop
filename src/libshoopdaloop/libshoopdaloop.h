@@ -11,7 +11,7 @@ extern "C" {
 #endif
 
 // General
-SHOOP_EXPORT shoopdaloop_backend_instance_t *initialize (audio_system_type_t audio_system_type, const char* client_name_hint, const char* argstring);
+SHOOP_EXPORT shoopdaloop_backend_instance_t *create_backend (audio_system_type_t audio_system_type, const char* client_name_hint, const char* argstring);
 SHOOP_EXPORT void terminate_backend (shoopdaloop_backend_instance_t *backend);
 SHOOP_EXPORT void* maybe_jack_client_handle(shoopdaloop_backend_instance_t *backend);
 SHOOP_EXPORT const char *get_client_name(shoopdaloop_backend_instance_t *backend);
@@ -154,6 +154,7 @@ SHOOP_EXPORT midi_sequence_t *alloc_midi_sequence(unsigned n_events);
 SHOOP_EXPORT audio_channel_data_t *alloc_audio_channel_data(unsigned n_samples);
 
 // Logging
+SHOOP_EXPORT void initialize_logging();
 SHOOP_EXPORT shoopdaloop_logger_t *get_logger(const char* name);
 SHOOP_EXPORT void set_global_logging_level(log_level_t level);
 SHOOP_EXPORT void set_logger_level_override(shoopdaloop_logger_t *logger, log_level_t level);

@@ -1,6 +1,8 @@
 from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
 from PySide6.QtQuick import QQuickItem
 
+from .ShoopPyObject import *
+
 from ..logging import Logger as BaseLogger
 
 JackControlClient = None
@@ -14,7 +16,7 @@ try:
 except:
     pass
 
-class AutoConnect(QQuickItem):
+class AutoConnect(ShoopQQuickItem):
     def __init__(self, parent=None):
         super(AutoConnect, self).__init__(parent)
         self.logger = BaseLogger("Frontend.AutoConnect")
