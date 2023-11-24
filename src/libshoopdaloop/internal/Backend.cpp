@@ -352,7 +352,13 @@ void Backend::PROC_process_decoupled_midi_ports(uint32_t nframes) {
 }
 
 void Backend::terminate() {
+    cmd_queue.passthrough_on();
     for (auto &p : ports) {
+        if (p) {
+            p->port->close();
+        }
+    }
+    for (auto &p : decoupled_midi_ports) {
         if (p) {
             p->port->close();
         }

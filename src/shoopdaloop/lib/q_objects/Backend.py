@@ -160,11 +160,9 @@ class Backend(ShoopQQuickItem):
 
     @Slot()
     def close(self):
-        self.logger.info(lambda: "Closing back-end")
         if self._initialized:
             self._backend_obj.terminate()
         self._initialized = False
-        self.logger.info(lambda: "Back-end closed")
     
     # Get the wrapped back-end object.
     @Slot(result='QVariant')

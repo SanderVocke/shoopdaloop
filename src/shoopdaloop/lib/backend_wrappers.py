@@ -10,6 +10,7 @@ import threading
 import time
 
 script_dir = os.path.dirname(__file__)
+all_active_backends = set()
 
 try:
     # On Windows, shoopdaloop.dll depends on shared libraries in the same folder.
@@ -711,12 +712,27 @@ class Backend:
         dummy_audio_wait_process(self._c_handle)
 
     def terminate(self):
-        terminate_backend(self._c_handle)
+        global all_active_backends
+        try:
+            all_active_backends.remove(self)
+            if self._c_handle:
+                terminate_backend(self._c_handle)
+        except Exception:
+            pass
+
 
 def init_backend(backend_type : Type[BackendType], client_name_hint : str, argstring : str):
+    global all_active_backends
     _ptr = create_backend(backend_type.value, client_name_hint.encode('ascii'), argstring.encode('ascii'))
     b = Backend(_ptr)
+    all_active_backends.add(b)
     return b
+
+def terminate_all_backends():
+    global all_active_backends
+    bs = copy.copy(all_active_backends)
+    for b in bs:
+        b.terminate()
 
 def backend_type_is_supported(backend_type : Type[BackendType]):
     return bool(has_audio_system_support(backend_type.value))

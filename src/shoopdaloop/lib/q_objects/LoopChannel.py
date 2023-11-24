@@ -163,20 +163,20 @@ class LoopChannel(ShoopQQuickItem):
     connectedPortsChanged = Signal(list)
     @Property(list, notify=connectedPortsChanged)
     def connected_ports(self):
-        return self._connected_ports
+        return [p for p in self._connected_ports if p and p.isValid()]
     
     # ports to connect
     portsChanged = Signal(list)
     @Property(list, notify=portsChanged)
     def ports(self):
-        return self._ports
+        return [p for p in self._ports if p and p.isValid()]
     @ports.setter
     def ports(self, p):
         for port in self._connected_ports:
-            if p and port and not port in p:
+            if p and port and port.isValid() and not port in p:
                 self.disconnect(port)
         for port in p:
-            if p and port and not port in self._connected_ports:
+            if port and port.isValid() and not port in self._connected_ports:
                 self.connect_port(port)
         self._ports = p
     
@@ -198,6 +198,8 @@ class LoopChannel(ShoopQQuickItem):
 
     @Slot('QVariant')
     def connect_port(self, port):
+        if not port.isValid():
+            return
         if not self._backend_obj:
             self.__logger.debug(lambda: 'Defer connect to port')
             self.initializedChanged.connect(lambda: self.connect_port(port))
@@ -221,6 +223,8 @@ class LoopChannel(ShoopQQuickItem):
     
     @Slot('QVariant')
     def disconnect(self, port):
+        if not port.isValid():
+            return
         if not self._backend_obj:
             self.__logger.debug(lambda: 'Defer disconnect from port')
             self.initializedChanged.connect(lambda: self.disconnect(port))

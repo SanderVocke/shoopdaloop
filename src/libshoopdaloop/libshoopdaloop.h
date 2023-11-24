@@ -25,8 +25,6 @@ SHOOP_EXPORT unsigned has_audio_system_support(audio_system_type_t audio_system_
 SHOOP_EXPORT shoopdaloop_loop_t *create_loop(shoopdaloop_backend_instance_t *backend);
 SHOOP_EXPORT shoopdaloop_loop_audio_channel_t *add_audio_channel (shoopdaloop_loop_t *loop, channel_mode_t mode);
 SHOOP_EXPORT shoopdaloop_loop_midi_channel_t  *add_midi_channel  (shoopdaloop_loop_t *loop, channel_mode_t mode);
-SHOOP_EXPORT shoopdaloop_loop_audio_channel_t *get_audio_channel (shoopdaloop_loop_t *loop, unsigned idx);
-SHOOP_EXPORT shoopdaloop_loop_midi_channel_t  *get_midi_channel  (shoopdaloop_loop_t *loop, unsigned idx);
 SHOOP_EXPORT unsigned          get_n_audio_channels     (shoopdaloop_loop_t *loop);
 SHOOP_EXPORT unsigned          get_n_midi_channels      (shoopdaloop_loop_t *loop);
 SHOOP_EXPORT void              clear_loop               (shoopdaloop_loop_t *loop, unsigned length);

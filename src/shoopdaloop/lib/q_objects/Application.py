@@ -15,6 +15,7 @@ if have_nsm:
     from ...third_party.pynsm.nsmclient import NSMClient, NSMNotRunningError
 
 from ..qml_helpers import *
+from ..backend_wrappers import terminate_all_backends
 
 from .SchemaValidator import SchemaValidator
 from .FileIO import FileIO
@@ -48,7 +49,7 @@ class Application(ShoopQGuiApplication):
         self.setApplicationVersion(pkg_version)
         self.setOrganizationName('ShoopDaLoop')
 
-        self.logger = Logger("Frontend.Qml.App")
+        self.logger = Logger("Frontend.App")
 
         self.nsm_client = None
         self.title = title
@@ -106,6 +107,7 @@ class Application(ShoopQGuiApplication):
         
         if quit_on_quit:
             self.engine.quit.connect(self.do_quit)
+        self.aboutToQuit.connect(self.do_quit)
 
         self.engine.setOutputWarningsToStandardError(False)
         self.engine.objectCreated.connect(self.onQmlObjectCreated)
@@ -239,6 +241,8 @@ class Application(ShoopQGuiApplication):
 
     @Slot()
     def do_quit(self):
+        self.logger.debug("Quit requested")
+        terminate_all_backends()
         if self.engine:
             self.engine.destroyed.connect(self.quit)
             self.engine.collectGarbage()
