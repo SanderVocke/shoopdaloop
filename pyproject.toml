@@ -22,7 +22,7 @@ dependencies = [
   "pyside6-essentials~=6.6.0",
   "lupa",
   "appdirs",
-  "simpleaudio"
+  "pyaudio"
 ]
 
 keywords = ['music', 'midi', 'jack', 'looping']
