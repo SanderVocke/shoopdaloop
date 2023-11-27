@@ -1,6 +1,5 @@
 import os
 import tempfile
-import pyaudio as pa
 import sounddevice as sd
 import soundfile as sf
 
