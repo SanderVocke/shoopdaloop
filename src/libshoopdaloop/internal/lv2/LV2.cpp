@@ -14,7 +14,11 @@ namespace {
 
 LV2::LV2() : m_world(nullptr) {}
 
-LV2::~LV2() { lilv_world_free(m_world); }
+LV2::~LV2() { 
+    if (m_world) {
+        lilv_world_free(m_world);
+    }
+}
 
 template <typename TimeType, typename SizeType>
 std::shared_ptr<CarlaLV2ProcessingChain<TimeType, SizeType>>

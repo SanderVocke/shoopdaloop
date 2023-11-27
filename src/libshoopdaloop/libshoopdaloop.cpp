@@ -304,7 +304,7 @@ void terminate_backend(shoopdaloop_backend_instance_t *backend) {
         logging::log<"Backend.API", debug>(std::nullopt, std::nullopt, "terminate");
         auto _backend = internal_backend(backend);
         _backend->terminate();
-        //g_active_backends.erase(_backend);
+        g_active_backends.erase(_backend);
     });
 }
 

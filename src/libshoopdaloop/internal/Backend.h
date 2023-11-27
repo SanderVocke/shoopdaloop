@@ -23,6 +23,12 @@ class Backend : public std::enable_shared_from_this<Backend>,
                  public ModuleLoggingEnabled<"Backend"> {
 
 public:
+    enum class State {
+        NotStarted,
+        Running,
+        Terminated
+    };
+    std::atomic<State> ma_state;
 
     std::vector<std::shared_ptr<ConnectedLoop>> loops;
     std::vector<std::shared_ptr<ConnectedPort>> ports;

@@ -61,7 +61,8 @@ Backend::Backend(audio_system_type_t audio_system_type, std::string client_name_
               profiler->maybe_get_profiling_item("Process.Commands")),
           m_audio_system_type(audio_system_type),
           m_client_name_hint(client_name_hint),
-          m_argstring(argstring)
+          m_argstring(argstring),
+          ma_state(State::NotStarted)
 {
 }
 
@@ -149,6 +150,7 @@ void Backend::start() {
         fx_chains.reserve(initial_max_fx_chains);
         decoupled_midi_ports.reserve(initial_max_decoupled_midi_ports);
         audio_system->start();
+        ma_state = State::Running;
     }
 
 backend_state_info_t Backend::get_state() {
@@ -352,20 +354,23 @@ void Backend::PROC_process_decoupled_midi_ports(uint32_t nframes) {
 }
 
 void Backend::terminate() {
-    cmd_queue.passthrough_on();
-    for (auto &p : ports) {
-        if (p) {
-            p->port->close();
+    if (ma_state != State::Terminated) {
+        cmd_queue.passthrough_on();
+        for (auto &p : ports) {
+            if (p) {
+                p->port->close();
+            }
         }
-    }
-    for (auto &p : decoupled_midi_ports) {
-        if (p) {
-            p->port->close();
+        for (auto &p : decoupled_midi_ports) {
+            if (p) {
+                p->port->close();
+            }
         }
-    }
-    if(audio_system) {
-        audio_system->close();
-        audio_system.reset(nullptr);
+        if(audio_system) {
+            audio_system->close();
+            audio_system.reset(nullptr);
+        }
+        ma_state = State::Terminated;
     }
 }
 
