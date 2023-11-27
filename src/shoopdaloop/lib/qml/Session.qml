@@ -53,7 +53,7 @@ Item {
         onExecute: {
             screen_grabber.grab_all(output_folder)
             root.logger.info(() => ("Screenshots written to: " + output_folder + ". Quitting."))
-            Qt.callLater(Qt.quit())
+            Qt.callLater(Qt.quit)
         }
     }
     RegistrySelects {

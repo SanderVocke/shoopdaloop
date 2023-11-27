@@ -41,6 +41,8 @@ class Application(ShoopQGuiApplication):
                  ):
         super(Application, self).__init__([])
         
+        self._quitting = False
+        
         pkg_version = None
         with open(script_dir + '/../../version.txt', 'r') as f:
             pkg_version = f.read().strip()
@@ -242,11 +244,14 @@ class Application(ShoopQGuiApplication):
     @Slot()
     def do_quit(self):
         self.logger.debug("Quit requested")
-        terminate_all_backends()
-        if self.engine:
-            self.engine.destroyed.connect(self.quit)
-            self.engine.collectGarbage()
-            self.engine.deleteLater()
-        else:
-            self.quit()
+        if not self._quitting:
+            self._quitting = True
+            terminate_all_backends()
+            if self.engine:
+                self.engine.destroyed.connect(self.quit)
+                self.engine.collectGarbage()
+                self.engine.deleteLater()
+            else:
+                self.quit()
+    
         

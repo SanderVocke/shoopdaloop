@@ -355,6 +355,7 @@ void Backend::PROC_process_decoupled_midi_ports(uint32_t nframes) {
 
 void Backend::terminate() {
     if (ma_state != State::Terminated) {
+        log<debug>("Terminating backend");
         cmd_queue.passthrough_on();
         for (auto &p : ports) {
             if (p) {
@@ -371,6 +372,8 @@ void Backend::terminate() {
             audio_system.reset(nullptr);
         }
         ma_state = State::Terminated;
+    } else {
+        log<debug>("Backend already terminated");
     }
 }
 
