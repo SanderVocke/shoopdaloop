@@ -1,8 +1,8 @@
 import os
 import tempfile
 import pyaudio as pa
-import threading
-import wave
+import sounddevice as sd
+import soundfile as sf
 
 from PySide6.QtCore import QObject, Slot
 from .ShoopPyObject import *
@@ -10,19 +10,8 @@ from .ShoopPyObject import *
 from ..gen_click_track import gen_click_track
 
 def play_wav(filename):
-    with wave.open(filename, 'rb') as wav:
-        p = pa.PyAudio()
-        stream = p.open(format=p.get_format_from_width(wav.getsampwidth()),
-                        channels=wav.getnchannels(),
-                        rate=wav.getframerate(),
-                        output=True)
-        data = wav.readframes(1024)
-        while data:
-            stream.write(data)
-            data = wav.readframes(1024)
-        stream.stop_stream()
-        stream.close()
-        p.terminate()
+    data, fs = sf.read(filename, dtype='float32')
+    sd.play(data, fs)
 
 class ClickTrackGenerator(ShoopQObject):
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -47,7 +36,5 @@ class ClickTrackGenerator(ShoopQObject):
 
     @Slot(str)
     def preview(self, wav_filename):
-        play_thread = threading.Thread(target=play_wav, args=(wav_filename,))
-        play_thread.daemon = True
-        play_thread.start()
+        play_wav(wav_filename)
 
