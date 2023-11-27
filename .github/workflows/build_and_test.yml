@@ -313,7 +313,7 @@ jobs:
         python: ${{ matrix.kind.python }}
         qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
     - name: TMate failure session
-      if: ${{ failure() && matrix.kind.name == 'debug_windows' }}
+      if: ${{ failure() }}
       uses: SanderVocke/action-tmate@master
         
   # asan:
