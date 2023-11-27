@@ -13,6 +13,7 @@ libsamplerate
 libsndfile
 jack2
 mesa
+portaudio
 
 # scripting stuff
 procps-ng

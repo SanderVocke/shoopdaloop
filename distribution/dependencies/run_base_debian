@@ -15,6 +15,7 @@ libgl1-mesa-dev
 jackd2
 libsamplerate0
 libsndfile1
+libportaudio2
 
 # scripting stuff
 procps
