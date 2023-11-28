@@ -13,7 +13,6 @@ libsamplerate
 libsndfile
 jack2
 mesa
-alsa-lib
 portaudio
 
 # scripting stuff

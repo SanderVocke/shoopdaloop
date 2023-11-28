@@ -15,7 +15,6 @@ libgl1-mesa-dev
 jackd2
 libsamplerate0
 libsndfile1
-libasound2-dev
 libportaudio2
 
 # scripting stuff

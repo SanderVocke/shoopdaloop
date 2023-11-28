@@ -42,7 +42,7 @@ To summarize why ShoopDaLoop exists and what the goals and plans are, a short co
 | Transport/tempo system      | None (sync on master loop) | None             | JACK transport / MIDI beats | ? |
 
 (1): ShoopDaLoop has built-in support to host Carla through LV2, relying on Carla as a proxy to support other plugin types such as VST(3). <br>
-(2): Focus is on Linux for now until it is reasonably feature-complete. The design does not prevent moving to Mac + Windows in the future. <br>
+(2): Focus is on Linux for now until it is reasonably feature-complete. Windows and Mac builds already available, but not useful yet due to lacking audio and plugin support.<br>
 (3): ShoopDaLoop plug-in scripts are written in LUA. Currently the main goal is to support deep MIDI controller integrations and custom keyboard control scripts and opening/managing additional MIDI control ports. Future goals could be integration with the future song/performance sequencer or integration with the outside world by e.g. network.
 (4): ShooDaLoop supports "composite loops", allowing you to combine sequences of loops into other loops hierarchically. Through this method, complex sequences and simple songs can be constructed.
 (5): See (4): composite loops can be used as scenes.
