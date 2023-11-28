@@ -79,7 +79,7 @@ class Application(ShoopQGuiApplication):
         self.engine = None
         
         if main_qml:
-            self.reload(main_qml)
+            self.reload_qml(main_qml)
         
             def start_nsm():
                 if have_nsm:
@@ -100,11 +100,15 @@ class Application(ShoopQGuiApplication):
                 if len(self.engine.rootObjects()) > 0:
                     self.engine.rootObjects()[0].sceneGraphInitialized.connect(start_nsm)
     
-    def reload(self, filename, quit_on_quit=True):
+    def unload_qml(self):
         if self.engine:
+            self.engine.collectGarbage()
             self.engine.deleteLater()
+            self.wait(10)
             self.engine = None
-            
+            self.wait(10)
+    
+    def load_qml(self, filename, quit_on_quit=True):
         self.engine = QQmlApplicationEngine(parent=self)
         
         if quit_on_quit:
@@ -118,6 +122,10 @@ class Application(ShoopQGuiApplication):
         self.root_context_items = create_and_populate_root_context(self.engine, self.global_args, self.additional_root_context)
         
         self.engine.load(filename)
+    
+    def reload_qml(self, filename, quit_on_quit=True):
+        self.unload_qml()
+        self.load_qml(filename, quit_on_quit)        
     
     def exit(self, retcode):
         if self.nsm_client:

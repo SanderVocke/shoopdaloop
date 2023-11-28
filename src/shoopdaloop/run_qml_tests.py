@@ -79,15 +79,18 @@ def exit_now():
 app.exit_handler_called.connect(lambda: exit(1))
 
 for file in test_files:
-    filename = os.path.basename(file)
+    filename = os.path.basename(file)    
     print()
     logger.info('===== Test file: {} ====='.format(filename))
     
-    app.reload(file, False)    
+    app.load_qml(file, False)    
     
     while not runner.done:
         app.processEvents()
         time.sleep(0.001)
+    
+    app.unload_qml()
+    app.wait(50)
 
 # count totals
 passed = 0
