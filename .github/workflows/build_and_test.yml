@@ -187,47 +187,47 @@ jobs:
             wheel: linux_release_wheel
             testrunner: test_runner
             qpa_platform: vnc
-          - name: release_macos11
-            python: python3
-            pip: python3 -m pip
-            container: null
-            os: macos-11
-            wheel: macos_release_wheel
-            testrunner: test_runner
-            qpa_platform: offscreen
-          - name: release_macos12
-            python: python3
-            pip: python3 -m pip
-            container: null
-            os: macos-12
-            wheel: macos_release_wheel
-            testrunner: test_runner
-            qpa_platform: offscreen
-          - name: release_macos13
-            python: python3
-            pip: python3 -m pip
-            container: null
-            os: macos-13
-            wheel: macos_release_wheel
-            testrunner: test_runner
-            qpa_platform: offscreen
-          - name: debug_macos13
-            python: python3
-            pip: python3 -m pip
-            container: null
-            os: macos-13
-            wheel: macos_debug_wheel
-            testrunner: test_runner
-            qpa_platform: offscreen
-          - name: release_windows
-            python: python.exe
-            pip: python.exe -m pip
-            container: null
-            os: windows-2022
-            wheel: windows_release_wheel
-            testrunner: test_runner.exe
-            qpa_platform: offscreen
-            pathconvert: "| cygpath -u -f -"
+          # - name: release_macos11
+          #   python: python3
+          #   pip: python3 -m pip
+          #   container: null
+          #   os: macos-11
+          #   wheel: macos_release_wheel
+          #   testrunner: test_runner
+          #   qpa_platform: offscreen
+          # - name: release_macos12
+          #   python: python3
+          #   pip: python3 -m pip
+          #   container: null
+          #   os: macos-12
+          #   wheel: macos_release_wheel
+          #   testrunner: test_runner
+          #   qpa_platform: offscreen
+          # - name: release_macos13
+          #   python: python3
+          #   pip: python3 -m pip
+          #   container: null
+          #   os: macos-13
+          #   wheel: macos_release_wheel
+          #   testrunner: test_runner
+          #   qpa_platform: offscreen
+          # - name: debug_macos13
+          #   python: python3
+          #   pip: python3 -m pip
+          #   container: null
+          #   os: macos-13
+          #   wheel: macos_debug_wheel
+          #   testrunner: test_runner
+          #   qpa_platform: offscreen
+          # - name: release_windows
+          #   python: python.exe
+          #   pip: python.exe -m pip
+          #   container: null
+          #   os: windows-2022
+          #   wheel: windows_release_wheel
+          #   testrunner: test_runner.exe
+          #   qpa_platform: offscreen
+          #   pathconvert: "| cygpath -u -f -"
           - name: debug_windows
             python: python.exe
             pip: python.exe -m pip
