@@ -7,6 +7,7 @@ import argparse
 import signal
 import time
 import subprocess
+import platform
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-i', '--iterations', type=int, default=1, help='Amount of iterations to run')
@@ -20,6 +21,18 @@ n_unexpected_open = 0
 n_unexpected_closed = 0
 n_had_to_kill = 0
 n_nonzero_exit = 0
+
+def terminate(process):
+    if platform.system() == 'Windows':
+        process.send_signal(signal.CTRL_BREAK_EVENT)
+    else:
+        process.terminate()
+
+def exit_code_ok(code):
+    if platform.system() == 'Windows':
+        return code in [0, 0xC000013A]
+    else:
+        return code == 0
 
 for i in range(args.iterations):
     print('''
@@ -35,7 +48,10 @@ for i in range(args.iterations):
         return process.poll()
     
     # Start the process
-    process = subprocess.Popen(args.command)
+    if platform.system() == 'Windows':
+        process = subprocess.Popen(args.command, creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
+    else:
+        process = subprocess.Popen(args.command)
 
     # Wait for args.wait_ms_before_close milliseconds
     wait_and_poll(process, args.wait_ms_before_close)
@@ -50,7 +66,7 @@ for i in range(args.iterations):
     
     # Try to terminate the process gracefully
     print('== REPEAT_RUN_APP: Terminate')
-    process.terminate()
+    terminate(process)
     if wait_and_poll(process, args.wait_ms_before_kill) is None:
         # Process is still running, so we'll use SIGKILL to force it to exit
         print('== REPEAT_RUN_APP ERROR: Process did not exit gracefully, hard-killing')
@@ -60,8 +76,8 @@ for i in range(args.iterations):
         # Process exited gracefully
         print('== REPEAT_RUN_APP: Process exited gracefully after termination')
     
-    if process.poll() is not None and process.poll() != 0:
-        print('== REPEAT_RUN_APP ERROR: Process exited with nonzero exit code {}'.format(process.poll()))
+    if process.poll() is not None and not exit_code_ok(process.poll()):
+        print('== REPEAT_RUN_APP ERROR: Process exited with non-OK exit code {}'.format(process.poll()))
         n_nonzero_exit += 1
 
 if n_unexpected_open == 0 and n_unexpected_closed == 0 and n_nonzero_exit == 0 and n_had_to_kill == 0:
