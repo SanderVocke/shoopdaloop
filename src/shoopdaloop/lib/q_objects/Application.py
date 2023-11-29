@@ -99,6 +99,8 @@ class Application(ShoopQGuiApplication):
             if nsm:
                 if len(self.engine.rootObjects()) > 0:
                     self.engine.rootObjects()[0].sceneGraphInitialized.connect(start_nsm)
+        
+        self.setWindowIcon(QIcon(os.path.join(script_dir, '..', '..', 'resources', 'icon', 'icon-128.png')))
     
     def unload_qml(self):
         if self.engine:
