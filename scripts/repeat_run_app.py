@@ -22,15 +22,34 @@ n_unexpected_closed = 0
 n_had_to_kill = 0
 n_nonzero_exit = 0
 
+def get_subprocess_main_window(proc):
+    if platform.system() == 'Windows':
+        import win32gui
+        import win32process
+        def enum_windows_callback(hwnd, _):
+            if win32gui.IsWindowVisible(hwnd):
+                _, pid = win32process.GetWindowThreadProcessId(hwnd)
+                if pid == proc.pid:
+                    return hwnd
+
+        return win32gui.EnumWindows(enum_windows_callback, None)
+    return None
+
 def terminate(process):
     if platform.system() == 'Windows':
-        process.send_signal(signal.CTRL_BREAK_EVENT)
-    else:
-        process.terminate()
+        # First, attempt to close via the windowing system.
+        win = get_subprocess_main_window(process)
+        if win:
+            import win32gui
+            import win32con
+            print ("============ use WM_CLOSE")
+            win32gui.PostMessage(win, win32con.WM_CLOSE, 0, 0)
+            return    
+    process.terminate()
 
 def exit_code_ok(code):
     if platform.system() == 'Windows':
-        return code in [0, 0xC000013A]
+        return code in [0, 1, 0xC000013A]
     else:
         return code == 0
 
@@ -48,10 +67,7 @@ for i in range(args.iterations):
         return process.poll()
     
     # Start the process
-    if platform.system() == 'Windows':
-        process = subprocess.Popen(args.command, creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
-    else:
-        process = subprocess.Popen(args.command)
+    process = subprocess.Popen(args.command)
 
     # Wait for args.wait_ms_before_close milliseconds
     wait_and_poll(process, args.wait_ms_before_close)

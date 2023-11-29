@@ -147,7 +147,6 @@ class Application(ShoopQGuiApplication):
     
     def exit_handler(self):
         if self.engine:
-            self.logger.warning(lambda: "EXIT HANDLER")
             QMetaObject.invokeMethod(self.engine, 'quit')
             self.exit_handler_called.emit()
     
