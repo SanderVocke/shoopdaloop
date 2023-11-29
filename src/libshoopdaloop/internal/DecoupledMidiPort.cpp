@@ -60,6 +60,11 @@ void DecoupledMidiPort<TimeType, SizeType>::push_outgoing(
     ma_queue.push(m);
 }
 
+template <typename TimeType, typename SizeType>
+void DecoupledMidiPort<TimeType, SizeType>::close() {
+    port->close();
+}
+
 template class DecoupledMidiPort<uint32_t, uint16_t>;
 template class DecoupledMidiPort<uint32_t, uint32_t>;
 template class DecoupledMidiPort<uint16_t, uint16_t>;

@@ -19,14 +19,21 @@ runs:
   - name: Install pkgconfig lite
     shell: bash
     run: |
-      curl -L https://github.com/SanderVocke/shoopdaloop/releases/download/qt-6.6.0-1/pkg-config-lite-0.28-1_bin-win32.zip --output pkg-config-lite-0.28-1_bin-win32.zip
+      curl -L https://github.com/SanderVocke/shoopdaloop/releases/download/build-assets-1/pkg-config-lite-0.28-1_bin-win32.zip --output pkg-config-lite-0.28-1_bin-win32.zip
       unzip pkg-config-lite-0.28-1_bin-win32.zip
       cp pkg-config-lite-0.28-1/bin/* /c/mingw64/bin
+  - name: Install JACK
+    shell: pwsh
+    run: |
+      curl -L https://github.com/SanderVocke/shoopdaloop/releases/download/build-assets-1/jack2-win64-v1.9.22-assets.zip --output jack2-win64-v1.9.22-assets.zip
+      unzip jack2-win64-v1.9.22-assets.zip -d jack
+
   - name: Path conversion
     id: pathconvert
     shell: bash
     run: |
-      echo "include_dir=$(cygpath -w ${{ steps.install_boost.outputs.include_dir }})" | tee -a $GITHUB_OUTPUT
+      echo "boost_include_dir=$(cygpath -w ${{ steps.install_boost.outputs.include_dir }})" | tee -a $GITHUB_OUTPUT
+      echo "jack_dir=$(cygpath -w $(pwd)/jack)" | tee -a $GITHUB_OUTPUT
   - name: Set up Clang
     uses: egor-tensin/setup-clang@v1
     with:
@@ -37,4 +44,4 @@ runs:
     run: |
       python -m pip install build virtualenv pytest meson
       choco install -y ninja
-      echo "set \"CMAKE_INCLUDE_PATH=${{ steps.pathconvert.outputs.include_dir }}\" &&" > prepend_build_cmd.txt
+      echo "set \"CMAKE_INCLUDE_PATH=${{ steps.pathconvert.outputs.boost_include_dir }}\" && set \"CMAKE_PREFIX_PATH=${{ steps.pathconvert.outputs.jack_dir }}\" &&" > prepend_build_cmd.txt

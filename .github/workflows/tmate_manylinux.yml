@@ -10,7 +10,7 @@ jobs:
   tmate:
     runs-on: ubuntu-latest
     container:
-      image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
+      image: quay.io/pypa/manylinux_2_28_x86_64:latest
       options: --user root --workdir /
     steps:
     - name: Checkout

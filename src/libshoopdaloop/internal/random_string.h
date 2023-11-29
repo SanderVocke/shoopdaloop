@@ -1,6 +1,6 @@
 #include <ctime>
 #include <iostream>
-#include <unistd.h>
+#include <cstdlib>
 
 inline std::string random_string(const int len) {
     static const char alphanum[] =

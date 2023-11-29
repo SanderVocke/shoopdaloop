@@ -28,4 +28,4 @@ runs:
     shell: bash
     run: |
       touch _macos_prepared
-      echo "MACOSX_DEPLOYMENT_TARGET=10.16 CMAKE_INCLUDE_PATH=${{ github.workspace }}/includes" > prepend_build_cmd.txt
+      echo "CMAKE_INCLUDE_PATH=${{ github.workspace }}/includes" > prepend_build_cmd.txt

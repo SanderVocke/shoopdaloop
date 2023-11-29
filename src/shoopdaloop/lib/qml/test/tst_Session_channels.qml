@@ -46,14 +46,14 @@ AppRegistries {
 
             function loop() { return track().loops[0] }
 
-            function initTestCase() {
+            testcase_init_fn: () =>  {
                 run_case("initTestCase" , () => {
                     session.backend.dummy_enter_controlled_mode()
                 })
             }
 
-            function test_channels() {
-                run_case("test_channels" , () => {
+            test_fns: ({
+                "test_channels": () => {
                     check_backend()
                     let ori = session.initial_descriptor
 
@@ -75,8 +75,8 @@ AppRegistries {
                     verify_true(loop())
                     verify_eq(loop().actual_session_descriptor().channels.length, 2)
                     verify_eq(session.actual_session_descriptor(), ori)
-                })
-            }
+                }
+            })
         }
     }
 }

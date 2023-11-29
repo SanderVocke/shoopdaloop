@@ -22,7 +22,7 @@ ShoopTestCase {
         backend.doUpdate()
     }
 
-    function initTestCase() {
+    testcase_init_fn: () =>  {
         check_backend()
     }
 }

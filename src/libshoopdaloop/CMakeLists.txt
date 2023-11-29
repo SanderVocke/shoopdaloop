@@ -46,25 +46,8 @@ find_package(Boost REQUIRED)
 if (BACKEND_JACK)
   # Generate a wrapper for libjack which allows dynamic loading using dlopen
   find_package(Jack REQUIRED)
-  get_filename_component(JACK_LIBNAME ${JACK_LIBRARIES} NAME)
-  add_custom_command(
-    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.c ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.h
-    COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers
-    COMMAND ${PYTHON_CMD} "${CMAKE_SOURCE_DIR}/../third_party/dynload-wrapper/generate-wrapper.py" --include "${JACK_INCLUDE_DIRS}/jack/jack.h" --include "${JACK_INCLUDE_DIRS}/jack/midiport.h" --sys-include '<jack/jack.h>' --sys-include '<jack/midiport.h>' --soname "${JACK_LIBNAME}" --init-name jack_wrappers --output-header "${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.h" --output-implementation "${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.c"
-    COMMENT "Generating libjack dynload wrapper"
-  )
-  add_custom_target(
-    jack_wrappers_impl
-    ALL
-    DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.c ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.h
-    )
-  set(JACKWRAPPERS_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers})
-  add_library(jack_wrappers STATIC ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers/jack_wrappers.c)
-  set_property(TARGET jack_wrappers PROPERTY POSITION_INDEPENDENT_CODE ON)
-  target_include_directories(jack_wrappers INTERFACE ${CMAKE_CURRENT_BINARY_DIR}/jack_wrappers)
   add_compile_definitions(-DSHOOP_HAVE_BACKEND_JACK)
 endif()
-
 
 # Generate the run cmd prefix so that it can be referred to after the build (e.g. when running tests)
 add_custom_command(
@@ -78,13 +61,22 @@ add_custom_target(
   DEPENDS ${CMAKE_BINARY_DIR}/run_cmd_prefix.txt
 )
 
-set(STATIC_DEPS_PREFIX ${CMAKE_CURRENT_BINARY_DIR}/static-deps)
+set(EXTERNAL_DEPS_PREFIX ${CMAKE_CURRENT_BINARY_DIR}/external_deps)
 
+# Backend lib
+file(GLOB INTERNAL_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/internal/*.cpp)
 if (HAVE_LV2)
-  include (${CMAKE_CURRENT_SOURCE_DIR}/BuildStaticDependencies.cmake)
-  add_subdirectory(${CMAKE_SOURCE_DIR}/../third_party/lv2_evbuf lv2_evbuf)
-  set_target_properties(lv2_evbuf PROPERTIES POSITION_INDEPENDENT_CODE ON)
-  add_dependencies(lv2_evbuf lv2)
+  include (${CMAKE_CURRENT_SOURCE_DIR}/BuildLV2Projects.cmake)
+  file(GLOB LV2_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/internal/lv2/*.cpp)
+  list(APPEND INTERNAL_SOURCES ${LV2_SOURCES}
+       ${CMAKE_SOURCE_DIR}/../third_party/lv2_evbuf/lv2_evbuf.c)
+  include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal/lv2
+                      ${CMAKE_SOURCE_DIR/../third_party/lv2_evbuf})
+endif()
+if (BACKEND_JACK)
+  file(GLOB JACK_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/internal/jack/*.cpp)
+  list(APPEND INTERNAL_SOURCES ${JACK_SOURCES})
+  include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal/jack)
 endif()
 
 # Includes
@@ -95,21 +87,7 @@ include_directories(${CMAKE_SOURCE_DIR}/../third_party/nlohmann_json)
 add_subdirectory(test)
 add_subdirectory(accelerate)
 
-# Backend lib
-file(GLOB INTERNAL_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/internal/*.cpp)
-if (HAVE_LV2)
-  file(GLOB LV2_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/internal/lv2/*.cpp)
-  list(APPEND INTERNAL_SOURCES ${LV2_SOURCES})
-  message(${INTERNAL_SOURCES})
-  include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal/lv2)
-endif()
-if (BACKEND_JACK)
-  file(GLOB JACK_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/internal/jack/*.cpp)
-  list(APPEND INTERNAL_SOURCES ${JACK_SOURCES})
-  include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal/jack)
-endif()
-
-add_library(shoopdaloop_internals OBJECT libshoopdaloop.cpp ${INTERNAL_SOURCES})
+add_library(shoopdaloop_internals STATIC libshoopdaloop.cpp ${INTERNAL_SOURCES})
 set_target_properties(shoopdaloop_internals PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(shoopdaloop_internals
                         PRIVATE
@@ -117,34 +95,38 @@ target_include_directories(shoopdaloop_internals
                         ${CMAKE_CURRENT_BINARY_DIR}
                         ${Boost_INCLUDE_DIR}
                         )
-target_link_libraries(shoopdaloop_internals PUBLIC Threads::Threads)
-
-add_library(shoopdaloop SHARED)
-target_link_libraries(shoopdaloop PRIVATE shoopdaloop_internals)
-set_property(TARGET shoopdaloop PROPERTY POSITION_INDEPENDENT_CODE ON)
-if(UNIX)
-  target_link_options(shoopdaloop PRIVATE -static-libstdc++)
+target_link_libraries(shoopdaloop_internals PRIVATE Threads::Threads fmt::fmt)
+if (UNIX)
+    target_link_libraries(shoopdaloop_internals PUBLIC dl)
 endif()
-
 if (HAVE_LV2)
-  add_dependencies(shoopdaloop_internals ${DEPEND_ON_LILV})
-  target_link_libraries(shoopdaloop_internals PUBLIC
-                        lv2_evbuf
-                        ${LV2_LIBRARIES}
-                        ${LILV_LIBRARIES}
-                        dl)
   target_include_directories(shoopdaloop_internals
                           PRIVATE
                           ${CMAKE_SOURCE_DIR}/../third_party/lv2_evbuf
                           ${LV2_INCLUDE_DIRS}
-                          ${LILV_INCLUDE_DIRS}
                           ${CMAKE_SOURCE_DIR}/../third_party/lv2_external_ui
                           )
+  add_dependencies(shoopdaloop_internals lilv_proj)
 endif()
 if (BACKEND_JACK)
-  add_dependencies(shoopdaloop_internals jack_wrappers)
-  target_link_libraries(shoopdaloop_internals PUBLIC jack_wrappers)
-endif ()
+  target_include_directories(shoopdaloop_internals PRIVATE ${JACK_INCLUDE_DIRS})
+endif()
+
+file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/empty.cpp "#include \"libshoopdaloop.h\"")
+add_library(shoopdaloop SHARED ${CMAKE_CURRENT_BINARY_DIR}/empty.cpp)
+target_link_libraries(shoopdaloop PRIVATE "$<LINK_LIBRARY:WHOLE_ARCHIVE,shoopdaloop_internals>")
+
+if(UNIX)
+  set_target_properties(shoopdaloop PROPERTIES
+    INSTALL_RPATH "$ORIGIN/"  # Load .so's from same directory
+  )
+elseif(APPLE)
+  set_target_properties(shoopdaloop PROPERTIES
+      BUILD_WITH_INSTALL_RPATH TRUE
+      INSTALL_RPATH "@loader_path/"  # Load dylibs from same directory
+  )
+endif()
+
 install(TARGETS shoopdaloop
         EXCLUDE_FROM_ALL
         COMPONENT package_install
@@ -187,10 +169,10 @@ set(OUR_PYTHONPATH "$ENV{PYTHONPATH}${PATH_SEP}${CMAKE_CURRENT_BINARY_DIR}${PATH
 set(GENERATED_TYPES_JS ${CMAKE_CURRENT_BINARY_DIR}/types.js)
 add_custom_command(
   OUTPUT ${GENERATED_TYPES_JS}
-  COMMAND ${RUN_CMD_PREFIX} ${CMAKE_COMMAND} -E env ASAN_OPTIONS=detect_leaks=0 PYTHONPATH="${OUR_PYTHONPATH}" "${PYTHON_CMD}" gen_js_enums.py "${GENERATED_TYPES_JS}"
+  COMMAND ${RUN_CMD_PREFIX} ${CMAKE_COMMAND} -E env ASAN_OPTIONS=detect_leaks=0 PYTHONPATH="${OUR_PYTHONPATH}" "${PYTHON_CMD}" ${CMAKE_SOURCE_DIR}/codegen/gen_js_enums.py "${GENERATED_TYPES_JS}"
   COMMENT "Generating Javascript types."
   DEPENDS c_bindings shoopdaloop
-  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/codegen
+  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/libshoopdaloop
   )
 add_custom_target(
   javascript_types

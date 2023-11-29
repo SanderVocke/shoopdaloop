@@ -4,12 +4,14 @@ import sys
 from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
 from PySide6.QtQml import QJSValue
 
+from .ShoopPyObject import *
+
 from ..session_schemas.session_schemas import validate_session_object
 import json
 from ..logging import *
 
 # Wraps a back-end port.
-class SchemaValidator(QObject):
+class SchemaValidator(ShoopQObject):
     def __init__(self, parent=None):
         super(SchemaValidator, self).__init__(parent)
         self.logger = Logger("Frontend.SchemaValidator")

@@ -9,6 +9,8 @@ import sys
 from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
 from PySide6.QtQuick import QQuickItem
 
+from .ShoopPyObject import *
+
 from ..backend_wrappers import *
 from ..mode_helpers import is_playing_mode
 from ..q_objects.Backend import Backend
@@ -17,7 +19,7 @@ from ..findChildItems import findChildItems
 from ..logging import Logger
 
 # Wraps a back-end FX chain.
-class FXChain(QQuickItem):
+class FXChain(ShoopQQuickItem):
     def __init__(self, parent=None):
         super(FXChain, self).__init__(parent)
         self._active = True

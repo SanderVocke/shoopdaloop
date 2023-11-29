@@ -1,6 +1,8 @@
 from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
 from PySide6.QtQuick import QQuickItem
 
+from .ShoopPyObject import *
+
 from ..logging import Logger as BaseLogger
 from ..findFirstParent import findFirstParent
 
@@ -10,7 +12,7 @@ from ..backend_wrappers import *
 from ..midi_helpers import *
 
 from ..lua_qobject_interface import create_lua_qobject_interface, lua_int
-class MidiControlPort(QQuickItem):
+class MidiControlPort(ShoopQQuickItem):
     
     # MIDI control port has several Lua interfaces to query its state
     # from the Lua side.

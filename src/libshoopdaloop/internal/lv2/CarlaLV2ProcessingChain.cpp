@@ -8,11 +8,10 @@
 #include <atomic>
 #include <chrono>
 #include <iostream>
-#include <dlfcn.h>
 #include <thread>
 #include <nlohmann/json.hpp>
 #include <base64.hpp>
-
+#include "LoadDynamicLibrary.h"
 namespace carla_constants {
     constexpr uint32_t max_buffer_size = 8192;
     constexpr uint32_t min_buffer_size = 1;
@@ -240,7 +239,11 @@ CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
     LilvNode *uri = lilv_new_uri(lilv_world, m_plugin_uri.c_str());
     m_plugin = lilv_plugins_get_by_uri(all_plugins, uri);
     if (!m_plugin) {
+        #ifdef _WIN32
+        throw_error<std::runtime_error>("Plugin {} not found. Ensure you have Carla installed as Carla.lv2 in your LV2_PATH. Default plugins search path is C:\\Program Files\\Common Files\\LV2.", m_plugin_uri);
+        #else
         throw_error<std::runtime_error>("Plugin {} not found.", m_plugin_uri);
+        #endif
     }
 
     // Set up URID mapping feature and map some URIs we need.
@@ -346,16 +349,12 @@ CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
 
         const LilvNode *ui_binary_uri = lilv_ui_get_binary_uri(m_ui);
         const char *ui_binary_path = lilv_node_get_path(ui_binary_uri, nullptr);
-        void *ui_lib_handle = dlopen(ui_binary_path, RTLD_LAZY);
-        if (!ui_lib_handle) {
-            const char *error_message = dlerror();
-            throw_error<std::runtime_error>(
-                "Could not load UI library {}: {}", ui_binary_path, error_message);
-        }
         log<debug>("Loading UI library: {}",
                                       ui_binary_path);
+        _dylib_handle ui_lib_handle = load_dylib(ui_binary_path);
+        throw_if_dylib_error();
         LV2UI_DescriptorFunction _get_ui_descriptor =
-            (LV2UI_DescriptorFunction)dlsym(ui_lib_handle, "lv2ui_descriptor");
+            (LV2UI_DescriptorFunction)get_dylib_fn(ui_lib_handle, "lv2ui_descriptor");
         if (!_get_ui_descriptor) {
             throw_error<std::runtime_error>(
                 "Could not load UI descriptor entry point (lv2ui_descriptor symbol in {}).", ui_binary_path);

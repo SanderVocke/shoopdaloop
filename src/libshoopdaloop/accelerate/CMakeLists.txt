@@ -1,8 +1,5 @@
 add_library(shoop_accelerate SHARED shoop_accelerate.cpp)
 set_property(TARGET shoop_accelerate PROPERTY POSITION_INDEPENDENT_CODE ON)
-if(UNIX)
-  target_link_options(shoop_accelerate PRIVATE -static-libstdc++)
-endif()
 target_include_directories(shoop_accelerate INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 
 # Generate C bindings

@@ -14,20 +14,21 @@ Item {
     property bool ran: false
     property bool listening: false
 
-    LuaScript {
-        id: script
-        when: engine.ready
-        lua_engine: engine
-
-        onRanScript: {
-            ran = true
-            listening = (control_interface.engine_registered(engine))
-        }
-    }
-
     LuaEngine {
         id: engine
         ready: false
+
+        LuaScript {
+            id: script
+            when: engine && engine.ready
+            lua_engine: engine
+
+            onRanScript: {
+                ran = true
+                listening = (control_interface.engine_registered(engine))
+            }
+        }
+
         function update() {
             if (root.control_interface) {
                 create_lua_qobject_interface_as_global('__shoop_control_interface', root.control_interface)

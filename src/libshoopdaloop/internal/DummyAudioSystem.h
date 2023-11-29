@@ -210,10 +210,6 @@ public:
     // Run until the requested amount of samples has been completed.
     void controlled_mode_run_request(uint32_t timeout_ms = 100);
 
-    // Post process handler gets passed the amount of samples to process
-    // and the amount of samples that were requested in controlled mode, if any
-    void install_post_process_handler(std::function<void(uint32_t, uint32_t)> cb);
-
     void wait_process();
 };
 

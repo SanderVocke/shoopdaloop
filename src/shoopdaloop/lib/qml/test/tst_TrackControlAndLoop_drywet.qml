@@ -107,7 +107,7 @@ AppRegistries {
             }
             property alias fx: lookup_fx.object
 
-            function initTestCase() {
+            testcase_init_fn: () =>  {
                 session.backend.dummy_enter_controlled_mode()
                 verify_true(input_port_1)
                 verify_true(input_port_2)
@@ -154,8 +154,8 @@ AppRegistries {
                 return a.map((value, index) => value + b[index]);
             }
 
-            function test_drywet_audio_record_no_monitor() {
-                run_case('test_drywet_audio_record_no_monitor', () => {
+            test_fns: ({
+                'test_drywet_audio_record_no_monitor': () => {
                     check_backend()
                     reset()
                     tut_control().monitor = false
@@ -185,11 +185,9 @@ AppRegistries {
                     verify_eq(wet1, [1, 2, 3, 4])
                     verify_eq(wet2, [4, 3, 2, 1])
 
-                })
-            }
+                },
 
-            function test_drywet_midi_record_no_monitor() {
-                run_case('test_drywet_midi_record_no_monitor', () => {
+                'test_drywet_midi_record_no_monitor': () => {
                     check_backend()
                     reset()
                     tut_control().monitor = false
@@ -243,11 +241,9 @@ AppRegistries {
                     verify_approx(out1, expect_out)
                     verify_approx(out2, expect_out)
                     verify_eq(midi, expect_loop, true)
-                })
-            }
+                },
 
-            function test_drywet_audio_record_monitor() {
-                run_case('test_drywet_audio_record_monitor', () => {
+                'test_drywet_audio_record_monitor': () => {
                     check_backend()
                     reset()
                     tut_control().monitor = true
@@ -277,11 +273,9 @@ AppRegistries {
                     verify_eq(wet1, [1, 2, 3, 4])
                     verify_eq(wet2, [4, 3, 2, 1])
 
-                })
-            }
+                },
 
-            function test_drywet_midi_record_monitor() {
-                run_case('test_drywet_midi_record_monitor', () => {
+                'test_drywet_midi_record_monitor': () => {
                     check_backend()
                     reset()
                     tut_control().monitor = true
@@ -335,11 +329,9 @@ AppRegistries {
                     verify_approx(out1, expect_out)
                     verify_approx(out2, expect_out)
                     verify_eq(midi, expect_loop, true)
-                })
-            }
+                },
 
-            function test_drywet_audio_play_no_monitor() {
-                run_case('test_drywet_audio_play_no_monitor', () => {
+                'test_drywet_audio_play_no_monitor': () => {
                     check_backend()
                     reset()
                     tut_control().monitor = false
@@ -374,11 +366,9 @@ AppRegistries {
                     verify_eq(wet1, [5, 6, 7, 8])
                     verify_eq(wet2, [8, 7, 6, 5])
 
-                })
-            }
+                },
 
-            function test_drywet_midi_play_no_monitor() {
-                run_case('test_drywet_midi_play_no_monitor', () => {
+                'test_drywet_midi_play_no_monitor': () => {
                     check_backend()
                     reset()
                     tut_control().monitor = false
@@ -430,11 +420,9 @@ AppRegistries {
                     verify_eq(wet1, [5, 6, 7, 8])
                     verify_eq(wet2, [8, 7, 6, 5])
                     verify_eq(midi, midichan, true)
-                })
-            }
+                },
 
-            function test_drywet_audio_play_monitor() {
-                run_case('test_drywet_audio_play_monitor', () => {
+                'test_drywet_audio_play_monitor': () => {
                     check_backend()
                     reset()
                     tut_control().monitor = true
@@ -470,11 +458,9 @@ AppRegistries {
 
                     verify_true(fx.active)
 
-                })
-            }
+                },
 
-            function test_drywet_midi_play_monitor() {
-                run_case('test_drywet_midi_play_monitor', () => {
+                'test_drywet_midi_play_monitor': () => {
                     check_backend()
                     reset()
                     tut_control().monitor = true
@@ -531,11 +517,9 @@ AppRegistries {
                     verify_eq(wet1, [5, 6, 7, 8])
                     verify_eq(wet2, [8, 7, 6, 5])
                     verify_eq(midi, midichan, true)
-                })
-            }
+                },
 
-            function test_drywet_audio_playdry_no_monitor() {
-                run_case('test_drywet_audio_playdry_no_monitor', () => {
+                'test_drywet_audio_playdry_no_monitor': () => {
                     check_backend()
                     reset()
                     tut_control().monitor = false
@@ -573,11 +557,9 @@ AppRegistries {
                     verify_eq(wet1, [5, 6, 7, 8])
                     verify_eq(wet2, [8, 7, 6, 5])
 
-                })
-            }
+                },
 
-            function test_drywet_midi_playdry_no_monitor() {
-                run_case('test_drywet_midi_playdry_no_monitor', () => {
+                'test_drywet_midi_playdry_no_monitor': () => {
                     check_backend()
                     reset()
                     tut_control().monitor = false
@@ -641,11 +623,9 @@ AppRegistries {
                     verify_eq(wet1, [5, 6, 7, 8])
                     verify_eq(wet2, [8, 7, 6, 5])
                     verify_eq(midi, midichan, true)
-                })
-            }
+                },
 
-            function test_drywet_audio_playdry_monitor() {
-                run_case('test_drywet_audio_playdry_monitor', () => {
+                'test_drywet_audio_playdry_monitor': () => {
                     check_backend()
                     reset()
                     tut_control().monitor = true
@@ -680,11 +660,9 @@ AppRegistries {
                     verify_eq(wet1, [5, 6, 7, 8])
                     verify_eq(wet2, [8, 7, 6, 5])
 
-                })
-            }
+                },
 
-            function test_drywet_midi_playdry_monitor() {
-                run_case('test_drywet_midi_playdry_monitor', () => {
+                'test_drywet_midi_playdry_monitor': () => {
                     check_backend()
                     reset()
                     tut_control().monitor = true
@@ -749,11 +727,9 @@ AppRegistries {
                     verify_eq(wet1, [5, 6, 7, 8])
                     verify_eq(wet2, [8, 7, 6, 5])
                     verify_eq(midi, midichan, true)
-                })
-            }
+                },
 
-            function test_drywet_audio_rerecord_no_monitor() {
-                run_case('test_drywet_audio_rerecord_no_monitor', () => {
+                'test_drywet_audio_rerecord_no_monitor': () => {
                     check_backend()
                     reset()
                     tut_control().monitor = false
@@ -791,11 +767,9 @@ AppRegistries {
                     verify_eq(wet1, [25, 30, 35, 40])
                     verify_eq(wet2, [40, 35, 30, 25])
 
-                })
-            }
+                },
 
-            function test_drywet_midi_rerecord_no_monitor() {
-                run_case('test_drywet_midi_rerecord_no_monitor', () => {
+                'test_drywet_midi_rerecord_no_monitor': () => {
                     check_backend()
                     reset()
                     tut_control().monitor = false
@@ -859,11 +833,9 @@ AppRegistries {
                     verify_approx(wet1, elems_add(synthed_chan, [50, 60, 70, 80]))
                     verify_approx(wet2, elems_add(synthed_chan, [80, 70, 60, 50]))
                     verify_eq(midi, midichan, true)
-                })
-            }
+                },
 
-            function test_drywet_audio_rerecord_monitor() {
-                run_case('test_drywet_audio_rerecord_monitor', () => {
+                'test_drywet_audio_rerecord_monitor': () => {
                     check_backend()
                     reset()
                     tut_control().monitor = true
@@ -899,11 +871,9 @@ AppRegistries {
                     verify_eq(wet1, [25, 30, 35, 40])
                     verify_eq(wet2, [40, 35, 30, 25])
 
-                })
-            }
+                },
 
-            function test_drywet_midi_rerecord_monitor() {
-                run_case('test_drywet_midi_rerecord_monitor', () => {
+                'test_drywet_midi_rerecord_monitor': () => {
                     check_backend()
                     reset()
                     tut_control().monitor = true
@@ -968,8 +938,8 @@ AppRegistries {
                     verify_approx(wet1, elems_add(synthed_both, [50, 60, 70, 80]))
                     verify_approx(wet2, elems_add(synthed_both, [80, 70, 60, 50]))
                     verify_eq(midi, midichan, true)
-                })
-            }
+                },
+            })
         }
     }
 }

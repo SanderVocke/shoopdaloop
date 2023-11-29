@@ -79,12 +79,13 @@ Backend {
     ShoopTestCase {
         name: 'JackPorts'
         filename : TestFilename.test_filename()
-        when: audio_in.initialized
+        when: audio_in.initialized && audio_out.initialized && midi_in.initialized && midi_out.initialized
 
-        function test_available_ports() {
-            run_case('test_available_ports', () => {
+        test_fns: ({
+            'test_available_ports': () => {
                 if(!backend.backend_type_is_supported(Types.BackendType.JackTest)) {
                     skip("Backend was built without Jack support")
+                    return
                 }
                 verify(backend.initialized)
 
@@ -166,7 +167,7 @@ Backend {
                     'test_client_2:midi_in': false,
                     'shoop:midi_in': false
                 })
-            })
-        }
+            }
+        })
     }
 }

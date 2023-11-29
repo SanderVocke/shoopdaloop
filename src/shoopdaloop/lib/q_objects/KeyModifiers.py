@@ -1,7 +1,8 @@
 from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, QEvent, Qt
 from PySide6.QtQml import QJSValue
 
-class KeyModifiers(QObject):
+from .ShoopPyObject import *
+class KeyModifiers(ShoopQObject):
     def __init__(self, parent=None):
         super(KeyModifiers, self).__init__(parent)
         self._shift_pressed = False

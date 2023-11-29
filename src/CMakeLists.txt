@@ -15,11 +15,6 @@ set(RUN_WITH_ENV_CMD ${PYTHON_CMD} "${CMAKE_SOURCE_DIR}/../scripts/run_with_env_
 
 find_package(Threads REQUIRED)
 
-# MacOS needs boost::atomic_flag, on Windows std::atomic_flag is more straightforward to use.
-if (APPLE)
-  add_compile_definitions(-DUSE_BOOST_ATOMIC_FLAG)
-endif()
-
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}/cmake")
 
 option(ENABLE_COVERAGE "Enable code coverage" OFF)
@@ -39,6 +34,12 @@ if(HAVE_LV2)
 endif()
 
 set(CTYPESGEN_COMMAND ctypesgen)
+
+set(PREV_SETTING ${CMAKE_POSITION_INDEPENDENT_CODE})
+set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
+add_subdirectory(third_party/fmt)
+add_subdirectory(third_party/Catch2)
+set(CMAKE_POSITION_INDEPENDENT_CODE ${PREV_SETTING})
 
 add_subdirectory(libshoopdaloop)
   

@@ -15,8 +15,6 @@ jobs:
         include:
           - os: debian_stable
             variant: build_base
-          - os: manylinux_2_28
-            variant: build_base
     runs-on: ubuntu-latest
     steps:
       -

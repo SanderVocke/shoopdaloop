@@ -6,18 +6,31 @@
 template<logging::ModuleName Name, log_level_t LevelFilter>
 class LoggingEnabled {
 public:
-    template<log_level_t Level, typename... Args>
-    void log(std::string_view fmt, Args &&... args) const
+    template<log_level_t Level, typename First, typename... Args>
+    void log(fmt::format_string<First, Args...>&& fmt, First && first, Args &&... args) const
     {
         if constexpr (Level >= LevelFilter) {
-            logging::log_with_ptr<Name, Level>(this, fmt, args...);
+            logging::log<Name, Level>(std::nullopt, std::nullopt, "[@{}] {}", (void*)this, fmt::format(fmt, std::forward<First>(first), std::forward<Args>(args)...));
         }
     }
 
-    template<typename Exception, typename ...Args>
-    void throw_error(std::string_view fmt, Args &&... args) const
+    template<log_level_t Level>
+    void log(std::string const& str) const {
+        if constexpr (Level >= LevelFilter) {
+            logging::log<Name, Level>(std::nullopt, std::nullopt, "[@{}] {}", (void*)this, str);
+        }
+    }
+
+    template<typename Exception, typename First, typename... Args>
+    void throw_error(fmt::format_string<First, Args...>&& fmt, First && first, Args &&... args) const
     {
-        log<error>(fmt, std::forward<Args>(args)...);
+        logging::log<Name, error>(std::nullopt, std::nullopt, "[@{}] {}", (void*)this, fmt::format(fmt, std::forward<First>(first), std::forward<Args>(args)...));
+        throw Exception("");
+    }
+
+    template<typename Exception>
+    void throw_error(std::string const& str) const {
+        logging::log<Name, error>(std::nullopt, std::nullopt, "[@{}] {}", (void*)this, str);
         throw Exception("");
     }
 
@@ -26,7 +39,7 @@ public:
                    uint32_t ln = BOOST_CURRENT_LOCATION.line()) const
     {
         if (trace >= LevelFilter) {
-            log<trace>( "{}:{} - {}", fl, ln, fn);
+            log<trace>("{}:{} - {}", fl, ln, fn);
         }
     }
 

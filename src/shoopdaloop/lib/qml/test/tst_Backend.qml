@@ -16,11 +16,11 @@ PythonBackend {
         name: 'DummyBackend'
         filename : TestFilename.test_filename()
 
-        function test_backend() {
-            run_case('test_backend', () => {
+        test_fns: ({
+            'test_backend': () => {
                 verify(backend.initialized)
                 backend.close()
-            })
-        }
+            }
+        })
     }
 }

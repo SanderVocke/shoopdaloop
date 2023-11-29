@@ -21,8 +21,8 @@ Session {
         filename : TestFilename.test_filename()
         session: session
 
-        function test_session_descriptor_default() {
-            run_case('test_session_descriptor_default', () => {
+        test_fns: ({
+            'test_session_descriptor_default': () => {
                 check_backend()
 
                 testcase.wait_session_loaded(session)
@@ -48,7 +48,7 @@ Session {
                 file_io.delete_file(filename)
 
                 verify(TestDeepEqual.testDeepEqual(actual, reference, session.logger.error))
-            })
-        }
+            }
+        })
     }
 }

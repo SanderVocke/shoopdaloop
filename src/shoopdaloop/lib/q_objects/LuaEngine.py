@@ -1,5 +1,8 @@
 from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
 from PySide6.QtQml import QJSValue
+from PySide6.QtQuick import QQuickItem
+
+from .ShoopPyObject import *
 
 import lupa
 import copy
@@ -17,7 +20,7 @@ lua_scriptdir = script_pwd + '/../lua'
 class ScriptExecutionError(Exception):
     pass
 
-class LuaEngine(QObject):
+class LuaEngine(ShoopQQuickItem):
     def __init__(self, parent=None):
         super(LuaEngine, self).__init__(parent)
         self.logger = Logger('Frontend.LuaEngine')
@@ -33,7 +36,7 @@ class LuaEngine(QObject):
         self.preload_libs()
         self.execute_builtin_script('system/sandbox.lua', False)
         self.run_sandboxed = self.lua.eval('function (code) return __shoop_run_sandboxed(code) end')
-        self.execute('package.path = package.path .. ";{}"'.format(lua_scriptdir + '/lib/?.lua'), None, True, False)
+        self.execute('package.path = package.path .. ";{}"'.format(lua_scriptdir.replace('\\', '\\\\') + '/lib/?.lua'), None, True, False)
         self._G_registrar = lambda name, val: self.evaluate('return function(val) {} = val end'.format(name), None, True, False)(val)
         self._G_registrar('require', lambda s, self=self: self.require(s))
         self.py_list_to_lua_table = self.lua.eval('''

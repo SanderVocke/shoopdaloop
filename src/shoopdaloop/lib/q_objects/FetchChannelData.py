@@ -9,6 +9,8 @@ from PySide6.QtCore import Qt, QObject, QMetaObject, Q_ARG, Signal, Property, Sl
 from PySide6.QtQuick import QQuickItem
 from PySide6.QtGui import QImage
 
+from .ShoopPyObject import *
+
 from .LoopChannel import LoopChannel
 from ..logging import Logger
 
@@ -16,7 +18,7 @@ from ..backend_wrappers import *
 from ..mode_helpers import *
 
 # Wraps a back-end loop channel.
-class FetchChannelData(QQuickItem):
+class FetchChannelData(ShoopQQuickItem):
     def __init__(self, parent=None):
         super(FetchChannelData, self).__init__(parent)
         self._channel = None
@@ -43,13 +45,13 @@ class FetchChannelData(QQuickItem):
     @channel.setter
     def channel(self, l):
         if l != self._channel:
-            if self._channel:
+            if self._channel and self._channel.isValid():
                 self._channel.disconnect(self)
-            if self._loop:
+            if self._loop and self._loop.isValid():
                 self._loop.disconnect(self)
                 self._loop = None
             self._channel = l
-            if self._channel:
+            if self._channel and self._channel.isValid():
                 self._loop = self._channel.loop
                 self._channel.loopChanged.connect(self.set_loop)
                 self._channel.dataDirtyChanged.connect(self.set_dirty)
@@ -151,11 +153,11 @@ class FetchChannelData(QQuickItem):
 
     @Slot()
     def maybe_start_fetch(self):
-        if not self.channel or not self.dirty or not self.active:
+        if not self.channel or not self.channel.isValid() or not self.dirty or not self.active:
             return
         if not self.channel.initialized:
             return
-        if not self.channel.loop:
+        if not self.channel.loop or not self.channel.loop.isValid():
             return
         if not self.channel.loop.initialized:
             return

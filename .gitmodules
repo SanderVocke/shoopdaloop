@@ -25,9 +25,6 @@
 [submodule "third_party/lv2"]
 	path = third_party/lv2
 	url = https://github.com/lv2/lv2.git
-[submodule "third_party/dynload-wrapper"]
-	path = third_party/dynload-wrapper
-	url = https://github.com/hpvb/dynload-wrapper.git
 [submodule "third_party/serd"]
 	path = third_party/serd
 	url = https://github.com/drobilla/serd.git
@@ -40,3 +37,9 @@
 [submodule "third_party/sratom"]
 	path = third_party/sratom
 	url = https://github.com/lv2/sratom.git
+[submodule "src/third_party/fmt"]
+	path = src/third_party/fmt
+	url = https://github.com/fmtlib/fmt.git
+[submodule "src/third_party/Catch2"]
+	path = src/third_party/Catch2
+	url = https://github.com/catchorg/Catch2.git

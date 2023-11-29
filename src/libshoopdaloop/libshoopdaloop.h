@@ -11,7 +11,7 @@ extern "C" {
 #endif
 
 // General
-SHOOP_EXPORT shoopdaloop_backend_instance_t *initialize (audio_system_type_t audio_system_type, const char* client_name_hint, const char* argstring);
+SHOOP_EXPORT shoopdaloop_backend_instance_t *create_backend (audio_system_type_t audio_system_type, const char* client_name_hint, const char* argstring);
 SHOOP_EXPORT void terminate_backend (shoopdaloop_backend_instance_t *backend);
 SHOOP_EXPORT void* maybe_jack_client_handle(shoopdaloop_backend_instance_t *backend);
 SHOOP_EXPORT const char *get_client_name(shoopdaloop_backend_instance_t *backend);
@@ -25,8 +25,6 @@ SHOOP_EXPORT unsigned has_audio_system_support(audio_system_type_t audio_system_
 SHOOP_EXPORT shoopdaloop_loop_t *create_loop(shoopdaloop_backend_instance_t *backend);
 SHOOP_EXPORT shoopdaloop_loop_audio_channel_t *add_audio_channel (shoopdaloop_loop_t *loop, channel_mode_t mode);
 SHOOP_EXPORT shoopdaloop_loop_midi_channel_t  *add_midi_channel  (shoopdaloop_loop_t *loop, channel_mode_t mode);
-SHOOP_EXPORT shoopdaloop_loop_audio_channel_t *get_audio_channel (shoopdaloop_loop_t *loop, unsigned idx);
-SHOOP_EXPORT shoopdaloop_loop_midi_channel_t  *get_midi_channel  (shoopdaloop_loop_t *loop, unsigned idx);
 SHOOP_EXPORT unsigned          get_n_audio_channels     (shoopdaloop_loop_t *loop);
 SHOOP_EXPORT unsigned          get_n_midi_channels      (shoopdaloop_loop_t *loop);
 SHOOP_EXPORT void              clear_loop               (shoopdaloop_loop_t *loop, unsigned length);
@@ -65,7 +63,7 @@ SHOOP_EXPORT void                   set_audio_channel_n_preplay_samples (shoopda
 SHOOP_EXPORT void                   set_midi_channel_n_preplay_samples  (shoopdaloop_loop_midi_channel_t *channel, unsigned n);
 SHOOP_EXPORT void                   clear_audio_channel_data_dirty (shoopdaloop_loop_audio_channel_t * channel);
 SHOOP_EXPORT void                   clear_midi_channel_data_dirty (shoopdaloop_loop_midi_channel_t * channel);
-SHOOP_EXPORT 
+
 SHOOP_EXPORT void loop_transition(shoopdaloop_loop_t *loop,
                       loop_mode_t mode,
                       unsigned delay, // In # of triggers
@@ -154,6 +152,7 @@ SHOOP_EXPORT midi_sequence_t *alloc_midi_sequence(unsigned n_events);
 SHOOP_EXPORT audio_channel_data_t *alloc_audio_channel_data(unsigned n_samples);
 
 // Logging
+SHOOP_EXPORT void initialize_logging();
 SHOOP_EXPORT shoopdaloop_logger_t *get_logger(const char* name);
 SHOOP_EXPORT void set_global_logging_level(log_level_t level);
 SHOOP_EXPORT void set_logger_level_override(shoopdaloop_logger_t *logger, log_level_t level);

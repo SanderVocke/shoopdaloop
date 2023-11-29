@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <memory>
 #include <atomic>
+#include "run_in_thread_with_timeout.h"
 
 template<typename API>
 int GenericJackAudioSystem<API>::PROC_process_cb_static(jack_nframes_t nframes, void *arg) {
@@ -41,13 +42,13 @@ void GenericJackAudioSystem<API>::PROC_port_rename_cb_static(jack_port_id_t port
 template<typename API>
 void GenericJackAudioSystem<API>::error_cb_static(const char *msg) {
     std::string _msg = "JACK error: " + std::string(msg);
-    logging::log<"Backend.JackAudioSystem", error>(_msg);
+    logging::log<"Backend.JackAudioSystem", error>(std::nullopt, std::nullopt, _msg);
 }
 
 template<typename API>
 void GenericJackAudioSystem<API>::info_cb_static(const char *msg) {
     std::string _msg = "JACK error: " + std::string(msg);
-    logging::log<"Backend.JackAudioSystem", info>(_msg.c_str());
+    logging::log<"Backend.JackAudioSystem", info>(std::nullopt, std::nullopt, _msg);
 }
 
 template<typename API>
@@ -163,7 +164,12 @@ const char *GenericJackAudioSystem<API>::client_name() const {
 template<typename API>
 void GenericJackAudioSystem<API>::close() {
     if (m_client) {
-        API::client_close(m_client);
+        log<debug>("Closing JACK client.");
+        try {
+            run_in_thread_with_timeout_unsafe([this]() { API::client_close(m_client); }, 10000);
+        } catch (std::exception &e) {
+            log<warning>("Attempt to close JACK client failed: {}. Abandoning.", e.what());
+        }
         m_client = nullptr;
     }
 }

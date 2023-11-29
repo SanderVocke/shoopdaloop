@@ -1,11 +1,13 @@
 from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, Qt
 from PySide6.QtQuick import QQuickItem
 
+from .ShoopPyObject import *
+
 from ..logging import Logger as BaseLogger
 import jacklib as jack
 from jacklib.helpers import *
 
-class JackControlClient(QQuickItem):
+class JackControlClient(ShoopQQuickItem):
     _instance = None
     
     @staticmethod

@@ -1,5 +1,6 @@
 from PySide6.QtCore import QObject, Signal, Property, Slot, QSettings
 from PySide6.QtQml import QJSValue
+from .ShoopPyObject import *
 
 import appdirs
 import json
@@ -7,7 +8,7 @@ import os
 
 from ..logging import *
 
-class SettingsIO(QObject):
+class SettingsIO(ShoopQObject):
     def __init__(self, parent=None):
         super(SettingsIO, self).__init__(parent)
         self.dir = appdirs.user_config_dir(appname='ShoopDaLoop')

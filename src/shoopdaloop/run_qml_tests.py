@@ -2,66 +2,208 @@
 
 import os
 import sys
+import glob
+import atexit
+import signal
 
 from PySide6.QtCore import QObject, Slot
 from PySide6.QtQml import QQmlEngine
+from PySide6.QtTest import QTest
 from shiboken6 import Shiboken
+import json
+from xml.dom import minidom
 
 script_dir = os.path.dirname(__file__)
 sys.path.append(script_dir + '/..')
 
-from shoopdaloop.libshoopdaloop_bindings import terminate_backend
+from shoopdaloop.libshoopdaloop_bindings import terminate_backend, set_global_logging_level, error
 from shoopdaloop.lib.qml_helpers import *
 from shoopdaloop.lib.q_objects.SchemaValidator import SchemaValidator
 from shoopdaloop.lib.logging import Logger
 from shoopdaloop.lib.backend_wrappers import BackendType
 from shoopdaloop.lib.q_objects.QoverageCollectorFactory import QoverageCollectorFactory
+from shoopdaloop.lib.q_objects.Application import Application
+from shoopdaloop.lib.q_objects.TestRunner import TestRunner
 
-from ctypes import *
+import argparse
+import re
 
-import qml_tests
+parser = argparse.ArgumentParser()
+parser.add_argument('test_file_glob_pattern', nargs=argparse.REMAINDER, help='Glob pattern(s) for test QML files.')
+parser.add_argument('--list', '-l', action='store_true', help="Don't run but list all found test functions.")
+parser.add_argument('--filter', '-f', default=None, help='Regex filter for testcases.')
+parser.add_argument('--junit-xml', '-j', default=None, help='Output file for JUnit XML report.')
+args = parser.parse_args()
 
 qoverage_collector_factory = QoverageCollectorFactory()
 
-class Setup(QObject):
-    def __init__(self, parent=None):
-        super(Setup, self).__init__(parent)
+logger = Logger('run_qml_tests.py')
 
-    @Slot(QQmlEngine)
-    def qmlEngineAvailable(self, engine):
-        register_shoopdaloop_qml_classes()
-        self.root_context_items = create_and_populate_root_context(
-            engine,
-            { 'backend_type': BackendType.Dummy.value, 'backend_argstring': '' },
-            { 'qoverage_collector_factory' : qoverage_collector_factory }
-            )
+logger.info('Creating test application...')
 
-logger = Logger('Test.Runner')
+global_args = {
+    'backend_type': BackendType.Dummy.value,
+    'backend_argstring': '',
+    'load_session_on_startup': None,
+    'test_grab_screens': None,
+}
 
-# Add a -h option to the standard Qt options
-for idx,arg in enumerate(sys.argv[1:]):
-    if arg == '-h':
-        sys.argv[idx+1] = '-help'
+test_files = glob.glob(script_dir + '/**/tst_*.qml', recursive=True)
+if len(args.test_file_glob_pattern):
+    test_files = []
+    for pattern in args.test_file_glob_pattern:
+        test_files += glob.glob(pattern, recursive=True)
 
-def to_c_chars(strings):
-    numParams    = len(strings)
-    strArrayType = c_char_p * numParams
-    strArray     = strArrayType()
-    for i, param in enumerate(strings):
-        if isinstance(param, bytes):
-            strArray[i] = c_char_p(param)
+runner = TestRunner()
+if args.list:
+    runner.should_skip = lambda fn: True
+elif args.filter:
+    runner.should_skip = lambda fn: not bool(re.match(args.filter, fn))
+
+additional_root_context = {
+    'qoverage_collector_factory' : qoverage_collector_factory,
+    'shoop_test_runner': runner
+}
+
+app = Application(
+    'ShoopDaLoop QML Tests',
+    None,
+    global_args,
+    additional_root_context
+)
+
+def exit_now():
+    app.quit()
+    exit(1)
+
+app.exit_handler_called.connect(lambda: exit(1))
+
+for file in test_files:
+    filename = os.path.basename(file)    
+    print()
+    logger.info('===== Test file: {} ====='.format(filename))
+    
+    app.load_qml(file, False)    
+    
+    while not runner.done:
+        app.processEvents()
+        time.sleep(0.001)
+    
+    app.unload_qml()
+    app.wait(50)
+
+# count totals
+passed = 0
+failed = 0
+skipped = 0
+
+results = runner.results
+failed_cases = []
+skipped_cases = []
+for case, case_results in results.items():
+    for fn, fn_result in case_results.items():
+        if args.list:
+            print(case + '::' + fn)
+        if fn_result == 'pass':
+            passed += 1
+        elif fn_result == 'skip':
+            skipped += 1
+            skipped_cases.append(case + '::' + fn)
+        elif fn_result == 'fail':
+            failed += 1
+            failed_cases.append(case + '::' + fn)
+
         else:
-            strArray[i] = c_char_p(param.encode('utf-8'))
-    return cast(strArray, POINTER(POINTER(c_char)))
+            raise Exception('Unknown result: {}'.format(fn_result))
 
-setup = Setup(parent=None)
+# Make sure we gather the results before exiting the app, so that if shutdown issues occur,
+# the user still gets to see the test overview.
 
-raw_setup = cast(Shiboken.getCppPointer(setup)[0], c_void_p)
-exitcode = qml_tests.run_quick_test_main_with_setup(len(sys.argv), to_c_chars(sys.argv), 'shoopdaloop_tests', script_dir + '/..', raw_setup)
+final_result = (
+    1 if failed > 0 else 0
+)
+final_result_readable = (
+    'FAIL' if final_result else ('PASS WITH SKIPS' if skipped > 0 else 'PASS')
+)
+maybe_failures_string = ''
+if failed > 0:
+    maybe_failures_string = '''
 
-qoverage_collector_factory.report_all()
+Failed cases: {}
+'''.format(json.dumps(failed_cases, indent=2))
+maybe_skip_string = ''
+if skipped > 0:
+    maybe_skip_string = '''
 
-final_msg = 'Tests ran successfully' if exitcode == 0 else 'Test(s) failed or failed to run'
-print('{}. Exiting with code {}'.format(final_msg, exitcode))
+Skipped cases: {}
+'''.format(json.dumps(skipped_cases, indent=2))    
 
-exit(exitcode)
+# TODO: this is nasty, but it's a quick hack to get the test results to show up last
+set_global_logging_level(error)
+
+exit_text = '''
+========================================================
+Test run finished. Overall result: {}.
+========================================================
+
+Totals:
+- Testcases: {}
+- Passed: {}
+- Failed: {}
+- Skipped: {}{}{}
+'''.format(final_result_readable, passed+failed+skipped, passed, failed, skipped, maybe_failures_string, maybe_skip_string)
+exit_text_printed = False
+
+def exit_handler(reason=None):
+    global exit_text_printed
+    if not exit_text_printed:
+        if reason:
+            print("Failing because process abnormally terminated ({}). Test results overview:".format(reason))
+        print(exit_text)
+        exit_text_printed = True
+
+def signal_handler(signum, frame):
+    exit_handler('signal {}'.format(signum))
+
+atexit.register(exit_handler)
+signal.signal(signal.SIGTERM, signal_handler)
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGABRT, signal_handler)
+
+if args.junit_xml:
+    root = minidom.Document()
+    testsuites = root.createElement('testsuites')
+    root.appendChild(testsuites)
+
+    for case, case_results in results.items():
+        testsuite = root.createElement('testsuite')
+        testsuite.setAttribute('name', case)
+        testsuites.appendChild(testsuite)
+
+        for fn, fn_result in case_results.items():
+            testcase = root.createElement('testcase')
+            testcase.setAttribute('name', fn)
+            testcase.setAttribute('classname', case)
+            testsuite.appendChild(testcase)
+
+            if fn_result == 'pass':
+                pass
+            elif fn_result == 'skip':
+                skipped_elem = root.createElement('skipped')
+                testcase.appendChild(skipped_elem)
+            elif fn_result == 'fail':
+                failure_elem = root.createElement('failure')
+                testcase.appendChild(failure_elem)
+            else:
+                raise Exception('Unknown result: {}'.format(fn_result))
+    
+    print("Writing JUnit XML to {}".format(args.junit_xml))
+    root.writexml(open(args.junit_xml, 'w'), indent='  ', addindent='  ', newl='\n')
+
+
+
+app.quit()
+if args.list:
+    exit(0)
+
+exit(final_result)

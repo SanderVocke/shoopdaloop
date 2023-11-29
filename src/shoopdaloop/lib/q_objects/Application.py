@@ -5,14 +5,17 @@ import time
 
 from PySide6.QtQml import QQmlApplicationEngine, QJSValue
 from PySide6.QtGui import QGuiApplication, QIcon
-from PySide6.QtCore import QTimer, QObject, Q_ARG, QMetaObject, Qt, QEvent, Slot, QtMsgType
+from PySide6.QtCore import QTimer, QObject, Q_ARG, QMetaObject, Qt, QEvent, Slot, QtMsgType, Signal
 from PySide6.QtQml import QQmlDebuggingEnabler
+
+from .ShoopPyObject import *
 
 have_nsm = os.name == 'posix'
 if have_nsm:
     from ...third_party.pynsm.nsmclient import NSMClient, NSMNotRunningError
 
 from ..qml_helpers import *
+from ..backend_wrappers import terminate_all_backends
 
 from .SchemaValidator import SchemaValidator
 from .FileIO import FileIO
@@ -24,9 +27,21 @@ from ..logging import *
 
 script_dir = os.path.dirname(__file__)
 
-class Application(QGuiApplication):
-    def __init__(self, title, main_qml, backend_type, backend_argstring, load_session=None, qml_debug_port=None, qml_debug_wait=False, test_grab_screens=False):
+class Application(ShoopQGuiApplication):
+    exit_handler_called = Signal()
+
+    def __init__(self,
+                 title,
+                 main_qml,
+                 global_args = dict(),
+                 additional_root_context = dict(),
+                 qml_debug_port=None,
+                 qml_debug_wait=False,
+                 nsm=False
+                 ):
         super(Application, self).__init__([])
+        
+        self._quitting = False
         
         pkg_version = None
         with open(script_dir + '/../../version.txt', 'r') as f:
@@ -36,12 +51,13 @@ class Application(QGuiApplication):
         self.setApplicationVersion(pkg_version)
         self.setOrganizationName('ShoopDaLoop')
 
-        self.logger = Logger("Frontend.Qml.App")
+        self.logger = Logger("Frontend.App")
 
         self.nsm_client = None
         self.title = title
         signal.signal(signal.SIGINT, self.exit_signal_handler)
-        signal.signal(signal.SIGQUIT, self.exit_signal_handler)
+        if hasattr(signal, 'SIGQUIT'):
+            signal.signal(signal.SIGQUIT, self.exit_signal_handler)
         signal.signal(signal.SIGTERM, self.exit_signal_handler)
         
         self.nsmtimer = QTimer(parent=self)
@@ -55,42 +71,61 @@ class Application(QGuiApplication):
             QQmlDebuggingEnabler.startTcpDebugServer(qml_debug_port)
 
         register_shoopdaloop_qml_classes()
+        self.global_args = global_args
+        self.additional_root_context = additional_root_context
+        self.additional_root_context['application'] = self
+        
+        self.installEventFilter(self)
+        self.engine = None
+        
+        if main_qml:
+            self.reload_qml(main_qml)
+        
+            def start_nsm():
+                if have_nsm:
+                    try:
+                        self.nsm_client = NSMClient(
+                            prettyName = title,
+                            supportsSaveStatus = False,
+                            saveCallback = lambda path, session, client: self.save_session_handler(path, session, client),
+                            openOrNewCallback = lambda path, session, client: self.load_session_handler(path, session, client),
+                            exitProgramCallback = lambda path, session, client: self.nsm_exit_handler(),
+                            loggingLevel = 'info'
+                        )
+                        self.title = self.nsm_client.ourClientNameUnderNSM
+                    except NSMNotRunningError as e:
+                        pass
+        
+            if nsm:
+                if len(self.engine.rootObjects()) > 0:
+                    self.engine.rootObjects()[0].sceneGraphInitialized.connect(start_nsm)
+    
+    def unload_qml(self):
+        if self.engine:
+            self.engine.collectGarbage()
+            self.engine.deleteLater()
+            self.wait(10)
+            self.engine = None
+            self.wait(10)
+    
+    def load_qml(self, filename, quit_on_quit=True):
         self.engine = QQmlApplicationEngine(parent=self)
-        self.engine.quit.connect(self.quit)
+        
+        if quit_on_quit:
+            self.engine.quit.connect(self.do_quit)
+        self.aboutToQuit.connect(self.do_quit)
 
         self.engine.setOutputWarningsToStandardError(False)
         self.engine.objectCreated.connect(self.onQmlObjectCreated)
         self.engine.warnings.connect(self.onQmlWarnings)
-
-        global_args = {
-            'backend_type': backend_type.value,
-            'backend_argstring': backend_argstring,
-            'load_session_on_startup': load_session,
-            'test_grab_screens': test_grab_screens
-        }
         
-        self.root_context_items = create_and_populate_root_context(self.engine, global_args)
-
-        if main_qml:
-            self.engine.load(main_qml)
+        self.root_context_items = create_and_populate_root_context(self.engine, self.global_args, self.additional_root_context)
         
-        def start_nsm():
-            if have_nsm:
-                try:
-                    self.nsm_client = NSMClient(
-                        prettyName = title,
-                        supportsSaveStatus = False,
-                        saveCallback = lambda path, session, client: self.save_session_handler(path, session, client),
-                        openOrNewCallback = lambda path, session, client: self.load_session_handler(path, session, client),
-                        exitProgramCallback = lambda path, session, client: self.nsm_exit_handler(),
-                        loggingLevel = 'info'
-                    )
-                    self.title = self.nsm_client.ourClientNameUnderNSM
-                except NSMNotRunningError as e:
-                    pass
-        
-        self.engine.rootObjects()[0].sceneGraphInitialized.connect(start_nsm)
-        self.installEventFilter(self)
+        self.engine.load(filename)
+    
+    def reload_qml(self, filename, quit_on_quit=True):
+        self.unload_qml()
+        self.load_qml(filename, quit_on_quit)        
     
     def exit(self, retcode):
         if self.nsm_client:
@@ -112,8 +147,8 @@ class Application(QGuiApplication):
     
     def exit_handler(self):
         if self.engine:
-            self.logger.warning(lambda: "EXIT HANDLER")
             QMetaObject.invokeMethod(self.engine, 'quit')
+            self.exit_handler_called.emit()
     
     # The following ensures the Python interpreter has a chance to run, which
     # would not happen otherwise once the Qt event loop starts - and this 
@@ -206,3 +241,24 @@ class Application(QGuiApplication):
                 self.logger.info(lambda: msg)
             else:
                 self.logger.error(lambda: msg)
+    
+    @Slot(int)
+    def wait(self, ms):
+        end = time.time() + ms * 0.001
+        while time.time() < end:
+            self.processEvents()
+
+    @Slot()
+    def do_quit(self):
+        self.logger.debug("Quit requested")
+        if not self._quitting:
+            self._quitting = True
+            terminate_all_backends()
+            if self.engine:
+                self.engine.destroyed.connect(self.quit)
+                self.engine.collectGarbage()
+                self.engine.deleteLater()
+            else:
+                self.quit()
+    
+        

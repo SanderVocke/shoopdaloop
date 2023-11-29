@@ -1,13 +1,14 @@
 from PySide6.QtCore import QObject, Signal, Property, Slot, QSettings
 from PySide6.QtQml import QJSValue
 from PySide6.QtQuick import QQuickWindow
+from .ShoopPyObject import *
 
 import weakref
 import os
 
 from ..logging import *
 
-class TestScreenGrabber(QObject):
+class TestScreenGrabber(ShoopQObject):
     def __init__(self, weak_engine=None, parent=None):
         super(TestScreenGrabber, self).__init__(parent)
         self.weak_engine = weak_engine

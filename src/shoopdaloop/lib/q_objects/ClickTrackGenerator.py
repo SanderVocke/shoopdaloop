@@ -1,13 +1,18 @@
 import os
 import tempfile
-from pydub import AudioSegment
-from pydub.playback import play
+import sounddevice as sd
+import soundfile as sf
 
 from PySide6.QtCore import QObject, Slot
+from .ShoopPyObject import *
 
 from ..gen_click_track import gen_click_track
 
-class ClickTrackGenerator(QObject):
+def play_wav(filename):
+    data, fs = sf.read(filename, dtype='float32')
+    sd.play(data, fs)
+
+class ClickTrackGenerator(ShoopQObject):
     script_dir = os.path.dirname(os.path.abspath(__file__))
     clicks = {
         'click_high': script_dir + '/../../resources/click_high.wav',
@@ -30,5 +35,5 @@ class ClickTrackGenerator(QObject):
 
     @Slot(str)
     def preview(self, wav_filename):
-        play(AudioSegment.from_wav(wav_filename))
+        play_wav(wav_filename)
 

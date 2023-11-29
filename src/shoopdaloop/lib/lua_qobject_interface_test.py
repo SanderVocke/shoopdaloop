@@ -1,6 +1,7 @@
 
 from .q_objects.LuaEngine import LuaEngine
 from .q_objects.ControlHandler import ControlHandler
+from .q_objects.ShoopPyObject import *
 from .lua_qobject_interface import create_lua_qobject_interface, lua_str
 
 from PySide6.QtCore import QObject, Slot
@@ -12,7 +13,7 @@ def test_init():
     create_lua_qobject_interface(eng, QObject())
 
 def test_callback():
-    class TestHandler(QObject):
+    class TestHandler(ShoopQObject):
         def __init__(self, parent=None):
             super(TestHandler, self).__init__(parent)
             pass

@@ -7,6 +7,7 @@ import argparse
 import signal
 import time
 import subprocess
+import platform
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-i', '--iterations', type=int, default=1, help='Amount of iterations to run')
@@ -20,6 +21,15 @@ n_unexpected_open = 0
 n_unexpected_closed = 0
 n_had_to_kill = 0
 n_nonzero_exit = 0
+
+def terminate(process):
+    process.terminate()
+
+def exit_code_ok(code):
+    if platform.system() == 'Windows':
+        return code in [0, 1, 0xC000013A]
+    else:
+        return code == 0
 
 for i in range(args.iterations):
     print('''
@@ -49,19 +59,19 @@ for i in range(args.iterations):
         n_unexpected_closed += 1
     
     # Try to terminate the process gracefully
-    print('== REPEAT_RUN_APP: Send SIGQUIT')
-    process.terminate()
+    print('== REPEAT_RUN_APP: Terminate')
+    terminate(process)
     if wait_and_poll(process, args.wait_ms_before_kill) is None:
         # Process is still running, so we'll use SIGKILL to force it to exit
-        print('== REPEAT_RUN_APP ERROR: Process did not exit gracefully, killing with SIGKILL')
+        print('== REPEAT_RUN_APP ERROR: Process did not exit gracefully, hard-killing')
         process.kill()
         n_had_to_kill += 1
     else:
         # Process exited gracefully
-        print('== REPEAT_RUN_APP: Process exited gracefully after SIGTERM')
+        print('== REPEAT_RUN_APP: Process exited gracefully after termination')
     
-    if process.poll() is not None and process.poll() != 0:
-        print('== REPEAT_RUN_APP ERROR: Process exited with nonzero exit code {}'.format(process.poll()))
+    if process.poll() is not None and not exit_code_ok(process.poll()):
+        print('== REPEAT_RUN_APP ERROR: Process exited with non-OK exit code {}'.format(process.poll()))
         n_nonzero_exit += 1
 
 if n_unexpected_open == 0 and n_unexpected_closed == 0 and n_nonzero_exit == 0 and n_had_to_kill == 0:
@@ -79,7 +89,7 @@ else:
 == - App was unexpectedly open: {}
 == - App was unexpectedly closed: {}
 == - App had nonzero exit code: {}
-== - Had to SIGKILL: {}
+== - Had to hard-kill: {}
 =====================================================
 '''.format(
     args.iterations,

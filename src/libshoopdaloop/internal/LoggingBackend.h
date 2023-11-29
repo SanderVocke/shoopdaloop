@@ -5,10 +5,12 @@
 #include <memory>
 #include <atomic>
 #include <map>
-#include "stream_format.h"
+#include <iostream>
 #include "types.h"
 #include <algorithm>
 #include <array>
+#include <fmt/core.h>
+#include <utility>
 
 #define LOG_LEVEL_TRACE trace;
 #define LOG_LEVEL_DEBUG debug;
@@ -40,161 +42,7 @@ auto constexpr CompileTimeLogLevel = COMPILE_LOG_LEVEL;
 extern std::recursive_mutex* g_log_mutex;
 extern std::unique_ptr<log_level_t>* g_maybe_global_level;
 extern std::map<std::string, std::unique_ptr<log_level_t>>* g_module_log_levels;
-
-namespace internal {
-
-constexpr std::array<const char*, error+1> level_indicators = {
-    "[trace]",
-    "[\033[36mdebug\033[0m]", // cyan
-    "[\033[32minfo\033[0m]",  // green
-    "[\033[33mwarning\033[0m]",  // yellow
-    "[\033[31merror\033[0m]",  // red
-};
-
-// if (maybe_ptr != nullptr) { std::cout << "[" << (size_t)maybe_ptr << "] "; };
-#define DO_LOG_IMPL \
-    std::cout << "[\033[35m" << module_name << "\033[0m] ";        \
-    std::cout << level_indicator << " ";                           \
-    stream_format(std::cout, args...);                             \
-    std::cout << std::endl;                  
-
-template<typename Ptr, typename ...Args>
-void do_log(std::string_view module_name, log_level_t level, Ptr _maybe_ptr, Args &&... args) {
-    auto level_indicator = level_indicators[level];
-    void* maybe_ptr = (void*)_maybe_ptr;
-    DO_LOG_IMPL
-}
-
-template<typename Ptr, log_level_t level, typename ...Args>
-void do_log(std::string_view module_name, Ptr _maybe_ptr, Args &&... args) {
-    constexpr auto level_indicator = level_indicators[level];
-    void* maybe_ptr = (void*)_maybe_ptr;
-    DO_LOG_IMPL
-}
-
-template<ModuleName Name, typename Ptr, log_level_t level, typename ...Args>
-void do_log(Ptr _maybe_ptr, Args &&... args) {
-    constexpr auto level_indicator = level_indicators[level];
-    constexpr const char* module_name = Name.value;
-    void* maybe_ptr = (void*)_maybe_ptr;
-    DO_LOG_IMPL     
-}
-
-#define SHOULD_LOG_IMPL \
-    std::lock_guard<std::recursive_mutex> lock((*g_log_mutex));                  \
-    auto compile_time_allows = (level >= logging::CompileTimeLogLevel);       \
-    auto global_allows =                                                      \
-        (!(*g_maybe_global_level)) || (level >= *(*g_maybe_global_level).get());    \
-    if(compile_time_allows && global_allows) {                                \
-        auto maybe_module_level = (*g_module_log_levels).find(module_name);      \
-        auto module_allows =                                                  \
-            (maybe_module_level == (*g_module_log_levels).end()) ||              \
-            (level >= *maybe_module_level->second.get());                     \
-        return module_allows;                                                 \
-    }                                                                         \
-    return false;
-
-inline bool should_log(std::string module_name, log_level_t level) {
-    SHOULD_LOG_IMPL
-}
-
-template<log_level_t level>
-inline bool should_log(std::string module_name) {
-    SHOULD_LOG_IMPL
-}
-
-template<ModuleName Name, log_level_t level>
-inline bool should_log() {
-    auto module_name = Name.value;
-    SHOULD_LOG_IMPL
-}
-
-// Passing module name as an argument works, but is slower than using a template
-// argument because a map lookup is needed.
-template<typename Ptr, typename ...Args>
-void log_impl(Ptr maybe_ptr, std::string module_name, log_level_t level, std::string_view str, Args &&... args) {
-    if (should_log(module_name, level)) {
-        internal::do_log<Ptr>(module_name, level, maybe_ptr, str, args...);
-    }
-}
-
-template<log_level_t level, typename Ptr, typename ...Args>
-void log_impl(Ptr maybe_ptr, std::string module_name, std::string_view str, Args &&... args) {
-    if (should_log<level>(module_name)) {
-        internal::do_log<Ptr, level>(module_name, maybe_ptr, str, args...);
-    }
-}
-
-template<ModuleName Name, log_level_t level, typename Ptr, typename ...Args>
-void log_impl(Ptr maybe_ptr, std::string_view str, Args &&... args) {
-    static log_level_t* _level = nullptr;
-    if constexpr (level >= logging::CompileTimeLogLevel) {
-        std::lock_guard<std::recursive_mutex> lock((*g_log_mutex));
-        if (!_level) {
-            auto maybe_module_level = (*g_module_log_levels).find(std::string(Name.value));
-            if (maybe_module_level != (*g_module_log_levels).end()) {
-                _level = maybe_module_level->second.get();
-            }
-        }
-        if ( (_level && level >= *_level) ||
-            ((*g_maybe_global_level) && level >= *(*g_maybe_global_level).get())) {
-            internal::do_log<Name, Ptr, level>(maybe_ptr, str, args...);
-        }
-    }
-}
-} // namespace internal
-
-inline bool should_log(std::string module_name, log_level_t level) {
-    std::lock_guard<std::recursive_mutex> lock((*g_log_mutex));
-    auto maybe_module_level = (*g_module_log_levels).find(module_name);
-    if ( (maybe_module_level != (*g_module_log_levels).end() && level >= *maybe_module_level->second.get()) ||
-        ((*g_maybe_global_level) && level >= *(*g_maybe_global_level).get())) {
-        return true;
-    }
-    return false;
-}
-
-template<typename ...Args>
-void log(std::string module_name, log_level_t level, std::string_view str, Args &&... args) {
-    internal::log_impl<void*>(nullptr, module_name, level, str, args...);
-}
-
-template<ModuleName Name, log_level_t level, typename ...Args>
-void log(std::string_view str, Args &&... args) {
-    internal::log_impl<Name, level, void*, Args...>(nullptr, str, args...);
-}
-
-template<ModuleName Name, typename ...Args>
-void log(std::string_view str, Args &&... args) {
-    internal::log_impl<Name, void*, Args...>(nullptr, str, args...);
-}
-
-template<ModuleName Name, log_level_t level, typename Ptr, typename ...Args>
-void log_with_ptr(Ptr ptr, std::string_view str, Args &&... args) {
-    internal::log_impl<Name, level, Ptr, Args...>(ptr, str, args...);
-}
-
-template<ModuleName Name, typename Ptr, typename ...Args>
-void log_with_ptr(Ptr ptr, std::string_view str, Args &&... args) {
-    internal::log_impl<Name, Ptr, Args...>(ptr, str, args...);
-}
-
-// Set the global runtime filter level.
-// Does not override already set module filter levels.
-inline void set_filter_level(log_level_t level) {
-    std::lock_guard<std::recursive_mutex> lock((*g_log_mutex));
-    if (!(*g_maybe_global_level)) { (*g_maybe_global_level) = std::make_unique<log_level_t>(level); }
-    else { *(*g_maybe_global_level) = level; }
-}
-
-// Set a module filter level.
-// Always overrides the global level - reset by passing nullopt.
-inline void set_module_filter_level(std::string name, std::optional<log_level_t> level) {
-    std::lock_guard<std::recursive_mutex> lock((*g_log_mutex));
-    auto &maybe_level = (*g_module_log_levels)[name];
-    if (!maybe_level) { maybe_level = std::make_unique<log_level_t>(level.value()); }
-    else { *maybe_level = level.value(); }
-}
+extern std::atomic<bool> g_log_initialized;
 
 // Configure using a configure string.
 // String format example:
@@ -215,6 +63,174 @@ inline void set_module_filter_level(std::string name, std::optional<log_level_t>
 void parse_conf_string(std::string s);
 
 // Parse configure string from the SHOOP_LOG env variable.
+// Does nothing if this was already done.
 void parse_conf_from_env();
+
+namespace internal {
+
+constexpr std::array<const char*, error+1> level_indicators = {
+    "[trace] ",
+    "[\033[36mdebug\033[0m] ", // cyan
+    "[\033[32minfo\033[0m] ",  // green
+    "[\033[33mwarning\033[0m] ",  // yellow
+    "[\033[31merror\033[0m] ",  // red
+};               
+
+template<typename Name, typename Level>
+bool should_log_impl(Name name, Level level) {
+    std::lock_guard<std::recursive_mutex> lock((*g_log_mutex));
+    auto compile_time_allows = (level >= logging::CompileTimeLogLevel);
+    auto maybe_module_level = (*g_module_log_levels).find(std::string(name));
+    auto module_level_set = maybe_module_level != (*g_module_log_levels).end();
+    auto global_allows =
+        (!(*g_maybe_global_level)) || (level >= *(*g_maybe_global_level).get());
+    auto module_allows =
+            (!module_level_set) ||
+            (level >= *maybe_module_level->second.get());
+    
+    return (module_level_set ? module_allows : global_allows) && compile_time_allows;
+}
+
+inline bool should_log(std::string module_name, log_level_t level) {
+    return should_log_impl(module_name, level);
+}
+
+template<log_level_t level>
+inline bool should_log(std::string module_name) {
+    constexpr log_level_t _level = level;
+    return should_log_impl(module_name, _level);
+}
+
+template<ModuleName Name>
+inline bool should_log(log_level_t level) {
+    constexpr std::string_view name = Name.value;
+    return should_log_impl(name, level);
+}
+
+template<ModuleName Name, log_level_t level>
+inline bool should_log() {
+    constexpr std::string_view name = Name.value;
+    constexpr log_level_t _level = level;
+    return should_log_impl(name, _level);
+}
+
+} // namespace internal
+
+inline bool should_log(std::string module_name, log_level_t level) {
+    return internal::should_log(module_name, level);
+}
+
+// NEW
+template<bool UseCompileTimeModuleName,
+         bool UseCompileTimeLevel,
+         ModuleName MaybeName,
+         log_level_t MaybeLevel>
+void log_impl(std::optional<log_level_t> maybe_log_level,
+              std::optional<std::string_view> maybe_module_name,
+              std::string_view str)
+{
+    auto _log_level = maybe_log_level.value_or(info);
+    parse_conf_from_env();
+    if(UseCompileTimeLevel && UseCompileTimeModuleName && !internal::should_log<MaybeName, MaybeLevel>()) { return; }
+    if(UseCompileTimeLevel && !UseCompileTimeModuleName && !internal::should_log<MaybeLevel>(std::string(*maybe_module_name))) { return; }
+    if(!UseCompileTimeLevel && UseCompileTimeModuleName && !internal::should_log<MaybeName>(_log_level)) { return; }
+    if(!UseCompileTimeLevel && !UseCompileTimeModuleName && !internal::should_log(std::string(*maybe_module_name), _log_level)) { return; }
+
+    if(UseCompileTimeModuleName) {
+        std::cout << "[\033[35m" << MaybeName.value << "\033[0m] ";
+    } else {
+        std::cout << "[\033[35m" << *maybe_module_name << "\033[0m] ";
+    }
+    if(UseCompileTimeLevel) {
+        std::cout << internal::level_indicators[MaybeLevel];
+    } else {
+        std::cout << internal::level_indicators[*maybe_log_level];
+    }
+
+    std::cout << str << std::endl;
+}
+
+inline void log(std::optional<log_level_t> maybe_log_level,
+         std::optional<std::string_view> maybe_module_name,
+         std::string_view &&str)
+{
+    log_impl<false, false, "", info>(maybe_log_level, maybe_module_name, str);
+}
+template<typename FirstFormatArg, typename ...RestFormatArgs>
+void log(std::optional<log_level_t> maybe_log_level,
+         std::optional<std::string_view> maybe_module_name,
+         fmt::format_string<FirstFormatArg, RestFormatArgs...>&& str,
+         FirstFormatArg &&first,
+         RestFormatArgs &&... rest)
+{
+    log_impl<false, false, "", info>(maybe_log_level, maybe_module_name, fmt::format(str, std::forward<FirstFormatArg>(first), std::forward<RestFormatArgs>(rest)...));
+}
+template<ModuleName Name>
+void log(std::optional<log_level_t> maybe_log_level,
+         std::optional<std::string_view> maybe_module_name,
+         std::string_view &&str)
+{
+    log_impl<true, false, Name, info>(maybe_log_level, maybe_module_name, str);
+}
+template<ModuleName Name, typename FirstFormatArg, typename ...RestFormatArgs>
+void log(std::optional<log_level_t> maybe_log_level,
+         std::optional<std::string_view> maybe_module_name,
+         fmt::format_string<FirstFormatArg, RestFormatArgs...>&& str,
+         FirstFormatArg &&first,
+         RestFormatArgs &&... rest)
+{
+    log_impl<true, false, Name, info>(maybe_log_level, maybe_module_name, fmt::format(str, std::forward<FirstFormatArg>(first), std::forward<RestFormatArgs>(rest)...));
+}
+template<log_level_t Level>
+void log(std::optional<log_level_t> maybe_log_level,
+         std::optional<std::string_view> maybe_module_name,
+         std::string_view&& str)
+{
+    log_impl<false, true, "", Level>(maybe_log_level, maybe_module_name, str);
+}
+template<log_level_t Level, typename FirstFormatArg, typename ...RestFormatArgs>
+void log(std::optional<log_level_t> maybe_log_level,
+         std::optional<std::string_view> maybe_module_name,
+         fmt::format_string<FirstFormatArg, RestFormatArgs...>&& str,
+         FirstFormatArg &&first,
+         RestFormatArgs &&... rest)
+{
+    log_impl<false, true, "", Level>(maybe_log_level, maybe_module_name, fmt::format(str, std::forward<FirstFormatArg>(first), std::forward<RestFormatArgs>(rest)...));
+}
+template<ModuleName Name, log_level_t Level>
+void log(std::optional<log_level_t> maybe_log_level,
+         std::optional<std::string_view> maybe_module_name,
+         std::string_view&& str)
+{
+    log_impl<true, true, Name, Level>(maybe_log_level, maybe_module_name, str);
+}
+template<ModuleName Name, log_level_t Level, typename FirstFormatArg, typename ...RestFormatArgs>
+void log(std::optional<log_level_t> maybe_log_level,
+         std::optional<std::string_view> maybe_module_name,
+         fmt::format_string<FirstFormatArg, RestFormatArgs...>&& str,
+         FirstFormatArg &&first,
+         RestFormatArgs &&... rest)
+{
+    log_impl<true, true, Name, Level>(maybe_log_level, maybe_module_name, fmt::format(str, std::forward<FirstFormatArg>(first), std::forward<RestFormatArgs>(rest)...));
+}
+
+// Set the global runtime filter level.
+// Does not override already set module filter levels.
+inline void set_filter_level(log_level_t level) {
+    std::lock_guard<std::recursive_mutex> lock((*g_log_mutex));
+    if (!(*g_maybe_global_level)) { (*g_maybe_global_level) = std::make_unique<log_level_t>(level); }
+    else { *(*g_maybe_global_level) = level; }
+    log<"Backend.Logging", debug>(std::nullopt, std::nullopt, "Set global filter level to {}", (int)level);
+}
+
+// Set a module filter level.
+// Always overrides the global level - reset by passing nullopt.
+inline void set_module_filter_level(std::string name, std::optional<log_level_t> level) {
+    std::lock_guard<std::recursive_mutex> lock((*g_log_mutex));
+    auto &maybe_level = (*g_module_log_levels)[name];
+    if (!maybe_level) { maybe_level = std::make_unique<log_level_t>(level.value()); }
+    else { *maybe_level = level.value(); }
+    log<"Backend.Logging", debug>(std::nullopt, std::nullopt, "Set module filter level for {} to {}", name, (int)level.value());
+}
 
 }

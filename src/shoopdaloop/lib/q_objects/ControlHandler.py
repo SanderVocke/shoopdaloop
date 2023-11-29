@@ -5,6 +5,8 @@ from PySide6.QtQml import QJSValue
 import inspect
 import lupa
 
+from .ShoopPyObject import *
+
 from ..logging import Logger
 from ..lua_qobject_interface import lua_passthrough, qt_typename, lua_int, lua_bool, lua_str, lua_float, lua_callable
 from ..backend_wrappers import LoopMode
@@ -85,7 +87,7 @@ def allow_qml_override(func):
     wrapper.__name__ = func.__name__
     wrapper.__doc__ = func.__doc__
     return wrapper
-class ControlHandler(QQuickItem):
+class ControlHandler(ShoopQQuickItem):
     """
     Defines the API through which ShoopDaLoop can be controlled externally
     (used by e.g. MIDI controllers and Lua scripts).

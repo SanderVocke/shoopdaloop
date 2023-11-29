@@ -25,41 +25,41 @@ jobs:
             os: ubuntu-latest
             python: python3.8
             pip: python3 -m pip
-            container_image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
+            container_image: quay.io/pypa/manylinux_2_28_x86_64:latest
             prepare: 'manylinux_2_28'
-            overrides: 'overrides/linux_release_overrides.toml'
+            overrides: 'overrides/release_overrides.toml'
             rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
           - name: linux_debug
             os: ubuntu-latest
             python: python3.8
             pip: python3 -m pip
-            container_image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
+            container_image: quay.io/pypa/manylinux_2_28_x86_64:latest
             prepare: 'manylinux_2_28'
-            overrides: 'overrides/linux_debug_overrides.toml'
+            overrides: 'overrides/debug_overrides.toml'
             rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
           - name: linux_barebones
             os: ubuntu-latest
             python: python3.8
             pip: python3 -m pip
-            container_image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
+            container_image: quay.io/pypa/manylinux_2_28_x86_64:latest
             prepare: 'manylinux_2_28'
-            overrides: 'overrides/linux_barebones_overrides.toml'
+            overrides: 'overrides/barebones_overrides.toml'
             rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
           - name: linux_asan
             os: ubuntu-latest
             python: python3.8
             pip: python3 -m pip
-            container_image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
+            container_image: quay.io/pypa/manylinux_2_28_x86_64:latest
             prepare: 'manylinux_2_28'
-            overrides: 'overrides/linux_asan_overrides.toml'
+            overrides: 'overrides/asan_overrides.toml'
             rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
           - name: linux_coverage
             os: ubuntu-latest
             python: python3.8
             pip: python3 -m pip
-            container_image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
+            container_image: quay.io/pypa/manylinux_2_28_x86_64:latest
             prepare: 'manylinux_2_28'
-            overrides: 'overrides/linux_coverage_overrides.toml'
+            overrides: 'overrides/coverage_overrides.toml'
             rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
           - name: windows_release
             os: windows-2022
@@ -67,7 +67,15 @@ jobs:
             pip: python.exe -m pip
             container_image: null
             prepare: 'windows'
-            overrides: 'overrides/windows_release_overrides.toml'
+            overrides: 'overrides/release_overrides.toml'
+            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+          - name: windows_barebones
+            os: windows-2022
+            python: python.exe
+            pip: python.exe -m pip
+            container_image: null
+            prepare: 'windows'
+            overrides: 'overrides/barebones_overrides.toml'
             rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
           - name: windows_debug
             os: windows-2022
@@ -75,7 +83,7 @@ jobs:
             pip: python.exe -m pip
             container_image: null
             prepare: 'windows'
-            overrides: 'overrides/windows_debug_overrides.toml'
+            overrides: 'overrides/debug_overrides.toml'
             rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
           - name: macos_release
             os: macos-11
@@ -83,7 +91,7 @@ jobs:
             pip: python3.8 -m pip
             container_image: null
             prepare: 'macos'
-            overrides: 'overrides/macos_release_overrides.toml'
+            overrides: 'overrides/barebones_overrides.toml'
             # Note: for some reason, an incorrect MacOS identifier is generated (macos_11 instead of macos_11_0).
             # Also remove the double dot if any.
             rename_wheel_sed: "'s/(.*-macosx_[1-9]+_)(x86_64|arm64|universal2)[\\.]*whl/\\10_\\2.whl/g'"
@@ -93,7 +101,7 @@ jobs:
             pip: python3.8 -m pip
             container_image: null
             prepare: 'macos'
-            overrides: 'overrides/macos_debug_overrides.toml'
+            overrides: 'overrides/barebones_debug_overrides.toml'
             # Note: for some reason, an incorrect MacOS identifier is generated (macos_11 instead of macos_11_0).
             # Also remove the double dot if any.
             rename_wheel_sed: "'s/(.*-macosx_[1-9]+_)(x86_64|arm64|universal2)[\\.]*whl/\\10_\\2.whl/g'"
@@ -138,9 +146,9 @@ jobs:
       with:
         name: ${{ matrix.kind.name }}_wheel
         path: ${{ steps.find.outputs.name }}
-    # - name: TMate failure session
-    #   if: ${{ failure() }}
-    #   uses: SanderVocke/action-tmate@master
+    - name: TMate failure session
+      if: ${{ failure() }}
+      uses: SanderVocke/action-tmate@master
   
   test:
     strategy:
@@ -187,6 +195,7 @@ jobs:
             wheel: macos_release_wheel
             testrunner: test_runner
             qpa_platform: offscreen
+            skip_qml: true
           - name: release_macos12
             python: python3
             pip: python3 -m pip
@@ -195,6 +204,7 @@ jobs:
             wheel: macos_release_wheel
             testrunner: test_runner
             qpa_platform: offscreen
+            skip_qml: true
           - name: release_macos13
             python: python3
             pip: python3 -m pip
@@ -203,6 +213,7 @@ jobs:
             wheel: macos_release_wheel
             testrunner: test_runner
             qpa_platform: offscreen
+            skip_qml: true
           - name: debug_macos13
             python: python3
             pip: python3 -m pip
@@ -211,24 +222,25 @@ jobs:
             wheel: macos_debug_wheel
             testrunner: test_runner
             qpa_platform: offscreen
-          # - name: release_windows
-          #   python: python.exe
-          #   pip: python.exe -m pip
-          #   container: null
-          #   os: windows-2022
-          #   wheel: windows_release_wheel
-          #   testrunner: test_runner.exe
-          #   qpa_platform: vnc
-          #   pathconvert: "| cygpath -u -f -"
-          # - name: debug_windows
-          #   python: python.exe
-          #   pip: python.exe -m pip
-          #   container: null
-          #   os: windows-2022
-          #   wheel: windows_debug_wheel
-          #   testrunner: test_runner.exe
-          #   qpa_platform: vnc
-          #   pathconvert: "| cygpath -u -f -"
+            skip_qml: true
+          - name: release_windows
+            python: python.exe
+            pip: python.exe -m pip
+            container: null
+            os: windows-2022
+            wheel: windows_release_wheel
+            testrunner: test_runner.exe
+            qpa_platform: offscreen
+            pathconvert: "| cygpath -u -f -"
+          - name: debug_windows
+            python: python.exe
+            pip: python.exe -m pip
+            container: null
+            os: windows-2022
+            wheel: windows_debug_wheel
+            testrunner: test_runner.exe
+            qpa_platform: offscreen
+            pathconvert: "| cygpath -u -f -"
     runs-on: ${{ matrix.kind.os }}
     needs: build
     if: ${{ always() }}
@@ -257,6 +269,7 @@ jobs:
     - name: Test back-end
       if: ${{ success() || failure() }}
       uses: ./.github/actions/test_backend
+      timeout-minutes: 5
       with:
         variant_name: release
         # note: build step generates run_cmd_prefix output
@@ -266,32 +279,37 @@ jobs:
     - name: Test Python
       if: ${{ success() || failure() }}
       uses: ./.github/actions/test_python
+      timeout-minutes: 5
       with:
         variant_name: release
         run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
         root_path: ${{ steps.install.outputs.install_dir }}
         pytest_command: ${{ matrix.kind.python }} -m pytest
-    # - name: Test QML
-    #   if: ${{ success() || failure() }}
-    #   uses: ./.github/actions/test_qml
-    #   with:
-    #     variant_name: release
-    #     run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
-    #     root_path: ${{ steps.install.outputs.install_dir }}
-    #     python_command: ${{ matrix.kind.python }}
-    #     qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
-    #     macos_rpath_patch: ${{ contains(matrix.kind.name, 'macos') }}
+    - name: Test QML
+      if: ${{ (success() || failure()) && !matrix.kind.skip_qml }}
+      uses: ./.github/actions/test_qml
+      timeout-minutes: 20
+      with:
+        variant_name: release
+        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
+        root_path: ${{ steps.install.outputs.install_dir }}
+        python_command: ${{ matrix.kind.python }}
+        qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
+        macos_rpath_patch: ${{ contains(matrix.kind.name, 'macos') }}
     - name: Screenshots
       if: ${{ success() || failure() }}
       uses: ./.github/actions/test_screenshots
+      timeout-minutes: 5
       with:
         root_path: ${{ steps.install.outputs.install_dir }}
-        screenshots_path: /tmp/screenshots
+        screenshots_path: _grabbed_screenshots
         artifact_name: screenshots_${{ matrix.kind.name }}
         qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
+        python: ${{ matrix.kind.python }}
     - name: Test Run App
       if: ${{ success() || failure() }}
       uses: ./.github/actions/test_run_app
+      timeout-minutes: 15
       with:
         variant_name: release
         run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
@@ -305,7 +323,7 @@ jobs:
   # asan:
   #   runs-on: ubuntu-latest
   #   container:
-  #     image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
+  #     image: quay.io/pypa/manylinux_2_28_x86_64:latest
   #     options: --user root --workdir /
   #   steps:
   #   - name: Checkout
@@ -348,7 +366,7 @@ jobs:
   # coverage:
   #   runs-on: ubuntu-latest
   #   container:
-  #     image: sandervocke/shoopdaloop_build_base_manylinux_2_28:latest
+  #     image: quay.io/pypa/manylinux_2_28_x86_64:latest
   #     options: --user root --workdir /
   #   steps:
   #   - name: Checkout
