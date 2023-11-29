@@ -1,16 +1,23 @@
 #pragma once
-#include "RtAudioApi.h"
+#include "RtAudio.h"
 #include "AudioSystemInterface.h"
 #include "LoggingEnabled.h"
 
-template<typename Api>
+template<typename ApiObject>
 class GenericRtAudioSystem :
     public AudioSystemInterface,
     private ModuleLoggingEnabled<"Backend.RtAudioSystem"> {
+    
+    ApiObject m_api;
 
 public:
     GenericRtAudioSystem(
-        std::string client_name,
+        std::string device_name,
+        size_t input_channels,
+        size_t output_channels,
+        size_t sample_rate,
+        size_t buffer_size,
+        size_t n_buffers,
         std::function<void(uint32_t)> process_cb
     );
 
@@ -38,5 +45,5 @@ public:
     
 };
 
-using RtAudioSystem = GenericRtAudioSystem<RtAudioApi>;
-extern template class GenericRtAudioSystem<RtAudioApi>;
+using RtAudioSystem = GenericRtAudioSystem<RtAudio>;
+extern template class GenericRtAudioSystem<RtAudio>;
