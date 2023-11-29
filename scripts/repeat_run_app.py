@@ -22,29 +22,7 @@ n_unexpected_closed = 0
 n_had_to_kill = 0
 n_nonzero_exit = 0
 
-def get_subprocess_main_window(proc):
-    if platform.system() == 'Windows':
-        import win32gui
-        import win32process
-        def enum_windows_callback(hwnd, _):
-            if win32gui.IsWindowVisible(hwnd):
-                _, pid = win32process.GetWindowThreadProcessId(hwnd)
-                if pid == proc.pid:
-                    return hwnd
-
-        return win32gui.EnumWindows(enum_windows_callback, None)
-    return None
-
 def terminate(process):
-    if platform.system() == 'Windows':
-        # First, attempt to close via the windowing system.
-        win = get_subprocess_main_window(process)
-        if win:
-            import win32gui
-            import win32con
-            print ("============ use WM_CLOSE")
-            win32gui.PostMessage(win, win32con.WM_CLOSE, 0, 0)
-            return    
     process.terminate()
 
 def exit_code_ok(code):
