@@ -12,4 +12,9 @@ public:
 
     int getDeviceCount() { return m_audio.getDeviceCount(); }
     RtAudioDeviceInfo getDeviceInfo(int idx) { return m_audio.getDeviceInfo(idx); }
+    void setStreamCallback();
+    // RtError wrapper with printMessage
+    void startStream();
+    void stopStream();
+    void closeStream();
 };
