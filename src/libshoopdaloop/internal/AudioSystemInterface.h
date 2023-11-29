@@ -58,8 +58,8 @@ public:
         available as an output externally and as a data sink internally.
     */
     virtual bool supports_system_port_creation() const = 0;
-    virtual std::shared_ptr<AudioPortInterface> create_system_audio_output_port(std::string name, PortDirection direction) = 0;
-    virtual std::shared_ptr<MidiPortInterface> create_system_midi_output_port(std::string name, PortDirection direction) = 0;
+    virtual std::shared_ptr<AudioPortInterface> create_system_audio_port(std::string name, PortDirection direction) = 0;
+    virtual std::shared_ptr<MidiPortInterface> create_system_midi_port(std::string name, PortDirection direction) = 0;
 
     virtual void start() = 0;
     virtual uint32_t get_sample_rate() const = 0;

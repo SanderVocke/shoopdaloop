@@ -144,6 +144,23 @@ std::shared_ptr<MidiPortInterface> GenericJackAudioSystem<API>::open_midi_port(s
 }
 
 template<typename API>
+bool GenericJackAudioSystem<API>::supports_system_port_creation() const {
+    return true;
+}
+
+template<typename API>
+std::shared_ptr<AudioPortInterface> GenericJackAudioSystem<API>::create_system_audio_port(std::string name, PortDirection direction) {
+    // for JACK there is no technical difference between a normal port and a "system" port.
+    return open_audio_port(name, direction);
+}
+
+template<typename API>
+std::shared_ptr<MidiPortInterface> GenericJackAudioSystem<API>::create_system_midi_port(std::string name, PortDirection direction) {
+    // for JACK there is no technical difference between a normal port and a "system" port.
+    return open_midi_port(name, direction);
+}
+
+template<typename API>
 uint32_t GenericJackAudioSystem<API>::get_sample_rate() const {
     return API::get_sample_rate(m_client);
 }

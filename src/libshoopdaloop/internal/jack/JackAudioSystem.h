@@ -57,6 +57,13 @@ public:
         PortDirection direction
     ) override;
 
+    virtual std::vector<std::shared_ptr<AudioPortInterface>> get_system_audio_ports() const override;
+    virtual std::vector<std::shared_ptr<MidiPortInterface>> get_system_midi_ports() const override;
+
+    virtual bool supports_system_port_creation() const = 0;
+    virtual std::shared_ptr<AudioPortInterface> create_system_audio_port(std::string name, PortDirection direction);
+    virtual std::shared_ptr<MidiPortInterface> create_system_midi_port(std::string name, PortDirection direction);
+
     uint32_t get_sample_rate() const override;
     uint32_t get_buffer_size() const override;
     void* maybe_client_handle() const override;
