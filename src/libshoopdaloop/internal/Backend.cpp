@@ -210,6 +210,12 @@ void Backend::PROC_process (uint32_t nframes) {
                         for (auto & p : chain->mc_midi_input_ports)  { prepare_port_fn(p); }
                     }
 
+                    // Finish processing any ports that come before loop channels (system inputs)
+                    auto before_loops_port_process = [&](auto &p) {
+                        if (p && p->ma_process_when == ProcessWhen::BeforeLoops) { p->PROC_finalize_process(nframes); }
+                    };
+                    for (auto &port : ports) { before_loops_port_process(port); }
+
                     // Prepare loops:
                     // Connect port buffers to loop channels
                     for (auto & loop: loops) {
@@ -342,6 +348,20 @@ void Backend::PROC_process (uint32_t nframes) {
                 },
                 loops_profiling_item
             );
+
+            log<trace>("Process: finish system ports");
+            profiling::stopwatch(
+                [this, &nframes]() {
+                    // Finish processing system ports.
+                    // Finish processing any ports that come after loop channels (system inputs)
+                    auto after_loops_port_process = [&](auto &p) {
+                        if (p && p->ma_process_when == ProcessWhen::AfterLoops) { p->PROC_finalize_process(nframes); }
+                    };
+                    for (auto &port : ports) { after_loops_port_process(port); }
+                },
+                ports_profiling_item
+            );
+            
         },
         top_profiling_item
     );

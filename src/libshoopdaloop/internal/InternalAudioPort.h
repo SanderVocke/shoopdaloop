@@ -1,5 +1,6 @@
 #pragma once
 #include "AudioPortInterface.h"
+#include "process_when.h"
 #include <vector>
 
 template<typename SampleT>
