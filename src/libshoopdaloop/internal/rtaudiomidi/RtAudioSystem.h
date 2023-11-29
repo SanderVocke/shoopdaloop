@@ -1,5 +1,5 @@
 #pragma once
-#include "RtAudio.h"
+#include <RtAudio.h>
 #include "AudioSystemInterface.h"
 #include "LoggingEnabled.h"
 

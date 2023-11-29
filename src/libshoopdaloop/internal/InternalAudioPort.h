@@ -9,7 +9,8 @@ class InternalAudioPort : public AudioPortInterface<SampleT> {
     std::vector<SampleT> m_buffer;
 
 public:
-    // Note that the port direction for internal ports are defined w.r.t. ShoopDaLoop.
+    // Note that the port direction for internal ports are defined w.r.t. ShoopDaLoop,
+    // looking "from the outside".
     // That is to say, the inputs of a plugin effect are regarded as output ports to
     // ShoopDaLoop.
     InternalAudioPort(
