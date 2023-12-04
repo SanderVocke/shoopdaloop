@@ -32,7 +32,7 @@ using namespace logging;
 using namespace shoop_types;
 using namespace shoop_constants;
 
-BackendSession::BackendSession(shoop_audio_driver_type_t audio_system_type, std::string client_name_hint, std::string argstring)
+BackendSession::BackendSession()
         : cmd_queue(shoop_constants::command_queue_size, 1000, 1000),
           profiler(std::make_shared<profiling::Profiler>()),
           top_profiling_item(profiler->maybe_get_profiling_item("Process")),
@@ -59,115 +59,22 @@ BackendSession::BackendSession(shoop_audio_driver_type_t audio_system_type, std:
           fx_profiling_item(profiler->maybe_get_profiling_item("Process.FX")),
           cmds_profiling_item(
               profiler->maybe_get_profiling_item("Process.Commands")),
-          m_audio_system_type(audio_system_type),
-          m_client_name_hint(client_name_hint),
-          m_argstring(argstring),
-          ma_state(State::NotStarted)
+          ma_state(State::Active)
 {
+    audio_buffer_pool = std::make_shared<ObjectPool<AudioBuffer<shoop_types::audio_sample_t>>>(
+        n_buffers_in_pool, audio_buffer_size);
+    loops.reserve(initial_max_loops);
+    ports.reserve(initial_max_ports);
+    fx_chains.reserve(initial_max_fx_chains);
+    decoupled_midi_ports.reserve(initial_max_decoupled_midi_ports);
 }
-
-std::vector<shoop_audio_driver_type_t> BackendSession::get_supported_audio_system_types() {
-    std::vector<shoop_audio_driver_type_t> rval = { Dummy };
-    #ifdef SHOOP_HAVE_BACKEND_JACK
-    rval.push_back(Jack);
-    rval.push_back(JackTest);
-    #endif
-    return rval;
-}
-
-void BackendSession::start() {
-        auto weak_self = weak_from_this();
-        try {
-            switch (m_audio_system_type) {
-#ifdef SHOOP_HAVE_BACKEND_JACK
-            case Jack:
-                log<log_debug>("Initializing JACK audio system.");
-                audio_system = std::unique_ptr<AudioMidiDriver>(
-                    dynamic_cast<AudioMidiDriver *>(new JackAudioMidiDriver(
-                        std::string(m_client_name_hint),
-                        [weak_self] (uint32_t n_frames) {
-                        if (auto self = weak_self.lock()) {
-                            self->log<log_trace>("Jack process: {}", n_frames);
-                            self->PROC_process(n_frames);
-                        }
-                    })));
-                break;
-            case JackTest:
-                log<log_debug>("Initializing JackTest mock audio system.");
-                audio_system = std::unique_ptr<AudioMidiDriver>(
-                    dynamic_cast<AudioMidiDriver *>(new JackTestAudioMidiDriver(
-                        std::string(m_client_name_hint),
-                        [weak_self] (uint32_t n_frames) {
-                        if (auto self = weak_self.lock()) {
-                            self->log<log_trace>("Jack test process: {}", n_frames);
-                            self->PROC_process(n_frames);
-                        }
-                    })));
-                break;
-#else
-            case Jack:
-            case JackTest:
-                log<log_warning>("JACK backend requested but not supported.");
-#endif
-            case Dummy:
-                // Dummy is also the fallback option - intiialized below
-                break;
-            default:
-                throw_error<std::runtime_error>("Unimplemented backend type");
-            }
-
-            if (m_audio_system_type != Dummy && !audio_system) {
-                log<log_warning>("Failed to initialize primary audio system.");
-            }
-        } catch (std::exception &e) {
-            log<log_error>("Failed to initialize audio system.");
-            log<log_info>("Failure log_info: " + std::string(e.what()));
-            log<log_info>("Attempting fallback to dummy audio system.");
-        } catch (...) {
-            log<log_error>(
-                "Failed to initialize audio system: unknown exception");
-            log<log_info>("Attempting fallback to dummy audio system.");
-        }
-
-        if (!audio_system || m_audio_system_type == Dummy) {
-            m_audio_system_type = Dummy;
-            log<log_debug>("Initializing dummy audio system.");
-            audio_system = std::unique_ptr<AudioMidiDriver>(
-                dynamic_cast<AudioMidiDriver *>(new _DummyAudioMidiDriver(
-                    std::string(m_client_name_hint),
-                    [weak_self] (uint32_t n_frames) {
-                        if (auto self = weak_self.lock()) {
-                            self->log<log_trace>("dummy process: {}", n_frames);
-                            self->PROC_process(n_frames);
-                        }
-                    })));
-        }
-
-        audio_buffer_pool = std::make_shared<ObjectPool<AudioBuffer<shoop_types::audio_sample_t>>>(
-            n_buffers_in_pool, audio_buffer_size);
-        loops.reserve(initial_max_loops);
-        ports.reserve(initial_max_ports);
-        fx_chains.reserve(initial_max_fx_chains);
-        decoupled_midi_ports.reserve(initial_max_decoupled_midi_ports);
-        audio_system->start();
-        ma_state = State::Running;
-    }
 
 shoop_backend_session_state_info_t BackendSession::get_state() {
     shoop_backend_session_state_info_t rval;
-#ifdef SHOOP_HAVE_BACKEND_JACK
-    rval.dsp_load_percent = (maybe_jack_client_handle() && m_audio_system_type == Jack) ? JackApi::cpu_load((jack_client_t*)maybe_jack_client_handle()) : 0.0f;
-#else
-    rval.dsp_load_percent = 0.0f;
-#endif
-    rval.xruns_since_last = audio_system->get_xruns();
-    rval.actual_type = m_audio_system_type;
-    audio_system->reset_xruns();
     return rval;
 }
 
 //TODO delete destroyed ports
-// MEMBER FUNCTIONS
 void BackendSession::PROC_process (uint32_t nframes) {
     log<log_trace>("Process {}: start", nframes);
     profiling::stopwatch(
@@ -353,9 +260,9 @@ void BackendSession::PROC_process_decoupled_midi_ports(uint32_t nframes) {
     }
 }
 
-void BackendSession::terminate() {
-    if (ma_state != State::Terminated) {
-        log<log_debug>("Terminating backend");
+void BackendSession::destroy() {
+    if (ma_state != State::Destroyed) {
+        log<log_debug>("Destroying backend");
         cmd_queue.passthrough_on();
         for (auto &p : ports) {
             if (p) {
@@ -367,42 +274,10 @@ void BackendSession::terminate() {
                 p->port->close();
             }
         }
-        if(audio_system) {
-            audio_system->close();
-            audio_system.reset(nullptr);
-        }
-        ma_state = State::Terminated;
+        ma_state = State::Destroyed;
     } else {
-        log<log_debug>("Backend already terminated");
+        log<log_debug>("Backend already destroyed");
     }
-}
-
-void *BackendSession::maybe_jack_client_handle() {
-    if (!audio_system || m_audio_system_type != Jack) {
-        return nullptr;
-    }
-    return audio_system->maybe_client_handle();
-}
-
-const char* BackendSession::get_client_name() {
-    if (!audio_system) {
-        throw std::runtime_error("get_client_name() called before intialization");
-    }
-    return audio_system->client_name();
-}
-
-unsigned BackendSession::get_sample_rate() {
-    if (!audio_system) {
-        throw std::runtime_error("get_sample_rate() called before initialization");
-    }
-    return audio_system->get_sample_rate();
-}
-
-unsigned BackendSession::get_buffer_size() {
-    if (!audio_system) {
-        throw std::runtime_error("get_buffer_size() called before initialization");
-    }
-    return audio_system->get_buffer_size();
 }
 
 std::shared_ptr<ConnectedLoop> BackendSession::create_loop() {
@@ -487,5 +362,5 @@ std::shared_ptr<ConnectedFXChain> BackendSession::create_fx_chain(shoop_fx_chain
 }
 
 BackendSession::~BackendSession() {
-    terminate();
+    destory();
 }

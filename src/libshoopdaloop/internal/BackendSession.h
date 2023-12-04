@@ -20,16 +20,18 @@ class ConnectedDecoupledMidiPort;
 using namespace shoop_types;
 
 class BackendSession : public std::enable_shared_from_this<BackendSession>,
-                 public ModuleLoggingEnabled<"Backend.Session"> {
+                       public HasAudioProcessingFunction,
+                       public ModuleLoggingEnabled<"Backend.Session"> {
 
-public:
+    void PROC_process_decoupled_midi_ports(uint32_t nframes);
+
     enum class State {
-        NotStarted,
-        Running,
-        Terminated
+        Active,
+        Destroyed
     };
     std::atomic<State> ma_state;
 
+public:
     // Graph nodes
     std::vector<std::shared_ptr<ConnectedLoop>> loops;
     std::vector<std::shared_ptr<ConnectedPort>> ports;
@@ -61,16 +63,11 @@ public:
     BackendSession();
     ~BackendSession();
 
-    ProcessFunctionResult PROC_process(uint32_t nframes) override;
+    void PROC_process(uint32_t nframes) override;
 
-    void PROC_process_decoupled_midi_ports(uint32_t nframes);
-    void terminate();
-    void* maybe_jack_client_handle();
-    const char *get_client_name();
-    unsigned get_sample_rate();
-    unsigned get_buffer_size();
     shoop_backend_session_state_info_t get_state();
     std::shared_ptr<ConnectedLoop> create_loop();
     std::shared_ptr<ConnectedFXChain> create_fx_chain(shoop_fx_chain_type_t type, const char *title);
-    void start();
+
+    void destroy();
 };

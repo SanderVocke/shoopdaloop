@@ -26,7 +26,7 @@ public:
     HasAudioProcessingFunction() {}
     virtual ~HasAudioProcessingFunction() {}
 
-    void PROC_process(uint32_t nframes);
+    virtual void PROC_process(uint32_t nframes) = 0;
 };
 
 class AudioMidiDriver {
