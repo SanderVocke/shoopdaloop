@@ -1,5 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
-#include "DummyAudioSystem.h"
+#include "DummyAudioMidiDriver.h"
 #include "CustomProcessingChain.h"
 #include "AudioMidiLoop.h"
 #include "LoggingBackend.h"
@@ -18,9 +18,9 @@
 
 struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDryWetLoopTestChain"> {
 
-    shoopdaloop_backend_instance_t *api_backend;
-    std::shared_ptr<Backend> int_backend;
-    shoop_types::_DummyAudioSystem* int_dummy_audio_system;
+    shoop_backend_session_t *api_backend;
+    std::shared_ptr<BackendSession> int_backend;
+    shoop_types::_DummyAudioMidiDriver* int_dummy_audio_system;
 
     shoopdaloop_audio_port_t *api_input_port;
     std::shared_ptr<ConnectedPort> int_input_port;
@@ -57,8 +57,8 @@ struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDryWe
 
     SingleDryWetLoopTestChain() {
         api_backend = create_backend(Dummy, "backend", "");
-        int_backend = internal_backend(api_backend);
-        int_dummy_audio_system = (shoop_types::_DummyAudioSystem*)int_backend->audio_system.get();
+        int_backend = internal_backend_session(api_backend);
+        int_dummy_audio_system = (shoop_types::_DummyAudioMidiDriver*)int_backend->audio_system.get();
 
         api_input_port = open_audio_port(api_backend, "input", Input);
         api_output_port = open_audio_port(api_backend, "output", Output);
@@ -92,7 +92,7 @@ struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDryWe
         if(!int_dry_audio_chan) { throw std::runtime_error("ChannelMode_Dry audio channel is null"); }
         if(!int_wet_audio_chan) { throw std::runtime_error("Wet audio channel is null"); }
 
-        int_dummy_audio_system->enter_mode(DummyAudioSystemMode::Controlled);
+        int_dummy_audio_system->enter_mode(DummyAudioMidiDriverMode::Controlled);
 
         connect_audio_input(api_dry_chan, api_input_port);
         connect_audio_output(api_dry_chan, api_fx_in);
@@ -121,8 +121,8 @@ struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDryWe
 
 std::vector<float> zeroes(uint32_t n) { return std::vector<float>(n, 0); }
 
-audio_channel_data_t to_api_data(std::vector<float> &vec) {
-    audio_channel_data_t rval;
+shoop_audio_channel_data_t to_api_data(std::vector<float> &vec) {
+    shoop_audio_channel_data_t rval;
     rval.data = vec.data();
     rval.n_samples = vec.size();
     return rval;

@@ -59,7 +59,7 @@ class FXChainState:
     ready : bool
     active : bool
 
-    def __init__(self, backend_state : "fx_chain_state_info_t" = None):
+    def __init__(self, backend_state : "shoop_fx_chain_state_info_t" = None):
         if backend_state:
             self.visible = backend_state.visible
             self.active = backend_state.active
@@ -160,7 +160,7 @@ class AudioPortState:
     passthrough_muted: bool
     name: str
 
-    def __init__(self, backend_state : 'audio_port_state_info_t' = None):
+    def __init__(self, backend_state : 'shoop_audio_port_state_info_t' = None):
         if backend_state:
             self.peak = backend_state.peak
             self.volume = backend_state.volume
@@ -182,7 +182,7 @@ class MidiPortState:
     passthrough_muted: bool
     name: str
 
-    def __init__(self, backend_state : 'audio_port_state_info_t' = None):
+    def __init__(self, backend_state : 'shoop_audio_port_state_info_t' = None):
         if backend_state:
             self.n_events_triggered = backend_state.n_events_triggered
             self.n_notes_active = backend_state.n_notes_active
@@ -202,7 +202,7 @@ class MidiEvent:
     size: int
     data: List[int]
     
-    def __init__(self, backend_event : 'midi_event_t'):
+    def __init__(self, backend_event : 'shoop_midi_event_t'):
         self.time = backend_event.time
         self.size = backend_event.size
         self.data = [int(backend_event.data[i]) for i in range(backend_event.size)]
@@ -213,7 +213,7 @@ class BackendState:
     xruns_since_last: int
     actual_type: Type[BackendType]
 
-    def __init__(self, backend_state : 'backend_state_info_t' = None):
+    def __init__(self, backend_state : 'shoop_backend_session_state_info_t' = None):
         if backend_state:
             self.dsp_load_percent = float(backend_state.dsp_load_percent)
             self.xruns_since_last = int(backend_state.xruns_since_last)
@@ -231,7 +231,7 @@ class ProfilingReportItem:
     most_recent : float
     average : float
 
-    def __init__(self, backend_obj : 'profiling_report_item_t'):
+    def __init__(self, backend_obj : 'shoop_profiling_report_item_t'):
         self.key = str(backend_obj.key)
         self.n_samples = float(backend_obj.n_samples)
         self.worst = float(backend_obj.worst)
@@ -242,7 +242,7 @@ class ProfilingReportItem:
 class ProfilingReport:
     items : List[ProfilingReportItem]
 
-    def __init__(self, backend_obj : 'profiling_report_t'):
+    def __init__(self, backend_obj : 'shoop_profiling_report_t'):
         self.items = [ProfilingReportItem(backend_obj.items[i]) for i in range(backend_obj.n_items)]
     
     def __init__(self):
@@ -254,7 +254,7 @@ def parse_connections_state(backend_state : 'port_connections_state_info_t'):
         rval[str(backend_state.ports[i].name)] = bool(backend_state.ports[i].connected)
     return rval
 
-def backend_midi_message_to_dict(backend_msg: 'midi_event_t'):
+def backend_midi_message_to_dict(backend_msg: 'shoop_midi_event_t'):
     r = dict()
     r['time'] = backend_msg.time
     r['data'] = [int(backend_msg.data[i]) for i in range(backend_msg.size)]
@@ -782,7 +782,7 @@ class BackendFXChain:
             restore_fx_chain_internal_state(self._c_handle, c_char_p(bytes(state_str, 'ascii')))
 
 class Backend:
-    def __init__(self, c_handle : 'POINTER(shoopdaloop_backend_instance_t)'):
+    def __init__(self, c_handle : 'POINTER(shoop_backend_session_t)'):
         self._c_handle = c_handle
         self._active = True
 

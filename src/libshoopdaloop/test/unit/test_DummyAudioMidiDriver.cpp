@@ -1,5 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
-#include "DummyAudioSystem.h"
+#include "DummyAudioMidiDriver.h"
 #include "PortInterface.h"
 #include <functional>
 #include <thread>
@@ -26,15 +26,15 @@ struct Tracker {
 };
 
 template <typename Time, typename Size>
-struct TrackedDummyAudioSystem : public DummyAudioSystem<Time, Size> {
+struct TrackedDummyAudioMidiDriver : public DummyAudioMidiDriver<Time, Size> {
     Tracker tracker;
 
-    TrackedDummyAudioSystem(
+    TrackedDummyAudioMidiDriver(
         std::string client_name,
-        DummyAudioSystemMode mode,
+        DummyAudioMidiDriverMode mode,
         std::function<void(uint32_t)> process_cb = nullptr,
         uint32_t sample_rate = 48000,
-        uint32_t buffer_size = 256) : DummyAudioSystem<Time, Size>(
+        uint32_t buffer_size = 256) : DummyAudioMidiDriver<Time, Size>(
             client_name,
             [process_cb, this](uint32_t n) {
                 if (process_cb) {
@@ -50,10 +50,10 @@ struct TrackedDummyAudioSystem : public DummyAudioSystem<Time, Size> {
     std::set<uint32_t> get_unique_n_samples_processed() { return std::set (tracker.each_n_samples_processed.begin(), tracker.each_n_samples_processed.end()); }
 };
 
-TEST_CASE("DummyAudioSystem - Automatic", "[DummyAudioSystem]") {
-    TrackedDummyAudioSystem<uint32_t, uint32_t> dut (
+TEST_CASE("DummyAudioMidiDriver - Automatic", "[DummyAudioMidiDriver]") {
+    TrackedDummyAudioMidiDriver<uint32_t, uint32_t> dut (
         "test",
-        DummyAudioSystemMode::Automatic,
+        DummyAudioMidiDriverMode::Automatic,
         nullptr,
         48000,
         256
@@ -68,10 +68,10 @@ TEST_CASE("DummyAudioSystem - Automatic", "[DummyAudioSystem]") {
     REQUIRE(*dut.get_unique_n_samples_processed().begin() == 256);
 };
 
-TEST_CASE("DummyAudioSystem - Controlled", "[DummyAudioSystem]") {
-    TrackedDummyAudioSystem<uint32_t, uint32_t> dut (
+TEST_CASE("DummyAudioMidiDriver - Controlled", "[DummyAudioMidiDriver]") {
+    TrackedDummyAudioMidiDriver<uint32_t, uint32_t> dut (
         "test",
-        DummyAudioSystemMode::Controlled,
+        DummyAudioMidiDriverMode::Controlled,
         nullptr,
         48000,
         256
@@ -99,7 +99,7 @@ TEST_CASE("DummyAudioSystem - Controlled", "[DummyAudioSystem]") {
     dut.close();
 };
 
-TEST_CASE("DummyAudioSystem - Input port default", "[DummyAudioSystem]") {
+TEST_CASE("DummyAudioMidiDriver - Input port default", "[DummyAudioMidiDriver]") {
     DummyAudioPort put("test_in", PortDirection::Input);
 
     auto buf = put.PROC_get_buffer(8);
@@ -107,7 +107,7 @@ TEST_CASE("DummyAudioSystem - Input port default", "[DummyAudioSystem]") {
     REQUIRE(bufvec == std::vector<float>({0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}));
 };
 
-TEST_CASE("DummyAudioSystem - Input port queue", "[DummyAudioSystem]") {
+TEST_CASE("DummyAudioMidiDriver - Input port queue", "[DummyAudioMidiDriver]") {
     DummyAudioPort put("test_in", PortDirection::Input);
     std::vector<float> data({1, 2, 3, 4, 5, 6, 7, 8});
     put.queue_data(8, data.data());
@@ -117,7 +117,7 @@ TEST_CASE("DummyAudioSystem - Input port queue", "[DummyAudioSystem]") {
     REQUIRE(bufvec == data);
 };
 
-TEST_CASE("DummyAudioSystem - Input port queue consume multiple", "[DummyAudioSystem]") {
+TEST_CASE("DummyAudioMidiDriver - Input port queue consume multiple", "[DummyAudioMidiDriver]") {
     DummyAudioPort put("test_in", PortDirection::Input);
     std::vector<float> data({1, 2, 3, 4, 5, 6, 7, 8});
     put.queue_data(8, data.data());
@@ -134,7 +134,7 @@ TEST_CASE("DummyAudioSystem - Input port queue consume multiple", "[DummyAudioSy
     }
 };
 
-TEST_CASE("DummyAudioSystem - Input port queue consume combine", "[DummyAudioSystem]") {
+TEST_CASE("DummyAudioMidiDriver - Input port queue consume combine", "[DummyAudioMidiDriver]") {
     DummyAudioPort put("test_in", PortDirection::Input);
     std::vector<float> data({1, 2, 3, 4});
     put.queue_data(4, data.data());

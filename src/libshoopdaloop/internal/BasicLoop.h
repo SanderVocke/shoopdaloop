@@ -35,17 +35,17 @@ protected:
     std::optional<PointOfInterest> mp_next_poi;
     std::optional<uint32_t> mp_next_trigger;
     std::shared_ptr<LoopInterface> mp_sync_source;
-    std::deque<loop_mode_t> mp_planned_states;
+    std::deque<shoop_loop_mode_t> mp_planned_states;
     std::deque<int> mp_planned_state_countdowns;
 
-    std::atomic<loop_mode_t> ma_mode;
+    std::atomic<shoop_loop_mode_t> ma_mode;
     std::atomic<bool> ma_triggering_now;
     std::atomic<bool> ma_already_triggered;
     std::atomic<uint32_t> ma_length;
     std::atomic<uint32_t> ma_position;
     
     // Cached state for easy lock-free reading.
-    std::atomic<loop_mode_t> ma_maybe_next_planned_mode;
+    std::atomic<shoop_loop_mode_t> ma_maybe_next_planned_mode;
     std::atomic<int> ma_maybe_next_planned_delay;
 
 public:
@@ -62,8 +62,8 @@ public:
     void PROC_handle_poi() override;
     bool PROC_is_triggering_now() override;
     virtual void PROC_process_channels(
-        loop_mode_t mode,
-        std::optional<loop_mode_t> maybe_next_mode,
+        shoop_loop_mode_t mode,
+        std::optional<shoop_loop_mode_t> maybe_next_mode,
         std::optional<uint32_t> maybe_next_mode_delay_cycles,
         std::optional<uint32_t> maybe_next_mode_eta,
         uint32_t n_samples,
@@ -78,19 +78,19 @@ public:
     void PROC_update_planned_transition_cache();
     void PROC_trigger(bool propagate=true) override;
     void PROC_handle_sync() override;
-    void PROC_handle_transition(loop_mode_t new_state);
+    void PROC_handle_transition(shoop_loop_mode_t new_state);
     uint32_t get_n_planned_transitions(bool thread_safe=true) override;
     uint32_t get_planned_transition_delay(uint32_t idx, bool thread_safe=true) override;
-    loop_mode_t get_planned_transition_state(uint32_t idx, bool thread_safe=true) override;
+    shoop_loop_mode_t get_planned_transition_state(uint32_t idx, bool thread_safe=true) override;
     void clear_planned_transitions(bool thread_safe) override;
-    void plan_transition(loop_mode_t mode, uint32_t n_cycles_delay = 0, bool wait_for_sync = true, bool thread_safe=true) override;
+    void plan_transition(shoop_loop_mode_t mode, uint32_t n_cycles_delay = 0, bool wait_for_sync = true, bool thread_safe=true) override;
     uint32_t get_position() const override;
     void set_position(uint32_t position, bool thread_safe=true) override;
     uint32_t get_length() const override;
-    loop_mode_t get_mode() const override;
-    void get_first_planned_transition(loop_mode_t &maybe_mode_out, uint32_t &delay_out) override;
+    shoop_loop_mode_t get_mode() const override;
+    void get_first_planned_transition(shoop_loop_mode_t &maybe_mode_out, uint32_t &delay_out) override;
     void set_length(uint32_t len, bool thread_safe=true) override;
-    void set_mode(loop_mode_t mode, bool thread_safe=true) override;
+    void set_mode(shoop_loop_mode_t mode, bool thread_safe=true) override;
 
 protected:
     static std::optional<PointOfInterest> dominant_poi(std::optional<PointOfInterest> const& a, std::optional<PointOfInterest> const& b);

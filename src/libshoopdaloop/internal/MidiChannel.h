@@ -79,7 +79,7 @@ private:
     unsigned mp_prev_process_flags;
 
     // Any thread access
-    std::atomic<channel_mode_t> ma_mode;
+    std::atomic<shoop_channel_mode_t> ma_mode;
     std::atomic<uint32_t> ma_data_length; // Length in samples
     std::atomic<uint32_t> ma_prerecord_data_length;
     std::atomic<int> ma_start_offset;
@@ -91,7 +91,7 @@ private:
     const Message all_sound_off_message_channel_0 = Message(0, 3, {0xB0, 120, 0});
 
 public:
-    MidiChannel(uint32_t data_size, channel_mode_t mode, std::shared_ptr<profiling::Profiler> maybe_profiler=nullptr);
+    MidiChannel(uint32_t data_size, shoop_channel_mode_t mode, std::shared_ptr<profiling::Profiler> maybe_profiler=nullptr);
     ~MidiChannel();
 
     // NOTE: only use on process thread
@@ -113,8 +113,8 @@ public:
 
     // MIDI channels process everything immediately. Deferred processing is not possible.
     void PROC_process(
-        loop_mode_t mode,
-        std::optional<loop_mode_t> maybe_next_mode,
+        shoop_loop_mode_t mode,
+        std::optional<shoop_loop_mode_t> maybe_next_mode,
         std::optional<uint32_t> maybe_next_mode_delay_cycles,
         std::optional<uint32_t> maybe_next_mode_eta,
         uint32_t n_samples,
@@ -140,8 +140,8 @@ public:
     void PROC_send_message_value(MidiWriteableBufferInterface &buf, uint32_t time, uint32_t size, uint8_t *data);
     void PROC_process_playback(uint32_t our_pos, uint32_t our_length, uint32_t n_samples, bool muted);
 
-    std::optional<uint32_t> PROC_get_next_poi(loop_mode_t mode,
-                                               std::optional<loop_mode_t> maybe_next_mode,
+    std::optional<uint32_t> PROC_get_next_poi(shoop_loop_mode_t mode,
+                                               std::optional<shoop_loop_mode_t> maybe_next_mode,
                                                std::optional<uint32_t> maybe_next_mode_delay_cycles,
                                                std::optional<uint32_t> maybe_next_mode_eta,
                                                uint32_t length,
@@ -155,13 +155,13 @@ public:
 
     void set_contents(std::vector<Message> contents, uint32_t length_samples, bool thread_safe = true);
 
-    void PROC_handle_poi(loop_mode_t mode,
+    void PROC_handle_poi(shoop_loop_mode_t mode,
                     uint32_t length,
                     uint32_t position) override;
 
-    void set_mode(channel_mode_t mode) override;
+    void set_mode(shoop_channel_mode_t mode) override;
 
-    channel_mode_t get_mode() const override;
+    shoop_channel_mode_t get_mode() const override;
 
     uint32_t get_n_notes_active() const;
 

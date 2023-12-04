@@ -7,7 +7,7 @@
 
 template<typename SampleT> class AudioBuffer;
 template<typename Obj> class ObjectPool;
-template<typename A, typename B> class DummyAudioSystem;
+template<typename A, typename B> class DummyAudioMidiDriver;
 class AudioMidiLoop;
 class ChannelInterface;
 class PortInterface;
@@ -20,7 +20,7 @@ class ConnectedLoop;
 class ConnectedChannel;
 class ConnectedFXChain;
 class ConnectedDecoupledMidiPort;
-class Backend;
+class BackendSession;
 class MidiReadableBufferInterface;
 class MidiWriteableBufferInterface;
 class MidiMergingBuffer;
@@ -60,7 +60,7 @@ using DefaultAudioBuffer = AudioBuffer<audio_sample_t>;
 using AudioBufferPool = ObjectPool<DefaultAudioBuffer>;
 using Time = uint32_t;
 using Size = uint16_t;
-using _DummyAudioSystem = DummyAudioSystem<uint32_t, uint32_t>;
+using _DummyAudioMidiDriver = DummyAudioMidiDriver<uint32_t, uint32_t>;
 using LoopAudioChannel = AudioChannel<audio_sample_t>;
 using LoopMidiChannel = MidiChannel<uint32_t, uint16_t>;
 using AudioPort = AudioPortInterface<audio_sample_t>;

@@ -10,14 +10,14 @@ public:
     std::shared_ptr<ChannelInterface> channel;
     std::weak_ptr<ConnectedLoop> loop;
     std::weak_ptr<ConnectedPort> mp_input_port_mapping;
-    std::weak_ptr<Backend> backend;
+    std::weak_ptr<BackendSession> backend;
     std::weak_ptr<ConnectedPort> mp_output_port_mapping;
     shoop_types::ProcessWhen ma_process_when;
     std::atomic<unsigned> ma_data_sequence_nr;
 
     ConnectedChannel(std::shared_ptr<ChannelInterface> chan,
                 std::shared_ptr<ConnectedLoop> loop,
-                std::shared_ptr<Backend> backend);
+                std::shared_ptr<BackendSession> backend);
 
     // NOTE: only use on process thread
     ConnectedChannel &operator= (ConnectedChannel const& other);
@@ -32,7 +32,7 @@ public:
     void PROC_prepare_process_midi(uint32_t n_frames);
     void PROC_finalize_process_audio();
     void PROC_finalize_process_midi();
-    Backend &get_backend();
+    BackendSession &get_backend();
     void clear_data_dirty();
     bool get_data_dirty() const;
     shoop_types::LoopAudioChannel* maybe_audio();

@@ -36,7 +36,7 @@ GenericJackPort<API>::GenericJackPort(std::string name,
                    std::shared_ptr<GenericJackAllPorts<API>> all_ports_tracker)
     : m_client(client), m_type(type), m_direction(direction), m_all_ports_tracker(all_ports_tracker) {
 
-    log<debug>("Opening port: {}", name);
+    log<log_debug>("Opening port: {}", name);
 
     auto p = API::port_register(
         m_client,

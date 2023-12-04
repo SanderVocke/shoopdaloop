@@ -1,6 +1,6 @@
 #include "shoop_globals.h"
 #include "CustomProcessingChain.h"
-#include "DummyAudioSystem.h"
+#include "DummyAudioMidiDriver.h"
 
 template<typename TimeType, typename SizeType>
 CustomProcessingChain<TimeType, SizeType>::CustomProcessingChain(

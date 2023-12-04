@@ -1,7 +1,7 @@
-#include "Backend.h"
+#include "BackendSession.h"
 #include "LoggingBackend.h"
 #include "ProcessProfiling.h"
-#include "DummyAudioSystem.h"
+#include "DummyAudioMidiDriver.h"
 #include "ConnectedPort.h"
 #include "ConnectedFXChain.h"
 #include "ProcessingChainInterface.h"
@@ -19,7 +19,7 @@
 #include "process_when.h"
 
 #ifdef SHOOP_HAVE_BACKEND_JACK
-#include "JackAudioSystem.h"
+#include "JackAudioMidiDriver.h"
 #include <jack_wrappers.h>
 #endif
 
@@ -32,7 +32,7 @@ using namespace logging;
 using namespace shoop_types;
 using namespace shoop_constants;
 
-Backend::Backend(audio_system_type_t audio_system_type, std::string client_name_hint, std::string argstring)
+BackendSession::BackendSession(shoop_audio_driver_type_t audio_system_type, std::string client_name_hint, std::string argstring)
         : cmd_queue(shoop_constants::command_queue_size, 1000, 1000),
           profiler(std::make_shared<profiling::Profiler>()),
           top_profiling_item(profiler->maybe_get_profiling_item("Process")),
@@ -66,8 +66,8 @@ Backend::Backend(audio_system_type_t audio_system_type, std::string client_name_
 {
 }
 
-std::vector<audio_system_type_t> Backend::get_supported_audio_system_types() {
-    std::vector<audio_system_type_t> rval = { Dummy };
+std::vector<shoop_audio_driver_type_t> BackendSession::get_supported_audio_system_types() {
+    std::vector<shoop_audio_driver_type_t> rval = { Dummy };
     #ifdef SHOOP_HAVE_BACKEND_JACK
     rval.push_back(Jack);
     rval.push_back(JackTest);
@@ -75,31 +75,31 @@ std::vector<audio_system_type_t> Backend::get_supported_audio_system_types() {
     return rval;
 }
 
-void Backend::start() {
+void BackendSession::start() {
         auto weak_self = weak_from_this();
         try {
             switch (m_audio_system_type) {
 #ifdef SHOOP_HAVE_BACKEND_JACK
             case Jack:
-                log<debug>("Initializing JACK audio system.");
-                audio_system = std::unique_ptr<AudioSystemInterface>(
-                    dynamic_cast<AudioSystemInterface *>(new JackAudioSystem(
+                log<log_debug>("Initializing JACK audio system.");
+                audio_system = std::unique_ptr<AudioMidiDriverInterface>(
+                    dynamic_cast<AudioMidiDriverInterface *>(new JackAudioMidiDriver(
                         std::string(m_client_name_hint),
                         [weak_self] (uint32_t n_frames) {
                         if (auto self = weak_self.lock()) {
-                            self->log<trace>("Jack process: {}", n_frames);
+                            self->log<log_trace>("Jack process: {}", n_frames);
                             self->PROC_process(n_frames);
                         }
                     })));
                 break;
             case JackTest:
-                log<debug>("Initializing JackTest mock audio system.");
-                audio_system = std::unique_ptr<AudioSystemInterface>(
-                    dynamic_cast<AudioSystemInterface *>(new JackTestAudioSystem(
+                log<log_debug>("Initializing JackTest mock audio system.");
+                audio_system = std::unique_ptr<AudioMidiDriverInterface>(
+                    dynamic_cast<AudioMidiDriverInterface *>(new JackTestAudioMidiDriver(
                         std::string(m_client_name_hint),
                         [weak_self] (uint32_t n_frames) {
                         if (auto self = weak_self.lock()) {
-                            self->log<trace>("Jack test process: {}", n_frames);
+                            self->log<log_trace>("Jack test process: {}", n_frames);
                             self->PROC_process(n_frames);
                         }
                     })));
@@ -107,7 +107,7 @@ void Backend::start() {
 #else
             case Jack:
             case JackTest:
-                log<warning>("JACK backend requested but not supported.");
+                log<log_warning>("JACK backend requested but not supported.");
 #endif
             case Dummy:
                 // Dummy is also the fallback option - intiialized below
@@ -117,27 +117,27 @@ void Backend::start() {
             }
 
             if (m_audio_system_type != Dummy && !audio_system) {
-                log<warning>("Failed to initialize primary audio system.");
+                log<log_warning>("Failed to initialize primary audio system.");
             }
         } catch (std::exception &e) {
-            log<error>("Failed to initialize audio system.");
-            log<info>("Failure info: " + std::string(e.what()));
-            log<info>("Attempting fallback to dummy audio system.");
+            log<log_error>("Failed to initialize audio system.");
+            log<log_info>("Failure log_info: " + std::string(e.what()));
+            log<log_info>("Attempting fallback to dummy audio system.");
         } catch (...) {
-            log<error>(
+            log<log_error>(
                 "Failed to initialize audio system: unknown exception");
-            log<info>("Attempting fallback to dummy audio system.");
+            log<log_info>("Attempting fallback to dummy audio system.");
         }
 
         if (!audio_system || m_audio_system_type == Dummy) {
             m_audio_system_type = Dummy;
-            log<debug>("Initializing dummy audio system.");
-            audio_system = std::unique_ptr<AudioSystemInterface>(
-                dynamic_cast<AudioSystemInterface *>(new _DummyAudioSystem(
+            log<log_debug>("Initializing dummy audio system.");
+            audio_system = std::unique_ptr<AudioMidiDriverInterface>(
+                dynamic_cast<AudioMidiDriverInterface *>(new _DummyAudioMidiDriver(
                     std::string(m_client_name_hint),
                     [weak_self] (uint32_t n_frames) {
                         if (auto self = weak_self.lock()) {
-                            self->log<trace>("dummy process: {}", n_frames);
+                            self->log<log_trace>("dummy process: {}", n_frames);
                             self->PROC_process(n_frames);
                         }
                     })));
@@ -153,8 +153,8 @@ void Backend::start() {
         ma_state = State::Running;
     }
 
-backend_state_info_t Backend::get_state() {
-    backend_state_info_t rval;
+shoop_backend_session_state_info_t BackendSession::get_state() {
+    shoop_backend_session_state_info_t rval;
 #ifdef SHOOP_HAVE_BACKEND_JACK
     rval.dsp_load_percent = (maybe_jack_client_handle() && m_audio_system_type == Jack) ? JackApi::cpu_load((jack_client_t*)maybe_jack_client_handle()) : 0.0f;
 #else
@@ -168,15 +168,15 @@ backend_state_info_t Backend::get_state() {
 
 //TODO delete destroyed ports
 // MEMBER FUNCTIONS
-void Backend::PROC_process (uint32_t nframes) {
-    log<trace>("Process {}: start", nframes);
+void BackendSession::PROC_process (uint32_t nframes) {
+    log<log_trace>("Process {}: start", nframes);
     profiling::stopwatch(
         [this, &nframes]() {
             
             profiler->next_iteration();
             
             // Execute queued commands
-            log<trace>("Process: execute commands");
+            log<log_trace>("Process: execute commands");
             profiling::stopwatch(
                 [this]() {
                     cmd_queue.PROC_exec_all();
@@ -184,7 +184,7 @@ void Backend::PROC_process (uint32_t nframes) {
                 cmds_profiling_item
             );
 
-            log<trace>("Process: decoupled MIDI");
+            log<log_trace>("Process: decoupled MIDI");
             profiling::stopwatch(
                 [this, &nframes]() {
                     // Send/receive decoupled midi
@@ -192,7 +192,7 @@ void Backend::PROC_process (uint32_t nframes) {
                 }, ports_decoupled_midi_profiling_item, ports_profiling_item);
             
 
-            log<trace>("Process: prepare");
+            log<log_trace>("Process: prepare");
             profiling::stopwatch(
                 [this, &nframes]() {
                     // Prepare ports:
@@ -219,7 +219,7 @@ void Backend::PROC_process (uint32_t nframes) {
                     }
                 }, ports_prepare_profiling_item, ports_profiling_item);
             
-            log<trace>("Process: pre-FX passthrough");
+            log<log_trace>("Process: pre-FX passthrough");
             profiling::stopwatch(
                 [this, &nframes]() {
                     // Process passthrough on the input side (before FX chains)
@@ -235,7 +235,7 @@ void Backend::PROC_process (uint32_t nframes) {
                 ports_profiling_item, ports_passthrough_profiling_item, ports_passthrough_input_profiling_item
             );
             
-            log<trace>("Process: process loops");
+            log<log_trace>("Process: process loops");
             profiling::stopwatch(
                 [this, &nframes]() {
                     // Process the loops. This queues deferred audio operations for post-FX channels.
@@ -256,7 +256,7 @@ void Backend::PROC_process (uint32_t nframes) {
                 loops_profiling_item
             );
 
-            log<trace>("Process: finish pre-FX ports");
+            log<log_trace>("Process: finish pre-FX ports");
             profiling::stopwatch(
                 [this, &nframes]() {
                     // Finish processing any ports that come before FX.
@@ -272,7 +272,7 @@ void Backend::PROC_process (uint32_t nframes) {
                 ports_profiling_item, ports_prepare_fx_profiling_item
             );
 
-            log<trace>("Process: FX");
+            log<log_trace>("Process: FX");
             profiling::stopwatch(
                 [this, &nframes]() {
                     // Process the FX chains.
@@ -283,7 +283,7 @@ void Backend::PROC_process (uint32_t nframes) {
                 fx_profiling_item
             );
 
-            log<trace>("Process: post-FX passthrough");
+            log<log_trace>("Process: post-FX passthrough");
             profiling::stopwatch(
                 [this, &nframes]() {
                     // Process passthrough on the output side (after FX chains)
@@ -298,7 +298,7 @@ void Backend::PROC_process (uint32_t nframes) {
                 ports_profiling_item, ports_passthrough_profiling_item, ports_passthrough_output_profiling_item
             );
 
-            log<trace>("Process: finish post-FX channels");
+            log<log_trace>("Process: finish post-FX channels");
             profiling::stopwatch(
                 [this, &nframes]() {
                     // Finish processing any channels that come after FX.
@@ -315,7 +315,7 @@ void Backend::PROC_process (uint32_t nframes) {
                 loops_profiling_item
             );
 
-            log<trace>("Process: finish post-FX ports");
+            log<log_trace>("Process: finish post-FX ports");
             profiling::stopwatch(
                 [this, &nframes]() {
                     // Finish processing any ports that come after FX.
@@ -330,7 +330,7 @@ void Backend::PROC_process (uint32_t nframes) {
                 ports_profiling_item, ports_finalize_profiling_item
             );
 
-            log<trace>("Process: finish loops");
+            log<log_trace>("Process: finish loops");
             profiling::stopwatch(
                 [this, &nframes]() {
                     // Finish processing loops.
@@ -347,15 +347,15 @@ void Backend::PROC_process (uint32_t nframes) {
     );
 }
 
-void Backend::PROC_process_decoupled_midi_ports(uint32_t nframes) {
+void BackendSession::PROC_process_decoupled_midi_ports(uint32_t nframes) {
     for (auto &elem : decoupled_midi_ports) {
         elem->port->PROC_process(nframes);
     }
 }
 
-void Backend::terminate() {
+void BackendSession::terminate() {
     if (ma_state != State::Terminated) {
-        log<debug>("Terminating backend");
+        log<log_debug>("Terminating backend");
         cmd_queue.passthrough_on();
         for (auto &p : ports) {
             if (p) {
@@ -373,39 +373,39 @@ void Backend::terminate() {
         }
         ma_state = State::Terminated;
     } else {
-        log<debug>("Backend already terminated");
+        log<log_debug>("Backend already terminated");
     }
 }
 
-void *Backend::maybe_jack_client_handle() {
+void *BackendSession::maybe_jack_client_handle() {
     if (!audio_system || m_audio_system_type != Jack) {
         return nullptr;
     }
     return audio_system->maybe_client_handle();
 }
 
-const char* Backend::get_client_name() {
+const char* BackendSession::get_client_name() {
     if (!audio_system) {
         throw std::runtime_error("get_client_name() called before intialization");
     }
     return audio_system->client_name();
 }
 
-unsigned Backend::get_sample_rate() {
+unsigned BackendSession::get_sample_rate() {
     if (!audio_system) {
         throw std::runtime_error("get_sample_rate() called before initialization");
     }
     return audio_system->get_sample_rate();
 }
 
-unsigned Backend::get_buffer_size() {
+unsigned BackendSession::get_buffer_size() {
     if (!audio_system) {
         throw std::runtime_error("get_buffer_size() called before initialization");
     }
     return audio_system->get_buffer_size();
 }
 
-std::shared_ptr<ConnectedLoop> Backend::create_loop() {
+std::shared_ptr<ConnectedLoop> BackendSession::create_loop() {
     auto loop = std::make_shared<AudioMidiLoop>(profiler);
     auto r = std::make_shared<ConnectedLoop>(shared_from_this(), loop);
     cmd_queue.queue([this, r]() {
@@ -414,7 +414,7 @@ std::shared_ptr<ConnectedLoop> Backend::create_loop() {
     return r;
 }
 
-std::shared_ptr<ConnectedFXChain> Backend::create_fx_chain(fx_chain_type_t type, const char* title) {
+std::shared_ptr<ConnectedFXChain> BackendSession::create_fx_chain(shoop_fx_chain_type_t type, const char* title) {
 #ifdef SHOOP_HAVE_LV2
     static LV2 lv2;
 #endif
@@ -479,13 +479,13 @@ std::shared_ptr<ConnectedFXChain> Backend::create_fx_chain(fx_chain_type_t type,
         break;
     };
     chain->ensure_buffers(get_buffer_size());
-    auto info = std::make_shared<ConnectedFXChain>(chain, shared_from_this());
-    cmd_queue.queue([this, info]() {
-        fx_chains.push_back(info);
+    auto log_info = std::make_shared<ConnectedFXChain>(chain, shared_from_this());
+    cmd_queue.queue([this, log_info]() {
+        fx_chains.push_back(log_info);
     });
-    return info;
+    return log_info;
 }
 
-Backend::~Backend() {
+BackendSession::~BackendSession() {
     terminate();
 }

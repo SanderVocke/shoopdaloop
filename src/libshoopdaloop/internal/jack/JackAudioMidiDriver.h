@@ -1,5 +1,5 @@
 #pragma once
-#include "AudioSystemInterface.h"
+#include "AudioMidiDriverInterface.h"
 #include "JackAllPorts.h"
 #include "JackApi.h"
 #include "JackTestApi.h"
@@ -9,10 +9,17 @@
 #include <atomic>
 #include <optional>
 
+struct JackAudioMidiDriverSettings : public AudioMidiDriverSettingsInterface {
+    JackAudioMidiDriverSettings() {}
+
+    std::string client_name_hint;
+    std::optional<std::string> maybe_server_name_hint;
+};
+
 template<typename API>
-class GenericJackAudioSystem :
-    public AudioSystemInterface,
-    private ModuleLoggingEnabled<"Backend.JackAudioSystem">
+class GenericJackAudioMidiDriver :
+    public AudioMidiDriverInterface,
+    private ModuleLoggingEnabled<"Backend.JackAudioMidiDriver">
 {
 private:
     jack_client_t * m_client;
@@ -22,6 +29,7 @@ private:
     std::function<void(uint32_t)> m_process_cb;
     std::atomic<unsigned> m_xruns = 0;
     std::shared_ptr<GenericJackAllPorts<API>> m_all_ports_tracker;
+    std::atomic<bool> started = false;
 
     static int PROC_process_cb_static (uint32_t nframes,
                                   void *arg);
@@ -38,14 +46,12 @@ private:
     static void info_cb_static(const char* msg);
 
 public:
-    GenericJackAudioSystem(
-        std::string client_name,
-        std::function<void(uint32_t)> process_cb
-    );
+    GenericJackAudioMidiDriver();
+    ~GenericJackAudioMidiDriver() override;
 
-    void start() override;
-
-    ~GenericJackAudioSystem() override;
+    bool started() const override;
+    void start(AudioMidiDriverSettingsInterface &settings,
+               std::function<void(uint32_t)> process_cb) override;
 
     std::shared_ptr<AudioPortInterface<float>> open_audio_port(
         std::string name,
@@ -66,8 +72,8 @@ public:
     void reset_xruns() override;
 };
 
-using JackAudioSystem = GenericJackAudioSystem<JackApi>;
-using JackTestAudioSystem = GenericJackAudioSystem<JackTestApi>;
+using JackAudioMidiDriver = GenericJackAudioMidiDriver<JackApi>;
+using JackTestAudioMidiDriver = GenericJackAudioMidiDriver<JackTestApi>;
 
-extern template class GenericJackAudioSystem<JackApi>;
-extern template class GenericJackAudioSystem<JackTestApi>;
+extern template class GenericJackAudioMidiDriver<JackApi>;
+extern template class GenericJackAudioMidiDriver<JackTestApi>;

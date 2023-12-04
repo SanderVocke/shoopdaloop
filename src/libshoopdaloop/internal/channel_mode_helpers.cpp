@@ -3,8 +3,8 @@
 #include <algorithm>
 
 unsigned loop_mode_to_channel_process_flags(
-    loop_mode_t loop_mode,
-    channel_mode_t channel_mode)
+    shoop_loop_mode_t loop_mode,
+    shoop_channel_mode_t channel_mode)
 {
     // Map the "advanced modes" of the loop to the simple subset of
     // [Stopped, Playing, Replacing, Recording].
@@ -45,13 +45,13 @@ unsigned loop_mode_to_channel_process_flags(
 }
 
 channel_process_params get_channel_process_params(
-    loop_mode_t loop_mode,
-    std::optional<loop_mode_t> maybe_next_mode,
+    shoop_loop_mode_t loop_mode,
+    std::optional<shoop_loop_mode_t> maybe_next_mode,
     std::optional<uint32_t> maybe_next_mode_delay_cycles,
     std::optional<uint32_t> maybe_next_mode_eta,
     int position,
     uint32_t start_offset,
-    channel_mode_t channel_mode
+    shoop_channel_mode_t channel_mode
     ) {
     channel_process_params rval {
         loop_mode_to_channel_process_flags(loop_mode, channel_mode),

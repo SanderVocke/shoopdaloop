@@ -14,8 +14,8 @@ public:
     // A point of interest is the first point until when the loop can be processed
     // without updating its state.
     // Returning a nullopt_t indicates that the loop may be processed indefinitely.
-    virtual std::optional<uint32_t> PROC_get_next_poi(loop_mode_t mode,
-                                               std::optional<loop_mode_t> maybe_next_mode,
+    virtual std::optional<uint32_t> PROC_get_next_poi(shoop_loop_mode_t mode,
+                                               std::optional<shoop_loop_mode_t> maybe_next_mode,
                                                std::optional<uint32_t> maybe_next_mode_delay_cycles,
                                                std::optional<uint32_t> maybe_next_mode_eta,
                                                uint32_t length,
@@ -24,14 +24,14 @@ public:
     // Handle the current point of interest, leading to any internal state change
     // necessary. If the loop is not currently exactly at a point of interest,
     // nothing happens.
-    virtual void PROC_handle_poi(loop_mode_t mode,
+    virtual void PROC_handle_poi(shoop_loop_mode_t mode,
                             uint32_t length,
                             uint32_t position) = 0;
 
     // Process the channel according to the loop state.
     virtual void PROC_process(
-        loop_mode_t mode,
-        std::optional<loop_mode_t> maybe_next_mode,
+        shoop_loop_mode_t mode,
+        std::optional<shoop_loop_mode_t> maybe_next_mode,
         std::optional<uint32_t> maybe_next_mode_delay_cycles,
         std::optional<uint32_t> maybe_next_mode_eta,
         uint32_t n_samples,
@@ -47,8 +47,8 @@ public:
     virtual void PROC_finalize_process() = 0;
 
     // Set/get the channel mode
-    virtual void set_mode(channel_mode_t mode) = 0;
-    virtual channel_mode_t get_mode() const = 0;
+    virtual void set_mode(shoop_channel_mode_t mode) = 0;
+    virtual shoop_channel_mode_t get_mode() const = 0;
 
     // Set/get the channel length
     virtual void PROC_set_length(uint32_t length) = 0;

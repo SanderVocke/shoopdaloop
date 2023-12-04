@@ -8,7 +8,7 @@
 #include "MidiPortInterface.h"
 #include <stdexcept>
 #include <algorithm>
-#include <Backend.h>
+#include <BackendSession.h>
 
 using namespace shoop_types;
 using namespace shoop_constants;
@@ -22,7 +22,7 @@ std::shared_ptr<DummyWriteMidiBuf> g_dummy_midi_output_buffer = std::make_shared
 
 ConnectedChannel::ConnectedChannel(std::shared_ptr<ChannelInterface> chan,
                 std::shared_ptr<ConnectedLoop> loop,
-                std::shared_ptr<Backend> backend) :
+                std::shared_ptr<BackendSession> backend) :
         channel(chan),
         loop(loop),
         backend(backend),
@@ -173,7 +173,7 @@ LoopMidiChannel *ConnectedChannel::maybe_midi() {
     return dynamic_cast<LoopMidiChannel*>(channel.get());
 }
 
-Backend &ConnectedChannel::get_backend() {
+BackendSession &ConnectedChannel::get_backend() {
     auto b = backend.lock();
     if(!b) {
         throw std::runtime_error("Back-end no longer exists");

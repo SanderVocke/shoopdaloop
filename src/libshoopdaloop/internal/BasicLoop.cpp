@@ -34,7 +34,7 @@ std::optional<uint32_t> BasicLoop::PROC_predicted_next_trigger_eta() const {
     return mp_next_trigger;
 }
 
-inline bool is_playing_mode(loop_mode_t mode) {
+inline bool is_playing_mode(shoop_loop_mode_t mode) {
     return mode == LoopMode_Playing ||
             mode == LoopMode_Replacing ||
             mode == LoopMode_PlayingDryThroughWet ||
@@ -128,8 +128,8 @@ bool BasicLoop::PROC_is_triggering_now() {
 }
 
 void BasicLoop::PROC_process_channels(
-    loop_mode_t mode,
-    std::optional<loop_mode_t> maybe_next_mode,
+    shoop_loop_mode_t mode,
+    std::optional<shoop_loop_mode_t> maybe_next_mode,
     std::optional<uint32_t> maybe_next_mode_delay_cycles,
     std::optional<uint32_t> maybe_next_mode_eta,
     uint32_t n_samples,
@@ -157,7 +157,7 @@ void BasicLoop::PROC_process(uint32_t n_samples) {
     uint32_t length_before = ma_length;
     uint32_t length_after = ma_length;
 
-    loop_mode_t process_channel_mode = ma_mode;
+    shoop_loop_mode_t process_channel_mode = ma_mode;
 
     switch(ma_mode) {
         case LoopMode_Recording:
@@ -222,7 +222,7 @@ void BasicLoop::PROC_update_planned_transition_cache() {
     log_trace();
 
     ma_maybe_next_planned_mode = mp_planned_states.size() > 0 ?
-        (loop_mode_t) mp_planned_states.front() : LOOP_MODE_INVALID;
+        (shoop_loop_mode_t) mp_planned_states.front() : LOOP_MODE_INVALID;
     ma_maybe_next_planned_delay = mp_planned_state_countdowns.size() > 0 ?
         mp_planned_state_countdowns.front() : -1;
 }
@@ -260,11 +260,11 @@ void BasicLoop::PROC_handle_sync() {
     }
 }
 
-void BasicLoop::PROC_handle_transition(loop_mode_t new_state) {
+void BasicLoop::PROC_handle_transition(shoop_loop_mode_t new_state) {
     log_trace();
 
     if (ma_mode != new_state) {
-        log<debug>("Do transition");
+        log<log_debug>("Do transition");
         bool from_playing_to_playing = is_playing_mode(ma_mode) && is_playing_mode(new_state);
         if (!from_playing_to_playing) {
             set_position(0, false);
@@ -314,8 +314,8 @@ uint32_t BasicLoop::get_planned_transition_delay(uint32_t idx, bool thread_safe)
     return rval;
 }
 
-loop_mode_t BasicLoop::get_planned_transition_state(uint32_t idx, bool thread_safe) {
-    loop_mode_t rval;
+shoop_loop_mode_t BasicLoop::get_planned_transition_state(uint32_t idx, bool thread_safe) {
+    shoop_loop_mode_t rval;
     auto fn = [this, idx, &rval]() {
         if(idx >= mp_planned_states.size()) {
             throw std::runtime_error("Attempted to get out-of-bounds planned transition");
@@ -345,7 +345,7 @@ void BasicLoop::clear_planned_transitions(bool thread_safe) {
     }
 }
 
-void BasicLoop::plan_transition(loop_mode_t mode, uint32_t n_cycles_delay, bool wait_for_sync, bool thread_safe) {
+void BasicLoop::plan_transition(shoop_loop_mode_t mode, uint32_t n_cycles_delay, bool wait_for_sync, bool thread_safe) {
     log_trace();
     
     auto fn = [this, mode, wait_for_sync, n_cycles_delay]() {
@@ -406,12 +406,12 @@ uint32_t BasicLoop::get_length() const {
     return ma_length;
 }
 
-loop_mode_t BasicLoop::get_mode() const {
+shoop_loop_mode_t BasicLoop::get_mode() const {
     return ma_mode;
 }
 
-void BasicLoop::get_first_planned_transition(loop_mode_t &maybe_mode_out, uint32_t &delay_out) {
-    loop_mode_t maybe_mode = ma_maybe_next_planned_mode;
+void BasicLoop::get_first_planned_transition(shoop_loop_mode_t &maybe_mode_out, uint32_t &delay_out) {
+    shoop_loop_mode_t maybe_mode = ma_maybe_next_planned_mode;
     int maybe_delay = ma_maybe_next_planned_delay;
     if (maybe_delay >= 0 && maybe_mode != LOOP_MODE_INVALID) {
         maybe_mode_out = maybe_mode;
@@ -441,7 +441,7 @@ void BasicLoop::set_length(uint32_t len, bool thread_safe) {
     else { fn(); }
 }
 
-void BasicLoop::set_mode(loop_mode_t mode, bool thread_safe) {
+void BasicLoop::set_mode(shoop_loop_mode_t mode, bool thread_safe) {
     log_trace();
 
     auto fn = [this, mode]() {

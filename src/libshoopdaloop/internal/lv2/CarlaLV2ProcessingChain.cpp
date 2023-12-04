@@ -216,7 +216,7 @@ void CarlaLV2ProcessingChain<TimeType, SizeType>::maybe_cleanup_ui() {
 
 template <typename TimeType, typename SizeType>
 CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
-    LilvWorld *lilv_world, fx_chain_type_t type, uint32_t sample_rate,
+    LilvWorld *lilv_world, shoop_fx_chain_type_t type, uint32_t sample_rate,
     std::string human_name, std::shared_ptr<profiling::Profiler> maybe_profiler)
     : m_internal_buffers_size(0), m_human_name(human_name),
       m_unique_name(human_name + "_" + random_string(6)) {
@@ -227,7 +227,7 @@ CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
     }
 
     // URIs for the Carla plugins we want to support.
-    static const std::map<fx_chain_type_t, std::string> plugin_uris = {
+    static const std::map<shoop_fx_chain_type_t, std::string> plugin_uris = {
         {Carla_Rack, "http://kxstudio.sf.net/carla/plugins/carlarack"},
         {Carla_Patchbay, "http://kxstudio.sf.net/carla/plugins/carlapatchbay"},
         {Carla_Patchbay_16x,
@@ -349,7 +349,7 @@ CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
 
         const LilvNode *ui_binary_uri = lilv_ui_get_binary_uri(m_ui);
         const char *ui_binary_path = lilv_node_get_path(ui_binary_uri, nullptr);
-        log<debug>("Loading UI library: {}",
+        log<log_debug>("Loading UI library: {}",
                                       ui_binary_path);
         _dylib_handle ui_lib_handle = load_dylib(ui_binary_path);
         throw_if_dylib_error();

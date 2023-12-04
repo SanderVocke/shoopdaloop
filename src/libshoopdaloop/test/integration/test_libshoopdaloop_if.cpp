@@ -6,15 +6,15 @@
 
 
 TEST_CASE("LibShoopdaloop - Create destroy back-end", "[LibShoopdaloop]") {
-    shoopdaloop_backend_instance_t * c_backend = create_backend (Dummy, "dummy", "");
-    auto weak_backend = std::weak_ptr<Backend>(internal_backend(c_backend));
+    shoop_backend_session_t * c_backend = create_backend (Dummy, "dummy", "");
+    auto weak_backend = std::weak_ptr<BackendSession>(internal_backend_session(c_backend));
     REQUIRE(weak_backend.lock() != nullptr);
     terminate_backend(c_backend);
     REQUIRE(weak_backend.lock() == nullptr);
 };
 
 TEST_CASE("LibShoopdaloop - Create destroy loop", "[LibShoopdaloop]") {
-    shoopdaloop_backend_instance_t * c_backend = create_backend (Dummy, "dummy", "");
+    shoop_backend_session_t * c_backend = create_backend (Dummy, "dummy", "");
     {
         auto c_loop = create_loop(c_backend);
         auto weak_loop = std::weak_ptr<ConnectedLoop>(internal_loop(c_loop));
@@ -26,7 +26,7 @@ TEST_CASE("LibShoopdaloop - Create destroy loop", "[LibShoopdaloop]") {
 };
 
 TEST_CASE("LibShoopdaloop - Create destroy back-end loop destroyed", "[LibShoopdaloop]") {
-    shoopdaloop_backend_instance_t * c_backend = create_backend (Dummy, "dummy", "");
+    shoop_backend_session_t * c_backend = create_backend (Dummy, "dummy", "");
     {
         auto c_loop = create_loop(c_backend);
         auto weak_loop = std::weak_ptr<ConnectedLoop>(internal_loop(c_loop));
@@ -37,7 +37,7 @@ TEST_CASE("LibShoopdaloop - Create destroy back-end loop destroyed", "[LibShoopd
 };
 
 TEST_CASE("LibShoopdaloop - Channels not destroyed with loop", "[LibShoopdaloop]") {
-    shoopdaloop_backend_instance_t * c_backend = create_backend (Dummy, "dummy", "");
+    shoop_backend_session_t * c_backend = create_backend (Dummy, "dummy", "");
     {
         auto c_loop = create_loop(c_backend);
         shoopdaloop_loop_audio_channel_t* c_chan;

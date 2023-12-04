@@ -3,4 +3,7 @@
         "--compile-commands-dir=${workspaceFolder}/build"
     ],
     "cmake.configureOnOpen": false,
+    "files.associations": {
+        "condition_variable": "cpp"
+    },
 }

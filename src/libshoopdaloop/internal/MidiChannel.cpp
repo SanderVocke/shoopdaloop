@@ -77,7 +77,7 @@ MidiChannel<TimeType, SizeType>::TrackedState::resolve_to_output(
 }
 
 template <typename TimeType, typename SizeType>
-MidiChannel<TimeType, SizeType>::MidiChannel(uint32_t data_size, channel_mode_t mode,
+MidiChannel<TimeType, SizeType>::MidiChannel(uint32_t data_size, shoop_channel_mode_t mode,
             std::shared_ptr<profiling::Profiler> maybe_profiler)
     : WithCommandQueue<20, 1000, 1000>(),
       mp_playback_target_buffer(std::make_pair(ExternalBufState(), nullptr)),
@@ -104,7 +104,7 @@ MidiChannel<TimeType, SizeType>::MidiChannel(uint32_t data_size, channel_mode_t 
 }
 
 template <typename TimeType, typename SizeType>
-MidiChannel<TimeType, SizeType>::~MidiChannel() { log<debug>("Destroyed"); }
+MidiChannel<TimeType, SizeType>::~MidiChannel() { log<log_debug>("Destroyed"); }
 
 
 template <typename TimeType, typename SizeType>
@@ -174,7 +174,7 @@ MidiChannel<TimeType, SizeType>::get_pre_play_samples() const { return ma_pre_pl
 
 template <typename TimeType, typename SizeType>
 void
-MidiChannel<TimeType, SizeType>::PROC_process(loop_mode_t mode, std::optional<loop_mode_t> maybe_next_mode,
+MidiChannel<TimeType, SizeType>::PROC_process(shoop_loop_mode_t mode, std::optional<shoop_loop_mode_t> maybe_next_mode,
                   std::optional<uint32_t> maybe_next_mode_delay_cycles,
                   std::optional<uint32_t> maybe_next_mode_eta, uint32_t n_samples,
                   uint32_t pos_before, uint32_t pos_after, uint32_t length_before,
@@ -203,7 +203,7 @@ MidiChannel<TimeType, SizeType>::PROC_process(loop_mode_t mode, std::optional<lo
                 ((!(process_flags & ChannelPlayback)) ||
                  pos_before != mp_prev_pos_after);
             if (playback_interrupted && n_samples > 0) {
-                log<debug>("Playback interrupted -> All Sound Off");
+                log<log_debug>("Playback interrupted -> All Sound Off");
                 PROC_send_all_sound_off();
             }
 
@@ -213,7 +213,7 @@ MidiChannel<TimeType, SizeType>::PROC_process(loop_mode_t mode, std::optional<lo
                 // make our pre-recorded buffers into our main buffers.
                 // Otherwise, just discard them.
                 if (process_flags & ChannelRecord) {
-                    log<debug>(
+                    log<log_debug>(
                         "Pre-record end -> carry over to record");
                     mp_storage = mp_prerecord_storage;
                     ma_data_length = ma_start_offset =
@@ -221,7 +221,7 @@ MidiChannel<TimeType, SizeType>::PROC_process(loop_mode_t mode, std::optional<lo
                     mp_track_start_state = mp_track_prerecord_start_state;
                     mp_track_prerecord_start_state.reset();
                 } else {
-                    log<debug>("Pre-record end -> discard");
+                    log<log_debug>("Pre-record end -> discard");
                 }
                 mp_prerecord_storage =
                     std::make_shared<Storage>(mp_storage->bytes_capacity());
@@ -258,7 +258,7 @@ MidiChannel<TimeType, SizeType>::PROC_process(loop_mode_t mode, std::optional<lo
                 processed_input_messages = true;
             } else if (process_flags & ChannelPreRecord) {
                 if (!(mp_prev_process_flags & ChannelPreRecord)) {
-                    log<debug>("Pre-record start");
+                    log<log_debug>("Pre-record start");
                 }
                 PROC_process_record(*mp_prerecord_storage,
                                     ma_prerecord_data_length,
@@ -361,7 +361,7 @@ MidiChannel<TimeType, SizeType>::PROC_process_record(Storage &storage,
                 // to cache the MIDI state on the input (such as hold pedal,
                 // other CCs, pitch wheel, etc.) so we can restore it later.
                 if (storage.n_events() == 0) {
-                    log<debug>("Caching port state for record");
+                    log<log_debug>("Caching port state for record");
                     track_start_state.set_from(mp_input_midi_state);
                 }
 
@@ -495,12 +495,12 @@ MidiChannel<TimeType, SizeType>::PROC_process_playback(uint32_t our_pos, uint32_
                 (int)event->storage_time - _pos + buf.first.n_frames_processed;
 
             if (mp_pre_playback_state.valid()) {
-                log<debug>(
+                log<log_debug>(
                     "Restoring port state for playback @ sample {}",
                     event->storage_time);
                 mp_pre_playback_state.resolve_to_output(
                     [this, &buf, &proc_time](uint32_t size, uint8_t *data) {
-                        log<debug>("  - Restore msg: {} {} {}",
+                        log<log_debug>("  - Restore msg: {} {} {}",
                                              data[0], data[1], data[2]);
                         PROC_send_message_value(*buf.second, proc_time, size,
                                                 data);
@@ -524,7 +524,7 @@ MidiChannel<TimeType, SizeType>::PROC_process_playback(uint32_t our_pos, uint32_
 template <typename TimeType, typename SizeType>
 std::optional<uint32_t>
 MidiChannel<TimeType, SizeType>::
-PROC_get_next_poi(loop_mode_t mode, std::optional<loop_mode_t> maybe_next_mode,
+PROC_get_next_poi(shoop_loop_mode_t mode, std::optional<shoop_loop_mode_t> maybe_next_mode,
                   std::optional<uint32_t> maybe_next_mode_delay_cycles,
                   std::optional<uint32_t> maybe_next_mode_eta, uint32_t length,
                   uint32_t position) const {
@@ -619,14 +619,14 @@ MidiChannel<TimeType, SizeType>::set_contents(std::vector<Message> contents, uin
 
 template <typename TimeType, typename SizeType>
 void
-MidiChannel<TimeType, SizeType>::PROC_handle_poi(loop_mode_t mode, uint32_t length, uint32_t position) {}
+MidiChannel<TimeType, SizeType>::PROC_handle_poi(shoop_loop_mode_t mode, uint32_t length, uint32_t position) {}
 
 template <typename TimeType, typename SizeType>
 void
-MidiChannel<TimeType, SizeType>::set_mode(channel_mode_t mode) { ma_mode = mode; }
+MidiChannel<TimeType, SizeType>::set_mode(shoop_channel_mode_t mode) { ma_mode = mode; }
 
 template <typename TimeType, typename SizeType>
-channel_mode_t
+shoop_channel_mode_t
 MidiChannel<TimeType, SizeType>::get_mode() const { return ma_mode; }
 
 template <typename TimeType, typename SizeType>

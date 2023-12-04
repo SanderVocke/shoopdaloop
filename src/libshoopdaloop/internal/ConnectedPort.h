@@ -12,7 +12,7 @@ class ConnectedPort : public std::enable_shared_from_this<ConnectedPort>,
 public:
     
     const std::shared_ptr<PortInterface> port;
-    std::weak_ptr<Backend> backend;
+    std::weak_ptr<BackendSession> backend;
 
     std::vector<std::weak_ptr<ConnectedPort>> mp_passthrough_to;
 
@@ -37,7 +37,7 @@ public:
     shoop_types::ProcessWhen ma_process_when;
 
     ConnectedPort (std::shared_ptr<PortInterface> const& port,
-                   std::shared_ptr<Backend> const& backend,
+                   std::shared_ptr<BackendSession> const& backend,
                    shoop_types::ProcessWhen process_when);
 
     void PROC_reset_buffers();
@@ -52,5 +52,5 @@ public:
 
     std::shared_ptr<shoop_types::AudioPort> maybe_audio();
     std::shared_ptr<shoop_types::MidiPort> maybe_midi();
-    Backend &get_backend();
+    BackendSession &get_backend();
 };

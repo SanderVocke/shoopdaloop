@@ -4,7 +4,7 @@
 #include <fmt/core.h>
 
 _dylib_handle load_dylib(const char* identifier) {
-    logging::log<"Backend.LoadDynamicLibrary", debug>(std::nullopt, std::nullopt, "Loading {}", identifier);
+    logging::log<"Backend.LoadDynamicLibrary", log_debug>(std::nullopt, std::nullopt, "Loading {}", identifier);
 #ifdef _WIN32
     return LoadLibrary(identifier);
 #else
@@ -41,7 +41,7 @@ void throw_if_dylib_error() {
 }
 
 void* get_dylib_fn(_dylib_handle handle, const char* symbol_name) {
-    logging::log<"Backend.LoadDynamicLibrary", trace>(std::nullopt, std::nullopt, "Loading symbol {}", symbol_name);
+    logging::log<"Backend.LoadDynamicLibrary", log_trace>(std::nullopt, std::nullopt, "Loading symbol {}", symbol_name);
 #ifdef _WIN32
     return (void*) GetProcAddress (handle, symbol_name);
 #else

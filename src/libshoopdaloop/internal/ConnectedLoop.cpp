@@ -1,7 +1,7 @@
 #include "ConnectedLoop.h"
 #include "ConnectedChannel.h"
 #include "AudioMidiLoop.h"
-#include "Backend.h"
+#include "BackendSession.h"
 
 void ConnectedLoop::PROC_prepare_process(uint32_t n_frames) {
     for (auto &chan : mp_audio_channels) {
@@ -85,7 +85,7 @@ void ConnectedLoop::delete_all_channels(bool thread_safe) {
     }
 }
 
-Backend &ConnectedLoop::get_backend() {
+BackendSession &ConnectedLoop::get_backend() {
     auto b = backend.lock();
     if(!b) {
         throw std::runtime_error("Back-end no longer exists");
