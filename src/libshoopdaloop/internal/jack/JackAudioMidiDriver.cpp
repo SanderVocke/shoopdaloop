@@ -76,6 +76,11 @@ GenericJackAudioMidiDriver<API>::GenericJackAudioMidiDriver():
     m_all_ports_tracker(std::make_shared<GenericJackAllPorts<API>>()) {}
 
 template<typename API>
+bool GenericJackAudioMidiDriver<API>::started() const {
+    return m_started;
+}
+
+template<typename API>
 void GenericJackAudioMidiDriver<API>::start(
     AudioMidiDriverSettingsInterface &settings,
     std::function<void(uint32_t)> process_cb)
@@ -142,6 +147,18 @@ std::shared_ptr<AudioPortInterface<float>>GenericJackAudioMidiDriver<API>::open_
 }
 
 template<typename API>
+shoop_audio_driver_state_t GenericJackAudioMidiDriver<API>::get_state() const {
+    shoop_audio_driver_state_t rval;
+    rval.dsp_load_percent = 0; // TODO
+    rval.maybe_driver_handle = (void*)m_client;
+    rval.maybe_instance_name = m_client_name;
+    rval.xruns_since_last = m_xruns;
+    rval.sample_rate = m_sample_rate;
+    rval.buffer_size = m_buffer-size;
+    return rval;
+}
+
+template<typename API>
 std::shared_ptr<MidiPortInterface> GenericJackAudioMidiDriver<API>::open_midi_port(std::string name, PortDirection direction) {
     std::shared_ptr<PortInterface> port =
         std::static_pointer_cast<PortInterface>(
@@ -149,24 +166,6 @@ std::shared_ptr<MidiPortInterface> GenericJackAudioMidiDriver<API>::open_midi_po
         );
     m_ports[port->name()] = port;
     return std::dynamic_pointer_cast<MidiPortInterface>(port);
-}
-
-template<typename API>
-uint32_t GenericJackAudioMidiDriver<API>::get_sample_rate() const {
-    return API::get_sample_rate(m_client);
-}
-
-template<typename API>
-uint32_t GenericJackAudioMidiDriver<API>::get_buffer_size() const {
-    return API::get_buffer_size(m_client);
-}
-
-template<typename API>
-void *GenericJackAudioMidiDriver<API>::maybe_client_handle() const { return (void *)m_client; }
-
-template<typename API>
-const char *GenericJackAudioMidiDriver<API>::client_name() const {
-    return m_client_name.c_str();
 }
 
 template<typename API>
@@ -181,9 +180,6 @@ void GenericJackAudioMidiDriver<API>::close() {
         m_client = nullptr;
     }
 }
-
-template<typename API>
-uint32_t GenericJackAudioMidiDriver<API>::get_xruns() const { return m_xruns; }
 
 template<typename API>
 void GenericJackAudioMidiDriver<API>::reset_xruns() { m_xruns = 0; }

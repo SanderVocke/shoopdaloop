@@ -1,5 +1,5 @@
 #pragma once
-#include "AudioMidiDriverInterface.h"
+#include "AudioMidiDriver.h"
 #include "JackAllPorts.h"
 #include "JackApi.h"
 #include "JackTestApi.h"
@@ -18,18 +18,19 @@ struct JackAudioMidiDriverSettings : public AudioMidiDriverSettingsInterface {
 
 template<typename API>
 class GenericJackAudioMidiDriver :
-    public AudioMidiDriverInterface,
+    public AudioMidiDriver,
     private ModuleLoggingEnabled<"Backend.JackAudioMidiDriver">
 {
 private:
     jack_client_t * m_client;
     std::string m_client_name;
     uint32_t m_sample_rate;
+    uint32_t m_buffer_size;
     std::map<std::string, std::shared_ptr<PortInterface>> m_ports;
     std::function<void(uint32_t)> m_process_cb;
     std::atomic<unsigned> m_xruns = 0;
     std::shared_ptr<GenericJackAllPorts<API>> m_all_ports_tracker;
-    std::atomic<bool> started = false;
+    std::atomic<bool> m_started = false;
 
     static int PROC_process_cb_static (uint32_t nframes,
                                   void *arg);
@@ -63,12 +64,10 @@ public:
         PortDirection direction
     ) override;
 
-    uint32_t get_sample_rate() const override;
-    uint32_t get_buffer_size() const override;
-    void* maybe_client_handle() const override;
-    const char* client_name() const override;
+    shoop_audio_driver_state_t get_state() const override;
+    
     void close() override;
-    uint32_t get_xruns() const override;
+
     void reset_xruns() override;
 };
 

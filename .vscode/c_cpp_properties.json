@@ -15,9 +15,9 @@
             "windowsSdkVersion": "10.0.22000.0",
             "compilerPath": "cl.exe",
             "cStandard": "c17",
-            "cppStandard": "c++17",
+            "cppStandard": "c++20",
             "intelliSenseMode": "windows-msvc-x64",
-            "compileCommands": "${workspaceFolder}/build/cp311-cp311-win_amd64/compile_commands.json"
+            "compileCommands": "${workspaceFolder}/build/compile_commands.json"
         }
     ],
     "version": 4

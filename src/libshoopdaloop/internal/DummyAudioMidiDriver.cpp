@@ -276,20 +276,16 @@ uint32_t DummyAudioMidiDriver<Time, Size>::get_controlled_mode_samples_to_proces
 
 
 template <typename Time, typename Size>
-DummyAudioMidiDriver<Time, Size>::DummyAudioMidiDriver(
-    std::string client_name, std::function<void(uint32_t)> process_cb,
-    DummyAudioMidiDriverMode mode,
-    uint32_t sample_rate,
-    uint32_t buffer_size)
-    : AudioMidiDriverInterface(client_name, process_cb),
+DummyAudioMidiDriver<Time, Size>::DummyAudioMidiDriver()
+    : AudioMidiDriver(),
       WithCommandQueue<20, 1000, 1000>(),
-      m_process_cb(process_cb), mc_buffer_size(buffer_size), mc_sample_rate(sample_rate),
-      m_finish(false), m_client_name(client_name),
-      m_audio_port_closed_cb(nullptr), m_audio_port_opened_cb(nullptr),
-      m_midi_port_closed_cb(nullptr), m_midi_port_opened_cb(nullptr),
+      m_finish(false),
+      m_paused(false),
+      m_mode(DummyAudioMidiDriverMode::Automatic),
       m_controlled_mode_samples_to_process(0),
-      m_mode(mode),
-      m_paused(false) {
+      m_audio_port_closed_cb(nullptr), m_audio_port_opened_cb(nullptr),
+      m_midi_port_closed_cb(nullptr), m_midi_port_opened_cb(nullptr)
+{
     m_audio_ports.clear();
     m_midi_ports.clear();
 
@@ -297,7 +293,17 @@ DummyAudioMidiDriver<Time, Size>::DummyAudioMidiDriver(
 }
 
 template <typename Time, typename Size>
-void DummyAudioMidiDriver<Time, Size>::start() {
+void DummyAudioMidiDriver<Time, Size>::start(
+    AudioMidiDriverSettingsInterface &settings,
+    std::function<void(uint32_t)> process_cb
+) {
+    auto p_settings = (DummyAudioMidiDriverSettings*)&settings;
+    auto &_settings = *p_settings;
+    m_sample_rate = _settings.sample_rate;
+    m_buffer_size = _settings.buffer_size;
+    m_client_name = _settings.client_name;
+    m_process_cb = process_cb;
+
     m_proc_thread = std::thread([this] {
         log<log_debug>("DummyAudioMidiDriver: starting process thread - {}", mode_names.at(m_mode));
         auto bufs_per_second = mc_sample_rate / mc_buffer_size;
@@ -322,6 +328,11 @@ void DummyAudioMidiDriver<Time, Size>::start() {
         log<log_debug>(
             "DummyAudioMidiDriver: ending process thread");
     });
+}
+
+template <typename Time, typename Size>
+bool DummyAudioMidiDriver<Time, Size>::started() const {
+    return (bool)m_proc_thread;
 }
 
 template <typename Time, typename Size>
@@ -362,24 +373,13 @@ DummyAudioMidiDriver<Time, Size>::open_midi_port(std::string name,
     return rval;
 }
 
-template <typename Time, typename Size>
-uint32_t DummyAudioMidiDriver<Time, Size>::get_sample_rate() const {
-    return mc_sample_rate;
-}
-
-template <typename Time, typename Size>
-uint32_t DummyAudioMidiDriver<Time, Size>::get_buffer_size() const {
-    return mc_buffer_size;
-}
-
-template <typename Time, typename Size>
-void *DummyAudioMidiDriver<Time, Size>::maybe_client_handle() const {
-    return (void *)this;
-}
-
-template <typename Time, typename Size>
-const char *DummyAudioMidiDriver<Time, Size>::client_name() const {
-    return m_client_name.c_str();
+template<typename Time, typename Size>
+shoop_audio_driver_state_t DummyAudioMidiDriver<Time, Size>::get_state() const {
+    shoop_audio_driver_state_t rval;
+    rval.dsp_load_percent = 0;
+    rval.maybe_driver_handle = (void*) this;
+    rval.maybe_instance_name = m_client_name;
+    rval.xruns_since_last = 0;
 }
 
 template <typename Time, typename Size>
@@ -392,11 +392,6 @@ void DummyAudioMidiDriver<Time, Size>::close() {
             m_proc_thread.detach();
         }
     }
-}
-
-template <typename Time, typename Size>
-uint32_t DummyAudioMidiDriver<Time, Size>::get_xruns() const {
-    return 0;
 }
 
 template <typename Time, typename Size>

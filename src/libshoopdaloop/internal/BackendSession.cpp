@@ -82,8 +82,8 @@ void BackendSession::start() {
 #ifdef SHOOP_HAVE_BACKEND_JACK
             case Jack:
                 log<log_debug>("Initializing JACK audio system.");
-                audio_system = std::unique_ptr<AudioMidiDriverInterface>(
-                    dynamic_cast<AudioMidiDriverInterface *>(new JackAudioMidiDriver(
+                audio_system = std::unique_ptr<AudioMidiDriver>(
+                    dynamic_cast<AudioMidiDriver *>(new JackAudioMidiDriver(
                         std::string(m_client_name_hint),
                         [weak_self] (uint32_t n_frames) {
                         if (auto self = weak_self.lock()) {
@@ -94,8 +94,8 @@ void BackendSession::start() {
                 break;
             case JackTest:
                 log<log_debug>("Initializing JackTest mock audio system.");
-                audio_system = std::unique_ptr<AudioMidiDriverInterface>(
-                    dynamic_cast<AudioMidiDriverInterface *>(new JackTestAudioMidiDriver(
+                audio_system = std::unique_ptr<AudioMidiDriver>(
+                    dynamic_cast<AudioMidiDriver *>(new JackTestAudioMidiDriver(
                         std::string(m_client_name_hint),
                         [weak_self] (uint32_t n_frames) {
                         if (auto self = weak_self.lock()) {
@@ -132,8 +132,8 @@ void BackendSession::start() {
         if (!audio_system || m_audio_system_type == Dummy) {
             m_audio_system_type = Dummy;
             log<log_debug>("Initializing dummy audio system.");
-            audio_system = std::unique_ptr<AudioMidiDriverInterface>(
-                dynamic_cast<AudioMidiDriverInterface *>(new _DummyAudioMidiDriver(
+            audio_system = std::unique_ptr<AudioMidiDriver>(
+                dynamic_cast<AudioMidiDriver *>(new _DummyAudioMidiDriver(
                     std::string(m_client_name_hint),
                     [weak_self] (uint32_t n_frames) {
                         if (auto self = weak_self.lock()) {

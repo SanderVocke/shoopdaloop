@@ -28,7 +28,7 @@
 #include "AudioMidiLoop.h"
 #include "ExternalUIInterface.h"
 #include "AudioPortInterface.h"
-#include "AudioMidiDriverInterface.h"
+#include "AudioMidiDriver.h"
 
 #include "LoggingBackend.h"
 #include "MidiChannel.h"
@@ -49,7 +49,7 @@
 #include "ConnectedDecoupledMidiPort.h"
 #include "ConnectedLoop.h"
 #include "DummyAudioMidiDriver.h"
-#include "AudoMidiDrivers.h"
+#include "AudioMidiDrivers.h"
 #include <mutex>
 
 #include "libshoopdaloop_test_if.h"
@@ -78,8 +78,8 @@ std::shared_ptr<BackendSession> internal_backend_session(shoop_backend_session_t
     return rval;
 }
 
-AudioMidiDriverInterface* internal_audio_driver(shoop_audio_driver_t *driver) {
-    return (AudioMidiDriverInterface*)driver;
+AudioMidiDriver* internal_audio_driver(shoop_audio_driver_t *driver) {
+    return (AudioMidiDriver*)driver;
 }
 
 std::shared_ptr<ConnectedPort> internal_audio_port(shoopdaloop_audio_port_t *port) {
@@ -136,7 +136,7 @@ shoop_backend_session_t *external_backend_session(std::shared_ptr<BackendSession
     return (shoop_backend_session_t*) weak;
 }
 
-shoop_audio_driver_t *external_audio_driver(AudioMidiDriverInterface *driver) {
+shoop_audio_driver_t *external_audio_driver(AudioMidiDriver *driver) {
     return (shoop_audio_driver_t*) driver;
 }
 
@@ -229,7 +229,7 @@ PortDirection internal_port_direction(shoop_port_direction_t d) {
     return d == Input ? PortDirection::Input : PortDirection::Output;
 }
 
-std::optional<shoop_audio_driver_type_t> audio_system_type(AudioMidiDriverInterface *sys) {
+std::optional<shoop_audio_driver_type_t> audio_system_type(AudioMidiDriver *sys) {
     if (!sys) {
         return std::nullopt;
     }

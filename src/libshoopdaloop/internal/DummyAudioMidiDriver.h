@@ -1,5 +1,5 @@
 #pragma once
-#include "AudioMidiDriverInterface.h"
+#include "AudioMidiDriver.h"
 #include "MidiPortInterface.h"
 #include "AudioPortInterface.h"
 #include "PortInterface.h"
@@ -144,13 +144,13 @@ enum class DummyAudioMidiDriverMode {
 };
 
 template<typename Time, typename Size>
-class DummyAudioMidiDriver : public AudioMidiDriverInterface,
+class DummyAudioMidiDriver : public AudioMidiDriver,
                          private ModuleLoggingEnabled<"Backend.DummyAudioMidiDriver">,
                          public WithCommandQueue<20, 1000, 1000> {
 
     std::function<void(uint32_t)> m_process_cb;
-    const uint32_t mc_sample_rate;
-    const uint32_t mc_buffer_size;
+    uint32_t m_sample_rate;
+    uint32_t m_buffer_size;
     std::atomic<bool> m_finish;
     std::atomic<DummyAudioMidiDriverMode> m_mode;
     std::atomic<uint32_t> m_controlled_mode_samples_to_process;
@@ -166,10 +166,10 @@ class DummyAudioMidiDriver : public AudioMidiDriverInterface,
 public:
 
     DummyAudioMidiDriver() {}
-    ~DummyAudioMidiDriver() override;
+    virtual ~DummyAudioMidiDriver() {};
 
     void start(
-        AudioMidiSettingsInterface &settings,
+        AudioMidiDriverSettingsInterface &settings,
         std::function<void(uint32_t)> process_cb) override;
     bool started() const override;
 
@@ -183,16 +183,13 @@ public:
         PortDirection direction
     ) override;
 
-    uint32_t get_sample_rate() const override;
-    uint32_t get_buffer_size() const override;
-    void* maybe_client_handle() const override;
-    const char* client_name() const override;
+    shoop_audio_driver_state_t get_state() const override;
+
     void close() override;
 
     void pause();
     void resume();
 
-    uint32_t get_xruns() const override;
     void reset_xruns() override;
 
     // Usually the dummy audio system will automatically process samples

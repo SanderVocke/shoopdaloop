@@ -125,7 +125,9 @@ typedef struct {
     float dsp_load_percent;
     unsigned xruns_since_last;
     void * maybe_driver_handle; // For direct interaction with the driver from the front-end
-    const char* maybe_instance_name; // E.g. the client name assigned in JACK
+    const char* maybe_instance_name; // E.g. the client name assigned in JACK'
+    unsigned sample_rate;
+    unsigned buffer_size;
 } shoop_audio_driver_state_t;
 
 typedef struct {

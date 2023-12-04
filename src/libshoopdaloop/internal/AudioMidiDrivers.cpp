@@ -1,14 +1,17 @@
 #include "AudioMidiDrivers.h"
 #include "LoggingBackend.h"
+#include "DummyAudioMidiDriver.h"
+#include "JackAudioMidiDriver.h"
+#include "shoop_globals.h"
 
-AudioMidiDriverInterface &create_audio_midi_driver(shoop_audio_driver_type_t type) {
-    AudioMidiDriverInterface* rval;
+AudioMidiDriver &create_audio_midi_driver(shoop_audio_driver_type_t type) {
+    AudioMidiDriver* rval;
     bool tried_dummy = false;
 
     auto init_dummy = [&]() {
       tried_dummy = true;
-      rval = static_cast<AudioMidiDriverInterface*>(
-        new DummyAudioMidiDriver()
+      rval = static_cast<AudioMidiDriver*>(
+        new shoop_types::_DummyAudioMidiDriver()
       );
     };
 
@@ -17,13 +20,13 @@ AudioMidiDriverInterface &create_audio_midi_driver(shoop_audio_driver_type_t typ
 #ifdef SHOOP_HAVE_BACKEND_JACK
       case Jack:
           log<log_debug>("Creating JACK audio driver instance.");
-          rval = static_cast<AudioMidiDriverInterface*>(
+          rval = static_cast<AudioMidiDriver*>(
             new JackAudioMidiDriver()
           );
           break;
       case JackTest:
           log<log_debug>("Creating JACK test audio driver instance.");
-          rval = static_cast<AudioMidiDriverInterface*>(
+          rval = static_cast<AudioMidiDriver*>(
             new JackTestAudioMidiDriver()
           );
           break;

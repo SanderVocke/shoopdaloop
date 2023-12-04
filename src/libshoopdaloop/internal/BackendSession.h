@@ -3,7 +3,7 @@
 #include <vector>
 #include "LoggingEnabled.h"
 #include "CommandQueue.h"
-#include "AudioMidiDriverInterface.h"
+#include "AudioMidiDriver.h"
 #include "shoop_globals.h"
 #include "types.h"
 
@@ -20,7 +20,7 @@ class ConnectedDecoupledMidiPort;
 using namespace shoop_types;
 
 class BackendSession : public std::enable_shared_from_this<BackendSession>,
-                 public ModuleLoggingEnabled<"Backend"> {
+                 public ModuleLoggingEnabled<"Backend.Session"> {
 
 public:
     enum class State {
@@ -30,13 +30,17 @@ public:
     };
     std::atomic<State> ma_state;
 
+    // Graph nodes
     std::vector<std::shared_ptr<ConnectedLoop>> loops;
     std::vector<std::shared_ptr<ConnectedPort>> ports;
     std::vector<std::shared_ptr<ConnectedFXChain>> fx_chains;
     std::vector<std::shared_ptr<ConnectedDecoupledMidiPort>> decoupled_midi_ports;
+
+    // Infrastructure
     CommandQueue cmd_queue;
     std::shared_ptr<AudioBufferPool> audio_buffer_pool;
-    std::unique_ptr<AudioMidiDriverInterface> audio_system;
+
+    // Profiling
     std::shared_ptr<profiling::Profiler> profiler;
     std::shared_ptr<profiling::ProfilingItem> top_profiling_item;
     std::shared_ptr<profiling::ProfilingItem> ports_profiling_item;
@@ -54,14 +58,11 @@ public:
     std::shared_ptr<profiling::ProfilingItem> fx_profiling_item;
     std::shared_ptr<profiling::ProfilingItem> cmds_profiling_item;
 
-    const std::string m_client_name_hint;
-    const std::string m_argstring;
-    shoop_audio_driver_type_t m_audio_system_type;
-
-    BackendSession(shoop_audio_driver_type_t audio_system_type, std::string client_name_hint, std::string argstring);
+    BackendSession();
     ~BackendSession();
 
-    void PROC_process(uint32_t nframes);
+    ProcessFunctionResult PROC_process(uint32_t nframes) override;
+
     void PROC_process_decoupled_midi_ports(uint32_t nframes);
     void terminate();
     void* maybe_jack_client_handle();
@@ -72,9 +73,4 @@ public:
     std::shared_ptr<ConnectedLoop> create_loop();
     std::shared_ptr<ConnectedFXChain> create_fx_chain(shoop_fx_chain_type_t type, const char *title);
     void start();
-
-    // For introspection of which audio system types were compiled in.
-    // Note that this does not reflect whether the required drivers/libraries
-    // are actually installed.
-    static std::vector<shoop_audio_driver_type_t> get_supported_audio_system_types();
 };
