@@ -26,7 +26,7 @@ public:
     HasAudioProcessingFunction() {}
     virtual ~HasAudioProcessingFunction() {}
 
-    ProcessFunctionResult PROC_process(uint32_t nframes);
+    void PROC_process(uint32_t nframes);
 };
 
 class AudioMidiDriver {
@@ -36,6 +36,7 @@ public:
     void add_processor(HasAudioProcessingFunction &p);
     void remove_processor(HasAudioProcessingFunction &p);
     std::set<HasAudioProcessingFunction*> processors() const;
+    void PROC_process(uint32_t nframes);
 
     virtual void start(AudioMidiDriverSettingsInterface &settings,
                        std::function<void(uint32_t)> process_cb) = 0;
