@@ -7,16 +7,10 @@
 #include "WithCommandQueue.h"
 #include "MidiMessage.h"
 #include "types.h"
-#include <chrono>
-#include <cstddef>
-#include <ratio>
-#include <stdexcept>
 #include <memory>
-#include <iostream>
 #include <memory>
 #include <set>
 #include <thread>
-#include <cstring>
 #include <vector>
 #include <boost/lockfree/spsc_queue.hpp>
 #include <memory>
@@ -145,12 +139,7 @@ enum class DummyAudioMidiDriverMode {
 
 template<typename Time, typename Size>
 class DummyAudioMidiDriver : public AudioMidiDriver,
-                         private ModuleLoggingEnabled<"Backend.DummyAudioMidiDriver">,
-                         public WithCommandQueue<20, 1000, 1000> {
-
-    std::function<void(uint32_t)> m_process_cb;
-    uint32_t m_sample_rate;
-    uint32_t m_buffer_size;
+                             private ModuleLoggingEnabled<"Backend.DummyAudioMidiDriver"> {
     std::atomic<bool> m_finish;
     std::atomic<DummyAudioMidiDriverMode> m_mode;
     std::atomic<uint32_t> m_controlled_mode_samples_to_process;
@@ -158,19 +147,17 @@ class DummyAudioMidiDriver : public AudioMidiDriver,
     std::thread m_proc_thread;
     std::set<std::shared_ptr<DummyAudioPort>> m_audio_ports;
     std::set<std::shared_ptr<DummyMidiPort>> m_midi_ports;
-    std::string m_client_name;
+    std::string m_client_name_str;
 
     std::function<void(std::string, PortDirection)> m_audio_port_opened_cb, m_midi_port_opened_cb;
     std::function<void(std::string)> m_audio_port_closed_cb, m_midi_port_closed_cb;
 
 public:
 
-    DummyAudioMidiDriver() {}
-    virtual ~DummyAudioMidiDriver() {};
+    DummyAudioMidiDriver();
+    virtual ~DummyAudioMidiDriver();
 
-    void start(
-        AudioMidiDriverSettingsInterface &settings,
-        std::function<void(uint32_t)> process_cb) override;
+    void start(AudioMidiDriverSettingsInterface &settings) override;
     bool started() const override;
 
     std::shared_ptr<AudioPortInterface<audio_sample_t>> open_audio_port(
@@ -183,14 +170,10 @@ public:
         PortDirection direction
     ) override;
 
-    shoop_audio_driver_state_t get_state() const override;
-
     void close() override;
 
     void pause();
     void resume();
-
-    void reset_xruns() override;
 
     // Usually the dummy audio system will automatically process samples
     // continuously. When in controlled mode, instead the process callback

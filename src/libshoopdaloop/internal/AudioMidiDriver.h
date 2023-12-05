@@ -1,15 +1,14 @@
 #pragma once
-#include <optional>
 #include <memory>
-#include <stdio.h>
 #include "PortInterface.h"
 #include "MidiPortInterface.h"
 #include <string>
 #include "AudioPortInterface.h"
-#include <functional>
 #include <stdint.h>
+#include "WithCommandQueue.h"
 #include "types.h"
 #include <set>
+#include "shoop_globals.h"
 
 enum class ProcessFunctionResult {
     Continue,  // Continue processing next cycle
@@ -29,17 +28,37 @@ public:
     virtual void PROC_process(uint32_t nframes) = 0;
 };
 
-class AudioMidiDriver {
+class AudioMidiDriver : public WithCommandQueue<shoop_constants::command_queue_size, 1000, 1000> {
     std::shared_ptr<std::set<HasAudioProcessingFunction*>> m_processors;
+    std::atomic<uint32_t> m_xruns;
+    std::atomic<uint32_t> m_sample_rate;
+    std::atomic<uint32_t> m_buffer_size;
+    std::atomic<float> m_dsp_load;
+    std::atomic<void*> m_maybe_client_handle;
+    std::atomic<const char*> m_client_name;
+    std::set<std::shared_ptr<MidiPortInterface>> m_decoupled_midi_ports;
+
+protected:
+    // Derived class should call these
+    void report_xrun();
+    void set_dsp_load(float load);
+    void set_sample_rate(uint32_t sample_rate);
+    void set_buffer_size(uint32_t buffer_size);
+    void set_maybe_client_handle(void* handle);
+    void set_client_name(const char* name);
+
+    virtual void maybe_update_sample_rate() {};
+    virtual void maybe_update_buffer_size() {};
+    virtual void maybe_update_dsp_load() {};
+
+    void PROC_process(uint32_t nframes);
 
 public:
     void add_processor(HasAudioProcessingFunction &p);
     void remove_processor(HasAudioProcessingFunction &p);
     std::set<HasAudioProcessingFunction*> processors() const;
-    void PROC_process(uint32_t nframes);
 
-    virtual void start(AudioMidiDriverSettingsInterface &settings,
-                       std::function<void(uint32_t)> process_cb) = 0;
+    virtual void start(AudioMidiDriverSettingsInterface &settings) = 0;
     virtual bool started() const = 0;
 
     virtual
@@ -54,13 +73,18 @@ public:
         PortDirection direction
     ) = 0;
 
-    virtual shoop_audio_driver_state_t get_state() const;
-
-    virtual void close() = 0;
-    virtual void reset_xruns() = 0;
-
+    void register_decoupled_midi_port(std::shared_ptr<MidiPortInterface> port);
     
+    virtual void close() = 0;
 
-    AudioMidiDriver() {}
+    uint32_t get_xruns() const;
+    float get_dsp_load();
+    uint32_t get_sample_rate();
+    uint32_t get_buffer_size();
+    void reset_xruns();
+    const char* get_client_name() const;
+    void* get_maybe_client_handle() const;
+
+    AudioMidiDriver() : WithCommandQueue<shoop_constants::command_queue_size, 1000, 1000>() {}
     virtual ~AudioMidiDriver() {}
 };

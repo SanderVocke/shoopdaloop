@@ -264,7 +264,7 @@ void BasicLoop::PROC_handle_transition(shoop_loop_mode_t new_state) {
     log_trace();
 
     if (ma_mode != new_state) {
-        log<log_debug>("Do transition");
+        log<log_level_debug>("Do transition");
         bool from_playing_to_playing = is_playing_mode(ma_mode) && is_playing_mode(new_state);
         if (!from_playing_to_playing) {
             set_position(0, false);

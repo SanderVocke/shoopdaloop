@@ -25,6 +25,7 @@ public:
     virtual PortDirection direction() const = 0;
     virtual const char* name() const = 0;
     virtual PortType type() const = 0;
+    virtual void* maybe_driver_handle() const = 0;
 
     virtual PortExternalConnectionStatus get_external_connection_status() const = 0;
     virtual void connect_external(std::string name) = 0;

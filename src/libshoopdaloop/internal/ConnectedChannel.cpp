@@ -55,7 +55,7 @@ void ConnectedChannel::connect_output_port(std::shared_ptr<ConnectedPort> port, 
         mp_output_port_mapping = port;
         ma_process_when = port->ma_process_when; // Process in same phase as the connected port
     };
-    if (thread_safe) { get_backend().cmd_queue.queue(fn); }
+    if (thread_safe) { get_backend().queue_process_thread_command(fn); }
     else { fn(); }
 }
 
@@ -64,7 +64,7 @@ void ConnectedChannel::connect_input_port(std::shared_ptr<ConnectedPort> port, b
         mp_input_port_mapping = port;
         ma_process_when = port->ma_process_when; // Process in same phase as the connected port
     };
-    if (thread_safe) { get_backend().cmd_queue.queue(fn); }
+    if (thread_safe) { get_backend().queue_process_thread_command(fn); }
     else { fn(); }
 }
 
@@ -78,7 +78,7 @@ void ConnectedChannel::disconnect_output_port(std::shared_ptr<ConnectedPort> por
         }
         mp_output_port_mapping.reset();
     };
-    if (thread_safe) { get_backend().cmd_queue.queue(fn); }
+    if (thread_safe) { get_backend().queue_process_thread_command(fn); }
     else { fn(); }
 }
 
@@ -86,7 +86,7 @@ void ConnectedChannel::disconnect_output_ports(bool thread_safe) {
     auto fn = [this]() {
         mp_output_port_mapping.reset();
     };
-    if (thread_safe) { get_backend().cmd_queue.queue(fn); }
+    if (thread_safe) { get_backend().queue_process_thread_command(fn); }
     else { fn(); }
 }
 
@@ -100,7 +100,7 @@ void ConnectedChannel::disconnect_input_port(std::shared_ptr<ConnectedPort> port
         }
         mp_input_port_mapping.reset();
     };
-    if (thread_safe) { get_backend().cmd_queue.queue(fn); }
+    if (thread_safe) { get_backend().queue_process_thread_command(fn); }
     else { fn(); }
 }
 
@@ -108,7 +108,7 @@ void ConnectedChannel::disconnect_input_ports(bool thread_safe) {
     auto fn = [this]() {
         mp_input_port_mapping.reset();
     };
-    if (thread_safe) { get_backend().cmd_queue.queue(fn); }
+    if (thread_safe) { get_backend().queue_process_thread_command(fn); }
     else { fn(); }
 }
 

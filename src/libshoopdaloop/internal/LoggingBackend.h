@@ -17,14 +17,14 @@
   #pragma diag_suppress 304
 #endif
 
-#define LOG_LEVEL_TRACE log_trace;
-#define LOG_LEVEL_DEBUG log_debug;
-#define LOG_LEVEL_INFO log_info;
-#define LOG_LEVEL_WARNING log_warning;
-#define LOG_LEVEL_ERROR log_error;
+#define LOG_LEVEL_TRACE log_level_trace;
+#define LOG_LEVEL_DEBUG log_level_debug;
+#define LOG_LEVEL_INFO log_level_info;
+#define LOG_LEVEL_WARNING log_level_warning;
+#define LOG_LEVEL_ERROR log_level_error;
 
 #ifndef COMPILE_LOG_LEVEL
-#define COMPILE_LOG_LEVEL log_debug
+#define COMPILE_LOG_LEVEL log_level_debug
 #else
 
 // #define HELPER(x) #x
@@ -52,7 +52,7 @@ extern std::atomic<bool> g_log_initialized;
 // Configure using a configure string.
 // String format example:
 //
-// log_info,MidiChannel=log_trace
+// log_level_info,MidiChannel=log_level_trace
 //
 // The string should be a comma-separated set of arguments.
 // Per argument:
@@ -60,11 +60,11 @@ extern std::atomic<bool> g_log_initialized;
 // - if there is a =, overrides the logging level for a particular module.
 //
 // Logging levels:
-// log_trace, log_debug, log_info, log_warning, log_error
+// log_level_trace, log_level_debug, log_level_info, log_level_warning, log_level_error
 //
 // Modules are registered by the code doing the logging, but the Logging
-// module has log_debug statements by the logging framework itself. For example:
-// each logger that is registered produces a log_debug message.
+// module has log_level_debug statements by the logging framework itself. For example:
+// each logger that is registered produces a log_level_debug message.
 void parse_conf_string(std::string s);
 
 // Parse configure string from the SHOOP_LOG env variable.
@@ -73,7 +73,7 @@ void parse_conf_from_env();
 
 namespace internal {
 
-constexpr std::array<const char*, log_error+1> level_indicators = {
+constexpr std::array<const char*, log_level_error+1> level_indicators = {
     "[log_trace] ",
     "[\033[36mdebug\033[0m] ", // cyan
     "[\033[32minfo\033[0m] ",  // green
@@ -134,7 +134,7 @@ void log_impl(std::optional<shoop_log_level_t> maybe_log_level,
               std::optional<std::string_view> maybe_module_name,
               std::string_view str)
 {
-    auto _log_level = maybe_log_level.value_or(log_info);
+    auto _log_level = maybe_log_level.value_or(log_level_info);
     parse_conf_from_env();
     if(UseCompileTimeLevel && UseCompileTimeModuleName && !internal::should_log<MaybeName, MaybeLevel>()) { return; }
     if(UseCompileTimeLevel && !UseCompileTimeModuleName && !internal::should_log<MaybeLevel>(std::string(*maybe_module_name))) { return; }
@@ -159,7 +159,7 @@ inline void log(std::optional<shoop_log_level_t> maybe_log_level,
          std::optional<std::string_view> maybe_module_name,
          std::string_view &&str)
 {
-    log_impl<false, false, "", log_info>(maybe_log_level, maybe_module_name, str);
+    log_impl<false, false, "", log_level_info>(maybe_log_level, maybe_module_name, str);
 }
 template<typename FirstFormatArg, typename ...RestFormatArgs>
 void log(std::optional<shoop_log_level_t> maybe_log_level,
@@ -168,14 +168,14 @@ void log(std::optional<shoop_log_level_t> maybe_log_level,
          FirstFormatArg &&first,
          RestFormatArgs &&... rest)
 {
-    log_impl<false, false, "", log_info>(maybe_log_level, maybe_module_name, fmt::format(str, std::forward<FirstFormatArg>(first), std::forward<RestFormatArgs>(rest)...));
+    log_impl<false, false, "", log_level_info>(maybe_log_level, maybe_module_name, fmt::format(str, std::forward<FirstFormatArg>(first), std::forward<RestFormatArgs>(rest)...));
 }
 template<ModuleName Name>
 void log(std::optional<shoop_log_level_t> maybe_log_level,
          std::optional<std::string_view> maybe_module_name,
          std::string_view &&str)
 {
-    log_impl<true, false, Name, log_info>(maybe_log_level, maybe_module_name, str);
+    log_impl<true, false, Name, log_level_info>(maybe_log_level, maybe_module_name, str);
 }
 template<ModuleName Name, typename FirstFormatArg, typename ...RestFormatArgs>
 void log(std::optional<shoop_log_level_t> maybe_log_level,
@@ -184,7 +184,7 @@ void log(std::optional<shoop_log_level_t> maybe_log_level,
          FirstFormatArg &&first,
          RestFormatArgs &&... rest)
 {
-    log_impl<true, false, Name, log_info>(maybe_log_level, maybe_module_name, fmt::format(str, std::forward<FirstFormatArg>(first), std::forward<RestFormatArgs>(rest)...));
+    log_impl<true, false, Name, log_level_info>(maybe_log_level, maybe_module_name, fmt::format(str, std::forward<FirstFormatArg>(first), std::forward<RestFormatArgs>(rest)...));
 }
 template<shoop_log_level_t Level>
 void log(std::optional<shoop_log_level_t> maybe_log_level,
@@ -225,7 +225,7 @@ inline void set_filter_level(shoop_log_level_t level) {
     std::lock_guard<std::recursive_mutex> lock((*g_log_mutex));
     if (!(*g_maybe_global_level)) { (*g_maybe_global_level) = std::make_unique<shoop_log_level_t>(level); }
     else { *(*g_maybe_global_level) = level; }
-    log<"Backend.Logging", log_debug>(std::nullopt, std::nullopt, "Set global filter level to {}", (int)level);
+    log<"Backend.Logging", log_level_debug>(std::nullopt, std::nullopt, "Set global filter level to {}", (int)level);
 }
 
 // Set a module filter level.
@@ -235,7 +235,7 @@ inline void set_module_filter_level(std::string name, std::optional<shoop_log_le
     auto &maybe_level = (*g_module_log_levels)[name];
     if (!maybe_level) { maybe_level = std::make_unique<shoop_log_level_t>(level.value()); }
     else { *maybe_level = level.value(); }
-    log<"Backend.Logging", log_debug>(std::nullopt, std::nullopt, "Set module filter level for {} to {}", name, (int)level.value());
+    log<"Backend.Logging", log_level_debug>(std::nullopt, std::nullopt, "Set module filter level for {} to {}", name, (int)level.value());
 }
 
 }

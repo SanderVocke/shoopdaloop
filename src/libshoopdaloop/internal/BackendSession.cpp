@@ -1,15 +1,12 @@
 #include "BackendSession.h"
-#include "LoggingBackend.h"
+#include "ConnectedChannel.h"
 #include "ProcessProfiling.h"
-#include "DummyAudioMidiDriver.h"
 #include "ConnectedPort.h"
 #include "ConnectedFXChain.h"
 #include "ProcessingChainInterface.h"
 #include "process_loops.h"
 #include "ConnectedLoop.h"
-#include "ConnectedChannel.h"
 #include "ConnectedDecoupledMidiPort.h"
-#include "ChannelInterface.h"
 #include "DecoupledMidiPort.h"
 #include "AudioBuffer.h"
 #include "ObjectPool.h"
@@ -19,21 +16,19 @@
 #include "process_when.h"
 
 #ifdef SHOOP_HAVE_BACKEND_JACK
-#include "JackAudioMidiDriver.h"
 #include <jack_wrappers.h>
 #endif
 
 #ifdef SHOOP_HAVE_LV2
 #include "LV2.h"
-#include "CarlaLV2ProcessingChain.h"
 #endif
 
 using namespace logging;
 using namespace shoop_types;
 using namespace shoop_constants;
 
-BackendSession::BackendSession()
-        : cmd_queue(shoop_constants::command_queue_size, 1000, 1000),
+BackendSession::BackendSession() :
+          WithCommandQueue<shoop_constants::command_queue_size, 1000, 1000>(),
           profiler(std::make_shared<profiling::Profiler>()),
           top_profiling_item(profiler->maybe_get_profiling_item("Process")),
           ports_profiling_item(
@@ -76,22 +71,22 @@ shoop_backend_session_state_info_t BackendSession::get_state() {
 
 //TODO delete destroyed ports
 void BackendSession::PROC_process (uint32_t nframes) {
-    log<log_trace>("Process {}: start", nframes);
+    log<log_level_trace>("Process {}: start", nframes);
     profiling::stopwatch(
         [this, &nframes]() {
             
             profiler->next_iteration();
             
             // Execute queued commands
-            log<log_trace>("Process: execute commands");
+            log<log_level_trace>("Process: execute commands");
             profiling::stopwatch(
                 [this]() {
-                    cmd_queue.PROC_exec_all();
+                    PROC_handle_command_queue();
                 },
                 cmds_profiling_item
             );
 
-            log<log_trace>("Process: decoupled MIDI");
+            log<log_level_trace>("Process: decoupled MIDI");
             profiling::stopwatch(
                 [this, &nframes]() {
                     // Send/receive decoupled midi
@@ -99,7 +94,7 @@ void BackendSession::PROC_process (uint32_t nframes) {
                 }, ports_decoupled_midi_profiling_item, ports_profiling_item);
             
 
-            log<log_trace>("Process: prepare");
+            log<log_level_trace>("Process: prepare");
             profiling::stopwatch(
                 [this, &nframes]() {
                     // Prepare ports:
@@ -126,7 +121,7 @@ void BackendSession::PROC_process (uint32_t nframes) {
                     }
                 }, ports_prepare_profiling_item, ports_profiling_item);
             
-            log<log_trace>("Process: pre-FX passthrough");
+            log<log_level_trace>("Process: pre-FX passthrough");
             profiling::stopwatch(
                 [this, &nframes]() {
                     // Process passthrough on the input side (before FX chains)
@@ -142,7 +137,7 @@ void BackendSession::PROC_process (uint32_t nframes) {
                 ports_profiling_item, ports_passthrough_profiling_item, ports_passthrough_input_profiling_item
             );
             
-            log<log_trace>("Process: process loops");
+            log<log_level_trace>("Process: process loops");
             profiling::stopwatch(
                 [this, &nframes]() {
                     // Process the loops. This queues deferred audio operations for post-FX channels.
@@ -163,7 +158,7 @@ void BackendSession::PROC_process (uint32_t nframes) {
                 loops_profiling_item
             );
 
-            log<log_trace>("Process: finish pre-FX ports");
+            log<log_level_trace>("Process: finish pre-FX ports");
             profiling::stopwatch(
                 [this, &nframes]() {
                     // Finish processing any ports that come before FX.
@@ -179,7 +174,7 @@ void BackendSession::PROC_process (uint32_t nframes) {
                 ports_profiling_item, ports_prepare_fx_profiling_item
             );
 
-            log<log_trace>("Process: FX");
+            log<log_level_trace>("Process: FX");
             profiling::stopwatch(
                 [this, &nframes]() {
                     // Process the FX chains.
@@ -190,7 +185,7 @@ void BackendSession::PROC_process (uint32_t nframes) {
                 fx_profiling_item
             );
 
-            log<log_trace>("Process: post-FX passthrough");
+            log<log_level_trace>("Process: post-FX passthrough");
             profiling::stopwatch(
                 [this, &nframes]() {
                     // Process passthrough on the output side (after FX chains)
@@ -205,7 +200,7 @@ void BackendSession::PROC_process (uint32_t nframes) {
                 ports_profiling_item, ports_passthrough_profiling_item, ports_passthrough_output_profiling_item
             );
 
-            log<log_trace>("Process: finish post-FX channels");
+            log<log_level_trace>("Process: finish post-FX channels");
             profiling::stopwatch(
                 [this, &nframes]() {
                     // Finish processing any channels that come after FX.
@@ -222,7 +217,7 @@ void BackendSession::PROC_process (uint32_t nframes) {
                 loops_profiling_item
             );
 
-            log<log_trace>("Process: finish post-FX ports");
+            log<log_level_trace>("Process: finish post-FX ports");
             profiling::stopwatch(
                 [this, &nframes]() {
                     // Finish processing any ports that come after FX.
@@ -237,7 +232,7 @@ void BackendSession::PROC_process (uint32_t nframes) {
                 ports_profiling_item, ports_finalize_profiling_item
             );
 
-            log<log_trace>("Process: finish loops");
+            log<log_level_trace>("Process: finish loops");
             profiling::stopwatch(
                 [this, &nframes]() {
                     // Finish processing loops.
@@ -262,8 +257,8 @@ void BackendSession::PROC_process_decoupled_midi_ports(uint32_t nframes) {
 
 void BackendSession::destroy() {
     if (ma_state != State::Destroyed) {
-        log<log_debug>("Destroying backend");
-        cmd_queue.passthrough_on();
+        log<log_level_debug>("Destroying backend");
+        ma_queue.passthrough_on();
         for (auto &p : ports) {
             if (p) {
                 p->port->close();
@@ -276,14 +271,14 @@ void BackendSession::destroy() {
         }
         ma_state = State::Destroyed;
     } else {
-        log<log_debug>("Backend already destroyed");
+        log<log_level_debug>("Backend already destroyed");
     }
 }
 
 std::shared_ptr<ConnectedLoop> BackendSession::create_loop() {
     auto loop = std::make_shared<AudioMidiLoop>(profiler);
     auto r = std::make_shared<ConnectedLoop>(shared_from_this(), loop);
-    cmd_queue.queue([this, r]() {
+    queue_process_thread_command([this, r]() {
         loops.push_back(r);
     });
     return r;
@@ -301,7 +296,7 @@ std::shared_ptr<ConnectedFXChain> BackendSession::create_fx_chain(shoop_fx_chain
         case Carla_Patchbay_16x:
             try {
                 chain = lv2.create_carla_chain<Time, Size>(
-                    type, get_sample_rate(), std::string(title), profiler
+                    type, m_sample_rate, std::string(title), profiler
                 );
             } catch (const std::exception &exp) {
                 throw_error<std::runtime_error>("Failed to create a Carla LV2 instance: " + std::string(exp.what()));
@@ -353,14 +348,22 @@ std::shared_ptr<ConnectedFXChain> BackendSession::create_fx_chain(shoop_fx_chain
             );
         break;
     };
-    chain->ensure_buffers(get_buffer_size());
-    auto log_info = std::make_shared<ConnectedFXChain>(chain, shared_from_this());
-    cmd_queue.queue([this, log_info]() {
-        fx_chains.push_back(log_info);
+    chain->ensure_buffers(m_buffer_size);
+    auto log_level_info = std::make_shared<ConnectedFXChain>(chain, shared_from_this());
+    queue_process_thread_command([this, log_level_info]() {
+        fx_chains.push_back(log_level_info);
     });
-    return log_info;
+    return log_level_info;
 }
 
 BackendSession::~BackendSession() {
-    destory();
+    destroy();
+}
+
+void BackendSession::set_sample_rate(uint32_t sr) {
+    m_sample_rate = sr;
+}
+
+void BackendSession::set_buffer_size(uint32_t bs) {
+    m_buffer_size = bs;
 }

@@ -104,7 +104,7 @@ MidiChannel<TimeType, SizeType>::MidiChannel(uint32_t data_size, shoop_channel_m
 }
 
 template <typename TimeType, typename SizeType>
-MidiChannel<TimeType, SizeType>::~MidiChannel() { log<log_debug>("Destroyed"); }
+MidiChannel<TimeType, SizeType>::~MidiChannel() { log<log_level_debug>("Destroyed"); }
 
 
 template <typename TimeType, typename SizeType>
@@ -203,7 +203,7 @@ MidiChannel<TimeType, SizeType>::PROC_process(shoop_loop_mode_t mode, std::optio
                 ((!(process_flags & ChannelPlayback)) ||
                  pos_before != mp_prev_pos_after);
             if (playback_interrupted && n_samples > 0) {
-                log<log_debug>("Playback interrupted -> All Sound Off");
+                log<log_level_debug>("Playback interrupted -> All Sound Off");
                 PROC_send_all_sound_off();
             }
 
@@ -213,7 +213,7 @@ MidiChannel<TimeType, SizeType>::PROC_process(shoop_loop_mode_t mode, std::optio
                 // make our pre-recorded buffers into our main buffers.
                 // Otherwise, just discard them.
                 if (process_flags & ChannelRecord) {
-                    log<log_debug>(
+                    log<log_level_debug>(
                         "Pre-record end -> carry over to record");
                     mp_storage = mp_prerecord_storage;
                     ma_data_length = ma_start_offset =
@@ -221,7 +221,7 @@ MidiChannel<TimeType, SizeType>::PROC_process(shoop_loop_mode_t mode, std::optio
                     mp_track_start_state = mp_track_prerecord_start_state;
                     mp_track_prerecord_start_state.reset();
                 } else {
-                    log<log_debug>("Pre-record end -> discard");
+                    log<log_level_debug>("Pre-record end -> discard");
                 }
                 mp_prerecord_storage =
                     std::make_shared<Storage>(mp_storage->bytes_capacity());
@@ -258,7 +258,7 @@ MidiChannel<TimeType, SizeType>::PROC_process(shoop_loop_mode_t mode, std::optio
                 processed_input_messages = true;
             } else if (process_flags & ChannelPreRecord) {
                 if (!(mp_prev_process_flags & ChannelPreRecord)) {
-                    log<log_debug>("Pre-record start");
+                    log<log_level_debug>("Pre-record start");
                 }
                 PROC_process_record(*mp_prerecord_storage,
                                     ma_prerecord_data_length,
@@ -361,7 +361,7 @@ MidiChannel<TimeType, SizeType>::PROC_process_record(Storage &storage,
                 // to cache the MIDI state on the input (such as hold pedal,
                 // other CCs, pitch wheel, etc.) so we can restore it later.
                 if (storage.n_events() == 0) {
-                    log<log_debug>("Caching port state for record");
+                    log<log_level_debug>("Caching port state for record");
                     track_start_state.set_from(mp_input_midi_state);
                 }
 
@@ -495,12 +495,12 @@ MidiChannel<TimeType, SizeType>::PROC_process_playback(uint32_t our_pos, uint32_
                 (int)event->storage_time - _pos + buf.first.n_frames_processed;
 
             if (mp_pre_playback_state.valid()) {
-                log<log_debug>(
+                log<log_level_debug>(
                     "Restoring port state for playback @ sample {}",
                     event->storage_time);
                 mp_pre_playback_state.resolve_to_output(
                     [this, &buf, &proc_time](uint32_t size, uint8_t *data) {
-                        log<log_debug>("  - Restore msg: {} {} {}",
+                        log<log_level_debug>("  - Restore msg: {} {} {}",
                                              data[0], data[1], data[2]);
                         PROC_send_message_value(*buf.second, proc_time, size,
                                                 data);

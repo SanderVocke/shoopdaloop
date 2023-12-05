@@ -24,13 +24,13 @@ public:
     template<typename Exception, typename First, typename... Args>
     void throw_error(fmt::format_string<First, Args...>&& fmt, First && first, Args &&... args) const
     {
-        logging::log<Name, log_error>(std::nullopt, std::nullopt, "[@{}] {}", (void*)this, fmt::format(fmt, std::forward<First>(first), std::forward<Args>(args)...));
+        logging::log<Name, log_level_error>(std::nullopt, std::nullopt, "[@{}] {}", (void*)this, fmt::format(fmt, std::forward<First>(first), std::forward<Args>(args)...));
         throw Exception("");
     }
 
     template<typename Exception>
     void throw_error(std::string const& str) const {
-        logging::log<Name, log_error>(std::nullopt, std::nullopt, "[@{}] {}", (void*)this, str);
+        logging::log<Name, log_level_error>(std::nullopt, std::nullopt, "[@{}] {}", (void*)this, str);
         throw Exception("");
     }
 
@@ -38,8 +38,8 @@ public:
                    const char* fl = BOOST_CURRENT_LOCATION.file_name(),
                    uint32_t ln = BOOST_CURRENT_LOCATION.line()) const
     {
-        if (log_trace >= LevelFilter) {
-            log<log_trace>("{}:{} - {}", fl, ln, fn);
+        if (log_level_trace >= LevelFilter) {
+            log<log_level_trace>("{}:{} - {}", fl, ln, fn);
         }
     }
 

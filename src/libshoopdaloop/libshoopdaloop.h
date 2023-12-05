@@ -14,6 +14,9 @@ extern "C" {
 SHOOP_EXPORT shoop_audio_driver_t *create_audio_driver (shoop_audio_driver_type_t type);
 SHOOP_EXPORT shoop_audio_driver_state_t *get_audio_driver_state (shoop_audio_driver_t *driver);
 SHOOP_EXPORT unsigned driver_type_supported(shoop_audio_driver_type_t driver_type);
+SHOOP_EXPORT void destroy_audio_driver (shoop_audio_driver_t *driver);
+SHOOP_EXPORT void *maybe_driver_handle (shoop_audio_driver_t *driver);
+SHOOP_EXPORT const char* maybe_driver_instance_name (shoop_audio_driver_t *driver);
 
 // Session
 SHOOP_EXPORT shoop_backend_session_t *create_backend_session ();
@@ -99,10 +102,8 @@ SHOOP_EXPORT shoop_audio_port_state_info_t *get_audio_port_state(shoopdaloop_aud
 SHOOP_EXPORT shoop_port_connections_state_t *get_audio_port_connections_state(shoopdaloop_audio_port_t *port);
 SHOOP_EXPORT void connect_external_audio_port(shoopdaloop_audio_port_t *ours, const char* external_port_name);
 SHOOP_EXPORT void disconnect_external_audio_port(shoopdaloop_audio_port_t *ours, const char* external_port_name);
-SHOOP_EXPORT shoopdaloop_audio_port_t *open_audio_port (shoop_backend_session_t *backend, const char* name_hint, shoop_port_direction_t direction);
-
-// For JACK audio ports only
-SHOOP_EXPORT void* get_audio_port_jack_handle(shoopdaloop_audio_port_t *port);
+SHOOP_EXPORT void* get_audio_port_driver_handle(shoopdaloop_audio_port_t *port);
+SHOOP_EXPORT shoopdaloop_audio_port_t *open_audio_port (shoop_backend_session_t *backend, shoop_audio_driver_t *driver, const char* name_hint, shoop_port_direction_t direction);
 
 // Midi ports
 SHOOP_EXPORT shoop_midi_port_state_info_t *get_midi_port_state(shoopdaloop_midi_port_t *port);
@@ -112,13 +113,11 @@ SHOOP_EXPORT void add_midi_port_passthrough(shoopdaloop_midi_port_t *from, shoop
 SHOOP_EXPORT shoop_port_connections_state_t *get_midi_port_connections_state(shoopdaloop_midi_port_t *port);
 SHOOP_EXPORT void connect_external_midi_port(shoopdaloop_midi_port_t *ours, const char* external_port_name);
 SHOOP_EXPORT void disconnect_external_midi_port(shoopdaloop_midi_port_t *ours, const char* external_port_name);
-SHOOP_EXPORT shoopdaloop_midi_port_t *open_midi_port (shoop_backend_session_t *backend, const char* name_hint, shoop_port_direction_t direction);
-
-// For JACK midi ports only
-SHOOP_EXPORT void* get_midi_port_jack_handle(shoopdaloop_midi_port_t *port);
+SHOOP_EXPORT shoopdaloop_midi_port_t *open_midi_port (shoop_backend_session_t *backend, shoop_audio_driver_t *driver, const char* name_hint, shoop_port_direction_t direction);
+SHOOP_EXPORT void* get_midi_port_driver_handle(shoopdaloop_midi_port_t *port);
 
 // Decoupled midi ports
-SHOOP_EXPORT shoopdaloop_decoupled_midi_port_t *open_decoupled_midi_port(shoop_backend_session_t *backend, const char* name_hint, shoop_port_direction_t direction);
+SHOOP_EXPORT shoopdaloop_decoupled_midi_port_t *open_decoupled_midi_port(shoop_audio_driver_t *driver, const char* name_hint, shoop_port_direction_t direction);
 SHOOP_EXPORT shoop_midi_event_t *maybe_next_message(shoopdaloop_decoupled_midi_port_t *port);
 SHOOP_EXPORT void send_decoupled_midi(shoopdaloop_decoupled_midi_port_t *port, unsigned length, unsigned char *data);
 SHOOP_EXPORT const char* get_decoupled_midi_port_name(shoopdaloop_decoupled_midi_port_t *port);

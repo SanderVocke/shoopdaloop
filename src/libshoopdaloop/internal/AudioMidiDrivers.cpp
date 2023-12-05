@@ -1,8 +1,10 @@
 #include "AudioMidiDrivers.h"
 #include "LoggingBackend.h"
-#include "DummyAudioMidiDriver.h"
 #include "JackAudioMidiDriver.h"
+#include "DummyAudioMidiDriver.h"
 #include "shoop_globals.h"
+
+using namespace logging;
 
 AudioMidiDriver &create_audio_midi_driver(shoop_audio_driver_type_t type) {
     AudioMidiDriver* rval;
@@ -19,13 +21,13 @@ AudioMidiDriver &create_audio_midi_driver(shoop_audio_driver_type_t type) {
       switch (type) {
 #ifdef SHOOP_HAVE_BACKEND_JACK
       case Jack:
-          log<log_debug>("Creating JACK audio driver instance.");
+          log<"Backend.AudioMidiDrivers", log_level_debug>(std::nullopt, std::nullopt, "Creating JACK audio driver instance.");
           rval = static_cast<AudioMidiDriver*>(
             new JackAudioMidiDriver()
           );
           break;
       case JackTest:
-          log<log_debug>("Creating JACK test audio driver instance.");
+          log<"Backend.AudioMidiDrivers", log_level_debug>(std::nullopt, std::nullopt, "Creating JACK test audio driver instance.");
           rval = static_cast<AudioMidiDriver*>(
             new JackTestAudioMidiDriver()
           );
@@ -33,30 +35,30 @@ AudioMidiDriver &create_audio_midi_driver(shoop_audio_driver_type_t type) {
 #else
       case Jack:
       case JackTest:
-          log<log_warning>("JACK audio driver requested but not supported.");
+          log<"Backend.AudioMidiDrivers", log_level_warning>(std::nullopt, std::nullopt, "JACK audio driver requested but not supported.");
 #endif
       case Dummy:
-          log<log_debug>("Creating dummy audio driver instance.");
+          log<"Backend.AudioMidiDrivers", log_level_debug>(std::nullopt, std::nullopt, "Creating dummy audio driver instance.");
           init_dummy();
           break;
       default:
-          log<log_warning>("Unknown or unsupported audio driver type requested. Falling back to dummy driver.");
+          log<"Backend.AudioMidiDrivers", log_level_warning>(std::nullopt, std::nullopt, "Unknown or unsupported audio driver type requested. Falling back to dummy driver.");
           init_dummy();
       }
     } catch (std::exception &e) {
-      log<log_error>("Failed to initialize audio driver.");
-      log<log_info>("Failure log_info: " + std::string(e.what()));
+      log<"Backend.AudioMidiDrivers", log_level_error>(std::nullopt, std::nullopt, "Failed to initialize audio driver.");
+      log<"Backend.AudioMidiDrivers", log_level_info>(std::nullopt, std::nullopt, "Failure log_level_info: " + std::string(e.what()));
 
       if (!tried_dummy) {
-        log<log_info>("Attempting fallback to dummy audio system.");
+        log<"Backend.AudioMidiDrivers", log_level_info>(std::nullopt, std::nullopt, "Attempting fallback to dummy audio system.");
         init_dummy();
       }
     } catch (...) {
-      log<log_error>(
+      log<"Backend.AudioMidiDrivers", log_level_error>(std::nullopt, std::nullopt, 
           "Failed to initialize audio system: unknown exception");
       
       if (!tried_dummy) {
-        log<log_info>("Attempting fallback to dummy audio system.");
+        log<"Backend.AudioMidiDrivers", log_level_info>(std::nullopt, std::nullopt, "Attempting fallback to dummy audio system.");
         init_dummy();
       }
     }

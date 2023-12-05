@@ -205,13 +205,13 @@ void AudioChannel<SampleT>::PROC_process(
                 // make our pre-recorded buffers into our main buffers.
                 // Otherwise, just discard them.
                 if (process_flags & ChannelRecord) {
-                    log<log_debug>(
+                    log<log_level_debug>(
                         "Pre-record end -> carry over to record");
                     mp_buffers = mp_prerecord_buffers;
                     ma_buffers_data_length = ma_start_offset =
                         mp_prerecord_buffers_data_length.load();
                 } else {
-                    log<log_debug>("Pre-record end -> discard");
+                    log<log_level_debug>("Pre-record end -> discard");
                 }
                 mp_prerecord_buffers.reset();
                 mp_prerecord_buffers_data_length = 0;
@@ -239,7 +239,7 @@ void AudioChannel<SampleT>::PROC_process(
             }
             if (process_flags & ChannelPreRecord) {
                 if (!(mp_prev_process_flags & ChannelPreRecord)) {
-                    log<log_debug>("Pre-record start");
+                    log<log_level_debug>("Pre-record start");
                 }
                 PROC_process_record(n_samples, mp_prerecord_buffers_data_length,
                                     mp_prerecord_buffers,

@@ -349,7 +349,7 @@ CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
 
         const LilvNode *ui_binary_uri = lilv_ui_get_binary_uri(m_ui);
         const char *ui_binary_path = lilv_node_get_path(ui_binary_uri, nullptr);
-        log<log_debug>("Loading UI library: {}",
+        log<log_level_debug>("Loading UI library: {}",
                                       ui_binary_path);
         _dylib_handle ui_lib_handle = load_dylib(ui_binary_path);
         throw_if_dylib_error();

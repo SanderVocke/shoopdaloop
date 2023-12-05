@@ -22,14 +22,14 @@ void ConnectedLoop::PROC_finalize_process() {
 }
 
 void ConnectedLoop::delete_audio_channel_idx(uint32_t idx, bool thread_safe) {
-    get_backend().cmd_queue.queue([this, idx]() {
+    get_backend().queue_process_thread_command([this, idx]() {
         auto chaninfo = mp_audio_channels.at(idx);
         delete_midi_channel(chaninfo, false);
     });
 }
 
 void ConnectedLoop::delete_midi_channel_idx(uint32_t idx, bool thread_safe) {
-    get_backend().cmd_queue.queue([this, idx]() {
+    get_backend().queue_process_thread_command([this, idx]() {
         auto chaninfo = mp_midi_channels.at(idx);
         delete_midi_channel(chaninfo, false);
     });
@@ -45,7 +45,7 @@ void ConnectedLoop::delete_audio_channel(std::shared_ptr<ConnectedChannel> chan,
         mp_audio_channels.erase(r);
     };
     if (thread_safe) {
-        get_backend().cmd_queue.queue(fn);
+        get_backend().queue_process_thread_command(fn);
     } else {
         fn();
     }
@@ -61,7 +61,7 @@ void ConnectedLoop::delete_midi_channel(std::shared_ptr<ConnectedChannel> chan, 
         mp_midi_channels.erase(r);
     };
     if (thread_safe) {
-        get_backend().cmd_queue.queue(fn);
+        get_backend().queue_process_thread_command(fn);
     } else {
         fn();
     }
@@ -79,7 +79,7 @@ void ConnectedLoop::delete_all_channels(bool thread_safe) {
         mp_midi_channels.clear();
     };
     if (thread_safe) {
-        get_backend().cmd_queue.queue(fn);
+        get_backend().queue_process_thread_command(fn);
     } else {
         fn();
     }

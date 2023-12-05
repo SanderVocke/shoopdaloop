@@ -25,11 +25,11 @@ typedef enum {
 } shoop_loop_mode_t;
 
 typedef enum {
-    log_trace,
-    log_debug,
-    log_info,
-    log_warning,
-    log_error
+    log_level_trace,
+    log_level_debug,
+    log_level_info,
+    log_level_warning,
+    log_level_error
 } shoop_log_level_t;
 
 typedef enum {

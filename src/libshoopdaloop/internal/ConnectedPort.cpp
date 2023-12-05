@@ -158,7 +158,7 @@ void ConnectedPort::PROC_passthrough_midi(uint32_t n_frames, ConnectedPort &to) 
             auto &msg = maybe_midi_input_buffer->PROC_get_event_reference(i);
             uint32_t t = msg.get_time();
             void* to_ptr = &to;
-            log<log_debug>("Passthrough midi message reference to {} @ {}", to_ptr, t);
+            log<log_level_debug>("Passthrough midi message reference to {} @ {}", to_ptr, t);
             to.maybe_midi_output_merging_buffer->PROC_write_event_reference(msg);
         }
     }
@@ -186,7 +186,7 @@ void ConnectedPort::PROC_finalize_process(uint32_t n_frames) {
                     uint32_t size, time;
                     const uint8_t* data;
                     maybe_midi_output_merging_buffer->PROC_get_event_reference(i).get(size, time, data);
-                    log<log_trace>("Output midi message reference @ {}", time);
+                    log<log_level_trace>("Output midi message reference @ {}", time);
                     maybe_midi_output_buffer->PROC_write_event_value(size, time, data);
                     maybe_midi_state->process_msg(data);
                 }
@@ -224,7 +224,7 @@ BackendSession &ConnectedPort::get_backend() {
 
 void ConnectedPort::connect_passthrough(const std::shared_ptr<ConnectedPort> &other) {
     log_trace();
-    get_backend().cmd_queue.queue([this, other]() {
+    get_backend().queue_process_thread_command([this, other]() {
         for (auto &_other : mp_passthrough_to) {
             if(auto __other = _other.lock()) {
                 if (__other.get() == other.get()) { return; } // already connected

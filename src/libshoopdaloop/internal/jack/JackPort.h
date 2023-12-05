@@ -25,7 +25,7 @@ public:
     PortDirection direction() const override;
     virtual PortType type() const override;
     void close() override;
-    jack_port_t *get_jack_port() const;
+    void* maybe_driver_handle() const override;
 
     PortExternalConnectionStatus get_external_connection_status() const override;
     void connect_external(std::string name) override;

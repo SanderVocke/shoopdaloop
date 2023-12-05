@@ -20,7 +20,7 @@ void GenericJackPort<API>::close() {
 }
 
 template<typename API>
-jack_port_t *GenericJackPort<API>::get_jack_port() const { return m_port; }
+void *GenericJackPort<API>::maybe_driver_handle() const { return (void*)m_port; }
 
 template<typename API>
 GenericJackPort<API>::~GenericJackPort() { close(); }
@@ -36,7 +36,7 @@ GenericJackPort<API>::GenericJackPort(std::string name,
                    std::shared_ptr<GenericJackAllPorts<API>> all_ports_tracker)
     : m_client(client), m_type(type), m_direction(direction), m_all_ports_tracker(all_ports_tracker) {
 
-    log<log_debug>("Opening port: {}", name);
+    log<log_level_debug>("Opening port: {}", name);
 
     auto p = API::port_register(
         m_client,

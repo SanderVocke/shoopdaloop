@@ -51,8 +51,8 @@ std::vector<float> internal_audio_data(shoop_audio_channel_data_t const& d);
 
 std::vector<_MidiMessage> internal_midi_data(shoop_midi_sequence_t const& d);
 
-shoopdaloop_decoupled_midi_port_t *external_decoupled_midi_port(std::shared_ptr<ConnectedDecoupledMidiPort> port);
+shoopdaloop_decoupled_midi_port_t *external_decoupled_midi_port(std::shared_ptr<MidiPortInterface> port);
 
-std::shared_ptr<ConnectedDecoupledMidiPort> internal_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *port);
+std::shared_ptr<MidiPortInterface> internal_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *port);
 
 PortDirection internal_port_direction(shoop_port_direction_t d);

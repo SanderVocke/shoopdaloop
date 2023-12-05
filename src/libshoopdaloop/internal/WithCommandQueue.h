@@ -7,13 +7,14 @@
 // Typical use is with the audio back-end's process thread.
 template<uint32_t QueueSize, uint32_t QueueTimeoutMs, uint32_t PollIntervalUs>
 class WithCommandQueue {
-    CommandQueue ma_queue;
-    
 protected:
+    CommandQueue ma_queue;
+
     WithCommandQueue() :
         ma_queue(QueueSize, QueueTimeoutMs, PollIntervalUs)
     {}
 
+public:
     void exec_process_thread_command(std::function<void()> fn) {
         ma_queue.queue_and_wait(fn);
     }

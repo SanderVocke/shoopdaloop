@@ -84,9 +84,9 @@ void CommandQueue::PROC_exec_all() {
         try {
             cmd();
         } catch(std::exception &e) {
-            log<log_error>("Failed to execute command: {}", e.what());
+            log<log_level_error>("Failed to execute command: {}", e.what());
         } catch(...) {
-            log<log_error>("Failed to execute command (unknown).");
+            log<log_level_error>("Failed to execute command (unknown).");
         }
     }
     ma_last_processed = millis_since_epoch();

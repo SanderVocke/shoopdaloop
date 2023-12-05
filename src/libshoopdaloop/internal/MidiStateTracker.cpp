@@ -20,7 +20,7 @@ uint32_t MidiStateTracker::cc_index(uint8_t channel, uint8_t cc) {
 
 void MidiStateTracker::process_noteOn(uint8_t channel, uint8_t note,
                                       uint8_t velocity) {
-    log<log_trace>("Process note on: {}, {}, {}", channel, note,
+    log<log_level_trace>("Process note on: {}, {}, {}", channel, note,
                          velocity);
 
     if (m_notes_active_velocities.size() == 0) {
@@ -42,7 +42,7 @@ void MidiStateTracker::process_noteOn(uint8_t channel, uint8_t note,
 }
 
 void MidiStateTracker::process_noteOff(uint8_t channel, uint8_t note) {
-    log<log_trace>("Process note off: {}, {}", channel, note);
+    log<log_level_trace>("Process note off: {}, {}", channel, note);
 
     if (m_notes_active_velocities.size() == 0) {
         return;
@@ -62,7 +62,7 @@ void MidiStateTracker::process_noteOff(uint8_t channel, uint8_t note) {
 
 void MidiStateTracker::process_cc(uint8_t channel, uint8_t controller,
                                   uint8_t value) {
-    log<log_trace>("Process cc: {}, {}, {}", channel, controller, value);
+    log<log_level_trace>("Process cc: {}, {}, {}", channel, controller, value);
 
     if (m_controls.size() == 0) {
         return;
@@ -80,7 +80,7 @@ void MidiStateTracker::process_cc(uint8_t channel, uint8_t controller,
 }
 
 void MidiStateTracker::process_program(uint8_t channel, uint8_t value) {
-    log<log_trace>("Process program: {}, {}", channel, value);
+    log<log_level_trace>("Process program: {}, {}", channel, value);
 
     if (m_programs.size() == 0) {
         return;
@@ -96,7 +96,7 @@ void MidiStateTracker::process_program(uint8_t channel, uint8_t value) {
 }
 
 void MidiStateTracker::process_pitch_wheel(uint8_t channel, uint16_t value) {
-    log<log_trace>("Process pitch wheel: {}, {}", channel, value);
+    log<log_level_trace>("Process pitch wheel: {}, {}", channel, value);
 
     if (m_pitch_wheel.size() == 0) {
         return;
@@ -113,7 +113,7 @@ void MidiStateTracker::process_pitch_wheel(uint8_t channel, uint16_t value) {
 
 void MidiStateTracker::process_channel_pressure(uint8_t channel,
                                                 uint8_t value) {
-    log<log_trace>("Process channel pressure: {}, {}", channel, value);
+    log<log_level_trace>("Process channel pressure: {}, {}", channel, value);
 
     if (m_channel_pressure.size() == 0) {
         return;
@@ -153,7 +153,7 @@ MidiStateTracker &MidiStateTracker::operator=(MidiStateTracker const &other) {
 }
 
 void MidiStateTracker::copy_relevant_state(MidiStateTracker const &other) {
-    log<log_debug>("Copy state from other");
+    log<log_level_debug>("Copy state from other");
 
     if (tracking_notes()) {
         m_n_notes_active = other.m_n_notes_active.load();
@@ -170,7 +170,7 @@ void MidiStateTracker::copy_relevant_state(MidiStateTracker const &other) {
 }
 
 void MidiStateTracker::clear() {
-    log<log_debug>("Clear");
+    log<log_level_debug>("Clear");
 
     for (uint32_t i = 0; i < m_notes_active_velocities.size(); i++) {
         m_notes_active_velocities[i].reset();
