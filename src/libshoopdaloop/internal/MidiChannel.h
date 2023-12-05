@@ -11,7 +11,7 @@
 
 template<typename TimeType, typename SizeType>
 class MidiChannel : public ChannelInterface,
-                    private WithCommandQueue<20, 1000, 1000>,
+                    private WithCommandQueue,
                     private ModuleLoggingEnabled<"Backend.MidiChannel"> {
 public:
     using Storage = MidiStorage<TimeType, SizeType>;

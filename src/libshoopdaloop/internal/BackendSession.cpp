@@ -28,7 +28,7 @@ using namespace shoop_types;
 using namespace shoop_constants;
 
 BackendSession::BackendSession() :
-          WithCommandQueue<shoop_constants::command_queue_size, 1000, 1000>(),
+          WithCommandQueue(),
           profiler(std::make_shared<profiling::Profiler>()),
           top_profiling_item(profiler->maybe_get_profiling_item("Process")),
           ports_profiling_item(

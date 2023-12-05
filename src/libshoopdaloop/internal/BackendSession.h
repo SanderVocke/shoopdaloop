@@ -22,7 +22,7 @@ using namespace shoop_types;
 
 class BackendSession : public std::enable_shared_from_this<BackendSession>,
                        public HasAudioProcessingFunction,
-                       public WithCommandQueue<shoop_constants::command_queue_size, 1000, 1000>,
+                       public WithCommandQueue,
                        public ModuleLoggingEnabled<"Backend.Session"> {
 
     void PROC_process_decoupled_midi_ports(uint32_t nframes);

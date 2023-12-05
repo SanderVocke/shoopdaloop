@@ -28,7 +28,7 @@ public:
     virtual void PROC_process(uint32_t nframes) = 0;
 };
 
-class AudioMidiDriver : public WithCommandQueue<shoop_constants::command_queue_size, 1000, 1000> {
+class AudioMidiDriver : public WithCommandQueue {
     std::shared_ptr<std::set<HasAudioProcessingFunction*>> m_processors;
     std::atomic<uint32_t> m_xruns;
     std::atomic<uint32_t> m_sample_rate;
@@ -85,6 +85,6 @@ public:
     const char* get_client_name() const;
     void* get_maybe_client_handle() const;
 
-    AudioMidiDriver() : WithCommandQueue<shoop_constants::command_queue_size, 1000, 1000>() {}
+    AudioMidiDriver() : WithCommandQueue() {}
     virtual ~AudioMidiDriver() {}
 };

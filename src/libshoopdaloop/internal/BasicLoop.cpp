@@ -9,7 +9,7 @@
 #include <iostream>
 
 BasicLoop::BasicLoop() :
-        WithCommandQueue<100, 1000, 1000>(),
+        WithCommandQueue(100),
         mp_next_poi(std::nullopt),
         mp_next_trigger(std::nullopt),
         ma_mode(LoopMode_Stopped),

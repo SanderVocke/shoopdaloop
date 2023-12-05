@@ -3,6 +3,7 @@
 
 #include "libshoopdaloop.h"
 #include "WithCommandQueue.h"
+#include "shoop_globals.h"
 
 // System
 #include <boost/lockfree/spsc_queue.hpp>
@@ -32,7 +33,6 @@
 #include "ConnectedPort.h"
 #include "ConnectedChannel.h"
 #include "ConnectedFXChain.h"
-#include "ConnectedDecoupledMidiPort.h"
 #include "ConnectedLoop.h"
 #include "DummyAudioMidiDriver.h"
 #include "AudioMidiDrivers.h"
@@ -198,13 +198,13 @@ std::vector<_MidiMessage> internal_midi_data(shoop_midi_sequence_t const& d) {
     return r;
 }
 
-shoopdaloop_decoupled_midi_port_t *external_decoupled_midi_port(std::shared_ptr<MidiPortInterface> port) {
-    auto weak = new std::weak_ptr<MidiPortInterface>(port);
+shoopdaloop_decoupled_midi_port_t *external_decoupled_midi_port(std::shared_ptr<_DecoupledMidiPort> port) {
+    auto weak = new std::weak_ptr<_DecoupledMidiPort>(port);
     return (shoopdaloop_decoupled_midi_port_t*) weak;
 }
 
-std::shared_ptr<MidiPortInterface> internal_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *port) {
-    auto rval = ((std::weak_ptr<MidiPortInterface>*)port)->lock();
+std::shared_ptr<_DecoupledMidiPort> internal_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *port) {
+    auto rval = ((std::weak_ptr<_DecoupledMidiPort>*)port)->lock();
     if (!rval) {
         throw std::runtime_error("Attempt to access an invalid/expired decoupled midi port.");
     }
@@ -246,8 +246,8 @@ RType evaluate_before_or_after_process(std::function<RType()> fn, bool predicate
         return fn();
     }
 }
-template<typename RType, uint32_t QueueSize, uint32_t QueueTimeoutMs, uint32_t PollIntervalUs>
-RType evaluate_before_or_after_process(std::function<RType()> fn, bool predicate, WithCommandQueue<QueueSize, QueueTimeoutMs, PollIntervalUs> &queue) {
+template<typename RType>
+RType evaluate_before_or_after_process(std::function<RType()> fn, bool predicate, WithCommandQueue &queue) {
     if (predicate) { return fn(); }
     else {
         queue.exec_process_thread_command([](){});
@@ -927,16 +927,16 @@ shoopdaloop_decoupled_midi_port_t *open_decoupled_midi_port(shoop_audio_driver_t
         decoupled_midi_port_queue_size,
         direction == Input ? PortDirection::Input : PortDirection::Output);
     _driver->exec_process_thread_command([=]() {
-        _driver->register_decoupled_midi_port(port)
+        _driver->register_decoupled_midi_port(port);
     });
-    return external_decoupled_midi_port(port);
+    return external_decoupled_midi_port(decoupled);
   }, nullptr);
 }
 
 shoop_midi_event_t *maybe_next_message(shoopdaloop_decoupled_midi_port_t *port) {
   return api_impl<shoop_midi_event_t*, log_level_trace, log_level_warning>("maybe_next_message", [&]() -> shoop_midi_event_t * {
     auto &_port = *internal_decoupled_midi_port(port);
-    auto m = _port.port->pop_incoming();
+    auto m = _port.pop_incoming();
     if (m.has_value()) {
         auto r = alloc_midi_event(m->data.size());
         r->time = 0;
@@ -952,7 +952,12 @@ shoop_midi_event_t *maybe_next_message(shoopdaloop_decoupled_midi_port_t *port) 
 
 void close_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *port) {
   return api_impl<void>("close_decoupled_midi_port", [&]() {
-    internal_decoupled_midi_port(port)->get_backend().queue_process_thread_command([=]() {
+    auto _port = internal_decoupled_midi_port(port);
+    auto _driver = _port->get_maybe_driver();
+    if (!_driver) {
+      throw std::runtime_error("close_decoupled_midi_port: port driver not available");
+    }
+    _driver->queue_process_thread_command([=]() {
         auto _port = internal_decoupled_midi_port(port);
         auto &ports = _port->backend.lock()->decoupled_midi_ports;
         ports.erase(
@@ -976,7 +981,7 @@ void send_decoupled_midi(shoopdaloop_decoupled_midi_port_t *port, unsigned lengt
     DecoupledMidiMessage m;
     m.data.resize(length);
     memcpy((void*)m.data.data(), (void*)data, length);
-    _port.port->push_outgoing(m);
+    _port.push_outgoing(m);
   });
 }
 

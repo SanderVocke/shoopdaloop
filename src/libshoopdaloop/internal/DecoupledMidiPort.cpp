@@ -65,6 +65,12 @@ void DecoupledMidiPort<TimeType, SizeType>::close() {
     port->close();
 }
 
+template <typename TimeType, typename SizeType>
+std::shared_ptr<AudioMidiDriver> DecoupledMidiPort<TimeType, SizeType>::
+    get_maybe_driver() const {
+    return maybe_driver.lock();
+}
+
 template class DecoupledMidiPort<uint32_t, uint16_t>;
 template class DecoupledMidiPort<uint32_t, uint32_t>;
 template class DecoupledMidiPort<uint16_t, uint16_t>;

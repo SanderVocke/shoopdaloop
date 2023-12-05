@@ -114,7 +114,7 @@ template <typename SampleT>
 AudioChannel<SampleT>::AudioChannel(
     std::shared_ptr<BufferPool> buffer_pool, uint32_t initial_max_buffers,
     shoop_channel_mode_t mode, std::shared_ptr<profiling::Profiler> maybe_profiler)
-    : WithCommandQueue<20, 1000, 1000>(), ma_buffer_pool(buffer_pool),
+    : WithCommandQueue(50), ma_buffer_pool(buffer_pool),
       ma_buffers_data_length(0), mp_prerecord_buffers_data_length(0),
       ma_buffer_size(buffer_pool->object_size()),
       mp_recording_source_buffer(nullptr), mp_playback_target_buffer(nullptr),

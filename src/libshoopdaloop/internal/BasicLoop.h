@@ -22,7 +22,7 @@ enum BasicPointOfInterestFlags {
 // logic of handling points of interest while processing, planning
 // mode transitions etc.
 class BasicLoop : public LoopInterface,
-                  protected WithCommandQueue<100, 1000, 1000>,
+                  protected WithCommandQueue,
                   protected ModuleLoggingEnabled<"Backend.Loop"> {
 
 public:
