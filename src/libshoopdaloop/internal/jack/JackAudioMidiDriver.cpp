@@ -118,6 +118,8 @@ void GenericJackAudioMidiDriver<API>::start(
     if (API::activate(client)) {
         throw_error<std::runtime_error>("Could not activate JACK client.");
     }
+
+    AudioMidiDriver::set_active(true);
 }
 
 template<typename API>

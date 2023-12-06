@@ -332,6 +332,8 @@ void DummyAudioMidiDriver<Time, Size>::start(
         log<log_level_debug>(
             "DummyAudioMidiDriver: ending process thread");
     });
+
+    AudioMidiDriver::set_active(true);
 }
 
 template <typename Time, typename Size>

@@ -33,8 +33,8 @@ typedef enum {
 } shoop_log_level_t;
 
 typedef enum {
-    success,
-    failure
+    Success,
+    Failure
 } shoop_result_t;
 
 // Modes a channel can be in. They affect how the channel behaves w.r.t.

@@ -14,7 +14,7 @@ from ..backend_wrappers import *
 from ..findChildItems import findChildItems
 from ..logging import Logger
 
-# Wraps the back-end.
+# Wraps the back-end session + driver in a single object.
 class Backend(ShoopQQuickItem):
     def __init__(self, parent=None):
         super(Backend, self).__init__(parent)
@@ -22,13 +22,13 @@ class Backend(ShoopQQuickItem):
         self._timer = None
         self._initialized = False
         self._client_name_hint = None
-        self._backend_type = None
-        self._backend_argstring = None
-        self._backend_obj = None
+        self._driver_type = None
+        self._backend_session_obj = None
+        self._backend_driver_obj = None
         self._backend_child_objects = set()
         self._xruns = 0
         self._dsp_load = 0.0
-        self._actual_backend_type = None
+        self._actual_driver_type = None
         self.destroyed.connect(self.close)
         self.logger = Logger('Frontend.Backend')
     
@@ -75,15 +75,16 @@ class Backend(ShoopQQuickItem):
         self._client_name_hint = n
         self.maybe_init()
 
+    # TODO: rename
     backendTypeChanged = Signal(int)
     @Property(int, notify=backendTypeChanged)
     def backend_type(self):
-        return (self._backend_type.value if self._backend_type else BackendType.Dummy.value)
+        return (self._backend_type.value if self._backend_type else AudioDriverType.Dummy.value)
     @backend_type.setter
     def backend_type(self, n):
         if self._initialized:
             self.logger.throw_error("Back-end type can only be set once.")
-        self._backend_type = BackendType(n)
+        self._backend_type = AudioDriverType(n)
         self.maybe_init()
     
     backendArgstringChanged = Signal(str)
@@ -219,7 +220,7 @@ class Backend(ShoopQQuickItem):
 
     @Slot(int, result=bool)
     def backend_type_is_supported(self, type):
-        return backend_type_is_supported(BackendType(type))
+        return audio_driver_type_supported(AudioDriverType(type))
     
     ################
     ## INTERNAL METHODS
@@ -229,9 +230,16 @@ class Backend(ShoopQQuickItem):
         self.logger.debug(lambda: "Initializing with type {}, client name hint {}, argstring {}".format(self._backend_type, self._client_name_hint, self._backend_argstring))
         if self._initialized:
             self.logger.throw_error("May not initialize more than one back-end at a time.")
-        self._backend_obj = init_backend(self._backend_type, self._client_name_hint, self._backend_argstring)
-        if not self._backend_obj:
-            self.logger.throw_error("Failed to initialize back-end.")
+        self._backend_session_obj = BackendSession.create()
+        self._backend_driver_obj = AudioDriver.create(self._driver_type)
+        
+        if not self._backend_session_obj:
+            self.logger.throw_error("Failed to initialize back-end session.")
+        if not self._audio_driver_obj:
+            self.logger.throw_error("Failed to initialize back-end driver.")
+            
+        self._backend_session_obj.set_audio_driver(self._backend_driver_obj)
+        
         self._initialized = True
         self.initializedChanged.emit(True)
         self.init_timer()

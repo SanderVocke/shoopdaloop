@@ -37,6 +37,7 @@ class AudioMidiDriver : public WithCommandQueue,
     std::atomic<float> m_dsp_load;
     std::atomic<void*> m_maybe_client_handle;
     std::atomic<const char*> m_client_name;
+    std::atomic<bool> m_active;
     std::set<std::shared_ptr<shoop_types::_DecoupledMidiPort>> m_decoupled_midi_ports;
 
 protected:
@@ -47,6 +48,7 @@ protected:
     void set_buffer_size(uint32_t buffer_size);
     void set_maybe_client_handle(void* handle);
     void set_client_name(const char* name);
+    void set_active(bool active);
 
     virtual void maybe_update_sample_rate() {};
     virtual void maybe_update_buffer_size() {};
@@ -89,6 +91,7 @@ public:
     void reset_xruns();
     const char* get_client_name() const;
     void* get_maybe_client_handle() const;
+    bool get_active() const;
 
     AudioMidiDriver();
     virtual ~AudioMidiDriver() {}

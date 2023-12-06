@@ -363,8 +363,8 @@ shoop_result_t set_audio_driver(shoop_backend_session_t *backend, shoop_audio_dr
         _backend->set_sample_rate(_driver->get_sample_rate());
         _driver->add_processor(*_backend);
     });
-    return success;
-  }, failure);
+    return Success;
+  }, Failure);
 }
 
 shoop_backend_session_state_info_t *get_backend_state(shoop_backend_session_t *backend) {
@@ -1697,4 +1697,28 @@ void destroy_logger(shoopdaloop_logger_t* logger) {
     //TODO Leaking loggers on Windows because of unsolved segmentation fault.
 #endif
   });
+}
+
+unsigned get_sample_rate (shoop_audio_driver_t *driver) {
+  return api_impl<unsigned>("get_sample_rate", [&]() {
+    return internal_audio_driver(driver)->get_sample_rate();
+  }, 0);
+}
+
+unsigned get_buffer_size (shoop_audio_driver_t *driver) {
+  return api_impl<unsigned>("get_buffer_size", [&]() {
+    return internal_audio_driver(driver)->get_buffer_size();
+  }, 0);
+}
+
+void destroy_audio_driver_state(shoop_audio_driver_state_t *state) {
+  return api_impl<void, log_level_trace>("destroy_audio_driver_state", [&]() {
+    delete state;
+  });
+}
+
+unsigned get_driver_active(shoop_audio_driver_t *driver) {
+  return api_impl<unsigned>("get_driver_active", [&]() {
+    return internal_audio_driver(driver)->get_active();
+  }, 0);
 }

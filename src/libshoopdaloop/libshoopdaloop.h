@@ -17,6 +17,9 @@ SHOOP_EXPORT unsigned driver_type_supported(shoop_audio_driver_type_t driver_typ
 SHOOP_EXPORT void destroy_audio_driver (shoop_audio_driver_t *driver);
 SHOOP_EXPORT void *maybe_driver_handle (shoop_audio_driver_t *driver);
 SHOOP_EXPORT const char* maybe_driver_instance_name (shoop_audio_driver_t *driver);
+SHOOP_EXPORT unsigned get_sample_rate (shoop_audio_driver_t *driver);
+SHOOP_EXPORT unsigned get_buffer_size (shoop_audio_driver_t *driver);
+SHOOP_EXPORT unsigned get_driver_active (shoop_audio_driver_t *driver);
 
 // Session
 SHOOP_EXPORT shoop_backend_session_t *create_backend_session ();
@@ -146,6 +149,7 @@ SHOOP_EXPORT void destroy_profiling_report(shoop_profiling_report_t *d);
 SHOOP_EXPORT void destroy_string(const char* s);
 SHOOP_EXPORT void destroy_port_connections_state(shoop_port_connections_state_t *d);
 SHOOP_EXPORT void destroy_logger(shoopdaloop_logger_t *logger);
+SHOOP_EXPORT void destroy_audio_driver_state(shoop_audio_driver_state_t *state);
 
 // Helpers for allocating data objects
 SHOOP_EXPORT shoop_midi_event_t *alloc_midi_event(unsigned data_bytes);

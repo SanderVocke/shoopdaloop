@@ -2,7 +2,6 @@ from PySide6.QtCore import Signal, Property, Slot, QTimer
 
 from .ShoopPyObject import ShoopQObject
 from ..logging import Logger as BaseLogger
-from ..logging import _trace, _debug, _info, _warning, _error
 
 class Logger(ShoopQObject):
     def __init__(self, parent=None):
@@ -52,5 +51,5 @@ class Logger(ShoopQObject):
     @Slot('QVariant')
     def throw_error(self, msg):
         self.logger.error(msg, _id=self._obj_id)
-        raise Exception(resolved if resolved else 'Unknown error')
+        raise Exception(msg)
     

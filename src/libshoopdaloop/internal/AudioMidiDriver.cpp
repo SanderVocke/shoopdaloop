@@ -5,7 +5,8 @@
 
 AudioMidiDriver::AudioMidiDriver() :
   WithCommandQueue(),
-  m_processors(std::make_shared<std::set<HasAudioProcessingFunction*>>())
+  m_processors(std::make_shared<std::set<HasAudioProcessingFunction*>>()),
+  m_active(false)
 {
 }
 
@@ -86,6 +87,10 @@ void AudioMidiDriver::set_client_name(const char* name) {
     m_client_name = name;
 }
 
+void AudioMidiDriver::set_active(bool active) {
+    m_active = active;
+}
+
 const char* AudioMidiDriver::get_client_name() const {
     return m_client_name;
 }
@@ -96,6 +101,10 @@ void AudioMidiDriver::set_maybe_client_handle(void* handle) {
 
 void* AudioMidiDriver::get_maybe_client_handle() const {
     return m_maybe_client_handle;
+}
+
+bool AudioMidiDriver::get_active() const {
+    return m_active;
 }
 
 std::shared_ptr<shoop_types::_DecoupledMidiPort> AudioMidiDriver::open_decoupled_midi_port(std::string name, shoop_port_direction_t direction) {
