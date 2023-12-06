@@ -134,10 +134,10 @@ class Backend(ShoopQQuickItem):
     def doUpdate(self):
         if not self.initialized:
             return
-        state = self._backend_obj.get_state()
-        self.dsp_load = state.dsp_load_percent
-        self.xruns += state.xruns_since_last
-        self.actual_backend_type = state.actual_type.value
+        driver_state = self._backend_driver_obj.get_state()
+        self.dsp_load = driver_state.dsp_load_percent
+        self.xruns += driver_state.xruns_since_last
+        self.actual_backend_type = self._driver_type
         
         toRemove = []
         for obj in self._backend_child_objects:
@@ -153,50 +153,55 @@ class Backend(ShoopQQuickItem):
     
     @Slot(result=int)
     def get_sample_rate(self):
-        return self._backend_obj.get_sample_rate()
+        return self._backend_driver_obj.get_sample_rate()
     
     @Slot(result=int)
     def get_buffer_size(self):
-        return self._backend_obj.get_buffer_size()
+        return self._backend_driver_obj.get_buffer_size()
 
     @Slot()
     def close(self):
         if self._initialized:
-            self._backend_obj.terminate()
+            self._backend_session_obj.destroy()
+            self._backend_driver_obj.destroy()
         self._initialized = False
     
     # Get the wrapped back-end object.
     @Slot(result='QVariant')
-    def get_backend_obj(self):
-        return self._backend_obj
+    def get_backend_driver_obj(self):
+        return self._backend_driver_obj
+    
+    @Slot(result='QVariant')
+    def get_backend_session_obj(self):
+        return self._backend_session_obj
     
     @Slot()
     def dummy_enter_controlled_mode(self):
-        self._backend_obj.dummy_enter_controlled_mode()
+        self._backend_driver_obj.dummy_enter_controlled_mode()
     
     @Slot()
     def dummy_enter_automatic_mode(self):
-        self._backend_obj.dummy_enter_automatic_mode()
+        self._backend_driver_obj.dummy_enter_automatic_mode()
     
     @Slot(result=bool)
     def dummy_is_controlled(self):
-        self._backend_obj.dummy_is_controlled()
+        self._backend_driver_obj.dummy_is_controlled()
     
     @Slot(int)
     def dummy_request_controlled_frames(self, n):
-        self._backend_obj.dummy_request_controlled_frames(n)
+        self._backend_driver_obj.dummy_request_controlled_frames(n)
         
     @Slot(result=int)
     def dummy_n_requested_frames(self):
-        return self._backend_obj.dummy_n_requested_frames()
+        return self._backend_driver_obj.dummy_n_requested_frames()
     
     @Slot()
     def dummy_wait_process(self):
-        self._backend_obj.dummy_wait_process()
+        self._backend_driver_obj.dummy_wait_process()
     
     @Slot()
     def maybe_init(self):
-        if not self._initialized and self._client_name_hint != None and self._backend_type != None and self._backend_argstring != None:
+        if not self._initialized and self._client_name_hint != None and self._driver_type != None and self._backend_argstring != None:
             self.init()
     
     @Slot(result='QVariant')
@@ -210,8 +215,8 @@ class Backend(ShoopQQuickItem):
                 'n_samples': item.n_samples,
             }
 
-        if (self._backend_obj):
-            report = self._backend_obj.get_profiling_report()
+        if (self._backend_session_obj):
+            report = self._backend_session_obj.get_profiling_report()
             dct = {}
             for item in report.items:
                 dct[item.key] = report_item_to_dict(item)
@@ -235,7 +240,7 @@ class Backend(ShoopQQuickItem):
         
         if not self._backend_session_obj:
             self.logger.throw_error("Failed to initialize back-end session.")
-        if not self._audio_driver_obj:
+        if not self._backend_driver_obj:
             self.logger.throw_error("Failed to initialize back-end driver.")
             
         self._backend_session_obj.set_audio_driver(self._backend_driver_obj)
