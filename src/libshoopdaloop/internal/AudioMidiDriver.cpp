@@ -3,6 +3,12 @@
 #include <cstdint>
 #include "shoop_globals.h"
 
+AudioMidiDriver::AudioMidiDriver() :
+  WithCommandQueue(),
+  m_processors(std::make_shared<std::set<HasAudioProcessingFunction*>>())
+{
+}
+
 void AudioMidiDriver::add_processor(HasAudioProcessingFunction &p) {
     auto old = m_processors;
     auto _new = std::make_shared<std::set<HasAudioProcessingFunction*>>();

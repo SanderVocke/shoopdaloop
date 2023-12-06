@@ -90,6 +90,6 @@ public:
     const char* get_client_name() const;
     void* get_maybe_client_handle() const;
 
-    AudioMidiDriver() : WithCommandQueue(), m_processors(std::make_shared<std::set<HasAudioProcessingFunction*>>()) {}
+    AudioMidiDriver();
     virtual ~AudioMidiDriver() {}
 };

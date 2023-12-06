@@ -354,6 +354,16 @@ unsigned driver_type_supported(shoop_audio_driver_type_t type) {
   }, 0);
 }
 
+void set_audio_driver(shoop_backend_session_t *backend, shoop_audio_driver_t *driver) {
+  return api_impl<void>("set_audio_driver", [&]() {
+    auto _backend = internal_backend_session(backend);
+    auto _driver = internal_audio_driver(driver);
+    _driver->queue_process_thread_command([_backend, _driver]() {
+        _driver->add_processor(*_backend);
+    });
+  });
+}
+
 shoop_backend_session_state_info_t *get_backend_state(shoop_backend_session_t *backend) {
   return api_impl<shoop_backend_session_state_info_t*, log_level_trace, log_level_warning>("get_backend_state", [&]() {
     auto val = internal_backend_session(backend)->get_state();
