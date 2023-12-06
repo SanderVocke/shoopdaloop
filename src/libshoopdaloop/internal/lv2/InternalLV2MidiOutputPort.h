@@ -4,7 +4,7 @@
 
 class InternalLV2MidiOutputPort : public MidiPortInterface, public MidiWriteableBufferInterface {
     std::string m_name;
-    PortDirection m_direction;
+    shoop_port_direction_t m_direction;
     LV2_Evbuf *m_evbuf;
     uint32_t m_midi_event_type_urid;
     LV2_Evbuf_Iterator m_iter;
@@ -15,7 +15,7 @@ public:
     // ShoopDaLoop.
     InternalLV2MidiOutputPort(
         std::string name,
-        PortDirection direction,
+        shoop_port_direction_t direction,
         uint32_t capacity,
         uint32_t atom_chunk_urid,
         uint32_t atom_sequence_urid,
@@ -27,9 +27,10 @@ public:
     MidiWriteableBufferInterface &PROC_get_write_buffer (uint32_t n_frames) override;
 
     const char* name() const override;
-    PortDirection direction() const override;
+    shoop_port_direction_t direction() const override;
     void close() override;
     PortType type() const override;
+    void *maybe_driver_handle () const override;
 
     PortExternalConnectionStatus get_external_connection_status() const override;
     void connect_external(std::string name) override;

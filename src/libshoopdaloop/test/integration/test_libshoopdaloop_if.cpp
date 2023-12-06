@@ -5,16 +5,16 @@
 #include "types.h"
 
 
-TEST_CASE("LibShoopdaloop - Create destroy back-end", "[LibShoopdaloop]") {
-    shoop_backend_session_t * c_backend = create_backend (Dummy, "dummy", "");
+TEST_CASE("LibShoopdaloop - Create destroy back-end session", "[LibShoopdaloop]") {
+    shoop_backend_session_t * c_backend = create_backend_session ();
     auto weak_backend = std::weak_ptr<BackendSession>(internal_backend_session(c_backend));
     REQUIRE(weak_backend.lock() != nullptr);
-    terminate_backend(c_backend);
+    destroy_backend_session(c_backend);
     REQUIRE(weak_backend.lock() == nullptr);
 };
 
 TEST_CASE("LibShoopdaloop - Create destroy loop", "[LibShoopdaloop]") {
-    shoop_backend_session_t * c_backend = create_backend (Dummy, "dummy", "");
+    shoop_backend_session_t * c_backend = create_backend_session ();
     {
         auto c_loop = create_loop(c_backend);
         auto weak_loop = std::weak_ptr<ConnectedLoop>(internal_loop(c_loop));
@@ -22,22 +22,22 @@ TEST_CASE("LibShoopdaloop - Create destroy loop", "[LibShoopdaloop]") {
         destroy_loop(c_loop);
         REQUIRE(weak_loop.lock() == nullptr);
     }
-    terminate_backend(c_backend);
+    destroy_backend_session(c_backend);
 };
 
 TEST_CASE("LibShoopdaloop - Create destroy back-end loop destroyed", "[LibShoopdaloop]") {
-    shoop_backend_session_t * c_backend = create_backend (Dummy, "dummy", "");
+    shoop_backend_session_t * c_backend = create_backend_session ();
     {
         auto c_loop = create_loop(c_backend);
         auto weak_loop = std::weak_ptr<ConnectedLoop>(internal_loop(c_loop));
         REQUIRE(weak_loop.lock() != nullptr);
-        terminate_backend(c_backend);
+        destroy_backend_session(c_backend);
         REQUIRE(weak_loop.lock() == nullptr);
     }
 };
 
 TEST_CASE("LibShoopdaloop - Channels not destroyed with loop", "[LibShoopdaloop]") {
-    shoop_backend_session_t * c_backend = create_backend (Dummy, "dummy", "");
+    shoop_backend_session_t * c_backend = create_backend_session ();
     {
         auto c_loop = create_loop(c_backend);
         shoopdaloop_loop_audio_channel_t* c_chan;
@@ -52,6 +52,6 @@ TEST_CASE("LibShoopdaloop - Channels not destroyed with loop", "[LibShoopdaloop]
         destroy_loop(c_loop);
         REQUIRE(weak_loop.lock() == nullptr);
         REQUIRE(weak_chan.lock() == nullptr);
-        terminate_backend(c_backend);
+        destroy_backend_session(c_backend);
     }
 };

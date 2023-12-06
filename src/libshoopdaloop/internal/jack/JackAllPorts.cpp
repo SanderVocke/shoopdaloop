@@ -14,7 +14,7 @@ void GenericJackAllPorts<API>::update(jack_client_t *client) {
         auto port = API::port_by_name(client, _port_name.c_str());
         JackAllPortsEntry entry;
         entry.name = _port_name;
-        entry.direction = API::port_flags(port) & JackPortIsInput ? PortDirection::Input : PortDirection::Output;
+        entry.direction = API::port_flags(port) & JackPortIsInput ? shoop_port_direction_t::Input : shoop_port_direction_t::Output;
         entry.type = std::string(API::port_type(port)) == JACK_DEFAULT_AUDIO_TYPE ? PortType::Audio : PortType::Midi;
         entry.connections = std::vector<std::string>();
         const char** connected_ports = API::port_get_all_connections(client, port);

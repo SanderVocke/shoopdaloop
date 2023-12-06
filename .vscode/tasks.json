@@ -9,18 +9,7 @@
         "kind": "build",
         "isDefault": true
       },
-      "problemMatcher": {
-        "owner": "cpp",
-        "fileLocation": "absolute",
-        "pattern": {
-          "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
-          "file": 1,
-          "line": 2,
-          "column": 3,
-          "severity": 4,
-          "message": 5
-        }
-      }
+      "problemMatcher": "$gcc"
     },
     {
       "label": "Build (Pip editable system install - Debug)",
@@ -30,18 +19,7 @@
         "kind": "build",
         "isDefault": true
       },
-      "problemMatcher": {
-        "owner": "cpp",
-        "fileLocation": "absolute",
-        "pattern": {
-          "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
-          "file": 1,
-          "line": 2,
-          "column": 3,
-          "severity": 4,
-          "message": 5
-        }
-      }
+      "problemMatcher": "$gcc"
     },
     {
       "label": "Build (Pip editable system install - Coverage)",
@@ -51,18 +29,7 @@
         "kind": "build",
         "isDefault": true
       },
-      "problemMatcher": {
-        "owner": "cpp",
-        "fileLocation": "absolute",
-        "pattern": {
-          "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
-          "file": 1,
-          "line": 2,
-          "column": 3,
-          "severity": 4,
-          "message": 5
-        }
-      }
+      "problemMatcher": "$gcc"
     },
     {
       "label": "Build (Pip editable system install - ASAN)",
@@ -72,18 +39,7 @@
         "kind": "build",
         "isDefault": true
       },
-      "problemMatcher": {
-        "owner": "cpp",
-        "fileLocation": "absolute",
-        "pattern": {
-          "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
-          "file": 1,
-          "line": 2,
-          "column": 3,
-          "severity": 4,
-          "message": 5
-        }
-      }
+      "problemMatcher": "$gcc"
     },
     {
       "label": "Build (Pip regular system install)",
@@ -93,18 +49,7 @@
         "kind": "build",
         "isDefault": true
       },
-      "problemMatcher": {
-        "owner": "cpp",
-        "fileLocation": "absolute",
-        "pattern": {
-          "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
-          "file": 1,
-          "line": 2,
-          "column": 3,
-          "severity": 4,
-          "message": 5
-        }
-      }
+      "problemMatcher": "$gcc"
     },
     {
       "label": "Build (Pip regular system install - Debug)",
@@ -114,18 +59,7 @@
         "kind": "build",
         "isDefault": true
       },
-      "problemMatcher": {
-        "owner": "cpp",
-        "fileLocation": "absolute",
-        "pattern": {
-          "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
-          "file": 1,
-          "line": 2,
-          "column": 3,
-          "severity": 4,
-          "message": 5
-        }
-      }
+      "problemMatcher": "$gcc"
     },
     {
       "label": "Build (Pip regular system install - Coverage)",
@@ -135,18 +69,7 @@
         "kind": "build",
         "isDefault": true
       },
-      "problemMatcher": {
-        "owner": "cpp",
-        "fileLocation": "absolute",
-        "pattern": {
-          "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
-          "file": 1,
-          "line": 2,
-          "column": 3,
-          "severity": 4,
-          "message": 5
-        }
-      }
+      "problemMatcher": "$gcc"
     },
     {
       "label": "Build (Pip regular system install - ASAN)",
@@ -156,18 +79,7 @@
         "kind": "build",
         "isDefault": true
       },
-      "problemMatcher": {
-        "owner": "cpp",
-        "fileLocation": "absolute",
-        "pattern": {
-          "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
-          "file": 1,
-          "line": 2,
-          "column": 3,
-          "severity": 4,
-          "message": 5
-        }
-      }
+      "problemMatcher": "$gcc"
     },
     {
       "label": "Build (Pip wheel in isolation)",
@@ -177,18 +89,7 @@
         "kind": "build",
         "isDefault": true
       },
-      "problemMatcher": {
-        "owner": "cpp",
-        "fileLocation": "absolute",
-        "pattern": {
-          "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
-          "file": 1,
-          "line": 2,
-          "column": 3,
-          "severity": 4,
-          "message": 5
-        }
-      }
+      "problemMatcher": "$gcc"
     },
     {
       "label": "Build (Pip wheel in isolation - Debug)",
@@ -198,18 +99,7 @@
         "kind": "build",
         "isDefault": true
       },
-      "problemMatcher": {
-        "owner": "cpp",
-        "fileLocation": "absolute",
-        "pattern": {
-          "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
-          "file": 1,
-          "line": 2,
-          "column": 3,
-          "severity": 4,
-          "message": 5
-        }
-      }
+      "problemMatcher": "$gcc"
     },
     {
       "label": "Build (Pip wheel in isolation - ASAN)",
@@ -219,18 +109,7 @@
         "kind": "build",
         "isDefault": true
       },
-      "problemMatcher": {
-        "owner": "cpp",
-        "fileLocation": "absolute",
-        "pattern": {
-          "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
-          "file": 1,
-          "line": 2,
-          "column": 3,
-          "severity": 4,
-          "message": 5
-        }
-      }
+      "problemMatcher": "$gcc"
     },
     {
       "label": "Build (Pip wheel in isolation - Coverage)",
@@ -240,18 +119,7 @@
         "kind": "build",
         "isDefault": true
       },
-      "problemMatcher": {
-        "owner": "cpp",
-        "fileLocation": "absolute",
-        "pattern": {
-          "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
-          "file": 1,
-          "line": 2,
-          "column": 3,
-          "severity": 4,
-          "message": 5
-        }
-      }
+      "problemMatcher": "$gcc"
     }
   ]
 }

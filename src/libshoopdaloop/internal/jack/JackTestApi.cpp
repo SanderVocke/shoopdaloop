@@ -1,6 +1,7 @@
 #include "JackTestApi.h"
 #include "LoggingBackend.h"
 #include <jack/types.h>
+#include <vector>
 
 namespace jacktestapi_globals {
     std::map<std::string, JackTestApi::Client> clients;

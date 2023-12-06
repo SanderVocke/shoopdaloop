@@ -58,7 +58,7 @@ template<typename API>
 bool GenericJackMidiPort<API>::write_by_value_supported() const { return true; }
 
 template<typename API>
-GenericJackMidiPort<API>::GenericJackMidiPort(std::string name, PortDirection direction,
+GenericJackMidiPort<API>::GenericJackMidiPort(std::string name, shoop_port_direction_t direction,
                            jack_client_t *client, std::shared_ptr<GenericJackAllPorts<API>> all_ports_tracker)
     : MidiPortInterface(name, direction), GenericJackPort<API>(name, direction, PortType::Midi, client, all_ports_tracker) {
 

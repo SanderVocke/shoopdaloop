@@ -54,4 +54,6 @@ shoopdaloop_decoupled_midi_port_t *external_decoupled_midi_port(std::shared_ptr<
 
 std::shared_ptr<_DecoupledMidiPort> internal_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *port);
 
-PortDirection internal_port_direction(shoop_port_direction_t d);
+std::shared_ptr<AudioMidiDriver> internal_audio_driver(shoop_audio_driver_t *driver);
+
+shoop_audio_driver_t *external_audio_driver(std::shared_ptr<AudioMidiDriver> driver);

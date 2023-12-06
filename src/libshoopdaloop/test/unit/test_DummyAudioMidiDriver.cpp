@@ -1,12 +1,13 @@
 #include <catch2/catch_test_macros.hpp>
 #include "DummyAudioMidiDriver.h"
 #include "PortInterface.h"
+#include "AudioMidiDriver.h"
 #include <functional>
 #include <thread>
 #include <chrono>
 #include <set>
 
-struct Tracker {
+struct Tracker : public HasAudioProcessingFunction {
     std::atomic<uint32_t> total_samples_processed;
     std::vector<uint32_t> each_n_samples_processed;
 
@@ -14,7 +15,7 @@ struct Tracker {
         total_samples_processed = 0;
     }
     
-    void process(uint32_t n_samples) {
+    void PROC_process(uint32_t n_samples) override {
         each_n_samples_processed.push_back(n_samples);
         total_samples_processed += n_samples;
     }
@@ -34,18 +35,18 @@ struct TrackedDummyAudioMidiDriver : public DummyAudioMidiDriver<Time, Size> {
         DummyAudioMidiDriverMode mode,
         std::function<void(uint32_t)> process_cb = nullptr,
         uint32_t sample_rate = 48000,
-        uint32_t buffer_size = 256) : DummyAudioMidiDriver<Time, Size>(
-            client_name,
-            [process_cb, this](uint32_t n) {
-                if (process_cb) {
-                    process_cb(n);
-                }
-                tracker.process(n);
-            },
-            mode,
-            sample_rate,
-            buffer_size
-            ) {}
+        uint32_t buffer_size = 256) :
+        DummyAudioMidiDriver<Time, Size>(),
+        tracker(Tracker())
+    {
+        AudioMidiDriver::add_processor(tracker);
+        DummyAudioMidiDriverSettings settings;
+        settings.buffer_size = buffer_size;
+        settings.client_name = client_name;
+        settings.sample_rate = sample_rate;
+        DummyAudioMidiDriver<Time, Size>::enter_mode(mode);
+        DummyAudioMidiDriver<Time, Size>::start(settings);
+    }
     
     std::set<uint32_t> get_unique_n_samples_processed() { return std::set (tracker.each_n_samples_processed.begin(), tracker.each_n_samples_processed.end()); }
 };
@@ -59,7 +60,6 @@ TEST_CASE("DummyAudioMidiDriver - Automatic", "[DummyAudioMidiDriver]") {
         256
     );
     
-    dut.start();
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
     dut.close();
 
@@ -77,7 +77,6 @@ TEST_CASE("DummyAudioMidiDriver - Controlled", "[DummyAudioMidiDriver]") {
         256
     );
     
-    dut.start();
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
     dut.pause();
     
@@ -100,7 +99,7 @@ TEST_CASE("DummyAudioMidiDriver - Controlled", "[DummyAudioMidiDriver]") {
 };
 
 TEST_CASE("DummyAudioMidiDriver - Input port default", "[DummyAudioMidiDriver]") {
-    DummyAudioPort put("test_in", PortDirection::Input);
+    DummyAudioPort put("test_in", shoop_port_direction_t::Input);
 
     auto buf = put.PROC_get_buffer(8);
     auto bufvec = std::vector<float>(buf, buf+8);
@@ -108,7 +107,7 @@ TEST_CASE("DummyAudioMidiDriver - Input port default", "[DummyAudioMidiDriver]")
 };
 
 TEST_CASE("DummyAudioMidiDriver - Input port queue", "[DummyAudioMidiDriver]") {
-    DummyAudioPort put("test_in", PortDirection::Input);
+    DummyAudioPort put("test_in", shoop_port_direction_t::Input);
     std::vector<float> data({1, 2, 3, 4, 5, 6, 7, 8});
     put.queue_data(8, data.data());
 
@@ -118,7 +117,7 @@ TEST_CASE("DummyAudioMidiDriver - Input port queue", "[DummyAudioMidiDriver]") {
 };
 
 TEST_CASE("DummyAudioMidiDriver - Input port queue consume multiple", "[DummyAudioMidiDriver]") {
-    DummyAudioPort put("test_in", PortDirection::Input);
+    DummyAudioPort put("test_in", shoop_port_direction_t::Input);
     std::vector<float> data({1, 2, 3, 4, 5, 6, 7, 8});
     put.queue_data(8, data.data());
 
@@ -135,7 +134,7 @@ TEST_CASE("DummyAudioMidiDriver - Input port queue consume multiple", "[DummyAud
 };
 
 TEST_CASE("DummyAudioMidiDriver - Input port queue consume combine", "[DummyAudioMidiDriver]") {
-    DummyAudioPort put("test_in", PortDirection::Input);
+    DummyAudioPort put("test_in", shoop_port_direction_t::Input);
     std::vector<float> data({1, 2, 3, 4});
     put.queue_data(4, data.data());
     put.queue_data(4, data.data());

@@ -1,4 +1,5 @@
 #include "DecoupledMidiPort.h"
+#include "AudioMidiDriver.h"
 #include "PortInterface.h"
 #include "LoggingBackend.h"
 #include <optional>
@@ -7,13 +8,15 @@
 
 template <typename TimeType, typename SizeType>
 DecoupledMidiPort<TimeType, SizeType>::DecoupledMidiPort(
-    std::shared_ptr<MidiPortInterface> port, uint32_t queue_size,
-    PortDirection direction)
-    : port(port), ma_queue(queue_size), direction(direction){};
+    std::shared_ptr<MidiPortInterface> port,
+    std::shared_ptr<AudioMidiDriver> driver,
+    uint32_t queue_size,
+    shoop_port_direction_t direction)
+    : port(port), ma_queue(queue_size), direction(direction), maybe_driver(driver) {};
 
 template <typename TimeType, typename SizeType>
 void DecoupledMidiPort<TimeType, SizeType>::PROC_process(uint32_t n_frames) {
-    if (direction == PortDirection::Input) {
+    if (direction == shoop_port_direction_t::Input) {
         auto &buf = port->PROC_get_read_buffer(n_frames);
         auto n = buf.PROC_get_n_events();
         for (uint32_t idx = 0; idx < n; idx++) {
@@ -43,7 +46,7 @@ const char* DecoupledMidiPort<TimeType, SizeType>::name() const {
 template <typename TimeType, typename SizeType>
 std::optional<typename DecoupledMidiPort<TimeType, SizeType>::Message>
 DecoupledMidiPort<TimeType, SizeType>::pop_incoming() {
-    if (direction != PortDirection::Input) {
+    if (direction != shoop_port_direction_t::Input) {
         throw std::runtime_error(
             "Attempt to pop input message from output port");
     }
@@ -69,6 +72,11 @@ template <typename TimeType, typename SizeType>
 std::shared_ptr<AudioMidiDriver> DecoupledMidiPort<TimeType, SizeType>::
     get_maybe_driver() const {
     return maybe_driver.lock();
+}
+
+template <typename TimeType, typename SizeType>
+void DecoupledMidiPort<TimeType, SizeType>::forget_driver() {
+    maybe_driver.reset();
 }
 
 template class DecoupledMidiPort<uint32_t, uint16_t>;

@@ -47,18 +47,17 @@ private:
 public:
     GenericJackAudioMidiDriver();
     ~GenericJackAudioMidiDriver() override;
-
-    bool started() const override;
+    
     void start(AudioMidiDriverSettingsInterface &settings) override;
 
     std::shared_ptr<AudioPortInterface<float>> open_audio_port(
         std::string name,
-        PortDirection direction
+        shoop_port_direction_t direction
     ) override;
 
     std::shared_ptr<MidiPortInterface> open_midi_port(
         std::string name,
-        PortDirection direction
+        shoop_port_direction_t direction
     ) override;
 
     void close() override;

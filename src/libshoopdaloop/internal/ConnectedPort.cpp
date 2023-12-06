@@ -41,12 +41,12 @@ ConnectedPort::ConnectedPort (std::shared_ptr<PortInterface> const& port,
     bool is_internal = (dynamic_cast<InternalAudioPort<float>*>(port.get()));
 #endif
 
-    bool is_fx_in = is_internal && (port->direction() == PortDirection::Output);
-    bool is_ext_in = !is_internal && (port->direction() == PortDirection::Input);
+    bool is_fx_in = is_internal && (port->direction() == shoop_port_direction_t::Output);
+    bool is_ext_in = !is_internal && (port->direction() == shoop_port_direction_t::Input);
 
     if (auto m = dynamic_cast<MidiPortInterface*>(port.get())) {
         maybe_midi_state = std::make_shared<MidiStateTracker>(true, true, true);
-        if(m->direction() == PortDirection::Output) {
+        if(m->direction() == shoop_port_direction_t::Output) {
             maybe_midi_output_merging_buffer = std::make_shared<MidiMergingBuffer>();
         }
     }
@@ -65,7 +65,7 @@ void ConnectedPort::PROC_ensure_buffer(uint32_t n_frames, bool do_zero) {
     auto maybe_audio = dynamic_cast<AudioPortInterface<shoop_types::audio_sample_t>*>(port.get());
 
     if (maybe_midi) {
-        if(maybe_midi->direction() == PortDirection::Input) {
+        if(maybe_midi->direction() == shoop_port_direction_t::Input) {
             if (maybe_midi_input_buffer) { return; } // already there
             maybe_midi_input_buffer = &maybe_midi->PROC_get_read_buffer(n_frames);
             if (!muted) {
@@ -86,7 +86,7 @@ void ConnectedPort::PROC_ensure_buffer(uint32_t n_frames, bool do_zero) {
     } else if (maybe_audio) {
         if (maybe_audio_buffer) { return; } // already there
         maybe_audio_buffer = maybe_audio->PROC_get_buffer(n_frames, do_zero);
-        if (port->direction() == PortDirection::Input) {
+        if (port->direction() == shoop_port_direction_t::Input) {
             float max = 0.0f;
             if (muted) {
                 memset((void*)maybe_audio_buffer, 0, n_frames * sizeof(audio_sample_t));
@@ -110,7 +110,7 @@ bool ConnectedPort::PROC_check_buffer(bool raise_if_absent) {
     bool result;
 
     if (maybe_midi) {
-        if(maybe_midi->direction() == PortDirection::Input) {
+        if(maybe_midi->direction() == shoop_port_direction_t::Input) {
             result = (bool) maybe_midi_input_buffer;
         } else {
             result = (bool) maybe_midi_output_buffer;
@@ -130,7 +130,7 @@ bool ConnectedPort::PROC_check_buffer(bool raise_if_absent) {
 
 void ConnectedPort::PROC_passthrough(uint32_t n_frames) {
     log_trace();
-    if (port->direction() == PortDirection::Input) {
+    if (port->direction() == shoop_port_direction_t::Input) {
         for(auto & other : mp_passthrough_to) {
             auto o = other.lock();
             if(o && o->PROC_check_buffer(false)) {
@@ -167,7 +167,7 @@ void ConnectedPort::PROC_passthrough_midi(uint32_t n_frames, ConnectedPort &to) 
 void ConnectedPort::PROC_finalize_process(uint32_t n_frames) {
     log_trace();
     if (auto a = dynamic_cast<AudioPortInterface<shoop_types::audio_sample_t>*>(port.get())) {
-        if (a->direction() == PortDirection::Output) {
+        if (a->direction() == shoop_port_direction_t::Output) {
             float max = 0.0f;
             for (uint32_t i=0; i<n_frames; i++) {
                 float vol = volume.load();
@@ -177,7 +177,7 @@ void ConnectedPort::PROC_finalize_process(uint32_t n_frames) {
             peak = std::max(peak.load(), max);
         }
     } else if (auto m = dynamic_cast<MidiPortInterface*>(port.get())) {
-        if (m->direction() == PortDirection::Output) {
+        if (m->direction() == shoop_port_direction_t::Output) {
             if (!muted) {
                 uint32_t n_events = maybe_midi_output_merging_buffer->PROC_get_n_events();
                 maybe_midi_output_merging_buffer->PROC_sort();

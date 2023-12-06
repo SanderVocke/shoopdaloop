@@ -28,7 +28,8 @@ public:
     virtual void PROC_process(uint32_t nframes) = 0;
 };
 
-class AudioMidiDriver : public WithCommandQueue {
+class AudioMidiDriver : public WithCommandQueue,
+                        private std::enable_shared_from_this<AudioMidiDriver> {
     std::shared_ptr<std::set<HasAudioProcessingFunction*>> m_processors;
     std::atomic<uint32_t> m_xruns;
     std::atomic<uint32_t> m_sample_rate;
@@ -36,7 +37,7 @@ class AudioMidiDriver : public WithCommandQueue {
     std::atomic<float> m_dsp_load;
     std::atomic<void*> m_maybe_client_handle;
     std::atomic<const char*> m_client_name;
-    std::set<std::shared_ptr<MidiPortInterface>> m_decoupled_midi_ports;
+    std::set<std::shared_ptr<shoop_types::_DecoupledMidiPort>> m_decoupled_midi_ports;
 
 protected:
     // Derived class should call these
@@ -59,22 +60,26 @@ public:
     std::set<HasAudioProcessingFunction*> processors() const;
 
     virtual void start(AudioMidiDriverSettingsInterface &settings) = 0;
-    virtual bool started() const = 0;
 
     virtual
     std::shared_ptr<AudioPortInterface<audio_sample_t>> open_audio_port(
         std::string name,
-        PortDirection direction
+        shoop_port_direction_t direction
     ) = 0;
 
     virtual
     std::shared_ptr<MidiPortInterface> open_midi_port(
         std::string name,
-        PortDirection direction
+        shoop_port_direction_t direction
     ) = 0;
 
-    void register_decoupled_midi_port(std::shared_ptr<MidiPortInterface> port);
+    std::shared_ptr<shoop_types::_DecoupledMidiPort> open_decoupled_midi_port(
+        std::string name,
+        shoop_port_direction_t direction
+    );
     
+    void unregister_decoupled_midi_port(std::shared_ptr<shoop_types::_DecoupledMidiPort> port);
+
     virtual void close() = 0;
 
     uint32_t get_xruns() const;

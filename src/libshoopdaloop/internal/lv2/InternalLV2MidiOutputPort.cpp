@@ -8,7 +8,7 @@
 #include <vector>
 
 InternalLV2MidiOutputPort::InternalLV2MidiOutputPort(
-    std::string name, PortDirection direction, uint32_t capacity,
+    std::string name, shoop_port_direction_t direction, uint32_t capacity,
     uint32_t atom_chunk_urid, uint32_t atom_sequence_urid,
     uint32_t midi_event_type_urid)
     : MidiPortInterface(name, direction), m_name(name), m_direction(direction),
@@ -30,7 +30,7 @@ InternalLV2MidiOutputPort::PROC_get_write_buffer(uint32_t n_frames) {
 
 const char *InternalLV2MidiOutputPort::name() const { return m_name.c_str(); }
 
-PortDirection InternalLV2MidiOutputPort::direction() const {
+shoop_port_direction_t InternalLV2MidiOutputPort::direction() const {
     return m_direction;
 }
 
@@ -64,6 +64,10 @@ bool InternalLV2MidiOutputPort::write_by_reference_supported() const {
 }
 bool InternalLV2MidiOutputPort::write_by_value_supported() const {
     return true;
+}
+
+void *InternalLV2MidiOutputPort::maybe_driver_handle() const {
+    return (void*)this;
 }
 
 LV2_Evbuf *InternalLV2MidiOutputPort::internal_evbuf() const { return m_evbuf; }

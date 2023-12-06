@@ -3,18 +3,17 @@
 #include "JackAudioMidiDriver.h"
 #include "DummyAudioMidiDriver.h"
 #include "shoop_globals.h"
+#include <memory>
 
 using namespace logging;
 
-AudioMidiDriver &create_audio_midi_driver(shoop_audio_driver_type_t type) {
-    AudioMidiDriver* rval;
+std::shared_ptr<AudioMidiDriver> create_audio_midi_driver(shoop_audio_driver_type_t type) {
+    std::shared_ptr<AudioMidiDriver> rval;
     bool tried_dummy = false;
 
     auto init_dummy = [&]() {
       tried_dummy = true;
-      rval = static_cast<AudioMidiDriver*>(
-        new shoop_types::_DummyAudioMidiDriver()
-      );
+      rval = std::make_shared<shoop_types::_DummyAudioMidiDriver>();
     };
 
     try {
@@ -22,15 +21,11 @@ AudioMidiDriver &create_audio_midi_driver(shoop_audio_driver_type_t type) {
 #ifdef SHOOP_HAVE_BACKEND_JACK
       case Jack:
           log<"Backend.AudioMidiDrivers", log_level_debug>(std::nullopt, std::nullopt, "Creating JACK audio driver instance.");
-          rval = static_cast<AudioMidiDriver*>(
-            new JackAudioMidiDriver()
-          );
+          rval = std::make_shared<JackAudioMidiDriver>();
           break;
       case JackTest:
           log<"Backend.AudioMidiDrivers", log_level_debug>(std::nullopt, std::nullopt, "Creating JACK test audio driver instance.");
-          rval = static_cast<AudioMidiDriver*>(
-            new JackTestAudioMidiDriver()
-          );
+          rval = std::make_shared<JackTestAudioMidiDriver>();
           break;
 #else
       case Jack:
@@ -64,7 +59,7 @@ AudioMidiDriver &create_audio_midi_driver(shoop_audio_driver_type_t type) {
     }
 
     if (!rval) { throw std::runtime_error("Failed to create audio driver."); }
-    return *rval;
+    return rval;
 }
 
 

@@ -6,8 +6,6 @@
 #include "ProcessingChainInterface.h"
 #include "process_loops.h"
 #include "ConnectedLoop.h"
-#include "ConnectedDecoupledMidiPort.h"
-#include "DecoupledMidiPort.h"
 #include "AudioBuffer.h"
 #include "ObjectPool.h"
 #include "AudioMidiLoop.h"
@@ -61,7 +59,6 @@ BackendSession::BackendSession() :
     loops.reserve(initial_max_loops);
     ports.reserve(initial_max_ports);
     fx_chains.reserve(initial_max_fx_chains);
-    decoupled_midi_ports.reserve(initial_max_decoupled_midi_ports);
 }
 
 shoop_backend_session_state_info_t BackendSession::get_state() {
@@ -86,14 +83,6 @@ void BackendSession::PROC_process (uint32_t nframes) {
                 cmds_profiling_item
             );
 
-            log<log_level_trace>("Process: decoupled MIDI");
-            profiling::stopwatch(
-                [this, &nframes]() {
-                    // Send/receive decoupled midi
-                    PROC_process_decoupled_midi_ports(nframes);
-                }, ports_decoupled_midi_profiling_item, ports_profiling_item);
-            
-
             log<log_level_trace>("Process: prepare");
             profiling::stopwatch(
                 [this, &nframes]() {
@@ -102,7 +91,7 @@ void BackendSession::PROC_process (uint32_t nframes) {
                     auto prepare_port_fn = [&](auto & p) {
                         if(p) {
                             p->PROC_reset_buffers();
-                            p->PROC_ensure_buffer(nframes, p->port->direction() == PortDirection::Output);
+                            p->PROC_ensure_buffer(nframes, p->port->direction() == shoop_port_direction_t::Output);
                         }
                     };
                     for (auto & port: ports) { prepare_port_fn(port); }
@@ -249,22 +238,11 @@ void BackendSession::PROC_process (uint32_t nframes) {
     );
 }
 
-void BackendSession::PROC_process_decoupled_midi_ports(uint32_t nframes) {
-    for (auto &elem : decoupled_midi_ports) {
-        elem->port->PROC_process(nframes);
-    }
-}
-
 void BackendSession::destroy() {
     if (ma_state != State::Destroyed) {
         log<log_level_debug>("Destroying backend");
         ma_queue.passthrough_on();
         for (auto &p : ports) {
-            if (p) {
-                p->port->close();
-            }
-        }
-        for (auto &p : decoupled_midi_ports) {
             if (p) {
                 p->port->close();
             }

@@ -19,20 +19,21 @@
 class DummyPort : public virtual PortInterface {
 protected:
     std::string m_name;
-    PortDirection m_direction;
+    shoop_port_direction_t m_direction;
     PortType m_type;
 
 public:
     DummyPort(
         std::string name,
-        PortDirection direction,
+        shoop_port_direction_t direction,
         PortType type
     );
 
     const char* name() const override;
-    PortDirection direction() const override;
+    shoop_port_direction_t direction() const override;
     PortType type() const override;
     void close() override;
+    void *maybe_driver_handle() const override;
 
     PortExternalConnectionStatus get_external_connection_status() const override;
     void connect_external(std::string name) override;
@@ -44,7 +45,7 @@ class DummyAudioPort : public virtual AudioPortInterface<audio_sample_t>,
                        private ModuleLoggingEnabled<"Backend.DummyAudioPort"> {
 
     std::string m_name;
-    PortDirection m_direction;
+    shoop_port_direction_t m_direction;
     boost::lockfree::spsc_queue<std::vector<audio_sample_t>> m_queued_data;
     std::atomic<uint32_t> m_n_requested_samples;
     std::vector<audio_sample_t> m_retained_samples;
@@ -53,7 +54,7 @@ class DummyAudioPort : public virtual AudioPortInterface<audio_sample_t>,
 public:
     DummyAudioPort(
         std::string name,
-        PortDirection direction);
+        shoop_port_direction_t direction);
     
     audio_sample_t *PROC_get_buffer(uint32_t n_frames, bool do_zero=false) override;
     ~DummyAudioPort() override;
@@ -102,7 +103,7 @@ public:
 
     DummyMidiPort(
         std::string name,
-        PortDirection direction
+        shoop_port_direction_t direction
     );
 
     MidiReadableBufferInterface &PROC_get_read_buffer (uint32_t n_frames) override;
@@ -149,7 +150,7 @@ class DummyAudioMidiDriver : public AudioMidiDriver,
     std::set<std::shared_ptr<DummyMidiPort>> m_midi_ports;
     std::string m_client_name_str;
 
-    std::function<void(std::string, PortDirection)> m_audio_port_opened_cb, m_midi_port_opened_cb;
+    std::function<void(std::string, shoop_port_direction_t)> m_audio_port_opened_cb, m_midi_port_opened_cb;
     std::function<void(std::string)> m_audio_port_closed_cb, m_midi_port_closed_cb;
 
 public:
@@ -158,16 +159,15 @@ public:
     virtual ~DummyAudioMidiDriver();
 
     void start(AudioMidiDriverSettingsInterface &settings) override;
-    bool started() const override;
 
     std::shared_ptr<AudioPortInterface<audio_sample_t>> open_audio_port(
         std::string name,
-        PortDirection direction
+        shoop_port_direction_t direction
     ) override;
 
     std::shared_ptr<MidiPortInterface> open_midi_port(
         std::string name,
-        PortDirection direction
+        shoop_port_direction_t direction
     ) override;
 
     void close() override;

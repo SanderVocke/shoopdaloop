@@ -1,12 +1,7 @@
 #pragma once
-#include "ExternalUIInterface.h"
 #include <string>
 #include <map>
-
-enum class PortDirection {
-    Input,
-    Output
-};
+#include "types.h"
 
 enum class PortType {
     Audio,
@@ -22,7 +17,7 @@ class PortInterface {
 public:
 
     virtual void close() = 0;
-    virtual PortDirection direction() const = 0;
+    virtual shoop_port_direction_t direction() const = 0;
     virtual const char* name() const = 0;
     virtual PortType type() const = 0;
     virtual void* maybe_driver_handle() const = 0;

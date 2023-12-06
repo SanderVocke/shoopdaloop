@@ -2,6 +2,8 @@
 // internal C++ objects are tied together at the highest level.
 
 #include "libshoopdaloop.h"
+#include "ExternalUIInterface.h"
+#include "SerializeableStateInterface.h"
 #include "WithCommandQueue.h"
 #include "shoop_globals.h"
 
@@ -64,8 +66,12 @@ std::shared_ptr<BackendSession> internal_backend_session(shoop_backend_session_t
     return rval;
 }
 
-AudioMidiDriver* internal_audio_driver(shoop_audio_driver_t *driver) {
-    return (AudioMidiDriver*)driver;
+std::shared_ptr<AudioMidiDriver> internal_audio_driver(shoop_audio_driver_t *driver) {
+    auto rval = ((std::weak_ptr<AudioMidiDriver> *)driver)->lock();
+    if (!rval) {
+      throw std::runtime_error("Attempt to access an invalid/expired audio driver.");
+    }
+    return rval;
 }
 
 std::shared_ptr<ConnectedPort> internal_audio_port(shoopdaloop_audio_port_t *port) {
@@ -122,8 +128,9 @@ shoop_backend_session_t *external_backend_session(std::shared_ptr<BackendSession
     return (shoop_backend_session_t*) weak;
 }
 
-shoop_audio_driver_t *external_audio_driver(AudioMidiDriver *driver) {
-    return (shoop_audio_driver_t*) driver;
+shoop_audio_driver_t *external_audio_driver(std::shared_ptr<AudioMidiDriver> driver) {
+    auto weak = new std::weak_ptr<AudioMidiDriver>(driver);
+    return (shoop_audio_driver_t*) weak;
 }
 
 shoopdaloop_audio_port_t* external_audio_port(std::shared_ptr<ConnectedPort> port) {
@@ -211,10 +218,6 @@ std::shared_ptr<_DecoupledMidiPort> internal_decoupled_midi_port(shoopdaloop_dec
     return rval;
 }
 
-PortDirection internal_port_direction(shoop_port_direction_t d) {
-    return d == Input ? PortDirection::Input : PortDirection::Output;
-}
-
 std::optional<shoop_audio_driver_type_t> audio_system_type(AudioMidiDriver *sys) {
     if (!sys) {
         return std::nullopt;
@@ -288,12 +291,21 @@ void initialize_logging() {
   });
 }
 
+shoop_backend_session_t *create_backend_session() {
+  return api_impl<shoop_backend_session_t*>("shoop_backend_session_t", [&]() {
+    auto rval = std::make_shared<BackendSession>();
+    g_active_backends.insert(rval);
+    return external_backend_session(rval);
+  }, nullptr);
+}
+
 shoop_audio_driver_t *create_audio_driver (
     shoop_audio_driver_type_t type
 ) {
   return api_impl<shoop_audio_driver_t*>("create_audio_driver", [&]() {
-    auto &rval = create_audio_midi_driver(type);
-    return external_audio_driver(&rval);
+    auto rval = create_audio_midi_driver(type);
+    g_active_drivers.insert(rval);
+    return external_audio_driver(rval);
   }, nullptr);
 }
 
@@ -363,7 +375,7 @@ shoop_profiling_report_t *get_profiling_report(shoop_backend_session_t *backend)
     auto items = new shoop_profiling_report_item_t[r.size()];
     for (uint32_t idx=0; idx<r.size(); idx++) {
         auto name_str = (char*) malloc(r[idx].key.size() + 1);
-        strcpy(name_str, r[idx].key.c_str());
+        strcpy_s(name_str, r[idx].key.size() + 1, r[idx].key.c_str());
         items[idx].key = name_str;
         items[idx].average = r[idx].avg;
         items[idx].most_recent = r[idx].most_recent;
@@ -733,9 +745,9 @@ shoopdaloop_audio_port_t *open_audio_port (shoop_backend_session_t *backend, sho
     auto _backend = internal_backend_session(backend);
     auto _driver = internal_audio_driver(driver);
     auto port = _driver->open_audio_port
-        (name_hint, internal_port_direction(direction));
+        (name_hint, direction);
     auto pi = std::make_shared<ConnectedPort>(port, _backend,
-        internal_port_direction(direction) == PortDirection::Input ? shoop_types::ProcessWhen::BeforeFXChains : shoop_types::ProcessWhen::AfterFXChains
+        direction == Input ? shoop_types::ProcessWhen::BeforeFXChains : shoop_types::ProcessWhen::AfterFXChains
     );
     _backend->queue_process_thread_command([pi, _backend]() {
         _backend->ports.push_back(pi);
@@ -769,7 +781,7 @@ shoop_port_connections_state_t *get_audio_port_connections_state(shoopdaloop_aud
     rval->ports = new shoop_port_maybe_connection_t[rval->n_ports];
     uint32_t idx = 0;
     for (auto &pair : connections) {
-        auto name = strdup(pair.first.c_str());
+        auto name = _strdup(pair.first.c_str());
         auto connected = pair.second;
         rval->ports[idx].name = name;
         rval->ports[idx].connected = connected;
@@ -801,7 +813,7 @@ shoop_port_connections_state_t *get_midi_port_connections_state(shoopdaloop_midi
     rval->ports = new shoop_port_maybe_connection_t[rval->n_ports];
     uint32_t idx = 0;
     for (auto &pair : connections) {
-        rval->ports[idx].name = strdup(pair.first.c_str());
+        rval->ports[idx].name = _strdup(pair.first.c_str());
         rval->ports[idx].connected = pair.second;
         idx++;
     }
@@ -841,9 +853,9 @@ shoopdaloop_midi_port_t *open_midi_port (shoop_backend_session_t *backend, shoop
   return api_impl<shoopdaloop_midi_port_t*>("open_midi_port", [&]() {
     auto _backend = internal_backend_session(backend);
     auto _driver = internal_audio_driver(driver);
-    auto port = _driver->open_midi_port(name_hint, internal_port_direction(direction));
+    auto port = _driver->open_midi_port(name_hint, direction);
     auto pi = std::make_shared<ConnectedPort>(port, _backend,
-        internal_port_direction(direction) == PortDirection::Input ? shoop_types::ProcessWhen::BeforeFXChains : shoop_types::ProcessWhen::AfterFXChains);
+        direction == Input ? shoop_types::ProcessWhen::BeforeFXChains : shoop_types::ProcessWhen::AfterFXChains);
     _backend->queue_process_thread_command([pi, _backend]() {
         _backend->ports.push_back(pi);
     });
@@ -922,14 +934,8 @@ void set_midi_port_passthroughMuted(shoopdaloop_midi_port_t *port, unsigned int 
 shoopdaloop_decoupled_midi_port_t *open_decoupled_midi_port(shoop_audio_driver_t *driver, const char* name_hint, shoop_port_direction_t direction) {
   return api_impl<shoopdaloop_decoupled_midi_port_t*>("open_decoupled_midi_port", [&]() {
     auto _driver = internal_audio_driver(driver);
-    auto port = _driver->open_midi_port(name_hint, internal_port_direction(direction));
-    auto decoupled = std::make_shared<_DecoupledMidiPort>(port,
-        decoupled_midi_port_queue_size,
-        direction == Input ? PortDirection::Input : PortDirection::Output);
-    _driver->exec_process_thread_command([=]() {
-        _driver->register_decoupled_midi_port(port);
-    });
-    return external_decoupled_midi_port(decoupled);
+    auto port = _driver->open_decoupled_midi_port(name_hint, direction);
+    return external_decoupled_midi_port(port);
   }, nullptr);
 }
 
@@ -959,19 +965,15 @@ void close_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *port) {
     }
     _driver->queue_process_thread_command([=]() {
         auto _port = internal_decoupled_midi_port(port);
-        auto &ports = _port->backend.lock()->decoupled_midi_ports;
-        ports.erase(
-            std::remove_if(ports.begin(), ports.end(),
-                [&_port](auto const& e) { return e.get() == _port.get(); }),
-            ports.end()
-        );
+        _port->get_maybe_driver()->unregister_decoupled_midi_port(_port);
+        _port->close();
     });
   });
 }
 
 const char* get_decoupled_midi_port_name(shoopdaloop_decoupled_midi_port_t *port) {
   return api_impl<const char*>("get_decoupled_midi_port_name", [&]() {
-    return internal_decoupled_midi_port(port)->port->name();
+    return internal_decoupled_midi_port(port)->name();
   }, "(invalid)");
 }
 
@@ -1036,7 +1038,7 @@ shoop_audio_channel_state_info_t *get_audio_channel_state (shoopdaloop_loop_audi
     auto audio = evaluate_before_or_after_process<LoopAudioChannel*>(
         [&]() { return chan->maybe_audio(); },
         chan->maybe_audio(),
-        chan->backend.lock()->cmd_queue);
+        *chan->backend.lock());
     r->output_peak = audio->get_output_peak();
     r->volume = audio->get_volume();
     r->mode = audio->get_mode();
@@ -1058,7 +1060,7 @@ shoop_midi_channel_state_info_t *get_midi_channel_state   (shoopdaloop_loop_midi
     auto midi = evaluate_before_or_after_process<LoopMidiChannel*>(
         [&]() { return chan->maybe_midi(); },
         chan->maybe_midi(),
-        chan->backend.lock()->cmd_queue);
+        *chan->backend.lock());
     r->n_events_triggered = midi->get_n_events_triggered();
     r->n_notes_active = midi->get_n_notes_active();
     r->mode = midi->get_mode();
@@ -1134,7 +1136,7 @@ shoop_audio_port_state_info_t *get_audio_port_state(shoopdaloop_audio_port_t *po
     r->volume = p->volume;
     r->muted = p->muted;
     r->passthrough_muted = p->passthrough_muted;
-    r->name = strdup(p->maybe_audio()->name());
+    r->name = _strdup(p->maybe_audio()->name());
     p->peak = 0.0f;
     return r;
   }, new shoop_audio_port_state_info_t);
@@ -1148,7 +1150,7 @@ shoop_midi_port_state_info_t *get_midi_port_state(shoopdaloop_midi_port_t *port)
     r->n_notes_active = p->maybe_midi_state->n_notes_active();
     r->muted = p->muted;
     r->passthrough_muted = p->passthrough_muted;
-    r->name = strdup(p->maybe_midi()->name());
+    r->name = _strdup(p->maybe_midi()->name());
     p->n_events_processed = 0;
     return r;
   }, new shoop_midi_port_state_info_t);
@@ -1341,7 +1343,7 @@ void destroy_loop(shoopdaloop_loop_t *d) {
   return api_impl<void, log_level_trace, log_level_warning>("destroy_loop", [&]() {
     auto loop = internal_loop(d);
     auto backend = loop->backend.lock();
-    backend->cmd_queue.queue_and_wait([loop, backend]() {
+    backend->exec_process_thread_command([loop, backend]() {
         loop->delete_all_channels(false);
 
         bool found = false;
@@ -1359,7 +1361,7 @@ void destroy_audio_port(shoopdaloop_audio_port_t *d) {
   return api_impl<void, log_level_trace, log_level_warning>("destroy_audio_port", [&]() {
     auto port = internal_audio_port(d);
     auto backend = port->backend.lock();
-    backend->cmd_queue.queue_and_wait([port, backend]() {
+    backend->exec_process_thread_command([port, backend]() {
         // Remove port, which should stop anything from accessing it
         bool found = false;
         for(auto &elem : backend->ports) {
@@ -1378,7 +1380,7 @@ void destroy_midi_port(shoopdaloop_midi_port_t *d) {
   return api_impl<void, log_level_trace, log_level_warning>("destroy_midi_port", [&]() {
     auto port = internal_midi_port(d);
     auto backend = port->backend.lock();
-    backend->cmd_queue.queue_and_wait([port, backend]() {
+    backend->exec_process_thread_command([port, backend]() {
         // Remove port, which should stop anything from accessing it
         bool found = false;
         for(auto &elem : backend->ports) {
@@ -1473,7 +1475,7 @@ void destroy_profiling_report(shoop_profiling_report_t *d) {
 
 shoopdaloop_logger_t *get_logger(const char* name) {
   return api_impl<shoopdaloop_logger_t*>("get_logger", [&]() {
-    return (shoopdaloop_logger_t*) strdup(name);
+    return (shoopdaloop_logger_t*) _strdup(name);
   }, nullptr);
 }
 
@@ -1604,10 +1606,10 @@ void dummy_audio_port_request_data(shoopdaloop_audio_port_t* port, unsigned n_fr
   });
 }
 
-void dummy_audio_enter_controlled_mode(shoop_backend_session_t *backend) {
+void dummy_audio_enter_controlled_mode(shoop_audio_driver_t *driver) {
   return api_impl<void>("dummy_audio_enter_controlled_mode", [&]() {
-    auto _backend = internal_backend_session(backend);
-    if (auto maybe_dummy = dynamic_cast<_DummyAudioMidiDriver*>(_backend->audio_system.get())) {
+    auto _driver = internal_audio_driver(driver);
+    if (auto maybe_dummy = std::dynamic_pointer_cast<_DummyAudioMidiDriver>(_driver)) {
         maybe_dummy->enter_mode(DummyAudioMidiDriverMode::Controlled);
     } else {
         logging::log<"Backend.API", log_level_error>(std::nullopt, std::nullopt, "dummy_audio_enter_controlled_mode called on non-dummy backend");
@@ -1615,10 +1617,10 @@ void dummy_audio_enter_controlled_mode(shoop_backend_session_t *backend) {
   });
 }
 
-void dummy_audio_enter_automatic_mode(shoop_backend_session_t *backend) {
+void dummy_audio_enter_automatic_mode(shoop_audio_driver_t *driver) {
   return api_impl<void>("dummy_audio_enter_automatic_mode", [&]() {
-    auto _backend = internal_backend_session(backend);
-    if (auto maybe_dummy = dynamic_cast<_DummyAudioMidiDriver*>(_backend->audio_system.get())) {
+    auto _driver = internal_audio_driver(driver);
+    if (auto maybe_dummy = std::dynamic_pointer_cast<_DummyAudioMidiDriver>(_driver)) {
         maybe_dummy->enter_mode(DummyAudioMidiDriverMode::Automatic);
     } else {
         logging::log<"Backend.API", log_level_error>(std::nullopt, std::nullopt, "dummy_audio_enter_automatic_mode called on non-dummy backend");
@@ -1626,10 +1628,10 @@ void dummy_audio_enter_automatic_mode(shoop_backend_session_t *backend) {
   });
 }
 
-unsigned dummy_audio_is_in_controlled_mode(shoop_backend_session_t *backend) {
+unsigned dummy_audio_is_in_controlled_mode(shoop_audio_driver_t *driver) {
   return api_impl<unsigned>("dummy_audio_is_in_controlled_mode", [&]() -> unsigned {
-    auto _backend = internal_backend_session(backend);
-    if (auto maybe_dummy = dynamic_cast<_DummyAudioMidiDriver*>(_backend->audio_system.get())) {
+    auto _driver = internal_audio_driver(driver);
+    if (auto maybe_dummy = std::dynamic_pointer_cast<_DummyAudioMidiDriver>(_driver)) {
         return (unsigned) (maybe_dummy->get_mode() == DummyAudioMidiDriverMode::Controlled);
     } else {
         logging::log<"Backend.API", log_level_error>(std::nullopt, std::nullopt, "dummy_audio_is_in_controlled_mode called on non-dummy backend");
@@ -1638,10 +1640,10 @@ unsigned dummy_audio_is_in_controlled_mode(shoop_backend_session_t *backend) {
   }, (unsigned)0);
 }
 
-void dummy_audio_request_controlled_frames(shoop_backend_session_t *backend, unsigned n_frames) {
+void dummy_audio_request_controlled_frames(shoop_audio_driver_t *driver, unsigned n_frames) {
   return api_impl<void>("dummy_audio_request_controlled_frames", [&]() {
-    auto _backend = internal_backend_session(backend);
-    if (auto maybe_dummy = dynamic_cast<_DummyAudioMidiDriver*>(_backend->audio_system.get())) {
+    auto _driver = internal_audio_driver(driver);
+    if (auto maybe_dummy = std::dynamic_pointer_cast<_DummyAudioMidiDriver>(_driver)) {
         maybe_dummy->controlled_mode_request_samples(n_frames);
     } else {
         logging::log<"Backend.API", log_level_error>(std::nullopt, std::nullopt, "dummy_audio_request_controlled_frames called on non-dummy backend");
@@ -1649,10 +1651,10 @@ void dummy_audio_request_controlled_frames(shoop_backend_session_t *backend, uns
   });
 }
 
-unsigned dummy_audio_n_requested_frames(shoop_backend_session_t *backend) {
+unsigned dummy_audio_n_requested_frames(shoop_audio_driver_t *driver) {
   return api_impl<unsigned>("dummy_audio_n_requested_frames", [&]() -> unsigned  {
-    auto _backend = internal_backend_session(backend);
-    if (auto maybe_dummy = dynamic_cast<_DummyAudioMidiDriver*>(_backend->audio_system.get())) {
+    auto _driver = internal_audio_driver(driver);
+    if (auto maybe_dummy = std::dynamic_pointer_cast<_DummyAudioMidiDriver>(_driver)) {
         return maybe_dummy->get_controlled_mode_samples_to_process();
     } else {
         logging::log<"Backend.API", log_level_error>(std::nullopt, std::nullopt, "dummy_audio_n_requested_frames called on non-dummy backend");
@@ -1661,10 +1663,10 @@ unsigned dummy_audio_n_requested_frames(shoop_backend_session_t *backend) {
   }, (unsigned)0);
 }
 
-void dummy_audio_wait_process(shoop_backend_session_t *backend) {
+void dummy_audio_wait_process(shoop_audio_driver_t *driver) {
   return api_impl<void>("dummy_audio_wait_process", [&]() {
-    auto _backend = internal_backend_session(backend);
-    if (auto maybe_dummy = dynamic_cast<_DummyAudioMidiDriver*>(_backend->audio_system.get())) {
+    auto _driver = internal_audio_driver(driver);
+    if (auto maybe_dummy = std::dynamic_pointer_cast<_DummyAudioMidiDriver>(_driver)) {
         maybe_dummy->wait_process();
     } else {
         logging::log<"Backend.API", log_level_error>(std::nullopt, std::nullopt, "dummy_audio_wait_process called on non-dummy backend");

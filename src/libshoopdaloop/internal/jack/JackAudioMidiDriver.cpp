@@ -75,16 +75,11 @@ GenericJackAudioMidiDriver<API>::GenericJackAudioMidiDriver():
     m_all_ports_tracker(std::make_shared<GenericJackAllPorts<API>>()) {}
 
 template<typename API>
-bool GenericJackAudioMidiDriver<API>::started() const {
-    return m_started;
-}
-
-template<typename API>
 void GenericJackAudioMidiDriver<API>::start(
     AudioMidiDriverSettingsInterface &settings)
 {
     auto p_settings = dynamic_cast<JackAudioMidiDriverSettings*>(&settings);
-    if (!p_settings) { throw std::runtime_error("Wrong settings type passed to JACk driver"); }
+    if (!p_settings) { throw std::runtime_error("Wrong settings type passed to JACK driver"); }
     auto &_settings = *p_settings;
 
     API::init();
@@ -132,7 +127,7 @@ GenericJackAudioMidiDriver<API>::~GenericJackAudioMidiDriver() {
 }
 
 template<typename API>
-std::shared_ptr<AudioPortInterface<float>>GenericJackAudioMidiDriver<API>::open_audio_port(std::string name, PortDirection direction) {
+std::shared_ptr<AudioPortInterface<float>>GenericJackAudioMidiDriver<API>::open_audio_port(std::string name, shoop_port_direction_t direction) {
     std::shared_ptr<PortInterface> port =
         std::static_pointer_cast<PortInterface>(
             std::make_shared<GenericJackAudioPort<API>>(name, direction, (jack_client_t*)get_maybe_client_handle(), m_all_ports_tracker)
@@ -142,7 +137,7 @@ std::shared_ptr<AudioPortInterface<float>>GenericJackAudioMidiDriver<API>::open_
 }
 
 template<typename API>
-std::shared_ptr<MidiPortInterface> GenericJackAudioMidiDriver<API>::open_midi_port(std::string name, PortDirection direction) {
+std::shared_ptr<MidiPortInterface> GenericJackAudioMidiDriver<API>::open_midi_port(std::string name, shoop_port_direction_t direction) {
     std::shared_ptr<PortInterface> port =
         std::static_pointer_cast<PortInterface>(
             std::make_shared<GenericJackMidiPort<API>>(name, direction, (jack_client_t*)get_maybe_client_handle(), m_all_ports_tracker)

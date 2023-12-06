@@ -40,9 +40,9 @@ public:
 
 class MidiPortInterface : public virtual PortInterface {
 public:
-MidiPortInterface(
+    MidiPortInterface(
         std::string name,
-        PortDirection direction
+        shoop_port_direction_t direction
     ) : PortInterface() {}
 
     virtual MidiReadableBufferInterface &PROC_get_read_buffer  (uint32_t n_frames) = 0;

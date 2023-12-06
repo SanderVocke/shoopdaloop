@@ -19,7 +19,6 @@ class ConnectedPort;
 class ConnectedLoop;
 class ConnectedChannel;
 class ConnectedFXChain;
-class ConnectedDecoupledMidiPort;
 class BackendSession;
 class MidiReadableBufferInterface;
 class MidiWriteableBufferInterface;
@@ -47,7 +46,6 @@ constexpr uint32_t midi_storage_size = 65536;
 constexpr uint32_t default_max_port_mappings = 8;
 constexpr uint32_t default_max_midi_channels = 8;
 constexpr uint32_t default_max_audio_channels = 8;
-constexpr uint32_t decoupled_midi_port_queue_size = 256;
 constexpr uint32_t default_audio_dummy_buffer_size = 16384;
 
 }

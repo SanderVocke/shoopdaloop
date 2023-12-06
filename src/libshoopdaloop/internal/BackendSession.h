@@ -16,7 +16,6 @@ class ProfilingItem;
 class ConnectedLoop;
 class ConnectedPort;
 class ConnectedFXChain;
-class ConnectedDecoupledMidiPort;
 
 using namespace shoop_types;
 
@@ -38,8 +37,6 @@ public:
     std::vector<std::shared_ptr<ConnectedLoop>> loops;
     std::vector<std::shared_ptr<ConnectedPort>> ports;
     std::vector<std::shared_ptr<ConnectedFXChain>> fx_chains;
-    std::vector<std::shared_ptr<ConnectedDecoupledMidiPort>> decoupled_midi_ports;
-
     // Infrastructure
     std::shared_ptr<AudioBufferPool> audio_buffer_pool;
 
