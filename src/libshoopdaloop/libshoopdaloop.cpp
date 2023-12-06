@@ -45,7 +45,9 @@ using namespace logging;
 using namespace shoop_constants;
 using namespace shoop_types;
 
-
+#ifdef _MSC_VER
+  #define strdup strdup
+#endif
 
 // GLOBALS
 namespace {
@@ -375,7 +377,7 @@ shoop_profiling_report_t *get_profiling_report(shoop_backend_session_t *backend)
     auto items = new shoop_profiling_report_item_t[r.size()];
     for (uint32_t idx=0; idx<r.size(); idx++) {
         auto name_str = (char*) malloc(r[idx].key.size() + 1);
-        strcpy_s(name_str, r[idx].key.size() + 1, r[idx].key.c_str());
+        strcpy(name_str, r[idx].key.c_str());
         items[idx].key = name_str;
         items[idx].average = r[idx].avg;
         items[idx].most_recent = r[idx].most_recent;
@@ -781,7 +783,7 @@ shoop_port_connections_state_t *get_audio_port_connections_state(shoopdaloop_aud
     rval->ports = new shoop_port_maybe_connection_t[rval->n_ports];
     uint32_t idx = 0;
     for (auto &pair : connections) {
-        auto name = _strdup(pair.first.c_str());
+        auto name = strdup(pair.first.c_str());
         auto connected = pair.second;
         rval->ports[idx].name = name;
         rval->ports[idx].connected = connected;
@@ -813,7 +815,7 @@ shoop_port_connections_state_t *get_midi_port_connections_state(shoopdaloop_midi
     rval->ports = new shoop_port_maybe_connection_t[rval->n_ports];
     uint32_t idx = 0;
     for (auto &pair : connections) {
-        rval->ports[idx].name = _strdup(pair.first.c_str());
+        rval->ports[idx].name = strdup(pair.first.c_str());
         rval->ports[idx].connected = pair.second;
         idx++;
     }
@@ -1136,7 +1138,7 @@ shoop_audio_port_state_info_t *get_audio_port_state(shoopdaloop_audio_port_t *po
     r->volume = p->volume;
     r->muted = p->muted;
     r->passthrough_muted = p->passthrough_muted;
-    r->name = _strdup(p->maybe_audio()->name());
+    r->name = strdup(p->maybe_audio()->name());
     p->peak = 0.0f;
     return r;
   }, new shoop_audio_port_state_info_t);
@@ -1150,7 +1152,7 @@ shoop_midi_port_state_info_t *get_midi_port_state(shoopdaloop_midi_port_t *port)
     r->n_notes_active = p->maybe_midi_state->n_notes_active();
     r->muted = p->muted;
     r->passthrough_muted = p->passthrough_muted;
-    r->name = _strdup(p->maybe_midi()->name());
+    r->name = strdup(p->maybe_midi()->name());
     p->n_events_processed = 0;
     return r;
   }, new shoop_midi_port_state_info_t);
@@ -1475,7 +1477,7 @@ void destroy_profiling_report(shoop_profiling_report_t *d) {
 
 shoopdaloop_logger_t *get_logger(const char* name) {
   return api_impl<shoopdaloop_logger_t*>("get_logger", [&]() {
-    return (shoopdaloop_logger_t*) _strdup(name);
+    return (shoopdaloop_logger_t*) strdup(name);
   }, nullptr);
 }
 

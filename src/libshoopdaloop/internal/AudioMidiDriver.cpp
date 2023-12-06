@@ -5,14 +5,16 @@
 
 void AudioMidiDriver::add_processor(HasAudioProcessingFunction &p) {
     auto old = m_processors;
-    auto _new = std::make_shared<std::set<HasAudioProcessingFunction*>>(*old);
+    auto _new = std::make_shared<std::set<HasAudioProcessingFunction*>>();
+    *_new = *old;
     _new->insert(&p);
     m_processors = _new;
 }
 
 void AudioMidiDriver::remove_processor(HasAudioProcessingFunction &p) {
     auto old = m_processors;
-    auto _new = std::make_shared<std::set<HasAudioProcessingFunction*>>(*old);
+    auto _new = std::make_shared<std::set<HasAudioProcessingFunction*>>();
+    *_new = *old;
     _new->erase(&p);
     m_processors = _new;
 }
