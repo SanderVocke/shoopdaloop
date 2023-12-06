@@ -66,6 +66,7 @@ struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDryWe
 
         auto settings = DummyAudioMidiDriverSettings{};
         int_driver->start(settings);
+        set_audio_driver(api_backend_session, api_driver);
 
         api_input_port = open_audio_port(api_backend_session, api_driver, "input", Input);
         api_output_port = open_audio_port(api_backend_session, api_driver, "output", Output);
