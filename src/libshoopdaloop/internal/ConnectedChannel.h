@@ -4,8 +4,10 @@
 #include <atomic>
 #include "shoop_globals.h"
 #include "process_when.h"
+#include "ProcessingNodeInterface.h"
 
-class ConnectedChannel : public std::enable_shared_from_this<ConnectedChannel> {
+class ConnectedChannel : public std::enable_shared_from_this<ConnectedChannel>,
+                         public ProcessingNodeInterface {
 public:
     std::shared_ptr<ChannelInterface> channel;
     std::weak_ptr<ConnectedLoop> loop;

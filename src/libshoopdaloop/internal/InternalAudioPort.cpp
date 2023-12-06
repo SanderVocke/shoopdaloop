@@ -67,5 +67,12 @@ void* InternalAudioPort<SampleT>::maybe_driver_handle() const {
     return (void*) this;
 }
 
+template <typename SampleT>
+void InternalAudioPort<SampleT>::PROC_change_buffer_size(uint32_t buffer_size) {
+    if (m_buffer.size() < buffer_size) {
+        reallocate_buffer(buffer_size);
+    }
+}
+
 template class InternalAudioPort<float>;
 template class InternalAudioPort<int>;

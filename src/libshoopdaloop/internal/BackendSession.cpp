@@ -343,5 +343,16 @@ void BackendSession::set_sample_rate(uint32_t sr) {
 }
 
 void BackendSession::set_buffer_size(uint32_t bs) {
-    m_buffer_size = bs;
+    auto notify = [&, this](auto &item) {
+        auto as_node = dynamic_cast<ProcessingNodeInterface*>(item.get());
+        if (as_node) {
+            as_node->PROC_change_buffer_size(bs);
+        }
+    };
+    exec_process_thread_command([&, this]() {
+        for (auto &i : loops) { notify(i); }
+        for (auto &i : ports) { notify(i); }
+        for (auto &i : fx_chains) { notify(i); }
+        m_buffer_size = bs;
+    });
 }

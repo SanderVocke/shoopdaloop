@@ -233,3 +233,7 @@ void ConnectedPort::connect_passthrough(const std::shared_ptr<ConnectedPort> &ot
         mp_passthrough_to.push_back(other);
     });
 }
+
+void ConnectedPort::PROC_change_buffer_size(uint32_t buffer_size) {
+    
+}

@@ -359,6 +359,8 @@ shoop_result_t set_audio_driver(shoop_backend_session_t *backend, shoop_audio_dr
     auto _backend = internal_backend_session(backend);
     auto _driver = internal_audio_driver(driver);
     _driver->queue_process_thread_command([_backend, _driver]() {
+        _backend->set_buffer_size(_driver->get_buffer_size());
+        _backend->set_sample_rate(_driver->get_sample_rate());
         _driver->add_processor(*_backend);
     });
     return success;

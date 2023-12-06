@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 #include <memory>
 #include <vector>
 #include <atomic>
@@ -6,9 +7,11 @@
 #include "LoggingEnabled.h"
 #include "shoop_globals.h"
 #include "process_when.h"
+#include "ProcessingNodeInterface.h"
 
 class ConnectedPort : public std::enable_shared_from_this<ConnectedPort>,
-                       private ModuleLoggingEnabled<"Backend.ConnectedPort"> {
+                       private ModuleLoggingEnabled<"Backend.ConnectedPort">,
+                       public ProcessingNodeInterface {
 public:
     
     const std::shared_ptr<PortInterface> port;
@@ -47,6 +50,8 @@ public:
     void PROC_passthrough_midi(uint32_t n_frames, ConnectedPort &to);
     bool PROC_check_buffer(bool raise_if_absent=true);
     void PROC_finalize_process(uint32_t n_frames);
+
+    void PROC_change_buffer_size(uint32_t buffer_size) override;
 
     void connect_passthrough(std::shared_ptr<ConnectedPort> const& other);
 

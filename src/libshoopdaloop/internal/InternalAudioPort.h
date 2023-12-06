@@ -32,6 +32,8 @@ public:
     PortExternalConnectionStatus get_external_connection_status() const override;
     void connect_external(std::string name) override;
     void disconnect_external(std::string name) override;
+
+    void PROC_change_buffer_size(uint32_t buffer_size) override;
 };
 
 extern template class InternalAudioPort<float>;

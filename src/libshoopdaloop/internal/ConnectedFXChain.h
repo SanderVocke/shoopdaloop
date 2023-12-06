@@ -2,8 +2,10 @@
 #include <vector>
 #include <memory>
 #include "shoop_globals.h"
+#include "ProcessingNodeInterface.h"
 
-class ConnectedFXChain : public std::enable_shared_from_this<ConnectedFXChain> {
+class ConnectedFXChain : public std::enable_shared_from_this<ConnectedFXChain>,
+                         public ProcessingNodeInterface {
 public:
     const std::shared_ptr<shoop_types::FXChain> chain;
     std::weak_ptr<BackendSession> backend;
