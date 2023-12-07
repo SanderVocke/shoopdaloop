@@ -145,10 +145,6 @@ typedef struct {
     const char* client_name;
     unsigned sample_rate;
     unsigned buffer_size;
-    const char** audio_out_port_names;
-    const char** audio_in_port_names;
-    const char** midi_out_port_names;
-    const char** midi_in_port_names;
 } shoop_dummy_audio_driver_settings_t;
 
 typedef enum { Input, Output } shoop_port_direction_t;

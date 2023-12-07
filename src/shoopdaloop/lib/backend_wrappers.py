@@ -264,6 +264,31 @@ class AudioDriverState:
         self.maybe_instance_name = str(backend_obj.maybe_instance_name)
         self.sample_rate = int(backend_obj.sample_rate)
         self.buffer_size = int(backend_obj.buffer_size)
+
+@dataclass
+class JackAudioDriverSettings:
+    client_name_hint : str
+    maybe_server_name : str
+
+    def to_backend(self):
+        rval = shoop_jack_audio_driver_settings_t()
+        rval.client_name_hint = self.client_name_hint
+        rval.maybe_server_name = self.maybe_server_name
+        return rval
+    
+@dataclass
+class DummyAudioDriverSettings:
+    client_name : str
+    sample_rate : int
+    buffer_size : int
+
+    def to_backend(self):
+        rval = shoop_dummy_audio_driver_settings_t()
+        rval.client_name = self.client_name
+        rval.sample_rate = self.sample_rate
+        rval.buffer_size = self.buffer_size
+        return rval
+        
         
 def parse_connections_state(backend_state : 'port_connections_state_info_t'):
     rval = dict()
@@ -937,6 +962,12 @@ class AudioDriver:
         if self.active():
             return int(get_buffer_size(self._c_handle))
         return 1
+
+    def start_dummy(self, settings):
+        start_dummy_driver(self._c_handle, settings.to_backend())
+    
+    def start_jack(self, settings):
+        start_jack_driver(self._c_handle, settings.to_backend())
     
     def destroy(self):
         global all_active_drivers

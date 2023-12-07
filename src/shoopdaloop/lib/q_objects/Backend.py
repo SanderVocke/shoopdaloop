@@ -57,11 +57,11 @@ class Backend(ShoopQQuickItem):
     actualBackendTypeChanged = Signal(int)
     @Property(int, notify=actualBackendTypeChanged)
     def actual_backend_type(self):
-        return self._actual_backend_type if self._actual_backend_type != None else -1
+        return self._actual_driver_type if self._actual_driver_type != None else -1
     @actual_backend_type.setter
     def actual_backend_type(self, n):
-        if self._actual_backend_type != n:
-            self._actual_backend_type = n
+        if self._actual_driver_type != n:
+            self._actual_driver_type = n
             self.actualBackendTypeChanged.emit(n)
     
     clientNameHintChanged = Signal(str)
@@ -79,12 +79,12 @@ class Backend(ShoopQQuickItem):
     backendTypeChanged = Signal(int)
     @Property(int, notify=backendTypeChanged)
     def backend_type(self):
-        return (self._backend_type.value if self._backend_type else AudioDriverType.Dummy.value)
+        return (self._driver_type.value if self._driver_type else AudioDriverType.Dummy.value)
     @backend_type.setter
     def backend_type(self, n):
         if self._initialized:
-            self.logger.throw_error("Back-end type can only be set once.")
-        self._backend_type = AudioDriverType(n)
+            self.logger.throw_error("Back-end driver type can only be set once.")
+        self._driver_type = AudioDriverType(n)
         self.maybe_init()
     
     backendArgstringChanged = Signal(str)
@@ -232,7 +232,7 @@ class Backend(ShoopQQuickItem):
     ################
 
     def init(self):
-        self.logger.debug(lambda: "Initializing with type {}, client name hint {}, argstring {}".format(self._backend_type, self._client_name_hint, self._backend_argstring))
+        self.logger.debug(lambda: "Initializing with type {}".format(self._driver_type))
         if self._initialized:
             self.logger.throw_error("May not initialize more than one back-end at a time.")
         self._backend_session_obj = BackendSession.create()
@@ -244,6 +244,18 @@ class Backend(ShoopQQuickItem):
             self.logger.throw_error("Failed to initialize back-end driver.")
             
         self._backend_session_obj.set_audio_driver(self._backend_driver_obj)
+
+        if self._driver_type == AudioDriverType.Dummy:
+            settings = DummyAudioDriverSettings()
+            settings.client_name = self._client_name_hint
+            settings.sample_rate = 48000
+            settings.buffer_size = 256
+            self._backend_driver_obj.start_dummy(settings)
+        elif self._driver_type == AudioDriverType.Jack:
+            settings = JackAudioDriverSettings()
+            settings.client_name_hint = self._client_name_hint
+            settings.maybe_server_name = ""
+            self._backend_driver_obj.start_jack(settings)
         
         self._initialized = True
         self.initializedChanged.emit(True)

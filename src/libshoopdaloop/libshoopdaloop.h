@@ -20,6 +20,8 @@ SHOOP_EXPORT const char* maybe_driver_instance_name (shoop_audio_driver_t *drive
 SHOOP_EXPORT unsigned get_sample_rate (shoop_audio_driver_t *driver);
 SHOOP_EXPORT unsigned get_buffer_size (shoop_audio_driver_t *driver);
 SHOOP_EXPORT unsigned get_driver_active (shoop_audio_driver_t *driver);
+SHOOP_EXPORT void start_dummy_driver(shoop_audio_driver_t *driver, shoop_dummy_audio_driver_settings_t settings);
+SHOOP_EXPORT void start_jack_driver(shoop_audio_driver_t *driver, shoop_jack_audio_driver_settings_t settings);
 
 // Session
 SHOOP_EXPORT shoop_backend_session_t *create_backend_session ();
