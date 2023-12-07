@@ -10,7 +10,7 @@ Backend {
     id: backend
     update_interval_ms: 30
     client_name_hint: 'shoop'
-    backend_type: Types.BackendType.JackTest
+    backend_type: Types.AudioDriverType.JackTest
 
     AudioPort {
         descriptor: ({
@@ -82,7 +82,7 @@ Backend {
 
         test_fns: ({
             'test_available_ports': () => {
-                if(!backend.backend_type_is_supported(Types.BackendType.JackTest)) {
+                if(!backend.backend_type_is_supported(Types.AudioDriverType.JackTest)) {
                     skip("Backend was built without Jack support")
                     return
                 }

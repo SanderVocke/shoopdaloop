@@ -20,7 +20,7 @@ from shoopdaloop.libshoopdaloop_bindings import set_global_logging_level, log_le
 from shoopdaloop.lib.qml_helpers import *
 from shoopdaloop.lib.q_objects.SchemaValidator import SchemaValidator
 from shoopdaloop.lib.logging import Logger
-from shoopdaloop.lib.backend_wrappers import BackendType
+from shoopdaloop.lib.backend_wrappers import AudioDriverType
 from shoopdaloop.lib.q_objects.QoverageCollectorFactory import QoverageCollectorFactory
 from shoopdaloop.lib.q_objects.Application import Application
 from shoopdaloop.lib.q_objects.TestRunner import TestRunner
@@ -42,7 +42,7 @@ logger = Logger('run_qml_tests.py')
 logger.info('Creating test application...')
 
 global_args = {
-    'backend_type': BackendType.Dummy.value,
+    'backend_type': AudioDriverType.Dummy.value,
     'load_session_on_startup': None,
     'test_grab_screens': None,
 }

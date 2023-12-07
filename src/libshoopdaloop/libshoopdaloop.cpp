@@ -316,7 +316,7 @@ shoop_audio_driver_state_t *get_audio_driver_state(shoop_audio_driver_t *driver)
     auto rval = new shoop_audio_driver_state_t;
     auto d = internal_audio_driver(driver);
     rval->maybe_driver_handle = d->get_maybe_client_handle();
-    rval->maybe_instance_name = d->get_client_name();
+    rval->maybe_instance_name = d->get_client_name() ? strdup(d->get_client_name()) : "(unknown)";
     rval->buffer_size = d->get_buffer_size();
     rval->sample_rate = d->get_sample_rate();
     rval->dsp_load_percent = d->get_dsp_load();
@@ -1679,14 +1679,10 @@ unsigned dummy_audio_n_requested_frames(shoop_audio_driver_t *driver) {
   }, (unsigned)0);
 }
 
-void dummy_audio_wait_process(shoop_audio_driver_t *driver) {
-  return api_impl<void>("dummy_audio_wait_process", [&]() {
+void wait_process(shoop_audio_driver_t *driver) {
+  return api_impl<void>("wait_process", [&]() {
     auto _driver = internal_audio_driver(driver);
-    if (auto maybe_dummy = std::dynamic_pointer_cast<_DummyAudioMidiDriver>(_driver)) {
-        maybe_dummy->wait_process();
-    } else {
-        logging::log<"Backend.API", log_level_error>(std::nullopt, std::nullopt, "dummy_audio_wait_process called on non-dummy backend");
-    }
+    _driver->wait_process();
   });
 }
 
@@ -1714,6 +1710,9 @@ unsigned get_buffer_size (shoop_audio_driver_t *driver) {
 
 void destroy_audio_driver_state(shoop_audio_driver_state_t *state) {
   return api_impl<void, log_level_trace>("destroy_audio_driver_state", [&]() {
+    if (state->maybe_instance_name) {
+      delete state->maybe_instance_name;
+    }
     delete state;
   });
 }
@@ -1746,15 +1745,22 @@ void start_jack_driver(shoop_audio_driver_t *driver, shoop_jack_audio_driver_set
   return api_impl<void>("start_jack_driver", [&]() {
     auto _driver = internal_audio_driver(driver);
     auto jack = std::dynamic_pointer_cast<JackAudioMidiDriver>(_driver);
-    if (!jack) {
-      throw std::runtime_error("Given driver is invalid or not of the correct type (Jack).");
+    auto jacktest = std::dynamic_pointer_cast<JackTestAudioMidiDriver>(_driver);
+    if (!jack && !jacktest) {
+      throw std::runtime_error("Given driver is invalid or not of the correct type (Jack / JackTest).");
     }
-    if (jack->get_active()) {
-      throw std::runtime_error("Driver to be started is already running.");
-    }
-    JackAudioMidiDriverSettings s;
-    s.client_name_hint = settings.client_name_hint;
-    s.maybe_server_name_hint = settings.maybe_server_name;
-    jack->start(s);
+
+    auto execute = [settings](auto &jack) {
+      if (jack->get_active()) {
+        throw std::runtime_error("Driver to be started is already running.");
+      }
+      JackAudioMidiDriverSettings s;
+      s.client_name_hint = settings.client_name_hint;
+      s.maybe_server_name_hint = settings.maybe_server_name;
+      jack->start(s);
+    };
+
+    if (jack) { execute(jack); }
+    else if (jacktest) { execute(jacktest); }
   });
 }

@@ -119,7 +119,7 @@ void GenericJackAudioMidiDriver<API>::start(
     }
 
     set_maybe_client_handle((void*)client);
-    set_client_name(jack_get_client_name(client));
+    set_client_name(API::get_client_name(client));
     set_dsp_load(0.0f);
     set_sample_rate(API::get_sample_rate(client));
     set_buffer_size(API::get_buffer_size(client));

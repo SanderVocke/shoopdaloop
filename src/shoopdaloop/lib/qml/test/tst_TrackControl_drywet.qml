@@ -114,7 +114,7 @@ AppRegistries {
             function reset() {
                 reset_track(0)
                 reset_track(1)
-                session.backend.dummy_wait_process()
+                session.backend.wait_process()
             }
 
             function synthed_value_for(midi_msg) {
@@ -135,7 +135,7 @@ AppRegistries {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.dummy_wait_process()
+                    session.backend.wait_process()
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
@@ -172,7 +172,7 @@ AppRegistries {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.dummy_wait_process()
+                    session.backend.wait_process()
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
@@ -197,7 +197,7 @@ AppRegistries {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.dummy_wait_process()
+                    session.backend.wait_process()
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
@@ -221,7 +221,7 @@ AppRegistries {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.dummy_wait_process()
+                    session.backend.wait_process()
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
@@ -246,7 +246,7 @@ AppRegistries {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.dummy_wait_process()
+                    session.backend.wait_process()
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
@@ -271,7 +271,7 @@ AppRegistries {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.dummy_wait_process()
+                    session.backend.wait_process()
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
@@ -294,7 +294,7 @@ AppRegistries {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.dummy_wait_process()
+                    session.backend.wait_process()
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
@@ -326,7 +326,7 @@ AppRegistries {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.dummy_wait_process()
+                    session.backend.wait_process()
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
@@ -350,7 +350,7 @@ AppRegistries {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.dummy_wait_process()
+                    session.backend.wait_process()
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
@@ -382,7 +382,7 @@ AppRegistries {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.dummy_wait_process()
+                    session.backend.wait_process()
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)

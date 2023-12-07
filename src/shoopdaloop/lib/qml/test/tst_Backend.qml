@@ -9,7 +9,7 @@ PythonBackend {
     id: backend
     update_interval_ms: 30
     client_name_hint: 'ShoopDaLoop'
-    backend_type: Types.BackendType.Dummy
+    backend_type: Types.AudioDriverType.Dummy
 
     ShoopTestCase {
         name: 'DummyBackend'

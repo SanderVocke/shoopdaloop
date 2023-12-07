@@ -113,7 +113,7 @@ AppRegistries {
             function reset() {
                 reset_track(0)
                 reset_track(1)
-                session.backend.dummy_wait_process()
+                session.backend.wait_process()
                 testcase.wait_updated(session.backend)
             }
 
@@ -131,7 +131,7 @@ AppRegistries {
                     audio_output_port_1.dummy_request_data(4)
                     audio_output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.dummy_wait_process()
+                    session.backend.wait_process()
 
                     let out1 = audio_output_port_1.dummy_dequeue_data(4)
                     let out2 = audio_output_port_2.dummy_dequeue_data(4)
@@ -167,12 +167,12 @@ AppRegistries {
                     midi_input_port.dummy_queue_msgs(msgs)
                     midi_output_port.dummy_request_data(8)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.dummy_wait_process()
+                    session.backend.wait_process()
 
                     let out = midi_output_port.dummy_dequeue_data()
 
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.dummy_wait_process()
+                    session.backend.wait_process()
 
                     let out2 = midi_output_port.dummy_dequeue_data()
 
@@ -196,7 +196,7 @@ AppRegistries {
                     audio_output_port_1.dummy_request_data(4)
                     audio_output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.dummy_wait_process()
+                    session.backend.wait_process()
 
                     let out1 = audio_output_port_1.dummy_dequeue_data(4)
                     let out2 = audio_output_port_2.dummy_dequeue_data(4)
@@ -219,7 +219,7 @@ AppRegistries {
                     audio_output_port_1.dummy_request_data(4)
                     audio_output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.dummy_wait_process()
+                    session.backend.wait_process()
 
                     let out1 = audio_output_port_1.dummy_dequeue_data(4)
                     let out2 = audio_output_port_2.dummy_dequeue_data(4)
@@ -243,7 +243,7 @@ AppRegistries {
                     audio_output_port_1.dummy_request_data(4)
                     audio_output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.dummy_wait_process()
+                    session.backend.wait_process()
 
                     let out1 = audio_output_port_1.dummy_dequeue_data(4)
                     let out2 = audio_output_port_2.dummy_dequeue_data(4)
@@ -267,7 +267,7 @@ AppRegistries {
                     audio_output_port_1.dummy_request_data(4)
                     audio_output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.dummy_wait_process()
+                    session.backend.wait_process()
 
                     let out1 = audio_output_port_1.dummy_dequeue_data(4)
                     let out2 = audio_output_port_2.dummy_dequeue_data(4)
@@ -289,7 +289,7 @@ AppRegistries {
                     audio_output_port_1.dummy_request_data(4)
                     audio_output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.dummy_wait_process()
+                    session.backend.wait_process()
 
                     let out1 = audio_output_port_1.dummy_dequeue_data(4)
                     let out2 = audio_output_port_2.dummy_dequeue_data(4)
@@ -318,12 +318,12 @@ AppRegistries {
                     midi_input_port.dummy_queue_msgs(msgs)
                     midi_output_port.dummy_request_data(8)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.dummy_wait_process()
+                    session.backend.wait_process()
 
                     let out = midi_output_port.dummy_dequeue_data()
 
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.dummy_wait_process()
+                    session.backend.wait_process()
 
                     let out2 = midi_output_port.dummy_dequeue_data()
 
@@ -346,7 +346,7 @@ AppRegistries {
                     audio_output_port_1.dummy_request_data(4)
                     audio_output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.dummy_wait_process()
+                    session.backend.wait_process()
 
                     let out1 = audio_output_port_1.dummy_dequeue_data(4)
                     let out2 = audio_output_port_2.dummy_dequeue_data(4)
@@ -375,12 +375,12 @@ AppRegistries {
                     midi_input_port.dummy_queue_msgs(msgs)
                     midi_output_port.dummy_request_data(8)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.dummy_wait_process()
+                    session.backend.wait_process()
 
                     let out = midi_output_port.dummy_dequeue_data()
 
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.dummy_wait_process()
+                    session.backend.wait_process()
 
                     let out2 = midi_output_port.dummy_dequeue_data()
 

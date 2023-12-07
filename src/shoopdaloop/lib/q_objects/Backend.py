@@ -186,8 +186,8 @@ class Backend(ShoopQQuickItem):
         return self._backend_driver_obj.dummy_n_requested_frames()
     
     @Slot()
-    def dummy_wait_process(self):
-        self._backend_driver_obj.dummy_wait_process()
+    def wait_process(self):
+        self._backend_driver_obj.wait_process()
     
     @Slot()
     def maybe_init(self):
@@ -248,14 +248,21 @@ class Backend(ShoopQQuickItem):
                 buffer_size=256
             )
             self._backend_driver_obj.start_dummy(settings)
-        elif self._driver_type == AudioDriverType.Jack:
+        elif self._driver_type in [AudioDriverType.Jack, AudioDriverType.JackTest]:
             settings = JackAudioDriverSettings(
                 client_name_hint = self._client_name_hint,
                 maybe_server_name = ""
             )
             self._backend_driver_obj.start_jack(settings)
+        else:
+            raise Exception("Unsupported back-end driver type.")
         
         self._backend_session_obj.set_audio_driver(self._backend_driver_obj)
+        self._backend_driver_obj.wait_process()
+        self._backend_driver_obj.get_state() # TODO: this has implicit side-effect
+
+        if not self._backend_driver_obj.active():
+            raise Exception("Failed to initialize back-end driver.")
         
         self._initialized = True
         self.initializedChanged.emit(True)

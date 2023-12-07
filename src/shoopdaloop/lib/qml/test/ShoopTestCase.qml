@@ -117,7 +117,7 @@ PythonTestCase {
             failstring = `verify_eq failed (a = ${a}, b = ${b})`
         }
 
-        let compare = (a, b) => {
+        function compare(a, b) {
             if (Array.isArray(a) && Array.isArray(b)) {
                 return TestDeepEqual.testArraysCompare(a, b, compare);
             } else if (TestDeepEqual.isObject(a) && TestDeepEqual.isObject(b)) {
@@ -136,7 +136,7 @@ PythonTestCase {
 
     function verify_approx(a, b, do_print=true) {
         var result;
-        let compare = (a,b) => a == b || ((a - b) < Math.max(a,b) / 10000.0)
+        function compare (a,b) { return (a == b || ((a - b) < Math.max(a,b) / 10000.0)) }
         let failstring = `verify_approx failed`
         if (do_print) {
             failstring += ` (a = ${a}, b = ${b})`
@@ -259,6 +259,10 @@ PythonTestCase {
         }
     }
 
+    function fail(msg) {
+        verify_true(false, msg)
+    }
+
     function run() {
         logger.info(() => (`Running testcase ${name}`))
 
@@ -302,7 +306,7 @@ PythonTestCase {
                 }
             } catch(error) {
                 status = 'fail'
-                logger.error(error)
+                logger.error(format_error(error.message, error.stack))
             }
             shoop_test_runner.testcase_ran_fn(root, key, status)
             current_testcase = null

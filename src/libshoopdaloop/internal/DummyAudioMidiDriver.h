@@ -193,8 +193,6 @@ public:
 
     // Run until the requested amount of samples has been completed.
     void controlled_mode_run_request(uint32_t timeout_ms = 100);
-
-    void wait_process();
 };
 
 extern template class DummyAudioMidiDriver<uint32_t, uint16_t>;

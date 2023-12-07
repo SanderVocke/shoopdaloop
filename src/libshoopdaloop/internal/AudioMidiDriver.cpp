@@ -2,11 +2,13 @@
 #include "DecoupledMidiPort.h"
 #include <cstdint>
 #include "shoop_globals.h"
+#include <thread>
 
 AudioMidiDriver::AudioMidiDriver() :
   WithCommandQueue(),
   m_processors(std::make_shared<std::set<HasAudioProcessingFunction*>>()),
-  m_active(false)
+  m_active(false),
+  m_client_name("unknown")
 {
 }
 
@@ -107,12 +109,21 @@ bool AudioMidiDriver::get_active() const {
     return m_active;
 }
 
+void AudioMidiDriver::wait_process() {
+    // To ensure a complete process cycle was done, execute two commands with
+    // a small delay in-between. Each command will end up in a separate process
+    // iteration.
+    exec_process_thread_command([]() { ; });
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    exec_process_thread_command([]() { ; });
+}
+
 std::shared_ptr<shoop_types::_DecoupledMidiPort> AudioMidiDriver::open_decoupled_midi_port(std::string name, shoop_port_direction_t direction) {
     constexpr uint32_t decoupled_midi_port_queue_size = 256;
     auto port = open_midi_port(name, direction);
     auto decoupled = std::make_shared<shoop_types::_DecoupledMidiPort>(
         port,
-        shared_from_this(),
+        weak_from_this(),
         decoupled_midi_port_queue_size,
         direction);
     queue_process_thread_command([this, decoupled](){ m_decoupled_midi_ports.insert(decoupled); });

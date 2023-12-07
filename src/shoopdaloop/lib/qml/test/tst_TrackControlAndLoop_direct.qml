@@ -114,14 +114,14 @@ AppRegistries {
             function reset_loop(loopwidget) {
                 loopwidget.transition(Types.LoopMode.Stopped, 0, false)
                 loopwidget.clear(0)
-                session.backend.dummy_wait_process()
+                session.backend.wait_process()
             }
 
             function reset() {
                 reset_track(0)
                 reset_track(1)
                 reset_loop(lut)
-                session.backend.dummy_wait_process()
+                session.backend.wait_process()
             }
 
             test_fns: ({
@@ -138,7 +138,7 @@ AppRegistries {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.dummy_wait_process()
+                    session.backend.wait_process()
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
@@ -179,9 +179,9 @@ AppRegistries {
                     midi_input_port.dummy_queue_msgs(input)
                     midi_output_port.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(2)
-                    session.backend.dummy_wait_process()
+                    session.backend.wait_process()
                     session.backend.dummy_request_controlled_frames(2)
-                    session.backend.dummy_wait_process()
+                    session.backend.wait_process()
 
                     let out = midi_output_port.dummy_dequeue_data()
                     let chan_data = chan.get_data()
@@ -206,7 +206,7 @@ AppRegistries {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.dummy_wait_process()
+                    session.backend.wait_process()
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
@@ -247,9 +247,9 @@ AppRegistries {
                     midi_input_port.dummy_queue_msgs(input)
                     midi_output_port.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(2)
-                    session.backend.dummy_wait_process()
+                    session.backend.wait_process()
                     session.backend.dummy_request_controlled_frames(2)
-                    session.backend.dummy_wait_process()
+                    session.backend.wait_process()
 
                     let out = midi_output_port.dummy_dequeue_data()
                     let chan_data = chan.get_data()
@@ -278,7 +278,7 @@ AppRegistries {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.dummy_wait_process()
+                    session.backend.wait_process()
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
@@ -319,9 +319,9 @@ AppRegistries {
                     midi_input_port.dummy_queue_msgs(input)
                     midi_output_port.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(2)
-                    session.backend.dummy_wait_process()
+                    session.backend.wait_process()
                     session.backend.dummy_request_controlled_frames(2)
-                    session.backend.dummy_wait_process()
+                    session.backend.wait_process()
 
                     let out = midi_output_port.dummy_dequeue_data()
                     let chan_data = chan.get_data()
@@ -350,7 +350,7 @@ AppRegistries {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.dummy_wait_process()
+                    session.backend.wait_process()
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
@@ -396,9 +396,9 @@ AppRegistries {
                     midi_input_port.dummy_queue_msgs(input)
                     midi_output_port.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(2)
-                    session.backend.dummy_wait_process()
+                    session.backend.wait_process()
                     session.backend.dummy_request_controlled_frames(2)
-                    session.backend.dummy_wait_process()
+                    session.backend.wait_process()
 
                     let out = midi_output_port.dummy_dequeue_data()
                     let chan_data = chan.get_data()

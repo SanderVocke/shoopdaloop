@@ -251,18 +251,6 @@ void DummyAudioMidiDriver<Time, Size>::enter_mode(DummyAudioMidiDriverMode mode)
 }
 
 template <typename Time, typename Size>
-void DummyAudioMidiDriver<Time, Size>::wait_process() {
-    // To ensure a complete process cycle was done, execute two commands with
-    // a small delay in-between. Each command will end up in a separate process
-    // iteration.
-    log<log_level_trace>("DummyAudioMidiDriver: wait process");
-    exec_process_thread_command([]() { ; });
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    exec_process_thread_command([]() { ; });
-    log<log_level_trace>("DummyAudioMidiDriver: wait process done");
-}
-
-template <typename Time, typename Size>
 DummyAudioMidiDriverMode DummyAudioMidiDriver<Time, Size>::get_mode() const {
     return m_mode;
 }

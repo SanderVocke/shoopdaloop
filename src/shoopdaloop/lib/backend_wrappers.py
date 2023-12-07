@@ -19,11 +19,13 @@ try:
     os.environ['PATH'] = os.environ['PATH'] + os.pathsep + os.path.join(script_dir, '..')
     from shoopdaloop.libshoopdaloop_bindings import *
     from shoopdaloop.libshoopdaloop_bindings import Input as _Input, Output as _Output, Success as _Success, Failure as _Failure
+    from shoopdaloop.libshoopdaloop_bindings import open_audio_port as _open_audio_port, open_midi_port as _open_midi_port
 except:
     # during build we may need a different path
     os.environ['PATH'] = os.environ['PATH'] + os.pathsep + script_dir
     from libshoopdaloop_bindings import *
     from libshoopdaloop_bindings import Input as _Input, Output as _Output, Success as _Success, Failure as _Failure
+    from libshoopdaloop_bindings import open_audio_port as _open_audio_port, open_midi_port as _open_midi_port
 
 initialize_logging()
 
@@ -909,6 +911,9 @@ class AudioDriver:
         b = AudioDriver(_ptr)
         all_active_drivers.add(b)
         return b
+    
+    def get_backend_obj(self):
+        return self._c_handle
 
     def __init__(self, c_handle : 'POINTER(shoop_audio_driver_t)'):
         self._c_handle = c_handle
@@ -933,7 +938,7 @@ class AudioDriver:
             handle = open_decoupled_midi_port(self._c_handle, name_hint.encode('ascii'), _dir)
             port = BackendDecoupledMidiPort(handle, direction, self)
             return port
-        return None
+        raise Exception("Trying to open a MIDI port before audio driver is started.")
 
     def dummy_enter_controlled_mode(self):
         if self.active():
@@ -956,10 +961,6 @@ class AudioDriver:
         if self.active():
             return int(dummy_audio_n_requested_frames(self._c_handle))
         return 0
-
-    def dummy_wait_process(self):
-        if self.active():
-            dummy_audio_wait_process(self._c_handle)
     
     def get_sample_rate(self):
         if self.active():
@@ -978,7 +979,11 @@ class AudioDriver:
         start_jack_driver(self._c_handle, settings.to_backend())
     
     def active(self):
+        self.get_state()
         return self._active
+    
+    def wait_process(self):
+        wait_process(self._c_handle)
     
     def destroy(self):
         global all_active_drivers
@@ -994,23 +999,27 @@ def terminate_all_backends():
     global all_active_backends
     bs = copy.copy(all_active_backends)
     for b in bs:
-        b.terminate()
+        b.destroy()
+    global all_active_drivers
+    ds = copy.copy(all_active_drivers)
+    for d in ds:
+        d.destroy()
 
 def audio_driver_type_supported(t : Type[AudioDriverType]):
     return bool(driver_type_supported(t.value))
 
 def open_audio_port(backend_session, audio_driver, name_hint : str, direction : int) -> 'BackendAudioPort':
-    if backend_session.active() and audio_driver.active() and backend_session.get_audio_driver() == audio_driver:
+    if backend_session.active() and audio_driver.active():
         _dir = (Input if direction == PortDirection.Input.value else Output)
-        handle = open_audio_port(backend_session._c_handle, audio_driver._c_handle, name_hint.encode('ascii'), _dir)
+        handle = _open_audio_port(backend_session._c_handle, audio_driver._c_handle, name_hint.encode('ascii'), _dir)
         port = BackendAudioPort(handle, direction, backend_session)
         return port
-    return None
+    raise Exception("Failed to open audio port: backend session or audio driver not active")
 
 def open_midi_port(backend_session, audio_driver, name_hint : str, direction : int) -> 'BackendMidiPort':
-    if backend_session.active() and audio_driver.active() and backend_session.get_audio_driver() == audio_driver:
+    if backend_session.active() and audio_driver.active():
         _dir = (Input if direction == PortDirection.Input.value else Output)
-        handle = open_midi_port(backend_session._c_handle, audio_driver._c_handle, name_hint.encode('ascii'), _dir)
+        handle = _open_midi_port(backend_session._c_handle, audio_driver._c_handle, name_hint.encode('ascii'), _dir)
         port = BackendMidiPort(handle, direction, backend_session)
         return port
-    return None
+    raise Exception("Failed to open MIDI port: backend session or audio driver not active")

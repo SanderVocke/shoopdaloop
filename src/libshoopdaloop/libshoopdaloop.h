@@ -22,6 +22,7 @@ SHOOP_EXPORT unsigned get_buffer_size (shoop_audio_driver_t *driver);
 SHOOP_EXPORT unsigned get_driver_active (shoop_audio_driver_t *driver);
 SHOOP_EXPORT void start_dummy_driver(shoop_audio_driver_t *driver, shoop_dummy_audio_driver_settings_t settings);
 SHOOP_EXPORT void start_jack_driver(shoop_audio_driver_t *driver, shoop_jack_audio_driver_settings_t settings);
+SHOOP_EXPORT void wait_process(shoop_audio_driver_t *driver);
 
 // Session
 SHOOP_EXPORT shoop_backend_session_t *create_backend_session ();
@@ -29,7 +30,6 @@ SHOOP_EXPORT void destroy_backend_session (shoop_backend_session_t *session);
 SHOOP_EXPORT shoop_backend_session_state_info_t *get_backend_session_state(shoop_backend_session_t *session);
 SHOOP_EXPORT shoop_profiling_report_t* get_profiling_report(shoop_backend_session_t *session);
 SHOOP_EXPORT shoop_result_t set_audio_driver(shoop_backend_session_t *session, shoop_audio_driver_t *driver);
-SHOOP_EXPORT shoop_audio_driver_t* get_audio_driver(shoop_backend_session_t *session);
 
 // Loops
 SHOOP_EXPORT shoopdaloop_loop_t *create_loop(shoop_backend_session_t *backend);
@@ -176,7 +176,6 @@ SHOOP_EXPORT void dummy_audio_enter_automatic_mode(shoop_audio_driver_t *driver)
 SHOOP_EXPORT unsigned dummy_audio_is_in_controlled_mode(shoop_audio_driver_t *driver);
 SHOOP_EXPORT void dummy_audio_request_controlled_frames(shoop_audio_driver_t *driver, unsigned n_frames);
 SHOOP_EXPORT unsigned dummy_audio_n_requested_frames(shoop_audio_driver_t *driver);
-SHOOP_EXPORT void dummy_audio_wait_process(shoop_audio_driver_t *driver);
 SHOOP_EXPORT void dummy_midi_port_queue_data(shoopdaloop_midi_port_t *port, shoop_midi_sequence_t* events);
 SHOOP_EXPORT shoop_midi_sequence_t   *dummy_midi_port_dequeue_data(shoopdaloop_midi_port_t *port);
 SHOOP_EXPORT void dummy_midi_port_request_data(shoopdaloop_midi_port_t* port, unsigned n_frames);

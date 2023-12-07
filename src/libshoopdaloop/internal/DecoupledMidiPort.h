@@ -27,7 +27,7 @@ class DecoupledMidiPort : public std::enable_shared_from_this<DecoupledMidiPort<
     std::weak_ptr<AudioMidiDriver> maybe_driver;
 public:
     DecoupledMidiPort (std::shared_ptr<MidiPortInterface> port,
-                       std::shared_ptr<AudioMidiDriver> driver,
+                       std::weak_ptr<AudioMidiDriver> driver,
                        uint32_t queue_size,
                        shoop_port_direction_t direction);
 

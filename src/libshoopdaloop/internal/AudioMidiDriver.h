@@ -93,6 +93,8 @@ public:
     void* get_maybe_client_handle() const;
     bool get_active() const;
 
+    void wait_process();
+
     AudioMidiDriver();
     virtual ~AudioMidiDriver() {}
 };
