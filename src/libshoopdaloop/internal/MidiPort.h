@@ -6,7 +6,6 @@
 #include "PortInterface.h"
 #include <atomic>
 #include "MidiStateTracker.h"
-#include "MidiSortingBuffer.h"
 #include "MidiBufferInterfaces.h"
 
 class MidiPort : public virtual PortInterface {

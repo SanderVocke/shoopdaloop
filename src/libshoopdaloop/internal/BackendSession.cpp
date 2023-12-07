@@ -176,10 +176,10 @@ std::shared_ptr<ConnectedFXChain> BackendSession::create_fx_chain(shoop_fx_chain
                     // Midi: for any MIDI message, synthesize a single sample on the timestamp of the message.
                     // Its value will be (3rd msg byte / 0xFF).
                     auto &midi = midis[0];
-                    auto &readbuf = midi->PROC_get_read_buffer(n);
-                    auto n_msgs = readbuf.PROC_get_n_events();
+                    auto readbuf = midi->PROC_get_read_output_data_buffer(n);
+                    auto n_msgs = readbuf->PROC_get_n_events();
                     for (uint32_t i = 0; i < n_msgs; i++) {
-                        auto &msg = readbuf.PROC_get_event_reference(i);
+                        auto &msg = readbuf->PROC_get_event_reference(i);
                         auto time = msg.get_time();
                         auto data = msg.get_data();
                         auto size = msg.get_size();
@@ -213,9 +213,9 @@ void BackendSession::set_sample_rate(uint32_t sr) {
 
 void BackendSession::set_buffer_size(uint32_t bs) {
     auto notify = [&, this](auto &item) {
-        auto as_node = dynamic_cast<ProcessingNodeInterface*>(item.get());
+        auto as_node = dynamic_cast<NotifyProcessParametersInterface*>(item.get());
         if (as_node) {
-            as_node->PROC_change_buffer_size(bs);
+            as_node->PROC_notify_changed_buffer_size(bs);
         }
     };
     exec_process_thread_command([&, this]() {
@@ -226,12 +226,12 @@ void BackendSession::set_buffer_size(uint32_t bs) {
     });
 }
 
-void Backend::recalculate_processing_schedule(bool thread_safe) {
+void BackendSession::recalculate_processing_schedule(bool thread_safe) {
     using std::chrono::high_resolution_clock;
     using std::chrono::microseconds;
     auto result = std::make_shared<ProcessingSchedule>();
 
-    logging::log<"Backend.ProcessGraph", debug>(std::nullopt, std::nullopt, "Recalculating process graph");
+    logging::log<"Backend.ProcessGraph", log_level_debug>(std::nullopt, std::nullopt, "Recalculating process graph");
 
     auto start = high_resolution_clock::now();
 
@@ -257,7 +257,6 @@ void Backend::recalculate_processing_schedule(bool thread_safe) {
         for (auto &p : c->audio_output_ports()) { insert_all(p); }
         for (auto &p : c->midi_input_ports()) { insert_all(p); }
     }
-    for(auto &p: decoupled_midi_ports) { insert_all(p); }
 
     // Make raw pointers
     std::set<GraphNode*> raw_nodes;
@@ -276,22 +275,22 @@ void Backend::recalculate_processing_schedule(bool thread_safe) {
 
     auto end = high_resolution_clock::now();
     float us = duration_cast<microseconds>(end - start).count();
-    logging::log<"Backend.ProcessGraph", debug>(std::nullopt, std::nullopt, "Calculation took {} us", us);
+    logging::log<"Backend.ProcessGraph", log_level_debug>(std::nullopt, std::nullopt, "Calculation took {} us", us);
 
-    if(logging::should_log("Backend.ProcessGraph", trace)) {
+    if(logging::should_log("Backend.ProcessGraph", log_level_trace)) {
         auto dot = graph_dot(raw_nodes);
-        logging::log<"Backend.ProcessGraph", trace>(std::nullopt, std::nullopt, "DOT graph:\n{}", dot);
+        logging::log<"Backend.ProcessGraph", log_level_trace>(std::nullopt, std::nullopt, "DOT graph:\n{}", dot);
     }
 
     auto me = shared_from_this();
     auto finish_fn = [me, result]() {
-        me->log<trace>("Applying updated process graph");
+        me->log<log_level_trace>("Applying updated process graph");
         me->m_processing_schedule = result;
     };
     if (!thread_safe) { finish_fn(); }
-    else { cmd_queue.queue(finish_fn); }
+    else { queue_process_thread_command(finish_fn); }
 }
 
-WeakGraphNodeSet const& Backend::get_loop_graph_nodes() {
+WeakGraphNodeSet const& BackendSession::get_loop_graph_nodes() {
     return m_processing_schedule->loop_graph_nodes;
 }

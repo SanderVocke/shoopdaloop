@@ -22,14 +22,13 @@ public:
         uint32_t midi_event_type_urid
     );
 
-    MidiReadableBufferInterface &PROC_get_read_buffer  (uint32_t n_frames) override;
-
-    MidiWriteableBufferInterface &PROC_get_write_buffer (uint32_t n_frames) override;
+    MidiReadableBufferInterface *PROC_get_read_output_data_buffer  (uint32_t n_frames) override;
+    MidiWriteableBufferInterface *PROC_get_write_data_into_port_buffer (uint32_t n_frames) override;
 
     const char* name() const override;
     shoop_port_direction_t direction() const override;
     void close() override;
-    PortType type() const override;
+    PortDataType type() const override;
     void *maybe_driver_handle () const override;
 
     PortExternalConnectionStatus get_external_connection_status() const override;

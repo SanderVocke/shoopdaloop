@@ -6,7 +6,7 @@
 #include <stdexcept>
 #include <algorithm>
 #include "MidiStateTracker.h"
-#include "MidiMergingBuffer.h"
+#include "MidiSortingBuffer.h"
 #include "BackendSession.h"
 #include "DummyAudioMidiDriver.h"
 #include "shoop_globals.h"
@@ -187,11 +187,11 @@ void ConnectedPort::connect_passthrough(const std::shared_ptr<ConnectedPort> &ot
 }
 
 
-void ConnectedPort::PROC_change_buffer_size(uint32_t buffer_size) {}
+void ConnectedPort::PROC_notify_changed_buffer_size(uint32_t buffer_size) {}
 
 void ConnectedPort::graph_node_0_process(uint32_t nframes) {
     PROC_reset_buffers();
-    PROC_ensure_buffer(nframes, port->direction() == PortDirection::Output);
+    port->PROC_prepare(nframes);
 }
 
 void ConnectedPort::graph_node_1_process(uint32_t nframes) {

@@ -54,7 +54,7 @@ public:
         std::string name,
         shoop_port_direction_t direction);
     
-    audio_sample_t *PROC_get_buffer(uint32_t n_frames) const override;
+    audio_sample_t *PROC_get_buffer(uint32_t n_frames) override;
     ~DummyAudioPort() override;
 
     // For input ports, queue up data to be read from the port.
@@ -98,6 +98,9 @@ public:
     void PROC_write_event_reference(MidiSortableMessageInterface const& m) override;
     bool write_by_reference_supported() const override;
     bool write_by_value_supported() const override;
+
+    MidiWriteableBufferInterface *PROC_get_write_data_into_port_buffer(uint32_t n_frames) override;
+    MidiReadableBufferInterface *PROC_get_read_output_data_buffer(uint32_t n_frames) override;
 
     DummyMidiPort(
         std::string name,

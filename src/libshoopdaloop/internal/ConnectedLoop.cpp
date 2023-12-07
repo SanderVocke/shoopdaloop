@@ -26,20 +26,6 @@ void ConnectedLoop::PROC_finalize_process() {
 }
 
 void ConnectedLoop::delete_audio_channel_idx(uint32_t idx, bool thread_safe) {
-    get_backend().queue_process_thread_command([this, idx]() {
-        auto chaninfo = mp_audio_channels.at(idx);
-        delete_midi_channel(chaninfo, false);
-    });
-}
-
-void ConnectedLoop::delete_midi_channel_idx(uint32_t idx, bool thread_safe) {
-    get_backend().queue_process_thread_command([this, idx]() {
-        auto chaninfo = mp_midi_channels.at(idx);
-        delete_midi_channel(chaninfo, false);
-    });
-}
-
-void ConnectedLoop::delete_audio_channel_idx(uint32_t idx, bool thread_safe) {
     auto chaninfo = mp_audio_channels.at(idx);
     delete_midi_channel(chaninfo, false);
     get_backend().recalculate_processing_schedule();

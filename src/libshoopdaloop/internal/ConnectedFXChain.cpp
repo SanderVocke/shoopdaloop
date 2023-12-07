@@ -1,6 +1,7 @@
 #include "ConnectedFXChain.h"
 #include "ConnectedPort.h"
 #include "ConnectedChannel.h"
+#include "ProcessingChainInterface.h"
 #include "GraphNode.h"
 #include "shoop_globals.h"
 

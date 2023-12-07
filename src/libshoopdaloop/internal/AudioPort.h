@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include "PortInterface.h"
 #include <atomic>
+#include <cstring>
 
 template<typename SampleT>
 class AudioPort : public virtual PortInterface {
@@ -14,12 +15,12 @@ public:
     AudioPort() : PortInterface() {}
     virtual ~AudioPort() {}
 
-    virtual SampleT *PROC_get_buffer(uint32_t n_frames) const = 0;
+    virtual SampleT *PROC_get_buffer(uint32_t n_frames) = 0;
 
     PortDataType type() const override { return PortDataType::Audio; }
 
     void PROC_process(uint32_t nframes) override {
-        auto buf = PROC_get_buffer(nframes, false);
+        auto buf = PROC_get_buffer(nframes);
         auto muted = ma_muted.load();
         
         if (muted) {

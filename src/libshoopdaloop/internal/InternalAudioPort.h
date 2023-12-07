@@ -18,7 +18,7 @@ public:
         uint32_t n_frames
     );
     
-    SampleT *PROC_get_buffer(uint32_t n_frames) const override;
+    SampleT *PROC_get_buffer(uint32_t n_frames) override;
 
     const char* name() const override;
     shoop_port_direction_t direction() const override;

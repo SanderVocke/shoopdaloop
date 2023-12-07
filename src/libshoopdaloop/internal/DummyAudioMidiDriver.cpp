@@ -17,14 +17,12 @@ const std::map<DummyAudioMidiDriverMode, const char*> mode_names = {
 DummyPort::DummyPort(
     std::string name,
     shoop_port_direction_t direction,
-    PortType type
-) : m_name(name), m_direction(direction), m_type(type) {}
+    PortDataType type
+) : m_name(name), m_direction(direction) {}
 
 const char* DummyPort::name() const { return m_name.c_str(); }
 
 shoop_port_direction_t DummyPort::direction() const { return m_direction; }
-
-PortType DummyPort::type() const { return m_type; }
 
 void DummyPort::close() {}
 
@@ -39,12 +37,12 @@ void *DummyPort::maybe_driver_handle() const {
 }
 
 DummyAudioPort::DummyAudioPort(std::string name, shoop_port_direction_t direction)
-    : AudioPort<audio_sample_t>(name, direction), m_name(name),
-      DummyPort(name, direction, PortType::Audio),
+    : AudioPort<audio_sample_t>(), m_name(name),
+      DummyPort(name, direction, PortDataType::Audio),
       m_direction(direction),
       m_queued_data(128) { }
 
-float *DummyAudioPort::PROC_get_buffer(uint32_t n_frames, bool do_zero) {
+float *DummyAudioPort::PROC_get_buffer(uint32_t n_frames) {
     m_buffer_data.resize(std::max(m_buffer_data.size(), (size_t)n_frames));
     auto rval = m_buffer_data.data();
     uint32_t filled = 0;
@@ -64,10 +62,6 @@ float *DummyAudioPort::PROC_get_buffer(uint32_t n_frames, bool do_zero) {
         }
     }
     memset((void *)(rval+filled), 0, sizeof(audio_sample_t) * (n_frames - filled));
-
-    if (do_zero) {
-        memset((void *)rval, 0, sizeof(audio_sample_t) * n_frames);
-    }
 
     return rval;
 }
@@ -151,7 +145,7 @@ bool DummyMidiPort::write_by_reference_supported() const { return true; }
 bool DummyMidiPort::write_by_value_supported() const { return true; }
 
 DummyMidiPort::DummyMidiPort(std::string name, shoop_port_direction_t direction)
-    : MidiPort(name, direction), DummyPort(name, direction, PortType::Midi){
+    : MidiPort(false, false, false), DummyPort(name, direction, PortDataType::Midi){
 }
 
 void DummyMidiPort::clear_queues() {
@@ -181,8 +175,8 @@ void DummyMidiPort::request_data(uint32_t n_frames) {
     n_original_requested_frames = n_frames;
 }
 
-MidiReadableBufferInterface &
-DummyMidiPort::PROC_get_read_buffer(uint32_t n_frames) {
+MidiReadableBufferInterface *
+DummyMidiPort::PROC_get_read_output_data_buffer(uint32_t n_frames) {
     current_buf_frames = n_frames;
 
     uint32_t update_queue_by = m_update_queue_by_frames_pending;
@@ -198,14 +192,14 @@ DummyMidiPort::PROC_get_read_buffer(uint32_t n_frames) {
         m_update_queue_by_frames_pending = 0;
     }
 
-    return *(static_cast<MidiReadableBufferInterface *>(this));
+    return (static_cast<MidiReadableBufferInterface *>(this));
 }
 
-MidiWriteableBufferInterface &
-DummyMidiPort::PROC_get_write_buffer(uint32_t n_frames) {
+MidiWriteableBufferInterface *
+DummyMidiPort::PROC_get_write_data_into_port_buffer(uint32_t n_frames) {
     current_buf_frames = n_frames;
     m_buffer_data.clear();
-    return *(static_cast<MidiWriteableBufferInterface *>(this));
+    return (static_cast<MidiWriteableBufferInterface *>(this));
 }
 
 void DummyMidiPort::PROC_post_process(uint32_t n_frames) {

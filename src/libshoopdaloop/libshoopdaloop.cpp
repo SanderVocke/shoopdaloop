@@ -22,7 +22,7 @@
 // Internal
 #include "AudioMidiLoop.h"
 #include "AudioMidiDriver.h"
-
+#include "ProcessingChainInterface.h"
 #include "LoggingBackend.h"
 #include "MidiMessage.h"
 #include "MidiPort.h"
