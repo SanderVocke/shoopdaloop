@@ -307,6 +307,8 @@ void DummyAudioMidiDriver<Time, Size>::start(
     AudioMidiDriver::set_buffer_size(_settings.buffer_size);
     m_client_name_str = _settings.client_name;
     AudioMidiDriver::set_client_name(m_client_name_str.c_str());
+    AudioMidiDriver::set_dsp_load(0.0f);
+    AudioMidiDriver::set_maybe_client_handle(nullptr);
 
     m_proc_thread = std::thread([this] {
         log<log_level_debug>("DummyAudioMidiDriver: starting process thread - {}", mode_names.at(m_mode));

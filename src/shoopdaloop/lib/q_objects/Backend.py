@@ -11,6 +11,7 @@ from PySide6.QtCore import Qt, Signal, Property, Slot, QTimer
 from .ShoopPyObject import *
 
 from ..backend_wrappers import *
+from ..backend_wrappers import open_audio_port as backend_open_audio_port, open_midi_port as backend_open_midi_port
 from ..findChildItems import findChildItems
 from ..logging import Logger
 
@@ -87,17 +88,6 @@ class Backend(ShoopQQuickItem):
         self._driver_type = AudioDriverType(n)
         self.maybe_init()
     
-    backendArgstringChanged = Signal(str)
-    @Property(str, notify=backendArgstringChanged)
-    def backend_argstring(self):
-        return self._backend_argstring
-    @backend_argstring.setter
-    def backend_argstring(self, n):
-        if self._initialized:
-            self.logger.throw_error("Back-end argstring can only be set once.")
-        self._backend_argstring = n
-        self.maybe_init()
-    
     xrunsChanged = Signal(int)
     @Property(int, notify=xrunsChanged)
     def xruns(self):
@@ -135,8 +125,8 @@ class Backend(ShoopQQuickItem):
         if not self.initialized:
             return
         driver_state = self._backend_driver_obj.get_state()
-        self.dsp_load = driver_state.dsp_load_percent
-        self.xruns += driver_state.xruns_since_last
+        self.dsp_load = driver_state.dsp_load
+        self.xruns += driver_state.xruns
         self.actual_backend_type = self._driver_type
         
         toRemove = []
@@ -201,7 +191,7 @@ class Backend(ShoopQQuickItem):
     
     @Slot()
     def maybe_init(self):
-        if not self._initialized and self._client_name_hint != None and self._driver_type != None and self._backend_argstring != None:
+        if not self._initialized and self._client_name_hint != None and self._driver_type != None:
             self.init()
     
     @Slot(result='QVariant')
@@ -227,6 +217,14 @@ class Backend(ShoopQQuickItem):
     def backend_type_is_supported(self, type):
         return audio_driver_type_supported(AudioDriverType(type))
     
+    @Slot(str, int, result='QVariant')
+    def open_audio_port(self, name_hint, direction):
+        return backend_open_audio_port(self._backend_session_obj, self._backend_driver_obj, name_hint, direction)
+    
+    @Slot(str, int, result='QVariant')
+    def open_midi_port(self, name_hint, direction):
+        return backend_open_midi_port(self._backend_session_obj, self._backend_driver_obj, name_hint, direction)
+    
     ################
     ## INTERNAL METHODS
     ################
@@ -242,20 +240,22 @@ class Backend(ShoopQQuickItem):
             self.logger.throw_error("Failed to initialize back-end session.")
         if not self._backend_driver_obj:
             self.logger.throw_error("Failed to initialize back-end driver.")
-            
-        self._backend_session_obj.set_audio_driver(self._backend_driver_obj)
 
         if self._driver_type == AudioDriverType.Dummy:
-            settings = DummyAudioDriverSettings()
-            settings.client_name = self._client_name_hint
-            settings.sample_rate = 48000
-            settings.buffer_size = 256
+            settings = DummyAudioDriverSettings(
+                client_name=self._client_name_hint,
+                sample_rate=48000,
+                buffer_size=256
+            )
             self._backend_driver_obj.start_dummy(settings)
         elif self._driver_type == AudioDriverType.Jack:
-            settings = JackAudioDriverSettings()
-            settings.client_name_hint = self._client_name_hint
-            settings.maybe_server_name = ""
+            settings = JackAudioDriverSettings(
+                client_name_hint = self._client_name_hint,
+                maybe_server_name = ""
+            )
             self._backend_driver_obj.start_jack(settings)
+        
+        self._backend_session_obj.set_audio_driver(self._backend_driver_obj)
         
         self._initialized = True
         self.initializedChanged.emit(True)

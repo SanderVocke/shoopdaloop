@@ -112,14 +112,18 @@ void GenericJackAudioMidiDriver<API>::start(
     API::set_info_function(GenericJackAudioMidiDriver<API>::info_cb_static);
     
     m_all_ports_tracker->update(client);
-    set_sample_rate(API::get_sample_rate(client));
-    set_buffer_size(API::get_buffer_size(client));
+
 
     if (API::activate(client)) {
         throw_error<std::runtime_error>("Could not activate JACK client.");
     }
 
-    AudioMidiDriver::set_active(true);
+    set_maybe_client_handle((void*)client);
+    set_client_name(jack_get_client_name(client));
+    set_dsp_load(0.0f);
+    set_sample_rate(API::get_sample_rate(client));
+    set_buffer_size(API::get_buffer_size(client));
+    set_active(true);
 }
 
 template<typename API>

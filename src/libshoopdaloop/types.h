@@ -128,6 +128,7 @@ typedef struct {
     const char* maybe_instance_name; // E.g. the client name assigned in JACK'
     unsigned sample_rate;
     unsigned buffer_size;
+    unsigned active;
 } shoop_audio_driver_state_t;
 
 typedef struct {

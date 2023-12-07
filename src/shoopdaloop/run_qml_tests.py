@@ -43,7 +43,6 @@ logger.info('Creating test application...')
 
 global_args = {
     'backend_type': BackendType.Dummy.value,
-    'backend_argstring': '',
     'load_session_on_startup': None,
     'test_grab_screens': None,
 }

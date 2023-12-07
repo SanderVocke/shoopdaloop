@@ -10,7 +10,6 @@ PythonBackend {
     update_interval_ms: 30
     client_name_hint: 'shoop'
     backend_type: Types.BackendType.JackTest
-    backend_argstring: ''
 
     ShoopTestCase {
         name: 'JackBackend'

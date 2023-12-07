@@ -312,7 +312,7 @@ shoop_audio_driver_t *create_audio_driver (
 }
 
 shoop_audio_driver_state_t *get_audio_driver_state(shoop_audio_driver_t *driver) {
-  return api_impl<shoop_audio_driver_state_t*>("get_audio_driver_state", [&]() -> shoop_audio_driver_state_t* {
+  return api_impl<shoop_audio_driver_state_t*, log_level_trace>("get_audio_driver_state", [&]() -> shoop_audio_driver_state_t* {
     auto rval = new shoop_audio_driver_state_t;
     auto d = internal_audio_driver(driver);
     rval->maybe_driver_handle = d->get_maybe_client_handle();
@@ -321,6 +321,7 @@ shoop_audio_driver_state_t *get_audio_driver_state(shoop_audio_driver_t *driver)
     rval->sample_rate = d->get_sample_rate();
     rval->dsp_load_percent = d->get_dsp_load();
     rval->xruns_since_last = d->get_xruns();
+    rval->active = d->get_active();
     return rval;
   }, (shoop_audio_driver_state_t*) nullptr);
 }
@@ -1744,7 +1745,7 @@ void start_dummy_driver(shoop_audio_driver_t *driver, shoop_dummy_audio_driver_s
 void start_jack_driver(shoop_audio_driver_t *driver, shoop_jack_audio_driver_settings_t settings) {
   return api_impl<void>("start_jack_driver", [&]() {
     auto _driver = internal_audio_driver(driver);
-    auto jack = std::dynamic_pointer_cast<shoop_types::_DummyAudioMidiDriver>(_driver);
+    auto jack = std::dynamic_pointer_cast<JackAudioMidiDriver>(_driver);
     if (!jack) {
       throw std::runtime_error("Given driver is invalid or not of the correct type (Jack).");
     }

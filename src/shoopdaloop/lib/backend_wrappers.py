@@ -256,14 +256,16 @@ class AudioDriverState:
     maybe_instance_name : str
     sample_rate : int
     buffer_size : int
+    active : bool
     
     def __init__(self, backend_obj : 'shoop_audio_driver_state_t'):
-        self.dsp_load = float(backend_obj.dsp_load)
+        self.dsp_load = float(backend_obj.dsp_load_percent)
         self.xruns = int(backend_obj.xruns_since_last)
         self.maybe_driver_handle = backend_obj.maybe_driver_handle
         self.maybe_instance_name = str(backend_obj.maybe_instance_name)
         self.sample_rate = int(backend_obj.sample_rate)
         self.buffer_size = int(backend_obj.buffer_size)
+        self.active = bool(backend_obj.active)
 
 @dataclass
 class JackAudioDriverSettings:
@@ -272,8 +274,8 @@ class JackAudioDriverSettings:
 
     def to_backend(self):
         rval = shoop_jack_audio_driver_settings_t()
-        rval.client_name_hint = self.client_name_hint
-        rval.maybe_server_name = self.maybe_server_name
+        rval.client_name_hint = String(self.client_name_hint.encode('ascii'))
+        rval.maybe_server_name = String(self.maybe_server_name.encode('ascii'))
         return rval
     
 @dataclass
@@ -284,7 +286,7 @@ class DummyAudioDriverSettings:
 
     def to_backend(self):
         rval = shoop_dummy_audio_driver_settings_t()
-        rval.client_name = self.client_name
+        rval.client_name = String(self.client_name.encode('ascii'))
         rval.sample_rate = self.sample_rate
         rval.buffer_size = self.buffer_size
         return rval
@@ -856,14 +858,6 @@ class BackendSession:
             rval = BackendFXChain(handle, chain_type, self)
             return rval
         return None
-
-    def open_decoupled_midi_port(self, name_hint : str, direction : int) -> 'BackendDecoupledMidiPort':
-        if self.active():
-            _dir = (Input if direction == PortDirection.Input.value else Output)
-            handle = open_decoupled_midi_port(self._c_handle, name_hint.encode('ascii'), _dir)
-            port = BackendDecoupledMidiPort(handle, direction, self)
-            return port
-        return None
     
     def get_fx_chain_audio_input_port(self, fx_chain : Type['BackendFXChain'], idx : int):
         if self.active():
@@ -918,14 +912,28 @@ class AudioDriver:
 
     def __init__(self, c_handle : 'POINTER(shoop_audio_driver_t)'):
         self._c_handle = c_handle
+        self._active = False
+        self._dsp_load = 0.0
+        self._xruns = 0
+        self._client_name = ''
 
     def get_state(self):
+        state = get_audio_driver_state(self._c_handle)
+        rval = AudioDriverState(state[0])
+        self._active = rval.active
+        self._dsp_load = rval.dsp_load
+        self._xruns = rval.xruns
+        self._client_name = rval.maybe_instance_name
+        destroy_audio_driver_state(state)
+        return rval
+
+    def open_decoupled_midi_port(self, name_hint : str, direction : int) -> 'BackendDecoupledMidiPort':
         if self.active():
-            state = get_audio_driver_state(self._c_handle)
-            rval = AudioDriverState(state[0])
-            destroy_audio_driver_state(state)
-            return rval
-        return AudioDriverState()
+            _dir = (Input if direction == PortDirection.Input.value else Output)
+            handle = open_decoupled_midi_port(self._c_handle, name_hint.encode('ascii'), _dir)
+            port = BackendDecoupledMidiPort(handle, direction, self)
+            return port
+        return None
 
     def dummy_enter_controlled_mode(self):
         if self.active():
@@ -969,6 +977,9 @@ class AudioDriver:
     def start_jack(self, settings):
         start_jack_driver(self._c_handle, settings.to_backend())
     
+    def active(self):
+        return self._active
+    
     def destroy(self):
         global all_active_drivers
         if self.active():
@@ -996,7 +1007,7 @@ def open_audio_port(backend_session, audio_driver, name_hint : str, direction : 
         return port
     return None
 
-def open_jack_midi_port(backend_session, audio_driver, name_hint : str, direction : int) -> 'BackendMidiPort':
+def open_midi_port(backend_session, audio_driver, name_hint : str, direction : int) -> 'BackendMidiPort':
     if backend_session.active() and audio_driver.active() and backend_session.get_audio_driver() == audio_driver:
         _dir = (Input if direction == PortDirection.Input.value else Output)
         handle = open_midi_port(backend_session._c_handle, audio_driver._c_handle, name_hint.encode('ascii'), _dir)
