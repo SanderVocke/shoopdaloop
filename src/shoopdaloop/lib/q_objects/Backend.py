@@ -127,7 +127,7 @@ class Backend(ShoopQQuickItem):
         driver_state = self._backend_driver_obj.get_state()
         self.dsp_load = driver_state.dsp_load
         self.xruns += driver_state.xruns
-        self.actual_backend_type = self._driver_type
+        self.actual_backend_type = self._driver_type.value
         
         toRemove = []
         for obj in self._backend_child_objects:

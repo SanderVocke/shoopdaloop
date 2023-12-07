@@ -105,7 +105,7 @@ class MidiPort(Port):
                     raise Exception('Could not find self in FX chain')
                 # Now request our backend object.
                 if self.direction == PortDirection.Output.value:
-                    self._backend_obj = self.backend.get_backend_obj().get_fx_chain_midi_input_port(
+                    self._backend_obj = self.backend.get_backend_session_obj().get_fx_chain_midi_input_port(
                         maybe_fx_chain.get_backend_obj(),
                         idx
                     )

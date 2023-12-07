@@ -24,9 +24,11 @@ PythonBackend {
 
                 verify(backend.initialized)
                 wait(1000)
-                if(backend.actual_backend_type != Types.AudioDriverType.JackTest) {
-                    fail("Was not able to start a Jack test backend even though support should be available")
-                }
+                verify_eq(
+                    backend.actual_backend_type,
+                    Types.AudioDriverType.JackTest,
+                    "Was not able to start a Jack test backend even though support should be available"
+                )
             }
         })
     }
