@@ -2,6 +2,10 @@
 #include "ConnectedChannel.h"
 #include "AudioMidiLoop.h"
 #include "BackendSession.h"
+#include "GraphNode.h"
+#include "process_loops.h"
+#include <memory>
+#include <fmt/format.h>
 
 void ConnectedLoop::PROC_prepare_process(uint32_t n_frames) {
     for (auto &chan : mp_audio_channels) {
@@ -34,25 +38,6 @@ void ConnectedLoop::delete_midi_channel_idx(uint32_t idx, bool thread_safe) {
         delete_midi_channel(chaninfo, false);
     });
 }
-
-void ConnectedLoop::delete_audio_channel(std::shared_ptr<ConnectedChannel> chan, bool thread_safe) {
-    auto fn = [this, chan]() {
-        auto r = std::find_if(mp_audio_channels.begin(), mp_audio_channels.end(), [chan](auto const& e) { return chan->channel.get() == e->channel.get(); });
-        if (r == mp_audio_channels.end()) {
-            throw std::runtime_error("Attempting to delete non-existent audio channel.");
-        }
-        loop->delete_audio_channel(chan->channel, false);
-        mp_audio_channels.erase(r);
-    };
-    if (thread_safe) {
-        get_backend().queue_process_thread_command(fn);
-    } else {
-        fn();
-#include "Backend.h"
-#include "GraphNode.h"
-#include "process_loops.h"
-#include <memory>
-#include <fmt/format.h>
 
 void ConnectedLoop::delete_audio_channel_idx(uint32_t idx, bool thread_safe) {
     auto chaninfo = mp_audio_channels.at(idx);

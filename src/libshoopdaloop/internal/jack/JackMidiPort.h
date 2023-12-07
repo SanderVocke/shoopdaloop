@@ -3,7 +3,7 @@
 #include "JackTestApi.h"
 #include "MidiBufferingInputPort.h"
 #include "JackPort.h"
-#include "MidiPortInterface.h"
+#include "MidiPort.h"
 #include "MidiSortingReadWritePort.h"
 #include <jack_wrappers.h>
 #include <vector>

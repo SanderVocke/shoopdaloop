@@ -37,6 +37,7 @@ public:
 class MidiReadWriteBufferInterface : public virtual MidiWriteableBufferInterface,
                                      public virtual MidiReadableBufferInterface
 {
+public:
     // A read/write buffer will allow some kind of processing on the content.
     virtual void PROC_process(uint32_t nframes) {}
     virtual void PROC_prepare(uint32_t nframes) {}

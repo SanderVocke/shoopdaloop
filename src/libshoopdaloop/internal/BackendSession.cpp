@@ -1,6 +1,5 @@
 #include "BackendSession.h"
 #include "ConnectedChannel.h"
-#include "Backend.h"
 #include "GraphNode.h"
 #include "LoggingBackend.h"
 #include "ProcessProfiling.h"
@@ -16,6 +15,7 @@
 #include "types.h"
 #include "graph_processing_order.h"
 #include <chrono>
+#include "CustomProcessingChain.h"
 
 #ifdef SHOOP_HAVE_BACKEND_JACK
 #include <jack_wrappers.h>
@@ -87,16 +87,16 @@ void BackendSession::PROC_process (uint32_t nframes) {
                 cmds_profiling_item
             );
             
-            log<trace>("Process: process graph");
+            log<log_level_trace>("Process: process graph");
             auto processing_schedule = m_processing_schedule;
             for(auto &step: processing_schedule->steps) {
                 profiling::stopwatch(
                     [this, &nframes, &step]() {
                         if(step.nodes.size() == 1) {
-                            log<trace>("Processing node: {}", step.nodes.begin()->get()->graph_node_name());
+                            log<log_level_trace>("Processing node: {}", step.nodes.begin()->get()->graph_node_name());
                             step.nodes.begin()->get()->graph_node_process(nframes);
                         } else if(step.nodes.size() > 1) {
-                            log<trace>("Co-processing {} nodes, first: {}", step.nodes.size(), step.nodes.begin()->get()->graph_node_name());
+                            log<log_level_trace>("Co-processing {} nodes, first: {}", step.nodes.size(), step.nodes.begin()->get()->graph_node_name());
                             step.nodes.begin()->get()->graph_node_co_process(step.nodes, nframes);
                         }
                     },

@@ -1,7 +1,7 @@
 #pragma once
 #include "AudioMidiDriver.h"
-#include "MidiPortInterface.h"
-#include "AudioPortInterface.h"
+#include "MidiPort.h"
+#include "AudioPort.h"
 #include "PortInterface.h"
 #include "LoggingEnabled.h"
 #include "WithCommandQueue.h"
@@ -20,18 +20,16 @@ class DummyPort : public virtual PortInterface {
 protected:
     std::string m_name;
     shoop_port_direction_t m_direction;
-    PortType m_type;
 
 public:
     DummyPort(
         std::string name,
         shoop_port_direction_t direction,
-        PortType type
+        PortDataType type
     );
 
     const char* name() const override;
     shoop_port_direction_t direction() const override;
-    PortType type() const override;
     void close() override;
     void *maybe_driver_handle() const override;
 
@@ -56,7 +54,7 @@ public:
         std::string name,
         shoop_port_direction_t direction);
     
-    audio_sample_t *PROC_get_buffer(uint32_t n_frames, bool do_zero=false) override;
+    audio_sample_t *PROC_get_buffer(uint32_t n_frames) const override;
     ~DummyAudioPort() override;
 
     // For input ports, queue up data to be read from the port.
@@ -105,9 +103,6 @@ public:
         std::string name,
         shoop_port_direction_t direction
     );
-
-    MidiReadableBufferInterface &PROC_get_read_buffer (uint32_t n_frames) override;
-    MidiWriteableBufferInterface &PROC_get_write_buffer (uint32_t n_frames) override;
 
     void queue_msg(uint32_t size, uint32_t time, const uint8_t* data);
     bool get_queue_empty();

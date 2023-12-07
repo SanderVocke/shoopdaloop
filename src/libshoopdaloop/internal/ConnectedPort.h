@@ -6,6 +6,7 @@
 #include "LoggingEnabled.h"
 #include "shoop_globals.h"
 #include "GraphNode.h"
+#include "PortInterface.h"
 
 class ConnectedPort : public std::enable_shared_from_this<ConnectedPort>,
                       public HasTwoGraphNodes,
@@ -46,12 +47,12 @@ public:
     bool PROC_check_buffer(bool raise_if_absent=true);
     void PROC_process_buffer(uint32_t n_frames);
 
-    void PROC_change_buffer_size(uint32_t buffer_size) override;
+    void PROC_notify_changed_buffer_size(uint32_t buffer_size) override;
 
     void connect_passthrough(std::shared_ptr<ConnectedPort> const& other);
 
-    std::shared_ptr<shoop_types::AudioPort> maybe_audio();
-    std::shared_ptr<shoop_types::MidiPort> maybe_midi();
+    std::shared_ptr<shoop_types::_AudioPort> maybe_audio();
+    std::shared_ptr<MidiPort> maybe_midi();
     BackendSession &get_backend();
 
     // The first graph node we encapsulate is for preparing/creating

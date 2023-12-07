@@ -91,9 +91,4 @@ public:
 
     void destroy();
     void recalculate_processing_schedule(bool thread_safe=true);
-
-    // For introspection of which audio system types were compiled in.
-    // Note that this does not reflect whether the required drivers/libraries
-    // are actually installed.
-    static std::vector<audio_system_type_t> get_supported_audio_system_types();
 };

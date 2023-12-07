@@ -79,7 +79,7 @@ public:
                     if (procbuf && procbuf_inbuf && procbuf_inbuf != read_in_buf) {
                         // Our processing buffer is separate from our input buffer.
                         // We need to move data into the processing buffer manually.
-                        procbuf->PROC_event_write_by_reference(msg);
+                        procbuf->PROC_write_event_reference(msg);
                     }
                 }
             }
@@ -96,7 +96,7 @@ public:
             auto n_events = source->PROC_get_n_events();
             for(uint32_t i=0; i<n_events; i++) {
                 auto &msg = source->PROC_get_event_reference(i);
-                write_out_buf->PROC_event_write_by_reference(msg);
+                write_out_buf->PROC_write_event_reference(msg);
             }
         }
     }
@@ -107,7 +107,7 @@ public:
         bool track_programs
     ) {
         if (track_notes || track_controls || track_programs) {
-            m_maybe_midi_state = MidiStateTracker(
+            m_maybe_midi_state = std::make_shared<MidiStateTracker>(
                 track_notes, track_controls, track_programs
             );
         }

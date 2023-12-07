@@ -25,8 +25,8 @@
 
 #include "LoggingBackend.h"
 #include "MidiMessage.h"
-#include "MidiPortInterface.h"
-#include "MidiMergingBuffer.h"
+#include "MidiPort.h"
+#include "MidiSortingBuffer.h"
 #include "PortInterface.h"
 #include "DecoupledMidiPort.h"
 #include "CommandQueue.h"

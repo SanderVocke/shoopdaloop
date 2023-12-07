@@ -1,6 +1,6 @@
 #include "JackMidiPort.h"
 #include <string>
-#include "MidiPortInterface.h"
+#include "MidiPort.h"
 #include "MidiSortingReadWritePort.h"
 #include <stdexcept>
 

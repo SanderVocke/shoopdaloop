@@ -53,7 +53,7 @@ class NotifyProcessParametersInterface {
 public:
     virtual void PROC_notify_changed_buffer_size(uint32_t buffer_size) {}
     virtual void PROC_notify_changed_sample_rate(uint32_t sample_rate) {}
-}
+};
 
 class HasGraphNodesInterface : public NotifyProcessParametersInterface {
 public:

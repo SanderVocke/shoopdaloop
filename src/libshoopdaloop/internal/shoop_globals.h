@@ -1,5 +1,4 @@
-#pragma once 
-#include "CustomProcessingChain.h"
+#pragma once
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -27,6 +26,7 @@ class MidiStateTracker;
 
 template<typename A, typename B> class MidiMessage;
 template<typename A, typename B> class DecoupledMidiPort;
+template<typename A, typename B> class ProcessingChainInterface;
 
 #ifdef SHOOP_HAVE_LV2
 template<typename A, typename B> class CarlaLV2ProcessingChain;
@@ -61,8 +61,7 @@ using Size = uint16_t;
 using _DummyAudioMidiDriver = DummyAudioMidiDriver<uint32_t, uint32_t>;
 using LoopAudioChannel = AudioChannel<audio_sample_t>;
 using LoopMidiChannel = MidiChannel<uint32_t, uint16_t>;
-using AudioPort = AudioPort<audio_sample_t>;
-using MidiPort = MidiPort;
+using _AudioPort = AudioPort<audio_sample_t>;
 using Command = std::function<void()>;
 using _MidiMessage = MidiMessage<Time, Size>;
 using _DecoupledMidiPort = DecoupledMidiPort<Time, Size>;

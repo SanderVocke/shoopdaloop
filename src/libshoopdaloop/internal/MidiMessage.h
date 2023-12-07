@@ -4,6 +4,7 @@
 #include "MidiPort.h"
 #include <cstring>
 #include <stdexcept>
+#include "MidiBufferInterfaces.h"
 
 template<typename TimeType, typename SizeType>
 struct MidiMessage : public MidiSortableMessageInterface {

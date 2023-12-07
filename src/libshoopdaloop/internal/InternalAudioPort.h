@@ -18,14 +18,14 @@ public:
         uint32_t n_frames
     );
     
-    SampleT *PROC_get_buffer(uint32_t n_frames, bool do_zero=false) override;
+    SampleT *PROC_get_buffer(uint32_t n_frames) const override;
 
     const char* name() const override;
     shoop_port_direction_t direction() const override;
     void reallocate_buffer(uint32_t n_frames);
     uint32_t buffer_size() const;
     void close() override;
-    PortType type() const override;
+    PortDataType type() const override;
     void zero();
     void* maybe_driver_handle() const override;
 

@@ -1,5 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
-#include "DummyAudioSystem.h"
+#include "DummyAudioMidiDriver.h"
 #include "ConnectedPort.h"
 #include "ConnectedLoop.h"
 #include "ConnectedChannel.h"
@@ -7,7 +7,7 @@
 #include "AudioMidiLoop.h"
 #include "shoop_globals.h"
 #include "graph_processing_order.h"
-#include "Backend.h"
+#include "BackendSession.h"
 
 template<typename NodesType>
 void insert_all(NodesType &n, std::set<GraphNode*> &nodes) {
