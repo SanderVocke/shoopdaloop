@@ -47,7 +47,7 @@ public:
 
     GenericJackMidiPort(
         std::string name,
-        PortDirection direction,
+        shoop_port_direction_t direction,
         jack_client_t *client,
         std::shared_ptr<GenericJackAllPorts<API>> all_ports_tracker
     );

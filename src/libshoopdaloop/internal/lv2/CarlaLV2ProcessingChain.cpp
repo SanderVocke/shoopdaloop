@@ -216,7 +216,7 @@ void CarlaLV2ProcessingChain<TimeType, SizeType>::maybe_cleanup_ui() {
 
 template <typename TimeType, typename SizeType>
 CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
-    LilvWorld *lilv_world, fx_chain_type_t type, uint32_t sample_rate,
+    LilvWorld *lilv_world, shoop_fx_chain_type_t type, uint32_t sample_rate,
     std::string human_name, std::shared_ptr<profiling::Profiler> maybe_profiler)
     : m_internal_buffers_size(0), m_human_name(human_name),
       m_unique_name(human_name + "_" + random_string(6)) {
@@ -227,7 +227,7 @@ CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
     }
 
     // URIs for the Carla plugins we want to support.
-    static const std::map<fx_chain_type_t, std::string> plugin_uris = {
+    static const std::map<shoop_fx_chain_type_t, std::string> plugin_uris = {
         {Carla_Rack, "http://kxstudio.sf.net/carla/plugins/carlarack"},
         {Carla_Patchbay, "http://kxstudio.sf.net/carla/plugins/carlapatchbay"},
         {Carla_Patchbay_16x,
@@ -282,7 +282,7 @@ CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
             m_audio_in_lilv_ports.push_back(p);
             m_audio_in_port_indices.push_back(lilv_port_get_index(m_plugin, p));
             auto internal = std::make_shared<_InternalAudioPort>(
-                sym, PortDirection::Output, m_internal_buffers_size);
+                sym, shoop_port_direction_t::Output, m_internal_buffers_size);
             m_input_audio_ports.push_back(internal);
         }
         for (auto const &sym : audio_out_port_symbols) {
@@ -296,7 +296,7 @@ CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
             m_audio_out_port_indices.push_back(
                 lilv_port_get_index(m_plugin, p));
             auto internal = std::make_shared<_InternalAudioPort>(
-                sym, PortDirection::Input, m_internal_buffers_size);
+                sym, shoop_port_direction_t::Input, m_internal_buffers_size);
             m_output_audio_ports.push_back(internal);
         }
         for (auto const &sym : midi_in_port_symbols) {
@@ -309,7 +309,7 @@ CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
             m_midi_in_lilv_ports.push_back(p);
             m_midi_in_port_indices.push_back(lilv_port_get_index(m_plugin, p));
             auto internal = std::make_shared<InternalLV2MidiOutputPort>(
-                sym, PortDirection::Output, mc_midi_buf_capacities,
+                sym, shoop_port_direction_t::Output, mc_midi_buf_capacities,
                 m_atom_chunk_type, m_atom_sequence_type, m_midi_event_type);
             m_input_midi_ports.push_back(internal);
             m_generic_input_midi_ports.push_back(
@@ -349,7 +349,7 @@ CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
 
         const LilvNode *ui_binary_uri = lilv_ui_get_binary_uri(m_ui);
         const char *ui_binary_path = lilv_node_get_path(ui_binary_uri, nullptr);
-        log<debug>("Loading UI library: {}",
+        log<log_level_debug>("Loading UI library: {}",
                                       ui_binary_path);
         _dylib_handle ui_lib_handle = load_dylib(ui_binary_path);
         throw_if_dylib_error();

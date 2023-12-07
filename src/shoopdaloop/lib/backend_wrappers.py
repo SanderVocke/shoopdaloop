@@ -11,23 +11,31 @@ import time
 
 script_dir = os.path.dirname(__file__)
 all_active_backends = set()
+all_active_drivers = set()
 
 try:
     # On Windows, shoopdaloop.dll depends on shared libraries in the same folder.
     # this folder needs to be added to the PATH before loading
     os.environ['PATH'] = os.environ['PATH'] + os.pathsep + os.path.join(script_dir, '..')
     from shoopdaloop.libshoopdaloop_bindings import *
+    from shoopdaloop.libshoopdaloop_bindings import Input as _Input, Output as _Output, Success as _Success, Failure as _Failure
+    from shoopdaloop.libshoopdaloop_bindings import open_audio_port as _open_audio_port, open_midi_port as _open_midi_port
 except:
     # during build we may need a different path
     os.environ['PATH'] = os.environ['PATH'] + os.pathsep + script_dir
     from libshoopdaloop_bindings import *
+    from libshoopdaloop_bindings import Input as _Input, Output as _Output, Success as _Success, Failure as _Failure
+    from libshoopdaloop_bindings import open_audio_port as _open_audio_port, open_midi_port as _open_midi_port
 
 initialize_logging()
 
 class PortDirection(Enum):
-    Input = 0
-    Output = 1
+    Input = _Input
+    Output = _Output
 
+class BackendResult(Enum):
+    Success = _Success
+    Failure = _Failure
 class LoopMode(Enum):
     Unknown = LoopMode_Unknown
     Stopped = LoopMode_Stopped
@@ -42,7 +50,7 @@ class ChannelMode(Enum):
     Dry = ChannelMode_Dry
     Wet = ChannelMode_Wet
 
-class BackendType(Enum):
+class AudioDriverType(Enum):
     Jack = Jack
     JackTest = JackTest
     Dummy = Dummy
@@ -59,7 +67,7 @@ class FXChainState:
     ready : bool
     active : bool
 
-    def __init__(self, backend_state : "fx_chain_state_info_t" = None):
+    def __init__(self, backend_state : "shoop_fx_chain_state_info_t" = None):
         if backend_state:
             self.visible = backend_state.visible
             self.active = backend_state.active
@@ -160,7 +168,7 @@ class AudioPortState:
     passthrough_muted: bool
     name: str
 
-    def __init__(self, backend_state : 'audio_port_state_info_t' = None):
+    def __init__(self, backend_state : 'shoop_audio_port_state_info_t' = None):
         if backend_state:
             self.peak = backend_state.peak
             self.volume = backend_state.volume
@@ -182,7 +190,7 @@ class MidiPortState:
     passthrough_muted: bool
     name: str
 
-    def __init__(self, backend_state : 'audio_port_state_info_t' = None):
+    def __init__(self, backend_state : 'shoop_audio_port_state_info_t' = None):
         if backend_state:
             self.n_events_triggered = backend_state.n_events_triggered
             self.n_notes_active = backend_state.n_notes_active
@@ -202,26 +210,20 @@ class MidiEvent:
     size: int
     data: List[int]
     
-    def __init__(self, backend_event : 'midi_event_t'):
+    def __init__(self, backend_event : 'shoop_midi_event_t'):
         self.time = backend_event.time
         self.size = backend_event.size
         self.data = [int(backend_event.data[i]) for i in range(backend_event.size)]
 
 @dataclass
-class BackendState:
-    dsp_load_percent: float
-    xruns_since_last: int
-    actual_type: Type[BackendType]
+class BackendSessionState:
+    audio_driver_handle : Any
 
-    def __init__(self, backend_state : 'backend_state_info_t' = None):
+    def __init__(self, backend_state : 'shoop_backend_session_state_info_t' = None):
         if backend_state:
-            self.dsp_load_percent = float(backend_state.dsp_load_percent)
-            self.xruns_since_last = int(backend_state.xruns_since_last)
-            self.actual_type = BackendType(backend_state.actual_type)
+            self.audio_driver_handle = backend_state.audio_driver
         else:
-            self.dsp_load_percent = 0.0
-            self.xruns_since_last = 0
-            self.actual_type = BackendType.Dummy
+            self.audio_driver_handle = None
 
 @dataclass
 class ProfilingReportItem:
@@ -231,7 +233,7 @@ class ProfilingReportItem:
     most_recent : float
     average : float
 
-    def __init__(self, backend_obj : 'profiling_report_item_t'):
+    def __init__(self, backend_obj : 'shoop_profiling_report_item_t'):
         self.key = str(backend_obj.key)
         self.n_samples = float(backend_obj.n_samples)
         self.worst = float(backend_obj.worst)
@@ -242,11 +244,55 @@ class ProfilingReportItem:
 class ProfilingReport:
     items : List[ProfilingReportItem]
 
-    def __init__(self, backend_obj : 'profiling_report_t'):
+    def __init__(self, backend_obj : 'shoop_profiling_report_t'):
         self.items = [ProfilingReportItem(backend_obj.items[i]) for i in range(backend_obj.n_items)]
     
     def __init__(self):
         self.items = []
+
+@dataclass
+class AudioDriverState:
+    dsp_load : float
+    xruns : int
+    maybe_driver_handle : Any
+    maybe_instance_name : str
+    sample_rate : int
+    buffer_size : int
+    active : bool
+    
+    def __init__(self, backend_obj : 'shoop_audio_driver_state_t'):
+        self.dsp_load = float(backend_obj.dsp_load_percent)
+        self.xruns = int(backend_obj.xruns_since_last)
+        self.maybe_driver_handle = backend_obj.maybe_driver_handle
+        self.maybe_instance_name = str(backend_obj.maybe_instance_name)
+        self.sample_rate = int(backend_obj.sample_rate)
+        self.buffer_size = int(backend_obj.buffer_size)
+        self.active = bool(backend_obj.active)
+
+@dataclass
+class JackAudioDriverSettings:
+    client_name_hint : str
+    maybe_server_name : str
+
+    def to_backend(self):
+        rval = shoop_jack_audio_driver_settings_t()
+        rval.client_name_hint = String(self.client_name_hint.encode('ascii'))
+        rval.maybe_server_name = String(self.maybe_server_name.encode('ascii'))
+        return rval
+    
+@dataclass
+class DummyAudioDriverSettings:
+    client_name : str
+    sample_rate : int
+    buffer_size : int
+
+    def to_backend(self):
+        rval = shoop_dummy_audio_driver_settings_t()
+        rval.client_name = String(self.client_name.encode('ascii'))
+        rval.sample_rate = self.sample_rate
+        rval.buffer_size = self.buffer_size
+        return rval
+        
         
 def parse_connections_state(backend_state : 'port_connections_state_info_t'):
     rval = dict()
@@ -254,7 +300,7 @@ def parse_connections_state(backend_state : 'port_connections_state_info_t'):
         rval[str(backend_state.ports[i].name)] = bool(backend_state.ports[i].connected)
     return rval
 
-def backend_midi_message_to_dict(backend_msg: 'midi_event_t'):
+def backend_midi_message_to_dict(backend_msg: 'shoop_midi_event_t'):
     r = dict()
     r['time'] = backend_msg.time
     r['data'] = [int(backend_msg.data[i]) for i in range(backend_msg.size)]
@@ -350,7 +396,7 @@ class BackendLoopAudioChannel:
     
 class BackendLoopMidiChannel:
     def __init__(self, loop : 'BackendLoop', c_handle : 'POINTER(shoopdaloop_loop_midi_channel_t)',
-                 backend: 'Backend'):
+                 backend: 'BackendSession'):
         self.loop_shoop_c_handle = loop.c_handle()
         self.shoop_c_handle = c_handle
         self._backend = backend
@@ -427,7 +473,7 @@ class BackendLoopMidiChannel:
             self.destroy()
 
 class BackendLoop:
-    def __init__(self, c_handle : 'POINTER(shoopdaloop_loop_t)', backend: 'Backend'):
+    def __init__(self, c_handle : 'POINTER(shoopdaloop_loop_t)', backend: 'BackendSession'):
         self.shoop_c_handle = c_handle
         self._backend = backend
     
@@ -512,7 +558,7 @@ class BackendLoop:
 class BackendAudioPort:
     def __init__(self, c_handle : 'POINTER(shoopdaloop_audio_port_t)',
                  direction : int,
-                 backend : 'Backend'):
+                 backend : 'BackendSession'):
         self._direction = PortDirection(direction)
         self._c_handle = c_handle
         self._backend = backend
@@ -606,7 +652,7 @@ class BackendAudioPort:
 class BackendDecoupledMidiPort:
     def __init__(self, c_handle : 'POINTER(shoopdaloop_decoupled_midi_port_t)',
                  direction : int,
-                 backend : 'Backend'):
+                 backend : 'BackendSession'):
         self._direction = PortDirection(direction)
         self._c_handle = c_handle
         self._backend = backend
@@ -644,7 +690,7 @@ class BackendDecoupledMidiPort:
 class BackendMidiPort:
     def __init__(self, c_handle : 'POINTER(shoopdaloop_midi_port_t)',
                  direction : int,
-                 backend : 'Backend'):
+                 backend : 'BackendSession'):
         self._direction = PortDirection(direction)
         self._c_handle = c_handle
         self._backend = backend
@@ -739,7 +785,7 @@ class BackendMidiPort:
 
 class BackendFXChain:
     def __init__(self, c_handle : "POINTER(shoopdaloop_fx_chain_t)", chain_type: FXChainType,
-                 backend : 'Backend'):
+                 backend : 'BackendSession'):
         self._type = chain_type
         self._c_handle = c_handle
         self._backend = backend
@@ -781,33 +827,25 @@ class BackendFXChain:
         if self.available():
             restore_fx_chain_internal_state(self._c_handle, c_char_p(bytes(state_str, 'ascii')))
 
-class Backend:
-    def __init__(self, c_handle : 'POINTER(shoopdaloop_backend_instance_t)'):
+class BackendSession:
+    def create():
+        global all_active_backends
+        _ptr = create_backend_session()
+        b = BackendSession(_ptr)
+        all_active_backends.add(b)
+        return b
+    
+    def __init__(self, c_handle : 'POINTER(shoop_backend_session_t)'):
         self._c_handle = c_handle
         self._active = True
 
-    def maybe_shoop_jack_client_handle(self):
-        if self.active():
-            return maybe_jack_client_handle(self._c_handle)
-        return None
-
-    def get_client_name(self):
-        if self.active():
-            return str(get_jack_client_name(self._c_handle).decode('ascii'))
-        return '(unknown)'
-
-    def get_sample_rate(self):
-        if self.active():
-            return int(get_sample_rate(self._c_handle))
-        return 1
-    
     def get_state(self):
         if self.active():
-            state = get_backend_state(self._c_handle)
-            rval = BackendState(state[0])
+            state = get_backend_session_state(self._c_handle)
+            rval = BackendSessionState(state[0])
             destroy_backend_state_info(state)
             return rval
-        return BackendState()
+        return BackendSessionState()
 
     def create_loop(self) -> Type['BackendLoop']:
         if self.active():
@@ -821,30 +859,6 @@ class Backend:
             handle = create_fx_chain(self._c_handle, chain_type.value, title.encode('ascii'))
             rval = BackendFXChain(handle, chain_type, self)
             return rval
-        return None
-
-    def open_audio_port(self, name_hint : str, direction : int) -> 'BackendAudioPort':
-        if self.active():
-            _dir = (Input if direction == PortDirection.Input.value else Output)
-            handle = open_audio_port(self._c_handle, name_hint.encode('ascii'), _dir)
-            port = BackendAudioPort(handle, direction, self)
-            return port
-        return None
-
-    def open_jack_midi_port(self, name_hint : str, direction : int) -> 'BackendMidiPort':
-        if self.active():
-            _dir = (Input if direction == PortDirection.Input.value else Output)
-            handle = open_midi_port(self._c_handle, name_hint.encode('ascii'), _dir)
-            port = BackendMidiPort(handle, direction, self)
-            return port
-        return None
-
-    def open_decoupled_midi_port(self, name_hint : str, direction : int) -> 'BackendDecoupledMidiPort':
-        if self.active():
-            _dir = (Input if direction == PortDirection.Input.value else Output)
-            handle = open_decoupled_midi_port(self._c_handle, name_hint.encode('ascii'), _dir)
-            port = BackendDecoupledMidiPort(handle, direction, self)
-            return port
         return None
     
     def get_fx_chain_audio_input_port(self, fx_chain : Type['BackendFXChain'], idx : int):
@@ -861,16 +875,6 @@ class Backend:
         if self.active():
             return BackendMidiPort(fx_chain_midi_input_port(fx_chain.c_handle(), idx), PortDirection.Output, self)
         return None
-        
-    def get_sample_rate(self):
-        if self.active():
-            return int(get_sample_rate(self._c_handle))
-        return 1
-    
-    def get_buffer_size(self):
-        if self.active():
-            return int(get_buffer_size(self._c_handle))
-        return 1
     
     def get_profiling_report(self):
         if self.active():
@@ -879,6 +883,62 @@ class Backend:
             destroy_profiling_report(state)
             return rval
         return ProfilingReport()
+        
+    def active(self):
+        return self._active
+
+    def set_audio_driver(self, driver: Type['AudioDriver']):
+        if self.active():
+            result = set_audio_driver(self._c_handle, driver._c_handle)
+            if result == BackendResult.Failure.value:
+                raise Exception("Unable to set driver for back-end session")
+
+    def destroy(self):
+        global all_active_backends
+        if self.active():
+            try:
+                self._active = False
+                all_active_backends.remove(self)
+                if self._c_handle:
+                    destroy_backend_session(self._c_handle)
+            except Exception:
+                pass
+
+class AudioDriver:
+    def create(driver_type : Type[AudioDriverType]):
+        global all_active_drivers
+        _ptr = create_audio_driver(driver_type.value)
+        b = AudioDriver(_ptr)
+        all_active_drivers.add(b)
+        return b
+    
+    def get_backend_obj(self):
+        return self._c_handle
+
+    def __init__(self, c_handle : 'POINTER(shoop_audio_driver_t)'):
+        self._c_handle = c_handle
+        self._active = False
+        self._dsp_load = 0.0
+        self._xruns = 0
+        self._client_name = ''
+
+    def get_state(self):
+        state = get_audio_driver_state(self._c_handle)
+        rval = AudioDriverState(state[0])
+        self._active = rval.active
+        self._dsp_load = rval.dsp_load
+        self._xruns = rval.xruns
+        self._client_name = rval.maybe_instance_name
+        destroy_audio_driver_state(state)
+        return rval
+
+    def open_decoupled_midi_port(self, name_hint : str, direction : int) -> 'BackendDecoupledMidiPort':
+        if self.active():
+            _dir = (Input if direction == PortDirection.Input.value else Output)
+            handle = open_decoupled_midi_port(self._c_handle, name_hint.encode('ascii'), _dir)
+            port = BackendDecoupledMidiPort(handle, direction, self)
+            return port
+        raise Exception("Trying to open a MIDI port before audio driver is started.")
 
     def dummy_enter_controlled_mode(self):
         if self.active():
@@ -901,38 +961,65 @@ class Backend:
         if self.active():
             return int(dummy_audio_n_requested_frames(self._c_handle))
         return 0
-
-    def dummy_wait_process(self):
+    
+    def get_sample_rate(self):
         if self.active():
-            dummy_audio_wait_process(self._c_handle)
-        
-    def active(self):
-        return self._active
+            return int(get_sample_rate(self._c_handle))
+        return 1
+    
+    def get_buffer_size(self):
+        if self.active():
+            return int(get_buffer_size(self._c_handle))
+        return 1
 
-    def terminate(self):
-        global all_active_backends
+    def start_dummy(self, settings):
+        start_dummy_driver(self._c_handle, settings.to_backend())
+    
+    def start_jack(self, settings):
+        start_jack_driver(self._c_handle, settings.to_backend())
+    
+    def active(self):
+        self.get_state()
+        return self._active
+    
+    def wait_process(self):
+        wait_process(self._c_handle)
+    
+    def destroy(self):
+        global all_active_drivers
         if self.active():
             try:
-                self._active = False
-                all_active_backends.remove(self)
+                all_active_drivers.remove(self)
                 if self._c_handle:
-                    terminate_backend(self._c_handle)
+                    destroy_audio_driver(self._c_handle)
             except Exception:
                 pass
-
-
-def init_backend(backend_type : Type[BackendType], client_name_hint : str, argstring : str):
-    global all_active_backends
-    _ptr = create_backend(backend_type.value, client_name_hint.encode('ascii'), argstring.encode('ascii'))
-    b = Backend(_ptr)
-    all_active_backends.add(b)
-    return b
 
 def terminate_all_backends():
     global all_active_backends
     bs = copy.copy(all_active_backends)
     for b in bs:
-        b.terminate()
+        b.destroy()
+    global all_active_drivers
+    ds = copy.copy(all_active_drivers)
+    for d in ds:
+        d.destroy()
 
-def backend_type_is_supported(backend_type : Type[BackendType]):
-    return bool(has_audio_system_support(backend_type.value))
+def audio_driver_type_supported(t : Type[AudioDriverType]):
+    return bool(driver_type_supported(t.value))
+
+def open_audio_port(backend_session, audio_driver, name_hint : str, direction : int) -> 'BackendAudioPort':
+    if backend_session.active() and audio_driver.active():
+        _dir = (Input if direction == PortDirection.Input.value else Output)
+        handle = _open_audio_port(backend_session._c_handle, audio_driver._c_handle, name_hint.encode('ascii'), _dir)
+        port = BackendAudioPort(handle, direction, backend_session)
+        return port
+    raise Exception("Failed to open audio port: backend session or audio driver not active")
+
+def open_midi_port(backend_session, audio_driver, name_hint : str, direction : int) -> 'BackendMidiPort':
+    if backend_session.active() and audio_driver.active():
+        _dir = (Input if direction == PortDirection.Input.value else Output)
+        handle = _open_midi_port(backend_session._c_handle, audio_driver._c_handle, name_hint.encode('ascii'), _dir)
+        port = BackendMidiPort(handle, direction, backend_session)
+        return port
+    raise Exception("Failed to open MIDI port: backend session or audio driver not active")

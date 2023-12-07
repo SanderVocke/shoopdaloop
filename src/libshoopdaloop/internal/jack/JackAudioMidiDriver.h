@@ -1,5 +1,5 @@
 #pragma once
-#include "AudioSystemInterface.h"
+#include "AudioMidiDriver.h"
 #include "JackAllPorts.h"
 #include "JackApi.h"
 #include "JackTestApi.h"
@@ -9,19 +9,22 @@
 #include <atomic>
 #include <optional>
 
+struct JackAudioMidiDriverSettings : public AudioMidiDriverSettingsInterface {
+    JackAudioMidiDriverSettings() {}
+
+    std::string client_name_hint;
+    std::optional<std::string> maybe_server_name_hint;
+};
+
 template<typename API>
-class GenericJackAudioSystem :
-    public AudioSystemInterface,
-    private ModuleLoggingEnabled<"Backend.JackAudioSystem">
+class GenericJackAudioMidiDriver :
+    public AudioMidiDriver,
+    private ModuleLoggingEnabled<"Backend.JackAudioMidiDriver">
 {
 private:
-    jack_client_t * m_client;
-    std::string m_client_name;
-    uint32_t m_sample_rate;
     std::map<std::string, std::shared_ptr<PortInterface>> m_ports;
-    std::function<void(uint32_t)> m_process_cb;
-    std::atomic<unsigned> m_xruns = 0;
     std::shared_ptr<GenericJackAllPorts<API>> m_all_ports_tracker;
+    std::atomic<bool> m_started = false;
 
     static int PROC_process_cb_static (uint32_t nframes,
                                   void *arg);
@@ -37,37 +40,31 @@ private:
     static void error_cb_static(const char* msg);
     static void info_cb_static(const char* msg);
 
+    void maybe_update_sample_rate() override;
+    void maybe_update_buffer_size() override;
+    void maybe_update_dsp_load() override;
+
 public:
-    GenericJackAudioSystem(
-        std::string client_name,
-        std::function<void(uint32_t)> process_cb
-    );
-
-    void start() override;
-
-    ~GenericJackAudioSystem() override;
+    GenericJackAudioMidiDriver();
+    ~GenericJackAudioMidiDriver() override;
+    
+    void start(AudioMidiDriverSettingsInterface &settings) override;
 
     std::shared_ptr<AudioPortInterface<float>> open_audio_port(
         std::string name,
-        PortDirection direction
+        shoop_port_direction_t direction
     ) override;
 
     std::shared_ptr<MidiPortInterface> open_midi_port(
         std::string name,
-        PortDirection direction
+        shoop_port_direction_t direction
     ) override;
 
-    uint32_t get_sample_rate() const override;
-    uint32_t get_buffer_size() const override;
-    void* maybe_client_handle() const override;
-    const char* client_name() const override;
     void close() override;
-    uint32_t get_xruns() const override;
-    void reset_xruns() override;
 };
 
-using JackAudioSystem = GenericJackAudioSystem<JackApi>;
-using JackTestAudioSystem = GenericJackAudioSystem<JackTestApi>;
+using JackAudioMidiDriver = GenericJackAudioMidiDriver<JackApi>;
+using JackTestAudioMidiDriver = GenericJackAudioMidiDriver<JackTestApi>;
 
-extern template class GenericJackAudioSystem<JackApi>;
-extern template class GenericJackAudioSystem<JackTestApi>;
+extern template class GenericJackAudioMidiDriver<JackApi>;
+extern template class GenericJackAudioMidiDriver<JackTestApi>;

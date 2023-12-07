@@ -46,9 +46,9 @@ public:
     // The delays are absolute, as opposed to relative to the transition before it.
     virtual uint32_t          get_n_planned_transitions(bool thread_safe = true) = 0;
     virtual uint32_t          get_planned_transition_delay(uint32_t idx, bool thread_safe = true) = 0;
-    virtual loop_mode_t     get_planned_transition_state(uint32_t idx, bool thread_safe = true) = 0;
+    virtual shoop_loop_mode_t     get_planned_transition_state(uint32_t idx, bool thread_safe = true) = 0;
     virtual void            clear_planned_transitions(bool thread_safe = true) = 0;
-    virtual void            plan_transition(loop_mode_t mode, uint32_t n_cycles_delay = 0, bool wait_for_sync = true, bool thread_safe = true) = 0;
+    virtual void            plan_transition(shoop_loop_mode_t mode, uint32_t n_cycles_delay = 0, bool wait_for_sync = true, bool thread_safe = true) = 0;
 
 
     // Getters and setters.
@@ -56,9 +56,9 @@ public:
     virtual uint32_t       get_length() const = 0;
     virtual void         set_position(uint32_t position, bool thread_safe=true) = 0;
     virtual void         set_length(uint32_t length, bool thread_safe=true) = 0;
-    virtual loop_mode_t  get_mode() const = 0;
-    virtual void         set_mode(loop_mode_t mode, bool thread_safe=true) = 0;
-    virtual void get_first_planned_transition(loop_mode_t &maybe_mode_out, uint32_t &delay_out) = 0;
+    virtual shoop_loop_mode_t  get_mode() const = 0;
+    virtual void         set_mode(shoop_loop_mode_t mode, bool thread_safe=true) = 0;
+    virtual void get_first_planned_transition(shoop_loop_mode_t &maybe_mode_out, uint32_t &delay_out) = 0;
 
     LoopInterface() = default;
     virtual ~LoopInterface() {}

@@ -113,8 +113,8 @@ void AudioChannel<SampleT>::throw_if_commands_queued() const {
 template <typename SampleT>
 AudioChannel<SampleT>::AudioChannel(
     std::shared_ptr<BufferPool> buffer_pool, uint32_t initial_max_buffers,
-    channel_mode_t mode, std::shared_ptr<profiling::Profiler> maybe_profiler)
-    : WithCommandQueue<20, 1000, 1000>(), ma_buffer_pool(buffer_pool),
+    shoop_channel_mode_t mode, std::shared_ptr<profiling::Profiler> maybe_profiler)
+    : WithCommandQueue(50), ma_buffer_pool(buffer_pool),
       ma_buffers_data_length(0), mp_prerecord_buffers_data_length(0),
       ma_buffer_size(buffer_pool->object_size()),
       mp_recording_source_buffer(nullptr), mp_playback_target_buffer(nullptr),
@@ -182,7 +182,7 @@ template <typename SampleT> void AudioChannel<SampleT>::data_changed() {
 
 template <typename SampleT>
 void AudioChannel<SampleT>::PROC_process(
-    loop_mode_t mode, std::optional<loop_mode_t> maybe_next_mode,
+    shoop_loop_mode_t mode, std::optional<shoop_loop_mode_t> maybe_next_mode,
     std::optional<uint32_t> maybe_next_mode_delay_cycles,
     std::optional<uint32_t> maybe_next_mode_eta, uint32_t n_samples,
     uint32_t pos_before, uint32_t pos_after, uint32_t length_before,
@@ -205,13 +205,13 @@ void AudioChannel<SampleT>::PROC_process(
                 // make our pre-recorded buffers into our main buffers.
                 // Otherwise, just discard them.
                 if (process_flags & ChannelRecord) {
-                    log<debug>(
+                    log<log_level_debug>(
                         "Pre-record end -> carry over to record");
                     mp_buffers = mp_prerecord_buffers;
                     ma_buffers_data_length = ma_start_offset =
                         mp_prerecord_buffers_data_length.load();
                 } else {
-                    log<debug>("Pre-record end -> discard");
+                    log<log_level_debug>("Pre-record end -> discard");
                 }
                 mp_prerecord_buffers.reset();
                 mp_prerecord_buffers_data_length = 0;
@@ -239,7 +239,7 @@ void AudioChannel<SampleT>::PROC_process(
             }
             if (process_flags & ChannelPreRecord) {
                 if (!(mp_prev_process_flags & ChannelPreRecord)) {
-                    log<debug>("Pre-record start");
+                    log<log_level_debug>("Pre-record start");
                 }
                 PROC_process_record(n_samples, mp_prerecord_buffers_data_length,
                                     mp_prerecord_buffers,
@@ -547,7 +547,7 @@ void AudioChannel<SampleT>::PROC_process_playback(int data_position,
 
 template <typename SampleT>
 std::optional<uint32_t> AudioChannel<SampleT>::PROC_get_next_poi(
-    loop_mode_t mode, std::optional<loop_mode_t> maybe_next_mode,
+    shoop_loop_mode_t mode, std::optional<shoop_loop_mode_t> maybe_next_mode,
     std::optional<uint32_t> maybe_next_mode_delay_cycles,
     std::optional<uint32_t> maybe_next_mode_eta, uint32_t length,
     uint32_t position) const {
@@ -572,7 +572,7 @@ std::optional<uint32_t> AudioChannel<SampleT>::PROC_get_next_poi(
 }
 
 template <typename SampleT>
-void AudioChannel<SampleT>::PROC_handle_poi(loop_mode_t mode, uint32_t length,
+void AudioChannel<SampleT>::PROC_handle_poi(shoop_loop_mode_t mode, uint32_t length,
                                             uint32_t position){};
 
 template <typename SampleT>
@@ -616,12 +616,12 @@ template <typename SampleT> void AudioChannel<SampleT>::reset_output_peak() {
 }
 
 template <typename SampleT>
-void AudioChannel<SampleT>::set_mode(channel_mode_t mode) {
+void AudioChannel<SampleT>::set_mode(shoop_channel_mode_t mode) {
     ma_mode = mode;
 }
 
 template <typename SampleT>
-channel_mode_t AudioChannel<SampleT>::get_mode() const {
+shoop_channel_mode_t AudioChannel<SampleT>::get_mode() const {
     return ma_mode;
 }
 

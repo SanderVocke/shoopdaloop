@@ -8,7 +8,7 @@
 #include "MidiPortInterface.h"
 #include <stdexcept>
 #include <algorithm>
-#include <Backend.h>
+#include <BackendSession.h>
 
 using namespace shoop_types;
 using namespace shoop_constants;
@@ -22,7 +22,7 @@ std::shared_ptr<DummyWriteMidiBuf> g_dummy_midi_output_buffer = std::make_shared
 
 ConnectedChannel::ConnectedChannel(std::shared_ptr<ChannelInterface> chan,
                 std::shared_ptr<ConnectedLoop> loop,
-                std::shared_ptr<Backend> backend) :
+                std::shared_ptr<BackendSession> backend) :
         channel(chan),
         loop(loop),
         backend(backend),
@@ -55,7 +55,7 @@ void ConnectedChannel::connect_output_port(std::shared_ptr<ConnectedPort> port, 
         mp_output_port_mapping = port;
         ma_process_when = port->ma_process_when; // Process in same phase as the connected port
     };
-    if (thread_safe) { get_backend().cmd_queue.queue(fn); }
+    if (thread_safe) { get_backend().queue_process_thread_command(fn); }
     else { fn(); }
 }
 
@@ -64,7 +64,7 @@ void ConnectedChannel::connect_input_port(std::shared_ptr<ConnectedPort> port, b
         mp_input_port_mapping = port;
         ma_process_when = port->ma_process_when; // Process in same phase as the connected port
     };
-    if (thread_safe) { get_backend().cmd_queue.queue(fn); }
+    if (thread_safe) { get_backend().queue_process_thread_command(fn); }
     else { fn(); }
 }
 
@@ -78,7 +78,7 @@ void ConnectedChannel::disconnect_output_port(std::shared_ptr<ConnectedPort> por
         }
         mp_output_port_mapping.reset();
     };
-    if (thread_safe) { get_backend().cmd_queue.queue(fn); }
+    if (thread_safe) { get_backend().queue_process_thread_command(fn); }
     else { fn(); }
 }
 
@@ -86,7 +86,7 @@ void ConnectedChannel::disconnect_output_ports(bool thread_safe) {
     auto fn = [this]() {
         mp_output_port_mapping.reset();
     };
-    if (thread_safe) { get_backend().cmd_queue.queue(fn); }
+    if (thread_safe) { get_backend().queue_process_thread_command(fn); }
     else { fn(); }
 }
 
@@ -100,7 +100,7 @@ void ConnectedChannel::disconnect_input_port(std::shared_ptr<ConnectedPort> port
         }
         mp_input_port_mapping.reset();
     };
-    if (thread_safe) { get_backend().cmd_queue.queue(fn); }
+    if (thread_safe) { get_backend().queue_process_thread_command(fn); }
     else { fn(); }
 }
 
@@ -108,7 +108,7 @@ void ConnectedChannel::disconnect_input_ports(bool thread_safe) {
     auto fn = [this]() {
         mp_input_port_mapping.reset();
     };
-    if (thread_safe) { get_backend().cmd_queue.queue(fn); }
+    if (thread_safe) { get_backend().queue_process_thread_command(fn); }
     else { fn(); }
 }
 
@@ -173,7 +173,7 @@ LoopMidiChannel *ConnectedChannel::maybe_midi() {
     return dynamic_cast<LoopMidiChannel*>(channel.get());
 }
 
-Backend &ConnectedChannel::get_backend() {
+BackendSession &ConnectedChannel::get_backend() {
     auto b = backend.lock();
     if(!b) {
         throw std::runtime_error("Back-end no longer exists");

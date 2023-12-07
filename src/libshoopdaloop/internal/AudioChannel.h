@@ -9,7 +9,7 @@
 
 template<typename SampleT>
 class AudioChannel : public ChannelInterface,
-                            private WithCommandQueue<20, 1000, 1000>,
+                            private WithCommandQueue,
                             private ModuleLoggingEnabled<"Backend.AudioChannel"> {
 public:
     typedef AudioBuffer<SampleT> BufferObj;
@@ -27,7 +27,7 @@ private:
     std::atomic<uint32_t> ma_pre_play_samples;
     std::atomic<float> ma_output_peak;
     std::atomic<float> ma_volume;
-    std::atomic<channel_mode_t> ma_mode;
+    std::atomic<shoop_channel_mode_t> ma_mode;
     std::atomic<unsigned> ma_data_seq_nr;
     std::atomic<int> ma_last_played_back_sample; // -1 is none
 
@@ -103,7 +103,7 @@ public:
     AudioChannel(
             std::shared_ptr<BufferPool> buffer_pool,
             uint32_t initial_max_buffers,
-            channel_mode_t mode,
+            shoop_channel_mode_t mode,
             std::shared_ptr<profiling::Profiler> maybe_profiler=nullptr);
 
     virtual void set_pre_play_samples(uint32_t samples) override;
@@ -118,8 +118,8 @@ public:
     void data_changed();
 
     void PROC_process(
-        loop_mode_t mode,
-        std::optional<loop_mode_t> maybe_next_mode,
+        shoop_loop_mode_t mode,
+        std::optional<shoop_loop_mode_t> maybe_next_mode,
         std::optional<uint32_t> maybe_next_mode_delay_cycles,
         std::optional<uint32_t> maybe_next_mode_eta,
         uint32_t n_samples,
@@ -162,14 +162,14 @@ public:
 
     void PROC_process_playback(int data_position, uint32_t length, uint32_t n_samples, bool muted, SampleT *playback_buffer, uint32_t playback_buffer_size);
 
-    std::optional<uint32_t> PROC_get_next_poi(loop_mode_t mode,
-                                       std::optional<loop_mode_t> maybe_next_mode,
+    std::optional<uint32_t> PROC_get_next_poi(shoop_loop_mode_t mode,
+                                       std::optional<shoop_loop_mode_t> maybe_next_mode,
                                        std::optional<uint32_t> maybe_next_mode_delay_cycles,
                                        std::optional<uint32_t> maybe_next_mode_eta,
                                        uint32_t length,
                                        uint32_t position) const override;
 
-    void PROC_handle_poi(loop_mode_t mode,
+    void PROC_handle_poi(shoop_loop_mode_t mode,
                             uint32_t length,
                             uint32_t position) override;
 
@@ -182,9 +182,9 @@ public:
 
     void reset_output_peak();
 
-    void set_mode(channel_mode_t mode) override;
+    void set_mode(shoop_channel_mode_t mode) override;
 
-    channel_mode_t get_mode() const override;
+    shoop_channel_mode_t get_mode() const override;
 
     void set_volume(float volume);
 

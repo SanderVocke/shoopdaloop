@@ -11,10 +11,11 @@ from PySide6.QtCore import Qt, Signal, Property, Slot, QTimer
 from .ShoopPyObject import *
 
 from ..backend_wrappers import *
+from ..backend_wrappers import open_audio_port as backend_open_audio_port, open_midi_port as backend_open_midi_port
 from ..findChildItems import findChildItems
 from ..logging import Logger
 
-# Wraps the back-end.
+# Wraps the back-end session + driver in a single object.
 class Backend(ShoopQQuickItem):
     def __init__(self, parent=None):
         super(Backend, self).__init__(parent)
@@ -22,13 +23,13 @@ class Backend(ShoopQQuickItem):
         self._timer = None
         self._initialized = False
         self._client_name_hint = None
-        self._backend_type = None
-        self._backend_argstring = None
-        self._backend_obj = None
+        self._driver_type = None
+        self._backend_session_obj = None
+        self._backend_driver_obj = None
         self._backend_child_objects = set()
         self._xruns = 0
         self._dsp_load = 0.0
-        self._actual_backend_type = None
+        self._actual_driver_type = None
         self.destroyed.connect(self.close)
         self.logger = Logger('Frontend.Backend')
     
@@ -57,11 +58,11 @@ class Backend(ShoopQQuickItem):
     actualBackendTypeChanged = Signal(int)
     @Property(int, notify=actualBackendTypeChanged)
     def actual_backend_type(self):
-        return self._actual_backend_type if self._actual_backend_type != None else -1
+        return self._actual_driver_type if self._actual_driver_type != None else -1
     @actual_backend_type.setter
     def actual_backend_type(self, n):
-        if self._actual_backend_type != n:
-            self._actual_backend_type = n
+        if self._actual_driver_type != n:
+            self._actual_driver_type = n
             self.actualBackendTypeChanged.emit(n)
     
     clientNameHintChanged = Signal(str)
@@ -75,26 +76,16 @@ class Backend(ShoopQQuickItem):
         self._client_name_hint = n
         self.maybe_init()
 
+    # TODO: rename
     backendTypeChanged = Signal(int)
     @Property(int, notify=backendTypeChanged)
     def backend_type(self):
-        return (self._backend_type.value if self._backend_type else BackendType.Dummy.value)
+        return (self._driver_type.value if self._driver_type else AudioDriverType.Dummy.value)
     @backend_type.setter
     def backend_type(self, n):
         if self._initialized:
-            self.logger.throw_error("Back-end type can only be set once.")
-        self._backend_type = BackendType(n)
-        self.maybe_init()
-    
-    backendArgstringChanged = Signal(str)
-    @Property(str, notify=backendArgstringChanged)
-    def backend_argstring(self):
-        return self._backend_argstring
-    @backend_argstring.setter
-    def backend_argstring(self, n):
-        if self._initialized:
-            self.logger.throw_error("Back-end argstring can only be set once.")
-        self._backend_argstring = n
+            self.logger.throw_error("Back-end driver type can only be set once.")
+        self._driver_type = AudioDriverType(n)
         self.maybe_init()
     
     xrunsChanged = Signal(int)
@@ -133,10 +124,10 @@ class Backend(ShoopQQuickItem):
     def doUpdate(self):
         if not self.initialized:
             return
-        state = self._backend_obj.get_state()
-        self.dsp_load = state.dsp_load_percent
-        self.xruns += state.xruns_since_last
-        self.actual_backend_type = state.actual_type.value
+        driver_state = self._backend_driver_obj.get_state()
+        self.dsp_load = driver_state.dsp_load
+        self.xruns += driver_state.xruns
+        self.actual_backend_type = self._driver_type.value
         
         toRemove = []
         for obj in self._backend_child_objects:
@@ -152,50 +143,55 @@ class Backend(ShoopQQuickItem):
     
     @Slot(result=int)
     def get_sample_rate(self):
-        return self._backend_obj.get_sample_rate()
+        return self._backend_driver_obj.get_sample_rate()
     
     @Slot(result=int)
     def get_buffer_size(self):
-        return self._backend_obj.get_buffer_size()
+        return self._backend_driver_obj.get_buffer_size()
 
     @Slot()
     def close(self):
         if self._initialized:
-            self._backend_obj.terminate()
+            self._backend_session_obj.destroy()
+            self._backend_driver_obj.destroy()
         self._initialized = False
     
     # Get the wrapped back-end object.
     @Slot(result='QVariant')
-    def get_backend_obj(self):
-        return self._backend_obj
+    def get_backend_driver_obj(self):
+        return self._backend_driver_obj
+    
+    @Slot(result='QVariant')
+    def get_backend_session_obj(self):
+        return self._backend_session_obj
     
     @Slot()
     def dummy_enter_controlled_mode(self):
-        self._backend_obj.dummy_enter_controlled_mode()
+        self._backend_driver_obj.dummy_enter_controlled_mode()
     
     @Slot()
     def dummy_enter_automatic_mode(self):
-        self._backend_obj.dummy_enter_automatic_mode()
+        self._backend_driver_obj.dummy_enter_automatic_mode()
     
     @Slot(result=bool)
     def dummy_is_controlled(self):
-        self._backend_obj.dummy_is_controlled()
+        self._backend_driver_obj.dummy_is_controlled()
     
     @Slot(int)
     def dummy_request_controlled_frames(self, n):
-        self._backend_obj.dummy_request_controlled_frames(n)
+        self._backend_driver_obj.dummy_request_controlled_frames(n)
         
     @Slot(result=int)
     def dummy_n_requested_frames(self):
-        return self._backend_obj.dummy_n_requested_frames()
+        return self._backend_driver_obj.dummy_n_requested_frames()
     
     @Slot()
-    def dummy_wait_process(self):
-        self._backend_obj.dummy_wait_process()
+    def wait_process(self):
+        self._backend_driver_obj.wait_process()
     
     @Slot()
     def maybe_init(self):
-        if not self._initialized and self._client_name_hint != None and self._backend_type != None and self._backend_argstring != None:
+        if not self._initialized and self._client_name_hint != None and self._driver_type != None:
             self.init()
     
     @Slot(result='QVariant')
@@ -209,8 +205,8 @@ class Backend(ShoopQQuickItem):
                 'n_samples': item.n_samples,
             }
 
-        if (self._backend_obj):
-            report = self._backend_obj.get_profiling_report()
+        if (self._backend_session_obj):
+            report = self._backend_session_obj.get_profiling_report()
             dct = {}
             for item in report.items:
                 dct[item.key] = report_item_to_dict(item)
@@ -219,19 +215,55 @@ class Backend(ShoopQQuickItem):
 
     @Slot(int, result=bool)
     def backend_type_is_supported(self, type):
-        return backend_type_is_supported(BackendType(type))
+        return audio_driver_type_supported(AudioDriverType(type))
+    
+    @Slot(str, int, result='QVariant')
+    def open_audio_port(self, name_hint, direction):
+        return backend_open_audio_port(self._backend_session_obj, self._backend_driver_obj, name_hint, direction)
+    
+    @Slot(str, int, result='QVariant')
+    def open_midi_port(self, name_hint, direction):
+        return backend_open_midi_port(self._backend_session_obj, self._backend_driver_obj, name_hint, direction)
     
     ################
     ## INTERNAL METHODS
     ################
 
     def init(self):
-        self.logger.debug(lambda: "Initializing with type {}, client name hint {}, argstring {}".format(self._backend_type, self._client_name_hint, self._backend_argstring))
+        self.logger.debug(lambda: "Initializing with type {}".format(self._driver_type))
         if self._initialized:
             self.logger.throw_error("May not initialize more than one back-end at a time.")
-        self._backend_obj = init_backend(self._backend_type, self._client_name_hint, self._backend_argstring)
-        if not self._backend_obj:
-            self.logger.throw_error("Failed to initialize back-end.")
+        self._backend_session_obj = BackendSession.create()
+        self._backend_driver_obj = AudioDriver.create(self._driver_type)
+        
+        if not self._backend_session_obj:
+            self.logger.throw_error("Failed to initialize back-end session.")
+        if not self._backend_driver_obj:
+            self.logger.throw_error("Failed to initialize back-end driver.")
+
+        if self._driver_type == AudioDriverType.Dummy:
+            settings = DummyAudioDriverSettings(
+                client_name=self._client_name_hint,
+                sample_rate=48000,
+                buffer_size=256
+            )
+            self._backend_driver_obj.start_dummy(settings)
+        elif self._driver_type in [AudioDriverType.Jack, AudioDriverType.JackTest]:
+            settings = JackAudioDriverSettings(
+                client_name_hint = self._client_name_hint,
+                maybe_server_name = ""
+            )
+            self._backend_driver_obj.start_jack(settings)
+        else:
+            raise Exception("Unsupported back-end driver type.")
+        
+        self._backend_session_obj.set_audio_driver(self._backend_driver_obj)
+        self._backend_driver_obj.wait_process()
+        self._backend_driver_obj.get_state() # TODO: this has implicit side-effect
+
+        if not self._backend_driver_obj.active():
+            raise Exception("Failed to initialize back-end driver.")
+        
         self._initialized = True
         self.initializedChanged.emit(True)
         self.init_timer()

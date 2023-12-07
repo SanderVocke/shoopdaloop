@@ -30,7 +30,7 @@ inline void check_msgs_equal(
     MessageA const& a,
     MessageB const& b,
     int time_offset=0,
-    std::string info=""
+    std::string log_level_info=""
     )
 {
     CHECK(a.time == b.time+time_offset);
@@ -44,11 +44,11 @@ template<typename MessageA, typename MessageB>
 inline void check_msg_vectors_equal(
     std::vector<MessageA> const& a,
     std::vector<MessageB> const& b,
-    std::string info = "")
+    std::string log_level_info = "")
 {
     CHECK(a.size() == b.size());
     for (uint32_t i=0; i<a.size() && i < b.size(); i++) {
-        check_msgs_equal(a[i], b[i], 0, "(msg " + std::to_string(i) + ") " + info);
+        check_msgs_equal(a[i], b[i], 0, "(msg " + std::to_string(i) + ") " + log_level_info);
     }
 }
 

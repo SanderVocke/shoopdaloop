@@ -7,7 +7,7 @@
 using namespace shoop_types;
 using namespace shoop_constants;
 
-    ConnectedFXChain::ConnectedFXChain(std::shared_ptr<FXChain> chain, std::shared_ptr<Backend> backend) :
+    ConnectedFXChain::ConnectedFXChain(std::shared_ptr<FXChain> chain, std::shared_ptr<BackendSession> backend) :
         chain(chain), backend(backend) {
         for (auto const& port : chain->input_audio_ports()) {
             mc_audio_input_ports.push_back(std::make_shared<ConnectedPort>(port, backend, shoop_types::ProcessWhen::BeforeFXChains));
@@ -24,7 +24,7 @@ using namespace shoop_constants;
     std::vector<std::shared_ptr<ConnectedPort>> const& ConnectedFXChain::audio_output_ports() const { return mc_audio_output_ports; }
     std::vector<std::shared_ptr<ConnectedPort>> const& ConnectedFXChain::midi_input_ports() const { return mc_midi_input_ports; }
 
-Backend &ConnectedFXChain::get_backend() {
+BackendSession &ConnectedFXChain::get_backend() {
     auto b = backend.lock();
     if(!b) {
         throw std::runtime_error("Back-end no longer exists");

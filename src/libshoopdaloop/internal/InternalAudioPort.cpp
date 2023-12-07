@@ -7,7 +7,7 @@
 
 template <typename SampleT>
 InternalAudioPort<SampleT>::InternalAudioPort(std::string name,
-                                              PortDirection direction,
+                                              shoop_port_direction_t direction,
                                               uint32_t n_frames)
     : AudioPortInterface<SampleT>(name, direction), m_name(name),
       m_direction(direction), m_buffer(n_frames) {}
@@ -30,7 +30,7 @@ const char *InternalAudioPort<SampleT>::name() const {
 }
 
 template <typename SampleT>
-PortDirection InternalAudioPort<SampleT>::direction() const {
+shoop_port_direction_t InternalAudioPort<SampleT>::direction() const {
     return m_direction;
 }
 
@@ -60,6 +60,18 @@ template <typename SampleT> void InternalAudioPort<SampleT>::close() {}
 
 template <typename SampleT> void InternalAudioPort<SampleT>::zero() {
     memset((void *)m_buffer.data(), 0, sizeof(float) * m_buffer.size());
+}
+
+template <typename SampleT>
+void* InternalAudioPort<SampleT>::maybe_driver_handle() const {
+    return (void*) this;
+}
+
+template <typename SampleT>
+void InternalAudioPort<SampleT>::PROC_change_buffer_size(uint32_t buffer_size) {
+    if (m_buffer.size() < buffer_size) {
+        reallocate_buffer(buffer_size);
+    }
 }
 
 template class InternalAudioPort<float>;

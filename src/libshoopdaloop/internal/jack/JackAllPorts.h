@@ -7,7 +7,7 @@
 
 struct JackAllPortsEntry {
     std::string name;
-    PortDirection direction;
+    shoop_port_direction_t direction;
     PortType type;
     std::vector<std::string> connections;
 };

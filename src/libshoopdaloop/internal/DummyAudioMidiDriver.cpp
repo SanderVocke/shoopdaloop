@@ -1,27 +1,28 @@
+#include "AudioMidiDriver.h"
 #include "PortInterface.h"
 #include "WithCommandQueue.h"
 #include "types.h"
 #include <chrono>
 #include <cstdint>
 #include <thread>
-#include "DummyAudioSystem.h"
+#include "DummyAudioMidiDriver.h"
 #include <map>
 #include <algorithm>
 
-const std::map<DummyAudioSystemMode, const char*> mode_names = {
-    {DummyAudioSystemMode::Automatic, "Automatic"},
-    {DummyAudioSystemMode::Controlled, "Controlled"}
+const std::map<DummyAudioMidiDriverMode, const char*> mode_names = {
+    {DummyAudioMidiDriverMode::Automatic, "Automatic"},
+    {DummyAudioMidiDriverMode::Controlled, "Controlled"}
 };
 
 DummyPort::DummyPort(
     std::string name,
-    PortDirection direction,
+    shoop_port_direction_t direction,
     PortType type
 ) : m_name(name), m_direction(direction), m_type(type) {}
 
 const char* DummyPort::name() const { return m_name.c_str(); }
 
-PortDirection DummyPort::direction() const { return m_direction; }
+shoop_port_direction_t DummyPort::direction() const { return m_direction; }
 
 PortType DummyPort::type() const { return m_type; }
 
@@ -33,7 +34,11 @@ void DummyPort::connect_external(std::string name) {}
 
 void DummyPort::disconnect_external(std::string name) {}
 
-DummyAudioPort::DummyAudioPort(std::string name, PortDirection direction)
+void *DummyPort::maybe_driver_handle() const {
+    return (void*)this;
+}
+
+DummyAudioPort::DummyAudioPort(std::string name, shoop_port_direction_t direction)
     : AudioPortInterface<audio_sample_t>(name, direction), m_name(name),
       DummyPort(name, direction, PortType::Audio),
       m_direction(direction),
@@ -47,7 +52,7 @@ float *DummyAudioPort::PROC_get_buffer(uint32_t n_frames, bool do_zero) {
         auto &front = m_queued_data.front();
         uint32_t to_copy = std::min((size_t)(n_frames - filled), front.size());
         uint32_t total_copyable = m_queued_data.front().size();
-        log<debug>("Dequeueing {} of {} samples", to_copy, total_copyable);
+        log<log_level_debug>("Dequeueing {} of {} samples", to_copy, total_copyable);
         memcpy((void *)(rval + filled), (void *)front.data(),
                sizeof(audio_sample_t) * to_copy);
         filled += to_copy;
@@ -55,7 +60,7 @@ float *DummyAudioPort::PROC_get_buffer(uint32_t n_frames, bool do_zero) {
         if (front.size() == 0) {
             m_queued_data.pop();
             bool another = !m_queued_data.empty();
-            log<debug>("Pop queue item. Another: {}", another);
+            log<log_level_debug>("Pop queue item. Another: {}", another);
         }
     }
     memset((void *)(rval+filled), 0, sizeof(audio_sample_t) * (n_frames - filled));
@@ -68,7 +73,7 @@ float *DummyAudioPort::PROC_get_buffer(uint32_t n_frames, bool do_zero) {
 }
 
 void DummyAudioPort::queue_data(uint32_t n_frames, audio_sample_t const *data) {
-    log<debug>("Queueing {} samples", n_frames);
+    log<log_level_debug>("Queueing {} samples", n_frames);
     m_queued_data.push(
         std::vector<audio_sample_t>(data, data + n_frames)
     );
@@ -83,7 +88,7 @@ DummyAudioPort::~DummyAudioPort() { DummyPort::close(); }
 void DummyAudioPort::PROC_post_process(float* buf, uint32_t n_frames) {
     uint32_t to_store = std::min(n_frames, m_n_requested_samples.load());
     if (to_store > 0) {
-        log<debug>("Buffering {} samples ({} total)", to_store, m_retained_samples.size() + to_store);
+        log<log_level_debug>("Buffering {} samples ({} total)", to_store, m_retained_samples.size() + to_store);
         m_retained_samples.insert(m_retained_samples.end(), buf, buf+to_store);
         m_n_requested_samples -= to_store;
     }
@@ -108,12 +113,12 @@ DummyMidiPort::PROC_get_event_reference(uint32_t idx) {
         if (!m_queued_msgs.empty()) {
             auto &m =  m_queued_msgs.at(idx);
             uint32_t time = m.get_time();
-            log<debug>("Read queued midi message @ {}", time);
+            log<log_level_debug>("Read queued midi message @ {}", time);
             return m;
         } else {
             auto &m =  m_buffer_data.at(idx);
             uint32_t time = m.get_time();
-            log<debug>("Read buffer midi message @ {}", time);
+            log<log_level_debug>("Read buffer midi message @ {}", time);
             return m;
         }
     } catch (std::out_of_range &e) {
@@ -126,10 +131,10 @@ void DummyMidiPort::PROC_write_event_value(uint32_t size, uint32_t time,
 {
     if (time < n_requested_frames) {
         uint32_t new_time = time + (n_original_requested_frames - n_requested_frames);
-        log<debug>("Write midi message value to external queue @ {} -> {}", time, new_time);
+        log<log_level_debug>("Write midi message value to external queue @ {} -> {}", time, new_time);
         m_written_requested_msgs.push_back(StoredMessage(new_time, size, std::vector<uint8_t>(data, data + size)));
     }
-    log<debug>("Write midi message value to internal buffer @ {}", time);
+    log<log_level_debug>("Write midi message value to internal buffer @ {}", time);
     m_buffer_data.push_back(StoredMessage(time, size, std::vector<uint8_t>(data, data + size)));
 }
 
@@ -137,7 +142,7 @@ void DummyMidiPort::PROC_write_event_reference(
     MidiSortableMessageInterface const &m)
 {
     uint32_t t = m.get_time();
-    log<debug>("Write midi message reference @ {}", t);
+    log<log_level_debug>("Write midi message reference @ {}", t);
     PROC_write_event_value(m.get_size(), m.get_time(), m.get_data());    
 }
 
@@ -145,7 +150,7 @@ bool DummyMidiPort::write_by_reference_supported() const { return true; }
 
 bool DummyMidiPort::write_by_value_supported() const { return true; }
 
-DummyMidiPort::DummyMidiPort(std::string name, PortDirection direction)
+DummyMidiPort::DummyMidiPort(std::string name, shoop_port_direction_t direction)
     : MidiPortInterface(name, direction), DummyPort(name, direction, PortType::Midi){
 }
 
@@ -157,7 +162,7 @@ void DummyMidiPort::clear_queues() {
 }
 
 void DummyMidiPort::queue_msg(uint32_t size, uint32_t time, uint8_t const *data) {
-    log<debug>("Queueing midi message @ {}", time);
+    log<log_level_debug>("Queueing midi message @ {}", time);
     m_queued_msgs.push_back(StoredMessage(time, size, std::vector<uint8_t>(data, data + size)));
     std::stable_sort(m_queued_msgs.begin(), m_queued_msgs.end(), [](StoredMessage const& a, StoredMessage const& b) {
         return a.time < b.time;
@@ -234,9 +239,9 @@ std::vector<DummyMidiPort::StoredMessage> DummyMidiPort::get_written_requested_m
 DummyMidiPort::~DummyMidiPort() { DummyPort::close(); }
 
 template <typename Time, typename Size>
-void DummyAudioSystem<Time, Size>::enter_mode(DummyAudioSystemMode mode) {
+void DummyAudioMidiDriver<Time, Size>::enter_mode(DummyAudioMidiDriverMode mode) {
     if (m_mode.load() != mode) {
-        log<debug>("DummyAudioSystem: mode -> {}", mode_names.at(mode));
+        log<log_level_debug>("DummyAudioMidiDriver: mode -> {}", mode_names.at(mode));
         m_mode = mode;
         m_controlled_mode_samples_to_process = 0;
 
@@ -246,61 +251,56 @@ void DummyAudioSystem<Time, Size>::enter_mode(DummyAudioSystemMode mode) {
 }
 
 template <typename Time, typename Size>
-void DummyAudioSystem<Time, Size>::wait_process() {
-    // To ensure a complete process cycle was done, execute two commands with
-    // a small delay in-between. Each command will end up in a separate process
-    // iteration.
-    log<trace>("DummyAudioSystem: wait process");
-    exec_process_thread_command([]() { ; });
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    exec_process_thread_command([]() { ; });
-    log<trace>("DummyAudioSystem: wait process done");
-}
-
-template <typename Time, typename Size>
-DummyAudioSystemMode DummyAudioSystem<Time, Size>::get_mode() const {
+DummyAudioMidiDriverMode DummyAudioMidiDriver<Time, Size>::get_mode() const {
     return m_mode;
 }
 
 template <typename Time, typename Size>
-void DummyAudioSystem<Time, Size>::controlled_mode_request_samples(uint32_t samples) {
+void DummyAudioMidiDriver<Time, Size>::controlled_mode_request_samples(uint32_t samples) {
     m_controlled_mode_samples_to_process += samples;
     uint32_t requested = m_controlled_mode_samples_to_process.load();
-    log<debug>("DummyAudioSystem: request {} samples ({} total)", samples, requested);
+    log<log_level_debug>("DummyAudioMidiDriver: request {} samples ({} total)", samples, requested);
 }
 
 template <typename Time, typename Size>
-uint32_t DummyAudioSystem<Time, Size>::get_controlled_mode_samples_to_process() const {
+uint32_t DummyAudioMidiDriver<Time, Size>::get_controlled_mode_samples_to_process() const {
     return m_controlled_mode_samples_to_process;
 }
 
 
 template <typename Time, typename Size>
-DummyAudioSystem<Time, Size>::DummyAudioSystem(
-    std::string client_name, std::function<void(uint32_t)> process_cb,
-    DummyAudioSystemMode mode,
-    uint32_t sample_rate,
-    uint32_t buffer_size)
-    : AudioSystemInterface(client_name, process_cb),
-      WithCommandQueue<20, 1000, 1000>(),
-      m_process_cb(process_cb), mc_buffer_size(buffer_size), mc_sample_rate(sample_rate),
-      m_finish(false), m_client_name(client_name),
-      m_audio_port_closed_cb(nullptr), m_audio_port_opened_cb(nullptr),
-      m_midi_port_closed_cb(nullptr), m_midi_port_opened_cb(nullptr),
+DummyAudioMidiDriver<Time, Size>::DummyAudioMidiDriver()
+    : AudioMidiDriver(),
+      m_finish(false),
+      m_paused(false),
+      m_mode(DummyAudioMidiDriverMode::Automatic),
       m_controlled_mode_samples_to_process(0),
-      m_mode(mode),
-      m_paused(false) {
+      m_audio_port_closed_cb(nullptr), m_audio_port_opened_cb(nullptr),
+      m_midi_port_closed_cb(nullptr), m_midi_port_opened_cb(nullptr)
+{
     m_audio_ports.clear();
     m_midi_ports.clear();
 
-    log<debug>("DummyAudioSystem: constructed");
+    log<log_level_debug>("DummyAudioMidiDriver: constructed");
 }
 
 template <typename Time, typename Size>
-void DummyAudioSystem<Time, Size>::start() {
+void DummyAudioMidiDriver<Time, Size>::start(
+    AudioMidiDriverSettingsInterface &settings
+) {
+    auto p_settings = (DummyAudioMidiDriverSettings*)&settings;
+    auto &_settings = *p_settings;
+
+    AudioMidiDriver::set_sample_rate(_settings.sample_rate);
+    AudioMidiDriver::set_buffer_size(_settings.buffer_size);
+    m_client_name_str = _settings.client_name;
+    AudioMidiDriver::set_client_name(m_client_name_str.c_str());
+    AudioMidiDriver::set_dsp_load(0.0f);
+    AudioMidiDriver::set_maybe_client_handle(nullptr);
+
     m_proc_thread = std::thread([this] {
-        log<debug>("DummyAudioSystem: starting process thread - {}", mode_names.at(m_mode));
-        auto bufs_per_second = mc_sample_rate / mc_buffer_size;
+        log<log_level_debug>("DummyAudioMidiDriver: starting process thread - {}", mode_names.at(m_mode));
+        auto bufs_per_second = AudioMidiDriver::get_sample_rate() / AudioMidiDriver::get_buffer_size();
         auto interval = 1.0f / ((float)bufs_per_second);
         auto micros = uint32_t(interval * 1000000.0f);
         while (!this->m_finish) {
@@ -309,44 +309,46 @@ void DummyAudioSystem<Time, Size>::start() {
             if (!m_paused) {
                 auto mode = m_mode.load();
                 auto samples_to_process = m_controlled_mode_samples_to_process.load();
-                uint32_t to_process = mode == DummyAudioSystemMode::Controlled ?
-                    std::min(samples_to_process, mc_buffer_size) :
-                    mc_buffer_size;
-                log<trace>("DummyAudioSystem: process {}", to_process);
-                m_process_cb(to_process);
-                if (mode == DummyAudioSystemMode::Controlled) {
+                uint32_t to_process = mode == DummyAudioMidiDriverMode::Controlled ?
+                    std::min(samples_to_process, AudioMidiDriver::get_buffer_size()) :
+                    AudioMidiDriver::get_buffer_size();
+                log<log_level_trace>("DummyAudioMidiDriver: process {}", to_process);
+                AudioMidiDriver::PROC_process(to_process);
+                if (mode == DummyAudioMidiDriverMode::Controlled) {
                     m_controlled_mode_samples_to_process -= to_process;
                 }
             }
         }
-        log<debug>(
-            "DummyAudioSystem: ending process thread");
+        log<log_level_debug>(
+            "DummyAudioMidiDriver: ending process thread");
     });
+
+    AudioMidiDriver::set_active(true);
 }
 
 template <typename Time, typename Size>
-void DummyAudioSystem<Time, Size>::pause() {
-    log<debug>("DummyAudioSystem: pause");
+void DummyAudioMidiDriver<Time, Size>::pause() {
+    log<log_level_debug>("DummyAudioMidiDriver: pause");
     m_paused = true;
     wait_process();
 }
 
 template <typename Time, typename Size>
-void DummyAudioSystem<Time, Size>::resume() {
-    log<debug>("DummyAudioSystem: resume");
+void DummyAudioMidiDriver<Time, Size>::resume() {
+    log<log_level_debug>("DummyAudioMidiDriver: resume");
     m_paused = false;
 }
 
 template <typename Time, typename Size>
-DummyAudioSystem<Time, Size>::~DummyAudioSystem() {
+DummyAudioMidiDriver<Time, Size>::~DummyAudioMidiDriver() {
     close();
 }
 
 template <typename Time, typename Size>
 std::shared_ptr<AudioPortInterface<audio_sample_t>>
-DummyAudioSystem<Time, Size>::open_audio_port(std::string name,
-                                              PortDirection direction) {
-    log<debug>("DummyAudioSystem : add audio port");
+DummyAudioMidiDriver<Time, Size>::open_audio_port(std::string name,
+                                              shoop_port_direction_t direction) {
+    log<log_level_debug>("DummyAudioMidiDriver : add audio port");
     auto rval = std::make_shared<DummyAudioPort>(name, direction);
     m_audio_ports.insert(rval);
     return rval;
@@ -354,36 +356,16 @@ DummyAudioSystem<Time, Size>::open_audio_port(std::string name,
 
 template <typename Time, typename Size>
 std::shared_ptr<MidiPortInterface>
-DummyAudioSystem<Time, Size>::open_midi_port(std::string name,
-                                             PortDirection direction) {
-    log<debug>("DummyAudioSystem: add midi port");
+DummyAudioMidiDriver<Time, Size>::open_midi_port(std::string name,
+                                             shoop_port_direction_t direction) {
+    log<log_level_debug>("DummyAudioMidiDriver: add midi port");
     auto rval = std::make_shared<DummyMidiPort>(name, direction);
     m_midi_ports.insert(rval);
     return rval;
 }
 
 template <typename Time, typename Size>
-uint32_t DummyAudioSystem<Time, Size>::get_sample_rate() const {
-    return mc_sample_rate;
-}
-
-template <typename Time, typename Size>
-uint32_t DummyAudioSystem<Time, Size>::get_buffer_size() const {
-    return mc_buffer_size;
-}
-
-template <typename Time, typename Size>
-void *DummyAudioSystem<Time, Size>::maybe_client_handle() const {
-    return (void *)this;
-}
-
-template <typename Time, typename Size>
-const char *DummyAudioSystem<Time, Size>::client_name() const {
-    return m_client_name.c_str();
-}
-
-template <typename Time, typename Size>
-void DummyAudioSystem<Time, Size>::close() {
+void DummyAudioMidiDriver<Time, Size>::close() {
     m_finish = true;
     if (m_proc_thread.joinable()) {
         if (std::this_thread::get_id() != m_proc_thread.get_id()) {
@@ -395,16 +377,8 @@ void DummyAudioSystem<Time, Size>::close() {
 }
 
 template <typename Time, typename Size>
-uint32_t DummyAudioSystem<Time, Size>::get_xruns() const {
-    return 0;
-}
-
-template <typename Time, typename Size>
-void DummyAudioSystem<Time, Size>::reset_xruns(){};
-
-template <typename Time, typename Size>
-void DummyAudioSystem<Time, Size>::controlled_mode_run_request(uint32_t timeout) {
-    log<debug>("DummyAudioSystem: run request");
+void DummyAudioMidiDriver<Time, Size>::controlled_mode_run_request(uint32_t timeout) {
+    log<log_level_debug>("DummyAudioMidiDriver: run request");
     auto s = std::chrono::high_resolution_clock::now();
     auto timed_out = [this, &timeout, &s]() {
         return std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -412,7 +386,7 @@ void DummyAudioSystem<Time, Size>::controlled_mode_run_request(uint32_t timeout)
         ).count() >= timeout;
     };
     while(
-        m_mode == DummyAudioSystemMode::Controlled &&
+        m_mode == DummyAudioMidiDriverMode::Controlled &&
         m_controlled_mode_samples_to_process > 0 &&
         !timed_out()
     ) {
@@ -422,13 +396,13 @@ void DummyAudioSystem<Time, Size>::controlled_mode_run_request(uint32_t timeout)
     wait_process();
 
     if (m_controlled_mode_samples_to_process > 0) {
-        log<error>("DummyAudioSystem: run request timed out");
+        log<log_level_error>("DummyAudioMidiDriver: run request timed out");
     }
 }
 
-template class DummyAudioSystem<uint32_t, uint16_t>;
-template class DummyAudioSystem<uint32_t, uint32_t>;
-template class DummyAudioSystem<uint16_t, uint16_t>;
-template class DummyAudioSystem<uint16_t, uint32_t>;
-template class DummyAudioSystem<uint32_t, uint64_t>;
-template class DummyAudioSystem<uint64_t, uint64_t>;
+template class DummyAudioMidiDriver<uint32_t, uint16_t>;
+template class DummyAudioMidiDriver<uint32_t, uint32_t>;
+template class DummyAudioMidiDriver<uint16_t, uint16_t>;
+template class DummyAudioMidiDriver<uint16_t, uint32_t>;
+template class DummyAudioMidiDriver<uint32_t, uint64_t>;
+template class DummyAudioMidiDriver<uint64_t, uint64_t>;

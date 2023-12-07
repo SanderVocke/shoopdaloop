@@ -100,7 +100,7 @@ protected:
             m_replenish = false;
             if (m_none_available) {
                 m_none_available = false;
-                log<warning>("One or more audio objects were allocated on the processing thread because "
+                log<log_level_warning>("One or more audio objects were allocated on the processing thread because "
                              "no pre-allocated objects were available from the pool.");
             }
             this->fill();

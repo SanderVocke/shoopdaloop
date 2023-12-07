@@ -9,8 +9,7 @@ PythonBackend {
     id: backend
     update_interval_ms: 30
     client_name_hint: 'shoop'
-    backend_type: Types.BackendType.JackTest
-    backend_argstring: ''
+    backend_type: Types.AudioDriverType.JackTest
 
     ShoopTestCase {
         name: 'JackBackend'
@@ -18,16 +17,18 @@ PythonBackend {
 
         test_fns: ({
             'test_backend_jack': () => {
-                if(!backend.backend_type_is_supported(Types.BackendType.JackTest)) {
+                if(!backend.backend_type_is_supported(Types.AudioDriverType.JackTest)) {
                     skip("Backend was built without Jack support")
                     return
                 }
 
                 verify(backend.initialized)
                 wait(1000)
-                if(backend.actual_backend_type != Types.BackendType.JackTest) {
-                    compare(1, 0, "Was not able to start a Jack test backend even though support should be available")
-                }
+                verify_eq(
+                    backend.actual_backend_type,
+                    Types.AudioDriverType.JackTest,
+                    "Was not able to start a Jack test backend even though support should be available"
+                )
             }
         })
     }

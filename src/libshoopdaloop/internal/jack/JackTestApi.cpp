@@ -1,6 +1,7 @@
 #include "JackTestApi.h"
 #include "LoggingBackend.h"
 #include <jack/types.h>
+#include <vector>
 
 namespace jacktestapi_globals {
     std::map<std::string, JackTestApi::Client> clients;
@@ -12,7 +13,7 @@ jack_client_t* JackTestApi::client_open(const char* name, jack_options_t options
     jacktestapi_globals::clients.try_emplace(name, name);
     *status = (jack_status_t)0;
     jack_client_t* rval = jacktestapi_globals::clients.at(name).as_ptr();
-    logging::log<"Backend.JackTestApi", trace>(std::nullopt, std::nullopt, "Create client {} -> {}", name, (void*)rval);
+    logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "Create client {} -> {}", name, (void*)rval);
     return rval;
 }
 
@@ -20,7 +21,7 @@ void JackTestApi::init() {
     static bool initialized = false;
     if (initialized) { return; }
 
-    logging::log<"Backend.JackTestApi", trace>(std::nullopt, std::nullopt, "Initializing JackTestApi");
+    logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "Initializing JackTestApi");
 
     // Populate the test environment with two clients, each having some ports.
     jack_status_t s;
@@ -51,7 +52,7 @@ const char** JackTestApi::port_get_connections(const jack_port_t* port) {
         rval[i] = strdup(it->c_str());
     }
     rval[conns.size()] = nullptr;
-    logging::log<"Backend.JackTestApi", trace>(std::nullopt, std::nullopt, "Get all connections for port {} -> {} connections", (void*)port, conns.size());
+    logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "Get all connections for port {} -> {} connections", (void*)port, conns.size());
     return rval;
 }
 
@@ -71,7 +72,7 @@ jack_port_t* JackTestApi::port_register(
     }
     
     auto rval = p.as_ptr();
-    logging::log<"Backend.JackTestApi", trace>(std::nullopt, std::nullopt, "Register port {} -> {}", port_name, (void*)rval);
+    logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "Register port {} -> {}", port_name, (void*)rval);
     return rval;
 };
 
@@ -98,12 +99,12 @@ const char** JackTestApi::get_ports(jack_client_t * client,
         auto &c = ports[i]->client;
         auto name = c.name + ":" + ports[i]->name;
         port_names[i] = strdup(name.c_str());
-        logging::log<"Backend.JackTestApi", trace>(std::nullopt, std::nullopt, "Get ports: {} -> {}", i, port_names[i]);
+        logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "Get ports: {} -> {}", i, port_names[i]);
     }
     port_names[ports.size()] = nullptr;
 
     auto nports = ports.size();
-    logging::log<"Backend.JackTestApi", trace>(std::nullopt, std::nullopt, "Get ports: {} ports found", nports);
+    logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "Get ports: {} ports found", nports);
 
     return port_names;
 };
@@ -121,7 +122,7 @@ jack_port_t* JackTestApi::port_by_name(jack_client_t* client, const char *name) 
         pname = _name;
     }
 
-    logging::log<"Backend.JackTestApi", debug>(std::nullopt, std::nullopt, "name parts: {} : {}", cname, pname);
+    logging::log<"Backend.JackTestApi", log_level_debug>(std::nullopt, std::nullopt, "name parts: {} : {}", cname, pname);
 
     if (jacktestapi_globals::clients.find(cname) != jacktestapi_globals::clients.end()) {
         auto &port_client = jacktestapi_globals::clients.at(cname);
@@ -130,7 +131,7 @@ jack_port_t* JackTestApi::port_by_name(jack_client_t* client, const char *name) 
         }
     }
     
-    logging::log<"Backend.JackTestApi", trace>(std::nullopt, std::nullopt, "Get port by name {} -> {}", name, (void*)rval);
+    logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "Get port by name {} -> {}", name, (void*)rval);
     return rval;
 }
 
@@ -142,7 +143,7 @@ int JackTestApi::port_flags(const jack_port_t* port) {
         case Direction::Output: rval = JackPortIsOutput; break;
     }
 
-    logging::log<"Backend.JackTestApi", trace>(std::nullopt, std::nullopt, "Get port flags {} -> {}", (void*)port, rval);
+    logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "Get port flags {} -> {}", (void*)port, rval);
     return rval;
 }
 
@@ -154,24 +155,24 @@ const char* JackTestApi::port_type(const jack_port_t* port) {
         case Type::Midi: rval = JACK_DEFAULT_MIDI_TYPE; break;
     }
 
-    logging::log<"Backend.JackTestApi", trace>(std::nullopt, std::nullopt, "Get port type {} -> {}", (void*)port, rval);
+    logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "Get port type {} -> {}", (void*)port, rval);
     return rval;
 }
 
 const char* JackTestApi::port_name(const jack_port_t* port) {
     auto rval = strdup(Port::from_ptr((jack_port_t*) port).name.c_str());
-    logging::log<"Backend.JackTestApi", trace>(std::nullopt, std::nullopt, "Get port name {} -> {}", (void*)port, rval);
+    logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "Get port name {} -> {}", (void*)port, rval);
     return rval;
 }
 
 const char* JackTestApi::get_client_name(jack_client_t *client) {
     auto rval = strdup(Client::from_ptr(client).name.c_str());
-    logging::log<"Backend.JackTestApi", trace>(std::nullopt, std::nullopt, "Get client name {} -> {}", (void*)client, rval);
+    logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "Get client name {} -> {}", (void*)client, rval);
     return rval;
 }
 
 int JackTestApi::set_port_registration_callback(jack_client_t* client, JackPortRegistrationCallback cb, void* arg) {
-    logging::log<"Backend.JackTestApi", trace>(std::nullopt, std::nullopt, "Set port registration cb for client {}, arg {}", (void*)client, arg);
+    logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "Set port registration cb for client {}, arg {}", (void*)client, arg);
     jacktestapi_globals::port_registration_callback = cb;
     jacktestapi_globals::port_registration_callback_arg = arg;
     return 0;
@@ -187,7 +188,7 @@ int JackTestApi::connect(jack_client_t* client, const char* src, const char* dst
     _src.connections.insert(dst);
     _dst.connections.insert(src);
 
-    logging::log<"Backend.JackTestApi", trace>(std::nullopt, std::nullopt, "Connect {} {}", _src.name, _dst.name);
+    logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "Connect {} {}", _src.name, _dst.name);
     
     return 0;
 };
@@ -199,7 +200,7 @@ int JackTestApi::disconnect(jack_client_t* client, const char* src, const char* 
     _src.connections.erase(dst);
     _dst.connections.erase(src);
 
-    logging::log<"Backend.JackTestApi", trace>(std::nullopt, std::nullopt, "Disconnect {} {}", _src.name, _dst.name);
+    logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "Disconnect {} {}", _src.name, _dst.name);
     
     return 0;
 };

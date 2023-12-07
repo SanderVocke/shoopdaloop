@@ -4,18 +4,17 @@
 #include "libshoopdaloop.h"
 #include "ConnectedPort.h"
 #include "ConnectedChannel.h"
-#include "Backend.h"
+#include "BackendSession.h"
 #include "ConnectedLoop.h"
 #include "ConnectedFXChain.h"
-#include "ConnectedDecoupledMidiPort.h"
-#include "ObjectPool.h"
 #include "types.h"
+#include "shoop_globals.h"
 
-class Backend;
+class BackendSession;
 
-std::set<std::shared_ptr<Backend>> &get_active_backends();
+std::set<std::shared_ptr<BackendSession>> &get_active_backends();
 
-std::shared_ptr<Backend> internal_backend(shoopdaloop_backend_instance_t *backend);
+std::shared_ptr<BackendSession> internal_backend_session(shoop_backend_session_t *backend);
 
 std::shared_ptr<ConnectedPort> internal_audio_port(shoopdaloop_audio_port_t *port);
 
@@ -29,7 +28,7 @@ std::shared_ptr<ConnectedLoop> internal_loop(shoopdaloop_loop_t *loop);
 
 std::shared_ptr<ConnectedFXChain> internal_fx_chain(shoopdaloop_fx_chain_t *chain);
 
-shoopdaloop_backend_instance_t *external_backend(std::shared_ptr<Backend> backend);
+shoop_backend_session_t *external_backend_session(std::shared_ptr<BackendSession> backend);
 
 shoopdaloop_audio_port_t* external_audio_port(std::shared_ptr<ConnectedPort> port);
 
@@ -43,16 +42,18 @@ shoopdaloop_loop_t* external_loop(std::shared_ptr<ConnectedLoop> loop);
 
 shoopdaloop_fx_chain_t* external_fx_chain(std::shared_ptr<ConnectedFXChain> chain);
 
-audio_channel_data_t *external_audio_data(std::vector<audio_sample_t> f);
+shoop_audio_channel_data_t *external_audio_data(std::vector<audio_sample_t> f);
 
-midi_sequence_t *external_midi_data(std::vector<_MidiMessage> m);
+shoop_midi_sequence_t *external_midi_data(std::vector<_MidiMessage> m);
 
-std::vector<float> internal_audio_data(audio_channel_data_t const& d);
+std::vector<float> internal_audio_data(shoop_audio_channel_data_t const& d);
 
-std::vector<_MidiMessage> internal_midi_data(midi_sequence_t const& d);
+std::vector<_MidiMessage> internal_midi_data(shoop_midi_sequence_t const& d);
 
-shoopdaloop_decoupled_midi_port_t *external_decoupled_midi_port(std::shared_ptr<ConnectedDecoupledMidiPort> port);
+shoopdaloop_decoupled_midi_port_t *external_decoupled_midi_port(std::shared_ptr<_DecoupledMidiPort> port);
 
-std::shared_ptr<ConnectedDecoupledMidiPort> internal_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *port);
+std::shared_ptr<_DecoupledMidiPort> internal_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *port);
 
-PortDirection internal_port_direction(port_direction_t d);
+std::shared_ptr<AudioMidiDriver> internal_audio_driver(shoop_audio_driver_t *driver);
+
+shoop_audio_driver_t *external_audio_driver(std::shared_ptr<AudioMidiDriver> driver);

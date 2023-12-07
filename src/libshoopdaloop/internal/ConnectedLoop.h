@@ -2,20 +2,22 @@
 #include <memory>
 #include <vector>
 #include "shoop_globals.h"
+#include "ProcessingNodeInterface.h"
 
 class AudioMidiLoop;
 class ConnectedChannel;
-class Backend;
+class BackendSession;
 
-class ConnectedLoop : public std::enable_shared_from_this<ConnectedLoop> {
+class ConnectedLoop : public std::enable_shared_from_this<ConnectedLoop>,
+                      public ProcessingNodeInterface {
 public:
 
     const std::shared_ptr<AudioMidiLoop> loop;
     std::vector<std::shared_ptr<ConnectedChannel>> mp_audio_channels;
     std::vector<std::shared_ptr<ConnectedChannel>>  mp_midi_channels;
-    std::weak_ptr<Backend> backend;
+    std::weak_ptr<BackendSession> backend;
 
-    ConnectedLoop(std::shared_ptr<Backend> backend,
+    ConnectedLoop(std::shared_ptr<BackendSession> backend,
              std::shared_ptr<AudioMidiLoop> loop) :
         loop(loop),
         backend(backend) {
@@ -30,5 +32,6 @@ public:
     void delete_all_channels(bool thread_safe=true);
     void PROC_prepare_process(uint32_t n_frames);
     void PROC_finalize_process();
-    Backend &get_backend();
+
+    BackendSession &get_backend();
 };

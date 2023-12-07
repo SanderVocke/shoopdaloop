@@ -4,86 +4,102 @@
     {
       "label": "Build (Pip editable system install)",
       "type": "shell",
-      "command": "PIP_BREAK_SYSTEM_PACKAGES=1 pip install -e ${workspaceFolder} --no-deps -v",
+      "command": "cmake -E env PIP_BREAK_SYSTEM_PACKAGES=1 python -m pip install -e ${workspaceFolder} --no-deps -v",
       "group": {
         "kind": "build",
         "isDefault": true
       },
-      "problemMatcher": {
-        "owner": "cpp",
-        "fileLocation": "absolute",
-        "pattern": {
-          "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
-          "file": 1,
-          "line": 2,
-          "column": 3,
-          "severity": 4,
-          "message": 5
-        }
-      }
+      "problemMatcher": "$gcc"
     },
     {
       "label": "Build (Pip editable system install - Debug)",
       "type": "shell",
-      "command": "PIP_BREAK_SYSTEM_PACKAGES=1 pip install -e ${workspaceFolder} --no-deps -v -C--local=${workspaceFolder}/overrides/debug_overrides.toml",
+      "command": "cmake -E env PIP_BREAK_SYSTEM_PACKAGES=1 python -m pip install -e ${workspaceFolder} --no-deps -v -C--local=${workspaceFolder}/overrides/debug_overrides.toml",
       "group": {
         "kind": "build",
         "isDefault": true
       },
-      "problemMatcher": {
-        "owner": "cpp",
-        "fileLocation": "absolute",
-        "pattern": {
-          "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
-          "file": 1,
-          "line": 2,
-          "column": 3,
-          "severity": 4,
-          "message": 5
-        }
-      }
+      "problemMatcher": "$gcc"
     },
     {
       "label": "Build (Pip editable system install - Coverage)",
       "type": "shell",
-      "command": "PIP_BREAK_SYSTEM_PACKAGES=1 pip install -e ${workspaceFolder} --no-deps -v -C--local=${workspaceFolder}/overrides/coverage_overrides.toml",
+      "command": "cmake -E env PIP_BREAK_SYSTEM_PACKAGES=1 python -m pip install -e ${workspaceFolder} --no-deps -v -C--local=${workspaceFolder}/overrides/coverage_overrides.toml",
       "group": {
         "kind": "build",
         "isDefault": true
       },
-      "problemMatcher": {
-        "owner": "cpp",
-        "fileLocation": "absolute",
-        "pattern": {
-          "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
-          "file": 1,
-          "line": 2,
-          "column": 3,
-          "severity": 4,
-          "message": 5
-        }
-      }
+      "problemMatcher": "$gcc"
     },
     {
       "label": "Build (Pip editable system install - ASAN)",
       "type": "shell",
-      "command": "PIP_BREAK_SYSTEM_PACKAGES=1 pip install -e ${workspaceFolder} --no-deps -v -C--local=${workspaceFolder}/overrides/asan_overrides.toml",
+      "command": "cmake -E env PIP_BREAK_SYSTEM_PACKAGES=1 python -m pip install -e ${workspaceFolder} --no-deps -v -C--local=${workspaceFolder}/overrides/asan_overrides.toml",
       "group": {
         "kind": "build",
         "isDefault": true
       },
-      "problemMatcher": {
-        "owner": "cpp",
-        "fileLocation": "absolute",
-        "pattern": {
-          "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
-          "file": 1,
-          "line": 2,
-          "column": 3,
-          "severity": 4,
-          "message": 5
-        }
-      }
+      "problemMatcher": "$gcc"
+    },
+    {
+      "label": "Build (Pip editable system install - Barebones)",
+      "type": "shell",
+      "command": "cmake -E env PIP_BREAK_SYSTEM_PACKAGES=1 python -m pip install -e ${workspaceFolder} --no-deps -v -C--local=${workspaceFolder}/overrides/barebones_overrides.toml",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": "$gcc"
+    },
+    {
+      "label": "Build (Pip regular system install)",
+      "type": "shell",
+      "command": "cmake -E env PIP_BREAK_SYSTEM_PACKAGES=1 python -m pip install ${workspaceFolder} --no-deps -v",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": "$gcc"
+    },
+    {
+      "label": "Build (Pip regular system install - Debug)",
+      "type": "shell",
+      "command": "cmake -E env PIP_BREAK_SYSTEM_PACKAGES=1 python -m pip install ${workspaceFolder} --no-deps -v -C--local=${workspaceFolder}/overrides/debug_overrides.toml",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": "$gcc"
+    },
+    {
+      "label": "Build (Pip regular system install - Coverage)",
+      "type": "shell",
+      "command": "cmake -E env PIP_BREAK_SYSTEM_PACKAGES=1 python -m pip install ${workspaceFolder} --no-deps -v -C--local=${workspaceFolder}/overrides/coverage_overrides.toml",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": "$gcc"
+    },
+    {
+      "label": "Build (Pip regular system install - ASAN)",
+      "type": "shell",
+      "command": "cmake -E env PIP_BREAK_SYSTEM_PACKAGES=1 python -m pip install ${workspaceFolder} --no-deps -v -C--local=${workspaceFolder}/overrides/asan_overrides.toml",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": "$gcc"
+    },
+    {
+      "label": "Build (Pip regular system install - Barebones)",
+      "type": "shell",
+      "command": "cmake -E env PIP_BREAK_SYSTEM_PACKAGES=1 python -m pip install ${workspaceFolder} --no-deps -v -C--local=${workspaceFolder}/overrides/barebones_overrides.toml",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": "$gcc"
     },
     {
       "label": "Build (Pip wheel in isolation)",
@@ -93,18 +109,7 @@
         "kind": "build",
         "isDefault": true
       },
-      "problemMatcher": {
-        "owner": "cpp",
-        "fileLocation": "absolute",
-        "pattern": {
-          "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
-          "file": 1,
-          "line": 2,
-          "column": 3,
-          "severity": 4,
-          "message": 5
-        }
-      }
+      "problemMatcher": "$gcc"
     },
     {
       "label": "Build (Pip wheel in isolation - Debug)",
@@ -114,18 +119,7 @@
         "kind": "build",
         "isDefault": true
       },
-      "problemMatcher": {
-        "owner": "cpp",
-        "fileLocation": "absolute",
-        "pattern": {
-          "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
-          "file": 1,
-          "line": 2,
-          "column": 3,
-          "severity": 4,
-          "message": 5
-        }
-      }
+      "problemMatcher": "$gcc"
     },
     {
       "label": "Build (Pip wheel in isolation - ASAN)",
@@ -135,18 +129,7 @@
         "kind": "build",
         "isDefault": true
       },
-      "problemMatcher": {
-        "owner": "cpp",
-        "fileLocation": "absolute",
-        "pattern": {
-          "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
-          "file": 1,
-          "line": 2,
-          "column": 3,
-          "severity": 4,
-          "message": 5
-        }
-      }
+      "problemMatcher": "$gcc"
     },
     {
       "label": "Build (Pip wheel in isolation - Coverage)",
@@ -156,18 +139,17 @@
         "kind": "build",
         "isDefault": true
       },
-      "problemMatcher": {
-        "owner": "cpp",
-        "fileLocation": "absolute",
-        "pattern": {
-          "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
-          "file": 1,
-          "line": 2,
-          "column": 3,
-          "severity": 4,
-          "message": 5
-        }
-      }
+      "problemMatcher": "$gcc"
+    },
+    {
+      "label": "Build (Pip wheel in isolation - Barebones)",
+      "type": "shell",
+      "command": "python -m build --wheel ${workspaceFolder} -C--local=${workspaceFolder}/overrides/barebones_overrides.toml",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": "$gcc"
     }
   ]
 }

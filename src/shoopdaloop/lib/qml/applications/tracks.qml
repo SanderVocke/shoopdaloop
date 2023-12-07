@@ -27,7 +27,7 @@ ApplicationWindow {
             id: backend
             update_interval_ms: 30
             client_name_hint: 'ShoopDaLoop_Tracks'
-            backend_type: Types.BackendType.Jack
+            backend_type: Types.AudioDriverType.Jack
 
             anchors.fill: parent
 

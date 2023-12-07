@@ -139,7 +139,7 @@ private:
 public:
     CarlaLV2ProcessingChain(
         LilvWorld *lilv_world,
-        fx_chain_type_t type,
+        shoop_fx_chain_type_t type,
         uint32_t sample_rate,
         std::string human_name,
         std::shared_ptr<profiling::Profiler> maybe_profiler = nullptr

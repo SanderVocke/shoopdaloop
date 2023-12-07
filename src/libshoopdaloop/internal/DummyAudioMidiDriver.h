@@ -1,5 +1,5 @@
 #pragma once
-#include "AudioSystemInterface.h"
+#include "AudioMidiDriver.h"
 #include "MidiPortInterface.h"
 #include "AudioPortInterface.h"
 #include "PortInterface.h"
@@ -7,16 +7,10 @@
 #include "WithCommandQueue.h"
 #include "MidiMessage.h"
 #include "types.h"
-#include <chrono>
-#include <cstddef>
-#include <ratio>
-#include <stdexcept>
 #include <memory>
-#include <iostream>
 #include <memory>
 #include <set>
 #include <thread>
-#include <cstring>
 #include <vector>
 #include <boost/lockfree/spsc_queue.hpp>
 #include <memory>
@@ -25,20 +19,21 @@
 class DummyPort : public virtual PortInterface {
 protected:
     std::string m_name;
-    PortDirection m_direction;
+    shoop_port_direction_t m_direction;
     PortType m_type;
 
 public:
     DummyPort(
         std::string name,
-        PortDirection direction,
+        shoop_port_direction_t direction,
         PortType type
     );
 
     const char* name() const override;
-    PortDirection direction() const override;
+    shoop_port_direction_t direction() const override;
     PortType type() const override;
     void close() override;
+    void *maybe_driver_handle() const override;
 
     PortExternalConnectionStatus get_external_connection_status() const override;
     void connect_external(std::string name) override;
@@ -50,7 +45,7 @@ class DummyAudioPort : public virtual AudioPortInterface<audio_sample_t>,
                        private ModuleLoggingEnabled<"Backend.DummyAudioPort"> {
 
     std::string m_name;
-    PortDirection m_direction;
+    shoop_port_direction_t m_direction;
     boost::lockfree::spsc_queue<std::vector<audio_sample_t>> m_queued_data;
     std::atomic<uint32_t> m_n_requested_samples;
     std::vector<audio_sample_t> m_retained_samples;
@@ -59,7 +54,7 @@ class DummyAudioPort : public virtual AudioPortInterface<audio_sample_t>,
 public:
     DummyAudioPort(
         std::string name,
-        PortDirection direction);
+        shoop_port_direction_t direction);
     
     audio_sample_t *PROC_get_buffer(uint32_t n_frames, bool do_zero=false) override;
     ~DummyAudioPort() override;
@@ -108,7 +103,7 @@ public:
 
     DummyMidiPort(
         std::string name,
-        PortDirection direction
+        shoop_port_direction_t direction
     );
 
     MidiReadableBufferInterface &PROC_get_read_buffer (uint32_t n_frames) override;
@@ -130,66 +125,55 @@ public:
     ~DummyMidiPort() override;
 };
 
-enum class DummyAudioSystemMode {
+struct DummyAudioMidiDriverSettings : public AudioMidiDriverSettingsInterface {
+    DummyAudioMidiDriverSettings() {}
+
+    uint32_t sample_rate = 48000;
+    uint32_t buffer_size = 256;
+    std::string client_name = "dummy";
+};
+
+enum class DummyAudioMidiDriverMode {
     Controlled,
     Automatic
 };
 
 template<typename Time, typename Size>
-class DummyAudioSystem : public AudioSystemInterface,
-                         private ModuleLoggingEnabled<"Backend.DummyAudioSystem">,
-                         public WithCommandQueue<20, 1000, 1000> {
-
-    std::function<void(uint32_t)> m_process_cb;
-    const uint32_t mc_sample_rate;
-    const uint32_t mc_buffer_size;
+class DummyAudioMidiDriver : public AudioMidiDriver,
+                             private ModuleLoggingEnabled<"Backend.DummyAudioMidiDriver"> {
     std::atomic<bool> m_finish;
-    std::atomic<DummyAudioSystemMode> m_mode;
+    std::atomic<DummyAudioMidiDriverMode> m_mode;
     std::atomic<uint32_t> m_controlled_mode_samples_to_process;
     std::atomic<bool> m_paused;
     std::thread m_proc_thread;
     std::set<std::shared_ptr<DummyAudioPort>> m_audio_ports;
     std::set<std::shared_ptr<DummyMidiPort>> m_midi_ports;
-    std::string m_client_name;
+    std::string m_client_name_str;
 
-    std::function<void(std::string, PortDirection)> m_audio_port_opened_cb, m_midi_port_opened_cb;
+    std::function<void(std::string, shoop_port_direction_t)> m_audio_port_opened_cb, m_midi_port_opened_cb;
     std::function<void(std::string)> m_audio_port_closed_cb, m_midi_port_closed_cb;
 
 public:
 
-    DummyAudioSystem(
-        std::string client_name,
-        std::function<void(uint32_t)> process_cb,
-        DummyAudioSystemMode mode = DummyAudioSystemMode::Automatic,
-        uint32_t sample_rate = 48000,
-        uint32_t buffer_size = 256
-    );
+    DummyAudioMidiDriver();
+    virtual ~DummyAudioMidiDriver();
 
-    void start() override;
-
-    ~DummyAudioSystem() override;
+    void start(AudioMidiDriverSettingsInterface &settings) override;
 
     std::shared_ptr<AudioPortInterface<audio_sample_t>> open_audio_port(
         std::string name,
-        PortDirection direction
+        shoop_port_direction_t direction
     ) override;
 
     std::shared_ptr<MidiPortInterface> open_midi_port(
         std::string name,
-        PortDirection direction
+        shoop_port_direction_t direction
     ) override;
 
-    uint32_t get_sample_rate() const override;
-    uint32_t get_buffer_size() const override;
-    void* maybe_client_handle() const override;
-    const char* client_name() const override;
     void close() override;
 
     void pause();
     void resume();
-
-    uint32_t get_xruns() const override;
-    void reset_xruns() override;
 
     // Usually the dummy audio system will automatically process samples
     // continuously. When in controlled mode, instead the process callback
@@ -197,8 +181,8 @@ public:
     // is requested.
     // Process callback do still keep happening so that process thread
     // commands are still processed.
-    void enter_mode(DummyAudioSystemMode mode);
-    DummyAudioSystemMode get_mode() const;
+    void enter_mode(DummyAudioMidiDriverMode mode);
+    DummyAudioMidiDriverMode get_mode() const;
 
     // In controlled mode, this amount of samples will be requested for
     // processing. If the amount is larger than the default buffer size,
@@ -209,13 +193,11 @@ public:
 
     // Run until the requested amount of samples has been completed.
     void controlled_mode_run_request(uint32_t timeout_ms = 100);
-
-    void wait_process();
 };
 
-extern template class DummyAudioSystem<uint32_t, uint16_t>;
-extern template class DummyAudioSystem<uint32_t, uint32_t>;
-extern template class DummyAudioSystem<uint16_t, uint16_t>;
-extern template class DummyAudioSystem<uint16_t, uint32_t>;
-extern template class DummyAudioSystem<uint32_t, uint64_t>;
-extern template class DummyAudioSystem<uint64_t, uint64_t>;
+extern template class DummyAudioMidiDriver<uint32_t, uint16_t>;
+extern template class DummyAudioMidiDriver<uint32_t, uint32_t>;
+extern template class DummyAudioMidiDriver<uint16_t, uint16_t>;
+extern template class DummyAudioMidiDriver<uint16_t, uint32_t>;
+extern template class DummyAudioMidiDriver<uint32_t, uint64_t>;
+extern template class DummyAudioMidiDriver<uint64_t, uint64_t>;

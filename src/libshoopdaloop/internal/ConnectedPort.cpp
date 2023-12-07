@@ -7,8 +7,8 @@
 #include <algorithm>
 #include "MidiStateTracker.h"
 #include "MidiMergingBuffer.h"
-#include "Backend.h"
-#include "DummyAudioSystem.h"
+#include "BackendSession.h"
+#include "DummyAudioMidiDriver.h"
 #include "shoop_globals.h"
 
 #ifdef SHOOP_HAVE_LV2
@@ -19,7 +19,7 @@ using namespace shoop_types;
 using namespace shoop_constants;
 
 ConnectedPort::ConnectedPort (std::shared_ptr<PortInterface> const& port,
-                              std::shared_ptr<Backend> const& backend,
+                              std::shared_ptr<BackendSession> const& backend,
                               shoop_types::ProcessWhen process_when) :
     port(port),
     maybe_audio_buffer(nullptr),
@@ -41,12 +41,12 @@ ConnectedPort::ConnectedPort (std::shared_ptr<PortInterface> const& port,
     bool is_internal = (dynamic_cast<InternalAudioPort<float>*>(port.get()));
 #endif
 
-    bool is_fx_in = is_internal && (port->direction() == PortDirection::Output);
-    bool is_ext_in = !is_internal && (port->direction() == PortDirection::Input);
+    bool is_fx_in = is_internal && (port->direction() == shoop_port_direction_t::Output);
+    bool is_ext_in = !is_internal && (port->direction() == shoop_port_direction_t::Input);
 
     if (auto m = dynamic_cast<MidiPortInterface*>(port.get())) {
         maybe_midi_state = std::make_shared<MidiStateTracker>(true, true, true);
-        if(m->direction() == PortDirection::Output) {
+        if(m->direction() == shoop_port_direction_t::Output) {
             maybe_midi_output_merging_buffer = std::make_shared<MidiMergingBuffer>();
         }
     }
@@ -65,7 +65,7 @@ void ConnectedPort::PROC_ensure_buffer(uint32_t n_frames, bool do_zero) {
     auto maybe_audio = dynamic_cast<AudioPortInterface<shoop_types::audio_sample_t>*>(port.get());
 
     if (maybe_midi) {
-        if(maybe_midi->direction() == PortDirection::Input) {
+        if(maybe_midi->direction() == shoop_port_direction_t::Input) {
             if (maybe_midi_input_buffer) { return; } // already there
             maybe_midi_input_buffer = &maybe_midi->PROC_get_read_buffer(n_frames);
             if (!muted) {
@@ -86,7 +86,7 @@ void ConnectedPort::PROC_ensure_buffer(uint32_t n_frames, bool do_zero) {
     } else if (maybe_audio) {
         if (maybe_audio_buffer) { return; } // already there
         maybe_audio_buffer = maybe_audio->PROC_get_buffer(n_frames, do_zero);
-        if (port->direction() == PortDirection::Input) {
+        if (port->direction() == shoop_port_direction_t::Input) {
             float max = 0.0f;
             if (muted) {
                 memset((void*)maybe_audio_buffer, 0, n_frames * sizeof(audio_sample_t));
@@ -110,7 +110,7 @@ bool ConnectedPort::PROC_check_buffer(bool raise_if_absent) {
     bool result;
 
     if (maybe_midi) {
-        if(maybe_midi->direction() == PortDirection::Input) {
+        if(maybe_midi->direction() == shoop_port_direction_t::Input) {
             result = (bool) maybe_midi_input_buffer;
         } else {
             result = (bool) maybe_midi_output_buffer;
@@ -130,7 +130,7 @@ bool ConnectedPort::PROC_check_buffer(bool raise_if_absent) {
 
 void ConnectedPort::PROC_passthrough(uint32_t n_frames) {
     log_trace();
-    if (port->direction() == PortDirection::Input) {
+    if (port->direction() == shoop_port_direction_t::Input) {
         for(auto & other : mp_passthrough_to) {
             auto o = other.lock();
             if(o && o->PROC_check_buffer(false)) {
@@ -158,7 +158,7 @@ void ConnectedPort::PROC_passthrough_midi(uint32_t n_frames, ConnectedPort &to) 
             auto &msg = maybe_midi_input_buffer->PROC_get_event_reference(i);
             uint32_t t = msg.get_time();
             void* to_ptr = &to;
-            log<debug>("Passthrough midi message reference to {} @ {}", to_ptr, t);
+            log<log_level_debug>("Passthrough midi message reference to {} @ {}", to_ptr, t);
             to.maybe_midi_output_merging_buffer->PROC_write_event_reference(msg);
         }
     }
@@ -167,7 +167,7 @@ void ConnectedPort::PROC_passthrough_midi(uint32_t n_frames, ConnectedPort &to) 
 void ConnectedPort::PROC_finalize_process(uint32_t n_frames) {
     log_trace();
     if (auto a = dynamic_cast<AudioPortInterface<shoop_types::audio_sample_t>*>(port.get())) {
-        if (a->direction() == PortDirection::Output) {
+        if (a->direction() == shoop_port_direction_t::Output) {
             float max = 0.0f;
             for (uint32_t i=0; i<n_frames; i++) {
                 float vol = volume.load();
@@ -177,7 +177,7 @@ void ConnectedPort::PROC_finalize_process(uint32_t n_frames) {
             peak = std::max(peak.load(), max);
         }
     } else if (auto m = dynamic_cast<MidiPortInterface*>(port.get())) {
-        if (m->direction() == PortDirection::Output) {
+        if (m->direction() == shoop_port_direction_t::Output) {
             if (!muted) {
                 uint32_t n_events = maybe_midi_output_merging_buffer->PROC_get_n_events();
                 maybe_midi_output_merging_buffer->PROC_sort();
@@ -186,7 +186,7 @@ void ConnectedPort::PROC_finalize_process(uint32_t n_frames) {
                     uint32_t size, time;
                     const uint8_t* data;
                     maybe_midi_output_merging_buffer->PROC_get_event_reference(i).get(size, time, data);
-                    log<trace>("Output midi message reference @ {}", time);
+                    log<log_level_trace>("Output midi message reference @ {}", time);
                     maybe_midi_output_buffer->PROC_write_event_value(size, time, data);
                     maybe_midi_state->process_msg(data);
                 }
@@ -214,7 +214,7 @@ std::shared_ptr<MidiPortInterface> ConnectedPort::maybe_midi() {
     return std::dynamic_pointer_cast<MidiPortInterface>(port);
 }
 
-Backend &ConnectedPort::get_backend() {
+BackendSession &ConnectedPort::get_backend() {
     auto b = backend.lock();
     if(!b) {
         throw std::runtime_error("Back-end no longer exists");
@@ -224,7 +224,7 @@ Backend &ConnectedPort::get_backend() {
 
 void ConnectedPort::connect_passthrough(const std::shared_ptr<ConnectedPort> &other) {
     log_trace();
-    get_backend().cmd_queue.queue([this, other]() {
+    get_backend().queue_process_thread_command([this, other]() {
         for (auto &_other : mp_passthrough_to) {
             if(auto __other = _other.lock()) {
                 if (__other.get() == other.get()) { return; } // already connected
@@ -232,4 +232,8 @@ void ConnectedPort::connect_passthrough(const std::shared_ptr<ConnectedPort> &ot
         }
         mp_passthrough_to.push_back(other);
     });
+}
+
+void ConnectedPort::PROC_change_buffer_size(uint32_t buffer_size) {
+    
 }

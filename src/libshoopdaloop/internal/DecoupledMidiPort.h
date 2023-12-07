@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <boost/lockfree/spsc_queue.hpp>
 
+class AudioMidiDriver;
+
 // We discard time information for decoupled midi messages.
 // The intended use cases is controllers, where the time is
 // not very relevant.
@@ -20,17 +22,22 @@ class DecoupledMidiPort : public std::enable_shared_from_this<DecoupledMidiPort<
     using Queue = boost::lockfree::spsc_queue<Message>;
 
     const std::shared_ptr<MidiPortInterface> port;
-    const PortDirection direction;
+    const shoop_port_direction_t direction;
     Queue ma_queue;
+    std::weak_ptr<AudioMidiDriver> maybe_driver;
 public:
     DecoupledMidiPort (std::shared_ptr<MidiPortInterface> port,
+                       std::weak_ptr<AudioMidiDriver> driver,
                        uint32_t queue_size,
-                       PortDirection direction);
+                       shoop_port_direction_t direction);
 
     // Call this on the process thread to update message queues.
     void PROC_process(uint32_t n_frames);
     const char* name() const;
     void close();
+
+    std::shared_ptr<AudioMidiDriver> get_maybe_driver() const;
+    void forget_driver();
 
     std::optional<Message> pop_incoming();
     void push_outgoing (Message m);

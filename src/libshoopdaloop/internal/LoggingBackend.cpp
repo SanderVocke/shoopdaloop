@@ -12,16 +12,16 @@ namespace logging {
 
 //TODO intentionally leaky globals because of de-initialization problems. Find a better solution.
 std::recursive_mutex* g_log_mutex = new std::recursive_mutex();
-std::unique_ptr<log_level_t>* g_maybe_global_level = new std::unique_ptr<log_level_t>(std::make_unique<log_level_t>(info));
-std::map<std::string, std::unique_ptr<log_level_t>>* g_module_log_levels = new std::map<std::string, std::unique_ptr<log_level_t>>();
+std::unique_ptr<shoop_log_level_t>* g_maybe_global_level = new std::unique_ptr<shoop_log_level_t>(std::make_unique<shoop_log_level_t>(log_level_info));
+std::map<std::string, std::unique_ptr<shoop_log_level_t>>* g_module_log_levels = new std::map<std::string, std::unique_ptr<shoop_log_level_t>>();
 std::atomic<bool> g_log_initialized = false;
 
-const std::map<std::string, log_level_t> level_names = {
-    {"trace", trace},
-    {"debug", debug},
-    {"info",  info},
-    {"warning", warning},
-    {"error",   error}
+const std::map<std::string, shoop_log_level_t> level_names = {
+    {"trace", log_level_trace},
+    {"debug", log_level_debug},
+    {"info",  log_level_info},
+    {"warning", log_level_warning},
+    {"error",   log_level_error}
 };
 
 void parse_conf_string(std::string s) {
@@ -61,7 +61,7 @@ void parse_conf_from_env() {
     auto e = std::getenv("SHOOP_LOG");
     if (e) {
         parse_conf_string(e);
-        log<"Backend.Logging", debug>(std::nullopt, std::nullopt, "Parsed logging config from environment: {}", e);
+        log<"Backend.Logging", log_level_debug>(std::nullopt, std::nullopt, "Parsed logging config from environment: {}", e);
     }
 }
 

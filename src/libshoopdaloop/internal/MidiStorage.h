@@ -37,7 +37,7 @@ class MidiStorageBase : public std::enable_shared_from_this<MidiStorageBase<Time
                         private ModuleLoggingEnabled<"Backend.MidiChannel.Storage"> {
 public:
     using Elem = MidiStorageElem<TimeType, SizeType>;
-    Elem dummy_elem; // Prevents incomplete template type in debug build
+    Elem dummy_elem; // Prevents incomplete template type in log_level_debug build
     friend class MidiStorageCursor<TimeType, SizeType>;
 
 protected:
@@ -75,7 +75,7 @@ class MidiStorageCursor {
 public:
     using Storage = MidiStorageBase<TimeType, SizeType>;
     using Elem = MidiStorageElem<TimeType, SizeType>;
-    Elem dummy_elem; // Prevents incomplete template type in debug build
+    Elem dummy_elem; // Prevents incomplete template type in log_level_debug build
 
 private:
     std::optional<uint32_t> m_offset;

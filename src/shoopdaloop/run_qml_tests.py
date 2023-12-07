@@ -16,11 +16,11 @@ from xml.dom import minidom
 script_dir = os.path.dirname(__file__)
 sys.path.append(script_dir + '/..')
 
-from shoopdaloop.libshoopdaloop_bindings import terminate_backend, set_global_logging_level, error
+from shoopdaloop.libshoopdaloop_bindings import set_global_logging_level, log_level_error
 from shoopdaloop.lib.qml_helpers import *
 from shoopdaloop.lib.q_objects.SchemaValidator import SchemaValidator
 from shoopdaloop.lib.logging import Logger
-from shoopdaloop.lib.backend_wrappers import BackendType
+from shoopdaloop.lib.backend_wrappers import AudioDriverType
 from shoopdaloop.lib.q_objects.QoverageCollectorFactory import QoverageCollectorFactory
 from shoopdaloop.lib.q_objects.Application import Application
 from shoopdaloop.lib.q_objects.TestRunner import TestRunner
@@ -42,8 +42,7 @@ logger = Logger('run_qml_tests.py')
 logger.info('Creating test application...')
 
 global_args = {
-    'backend_type': BackendType.Dummy.value,
-    'backend_argstring': '',
+    'backend_type': AudioDriverType.Dummy.value,
     'load_session_on_startup': None,
     'test_grab_screens': None,
 }
@@ -139,7 +138,7 @@ Skipped cases: {}
 '''.format(json.dumps(skipped_cases, indent=2))    
 
 # TODO: this is nasty, but it's a quick hack to get the test results to show up last
-set_global_logging_level(error)
+set_global_logging_level(log_level_error)
 
 exit_text = '''
 ========================================================

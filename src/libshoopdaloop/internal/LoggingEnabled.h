@@ -3,10 +3,10 @@
 #include <boost/assert/source_location.hpp>
 #include <string_view>
 
-template<logging::ModuleName Name, log_level_t LevelFilter>
+template<logging::ModuleName Name, shoop_log_level_t LevelFilter>
 class LoggingEnabled {
 public:
-    template<log_level_t Level, typename First, typename... Args>
+    template<shoop_log_level_t Level, typename First, typename... Args>
     void log(fmt::format_string<First, Args...>&& fmt, First && first, Args &&... args) const
     {
         if constexpr (Level >= LevelFilter) {
@@ -14,7 +14,7 @@ public:
         }
     }
 
-    template<log_level_t Level>
+    template<shoop_log_level_t Level>
     void log(std::string const& str) const {
         if constexpr (Level >= LevelFilter) {
             logging::log<Name, Level>(std::nullopt, std::nullopt, "[@{}] {}", (void*)this, str);
@@ -24,13 +24,13 @@ public:
     template<typename Exception, typename First, typename... Args>
     void throw_error(fmt::format_string<First, Args...>&& fmt, First && first, Args &&... args) const
     {
-        logging::log<Name, error>(std::nullopt, std::nullopt, "[@{}] {}", (void*)this, fmt::format(fmt, std::forward<First>(first), std::forward<Args>(args)...));
+        logging::log<Name, log_level_error>(std::nullopt, std::nullopt, "[@{}] {}", (void*)this, fmt::format(fmt, std::forward<First>(first), std::forward<Args>(args)...));
         throw Exception("");
     }
 
     template<typename Exception>
     void throw_error(std::string const& str) const {
-        logging::log<Name, error>(std::nullopt, std::nullopt, "[@{}] {}", (void*)this, str);
+        logging::log<Name, log_level_error>(std::nullopt, std::nullopt, "[@{}] {}", (void*)this, str);
         throw Exception("");
     }
 
@@ -38,8 +38,8 @@ public:
                    const char* fl = BOOST_CURRENT_LOCATION.file_name(),
                    uint32_t ln = BOOST_CURRENT_LOCATION.line()) const
     {
-        if (trace >= LevelFilter) {
-            log<trace>("{}:{} - {}", fl, ln, fn);
+        if (log_level_trace >= LevelFilter) {
+            log<log_level_trace>("{}:{} - {}", fl, ln, fn);
         }
     }
 

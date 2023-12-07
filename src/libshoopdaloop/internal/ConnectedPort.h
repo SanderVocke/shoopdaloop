@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 #include <memory>
 #include <vector>
 #include <atomic>
@@ -6,13 +7,15 @@
 #include "LoggingEnabled.h"
 #include "shoop_globals.h"
 #include "process_when.h"
+#include "ProcessingNodeInterface.h"
 
 class ConnectedPort : public std::enable_shared_from_this<ConnectedPort>,
-                       private ModuleLoggingEnabled<"Backend.ConnectedPort"> {
+                       private ModuleLoggingEnabled<"Backend.ConnectedPort">,
+                       public ProcessingNodeInterface {
 public:
     
     const std::shared_ptr<PortInterface> port;
-    std::weak_ptr<Backend> backend;
+    std::weak_ptr<BackendSession> backend;
 
     std::vector<std::weak_ptr<ConnectedPort>> mp_passthrough_to;
 
@@ -37,7 +40,7 @@ public:
     shoop_types::ProcessWhen ma_process_when;
 
     ConnectedPort (std::shared_ptr<PortInterface> const& port,
-                   std::shared_ptr<Backend> const& backend,
+                   std::shared_ptr<BackendSession> const& backend,
                    shoop_types::ProcessWhen process_when);
 
     void PROC_reset_buffers();
@@ -48,9 +51,11 @@ public:
     bool PROC_check_buffer(bool raise_if_absent=true);
     void PROC_finalize_process(uint32_t n_frames);
 
+    void PROC_change_buffer_size(uint32_t buffer_size) override;
+
     void connect_passthrough(std::shared_ptr<ConnectedPort> const& other);
 
     std::shared_ptr<shoop_types::AudioPort> maybe_audio();
     std::shared_ptr<shoop_types::MidiPort> maybe_midi();
-    Backend &get_backend();
+    BackendSession &get_backend();
 };

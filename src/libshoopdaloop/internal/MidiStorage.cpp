@@ -137,12 +137,12 @@ bool MidiStorageBase<TimeType, SizeType>::append(TimeType time, SizeType size,
                                                  const uint8_t *data) {
     uint32_t sz = Elem::total_size_of(size);
     if (sz > bytes_free()) {
-        log<warning>("Ignoring store of MIDI message: buffer full.");
+        log<log_level_warning>("Ignoring store of MIDI message: buffer full.");
         return false;
     }
     if (m_n_events > 0 && unsafe_at(m_head_start)->storage_time > time) {
         // Don't store out-of-order messages
-        log<warning>("Ignoring store of out-of-order MIDI message.");
+        log<log_level_warning>("Ignoring store of out-of-order MIDI message.");
         return false;
     }
 
@@ -164,7 +164,7 @@ bool MidiStorageBase<TimeType, SizeType>::prepend(TimeType time, SizeType size,
     }
     if (m_n_events > 0 && unsafe_at(m_tail)->get_time() < time) {
         // Don't store out-of-order messages
-        log<warning>("Ignoring store of out-of-order MIDI message.");
+        log<log_level_warning>("Ignoring store of out-of-order MIDI message.");
         return false;
     }
 

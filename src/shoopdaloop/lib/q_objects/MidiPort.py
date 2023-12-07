@@ -105,7 +105,7 @@ class MidiPort(Port):
                     raise Exception('Could not find self in FX chain')
                 # Now request our backend object.
                 if self.direction == PortDirection.Output.value:
-                    self._backend_obj = self.backend.get_backend_obj().get_fx_chain_midi_input_port(
+                    self._backend_obj = self.backend.get_backend_session_obj().get_fx_chain_midi_input_port(
                         maybe_fx_chain.get_backend_obj(),
                         idx
                     )
@@ -116,7 +116,7 @@ class MidiPort(Port):
     def maybe_initialize_external(self, name_hint, direction):
         if self._backend_obj:
             return # never initialize more than once
-        self._backend_obj = self.backend.get_backend_obj().open_jack_midi_port(name_hint, direction)
+        self._backend_obj = self.backend.open_midi_port(name_hint, direction)
         self.push_state()
 
     def maybe_initialize_impl(self, name_hint, direction, is_internal):

@@ -1,10 +1,8 @@
 #pragma once
 #include <jack/types.h>
 #include <jack_wrappers.h>
-#include <type_traits>
 #include <stdarg.h>
 #include <stdexcept>
-#include <iostream>
 
 // Hide the JACK API behind a class with redirections, such that
 // we can mock it out in tests.

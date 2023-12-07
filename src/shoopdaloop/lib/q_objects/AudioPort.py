@@ -109,12 +109,12 @@ class AudioPort(Port):
                     self.logger.throw_error('Could not find self in FX chain')
                 # Now request our backend object.
                 if direction == PortDirection.Input.value:
-                    self._backend_obj = self.backend.get_backend_obj().get_fx_chain_audio_output_port(
+                    self._backend_obj = self.backend.get_backend_session_obj().get_fx_chain_audio_output_port(
                         maybe_fx_chain.get_backend_obj(),
                         idx
                     )
                 else:
-                    self._backend_obj = self.backend.get_backend_obj().get_fx_chain_audio_input_port(
+                    self._backend_obj = self.backend.get_backend_session_obj().get_fx_chain_audio_input_port(
                         maybe_fx_chain.get_backend_obj(),
                         idx
                     )
@@ -123,7 +123,7 @@ class AudioPort(Port):
     def maybe_initialize_external(self, name_hint, direction):
         if self._backend_obj:
             return # never create_backend more than once
-        self._backend_obj = self.backend.get_backend_obj().open_audio_port(name_hint, direction)
+        self._backend_obj = self.backend.open_audio_port(name_hint, direction)
         self.push_state()
 
     def push_state(self):
