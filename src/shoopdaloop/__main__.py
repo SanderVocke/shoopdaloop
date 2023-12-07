@@ -9,6 +9,8 @@ module_pwd = os.path.dirname(shoopdaloop.lib.__file__) + '/..'
 import traceback
 import argparse
 import glob
+import ctypes
+import platform
 
 from shoopdaloop.lib.q_objects.Application import Application
 from shoopdaloop.lib.logging import *
@@ -34,6 +36,11 @@ def main():
 
         backends_map = {b.name.lower(): b for b in AudioDriverType}
         args.backend = backends_map[args.backend]
+
+        # For taskbar icon (see https://stackoverflow.com/a/1552105)
+        if platform.system() == 'Windows':
+            myappid = 'shoopdaloop.shoopdaloop' # arbitrary string
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
 
         if args.info:
             version=None
