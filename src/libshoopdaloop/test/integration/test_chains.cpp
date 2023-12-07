@@ -68,8 +68,8 @@ struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDryWe
         int_driver->start(settings);
         set_audio_driver(api_backend_session, api_driver);
 
-        api_input_port = open_audio_port(api_backend_session, api_driver, "input", Input);
-        api_output_port = open_audio_port(api_backend_session, api_driver, "output", Output);
+        api_input_port = open_audio_port(api_backend, "sys_audio_in", Input);
+        api_output_port = open_audio_port(api_backend, "sys_audio_out", Output);
         int_input_port = internal_audio_port(api_input_port);
         int_output_port = internal_audio_port(api_output_port);
         int_dummy_input_port = std::dynamic_pointer_cast<DummyAudioPort>(int_input_port->port);
@@ -136,7 +136,7 @@ shoop_audio_channel_data_t to_api_data(std::vector<float> &vec) {
     return rval;
 }
 
-TEST_CASE("Chains - DryWet Basic", "[Chains]") {
+TEST_CASE("Chains - DryWet Basic", "[Chains][audio]") {
     SingleDryWetLoopTestChain tst;
     
     std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
@@ -177,7 +177,7 @@ TEST_CASE("Chains - DryWet Basic", "[Chains]") {
     tst.int_driver->close();
 };
 
-TEST_CASE("Chains - DryWet record basic", "[Chains]") {
+TEST_CASE("Chains - DryWet record basic", "[Chains][audio]") {
     SingleDryWetLoopTestChain tst;
 
     loop_transition(tst.api_loop, LoopMode_Recording, 0, 0);
@@ -196,7 +196,7 @@ TEST_CASE("Chains - DryWet record basic", "[Chains]") {
     tst.int_driver->close();
 };
 
-TEST_CASE("Chains - DryWet record passthrough muted", "[Chains]") {
+TEST_CASE("Chains - DryWet record passthrough muted", "[Chains][audio]") {
     SingleDryWetLoopTestChain tst;
 
     loop_transition(tst.api_loop, LoopMode_Recording, 0, 0);
@@ -216,7 +216,7 @@ TEST_CASE("Chains - DryWet record passthrough muted", "[Chains]") {
     tst.int_driver->close();
 };
 
-TEST_CASE("Chains - DryWet record muted", "[Chains]") {
+TEST_CASE("Chains - DryWet record muted", "[Chains][audio]") {
     SingleDryWetLoopTestChain tst;
 
     loop_transition(tst.api_loop, LoopMode_Recording, 0, 0);
@@ -234,7 +234,7 @@ TEST_CASE("Chains - DryWet record muted", "[Chains]") {
     tst.int_driver->close();
 };
 
-TEST_CASE("Chains - DryWet record volume", "[Chains]") {
+TEST_CASE("Chains - DryWet record volume", "[Chains][audio]") {
     SingleDryWetLoopTestChain tst;
 
     loop_transition(tst.api_loop, LoopMode_Recording, 0, 0);
@@ -255,7 +255,7 @@ TEST_CASE("Chains - DryWet record volume", "[Chains]") {
     tst.int_driver->close();
 };
 
-TEST_CASE("Chains - DryWet playback basic", "[Chains]") {
+TEST_CASE("Chains - DryWet playback basic", "[Chains][audio]") {
     SingleDryWetLoopTestChain tst;
 
     std::vector<float> dry_data({4, 3, 2, 1}), wet_data({1, 2, 3, 4});
@@ -277,7 +277,7 @@ TEST_CASE("Chains - DryWet playback basic", "[Chains]") {
     tst.int_driver->close();
 };
 
-TEST_CASE("Chains - DryWet playback volume", "[Chains]") {
+TEST_CASE("Chains - DryWet playback volume", "[Chains][audio]") {
     SingleDryWetLoopTestChain tst;
 
     std::vector<float> dry_data({4, 3, 2, 1}), wet_data({1, 2, 3, 4}), half_wet({0.5, 1, 1.5, 2});
@@ -300,7 +300,7 @@ TEST_CASE("Chains - DryWet playback volume", "[Chains]") {
     tst.int_driver->close();
 };
 
-TEST_CASE("Chains - DryWet dry playback basic", "[Chains]") {
+TEST_CASE("Chains - DryWet dry playback basic", "[Chains][audio]") {
     SingleDryWetLoopTestChain tst;
 
     std::vector<float> dry_data({4, 3, 2, 1}), wet_data({1, 2, 3, 4});
@@ -324,7 +324,7 @@ TEST_CASE("Chains - DryWet dry playback basic", "[Chains]") {
     tst.int_driver->close();
 };
 
-TEST_CASE("Chains - DryWet dry playback volume", "[Chains]") {
+TEST_CASE("Chains - DryWet dry playback volume", "[Chains][audio]") {
     SingleDryWetLoopTestChain tst;
 
     std::vector<float> dry_data({4, 3, 2, 1}), wet_data({1, 2, 3, 4}), half_dry({2, 1.5, 1, 0.5});
@@ -349,7 +349,7 @@ TEST_CASE("Chains - DryWet dry playback volume", "[Chains]") {
     tst.int_driver->close();
 };
 
-TEST_CASE("Chains - DryWet dry playback input passthrough muted", "[Chains]") {
+TEST_CASE("Chains - DryWet dry playback input passthrough muted", "[Chains][audio]") {
     SingleDryWetLoopTestChain tst;
 
     std::vector<float> dry_data({4, 3, 2, 1}), wet_data({1, 2, 3, 4});
@@ -374,7 +374,7 @@ TEST_CASE("Chains - DryWet dry playback input passthrough muted", "[Chains]") {
     tst.int_driver->close();
 };
 
-TEST_CASE("Chains - DryWet dry playback input muted", "[Chains]") {
+TEST_CASE("Chains - DryWet dry playback input muted", "[Chains][audio]") {
     SingleDryWetLoopTestChain tst;
 
     std::vector<float> dry_data({4, 3, 2, 1}), wet_data({1, 2, 3, 4});

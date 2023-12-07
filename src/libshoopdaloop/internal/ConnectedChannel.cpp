@@ -1,11 +1,12 @@
 #include "ConnectedChannel.h"
 #include "ConnectedPort.h"
 #include "ChannelInterface.h"
+#include "ConnectedLoop.h"
 #include "AudioChannel.h"
 #include "MidiChannel.h"
 #include "DummyMidiBufs.h"
-#include "MidiMergingBuffer.h"
-#include "MidiPortInterface.h"
+#include "MidiSortingBuffer.h"
+#include "MidiPort.h"
 #include <stdexcept>
 #include <algorithm>
 #include <BackendSession.h>
@@ -25,8 +26,7 @@ ConnectedChannel::ConnectedChannel(std::shared_ptr<ChannelInterface> chan,
                 std::shared_ptr<BackendSession> backend) :
         channel(chan),
         loop(loop),
-        backend(backend),
-        ma_process_when(shoop_types::ProcessWhen::BeforeFXChains)
+        backend(backend)
 {
     ma_data_sequence_nr = 0;
 }
@@ -51,65 +51,45 @@ bool ConnectedChannel::get_data_dirty() const {
 }
 
 void ConnectedChannel::connect_output_port(std::shared_ptr<ConnectedPort> port, bool thread_safe) {
-    auto fn = [this, port]() {
-        mp_output_port_mapping = port;
-        ma_process_when = port->ma_process_when; // Process in same phase as the connected port
-    };
-    if (thread_safe) { get_backend().queue_process_thread_command(fn); }
-    else { fn(); }
+    mp_output_port_mapping = port;
+    get_backend().recalculate_processing_schedule(thread_safe);
 }
 
 void ConnectedChannel::connect_input_port(std::shared_ptr<ConnectedPort> port, bool thread_safe) {
-    auto fn = [this, port]() {
-        mp_input_port_mapping = port;
-        ma_process_when = port->ma_process_when; // Process in same phase as the connected port
-    };
-    if (thread_safe) { get_backend().queue_process_thread_command(fn); }
-    else { fn(); }
+    mp_input_port_mapping = port;
+    get_backend().recalculate_processing_schedule(thread_safe);
 }
 
 void ConnectedChannel::disconnect_output_port(std::shared_ptr<ConnectedPort> port, bool thread_safe) {
-    auto fn = [this, port]() {
-        auto locked = mp_output_port_mapping.lock();
-        if (locked) {
-            if (port != locked) {
-                throw std::runtime_error("Attempting to disconnect unconnected output");
-            }
+    auto locked = mp_output_port_mapping.lock();
+    if (locked) {
+        if (port != locked) {
+            throw std::runtime_error("Attempting to disconnect unconnected output");
         }
-        mp_output_port_mapping.reset();
-    };
-    if (thread_safe) { get_backend().queue_process_thread_command(fn); }
-    else { fn(); }
+    }
+    mp_output_port_mapping.reset();
+    get_backend().recalculate_processing_schedule(thread_safe);
 }
 
 void ConnectedChannel::disconnect_output_ports(bool thread_safe) {
-    auto fn = [this]() {
-        mp_output_port_mapping.reset();
-    };
-    if (thread_safe) { get_backend().queue_process_thread_command(fn); }
-    else { fn(); }
+    mp_output_port_mapping.reset();
+    get_backend().recalculate_processing_schedule(thread_safe);
 }
 
 void ConnectedChannel::disconnect_input_port(std::shared_ptr<ConnectedPort> port, bool thread_safe) {
-    auto fn = [this, port]() {
-        auto locked = mp_input_port_mapping.lock();
-        if (locked) {
-            if (port != locked) {
-                throw std::runtime_error("Attempting to disconnect unconnected input");
-            }
+    auto locked = mp_input_port_mapping.lock();
+    if (locked) {
+        if (port != locked) {
+            throw std::runtime_error("Attempting to disconnect unconnected input");
         }
-        mp_input_port_mapping.reset();
-    };
-    if (thread_safe) { get_backend().queue_process_thread_command(fn); }
-    else { fn(); }
+    }
+    mp_input_port_mapping.reset();
+    get_backend().recalculate_processing_schedule(thread_safe);
 }
 
 void ConnectedChannel::disconnect_input_ports(bool thread_safe) {
-    auto fn = [this]() {
-        mp_input_port_mapping.reset();
-    };
-    if (thread_safe) { get_backend().queue_process_thread_command(fn); }
-    else { fn(); }
+    mp_input_port_mapping.reset();
+    get_backend().recalculate_processing_schedule(thread_safe);
 }
 
 void ConnectedChannel::PROC_prepare_process_audio(uint32_t n_frames) {
@@ -139,8 +119,6 @@ void ConnectedChannel::PROC_prepare_process_audio(uint32_t n_frames) {
     }
 }
 
-void ConnectedChannel::PROC_finalize_process_audio() {
-}
 
 void ConnectedChannel::PROC_prepare_process_midi(uint32_t n_frames) {
     auto in_locked = mp_input_port_mapping.lock();
@@ -161,10 +139,6 @@ void ConnectedChannel::PROC_prepare_process_midi(uint32_t n_frames) {
     }
 }
 
-
-void ConnectedChannel::PROC_finalize_process_midi() {
-}
-
 LoopAudioChannel *ConnectedChannel::maybe_audio() {
     return dynamic_cast<LoopAudioChannel*>(channel.get());
 }
@@ -179,4 +153,55 @@ BackendSession &ConnectedChannel::get_backend() {
         throw std::runtime_error("Back-end no longer exists");
     }
     return *b;
+}
+
+void ConnectedChannel::graph_node_0_process(uint32_t nframes) {
+    if (maybe_audio()) {
+        PROC_prepare_process_audio(nframes);
+    } else if (maybe_midi()) {
+        PROC_prepare_process_midi(nframes);
+    }
+}
+
+WeakGraphNodeSet ConnectedChannel::graph_node_0_incoming_edges() {
+    WeakGraphNodeSet rval;
+    if (auto in_locked = mp_input_port_mapping.lock()) {
+        rval.insert(in_locked->first_graph_node());
+    }
+    if (auto out_locked = mp_output_port_mapping.lock()) {
+        rval.insert(out_locked->first_graph_node());
+    }
+    return rval;
+}
+
+WeakGraphNodeSet ConnectedChannel::graph_node_0_outgoing_edges() {
+    WeakGraphNodeSet rval;
+    if (auto l = loop.lock()) {
+        rval.insert(l->graph_node());
+    }
+    return rval;
+}
+
+void ConnectedChannel::graph_node_1_process(uint32_t nframes) {
+    channel->PROC_finalize_process();
+}
+
+WeakGraphNodeSet ConnectedChannel::graph_node_1_incoming_edges() {
+    WeakGraphNodeSet rval;
+    rval.insert(first_graph_node());
+    if (auto l = loop.lock()) {
+        rval.insert(l->graph_node());
+    }
+    if (auto in_locked = mp_input_port_mapping.lock()) {
+        rval.insert(in_locked->second_graph_node());
+    }
+    return rval;
+}
+
+WeakGraphNodeSet ConnectedChannel::graph_node_1_outgoing_edges() {
+    WeakGraphNodeSet rval;
+    if (auto out_locked = mp_output_port_mapping.lock()) {
+        rval.insert(out_locked->second_graph_node());
+    }
+    return rval;
 }

@@ -1,17 +1,21 @@
 #include "BackendSession.h"
 #include "ConnectedChannel.h"
+#include "Backend.h"
+#include "GraphNode.h"
+#include "LoggingBackend.h"
 #include "ProcessProfiling.h"
 #include "ConnectedPort.h"
 #include "ConnectedFXChain.h"
 #include "ProcessingChainInterface.h"
-#include "process_loops.h"
 #include "ConnectedLoop.h"
 #include "AudioBuffer.h"
 #include "ObjectPool.h"
 #include "AudioMidiLoop.h"
+#include "graph_dot.h"
 #include "shoop_globals.h"
 #include "types.h"
-#include "process_when.h"
+#include "graph_processing_order.h"
+#include <chrono>
 
 #ifdef SHOOP_HAVE_BACKEND_JACK
 #include <jack_wrappers.h>
@@ -82,157 +86,23 @@ void BackendSession::PROC_process (uint32_t nframes) {
                 },
                 cmds_profiling_item
             );
-
-            log<log_level_trace>("Process: prepare");
-            profiling::stopwatch(
-                [this, &nframes]() {
-                    // Prepare ports:
-                    // Get buffers, reset them, and ensure they are the right size
-                    auto prepare_port_fn = [&](auto & p) {
-                        if(p) {
-                            p->PROC_reset_buffers();
-                            p->PROC_ensure_buffer(nframes, p->port->direction() == shoop_port_direction_t::Output);
-                        }
-                    };
-                    for (auto & port: ports) { prepare_port_fn(port); }
-                    for (auto & chain : fx_chains) {
-                        for (auto & p : chain->mc_audio_input_ports) { prepare_port_fn(p); }
-                        for (auto & p : chain->mc_audio_output_ports){ prepare_port_fn(p); }
-                        for (auto & p : chain->mc_midi_input_ports)  { prepare_port_fn(p); }
-                    }
-
-                    // Prepare loops:
-                    // Connect port buffers to loop channels
-                    for (auto & loop: loops) {
-                        if (loop) {
-                            loop->PROC_prepare_process(nframes);
-                        }
-                    }
-                }, ports_prepare_profiling_item, ports_profiling_item);
             
-            log<log_level_trace>("Process: pre-FX passthrough");
-            profiling::stopwatch(
-                [this, &nframes]() {
-                    // Process passthrough on the input side (before FX chains)
-                    auto before_fx_port_passthrough_fn = [&](auto &p) {
-                        if (p && p->ma_process_when == ProcessWhen::BeforeFXChains) { p->PROC_passthrough(nframes); }
-                    };
-                    for (auto & port: ports) { before_fx_port_passthrough_fn(port); }
-                    for (auto & chain : fx_chains) {
-                        for (auto & p : chain->mc_audio_input_ports) { before_fx_port_passthrough_fn(p); }
-                        for (auto & p : chain->mc_midi_input_ports)  { before_fx_port_passthrough_fn(p); }
-                    }
-                },
-                ports_profiling_item, ports_passthrough_profiling_item, ports_passthrough_input_profiling_item
-            );
-            
-            log<log_level_trace>("Process: process loops");
-            profiling::stopwatch(
-                [this, &nframes]() {
-                    // Process the loops. This queues deferred audio operations for post-FX channels.
-                    process_loops<ConnectedLoop>
-                        (loops, nframes, [](ConnectedLoop &l) { return (LoopInterface*)l.loop.get(); });
-            
-                    // Finish processing any channels that come before FX.
-                    auto before_fx_channel_process = [&](auto &c) {
-                        if (c && c->ma_process_when == ProcessWhen::BeforeFXChains) { c->channel->PROC_finalize_process(); }
-                    };
-                    for (auto & loop: loops) {
-                        if (loop) {
-                            for (auto & channel: loop->mp_audio_channels) { before_fx_channel_process(channel); }
-                            for (auto & channel: loop->mp_midi_channels)  { before_fx_channel_process(channel); }
+            log<trace>("Process: process graph");
+            auto processing_schedule = m_processing_schedule;
+            for(auto &step: processing_schedule->steps) {
+                profiling::stopwatch(
+                    [this, &nframes, &step]() {
+                        if(step.nodes.size() == 1) {
+                            log<trace>("Processing node: {}", step.nodes.begin()->get()->graph_node_name());
+                            step.nodes.begin()->get()->graph_node_process(nframes);
+                        } else if(step.nodes.size() > 1) {
+                            log<trace>("Co-processing {} nodes, first: {}", step.nodes.size(), step.nodes.begin()->get()->graph_node_name());
+                            step.nodes.begin()->get()->graph_node_co_process(step.nodes, nframes);
                         }
-                    }
-                },
-                loops_profiling_item
-            );
-
-            log<log_level_trace>("Process: finish pre-FX ports");
-            profiling::stopwatch(
-                [this, &nframes]() {
-                    // Finish processing any ports that come before FX.
-                    auto before_fx_port_process = [&](auto &p) {
-                        if (p && p->ma_process_when == ProcessWhen::BeforeFXChains) { p->PROC_finalize_process(nframes); }
-                    };
-                    for (auto &port : ports) { before_fx_port_process(port); }
-                    for (auto & chain : fx_chains) {
-                        for (auto & p : chain->mc_audio_input_ports) { before_fx_port_process(p); }
-                        for (auto & p : chain->mc_midi_input_ports)  { before_fx_port_process(p); }
-                    }
-                },
-                ports_profiling_item, ports_prepare_fx_profiling_item
-            );
-
-            log<log_level_trace>("Process: FX");
-            profiling::stopwatch(
-                [this, &nframes]() {
-                    // Process the FX chains.
-                    for (auto & chain: fx_chains) {
-                        chain->chain->process(nframes);
-                    }
-                },
-                fx_profiling_item
-            );
-
-            log<log_level_trace>("Process: post-FX passthrough");
-            profiling::stopwatch(
-                [this, &nframes]() {
-                    // Process passthrough on the output side (after FX chains)
-                    auto after_fx_port_passthrough_fn = [&](auto &p) {
-                        if (p && p->ma_process_when == ProcessWhen::AfterFXChains) { p->PROC_passthrough(nframes); }
-                    };
-                    for (auto & port: ports) { after_fx_port_passthrough_fn(port); }
-                    for (auto & chain : fx_chains) {
-                        for (auto & p : chain->mc_audio_output_ports) { after_fx_port_passthrough_fn(p); }
-                    }
-                },
-                ports_profiling_item, ports_passthrough_profiling_item, ports_passthrough_output_profiling_item
-            );
-
-            log<log_level_trace>("Process: finish post-FX channels");
-            profiling::stopwatch(
-                [this, &nframes]() {
-                    // Finish processing any channels that come after FX.
-                    auto after_fx_channel_process = [&](auto &c) {
-                        if (c && c->ma_process_when == ProcessWhen::AfterFXChains) { c->channel->PROC_finalize_process(); }
-                    };
-                    for (auto & loop: loops) {
-                        if (loop) {
-                            for (auto & channel: loop->mp_audio_channels) { after_fx_channel_process(channel); }
-                            for (auto & channel: loop->mp_midi_channels)  { after_fx_channel_process(channel); }
-                        }
-                    }
-                },
-                loops_profiling_item
-            );
-
-            log<log_level_trace>("Process: finish post-FX ports");
-            profiling::stopwatch(
-                [this, &nframes]() {
-                    // Finish processing any ports that come after FX.
-                    auto after_fx_port_process = [&](auto &p) {
-                        if (p && p->ma_process_when == ProcessWhen::AfterFXChains) { p->PROC_finalize_process(nframes); }
-                    };
-                    for (auto &port : ports) { after_fx_port_process(port); }
-                    for (auto & chain : fx_chains) {
-                        for (auto & p : chain->mc_audio_output_ports) { after_fx_port_process(p); }
-                    }
-                },
-                ports_profiling_item, ports_finalize_profiling_item
-            );
-
-            log<log_level_trace>("Process: finish loops");
-            profiling::stopwatch(
-                [this, &nframes]() {
-                    // Finish processing loops.
-                    for (auto &loop : loops) {
-                        if (loop) {
-                            loop->PROC_finalize_process();
-                        }
-                    }
-                },
-                loops_profiling_item
-            );
+                    },
+                    step.profiling_item
+                );
+            }
         },
         top_profiling_item
     );
@@ -256,9 +126,8 @@ void BackendSession::destroy() {
 std::shared_ptr<ConnectedLoop> BackendSession::create_loop() {
     auto loop = std::make_shared<AudioMidiLoop>(profiler);
     auto r = std::make_shared<ConnectedLoop>(shared_from_this(), loop);
-    queue_process_thread_command([this, r]() {
-        loops.push_back(r);
-    });
+    loops.push_back(r);
+    recalculate_processing_schedule();
     return r;
 }
 
@@ -326,12 +195,12 @@ std::shared_ptr<ConnectedFXChain> BackendSession::create_fx_chain(shoop_fx_chain
             );
         break;
     };
+
     chain->ensure_buffers(m_buffer_size);
-    auto log_level_info = std::make_shared<ConnectedFXChain>(chain, shared_from_this());
-    queue_process_thread_command([this, log_level_info]() {
-        fx_chains.push_back(log_level_info);
-    });
-    return log_level_info;
+    auto info = std::make_shared<ConnectedFXChain>(chain, shared_from_this());
+    fx_chains.push_back(info);
+    recalculate_processing_schedule();
+    return info;
 }
 
 BackendSession::~BackendSession() {
@@ -355,4 +224,74 @@ void BackendSession::set_buffer_size(uint32_t bs) {
         for (auto &i : fx_chains) { notify(i); }
         m_buffer_size = bs;
     });
+}
+
+void Backend::recalculate_processing_schedule(bool thread_safe) {
+    using std::chrono::high_resolution_clock;
+    using std::chrono::microseconds;
+    auto result = std::make_shared<ProcessingSchedule>();
+
+    logging::log<"Backend.ProcessGraph", debug>(std::nullopt, std::nullopt, "Recalculating process graph");
+
+    auto start = high_resolution_clock::now();
+
+    // Gather all the nodes
+    std::set<std::shared_ptr<GraphNode>> nodes;
+    auto insert_all = [&nodes](auto container) {
+        for(auto &item: container->all_graph_nodes()) {
+            nodes.insert(item->shared_from_this());
+        }
+    };
+    for(auto &p: ports) {
+        insert_all(p);
+    }
+    for(auto &l: loops) {
+        result->loop_graph_nodes.insert(l->graph_node());
+        insert_all(l);
+        for(auto &c: l->mp_audio_channels) { insert_all(c); }
+        for(auto &c: l->mp_midi_channels) { insert_all(c); }
+    }
+    for(auto &c: fx_chains) {
+        insert_all(c);
+        for (auto &p : c->audio_input_ports()) { insert_all(p); }
+        for (auto &p : c->audio_output_ports()) { insert_all(p); }
+        for (auto &p : c->midi_input_ports()) { insert_all(p); }
+    }
+    for(auto &p: decoupled_midi_ports) { insert_all(p); }
+
+    // Make raw pointers
+    std::set<GraphNode*> raw_nodes;
+    for(auto &n: nodes) { raw_nodes.insert(n.get()); }
+
+    // Schedule
+    std::vector<std::set<GraphNode*>> schedule = graph_processing_order(raw_nodes);
+
+    // Convert
+    // TODO: add profiling
+    for(auto &s: schedule) {
+        ProcessingStep step;
+        for(auto &n: s) { step.nodes.insert(n->shared_from_this()); }
+        result->steps.push_back(step);
+    }
+
+    auto end = high_resolution_clock::now();
+    float us = duration_cast<microseconds>(end - start).count();
+    logging::log<"Backend.ProcessGraph", debug>(std::nullopt, std::nullopt, "Calculation took {} us", us);
+
+    if(logging::should_log("Backend.ProcessGraph", trace)) {
+        auto dot = graph_dot(raw_nodes);
+        logging::log<"Backend.ProcessGraph", trace>(std::nullopt, std::nullopt, "DOT graph:\n{}", dot);
+    }
+
+    auto me = shared_from_this();
+    auto finish_fn = [me, result]() {
+        me->log<trace>("Applying updated process graph");
+        me->m_processing_schedule = result;
+    };
+    if (!thread_safe) { finish_fn(); }
+    else { cmd_queue.queue(finish_fn); }
+}
+
+WeakGraphNodeSet const& Backend::get_loop_graph_nodes() {
+    return m_processing_schedule->loop_graph_nodes;
 }

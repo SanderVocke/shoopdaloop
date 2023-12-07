@@ -2,10 +2,10 @@
 #include <optional>
 #include <memory>
 #include <stdio.h>
-#include "MidiPortInterface.h"
+#include "MidiPort.h"
 #include <string>
 #include <map>
-#include "AudioPortInterface.h"
+#include "AudioPort.h"
 #include "InternalAudioPort.h"
 #include <functional>
 
@@ -14,7 +14,7 @@ class ProcessingChainInterface {
 public:
     using _InternalAudioPort = InternalAudioPort<float>;
     using SharedInternalAudioPort = std::shared_ptr<InternalAudioPort<float>>;
-    using MidiPort = MidiPortInterface;
+    using MidiPort = MidiPort;
     using SharedMidiPort = std::shared_ptr<MidiPort>;
 
     ProcessingChainInterface() {}

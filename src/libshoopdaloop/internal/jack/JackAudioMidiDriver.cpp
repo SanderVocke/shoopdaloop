@@ -1,7 +1,7 @@
 #include "JackAudioMidiDriver.h"
 #include "AudioMidiDriver.h"
 #include "LoggingBackend.h"
-#include "MidiPortInterface.h"
+#include "MidiPort.h"
 #include "PortInterface.h"
 #include <stdexcept>
 #include <memory>
@@ -133,23 +133,23 @@ GenericJackAudioMidiDriver<API>::~GenericJackAudioMidiDriver() {
 }
 
 template<typename API>
-std::shared_ptr<AudioPortInterface<float>>GenericJackAudioMidiDriver<API>::open_audio_port(std::string name, shoop_port_direction_t direction) {
+std::shared_ptr<AudioPort<float>>GenericJackAudioMidiDriver<API>::open_audio_port(std::string name, shoop_port_direction_t direction) {
     std::shared_ptr<PortInterface> port =
         std::static_pointer_cast<PortInterface>(
             std::make_shared<GenericJackAudioPort<API>>(name, direction, (jack_client_t*)get_maybe_client_handle(), m_all_ports_tracker)
         );
     m_ports[port->name()] = port;
-    return std::dynamic_pointer_cast<AudioPortInterface<float>>(port);
+    return std::dynamic_pointer_cast<AudioPort<float>>(port);
 }
 
 template<typename API>
-std::shared_ptr<MidiPortInterface> GenericJackAudioMidiDriver<API>::open_midi_port(std::string name, shoop_port_direction_t direction) {
+std::shared_ptr<MidiPort> GenericJackAudioMidiDriver<API>::open_midi_port(std::string name, shoop_port_direction_t direction) {
     std::shared_ptr<PortInterface> port =
         std::static_pointer_cast<PortInterface>(
             std::make_shared<GenericJackMidiPort<API>>(name, direction, (jack_client_t*)get_maybe_client_handle(), m_all_ports_tracker)
         );
     m_ports[port->name()] = port;
-    return std::dynamic_pointer_cast<MidiPortInterface>(port);
+    return std::dynamic_pointer_cast<MidiPort>(port);
 }
 
 template<typename API>

@@ -749,7 +749,8 @@ TEST_CASE("AudioMidiLoop - Audio - Preplay", "[AudioMidiLoop][audio]") {
     auto sync_source = std::make_shared<AudioMidiLoop>();
 
     auto process = [&](uint32_t n_samples) {
-        process_loops<AudioMidiLoop>({loop_ptr, sync_source}, n_samples);
+        std::set<std::shared_ptr<AudioMidiLoop>> loops ({loop_ptr, sync_source});
+        process_loops<AudioMidiLoop>(loops.begin(), loops.end(), n_samples);
     };
 
     sync_source->set_length(100);

@@ -1,6 +1,6 @@
 #include <utility>
 #include "MidiChannel.h"
-#include "MidiPortInterface.h"
+#include "MidiPort.h"
 #include "channel_mode_helpers.h"
 #include <memory>
 #include <optional>

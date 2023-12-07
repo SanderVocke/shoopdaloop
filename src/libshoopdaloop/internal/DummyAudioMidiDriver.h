@@ -40,7 +40,7 @@ public:
     void disconnect_external(std::string name) override;
 };
 
-class DummyAudioPort : public virtual AudioPortInterface<audio_sample_t>,
+class DummyAudioPort : public virtual AudioPort<audio_sample_t>,
                        public DummyPort,
                        private ModuleLoggingEnabled<"Backend.DummyAudioPort"> {
 
@@ -70,7 +70,7 @@ public:
     std::vector<audio_sample_t> dequeue_data(uint32_t n);
 };
 
-class DummyMidiPort : public virtual MidiPortInterface,
+class DummyMidiPort : public virtual MidiPort,
                       public DummyPort,
                       public MidiReadableBufferInterface,
                       public MidiWriteableBufferInterface,
@@ -160,12 +160,12 @@ public:
 
     void start(AudioMidiDriverSettingsInterface &settings) override;
 
-    std::shared_ptr<AudioPortInterface<audio_sample_t>> open_audio_port(
+    std::shared_ptr<AudioPort<audio_sample_t>> open_audio_port(
         std::string name,
         shoop_port_direction_t direction
     ) override;
 
-    std::shared_ptr<MidiPortInterface> open_midi_port(
+    std::shared_ptr<MidiPort> open_midi_port(
         std::string name,
         shoop_port_direction_t direction
     ) override;

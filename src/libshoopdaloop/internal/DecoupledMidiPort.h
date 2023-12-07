@@ -1,4 +1,5 @@
-#include "MidiPortInterface.h"
+#pragma once
+#include "MidiPort.h"
 #include <memory>
 #include <vector>
 #include <stdint.h>
@@ -21,12 +22,12 @@ class DecoupledMidiPort : public std::enable_shared_from_this<DecoupledMidiPort<
     using Message = DecoupledMidiMessage;
     using Queue = boost::lockfree::spsc_queue<Message>;
 
-    const std::shared_ptr<MidiPortInterface> port;
+    const std::shared_ptr<MidiPort> port;
     const shoop_port_direction_t direction;
     Queue ma_queue;
     std::weak_ptr<AudioMidiDriver> maybe_driver;
 public:
-    DecoupledMidiPort (std::shared_ptr<MidiPortInterface> port,
+    DecoupledMidiPort (std::shared_ptr<MidiPort> port,
                        std::weak_ptr<AudioMidiDriver> driver,
                        uint32_t queue_size,
                        shoop_port_direction_t direction);

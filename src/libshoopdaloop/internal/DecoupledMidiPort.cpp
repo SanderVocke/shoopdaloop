@@ -8,7 +8,7 @@
 
 template <typename TimeType, typename SizeType>
 DecoupledMidiPort<TimeType, SizeType>::DecoupledMidiPort(
-    std::shared_ptr<MidiPortInterface> port,
+    std::shared_ptr<MidiPort> port,
     std::weak_ptr<AudioMidiDriver> driver,
     uint32_t queue_size,
     shoop_port_direction_t direction)

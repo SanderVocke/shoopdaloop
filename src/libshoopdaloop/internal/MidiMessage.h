@@ -1,7 +1,7 @@
 #pragma once
 #include <vector>
 #include <stdint.h>
-#include "MidiPortInterface.h"
+#include "MidiPort.h"
 #include <cstring>
 #include <stdexcept>
 

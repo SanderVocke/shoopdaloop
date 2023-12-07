@@ -50,12 +50,12 @@ public:
     
     void start(AudioMidiDriverSettingsInterface &settings) override;
 
-    std::shared_ptr<AudioPortInterface<float>> open_audio_port(
+    std::shared_ptr<AudioPort<float>> open_audio_port(
         std::string name,
         shoop_port_direction_t direction
     ) override;
 
-    std::shared_ptr<MidiPortInterface> open_midi_port(
+    std::shared_ptr<MidiPort> open_midi_port(
         std::string name,
         shoop_port_direction_t direction
     ) override;

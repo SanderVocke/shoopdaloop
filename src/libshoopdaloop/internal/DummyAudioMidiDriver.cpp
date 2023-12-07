@@ -39,7 +39,7 @@ void *DummyPort::maybe_driver_handle() const {
 }
 
 DummyAudioPort::DummyAudioPort(std::string name, shoop_port_direction_t direction)
-    : AudioPortInterface<audio_sample_t>(name, direction), m_name(name),
+    : AudioPort<audio_sample_t>(name, direction), m_name(name),
       DummyPort(name, direction, PortType::Audio),
       m_direction(direction),
       m_queued_data(128) { }
@@ -151,7 +151,7 @@ bool DummyMidiPort::write_by_reference_supported() const { return true; }
 bool DummyMidiPort::write_by_value_supported() const { return true; }
 
 DummyMidiPort::DummyMidiPort(std::string name, shoop_port_direction_t direction)
-    : MidiPortInterface(name, direction), DummyPort(name, direction, PortType::Midi){
+    : MidiPort(name, direction), DummyPort(name, direction, PortType::Midi){
 }
 
 void DummyMidiPort::clear_queues() {
@@ -345,7 +345,7 @@ DummyAudioMidiDriver<Time, Size>::~DummyAudioMidiDriver() {
 }
 
 template <typename Time, typename Size>
-std::shared_ptr<AudioPortInterface<audio_sample_t>>
+std::shared_ptr<AudioPort<audio_sample_t>>
 DummyAudioMidiDriver<Time, Size>::open_audio_port(std::string name,
                                               shoop_port_direction_t direction) {
     log<log_level_debug>("DummyAudioMidiDriver : add audio port");
@@ -355,7 +355,7 @@ DummyAudioMidiDriver<Time, Size>::open_audio_port(std::string name,
 }
 
 template <typename Time, typename Size>
-std::shared_ptr<MidiPortInterface>
+std::shared_ptr<MidiPort>
 DummyAudioMidiDriver<Time, Size>::open_midi_port(std::string name,
                                              shoop_port_direction_t direction) {
     log<log_level_debug>("DummyAudioMidiDriver: add midi port");

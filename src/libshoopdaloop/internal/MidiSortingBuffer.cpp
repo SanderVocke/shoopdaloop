@@ -1,4 +1,4 @@
-#include "MidiMergingBuffer.h"
+#include "MidiSortingBuffer.h"
 #include <vector>
 #include <algorithm>
 #include <array>
@@ -13,40 +13,48 @@ struct {
 } compare;
 } // namespace
 
-MidiMergingBuffer::MidiMergingBuffer() {
+MidiSortingBuffer::MidiSortingBuffer() {
     references.reserve(buffer_size);
     stored_messages.reserve(stored_messages_size);
 }
 
-uint32_t MidiMergingBuffer::PROC_get_n_events() const {
+uint32_t MidiSortingBuffer::PROC_get_n_events() const {
     return references.size();
 }
 
 MidiSortableMessageInterface const &
-MidiMergingBuffer::PROC_get_event_reference(uint32_t idx) {
+MidiSortingBuffer::PROC_get_event_reference(uint32_t idx) {
     if (dirty) {
         throw std::runtime_error("Access in merging buffer which is unsorted");
     }
     return *references[idx];
 }
 
-void MidiMergingBuffer::PROC_sort() {
+void MidiSortingBuffer::PROC_sort() {
     if (dirty) {
         std::stable_sort(references.begin(), references.end(), compare);
         dirty = false;
     }
 }
 
-void MidiMergingBuffer::PROC_clear() {
+void MidiSortingBuffer::PROC_process(uint32_t nframes) {
+    PROC_sort();
+}
+
+void MidiSortingBuffer::PROC_prepare(uint32_t nframes) {
+    PROC_clear();
+}
+
+void MidiSortingBuffer::PROC_clear() {
     references.clear();
     stored_messages.clear();
     dirty = false;
 }
 
-bool MidiMergingBuffer::write_by_value_supported() const { return true; }
-bool MidiMergingBuffer::write_by_reference_supported() const { return true; }
+bool MidiSortingBuffer::write_by_value_supported() const { return true; }
+bool MidiSortingBuffer::write_by_reference_supported() const { return true; }
 
-void MidiMergingBuffer::PROC_write_event_value(uint32_t size, uint32_t time,
+void MidiSortingBuffer::PROC_write_event_value(uint32_t size, uint32_t time,
                                                const uint8_t *data) {
     if (size > 3) {
         throw std::runtime_error(
@@ -61,7 +69,7 @@ void MidiMergingBuffer::PROC_write_event_value(uint32_t size, uint32_t time,
     PROC_write_event_reference(*ptr);
 }
 
-void MidiMergingBuffer::PROC_write_event_reference(
+void MidiSortingBuffer::PROC_write_event_reference(
     MidiSortableMessageInterface const &m) {
     references.push_back(&m);
     dirty = true;

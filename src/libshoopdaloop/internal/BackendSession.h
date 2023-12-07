@@ -7,6 +7,9 @@
 #include "WithCommandQueue.h"
 #include "shoop_globals.h"
 #include "types.h"
+#include <set>
+#include "GraphNode.h"
+
 
 namespace profiling {
 class Profiler;
@@ -65,9 +68,21 @@ public:
     BackendSession();
     ~BackendSession();
 
+    struct ProcessingStep {
+        std::set<std::shared_ptr<GraphNode>> nodes;
+        std::shared_ptr<profiling::ProfilingItem> profiling_item;
+    };
+    struct ProcessingSchedule {
+        std::vector<ProcessingStep> steps;
+        WeakGraphNodeSet loop_graph_nodes;
+    };
+    std::shared_ptr<ProcessingSchedule> m_processing_schedule = std::make_shared<ProcessingSchedule>();
+
     void PROC_process(uint32_t nframes) override;
 
     shoop_backend_session_state_info_t get_state();
+    WeakGraphNodeSet const& get_loop_graph_nodes();
+
     std::shared_ptr<ConnectedLoop> create_loop();
     std::shared_ptr<ConnectedFXChain> create_fx_chain(shoop_fx_chain_type_t type, const char *title);
 
@@ -75,4 +90,10 @@ public:
     void set_buffer_size(uint32_t bs);
 
     void destroy();
+    void recalculate_processing_schedule(bool thread_safe=true);
+
+    // For introspection of which audio system types were compiled in.
+    // Note that this does not reflect whether the required drivers/libraries
+    // are actually installed.
+    static std::vector<audio_system_type_t> get_supported_audio_system_types();
 };

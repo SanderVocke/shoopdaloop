@@ -3,11 +3,14 @@
 #include "JackApi.h"
 #include "JackTestApi.h"
 #include "JackPort.h"
-#include "AudioPortInterface.h"
+#include "AudioPort.h"
+#include "types.h"
+#include <atomic>
 
 template<typename API>
-class GenericJackAudioPort : public virtual AudioPortInterface<jack_default_audio_sample_t>, public GenericJackPort<API> {
+class GenericJackAudioPort : public virtual AudioPort<jack_default_audio_sample_t>, public virtual GenericJackPort<API> {
     using GenericJackPort<API>::m_port;
+    std::atomic<jack_default_audio_sample_t *> ma_buffer;
 public:
     GenericJackAudioPort(
         std::string name,
@@ -16,7 +19,12 @@ public:
         std::shared_ptr<GenericJackAllPorts<API>> all_ports_tracker
     );
     
-    float *PROC_get_buffer(uint32_t n_frames, bool do_zero=false) override;
+    // Prepare step is used to get the buffer from JACK
+    void PROC_prepare() override;
+    void PROC_process() override;
+
+    // Access the cached buffer.
+    float *PROC_get_buffer(uint32_t n_frames) const override;
 };
 
 using JackAudioPort = GenericJackAudioPort<JackApi>;

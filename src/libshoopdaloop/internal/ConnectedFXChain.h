@@ -2,10 +2,9 @@
 #include <vector>
 #include <memory>
 #include "shoop_globals.h"
-#include "ProcessingNodeInterface.h"
-
+#include "GraphNode.h"
 class ConnectedFXChain : public std::enable_shared_from_this<ConnectedFXChain>,
-                         public ProcessingNodeInterface {
+                         public HasGraphNode {
 public:
     const std::shared_ptr<shoop_types::FXChain> chain;
     std::weak_ptr<BackendSession> backend;
@@ -20,4 +19,11 @@ public:
     std::vector<std::shared_ptr<ConnectedPort>> const& audio_input_ports() const;
     std::vector<std::shared_ptr<ConnectedPort>> const& audio_output_ports() const;
     std::vector<std::shared_ptr<ConnectedPort>> const& midi_input_ports() const;
+
+    // Our graph node sits in-between the processing stage of all input ports
+    // and the processing stage of all output ports.
+    void graph_node_process(uint32_t nframes) override;
+    WeakGraphNodeSet graph_node_incoming_edges() override;
+    WeakGraphNodeSet graph_node_outgoing_edges() override;
+    std::string graph_node_name() const override { return "fxchain::process"; }
 };

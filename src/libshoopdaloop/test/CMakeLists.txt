@@ -8,6 +8,7 @@ add_executable(test_runner
     integration/test_libshoopdaloop_if.cpp
     integration/test_synced_BasicLoops.cpp
     integration/test_chains.cpp
+    integration/test_graph_construction.cpp
     )
 target_link_libraries(test_runner PRIVATE
                       shoopdaloop_internals

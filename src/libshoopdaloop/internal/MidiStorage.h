@@ -1,5 +1,5 @@
 #pragma once
-#include "MidiPortInterface.h"
+#include "MidiPort.h"
 #include "LoggingEnabled.h"
 #include <vector>
 #include <functional>

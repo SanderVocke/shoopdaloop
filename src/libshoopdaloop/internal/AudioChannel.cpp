@@ -265,6 +265,7 @@ void AudioChannel<SampleT>::PROC_process(
 
 template <typename SampleT>
 void AudioChannel<SampleT>::PROC_exec_cmd(ProcessingCommand cmd) {
+    log_trace();
     auto const &rc = cmd.details.raw_copy_details;
     auto const &ac = cmd.details.additive_copy_details;
     switch (cmd.cmd_type) {
@@ -288,6 +289,7 @@ void AudioChannel<SampleT>::PROC_exec_cmd(ProcessingCommand cmd) {
 
 template <typename SampleT>
 void AudioChannel<SampleT>::PROC_queue_memcpy(void *dst, void *src, uint32_t sz) {
+    log_trace();
     ProcessingCommand cmd;
     cmd.cmd_type = ProcessingCommandType::RawCopy;
     cmd.details.raw_copy_details = {.src = src, .dst = dst, .sz = sz};
@@ -298,6 +300,7 @@ template <typename SampleT>
 void AudioChannel<SampleT>::PROC_queue_additivecpy(SampleT *dst, SampleT *src,
                                                    uint32_t n_elems, float mult,
                                                    bool update_absmax) {
+    log_trace();
     ProcessingCommand cmd;
     cmd.cmd_type = ProcessingCommandType::AdditiveCopy;
     cmd.details.additive_copy_details = {.src = src,

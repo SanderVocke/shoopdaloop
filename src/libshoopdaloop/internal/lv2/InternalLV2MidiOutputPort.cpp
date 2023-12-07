@@ -11,7 +11,7 @@ InternalLV2MidiOutputPort::InternalLV2MidiOutputPort(
     std::string name, shoop_port_direction_t direction, uint32_t capacity,
     uint32_t atom_chunk_urid, uint32_t atom_sequence_urid,
     uint32_t midi_event_type_urid)
-    : MidiPortInterface(name, direction), m_name(name), m_direction(direction),
+    : MidiPort(name, direction), m_name(name), m_direction(direction),
       m_evbuf(lv2_evbuf_new(capacity, atom_chunk_urid, atom_sequence_urid)),
       m_midi_event_type_urid(midi_event_type_urid) {}
 

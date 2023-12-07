@@ -1,9 +1,9 @@
 #pragma once
-#include "AudioPortInterface.h"
+#include "AudioPort.h"
 #include <vector>
 
 template<typename SampleT>
-class InternalAudioPort : public AudioPortInterface<SampleT> {
+class InternalAudioPort : public AudioPort<SampleT> {
     std::string m_name;
     shoop_port_direction_t m_direction;
     std::vector<SampleT> m_buffer;

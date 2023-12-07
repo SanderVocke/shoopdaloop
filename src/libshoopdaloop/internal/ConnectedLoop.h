@@ -2,17 +2,18 @@
 #include <memory>
 #include <vector>
 #include "shoop_globals.h"
-#include "ProcessingNodeInterface.h"
+#include "GraphNode.h"
 
 class AudioMidiLoop;
 class ConnectedChannel;
 class BackendSession;
 
 class ConnectedLoop : public std::enable_shared_from_this<ConnectedLoop>,
-                      public ProcessingNodeInterface {
+                      public HasGraphNode {
 public:
 
     const std::shared_ptr<AudioMidiLoop> loop;
+    WeakGraphNodeSet m_other_loops;
     std::vector<std::shared_ptr<ConnectedChannel>> mp_audio_channels;
     std::vector<std::shared_ptr<ConnectedChannel>>  mp_midi_channels;
     std::weak_ptr<BackendSession> backend;
@@ -20,7 +21,8 @@ public:
     ConnectedLoop(std::shared_ptr<BackendSession> backend,
              std::shared_ptr<AudioMidiLoop> loop) :
         loop(loop),
-        backend(backend) {
+        backend(backend)
+    {
         mp_audio_channels.reserve(shoop_constants::default_max_audio_channels);
         mp_midi_channels.reserve(shoop_constants::default_max_midi_channels);
     }
@@ -34,4 +36,12 @@ public:
     void PROC_finalize_process();
 
     BackendSession &get_backend();
+
+    // Graph node connections are all handled by the channel nodes, so
+    // we don't need to connect anything. Just define the processing function
+    // that allows us to process all loops together.
+    void graph_node_co_process(std::set<std::shared_ptr<GraphNode>> const& nodes, uint32_t nframes) override;
+    void graph_node_process(uint32_t nframes) override;
+    std::string graph_node_name() const override { return "loop::process"; }
+    WeakGraphNodeSet graph_node_co_process_nodes() override;
 };

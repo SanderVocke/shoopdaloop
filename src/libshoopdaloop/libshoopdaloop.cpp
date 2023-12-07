@@ -762,9 +762,7 @@ shoopdaloop_audio_port_t *open_audio_port (shoop_backend_session_t *backend, sho
     auto _driver = internal_audio_driver(driver);
     auto port = _driver->open_audio_port
         (name_hint, direction);
-    auto pi = std::make_shared<ConnectedPort>(port, _backend,
-        direction == Input ? shoop_types::ProcessWhen::BeforeFXChains : shoop_types::ProcessWhen::AfterFXChains
-    );
+    auto pi = std::make_shared<ConnectedPort>(port, _backend);
     _backend->queue_process_thread_command([pi, _backend]() {
         _backend->ports.push_back(pi);
     });
@@ -870,8 +868,7 @@ shoopdaloop_midi_port_t *open_midi_port (shoop_backend_session_t *backend, shoop
     auto _backend = internal_backend_session(backend);
     auto _driver = internal_audio_driver(driver);
     auto port = _driver->open_midi_port(name_hint, direction);
-    auto pi = std::make_shared<ConnectedPort>(port, _backend,
-        direction == Input ? shoop_types::ProcessWhen::BeforeFXChains : shoop_types::ProcessWhen::AfterFXChains);
+    auto pi = std::make_shared<ConnectedPort>(port, _backend);
     _backend->queue_process_thread_command([pi, _backend]() {
         _backend->ports.push_back(pi);
     });

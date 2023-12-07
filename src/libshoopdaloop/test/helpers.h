@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <functional>
 #include "LoopInterface.h"
-#include "MidiPortInterface.h"
+#include "MidiPort.h"
 #include "MidiMessage.h"
 #include <cstring>
 #include "LoggingBackend.h"

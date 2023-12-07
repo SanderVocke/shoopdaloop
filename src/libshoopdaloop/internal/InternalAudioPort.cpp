@@ -9,7 +9,7 @@ template <typename SampleT>
 InternalAudioPort<SampleT>::InternalAudioPort(std::string name,
                                               shoop_port_direction_t direction,
                                               uint32_t n_frames)
-    : AudioPortInterface<SampleT>(name, direction), m_name(name),
+    : AudioPort<SampleT>(name, direction), m_name(name),
       m_direction(direction), m_buffer(n_frames) {}
 
 template <typename SampleT>

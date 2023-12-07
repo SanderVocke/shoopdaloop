@@ -1,5 +1,5 @@
 #pragma once
-#include "MidiPortInterface.h"
+#include "MidiPort.h"
 
 struct DummyReadMidiBuf : public MidiReadableBufferInterface {
     uint32_t PROC_get_n_events() const override;

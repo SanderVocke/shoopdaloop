@@ -1,9 +1,5 @@
-#pragma once
-#include <optional>
-#include <memory>
-#include <stdio.h>
-#include <string>
-#include "PortInterface.h"
+#pragma once 
+#include <stdint.h>
 
 class MidiSortableMessageInterface {
 public:
@@ -38,16 +34,10 @@ public:
     virtual ~MidiWriteableBufferInterface() {};
 };
 
-class MidiPortInterface : public virtual PortInterface {
-public:
-    MidiPortInterface(
-        std::string name,
-        shoop_port_direction_t direction
-    ) : PortInterface() {}
-
-    virtual MidiReadableBufferInterface &PROC_get_read_buffer  (uint32_t n_frames) = 0;
-    virtual MidiWriteableBufferInterface &PROC_get_write_buffer (uint32_t n_frames) = 0;
-
-    MidiPortInterface() {}
-    virtual ~MidiPortInterface() {};
+class MidiReadWriteBufferInterface : public virtual MidiWriteableBufferInterface,
+                                     public virtual MidiReadableBufferInterface
+{
+    // A read/write buffer will allow some kind of processing on the content.
+    virtual void PROC_process(uint32_t nframes) {}
+    virtual void PROC_prepare(uint32_t nframes) {}
 };

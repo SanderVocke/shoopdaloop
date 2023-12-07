@@ -1,8 +1,8 @@
 #pragma once
-#include "MidiPortInterface.h"
+#include "MidiPort.h"
 #include <lv2_evbuf.h>
 
-class InternalLV2MidiOutputPort : public MidiPortInterface, public MidiWriteableBufferInterface {
+class InternalLV2MidiOutputPort : public MidiPort, public MidiWriteableBufferInterface {
     std::string m_name;
     shoop_port_direction_t m_direction;
     LV2_Evbuf *m_evbuf;
