@@ -5,6 +5,7 @@
 #include "ProcessProfiling.h"
 #include "ExternalUIInterface.h"
 #include "SerializeableStateInterface.h"
+#include "MidiPort.h"
 #include <string>
 #include <vector>
 #include <map>
@@ -80,7 +81,6 @@ public:
     using SharedInternalAudioPort = typename ProcessingChainInterface<TimeType, SizeType>::SharedInternalAudioPort;
     using MidiOutputPort = InternalLV2MidiOutputPort;
     using SharedMidiOutputPort = std::shared_ptr<MidiOutputPort>;
-    using MidiPort = typename ProcessingChainInterface<TimeType, SizeType>::MidiPort;
     using SharedMidiPort = typename ProcessingChainInterface<TimeType, SizeType>::SharedMidiPort;
 
 private:

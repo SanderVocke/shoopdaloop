@@ -20,11 +20,11 @@ public:
     );
     
     // Prepare step is used to get the buffer from JACK
-    void PROC_prepare() override;
-    void PROC_process() override;
+    void PROC_prepare(uint32_t) override;
+    void PROC_process(uint32_t) override;
 
     // Access the cached buffer.
-    float *PROC_get_buffer(uint32_t n_frames) const override;
+    float *PROC_get_buffer(uint32_t n_frames) override;
 };
 
 using JackAudioPort = GenericJackAudioPort<JackApi>;

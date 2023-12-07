@@ -29,7 +29,6 @@ public:
     );
 
     const char* name() const override;
-    shoop_port_direction_t direction() const override;
     void close() override;
     void *maybe_driver_handle() const override;
 
@@ -66,6 +65,12 @@ public:
     void PROC_post_process(audio_sample_t* buf, uint32_t n_frames);
     void request_data(uint32_t n_frames);
     std::vector<audio_sample_t> dequeue_data(uint32_t n);
+
+    PortConnectivityType input_connectivity() const override;
+    PortConnectivityType output_connectivity() const override;
+
+    void PROC_prepare(uint32_t nframes) override;
+    void PROC_process(uint32_t nframes) override;
 };
 
 class DummyMidiPort : public virtual MidiPort,
@@ -121,6 +126,12 @@ public:
     std::vector<StoredMessage> get_written_requested_msgs();
 
     ~DummyMidiPort() override;
+
+    PortConnectivityType input_connectivity() const override;
+    PortConnectivityType output_connectivity() const override;
+
+    void PROC_prepare(uint32_t nframes) override;
+    void PROC_process(uint32_t nframes) override;
 };
 
 struct DummyAudioMidiDriverSettings : public AudioMidiDriverSettingsInterface {

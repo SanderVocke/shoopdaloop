@@ -14,7 +14,6 @@ class ProcessingChainInterface {
 public:
     using _InternalAudioPort = InternalAudioPort<float>;
     using SharedInternalAudioPort = std::shared_ptr<InternalAudioPort<float>>;
-    using MidiPort = MidiPort;
     using SharedMidiPort = std::shared_ptr<MidiPort>;
 
     ProcessingChainInterface() {}

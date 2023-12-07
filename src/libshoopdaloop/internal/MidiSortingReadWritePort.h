@@ -1,5 +1,6 @@
 #pragma once
 #include "MidiBufferInterfaces.h"
+#include "MidiSortingBuffer.h"
 #include "MidiPort.h"
 #include <stdint.h>
 #include <vector>

@@ -32,7 +32,6 @@ using PortExternalConnectionStatus = std::map<std::string, bool>;
 class PortInterface {
 public:
     virtual void close() = 0;
-    virtual shoop_port_direction_t direction() const = 0;
     virtual const char* name() const = 0;
     virtual PortDataType type() const = 0;
     virtual void* maybe_driver_handle() const = 0;

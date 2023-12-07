@@ -24,9 +24,6 @@ template<typename API>
 GenericJackPort<API>::~GenericJackPort() { close(); }
 
 template<typename API>
-PortType GenericJackPort<API>::type() const { return m_type; }
-
-template<typename API>
 GenericJackPort<API>::GenericJackPort(std::string name,
                    shoop_port_direction_t direction,
                    PortDataType type,
@@ -39,7 +36,7 @@ GenericJackPort<API>::GenericJackPort(std::string name,
     auto p = API::port_register(
         m_client,
         name.c_str(),
-        m_type == PortType::Audio ? JACK_DEFAULT_AUDIO_TYPE : JACK_DEFAULT_MIDI_TYPE,
+        m_type == PortDataType::Audio ? JACK_DEFAULT_AUDIO_TYPE : JACK_DEFAULT_MIDI_TYPE,
         direction == shoop_port_direction_t::Input ? JackPortIsInput : JackPortIsOutput,
         0);
 

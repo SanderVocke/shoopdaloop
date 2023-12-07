@@ -14,7 +14,7 @@ class GenericJackMidiPort : public GenericJackPort<API> {};
 template<typename API>
 class GenericJackMidiInputPort : 
     public virtual MidiBufferingInputPort,
-    public GenericJackMidiPort<API>,
+    public GenericJackMidiPort<API>
 {
     using GenericJackPort<API>::m_port;
     
@@ -29,6 +29,8 @@ public:
     MidiReadableBufferInterface *PROC_internal_read_input_data_buffer (uint32_t nframes) override;
     MidiWriteableBufferInterface *PROC_internal_write_output_data_to_buffer (uint32_t nframes) override { return nullptr; }
     MidiWriteableBufferInterface *PROC_get_write_data_into_port_buffer (uint32_t nframes) override { return nullptr; }
+
+    void PROC_prepare(uint32_t nframes) override;
 };
 
 template<typename API>

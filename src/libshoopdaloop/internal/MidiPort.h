@@ -21,16 +21,16 @@ public:
 
     // Midi ports can have buffering or not. Multiple buffers are defined, although they
     // don't have to exist (nullptr) or can point to the same buffer.
-    virtual MidiWriteableBufferInterface *PROC_get_write_data_into_port_buffer  (uint32_t n_frames) = 0;
-    virtual MidiReadWriteBufferInterface *PROC_get_processing_buffer (uint32_t n_frames) = 0;
-    virtual MidiReadableBufferInterface *PROC_get_read_output_data_buffer (uint32_t n_frames) = 0;
+    virtual MidiWriteableBufferInterface *PROC_get_write_data_into_port_buffer  (uint32_t n_frames) { return nullptr; }
+    virtual MidiReadWriteBufferInterface *PROC_get_processing_buffer (uint32_t n_frames) { return nullptr; }
+    virtual MidiReadableBufferInterface *PROC_get_read_output_data_buffer (uint32_t n_frames) { return nullptr; }
     // Below buffers are for internal use
-    virtual MidiReadableBufferInterface *PROC_internal_read_input_data_buffer (uint32_t n_frames) = 0;
-    virtual MidiWriteableBufferInterface *PROC_internal_write_output_data_to_buffer (uint32_t n_frames) = 0;
+    virtual MidiReadableBufferInterface *PROC_internal_read_input_data_buffer (uint32_t n_frames) { return nullptr; }
+    virtual MidiWriteableBufferInterface *PROC_internal_write_output_data_to_buffer (uint32_t n_frames) { return nullptr; }
 
     // Buffer which the port will push messages into during the process step (e.g. to send MIDI
     // messages out to JACK)
-    virtual MidiWriteableBufferInterface *PROC_maybe_get_send_out_buffer (uint32_t n_frames) = 0;
+    virtual MidiWriteableBufferInterface *PROC_maybe_get_send_out_buffer (uint32_t n_frames) { return nullptr; }
 
     PortDataType type() const override { return PortDataType::Midi; }
 

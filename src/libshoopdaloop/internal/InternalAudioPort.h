@@ -21,7 +21,6 @@ public:
     SampleT *PROC_get_buffer(uint32_t n_frames) override;
 
     const char* name() const override;
-    shoop_port_direction_t direction() const override;
     void reallocate_buffer(uint32_t n_frames);
     uint32_t buffer_size() const;
     void close() override;
@@ -34,6 +33,12 @@ public:
     void disconnect_external(std::string name) override;
 
     void PROC_change_buffer_size(uint32_t buffer_size) override;
+
+    PortConnectivityType input_connectivity() const override;
+    PortConnectivityType output_connectivity() const override;
+
+    void PROC_prepare(uint32_t nframes) override;
+    void PROC_process(uint32_t nframes) override;
 };
 
 extern template class InternalAudioPort<float>;

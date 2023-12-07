@@ -11,21 +11,21 @@ InternalLV2MidiOutputPort::InternalLV2MidiOutputPort(
     std::string name, shoop_port_direction_t direction, uint32_t capacity,
     uint32_t atom_chunk_urid, uint32_t atom_sequence_urid,
     uint32_t midi_event_type_urid)
-    : MidiPort(name, direction), m_name(name), m_direction(direction),
+    : MidiPort(false, false, false), m_name(name), m_direction(direction),
       m_evbuf(lv2_evbuf_new(capacity, atom_chunk_urid, atom_sequence_urid)),
       m_midi_event_type_urid(midi_event_type_urid) {}
 
-MidiReadableBufferInterface &
-InternalLV2MidiOutputPort::PROC_get_read_buffer(uint32_t n_frames) {
+MidiReadableBufferInterface *
+InternalLV2MidiOutputPort::PROC_get_read_output_data_buffer(uint32_t n_frames) {
     throw std::runtime_error(
         "Internal LV2 MIDI output port does not support reading.");
 }
 
-MidiWriteableBufferInterface &
-InternalLV2MidiOutputPort::PROC_get_write_buffer(uint32_t n_frames) {
+MidiWriteableBufferInterface *
+InternalLV2MidiOutputPort::PROC_get_write_data_into_port_buffer(uint32_t n_frames) {
     lv2_evbuf_reset(m_evbuf, true);
     m_iter = lv2_evbuf_begin(m_evbuf);
-    return *(static_cast<MidiWriteableBufferInterface *>(this));
+    return (static_cast<MidiWriteableBufferInterface *>(this));
 }
 
 const char *InternalLV2MidiOutputPort::name() const { return m_name.c_str(); }
@@ -36,7 +36,7 @@ shoop_port_direction_t InternalLV2MidiOutputPort::direction() const {
 
 void InternalLV2MidiOutputPort::close() {}
 
-PortType InternalLV2MidiOutputPort::type() const { return PortType::Midi; }
+PortDataType InternalLV2MidiOutputPort::type() const { return PortDataType::Midi; }
 
 PortExternalConnectionStatus InternalLV2MidiOutputPort::get_external_connection_status() const { return PortExternalConnectionStatus(); }
 

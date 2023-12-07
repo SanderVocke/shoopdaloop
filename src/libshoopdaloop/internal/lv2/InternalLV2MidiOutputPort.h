@@ -26,7 +26,6 @@ public:
     MidiWriteableBufferInterface *PROC_get_write_data_into_port_buffer (uint32_t n_frames) override;
 
     const char* name() const override;
-    shoop_port_direction_t direction() const override;
     void close() override;
     PortDataType type() const override;
     void *maybe_driver_handle () const override;
@@ -43,6 +42,9 @@ public:
 
     bool write_by_reference_supported() const override;
     bool write_by_value_supported() const override;
+
+    PortConnectivityType input_connectivity() const override;
+    PortConnectivityType output_connectivity() const override;
 
     LV2_Evbuf *internal_evbuf() const;
 
