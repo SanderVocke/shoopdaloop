@@ -38,16 +38,6 @@ ConnectedPort::ConnectedPort (std::shared_ptr<PortInterface> const& port,
 #else
     bool is_internal = (dynamic_cast<InternalAudioPort<float>*>(port.get()));
 #endif
-
-    bool is_fx_in = is_internal && (port->direction() == shoop_port_direction_t::Output);
-    bool is_ext_in = !is_internal && (port->direction() == shoop_port_direction_t::Input);
-
-    if (auto m = dynamic_cast<MidiPort*>(port.get())) {
-        maybe_midi_state = std::make_shared<MidiStateTracker>(true, true, true);
-        if(m->direction() == shoop_port_direction_t::Output) {
-            maybe_midi_output_merging_buffer = std::make_shared<MidiSortingBuffer>();
-        }
-    }
 }
 
 void ConnectedPort::PROC_reset_buffers() {
@@ -60,10 +50,10 @@ void ConnectedPort::PROC_reset_buffers() {
 bool ConnectedPort::PROC_check_buffer(bool raise_if_absent) {
     auto maybe_midi = dynamic_cast<MidiPort*>(port.get());
     auto maybe_audio = dynamic_cast<AudioPort<shoop_types::audio_sample_t>*>(port.get());
-    bool result;
+    bool result = true;
 
     if (maybe_midi) {
-        if(maybe_midi->direction() == shoop_port_direction_t::Input) {
+        if(maybe_midi->has_write_access()) {
             result = (bool) maybe_midi_input_buffer;
         } else {
             result = (bool) maybe_midi_output_buffer;
@@ -83,14 +73,12 @@ bool ConnectedPort::PROC_check_buffer(bool raise_if_absent) {
 
 void ConnectedPort::PROC_passthrough(uint32_t n_frames) {
     log_trace();
-    if (port->direction() == shoop_port_direction_t::Input) {
-        for(auto & other : mp_passthrough_to) {
-            auto o = other.lock();
-            if(o && o->PROC_check_buffer(false)) {
-                if (dynamic_cast<AudioPort<shoop_types::audio_sample_t>*>(port.get())) { PROC_passthrough_audio(n_frames, *o); }
-                else if (dynamic_cast<MidiPort*>(port.get())) { PROC_passthrough_midi(n_frames, *o); }
-                else { throw std::runtime_error("Invalid port"); }
-            }
+    for(auto & other : mp_passthrough_to) {
+        auto o = other.lock();
+        if(o && o->PROC_check_buffer(false)) {
+            if (dynamic_cast<AudioPort<shoop_types::audio_sample_t>*>(port.get())) { PROC_passthrough_audio(n_frames, *o); }
+            else if (dynamic_cast<MidiPort*>(port.get())) { PROC_passthrough_midi(n_frames, *o); }
+            else { throw std::runtime_error("Invalid port"); }
         }
     }
 }

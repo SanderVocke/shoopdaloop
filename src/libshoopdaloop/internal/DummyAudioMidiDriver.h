@@ -66,9 +66,10 @@ public:
     void request_data(uint32_t n_frames);
     std::vector<audio_sample_t> dequeue_data(uint32_t n);
 
-    PortConnectivityType input_connectivity() const override;
-    PortConnectivityType output_connectivity() const override;
-
+    bool has_read_access() const override;
+    bool has_write_access() const override;
+    bool has_external_input() const override;
+    
     void PROC_prepare(uint32_t nframes) override;
     void PROC_process(uint32_t nframes) override;
 };
@@ -127,8 +128,9 @@ public:
 
     ~DummyMidiPort() override;
 
-    PortConnectivityType input_connectivity() const override;
-    PortConnectivityType output_connectivity() const override;
+    bool has_read_access() const override;
+    bool has_write_access() const override;
+    bool has_external_input() const override;
 
     void PROC_prepare(uint32_t nframes) override;
     void PROC_process(uint32_t nframes) override;

@@ -28,8 +28,9 @@ public:
 
     void* maybe_driver_handle() const override;
 
-    PortConnectivityType input_connectivity() const override;
-    PortConnectivityType output_connectivity() const override;
+    bool has_read_access() const override;
+    bool has_write_access() const override;
+    bool has_external_input() const override;
 
     jack_port_t *get_jack_port() const;
     void *get_buffer() const;

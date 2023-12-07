@@ -27,8 +27,8 @@ public:
     std::vector<float> stored_dummy_data;
 
     // Midi only
-    MidiReadableBufferInterface *maybe_midi_input_buffer;
-    MidiWriteableBufferInterface *maybe_midi_output_buffer;
+    MidiWriteableBufferInterface *maybe_midi_input_buffer;
+    MidiReadableBufferInterface *maybe_midi_output_buffer;
     std::shared_ptr<MidiSortingBuffer> maybe_midi_output_merging_buffer;
     std::atomic<uint32_t> n_events_processed;
     std::shared_ptr<MidiStateTracker> maybe_midi_state;

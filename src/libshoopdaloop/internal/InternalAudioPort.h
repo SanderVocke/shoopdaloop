@@ -34,8 +34,9 @@ public:
 
     void PROC_change_buffer_size(uint32_t buffer_size) override;
 
-    PortConnectivityType input_connectivity() const override;
-    PortConnectivityType output_connectivity() const override;
+    bool has_read_access() const override;
+    bool has_write_access() const override;
+    bool has_external_input() const override;
 
     void PROC_prepare(uint32_t nframes) override;
     void PROC_process(uint32_t nframes) override;

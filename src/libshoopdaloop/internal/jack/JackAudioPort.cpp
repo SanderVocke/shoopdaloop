@@ -14,14 +14,11 @@ GenericJackAudioPort<API>::GenericJackAudioPort(std::string name, shoop_port_dir
 
 template<typename API>
 void GenericJackAudioPort<API>::PROC_prepare(uint32_t nframes) {
-    AudioPort<jack_default_audio_sample_t>::PROC_prepare(nframes);
     GenericJackPort<API>::PROC_prepare(nframes);
-    auto buf = (jack_default_audio_sample_t *)API::port_get_buffer(m_port, nframes);
-    if (output_connectivity() == PortConnectivityType::External) {
+    if (!has_external_input()) {
         // JACK output buffers should be zero'd
-        memset((void*) buf, 0, sizeof(jack_default_audio_sample_t) * nframes);
+        memset((void*) ma_buffer.load(), 0, sizeof(jack_default_audio_sample_t) * nframes);
     }
-    ma_buffer = buf;
 }
 
 template<typename API>

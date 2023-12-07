@@ -107,16 +107,6 @@ void GenericJackPort<API>::disconnect_external(std::string name) {
 }
 
 template<typename API>
-PortConnectivityType GenericJackPort<API>::input_connectivity() const {
-    return m_direction == Input ? PortConnectivityType::External : PortConnectivityType::Internal;
-}
-
-template<typename API>
-PortConnectivityType GenericJackPort<API>::output_connectivity() const {
-    return m_direction == Output ? PortConnectivityType::External : PortConnectivityType::Internal;
-}
-
-template<typename API>
 void GenericJackPort<API>::PROC_prepare(uint32_t nframes) {
     m_buffer = API::port_get_buffer(m_port, nframes);
 }

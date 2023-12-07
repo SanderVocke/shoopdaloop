@@ -43,8 +43,9 @@ public:
     bool write_by_reference_supported() const override;
     bool write_by_value_supported() const override;
 
-    PortConnectivityType input_connectivity() const override;
-    PortConnectivityType output_connectivity() const override;
+    bool has_read_access() const override;
+    bool has_write_access() const override;
+    bool has_external_input() const override;
 
     LV2_Evbuf *internal_evbuf() const;
 

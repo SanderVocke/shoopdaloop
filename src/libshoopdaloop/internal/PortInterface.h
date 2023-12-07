@@ -4,12 +4,6 @@
 #include "types.h"
 #include <stdint.h>
 
-enum class PortConnectivityType {
-    External, // available externally and internally
-    Internal, // available internally only
-    None      // not available for regular connection (special function)
-};
-
 enum class PortDataType {
     Audio,
     Midi
@@ -36,8 +30,9 @@ public:
     virtual PortDataType type() const = 0;
     virtual void* maybe_driver_handle() const = 0;
 
-    virtual PortConnectivityType input_connectivity() const = 0;
-    virtual PortConnectivityType output_connectivity() const = 0;
+    virtual bool has_read_access() const = 0;
+    virtual bool has_write_access() const = 0;
+    virtual bool has_external_input() const = 0;
 
     // See above: any preparation that should happen at the start of the process
     // cycle, regardless of what other ports are doing.
