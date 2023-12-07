@@ -1,9 +1,12 @@
 #include "AudioMidiDrivers.h"
 #include "LoggingBackend.h"
-#include "JackAudioMidiDriver.h"
 #include "DummyAudioMidiDriver.h"
 #include "shoop_globals.h"
 #include <memory>
+
+#ifdef SHOOP_HAVE_BACKEND_JACK
+#include "JackAudioMidiDriver.h"
+#endif
 
 using namespace logging;
 

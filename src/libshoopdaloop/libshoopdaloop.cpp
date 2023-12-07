@@ -1743,6 +1743,7 @@ void start_dummy_driver(shoop_audio_driver_t *driver, shoop_dummy_audio_driver_s
 
 void start_jack_driver(shoop_audio_driver_t *driver, shoop_jack_audio_driver_settings_t settings) {
   return api_impl<void>("start_jack_driver", [&]() {
+#ifdef SHOOP_HAVE_BACKEND_JACK
     auto _driver = internal_audio_driver(driver);
     auto jack = std::dynamic_pointer_cast<JackAudioMidiDriver>(_driver);
     auto jacktest = std::dynamic_pointer_cast<JackTestAudioMidiDriver>(_driver);
@@ -1762,5 +1763,8 @@ void start_jack_driver(shoop_audio_driver_t *driver, shoop_jack_audio_driver_set
 
     if (jack) { execute(jack); }
     else if (jacktest) { execute(jacktest); }
+#else
+    throw std::runtime_error("Jack backend not available.");
+#endif
   });
 }
