@@ -45,8 +45,8 @@ using namespace logging;
 using namespace shoop_constants;
 using namespace shoop_types;
 
-#ifdef _MSC_VER
-  #define strdup strdup
+#ifdef _strdup
+  #define strdup _strdup
 #endif
 
 // GLOBALS

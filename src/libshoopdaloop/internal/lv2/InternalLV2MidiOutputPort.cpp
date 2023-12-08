@@ -30,10 +30,6 @@ InternalLV2MidiOutputPort::PROC_get_write_data_into_port_buffer(uint32_t n_frame
 
 const char *InternalLV2MidiOutputPort::name() const { return m_name.c_str(); }
 
-shoop_port_direction_t InternalLV2MidiOutputPort::direction() const {
-    return m_direction;
-}
-
 void InternalLV2MidiOutputPort::close() {}
 
 PortDataType InternalLV2MidiOutputPort::type() const { return PortDataType::Midi; }

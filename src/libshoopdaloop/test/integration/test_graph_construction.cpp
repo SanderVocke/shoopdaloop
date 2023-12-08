@@ -32,8 +32,10 @@ class TestPort : public PortInterface {
     void connect_external(std::string name) override {}
     void disconnect_external(std::string name) override {}
 
-    PortConnectivityType input_connectivity() const override;
-    PortConnectivityType output_connectivity() const override;
+    bool has_internal_read_access() const override { return true; }
+    bool has_internal_write_access() const override { return true; };
+    bool has_implicit_input_source() const override { return true; };
+    bool has_implicit_output_sink() const override { return true; };
 
     void *maybe_driver_handle() const override { return nullptr; }
 

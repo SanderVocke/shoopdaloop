@@ -53,7 +53,7 @@ bool ConnectedPort::PROC_check_buffer(bool raise_if_absent) {
     bool result = true;
 
     if (maybe_midi) {
-        if(maybe_midi->has_write_access()) {
+        if(maybe_midi->has_internal_write_access()) {
             result = (bool) maybe_midi_input_buffer;
         } else {
             result = (bool) maybe_midi_output_buffer;
@@ -95,8 +95,8 @@ void ConnectedPort::PROC_passthrough_audio(uint32_t n_frames, ConnectedPort &to)
 void ConnectedPort::PROC_passthrough_midi(uint32_t n_frames, ConnectedPort &to) {
     log_trace();
     if(!muted && !passthrough_muted) {
-        for(uint32_t i=0; i<maybe_midi_input_buffer->PROC_get_n_events(); i++) {
-            auto &msg = maybe_midi_input_buffer->PROC_get_event_reference(i);
+        for(uint32_t i=0; i<maybe_midi_output_buffer->PROC_get_n_events(); i++) {
+            auto &msg = maybe_midi_output_buffer->PROC_get_event_reference(i);
             uint32_t t = msg.get_time();
             void* to_ptr = &to;
             log<log_level_debug>("Passthrough midi message reference to {} @ {}", to_ptr, t);
@@ -108,7 +108,8 @@ void ConnectedPort::PROC_passthrough_midi(uint32_t n_frames, ConnectedPort &to) 
 void ConnectedPort::PROC_process_buffer(uint32_t n_frames) {
     log_trace();
     if (auto a = dynamic_cast<AudioPort<shoop_types::audio_sample_t>*>(port.get())) {
-        if (a->direction() == shoop_port_direction_t::Output) {
+        if (a->has_internal_read_access() || a->has_implicit_output_sink()) {
+            // Apply volume
             float max = 0.0f;
             for (uint32_t i=0; i<n_frames; i++) {
                 float vol = volume.load();
@@ -118,7 +119,8 @@ void ConnectedPort::PROC_process_buffer(uint32_t n_frames) {
             peak = std::max(peak.load(), max);
         }
     } else if (auto m = dynamic_cast<MidiPort*>(port.get())) {
-        if (m->direction() == shoop_port_direction_t::Output) {
+        if (a->has_internal_read_access() || a->has_implicit_output_sink()) {
+            // Process messages
             if (!muted) {
                 uint32_t n_events = maybe_midi_output_merging_buffer->PROC_get_n_events();
                 maybe_midi_output_merging_buffer->PROC_sort();
@@ -128,7 +130,7 @@ void ConnectedPort::PROC_process_buffer(uint32_t n_frames) {
                     const uint8_t* data;
                     maybe_midi_output_merging_buffer->PROC_get_event_reference(i).get(size, time, data);
                     log<log_level_trace>("Output midi message reference @ {}", time);
-                    maybe_midi_output_buffer->PROC_write_event_value(size, time, data);
+                    maybe_midi_input_buffer->PROC_write_event_value(size, time, data);
                     maybe_midi_state->process_msg(data);
                 }
 

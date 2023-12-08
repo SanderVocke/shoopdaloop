@@ -22,8 +22,6 @@ DummyPort::DummyPort(
 
 const char* DummyPort::name() const { return m_name.c_str(); }
 
-shoop_port_direction_t DummyPort::direction() const { return m_direction; }
-
 void DummyPort::close() {}
 
 PortExternalConnectionStatus DummyPort::get_external_connection_status() const { return PortExternalConnectionStatus(); }

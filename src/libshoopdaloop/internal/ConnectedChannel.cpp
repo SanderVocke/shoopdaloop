@@ -124,7 +124,7 @@ void ConnectedChannel::PROC_prepare_process_midi(uint32_t n_frames) {
     auto in_locked = mp_input_port_mapping.lock();
     if (in_locked) {
         auto chan = dynamic_cast<LoopMidiChannel*>(channel.get());
-        chan->PROC_set_recording_buffer(in_locked->maybe_midi_input_buffer, n_frames);
+        chan->PROC_set_recording_buffer(in_locked->maybe_midi_output_buffer, n_frames);
     } else {
         auto chan = dynamic_cast<LoopMidiChannel*>(channel.get());
         chan->PROC_set_recording_buffer(g_dummy_midi_input_buffer.get(), n_frames);

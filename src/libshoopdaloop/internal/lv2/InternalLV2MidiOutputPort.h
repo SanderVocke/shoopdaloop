@@ -43,9 +43,10 @@ public:
     bool write_by_reference_supported() const override;
     bool write_by_value_supported() const override;
 
-    bool has_read_access() const override;
-    bool has_write_access() const override;
-    bool has_external_input() const override;
+    bool has_internal_read_access() const override { return false; }
+    bool has_internal_write_access() const override { return true; }
+    bool has_implicit_input_source() const override { return false; }
+    bool has_implicit_output_sink() const override { return true; }
 
     LV2_Evbuf *internal_evbuf() const;
 

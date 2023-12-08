@@ -34,12 +34,13 @@ public:
 
     void PROC_change_buffer_size(uint32_t buffer_size) override;
 
-    bool has_read_access() const override;
-    bool has_write_access() const override;
-    bool has_external_input() const override;
+    bool has_internal_read_access() const override { return true; }
+    bool has_internal_write_access() const override { return true; }
+    bool has_implicit_input_source() const override { return true; }
+    bool has_implicit_output_sink() const override { return true; }
 
-    void PROC_prepare(uint32_t nframes) override;
-    void PROC_process(uint32_t nframes) override;
+    void PROC_prepare(uint32_t nframes) override {}
+    void PROC_process(uint32_t nframes) override {}
 };
 
 extern template class InternalAudioPort<float>;

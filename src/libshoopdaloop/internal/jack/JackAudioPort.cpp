@@ -15,7 +15,7 @@ GenericJackAudioPort<API>::GenericJackAudioPort(std::string name, shoop_port_dir
 template<typename API>
 void GenericJackAudioPort<API>::PROC_prepare(uint32_t nframes) {
     GenericJackPort<API>::PROC_prepare(nframes);
-    if (!has_external_input()) {
+    if (!has_implicit_input_source()) {
         // JACK output buffers should be zero'd
         memset((void*) ma_buffer.load(), 0, sizeof(jack_default_audio_sample_t) * nframes);
     }
@@ -29,7 +29,6 @@ float *GenericJackAudioPort<API>::PROC_get_buffer(uint32_t n_frames) {
 template<typename API>
 void GenericJackAudioPort<API>::PROC_process(uint32_t nframes) {
     AudioPort<jack_default_audio_sample_t>::PROC_process(nframes);
-    GenericJackPort<API>::PROC_process(nframes);
 }
 
 template class GenericJackAudioPort<JackApi>;

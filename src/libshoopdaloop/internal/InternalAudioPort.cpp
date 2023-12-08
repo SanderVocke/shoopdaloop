@@ -27,11 +27,6 @@ const char *InternalAudioPort<SampleT>::name() const {
 }
 
 template <typename SampleT>
-shoop_port_direction_t InternalAudioPort<SampleT>::direction() const {
-    return m_direction;
-}
-
-template <typename SampleT>
 PortExternalConnectionStatus InternalAudioPort<SampleT>::get_external_connection_status() const { return PortExternalConnectionStatus(); }
 
 template <typename SampleT>

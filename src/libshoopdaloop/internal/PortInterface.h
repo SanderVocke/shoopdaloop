@@ -30,9 +30,16 @@ public:
     virtual PortDataType type() const = 0;
     virtual void* maybe_driver_handle() const = 0;
 
-    virtual bool has_read_access() const = 0;
-    virtual bool has_write_access() const = 0;
-    virtual bool has_external_input() const = 0;
+    // "internal" here refers to whether other elements inside
+    // the ShoopDaLoop backend can read/write from/to the port.
+    virtual bool has_internal_read_access() const = 0;
+    virtual bool has_internal_write_access() const = 0;
+
+    // "implicit" here means that the port gets data from somewhere
+    // other than data written/read by other elements (e.g. the audio
+    // driver or a special internal function).
+    virtual bool has_implicit_input_source() const = 0;
+    virtual bool has_implicit_output_sink() const = 0;
 
     // See above: any preparation that should happen at the start of the process
     // cycle, regardless of what other ports are doing.

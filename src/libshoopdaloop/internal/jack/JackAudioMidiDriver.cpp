@@ -144,10 +144,13 @@ std::shared_ptr<AudioPort<float>>GenericJackAudioMidiDriver<API>::open_audio_por
 
 template<typename API>
 std::shared_ptr<MidiPort> GenericJackAudioMidiDriver<API>::open_midi_port(std::string name, shoop_port_direction_t direction) {
-    std::shared_ptr<PortInterface> port =
-        std::static_pointer_cast<PortInterface>(
-            std::make_shared<GenericJackMidiPort<API>>(name, direction, (jack_client_t*)get_maybe_client_handle(), m_all_ports_tracker)
-        );
+    std::shared_ptr<PortInterface> port;
+    
+    if (direction == Input) {
+        port = std::make_shared<GenericJackMidiInputPort<API>>(name, (jack_client_t*)get_maybe_client_handle(), m_all_ports_tracker);
+    } else {
+        port = std::make_shared<GenericJackMidiOutputPort<API>>(name, (jack_client_t*)get_maybe_client_handle(), m_all_ports_tracker);
+    }
     m_ports[port->name()] = port;
     return std::dynamic_pointer_cast<MidiPort>(port);
 }

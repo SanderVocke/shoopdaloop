@@ -28,9 +28,10 @@ public:
 
     void* maybe_driver_handle() const override;
 
-    bool has_read_access() const override;
-    bool has_write_access() const override;
-    bool has_external_input() const override;
+    bool has_internal_read_access() const override { return true; }
+    bool has_internal_write_access() const override { return true; }
+    bool has_implicit_input_source() const override { return true; }
+    bool has_implicit_output_sink() const override { return true; }
 
     jack_port_t *get_jack_port() const;
     void *get_buffer() const;

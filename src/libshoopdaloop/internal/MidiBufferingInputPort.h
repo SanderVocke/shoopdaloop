@@ -18,12 +18,16 @@ protected:
         ReadMessage(uint32_t t, uint32_t s, void* b) :
             time(t), size(s), buffer(b) {}
 
-        uint32_t get_time() const override;
-        uint32_t get_size() const override;
-        const uint8_t *get_data() const override;
+        uint32_t get_time() const override { return time; }
+        uint32_t get_size() const override { return size; }
+        const uint8_t *get_data() const override { return (const uint8_t*) buffer; }
         void get(uint32_t &size_out,
                  uint32_t &time_out,
-                 const uint8_t* &data_out) const override;
+                 const uint8_t* &data_out) const override {
+                    size_out = get_size();
+                    time_out = get_time();
+                    data_out = get_data();
+                 }
     };
     std::vector<ReadMessage> m_temp_midi_storage;
 public:

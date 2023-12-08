@@ -66,12 +66,13 @@ public:
     void request_data(uint32_t n_frames);
     std::vector<audio_sample_t> dequeue_data(uint32_t n);
 
-    bool has_read_access() const override;
-    bool has_write_access() const override;
-    bool has_external_input() const override;
+    bool has_internal_read_access() const override { return true; }
+    bool has_internal_write_access() const override { return true; }
+    bool has_implicit_input_source() const override { return true; }
+    bool has_implicit_output_sink() const override { return true; }
     
-    void PROC_prepare(uint32_t nframes) override;
-    void PROC_process(uint32_t nframes) override;
+    void PROC_prepare(uint32_t nframes) override {}
+    void PROC_process(uint32_t nframes) override {}
 };
 
 class DummyMidiPort : public virtual MidiPort,
@@ -128,12 +129,13 @@ public:
 
     ~DummyMidiPort() override;
 
-    bool has_read_access() const override;
-    bool has_write_access() const override;
-    bool has_external_input() const override;
+    bool has_internal_read_access() const override { return true; }
+    bool has_internal_write_access() const override { return true; }
+    bool has_implicit_input_source() const override { return true; }
+    bool has_implicit_output_sink() const override { return true; }
 
-    void PROC_prepare(uint32_t nframes) override;
-    void PROC_process(uint32_t nframes) override;
+    void PROC_prepare(uint32_t nframes) override {}
+    void PROC_process(uint32_t nframes) override {}
 };
 
 struct DummyAudioMidiDriverSettings : public AudioMidiDriverSettingsInterface {

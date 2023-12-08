@@ -1,5 +1,7 @@
 #include "graph_processing_order.h"
 #include <map>
+#include <stdexcept>
+#include <algorithm>
 
 // Represents one or more nodes (more means they should be co-processed together).
 // Annotated redundantly with both incoming and outgoing edges.
