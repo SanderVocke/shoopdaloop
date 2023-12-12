@@ -2,7 +2,7 @@
 #include "catch2/catch_approx.hpp"
 #include <catch2/catch_test_macros.hpp>
 
-TEST_CASE("Ports - Dummy Audio In - Properties", "[Ports][audio]") {
+TEST_CASE("Ports - Dummy Audio In - Properties", "[DummyPorts][ports][audio]") {
     DummyAudioPort port ("dummy", Input);
 
     CHECK(port.has_internal_read_access());
@@ -11,7 +11,7 @@ TEST_CASE("Ports - Dummy Audio In - Properties", "[Ports][audio]") {
     CHECK(!port.has_implicit_output_sink());
 }
 
-TEST_CASE("Ports - Dummy Audio In - Buffers", "[Ports][audio]") {
+TEST_CASE("Ports - Dummy Audio In - Buffers", "[DummyPorts][ports][audio]") {
     DummyAudioPort port ("dummy", Input);
 
     port.PROC_prepare(10);
@@ -23,7 +23,7 @@ TEST_CASE("Ports - Dummy Audio In - Buffers", "[Ports][audio]") {
 
 }
 
-TEST_CASE("Ports - Dummy Audio In - Queue", "[Ports][audio]") {
+TEST_CASE("Ports - Dummy Audio In - Queue", "[DummyPorts][ports][audio]") {
     DummyAudioPort port ("dummy", Input);
     audio_sample_t samples[6] = {
         0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f
@@ -57,7 +57,7 @@ TEST_CASE("Ports - Dummy Audio In - Queue", "[Ports][audio]") {
     CHECK(buf[2] == Catch::Approx(0.0f));
 }
 
-TEST_CASE("Ports - Dummy Audio In - Gain", "[Ports][audio]") {
+TEST_CASE("Ports - Dummy Audio In - Gain", "[DummyPorts][ports][audio]") {
     DummyAudioPort port ("dummy", Input);
     audio_sample_t samples[6] = {
         0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f
@@ -75,7 +75,7 @@ TEST_CASE("Ports - Dummy Audio In - Gain", "[Ports][audio]") {
     CHECK(buf[2] == Catch::Approx(1.0f));
 }
 
-TEST_CASE("Ports - Dummy Audio In - Mute", "[Ports][audio]") {
+TEST_CASE("Ports - Dummy Audio In - Mute", "[DummyPorts][ports][audio]") {
     DummyAudioPort port ("dummy", Input);
     audio_sample_t samples[6] = {
         0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f
@@ -93,7 +93,7 @@ TEST_CASE("Ports - Dummy Audio In - Mute", "[Ports][audio]") {
     CHECK(buf[2] == Catch::Approx(0.0f));
 }
 
-TEST_CASE("Ports - Dummy Audio In - Peak", "[Ports][audio]") {
+TEST_CASE("Ports - Dummy Audio In - Peak", "[DummyPorts][ports][audio]") {
     DummyAudioPort port ("dummy", Input);
     audio_sample_t samples[6] = {
         5.0f, 4.0f, 3.0f, 2.0f, 1.0f, 0.0f
@@ -119,7 +119,7 @@ TEST_CASE("Ports - Dummy Audio In - Peak", "[Ports][audio]") {
     CHECK(port.get_peak() == Catch::Approx(2.0f));
 }
 
-TEST_CASE("Ports - Dummy Audio Out - Properties", "[Ports][audio]") {
+TEST_CASE("Ports - Dummy Audio Out - Properties", "[DummyPorts][ports][audio]") {
     DummyAudioPort port ("dummy", Output);
 
     CHECK(!port.has_internal_read_access());
@@ -128,7 +128,7 @@ TEST_CASE("Ports - Dummy Audio Out - Properties", "[Ports][audio]") {
     CHECK(port.has_implicit_output_sink());
 }
 
-TEST_CASE("Ports - Dummy Audio Out - Buffers", "[Ports][audio]") {
+TEST_CASE("Ports - Dummy Audio Out - Buffers", "[DummyPorts][ports][audio]") {
     DummyAudioPort port ("dummy", Output);
 
     port.PROC_prepare(10);
@@ -140,7 +140,7 @@ TEST_CASE("Ports - Dummy Audio Out - Buffers", "[Ports][audio]") {
 
 }
 
-TEST_CASE("Ports - Dummy Audio Out - Queue", "[Ports][audio]") {
+TEST_CASE("Ports - Dummy Audio Out - Queue", "[DummyPorts][ports][audio]") {
     DummyAudioPort port ("dummy", Output);
     std::vector<audio_sample_t> samples = {
         0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f
@@ -157,7 +157,7 @@ TEST_CASE("Ports - Dummy Audio Out - Queue", "[Ports][audio]") {
     CHECK(dequeued == samples);
 }
 
-TEST_CASE("Ports - Dummy Audio Out - Gain", "[Ports][audio]") {
+TEST_CASE("Ports - Dummy Audio Out - Gain", "[DummyPorts][ports][audio]") {
     DummyAudioPort port ("dummy", Output);
     std::vector<audio_sample_t> samples = {
         0.0f, 1.0f, 2.0f
@@ -177,7 +177,7 @@ TEST_CASE("Ports - Dummy Audio Out - Gain", "[Ports][audio]") {
     CHECK(dequeued[2] == Catch::Approx(1.0f));
 }
 
-TEST_CASE("Ports - Dummy Audio Out - Mute", "[Ports][audio]") {
+TEST_CASE("Ports - Dummy Audio Out - Mute", "[DummyPorts][ports][audio]") {
     DummyAudioPort port ("dummy", Output);
     std::vector<audio_sample_t> samples = {
         0.0f, 1.0f, 2.0f
@@ -197,7 +197,7 @@ TEST_CASE("Ports - Dummy Audio Out - Mute", "[Ports][audio]") {
     CHECK(dequeued[2] == Catch::Approx(0.0f));
 }
 
-TEST_CASE("Ports - Dummy Audio Out - Peak", "[Ports][audio]") {
+TEST_CASE("Ports - Dummy Audio Out - Peak", "[DummyPorts][ports][audio]") {
     DummyAudioPort port ("dummy", Output);
     std::vector<audio_sample_t> samples = {
         0.0f, 1.0f, 2.0f
