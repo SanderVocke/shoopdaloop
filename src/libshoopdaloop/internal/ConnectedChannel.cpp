@@ -1,5 +1,5 @@
 #include "ConnectedChannel.h"
-#include "ConnectedPort.h"
+#include "GraphPort.h"
 #include "ChannelInterface.h"
 #include "ConnectedLoop.h"
 #include "AudioChannel.h"
@@ -50,17 +50,17 @@ bool ConnectedChannel::get_data_dirty() const {
     return ma_data_sequence_nr != channel->get_data_seq_nr();
 }
 
-void ConnectedChannel::connect_output_port(std::shared_ptr<ConnectedPort> port, bool thread_safe) {
+void ConnectedChannel::connect_output_port(std::shared_ptr<GraphPort> port, bool thread_safe) {
     mp_output_port_mapping = port;
     get_backend().recalculate_processing_schedule(thread_safe);
 }
 
-void ConnectedChannel::connect_input_port(std::shared_ptr<ConnectedPort> port, bool thread_safe) {
+void ConnectedChannel::connect_input_port(std::shared_ptr<GraphPort> port, bool thread_safe) {
     mp_input_port_mapping = port;
     get_backend().recalculate_processing_schedule(thread_safe);
 }
 
-void ConnectedChannel::disconnect_output_port(std::shared_ptr<ConnectedPort> port, bool thread_safe) {
+void ConnectedChannel::disconnect_output_port(std::shared_ptr<GraphPort> port, bool thread_safe) {
     auto locked = mp_output_port_mapping.lock();
     if (locked) {
         if (port != locked) {
@@ -76,7 +76,7 @@ void ConnectedChannel::disconnect_output_ports(bool thread_safe) {
     get_backend().recalculate_processing_schedule(thread_safe);
 }
 
-void ConnectedChannel::disconnect_input_port(std::shared_ptr<ConnectedPort> port, bool thread_safe) {
+void ConnectedChannel::disconnect_input_port(std::shared_ptr<GraphPort> port, bool thread_safe) {
     auto locked = mp_input_port_mapping.lock();
     if (locked) {
         if (port != locked) {

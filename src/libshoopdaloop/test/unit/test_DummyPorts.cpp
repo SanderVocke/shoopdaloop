@@ -210,3 +210,30 @@ TEST_CASE("Ports - Dummy Audio Out - Peak", "[DummyPorts][ports][audio]") {
 
     CHECK(port.get_peak() == Catch::Approx(2.0f));
 }
+
+TEST_CASE("Ports - Dummy Audio Out - Noop Zero", "[DummyPorts][ports][audio]") {
+    DummyAudioPort port ("dummy", Output);
+    std::vector<audio_sample_t> samples = {
+        0.0f, 1.0f, 2.0f
+    };
+
+    port.request_data(6);
+
+    port.PROC_prepare(3);
+    auto buf = port.PROC_get_buffer(3);
+    memcpy((void*)buf, (void*)samples.data(), 3 * sizeof(audio_sample_t));
+    port.PROC_process(3);
+
+    auto dequeued = port.dequeue_data(3);
+    CHECK(dequeued[0] == Catch::Approx(0.0f));
+    CHECK(dequeued[1] == Catch::Approx(1.0f));
+    CHECK(dequeued[2] == Catch::Approx(2.0f));
+
+    port.PROC_prepare(3);
+    port.PROC_process(3);
+
+    dequeued = port.dequeue_data(3);
+    CHECK(dequeued[0] == Catch::Approx(0.0f));
+    CHECK(dequeued[1] == Catch::Approx(0.0f));
+    CHECK(dequeued[2] == Catch::Approx(0.0f));
+}

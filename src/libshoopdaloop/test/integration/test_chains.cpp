@@ -6,7 +6,7 @@
 #include "PortInterface.h"
 #include "ObjectPool.h"
 #include "AudioBuffer.h"
-#include "ConnectedPort.h"
+#include "GraphPort.h"
 #include "types.h"
 #include <memory>
 #include "libshoopdaloop_test_if.h"
@@ -25,15 +25,15 @@ struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDryWe
     std::shared_ptr<shoop_types::_DummyAudioMidiDriver> int_driver;
 
     shoopdaloop_audio_port_t *api_input_port;
-    std::shared_ptr<ConnectedPort> int_input_port;
+    std::shared_ptr<GraphPort> int_input_port;
     std::shared_ptr<DummyAudioPort> int_dummy_input_port;
 
     shoopdaloop_audio_port_t *api_output_port;
-    std::shared_ptr<ConnectedPort> int_output_port;
+    std::shared_ptr<GraphPort> int_output_port;
     std::shared_ptr<DummyAudioPort> int_dummy_output_port;
 
     shoopdaloop_midi_port_t *api_midi_input_port;
-    std::shared_ptr<ConnectedPort> int_midi_input_port;
+    std::shared_ptr<GraphPort> int_midi_input_port;
     std::shared_ptr<DummyMidiPort> int_dummy_midi_input_port;
 
     shoopdaloop_fx_chain_t *api_fx_chain;
@@ -41,8 +41,8 @@ struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDryWe
     std::shared_ptr<shoop_types::FXChain> int_custom_processing_chain;
     shoopdaloop_audio_port_t *api_fx_in;
     shoopdaloop_audio_port_t *api_fx_out;
-    std::shared_ptr<ConnectedPort> int_fx_in;
-    std::shared_ptr<ConnectedPort> int_fx_out;
+    std::shared_ptr<GraphPort> int_fx_in;
+    std::shared_ptr<GraphPort> int_fx_out;
 
     shoopdaloop_loop_t *api_loop;
     std::shared_ptr<ConnectedLoop> int_loop;

@@ -3,7 +3,7 @@
 #include "BasicLoop.h"
 #include "ConnectedChannel.h"
 #include "ConnectedLoop.h"
-#include "ConnectedPort.h"
+#include "GraphPort.h"
 #include "DummyAudioMidiDriver.h"
 #include "PortInterface.h"
 #include "graph_processing_order.h"
@@ -67,8 +67,8 @@ TEST_CASE("Graph Construction - Two Ports", "[GraphConstruct]") {
     auto backend = std::make_shared<BackendSession>();
     auto _p1 = std::make_shared<TestPort>("p1");
     auto _p2 = std::make_shared<TestPort>("p2");
-    auto port1 = std::make_shared<ConnectedPort>(_p1, backend);
-    auto port2 = std::make_shared<ConnectedPort>(_p2, backend);
+    auto port1 = std::make_shared<GraphPort>(_p1, backend);
+    auto port2 = std::make_shared<GraphPort>(_p2, backend);
     port1->connect_passthrough(port2);
 
     std::set<GraphNode *> nodes;
@@ -90,8 +90,8 @@ TEST_CASE("Graph Construction - Direct Loop", "[GraphConstruct]") {
     auto backend = std::make_shared<BackendSession>();
     auto _p1 = std::make_shared<TestPort>("p1");
     auto _p2 = std::make_shared<TestPort>("p2");
-    auto port1 = std::make_shared<ConnectedPort>(_p1, backend);
-    auto port2 = std::make_shared<ConnectedPort>(_p2, backend);
+    auto port1 = std::make_shared<GraphPort>(_p1, backend);
+    auto port2 = std::make_shared<GraphPort>(_p2, backend);
     port1->connect_passthrough(port2);
     auto loop = backend->create_loop();
     auto chan = std::make_shared<ConnectedChannel>(nullptr, loop, backend);
@@ -122,8 +122,8 @@ TEST_CASE("Graph Construction - Two Direct Loops", "[GraphConstruct]") {
     auto backend = std::make_shared<BackendSession>();
     auto _p1 = std::make_shared<TestPort>("p1");
     auto _p2 = std::make_shared<TestPort>("p2");
-    auto port1 = std::make_shared<ConnectedPort>(_p1, backend);
-    auto port2 = std::make_shared<ConnectedPort>(_p2, backend);
+    auto port1 = std::make_shared<GraphPort>(_p1, backend);
+    auto port2 = std::make_shared<GraphPort>(_p2, backend);
     port1->connect_passthrough(port2);
     auto loop1 = backend->create_loop();
     auto chan1 = std::make_shared<ConnectedChannel>(nullptr, loop1, backend);

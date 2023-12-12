@@ -2,7 +2,7 @@
 #include <memory>
 #include <set>
 #include "libshoopdaloop.h"
-#include "ConnectedPort.h"
+#include "GraphPort.h"
 #include "ConnectedChannel.h"
 #include "BackendSession.h"
 #include "ConnectedLoop.h"
@@ -16,9 +16,9 @@ std::set<std::shared_ptr<BackendSession>> &get_active_backends();
 
 std::shared_ptr<BackendSession> internal_backend_session(shoop_backend_session_t *backend);
 
-std::shared_ptr<ConnectedPort> internal_audio_port(shoopdaloop_audio_port_t *port);
+std::shared_ptr<GraphPort> internal_audio_port(shoopdaloop_audio_port_t *port);
 
-std::shared_ptr<ConnectedPort> internal_midi_port(shoopdaloop_midi_port_t *port);
+std::shared_ptr<GraphPort> internal_midi_port(shoopdaloop_midi_port_t *port);
 
 std::shared_ptr<ConnectedChannel> internal_audio_channel(shoopdaloop_loop_audio_channel_t *chan);
 
@@ -30,9 +30,9 @@ std::shared_ptr<ConnectedFXChain> internal_fx_chain(shoopdaloop_fx_chain_t *chai
 
 shoop_backend_session_t *external_backend_session(std::shared_ptr<BackendSession> backend);
 
-shoopdaloop_audio_port_t* external_audio_port(std::shared_ptr<ConnectedPort> port);
+shoopdaloop_audio_port_t* external_audio_port(std::shared_ptr<GraphPort> port);
 
-shoopdaloop_midi_port_t* external_midi_port(std::shared_ptr<ConnectedPort> port);
+shoopdaloop_midi_port_t* external_midi_port(std::shared_ptr<GraphPort> port);
 
 shoopdaloop_loop_audio_channel_t* external_audio_channel(std::shared_ptr<ConnectedChannel> port);
 

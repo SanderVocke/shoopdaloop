@@ -160,10 +160,7 @@ public:
     std::vector<SharedMidiPort> const& input_midi_ports() const override;
     bool is_freewheeling() const override;
     void set_freewheeling(bool enabled) override;
-
-    void ensure_buffers(uint32_t size) override;
-    uint32_t buffers_size() const override;
-
+    
     virtual ~CarlaLV2ProcessingChain();
 
     void deserialize_state(std::string str) override;

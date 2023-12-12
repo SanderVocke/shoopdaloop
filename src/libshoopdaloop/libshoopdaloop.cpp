@@ -32,7 +32,7 @@
 #include "CommandQueue.h"
 #include "types.h"
 #include "BackendSession.h"
-#include "ConnectedPort.h"
+#include "GraphPort.h"
 #include "ConnectedChannel.h"
 #include "ConnectedFXChain.h"
 #include "ConnectedLoop.h"
@@ -76,16 +76,16 @@ std::shared_ptr<AudioMidiDriver> internal_audio_driver(shoop_audio_driver_t *dri
     return rval;
 }
 
-std::shared_ptr<ConnectedPort> internal_audio_port(shoopdaloop_audio_port_t *port) {
-    auto rval = ((std::weak_ptr<ConnectedPort> *)port)->lock();
+std::shared_ptr<GraphPort> internal_audio_port(shoopdaloop_audio_port_t *port) {
+    auto rval = ((std::weak_ptr<GraphPort> *)port)->lock();
     if (!rval) {
         throw std::runtime_error("Attempt to access an invalid/expired audio port.");
     }
     return rval;
 }
 
-std::shared_ptr<ConnectedPort> internal_midi_port(shoopdaloop_midi_port_t *port) {
-    auto rval = ((std::weak_ptr<ConnectedPort> *)port)->lock();
+std::shared_ptr<GraphPort> internal_midi_port(shoopdaloop_midi_port_t *port) {
+    auto rval = ((std::weak_ptr<GraphPort> *)port)->lock();
     if (!rval) {
         throw std::runtime_error("Attempt to access an invalid/expired midi port.");
     }
@@ -135,13 +135,13 @@ shoop_audio_driver_t *external_audio_driver(std::shared_ptr<AudioMidiDriver> dri
     return (shoop_audio_driver_t*) weak;
 }
 
-shoopdaloop_audio_port_t* external_audio_port(std::shared_ptr<ConnectedPort> port) {
-    auto weak = new std::weak_ptr<ConnectedPort>(port);
+shoopdaloop_audio_port_t* external_audio_port(std::shared_ptr<GraphPort> port) {
+    auto weak = new std::weak_ptr<GraphPort>(port);
     return (shoopdaloop_audio_port_t*) weak;
 }
 
-shoopdaloop_midi_port_t* external_midi_port(std::shared_ptr<ConnectedPort> port) {
-    auto weak = new std::weak_ptr<ConnectedPort>(port);
+shoopdaloop_midi_port_t* external_midi_port(std::shared_ptr<GraphPort> port) {
+    auto weak = new std::weak_ptr<GraphPort>(port);
     return (shoopdaloop_midi_port_t*) weak;
 }
 
@@ -762,7 +762,7 @@ shoopdaloop_audio_port_t *open_audio_port (shoop_backend_session_t *backend, sho
     auto _driver = internal_audio_driver(driver);
     auto port = _driver->open_audio_port
         (name_hint, direction);
-    auto pi = std::make_shared<ConnectedPort>(port, _backend);
+    auto pi = std::make_shared<GraphPort>(port, _backend);
     _backend->queue_process_thread_command([pi, _backend]() {
         _backend->ports.push_back(pi);
     });
@@ -868,7 +868,7 @@ shoopdaloop_midi_port_t *open_midi_port (shoop_backend_session_t *backend, shoop
     auto _backend = internal_backend_session(backend);
     auto _driver = internal_audio_driver(driver);
     auto port = _driver->open_midi_port(name_hint, direction);
-    auto pi = std::make_shared<ConnectedPort>(port, _backend);
+    auto pi = std::make_shared<GraphPort>(port, _backend);
     _backend->queue_process_thread_command([pi, _backend]() {
         _backend->ports.push_back(pi);
     });

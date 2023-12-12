@@ -3,7 +3,7 @@
 #include "GraphNode.h"
 #include "LoggingBackend.h"
 #include "ProcessProfiling.h"
-#include "ConnectedPort.h"
+#include "GraphPort.h"
 #include "ConnectedFXChain.h"
 #include "ProcessingChainInterface.h"
 #include "ConnectedLoop.h"
@@ -196,7 +196,6 @@ std::shared_ptr<ConnectedFXChain> BackendSession::create_fx_chain(shoop_fx_chain
         break;
     };
 
-    chain->ensure_buffers(m_buffer_size);
     auto info = std::make_shared<ConnectedFXChain>(chain, shared_from_this());
     fx_chains.push_back(info);
     recalculate_processing_schedule();

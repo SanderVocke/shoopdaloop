@@ -17,7 +17,7 @@ class ProfilingItem;
 }
 
 class ConnectedLoop;
-class ConnectedPort;
+class GraphPort;
 class ConnectedFXChain;
 
 using namespace shoop_types;
@@ -38,7 +38,7 @@ class BackendSession : public std::enable_shared_from_this<BackendSession>,
 public:
     // Graph nodes
     std::vector<std::shared_ptr<ConnectedLoop>> loops;
-    std::vector<std::shared_ptr<ConnectedPort>> ports;
+    std::vector<std::shared_ptr<GraphPort>> ports;
     std::vector<std::shared_ptr<ConnectedFXChain>> fx_chains;
     // Infrastructure
     std::shared_ptr<AudioBufferPool> audio_buffer_pool;

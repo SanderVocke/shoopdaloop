@@ -13,10 +13,10 @@ CustomProcessingChain<TimeType, SizeType>::CustomProcessingChain(
     m_process_callback(process_callback)
 {
     for(uint32_t i=0; i<n_audio_inputs; i++) {
-        m_input_audio_ports.push_back(std::make_shared<InternalAudioPort<shoop_types::audio_sample_t>>("fx_audio_in_" + std::to_string(i+1), Output, 4096));
+        m_input_audio_ports.push_back(std::make_shared<InternalAudioPort<shoop_types::audio_sample_t>>("fx_audio_in_" + std::to_string(i+1), 4096));
     }
     for(uint32_t i=0; i<n_audio_outputs; i++) {
-        m_output_audio_ports.push_back(std::make_shared<InternalAudioPort<shoop_types::audio_sample_t>>("fx_audio_out_" + std::to_string(i+1), Input, 4096));
+        m_output_audio_ports.push_back(std::make_shared<InternalAudioPort<shoop_types::audio_sample_t>>("fx_audio_out_" + std::to_string(i+1), 4096));
     }
     for(uint32_t i=0; i<n_midi_inputs; i++) {
         m_input_midi_ports.push_back(std::make_shared<DummyMidiPort>("fx_midi_in_" + std::to_string(i+1), Output));
@@ -70,28 +70,6 @@ bool CustomProcessingChain<TimeType, SizeType>::is_active() const { return m_act
 template<typename TimeType, typename SizeType>
 void CustomProcessingChain<TimeType, SizeType>::set_active(bool active) {
     m_active = active;
-}
-
-template <typename TimeType, typename SizeType>
-void CustomProcessingChain<TimeType, SizeType>::ensure_buffers(uint32_t size) {
-    for (auto &port : m_input_audio_ports) {
-        port->reallocate_buffer(size);
-    }
-    for (auto &port : m_output_audio_ports) {
-        port->reallocate_buffer(size);
-        port->PROC_get_buffer(size);
-    }
-}
-
-template <typename TimeType, typename SizeType>
-uint32_t CustomProcessingChain<TimeType, SizeType>::buffers_size() const {
-    if (!m_input_audio_ports.empty()) {
-        return m_input_audio_ports[0]->buffer_size();
-    } else if (!m_output_audio_ports.empty()) {
-        return m_output_audio_ports[0]->buffer_size();
-    } else {
-        return 0;
-    }    
 }
 
 template <typename TimeType, typename SizeType>

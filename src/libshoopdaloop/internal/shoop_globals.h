@@ -14,7 +14,7 @@ template<typename A> class AudioChannel;
 template<typename A, typename B> class MidiChannel;
 template<typename A> class AudioPort;
 class MidiPort;
-class ConnectedPort;
+class GraphPort;
 class ConnectedLoop;
 class ConnectedChannel;
 class ConnectedFXChain;

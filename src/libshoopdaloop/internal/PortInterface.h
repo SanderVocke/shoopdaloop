@@ -55,8 +55,6 @@ public:
     virtual void connect_external(std::string name) = 0;
     virtual void disconnect_external(std::string name) = 0;
 
-    virtual void PROC_change_buffer_size(uint32_t buffer_size) {}
-
     virtual bool get_muted() const = 0;
     virtual void set_muted(bool muted) = 0;
 
