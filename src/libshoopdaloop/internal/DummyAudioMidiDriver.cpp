@@ -77,7 +77,8 @@ bool DummyAudioPort::get_queue_empty() {
 
 DummyAudioPort::~DummyAudioPort() { DummyPort::close(); }
 
-void DummyAudioPort::PROC_post_process(float* buf, uint32_t n_frames) {
+void DummyAudioPort::PROC_process( uint32_t n_frames) {
+    auto buf = PROC_get_buffer(n_frames);
     uint32_t to_store = std::min(n_frames, m_n_requested_samples.load());
     if (to_store > 0) {
         log<log_level_debug>("Buffering {} samples ({} total)", to_store, m_retained_samples.size() + to_store);

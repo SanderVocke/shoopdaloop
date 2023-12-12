@@ -1,13 +1,14 @@
 #include "DummyAudioMidiDriver.h"
-#include <catch2/catch_test_macros.h">
+#include "catch2/catch_approx.hpp"
+#include <catch2/catch_test_macros.hpp>
 
 TEST_CASE("Ports - Dummy Audio In - Properties", "[Ports][audio]") {
     DummyAudioPort port ("dummy", Input);
 
-    CHECK(port->has_internal_read_access());
-    CHECK(!port->has_internal_write_access());
-    CHECK(port->has_implicit_input_source());
-    CHECK(!port->has_implicit_output_sink());
+    CHECK(port.has_internal_read_access());
+    CHECK(!port.has_internal_write_access());
+    CHECK(port.has_implicit_input_source());
+    CHECK(!port.has_implicit_output_sink());
 }
 
 TEST_CASE("Ports - Dummy Audio In - Buffers", "[Ports][audio]") {
@@ -24,7 +25,7 @@ TEST_CASE("Ports - Dummy Audio In - Buffers", "[Ports][audio]") {
 
 TEST_CASE("Ports - Dummy Audio In - Queue", "[Ports][audio]") {
     DummyAudioPort port ("dummy", Input);
-    jack_default_audio_sample_t samples[6] = {
+    audio_sample_t samples[6] = {
         0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f
     };
 

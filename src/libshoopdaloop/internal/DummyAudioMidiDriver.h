@@ -62,17 +62,16 @@ public:
 
     // For output ports, ensure the postprocess function is called
     // and samples can be requested/dequeued.
-    void PROC_post_process(audio_sample_t* buf, uint32_t n_frames);
     void request_data(uint32_t n_frames);
     std::vector<audio_sample_t> dequeue_data(uint32_t n);
 
-    bool has_internal_read_access() const override { return true; }
-    bool has_internal_write_access() const override { return true; }
-    bool has_implicit_input_source() const override { return true; }
-    bool has_implicit_output_sink() const override { return true; }
+    bool has_internal_read_access() const override { return m_direction == Input; }
+    bool has_internal_write_access() const override { return m_direction == Output; }
+    bool has_implicit_input_source() const override { return m_direction == Input; }
+    bool has_implicit_output_sink() const override { return m_direction == Output; }
     
-    void PROC_prepare(uint32_t nframes) override {}
-    void PROC_process(uint32_t nframes) override {}
+    void PROC_prepare(uint32_t nframes) override { PROC_get_buffer(nframes); }
+    void PROC_process(uint32_t nframes) override;
 };
 
 class DummyMidiPort : public virtual MidiPort,
