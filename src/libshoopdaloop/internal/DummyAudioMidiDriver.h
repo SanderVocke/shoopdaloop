@@ -70,7 +70,7 @@ public:
     bool has_implicit_input_source() const override { return m_direction == Input; }
     bool has_implicit_output_sink() const override { return m_direction == Output; }
     
-    void PROC_prepare(uint32_t nframes) override { PROC_get_buffer(nframes); }
+    void PROC_prepare(uint32_t nframes) override;
     void PROC_process(uint32_t nframes) override;
 };
 

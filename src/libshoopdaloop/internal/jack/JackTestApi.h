@@ -75,7 +75,7 @@ public:
 
     static void* port_get_buffer(auto ...args) {
         logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "UNIMPL port_get_buffer");
-        return ms_ptr_return_value;
+        return nullptr;
     };
 
     static void port_get_latency_range(auto ...args) {
@@ -85,12 +85,12 @@ public:
 
     static jack_nframes_t port_get_latency(auto ...args) {
         logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "UNIMPL port_get_latency");
-        return ms_int_return_value;
+        return 0;
     };
 
     static int set_process_callback(auto ...args) {
         logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "UNIMPL set_process_callback");
-        return ;
+        return 0;
     };
 
     static int set_xrun_callback(auto ...args) {

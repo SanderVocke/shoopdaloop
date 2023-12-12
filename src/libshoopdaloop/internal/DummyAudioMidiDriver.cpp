@@ -1,6 +1,7 @@
 #include "AudioMidiDriver.h"
 #include "PortInterface.h"
 #include "WithCommandQueue.h"
+#include "fmt/format.h"
 #include "types.h"
 #include <chrono>
 #include <cstdint>
@@ -43,24 +44,6 @@ DummyAudioPort::DummyAudioPort(std::string name, shoop_port_direction_t directio
 float *DummyAudioPort::PROC_get_buffer(uint32_t n_frames) {
     m_buffer_data.resize(std::max(m_buffer_data.size(), (size_t)n_frames));
     auto rval = m_buffer_data.data();
-    uint32_t filled = 0;
-    while (!m_queued_data.empty() && filled < n_frames) {
-        auto &front = m_queued_data.front();
-        uint32_t to_copy = std::min((size_t)(n_frames - filled), front.size());
-        uint32_t total_copyable = m_queued_data.front().size();
-        log<log_level_debug>("Dequeueing {} of {} samples", to_copy, total_copyable);
-        memcpy((void *)(rval + filled), (void *)front.data(),
-               sizeof(audio_sample_t) * to_copy);
-        filled += to_copy;
-        front.erase(front.begin(), front.begin() + to_copy);
-        if (front.size() == 0) {
-            m_queued_data.pop();
-            bool another = !m_queued_data.empty();
-            log<log_level_debug>("Pop queue item. Another: {}", another);
-        }
-    }
-    memset((void *)(rval+filled), 0, sizeof(audio_sample_t) * (n_frames - filled));
-
     return rval;
 }
 
@@ -77,7 +60,9 @@ bool DummyAudioPort::get_queue_empty() {
 
 DummyAudioPort::~DummyAudioPort() { DummyPort::close(); }
 
-void DummyAudioPort::PROC_process( uint32_t n_frames) {
+void DummyAudioPort::PROC_process(uint32_t n_frames) {
+    AudioPort<audio_sample_t>::PROC_process(n_frames);
+    
     auto buf = PROC_get_buffer(n_frames);
     uint32_t to_store = std::min(n_frames, m_n_requested_samples.load());
     if (to_store > 0) {
@@ -85,6 +70,27 @@ void DummyAudioPort::PROC_process( uint32_t n_frames) {
         m_retained_samples.insert(m_retained_samples.end(), buf, buf+to_store);
         m_n_requested_samples -= to_store;
     }
+}
+
+void DummyAudioPort::PROC_prepare(uint32_t n_frames) {
+    auto buf = PROC_get_buffer(n_frames);
+    uint32_t filled = 0;
+    while (!m_queued_data.empty() && filled < n_frames) {
+        auto &front = m_queued_data.front();
+        uint32_t to_copy = std::min((size_t)(n_frames - filled), front.size());
+        uint32_t total_copyable = m_queued_data.front().size();
+        log<log_level_debug>("Dequeueing {} of {} samples", to_copy, total_copyable);
+        memcpy((void *)(buf + filled), (void *)front.data(),
+               sizeof(audio_sample_t) * to_copy);
+        filled += to_copy;
+        front.erase(front.begin(), front.begin() + to_copy);
+        if (front.size() == 0) {
+            m_queued_data.pop();
+            bool another = !m_queued_data.empty();
+            log<log_level_debug>("Pop queue item. Another: {}", another);
+        }
+    }
+    memset((void *)(buf+filled), 0, sizeof(audio_sample_t) * (n_frames - filled));
 }
 
 void DummyAudioPort::request_data(uint32_t n_frames) {

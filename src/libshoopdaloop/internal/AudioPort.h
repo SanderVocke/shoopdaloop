@@ -12,7 +12,10 @@ class AudioPort : public virtual PortInterface {
     std::atomic<bool> ma_muted;
 
 public:
-    AudioPort() : PortInterface() {}
+    AudioPort() : PortInterface(),
+      ma_muted(false),
+      ma_gain(1.0f),
+      ma_peak(0.0f) {}
     virtual ~AudioPort() {}
 
     virtual SampleT *PROC_get_buffer(uint32_t n_frames) = 0;
@@ -27,7 +30,7 @@ public:
             memset((void*)buf, 0, nframes * sizeof(SampleT));
         } else {
             auto gain = ma_gain.load();
-            SampleT peak = 0.0f;
+            SampleT peak = ma_peak.load();
             for(size_t i=0; i<nframes; i++) {
                 buf[i] *= gain;
                 peak = std::max(peak, std::abs(buf[i]));
@@ -41,4 +44,7 @@ public:
 
     void set_muted(bool muted) override { ma_muted = muted; }
     bool get_muted() const override { return ma_muted; }
+
+    float get_peak() const { return ma_peak.load(); }
+    void reset_peak() { ma_peak = 0.0f; }
 };
