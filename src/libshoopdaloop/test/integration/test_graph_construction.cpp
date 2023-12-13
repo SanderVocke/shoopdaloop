@@ -1,15 +1,17 @@
 #include "AudioMidiLoop.h"
 #include "BackendSession.h"
 #include "BasicLoop.h"
-#include "ConnectedChannel.h"
-#include "ConnectedLoop.h"
-#include "GraphPort.h"
+#include "AudioPort.h"
+#include "GraphLoopChannel.h"
+#include "GraphLoop.h"
+#include "GraphAudioPort.h"
 #include "DummyAudioMidiDriver.h"
 #include "PortInterface.h"
 #include "graph_processing_order.h"
 #include "shoop_globals.h"
 #include "types.h"
 #include <catch2/catch_test_macros.hpp>
+#include <algorithm>
 
 template <typename NodesType>
 void insert_all(NodesType &n, std::set<GraphNode *> &nodes) {
@@ -18,9 +20,10 @@ void insert_all(NodesType &n, std::set<GraphNode *> &nodes) {
     }
 };
 
-class TestPort : public PortInterface {
+class TestPort : public AudioPort<float> {
   public:
     std::string m_name;
+    std::vector<float> m_buffer;
 
     void close() override {}
     const char *name() const override { return m_name.c_str(); }
@@ -45,6 +48,11 @@ class TestPort : public PortInterface {
     bool get_muted() const override { return false; }
     void set_muted(bool muted) override {}
 
+    float* PROC_get_buffer(uint32_t nframes) override {
+        m_buffer.resize(std::max((size_t)nframes, m_buffer.size()));
+        return m_buffer.data();
+    }
+
     TestPort(std::string name) : PortInterface(), m_name(name) {}
     ~TestPort(){};
 };
@@ -67,8 +75,8 @@ TEST_CASE("Graph Construction - Two Ports", "[GraphConstruct]") {
     auto backend = std::make_shared<BackendSession>();
     auto _p1 = std::make_shared<TestPort>("p1");
     auto _p2 = std::make_shared<TestPort>("p2");
-    auto port1 = std::make_shared<GraphPort>(_p1, backend);
-    auto port2 = std::make_shared<GraphPort>(_p2, backend);
+    auto port1 = std::make_shared<GraphAudioPort>(_p1, backend);
+    auto port2 = std::make_shared<GraphAudioPort>(_p2, backend);
     port1->connect_passthrough(port2);
 
     std::set<GraphNode *> nodes;
@@ -90,11 +98,11 @@ TEST_CASE("Graph Construction - Direct Loop", "[GraphConstruct]") {
     auto backend = std::make_shared<BackendSession>();
     auto _p1 = std::make_shared<TestPort>("p1");
     auto _p2 = std::make_shared<TestPort>("p2");
-    auto port1 = std::make_shared<GraphPort>(_p1, backend);
-    auto port2 = std::make_shared<GraphPort>(_p2, backend);
+    auto port1 = std::make_shared<GraphAudioPort>(_p1, backend);
+    auto port2 = std::make_shared<GraphAudioPort>(_p2, backend);
     port1->connect_passthrough(port2);
     auto loop = backend->create_loop();
-    auto chan = std::make_shared<ConnectedChannel>(nullptr, loop, backend);
+    auto chan = std::make_shared<GraphLoopChannel>(nullptr, loop, backend);
     chan->connect_input_port(port1, false);
     chan->connect_output_port(port2, false);
 
@@ -122,13 +130,13 @@ TEST_CASE("Graph Construction - Two Direct Loops", "[GraphConstruct]") {
     auto backend = std::make_shared<BackendSession>();
     auto _p1 = std::make_shared<TestPort>("p1");
     auto _p2 = std::make_shared<TestPort>("p2");
-    auto port1 = std::make_shared<GraphPort>(_p1, backend);
-    auto port2 = std::make_shared<GraphPort>(_p2, backend);
+    auto port1 = std::make_shared<GraphAudioPort>(_p1, backend);
+    auto port2 = std::make_shared<GraphAudioPort>(_p2, backend);
     port1->connect_passthrough(port2);
     auto loop1 = backend->create_loop();
-    auto chan1 = std::make_shared<ConnectedChannel>(nullptr, loop1, backend);
+    auto chan1 = std::make_shared<GraphLoopChannel>(nullptr, loop1, backend);
     auto loop2 = backend->create_loop();
-    auto chan2 = std::make_shared<ConnectedChannel>(nullptr, loop2, backend);
+    auto chan2 = std::make_shared<GraphLoopChannel>(nullptr, loop2, backend);
     chan1->connect_input_port(port1, false);
     chan1->connect_output_port(port2, false);
     chan2->connect_input_port(port1, false);

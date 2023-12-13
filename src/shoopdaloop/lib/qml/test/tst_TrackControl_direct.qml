@@ -104,8 +104,8 @@ AppRegistries {
                 let c = session.get_track_control_widget(track_idx)
                 c.input_balance = 0.0
                 c.output_balance = 0.0
-                c.volume_dB = 0.0
-                c.input_volume_dB = 0.0
+                c.gain_dB = 0.0
+                c.input_gain_dB = 0.0
                 c.monitor = false
                 c.mute = false
             }
@@ -183,12 +183,12 @@ AppRegistries {
                     verify_eq(out2, expect_out2, true)
                 },
 
-                'test_direct_audio_monitor_input_volume': () => {
+                'test_direct_audio_monitor_input_gain': () => {
                     check_backend()
                     reset()
                     tut_control().monitor = true
                     tut_control().mute = false
-                    tut_control().input_volume_dB = 6.0
+                    tut_control().input_gain_dB = 6.0
                     testcase.wait_updated(session.backend)
 
                     audio_input_port_1.dummy_queue_data([1, 2, 3, 4])
@@ -206,12 +206,12 @@ AppRegistries {
 
                 },
 
-                'test_direct_audio_monitor_output_volume': () => {
+                'test_direct_audio_monitor_output_gain': () => {
                     check_backend()
                     reset()
                     tut_control().monitor = true
                     tut_control().mute = false
-                    tut_control().volume_dB = 6.0
+                    tut_control().gain_dB = 6.0
                     testcase.wait_updated(session.backend)
 
                     audio_input_port_1.dummy_queue_data([1, 2, 3, 4])
@@ -235,7 +235,7 @@ AppRegistries {
                     tut_control().monitor = true
                     tut_control().mute = false
                     tut_control().output_balance = -1.0
-                    tut_control().volume_dB = 6.0
+                    tut_control().gain_dB = 6.0
                     testcase.wait_updated(session.backend)
 
                     audio_input_port_1.dummy_queue_data([1, 2, 3, 4])
@@ -259,7 +259,7 @@ AppRegistries {
                     tut_control().monitor = true
                     tut_control().mute = false
                     tut_control().output_balance = 1.0
-                    tut_control().volume_dB = 6.0
+                    tut_control().gain_dB = 6.0
                     testcase.wait_updated(session.backend)
 
                     audio_input_port_1.dummy_queue_data([1, 2, 3, 4])

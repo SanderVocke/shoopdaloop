@@ -1,11 +1,11 @@
-function generate_audio_port(id, passthrough_to_ids, name_parts, direction, volume, muted, passthrough_muted, external_port_connections) {
+function generate_audio_port(id, passthrough_to_ids, name_parts, direction, gain, muted, passthrough_muted, external_port_connections) {
     return {
         'id': id,
         'passthrough_to': passthrough_to_ids,
         'schema': 'audioport.1',
         'name_parts': name_parts,
         'direction': direction,
-        'volume': volume,
+        'gain': gain,
         'muted': muted,
         'passthrough_muted': passthrough_muted,
         'external_port_connections': external_port_connections
@@ -25,7 +25,7 @@ function generate_midi_port(id, passthrough_to_ids, name_parts, direction, muted
     };
 }
 
-function generate_loop_channel(id, mode, type, data_length, start_offset, n_preplay_samples, volume, connected_port_ids) {
+function generate_loop_channel(id, mode, type, data_length, start_offset, n_preplay_samples, gain, connected_port_ids) {
     return {
         'id': id,
         'schema': 'channel.1',
@@ -34,7 +34,7 @@ function generate_loop_channel(id, mode, type, data_length, start_offset, n_prep
         'data_length': data_length,
         'start_offset': start_offset,
         'n_preplay_samples': n_preplay_samples,
-        'volume': volume,
+        'gain': gain,
         'connected_port_ids': connected_port_ids
     };
 }

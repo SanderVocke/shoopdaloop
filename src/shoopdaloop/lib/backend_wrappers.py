@@ -81,7 +81,7 @@ class FXChainState:
 class LoopAudioChannelState:
     mode : Type[ChannelMode]
     output_peak : float
-    volume : float
+    gain : float
     length : int
     start_offset : int
     data_dirty : bool
@@ -91,7 +91,7 @@ class LoopAudioChannelState:
     def __init__(self, backend_state : 'loop_audio_channel_state_t' = None):
         if backend_state:
             self.output_peak = backend_state.output_peak
-            self.volume = backend_state.volume
+            self.gain = backend_state.gain
             self.mode = ChannelMode(backend_state.mode)
             self.length = backend_state.length
             self.start_offset = backend_state.start_offset
@@ -100,7 +100,7 @@ class LoopAudioChannelState:
             self.n_preplay_samples = backend_state.n_preplay_samples
         else:
             self.output_peak = 0.0
-            self.volume = 0.0
+            self.gain = 0.0
             self.mode = ChannelMode.Disabled
             self.length = 0
             self.start_offset = 0
@@ -163,7 +163,7 @@ class LoopState:
 @dataclass
 class AudioPortState:
     peak: float
-    volume: float
+    gain: float
     muted: bool
     passthrough_muted: bool
     name: str
@@ -171,13 +171,13 @@ class AudioPortState:
     def __init__(self, backend_state : 'shoop_audio_port_state_info_t' = None):
         if backend_state:
             self.peak = backend_state.peak
-            self.volume = backend_state.volume
+            self.gain = backend_state.gain
             self.muted = bool(backend_state.muted)
             self.passthrough_muted = bool(backend_state.passthrough_muted)
             self.name = str(backend_state.name)
         else:
             self.peak = 0.0
-            self.volume = 0.0
+            self.gain = 0.0
             self.muted = False
             self.passthrough_muted = False
             self.name = '(unknown)'
@@ -361,9 +361,9 @@ class BackendLoopAudioChannel:
             return rval
         return LoopAudioChannelState()
     
-    def set_volume(self, volume):
+    def set_gain(self, gain):
         if self.available():
-            set_audio_channel_volume(self.shoop_c_handle, volume)
+            set_audio_channel_gain(self.shoop_c_handle, gain)
     
     def set_mode(self, mode : Type['ChannelMode']):
         if self.available():
@@ -591,9 +591,9 @@ class BackendAudioPort:
         else:
             return AudioPortState()
     
-    def set_volume(self, volume):
+    def set_gain(self, gain):
         if self.available():
-            set_audio_port_volume(self._c_handle, volume)
+            set_audio_port_gain(self._c_handle, gain)
     
     def set_muted(self, muted):
         if self.available():

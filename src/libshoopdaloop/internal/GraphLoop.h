@@ -5,20 +5,20 @@
 #include "GraphNode.h"
 
 class AudioMidiLoop;
-class ConnectedChannel;
+class GraphLoopChannel;
 class BackendSession;
 
-class ConnectedLoop : public std::enable_shared_from_this<ConnectedLoop>,
+class GraphLoop : public std::enable_shared_from_this<GraphLoop>,
                       public HasGraphNode {
 public:
 
     const std::shared_ptr<AudioMidiLoop> loop;
     WeakGraphNodeSet m_other_loops;
-    std::vector<std::shared_ptr<ConnectedChannel>> mp_audio_channels;
-    std::vector<std::shared_ptr<ConnectedChannel>>  mp_midi_channels;
+    std::vector<std::shared_ptr<GraphLoopChannel>> mp_audio_channels;
+    std::vector<std::shared_ptr<GraphLoopChannel>>  mp_midi_channels;
     std::weak_ptr<BackendSession> backend;
 
-    ConnectedLoop(std::shared_ptr<BackendSession> backend,
+    GraphLoop(std::shared_ptr<BackendSession> backend,
              std::shared_ptr<AudioMidiLoop> loop) :
         loop(loop),
         backend(backend)
@@ -29,11 +29,11 @@ public:
 
     void delete_audio_channel_idx(uint32_t idx, bool thread_safe=true);
     void delete_midi_channel_idx(uint32_t idx, bool thread_safe=true);
-    void delete_audio_channel(std::shared_ptr<ConnectedChannel> chan, bool thread_safe=true);
-    void delete_midi_channel(std::shared_ptr<ConnectedChannel> chan, bool thread_safe=true);
+    void delete_audio_channel(std::shared_ptr<GraphLoopChannel> chan, bool thread_safe=true);
+    void delete_midi_channel(std::shared_ptr<GraphLoopChannel> chan, bool thread_safe=true);
     void delete_all_channels(bool thread_safe=true);
-    void PROC_prepare_process(uint32_t n_frames);
-    void PROC_finalize_process();
+    void PROC_prepare(uint32_t n_frames);
+    void PROC_process(uint32_t n_frames);
 
     BackendSession &get_backend();
 

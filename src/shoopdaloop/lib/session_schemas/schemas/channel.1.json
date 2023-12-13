@@ -9,7 +9,7 @@
         "start_offset":        { "type": "integer" },
         "n_preplay_samples":   { "type": "integer" },
         "data_file":           { "type": "string" },
-        "volume":              { "type": "number" },
+        "gain":              { "type": "number" },
         "recording_starts_at": { "type": "string", "format": "date-time" },
         "connected_port_ids":  {
             "type": "array",

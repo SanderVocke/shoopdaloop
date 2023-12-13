@@ -26,18 +26,18 @@ struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDryWe
 
     shoopdaloop_audio_port_t *api_input_port;
     std::shared_ptr<GraphPort> int_input_port;
-    std::shared_ptr<DummyAudioPort> int_dummy_input_port;
+    DummyAudioPort* int_dummy_input_port;
 
     shoopdaloop_audio_port_t *api_output_port;
     std::shared_ptr<GraphPort> int_output_port;
-    std::shared_ptr<DummyAudioPort> int_dummy_output_port;
+    DummyAudioPort* int_dummy_output_port;
 
     shoopdaloop_midi_port_t *api_midi_input_port;
     std::shared_ptr<GraphPort> int_midi_input_port;
     std::shared_ptr<DummyMidiPort> int_dummy_midi_input_port;
 
     shoopdaloop_fx_chain_t *api_fx_chain;
-    std::shared_ptr<ConnectedFXChain> int_fx_chain;
+    std::shared_ptr<GraphFXChain> int_fx_chain;
     std::shared_ptr<shoop_types::FXChain> int_custom_processing_chain;
     shoopdaloop_audio_port_t *api_fx_in;
     shoopdaloop_audio_port_t *api_fx_out;
@@ -45,15 +45,15 @@ struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDryWe
     std::shared_ptr<GraphPort> int_fx_out;
 
     shoopdaloop_loop_t *api_loop;
-    std::shared_ptr<ConnectedLoop> int_loop;
+    std::shared_ptr<GraphLoop> int_loop;
     std::shared_ptr<AudioMidiLoop> int_audiomidi_loop;
 
     std::shared_ptr<ObjectPool<AudioBuffer<float>>> buffer_pool;
 
     shoopdaloop_loop_audio_channel_t *api_dry_chan;
     shoopdaloop_loop_audio_channel_t *api_wet_chan;
-    std::shared_ptr<ConnectedChannel> int_dry_chan;
-    std::shared_ptr<ConnectedChannel> int_wet_chan;
+    std::shared_ptr<GraphLoopChannel> int_dry_chan;
+    std::shared_ptr<GraphLoopChannel> int_wet_chan;
     std::shared_ptr<shoop_types::LoopAudioChannel> int_dry_audio_chan;
     std::shared_ptr<shoop_types::LoopAudioChannel> int_wet_audio_chan;
 
@@ -72,8 +72,8 @@ struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDryWe
         api_output_port = open_audio_port(api_backend_session, api_driver, "sys_audio_out", Output);
         int_input_port = internal_audio_port(api_input_port);
         int_output_port = internal_audio_port(api_output_port);
-        int_dummy_input_port = std::dynamic_pointer_cast<DummyAudioPort>(int_input_port->port);
-        int_dummy_output_port = std::dynamic_pointer_cast<DummyAudioPort>(int_output_port->port);
+        int_dummy_input_port = dynamic_cast<DummyAudioPort*>(&int_input_port->get_port());
+        int_dummy_output_port = dynamic_cast<DummyAudioPort*>(&int_output_port->get_port());
 
         api_fx_chain = create_fx_chain(api_backend_session, Test2x2x1, "Test");
         int_fx_chain = internal_fx_chain(api_fx_chain);
@@ -112,18 +112,18 @@ struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDryWe
 
         set_audio_port_passthroughMuted(api_input_port, 0);
         set_audio_port_muted(api_input_port, 0);
-        set_audio_port_volume(api_input_port, 1.0f);
+        set_audio_port_gain(api_input_port, 1.0f);
         set_audio_port_passthroughMuted(api_output_port, 0);
         set_audio_port_muted(api_output_port, 0);
-        set_audio_port_volume(api_fx_in, 1.0f);
+        set_audio_port_gain(api_fx_in, 1.0f);
         set_audio_port_passthroughMuted(api_fx_in, 0);
         set_audio_port_muted(api_fx_in, 0);
-        set_audio_port_volume(api_fx_out, 1.0f);
+        set_audio_port_gain(api_fx_out, 1.0f);
         set_audio_port_passthroughMuted(api_fx_out, 0);
         set_audio_port_muted(api_fx_out, 0);
-        set_audio_port_volume(api_output_port, 1.0f);
-        set_audio_channel_volume(api_dry_chan, 1.0f);
-        set_audio_channel_volume(api_wet_chan, 1.0f);        
+        set_audio_port_gain(api_output_port, 1.0f);
+        set_audio_channel_gain(api_dry_chan, 1.0f);
+        set_audio_channel_gain(api_wet_chan, 1.0f);        
     }
 };
 
@@ -234,11 +234,11 @@ TEST_CASE("Chains - DryWet record muted", "[Chains][audio]") {
     tst.int_driver->close();
 };
 
-TEST_CASE("Chains - DryWet record volume", "[Chains][audio]") {
+TEST_CASE("Chains - DryWet record gain", "[Chains][audio]") {
     SingleDryWetLoopTestChain tst;
 
     loop_transition(tst.api_loop, LoopMode_Recording, 0, 0);
-    set_audio_port_volume(tst.api_input_port, 0.5);
+    set_audio_port_gain(tst.api_input_port, 0.5);
     
     std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
     std::vector<float> expected({0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4});
@@ -277,7 +277,7 @@ TEST_CASE("Chains - DryWet playback basic", "[Chains][audio]") {
     tst.int_driver->close();
 };
 
-TEST_CASE("Chains - DryWet playback volume", "[Chains][audio]") {
+TEST_CASE("Chains - DryWet playback gain", "[Chains][audio]") {
     SingleDryWetLoopTestChain tst;
 
     std::vector<float> dry_data({4, 3, 2, 1}), wet_data({1, 2, 3, 4}), half_wet({0.5, 1, 1.5, 2});
@@ -286,7 +286,7 @@ TEST_CASE("Chains - DryWet playback volume", "[Chains][audio]") {
     load_audio_channel_data(tst.api_wet_chan, &api_wet_data);
     load_audio_channel_data(tst.api_dry_chan, &api_dry_data);
     tst.int_loop->loop->set_length(4, false);
-    set_audio_port_volume(tst.api_output_port, 0.5);
+    set_audio_port_gain(tst.api_output_port, 0.5);
 
     loop_transition(tst.api_loop, LoopMode_Playing, 0, 0);
     
@@ -324,7 +324,7 @@ TEST_CASE("Chains - DryWet dry playback basic", "[Chains][audio]") {
     tst.int_driver->close();
 };
 
-TEST_CASE("Chains - DryWet dry playback volume", "[Chains][audio]") {
+TEST_CASE("Chains - DryWet dry playback gain", "[Chains][audio]") {
     SingleDryWetLoopTestChain tst;
 
     std::vector<float> dry_data({4, 3, 2, 1}), wet_data({1, 2, 3, 4}), half_dry({2, 1.5, 1, 0.5});
@@ -334,7 +334,7 @@ TEST_CASE("Chains - DryWet dry playback volume", "[Chains][audio]") {
     load_audio_channel_data(tst.api_dry_chan, &api_dry_data);
     tst.int_loop->loop->set_length(4, true);
 
-    set_audio_port_volume(tst.api_output_port, 0.5);
+    set_audio_port_gain(tst.api_output_port, 0.5);
     loop_transition(tst.api_loop, LoopMode_PlayingDryThroughWet, 0, 0);
     
     tst.int_driver->controlled_mode_request_samples(4);

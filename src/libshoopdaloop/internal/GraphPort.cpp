@@ -19,7 +19,7 @@ using namespace shoop_types;
 using namespace shoop_constants;
 
 GraphPort::GraphPort (std::shared_ptr<BackendSession> const& backend) :
-    passthrough_enabled(true),
+    m_passthrough_enabled(true),
     backend(backend) {}
 
 BackendSession &GraphPort::get_backend() {
@@ -45,11 +45,11 @@ void GraphPort::connect_passthrough(const std::shared_ptr<GraphPort> &other) {
 void GraphPort::PROC_notify_changed_buffer_size(uint32_t buffer_size) {}
 
 void GraphPort::graph_node_0_process(uint32_t nframes) {
-    get_port()->PROC_prepare(nframes);
+    get_port().PROC_prepare(nframes);
 }
 
 void GraphPort::graph_node_1_process(uint32_t nframes) {
-    get_port()->PROC_process(nframes);
+    get_port().PROC_process(nframes);
     PROC_passthrough(nframes);
 }
 

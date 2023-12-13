@@ -31,18 +31,18 @@ Item {
     readonly property string obj_id: initial_descriptor.id
     property string name: initial_descriptor.name
 
-    // The "loop volume" refers to the output volume from the wet
-    // and/or direct channels. Volume of the dry channels is always
+    // The "loop gain" refers to the output gain from the wet
+    // and/or direct channels. gain of the dry channels is always
     // at 1.
     // Furthermore, for stereo signals we resolve the individual
-    // channel volumes to a "volume + balance" combination for the
+    // channel gains to a "gain + balance" combination for the
     // overall loop.
-    readonly property real initial_volume: {
-        var volumes = (initial_descriptor.channels || [])
+    readonly property real initial_gain: {
+        var gains = (initial_descriptor.channels || [])
             .filter(c => ['direct', 'wet'].includes(c.mode))
-            .map(c => ('volume' in c) ? c.volume : undefined)
+            .map(c => ('gain' in c) ? c.gain : undefined)
             .filter(c => c != undefined)
-        return volumes.length > 0 ? Math.max(...volumes) : 1.0
+        return gains.length > 0 ? Math.max(...gains) : 1.0
     }
     readonly property bool is_stereo: initial_descriptor.channels ?
         (initial_descriptor.channels.filter(c => ['direct', 'wet'].includes(c.mode)).length == 2) :
@@ -52,7 +52,7 @@ Item {
         var channels = initial_descriptor.channels.filter(c => ['direct', 'wet'].includes(c.mode) && c.type == "audio")
         channels.sort((a,b) => a.id.localeCompare(b.id))
         if (channels.length != 2) { throw new Error("Could not find stereo channels") }
-        return Stereo.balance(channels[0].volume, channels[1].volume)
+        return Stereo.balance(channels[0].gain, channels[1].gain)
     }
     readonly property bool has_audio: (initial_descriptor && !initial_descriptor.composition && initial_descriptor.channels) ?
         (initial_descriptor.channels.filter(c => c.type == "audio").length > 0) : false
@@ -335,39 +335,39 @@ Item {
         return chans
     }
 
-    function set_volume_fader(value) {
-        statusrect.volume_dial.set_as_range_fraction(value)
+    function set_gain_fader(value) {
+        statusrect.gain_dial.set_as_range_fraction(value)
     }
-    function get_volume_fader() {
-        return statusrect.volume_dial.position
+    function get_gain_fader() {
+        return statusrect.gain_dial.position
     }
 
-    property real last_pushed_volume: initial_volume
+    property real last_pushed_gain: initial_gain
     property real last_pushed_stereo_balance: initial_stereo_balance ? initial_stereo_balance : 0.0
 
-    function push_volume(volume) {
-        // Only set the volume on audio output channels:
-        // - Volume not supported on MIDI
-        // - Send should always have the original recorded volume of the dry signal.
-        // Also, volume + balance together make up the channel volumes in stereo mode.
+    function push_gain(gain) {
+        // Only set the gain on audio output channels:
+        // - gain not supported on MIDI
+        // - Send should always have the original recorded gain of the dry signal.
+        // Also, gain + balance together make up the channel gains in stereo mode.
         if (root.is_stereo) {
             var lr = get_stereo_audio_output_channels()
-            var volumes = Stereo.individual_volumes(volume, last_pushed_stereo_balance)
-            lr[0].set_volume(volumes[0])
-            lr[1].set_volume(volumes[1])
+            var gains = Stereo.individual_gains(gain, last_pushed_stereo_balance)
+            lr[0].set_gain(gains[0])
+            lr[1].set_gain(gains[1])
         } else {
-            get_audio_output_channels().forEach(c => c.set_volume(volume))
+            get_audio_output_channels().forEach(c => c.set_gain(gain))
         }
 
-        last_pushed_volume = volume
+        last_pushed_gain = gain
     }
 
     function push_stereo_balance(balance) {
         if (root.is_stereo) {
             var lr = get_stereo_audio_output_channels()
-            var volumes = Stereo.individual_volumes(last_pushed_volume, balance)
-            lr[0].set_volume(volumes[0])
-            lr[1].set_volume(volumes[1])
+            var gains = Stereo.individual_gains(last_pushed_gain, balance)
+            lr[0].set_gain(gains[0])
+            lr[1].set_gain(gains[1])
             last_pushed_stereo_balance = balance
         }
     }
@@ -495,7 +495,7 @@ Item {
         property bool hovered : area.containsMouse
         property string name : root.name
 
-        property alias volume_dial: volume_dial
+        property alias gain_dial: gain_dial
 
         signal propagateMousePosition(var point)
         signal propagateMouseExited()
@@ -1076,33 +1076,33 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.rightMargin: 5
 
-                // Display the volume dial always
+                // Display the gain dial always
                 AudioDial {
-                    id: volume_dial
+                    id: gain_dial
                     visible: root.has_audio
                     anchors.fill: parent
                     from: -30.0
                     to:   20.0
                     value: 0.0
-                    property real initial_linear_value: root.initial_volume
+                    property real initial_linear_value: root.initial_gain
                     onInitial_linear_valueChanged: set_from_linear(initial_linear_value)
                     Component.onCompleted: set_from_linear(initial_linear_value)
 
                     LinearDbConversion {
                         dB_threshold: parent.from
-                        id: convert_volume
+                        id: convert_gain
                     }
 
                     show_value_tooltip: true
                     value_tooltip_postfix: ' dB'
 
                     onMoved: {
-                        convert_volume.dB = volume_dial.value
-                        push_volume(convert_volume.linear)
+                        convert_gain.dB = gain_dial.value
+                        push_gain(convert_gain.linear)
                     }
                     function set_from_linear(val) {
-                        convert_volume.linear = val
-                        value = convert_volume.dB
+                        convert_gain.linear = val
+                        value = convert_gain.dB
                     }
                     function set_as_range_fraction(val) {
                         value = (val * (to - from)) + from
@@ -1120,15 +1120,15 @@ Item {
                     }
 
                     label: 'V'
-                    tooltip: 'Loop volume. Double-click to reset.'
+                    tooltip: 'Loop gain. Double-click to reset.'
 
                     HoverHandler {
-                        id: volume_dial_hover
+                        id: gain_dial_hover
                     }
                 }
 
                 Popup {
-                    property bool visible_in: root.is_stereo && (volume_dial_hover.hovered || volume_dial.pressed || balance_dial_hover.hovered)
+                    property bool visible_in: root.is_stereo && (gain_dial_hover.hovered || gain_dial.pressed || balance_dial_hover.hovered)
                     Timer {
                         id: visible_off_timer
                         interval: 50
@@ -1157,8 +1157,8 @@ Item {
                         to:   1.0
                         value: root.is_stereo ? root.initial_stereo_balance : 0.0
 
-                        width: volume_dial.width
-                        height: volume_dial.height
+                        width: gain_dial.width
+                        height: gain_dial.height
 
                         onMoved: {
                             push_stereo_balance(value)
@@ -1286,7 +1286,7 @@ Item {
                 switch(lsicon.mode) {
                 case Types.LoopMode.Playing:
                 case Types.LoopMode.PlayingDryThroughWet:
-                    return lsicon.muted ? 'volume-mute' : 'play'
+                    return lsicon.muted ? 'gain-mute' : 'play'
                 case Types.LoopMode.Recording:
                 case Types.LoopMode.RecordingDryIntoWet:
                     return 'record-rec'

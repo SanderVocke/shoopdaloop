@@ -5,11 +5,11 @@
         "id":               { "type": "string"  },
         "name_parts":       { "type": "array", "items": { "type": "string" } },
         "direction":        { "enum": ["input", "output"] },
-        "volume":           { "type": "number" },
+        "gain":           { "type": "number" },
         "muted":            { "type": "boolean" },
         "passthrough_muted":{ "type": "boolean" },
         "passthrough_to":   { "type": "array", "items": { "type": "string" } },
         "external_port_connections": { "type": "array", "items": { "type": "string" } }
     },
-    "required": ["schema", "id", "name_parts", "direction", "volume", "muted", "passthrough_muted", "passthrough_to", "external_port_connections"]
+    "required": ["schema", "id", "name_parts", "direction", "gain", "muted", "passthrough_muted", "passthrough_to", "external_port_connections"]
 }

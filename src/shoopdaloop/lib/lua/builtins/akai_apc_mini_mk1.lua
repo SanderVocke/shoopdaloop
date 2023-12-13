@@ -5,7 +5,7 @@
 -- Once connected:
 --
 -- - Grid buttons will light up to indicate the state of each loop.
--- - Faders will control the track output volumes.
+-- - Faders will control the track output gains.
 -- - Clicking a grid button will perform the default loop action
 --   (see generic ShoopDaLoop documentation) for that loop.
 
@@ -29,7 +29,7 @@ local LED_yellow_blink = 6
 local pushed_all = nil
 
 -- Track state of the "Fader Ctrl" buttons
-local fader_settings = {'volume', 'pan', 'send', 'device'}
+local fader_settings = {'gain', 'pan', 'send', 'device'}
 local fader_setting = fader_settings[1]
 
 -- Our function for sending MIDI to the AKAI
@@ -78,7 +78,7 @@ local handle_cc = function (msg, port)
     local maybe_fader_track = cc_to_fader_track(cc)
 
     if maybe_fader_track ~= nil then
-        shoop_control.track_set_volume_fader(maybe_fader_track, value / 127.0)
+        shoop_control.track_set_gain_fader(maybe_fader_track, value / 127.0)
     end
 end
 

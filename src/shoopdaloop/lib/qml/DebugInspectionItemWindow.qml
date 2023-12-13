@@ -111,8 +111,8 @@ ApplicationWindow {
                 Loader {
                     active: object.object_schema.match(/audioport.[0-9]/)
                     sourceComponent: ItemRow {
-                        label: "volume:"
-                        Label { text: object.volume.toString() }
+                        label: "gain:"
+                        Label { text: object.gain.toString() }
                     }
                 }
 
@@ -235,8 +235,8 @@ ApplicationWindow {
                 Loader {
                     active: object.descriptor.type == "audio"
                     sourceComponent: ItemRow {
-                        label: "volume:"
-                        Label { text: object.volume.toString() }
+                        label: "gain:"
+                        Label { text: object.gain.toString() }
                     }
                 }
 

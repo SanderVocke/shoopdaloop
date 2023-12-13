@@ -103,7 +103,7 @@ typedef struct {
 
 typedef struct {
     float peak;
-    float volume;
+    float gain;
     unsigned muted;
     unsigned passthrough_muted;
     const char* name;
@@ -152,7 +152,7 @@ typedef enum { Input, Output } shoop_port_direction_t;
 
 typedef struct {
     shoop_channel_mode_t mode;
-    float volume;
+    float gain;
     float output_peak;
     unsigned length;
     int start_offset;

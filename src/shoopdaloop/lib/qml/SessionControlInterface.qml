@@ -136,11 +136,11 @@ LuaControlInterface {
     function loop_transition_override(loop_selector, mode, cycles_delay) {
         select_loops(loop_selector).forEach((h) => { h.transition(mode, cycles_delay, registries.state_registry.get('sync_active'), false) } )
     }
-    function loop_get_volume_override(loop_selector) {
-        return select_loops(loop_selector).map(l => l.last_pushed_volume)
+    function loop_get_gain_override(loop_selector) {
+        return select_loops(loop_selector).map(l => l.last_pushed_gain)
     }
-    function loop_get_volume_fader_override(loop_selector) {
-        return select_loops(loop_selector).map(l => l.get_volume_fader())
+    function loop_get_gain_fader_override(loop_selector) {
+        return select_loops(loop_selector).map(l => l.get_gain_fader())
     }
     function loop_get_balance_override(loop_selector) {
         return select_loops(loop_selector).map(l => l.last_pushed_stereo_balance)
@@ -153,11 +153,11 @@ LuaControlInterface {
             select_loops(loop_selector).forEach((l) => l.record_with_targeted() )
         }
     }
-    function loop_set_volume_override(loop_selector, volume) {
-        select_loops(loop_selector).forEach((h) => { h.push_volume(volume) } )
+    function loop_set_gain_override(loop_selector, gain) {
+        select_loops(loop_selector).forEach((h) => { h.push_gain(gain) } )
     }
-    function loop_set_volume_fader_override(loop_selector, volume) {
-        select_loops(loop_selector).forEach((h) => { h.set_volume_fader(volume) } )
+    function loop_set_gain_fader_override(loop_selector, gain) {
+        select_loops(loop_selector).forEach((h) => { h.set_gain_fader(gain) } )
     }
     function loop_set_balance_override(loop_selector, balance) {
         select_loops(loop_selector).forEach((h) => { h.push_stereo_balance(balance) } )
@@ -193,28 +193,28 @@ LuaControlInterface {
     }
 
     // Track interface overrides
-    function track_set_volume_override(track_selector, vol) {
+    function track_set_gain_override(track_selector, vol) {
         select_tracks(track_selector).forEach(t => t.control_widget.set_gain(vol))
     }
-    function track_set_volume_fader_override(track_selector, vol) {
-        select_tracks(track_selector).forEach(t => t.control_widget.set_volume_fader(vol))
+    function track_set_gain_fader_override(track_selector, vol) {
+        select_tracks(track_selector).forEach(t => t.control_widget.set_gain_fader(vol))
     }
-    function track_set_input_volume_override(track_selector, vol) {
+    function track_set_input_gain_override(track_selector, vol) {
         select_tracks(track_selector).forEach(t => t.control_widget.set_input_gain(vol))
     }
-    function track_set_input_volume_fader_override(track_selector, vol) {
-        select_tracks(track_selector).forEach(t => t.control_widget.set_input_volume_fader(vol))
+    function track_set_input_gain_fader_override(track_selector, vol) {
+        select_tracks(track_selector).forEach(t => t.control_widget.set_input_gain_fader(vol))
     }
-    function track_get_volume_override(track_selector) {
+    function track_get_gain_override(track_selector) {
         return select_tracks(track_selector).map(t => t.control_widget.last_pushed_gain)
     }
-    function track_get_volume_fader_override(track_selector) {
-        return select_tracks(track_selector).map(t => t.control_widget.volume_fader_position)
+    function track_get_gain_fader_override(track_selector) {
+        return select_tracks(track_selector).map(t => t.control_widget.gain_fader_position)
     }
-    function track_get_input_volume_override(track_selector) {
+    function track_get_input_gain_override(track_selector) {
         return select_tracks(track_selector).map(t => t.control_widget.last_pushed_in_gain)
     }
-    function track_get_input_volume_fader_override(track_selector) {
+    function track_get_input_gain_fader_override(track_selector) {
         return select_tracks(track_selector).map(t => t.control_widget.input_fader_position)
     }
     function track_get_muted_override(track_selector) {

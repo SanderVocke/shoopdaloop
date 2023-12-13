@@ -30,7 +30,7 @@ Tracks
 
    Example of three tracks in ShoopDaLoop.
 
-**ShoopDaLoop**'s loops are divided over **tracks**. Loops in the same **track** share their input/output port connections, volume/balance and effects/synthesis. Therefore, typically a track per instrument/part is used.
+**ShoopDaLoop**'s loops are divided over **tracks**. Loops in the same **track** share their input/output port connections, gain/balance and effects/synthesis. Therefore, typically a track per instrument/part is used.
 
 
 Composition and Sequencing

@@ -3,7 +3,7 @@
 #include <memory>
 #include "shoop_globals.h"
 #include "GraphNode.h"
-class ConnectedFXChain : public std::enable_shared_from_this<ConnectedFXChain>,
+class GraphFXChain : public std::enable_shared_from_this<GraphFXChain>,
                          public HasGraphNode {
 public:
     const std::shared_ptr<shoop_types::FXChain> chain;
@@ -13,7 +13,7 @@ public:
     std::vector<std::shared_ptr<GraphPort>> mc_audio_output_ports;
     std::vector<std::shared_ptr<GraphPort>> mc_midi_input_ports;
 
-    ConnectedFXChain(std::shared_ptr<shoop_types::FXChain> chain, std::shared_ptr<BackendSession> backend);
+    GraphFXChain(std::shared_ptr<shoop_types::FXChain> chain, std::shared_ptr<BackendSession> backend);
 
     BackendSession &get_backend();
     std::vector<std::shared_ptr<GraphPort>> const& audio_input_ports() const;

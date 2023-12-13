@@ -16,9 +16,9 @@ class Profiler;
 class ProfilingItem;
 }
 
-class ConnectedLoop;
+class GraphLoop;
 class GraphPort;
-class ConnectedFXChain;
+class GraphFXChain;
 
 using namespace shoop_types;
 
@@ -37,9 +37,9 @@ class BackendSession : public std::enable_shared_from_this<BackendSession>,
 
 public:
     // Graph nodes
-    std::vector<std::shared_ptr<ConnectedLoop>> loops;
+    std::vector<std::shared_ptr<GraphLoop>> loops;
     std::vector<std::shared_ptr<GraphPort>> ports;
-    std::vector<std::shared_ptr<ConnectedFXChain>> fx_chains;
+    std::vector<std::shared_ptr<GraphFXChain>> fx_chains;
     // Infrastructure
     std::shared_ptr<AudioBufferPool> audio_buffer_pool;
 
@@ -83,8 +83,8 @@ public:
     shoop_backend_session_state_info_t get_state();
     WeakGraphNodeSet const& get_loop_graph_nodes();
 
-    std::shared_ptr<ConnectedLoop> create_loop();
-    std::shared_ptr<ConnectedFXChain> create_fx_chain(shoop_fx_chain_type_t type, const char *title);
+    std::shared_ptr<GraphLoop> create_loop();
+    std::shared_ptr<GraphFXChain> create_fx_chain(shoop_fx_chain_type_t type, const char *title);
 
     void set_sample_rate(uint32_t sr);
     void set_buffer_size(uint32_t bs);

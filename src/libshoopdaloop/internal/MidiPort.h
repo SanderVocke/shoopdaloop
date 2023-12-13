@@ -37,6 +37,13 @@ public:
     void set_muted(bool muted) override { ma_muted = muted; }
     bool get_muted() const override { return ma_muted; }
 
+    void reset_n_events_processed() { n_events_processed = 0; }
+    uint32_t get_n_events_processed() const { return n_events_processed; }
+
+    std::shared_ptr<MidiStateTracker> &maybe_midi_state_tracker() {
+        return m_maybe_midi_state;
+    }
+
     void PROC_prepare(uint32_t nframes) override {
         ma_write_data_into_port_buffer = PROC_get_write_data_into_port_buffer(nframes);
         ma_read_output_data_buffer = PROC_get_read_output_data_buffer(nframes);

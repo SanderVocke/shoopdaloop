@@ -22,7 +22,7 @@ class AudioPort(Port):
     def __init__(self, parent=None):
         super(AudioPort, self).__init__(parent)
         self._peak = 0.0
-        self._volume = 1.0
+        self._gain = 1.0
         self.logger = Logger("Frontend.AudioPort")
 
     ######################
@@ -40,16 +40,16 @@ class AudioPort(Port):
             self._peak = s
             self.peakChanged.emit(s)
     
-    # volume
-    volumeChanged = Signal(float)
-    @Property(float, notify=volumeChanged)
-    def volume(self):
-        return self._volume
-    @volume.setter
-    def volume(self, s):
-        if self._volume != s:
-            self._volume = s
-            self.volumeChanged.emit(s)
+    # gain
+    gainChanged = Signal(float)
+    @Property(float, notify=gainChanged)
+    def gain(self):
+        return self._gain
+    @gain.setter
+    def gain(self, s):
+        if self._gain != s:
+            self._gain = s
+            self.gainChanged.emit(s)
     
     ###########
     ## SLOTS
@@ -64,14 +64,14 @@ class AudioPort(Port):
         self.peak = state.peak
         self.name = state.name
 
-        self.volume = state.volume
+        self.gain = state.gain
         self.muted = state.muted
         self.passthrough_muted = state.passthrough_muted
     
     @Slot(float)
-    def set_volume(self, volume):
+    def set_gain(self, gain):
         if self._backend_obj:
-            self._backend_obj.set_volume(volume)
+            self._backend_obj.set_gain(gain)
     
     @Slot(list)
     def dummy_queue_data(self, data):
@@ -129,7 +129,7 @@ class AudioPort(Port):
     def push_state(self):
         self.set_muted(self.muted)
         self.set_passthrough_muted(self.passthrough_muted)
-        self.set_volume(self.volume)
+        self.set_gain(self.gain)
         
     def maybe_initialize_impl(self, name_hint, direction, is_internal):
         if is_internal:

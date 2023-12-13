@@ -1,12 +1,12 @@
 #include "BackendSession.h"
-#include "ConnectedChannel.h"
+#include "GraphLoopChannel.h"
 #include "GraphNode.h"
 #include "LoggingBackend.h"
 #include "ProcessProfiling.h"
 #include "GraphPort.h"
-#include "ConnectedFXChain.h"
+#include "GraphFXChain.h"
 #include "ProcessingChainInterface.h"
-#include "ConnectedLoop.h"
+#include "GraphLoop.h"
 #include "AudioBuffer.h"
 #include "ObjectPool.h"
 #include "AudioMidiLoop.h"
@@ -114,7 +114,7 @@ void BackendSession::destroy() {
         ma_queue.passthrough_on();
         for (auto &p : ports) {
             if (p) {
-                p->port->close();
+                p->get_port().close();
             }
         }
         ma_state = State::Destroyed;
@@ -123,15 +123,15 @@ void BackendSession::destroy() {
     }
 }
 
-std::shared_ptr<ConnectedLoop> BackendSession::create_loop() {
+std::shared_ptr<GraphLoop> BackendSession::create_loop() {
     auto loop = std::make_shared<AudioMidiLoop>(profiler);
-    auto r = std::make_shared<ConnectedLoop>(shared_from_this(), loop);
+    auto r = std::make_shared<GraphLoop>(shared_from_this(), loop);
     loops.push_back(r);
     recalculate_processing_schedule();
     return r;
 }
 
-std::shared_ptr<ConnectedFXChain> BackendSession::create_fx_chain(shoop_fx_chain_type_t type, const char* title) {
+std::shared_ptr<GraphFXChain> BackendSession::create_fx_chain(shoop_fx_chain_type_t type, const char* title) {
 #ifdef SHOOP_HAVE_LV2
     static LV2 lv2;
 #endif
@@ -196,7 +196,7 @@ std::shared_ptr<ConnectedFXChain> BackendSession::create_fx_chain(shoop_fx_chain
         break;
     };
 
-    auto info = std::make_shared<ConnectedFXChain>(chain, shared_from_this());
+    auto info = std::make_shared<GraphFXChain>(chain, shared_from_this());
     fx_chains.push_back(info);
     recalculate_processing_schedule();
     return info;

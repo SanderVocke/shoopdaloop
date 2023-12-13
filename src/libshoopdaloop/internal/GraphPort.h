@@ -16,22 +16,20 @@ public:
     
     std::weak_ptr<BackendSession> backend;
     std::vector<std::weak_ptr<GraphPort>> mp_passthrough_to;
-
-    std::atomic<bool> passthrough_enabled;
+    std::atomic<bool> m_passthrough_enabled;
 
     GraphPort (std::shared_ptr<BackendSession> const& backend);
 
-    virtual std::shared_ptr<PortInterface> &get_port() const = 0;
-    std::shared_ptr<shoop_types::_AudioPort> maybe_audio_port() const {
-        return std::dynamic_pointer_cast<shoop_types::_AudioPort>(get_port());
-    }
-    std::shared_ptr<MidiPort> maybe_midi_port() const {
-        return std::dynamic_pointer_cast<MidiPort>(get_port());
-    }
+    virtual PortInterface &get_port() const = 0;
+    virtual shoop_types::_AudioPort *maybe_audio_port() const { return nullptr; };
+    virtual MidiPort *maybe_midi_port() const { return nullptr; }
 
     virtual void PROC_passthrough(uint32_t n_frames) = 0;
     virtual void PROC_prepare(uint32_t n_frames) = 0;
     virtual void PROC_process(uint32_t n_frames) = 0;
+
+    void set_passthrough_enabled(bool enabled) { m_passthrough_enabled = enabled; }
+    bool get_passthrough_enabled() const { return m_passthrough_enabled; }
 
     void PROC_notify_changed_buffer_size(uint32_t buffer_size) override;
 
@@ -46,9 +44,8 @@ public:
     //        Handled by those ports, not here.
     void graph_node_0_process(uint32_t nframes) override;
     std::string graph_node_0_name() const override {
-        auto port = get_port();
-        if (port) { return std::string(port->name()) + "::prepare"; }
-        return "unknown_port::prepare";
+        auto &port = get_port();
+        return std::string(port.name()) + "::prepare";
     }
     
     // The second graph node we represent is for processing the buffer
@@ -62,8 +59,7 @@ public:
     WeakGraphNodeSet graph_node_1_incoming_edges() override;
     WeakGraphNodeSet graph_node_1_outgoing_edges() override;
     std::string graph_node_1_name() const override {
-        auto port = get_port();
-        if (port) { return std::string(port->name()) + "::process_and_passthrough"; }
-        return "unknown_port::process_and_passthrough";
+        auto &port = get_port();
+        return std::string(port.name()) + "::process_and_passthrough";
     }
 };

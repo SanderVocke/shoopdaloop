@@ -52,9 +52,9 @@ function track_input(_default='0') {
   }
 }
 
-function volume_conversion_input(_default='cc/vel') {
+function gain_conversion_input(_default='cc/vel') {
   return {
-    'description': 'Volume level conversion',
+    'description': 'gain level conversion',
     'presets': {
       'cc/vel': 'msg.bytes[2] / 127.0',
     },
@@ -88,12 +88,12 @@ const builtin_actions = ({
             'direction': direction_input(),
         },
     },
-    'Set Track Volume': {
-        'description': 'Set volume level of (a) track(s)',
-        'script': 'shoop_control.track_set_volume_fader(track, value)',
+    'Set Track gain': {
+        'description': 'Set gain level of (a) track(s)',
+        'script': 'shoop_control.track_set_gain_fader(track, value)',
         'inputs': {
           'track': track_input('0'),
-          'value': volume_conversion_input('cc/vel')
+          'value': gain_conversion_input('cc/vel')
         }
     }
 })

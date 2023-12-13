@@ -137,10 +137,10 @@ class ControlHandler(ShoopQQuickItem):
         [ 'loop_get_by_mode', lua_int ],
         [ 'loop_get_by_track', lua_int ],
         [ 'loop_get_all' ],
-        [ 'loop_get_volume', lua_loop_selector ],
-        [ 'loop_get_volume_fader', lua_loop_selector ],
-        [ 'loop_set_volume', lua_loop_selector, lua_float ],
-        [ 'loop_set_volume_fader', lua_loop_selector, lua_float ],
+        [ 'loop_get_gain', lua_loop_selector ],
+        [ 'loop_get_gain_fader', lua_loop_selector ],
+        [ 'loop_set_gain', lua_loop_selector, lua_float ],
+        [ 'loop_set_gain_fader', lua_loop_selector, lua_float ],
         [ 'loop_get_balance', lua_loop_selector ],
         [ 'loop_set_balance', lua_loop_selector, lua_float ],
         [ 'loop_transition', lua_loop_selector, lua_int, lua_int ],
@@ -149,14 +149,14 @@ class ControlHandler(ShoopQQuickItem):
         [ 'loop_select', lua_loop_selector, lua_bool ],
         [ 'loop_target', lua_loop_selector ],
         [ 'loop_clear', lua_loop_selector ],
-        [ 'track_get_volume', lua_track_selector ],
-        [ 'track_set_volume', lua_track_selector, lua_float ],
-        [ 'track_get_volume_fader', lua_track_selector ],
-        [ 'track_set_volume_fader', lua_track_selector, lua_float ],
-        [ 'track_get_input_volume', lua_track_selector ],
-        [ 'track_set_input_volume', lua_track_selector, lua_float ],
-        [ 'track_get_input_volume_fader', lua_track_selector ],
-        [ 'track_set_input_volume_fader', lua_track_selector, lua_float ],
+        [ 'track_get_gain', lua_track_selector ],
+        [ 'track_set_gain', lua_track_selector, lua_float ],
+        [ 'track_get_gain_fader', lua_track_selector ],
+        [ 'track_set_gain_fader', lua_track_selector, lua_float ],
+        [ 'track_get_input_gain', lua_track_selector ],
+        [ 'track_set_input_gain', lua_track_selector, lua_float ],
+        [ 'track_get_input_gain_fader', lua_track_selector ],
+        [ 'track_set_input_gain_fader', lua_track_selector, lua_float ],
         [ 'track_get_balance', lua_track_selector ],
         [ 'track_set_balance', lua_track_selector, lua_float ],
         [ 'track_get_muted', lua_track_selector ],
@@ -338,44 +338,44 @@ class ControlHandler(ShoopQQuickItem):
 
     @Slot(list, 'QVariant', result=list)
     @allow_qml_override
-    def loop_get_volume(self, args, lua_engine):
+    def loop_get_gain(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
-        shoop_control.loop_get_volume(loop_selector) -> list[float]
-        Get the output audio volume of the specified loops as a gain factor.
+        shoop_control.loop_get_gain(loop_selector) -> list[float]
+        Get the output audio gain of the specified loops as a gain factor.
         @shoop_lua_fn_docstring.end
         """
         pass
     
     @Slot(list, 'QVariant', result=list)
     @allow_qml_override
-    def loop_get_volume_fader(self, args, lua_engine):
+    def loop_get_gain_fader(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
-        shoop_control.loop_get_volume(loop_selector) -> list[float]
-        Get the output audio volume fader position as a fraction of its total range (0-1) of the given loop.
+        shoop_control.loop_get_gain(loop_selector) -> list[float]
+        Get the output audio gain fader position as a fraction of its total range (0-1) of the given loop.
         @shoop_lua_fn_docstring.end
         """
         pass
     
     @Slot(list, 'QVariant')
     @allow_qml_override
-    def loop_set_volume(self, args, lua_engine):
+    def loop_set_gain(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
-        shoop_control.loop_set_volume(loop_selector, volume)
-        Set the output audio volume of the specified loops as a gain factor.
+        shoop_control.loop_set_gain(loop_selector, gain)
+        Set the output audio gain of the specified loops as a gain factor.
         @shoop_lua_fn_docstring.end
         """
         pass
     
     @Slot(list, 'QVariant')
     @allow_qml_override
-    def loop_set_volume_fader(self, args, lua_engine):
+    def loop_set_gain_fader(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
-        shoop_control.loop_set_volume(loop_selector)
-        Set the output audio volume fader position as a fraction of its total range (0-1) of the given loop.
+        shoop_control.loop_set_gain(loop_selector)
+        Set the output audio gain fader position as a fraction of its total range (0-1) of the given loop.
         @shoop_lua_fn_docstring.end
         """
         pass
@@ -473,44 +473,44 @@ class ControlHandler(ShoopQQuickItem):
     # track getter interfaces
     @Slot(list, 'QVariant', result=list)
     @allow_qml_override
-    def track_get_volume(self, args, lua_engine):
+    def track_get_gain(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
-        shoop_control.track_get_volume(track_selector) -> list[float]
-        Get the volume of the given track(s) as a gain factor.
+        shoop_control.track_get_gain(track_selector) -> list[float]
+        Get the gain of the given track(s) as a gain factor.
         @shoop_lua_fn_docstring.end
         """
         pass
     
     @Slot(list, 'QVariant', result=list)
     @allow_qml_override
-    def track_get_volume_fader(self, args, lua_engine):
+    def track_get_gain_fader(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
-        shoop_control.track_get_volume_fader(track_selector) -> list[float]
-        Get the volume of the given track(s) as a fraction of its total range (0-1).
+        shoop_control.track_get_gain_fader(track_selector) -> list[float]
+        Get the gain of the given track(s) as a fraction of its total range (0-1).
         @shoop_lua_fn_docstring.end
         """
         pass
     
     @Slot(list, 'QVariant', result=list)
     @allow_qml_override
-    def track_get_input_volume(self, args, lua_engine):
+    def track_get_input_gain(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
-        shoop_control.track_get_input_volume(track_selector) -> list[float]
-        Get the input volume of the given track(s) as a gain factor.
+        shoop_control.track_get_input_gain(track_selector) -> list[float]
+        Get the input gain of the given track(s) as a gain factor.
         @shoop_lua_fn_docstring.end
         """
         pass
     
     @Slot(list, 'QVariant', result=list)
     @allow_qml_override
-    def track_get_input_volume_fader(self, args, lua_engine):
+    def track_get_input_gain_fader(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
-        shoop_control.track_get_input_volume_fader(track_selector) -> list[float]
-        Get the input volume of the given track(s) as a fraction of its total range (0-1).
+        shoop_control.track_get_input_gain_fader(track_selector) -> list[float]
+        Get the input gain of the given track(s) as a fraction of its total range (0-1).
         @shoop_lua_fn_docstring.end
         """
         pass
@@ -561,44 +561,44 @@ class ControlHandler(ShoopQQuickItem):
 
     @Slot(list, 'QVariant')
     @allow_qml_override
-    def track_set_volume(self, args, lua_engine):
+    def track_set_gain(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
-        shoop_control.track_set_volume(track_selector, vol)
-        Set the given track's volume as a gain factor.
+        shoop_control.track_set_gain(track_selector, vol)
+        Set the given track's gain as a gain factor.
         @shoop_lua_fn_docstring.end
         """
         pass
     
     @Slot(list, 'QVariant')
     @allow_qml_override
-    def track_set_volume_fader(self, args, lua_engine):
+    def track_set_gain_fader(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
-        shoop_control.track_set_volume_fader(track_selector, vol)
-        Set the given track's volume as a fraction of its total range (0-1).
+        shoop_control.track_set_gain_fader(track_selector, vol)
+        Set the given track's gain as a fraction of its total range (0-1).
         @shoop_lua_fn_docstring.end
         """
         pass
     
     @Slot(list, 'QVariant')
     @allow_qml_override
-    def track_set_input_volume(self, args, lua_engine):
+    def track_set_input_gain(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
-        shoop_control.track_set_input_volume(track_selector, vol)
-        Set the given track's input volume as a gain factor.
+        shoop_control.track_set_input_gain(track_selector, vol)
+        Set the given track's input gain as a gain factor.
         @shoop_lua_fn_docstring.end
         """
         pass
     
     @Slot(list, 'QVariant')
     @allow_qml_override
-    def track_set_input_volume_fader(self, args, lua_engine):
+    def track_set_input_gain_fader(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
-        shoop_control.track_set_input_volume_fader(track_selector, vol)
-        Set the given track's input volume as a fraction of its total range (0-1).
+        shoop_control.track_set_input_gain_fader(track_selector, vol)
+        Set the given track's input gain as a fraction of its total range (0-1).
         @shoop_lua_fn_docstring.end
         """
         pass

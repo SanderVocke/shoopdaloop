@@ -119,7 +119,7 @@ AudioChannel<SampleT>::AudioChannel(
       ma_buffer_size(buffer_pool->object_size()),
       mp_recording_source_buffer(nullptr), mp_playback_target_buffer(nullptr),
       mp_playback_target_buffer_size(0), mp_recording_source_buffer_size(0),
-      ma_output_peak(0), ma_mode(mode), ma_volume(1.0f), ma_start_offset(0),
+      ma_output_peak(0), ma_mode(mode), ma_gain(1.0f), ma_start_offset(0),
       ma_data_seq_nr(0), ma_pre_play_samples(0),
       mp_buffers(buffer_pool, initial_max_buffers),
       mp_prerecord_buffers(buffer_pool, initial_max_buffers),
@@ -163,7 +163,7 @@ AudioChannel<SampleT>::operator=(AudioChannel<SampleT> const &other) {
     mp_recording_source_buffer = other.mp_recording_source_buffer;
     mp_recording_source_buffer_size = other.mp_recording_source_buffer_size;
     ma_mode = other.ma_mode.load();
-    ma_volume = other.ma_volume.load();
+    ma_gain = other.ma_gain.load();
     ma_pre_play_samples = other.ma_pre_play_samples.load();
     mp_prev_process_flags = other.mp_prev_process_flags;
     data_changed();
@@ -536,7 +536,7 @@ void AudioChannel<SampleT>::PROC_process_playback(int data_position,
         auto rest = n_samples - n;
 
         if (!muted) {
-            PROC_queue_additivecpy(to, from, n, ma_volume, true);
+            PROC_queue_additivecpy(to, from, n, ma_gain, true);
         }
 
         // If we didn't play back all yet, go to next buffer and continue
@@ -629,12 +629,12 @@ shoop_channel_mode_t AudioChannel<SampleT>::get_mode() const {
 }
 
 template <typename SampleT>
-void AudioChannel<SampleT>::set_volume(float volume) {
-    ma_volume = volume;
+void AudioChannel<SampleT>::set_gain(float gain) {
+    ma_gain = gain;
 }
 
-template <typename SampleT> float AudioChannel<SampleT>::get_volume() {
-    return ma_volume;
+template <typename SampleT> float AudioChannel<SampleT>::get_gain() {
+    return ma_gain;
 }
 
 template <typename SampleT>
