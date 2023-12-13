@@ -512,7 +512,7 @@ Item {
 
                         MaterialDesignIcon {
                             size: parent.width
-                            name: root.mute ? 'gain-mute' : 'gain-high'
+                            name: root.mute ? 'volume-mute' : 'volume-high'
                             color: root.mute ? 'grey' : Material.foreground
                             anchors.fill: parent
                         }

@@ -1286,7 +1286,7 @@ Item {
                 switch(lsicon.mode) {
                 case Types.LoopMode.Playing:
                 case Types.LoopMode.PlayingDryThroughWet:
-                    return lsicon.muted ? 'gain-mute' : 'play'
+                    return lsicon.muted ? 'volume-mute' : 'play'
                 case Types.LoopMode.Recording:
                 case Types.LoopMode.RecordingDryIntoWet:
                     return 'record-rec'
