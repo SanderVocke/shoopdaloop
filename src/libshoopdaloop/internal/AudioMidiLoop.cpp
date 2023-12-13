@@ -4,9 +4,8 @@
 #include <memory>
 #include <vector>
 
-AudioMidiLoop::AudioMidiLoop(
-    std::shared_ptr<profiling::Profiler> maybe_profiler)
-    : BasicLoop(), maybe_profiler(maybe_profiler) {}
+AudioMidiLoop::AudioMidiLoop()
+    : BasicLoop() {}
 
 template <typename SampleT>
 std::shared_ptr<AudioChannel<SampleT>> AudioMidiLoop::add_audio_channel(
@@ -16,7 +15,7 @@ std::shared_ptr<AudioChannel<SampleT>> AudioMidiLoop::add_audio_channel(
     log_trace();
 
     auto channel = std::make_shared<AudioChannel<SampleT>>(
-        buffer_pool, initial_max_buffers, mode, maybe_profiler);
+        buffer_pool, initial_max_buffers, mode);
     auto fn = [this, channel]() { mp_audio_channels.push_back(channel); };
     if (thread_safe) {
         exec_process_thread_command(fn);
@@ -34,7 +33,7 @@ AudioMidiLoop::add_midi_channel(uint32_t data_size, shoop_channel_mode_t mode,
     log_trace();
 
     auto channel = std::make_shared<MidiChannel<TimeType, SizeType>>(
-        data_size, mode, maybe_profiler);
+        data_size, mode);
     auto fn = [this, &channel]() { mp_midi_channels.push_back(channel); };
     if (thread_safe) {
         exec_process_thread_command(fn);

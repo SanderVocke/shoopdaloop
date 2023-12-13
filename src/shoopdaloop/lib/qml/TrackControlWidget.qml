@@ -117,7 +117,7 @@ Item {
         midi_in_ports.forEach((m) => m.nEventsTriggeredChanged.connect(update_midi))
         midi_out_ports.forEach((m) => m.nEventsTriggeredChanged.connect(update_midi))
     }
-    ongain_dBChanged: push_out_gains()
+    onGain_dBChanged: push_out_gains()
     onInput_gain_dBChanged: push_in_gains()
     onOutput_balanceChanged: push_out_gains()
     onInput_balanceChanged: push_in_gains()

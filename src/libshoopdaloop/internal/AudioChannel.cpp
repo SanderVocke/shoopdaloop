@@ -113,7 +113,7 @@ void AudioChannel<SampleT>::throw_if_commands_queued() const {
 template <typename SampleT>
 AudioChannel<SampleT>::AudioChannel(
     std::shared_ptr<BufferPool> buffer_pool, uint32_t initial_max_buffers,
-    shoop_channel_mode_t mode, std::shared_ptr<profiling::Profiler> maybe_profiler)
+    shoop_channel_mode_t mode)
     : WithCommandQueue(50), ma_buffer_pool(buffer_pool),
       ma_buffers_data_length(0), mp_prerecord_buffers_data_length(0),
       ma_buffer_size(buffer_pool->object_size()),
@@ -125,10 +125,6 @@ AudioChannel<SampleT>::AudioChannel(
       mp_prerecord_buffers(buffer_pool, initial_max_buffers),
       mp_prev_process_flags(0), ma_last_played_back_sample(-1) {
     log_trace();
-    if (maybe_profiler) {
-        mp_profiling_item = maybe_profiler->maybe_get_profiling_item(
-            "Process.Loops.AudioChannels");
-    }
 }
 
 template <typename SampleT>
@@ -186,81 +182,78 @@ void AudioChannel<SampleT>::PROC_process(
     std::optional<uint32_t> maybe_next_mode_delay_cycles,
     std::optional<uint32_t> maybe_next_mode_eta, uint32_t n_samples,
     uint32_t pos_before, uint32_t pos_after, uint32_t length_before,
-    uint32_t length_after) {
-    profiling::stopwatch(
-        [&, this]() {
-            log_trace();
+    uint32_t length_after)
+{
+    log_trace();
 
-            // Execute any commands queued from other threads.
-            PROC_handle_command_queue();
+    // Execute any commands queued from other threads.
+    PROC_handle_command_queue();
 
-            auto process_params = get_channel_process_params(
-                mode, maybe_next_mode, maybe_next_mode_delay_cycles,
-                maybe_next_mode_eta, pos_before, ma_start_offset, ma_mode);
-            auto const &process_flags = process_params.process_flags;
+    auto process_params = get_channel_process_params(
+        mode, maybe_next_mode, maybe_next_mode_delay_cycles,
+        maybe_next_mode_eta, pos_before, ma_start_offset, ma_mode);
+    auto const &process_flags = process_params.process_flags;
 
-            if (!(process_flags & ChannelPreRecord) &&
-                (mp_prev_process_flags & ChannelPreRecord)) {
-                // Ending pre-record. If transitioning to recording,
-                // make our pre-recorded buffers into our main buffers.
-                // Otherwise, just discard them.
-                if (process_flags & ChannelRecord) {
-                    log<log_level_debug>(
-                        "Pre-record end -> carry over to record");
-                    mp_buffers = mp_prerecord_buffers;
-                    ma_buffers_data_length = ma_start_offset =
-                        mp_prerecord_buffers_data_length.load();
-                } else {
-                    log<log_level_debug>("Pre-record end -> discard");
-                }
-                mp_prerecord_buffers.reset();
-                mp_prerecord_buffers_data_length = 0;
-            }
+    if (!(process_flags & ChannelPreRecord) &&
+        (mp_prev_process_flags & ChannelPreRecord)) {
+        // Ending pre-record. If transitioning to recording,
+        // make our pre-recorded buffers into our main buffers.
+        // Otherwise, just discard them.
+        if (process_flags & ChannelRecord) {
+            log<log_level_debug>(
+                "Pre-record end -> carry over to record");
+            mp_buffers = mp_prerecord_buffers;
+            ma_buffers_data_length = ma_start_offset =
+                mp_prerecord_buffers_data_length.load();
+        } else {
+            log<log_level_debug>("Pre-record end -> discard");
+        }
+        mp_prerecord_buffers.reset();
+        mp_prerecord_buffers_data_length = 0;
+    }
 
-            if (process_flags & ChannelPlayback) {
-                ma_last_played_back_sample = process_params.position;
-                PROC_process_playback(
-                    process_params.position, length_before, n_samples, false,
-                    mp_playback_target_buffer, mp_playback_target_buffer_size);
-            } else {
-                ma_last_played_back_sample = -1;
-            }
-            if (process_flags & ChannelRecord) {
-                PROC_process_record(n_samples,
-                                    ((int)length_before + ma_start_offset),
-                                    mp_buffers, ma_buffers_data_length,
-                                    mp_recording_source_buffer,
-                                    mp_recording_source_buffer_size);
-            }
-            if (process_flags & ChannelReplace) {
-                PROC_process_replace(process_params.position, length_before,
-                                     n_samples, mp_recording_source_buffer,
-                                     mp_recording_source_buffer_size);
-            }
-            if (process_flags & ChannelPreRecord) {
-                if (!(mp_prev_process_flags & ChannelPreRecord)) {
-                    log<log_level_debug>("Pre-record start");
-                }
-                PROC_process_record(n_samples, mp_prerecord_buffers_data_length,
-                                    mp_prerecord_buffers,
-                                    mp_prerecord_buffers_data_length,
-                                    mp_recording_source_buffer,
-                                    mp_recording_source_buffer_size);
-            }
+    if (process_flags & ChannelPlayback) {
+        ma_last_played_back_sample = process_params.position;
+        PROC_process_playback(
+            process_params.position, length_before, n_samples, false,
+            mp_playback_target_buffer, mp_playback_target_buffer_size);
+    } else {
+        ma_last_played_back_sample = -1;
+    }
+    if (process_flags & ChannelRecord) {
+        PROC_process_record(n_samples,
+                            ((int)length_before + ma_start_offset),
+                            mp_buffers, ma_buffers_data_length,
+                            mp_recording_source_buffer,
+                            mp_recording_source_buffer_size);
+    }
+    if (process_flags & ChannelReplace) {
+        PROC_process_replace(process_params.position, length_before,
+                                n_samples, mp_recording_source_buffer,
+                                mp_recording_source_buffer_size);
+    }
+    if (process_flags & ChannelPreRecord) {
+        if (!(mp_prev_process_flags & ChannelPreRecord)) {
+            log<log_level_debug>("Pre-record start");
+        }
+        PROC_process_record(n_samples, mp_prerecord_buffers_data_length,
+                            mp_prerecord_buffers,
+                            mp_prerecord_buffers_data_length,
+                            mp_recording_source_buffer,
+                            mp_recording_source_buffer_size);
+    }
 
-            mp_prev_process_flags = process_flags;
+    mp_prev_process_flags = process_flags;
 
-            // Update recording/playback buffers.
-            if (mp_recording_source_buffer) {
-                mp_recording_source_buffer += n_samples;
-                mp_recording_source_buffer_size -= n_samples;
-            }
-            if (mp_playback_target_buffer) {
-                mp_playback_target_buffer += n_samples;
-                mp_playback_target_buffer_size -= n_samples;
-            }
-        },
-        mp_profiling_item);
+    // Update recording/playback buffers.
+    if (mp_recording_source_buffer) {
+        mp_recording_source_buffer += n_samples;
+        mp_recording_source_buffer_size -= n_samples;
+    }
+    if (mp_playback_target_buffer) {
+        mp_playback_target_buffer += n_samples;
+        mp_playback_target_buffer_size -= n_samples;
+    }
 }
 
 template <typename SampleT>
@@ -313,16 +306,12 @@ void AudioChannel<SampleT>::PROC_queue_additivecpy(SampleT *dst, SampleT *src,
 
 template <typename SampleT>
 void AudioChannel<SampleT>::PROC_finalize_process() {
-    profiling::stopwatch(
-        [&, this]() {
-            log_trace();
+    log_trace();
 
-            ProcessingCommand cmd;
-            while (mp_proc_queue.pop(cmd)) {
-                PROC_exec_cmd(cmd);
-            }
-        },
-        mp_profiling_item);
+    ProcessingCommand cmd;
+    while (mp_proc_queue.pop(cmd)) {
+        PROC_exec_cmd(cmd);
+    }
 }
 
 template <typename SampleT>

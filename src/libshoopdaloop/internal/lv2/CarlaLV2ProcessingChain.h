@@ -141,8 +141,7 @@ public:
         LilvWorld *lilv_world,
         shoop_fx_chain_type_t type,
         uint32_t sample_rate,
-        std::string human_name,
-        std::shared_ptr<profiling::Profiler> maybe_profiler = nullptr
+        std::string human_name
     );
 
     void instantiate(uint32_t sample_rate);

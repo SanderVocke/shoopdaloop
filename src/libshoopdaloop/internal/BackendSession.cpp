@@ -1,6 +1,8 @@
 #include "BackendSession.h"
 #include "GraphLoopChannel.h"
 #include "GraphNode.h"
+#include "GraphAudioPort.h"
+#include "GraphMidiPort.h"
 #include "LoggingBackend.h"
 #include "ProcessProfiling.h"
 #include "GraphPort.h"
@@ -33,27 +35,7 @@ BackendSession::BackendSession() :
           WithCommandQueue(),
           profiler(std::make_shared<profiling::Profiler>()),
           top_profiling_item(profiler->maybe_get_profiling_item("Process")),
-          ports_profiling_item(
-              profiler->maybe_get_profiling_item("Process.Ports")),
-          ports_prepare_profiling_item(
-              profiler->maybe_get_profiling_item("Process.Ports.Prepare")),
-          ports_finalize_profiling_item(
-              profiler->maybe_get_profiling_item("Process.Ports.Finalize")),
-          ports_prepare_fx_profiling_item(
-              profiler->maybe_get_profiling_item("Process.Ports.PrepareFX")),
-          ports_passthrough_profiling_item(
-              profiler->maybe_get_profiling_item("Process.Ports.Passthrough")),
-          ports_passthrough_input_profiling_item(
-              profiler->maybe_get_profiling_item(
-                  "Process.Ports.Passthrough.Input")),
-          ports_passthrough_output_profiling_item(
-              profiler->maybe_get_profiling_item(
-                  "Process.Ports.Passthrough.Output")),
-          ports_decoupled_midi_profiling_item(
-              profiler->maybe_get_profiling_item("Process.Ports.MidiControl")),
-          loops_profiling_item(
-              profiler->maybe_get_profiling_item("Process.Loops")),
-          fx_profiling_item(profiler->maybe_get_profiling_item("Process.FX")),
+          graph_profiling_item(profiler->maybe_get_profiling_item("Process.Graph")),
           cmds_profiling_item(
               profiler->maybe_get_profiling_item("Process.Commands")),
           ma_state(State::Active)
@@ -89,20 +71,26 @@ void BackendSession::PROC_process (uint32_t nframes) {
             
             log<log_level_trace>("Process: process graph");
             auto processing_schedule = m_processing_schedule;
-            for(auto &step: processing_schedule->steps) {
-                profiling::stopwatch(
-                    [this, &nframes, &step]() {
-                        if(step.nodes.size() == 1) {
-                            log<log_level_trace>("Processing node: {}", step.nodes.begin()->get()->graph_node_name());
-                            step.nodes.begin()->get()->graph_node_process(nframes);
-                        } else if(step.nodes.size() > 1) {
-                            log<log_level_trace>("Co-processing {} nodes, first: {}", step.nodes.size(), step.nodes.begin()->get()->graph_node_name());
-                            step.nodes.begin()->get()->graph_node_co_process(step.nodes, nframes);
+
+            profiling::stopwatch(
+                [this, &nframes, &processing_schedule]() {
+                    for(auto &step: processing_schedule->steps) {
+                        try {
+                            if(step.nodes.size() == 1) {
+                                log<log_level_trace>("Processing node: {}", step.nodes.begin()->get()->graph_node_name());
+                                step.nodes.begin()->get()->PROC_process(nframes);
+                            } else if(step.nodes.size() > 1) {
+                                log<log_level_trace>("Co-processing {} nodes, first: {}", step.nodes.size(), step.nodes.begin()->get()->graph_node_name());
+                                step.nodes.begin()->get()->PROC_co_process(step.nodes, nframes);
+                            }
+                        } catch (const std::exception &exp) {
+                            log<log_level_error>("Exception while processing graph step: {}", exp.what());
+                        } catch (...) {
+                            log<log_level_error>("Unknown exception while processing graph step");
                         }
-                    },
-                    step.profiling_item
-                );
-            }
+                    }
+                }, graph_profiling_item
+            );
         },
         top_profiling_item
     );
@@ -124,8 +112,19 @@ void BackendSession::destroy() {
 }
 
 std::shared_ptr<GraphLoop> BackendSession::create_loop() {
-    auto loop = std::make_shared<AudioMidiLoop>(profiler);
+    auto loop = std::make_shared<AudioMidiLoop>();
     auto r = std::make_shared<GraphLoop>(shared_from_this(), loop);
+
+    // Setup profiling
+    auto top_item = top_profiling_item;
+    auto loops_item = profiler->maybe_get_profiling_item("Process.Graph.Loops");
+    auto loops_control_item = profiler->maybe_get_profiling_item("Process.Graph.Loops.Control");
+    r->graph_node()->set_processed_cb([top_item, loops_item, loops_control_item](uint32_t us) {
+        top_item->log_time(us);
+        loops_item->log_time(us);
+        loops_control_item->log_time(us);
+    });
+
     loops.push_back(r);
     recalculate_processing_schedule();
     return r;
@@ -143,7 +142,7 @@ std::shared_ptr<GraphFXChain> BackendSession::create_fx_chain(shoop_fx_chain_typ
         case Carla_Patchbay_16x:
             try {
                 chain = lv2.create_carla_chain<Time, Size>(
-                    type, m_sample_rate, std::string(title), profiler
+                    type, m_sample_rate, std::string(title)
                 );
             } catch (const std::exception &exp) {
                 throw_error<std::runtime_error>("Failed to create a Carla LV2 instance: " + std::string(exp.what()));
@@ -197,9 +196,74 @@ std::shared_ptr<GraphFXChain> BackendSession::create_fx_chain(shoop_fx_chain_typ
     };
 
     auto info = std::make_shared<GraphFXChain>(chain, shared_from_this());
+
+    // Setup profiling
+    auto top_item = top_profiling_item;
+    auto fx_item = profiler->maybe_get_profiling_item("Process.Graph.FX");
+    info->graph_node()->set_processed_cb([top_item, fx_item](uint32_t us) {
+        top_item->log_time(us);
+        fx_item->log_time(us);
+    });
+
     fx_chains.push_back(info);
     recalculate_processing_schedule();
     return info;
+}
+
+std::shared_ptr<GraphAudioPort> BackendSession::add_audio_port(std::shared_ptr<shoop_types::_AudioPort> port) {
+    auto rval = std::make_shared<GraphAudioPort>(port, shared_from_this());
+    ports.push_back(rval);
+
+    // Setup profiling
+    auto top_item = top_profiling_item;
+    auto ports_item = profiler->maybe_get_profiling_item("Process.Graph.Ports");
+    auto audio_ports_item = profiler->maybe_get_profiling_item("Process.Graph.Ports.Audio");
+    auto cb = [top_item, ports_item, audio_ports_item](uint32_t us) {
+        top_item->log_time(us);
+        ports_item->log_time(us);
+        audio_ports_item->log_time(us);
+    };
+    rval->first_graph_node()->set_processed_cb(cb);
+    rval->second_graph_node()->set_processed_cb(cb);
+
+    return rval;
+}
+
+std::shared_ptr<GraphMidiPort> BackendSession::add_midi_port(std::shared_ptr<MidiPort> port) {
+    auto rval = std::make_shared<GraphMidiPort>(port, shared_from_this());
+    ports.push_back(rval);
+
+    // Setup profiling
+    auto top_item = top_profiling_item;
+    auto ports_item = profiler->maybe_get_profiling_item("Process.Graph.Ports");
+    auto midi_ports_item = profiler->maybe_get_profiling_item("Process.Graph.Ports.Midi");
+    auto cb = [top_item, ports_item, midi_ports_item](uint32_t us) {
+        top_item->log_time(us);
+        ports_item->log_time(us);
+        midi_ports_item->log_time(us);
+    };
+    rval->first_graph_node()->set_processed_cb(cb);
+    rval->second_graph_node()->set_processed_cb(cb);
+
+    return rval;
+}
+
+std::shared_ptr<GraphLoopChannel> BackendSession::add_loop_channel(std::shared_ptr<GraphLoop> loop, std::shared_ptr<ChannelInterface> channel) {
+    auto rval = std::make_shared<GraphLoopChannel>(channel, loop, shared_from_this());
+
+    // Setup profiling
+    auto top_item = top_profiling_item;
+    auto loops_item = profiler->maybe_get_profiling_item("Process.Graph.Loops");
+    auto loop_channels_item = profiler->maybe_get_profiling_item("Process.Graph.Loops.Channels");
+    auto cb = [top_item, loops_item, loop_channels_item](uint32_t us) {
+        top_item->log_time(us);
+        loops_item->log_time(us);
+        loop_channels_item->log_time(us);
+    };
+    rval->first_graph_node()->set_processed_cb(cb);
+    rval->second_graph_node()->set_processed_cb(cb);
+
+    return rval;
 }
 
 BackendSession::~BackendSession() {

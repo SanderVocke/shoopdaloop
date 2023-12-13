@@ -244,11 +244,8 @@ class ProfilingReportItem:
 class ProfilingReport:
     items : List[ProfilingReportItem]
 
-    def __init__(self, backend_obj : 'shoop_profiling_report_t'):
-        self.items = [ProfilingReportItem(backend_obj.items[i]) for i in range(backend_obj.n_items)]
-    
-    def __init__(self):
-        self.items = []
+    def __init__(self, backend_obj : 'shoop_profiling_report_t' = None):
+        self.items = [ProfilingReportItem(backend_obj.items[i]) for i in range(backend_obj.n_items)] if backend_obj else []
 
 @dataclass
 class AudioDriverState:

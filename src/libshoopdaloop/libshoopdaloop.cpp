@@ -422,7 +422,7 @@ shoopdaloop_loop_audio_channel_t *add_audio_channel (shoopdaloop_loop_t *loop, s
     // address later.
     std::shared_ptr<GraphLoop> loop_info = internal_loop(loop);
     auto &backend = loop_info->get_backend();
-    auto r = std::make_shared<GraphLoopChannel> (nullptr, loop_info, backend.shared_from_this());
+    auto r = backend.add_loop_channel(loop_info, nullptr);
     backend.queue_process_thread_command([r, loop_info, mode]() {
         auto chan = loop_info->loop->add_audio_channel<audio_sample_t>(loop_info->backend.lock()->audio_buffer_pool,
                                                         audio_channel_initial_buffers,
@@ -444,7 +444,7 @@ shoopdaloop_loop_midi_channel_t *add_midi_channel (shoopdaloop_loop_t *loop, sho
     // address later.
     std::shared_ptr<GraphLoop> loop_info = internal_loop(loop);
     auto &backend = loop_info->get_backend();
-    auto r = std::make_shared<GraphLoopChannel> (nullptr, loop_info, backend.shared_from_this());
+    auto r = backend.add_loop_channel(loop_info, nullptr);
     backend.queue_process_thread_command([loop_info, mode, r]() {
         auto chan = loop_info->loop->add_midi_channel<Time, Size>(midi_storage_size, mode, false);
         r->channel = chan;
@@ -764,10 +764,7 @@ shoopdaloop_audio_port_t *open_audio_port (shoop_backend_session_t *backend, sho
     auto _driver = internal_audio_driver(driver);
     auto port = _driver->open_audio_port
         (name_hint, direction);
-    auto pi = std::make_shared<GraphAudioPort>(port, _backend);
-    _backend->queue_process_thread_command([pi, _backend]() {
-        _backend->ports.push_back(pi);
-    });
+    auto pi = _backend->add_audio_port(port);
     return external_audio_port(pi);
   }, (shoopdaloop_audio_port_t*) nullptr);
 }
@@ -870,10 +867,7 @@ shoopdaloop_midi_port_t *open_midi_port (shoop_backend_session_t *backend, shoop
     auto _backend = internal_backend_session(backend);
     auto _driver = internal_audio_driver(driver);
     auto port = _driver->open_midi_port(name_hint, direction);
-    auto pi = std::make_shared<GraphMidiPort>(port, _backend);
-    _backend->queue_process_thread_command([pi, _backend]() {
-        _backend->ports.push_back(pi);
-    });
+    auto pi = _backend->add_midi_port(port);
     return external_midi_port(pi);
   }, nullptr);
 }

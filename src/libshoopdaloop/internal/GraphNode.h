@@ -5,6 +5,7 @@
 #include <vector>
 #include <functional>
 #include <iterator>
+#include <chrono>
 
 class GraphNode;
 
@@ -12,6 +13,7 @@ using SharedGraphNodeSet = std::set<std::shared_ptr<GraphNode>>;
 using WeakGraphNodeSet = std::set<std::weak_ptr<GraphNode>, std::owner_less<std::weak_ptr<GraphNode>>>;
 
 class GraphNode : public std::enable_shared_from_this<GraphNode> {
+    std::function<void(uint32_t)> m_processed_cb; // arg is process time in us
 public:
     GraphNode() {};
 
@@ -25,12 +27,42 @@ public:
     // For debugging purposes.
     virtual std::string graph_node_name() const { return "GraphNode"; }
 
-    // Function to call when processing this node only.
+    // Processing implementation to be overridden by children.
     virtual void graph_node_process(uint32_t nframes) {}
+
+    // Process and time the processing.
+    void PROC_process(uint32_t nframes) {
+        if (m_processed_cb) {
+            auto start = std::chrono::high_resolution_clock::now();
+            graph_node_process(nframes);
+            auto end = std::chrono::high_resolution_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+            m_processed_cb(duration.count());
+        } else {
+            graph_node_process(nframes);
+        }
+    }
 
     // Function to call in order to process this node with its co-process nodes.
     virtual void graph_node_co_process(std::set<std::shared_ptr<GraphNode>> const& nodes,
         uint32_t nframes) {}
+    
+    // Process and time the processing.
+    void PROC_co_process(std::set<std::shared_ptr<GraphNode>> const& nodes,
+        uint32_t nframes) {
+        if (m_processed_cb) {
+            auto start = std::chrono::high_resolution_clock::now();
+            graph_node_co_process(nodes, nframes);
+            auto end = std::chrono::high_resolution_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+            m_processed_cb(duration.count());
+        } else {
+            graph_node_co_process(nodes, nframes);
+        }
+    }
+    
+    // Callback for profiling.
+    void set_processed_cb(std::function<void(uint32_t)> cb) { m_processed_cb = cb; }
 };
 
 template<typename Parent>

@@ -10,7 +10,6 @@
 #include <set>
 #include "GraphNode.h"
 
-
 namespace profiling {
 class Profiler;
 class ProfilingItem;
@@ -19,6 +18,8 @@ class ProfilingItem;
 class GraphLoop;
 class GraphPort;
 class GraphFXChain;
+class GraphAudioPort;
+class GraphMidiPort;
 
 using namespace shoop_types;
 
@@ -50,19 +51,7 @@ public:
     // Profiling
     std::shared_ptr<profiling::Profiler> profiler;
     std::shared_ptr<profiling::ProfilingItem> top_profiling_item;
-    std::shared_ptr<profiling::ProfilingItem> ports_profiling_item;
-    std::shared_ptr<profiling::ProfilingItem> ports_prepare_profiling_item;
-    std::shared_ptr<profiling::ProfilingItem> ports_finalize_profiling_item;
-    std::shared_ptr<profiling::ProfilingItem> ports_prepare_fx_profiling_item;
-    std::shared_ptr<profiling::ProfilingItem> ports_passthrough_profiling_item;
-    std::shared_ptr<profiling::ProfilingItem>
-        ports_passthrough_input_profiling_item;
-    std::shared_ptr<profiling::ProfilingItem>
-        ports_passthrough_output_profiling_item;
-    std::shared_ptr<profiling::ProfilingItem>
-        ports_decoupled_midi_profiling_item;
-    std::shared_ptr<profiling::ProfilingItem> loops_profiling_item;
-    std::shared_ptr<profiling::ProfilingItem> fx_profiling_item;
+    std::shared_ptr<profiling::ProfilingItem> graph_profiling_item;
     std::shared_ptr<profiling::ProfilingItem> cmds_profiling_item;
 
     BackendSession();
@@ -70,7 +59,6 @@ public:
 
     struct ProcessingStep {
         std::set<std::shared_ptr<GraphNode>> nodes;
-        std::shared_ptr<profiling::ProfilingItem> profiling_item;
     };
     struct ProcessingSchedule {
         std::vector<ProcessingStep> steps;
@@ -85,6 +73,9 @@ public:
 
     std::shared_ptr<GraphLoop> create_loop();
     std::shared_ptr<GraphFXChain> create_fx_chain(shoop_fx_chain_type_t type, const char *title);
+    std::shared_ptr<GraphAudioPort> add_audio_port(std::shared_ptr<shoop_types::_AudioPort> port);
+    std::shared_ptr<GraphMidiPort> add_midi_port(std::shared_ptr<MidiPort> port);
+    std::shared_ptr<GraphLoopChannel> add_loop_channel(std::shared_ptr<GraphLoop> loop, std::shared_ptr<ChannelInterface> channel);
 
     void set_sample_rate(uint32_t sr);
     void set_buffer_size(uint32_t bs);

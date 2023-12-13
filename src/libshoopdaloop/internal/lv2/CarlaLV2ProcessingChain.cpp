@@ -217,14 +217,9 @@ void CarlaLV2ProcessingChain<TimeType, SizeType>::maybe_cleanup_ui() {
 template <typename TimeType, typename SizeType>
 CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
     LilvWorld *lilv_world, shoop_fx_chain_type_t type, uint32_t sample_rate,
-    std::string human_name, std::shared_ptr<profiling::Profiler> maybe_profiler)
+    std::string human_name)
     : m_internal_buffers_size(0), m_human_name(human_name),
       m_unique_name(human_name + "_" + random_string(6)) {
-
-    if (maybe_profiler) {
-        m_maybe_profiling_item = maybe_profiler->maybe_get_profiling_item(
-            "Process.FX." + m_human_name);
-    }
 
     // URIs for the Carla plugins we want to support.
     static const std::map<shoop_fx_chain_type_t, std::string> plugin_uris = {
@@ -519,33 +514,26 @@ void CarlaLV2ProcessingChain<TimeType, SizeType>::set_active(bool active) {
 
 template <typename TimeType, typename SizeType>
 void CarlaLV2ProcessingChain<TimeType, SizeType>::process(uint32_t frames) {
-    profiling::stopwatch(
-        [&, this]() {
-            uint32_t processed = 0;
+    uint32_t processed = 0;
 
-            while (processed < frames) {
-                auto process = std::min(frames - processed,
-                                        carla_constants::max_buffer_size);
-                if (!m_active || !m_instance) {
-                    for (auto &port : m_output_audio_ports) {
-                        port->zero();
-                    }
-                    return;
-                }
+    while (processed < frames) {
+        auto process = std::min(frames - processed,
+                                carla_constants::max_buffer_size);
+        if (!m_active || !m_instance) {
+            return;
+        }
 
-                if (frames > m_internal_buffers_size) {
-                    throw std::runtime_error(
-                        "Carla processing chain: requesting to process more "
-                        "than buffer size.");
-                }
-                lilv_instance_activate(m_instance);
-                lilv_instance_run(m_instance, process);
-                lilv_instance_deactivate(m_instance);
+        if (frames > m_internal_buffers_size) {
+            throw std::runtime_error(
+                "Carla processing chain: requesting to process more "
+                "than buffer size.");
+        }
+        lilv_instance_activate(m_instance);
+        lilv_instance_run(m_instance, process);
+        lilv_instance_deactivate(m_instance);
 
-                processed += process;
-            }
-        },
-        m_maybe_profiling_item);
+        processed += process;
+    }
 }
 
 template <typename TimeType, typename SizeType>
@@ -577,27 +565,6 @@ bool CarlaLV2ProcessingChain<TimeType, SizeType>::is_freewheeling() const {
 template <typename TimeType, typename SizeType>
 void CarlaLV2ProcessingChain<TimeType, SizeType>::set_freewheeling(
     bool enabled) {}
-
-template <typename TimeType, typename SizeType>
-void CarlaLV2ProcessingChain<TimeType, SizeType>::ensure_buffers(uint32_t size) {
-    if (size > m_internal_buffers_size) {
-        for (auto &port : m_input_audio_ports) {
-            port->reallocate_buffer(size);
-        }
-        for (auto &port : m_output_audio_ports) {
-            port->reallocate_buffer(size);
-        }
-        if (m_instance) {
-            reconnect_ports();
-        }
-        m_internal_buffers_size = size;
-    }
-}
-
-template <typename TimeType, typename SizeType>
-uint32_t CarlaLV2ProcessingChain<TimeType, SizeType>::buffers_size() const {
-    throw std::runtime_error("Buffer size getting not yet implemented");
-}
 
 template <typename TimeType, typename SizeType>
 CarlaLV2ProcessingChain<TimeType, SizeType>::~CarlaLV2ProcessingChain() {
