@@ -111,6 +111,8 @@ TEST_CASE("DummyAudioMidiDriver - Input port queue", "[DummyAudioMidiDriver][aud
     std::vector<float> data({1, 2, 3, 4, 5, 6, 7, 8});
     put.queue_data(8, data.data());
 
+    put.PROC_prepare(8);
+    put.PROC_process(8);
     auto buf = put.PROC_get_buffer(8);
     auto bufvec = std::vector<float>(buf, buf+8);
     REQUIRE(bufvec == data);
@@ -122,11 +124,15 @@ TEST_CASE("DummyAudioMidiDriver - Input port queue consume multiple", "[DummyAud
     put.queue_data(8, data.data());
 
     {
+        put.PROC_prepare(4);
+        put.PROC_process(4);
         auto buf = put.PROC_get_buffer(4);
         auto bufvec = std::vector<float>(buf, buf+4);
         REQUIRE(bufvec == std::vector<float>({1, 2, 3, 4}));
     }
     {
+        put.PROC_prepare(8);
+        put.PROC_process(8);
         auto buf = put.PROC_get_buffer(8);
         auto bufvec = std::vector<float>(buf, buf+8);
         REQUIRE(bufvec == std::vector<float>({5, 6, 7, 8, 0, 0, 0, 0}));
@@ -140,6 +146,8 @@ TEST_CASE("DummyAudioMidiDriver - Input port queue consume combine", "[DummyAudi
     put.queue_data(4, data.data());
 
     {
+        put.PROC_prepare(10);
+        put.PROC_process(10);
         auto buf = put.PROC_get_buffer(10);
         auto bufvec = std::vector<float>(buf, buf+10);
         REQUIRE(bufvec == std::vector<float>({1, 2, 3, 4, 1, 2, 3, 4, 0, 0}));

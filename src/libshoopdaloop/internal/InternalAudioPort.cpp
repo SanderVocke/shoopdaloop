@@ -53,6 +53,7 @@ void* InternalAudioPort<SampleT>::maybe_driver_handle() const {
 template <typename SampleT>
 void InternalAudioPort<SampleT>::PROC_prepare(uint32_t nframes) {
     PROC_get_buffer(nframes);
+    memset((void*) m_buffer.data(), 0, nframes * sizeof(SampleT));
 }
 
 template <typename SampleT>
