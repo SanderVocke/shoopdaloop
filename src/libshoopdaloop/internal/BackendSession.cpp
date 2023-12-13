@@ -226,6 +226,8 @@ std::shared_ptr<GraphAudioPort> BackendSession::add_audio_port(std::shared_ptr<s
     rval->first_graph_node()->set_processed_cb(cb);
     rval->second_graph_node()->set_processed_cb(cb);
 
+    recalculate_processing_schedule();
+
     return rval;
 }
 
@@ -245,6 +247,8 @@ std::shared_ptr<GraphMidiPort> BackendSession::add_midi_port(std::shared_ptr<Mid
     rval->first_graph_node()->set_processed_cb(cb);
     rval->second_graph_node()->set_processed_cb(cb);
 
+    recalculate_processing_schedule();
+
     return rval;
 }
 
@@ -262,6 +266,8 @@ std::shared_ptr<GraphLoopChannel> BackendSession::add_loop_channel(std::shared_p
     };
     rval->first_graph_node()->set_processed_cb(cb);
     rval->second_graph_node()->set_processed_cb(cb);
+
+    recalculate_processing_schedule();
 
     return rval;
 }
@@ -293,6 +299,9 @@ void BackendSession::recalculate_processing_schedule(bool thread_safe) {
     using std::chrono::high_resolution_clock;
     using std::chrono::microseconds;
     auto result = std::make_shared<ProcessingSchedule>();
+    result->loops = loops;
+    result->ports = ports;
+    result->fx_chains = fx_chains;
 
     logging::log<"Backend.ProcessGraph", log_level_debug>(std::nullopt, std::nullopt, "Recalculating process graph");
 
@@ -305,16 +314,16 @@ void BackendSession::recalculate_processing_schedule(bool thread_safe) {
             nodes.insert(item->shared_from_this());
         }
     };
-    for(auto &p: ports) {
+    for(auto &p: result->ports) {
         insert_all(p);
     }
-    for(auto &l: loops) {
+    for(auto &l: result->loops) {
         result->loop_graph_nodes.insert(l->graph_node());
         insert_all(l);
         for(auto &c: l->mp_audio_channels) { insert_all(c); }
         for(auto &c: l->mp_midi_channels) { insert_all(c); }
     }
-    for(auto &c: fx_chains) {
+    for(auto &c: result->fx_chains) {
         insert_all(c);
         for (auto &p : c->audio_input_ports()) { insert_all(p); }
         for (auto &p : c->audio_output_ports()) { insert_all(p); }

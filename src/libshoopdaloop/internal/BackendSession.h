@@ -61,6 +61,9 @@ public:
         std::set<std::shared_ptr<GraphNode>> nodes;
     };
     struct ProcessingSchedule {
+        std::vector<std::shared_ptr<GraphLoop>> loops;
+        std::vector<std::shared_ptr<GraphPort>> ports;
+        std::vector<std::shared_ptr<GraphFXChain>> fx_chains;
         std::vector<ProcessingStep> steps;
         WeakGraphNodeSet loop_graph_nodes;
     };

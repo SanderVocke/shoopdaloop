@@ -1706,7 +1706,7 @@ unsigned get_buffer_size (shoop_audio_driver_t *driver) {
 void destroy_audio_driver_state(shoop_audio_driver_state_t *state) {
   return api_impl<void, log_level_trace>("destroy_audio_driver_state", [&]() {
     if (state->maybe_instance_name) {
-      delete state->maybe_instance_name;
+      free((void*)state->maybe_instance_name);
     }
     delete state;
   });

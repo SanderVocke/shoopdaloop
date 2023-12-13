@@ -23,7 +23,7 @@ if(ENABLE_ASAN)
     endif()
     if (EXISTS ${ASAN_DSO})
       file(READ ${ASAN_DSO} ASAN_DSO_CONTENT)
-      string(FIND ${ASAN_DSO_CONTENT} "GNU ld script" FOUND_LD_SCRIPT)
+      string(FIND "${ASAN_DSO_CONTENT}" "GNU ld script" FOUND_LD_SCRIPT)
       if(NOT ${FOUND_LD_SCRIPT} EQUAL -1)
         # Pointed to a linker script, find the actual lib
         string(REGEX MATCH ".*INPUT[ ]*\\([ ]*([^\)^ ]+)[ ]*\\).*" FOUND_ASAN_SO ${ASAN_DSO_CONTENT})
