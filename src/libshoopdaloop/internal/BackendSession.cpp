@@ -315,19 +315,25 @@ void BackendSession::recalculate_processing_schedule(bool thread_safe) {
         }
     };
     for(auto &p: result->ports) {
-        insert_all(p);
+        if (p) {
+            insert_all(p);
+        }
     }
     for(auto &l: result->loops) {
-        result->loop_graph_nodes.insert(l->graph_node());
-        insert_all(l);
-        for(auto &c: l->mp_audio_channels) { insert_all(c); }
-        for(auto &c: l->mp_midi_channels) { insert_all(c); }
+        if (l) {
+            result->loop_graph_nodes.insert(l->graph_node());
+            insert_all(l);
+            for(auto &c: l->mp_audio_channels) { if(c) { insert_all(c); } }
+            for(auto &c: l->mp_midi_channels) { if(c) { insert_all(c); } }
+        }
     }
     for(auto &c: result->fx_chains) {
-        insert_all(c);
-        for (auto &p : c->audio_input_ports()) { insert_all(p); }
-        for (auto &p : c->audio_output_ports()) { insert_all(p); }
-        for (auto &p : c->midi_input_ports()) { insert_all(p); }
+        if (c) {
+            insert_all(c);
+            for (auto &p : c->audio_input_ports()) { if(p) { insert_all(p); } }
+            for (auto &p : c->audio_output_ports()) { if(p) { insert_all(p); } }
+            for (auto &p : c->midi_input_ports()) { if(p) { insert_all(p); } }
+        }
     }
 
     // Make raw pointers
