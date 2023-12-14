@@ -1,6 +1,8 @@
 #include "JackAudioMidiDriver.h"
+#include "MidiMessage.h"
 #include "catch2/catch_approx.hpp"
 #include <catch2/catch_test_macros.hpp>
+#include <jack/midiport.h>
 #include <memory>
 
 std::unique_ptr<JackTestAudioMidiDriver> open_test_driver() {
@@ -10,6 +12,15 @@ std::unique_ptr<JackTestAudioMidiDriver> open_test_driver() {
     settings.maybe_server_name_hint = std::nullopt;
     driver->start(settings);
     return driver;
+}
+
+MidiMessage<uint32_t, uint32_t> to_msg(jack_midi_event_t &m) {
+    MidiMessage<uint32_t, uint32_t> msg;
+    msg.time = m.time;
+    msg.size = m.size;
+    msg.data.resize(m.size);
+    memcpy((void*) msg.data.data(), (void*) m.buffer, m.size);
+    return msg;
 }
 
 TEST_CASE("Ports - Jack Audio In - Properties", "[JackPorts][ports][audio]") {
@@ -174,4 +185,42 @@ TEST_CASE("Ports - Jack Audio Out - Noop Zero", "[JackPorts][ports][audio]") {
     CHECK(second_round_output[2] == Catch::Approx(0.0f));
     CHECK(second_round_output[3] == Catch::Approx(0.0f));
     CHECK(second_round_output[4] == Catch::Approx(0.0f));
+}
+
+TEST_CASE("Ports - Jack Midi In - Properties", "[JackPorts][ports][midi]") {
+    auto driver = open_test_driver();
+    auto port = driver->open_midi_port("test", Input);
+
+    CHECK(port->has_internal_read_access());
+    CHECK(!port->has_internal_write_access());
+    CHECK(port->has_implicit_input_source());
+    CHECK(!port->has_implicit_output_sink());
+}
+
+TEST_CASE("Ports - Jack Midi In - Receive", "[JackPorts][ports][midi]") {
+    auto driver = open_test_driver();
+    auto port = driver->open_midi_port("test", Input);
+    auto &internal_port = JackTestApi::internal_port_data((jack_port_t*)port->maybe_driver_handle());
+
+    port->PROC_prepare(100);
+    port->PROC_process(100);
+
+    auto buf = port->PROC_get_read_output_data_buffer(100);
+    CHECK(buf->PROC_get_n_events() == 0);
+
+    MidiMessage<uint32_t, uint32_t> m1(0, 3, {0, 1, 2});
+    MidiMessage<uint32_t, uint32_t> m2(0, 3, {0, 1, 2});
+    internal_port.midi_buffer.push_back(m1);
+    internal_port.midi_buffer.push_back(m2);
+
+    port->PROC_prepare(100);
+    port->PROC_process(100);
+
+    buf = port->PROC_get_read_output_data_buffer(100);
+    REQUIRE(buf->PROC_get_n_events() == 2);
+
+    auto &r1 = buf->PROC_get_event_reference(0);
+    auto &r2 = buf->PROC_get_event_reference(1);
+    CHECK(r1.contents_equal(m1));
+    CHECK(r2.contents_equal(m2));
 }

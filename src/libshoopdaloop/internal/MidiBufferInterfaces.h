@@ -9,6 +9,19 @@ public:
     virtual void     get(uint32_t &size_out,
                          uint32_t &time_out,
                          const uint8_t* &data_out) const = 0;
+    
+    bool contents_equal(MidiSortableMessageInterface const& other) const {
+        if (get_time() != other.get_time()) { return false; }
+        if (get_size() != other.get_size()) { return false; }
+        auto *d1 = get_data();
+        auto *d2 = other.get_data();
+        for (uint32_t i = 0; i < get_size(); i++) {
+            if (d1[i] != d2[i]) {
+                return false;
+            }
+        }
+        return true;
+    }
 };
 
 class MidiReadableBufferInterface {

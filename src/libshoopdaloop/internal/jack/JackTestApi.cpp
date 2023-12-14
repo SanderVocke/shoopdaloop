@@ -7,6 +7,7 @@ namespace jacktestapi_globals {
     std::map<std::string, JackTestApi::Client> clients;
     JackPortRegistrationCallback port_registration_callback = nullptr;
     void *port_registration_callback_arg = nullptr;
+    std::map<void*, jack_port_t*> buffers_to_ports;
 }
 
 jack_client_t* JackTestApi::client_open(const char* name, jack_options_t options, jack_status_t* status, ...) {

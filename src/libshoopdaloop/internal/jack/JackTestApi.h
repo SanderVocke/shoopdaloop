@@ -5,11 +5,13 @@
 #include <map>
 #include <set>
 #include "LoggingBackend.h"
+#include "MidiMessage.h"
 #include <vector>
 
 namespace jacktestapi_globals {
     extern JackPortRegistrationCallback port_registration_callback;
     extern void* port_registration_callback_arg;
+    extern std::map<void*, jack_port_t*> buffers_to_ports;
 }
 
 // A partial simple mock implementation of the JACK API which can be used for simple
@@ -41,6 +43,7 @@ public:
         Client &client;
         bool valid;
         std::vector<float> audio_buffer;
+        std::vector<MidiMessage<uint32_t, uint32_t>> midi_buffer;
 
         Port(std::string name, Client &client, Type type, Direction direction) : name(name), type(type), direction(direction), valid(true), client(client) {}
         Port(Port const& other) = delete;
@@ -50,8 +53,7 @@ public:
                 audio_buffer.resize(std::max((size_t)nframes, audio_buffer.size()));
                 return (void*)audio_buffer.data();
             } else {
-                logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "UNIMPL get_buffer (MIDI)");
-                return nullptr;
+                return (void*)this;
             }
         }
         Client &get_client() { return client; }
@@ -83,9 +85,15 @@ public:
         void close_port(std::string name) {}
     };
 
+    static Port &internal_port_data(jack_port_t* port) {
+        return Port::from_ptr(port);
+    }
+
     static void* port_get_buffer(jack_port_t* port, jack_nframes_t nframes) {
         logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "UNIMPL port_get_buffer");
-        return Port::from_ptr(port).get_buffer(nframes);
+        auto rval = Port::from_ptr(port).get_buffer(nframes);
+        jacktestapi_globals::buffers_to_ports[rval] = port;
+        return rval;
     };
 
     static void port_get_latency_range(auto ...args) {
@@ -118,23 +126,33 @@ public:
         return 0;
     };
 
-    static uint32_t midi_get_event_count(auto ...args) {
-        logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "UNIMPL midi_get_event_count");
+    static uint32_t midi_get_event_count(void* buffer) {
+        auto &port = Port::from_ptr(jacktestapi_globals::buffers_to_ports[buffer]);
+        return port.midi_buffer.size();
+    };
+
+    static int midi_event_get(jack_midi_event_t *event, void *port_buffer, uint32_t event_index) {
+        auto &port = Port::from_ptr(jacktestapi_globals::buffers_to_ports[port_buffer]);
+        auto &msg = port.midi_buffer[event_index];
+        event->time = msg.time;
+        event->size = msg.size;
+        event->buffer = (jack_midi_data_t*) msg.data.data();
         return 0;
     };
 
-    static int midi_event_get(auto ...args) {
-        logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "UNIMPL midi_event_get");
-        return 0;
+    static void midi_clear_buffer(void *buffer) {
+        auto &port = Port::from_ptr(jacktestapi_globals::buffers_to_ports[buffer]);
+        port.midi_buffer.clear();
     };
 
-    static void midi_clear_buffer(auto ...args) {
-        logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "UNIMPL midi_clear_buffer");
-        return;
-    };
-
-    static int midi_event_write(auto ...args) {
-        logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "UNIMPL midi_event_write");
+    static int midi_event_write(void *port_buffer, jack_nframes_t time, const jack_midi_data_t *data, size_t data_size) {
+        auto &port = Port::from_ptr(jacktestapi_globals::buffers_to_ports[port_buffer]);
+        MidiMessage<uint32_t, uint32_t> msg;
+        msg.data.resize(data_size);
+        memcpy((void*) msg.data.data(), (void*) data, data_size);
+        msg.time = time;
+        msg.size = data_size;
+        port.midi_buffer.push_back(msg);
         return 0;
     };
 
