@@ -8,6 +8,14 @@ DummyReadMidiBuf::PROC_get_event_reference(uint32_t idx) {
     throw std::runtime_error("Attempt to read from dummy buffer");
 }
 
+bool DummyReadMidiBuf::read_by_reference_supported() const { return true; }
+
+void DummyReadMidiBuf::PROC_get_event_value(uint32_t idx, uint32_t &size_out,
+                                            uint32_t &time_out,
+                                            const uint8_t *&data_out) {
+    throw std::runtime_error("Attempt to read from dummy buffer");
+}
+
 void DummyWriteMidiBuf::PROC_write_event_value(uint32_t size, uint32_t time,
                                                const uint8_t *data) {}
 

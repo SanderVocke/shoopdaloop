@@ -98,12 +98,17 @@ private:
 public:
     uint32_t PROC_get_n_events() const override;
     virtual MidiSortableMessageInterface &PROC_get_event_reference(uint32_t idx) override;
+    virtual void PROC_get_event_value(uint32_t idx,
+                              uint32_t &size_out,
+                              uint32_t &time_out,
+                              const uint8_t* &data_out) override;
     void PROC_write_event_value(uint32_t size,
                                 uint32_t time,
                                 const uint8_t* data) override;
     void PROC_write_event_reference(MidiSortableMessageInterface const& m) override;
     bool write_by_reference_supported() const override;
     bool write_by_value_supported() const override;
+    bool read_by_reference_supported() const override;
 
     MidiWriteableBufferInterface *PROC_get_write_data_into_port_buffer(uint32_t n_frames) override;
     MidiReadableBufferInterface *PROC_get_read_output_data_buffer(uint32_t n_frames) override;

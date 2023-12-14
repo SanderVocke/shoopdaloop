@@ -55,6 +55,17 @@ public:
         return *dynamic_cast<const MidiSortableMessageInterface*>(&read.at(idx));
     }
 
+    void PROC_get_event_value(uint32_t idx,
+                              uint32_t &size_out,
+                              uint32_t &time_out,
+                              const uint8_t* &data_out) override
+    {
+        auto &msg = PROC_get_event_reference(idx);
+        size_out = msg.get_size();
+        time_out = msg.get_time();
+        data_out = msg.get_data();
+    }
+
     void PROC_write_event_value(uint32_t size,
                                 uint32_t time,
                                 const uint8_t* data) override
@@ -63,6 +74,7 @@ public:
         memcpy((void*)written.back().data.data(), (void*) data, size);
     }
 
+    bool read_by_reference_supported() const override { return true; }
     bool write_by_value_supported() const override { return true; }
     bool write_by_reference_supported() const override { return false; }
     void PROC_write_event_reference(MidiSortableMessageInterface const& m) override {}

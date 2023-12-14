@@ -27,7 +27,14 @@ public:
 class MidiReadableBufferInterface {
 public:
     virtual uint32_t PROC_get_n_events() const = 0;
+
+    virtual bool read_by_reference_supported() const = 0;
+
     virtual MidiSortableMessageInterface const& PROC_get_event_reference(uint32_t idx) = 0;
+    virtual void PROC_get_event_value(uint32_t idx,
+                                      uint32_t &size_out,
+                                      uint32_t &time_out,
+                                      const uint8_t* &data_out) = 0;
     
     MidiReadableBufferInterface() {}
     virtual ~MidiReadableBufferInterface() {};

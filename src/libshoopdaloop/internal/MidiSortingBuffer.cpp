@@ -30,6 +30,15 @@ MidiSortingBuffer::PROC_get_event_reference(uint32_t idx) {
     return *references[idx];
 }
 
+void MidiSortingBuffer::PROC_get_event_value(uint32_t idx, uint32_t &size_out,
+                                             uint32_t &time_out,
+                                             const uint8_t *&data_out) {
+    auto &m = PROC_get_event_reference(idx);
+    size_out = m.get_size();
+    time_out = m.get_time();
+    data_out = m.get_data();
+}
+
 void MidiSortingBuffer::PROC_sort() {
     if (dirty) {
         std::stable_sort(references.begin(), references.end(), compare);
@@ -53,6 +62,7 @@ void MidiSortingBuffer::PROC_clear() {
 
 bool MidiSortingBuffer::write_by_value_supported() const { return true; }
 bool MidiSortingBuffer::write_by_reference_supported() const { return true; }
+bool MidiSortingBuffer::read_by_reference_supported() const { return true; }
 
 void MidiSortingBuffer::PROC_write_event_value(uint32_t size, uint32_t time,
                                                const uint8_t *data) {

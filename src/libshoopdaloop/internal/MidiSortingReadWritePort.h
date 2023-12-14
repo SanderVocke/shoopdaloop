@@ -12,7 +12,8 @@ class MidiSortingReadWritePort : public MidiPort {
 public:
     MidiSortingReadWritePort(
         bool track_notes, bool track_controls, bool track_programs
-    ) : MidiPort(track_notes, track_controls, track_programs) {}
+    ) : MidiPort(track_notes, track_controls, track_programs),
+        m_sorting_buffer(std::make_shared<MidiSortingBuffer>()) {}
     
     virtual ~MidiSortingReadWritePort() {}
 

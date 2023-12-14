@@ -229,6 +229,18 @@ uint32_t DummyMidiPort::PROC_get_n_events() const {
     return m_buffer_data.size();
 }
 
+bool DummyMidiPort::read_by_reference_supported() const { return true; }
+
+void DummyMidiPort::PROC_get_event_value(uint32_t idx,
+                                         uint32_t &size_out,
+                                         uint32_t &time_out,
+                                         const uint8_t *&data_out) {
+    auto &msg = PROC_get_event_reference(idx);
+    size_out = msg.get_size();
+    time_out = msg.get_time();
+    data_out = msg.get_data();
+}
+
 std::vector<DummyMidiPort::StoredMessage> DummyMidiPort::get_written_requested_msgs() {
     auto rval = m_written_requested_msgs;
     m_written_requested_msgs.clear();

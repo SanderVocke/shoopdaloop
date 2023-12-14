@@ -34,6 +34,11 @@ public:
 
     uint32_t PROC_get_n_events() const override;
     MidiSortableMessageInterface const& PROC_get_event_reference(uint32_t idx) override;
+    bool read_by_reference_supported() const override;
+    void PROC_get_event_value(uint32_t idx,
+                              uint32_t &size_out,
+                              uint32_t &time_out,
+                              const uint8_t* &data_out) override;
     
     MidiBufferingInputPort(uint32_t reserve_size=1024);
     virtual ~MidiBufferingInputPort() {}

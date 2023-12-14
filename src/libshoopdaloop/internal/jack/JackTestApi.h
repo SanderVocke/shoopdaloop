@@ -89,6 +89,8 @@ public:
         return Port::from_ptr(port);
     }
 
+    static void internal_reset_api();
+
     static void* port_get_buffer(jack_port_t* port, jack_nframes_t nframes) {
         logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "UNIMPL port_get_buffer");
         auto rval = Port::from_ptr(port).get_buffer(nframes);

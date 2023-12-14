@@ -29,6 +29,12 @@ public:
 
     bool write_by_value_supported() const override;
     bool write_by_reference_supported() const override;
+    bool read_by_reference_supported() const override;
+
+    void PROC_get_event_value(uint32_t idx,
+                            uint32_t &size_out,
+                            uint32_t &time_out,
+                            const uint8_t* &data_out) override;
 
     void PROC_write_event_value(uint32_t size,
                         uint32_t time,

@@ -10,6 +10,13 @@ namespace jacktestapi_globals {
     std::map<void*, jack_port_t*> buffers_to_ports;
 }
 
+void JackTestApi::internal_reset_api() {
+    jacktestapi_globals::clients.clear();
+    jacktestapi_globals::port_registration_callback = nullptr;
+    jacktestapi_globals::port_registration_callback_arg = nullptr;
+    jacktestapi_globals::buffers_to_ports.clear();
+}
+
 jack_client_t* JackTestApi::client_open(const char* name, jack_options_t options, jack_status_t* status, ...) {
     jacktestapi_globals::clients.try_emplace(name, name);
     *status = (jack_status_t)0;
