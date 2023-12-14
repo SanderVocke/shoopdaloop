@@ -96,6 +96,10 @@ void GraphLoopChannel::PROC_prepare(uint32_t n_frames) {
     auto in_locked = mp_input_port_mapping.lock();
     auto out_locked = mp_output_port_mapping.lock();
 
+    if (!in_locked || !out_locked) {
+        return;
+    }
+
     if (maybe_audio()) {
         auto in_locked_audio = in_locked->maybe_audio_port();
         auto out_locked_audio = out_locked->maybe_audio_port();

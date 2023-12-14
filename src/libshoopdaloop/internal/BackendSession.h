@@ -60,7 +60,7 @@ public:
     struct ProcessingStep {
         std::set<std::shared_ptr<GraphNode>> nodes;
     };
-    struct ProcessingSchedule {
+    struct ProcessingSchedule : public std::enable_shared_from_this<ProcessingSchedule> {
         std::vector<std::shared_ptr<GraphLoop>> loops;
         std::vector<std::shared_ptr<GraphPort>> ports;
         std::vector<std::shared_ptr<GraphFXChain>> fx_chains;
@@ -72,7 +72,6 @@ public:
     void PROC_process(uint32_t nframes) override;
 
     shoop_backend_session_state_info_t get_state();
-    WeakGraphNodeSet const& get_loop_graph_nodes();
 
     std::shared_ptr<GraphLoop> create_loop();
     std::shared_ptr<GraphFXChain> create_fx_chain(shoop_fx_chain_type_t type, const char *title);

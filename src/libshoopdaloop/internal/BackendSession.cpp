@@ -303,6 +303,20 @@ void BackendSession::recalculate_processing_schedule(bool thread_safe) {
     result->ports = ports;
     result->fx_chains = fx_chains;
 
+    // Set up a callback to get all loop nodes
+    auto weak_self = weak_from_this();
+    WeakGraphNodeSet weak_loop_nodes;
+    for (auto &l : result->loops) {
+        if (l) {
+            weak_loop_nodes.insert(l->graph_node());
+        }
+    }
+    auto get_loop_nodes = [weak_self, weak_loop_nodes]() {
+        auto self = weak_self.lock();
+        if (!self) { return WeakGraphNodeSet(); }
+        return weak_loop_nodes;
+    };
+
     logging::log<"Backend.ProcessGraph", log_level_debug>(std::nullopt, std::nullopt, "Recalculating process graph");
 
     auto start = high_resolution_clock::now();
@@ -321,8 +335,8 @@ void BackendSession::recalculate_processing_schedule(bool thread_safe) {
     }
     for(auto &l: result->loops) {
         if (l) {
-            result->loop_graph_nodes.insert(l->graph_node());
             insert_all(l);
+            l->set_get_co_process_nodes_cb(get_loop_nodes);
             for(auto &c: l->mp_audio_channels) { if(c) { insert_all(c); } }
             for(auto &c: l->mp_midi_channels) { if(c) { insert_all(c); } }
         }
@@ -367,8 +381,4 @@ void BackendSession::recalculate_processing_schedule(bool thread_safe) {
     };
     if (!thread_safe) { finish_fn(); }
     else { queue_process_thread_command(finish_fn); }
-}
-
-WeakGraphNodeSet const& BackendSession::get_loop_graph_nodes() {
-    return m_processing_schedule->loop_graph_nodes;
 }

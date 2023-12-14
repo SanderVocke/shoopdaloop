@@ -96,5 +96,6 @@ void GraphLoop::graph_node_process(uint32_t nframes) {
 }
 
 WeakGraphNodeSet GraphLoop::graph_node_co_process_nodes() {
-    return get_backend().get_loop_graph_nodes();
+    if (m_get_co_process_nodes) { return m_get_co_process_nodes(); }
+    return WeakGraphNodeSet();
 }

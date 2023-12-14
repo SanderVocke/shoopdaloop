@@ -41,16 +41,22 @@ std::vector<std::set<GraphNode*>> graph_processing_order(std::set<GraphNode *> n
         for(auto &nn : p_n->m_nodes) {
             for(auto d : nn->graph_node_outgoing_edges()) {
                 if(auto locked = d.lock()) {
-                    auto p_other = node_to_annotated_node.at(locked.get());
-                    p_n->out.insert(p_other);
-                    p_other->in.insert(p_n);
+                    auto maybe_p_other = node_to_annotated_node.find(locked.get());
+                    if (maybe_p_other != node_to_annotated_node.end()) {
+                        auto p_other = maybe_p_other->second;
+                        p_n->out.insert(p_other);
+                        p_other->in.insert(p_n);
+                    }
                 }
             }
             for(auto d : nn->graph_node_incoming_edges()) {
                 if(auto locked = d.lock()) {
-                    auto p_other = node_to_annotated_node.at(locked.get());
-                    p_n->in.insert(p_other);
-                    p_other->out.insert(p_n);
+                    auto maybe_p_other = node_to_annotated_node.find(locked.get());
+                    if (maybe_p_other != node_to_annotated_node.end()) {
+                        auto p_other = maybe_p_other->second;
+                        p_n->in.insert(p_other);
+                        p_other->out.insert(p_n);
+                    }
                 }
             }
         }

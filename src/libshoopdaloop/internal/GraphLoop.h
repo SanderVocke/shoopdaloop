@@ -17,6 +17,7 @@ public:
     std::vector<std::shared_ptr<GraphLoopChannel>> mp_audio_channels;
     std::vector<std::shared_ptr<GraphLoopChannel>>  mp_midi_channels;
     std::weak_ptr<BackendSession> backend;
+    std::function<WeakGraphNodeSet()> m_get_co_process_nodes;
 
     GraphLoop(std::shared_ptr<BackendSession> backend,
              std::shared_ptr<AudioMidiLoop> loop) :
@@ -36,6 +37,10 @@ public:
     void PROC_process(uint32_t n_frames);
 
     BackendSession &get_backend();
+
+    void set_get_co_process_nodes_cb(std::function<WeakGraphNodeSet()> cb) {
+        m_get_co_process_nodes = cb;
+    }
 
     // Graph node connections are all handled by the channel nodes, so
     // we don't need to connect anything. Just define the processing function

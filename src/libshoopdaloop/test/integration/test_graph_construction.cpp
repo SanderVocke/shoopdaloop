@@ -142,8 +142,6 @@ TEST_CASE("Graph Construction - Two Direct Loops", "[GraphConstruct]") {
     chan2->connect_input_port(port1, false);
     chan2->connect_output_port(port2, false);
 
-    INFO(backend->get_loop_graph_nodes().size());
-
     std::set<GraphNode *> nodes;
     insert_all(*port1, nodes);
     insert_all(*port2, nodes);
