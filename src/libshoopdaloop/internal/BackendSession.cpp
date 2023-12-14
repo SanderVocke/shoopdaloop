@@ -200,12 +200,52 @@ std::shared_ptr<GraphFXChain> BackendSession::create_fx_chain(shoop_fx_chain_typ
     // Setup profiling
     auto top_item = top_profiling_item;
     auto fx_item = profiler->maybe_get_profiling_item("Process.Graph.FX");
+    auto ports_item = profiler->maybe_get_profiling_item("Process.Graph.Ports");
+    auto audio_ports_item = profiler->maybe_get_profiling_item("Process.Graph.Ports.Audio");
+    auto midi_ports_item = profiler->maybe_get_profiling_item("Process.Graph.Ports.Midi");
     info->graph_node()->set_processed_cb([top_item, fx_item](uint32_t us) {
         top_item->log_time(us);
         fx_item->log_time(us);
     });
+    for (auto &p : info->audio_input_ports()) {
+        p->first_graph_node()->set_processed_cb([top_item, ports_item, audio_ports_item](uint32_t us) {
+            top_item->log_time(us);
+            ports_item->log_time(us);
+            audio_ports_item->log_time(us);
+        });
+        p->second_graph_node()->set_processed_cb([top_item, ports_item, audio_ports_item](uint32_t us) {
+            top_item->log_time(us);
+            ports_item->log_time(us);
+            audio_ports_item->log_time(us);
+        });
+    }
+    for (auto &p : info->audio_output_ports()) {
+        p->first_graph_node()->set_processed_cb([top_item, ports_item, audio_ports_item](uint32_t us) {
+            top_item->log_time(us);
+            ports_item->log_time(us);
+            audio_ports_item->log_time(us);
+        });
+        p->second_graph_node()->set_processed_cb([top_item, ports_item, audio_ports_item](uint32_t us) {
+            top_item->log_time(us);
+            ports_item->log_time(us);
+            audio_ports_item->log_time(us);
+        });
+    }
+    for (auto &p : info->midi_input_ports()) {
+        p->first_graph_node()->set_processed_cb([top_item, ports_item, midi_ports_item](uint32_t us) {
+            top_item->log_time(us);
+            ports_item->log_time(us);
+            midi_ports_item->log_time(us);
+        });
+        p->second_graph_node()->set_processed_cb([top_item, ports_item, midi_ports_item](uint32_t us) {
+            top_item->log_time(us);
+            ports_item->log_time(us);
+            midi_ports_item->log_time(us);
+        });
+    }
 
     fx_chains.push_back(info);
+
     recalculate_processing_schedule();
     return info;
 }
