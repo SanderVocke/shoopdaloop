@@ -15,7 +15,7 @@ class GenericJackPort :
 {
 protected:
     jack_port_t* m_port;
-    void* m_buffer;
+    std::atomic<void*> m_buffer;
     jack_client_t* m_client;
     std::string m_name;
     shoop_port_direction_t m_direction;
@@ -28,10 +28,10 @@ public:
 
     void* maybe_driver_handle() const override;
 
-    bool has_internal_read_access() const override { return true; }
-    bool has_internal_write_access() const override { return true; }
-    bool has_implicit_input_source() const override { return true; }
-    bool has_implicit_output_sink() const override { return true; }
+    bool has_internal_read_access() const override { return m_direction == Input; }
+    bool has_internal_write_access() const override { return m_direction == Output; }
+    bool has_implicit_input_source() const override { return m_direction == Input; }
+    bool has_implicit_output_sink() const override { return m_direction == Output; }
 
     jack_port_t *get_jack_port() const;
     void *get_buffer() const;

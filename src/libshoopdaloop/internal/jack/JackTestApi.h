@@ -5,6 +5,7 @@
 #include <map>
 #include <set>
 #include "LoggingBackend.h"
+#include <vector>
 
 namespace jacktestapi_globals {
     extern JackPortRegistrationCallback port_registration_callback;
@@ -39,11 +40,20 @@ public:
         std::set<std::string> connections;
         Client &client;
         bool valid;
+        std::vector<float> audio_buffer;
 
         Port(std::string name, Client &client, Type type, Direction direction) : name(name), type(type), direction(direction), valid(true), client(client) {}
         Port(Port const& other) = delete;
 
-        void* get_buffer() { return nullptr; }
+        void* get_buffer(uint32_t nframes) {
+            if (type == Type::Audio) {
+                audio_buffer.resize(std::max((size_t)nframes, audio_buffer.size()));
+                return (void*)audio_buffer.data();
+            } else {
+                logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "UNIMPL get_buffer (MIDI)");
+                return nullptr;
+            }
+        }
         Client &get_client() { return client; }
         unsigned long get_flags() { return direction == Direction::Input ? JackPortIsInput : JackPortIsOutput; }
         std::set<std::string> &get_connections() { return connections; }
@@ -73,9 +83,9 @@ public:
         void close_port(std::string name) {}
     };
 
-    static void* port_get_buffer(auto ...args) {
+    static void* port_get_buffer(jack_port_t* port, jack_nframes_t nframes) {
         logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "UNIMPL port_get_buffer");
-        return nullptr;
+        return Port::from_ptr(port).get_buffer(nframes);
     };
 
     static void port_get_latency_range(auto ...args) {

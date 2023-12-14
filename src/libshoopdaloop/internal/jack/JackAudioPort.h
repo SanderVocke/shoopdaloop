@@ -10,7 +10,7 @@
 template<typename API>
 class GenericJackAudioPort : public virtual AudioPort<jack_default_audio_sample_t>, public virtual GenericJackPort<API> {
     using GenericJackPort<API>::m_port;
-    std::atomic<jack_default_audio_sample_t *> ma_buffer;
+    using GenericJackPort<API>::m_buffer;
 public:
     GenericJackAudioPort(
         std::string name,

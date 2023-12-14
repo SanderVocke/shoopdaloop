@@ -7,6 +7,7 @@ add_executable(test_runner
     unit/test_DummyAudioMidiDriver.cpp
     unit/test_DummyPorts.cpp
     unit/test_InternalAudioPort.cpp
+    unit/test_JackPorts.cpp
     integration/test_libshoopdaloop_if.cpp
     integration/test_synced_BasicLoops.cpp
     integration/test_chains.cpp

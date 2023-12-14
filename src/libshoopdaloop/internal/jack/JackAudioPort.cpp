@@ -17,13 +17,13 @@ void GenericJackAudioPort<API>::PROC_prepare(uint32_t nframes) {
     GenericJackPort<API>::PROC_prepare(nframes);
     if (!has_implicit_input_source()) {
         // JACK output buffers should be zero'd
-        memset((void*) ma_buffer.load(), 0, sizeof(jack_default_audio_sample_t) * nframes);
+        memset((void*) m_buffer.load(), 0, sizeof(jack_default_audio_sample_t) * nframes);
     }
 }
 
 template<typename API>
 float *GenericJackAudioPort<API>::PROC_get_buffer(uint32_t n_frames) {
-    return ma_buffer.load();
+    return (float*) m_buffer.load();
 }
 
 template<typename API>
