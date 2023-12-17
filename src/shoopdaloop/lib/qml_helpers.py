@@ -38,6 +38,7 @@ from .q_objects.MidiControlPort import MidiControlPort
 from .q_objects.SettingsIO import SettingsIO
 from .q_objects.TestScreenGrabber import TestScreenGrabber
 from .q_objects.RenderAudioWaveform import RenderAudioWaveform
+from .q_objects.RenderMidiSequence import RenderMidiSequence
 from .q_objects.TestCase import TestCase
 
 from .logging import Logger as BareLogger
@@ -79,6 +80,7 @@ def register_shoopdaloop_qml_classes():
     register_qml_class(SettingsIO, 'SettingsIO')
     register_qml_class(TestScreenGrabber, 'TestScreenGrabber')
     register_qml_class(RenderAudioWaveform, 'RenderAudioWaveform')
+    register_qml_class(RenderMidiSequence, 'RenderMidiSequence')
     register_qml_class(TestCase, 'TestCase')
 
 def create_and_populate_root_context(engine, global_args, additional_items={}):

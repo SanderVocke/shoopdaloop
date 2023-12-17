@@ -462,7 +462,7 @@ class BackendLoopMidiChannel:
     
     def clear_data_dirty(self):
         if self.available():
-            clear_audio_channel_data_dirty(self.shoop_c_handle)
+            clear_midi_channel_data_dirty(self.shoop_c_handle)
     
     def clear(self):
         if self.available():
