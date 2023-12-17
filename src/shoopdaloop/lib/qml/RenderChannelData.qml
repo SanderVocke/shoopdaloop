@@ -5,10 +5,11 @@ import ShoopDaLoop.PythonRenderAudioWaveform
 import ShoopDaLoop.PythonRenderMidiSequence
 
 Item {
-    property var input_data
-    property real samples_per_bin
-    property int samples_offset
-    property var channel
+    id: root
+    property var input_data : []
+    property real samples_per_bin : 1.0
+    property int samples_offset : 0
+    property var channel : null
 
     Loader {
         active: root.channel && root.channel.descriptor.type == "audio"

@@ -76,7 +76,9 @@ class RenderAudioWaveform(ShoopQQuickPaintedItem):
         return self._samples_per_bin
     @samples_per_bin.setter
     def samples_per_bin(self, v):
-        pass
+        if v != self._samples_per_bin:
+            self._samples_per_bin = v
+            self.samplesPerBinChanged.emit(v)
     
     samplesOffsetChanged = Signal(int)
     @Property(int, notify=samplesOffsetChanged)

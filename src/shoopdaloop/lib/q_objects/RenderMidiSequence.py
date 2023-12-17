@@ -1,4 +1,4 @@
-from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, QLine
+from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, QLine, Qt
 from PySide6.QtGui import QPen, QPainter
 from PySide6.QtQml import QJSValue
 
@@ -48,7 +48,9 @@ class RenderMidiSequence(ShoopQQuickPaintedItem):
         return self._samples_per_bin
     @samples_per_bin.setter
     def samples_per_bin(self, v):
-        pass
+        if v != self._samples_per_bin:
+            self._samples_per_bin = v
+            self.samplesPerBinChanged.emit(v)
     
     samplesOffsetChanged = Signal(int)
     @Property(int, notify=samplesOffsetChanged)
@@ -75,25 +77,38 @@ class RenderMidiSequence(ShoopQQuickPaintedItem):
             return
 
         lines = []
-        for note in self._notes:            
+        notes = copy.deepcopy(self._notes)
+        
+        for note in notes:            
             scaled_start = (note['start'] - self._samples_offset) / self._samples_per_bin
             scaled_end = (note['end'] - self._samples_offset) / self._samples_per_bin
-            
-            if scaled_end < 0:
-                continue
-            if scaled_start > self.width():
-                continue
-            
             scaled_start = max(0, scaled_start)
             scaled_end = min(self.width(), scaled_end)
+            note['scaled_start'] = scaled_start
+            note['scaled_end'] = scaled_end
+            
+        filtered = [n for n in notes if n['scaled_start'] < self.width() and n['scaled_end'] > 0]
+        
+        _min = 128
+        _max = 0
+        for n in notes:
+            _min = min(_min, n['note'])
+            _max = max(_max, n['note'])
+        
+        note_thickness = min(15, max(3, int(self.height()*0.8 / (_max - _min))))
+        
+        for note in filtered:            
+            y_rel = (note['note'] - _min) / (_max - _min)
+            y_inv = (self.height() * 0.1) + y_rel*(self.height() * 0.8)
+            y = self.height() - y_inv
             
             lines.append(QLine(
-                scaled_start,
-                0,
-                scaled_end,
-                0
+                note['scaled_start'],
+                y,
+                note['scaled_end'],
+                y
             ))
 
-        painter.setPen(QPen("blue"))
+        painter.setPen(QPen(Qt.blue, note_thickness))
         painter.drawLines(lines)
         
