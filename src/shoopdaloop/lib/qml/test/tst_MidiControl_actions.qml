@@ -1,6 +1,6 @@
 import QtQuick 6.3
 
-import '../../generated/types.js' as Types
+import ShoopConstants
 import '../../midi.js' as Midi
 import '../../midi_control.js' as MidiControl
 import './testfilename.js' as TestFilename
@@ -105,7 +105,7 @@ Item {
                 ctl.handle_midi(Midi.create_noteOn(0, 2, 127), null)
 
                 verify_eq(itf.logged_calls, [
-                    [ 'loop_transition', [[0, 0], [1, 1], [2, 2]], Types.LoopMode.Stopped, 0 ]
+                    [ 'loop_transition', [[0, 0], [1, 1], [2, 2]], ShoopConstants.LoopMode.Stopped, 0 ]
                 ])
             },
 
@@ -114,7 +114,7 @@ Item {
                 ctl.handle_midi(Midi.create_noteOn(0, 3, 127), null)
 
                 verify_eq(itf.logged_calls, [
-                    [ 'loop_transition', [[0, 0], [2, 2]], Types.LoopMode.Stopped, 0 ]
+                    [ 'loop_transition', [[0, 0], [2, 2]], ShoopConstants.LoopMode.Stopped, 0 ]
                 ])
             },
 
@@ -123,7 +123,7 @@ Item {
                 ctl.handle_midi(Midi.create_noteOn(0, 4, 127), null)
 
                 verify_eq(itf.logged_calls, [
-                    [ 'loop_transition', [[1, 1]], Types.LoopMode.Stopped, 0 ]
+                    [ 'loop_transition', [[1, 1]], ShoopConstants.LoopMode.Stopped, 0 ]
                 ])
             },
 
@@ -139,7 +139,7 @@ Item {
                 ctl.handle_midi(Midi.create_noteOn(0, 6, 127), null)
 
                 verify_eq(itf.logged_calls, [
-                    [ 'loop_transition', [[0, 0], [1, 1], [2, 2]], Types.LoopMode.Stopped, 0 ]
+                    [ 'loop_transition', [[0, 0], [1, 1], [2, 2]], ShoopConstants.LoopMode.Stopped, 0 ]
                 ])
             }
         })

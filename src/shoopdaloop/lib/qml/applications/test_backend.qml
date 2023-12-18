@@ -5,7 +5,7 @@ import QtQuick.Dialogs
 
 import ".."
 import "../../generate_session.js" as GenerateSession
-import "../../generated/types.js" as Types
+import ShoopConstants
 
 ApplicationWindow {
     visible: true
@@ -24,7 +24,7 @@ ApplicationWindow {
     Backend {
         update_interval_ms: 30
         client_name_hint: 'ShoopDaLoop'
-        backend_type: Types.AudioDriverType.Jack
+        backend_type: ShoopConstants.AudioDriverType.Jack
         id: backend
     }
 }

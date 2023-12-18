@@ -24,8 +24,7 @@ from .KeyModifiers import KeyModifiers
 from .ApplicationMetadata import ApplicationMetadata
 
 from ..logging import *
-
-script_dir = os.path.dirname(__file__)
+from ..directories import *
 
 class Application(ShoopQGuiApplication):
     exit_handler_called = Signal()
@@ -44,7 +43,7 @@ class Application(ShoopQGuiApplication):
         self._quitting = False
         
         pkg_version = None
-        with open(script_dir + '/../../version.txt', 'r') as f:
+        with open(installation_dir() + '/version.txt', 'r') as f:
             pkg_version = f.read().strip()
         
         self.setApplicationName('ShoopDaLoop')
@@ -100,7 +99,7 @@ class Application(ShoopQGuiApplication):
                 if len(self.engine.rootObjects()) > 0:
                     self.engine.rootObjects()[0].sceneGraphInitialized.connect(start_nsm)
         
-        self.setWindowIcon(QIcon(os.path.join(script_dir, '..', '..', 'resources', 'icon', 'icon-128.png')))
+        self.setWindowIcon(QIcon(os.path.join(installation_dir(), 'resources', 'icon', 'icon-128.png')))
     
     def unload_qml(self):
         if self.engine:
@@ -112,6 +111,8 @@ class Application(ShoopQGuiApplication):
     
     def load_qml(self, filename, quit_on_quit=True):
         self.engine = QQmlApplicationEngine(parent=self)
+        self.engine.addImportPath(os.path.join(scripts_dir(), 'lib', 'qml'))
+        self.engine.addImportPath(os.path.join(installation_dir(), 'lib', 'qml', 'generated'))
         
         if quit_on_quit:
             self.engine.quit.connect(self.do_quit)

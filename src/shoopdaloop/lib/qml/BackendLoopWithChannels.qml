@@ -2,7 +2,7 @@ import QtQuick 6.3
 import QtQuick.Controls 6.3
 import ShoopDaLoop.PythonLogger
 
-import '../generated/types.js' as Types
+import ShoopConstants
 
 // Wrap a Loop that may be dynamically loaded in a just-in-time way.
 Loop {

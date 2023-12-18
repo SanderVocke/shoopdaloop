@@ -2,7 +2,7 @@ import QtQuick 6.3
 import QtTest 1.0
 import ShoopDaLoop.PythonBackend
 
-import '../../generated/types.js' as Types
+import ShoopConstants
 import './testfilename.js' as TestFilename
 import '..'
 
@@ -10,7 +10,7 @@ Backend {
     id: backend
     update_interval_ms: 30
     client_name_hint: 'shoop'
-    backend_type: Types.AudioDriverType.JackTest
+    backend_type: ShoopConstants.AudioDriverType.JackTest
 
     AudioPort {
         descriptor: ({
@@ -82,7 +82,7 @@ Backend {
 
         test_fns: ({
             'test_available_ports': () => {
-                if(!backend.backend_type_is_supported(Types.AudioDriverType.JackTest)) {
+                if(!backend.backend_type_is_supported(ShoopConstants.AudioDriverType.JackTest)) {
                     skip("Backend was built without Jack support")
                     return
                 }

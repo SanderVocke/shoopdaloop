@@ -7,7 +7,7 @@ import ShoopDaLoop.PythonControlHandler
 import ShoopDaLoop.PythonControlInterface
 
 import "../generate_session.js" as GenerateSession
-import "../generated/types.js" as Types
+import ShoopConstants
 
 Item {
     id: root
@@ -308,7 +308,7 @@ Item {
         MidiControlPort {
             id: midi_control_port
             name_hint: "control"
-            direction: Types.PortDirection.Input
+            direction: ShoopConstants.PortDirection.Input
             lua_engine: midi_control.lua_engine
             
             RegistryLookup {

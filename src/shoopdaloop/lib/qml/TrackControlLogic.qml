@@ -1,19 +1,21 @@
 import QtQuick 6.3
 import ShoopDaLoop.PythonLogger
 
-import '../generated/types.js' as Types
+import ShoopConstants
 
 Item {
     property bool monitor
     property var unique_loop_modes : []
     property var unique_next_cycle_loop_modes : []
 
-    readonly property bool any_loop_playing: unique_loop_modes.includes(Types.LoopMode.Playing)
-    readonly property bool any_loop_playing_dry: unique_loop_modes.includes(Types.LoopMode.PlayingDryThroughWet)
-    readonly property bool any_loop_recording: unique_loop_modes.includes(Types.LoopMode.Recording) || unique_loop_modes.includes(Types.LoopMode.Replacing)
-    readonly property bool any_loop_pre_recording: unique_next_cycle_loop_modes.includes(Types.LoopMode.Recording) || unique_next_cycle_loop_modes.includes(Types.LoopMode.Replacing)
-    readonly property bool any_loop_rerecording_dry: unique_loop_modes.includes(Types.LoopMode.RecordingDryIntoWet)
-    readonly property bool any_loop_pre_rerecording_dry: unique_next_cycle_loop_modes.includes(Types.LoopMode.RecordingDryIntoWet)
+    readonly property bool any_loop_playing: {
+        return unique_loop_modes.includes(ShoopConstants.LoopMode.Playing)
+    }
+    readonly property bool any_loop_playing_dry: unique_loop_modes.includes(ShoopConstants.LoopMode.PlayingDryThroughWet)
+    readonly property bool any_loop_recording: unique_loop_modes.includes(ShoopConstants.LoopMode.Recording) || unique_loop_modes.includes(ShoopConstants.LoopMode.Replacing)
+    readonly property bool any_loop_pre_recording: unique_next_cycle_loop_modes.includes(ShoopConstants.LoopMode.Recording) || unique_next_cycle_loop_modes.includes(ShoopConstants.LoopMode.Replacing)
+    readonly property bool any_loop_rerecording_dry: unique_loop_modes.includes(ShoopConstants.LoopMode.RecordingDryIntoWet)
+    readonly property bool any_loop_pre_rerecording_dry: unique_next_cycle_loop_modes.includes(ShoopConstants.LoopMode.RecordingDryIntoWet)
 
     // The properties above determine the readonlies below.
     // To understand why, please refer to "States And Connections"

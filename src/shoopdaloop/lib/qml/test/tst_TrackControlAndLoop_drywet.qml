@@ -3,7 +3,7 @@ import QtTest 1.0
 import ShoopDaLoop.PythonBackend
 
 import './testDeepEqual.js' as TestDeepEqual
-import '../../generated/types.js' as Types
+import ShoopConstants
 import '../../generate_session.js' as GenerateSession
 import './testfilename.js' as TestFilename
 import '..'
@@ -134,7 +134,7 @@ AppRegistries {
             }
 
             function reset_loop(loopwidget) {
-                loopwidget.transition(Types.LoopMode.Stopped, 0, false)
+                loopwidget.transition(ShoopConstants.LoopMode.Stopped, 0, false)
                 loopwidget.clear(0)
                 session.backend.wait_process()
             }
@@ -160,7 +160,7 @@ AppRegistries {
                     reset()
                     tut_control().monitor = false
                     tut_control().mute = false
-                    lut.transition(Types.LoopMode.Recording, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.Recording, 0, false)
                     testcase.wait_updated(session.backend)
 
                     input_port_1.dummy_queue_data([2, 4, 6, 8])
@@ -192,7 +192,7 @@ AppRegistries {
                     reset()
                     tut_control().monitor = false
                     tut_control().mute = false
-                    lut.transition(Types.LoopMode.Recording, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.Recording, 0, false)
                     testcase.wait_updated(session.backend)
 
                     let input = [
@@ -248,7 +248,7 @@ AppRegistries {
                     reset()
                     tut_control().monitor = true
                     tut_control().mute = false
-                    lut.transition(Types.LoopMode.Recording, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.Recording, 0, false)
                     testcase.wait_updated(session.backend)
 
                     input_port_1.dummy_queue_data([2, 4, 6, 8])
@@ -280,7 +280,7 @@ AppRegistries {
                     reset()
                     tut_control().monitor = true
                     tut_control().mute = false
-                    lut.transition(Types.LoopMode.Recording, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.Recording, 0, false)
                     testcase.wait_updated(session.backend)
 
                     let input = [
@@ -341,7 +341,7 @@ AppRegistries {
                     wet_channels()[0].load_data([5, 6, 7, 8])
                     wet_channels()[1].load_data([8, 7, 6, 5])
                     lut.set_length(4)
-                    lut.transition(Types.LoopMode.Playing, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.Playing, 0, false)
                     testcase.wait_updated(session.backend)
 
                     input_port_1.dummy_queue_data([1, 2, 3, 4])
@@ -382,7 +382,7 @@ AppRegistries {
                     ]
                     midi_channel().load_data(midichan)
                     lut.set_length(4)
-                    lut.transition(Types.LoopMode.Playing, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.Playing, 0, false)
                     testcase.wait_updated(session.backend)
 
                     let input = [
@@ -432,7 +432,7 @@ AppRegistries {
                     wet_channels()[0].load_data([5, 6, 7, 8])
                     wet_channels()[1].load_data([8, 7, 6, 5])
                     lut.set_length(4)
-                    lut.transition(Types.LoopMode.Playing, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.Playing, 0, false)
                     testcase.wait_updated(session.backend)
 
                     input_port_1.dummy_queue_data([2, 4, 6, 8])
@@ -474,7 +474,7 @@ AppRegistries {
                     ]
                     midi_channel().load_data(midichan)
                     lut.set_length(4)
-                    lut.transition(Types.LoopMode.Playing, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.Playing, 0, false)
                     testcase.wait_updated(session.backend)
 
                     let input = [
@@ -529,7 +529,7 @@ AppRegistries {
                     wet_channels()[0].load_data([5, 6, 7, 8])
                     wet_channels()[1].load_data([8, 7, 6, 5])
                     lut.set_length(4)
-                    lut.transition(Types.LoopMode.PlayingDryThroughWet, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.PlayingDryThroughWet, 0, false)
                     testcase.wait_updated(session.backend)
 
                     input_port_1.dummy_queue_data([1, 2, 3, 4])
@@ -573,7 +573,7 @@ AppRegistries {
                     ]
                     midi_channel().load_data(midichan)
                     lut.set_length(4)
-                    lut.transition(Types.LoopMode.PlayingDryThroughWet, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.PlayingDryThroughWet, 0, false)
                     testcase.wait_updated(session.backend)
 
                     let input = [
@@ -635,7 +635,7 @@ AppRegistries {
                     wet_channels()[0].load_data([5, 6, 7, 8])
                     wet_channels()[1].load_data([8, 7, 6, 5])
                     lut.set_length(4)
-                    lut.transition(Types.LoopMode.PlayingDryThroughWet, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.PlayingDryThroughWet, 0, false)
                     testcase.wait_updated(session.backend)
 
                     input_port_1.dummy_queue_data([2, 4, 6, 8])
@@ -676,7 +676,7 @@ AppRegistries {
                     ]
                     midi_channel().load_data(midichan)
                     lut.set_length(4)
-                    lut.transition(Types.LoopMode.PlayingDryThroughWet, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.PlayingDryThroughWet, 0, false)
                     testcase.wait_updated(session.backend)
 
                     let input = [
@@ -739,7 +739,7 @@ AppRegistries {
                     wet_channels()[0].load_data([5, 6, 7, 8])
                     wet_channels()[1].load_data([8, 7, 6, 5])
                     lut.set_length(4)
-                    lut.transition(Types.LoopMode.RecordingDryIntoWet, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.RecordingDryIntoWet, 0, false)
                     testcase.wait_updated(session.backend)
 
                     input_port_1.dummy_queue_data([1, 2, 3, 4])
@@ -783,7 +783,7 @@ AppRegistries {
                     ]
                     midi_channel().load_data(midichan)
                     lut.set_length(4)
-                    lut.transition(Types.LoopMode.RecordingDryIntoWet, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.RecordingDryIntoWet, 0, false)
                     testcase.wait_updated(session.backend)
 
                     let input = [
@@ -845,7 +845,7 @@ AppRegistries {
                     wet_channels()[0].load_data([5, 6, 7, 8])
                     wet_channels()[1].load_data([8, 7, 6, 5])
                     lut.set_length(4)
-                    lut.transition(Types.LoopMode.RecordingDryIntoWet, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.RecordingDryIntoWet, 0, false)
                     testcase.wait_updated(session.backend)
 
                     input_port_1.dummy_queue_data([1, 2, 3, 4])
@@ -887,7 +887,7 @@ AppRegistries {
                     ]
                     midi_channel().load_data(midichan)
                     lut.set_length(4)
-                    lut.transition(Types.LoopMode.RecordingDryIntoWet, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.RecordingDryIntoWet, 0, false)
                     testcase.wait_updated(session.backend)
 
                     let input = [
