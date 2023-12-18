@@ -13,7 +13,7 @@ Item {
     property int samples_offset: 0.0
     property int loop_length: 0
     readonly property int n_samples_shown: width * samples_per_pixel
-    readonly property int n_samples: fetcher && fetcher.channel_data ? fetcher.channel_data.length : 0
+    readonly property int n_samples: fetcher && fetcher.channel_data ? channel.data_length : 0
     property real major_grid_lines_interval
     property real minor_grid_lines_interval
 

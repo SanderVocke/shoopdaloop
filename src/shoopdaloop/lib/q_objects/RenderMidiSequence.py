@@ -1,4 +1,4 @@
-from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, QLine, Qt
+from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, QRect, Qt
 from PySide6.QtGui import QPen, QPainter
 from PySide6.QtQml import QJSValue
 
@@ -76,7 +76,6 @@ class RenderMidiSequence(ShoopQQuickPaintedItem):
             logger.trace(lambda: 'paint: no notes')
             return
 
-        lines = []
         notes = copy.deepcopy(self._notes)
         
         for note in notes:            
@@ -94,21 +93,26 @@ class RenderMidiSequence(ShoopQQuickPaintedItem):
         for n in notes:
             _min = min(_min, n['note'])
             _max = max(_max, n['note'])
+
+        if _min == _max:
+            _min -= 1
+            _max += 1
         
-        note_thickness = min(15, max(3, int(self.height()*0.8 / max(1, _max - _min))))
+        note_thickness = min(15, max(3, int(self.height()*0.8 / (_max - _min))))
         
+        rects = []
         for note in filtered:            
-            y_rel = (note['note'] - _min) / max(1, _max - _min)
+            y_rel = (note['note'] - _min) / (_max - _min)
             y_inv = (self.height() * 0.1) + y_rel*(self.height() * 0.8)
             y = self.height() - y_inv
             
-            lines.append(QLine(
+            rects.append(QRect(
                 note['scaled_start'],
-                y,
-                note['scaled_end'],
-                y
+                y - note_thickness/2,
+                note['scaled_end'] - note['scaled_start'],
+                note_thickness
             ))
 
-        painter.setPen(QPen(Qt.blue, note_thickness))
-        painter.drawLines(lines)
+        for rect in rects:
+            painter.fillRect(rect, Qt.blue)
         

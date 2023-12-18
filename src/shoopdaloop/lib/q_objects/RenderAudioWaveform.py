@@ -24,7 +24,7 @@ class Pyramid:
             logger.warning("Unable to load back-end extensions for rendering audio waveforms. Waveforms will not be visible. Error: {}".format(e))
     
     def create(self, audio_data):
-        logger.trace(lambda: 'create pyramid')
+        logger.trace(lambda: f'create pyramid ({len(audio_data)} samples)')
         if not self.backend_create_pyramid:
             logger.trace(lambda: 'no back-end acceleration')
             self.pyramid = None
@@ -94,6 +94,7 @@ class RenderAudioWaveform(ShoopQQuickPaintedItem):
     def preprocess(self):
         logger.trace(lambda: 'preprocess')
         self._pyramid.create(self._input_data)
+        self.update()
     
     @Slot()
     def update_lines(self):
@@ -124,6 +125,9 @@ class RenderAudioWaveform(ShoopQQuickPaintedItem):
         
         data = self._pyramid.pyramid[0].levels[subsampling_idx]
         self.pad_lines_to(math.ceil(self.width()))
+
+        logger.trace(f'   - {len(self._lines)} line slots, {data.n_samples} samples')
+
         for i in range(0, min(math.ceil(self.width()), len(self._lines))):
             sample_idx = (float(i) + float(self._samples_offset) / self._samples_per_bin) * self._samples_per_bin / float(subsampling_factor)
             nearest_idx = min(max(-1, int(round(sample_idx))), data.n_samples)
