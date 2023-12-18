@@ -3,7 +3,7 @@ import QtTest 1.0
 import ShoopDaLoop.PythonLogger
 import ShoopDaLoop.PythonTestCase
 
-import '../../generated/types.js' as Types
+import ShoopConstants
 import './testDeepEqual.js' as TestDeepEqual
 
 PythonTestCase {
@@ -55,7 +55,7 @@ PythonTestCase {
     Component.onDestruction: logger.info(() => ("Testcase " + name + " destroyed."))
 
     function verify_loop_cleared(loop) {
-        verify_eq(loop.mode, Types.LoopMode.Stopped)
+        verify_eq(loop.mode, ShoopConstants.LoopMode.Stopped)
         verify_eq(loop.length, 0)
     }
 

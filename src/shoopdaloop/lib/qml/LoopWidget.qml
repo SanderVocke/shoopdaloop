@@ -3,8 +3,8 @@ import QtQuick.Controls 6.3
 import QtQuick.Controls.Material 6.3
 import QtQuick.Dialogs
 import ShoopDaLoop.PythonLogger
+import ShoopConstants
 
-import '../generated/types.js' as Types
 import '../mode_helpers.js' as ModeHelpers
 import '../stereo.js' as Stereo
 
@@ -256,8 +256,8 @@ Item {
         })
         var _other_loops = _all_track_loops.filter(l => !_selected_loops.includes(l))
         // Do the transitions
-        transition_loops(_other_loops, Types.LoopMode.Stopped, use_delay, root.sync_active)
-        transition_loops(_selected_loops, Types.LoopMode.Playing, use_delay, root.sync_active)
+        transition_loops(_other_loops, ShoopConstants.LoopMode.Stopped, use_delay, root.sync_active)
+        transition_loops(_selected_loops, ShoopConstants.LoopMode.Playing, use_delay, root.sync_active)
     }
     function clear(length=0, emit=true) {
         if(maybe_loop) {
@@ -377,8 +377,8 @@ Item {
     }
 
     function record_n(delay_start, n) {
-        root.transition(Types.LoopMode.Recording, delay_start, true)
-        root.transition(Types.LoopMode.Playing, delay_start + n, true)
+        root.transition(ShoopConstants.LoopMode.Recording, delay_start, true)
+        root.transition(ShoopConstants.LoopMode.Playing, delay_start + n, true)
     }
 
     function record_with_targeted() {
@@ -401,8 +401,8 @@ Item {
 
     readonly property int length : maybe_loop ? maybe_loop.length : 0
     readonly property int position : maybe_loop ? maybe_loop.position : 0
-    readonly property int mode : maybe_loop ? maybe_loop.mode : Types.LoopMode.Stopped
-    readonly property int next_mode : maybe_loop ? maybe_loop.next_mode : Types.LoopMode.Stopped
+    readonly property int mode : maybe_loop ? maybe_loop.mode : ShoopConstants.LoopMode.Stopped
+    readonly property int next_mode : maybe_loop ? maybe_loop.next_mode : ShoopConstants.LoopMode.Stopped
     readonly property int next_transition_delay : maybe_loop ? maybe_loop.next_transition_delay : -1
     
     Component {
@@ -693,7 +693,7 @@ Item {
 
                 LoopStateIcon {
                     id: loopstateicon
-                    mode: statusrect.loop ? statusrect.loop.mode : Types.LoopMode.Unknown
+                    mode: statusrect.loop ? statusrect.loop.mode : ShoopConstants.LoopMode.Unknown
                     show_timer_instead: parent.show_next_mode
                     visible: !parent.show_next_mode || (parent.show_next_mode && statusrect.loop.next_transition_delay == 0)
                     connected: true
@@ -732,7 +732,7 @@ Item {
                 LoopStateIcon {
                     id: loopnextstateicon
                     mode: parent.show_next_mode ?
-                        statusrect.loop.next_mode : Types.LoopMode.Unknown
+                        statusrect.loop.next_mode : ShoopConstants.LoopMode.Unknown
                     show_timer_instead: false
                     connected: true
                     size: iconitem.height * 0.65
@@ -790,7 +790,7 @@ Item {
                         text: root.delay_for_targeted != undefined ? ">" : ""
                     }
 
-                    onClicked: root.transition(Types.LoopMode.Playing, root.use_delay, root.sync_active)
+                    onClicked: root.transition(ShoopConstants.LoopMode.Playing, root.use_delay, root.sync_active)
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
@@ -871,7 +871,7 @@ Item {
                                         text_color: Material.foreground
                                         text: root.delay_for_targeted != undefined ? ">" : ""
                                     }
-                                    onClicked: root.transition(Types.LoopMode.PlayingDryThroughWet, root.use_delay, root.sync_active)
+                                    onClicked: root.transition(ShoopConstants.LoopMode.PlayingDryThroughWet, root.use_delay, root.sync_active)
 
                                     ToolTip.delay: 1000
                                     ToolTip.timeout: 5000
@@ -896,7 +896,7 @@ Item {
                         text: root.delay_for_targeted != undefined ? ">" : ""
                     }
 
-                    onClicked: root.transition(Types.LoopMode.Recording, root.use_delay, root.sync_active)
+                    onClicked: root.transition(ShoopConstants.LoopMode.Recording, root.use_delay, root.sync_active)
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
@@ -1027,7 +1027,7 @@ Item {
                                                 root.use_delay : // delay to other
                                                 root.n_multiples_of_master_length - root.current_cycle - 1 // delay to self
                                         var prev_mode = statusrect.loop.mode
-                                        root.transition(Types.LoopMode.RecordingDryIntoWet, delay, true)
+                                        root.transition(ShoopConstants.LoopMode.RecordingDryIntoWet, delay, true)
                                         statusrect.loop.transition(prev_mode, delay + n, true)
                                     }
 
@@ -1054,7 +1054,7 @@ Item {
                         text: root.delay_for_targeted != undefined ? ">" : ""
                     }
 
-                    onClicked: root.transition(Types.LoopMode.Stopped, root.use_delay, root.sync_active)
+                    onClicked: root.transition(ShoopConstants.LoopMode.Stopped, root.use_delay, root.sync_active)
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
@@ -1213,13 +1213,13 @@ Item {
                 }
 
                 switch(loopprogressrect.loop.mode) {
-                case Types.LoopMode.Playing:
+                case ShoopConstants.LoopMode.Playing:
                     return '#004400';
-                case Types.LoopMode.PlayingLiveFX:
+                case ShoopConstants.LoopMode.PlayingLiveFX:
                     return '#333300';
-                case Types.LoopMode.Recording:
+                case ShoopConstants.LoopMode.Recording:
                     return '#660000';
-                case Types.LoopMode.RecordingFX:
+                case ShoopConstants.LoopMode.RecordingFX:
                     return '#663300';
                 default:
                     return default_color;
@@ -1284,13 +1284,13 @@ Item {
                 }
 
                 switch(lsicon.mode) {
-                case Types.LoopMode.Playing:
-                case Types.LoopMode.PlayingDryThroughWet:
+                case ShoopConstants.LoopMode.Playing:
+                case ShoopConstants.LoopMode.PlayingDryThroughWet:
                     return lsicon.muted ? 'volume-mute' : 'play'
-                case Types.LoopMode.Recording:
-                case Types.LoopMode.RecordingDryIntoWet:
+                case ShoopConstants.LoopMode.Recording:
+                case ShoopConstants.LoopMode.RecordingDryIntoWet:
                     return 'record-rec'
-                case Types.LoopMode.Stopped:
+                case ShoopConstants.LoopMode.Stopped:
                     return 'stop'
                 default:
                     return 'help-circle'
@@ -1305,12 +1305,12 @@ Item {
                     return Material.foreground
                 }
                 switch(lsicon.mode) {
-                case Types.LoopMode.Playing:
+                case ShoopConstants.LoopMode.Playing:
                     return '#00AA00'
-                case Types.LoopMode.Recording:
+                case ShoopConstants.LoopMode.Recording:
                     return 'red'
-                case Types.LoopMode.RecordingDryIntoWet:
-                case Types.LoopMode.PlayingDryThroughWet:
+                case ShoopConstants.LoopMode.RecordingDryIntoWet:
+                case ShoopConstants.LoopMode.PlayingDryThroughWet:
                     return 'orange'
                 default:
                     return 'grey'
@@ -1323,8 +1323,8 @@ Item {
                     return ''
                 }
                 switch(lsicon.mode) {
-                case Types.LoopMode.RecordingDryIntoWet:
-                case Types.LoopMode.PlayingDryThroughWet:
+                case ShoopConstants.LoopMode.RecordingDryIntoWet:
+                case ShoopConstants.LoopMode.PlayingDryThroughWet:
                     return 'FX'
                 default:
                     return ''
@@ -1511,9 +1511,9 @@ Item {
                         valueRole: "value"
                         model: [
                             { value: (chan) => true, text: "All" },
-                            { value: (chan) => chan.mode == Types.ChannelMode.Direct, text: "Regular" },
-                            { value: (chan) => chan.mode == Types.ChannelMode.Dry, text: "Dry" },
-                            { value: (chan) => chan.mode == Types.ChannelMode.Wet, text: "Wet" }
+                            { value: (chan) => chan.mode == ShoopConstants.ChannelMode.Direct, text: "Regular" },
+                            { value: (chan) => chan.mode == ShoopConstants.ChannelMode.Dry, text: "Dry" },
+                            { value: (chan) => chan.mode == ShoopConstants.ChannelMode.Wet, text: "Wet" }
                         ]
                         Component.onCompleted: presavedialog.update()
                         onActivated: presavedialog.update()
@@ -1637,9 +1637,9 @@ Item {
 
             function update() {
                 var chans = root.audio_channels
-                direct_audio_channels = chans.filter(c => c.mode == Types.ChannelMode.Direct)
-                dry_audio_channels = chans.filter(c => c.mode == Types.ChannelMode.Dry)
-                wet_audio_channels = chans.filter(c => c.mode == Types.ChannelMode.Wet)
+                direct_audio_channels = chans.filter(c => c.mode == ShoopConstants.ChannelMode.Direct)
+                dry_audio_channels = chans.filter(c => c.mode == ShoopConstants.ChannelMode.Dry)
+                wet_audio_channels = chans.filter(c => c.mode == ShoopConstants.ChannelMode.Wet)
                 var to_load = []
                 if (direct_load_checkbox.checked) { to_load = to_load.concat(direct_audio_channels) }
                 if (dry_load_checkbox.checked) { to_load = to_load.concat(dry_audio_channels) }

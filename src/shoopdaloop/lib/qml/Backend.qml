@@ -1,5 +1,6 @@
 import ShoopDaLoop.PythonBackend
 import QtQuick 6.3
+import ShoopConstants
 
 PythonBackend {
     Component.onCompleted: {

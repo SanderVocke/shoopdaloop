@@ -1,10 +1,6 @@
 import sys
 import os
-
-script_pwd = os.path.dirname(__file__)
-
-import shoopdaloop.lib
-module_pwd = os.path.dirname(shoopdaloop.lib.__file__) + '/..' 
+from shoopdaloop.lib.directories import *
 
 import traceback
 import argparse
@@ -19,7 +15,7 @@ from shoopdaloop.lib.backend_wrappers import *
 def main():
     logger = Logger("Frontend.Main")    
     try:
-        mains = [ os.path.basename(p).replace('.qml','') for p in glob.glob('{}/lib/qml/applications/*.qml'.format(script_pwd)) ]
+        mains = [ os.path.basename(p).replace('.qml','') for p in glob.glob('{}/lib/qml/applications/*.qml'.format(installation_dir())) ]
 
         parser = argparse.ArgumentParser(
             prog="ShoopDaLoop",
@@ -44,10 +40,11 @@ def main():
 
         if args.info:
             version=None
-            with open(script_pwd + '/version.txt', 'r') as f:
+            with open(installation_dir() + '/version.txt', 'r') as f:
                 version = f.read()
             print('ShoopDaLoop {}'.format(version.strip()))
-            print('Installed @ {}'.format(script_pwd))
+            print('Installed @ {}'.format(installation_dir()))
+            print('Scripts @ {}'.format(scripts_dir()))
             exit(0)
         
         global_args = {
@@ -58,7 +55,7 @@ def main():
     
         app = Application(
             'ShoopDaLoop',
-            '{}/lib/qml/applications/{}.qml'.format(module_pwd, args.main),
+            '{}/lib/qml/applications/{}.qml'.format(scripts_dir(), args.main),
             global_args,
             dict(),
             args.qml_debug,

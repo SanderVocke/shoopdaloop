@@ -3,7 +3,7 @@ import QtTest 1.0
 import ShoopDaLoop.PythonBackend
 
 import './testDeepEqual.js' as TestDeepEqual
-import '../../generated/types.js' as Types
+import ShoopConstants
 import '../../generate_session.js' as GenerateSession
 import './testfilename.js' as TestFilename
 import '..'
@@ -47,9 +47,9 @@ Session {
                 clear()
                 testcase.wait_updated(session.backend)
 
-                master_loop().transition(Types.LoopMode.Recording, 0, true)
+                master_loop().transition(ShoopConstants.LoopMode.Recording, 0, true)
                 testcase.wait_updated(session.backend)
-                verify_eq(master_loop().mode, Types.LoopMode.Recording)
+                verify_eq(master_loop().mode, ShoopConstants.LoopMode.Recording)
                 verify_gt(master_loop().length, 0)
                 verify_loop_cleared(other_loop())
 
@@ -60,9 +60,9 @@ Session {
                 check_backend()
 
                 master_loop().set_length(48000)
-                master_loop().transition(Types.LoopMode.Playing, 0, true)
+                master_loop().transition(ShoopConstants.LoopMode.Playing, 0, true)
                 testcase.wait_updated(session.backend)
-                verify_eq(master_loop().mode, Types.LoopMode.Playing)
+                verify_eq(master_loop().mode, ShoopConstants.LoopMode.Playing)
                 verify_eq(master_loop().length, 48000)
                 verify_loop_cleared(other_loop())
 
