@@ -2,7 +2,7 @@ import ShoopDaLoop.PythonLoop
 import ShoopDaLoop.PythonLogger
 import QtQuick 6.3
 
-import '../generated/types.js' as Types
+import ShoopConstants
 import '../mode_helpers.js' as ModeHelpers
 
 PythonLoop {
@@ -11,7 +11,7 @@ PythonLoop {
     readonly property PythonLogger logger: PythonLogger { name: "Frontend.Qml.Loop" }
 
     // Gives a nice full progress bar when recording
-    readonly property int display_position: mode == Types.LoopMode.Recording ? length : position
+    readonly property int display_position: mode == ShoopConstants.LoopMode.Recording ? length : position
 
     // TODO: kind of a bad place to put this.
     // When the loop starts recording, ensure all channels have their
@@ -25,7 +25,7 @@ PythonLoop {
             channels.forEach(c => {
                 if (ModeHelpers.is_recording_mode_for(mode, c.mode)) {
                     c.recording_started_at = now
-                    if (c.mode == Types.ChannelMode.Wet && track_widget.maybe_fx_chain) {
+                    if (c.mode == ShoopConstants.ChannelMode.Wet && track_widget.maybe_fx_chain) {
                         if (!fx_chain_desc_id) {
                             fx_chain_desc_id = registries.fx_chain_states_registry.generate_id('fx_chain_state')
                             var fx_chain_desc = track_widget.maybe_fx_chain.actual_session_descriptor()

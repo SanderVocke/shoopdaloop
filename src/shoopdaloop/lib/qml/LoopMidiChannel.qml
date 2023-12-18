@@ -1,7 +1,7 @@
 import ShoopDaLoop.PythonLoopMidiChannel
 import QtQuick 6.3
 
-import '../generated/types.js' as Types
+import ShoopConstants
 import '../session_schemas/conversions.js' as Conversions
 
 PythonLoopMidiChannel {

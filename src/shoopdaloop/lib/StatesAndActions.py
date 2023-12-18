@@ -1,5 +1,6 @@
 from enum import Enum
 import sys, os
+
 pwd = os.path.dirname(__file__)
 sys.path.append(pwd + '/..')
 sys.path.append(pwd + '/../build')

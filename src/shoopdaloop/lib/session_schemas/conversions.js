@@ -1,10 +1,10 @@
-.import '../generated/types.js' as Types
+.import ShoopConstants 1.0 as SC
 
 const channel_modes = {
-    'direct': Types.ChannelMode.Direct,
-    'disabled': Types.ChannelMode.Disabled,
-    'dry': Types.ChannelMode.Dry,
-    'wet': Types.ChannelMode.Wet
+    'direct': SC.ShoopConstants.ChannelMode.Direct,
+    'disabled': SC.ShoopConstants.ChannelMode.Disabled,
+    'dry': SC.ShoopConstants.ChannelMode.Dry,
+    'wet': SC.ShoopConstants.ChannelMode.Wet
 }
 
 function parse_channel_mode(mode_str) {

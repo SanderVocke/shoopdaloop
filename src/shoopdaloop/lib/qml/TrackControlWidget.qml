@@ -3,7 +3,7 @@ import QtQuick.Controls 6.3
 import QtQuick.Controls.Material 6.3
 
 import ShoopDaLoop.PythonLogger
-import '../generated/types.js' as Types
+import ShoopConstants
 
 // The track control widget displays control buttons to control the
 // (loops within a) track.

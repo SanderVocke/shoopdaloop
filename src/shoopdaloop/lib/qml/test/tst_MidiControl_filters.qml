@@ -1,6 +1,6 @@
 import QtQuick 6.3
 
-import '../../generated/types.js' as Types
+import ShoopConstants
 import '../../midi.js' as Midi
 import '../../midi_control.js' as MidiControl
 import './testfilename.js' as TestFilename

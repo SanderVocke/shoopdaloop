@@ -3,7 +3,7 @@ import QtQuick 6.3
 import ShoopDaLoop.PythonLogger
 
 import '../session_schemas/conversions.js' as Conversions
-import '../generated/types.js' as Types
+import ShoopConstants
 
 PythonLoopAudioChannel {
     id: root

@@ -3,7 +3,7 @@ import QtTest 1.0
 import ShoopDaLoop.PythonBackend
 
 import './testDeepEqual.js' as TestDeepEqual
-import '../../generated/types.js' as Types
+import ShoopConstants
 import '../../generate_session.js' as GenerateSession
 import './testfilename.js' as TestFilename
 import '..'
@@ -170,7 +170,7 @@ shoop_format = require('shoop_format')
                 clear()
                 
                 verify_eq_lua('shoop_control.loop_get_mode({0,0})', '{ shoop_control.constants.LoopMode_Stopped }')
-                loop_at(0,0).transition(Types.LoopMode.Recording, 0, false)
+                loop_at(0,0).transition(ShoopConstants.LoopMode.Recording, 0, false)
                 testcase.wait_updated(session.backend)
                 verify_eq_lua('shoop_control.loop_get_mode({0,0})', '{ shoop_control.constants.LoopMode_Recording }')
                 verify_eq_lua('shoop_control.loop_get_mode({0,1})', '{ shoop_control.constants.LoopMode_Stopped }')
@@ -182,15 +182,15 @@ shoop_format = require('shoop_format')
                 check_backend()
                 clear()
 
-                verify_eq(loop_at(0,0).mode, Types.LoopMode.Stopped)
+                verify_eq(loop_at(0,0).mode, ShoopConstants.LoopMode.Stopped)
                 do_execute('shoop_control.loop_transition({0,0}, shoop_control.constants.LoopMode_Recording, 0)')
                 testcase.wait_updated(session.backend)
-                verify_eq(loop_at(0,0).mode, Types.LoopMode.Recording)
-                verify_eq(loop_at(0,1).mode, Types.LoopMode.Stopped)
+                verify_eq(loop_at(0,0).mode, ShoopConstants.LoopMode.Recording)
+                verify_eq(loop_at(0,1).mode, ShoopConstants.LoopMode.Stopped)
                 do_execute('shoop_control.loop_transition({0,1}, shoop_control.constants.LoopMode_Recording, 0)')
                 testcase.wait_updated(session.backend)
-                verify_eq(loop_at(0,0).mode, Types.LoopMode.Recording)
-                verify_eq(loop_at(0,1).mode, Types.LoopMode.Recording)
+                verify_eq(loop_at(0,0).mode, ShoopConstants.LoopMode.Recording)
+                verify_eq(loop_at(0,1).mode, ShoopConstants.LoopMode.Recording)
             },
 
             'test_loop_set_get_volume': () => {
@@ -326,7 +326,7 @@ shoop_format = require('shoop_format')
                 clear()
                 
                 verify_eq_lua('shoop_control.loop_get_by_mode(shoop_control.constants.LoopMode_Stopped)', '{{0,0}, {0,1}, {1,0}, {1,1}}')
-                loop_at(0,0).transition(Types.LoopMode.Recording, 0, false)
+                loop_at(0,0).transition(ShoopConstants.LoopMode.Recording, 0, false)
                 testcase.wait_updated(session.backend)
                 verify_eq_lua('shoop_control.loop_get_by_mode(shoop_control.constants.LoopMode_Stopped)', '{{0,1},{1,0},{1,1}}')
                 verify_eq_lua('shoop_control.loop_get_by_mode(shoop_control.constants.LoopMode_Recording)', '{{0,0}}')

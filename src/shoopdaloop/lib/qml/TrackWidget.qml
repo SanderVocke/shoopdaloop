@@ -4,7 +4,7 @@ import QtQuick.Controls.Material 6.3
 import QtQuick.Window
 import ShoopDaLoop.PythonLogger
 
-import '../generated/types.js' as Types
+import ShoopConstants
 import "../generate_session.js" as GenerateSession
 
 // The track widget displays the state of a track (collection of

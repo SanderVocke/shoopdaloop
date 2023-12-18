@@ -1,7 +1,7 @@
 import ShoopDaLoop.PythonAudioPort
 import QtQuick 6.3
 
-import '../generated/types.js' as Types
+import ShoopConstants
 
 PythonAudioPort {
     id: root
@@ -9,8 +9,8 @@ PythonAudioPort {
     property bool loaded : initialized
     direction: {
         switch(descriptor.direction) {
-            case 'input': return Types.PortDirection.Input;
-            case 'output': return Types.PortDirection.Output;
+            case 'input': return ShoopConstants.PortDirection.Input;
+            case 'output': return ShoopConstants.PortDirection.Output;
         }
         throw new Error("No direction for audio port")
     }

@@ -3,7 +3,7 @@ import QtQuick.Controls 6.3
 import QtQuick.Controls.Material 6.3
 import ShoopDaLoop.PythonLogger
 
-import '../generated/types.js' as Types
+import ShoopConstants
 import '../mode_helpers.js' as ModeHelpers
 
 Item {
@@ -111,8 +111,8 @@ Item {
     readonly property int position: iteration * cycle_length + (ModeHelpers.is_running_mode(mode) ? master_position : 0)
     readonly property int display_position : position
 
-    property int mode : Types.LoopMode.Stopped
-    property int next_mode : Types.LoopMode.Stopped
+    property int mode : ShoopConstants.LoopMode.Stopped
+    property int next_mode : ShoopConstants.LoopMode.Stopped
     property int next_transition_delay : -1
 
     property var all_loop_ids: {
@@ -221,7 +221,7 @@ Item {
             let elem = schedule[iteration]
             for (var loop of elem.loops_end) {
                 root.logger.debug(() => `loop end: ${loop.obj_id}`)
-                loop.transition(Types.LoopMode.Stopped, 0, true, false)
+                loop.transition(ShoopConstants.LoopMode.Stopped, 0, true, false)
                 running_loops.delete(loop)
             }
             if (ModeHelpers.is_running_mode(mode)) {
@@ -239,7 +239,7 @@ Item {
                                 if (other_starts.has(loop)) {
                                     // We have already recorded this loop. Don't record it again.
                                     root.logger.debug(() => `Not re-recording ${loop.obj_id}`)
-                                    loop.transition(Types.LoopMode.Stopped, 0, true, false)
+                                    loop.transition(ShoopConstants.LoopMode.Stopped, 0, true, false)
                                     running_loops.delete(loop)
                                     handled = true
                                     break
@@ -260,7 +260,7 @@ Item {
     function cancel_all() {
         root.logger.trace(() => `cancel_all()`)
         for (var loop of running_loops) {
-            loop.transition(Types.LoopMode.Stopped, 0, true, false)
+            loop.transition(ShoopConstants.LoopMode.Stopped, 0, true, false)
         }
         running_loops = new Set()
     }
@@ -317,7 +317,7 @@ Item {
                 if ((iteration+1) >= n_cycles) {
                     if (ModeHelpers.is_recording_mode(mode)) {
                         // Recording ends next cycle
-                        transition(Types.LoopMode.Stopped, 0, true)
+                        transition(ShoopConstants.LoopMode.Stopped, 0, true)
                     } else {
                         // Will cycle around - trigger the actions for next cycle
                         do_triggers(0, mode)
