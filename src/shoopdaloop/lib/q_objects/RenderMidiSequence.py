@@ -71,7 +71,7 @@ class RenderMidiSequence(ShoopQQuickPaintedItem):
             self.notesChanged.emit(self._notes)
 
     def paint(self, painter):
-        logger.trace('paint')
+        logger.trace(f'paint (off {self._samples_offset}, scale {self._samples_per_bin})')
         if not self._notes:
             logger.trace(lambda: 'paint: no notes')
             return
@@ -95,10 +95,10 @@ class RenderMidiSequence(ShoopQQuickPaintedItem):
             _min = min(_min, n['note'])
             _max = max(_max, n['note'])
         
-        note_thickness = min(15, max(3, int(self.height()*0.8 / (_max - _min))))
+        note_thickness = min(15, max(3, int(self.height()*0.8 / max(1, _max - _min))))
         
         for note in filtered:            
-            y_rel = (note['note'] - _min) / (_max - _min)
+            y_rel = (note['note'] - _min) / max(1, _max - _min)
             y_inv = (self.height() * 0.1) + y_rel*(self.height() * 0.8)
             y = self.height() - y_inv
             

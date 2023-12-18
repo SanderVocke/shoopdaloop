@@ -45,12 +45,13 @@ PythonLoopMidiChannel {
     function queue_load_tasks(data_files_dir, add_tasks_to) {
         if (has_data_file()) {
             add_tasks_to.add_task(
-                file_io.load_midi_to_channel_async(
+                file_io.load_midi_to_channels_async(
                     data_files_dir + '/' + descriptor.data_file,
                     get_backend().get_sample_rate(),
-                    root,
+                    [root],
                     descriptor.n_preplay_samples,
-                    descriptor.start_offset
+                    descriptor.start_offset,
+                    null
                     )
             )
         }

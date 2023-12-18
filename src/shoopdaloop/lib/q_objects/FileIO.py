@@ -19,6 +19,7 @@ from .Task import Task
 from .Tasks import Tasks
 
 from ..logging import Logger
+from ..smf import generate_smf, parse_smf
 
 def call_callable(callable, *args):
     if isinstance(callable, QJSValue):
@@ -121,16 +122,8 @@ class FileIO(QThread):
         try:
             msgs = channel.get_data()
             if os.path.splitext(filename)[1] == '.smf':
-                for m in msgs:
-                    m['time'] = float(m['time']) / float(sample_rate)
-                length = float(channel.data_length) / float(sample_rate)
-                # Internal sample-accurate MIDI format
-                js = {
-                    'messages': msgs,
-                    'length': length
-                }
                 with open(filename, 'w') as f:
-                    f.write(json.dumps(js, indent=2))
+                    f.write(json.dumps(generate_smf(msgs, channel.data_length, sample_rate), indent=2))
             else:
                 mido_track = mido.MidiTrack()
                 mido_file = mido.MidiFile()
@@ -186,26 +179,24 @@ class FileIO(QThread):
         return os.path.exists(path)
     
     @Slot(str, int, 'QVariant', 'QVariant', 'QVariant')
-    def load_midi_to_channel(self, 
+    def load_midi_to_channels(self, 
                              filename,
                              sample_rate,
-                             channel,
+                             channels,
                              maybe_set_n_preplay_samples,
-                             maybe_set_start_offset):
+                             maybe_set_start_offset,
+                             maybe_update_loop_to_datalength):
         self.startLoadingFile.emit()
         try:
             backend_msgs = []
             total_sample_time = 0
             if os.path.splitext(filename)[1] == '.smf':
-                # Internal sample-accurate MIDI format
-                js = None
+                contents = None
                 with open(filename, 'r') as f:
                     contents = f.read()
-                    js = json.loads(contents)
-                backend_msgs = js['messages']
-                for msg in backend_msgs:
-                    msg['time'] = round(msg['time'] * sample_rate)
-                total_sample_time = round(js['length'] * sample_rate)
+                (msgs, samples) = parse_smf(json.loads(contents), sample_rate)
+                backend_msgs = msgs
+                total_sample_time = samples
             else:
                 mido_file = mido.MidiFile(filename)
                 mido_msgs = [msg for msg in mido_file]
@@ -226,29 +217,33 @@ class FileIO(QThread):
                         'data': [int(byte) for byte in msg_bytes]
                     })
             
-            channel.load_data(backend_msgs)
+            for channel in channels:
+                channel.load_data(backend_msgs)            
+                if maybe_set_start_offset != None:
+                    channel.set_start_offset(maybe_set_start_offset)
+                if maybe_set_n_preplay_samples != None:
+                    channel.set_n_preplay_samples(maybe_set_n_preplay_samples)
             
-            if maybe_set_start_offset != None:
-                channel.set_start_offset(maybe_set_start_offset)
-            if maybe_set_n_preplay_samples != None:
-                channel.set_n_preplay_samples(maybe_set_n_preplay_samples)
+            if maybe_update_loop_to_datalength:
+                maybe_update_loop_to_datalength.set_length(total_sample_time)
             
             self.logger.info(lambda: "Loaded MIDI from {} into channel ({} messages, {} samples)".format(filename, len(backend_msgs), total_sample_time))
         finally:
             self.doneLoadingFile.emit()
     
-    @Slot(str, int, 'QVariant', 'QVariant', 'QVariant', result=Task)
-    def load_midi_to_channel_async(self, 
+    @Slot(str, int, 'QVariant', 'QVariant', 'QVariant', 'QVariant', result=Task)
+    def load_midi_to_channels_async(self, 
                                    filename,
                                    sample_rate,
-                                   channel,
+                                   channels,
                                    maybe_set_n_preplay_samples,
-                                   maybe_set_start_offset):
+                                   maybe_set_start_offset,
+                                   maybe_update_loop_to_datalength):
         task = Task(parent=self)
         def do_load():
             try:
-                self.load_midi_to_channel(filename, sample_rate, channel, maybe_set_n_preplay_samples,
-                                   maybe_set_start_offset)
+                self.load_midi_to_channels(filename, sample_rate, channels, maybe_set_n_preplay_samples,
+                                   maybe_set_start_offset, maybe_update_loop_to_datalength)
             finally:
                 task.done()
         

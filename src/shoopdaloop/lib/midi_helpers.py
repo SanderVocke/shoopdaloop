@@ -10,8 +10,14 @@ def velocity(msg_data):
 def is_noteOn(msg_data):
     return (msg_data[0] & 0xF0) == 0x90
 
+def noteOn(channel, note, velocity):
+    return [0x90 + channel, note, velocity]
+
 def is_noteOff(msg_data):
     return (msg_data[0] & 0xF0) == 0x80
+
+def noteOff(channel, note, velocity):
+    return [0x80 + channel, note, velocity]
 
 def is_cc(msg_data):
     return (msg_data[0] & 0xF0) == 0xB0

@@ -56,6 +56,8 @@ Item {
     }
     readonly property bool has_audio: (initial_descriptor && !initial_descriptor.composition && initial_descriptor.channels) ?
         (initial_descriptor.channels.filter(c => c.type == "audio").length > 0) : false
+    readonly property bool has_midi: (initial_descriptor && !initial_descriptor.composition && initial_descriptor.channels) ?
+        (initial_descriptor.channels.filter(c => c.type == "midi").length > 0) : false
 
     readonly property string object_schema : 'loop.1'
     SchemaCheck {
@@ -1362,13 +1364,23 @@ Item {
             x: (parent.width-width) / 2
             y: (parent.height-height) / 2
 
-            onAcceptedClickTrack: (filename) => {
-                                    loadoptionsdialog.filename = filename
-                                    close()
-                                    root.create_backend_loop()
-                                    loadoptionsdialog.update()
-                                    loadoptionsdialog.open()
-                                  }
+            audio_enabled: root.has_audio
+            midi_enabled: root.has_midi
+
+            onAcceptedClickTrack: (kind, filename) => {
+                if (kind == 'audio') {
+                    loadoptionsdialog.filename = filename
+                    close()
+                    root.create_backend_loop()
+                    loadoptionsdialog.update()
+                    loadoptionsdialog.open()
+                } else if (kind == 'midi') {
+                    midiloadoptionsdialog.filename = filename
+                    close()
+                    root.create_backend_loop()
+                    midiloadoptionsdialog.open()
+                }
+            }
         }
 
         Menu {
@@ -1407,11 +1419,11 @@ Item {
             }
             MenuSeparator {}
             ShoopMenuItem {
-                text: "Loop details window"
+                text: "Details"
                 onClicked: () => { detailswindow.visible = true }
             }
             ShoopMenuItem {
-               text: "Generate click loop..."
+               text: "Click loop..."
                onClicked: () => clicktrackdialog.open()
             }
             ShoopMenuItem {
@@ -1447,7 +1459,7 @@ Item {
                 }
             }
             ShoopMenuItem {
-                text: "Push Master Loop Length"
+                text: "Push Length To Master"
                 onClicked: {
                     if (master_loop) { master_loop.set_length(root.length) }
                 }
@@ -1471,7 +1483,7 @@ Item {
                         : undefined
                 }
 
-                text: "Restore Recording FX State"
+                text: "Restore FX State"
                 enabled: cached_fx_state ? true : false
                 onClicked: root.track_widget.maybe_fx_chain.restore_state(cached_fx_state.internal_state)
             }
@@ -1756,12 +1768,12 @@ Item {
             standardButtons: Dialog.Yes | Dialog.No
             Label { text: "Update loop length to loaded data length?" }
             property string filename
-            property var channel : null
+            property var channels : root.midi_channels
             function doLoad(update_loop_length) {
                 root.create_backend_loop()
                 var samplerate = root.maybe_backend_loop.backend.get_sample_rate()
-                file_io.load_midi_to_channel_async(filename, samplerate, channel, update_loop_length ?
-                    root.maybe_backend_loop : null)
+                file_io.load_midi_to_channels_async(filename, samplerate, channels,
+                    0, 0, root.maybe_backend_loop)
             }
 
             onAccepted: doLoad(true)
