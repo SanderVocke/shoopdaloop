@@ -653,7 +653,13 @@ MidiChannel<TimeType, SizeType>::get_start_offset() const { return ma_start_offs
 
 template <typename TimeType, typename SizeType>
 std::optional<uint32_t>
-MidiChannel<TimeType, SizeType>::get_played_back_sample() const { return std::nullopt; }
+MidiChannel<TimeType, SizeType>::get_played_back_sample() const {
+    auto v = ma_last_played_back_sample.load();
+    if (v >= 0) {
+        return v;
+    }
+    return std::nullopt;
+}
 
 template class MidiChannel<uint32_t, uint16_t>;
 template class MidiChannel<uint32_t, uint32_t>;
