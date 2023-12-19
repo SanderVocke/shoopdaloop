@@ -564,6 +564,7 @@ void
 MidiChannel<TimeType, SizeType>::PROC_set_recording_buffer(MidiReadableBufferInterface *buffer,
                                uint32_t n_frames) {
     log_trace();
+    if (!buffer) return;
     mp_recording_source_buffer =
         std::make_pair(ExternalBufState(), buffer);
     mp_recording_source_buffer.value().first.n_frames_total = n_frames;
