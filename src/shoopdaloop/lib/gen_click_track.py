@@ -1,10 +1,53 @@
 import wave
 import argparse
+from .midi_helpers import noteOn, noteOff
+from .smf import generate_smf
+
+def gen_click_track_timings(bpm, n_beats, alt_click_delay_percent, sample_rate):
+    seconds_per_beat = 1.0 / (bpm / 60.0)
+    output_length_seconds = seconds_per_beat * n_beats
+    beat_starts_seconds = [idx * seconds_per_beat for idx in range(n_beats)]
+
+    output_nframes = int(output_length_seconds * sample_rate)
+    beat_starts_frames = [int(start * sample_rate) for start in beat_starts_seconds]
+    if alt_click_delay_percent > 0:
+        for idx in range(n_beats):
+            if idx % 2 > 0:
+                # Off beats only
+                beat_starts_frames[idx] += int(seconds_per_beat * sample_rate * alt_click_delay_percent / 100.0)
+
+    return (output_nframes, beat_starts_frames)
+
+# Generate click track MIDI data (internal SMF MIDI file format)
+# Will generate a sequence of clicks by looping through the provided notes/channels/velocities.
+# Every 2nd click is delayed by the click delay in percent (0 is no move, 100 is at the next click).
+def gen_click_track_midi_smf(notes, channels, velocities, note_length, bpm, n_beats, alt_click_delay_percent):
+    reference_sample_rate = 48000
+    note_length_samples = note_length * reference_sample_rate
+    (output_nframes, beat_starts) = gen_click_track_timings(bpm, n_beats, alt_click_delay_percent, reference_sample_rate)
+
+    msgs = []
+    for idx, beat in enumerate(beat_starts):
+        chan = channels[idx % len(channels)]
+        note = notes[idx % len(notes)]
+        vel = velocities[idx % len(velocities)]
+        msgs.append({
+            'time': beat,
+            'data': noteOn(chan, note, vel)
+        })
+        msgs.append({
+            'time': beat + note_length_samples,
+            'data': noteOff(chan, note, vel)
+        })
+        msgs = sorted(msgs, key=lambda m: m['time'])
+    
+    return generate_smf(msgs, output_nframes, reference_sample_rate)
+
 
 # Generate a click track into a .wav file.
 # Will generate a sequence of clicks by looping through the provided filenames.
 # Every 2nd click is delayed by the click delay in percent (0 is no move, 100 is at the next click).
-def gen_click_track(click_wav_filenames, output_filename, bpm, n_beats, alt_click_delay_percent):
+def gen_click_track_audio(click_wav_filenames, output_filename, bpm, n_beats, alt_click_delay_percent):
     wavs = dict()
 
     # Read input files
@@ -31,18 +74,7 @@ def gen_click_track(click_wav_filenames, output_filename, bpm, n_beats, alt_clic
         if not shared_params_equal(reference_params, wav['params']):
             raise Exception('Found differing parameters for the given input wavs')
 
-    # Calculate timings
-    seconds_per_beat = 1.0 / (bpm / 60.0)
-    output_length_seconds = seconds_per_beat * n_beats
-    beat_starts_seconds = [idx * seconds_per_beat for idx in range(n_beats)]
-
-    output_nframes = int(output_length_seconds * reference_params.framerate)
-    beat_starts_frames = [int(start * reference_params.framerate) for start in beat_starts_seconds]
-    if alt_click_delay_percent > 0:
-        for idx in range(n_beats):
-            if idx % 2 > 0:
-                # Off beats only
-                beat_starts_frames[idx] += int(seconds_per_beat * reference_params.framerate * alt_click_delay_percent / 100.0)
+    (output_nframes, beat_starts_frames) = gen_click_track_timings(bpm, n_beats, alt_click_delay_percent, reference_params.framerate)
 
     # Calculate output frames (interlaced)
     output_frames = [0] * output_nframes * reference_params.nchannels
@@ -79,4 +111,4 @@ if __name__ == '__main__':
     parser.add_argument('click_wavs', nargs='*')
     args = parser.parse_args()
 
-    gen_click_track(args.click_wavs, args.output_wav, float(args.bpm), int(args.n_beats), int(args.alt_click_delay_percent))
+    gen_click_track_audio(args.click_wavs, args.output_wav, float(args.bpm), int(args.n_beats), int(args.alt_click_delay_percent))

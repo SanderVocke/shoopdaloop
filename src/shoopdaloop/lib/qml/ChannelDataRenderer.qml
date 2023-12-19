@@ -2,7 +2,6 @@ import QtQuick 6.3
 import QtQuick.Controls 6.3
 import QtQuick.Controls.Material 6.3
 import ShoopDaLoop.PythonFetchChannelData
-import ShoopDaLoop.PythonRenderAudioWaveform
 
 import '../mode_helpers.js' as ModeHelpers
 
@@ -14,7 +13,7 @@ Item {
     property int samples_offset: 0.0
     property int loop_length: 0
     readonly property int n_samples_shown: width * samples_per_pixel
-    readonly property int n_samples: fetcher && fetcher.channel_data ? fetcher.channel_data.length : 0
+    readonly property int n_samples: fetcher && fetcher.channel_data ? channel.data_length : 0
     property real major_grid_lines_interval
     property real minor_grid_lines_interval
 
@@ -42,9 +41,9 @@ Item {
         return Math.round(p * samples_per_pixel + samples_offset)
     }
 
-    // Render audio
+    // Render data
     Loader {
-        active: root.channel && root.channel.descriptor.type == 'audio'
+        active: root.channel
 
         Rectangle {
             id: background_rect
@@ -124,9 +123,10 @@ Item {
             }
         }
         
-        PythonRenderAudioWaveform {
+        RenderChannelData {
             id: render
             input_data: fetcher && fetcher.channel_data && root.visible ? fetcher.channel_data : []
+            channel: root.channel
             samples_per_bin: root.samples_per_pixel
             samples_offset: root.samples_offset
             width: root.width

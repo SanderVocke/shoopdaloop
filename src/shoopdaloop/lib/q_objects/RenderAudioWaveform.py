@@ -24,7 +24,7 @@ class Pyramid:
             logger.warning("Unable to load back-end extensions for rendering audio waveforms. Waveforms will not be visible. Error: {}".format(e))
     
     def create(self, audio_data):
-        logger.trace(lambda: 'create pyramid')
+        logger.trace(lambda: f'create pyramid ({len(audio_data)} samples)')
         if not self.backend_create_pyramid:
             logger.trace(lambda: 'no back-end acceleration')
             self.pyramid = None
@@ -76,7 +76,9 @@ class RenderAudioWaveform(ShoopQQuickPaintedItem):
         return self._samples_per_bin
     @samples_per_bin.setter
     def samples_per_bin(self, v):
-        pass
+        if v != self._samples_per_bin:
+            self._samples_per_bin = v
+            self.samplesPerBinChanged.emit(v)
     
     samplesOffsetChanged = Signal(int)
     @Property(int, notify=samplesOffsetChanged)
@@ -92,6 +94,7 @@ class RenderAudioWaveform(ShoopQQuickPaintedItem):
     def preprocess(self):
         logger.trace(lambda: 'preprocess')
         self._pyramid.create(self._input_data)
+        self.update()
     
     @Slot()
     def update_lines(self):
@@ -103,27 +106,32 @@ class RenderAudioWaveform(ShoopQQuickPaintedItem):
             self._lines.append(QLine())
 
     def paint(self, painter):
-        logger.trace('paint')
+        logger.trace(f'paint (off {self._samples_offset}, scale {self._samples_per_bin})')
         if not self._pyramid.pyramid:
             logger.trace(lambda: 'paint: no pyramid')
             return
         
         subsampling_factor = None
+        subsampling_idx = None
         for i in range(self._pyramid.pyramid[0].n_levels):
             factor = self._pyramid.pyramid[0].levels[i].subsampling_factor
             if factor <= self._samples_per_bin:
                 subsampling_factor = factor
+                subsampling_idx = i
         
-        if not subsampling_factor:
+        if not subsampling_factor or not subsampling_idx:
             logger.trace(lambda: 'paint: did not find subsampling factor')
             return
         
-        data = self._pyramid.pyramid[0].levels[i]
+        data = self._pyramid.pyramid[0].levels[subsampling_idx]
         self.pad_lines_to(math.ceil(self.width()))
+
+        logger.trace(f'   - {len(self._lines)} line slots, {data.n_samples} samples')
+
         for i in range(0, min(math.ceil(self.width()), len(self._lines))):
             sample_idx = (float(i) + float(self._samples_offset) / self._samples_per_bin) * self._samples_per_bin / float(subsampling_factor)
-            nearest_idx = min(max(0, int(round(sample_idx))), data.n_samples)
-            sample = (data.data[nearest_idx] if nearest_idx < data.n_samples else 0.0)
+            nearest_idx = min(max(-1, int(round(sample_idx))), data.n_samples)
+            sample = (data.data[nearest_idx] if (nearest_idx >= 0 and nearest_idx < data.n_samples) else 0.0)
             if sample < 0.0:
                 self._lines[i].setLine(
                     i, int(0.5*self.height()),
