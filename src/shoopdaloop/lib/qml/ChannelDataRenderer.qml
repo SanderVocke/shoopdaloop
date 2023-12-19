@@ -41,6 +41,8 @@ Item {
         return Math.round(p * samples_per_pixel + samples_offset)
     }
 
+    signal pan(real amount)
+
     // Render data
     Loader {
         active: root.channel
@@ -52,6 +54,28 @@ Item {
             color: 'black'
             border.color: 'grey'
             border.width: 1
+
+            DragHandler {
+                id: drag_handler
+                target: null
+
+                acceptedButtons: Qt.MiddleButton | Qt.RightButton
+
+                xAxis.enabled: true
+                yAxis.enabled: false
+
+                property real prev_pos: 0.0
+
+                onActiveChanged: {
+                    if (!active) { prev_pos = 0.0 }
+                }
+                onActiveTranslationChanged: {
+                    let val = activeTranslation.x
+                    let changed = val - prev_pos
+                    root.pan(-(root.samples_per_pixel * changed))
+                    prev_pos = val
+                }
+            }
 
             Repeater {
                 id: minor_grid_lines_repeater

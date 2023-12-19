@@ -217,6 +217,7 @@ Item {
 
         Column {
             id: channels_column
+            property real samples_offset : 0.0
             Mapper {
                 id: channel_mapper
                 model: loop.channels
@@ -239,7 +240,9 @@ Item {
 
                     property int first_pixel_sample: (channel ? channel.start_offset : 0) + channels_combine_range.data_start
 
-                    samples_offset: scroll.position * channels_combine_range.data_length + first_pixel_sample
+                    samples_offset: channels_column.samples_offset
+                    onPan: (amount) => { channels_column.samples_offset += amount }
+
                     loop_length: root.loop ? root.loop.length : 0
 
                     property var maybe_cursor_display_x: {
@@ -298,24 +301,6 @@ Item {
                     }
                 }
             }
-        }
-
-        // Render a scroll bar
-        ScrollBar {
-            id: scroll
-            anchors {
-                bottom: parent.bottom
-                left: parent.left
-                right: parent.right
-            }
-            size: {
-                var window_in_samples = width * zoom_slider.samples_per_pixel
-                return window_in_samples / channels_combine_range.data_length
-            }
-            minimumSize: 0.05
-            orientation: Qt.Horizontal
-            policy: ScrollBar.AlwaysOn
-            visible: size < 1.0
         }
     }    
 }
