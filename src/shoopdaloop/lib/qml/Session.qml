@@ -167,19 +167,20 @@ Item {
         return tracks_widget.get_track_control_widget(idx)
     }
 
-    MessageDialog {
+    Dialog {
+        x : (root.width - width) / 2
+        y : (root.height - height) / 2
         id: confirm_sample_rate_convert_dialog
         property string session_filename : ""
         property int from : 0
         property int to : 0
 
-        text: `The session you are about to load was recorded at ${from} samples/s. ` +
-              `The current audio driver is running at ${to} samples/s. ` +
-              `Proceeding with the load will resample all content to the driver rate. ` +
-              `If you wish to load without resampling, first reconfigure your audio settings and try again. ` +
-              `Do you want to load and resample?`
-        
-        buttons: MessageDialog.Yes | MessageDialog.No   
+        standardButtons: Dialog.Ok | Dialog.Cancel
+
+        Text {
+            color: Material.foreground
+            text: `Loading this session will resample it from ${confirm_sample_rate_convert_dialog.from} to ${confirm_sample_rate_convert_dialog.to} samples/s.`
+        }
 
         onAccepted: {
             close()

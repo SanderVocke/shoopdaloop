@@ -62,20 +62,6 @@ Item {
         height: 40
         spacing: 5
 
-        ExtendedButton {
-            tooltip: "Re-fetch and render loop data."
-            height: 35
-            width: 30
-            //onClicked: root.request_update_data()
-
-            MaterialDesignIcon {
-                size: Math.min(parent.width, parent.height) - 10
-                anchors.centerIn: parent
-                name: 'refresh'
-                color: Material.foreground
-            }
-        }
-
         Label {
             anchors.verticalCenter: zoom_slider.verticalCenter
             text: "Zoom:"
@@ -87,7 +73,23 @@ Item {
             value: 8.0
             from: 16.0
             to: 0.0
+
+            property real prev_samples_per_pixel: 0.0
             property real samples_per_pixel: Math.pow(2.0, value)
+            Component.onCompleted: prev_samples_per_pixel = samples_per_pixel
+
+            onSamples_per_pixelChanged: {
+                let prev_n_samples = channels_column.width * prev_samples_per_pixel
+                let new_n_samples = channels_column.width * samples_per_pixel
+                let diff = new_n_samples - prev_n_samples
+                let new_offset = channels_column.samples_offset - diff / 2
+                prev_samples_per_pixel = samples_per_pixel
+
+                zoomed(samples_per_pixel, new_offset)
+            }
+
+            signal zoomed (real new_samples_per_pixel, real new_offset)
+
             anchors {
                 verticalCenter: parent.verticalCenter
             }
@@ -236,7 +238,16 @@ Item {
 
                     channel: mapped_item
 
-                    samples_per_pixel: zoom_slider.samples_per_pixel
+                    samples_per_pixel: 1.0
+                    Component.onCompleted: samples_per_pixel = zoom_slider.samples_per_pixel
+
+                    Connections {
+                        target: zoom_slider
+                        function onZoomed(spp, off) {
+                            samples_per_pixel = spp;
+                            channels_column.samples_offset = off
+                        }
+                    }
 
                     property int first_pixel_sample: (channel ? channel.start_offset : 0) + channels_combine_range.data_start
 

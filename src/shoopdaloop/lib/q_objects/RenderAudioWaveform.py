@@ -113,15 +113,14 @@ class RenderAudioWaveform(ShoopQQuickPaintedItem):
         
         subsampling_factor = None
         subsampling_idx = None
-        for i in range(self._pyramid.pyramid[0].n_levels):
+        n_levels = self._pyramid.pyramid[0].n_levels
+        for ii in range(n_levels):
+            i = n_levels - 1 - ii
             factor = self._pyramid.pyramid[0].levels[i].subsampling_factor
-            if factor <= self._samples_per_bin:
-                subsampling_factor = factor
-                subsampling_idx = i
-        
-        if not subsampling_factor or not subsampling_idx:
-            logger.trace(lambda: 'paint: did not find subsampling factor')
-            return
+            subsampling_factor = factor
+            subsampling_idx = i
+            if (factor <= self._samples_per_bin):
+                break
         
         data = self._pyramid.pyramid[0].levels[subsampling_idx]
         self.pad_lines_to(math.ceil(self.width()))

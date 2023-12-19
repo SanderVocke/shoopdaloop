@@ -99,12 +99,9 @@ Item {
                     return rval
                 }
 
-                model: at_pixels
+                model: at_pixels.length
 
                 Rectangle {
-                    property var mapped_item
-                    property int index
-
                     color: 'grey'
                     width: 1
                     height: root.height
