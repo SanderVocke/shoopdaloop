@@ -22,6 +22,8 @@ Item {
     // The actual descriptor can be retrieved with actual_session_descriptor().
     property var initial_descriptor : GenerateSession.generate_session(app_metadata.version_string, [], [], [], [])
     property var backend_type : global_args.backend_type
+    
+    property alias driver_setting_overrides : session_backend.driver_setting_overrides
 
     ExecuteNextCycle {
         id: auto_session_loader
@@ -299,6 +301,7 @@ Item {
         client_name_hint: 'ShoopDaLoop'
         backend_type: root.backend_type
         id: session_backend
+        driver_setting_overrides: { "hey": "ho" }
 
         SessionControlInterface {
             id: control_interface

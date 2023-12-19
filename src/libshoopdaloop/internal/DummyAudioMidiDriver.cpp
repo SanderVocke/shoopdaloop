@@ -298,8 +298,10 @@ void DummyAudioMidiDriver<Time, Size>::start(
     AudioMidiDriver::set_dsp_load(0.0f);
     AudioMidiDriver::set_maybe_client_handle(nullptr);
 
+    log<log_level_debug>("Starting (sample rate {}, buf size {})", _settings.sample_rate, _settings.buffer_size);
+
     m_proc_thread = std::thread([this] {
-        log<log_level_debug>("DummyAudioMidiDriver: starting process thread - {}", mode_names.at(m_mode));
+        log<log_level_debug>("Starting process thread - {}", mode_names.at(m_mode));
         auto bufs_per_second = AudioMidiDriver::get_sample_rate() / AudioMidiDriver::get_buffer_size();
         auto interval = 1.0f / ((float)bufs_per_second);
         auto micros = uint32_t(interval * 1000000.0f);
@@ -312,7 +314,7 @@ void DummyAudioMidiDriver<Time, Size>::start(
                 uint32_t to_process = mode == DummyAudioMidiDriverMode::Controlled ?
                     std::min(samples_to_process, AudioMidiDriver::get_buffer_size()) :
                     AudioMidiDriver::get_buffer_size();
-                log<log_level_trace>("DummyAudioMidiDriver: process {}", to_process);
+                log<log_level_trace>("Process {}", to_process);
                 AudioMidiDriver::PROC_process(to_process);
                 if (mode == DummyAudioMidiDriverMode::Controlled) {
                     m_controlled_mode_samples_to_process -= to_process;
@@ -320,7 +322,7 @@ void DummyAudioMidiDriver<Time, Size>::start(
             }
         }
         log<log_level_debug>(
-            "DummyAudioMidiDriver: ending process thread");
+            "Ending process thread");
     });
 
     AudioMidiDriver::set_active(true);

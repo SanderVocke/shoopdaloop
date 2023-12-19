@@ -8,6 +8,7 @@
 #include <iostream>
 #endif
 
+using namespace logging;
 namespace {
     std::atomic<bool> g_initialized = false;
 }
@@ -16,6 +17,7 @@ LV2::LV2() : m_world(nullptr) {}
 
 LV2::~LV2() { 
     if (m_world) {
+        log<log_level_debug>("Freeing lilv world.");
         lilv_world_free(m_world);
     }
 }
@@ -27,20 +29,26 @@ LV2::create_carla_chain(shoop_fx_chain_type_t type, uint32_t sample_rate,
                         std::shared_ptr<profiling::Profiler> maybe_profiler) {
     if (!m_world) {
         if (!::g_initialized) {
-            initialize_lilv(1);
         #ifdef _WIN32
             // Ensure we have default LV2 path set up
-            auto current = getenv("LV2_PATH");
-            std::string newval = (current ? std::string(current) : "") + ";C:\\Program Files\\Common Files\\LV2";
+            char buf[32767];
+            GetEnvironmentVariable("LV2_PATH", buf, sizeof(buf));
+            std::string newval = std::string(buf) + ";C:\\Program Files\\Common Files\\LV2";
             SetEnvironmentVariable("LV2_PATH", newval.c_str());
+            GetEnvironmentVariable("LV2_PATH", buf, sizeof(buf));
+            log<log_level_debug>("LV2_PATH: {}", buf);
         #endif
+            log<log_level_debug>("Initializing lilv.");
+            initialize_lilv(1);
             ::g_initialized = true;
         }
 
         m_world = lilv_world_new();
+        log<log_level_debug>("Lilv: world load all");
         lilv_world_load_all(m_world);
     }
 
+    log<log_level_debug>("Create Carla chain.");
     return std::make_shared<CarlaLV2ProcessingChain<TimeType, SizeType>>(
         m_world, type, sample_rate, title, maybe_profiler);
 }

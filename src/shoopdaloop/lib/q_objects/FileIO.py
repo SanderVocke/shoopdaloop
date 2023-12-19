@@ -178,7 +178,7 @@ class FileIO(QThread):
     def exists(self, path):
         return os.path.exists(path)
     
-    @Slot(str, int, 'QVariant', 'QVariant', 'QVariant')
+    @Slot(str, int, 'QVariant', 'QVariant', 'QVariant', 'QVariant')
     def load_midi_to_channels(self, 
                              filename,
                              sample_rate,

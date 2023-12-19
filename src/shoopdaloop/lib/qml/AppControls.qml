@@ -5,6 +5,8 @@ import QtQuick.Dialogs
 
 import ShoopConstants
 
+import '../qml_url_to_filename.js' as UrlToFilename
+
 Item {
     id: root
 
@@ -71,13 +73,12 @@ Item {
             FileDialog {
                 id: savesessiondialog
                 fileMode: FileDialog.SaveFile
-                options: FileDialog.DontUseNativeDialog
                 acceptLabel: 'Save'
                 nameFilters: ["ShoopDaLoop session files (*.shl)", "All files (*)"]
                 defaultSuffix: 'shl'
                 onAccepted: {
                     close()
-                    var filename = selectedFile.toString().replace('file://', '');
+                    var filename = UrlToFilename.qml_url_to_filename(selectedFile.toString());
                     root.saveSession(filename)
                 }
                 
@@ -86,12 +87,11 @@ Item {
             FileDialog {
                 id: loadsessiondialog
                 fileMode: FileDialog.OpenFile
-                options: FileDialog.DontUseNativeDialog
                 acceptLabel: 'Load'
                 nameFilters: ["ShoopDaLoop session files (*.shl)", "All files (*)"]
                 onAccepted: {
                     close()
-                    var filename = selectedFile.toString().replace('file://', '');
+                    var filename = UrlToFilename.qml_url_to_filename(selectedFile.toString());
                     root.loadSession(filename)
                 }
                 
