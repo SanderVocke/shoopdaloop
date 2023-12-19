@@ -217,6 +217,8 @@ class FileIO(QThread):
                         'data': [int(byte) for byte in msg_bytes]
                     })
             
+            if isinstance(channels, QJSValue):
+                channels = channels.toVariant()
             for channel in channels:
                 channel.load_data(backend_msgs)            
                 if maybe_set_start_offset != None:
