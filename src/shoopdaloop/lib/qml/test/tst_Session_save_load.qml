@@ -20,7 +20,7 @@ Item {
 
             anchors.fill: parent
             initial_descriptor: {
-                let base = GenerateSession.generate_default_session(app_metadata.version_string, 1)
+                let base = GenerateSession.generate_default_session(app_metadata.version_string, null, 1)
                 let direct_track = GenerateSession.generate_default_track(
                     "dt",
                     2,
@@ -308,7 +308,7 @@ Item {
                         testcase.wait_updated(session.backend)
 
                         // Load into the other session, which has 3/4 the sample rate of this one
-                        other_session.load_session(filename)
+                        other_session.load_session(filename, true)
                         testcase.wait_session_loaded(other_session)
                         testcase.wait_updated(other_session.backend)
 
@@ -326,8 +326,8 @@ Item {
                         verify_eq(dwt_dry_loop_channels(other_session)[1].data_length, 8)
                         verify_eq(dwt_wet_loop_channels(other_session)[0].data_length, 8)
                         verify_eq(dwt_wet_loop_channels(other_session)[1].data_length, 8)
-                        verify_eq(dt_loop(other_session).length == 4)
-                        verify_eq(dwt_loop(other_session).length == 8)
+                        verify_eq(dt_loop(other_session).length, 4)
+                        verify_eq(dwt_loop(other_session).length, 8)
                         verify_eq(mt_midi_channels(other_session)[0].get_data(), midichan_resampled)
                     },
                 })

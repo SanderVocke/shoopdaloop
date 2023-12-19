@@ -188,6 +188,13 @@ class FileIO(QThread):
                              maybe_update_loop_to_datalength):
         self.startLoadingFile.emit()
         try:
+            if sample_rate:
+                sample_rate = int(sample_rate)
+            if maybe_set_n_preplay_samples:
+                maybe_set_n_preplay_samples = int(maybe_set_n_preplay_samples)
+            if maybe_set_start_offset:
+                maybe_set_start_offset = int(maybe_set_start_offset)
+            
             backend_msgs = []
             total_sample_time = 0
             if os.path.splitext(filename)[1] == '.smf':
@@ -279,6 +286,13 @@ class FileIO(QThread):
     ):
         self.startLoadingFile.emit()
         try:
+            if maybe_target_data_length:
+                maybe_target_data_length = int(maybe_target_data_length)
+            if maybe_set_start_offset:
+                maybe_set_start_offset = int(maybe_set_start_offset)
+            if maybe_set_n_preplay_samples:
+                maybe_set_n_preplay_samples = int(maybe_set_n_preplay_samples)
+
             data, file_sample_rate = sf.read(filename, dtype='float32')
             if data.ndim == 1:
                 # Mono
@@ -337,6 +351,7 @@ class FileIO(QThread):
         maybe_update_loop_to_datalength
     ):
         task = Task(parent=self)
+
         def do_load():
             try:
                 self.load_soundfile_to_channels(

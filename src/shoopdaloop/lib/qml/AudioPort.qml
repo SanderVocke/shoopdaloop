@@ -32,7 +32,7 @@ PythonAudioPort {
             'external_port_connections': get_connected_external_ports()
         }
     }
-    function queue_load_tasks(data_files_dir, add_tasks_to) {}
+    function queue_load_tasks(data_files_dir, from_sample_rate, to_sample_rate, add_tasks_to) {}
 
     Component.onCompleted: try_make_connections(descriptor.external_port_connections)
     onInitializedChanged: try_make_connections(descriptor.external_port_connections)

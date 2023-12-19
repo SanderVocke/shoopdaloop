@@ -14,7 +14,7 @@ AppRegistries {
 
         anchors.fill: parent
         initial_descriptor: {
-            let base = GenerateSession.generate_default_session(app_metadata.version_string, 1)
+            let base = GenerateSession.generate_default_session(app_metadata.version_string, null, 1)
             let track = GenerateSession.generate_default_track(
                 "tut",
                 1,

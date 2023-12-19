@@ -42,12 +42,13 @@ PythonLoopMidiChannel {
         }
         return rval
     }
-    function queue_load_tasks(data_files_dir, add_tasks_to) {
+    function queue_load_tasks(data_files_dir, from_sample_rate, to_sample_rate, add_tasks_to) {
+        const conversion_factor = to_sample_rate / from_sample_rate
         if (has_data_file()) {
             add_tasks_to.add_task(
                 file_io.load_midi_to_channels_async(
                     data_files_dir + '/' + descriptor.data_file,
-                    get_backend().get_sample_rate(),
+                    to_sample_rate,
                     [root],
                     descriptor.n_preplay_samples,
                     descriptor.start_offset,

@@ -20,7 +20,7 @@ Item {
     // of loops, tracks, etc.) to match the loaded descriptor.
     // The descriptor may not be directly modified and is only used at initialization.
     // The actual descriptor can be retrieved with actual_session_descriptor().
-    property var initial_descriptor : GenerateSession.generate_session(app_metadata.version_string, [], [], [], [])
+    property var initial_descriptor : GenerateSession.generate_session(app_metadata.version_string, null, [], [], [], [])
     property var backend_type : global_args.backend_type
     
     property alias driver_setting_overrides : session_backend.driver_setting_overrides
@@ -28,9 +28,11 @@ Item {
     ExecuteNextCycle {
         id: auto_session_loader
         property string filename
+        property bool ignore_resample_warning: false
         interval: 10
         onExecute: {
-            load_session(filename)
+            load_session(filename, ignore_resample_warning)
+            ignore_resample_warning = false
         }
     }
     onLoadedChanged: {
@@ -76,6 +78,7 @@ Item {
     function actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) {
         return GenerateSession.generate_session(
             app_metadata.version_string,
+            session_backend.get_sample_rate(),
             tracks_widget.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to),
             [],
             [],
@@ -156,15 +159,38 @@ Item {
         tracks_widget.reload()
     }
 
-    function queue_load_tasks(data_files_directory, add_tasks_to) {
-        tracks_widget.queue_load_tasks(data_files_directory, add_tasks_to)
+    function queue_load_tasks(data_files_directory, from_sample_rate, to_sample_rate, add_tasks_to) {
+        tracks_widget.queue_load_tasks(data_files_directory, from_sample_rate, to_sample_rate, add_tasks_to)
     }
 
     function get_track_control_widget(idx) {
         return tracks_widget.get_track_control_widget(idx)
     }
 
-    function load_session(filename) {
+    MessageDialog {
+        id: confirm_sample_rate_convert_dialog
+        property string session_filename : ""
+        property int from : 0
+        property int to : 0
+
+        text: `The session you are about to load was recorded at ${from} samples/s. ` +
+              `The current audio driver is running at ${to} samples/s. ` +
+              `Proceeding with the load will resample all content to the driver rate. ` +
+              `If you wish to load without resampling, first reconfigure your audio settings and try again. ` +
+              `Do you want to load and resample?`
+        
+        buttons: MessageDialog.Yes | MessageDialog.No   
+
+        onAccepted: {
+            close()
+            auto_session_loader.filename = session_filename
+            auto_session_loader.ignore_resample_warning = true
+            root.logger.debug(() => ("Loading session on startup: " + filename))
+            auto_session_loader.trigger()
+        }
+    }
+
+    function load_session(filename, ignore_resample_warning=false) {
         registries.state_registry.reset_saving_loading()
         registries.state_registry.load_action_started()
         var tempdir = file_io.create_temporary_folder()
@@ -178,8 +204,24 @@ Item {
             var session_filename = tempdir + '/session.json'
             var session_file_contents = file_io.read_file(session_filename)
             var descriptor = JSON.parse(session_file_contents)
+            let our_sample_rate = session_backend.get_sample_rate()
+            let incoming_sample_rate = descriptor.sample_rate
+
+            if (our_sample_rate != incoming_sample_rate && !ignore_resample_warning) {
+                confirm_sample_rate_convert_dialog.session_filename = filename
+                confirm_sample_rate_convert_dialog.from = incoming_sample_rate
+                confirm_sample_rate_convert_dialog.to = our_sample_rate
+                registries.state_registry.load_action_finished()
+                confirm_sample_rate_convert_dialog.open()
+                return;
+            }
 
             schema_validator.validate_schema(descriptor, validator.schema)
+            
+            if (our_sample_rate != incoming_sample_rate) {
+                descriptor = GenerateSession.convert_session_descriptor_sample_rate(descriptor, incoming_sample_rate, our_sample_rate)
+            }
+
             root.initial_descriptor = descriptor
             root.logger.debug(() => ("Reloading session"))
             reload()
@@ -187,7 +229,7 @@ Item {
 
             let finish_fn = () => {
                 root.logger.debug(() => ("Queueing load tasks"))
-                queue_load_tasks(tempdir, tasks)
+                queue_load_tasks(tempdir, incoming_sample_rate, our_sample_rate, tasks)
 
                 tasks.when_finished(() => {
                     try {

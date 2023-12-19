@@ -85,7 +85,7 @@ Item {
         }
         return rval
     }
-    function queue_load_tasks(data_files_dir, add_tasks_to) {
+    function queue_load_tasks(data_files_dir, from_sample_rate, to_sample_rate, add_tasks_to) {
         var have_data_files = initial_descriptor.channels ? initial_descriptor.channels.map(c => {
             let r = ('data_file' in c)
             if (r) { root.logger.debug(() => (`${obj_id} has data file for channel ${c.obj_id}`)) }
@@ -100,7 +100,7 @@ Item {
         } else if (have_any_data) {
             root.logger.debug(() => (`${obj_id} has data files, queueing load tasks.`))
             create_backend_loop()
-            channels.forEach((c) => c.queue_load_tasks(data_files_dir, add_tasks_to))
+            channels.forEach((c) => c.queue_load_tasks(data_files_dir, from_sample_rate, to_sample_rate, add_tasks_to))
         } else {
             root.logger.debug(() => (`${obj_id} has no data files, not queueing load tasks.`))
         }
