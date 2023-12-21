@@ -194,8 +194,10 @@ class Loop(ShoopQQuickItem):
             self.logger.debug(lambda: 'mode -> {}'.format(LoopMode(self._mode)))
             self.modeChanged.emit(self._mode)
         if prev_length != self._length:
+            self.logger.trace(lambda: 'length -> {}'.format(self._length))
             self.lengthChanged.emit(self._length)
         if prev_position != self._position:
+            self.logger.trace(lambda: 'pos -> {}'.format(self._position))
             self.positionChanged.emit(self._position)
         if prev_next_mode != self._next_mode:
             self.logger.debug(lambda: 'next mode -> {}'.format(LoopMode(self._next_mode)))
@@ -211,6 +213,7 @@ class Loop(ShoopQQuickItem):
             self.displayMidiEventsTriggeredChanged.emit(self._display_midi_events_triggered)
 
         if (self.position < prev_position and is_playing_mode(prev_mode) and is_playing_mode(self.mode)):
+            self.logger.debug(lambda: 'cycled')
             self.cycled.emit()
     
     @Slot(int, int, bool)

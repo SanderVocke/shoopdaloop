@@ -48,7 +48,11 @@ Item {
     // for example when a 0-length loop is in the playlist.
     property var schedule: calculate_schedule()
     function calculate_schedule() {
-        if (!cycle_length) { return {} }
+        root.logger.debug(() => 'Recalculating schedule.')
+        if (!cycle_length) {
+            root.logger.debug(() => 'Cycle length not known - no schedule.')
+            return {}
+        }
         var rval = {}
         for (var pidx=0; pidx < playlists.length; pidx++) {
             let playlist = playlists[pidx]
@@ -164,10 +168,10 @@ Item {
             onVisibleChanged: update_coords()
             parent: Overlay.overlay
 
-            visible: root.widget.selected
+            visible: root.widget ? root.widget.selected : false
 
-            width: root.widget.width
-            height: root.widget.height
+            width: root.widget ? root.widget.width : 1
+            height: root.widget ? root.widget.height : 1
             Rectangle {
                 anchors.right: parent.right
                 anchors.rightMargin: -8
@@ -267,14 +271,16 @@ Item {
 
     function transition(mode, delay, wait_for_sync) {
         if (!(n_cycles > 0) && ModeHelpers.is_recording_mode(mode)) {
-            // We cannot record a composite loop if the lenghts of the other loops are not yet set.
+            // We cannot record a composite loop if the lengths of the other loops are not yet set.
             return
         }
         if (!ModeHelpers.is_running_mode(root.mode) && ModeHelpers.is_running_mode(mode)) {
             root.iteration = -1
         }
-        next_transition_delay = delay
-        next_mode = mode
+        root.next_transition_delay = delay
+        root.next_mode = mode
+        root.logger.debug(() => `next transition -> ${root.next_transition_delay}`)
+        root.logger.debug(() => `next mode -> ${root.next_mode}`)
         if (next_transition_delay == 0) {
             if (ModeHelpers.is_running_mode(mode)) {
                 do_triggers(0, next_mode)
@@ -288,6 +294,7 @@ Item {
         next_transition_delay = -1
         if (mode != root.mode) {
             root.mode = mode
+            root.logger.debug(() => `mode -> ${root.mode}`)
             if (!ModeHelpers.is_running_mode(mode)) {
                 root.iteration = 0
             }
@@ -303,6 +310,7 @@ Item {
     Connections {
         target: master_loop
         function onCycled() {
+            root.logger.debug(() => "master loop cycle")
             if (next_transition_delay == 0) {
                 handle_transition(next_mode)
             }

@@ -107,8 +107,12 @@ PythonTestCase {
         verify(result, failstring)
     }
 
-    function verify_eq(a, b, stringify=false) {
+    function verify_eq(a, b, stringify=null) {
         var result;
+
+        if (stringify === null) {
+            stringify = (typeof a === 'object' && typeof b === 'object')
+        }
 
         let failstring = ''
         if (stringify) {
