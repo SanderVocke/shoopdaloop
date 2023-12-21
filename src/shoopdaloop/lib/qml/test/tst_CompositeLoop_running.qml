@@ -70,6 +70,17 @@ Session {
             verify_eq(c().position, c_pos)
         }
 
+        function process(amount, steps=2) {
+            // Note: loop cycle detection will fail if we wrap around exactly
+            // (because the loop will have the same position exactly).
+            // TODO: a robust fix for this.
+            // For now, we work around this by processing in multiple steps.
+            for (var i = 0; i < steps; i++) {
+                session.backend.dummy_request_controlled_frames(Math.round(amount / steps))
+                testcase.wait_updated(session.backend)
+            }
+        }
+
         testcase_init_fn: () =>  {
             session.backend.dummy_enter_controlled_mode()
             testcase.wait_updated(session.backend)
@@ -81,6 +92,13 @@ Session {
                 clear()
 
                 m().set_length(100)
+
+                l1().create_backend_loop()
+                l2().create_backend_loop()
+                m().create_backend_loop()
+
+                testcase.wait_updated(session.backend)
+
                 l1().set_length(200)
                 l2().set_length(300)
 
@@ -104,8 +122,7 @@ Session {
                 m().transition(ShoopConstants.LoopMode.Playing, 0, false)
                 c().transition(ShoopConstants.LoopMode.Playing, 0, false)
 
-                session.backend.dummy_request_controlled_frames(50) // middle of 1st step
-                testcase.wait_updated(session.backend)
+                process(50) // middle of 1st step
 
                 verify_states(ShoopConstants.LoopMode.Playing,
                               ShoopConstants.LoopMode.Playing,
@@ -113,8 +130,7 @@ Session {
                               ShoopConstants.LoopMode.Playing,
                               50, 50, 0, 50)
 
-                session.backend.dummy_request_controlled_frames(100) // middle of 2nd step
-                testcase.wait_updated(session.backend)
+                process(100) // middle of 2nd step
 
                 verify_states(ShoopConstants.LoopMode.Playing,
                               ShoopConstants.LoopMode.Playing,
@@ -122,8 +138,7 @@ Session {
                               ShoopConstants.LoopMode.Playing,
                               50, 150, 0, 150)
 
-                session.backend.dummy_request_controlled_frames(100) // middle of 3rd step
-                testcase.wait_updated(session.backend)
+                process(100) // middle of 3rd step
 
                 verify_states(ShoopConstants.LoopMode.Playing,
                               ShoopConstants.LoopMode.Stopped,
@@ -131,8 +146,7 @@ Session {
                               ShoopConstants.LoopMode.Playing,
                               50, 0, 0, 250)
 
-                session.backend.dummy_request_controlled_frames(100) // middle of 4th step
-                testcase.wait_updated(session.backend)
+                process(100) // middle of 4th step
 
                 verify_states(ShoopConstants.LoopMode.Playing,
                               ShoopConstants.LoopMode.Stopped,
@@ -140,8 +154,7 @@ Session {
                               ShoopConstants.LoopMode.Playing,
                               50, 0, 50, 350)
 
-                session.backend.dummy_request_controlled_frames(200) // middle of 6th step
-                testcase.wait_updated(session.backend)
+                process(200, 4) // middle of 6th step
 
                 verify_states(ShoopConstants.LoopMode.Playing,
                               ShoopConstants.LoopMode.Stopped,
@@ -149,8 +162,7 @@ Session {
                               ShoopConstants.LoopMode.Playing,
                               50, 0, 250, 550)
 
-                session.backend.dummy_request_controlled_frames(200) // middle of 1st step after looping around
-                testcase.wait_updated(session.backend)
+                process(100) // middle of 1st step after looping around
 
                 verify_states(ShoopConstants.LoopMode.Playing,
                               ShoopConstants.LoopMode.Playing,

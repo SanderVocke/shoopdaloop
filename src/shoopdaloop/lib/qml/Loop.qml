@@ -8,7 +8,11 @@ import '../mode_helpers.js' as ModeHelpers
 PythonLoop {
     property bool loaded : initialized
 
-    readonly property PythonLogger logger: PythonLogger { name: "Frontend.Qml.Loop" }
+    readonly property PythonLogger logger: PythonLogger {
+        name: "Frontend.Qml.Loop"
+        instanceIdentifier: obj_id
+    }
+    onObj_idChanged: set_logging_instance_identifier(obj_id)
 
     // Gives a nice full progress bar when recording
     readonly property int display_position: mode == ShoopConstants.LoopMode.Recording ? length : position

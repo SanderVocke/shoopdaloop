@@ -413,19 +413,18 @@ Item {
         BackendLoopWithChannels {}
     }
     function create_backend_loop() {
-        if (maybe_loop) {
-            return
-        }
-        if (backend_loop_factory.status == Component.Error) {
-            throw new Error("BackendLoopWithChannels: Failed to load factory: " + backend_loop_factory.errorString())
-        } else if (backend_loop_factory.status != Component.Ready) {
-            throw new Error("BackendLoopWithChannels: Factory not ready: " + backend_loop_factory.status.toString())
-        } else {
-            maybe_loop = backend_loop_factory.createObject(root, {
-                'initial_descriptor': root.initial_descriptor,
-                'sync_source': (!is_master && root.master_loop && root.master_loop.maybe_backend_loop) ? root.master_loop.maybe_backend_loop : null,
-            })
-            maybe_loop.onCycled.connect(root.cycled)
+        if (!maybe_loop) {
+            if (backend_loop_factory.status == Component.Error) {
+                throw new Error("BackendLoopWithChannels: Failed to load factory: " + backend_loop_factory.errorString())
+            } else if (backend_loop_factory.status != Component.Ready) {
+                throw new Error("BackendLoopWithChannels: Factory not ready: " + backend_loop_factory.status.toString())
+            } else {
+                maybe_loop = backend_loop_factory.createObject(root, {
+                    'initial_descriptor': root.initial_descriptor,
+                    'sync_source': (!is_master && root.master_loop && root.master_loop.maybe_backend_loop) ? root.master_loop.maybe_backend_loop : null,
+                })
+                maybe_loop.onCycled.connect(root.cycled)
+            }
         }
     }
 
@@ -458,6 +457,7 @@ Item {
         } else {
             maybe_loop = composite_loop_factory.createObject(root, {
                 initial_composition_descriptor: composition,
+                obj_id: root.obj_id,
                 widget: root
             })
             maybe_loop.onCycled.connect(root.cycled)

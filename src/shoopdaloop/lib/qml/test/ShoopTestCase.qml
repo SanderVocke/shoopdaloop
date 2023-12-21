@@ -11,6 +11,8 @@ PythonTestCase {
     name : 'UnnamedTestCase'
     property string filename : 'UnknownTestFile'
     property var logger : PythonLogger { name: `Frontend.Qml.ShoopTestCase` }
+
+    property bool print_error_traces: os_utils.get_env("QMLTEST_NO_ERROR_TRACES") == null
     
     // It seems the built-in test function filter of the QML test runner is not working.
     // Provide a means to only run a subset of tests.
@@ -80,11 +82,19 @@ PythonTestCase {
             let testfn = m[1]
             let testfile = m[2]
             let trace = '  ' + _stack.split('\n').join('\n  ')
-            return `${testfn}: ${failstring} \@ ${testfile}\nBacktrace:\n${trace}`
+            if (print_error_traces) {
+                return `${testfn}: ${failstring} \@ ${testfile}\nBacktrace:\n${trace}`
+            } else {
+                return `${testfn}: ${failstring} \@ ${testfile}`
+            }
         }
         let trace = '  ' + _stack.split('\n').join('\n  ')
-        return `${failstring}\nBacktrace:\n${trace}`
-        return failstring        
+
+        if (print_error_traces) {
+            return `${failstring}\nBacktrace:\n${trace}`
+        } else {
+            return failstring
+        }        
     }
 
     function verify_throw(fn) {
