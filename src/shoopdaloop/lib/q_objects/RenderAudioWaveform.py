@@ -25,7 +25,10 @@ class Pyramid:
     
     def create(self, audio_data):
         logger.trace(lambda: f'create pyramid ({len(audio_data)} samples)')
-        if not self.backend_create_pyramid:
+        if not audio_data:
+            logger.trace(lambda: 'no audio data')
+            self.pyramid = None
+        elif not self.backend_create_pyramid:
             logger.trace(lambda: 'no back-end acceleration')
             self.pyramid = None
         else:
@@ -106,22 +109,21 @@ class RenderAudioWaveform(ShoopQQuickPaintedItem):
             self._lines.append(QLine())
 
     def paint(self, painter):
-        logger.trace(f'paint (off {self._samples_offset}, scale {self._samples_per_bin})')
+        logger.trace(lambda: f'paint (off {self._samples_offset}, scale {self._samples_per_bin})')
         if not self._pyramid.pyramid:
             logger.trace(lambda: 'paint: no pyramid')
             return
         
         subsampling_factor = None
         subsampling_idx = None
-        for i in range(self._pyramid.pyramid[0].n_levels):
+        n_levels = self._pyramid.pyramid[0].n_levels
+        for ii in range(n_levels):
+            i = n_levels - 1 - ii
             factor = self._pyramid.pyramid[0].levels[i].subsampling_factor
-            if factor <= self._samples_per_bin:
-                subsampling_factor = factor
-                subsampling_idx = i
-        
-        if not subsampling_factor or not subsampling_idx:
-            logger.trace(lambda: 'paint: did not find subsampling factor')
-            return
+            subsampling_factor = factor
+            subsampling_idx = i
+            if (factor <= self._samples_per_bin):
+                break
         
         data = self._pyramid.pyramid[0].levels[subsampling_idx]
         self.pad_lines_to(math.ceil(self.width()))

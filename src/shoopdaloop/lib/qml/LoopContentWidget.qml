@@ -62,20 +62,6 @@ Item {
         height: 40
         spacing: 5
 
-        ExtendedButton {
-            tooltip: "Re-fetch and render loop data."
-            height: 35
-            width: 30
-            //onClicked: root.request_update_data()
-
-            MaterialDesignIcon {
-                size: Math.min(parent.width, parent.height) - 10
-                anchors.centerIn: parent
-                name: 'refresh'
-                color: Material.foreground
-            }
-        }
-
         Label {
             anchors.verticalCenter: zoom_slider.verticalCenter
             text: "Zoom:"
@@ -87,7 +73,23 @@ Item {
             value: 8.0
             from: 16.0
             to: 0.0
+
+            property real prev_samples_per_pixel: 0.0
             property real samples_per_pixel: Math.pow(2.0, value)
+            Component.onCompleted: prev_samples_per_pixel = samples_per_pixel
+
+            onSamples_per_pixelChanged: {
+                let prev_n_samples = channels_column.width * prev_samples_per_pixel
+                let new_n_samples = channels_column.width * samples_per_pixel
+                let diff = new_n_samples - prev_n_samples
+                let new_offset = channels_column.samples_offset - diff / 2
+                prev_samples_per_pixel = samples_per_pixel
+
+                zoomed(samples_per_pixel, new_offset)
+            }
+
+            signal zoomed (real new_samples_per_pixel, real new_offset)
+
             anchors {
                 verticalCenter: parent.verticalCenter
             }
@@ -217,6 +219,7 @@ Item {
 
         Column {
             id: channels_column
+            property real samples_offset : 0.0
             Mapper {
                 id: channel_mapper
                 model: loop.channels
@@ -235,11 +238,22 @@ Item {
 
                     channel: mapped_item
 
-                    samples_per_pixel: zoom_slider.samples_per_pixel
+                    samples_per_pixel: 1.0
+                    Component.onCompleted: samples_per_pixel = zoom_slider.samples_per_pixel
+
+                    Connections {
+                        target: zoom_slider
+                        function onZoomed(spp, off) {
+                            samples_per_pixel = spp;
+                            channels_column.samples_offset = off
+                        }
+                    }
 
                     property int first_pixel_sample: (channel ? channel.start_offset : 0) + channels_combine_range.data_start
 
-                    samples_offset: scroll.position * channels_combine_range.data_length + first_pixel_sample
+                    samples_offset: channels_column.samples_offset
+                    onPan: (amount) => { channels_column.samples_offset += amount }
+
                     loop_length: root.loop ? root.loop.length : 0
 
                     property var maybe_cursor_display_x: {
@@ -298,24 +312,6 @@ Item {
                     }
                 }
             }
-        }
-
-        // Render a scroll bar
-        ScrollBar {
-            id: scroll
-            anchors {
-                bottom: parent.bottom
-                left: parent.left
-                right: parent.right
-            }
-            size: {
-                var window_in_samples = width * zoom_slider.samples_per_pixel
-                return window_in_samples / channels_combine_range.data_length
-            }
-            minimumSize: 0.05
-            orientation: Qt.Horizontal
-            policy: ScrollBar.AlwaysOn
-            visible: size < 1.0
         }
     }    
 }

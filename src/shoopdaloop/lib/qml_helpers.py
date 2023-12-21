@@ -39,6 +39,7 @@ from .q_objects.TestScreenGrabber import TestScreenGrabber
 from .q_objects.RenderAudioWaveform import RenderAudioWaveform
 from .q_objects.RenderMidiSequence import RenderMidiSequence
 from .q_objects.TestCase import TestCase
+from .q_objects.OSUtils import OSUtils
 
 from .logging import Logger as BareLogger
 from .js_constants import create_js_constants
@@ -117,7 +118,8 @@ def create_and_populate_root_context(engine, global_args, additional_items={}):
         'global_args': global_args,
         'settings_io': SettingsIO(parent=engine),
         'registries': registries,
-        'screen_grabber': TestScreenGrabber(weak_engine=weakref.ref(engine), parent=engine)
+        'screen_grabber': TestScreenGrabber(weak_engine=weakref.ref(engine), parent=engine),
+        'os_utils': OSUtils(parent=engine),
     }
 
     for key, item in additional_items.items():

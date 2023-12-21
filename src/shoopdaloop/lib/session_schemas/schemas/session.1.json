@@ -3,6 +3,7 @@
     "properties": {
         "schema":       { "const": "session.1" },
         "app_version":  { "const": "0.1.0" },
+        "sample_rate":  { "type": "integer" },
         "tracks": {
             "type": "array",
             "items": {

@@ -7,6 +7,8 @@ import QtQuick.Dialogs
 
 import ShoopDaLoop.PythonLogger
 
+import '../qml_url_to_filename.js' as UrlToFilename
+
 Dialog {
     id: root
     modal: true
@@ -675,10 +677,9 @@ Dialog {
                         nameFilters: ["LUA script files (*.lua)"]
                         onAccepted: {
                             close()
-                            var filename = selectedFile.toString().replace('file://', '');
+                            var filename = UrlToFilename.qml_url_to_filename(selectedFile.toString());
                             script_ui.add_script(filename)
                         }
-                        options: FileDialog.DontUseNativeDialog
                     }
                 }
             }

@@ -12,7 +12,7 @@ Session {
     id: session
 
     anchors.fill: parent
-    initial_descriptor: GenerateSession.generate_default_session(app_metadata.version_string, 2)
+    initial_descriptor: GenerateSession.generate_default_session(app_metadata.version_string, null, 2)
 
     ShoopSessionTestCase {
         id: testcase

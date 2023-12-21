@@ -11,29 +11,22 @@ Item {
     property int samples_offset : 0
     property var channel : null
 
-    Loader {
-        active: root.channel && root.channel.descriptor.type == "audio"
-        sourceComponent: Component {
-            PythonRenderAudioWaveform {
-                input_data: root.input_data
-                samples_per_bin: root.samples_per_bin
-                samples_offset: root.samples_offset
-                width: root.width
-                height: root.height
-            }
-        }
+    property bool is_audio : root.channel && root.channel.descriptor.type == "audio"
+    property bool is_midie : root.channel && root.channel.descriptor.type == "midi"
+
+    PythonRenderAudioWaveform {
+        input_data: is_audio ? root.input_data : null
+        samples_per_bin: root.samples_per_bin
+        samples_offset: root.samples_offset
+        width: root.width
+        height: root.height
     }
 
-    Loader {
-        active: root.channel && root.channel.descriptor.type == "midi"
-        sourceComponent: Component {
-            PythonRenderMidiSequence {
-                messages: root.input_data
-                samples_per_bin: root.samples_per_bin
-                samples_offset: root.samples_offset
-                width: root.width
-                height: root.height
-            }
-        }
+    PythonRenderMidiSequence {
+        messages: is_midi ? root.input_data : null
+        samples_per_bin: root.samples_per_bin
+        samples_offset: root.samples_offset
+        width: root.width
+        height: root.height
     }
 }

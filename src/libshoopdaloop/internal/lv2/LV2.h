@@ -1,8 +1,9 @@
 #pragma once
 #include "CarlaLV2ProcessingChain.h"
 #include <memory>
+#include "LoggingEnabled.h"
 
-class LV2 {
+class LV2 : private ModuleLoggingEnabled<"Backend.LV2"> {
     LilvWorld *m_world;
 
   public:

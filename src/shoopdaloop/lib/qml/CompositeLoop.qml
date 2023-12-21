@@ -11,9 +11,10 @@ Item {
 
     // Store the current playback iteration.
     property int iteration: 0
-    onIterationChanged: root.logger.trace(() => `iteration: ${iteration}`)
+    onIterationChanged: root.logger.trace(() => `iteration -> ${iteration}`)
 
     property var initial_composition_descriptor: null
+    property string obj_id : 'unknown'
     property var widget : null
 
     readonly property bool initialized: true
@@ -24,7 +25,10 @@ Item {
     property var playlists: (initial_composition_descriptor && initial_composition_descriptor.playlists) ?
         initial_composition_descriptor.playlists : []
 
-    readonly property PythonLogger logger: PythonLogger { name: "Frontend.Qml.CompositeLoop" }
+    readonly property PythonLogger logger: PythonLogger {
+        name: "Frontend.Qml.CompositeLoop"
+        instanceIdentifier: obj_id
+    }
 
     signal cycled()
 
@@ -48,7 +52,11 @@ Item {
     // for example when a 0-length loop is in the playlist.
     property var schedule: calculate_schedule()
     function calculate_schedule() {
-        if (!cycle_length) { return {} }
+        root.logger.debug(() => 'Recalculating schedule.')
+        if (!cycle_length) {
+            root.logger.debug(() => 'Cycle length not known - no schedule.')
+            return {}
+        }
         var rval = {}
         for (var pidx=0; pidx < playlists.length; pidx++) {
             let playlist = playlists[pidx]
@@ -108,8 +116,10 @@ Item {
     readonly property int n_cycles: schedule ? Math.max(...Object.keys(schedule)) : 0
     readonly property int master_position: master_loop ? master_loop.position : 0
     readonly property int length: n_cycles * cycle_length
-    readonly property int position: iteration * cycle_length + (ModeHelpers.is_running_mode(mode) ? master_position : 0)
+    readonly property int position: Math.max(0, iteration * cycle_length + (ModeHelpers.is_running_mode(mode) ? master_position : 0))
     readonly property int display_position : position
+
+    onPositionChanged: root.logger.trace(() => `pos -> ${position}`)
 
     property int mode : ShoopConstants.LoopMode.Stopped
     property int next_mode : ShoopConstants.LoopMode.Stopped
@@ -164,10 +174,10 @@ Item {
             onVisibleChanged: update_coords()
             parent: Overlay.overlay
 
-            visible: root.widget.selected
+            visible: root.widget ? root.widget.selected : false
 
-            width: root.widget.width
-            height: root.widget.height
+            width: root.widget ? root.widget.width : 1
+            height: root.widget ? root.widget.height : 1
             Rectangle {
                 anchors.right: parent.right
                 anchors.rightMargin: -8
@@ -267,14 +277,16 @@ Item {
 
     function transition(mode, delay, wait_for_sync) {
         if (!(n_cycles > 0) && ModeHelpers.is_recording_mode(mode)) {
-            // We cannot record a composite loop if the lenghts of the other loops are not yet set.
+            // We cannot record a composite loop if the lengths of the other loops are not yet set.
             return
         }
         if (!ModeHelpers.is_running_mode(root.mode) && ModeHelpers.is_running_mode(mode)) {
             root.iteration = -1
         }
-        next_transition_delay = delay
-        next_mode = mode
+        root.next_transition_delay = delay
+        root.next_mode = mode
+        root.logger.debug(() => `next transition -> ${root.next_transition_delay}`)
+        root.logger.debug(() => `next mode -> ${root.next_mode}`)
         if (next_transition_delay == 0) {
             if (ModeHelpers.is_running_mode(mode)) {
                 do_triggers(0, next_mode)
@@ -282,12 +294,16 @@ Item {
                 cancel_all()
             }
         }
+        if (!wait_for_sync) {
+            handle_master_loop_trigger()
+        }
     }
 
     function handle_transition(mode) {
         next_transition_delay = -1
         if (mode != root.mode) {
             root.mode = mode
+            root.logger.debug(() => `mode -> ${root.mode}`)
             if (!ModeHelpers.is_running_mode(mode)) {
                 root.iteration = 0
             }
@@ -300,33 +316,38 @@ Item {
         }
     }
 
+    function handle_master_loop_trigger() {
+        if (next_transition_delay == 0) {
+            handle_transition(next_mode)
+        }
+        if (ModeHelpers.is_running_mode(mode)) {
+            var cycled = false
+            iteration += 1
+            if (iteration >= n_cycles) {
+                iteration = 0
+                cycled = true
+            }
+            do_triggers(iteration+1, mode)
+            if ((iteration+1) >= n_cycles) {
+                if (ModeHelpers.is_recording_mode(mode)) {
+                    // Recording ends next cycle
+                    transition(ShoopConstants.LoopMode.Stopped, 0, true)
+                } else {
+                    // Will cycle around - trigger the actions for next cycle
+                    do_triggers(0, mode)
+                }
+            }
+            if (cycled) {
+                root.cycled()
+            }
+        }
+    }
+
     Connections {
         target: master_loop
         function onCycled() {
-            if (next_transition_delay == 0) {
-                handle_transition(next_mode)
-            }
-            if (ModeHelpers.is_running_mode(mode)) {
-                var cycled = false
-                iteration += 1
-                if (iteration >= n_cycles) {
-                    iteration = 0
-                    cycled = true
-                }
-                do_triggers(iteration+1, mode)
-                if ((iteration+1) >= n_cycles) {
-                    if (ModeHelpers.is_recording_mode(mode)) {
-                        // Recording ends next cycle
-                        transition(ShoopConstants.LoopMode.Stopped, 0, true)
-                    } else {
-                        // Will cycle around - trigger the actions for next cycle
-                        do_triggers(0, mode)
-                    }
-                }
-                if (cycled) {
-                    root.cycled()
-                }
-            }
+            root.logger.debug(() => "master loop cycle")
+            root.handle_master_loop_trigger()
         }
     }
 

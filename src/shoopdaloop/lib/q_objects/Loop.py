@@ -16,7 +16,7 @@ from ..mode_helpers import is_playing_mode
 from ..q_objects.Backend import Backend
 from ..findFirstParent import findFirstParent
 from ..findChildItems import findChildItems
-from ..logging import Logger
+from .Logger import Logger
 
 # Wraps a back-end loop.
 class Loop(ShoopQQuickItem):
@@ -37,7 +37,8 @@ class Loop(ShoopQQuickItem):
         self._display_peaks = []
         self._display_midi_notes_active = 0
         self._display_midi_events_triggered = 0
-        self.logger = Logger("Frontend.Loop")
+        self.logger = Logger(self)
+        self.logger.name = "Frontend.Loop"
 
         self.rescan_parents()
         if not self._backend:
@@ -58,6 +59,7 @@ class Loop(ShoopQQuickItem):
             if self._backend or self._backend_loop:
                 self.logger.throw_error('May not change backend of existing port')
             self._backend = l
+            self.logger.trace(lambda: 'Set backend -> {}'.format(l))
             self.maybe_initialize()
     
     # initialized
@@ -150,6 +152,11 @@ class Loop(ShoopQQuickItem):
     ###########
     ## SLOTS
     ###########
+    
+    # For debugging
+    @Slot(str)
+    def set_logging_instance_identifier(self, id):
+        self.logger.instanceIdentifier = id
 
     @Slot(result=list)
     def get_audio_channels(self):
@@ -165,7 +172,10 @@ class Loop(ShoopQQuickItem):
     @Slot()
     def update(self):
         if not self.initialized:
+            self.logger.trace(lambda: 'update: not initialized')
             return
+        
+        self.logger.trace(lambda: 'update')
         for channel in self.get_audio_channels():
             channel.update()
         for channel in self.get_midi_channels():
@@ -194,8 +204,10 @@ class Loop(ShoopQQuickItem):
             self.logger.debug(lambda: 'mode -> {}'.format(LoopMode(self._mode)))
             self.modeChanged.emit(self._mode)
         if prev_length != self._length:
+            self.logger.trace(lambda: 'length -> {}'.format(self._length))
             self.lengthChanged.emit(self._length)
         if prev_position != self._position:
+            self.logger.trace(lambda: 'pos -> {}'.format(self._position))
             self.positionChanged.emit(self._position)
         if prev_next_mode != self._next_mode:
             self.logger.debug(lambda: 'next mode -> {}'.format(LoopMode(self._next_mode)))
@@ -211,6 +223,7 @@ class Loop(ShoopQQuickItem):
             self.displayMidiEventsTriggeredChanged.emit(self._display_midi_events_triggered)
 
         if (self.position < prev_position and is_playing_mode(prev_mode) and is_playing_mode(self.mode)):
+            self.logger.debug(lambda: 'cycled')
             self.cycled.emit()
     
     @Slot(int, int, bool)

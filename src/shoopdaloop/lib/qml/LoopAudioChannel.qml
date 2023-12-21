@@ -44,14 +44,12 @@ PythonLoopAudioChannel {
         }
         return rval
     }
-    function queue_load_tasks(data_files_dir, add_tasks_to) {
+    function queue_load_tasks(data_files_dir, from_sample_rate, to_sample_rate, add_tasks_to) {
         if (has_data_file()) {
-            const _so = descriptor.start_offset
-            const _nps = descriptor.n_preplay_samples
             add_tasks_to.add_task(
                 file_io.load_soundfile_to_channels_async(
                     data_files_dir + '/' + descriptor.data_file,
-                    get_backend().get_sample_rate(),
+                    to_sample_rate,
                     descriptor.data_length,
                     [[root]],
                     descriptor.n_preplay_samples,

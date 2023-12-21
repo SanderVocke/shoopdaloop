@@ -10,6 +10,7 @@ PythonBackend {
     update_interval_ms: 30
     client_name_hint: 'shoop'
     backend_type: ShoopConstants.AudioDriverType.JackTest
+    driver_setting_overrides: ({})
 
     ShoopTestCase {
         name: 'JackBackend'

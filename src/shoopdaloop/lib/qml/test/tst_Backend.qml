@@ -10,6 +10,7 @@ PythonBackend {
     update_interval_ms: 30
     client_name_hint: 'ShoopDaLoop'
     backend_type: ShoopConstants.AudioDriverType.Dummy
+    driver_setting_overrides: ({})
 
     ShoopTestCase {
         name: 'DummyBackend'

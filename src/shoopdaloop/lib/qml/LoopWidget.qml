@@ -7,6 +7,7 @@ import ShoopConstants
 
 import '../mode_helpers.js' as ModeHelpers
 import '../stereo.js' as Stereo
+import '../qml_url_to_filename.js' as UrlToFilename
 
 // The loop widget allows manipulating a single loop within a track.
 Item {
@@ -84,7 +85,7 @@ Item {
         }
         return rval
     }
-    function queue_load_tasks(data_files_dir, add_tasks_to) {
+    function queue_load_tasks(data_files_dir, from_sample_rate, to_sample_rate, add_tasks_to) {
         var have_data_files = initial_descriptor.channels ? initial_descriptor.channels.map(c => {
             let r = ('data_file' in c)
             if (r) { root.logger.debug(() => (`${obj_id} has data file for channel ${c.obj_id}`)) }
@@ -99,7 +100,7 @@ Item {
         } else if (have_any_data) {
             root.logger.debug(() => (`${obj_id} has data files, queueing load tasks.`))
             create_backend_loop()
-            channels.forEach((c) => c.queue_load_tasks(data_files_dir, add_tasks_to))
+            channels.forEach((c) => c.queue_load_tasks(data_files_dir, from_sample_rate, to_sample_rate, add_tasks_to))
         } else {
             root.logger.debug(() => (`${obj_id} has no data files, not queueing load tasks.`))
         }
@@ -412,19 +413,18 @@ Item {
         BackendLoopWithChannels {}
     }
     function create_backend_loop() {
-        if (maybe_loop) {
-            return
-        }
-        if (backend_loop_factory.status == Component.Error) {
-            throw new Error("BackendLoopWithChannels: Failed to load factory: " + backend_loop_factory.errorString())
-        } else if (backend_loop_factory.status != Component.Ready) {
-            throw new Error("BackendLoopWithChannels: Factory not ready: " + backend_loop_factory.status.toString())
-        } else {
-            maybe_loop = backend_loop_factory.createObject(root, {
-                'initial_descriptor': root.initial_descriptor,
-                'sync_source': (!is_master && root.master_loop && root.master_loop.maybe_backend_loop) ? root.master_loop.maybe_backend_loop : null,
-            })
-            maybe_loop.onCycled.connect(root.cycled)
+        if (!maybe_loop) {
+            if (backend_loop_factory.status == Component.Error) {
+                throw new Error("BackendLoopWithChannels: Failed to load factory: " + backend_loop_factory.errorString())
+            } else if (backend_loop_factory.status != Component.Ready) {
+                throw new Error("BackendLoopWithChannels: Factory not ready: " + backend_loop_factory.status.toString())
+            } else {
+                maybe_loop = backend_loop_factory.createObject(root, {
+                    'initial_descriptor': root.initial_descriptor,
+                    'sync_source': (!is_master && root.master_loop && root.master_loop.maybe_backend_loop) ? root.master_loop.maybe_backend_loop : null,
+                })
+                maybe_loop.onCycled.connect(root.cycled)
+            }
         }
     }
 
@@ -457,6 +457,7 @@ Item {
         } else {
             maybe_loop = composite_loop_factory.createObject(root, {
                 initial_composition_descriptor: composition,
+                obj_id: root.obj_id,
                 widget: root
             })
             maybe_loop.onCycled.connect(root.cycled)
@@ -1551,7 +1552,6 @@ Item {
         FileDialog {
             id: savedialog
             fileMode: FileDialog.SaveFile
-            options: FileDialog.DontUseNativeDialog
             acceptLabel: 'Save'
             nameFilters: Object.entries(file_io.get_soundfile_formats()).map((e) => {
                 var extension = e[0]
@@ -1567,7 +1567,7 @@ Item {
                 close()
                 registries.state_registry.save_action_started()
                 try {
-                    var filename = selectedFile.toString().replace('file://', '')
+                    var filename = UrlToFilename.qml_url_to_filename(selectedFile.toString());
                     var samplerate = root.maybe_backend_loop.backend.get_sample_rate()
                     var task = file_io.save_channels_to_soundfile_async(filename, samplerate, channels)
                     task.when_finished(() => registries.state_registry.save_action_finished())
@@ -1582,7 +1582,6 @@ Item {
         FileDialog {
             id: midisavedialog
             fileMode: FileDialog.SaveFile
-            options: FileDialog.DontUseNativeDialog
             acceptLabel: 'Save'
             nameFilters: ["MIDI files (*.mid)", "Sample-accurate Shoop MIDI (*.smf)"]
             property var channel: null
@@ -1592,7 +1591,7 @@ Item {
                     return;
                 }
                 close()
-                var filename = selectedFile.toString().replace('file://', '')
+                var filename = UrlToFilename.qml_url_to_filename(selectedFile.toString());
                 var samplerate = root.maybe_backend_loop.backend.get_sample_rate()
                 file_io.save_channel_to_midi_async(filename, samplerate, channel)
             }
@@ -1602,7 +1601,6 @@ Item {
         FileDialog {
             id: loaddialog
             fileMode: FileDialog.OpenFile
-            options: FileDialog.DontUseNativeDialog
             acceptLabel: 'Load'
             nameFilters: [
                 'Supported sound files ('
@@ -1610,7 +1608,7 @@ Item {
                 + ')'
             ]
             onAccepted: {
-                loadoptionsdialog.filename = selectedFile.toString().replace('file://', '')
+                loadoptionsdialog.filename = UrlToFilename.qml_url_to_filename(selectedFile.toString());
                 close()
                 root.create_backend_loop()
                 loadoptionsdialog.update()
@@ -1753,12 +1751,11 @@ Item {
         FileDialog {
             id: midiloaddialog
             fileMode: FileDialog.OpenFile
-            options: FileDialog.DontUseNativeDialog
             acceptLabel: 'Load'
             nameFilters: ["Midi files (*.mid)"]
             onAccepted: {
                 close()
-                midiloadoptionsdialog.filename = selectedFile.toString().replace('file://', '');
+                midiloadoptionsdialog.filename = UrlToFilename.qml_url_to_filename(selectedFile.toString());
                 midiloadoptionsdialog.open()
             }
         }
