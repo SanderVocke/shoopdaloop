@@ -25,7 +25,10 @@ class Pyramid:
     
     def create(self, audio_data):
         logger.trace(lambda: f'create pyramid ({len(audio_data)} samples)')
-        if not self.backend_create_pyramid:
+        if not audio_data:
+            logger.trace(lambda: 'no audio data')
+            self.pyramid = None
+        elif not self.backend_create_pyramid:
             logger.trace(lambda: 'no back-end acceleration')
             self.pyramid = None
         else:
@@ -106,7 +109,7 @@ class RenderAudioWaveform(ShoopQQuickPaintedItem):
             self._lines.append(QLine())
 
     def paint(self, painter):
-        logger.trace(f'paint (off {self._samples_offset}, scale {self._samples_per_bin})')
+        logger.trace(lambda: f'paint (off {self._samples_offset}, scale {self._samples_per_bin})')
         if not self._pyramid.pyramid:
             logger.trace(lambda: 'paint: no pyramid')
             return

@@ -40,9 +40,11 @@ ApplicationWindow {
 
     Loader {
         active: root.maybe_composite_loop
-        sourceComponent: Label {
-            text: "Detailed editing for composite loops is not yet supported. Stay tuned!"
-            color: Material.foreground
+        sourceComponent: Component {
+            Label {
+                text: "Detailed editing for composite loops is not yet supported. Stay tuned!"
+                color: Material.foreground
+            }
         }
     }
 }

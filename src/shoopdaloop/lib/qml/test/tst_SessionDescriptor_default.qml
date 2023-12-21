@@ -27,6 +27,9 @@ Session {
 
                 testcase.wait_session_loaded(session)
                 var reference = session.initial_descriptor
+                // sample_rate not stored in the descriptor yet
+                reference['sample_rate'] = 48000
+
                 var actual = session.actual_session_descriptor(false, '', null)
                 verify(TestDeepEqual.testDeepEqual(actual, reference, session.logger.error))
 
