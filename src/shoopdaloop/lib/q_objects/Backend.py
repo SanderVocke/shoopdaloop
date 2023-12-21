@@ -65,6 +65,7 @@ class Backend(ShoopQQuickItem):
     def actual_backend_type(self, n):
         if self._actual_driver_type != n:
             self._actual_driver_type = n
+            self.logger.instanceIdentifier = AudioDriverType(n).name
             self.actualBackendTypeChanged.emit(n)
     
     clientNameHintChanged = Signal(str)
@@ -208,8 +209,14 @@ class Backend(ShoopQQuickItem):
     
     @Slot()
     def maybe_init(self):
-        if not self._initialized and self._client_name_hint != None and self._driver_type != None and self._driver_setting_overrides != None:
+        if not self._initialized and \
+           self._client_name_hint != None and \
+           self._driver_type != None and \
+           self._driver_setting_overrides != None:
+            self.logger.debug(lambda: "Initializing")
             self.init()
+        else:
+            self.logger.debug(lambda: "Not initializing yet")
     
     @Slot(result='QVariant')
     def get_profiling_report(self):

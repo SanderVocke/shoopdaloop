@@ -75,6 +75,8 @@ Session {
             // (because the loop will have the same position exactly).
             // TODO: a robust fix for this.
             // For now, we work around this by processing in multiple steps.
+            // This is also realistic in terms of how the application is normally used:
+            // small process amounts with larger loops.
             for (var i = 0; i < steps; i++) {
                 session.backend.dummy_request_controlled_frames(Math.round(amount / steps))
                 testcase.wait_updated(session.backend)
