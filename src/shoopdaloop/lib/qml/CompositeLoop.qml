@@ -319,6 +319,8 @@ Item {
     function handle_master_loop_trigger() {
         if (next_transition_delay == 0) {
             handle_transition(next_mode)
+        } else if (next_transition_delay > 0) {
+            next_transition_delay -= 1
         }
         if (ModeHelpers.is_running_mode(mode)) {
             var cycled = false
