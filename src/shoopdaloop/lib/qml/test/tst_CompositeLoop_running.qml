@@ -122,9 +122,15 @@ Session {
                               0, 0, 0, 0)
 
                 m().transition(ShoopConstants.LoopMode.Playing, 0, false)
-                c().transition(ShoopConstants.LoopMode.Playing, 0, false)
 
-                process(50) // middle of 1st step
+                process(50); // master loop is playing
+
+                // trigger the composite loop
+                c().transition(ShoopConstants.LoopMode.Playing, 0, true)
+                testcase.wait_updated(session.backend)
+                verify_eq(l1().next_mode, ShoopConstants.LoopMode.Playing)
+
+                process(100) // middle of 1st step
 
                 verify_states(ShoopConstants.LoopMode.Playing,
                               ShoopConstants.LoopMode.Playing,
