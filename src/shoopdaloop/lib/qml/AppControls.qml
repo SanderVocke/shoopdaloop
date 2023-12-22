@@ -64,9 +64,34 @@ Item {
                     text: "Settings"
                     onClicked: settings_dialog.open()
                 }
-                ShoopMenuItem {
-                    text: "Debug Inspection"
-                    onClicked: debugwindow.visible = true
+
+                Instantiator {
+                    model : {
+                        return global_args.developer ? [true] : []
+                    }
+                    delegate: Menu {
+                        title: "Developer"
+
+                        ShoopMenuItem {
+                            text: "Inspect Objects"
+                            onClicked: debugwindow.visible = true
+                        }
+
+                        ShoopMenuItem {
+                            text: "Halt UI (10s)"
+                            onClicked: {
+                                let start = new Date().getTime()
+                                while(true) {
+                                    let curr = new Date().getTime()
+                                    if ((curr - start) >= 10000) {
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    onObjectAdded: (index, object) => mainmenu.insertMenu(mainmenu.contentData.length, object)
+                    onObjectRemoved: (index, object) => mainmenu.removeItem(object)
                 }
             }
 

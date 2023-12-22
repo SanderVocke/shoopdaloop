@@ -1430,16 +1430,16 @@ Item {
             ShoopMenuItem {
                 text: "Save audio..."
                 onClicked: presavedialog.open()
-                enabled: menu.n_audio_channels > 0
+                shown: menu.n_audio_channels > 0
             }
             ShoopMenuItem {
                 text: "Load audio..."
                 onClicked: loaddialog.open()
-                enabled: menu.n_audio_channels > 0
+                shown: menu.n_audio_channels > 0
             }
             ShoopMenuItem {
                 text: "Load MIDI..."
-                enabled: menu.n_midi_channels > 0
+                shown: menu.n_midi_channels > 0
                 onClicked: {
                     var chans = root.midi_channels
                     if (chans.length == 0) { throw new Error("No MIDI channels to load"); }
@@ -1450,7 +1450,7 @@ Item {
             }
             ShoopMenuItem {
                 text: "Save MIDI..."
-                enabled: menu.n_midi_channels > 0
+                shown: menu.n_midi_channels > 0
                 onClicked: {
                     var chans = root.midi_channels
                     if (chans.length == 0) { throw new Error("No MIDI channels to save"); }
@@ -1461,6 +1461,7 @@ Item {
             }
             ShoopMenuItem {
                 text: "Push Length To Master"
+                shown: !root.is_master
                 onClicked: {
                     if (master_loop) { master_loop.set_length(root.length) }
                 }
@@ -1485,7 +1486,7 @@ Item {
                 }
 
                 text: "Restore FX State"
-                enabled: cached_fx_state ? true : false
+                shown: cached_fx_state ? true : false
                 onClicked: root.track_widget.maybe_fx_chain.restore_state(cached_fx_state.internal_state)
             }
         }

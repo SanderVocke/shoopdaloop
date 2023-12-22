@@ -220,6 +220,50 @@ Session {
 
                 verify_eq(c().mode, ShoopConstants.LoopMode.Playing)
             },
+            'test_ui_frozen': () => {
+                // Tests that when the UI thread freezes / is busy, composite loops
+                // still do their thing in the background.
+                check_backend()
+                clear()
+
+                m().set_length(100)
+                l1().create_backend_loop()
+                l2().create_backend_loop()
+                m().create_backend_loop()
+
+                testcase.wait_updated(session.backend)
+
+                l1().set_length(200)
+                l2().set_length(300)
+
+                c().create_composite_loop({
+                    'playlists': [
+                        [ // playlist
+                            { 'loop_id': l1().obj_id, 'delay': 0 },
+                            { 'loop_id': l2().obj_id, 'delay': 1 },
+                        ]
+                    ]
+                })
+
+                c().transition(ShoopConstants.LoopMode.Playing, 3, true)
+                m().transition(ShoopConstants.LoopMode.Playing, 0, false)
+
+                testcase.wait_updated(session.backend)
+
+                verify_eq(c().mode, ShoopConstants.LoopMode.Stopped)
+                verify_eq(c().next_mode, ShoopConstants.LoopMode.Playing)
+                verify_eq(c().next_transition_delay, 3)
+
+                process(350, 7) // a bunch of master loop cycles
+
+                verify_eq(c().mode, ShoopConstants.LoopMode.Stopped)
+                verify_eq(c().next_mode, ShoopConstants.LoopMode.Playing)
+                verify_eq(c().next_transition_delay, 0)
+
+                process(100)
+
+                verify_eq(c().mode, ShoopConstants.LoopMode.Playing)
+            },
         })
     }
 }

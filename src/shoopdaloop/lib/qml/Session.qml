@@ -346,7 +346,7 @@ Item {
         client_name_hint: 'ShoopDaLoop'
         backend_type: root.backend_type
         id: session_backend
-        driver_setting_overrides: { "hey": "ho" }
+        driver_setting_overrides: ({})
 
         SessionControlInterface {
             id: control_interface
