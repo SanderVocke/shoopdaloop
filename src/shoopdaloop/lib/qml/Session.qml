@@ -35,11 +35,13 @@ Item {
             ignore_resample_warning = false
         }
     }
+
+    property bool did_auto_load: false
     onLoadedChanged: {
         if (loaded) {
-            if (global_args.load_session_on_startup) {
+            if (global_args.load_session_on_startup && !did_auto_load) {
+                did_auto_load = true
                 var filename = global_args.load_session_on_startup
-                global_args.load_session_on_startup = null
                 auto_session_loader.filename = filename
                 root.logger.debug(() => ("Loading session on startup: " + filename))
                 auto_session_loader.trigger()
