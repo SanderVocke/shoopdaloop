@@ -40,6 +40,8 @@ from .q_objects.RenderAudioWaveform import RenderAudioWaveform
 from .q_objects.RenderMidiSequence import RenderMidiSequence
 from .q_objects.TestCase import TestCase
 from .q_objects.OSUtils import OSUtils
+from .q_objects.DummyProcessHelper import DummyProcessHelper
+from .q_objects.CompositeLoop import CompositeLoop
 
 from .logging import Logger as BareLogger
 from .js_constants import create_js_constants
@@ -86,6 +88,8 @@ def register_shoopdaloop_qml_classes():
     register_qml_class(RenderAudioWaveform, 'RenderAudioWaveform')
     register_qml_class(RenderMidiSequence, 'RenderMidiSequence')
     register_qml_class(TestCase, 'TestCase')
+    register_qml_class(DummyProcessHelper, 'DummyProcessHelper')
+    register_qml_class(CompositeLoop, 'CompositeLoop')
 
     qmlRegisterSingletonType("ShoopConstants", 1, 0, "ShoopConstants", create_constants_instance)
 

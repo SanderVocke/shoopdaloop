@@ -1,6 +1,7 @@
 import QtQuick 6.3
 import QtTest 1.0
 import ShoopDaLoop.PythonBackend
+import ShoopDaLoop.PythonDummyProcessHelper
 
 import './testDeepEqual.js' as TestDeepEqual
 import ShoopConstants
@@ -81,6 +82,11 @@ Session {
                 session.backend.dummy_request_controlled_frames(Math.round(amount / steps))
                 testcase.wait_updated(session.backend)
             }
+        }
+
+        PythonDummyProcessHelper {
+            id: process_helper
+            backend: session.backend
         }
 
         testcase_init_fn: () =>  {
@@ -254,15 +260,24 @@ Session {
                 verify_eq(c().next_mode, ShoopConstants.LoopMode.Playing)
                 verify_eq(c().next_transition_delay, 3)
 
-                process(350, 7) // a bunch of master loop cycles
-
-                verify_eq(c().mode, ShoopConstants.LoopMode.Stopped)
-                verify_eq(c().next_mode, ShoopConstants.LoopMode.Playing)
-                verify_eq(c().next_transition_delay, 0)
-
-                process(100)
+                process_helper.n_iters = 9
+                process_helper.samples_per_iter = 50 // 450 total
+                process_helper.wait_start = 0.02
+                process_helper.wait_interval = 0.01
+                process_helper.start()
+                // We started the process helper to process. Now, freeze the GUI
+                // while the loops continue in the background.
+                let start = new Date().getTime()
+                while(true) {
+                    let curr = new Date().getTime()
+                    if ((curr - start) >= 200) {
+                        break;
+                    }
+                }
 
                 verify_eq(c().mode, ShoopConstants.LoopMode.Playing)
+                verify_eq(l1().mode, ShoopConstants.LoopMode.Playing)
+                verify_eq(c().iteration, 0)
             },
         })
     }

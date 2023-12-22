@@ -44,6 +44,7 @@ class LoopMode(Enum):
     Stopped = bindings.LoopMode_Stopped
     Playing = bindings.LoopMode_Playing
     Recording = bindings.LoopMode_Recording
+    Replacing = bindings.LoopMode_Replacing
     PlayingDryThroughWet = bindings.LoopMode_PlayingDryThroughWet
     RecordingDryIntoWet = bindings.LoopMode_RecordingDryIntoWet
 

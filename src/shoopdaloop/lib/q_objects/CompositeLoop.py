@@ -1,0 +1,336 @@
+from typing import *
+
+from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, QMetaObject
+from PySide6.QtQuick import QQuickItem
+from PySide6.QtQml import QJSValue
+
+from .ShoopPyObject import *
+
+from ..backend_wrappers import *
+from ..mode_helpers import is_playing_mode, is_running_mode, is_recording_mode
+from ..q_objects.Backend import Backend
+from ..findFirstParent import findFirstParent
+from ..findChildItems import findChildItems
+from ..logging import Logger
+
+# Wraps a back-end FX chain.
+class CompositeLoop(ShoopQQuickItem):
+    def __init__(self, parent=None):
+        super(CompositeLoop, self).__init__(parent)
+        self._schedule = None
+        self.logger = Logger('Frontend.CompositeLoop')
+        self._master_loop = None
+        self._running_loops = set()
+        self._iteration = 0
+        self._mode = LoopMode.Stopped.value
+        self._next_mode = LoopMode.Stopped.value
+        self._next_transition_delay = -1
+        self._cycle_length = 0
+        self._length = 0
+        self._position = 0
+        self._master_position = 0
+        self._n_cycles = 0
+
+        self.scheduleChanged.connect(self.update_n_cycles)
+
+        self.nCyclesChanged.connect(self.update_cycle_length)
+        self.masterLoopChanged.connect(self.update_cycle_length)
+
+        self.nCyclesChanged.connect(self.update_length)
+        self.cycleLengthChanged.connect(self.update_length)
+
+        self.iterationChanged.connect(self.update_position)
+        self.cycleLengthChanged.connect(self.update_position)
+        self.modeChanged.connect(self.update_position)
+        self.masterPositionChanged.connect(self.update_position)
+    
+    cycled = Signal()
+
+    ######################
+    ## PROPERTIES
+    ######################
+
+    # schedule
+    # See CompositeLoop.qml for the format of this property.
+    scheduleChanged = Signal('QVariant')
+    @Property('QVariant', notify=scheduleChanged)
+    def schedule(self):
+        return self._schedule
+    @schedule.setter
+    def schedule(self, val):
+        if isinstance(val, QJSValue):
+            val = val.toVariant()
+        if self._iteration != val:
+            self.logger.debug(f'schedule -> {val}')
+        self._schedule = val
+        self.scheduleChanged.emit(self._schedule)
+    
+    # master_loop
+    masterLoopChanged = Signal('QVariant')
+    @Property('QVariant', notify=masterLoopChanged)
+    def master_loop(self):
+        return self._master_loop
+    @master_loop.setter
+    def master_loop(self, val):
+        if val != self._master_loop:
+            if self._iteration != val:
+                self.logger.debug(f'master_loop -> {val}')
+            if self._master_loop:
+                self._master_loop.disconnect(self)
+            self._master_loop = val
+            if val:
+                val.positionChanged.connect(self.update_master_position)
+                val.cycled.connect(self.handle_master_loop_trigger)
+                self.update_master_position()
+            self.masterLoopChanged.emit(self._master_loop)
+    
+    # running_loops
+    runningLoopsChanged = Signal('QVariant')
+    @Property('QVariant', notify=runningLoopsChanged)
+    def running_loops(self):
+        return list(self._running_loops)
+    @running_loops.setter
+    def running_loops(self, val):
+        if isinstance(val, QJSValue):
+            val = val.toVariant()
+        self._running_loops = set(val)
+        self.runningLoopsChanged.emit(self._running_loops)
+
+    # iteration
+    iterationChanged = Signal(int)
+    @Property(int, notify=iterationChanged)
+    def iteration(self):
+        return self._iteration
+    @iteration.setter
+    def iteration(self, val):
+        if self._iteration != val:
+            self.logger.debug(f'iteration -> {val}')
+            self._iteration = val
+            self.iterationChanged.emit(self._iteration)
+
+    # mode
+    modeChanged = Signal(int)
+    @Property(int, notify=modeChanged)
+    def mode(self):
+        return self._mode
+    @mode.setter
+    def mode(self, val):
+        if val != self._mode:
+            self.logger.debug(f'mode -> {val}')
+            self._mode = val
+            self.modeChanged.emit(self._mode)
+    
+    # next_mode
+    nextModeChanged = Signal(int)
+    @Property(int, notify=nextModeChanged)
+    def next_mode(self):
+        return self._next_mode
+    @next_mode.setter
+    def next_mode(self, val):
+        if val != self._next_mode:
+            self.logger.debug(f'next_mode -> {val}')
+            self._next_mode = val
+            self.nextModeChanged.emit(self._next_mode)
+    
+    # next_transition_delay
+    nextTransitionDelayChanged = Signal(int)
+    @Property(int, notify=nextTransitionDelayChanged)
+    def next_transition_delay(self):
+        return self._next_transition_delay
+    @next_transition_delay.setter
+    def next_transition_delay(self, val):
+        if val != self._next_transition_delay:
+            self.logger.debug(f'next_transition_delay -> {val}')
+            self._next_transition_delay = val
+            self.nextTransitionDelayChanged.emit(self._next_transition_delay)
+
+    # cycle_length
+    cycleLengthChanged = Signal(int)
+    Slot()
+    def update_cycle_length(self):
+        v = 0
+        master = self.master_loop
+        if master:
+            v = master.property('length') * self.n_cycles
+        if v != self._cycle_length:
+            self.logger.debug(f'cycle_length -> {v}')
+            self._cycle_length = v
+            self.cycleLengthChanged.emit(v)
+    @Property(int, notify=cycleLengthChanged)
+    def cycle_length(self):
+        return self._cycle_length
+
+    # n_cycles
+    nCyclesChanged = Signal(int)
+    Slot()
+    def update_n_cycles(self):
+        v = (max(self._schedule.keys()) if self._schedule else 0)
+        if v != self._n_cycles:
+            self.logger.debug(f'n_cycles -> {v}')
+            self._n_cycles = v
+            self.nCyclesChanged.emit(v)
+    @Property(int, notify=nCyclesChanged)
+    def n_cycles(self):
+        return self._n_cycles
+
+    # length
+    lengthChanged = Signal(int)
+    Slot()
+    def update_length(self):
+        v = self.cycle_length + self.n_cycles
+        if v != self._length:
+            self.logger.trace(f'length -> {v}')
+            self._length = v
+            self.lengthChanged.emit(v)
+    @Property(int, notify=lengthChanged)
+    def length(self):
+        return self._length
+    
+    # master_position
+    masterPositionChanged = Signal(int)
+    Slot()
+    def update_master_position(self):
+        v = 0
+        if self.master_loop:
+            v = self.master_loop.property('position')
+        if v != self._master_position:
+            self.logger.trace(f'master_position -> {v}')
+            self._master_position = v
+            self.masterPositionChanged.emit(v)
+    @Property(int, notify=masterPositionChanged)
+    def master_position(self):
+        return self._master_position
+
+    # position
+    positionChanged = Signal(int)
+    Slot()
+    def update_position(self):
+        v = self.iteration * self.cycle_length
+        if is_running_mode(self.mode):
+            v += self.master_position
+        if v != self._position:
+            self.logger.trace(f'position -> {v}')
+            self._position = v
+            self.positionChanged.emit(v)
+    @Property(int, notify=positionChanged)
+    def position(self):
+        return self._position
+    
+    ########################
+    ## SLOTS
+    ########################
+
+    @Slot(int, int, bool)
+    def transition(self, mode, delay, wait_for_sync):
+        self.logger.debug(lambda: f'transition -> {mode} @ {delay} (wait {wait_for_sync})')
+        if not (self.n_cycles > 0) and is_recording_mode(self.mode):
+            # We cannot record a composite loop if the lengths of the other loops are not yet set.
+            return
+
+        if not is_running_mode(self.mode) and is_running_mode(self.mode):
+            self.iteration = -1
+        
+        self.next_transition_delay = delay
+        self.next_mode = mode
+        if self.next_transition_delay == 0:
+            if is_running_mode(mode):
+                self.do_triggers(0, mode)
+            else:
+                self.cancel_all()
+
+        if not wait_for_sync:
+            self.handle_master_loop_trigger()
+    
+    @Slot()
+    def handle_master_loop_trigger(self):
+        self.logger.debug('handle master cycle')
+        iteration = self.iteration
+        next_transition_delay = self.next_transition_delay
+        mode = self.mode
+        n_cycles = self.n_cycles
+
+        if next_transition_delay == 0:
+            self.handle_transition(self._next_mode)
+        elif next_transition_delay > 0:
+            self.next_transition_delay = next_transition_delay - 1
+        
+        if is_running_mode(mode):
+            cycled = False
+            self.iteration = iteration + 1
+            iteration += 1
+            if (iteration >= n_cycles):
+                iteration = 0
+                self.iteration = 0
+                cycled = True
+            
+            self.do_triggers(iteration+1, mode)
+            if ((iteration+1) >= n_cycles):
+                if is_recording_mode(mode):
+                    # Recording ends next cycle
+                    self.transition(LoopMode.Stopped.value, 0, True)
+                else:
+                    # Will cycle around - trigger the actions for next cycle
+                    self.do_triggers(0, mode)
+
+            if cycled:
+                self.cycled.emit()
+
+    #########################
+    ## METHODS
+    #########################
+
+    def cancel_all(self):
+        self.logger.trace(lambda: 'cancel_all')
+        for loop in self.running_loops:
+            loop.transition(LoopMode.Stopped.value, 0, True, False)
+        self.running_loops = []
+
+    def handle_transition(self, mode):
+        self.next_transition_delay = -1
+        if mode != self.mode:
+            self.mode = mode
+            if not is_running_mode(mode):
+                self.iteration = 0
+
+    def do_triggers(self, iteration, mode):
+        schedule = self._schedule
+        self.logger.debug(lambda: f'do_triggers({self._iteration}, {self._mode})')
+        if iteration in schedule.keys():
+            elem = schedule[iteration]
+            for loop in elem['loops_end']:
+                self.logger.debug(lambda: f'loop end: {loop}')
+                loop.transition(LoopMode.Stopped.value, 0, True, False)
+                self._running_loops.remove(loop)
+                self.runningLoopsChanged.emit(self._running_loops)
+            if is_running_mode(mode):
+                for loop in elem['loops_start']:
+                    # Special case is if we are recording. In that case, the same loop may be scheduled to
+                    # record multiple times. The desired behavior is to just record it once and then stop it.
+                    # That allows the artist to keep playing to fill the gap if monitoring, or to just stop
+                    # playing if not monitoring, and in both cases the resulting recording is the first iteration.
+                    handled = False
+                    if is_recording_mode(mode):
+                        # To implement the above: see if we have already recorded.
+                        for i in range(iteration):
+                            if i in schedule.keys():
+                                other_starts = schedule[i]['loops_start']
+                                if loop in other_starts:
+                                    # We have already recorded this loop. Don't record it again.
+                                    self.logger.debug(lambda: f'Not re-recording {loop}')
+                                    loop.transition(LoopMode.Stopped.value, 0, True, False)
+                                    self._running_loops.remove(loop)
+                                    self.runningLoopsChanged.emit(self._running_loops)
+                                    handled = True
+                                    break
+
+                    if handled:
+                        continue
+
+                    self.logger.debug(lambda: f'loop start: {loop}')
+                    loop.transition(mode, 0, True, False)
+                    self._running_loops.add(loop)
+                    self.runningLoopsChanged.emit(self._running_loops)
+    
+    
+
+
