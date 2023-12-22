@@ -24,8 +24,30 @@ Item {
     property alias output_balance: output_balance_dial.value
     property real volume_fader_position: volume_fader.position
     property real input_fader_position: input_fader.position
-    property bool monitor : false
-    property bool mute : false
+
+    property bool monitor : {
+        // Initial setting
+        var ports = initial_track_descriptor.ports
+            .filter(p => is_in(p));
+        var settings = new Set();
+        ports.forEach((p) => { settings.add(!p.passthrough_muted) })
+        if (settings.size == 1) {
+            return Array.from(settings)[0]
+        }
+        return false
+    }
+    
+    property bool mute : {
+        // Initial setting
+        var ports = initial_track_descriptor.ports
+            .filter(p => is_out(p));
+        var settings = new Set();
+        ports.forEach((p) => { settings.add(p.muted) })
+        if (settings.size == 1) {
+            return Array.from(settings)[0]
+        }
+        return false
+    }
 
     // Readonlies
     readonly property PythonLogger logger : PythonLogger { name: "Frontend.Qml.TrackControlWidget" }

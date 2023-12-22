@@ -62,7 +62,19 @@ PythonAudioPort {
     }
     property list<string> name_parts : descriptor.name_parts
     name_hint : name_parts.join('')
-    volume : descriptor.volume
-    muted : descriptor.muted
-    passthrough_muted: descriptor.passthrough_muted
+    volume : {
+        let rval = descriptor.volume
+        console.log ("audio vol ", descriptor.id, rval)
+        return rval
+    }
+    muted : {
+        let rval = descriptor.muted
+        console.log ("audio mute ", descriptor.id, rval)
+        return rval
+    }
+    passthrough_muted: {
+        let rval = descriptor.passthrough_muted
+        console.log ("audio p_mute ", descriptor.id, rval)
+        return rval
+    }
 }
