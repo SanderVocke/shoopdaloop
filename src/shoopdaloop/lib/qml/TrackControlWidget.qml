@@ -518,6 +518,8 @@ Item {
                     height: width
                     anchors.verticalCenter: volume_fader.verticalCenter
 
+                    visible: (root.audio_out_ports.length + root.midi_out_ports.length) > 0
+
                     Rectangle {
                         anchors.fill: parent
                         visible: volume_mouse_area.containsMouse
@@ -553,6 +555,9 @@ Item {
                 }
                 AudioSlider {
                     id: volume_fader
+
+                    visible: root.audio_out_ports.length > 0
+
                     orientation: Qt.Horizontal
                     width: root.out_is_stereo ? 70 : 85
                     height: 20
@@ -773,6 +778,8 @@ Item {
                     height: width
                     anchors.verticalCenter: input_fader.verticalCenter
 
+                    visible: (root.audio_in_ports.length + root.midi_in_ports.length) > 0
+
                     Rectangle {
                         anchors.fill: parent
                         visible: monitor_mouse_area.containsMouse
@@ -808,6 +815,9 @@ Item {
                 }
                 AudioSlider {
                     id: input_fader
+
+                    visible: root.audio_in_ports.length > 0
+
                     orientation: Qt.Horizontal
                     width: root.in_is_stereo ? 70 : 85
                     height: 20
