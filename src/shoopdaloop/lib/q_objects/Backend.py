@@ -184,8 +184,10 @@ class Backend(ShoopQQuickItem):
             'stop'
         )
         while self._timer.isActive():
-            time.sleep(0.01)
+            time.sleep(0.005)
         self._timer_thread.exit()
+        while self._timer_thread.isRunning():
+            time.sleep(0.005)
         if self._initialized:
             self._backend_session_obj.destroy()
             self._backend_driver_obj.destroy()
