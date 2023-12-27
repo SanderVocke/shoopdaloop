@@ -3,18 +3,23 @@ import QtTest 1.0
 import ShoopDaLoop.PythonBackend
 
 import './testDeepEqual.js' as TestDeepEqual
-import '../../generated/types.js' as Types
+import ShoopConstants
 import '../../generate_session.js' as GenerateSession
 import './testfilename.js' as TestFilename
 import '..'
 
-AppRegistries {
+ShoopTestFile {
     Session {
         id: session
 
+        backend_type: ShoopConstants.AudioDriverType.Dummy
+        driver_setting_overrides: {
+            "sample_rate": 48000
+        }
+
         anchors.fill: parent
         initial_descriptor: {
-            let base = GenerateSession.generate_default_session(app_metadata.version_string, 1)
+            let base = GenerateSession.generate_default_session(app_metadata.version_string, null, 1)
             let direct_track = GenerateSession.generate_default_track(
                 "dt",
                 2,
@@ -78,39 +83,40 @@ AppRegistries {
             name: 'Session_save_load'
             filename : TestFilename.test_filename()
             session: session
+            additional_when_condition: other_session && other_session.loaded
 
-            function dt() { return session.tracks[1] }
-            function dwt() { return session.tracks[2] }
-            function mt() { return session.tracks[3] }
-            function dt_loop() { return dt() ? dt().loops[0] : null }
-            function dwt_loop() { return dwt() ? dwt().loops[0] : null }
-            function mt_loop() { return mt() ? mt().loops[0] : null }
-            function dt_loop_2() { return dt() ? dt().loops[1] : null }
-            function dwt_loop_2() { return dwt() ? dwt().loops[1] : null }
-            function mt_loop_2() { return mt() ? mt().loops[1] : null }
+            function dt(s=session) { return s.tracks[1] }
+            function dwt(s=session) { return s.tracks[2] }
+            function mt(s=session) { return s.tracks[3] }
+            function dt_loop(s=session) { return dt(s) ? dt(s).loops[0] : null }
+            function dwt_loop(s=session) { return dwt(s) ? dwt(s).loops[0] : null }
+            function mt_loop(s=session) { return mt(s) ? mt(s).loops[0] : null }
+            function dt_loop_2(s=session) { return dt(s) ? dt(s).loops[1] : null }
+            function dwt_loop_2(s=session) { return dwt(s) ? dwt(s).loops[1] : null }
+            function mt_loop_2(s=session) { return mt(s) ? mt(s).loops[1] : null }
 
-            function dt_loop_channels() {
-                if (!dt_loop()) return []
-                var r = dt_loop().get_audio_output_channels()
+            function dt_loop_channels(s=session) {
+                if (!dt_loop(s)) return []
+                var r = dt_loop(s).get_audio_output_channels()
                 r.sort((a,b) => a.obj_id.localeCompare(b.obj_id))
                 return r
             }
 
-            function mt_midi_channels() {
-                if (!mt_loop()) return null
-                return mt_loop().get_midi_channels()
+            function mt_midi_channels(s=session) {
+                if (!mt_loop(s)) return null
+                return mt_loop(s).get_midi_channels()
             }
 
-            function dwt_dry_loop_channels() {
-                if (!dwt_loop()) return []
-                var r = dwt_loop().get_audio_channels().filter(c => c.obj_id.match(/.*_dry_.*/))
+            function dwt_dry_loop_channels(s=session) {
+                if (!dwt_loop(s)) return []
+                var r = dwt_loop(s).get_audio_channels().filter(c => c.obj_id.match(/.*_dry_.*/))
                 r.sort((a,b) => a.obj_id.localeCompare(b.obj_id))
                 return r
             }
 
-            function dwt_wet_loop_channels() {
-                if (!dwt_loop()) return []
-                var r = dwt_loop().get_audio_channels().filter(c => c.obj_id.match(/.*_wet_.*/))
+            function dwt_wet_loop_channels(s=session) {
+                if (!dwt_loop(s)) return []
+                var r = dwt_loop(s).get_audio_channels().filter(c => c.obj_id.match(/.*_wet_.*/))
                 r.sort((a,b) => a.obj_id.localeCompare(b.obj_id))
                 return r
             }
@@ -164,7 +170,7 @@ AppRegistries {
                     testcase.wait_updated(session.backend)
                     verify_eq(mt_midi_channels()[0].get_data(), [])
 
-                    file_io.load_midi_to_channel(filename, 48000, mt_midi_channels()[0], null, null)
+                    file_io.load_midi_to_channels(filename, 48000, [mt_midi_channels()[0]], null, null, null)
                     testcase.wait_updated(session.backend)
 
                     // Storing in MIDI files is not sample-accurate but should be quite close
@@ -192,7 +198,7 @@ AppRegistries {
                     testcase.wait_updated(session.backend)
                     verify_eq(mt_midi_channels()[0].get_data(), [])
 
-                    file_io.load_midi_to_channel(filename, 48000, mt_midi_channels()[0], null, null)
+                    file_io.load_midi_to_channels(filename, 48000, [mt_midi_channels()[0]], null, null, null)
                     testcase.wait_updated(session.backend)
 
                     // Storing in MIDI files is not sample-accurate but should be quite close
@@ -259,7 +265,79 @@ AppRegistries {
                     verify_approx(dwt_wet_loop_channels()[1].get_data(), [0.12, 0.11, 0.10, 0.9])
                     verify_eq(mt_midi_channels()[0].get_data(), midichan)
                 },
+
+                "test_save_load_session_audio_and_midi_resampled": () => {
+                    check_backend()
+                    verify(other_session.backend && other_session.backend.initialized, "resampled backend not initialized")
+
+                    let midichan = [
+                        { 'time': 120, 'data': [0x90, 70,  70]  },
+                        { 'time': 180, 'data': [0x80, 60,  60]  }
+                    ]
+                    let midichan_resampled = [
+                        { 'time': 80, 'data': [0x90, 70,  70]  },
+                        { 'time': 120, 'data': [0x80, 60,  60]  }
+                    ]
+
+                    mt_midi_channels()[0].load_data(midichan)
+                    let _data = [0.0, 0.0, 0.0, 0.0,
+                            0.0, 0.0, 0.0, 0.0,
+                            0.0, 0.0, 0.0, 0.0] // 12 samples
+                    dt_loop_channels()[0].load_data(_data) // 12 samples
+                    dt_loop_channels()[1].load_data(_data)
+                    dwt_dry_loop_channels()[0].load_data(_data)
+                    dwt_dry_loop_channels()[1].load_data(_data)
+                    dwt_wet_loop_channels()[0].load_data(_data)
+                    dwt_wet_loop_channels()[1].load_data(_data)
+                    dt_loop().set_length(6)
+                    dt_loop_channels()[0].set_n_preplay_samples(4)
+                    dt_loop_channels()[0].set_start_offset(4)
+                    dt_loop_channels()[1].set_n_preplay_samples(12)
+                    dt_loop_channels()[1].set_start_offset(12)
+                    dwt_loop().set_length(12)
+                    testcase.wait_updated(session.backend)
+
+                    var filename = file_io.generate_temporary_filename() + '.shl'
+                    session.save_session(filename)
+
+                    testcase.wait_session_io_done()
+                    dt_loop().clear()
+                    dwt_loop().clear()
+                    mt_loop().clear()
+                    testcase.wait_updated(session.backend)
+
+                    // Load into the other session, which has 3/4 the sample rate of this one
+                    other_session.load_session(filename, true)
+                    testcase.wait_session_loaded(other_session)
+                    testcase.wait_updated(other_session.backend)
+
+                    verify_true(dt_loop_2(other_session).maybe_composite_loop)
+                    verify_true(dwt_loop_2(other_session).maybe_composite_loop)
+                    verify_eq(dt_loop_2(other_session).maybe_composite_loop.all_loops, new Set([dt_loop(), dwt_loop()]))
+                    verify_eq(dwt_loop_2(other_session).maybe_composite_loop.all_loops, new Set())
+                    verify_eq(dt_loop_channels(other_session)[0].data_length, 8)
+                    verify_eq(dt_loop_channels(other_session)[1].data_length, 8)
+                    verify_eq(dt_loop_channels(other_session)[0].n_preplay_samples, 3)
+                    verify_eq(dt_loop_channels(other_session)[1].n_preplay_samples, 8)
+                    verify_eq(dt_loop_channels(other_session)[0].start_offset, 3)
+                    verify_eq(dt_loop_channels(other_session)[1].start_offset, 8)
+                    verify_eq(dwt_dry_loop_channels(other_session)[0].data_length, 8)
+                    verify_eq(dwt_dry_loop_channels(other_session)[1].data_length, 8)
+                    verify_eq(dwt_wet_loop_channels(other_session)[0].data_length, 8)
+                    verify_eq(dwt_wet_loop_channels(other_session)[1].data_length, 8)
+                    verify_eq(dt_loop(other_session).length, 4)
+                    verify_eq(dwt_loop(other_session).length, 8)
+                    verify_eq(mt_midi_channels(other_session)[0].get_data(), midichan_resampled)
+                },
             })
+        }
+    }
+
+    Session {
+        id: other_session
+        backend_type: ShoopConstants.AudioDriverType.Dummy
+        driver_setting_overrides: {
+            "sample_rate": 32000
         }
     }
 }

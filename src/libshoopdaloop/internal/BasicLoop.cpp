@@ -264,7 +264,7 @@ void BasicLoop::PROC_handle_transition(shoop_loop_mode_t new_state) {
     log_trace();
 
     if (ma_mode != new_state) {
-        log<log_level_debug>("Do transition");
+        log<log_level_debug>("Transition -> {}", (int)new_state);
         bool from_playing_to_playing = is_playing_mode(ma_mode) && is_playing_mode(new_state);
         if (!from_playing_to_playing) {
             set_position(0, false);
@@ -276,7 +276,7 @@ void BasicLoop::PROC_handle_transition(shoop_loop_mode_t new_state) {
         }
         ma_mode = new_state;
         if(ma_mode > LOOP_MODE_INVALID) {
-            throw std::runtime_error ("Invalid mode");
+            throw_error<std::runtime_error>("invalid mode");
         }
         if (ma_mode == LoopMode_Stopped) { ma_position = 0; }
         if (is_playing_mode(ma_mode) &&

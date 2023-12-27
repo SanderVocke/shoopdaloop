@@ -2,11 +2,12 @@ import os
 import tempfile
 import sounddevice as sd
 import soundfile as sf
+import json
 
 from PySide6.QtCore import QObject, Slot
 from .ShoopPyObject import *
 
-from ..gen_click_track import gen_click_track
+from ..gen_click_track import gen_click_track_audio, gen_click_track_midi_smf
 
 def play_wav(filename):
     data, fs = sf.read(filename, dtype='float32')
@@ -26,11 +27,20 @@ class ClickTrackGenerator(ShoopQObject):
         return list(self.clicks.keys())
 
     @Slot(list, int, int, int, result=str)
-    def generate(self, click_names, bpm, n_beats, alt_click_delay_percent):
+    def generate_audio(self, click_names, bpm, n_beats, alt_click_delay_percent):
         click_filenames = [self.clicks[name] for name in click_names]
         out = tempfile.mkstemp()[1]
 
-        gen_click_track(click_filenames, out, bpm, n_beats, alt_click_delay_percent)
+        gen_click_track_audio(click_filenames, out, bpm, n_beats, alt_click_delay_percent)
+        return out
+
+    @Slot(list, list, list, float, int, int, int, result=str)
+    def generate_midi(self, notes, channels, velocities, note_length, bpm, n_beats, alt_click_delay_percent):
+        smf_data = gen_click_track_midi_smf(notes, channels, velocities, note_length, bpm, n_beats, alt_click_delay_percent)
+        out = tempfile.mkstemp(suffix='.smf')[1]
+
+        with open(out, 'w') as f:
+            f.write(json.dumps(smf_data, indent=2))
         return out
 
     @Slot(str)

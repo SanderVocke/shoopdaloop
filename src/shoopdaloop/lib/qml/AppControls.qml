@@ -3,7 +3,10 @@ import QtQuick.Controls 6.3
 import QtQuick.Controls.Material 6.3
 import QtQuick.Dialogs
 
-import '../generated/types.js' as Types
+import ShoopConstants
+
+import '../qml_url_to_filename.js' as UrlToFilename
+import '../delay.js' as Delay
 
 Item {
     id: root
@@ -62,22 +65,40 @@ Item {
                     text: "Settings"
                     onClicked: settings_dialog.open()
                 }
-                ShoopMenuItem {
-                    text: "Debug Inspection"
-                    onClicked: debugwindow.visible = true
+
+                Instantiator {
+                    model : {
+                        return global_args.developer ? [true] : []
+                    }
+                    delegate: Menu {
+                        title: "Developer"
+
+                        ShoopMenuItem {
+                            text: "Inspect Objects"
+                            onClicked: debugwindow.visible = true
+                        }
+
+                        ShoopMenuItem {
+                            text: "Halt UI (10s)"
+                            onClicked: {
+                                Delay.blocking_delay(10000)
+                            }
+                        }
+                    }
+                    onObjectAdded: (index, object) => mainmenu.insertMenu(mainmenu.contentData.length, object)
+                    onObjectRemoved: (index, object) => mainmenu.removeItem(object)
                 }
             }
 
             FileDialog {
                 id: savesessiondialog
                 fileMode: FileDialog.SaveFile
-                options: FileDialog.DontUseNativeDialog
                 acceptLabel: 'Save'
                 nameFilters: ["ShoopDaLoop session files (*.shl)", "All files (*)"]
                 defaultSuffix: 'shl'
                 onAccepted: {
                     close()
-                    var filename = selectedFile.toString().replace('file://', '');
+                    var filename = UrlToFilename.qml_url_to_filename(selectedFile.toString());
                     root.saveSession(filename)
                 }
                 
@@ -86,12 +107,11 @@ Item {
             FileDialog {
                 id: loadsessiondialog
                 fileMode: FileDialog.OpenFile
-                options: FileDialog.DontUseNativeDialog
                 acceptLabel: 'Load'
                 nameFilters: ["ShoopDaLoop session files (*.shl)", "All files (*)"]
                 onAccepted: {
                     close()
-                    var filename = selectedFile.toString().replace('file://', '');
+                    var filename = UrlToFilename.qml_url_to_filename(selectedFile.toString());
                     root.loadSession(filename)
                 }
                 
@@ -114,7 +134,7 @@ Item {
             width: 30
             onClicked: {
                 var loops = registries.objects_registry.select_values(o => o instanceof LoopWidget)
-                loops[0].transition_loops(loops, Types.LoopMode.Stopped, 0, root.sync_active)
+                loops[0].transition_loops(loops, ShoopConstants.LoopMode.Stopped, 0, root.sync_active)
             }
 
             MaterialDesignIcon {

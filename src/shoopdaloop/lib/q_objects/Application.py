@@ -7,6 +7,7 @@ from PySide6.QtQml import QQmlApplicationEngine, QJSValue
 from PySide6.QtGui import QGuiApplication, QIcon
 from PySide6.QtCore import QTimer, QObject, Q_ARG, QMetaObject, Qt, QEvent, Slot, QtMsgType, Signal
 from PySide6.QtQml import QQmlDebuggingEnabler
+from PySide6.QtQuick import QQuickWindow
 
 from .ShoopPyObject import *
 
@@ -24,8 +25,7 @@ from .KeyModifiers import KeyModifiers
 from .ApplicationMetadata import ApplicationMetadata
 
 from ..logging import *
-
-script_dir = os.path.dirname(__file__)
+from ..directories import *
 
 class Application(ShoopQGuiApplication):
     exit_handler_called = Signal()
@@ -44,7 +44,7 @@ class Application(ShoopQGuiApplication):
         self._quitting = False
         
         pkg_version = None
-        with open(script_dir + '/../../version.txt', 'r') as f:
+        with open(installation_dir() + '/version.txt', 'r') as f:
             pkg_version = f.read().strip()
         
         self.setApplicationName('ShoopDaLoop')
@@ -100,11 +100,19 @@ class Application(ShoopQGuiApplication):
                 if len(self.engine.rootObjects()) > 0:
                     self.engine.rootObjects()[0].sceneGraphInitialized.connect(start_nsm)
         
-        self.setWindowIcon(QIcon(os.path.join(script_dir, '..', '..', 'resources', 'icon', 'icon-128.png')))
+        self.setWindowIcon(QIcon(os.path.join(installation_dir(), 'resources', 'icon', 'icon-128.png')))
     
     def unload_qml(self):
         if self.engine:
+            self.logger.debug("Unloading QML.")
             self.engine.collectGarbage()
+            for obj in self.engine.rootObjects():
+                if isinstance(obj, QQuickWindow):
+                    self.logger.debug(f"close on {obj}")
+                    obj.close()
+                else:
+                    self.logger.debug(f"deleteLater on {obj}")
+                    obj.deleteLater()
             self.engine.deleteLater()
             self.wait(10)
             self.engine = None
@@ -112,6 +120,9 @@ class Application(ShoopQGuiApplication):
     
     def load_qml(self, filename, quit_on_quit=True):
         self.engine = QQmlApplicationEngine(parent=self)
+        self.engine.destroyed.connect(lambda: self.logger.debug("QML engine being destroyed."))
+        self.engine.addImportPath(os.path.join(scripts_dir(), 'lib', 'qml'))
+        self.engine.addImportPath(os.path.join(installation_dir(), 'lib', 'qml', 'generated'))
         
         if quit_on_quit:
             self.engine.quit.connect(self.do_quit)
@@ -135,7 +146,7 @@ class Application(ShoopQGuiApplication):
             self.nsm_client.serverSendExitToSelf()
         else:
             self.logger.debug(lambda: "Exiting.")
-            self.really_exit()
+            self.really_exit(retcode)
 
     def really_exit(self, retcode):
         super(Application, self).exit(retcode)
@@ -167,7 +178,7 @@ class Application(ShoopQGuiApplication):
             self.nsm_client.serverSendExitToSelf()
         else:
             self.logger.info(lambda: "Exiting.")
-            self.really_exit()
+            self.really_exit(retcode)
 
     def really_exit(self, retcode):
         super(Application, self).exit(retcode)
@@ -255,12 +266,11 @@ class Application(ShoopQGuiApplication):
         self.logger.debug("Quit requested")
         if not self._quitting:
             self._quitting = True
-            terminate_all_backends()
             if self.engine:
                 self.engine.destroyed.connect(self.quit)
-                self.engine.collectGarbage()
-                self.engine.deleteLater()
+                self.unload_qml()
             else:
+                terminate_all_backends()
                 self.quit()
     
         

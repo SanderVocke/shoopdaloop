@@ -3,20 +3,20 @@ import QtTest 1.0
 import ShoopDaLoop.PythonBackend
 
 import './testDeepEqual.js' as TestDeepEqual
-import '../../generated/types.js' as Types
+import ShoopConstants
 import '../../generate_session.js' as GenerateSession
 import './testfilename.js' as TestFilename
 import '..'
 
 // Note: regression test for https://github.com/SanderVocke/shoopdaloop/issues/77
 
-AppRegistries {
+ShoopTestFile {
     Session {
         id: session
 
         anchors.fill: parent
         initial_descriptor: {
-            let base = GenerateSession.generate_default_session(app_metadata.version_string, 1)
+            let base = GenerateSession.generate_default_session(app_metadata.version_string, null, 1)
             let direct_track = GenerateSession.generate_default_track(
                 "dt",
                 1,
@@ -56,6 +56,8 @@ AppRegistries {
                 "test_channels": () => {
                     check_backend()
                     let ori = session.initial_descriptor
+                    // sample_rate is not there in the beginning, but will be after save+load
+                    ori['sample_rate'] = 48000
 
                     verify_true(loop())
                     verify_true('channels' in session.initial_descriptor.tracks[0].loops[0])

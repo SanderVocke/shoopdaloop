@@ -24,6 +24,7 @@ from shoopdaloop.lib.backend_wrappers import AudioDriverType
 from shoopdaloop.lib.q_objects.QoverageCollectorFactory import QoverageCollectorFactory
 from shoopdaloop.lib.q_objects.Application import Application
 from shoopdaloop.lib.q_objects.TestRunner import TestRunner
+from shoopdaloop.lib.directories import *
 
 import argparse
 import re
@@ -47,7 +48,7 @@ global_args = {
     'test_grab_screens': None,
 }
 
-test_files = glob.glob(script_dir + '/**/tst_*.qml', recursive=True)
+test_files = glob.glob(scripts_dir() + '/**/tst_*.qml', recursive=True)
 if len(args.test_file_glob_pattern):
     test_files = []
     for pattern in args.test_file_glob_pattern:
@@ -82,7 +83,7 @@ for file in test_files:
     print()
     logger.info('===== Test file: {} ====='.format(filename))
     
-    app.load_qml(file, False)    
+    app.reload_qml(file, False)    
     
     while not runner.done:
         app.processEvents()
@@ -199,9 +200,11 @@ if args.junit_xml:
     print("Writing JUnit XML to {}".format(args.junit_xml))
     root.writexml(open(args.junit_xml, 'w'), indent='  ', addindent='  ', newl='\n')
 
+app.unload_qml()
+app.wait(50)
+app.do_quit()
+app.exit(final_result)
 
-
-app.quit()
 if args.list:
     exit(0)
 

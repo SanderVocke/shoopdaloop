@@ -5,15 +5,19 @@ import tempfile
 import json
 import sys
 import weakref
+import traceback
+import json
+from threading import Lock
 
-from PySide6.QtCore import Qt, Signal, Property, Slot, QTimer
+from PySide6.QtCore import Qt, Signal, Property, Slot, QTimer, QThread, QMetaObject, Q_ARG, QEvent
+from PySide6.QtQml import QJSValue
 
 from .ShoopPyObject import *
 
 from ..backend_wrappers import *
 from ..backend_wrappers import open_audio_port as backend_open_audio_port, open_midi_port as backend_open_midi_port
 from ..findChildItems import findChildItems
-from ..logging import Logger
+from .Logger import Logger
 
 # Wraps the back-end session + driver in a single object.
 class Backend(ShoopQQuickItem):
@@ -21,17 +25,22 @@ class Backend(ShoopQQuickItem):
         super(Backend, self).__init__(parent)
         self._update_interval_ms = 50
         self._timer = None
+        self._timer_thread = QThread(self)
+        self._timer_thread.start()
         self._initialized = False
         self._client_name_hint = None
         self._driver_type = None
         self._backend_session_obj = None
         self._backend_driver_obj = None
         self._backend_child_objects = set()
+        self._driver_setting_overrides = None
         self._xruns = 0
         self._dsp_load = 0.0
         self._actual_driver_type = None
         self.destroyed.connect(self.close)
-        self.logger = Logger('Frontend.Backend')
+        self.logger = Logger()
+        self.logger.name = "Frontend.Backend"
+        self.lock = threading.Lock()
     
     update = Signal()
     updated = Signal()
@@ -63,6 +72,7 @@ class Backend(ShoopQQuickItem):
     def actual_backend_type(self, n):
         if self._actual_driver_type != n:
             self._actual_driver_type = n
+            self.logger.instanceIdentifier = AudioDriverType(n).name
             self.actualBackendTypeChanged.emit(n)
     
     clientNameHintChanged = Signal(str)
@@ -108,20 +118,38 @@ class Backend(ShoopQQuickItem):
             self._dsp_load = n
             self.dspLoadChanged.emit(n)
     
+    driverSettingOverridesChanged = Signal('QVariant')
+    @Property('QVariant', notify=driverSettingOverridesChanged)
+    def driver_setting_overrides(self):
+        return self._driver_setting_overrides
+    @driver_setting_overrides.setter
+    def driver_setting_overrides(self, n):
+        if isinstance(n, QJSValue):
+            n = n.toVariant()
+        if n != self._driver_setting_overrides:
+            if self._initialized:
+                self.logger.throw_error("Back-end driver settings cannot be changed once driver is started.")
+            self._driver_setting_overrides = n
+            self.driverSettingOverridesChanged.emit(n)
+            self.maybe_init()
+    
     ###########
     ## SLOTS
     ###########
 
     @Slot('QVariant')
     def registerBackendObject(self, obj):
-        self._backend_child_objects.add(weakref.ref(obj))
+        with self.lock:
+            self._backend_child_objects.add(weakref.ref(obj))
     
     @Slot('QVariant')
     def unregisterBackendObject(self, obj):
-        self._backend_child_objects.remove(weakref.ref(obj))
+        with self.lock:
+            self._backend_child_objects.remove(weakref.ref(obj))
 
     @Slot()
     def doUpdate(self):
+        self.logger.trace(lambda: 'update')
         if not self.initialized:
             return
         driver_state = self._backend_driver_obj.get_state()
@@ -130,14 +158,15 @@ class Backend(ShoopQQuickItem):
         self.actual_backend_type = self._driver_type.value
         
         toRemove = []
-        for obj in self._backend_child_objects:
-            _obj = obj()
-            if not _obj:
-                toRemove.append(obj)
-            else:
-                _obj.update()
-        for r in toRemove:
-            self._backend_child_objects.remove(r)
+        with self.lock:
+            for obj in self._backend_child_objects:
+                _obj = obj()
+                if not _obj:
+                    toRemove.append(obj)
+                else:
+                    _obj.update()
+            for r in toRemove:
+                self._backend_child_objects.remove(r)
         self.update.emit()
         self.updated.emit()
     
@@ -151,6 +180,16 @@ class Backend(ShoopQQuickItem):
 
     @Slot()
     def close(self):
+        self.logger.debug(lambda: "Closing")
+        QMetaObject.invokeMethod(
+            self._timer,
+            'stop'
+        )
+        while self._timer.isActive():
+            time.sleep(0.005)
+        self._timer_thread.exit()
+        while self._timer_thread.isRunning():
+            time.sleep(0.005)
         if self._initialized:
             self._backend_session_obj.destroy()
             self._backend_driver_obj.destroy()
@@ -191,8 +230,14 @@ class Backend(ShoopQQuickItem):
     
     @Slot()
     def maybe_init(self):
-        if not self._initialized and self._client_name_hint != None and self._driver_type != None:
+        if not self._initialized and \
+           self._client_name_hint != None and \
+           self._driver_type != None and \
+           self._driver_setting_overrides != None:
+            self.logger.debug(lambda: "Initializing")
             self.init()
+        else:
+            self.logger.debug(lambda: "Not initializing yet")
     
     @Slot(result='QVariant')
     def get_profiling_report(self):
@@ -230,7 +275,7 @@ class Backend(ShoopQQuickItem):
     ################
 
     def init(self):
-        self.logger.debug(lambda: "Initializing with type {}".format(self._driver_type))
+        self.logger.debug(lambda: "Initializing with type {}, settings {}".format(self._driver_type, json.dumps(self._driver_setting_overrides)))
         if self._initialized:
             self.logger.throw_error("May not initialize more than one back-end at a time.")
         self._backend_session_obj = BackendSession.create()
@@ -242,16 +287,19 @@ class Backend(ShoopQQuickItem):
             self.logger.throw_error("Failed to initialize back-end driver.")
 
         if self._driver_type == AudioDriverType.Dummy:
+            sample_rate = (self._driver_setting_overrides['sample_rate'] if 'sample_rate' in self._driver_setting_overrides else 48000)
+            buffer_size = (self._driver_setting_overrides['buffer_size'] if 'buffer_size' in self._driver_setting_overrides else 256)
             settings = DummyAudioDriverSettings(
                 client_name=self._client_name_hint,
-                sample_rate=48000,
-                buffer_size=256
+                sample_rate=sample_rate,
+                buffer_size=buffer_size
             )
             self._backend_driver_obj.start_dummy(settings)
         elif self._driver_type in [AudioDriverType.Jack, AudioDriverType.JackTest]:
+            maybe_server_name = (self._driver_setting_overrides['jack_server'] if 'jack_server' in self._driver_setting_overrides else '')
             settings = JackAudioDriverSettings(
                 client_name_hint = self._client_name_hint,
-                maybe_server_name = ""
+                maybe_server_name = maybe_server_name
             )
             self._backend_driver_obj.start_jack(settings)
         else:
@@ -269,11 +317,14 @@ class Backend(ShoopQQuickItem):
         self.init_timer()
     
     def init_timer(self):
-        if self._timer:
-            self._timer.active = False
-            self._timer = None
-        self._timer = QTimer(self)
-        self._timer.setSingleShot(False)
-        self._timer.timeout.connect(self.doUpdate)
-        self._timer.start(self._update_interval_ms)
+        if not self._timer:
+            self._timer = QTimer()
+            self._timer.setSingleShot(False)
+            self._timer.moveToThread(self._timer_thread)
+            self._timer.timeout.connect(self.doUpdate, Qt.DirectConnection)
+        QMetaObject.invokeMethod(
+            self._timer,
+            'start',
+            Q_ARG(int, self._update_interval_ms)
+        )
     

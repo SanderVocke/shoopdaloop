@@ -1,4 +1,4 @@
-from PySide6.QtQml import qmlRegisterType, qmlTypeId, QQmlComponent
+from PySide6.QtQml import qmlRegisterType, qmlRegisterSingletonType, qmlTypeId, QQmlComponent
 from PySide6.QtCore import QUrl
 from PySide6.QtQuick import QQuickItem
 
@@ -10,8 +10,7 @@ import glob
 import re
 import importlib
 
-script_dir = os.path.dirname(__file__)
-sys.path.append(script_dir + '/..')
+from .directories import *
 
 from .q_objects.AudioPort import AudioPort
 from .q_objects.MidiPort import MidiPort
@@ -38,19 +37,27 @@ from .q_objects.MidiControlPort import MidiControlPort
 from .q_objects.SettingsIO import SettingsIO
 from .q_objects.TestScreenGrabber import TestScreenGrabber
 from .q_objects.RenderAudioWaveform import RenderAudioWaveform
+from .q_objects.RenderMidiSequence import RenderMidiSequence
 from .q_objects.TestCase import TestCase
+from .q_objects.OSUtils import OSUtils
+from .q_objects.DummyProcessHelper import DummyProcessHelper
+from .q_objects.CompositeLoop import CompositeLoop
 
 from .logging import Logger as BareLogger
+from .js_constants import create_js_constants
 
 import time
 
 # Read version from the version.txt file (will be present when packaged)
 pkg_version = None
-with open(script_dir + '/../version.txt', 'r') as f:
+with open(installation_dir() + '/version.txt', 'r') as f:
     pkg_version = f.read().strip()
 
 def register_qml_class(t, name):
     qmlRegisterType(t, "ShoopDaLoop.Python" + name, 1, 0, "Python" + name)
+
+def create_constants_instance(engine):
+    return create_js_constants(engine)
 
 def register_shoopdaloop_qml_classes():
     # Register Python classes
@@ -79,7 +86,12 @@ def register_shoopdaloop_qml_classes():
     register_qml_class(SettingsIO, 'SettingsIO')
     register_qml_class(TestScreenGrabber, 'TestScreenGrabber')
     register_qml_class(RenderAudioWaveform, 'RenderAudioWaveform')
+    register_qml_class(RenderMidiSequence, 'RenderMidiSequence')
     register_qml_class(TestCase, 'TestCase')
+    register_qml_class(DummyProcessHelper, 'DummyProcessHelper')
+    register_qml_class(CompositeLoop, 'CompositeLoop')
+
+    qmlRegisterSingletonType("ShoopConstants", 1, 0, "ShoopConstants", create_constants_instance)
 
 def create_and_populate_root_context(engine, global_args, additional_items={}):
     def create_component(path):
@@ -90,8 +102,12 @@ def create_and_populate_root_context(engine, global_args, additional_items={}):
             raise Exception('Failed to load {}: {}'.format(path, str(comp.errorString())))
         return comp
     
+    # Constants definition for Javascript side
+    constants = create_js_constants(engine)
+    engine.registerModule("shoop_js_constants", constants)
+    
     # QML instantiations
-    registries_comp = create_component(script_dir + '/qml/AppRegistries.qml')
+    registries_comp = create_component(scripts_dir() + '/lib/qml/AppRegistries.qml')
     registries = registries_comp.create()
 
     items = {
@@ -107,6 +123,7 @@ def create_and_populate_root_context(engine, global_args, additional_items={}):
         'settings_io': SettingsIO(parent=engine),
         'registries': registries,
         'screen_grabber': TestScreenGrabber(weak_engine=weakref.ref(engine), parent=engine),
+        'os_utils': OSUtils(parent=engine),
     }
 
     for key, item in additional_items.items():

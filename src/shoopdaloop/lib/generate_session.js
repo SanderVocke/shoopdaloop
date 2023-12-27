@@ -80,8 +80,8 @@ function generate_scripts(scripts, active_script_id) {
     }
 }
 
-function generate_session(app_version, tracks, ports, scripts, fx_chain_states) {
-    return {
+function generate_session(app_version, sample_rate, tracks, ports, scripts, fx_chain_states) {
+    var rval = {
         'schema': 'session.1',
         'app_version': app_version,
         'tracks': tracks,
@@ -89,6 +89,8 @@ function generate_session(app_version, tracks, ports, scripts, fx_chain_states) 
         'scripts': scripts,
         'fx_chain_states': fx_chain_states
     }
+    if (sample_rate) { rval["sample_rate"] = sample_rate }
+    return rval
 }
 
 function generate_script(id, name, length_cycles, elements) {
@@ -336,11 +338,33 @@ function generate_default_track(
     return track;
 }
 
-function generate_default_session(app_version, n_loops_in_master_track=1, n_audio_channels_in_master_track=1) {
+function generate_default_session(app_version, sample_rate=null, n_loops_in_master_track=1, n_audio_channels_in_master_track=1) {
     var master_track = generate_default_track("Master", n_loops_in_master_track, 'master', true, 'master_loop', 0, 0, n_audio_channels_in_master_track, false, false, false, undefined)
     master_track.loops[0].name = "master"
-    var session = generate_session(app_version, [master_track], [], [],
+    var session = generate_session(app_version, sample_rate, [master_track], [], [],
         [], []);
 
     return session;    
+}
+
+function convert_session_descriptor_sample_rate(descriptor, from, to) {
+    var rval = descriptor
+    let convert = to / from
+    rval['sample_rate'] = to
+    rval['tracks'].forEach(t => {
+        t.loops.forEach(l => {
+            // Note: using ceil for length and data length fields ensures that channels/loops which are exactly
+            // N x (master loop length) will never be rounded to be more than N x (master loop length) after all
+            // conversions (assuming N > 1). Otherwise, loops may wait an entire extra master loop cycle because
+            // they are 1 sample longer.
+            l.length = Math.ceil(convert * l.length)
+            l.channels.forEach(c => {
+                c.data_length = Math.ceil(convert * c.data_length)
+                c.start_offset = Math.round(convert * c.start_offset)
+                c.n_preplay_samples = Math.round(convert * c.n_preplay_samples)
+            })
+        })
+    })
+
+    return rval
 }

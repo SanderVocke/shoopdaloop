@@ -165,26 +165,8 @@ set(PATH_SEP ":")
 if (WIN32)
   set(PATH_SEP $<SEMICOLON>)
 endif()
-set(OUR_PYTHONPATH "$ENV{PYTHONPATH}${PATH_SEP}${CMAKE_CURRENT_BINARY_DIR}${PATH_SEP}${PY_BUILD_CMAKE_MODULE_NAME}/..${PATH_SEP}${CMAKE_SOURCE_DIR}/shoopdaloop")
-set(GENERATED_TYPES_JS ${CMAKE_CURRENT_BINARY_DIR}/types.js)
-add_custom_command(
-  OUTPUT ${GENERATED_TYPES_JS}
-  COMMAND ${RUN_CMD_PREFIX} ${CMAKE_COMMAND} -E env ASAN_OPTIONS=detect_leaks=0 PYTHONPATH="${OUR_PYTHONPATH}" "${PYTHON_CMD}" ${CMAKE_SOURCE_DIR}/codegen/gen_js_enums.py "${GENERATED_TYPES_JS}"
-  COMMENT "Generating Javascript types."
-  DEPENDS c_bindings shoopdaloop
-  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/libshoopdaloop
-  )
-add_custom_target(
-  javascript_types
-  ALL
-  DEPENDS ${GENERATED_TYPES_JS}
-  )
 
 install(FILES ${GENERATED_BINDINGS_PY}
     EXCLUDE_FROM_ALL
     COMPONENT package_install
     DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME})
-install(FILES ${GENERATED_TYPES_JS}
-    EXCLUDE_FROM_ALL
-    COMPONENT package_install
-    DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME}/lib/generated)

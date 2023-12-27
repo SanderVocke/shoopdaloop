@@ -91,4 +91,4 @@ abi3_minimum_cpython_version = 38
 generator = "Ninja"
 
 [tool.py-build-cmake.editable]
-mode = "symlink"
+mode = "wrapper"

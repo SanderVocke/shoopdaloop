@@ -3,18 +3,18 @@ import QtTest 1.0
 import ShoopDaLoop.PythonBackend
 
 import './testDeepEqual.js' as TestDeepEqual
-import '../../generated/types.js' as Types
+import ShoopConstants
 import '../../generate_session.js' as GenerateSession
 import './testfilename.js' as TestFilename
 import '..'
 
-AppRegistries {
+ShoopTestFile {
     Session {
         id: session
 
         anchors.fill: parent
         initial_descriptor: {
-            let base = GenerateSession.generate_default_session(app_metadata.version_string, 1)
+            let base = GenerateSession.generate_default_session(app_metadata.version_string, null, 1)
             let direct_track = GenerateSession.generate_default_track(
                 "dt",
                 1,

@@ -4,7 +4,7 @@ import QtQuick.Controls.Material 6.3
 import QtQuick.Window
 import ShoopDaLoop.PythonLogger
 
-import '../generated/types.js' as Types
+import ShoopConstants
 import "../generate_session.js" as GenerateSession
 
 // The track widget displays the state of a track (collection of
@@ -46,10 +46,10 @@ Item {
         if (maybe_fx_chain) { rval['fx_chain'] = maybe_fx_chain.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) }
         return rval
     }
-    function queue_load_tasks(data_files_dir, add_tasks_to) {
+    function queue_load_tasks(data_files_dir, from_sample_rate, to_sample_rate, add_tasks_to) {
         var all_loops = Array.from(Array(loops.length).keys()).map((i) => loops[i])
-        all_loops.forEach((loop) => loop.queue_load_tasks(data_files_dir, add_tasks_to))
-        ports.forEach((port) => port.queue_load_tasks(data_files_dir, add_tasks_to))
+        all_loops.forEach((loop) => loop.queue_load_tasks(data_files_dir, from_sample_rate, to_sample_rate, add_tasks_to))
+        ports.forEach((port) => port.queue_load_tasks(data_files_dir, from_sample_rate, to_sample_rate, add_tasks_to))
     }
 
     function qml_close() {

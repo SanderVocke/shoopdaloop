@@ -3,10 +3,11 @@ import QtQuick.Controls 6.3
 import QtQuick.Controls.Material 6.3
 import QtQuick.Dialogs
 import ShoopDaLoop.PythonLogger
+import ShoopConstants
 
-import '../generated/types.js' as Types
 import '../mode_helpers.js' as ModeHelpers
 import '../stereo.js' as Stereo
+import '../qml_url_to_filename.js' as UrlToFilename
 
 // The loop widget allows manipulating a single loop within a track.
 Item {
@@ -56,6 +57,8 @@ Item {
     }
     readonly property bool has_audio: (initial_descriptor && !initial_descriptor.composition && initial_descriptor.channels) ?
         (initial_descriptor.channels.filter(c => c.type == "audio").length > 0) : false
+    readonly property bool has_midi: (initial_descriptor && !initial_descriptor.composition && initial_descriptor.channels) ?
+        (initial_descriptor.channels.filter(c => c.type == "midi").length > 0) : false
 
     readonly property string object_schema : 'loop.1'
     SchemaCheck {
@@ -82,7 +85,7 @@ Item {
         }
         return rval
     }
-    function queue_load_tasks(data_files_dir, add_tasks_to) {
+    function queue_load_tasks(data_files_dir, from_sample_rate, to_sample_rate, add_tasks_to) {
         var have_data_files = initial_descriptor.channels ? initial_descriptor.channels.map(c => {
             let r = ('data_file' in c)
             if (r) { root.logger.debug(() => (`${obj_id} has data file for channel ${c.obj_id}`)) }
@@ -97,7 +100,7 @@ Item {
         } else if (have_any_data) {
             root.logger.debug(() => (`${obj_id} has data files, queueing load tasks.`))
             create_backend_loop()
-            channels.forEach((c) => c.queue_load_tasks(data_files_dir, add_tasks_to))
+            channels.forEach((c) => c.queue_load_tasks(data_files_dir, from_sample_rate, to_sample_rate, add_tasks_to))
         } else {
             root.logger.debug(() => (`${obj_id} has no data files, not queueing load tasks.`))
         }
@@ -256,8 +259,8 @@ Item {
         })
         var _other_loops = _all_track_loops.filter(l => !_selected_loops.includes(l))
         // Do the transitions
-        transition_loops(_other_loops, Types.LoopMode.Stopped, use_delay, root.sync_active)
-        transition_loops(_selected_loops, Types.LoopMode.Playing, use_delay, root.sync_active)
+        transition_loops(_other_loops, ShoopConstants.LoopMode.Stopped, use_delay, root.sync_active)
+        transition_loops(_selected_loops, ShoopConstants.LoopMode.Playing, use_delay, root.sync_active)
     }
     function clear(length=0, emit=true) {
         if(maybe_loop) {
@@ -377,8 +380,8 @@ Item {
     }
 
     function record_n(delay_start, n) {
-        root.transition(Types.LoopMode.Recording, delay_start, true)
-        root.transition(Types.LoopMode.Playing, delay_start + n, true)
+        root.transition(ShoopConstants.LoopMode.Recording, delay_start, true)
+        root.transition(ShoopConstants.LoopMode.Playing, delay_start + n, true)
     }
 
     function record_with_targeted() {
@@ -401,8 +404,8 @@ Item {
 
     readonly property int length : maybe_loop ? maybe_loop.length : 0
     readonly property int position : maybe_loop ? maybe_loop.position : 0
-    readonly property int mode : maybe_loop ? maybe_loop.mode : Types.LoopMode.Stopped
-    readonly property int next_mode : maybe_loop ? maybe_loop.next_mode : Types.LoopMode.Stopped
+    readonly property int mode : maybe_loop ? maybe_loop.mode : ShoopConstants.LoopMode.Stopped
+    readonly property int next_mode : maybe_loop ? maybe_loop.next_mode : ShoopConstants.LoopMode.Stopped
     readonly property int next_transition_delay : maybe_loop ? maybe_loop.next_transition_delay : -1
     
     Component {
@@ -410,19 +413,18 @@ Item {
         BackendLoopWithChannels {}
     }
     function create_backend_loop() {
-        if (maybe_loop) {
-            return
-        }
-        if (backend_loop_factory.status == Component.Error) {
-            throw new Error("BackendLoopWithChannels: Failed to load factory: " + backend_loop_factory.errorString())
-        } else if (backend_loop_factory.status != Component.Ready) {
-            throw new Error("BackendLoopWithChannels: Factory not ready: " + backend_loop_factory.status.toString())
-        } else {
-            maybe_loop = backend_loop_factory.createObject(root, {
-                'initial_descriptor': root.initial_descriptor,
-                'sync_source': (!is_master && root.master_loop && root.master_loop.maybe_backend_loop) ? root.master_loop.maybe_backend_loop : null,
-            })
-            maybe_loop.onCycled.connect(root.cycled)
+        if (!maybe_loop) {
+            if (backend_loop_factory.status == Component.Error) {
+                throw new Error("BackendLoopWithChannels: Failed to load factory: " + backend_loop_factory.errorString())
+            } else if (backend_loop_factory.status != Component.Ready) {
+                throw new Error("BackendLoopWithChannels: Factory not ready: " + backend_loop_factory.status.toString())
+            } else {
+                maybe_loop = backend_loop_factory.createObject(root, {
+                    'initial_descriptor': root.initial_descriptor,
+                    'sync_source': (!is_master && root.master_loop && root.master_loop.maybe_backend_loop) ? root.master_loop.maybe_backend_loop : null,
+                })
+                maybe_loop.onCycled.connect(root.cycled)
+            }
         }
     }
 
@@ -455,6 +457,7 @@ Item {
         } else {
             maybe_loop = composite_loop_factory.createObject(root, {
                 initial_composition_descriptor: composition,
+                obj_id: root.obj_id,
                 widget: root
             })
             maybe_loop.onCycled.connect(root.cycled)
@@ -693,7 +696,7 @@ Item {
 
                 LoopStateIcon {
                     id: loopstateicon
-                    mode: statusrect.loop ? statusrect.loop.mode : Types.LoopMode.Unknown
+                    mode: statusrect.loop ? statusrect.loop.mode : ShoopConstants.LoopMode.Unknown
                     show_timer_instead: parent.show_next_mode
                     visible: !parent.show_next_mode || (parent.show_next_mode && statusrect.loop.next_transition_delay == 0)
                     connected: true
@@ -732,7 +735,7 @@ Item {
                 LoopStateIcon {
                     id: loopnextstateicon
                     mode: parent.show_next_mode ?
-                        statusrect.loop.next_mode : Types.LoopMode.Unknown
+                        statusrect.loop.next_mode : ShoopConstants.LoopMode.Unknown
                     show_timer_instead: false
                     connected: true
                     size: iconitem.height * 0.65
@@ -790,7 +793,7 @@ Item {
                         text: root.delay_for_targeted != undefined ? ">" : ""
                     }
 
-                    onClicked: root.transition(Types.LoopMode.Playing, root.use_delay, root.sync_active)
+                    onClicked: root.transition(ShoopConstants.LoopMode.Playing, root.use_delay, root.sync_active)
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
@@ -871,7 +874,7 @@ Item {
                                         text_color: Material.foreground
                                         text: root.delay_for_targeted != undefined ? ">" : ""
                                     }
-                                    onClicked: root.transition(Types.LoopMode.PlayingDryThroughWet, root.use_delay, root.sync_active)
+                                    onClicked: root.transition(ShoopConstants.LoopMode.PlayingDryThroughWet, root.use_delay, root.sync_active)
 
                                     ToolTip.delay: 1000
                                     ToolTip.timeout: 5000
@@ -896,7 +899,7 @@ Item {
                         text: root.delay_for_targeted != undefined ? ">" : ""
                     }
 
-                    onClicked: root.transition(Types.LoopMode.Recording, root.use_delay, root.sync_active)
+                    onClicked: root.transition(ShoopConstants.LoopMode.Recording, root.use_delay, root.sync_active)
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
@@ -1027,7 +1030,7 @@ Item {
                                                 root.use_delay : // delay to other
                                                 root.n_multiples_of_master_length - root.current_cycle - 1 // delay to self
                                         var prev_mode = statusrect.loop.mode
-                                        root.transition(Types.LoopMode.RecordingDryIntoWet, delay, true)
+                                        root.transition(ShoopConstants.LoopMode.RecordingDryIntoWet, delay, true)
                                         statusrect.loop.transition(prev_mode, delay + n, true)
                                     }
 
@@ -1054,7 +1057,7 @@ Item {
                         text: root.delay_for_targeted != undefined ? ">" : ""
                     }
 
-                    onClicked: root.transition(Types.LoopMode.Stopped, root.use_delay, root.sync_active)
+                    onClicked: root.transition(ShoopConstants.LoopMode.Stopped, root.use_delay, root.sync_active)
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
@@ -1213,13 +1216,13 @@ Item {
                 }
 
                 switch(loopprogressrect.loop.mode) {
-                case Types.LoopMode.Playing:
+                case ShoopConstants.LoopMode.Playing:
                     return '#004400';
-                case Types.LoopMode.PlayingLiveFX:
+                case ShoopConstants.LoopMode.PlayingLiveFX:
                     return '#333300';
-                case Types.LoopMode.Recording:
+                case ShoopConstants.LoopMode.Recording:
                     return '#660000';
-                case Types.LoopMode.RecordingFX:
+                case ShoopConstants.LoopMode.RecordingFX:
                     return '#663300';
                 default:
                     return default_color;
@@ -1284,13 +1287,13 @@ Item {
                 }
 
                 switch(lsicon.mode) {
-                case Types.LoopMode.Playing:
-                case Types.LoopMode.PlayingDryThroughWet:
+                case ShoopConstants.LoopMode.Playing:
+                case ShoopConstants.LoopMode.PlayingDryThroughWet:
                     return lsicon.muted ? 'volume-mute' : 'play'
-                case Types.LoopMode.Recording:
-                case Types.LoopMode.RecordingDryIntoWet:
+                case ShoopConstants.LoopMode.Recording:
+                case ShoopConstants.LoopMode.RecordingDryIntoWet:
                     return 'record-rec'
-                case Types.LoopMode.Stopped:
+                case ShoopConstants.LoopMode.Stopped:
                     return 'stop'
                 default:
                     return 'help-circle'
@@ -1305,12 +1308,12 @@ Item {
                     return Material.foreground
                 }
                 switch(lsicon.mode) {
-                case Types.LoopMode.Playing:
+                case ShoopConstants.LoopMode.Playing:
                     return '#00AA00'
-                case Types.LoopMode.Recording:
+                case ShoopConstants.LoopMode.Recording:
                     return 'red'
-                case Types.LoopMode.RecordingDryIntoWet:
-                case Types.LoopMode.PlayingDryThroughWet:
+                case ShoopConstants.LoopMode.RecordingDryIntoWet:
+                case ShoopConstants.LoopMode.PlayingDryThroughWet:
                     return 'orange'
                 default:
                     return 'grey'
@@ -1323,8 +1326,8 @@ Item {
                     return ''
                 }
                 switch(lsicon.mode) {
-                case Types.LoopMode.RecordingDryIntoWet:
-                case Types.LoopMode.PlayingDryThroughWet:
+                case ShoopConstants.LoopMode.RecordingDryIntoWet:
+                case ShoopConstants.LoopMode.PlayingDryThroughWet:
                     return 'FX'
                 default:
                     return ''
@@ -1362,13 +1365,23 @@ Item {
             x: (parent.width-width) / 2
             y: (parent.height-height) / 2
 
-            onAcceptedClickTrack: (filename) => {
-                                    loadoptionsdialog.filename = filename
-                                    close()
-                                    root.create_backend_loop()
-                                    loadoptionsdialog.update()
-                                    loadoptionsdialog.open()
-                                  }
+            audio_enabled: root.has_audio
+            midi_enabled: root.has_midi
+
+            onAcceptedClickTrack: (kind, filename) => {
+                if (kind == 'audio') {
+                    loadoptionsdialog.filename = filename
+                    close()
+                    root.create_backend_loop()
+                    loadoptionsdialog.update()
+                    loadoptionsdialog.open()
+                } else if (kind == 'midi') {
+                    midiloadoptionsdialog.filename = filename
+                    close()
+                    root.create_backend_loop()
+                    midiloadoptionsdialog.open()
+                }
+            }
         }
 
         Menu {
@@ -1407,26 +1420,26 @@ Item {
             }
             MenuSeparator {}
             ShoopMenuItem {
-                text: "Loop details window"
+                text: "Details"
                 onClicked: () => { detailswindow.visible = true }
             }
             ShoopMenuItem {
-               text: "Generate click loop..."
+               text: "Click loop..."
                onClicked: () => clicktrackdialog.open()
             }
             ShoopMenuItem {
                 text: "Save audio..."
                 onClicked: presavedialog.open()
-                enabled: menu.n_audio_channels > 0
+                shown: menu.n_audio_channels > 0
             }
             ShoopMenuItem {
                 text: "Load audio..."
                 onClicked: loaddialog.open()
-                enabled: menu.n_audio_channels > 0
+                shown: menu.n_audio_channels > 0
             }
             ShoopMenuItem {
                 text: "Load MIDI..."
-                enabled: menu.n_midi_channels > 0
+                shown: menu.n_midi_channels > 0
                 onClicked: {
                     var chans = root.midi_channels
                     if (chans.length == 0) { throw new Error("No MIDI channels to load"); }
@@ -1437,7 +1450,7 @@ Item {
             }
             ShoopMenuItem {
                 text: "Save MIDI..."
-                enabled: menu.n_midi_channels > 0
+                shown: menu.n_midi_channels > 0
                 onClicked: {
                     var chans = root.midi_channels
                     if (chans.length == 0) { throw new Error("No MIDI channels to save"); }
@@ -1447,7 +1460,8 @@ Item {
                 }
             }
             ShoopMenuItem {
-                text: "Push Master Loop Length"
+                text: "Push Length To Master"
+                shown: !root.is_master
                 onClicked: {
                     if (master_loop) { master_loop.set_length(root.length) }
                 }
@@ -1471,8 +1485,8 @@ Item {
                         : undefined
                 }
 
-                text: "Restore Recording FX State"
-                enabled: cached_fx_state ? true : false
+                text: "Restore FX State"
+                shown: cached_fx_state ? true : false
                 onClicked: root.track_widget.maybe_fx_chain.restore_state(cached_fx_state.internal_state)
             }
         }
@@ -1511,9 +1525,9 @@ Item {
                         valueRole: "value"
                         model: [
                             { value: (chan) => true, text: "All" },
-                            { value: (chan) => chan.mode == Types.ChannelMode.Direct, text: "Regular" },
-                            { value: (chan) => chan.mode == Types.ChannelMode.Dry, text: "Dry" },
-                            { value: (chan) => chan.mode == Types.ChannelMode.Wet, text: "Wet" }
+                            { value: (chan) => chan.mode == ShoopConstants.ChannelMode.Direct, text: "Regular" },
+                            { value: (chan) => chan.mode == ShoopConstants.ChannelMode.Dry, text: "Dry" },
+                            { value: (chan) => chan.mode == ShoopConstants.ChannelMode.Wet, text: "Wet" }
                         ]
                         Component.onCompleted: presavedialog.update()
                         onActivated: presavedialog.update()
@@ -1539,7 +1553,6 @@ Item {
         FileDialog {
             id: savedialog
             fileMode: FileDialog.SaveFile
-            options: FileDialog.DontUseNativeDialog
             acceptLabel: 'Save'
             nameFilters: Object.entries(file_io.get_soundfile_formats()).map((e) => {
                 var extension = e[0]
@@ -1555,7 +1568,7 @@ Item {
                 close()
                 registries.state_registry.save_action_started()
                 try {
-                    var filename = selectedFile.toString().replace('file://', '')
+                    var filename = UrlToFilename.qml_url_to_filename(selectedFile.toString());
                     var samplerate = root.maybe_backend_loop.backend.get_sample_rate()
                     var task = file_io.save_channels_to_soundfile_async(filename, samplerate, channels)
                     task.when_finished(() => registries.state_registry.save_action_finished())
@@ -1570,7 +1583,6 @@ Item {
         FileDialog {
             id: midisavedialog
             fileMode: FileDialog.SaveFile
-            options: FileDialog.DontUseNativeDialog
             acceptLabel: 'Save'
             nameFilters: ["MIDI files (*.mid)", "Sample-accurate Shoop MIDI (*.smf)"]
             property var channel: null
@@ -1580,7 +1592,7 @@ Item {
                     return;
                 }
                 close()
-                var filename = selectedFile.toString().replace('file://', '')
+                var filename = UrlToFilename.qml_url_to_filename(selectedFile.toString());
                 var samplerate = root.maybe_backend_loop.backend.get_sample_rate()
                 file_io.save_channel_to_midi_async(filename, samplerate, channel)
             }
@@ -1590,7 +1602,6 @@ Item {
         FileDialog {
             id: loaddialog
             fileMode: FileDialog.OpenFile
-            options: FileDialog.DontUseNativeDialog
             acceptLabel: 'Load'
             nameFilters: [
                 'Supported sound files ('
@@ -1598,7 +1609,7 @@ Item {
                 + ')'
             ]
             onAccepted: {
-                loadoptionsdialog.filename = selectedFile.toString().replace('file://', '')
+                loadoptionsdialog.filename = UrlToFilename.qml_url_to_filename(selectedFile.toString());
                 close()
                 root.create_backend_loop()
                 loadoptionsdialog.update()
@@ -1637,9 +1648,9 @@ Item {
 
             function update() {
                 var chans = root.audio_channels
-                direct_audio_channels = chans.filter(c => c.mode == Types.ChannelMode.Direct)
-                dry_audio_channels = chans.filter(c => c.mode == Types.ChannelMode.Dry)
-                wet_audio_channels = chans.filter(c => c.mode == Types.ChannelMode.Wet)
+                direct_audio_channels = chans.filter(c => c.mode == ShoopConstants.ChannelMode.Direct)
+                dry_audio_channels = chans.filter(c => c.mode == ShoopConstants.ChannelMode.Dry)
+                wet_audio_channels = chans.filter(c => c.mode == ShoopConstants.ChannelMode.Wet)
                 var to_load = []
                 if (direct_load_checkbox.checked) { to_load = to_load.concat(direct_audio_channels) }
                 if (dry_load_checkbox.checked) { to_load = to_load.concat(dry_audio_channels) }
@@ -1741,12 +1752,11 @@ Item {
         FileDialog {
             id: midiloaddialog
             fileMode: FileDialog.OpenFile
-            options: FileDialog.DontUseNativeDialog
             acceptLabel: 'Load'
             nameFilters: ["Midi files (*.mid)"]
             onAccepted: {
                 close()
-                midiloadoptionsdialog.filename = selectedFile.toString().replace('file://', '');
+                midiloadoptionsdialog.filename = UrlToFilename.qml_url_to_filename(selectedFile.toString());
                 midiloadoptionsdialog.open()
             }
         }
@@ -1756,12 +1766,12 @@ Item {
             standardButtons: Dialog.Yes | Dialog.No
             Label { text: "Update loop length to loaded data length?" }
             property string filename
-            property var channel : null
+            property var channels : root.midi_channels
             function doLoad(update_loop_length) {
                 root.create_backend_loop()
                 var samplerate = root.maybe_backend_loop.backend.get_sample_rate()
-                file_io.load_midi_to_channel_async(filename, samplerate, channel, update_loop_length ?
-                    root.maybe_backend_loop : null)
+                file_io.load_midi_to_channels_async(filename, samplerate, channels,
+                    0, 0, root.maybe_backend_loop)
             }
 
             onAccepted: doLoad(true)

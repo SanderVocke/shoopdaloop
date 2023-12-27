@@ -64,10 +64,6 @@ class LoopMidiChannel(LoopChannel):
         else:
             raise Exception("Getting data of un-loaded MIDI channel")
 
-    @Slot(result=list)
-    def get_notes(self):
-        return msgs_to_notes(self.get_data())
-
     @Slot(list)
     def load_data(self, data):
         self.requestBackendInit.emit()

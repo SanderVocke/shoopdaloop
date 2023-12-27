@@ -12,7 +12,7 @@ ComboBox {
 
     background: Rectangle {
         implicitWidth: 120
-        implicitHeight: 40
+        implicitHeight: 30
         color: "#555555"
         border.color: "grey"
         radius: 2

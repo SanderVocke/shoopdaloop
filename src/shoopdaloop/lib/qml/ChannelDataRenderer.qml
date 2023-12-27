@@ -2,7 +2,6 @@ import QtQuick 6.3
 import QtQuick.Controls 6.3
 import QtQuick.Controls.Material 6.3
 import ShoopDaLoop.PythonFetchChannelData
-import ShoopDaLoop.PythonRenderAudioWaveform
 
 import '../mode_helpers.js' as ModeHelpers
 
@@ -14,7 +13,7 @@ Item {
     property int samples_offset: 0.0
     property int loop_length: 0
     readonly property int n_samples_shown: width * samples_per_pixel
-    readonly property int n_samples: fetcher && fetcher.channel_data ? fetcher.channel_data.length : 0
+    readonly property int n_samples: fetcher && fetcher.channel_data ? channel.data_length : 0
     property real major_grid_lines_interval
     property real minor_grid_lines_interval
 
@@ -42,9 +41,11 @@ Item {
         return Math.round(p * samples_per_pixel + samples_offset)
     }
 
-    // Render audio
+    signal pan(real amount)
+
+    // Render data
     Loader {
-        active: root.channel && root.channel.descriptor.type == 'audio'
+        active: root.channel
 
         Rectangle {
             id: background_rect
@@ -53,6 +54,28 @@ Item {
             color: 'black'
             border.color: 'grey'
             border.width: 1
+
+            DragHandler {
+                id: drag_handler
+                target: null
+
+                acceptedButtons: Qt.MiddleButton | Qt.RightButton
+
+                xAxis.enabled: true
+                yAxis.enabled: false
+
+                property real prev_pos: 0.0
+
+                onActiveChanged: {
+                    if (!active) { prev_pos = 0.0 }
+                }
+                onActiveTranslationChanged: {
+                    let val = activeTranslation.x
+                    let changed = val - prev_pos
+                    root.pan(-(root.samples_per_pixel * changed))
+                    prev_pos = val
+                }
+            }
 
             Repeater {
                 id: minor_grid_lines_repeater
@@ -76,12 +99,9 @@ Item {
                     return rval
                 }
 
-                model: at_pixels
+                model: at_pixels.length
 
                 Rectangle {
-                    property var mapped_item
-                    property int index
-
                     color: 'grey'
                     width: 1
                     height: root.height
@@ -124,9 +144,10 @@ Item {
             }
         }
         
-        PythonRenderAudioWaveform {
+        RenderChannelData {
             id: render
             input_data: fetcher && fetcher.channel_data && root.visible ? fetcher.channel_data : []
+            channel: root.channel
             samples_per_bin: root.samples_per_pixel
             samples_offset: root.samples_offset
             width: root.width

@@ -2,7 +2,7 @@ import ShoopDaLoop.PythonFXChain
 import ShoopDaLoop.PythonLogger
 import QtQuick 6.3
 
-import '../generated/types.js' as Types
+import ShoopConstants
 
 PythonFXChain {
     id: root
@@ -43,10 +43,10 @@ PythonFXChain {
     Component.onCompleted: {
         if (descriptor) {
             switch(descriptor.type) {
-                case "carla_rack": chain_type = Types.FXChainType.Carla_Rack; break;
-                case "carla_patchbay": chain_type = Types.FXChainType.Carla_Patchbay; break;
-                case "carla_patchbay_16x": chain_type = Types.FXChainType.Carla_Patchbay_16x; break;
-                case "test2x2x1": chain_type = Types.FXChainType.Test2x2x1; break;
+                case "carla_rack": chain_type = ShoopConstants.FXChainType.Carla_Rack; break;
+                case "carla_patchbay": chain_type = ShoopConstants.FXChainType.Carla_Patchbay; break;
+                case "carla_patchbay_16x": chain_type = ShoopConstants.FXChainType.Carla_Patchbay_16x; break;
+                case "test2x2x1": chain_type = ShoopConstants.FXChainType.Test2x2x1; break;
             }
 
             if ('internal_state' in descriptor) {

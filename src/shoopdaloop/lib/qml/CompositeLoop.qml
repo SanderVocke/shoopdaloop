@@ -2,21 +2,45 @@ import QtQuick 6.3
 import QtQuick.Controls 6.3
 import QtQuick.Controls.Material 6.3
 import ShoopDaLoop.PythonLogger
+import ShoopDaLoop.PythonCompositeLoop
 
-import '../generated/types.js' as Types
+import ShoopConstants
 import '../mode_helpers.js' as ModeHelpers
 
 Item {
     id: root
 
     // Store the current playback iteration.
-    property int iteration: 0
-    onIterationChanged: root.logger.trace(() => `iteration: ${iteration}`)
+    onIterationChanged: root.logger.trace(() => `iteration -> ${iteration}`)
 
     property var initial_composition_descriptor: null
+    property string obj_id : 'unknown'
     property var widget : null
 
     readonly property bool initialized: true
+
+    // The Python-side object manages triggering other loops based on the
+    // schedule. This needs to keep running even if the QML/GUI thread hangs.
+    // In the QML side, we manage updating/calculating the schedule.
+    property alias schedule: py_loop.schedule
+    property alias iteration: py_loop.iteration
+    property alias running_loops: py_loop.running_loops
+    property alias mode: py_loop.mode
+    property alias n_cycles: py_loop.n_cycles
+    property alias next_mode : py_loop.next_mode
+    property alias next_transition_delay : py_loop.next_transition_delay
+    property alias master_length : py_loop.master_length
+    property alias position : py_loop.position
+    property alias master_position : py_loop.master_position
+    property alias length : py_loop.length
+    PythonCompositeLoop {
+        id: py_loop
+        schedule: root.calculate_schedule()
+        iteration: 0
+        master_loop: (root.master_loop && root.master_loop.maybe_loop) ? root.master_loop.maybe_loop : null
+
+        onCycled: root.cycled()
+    }
 
     // The sequence is stored as a set of "playlists". Each playlist represents a parallel
     // timeline, stored as a list of { delay: int, loop_id: str }, where the delay can be
@@ -24,7 +48,10 @@ Item {
     property var playlists: (initial_composition_descriptor && initial_composition_descriptor.playlists) ?
         initial_composition_descriptor.playlists : []
 
-    readonly property PythonLogger logger: PythonLogger { name: "Frontend.Qml.CompositeLoop" }
+    readonly property PythonLogger logger: PythonLogger {
+        name: "Frontend.Qml.CompositeLoop"
+        instanceIdentifier: obj_id
+    }
 
     signal cycled()
 
@@ -37,18 +64,19 @@ Item {
         playlistsChanged()
     }
 
-    // Length of a single master loop cycle
-    readonly property int cycle_length: master_loop ? master_loop.length : 0
-
     // Transform the playlists into a more useful format:
     // a dict of { iteration: { loops_start: [...], loops_end: [...], loops_ignored: [...] } }
     // loops_start lists the loops that should be triggered in this iteration.
     // loops_end lists the loops that should be stopped in this iteration.
     // loops_ignored lists loops that are not really scheduled but stored to still keep traceability -
     // for example when a 0-length loop is in the playlist.
-    property var schedule: calculate_schedule()
     function calculate_schedule() {
-        if (!cycle_length) { return {} }
+        root.logger.debug(() => 'Recalculating schedule.')
+        root.logger.trace(() => `--> playlists: ${JSON.stringify(playlists, null, 2)}`)
+        if (!master_length) {
+            root.logger.debug(() => 'Cycle length not known - no schedule.')
+            return {}
+        }
         var rval = {}
         for (var pidx=0; pidx < playlists.length; pidx++) {
             let playlist = playlists[pidx]
@@ -56,13 +84,18 @@ Item {
             _it = 0
             for (var i=0; i<playlist.length; i++) {
                 let elem = playlist[i]
-                let loop = registries.objects_registry.value_or(elem.loop_id, undefined)
-                if (!loop) {
+                let loop_widget = registries.objects_registry.value_or(elem.loop_id, undefined)
+                if (!loop_widget) {
                     root.logger.warning("Could not find " + elem.loop_id) 
                     continue
                 }
+                let loop = loop_widget.maybe_loop
+                if (!loop) {
+                    root.logger.warning(`Loop ${elem.loop_id} is not instantiated, skipping`)
+                    continue
+                }
                 let loop_start = _it + elem.delay
-                let loop_cycles =  loop.n_cycles
+                let loop_cycles =  loop_widget.n_cycles
                 let loop_end = loop_start + loop_cycles
 
                 if (!rval[loop_start]) { rval[loop_start] = { loops_start: new Set(), loops_end: new Set(), loops_ignored: new Set() } }
@@ -86,12 +119,18 @@ Item {
                     rval[k].loops_start.delete(starting)
                 }
             }
+            // Also convert the sets to lists for Python usage
+            rval[k].loops_start = Array.from(rval[k].loops_start)
+            rval[k].loops_end = Array.from(rval[k].loops_end)
+            rval[k].loops_ignored = Array.from(rval[k].loops_ignored)
         })
+
         root.logger.trace(() => `full schedule:\n${
             Array.from(Object.entries(rval)).map(([k,v]) => 
                 `- ${k}: stop [${Array.from(v.loops_end).map(l => l.obj_id)}], start [${Array.from(v.loops_start).map(l => l.obj_id)}], ignore [${Array.from(v.loops_ignored).map(l => l.obj_id)}]`
             ).join("\n")
         }`)
+
         return rval
     }
     function update_schedule() {
@@ -100,20 +139,14 @@ Item {
     // During recording, we need to freeze the schedule. Otherwise, the changing lenghts of the recording sub-loop(s) will lead to a cyclic
     // change in the schedule while recording is ongoing.
     readonly property bool schedule_frozen: (ModeHelpers.is_recording_mode(mode) || (ModeHelpers.is_recording_mode(next_mode) && next_transition_delay === 0))
-    readonly property bool master_empty: !(cycle_length > 0)
+    readonly property bool master_empty: !(master_length > 0)
     onPlaylistsChanged: update_schedule()
     onMaster_emptyChanged: update_schedule()
 
     // Calculated properties
-    readonly property int n_cycles: schedule ? Math.max(...Object.keys(schedule)) : 0
-    readonly property int master_position: master_loop ? master_loop.position : 0
-    readonly property int length: n_cycles * cycle_length
-    readonly property int position: iteration * cycle_length + (ModeHelpers.is_running_mode(mode) ? master_position : 0)
     readonly property int display_position : position
 
-    property int mode : Types.LoopMode.Stopped
-    property int next_mode : Types.LoopMode.Stopped
-    property int next_transition_delay : -1
+    onPositionChanged: root.logger.trace(() => `pos -> ${position}`)
 
     property var all_loop_ids: {
         var r = new Set()
@@ -164,10 +197,10 @@ Item {
             onVisibleChanged: update_coords()
             parent: Overlay.overlay
 
-            visible: root.widget.selected
+            visible: root.widget ? root.widget.selected : false
 
-            width: root.widget.width
-            height: root.widget.height
+            width: root.widget ? root.widget.width : 1
+            height: root.widget ? root.widget.height : 1
             Rectangle {
                 anchors.right: parent.right
                 anchors.rightMargin: -8
@@ -186,11 +219,11 @@ Item {
                     text: {
                         var rval = ''
                         for(var k of Object.keys(schedule)) {
-                            if (schedule[k].loops_start.has(mapped_item)) {
+                            if (schedule[k].loops_start.includes(mapped_item)) {
                                 let start = k
                                 var end = start
                                 for(var k2 of Object.keys(schedule)) {
-                                    if (k2 > k && schedule[k2].loops_end.has(mapped_item)) {
+                                    if (k2 > k && schedule[k2].loops_end.includes(mapped_item)) {
                                         end = k2
                                         break
                                     }
@@ -213,120 +246,13 @@ Item {
     }
     property alias master_loop : master_loop_lookup.object
 
-    property var running_loops : new Set()
-
-    function do_triggers(iteration, mode) {
-        root.logger.debug(() => `do_triggers(${iteration}, ${mode})`)
-        if (iteration in schedule) {
-            let elem = schedule[iteration]
-            for (var loop of elem.loops_end) {
-                root.logger.debug(() => `loop end: ${loop.obj_id}`)
-                loop.transition(Types.LoopMode.Stopped, 0, true, false)
-                running_loops.delete(loop)
-            }
-            if (ModeHelpers.is_running_mode(mode)) {
-                for (var loop of elem.loops_start) {
-                    // Special case is if we are recording. In that case, the same loop may be scheduled to
-                    // record multiple times. The desired behavior is to just record it once and then stop it.
-                    // That allows the artist to keep playing to fill the gap if monitoring, or to just stop
-                    // playing if not monitoring, and in both cases the resulting recording is the first iteration.
-                    var handled = false
-                    if (ModeHelpers.is_recording_mode(mode)) {
-                        // To implement the above: see if we have already recorded.
-                        for(var i=0; i<iteration; i++) {
-                            if (i in schedule) {
-                                let other_starts = schedule[i].loops_start
-                                if (other_starts.has(loop)) {
-                                    // We have already recorded this loop. Don't record it again.
-                                    root.logger.debug(() => `Not re-recording ${loop.obj_id}`)
-                                    loop.transition(Types.LoopMode.Stopped, 0, true, false)
-                                    running_loops.delete(loop)
-                                    handled = true
-                                    break
-                                }
-                            }
-                        }
-                    }
-                    if (handled) { continue }
-
-                    root.logger.debug(() => `loop start: ${loop.obj_id}`)
-                    loop.transition(mode, 0, true, false)
-                    running_loops.add(loop)
-                }
-            }
-        }
-    }
-
-    function cancel_all() {
-        root.logger.trace(() => `cancel_all()`)
-        for (var loop of running_loops) {
-            loop.transition(Types.LoopMode.Stopped, 0, true, false)
-        }
-        running_loops = new Set()
-    }
-
     function transition(mode, delay, wait_for_sync) {
-        if (!(n_cycles > 0) && ModeHelpers.is_recording_mode(mode)) {
-            // We cannot record a composite loop if the lenghts of the other loops are not yet set.
-            return
-        }
-        if (!ModeHelpers.is_running_mode(root.mode) && ModeHelpers.is_running_mode(mode)) {
-            root.iteration = -1
-        }
-        next_transition_delay = delay
-        next_mode = mode
-        if (next_transition_delay == 0) {
-            if (ModeHelpers.is_running_mode(mode)) {
-                do_triggers(0, next_mode)
-            } else {
-                cancel_all()
-            }
-        }
-    }
-
-    function handle_transition(mode) {
-        next_transition_delay = -1
-        if (mode != root.mode) {
-            root.mode = mode
-            if (!ModeHelpers.is_running_mode(mode)) {
-                root.iteration = 0
-            }
-        }
+        py_loop.transition(mode, delay, wait_for_sync)
     }
 
     function actual_composition_descriptor() {
         return {
             'playlists': playlists
-        }
-    }
-
-    Connections {
-        target: master_loop
-        function onCycled() {
-            if (next_transition_delay == 0) {
-                handle_transition(next_mode)
-            }
-            if (ModeHelpers.is_running_mode(mode)) {
-                var cycled = false
-                iteration += 1
-                if (iteration >= n_cycles) {
-                    iteration = 0
-                    cycled = true
-                }
-                do_triggers(iteration+1, mode)
-                if ((iteration+1) >= n_cycles) {
-                    if (ModeHelpers.is_recording_mode(mode)) {
-                        // Recording ends next cycle
-                        transition(Types.LoopMode.Stopped, 0, true)
-                    } else {
-                        // Will cycle around - trigger the actions for next cycle
-                        do_triggers(0, mode)
-                    }
-                }
-                if (cycled) {
-                    root.cycled()
-                }
-            }
         }
     }
 

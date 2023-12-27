@@ -4,7 +4,7 @@ import QtQuick.Controls.Material 2.15
 import QtQuick.Dialogs
 
 import ".."
-import "../../generated/types.js" as Types
+import ShoopConstants
 
 ApplicationWindow {
     id: root
@@ -27,7 +27,7 @@ ApplicationWindow {
             id: backend
             update_interval_ms: 30
             client_name_hint: 'ShoopDaLoop_Tracks'
-            backend_type: Types.AudioDriverType.Jack
+            backend_type: ShoopConstants.AudioDriverType.Jack
 
             anchors.fill: parent
 
