@@ -37,7 +37,7 @@ Item {
         id: py_loop
         schedule: root.calculate_schedule()
         iteration: 0
-        master_loop: root.master_loop.maybe_loop
+        master_loop: (root.master_loop && root.master_loop.maybe_loop) ? root.master_loop.maybe_loop : null
 
         onCycled: root.cycled()
     }

@@ -12,6 +12,8 @@ Item {
         property int length: 100
         property int n_cycles: 1
         property int position: 0
+
+        property var maybe_loop: this
         
         signal cycled()
 
@@ -73,7 +75,7 @@ Item {
             ShoopTestCase {
                 name: 'CompositeLoop_sequential_sched'
                 filename: TestFilename.test_filename()
-                when: sequential_sched_lut.cycle_length
+                when: sequential_sched_lut.master_length
 
                 test_fns: ({
                     'test_sequential_schedule': () => {
