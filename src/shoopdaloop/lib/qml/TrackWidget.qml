@@ -97,6 +97,31 @@ Item {
         }
     }
 
+    // Draggy rect
+    Rectangle {
+        id: width_adjuster
+        anchors {
+        }
+        height: root.height
+        width: 20
+        x: 250
+
+        color: 'red'
+
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.SizeHorCursor
+
+            drag {
+                axis: "XAxis"
+                target: width_adjuster
+            }
+        }
+    }
+
+    width: width_adjuster.x + width_adjuster.width
+    height: 300
+
     RegisterInRegistry {
         id: reg_entry
         registry: registries.objects_registry
@@ -134,9 +159,6 @@ Item {
             n_loops_loaded = n_loops_loaded - 1;
         }
     }
-
-    width: childrenRect.width
-    height: childrenRect.height
 
     function add_row() {
         // Descriptor is automatically determined from the previous loop...
