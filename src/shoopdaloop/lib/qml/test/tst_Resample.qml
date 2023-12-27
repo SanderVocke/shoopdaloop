@@ -8,7 +8,7 @@ import '../../generate_session.js' as GenerateSession
 import './testfilename.js' as TestFilename
 import '..'
 
-AppRegistries {
+ShoopTestFile {
     Session {
         id: session
 

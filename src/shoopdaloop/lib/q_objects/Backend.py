@@ -5,8 +5,11 @@ import tempfile
 import json
 import sys
 import weakref
+import traceback
+import json
+from threading import Lock
 
-from PySide6.QtCore import Qt, Signal, Property, Slot, QTimer
+from PySide6.QtCore import Qt, Signal, Property, Slot, QTimer, QThread, QMetaObject, Q_ARG, QEvent
 from PySide6.QtQml import QJSValue
 
 from .ShoopPyObject import *
@@ -14,7 +17,7 @@ from .ShoopPyObject import *
 from ..backend_wrappers import *
 from ..backend_wrappers import open_audio_port as backend_open_audio_port, open_midi_port as backend_open_midi_port
 from ..findChildItems import findChildItems
-from ..logging import Logger
+from .Logger import Logger
 
 # Wraps the back-end session + driver in a single object.
 class Backend(ShoopQQuickItem):
@@ -22,6 +25,8 @@ class Backend(ShoopQQuickItem):
         super(Backend, self).__init__(parent)
         self._update_interval_ms = 50
         self._timer = None
+        self._timer_thread = QThread(self)
+        self._timer_thread.start()
         self._initialized = False
         self._client_name_hint = None
         self._driver_type = None
@@ -33,7 +38,9 @@ class Backend(ShoopQQuickItem):
         self._dsp_load = 0.0
         self._actual_driver_type = None
         self.destroyed.connect(self.close)
-        self.logger = Logger('Frontend.Backend')
+        self.logger = Logger()
+        self.logger.name = "Frontend.Backend"
+        self.lock = threading.Lock()
     
     update = Signal()
     updated = Signal()
@@ -132,14 +139,17 @@ class Backend(ShoopQQuickItem):
 
     @Slot('QVariant')
     def registerBackendObject(self, obj):
-        self._backend_child_objects.add(weakref.ref(obj))
+        with self.lock:
+            self._backend_child_objects.add(weakref.ref(obj))
     
     @Slot('QVariant')
     def unregisterBackendObject(self, obj):
-        self._backend_child_objects.remove(weakref.ref(obj))
+        with self.lock:
+            self._backend_child_objects.remove(weakref.ref(obj))
 
     @Slot()
     def doUpdate(self):
+        self.logger.trace(lambda: 'update')
         if not self.initialized:
             return
         driver_state = self._backend_driver_obj.get_state()
@@ -148,14 +158,15 @@ class Backend(ShoopQQuickItem):
         self.actual_backend_type = self._driver_type.value
         
         toRemove = []
-        for obj in self._backend_child_objects:
-            _obj = obj()
-            if not _obj:
-                toRemove.append(obj)
-            else:
-                _obj.update()
-        for r in toRemove:
-            self._backend_child_objects.remove(r)
+        with self.lock:
+            for obj in self._backend_child_objects:
+                _obj = obj()
+                if not _obj:
+                    toRemove.append(obj)
+                else:
+                    _obj.update()
+            for r in toRemove:
+                self._backend_child_objects.remove(r)
         self.update.emit()
         self.updated.emit()
     
@@ -169,6 +180,16 @@ class Backend(ShoopQQuickItem):
 
     @Slot()
     def close(self):
+        self.logger.debug(lambda: "Closing")
+        QMetaObject.invokeMethod(
+            self._timer,
+            'stop'
+        )
+        while self._timer.isActive():
+            time.sleep(0.005)
+        self._timer_thread.exit()
+        while self._timer_thread.isRunning():
+            time.sleep(0.005)
         if self._initialized:
             self._backend_session_obj.destroy()
             self._backend_driver_obj.destroy()
@@ -296,11 +317,14 @@ class Backend(ShoopQQuickItem):
         self.init_timer()
     
     def init_timer(self):
-        if self._timer:
-            self._timer.active = False
-            self._timer = None
-        self._timer = QTimer(self)
-        self._timer.setSingleShot(False)
-        self._timer.timeout.connect(self.doUpdate)
-        self._timer.start(self._update_interval_ms)
+        if not self._timer:
+            self._timer = QTimer()
+            self._timer.setSingleShot(False)
+            self._timer.moveToThread(self._timer_thread)
+            self._timer.timeout.connect(self.doUpdate, Qt.DirectConnection)
+        QMetaObject.invokeMethod(
+            self._timer,
+            'start',
+            Q_ARG(int, self._update_interval_ms)
+        )
     

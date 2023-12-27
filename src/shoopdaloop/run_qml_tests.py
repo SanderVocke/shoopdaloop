@@ -83,7 +83,7 @@ for file in test_files:
     print()
     logger.info('===== Test file: {} ====='.format(filename))
     
-    app.load_qml(file, False)    
+    app.reload_qml(file, False)    
     
     while not runner.done:
         app.processEvents()
@@ -200,9 +200,11 @@ if args.junit_xml:
     print("Writing JUnit XML to {}".format(args.junit_xml))
     root.writexml(open(args.junit_xml, 'w'), indent='  ', addindent='  ', newl='\n')
 
+app.unload_qml()
+app.wait(50)
+app.do_quit()
+app.exit(final_result)
 
-
-app.quit()
 if args.list:
     exit(0)
 
