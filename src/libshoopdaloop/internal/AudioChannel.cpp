@@ -261,6 +261,13 @@ void AudioChannel<SampleT>::PROC_exec_cmd(ProcessingCommand cmd) {
     log_trace();
     auto const &rc = cmd.details.raw_copy_details;
     auto const &ac = cmd.details.additive_copy_details;
+
+    if (cmd.cmd_type == ProcessingCommandType::RawCopy) {
+        auto n = rc.sz / sizeof(SampleT);
+        auto first = (n > 0) ? ((SampleT*)rc.src)[0] : 0.0f;
+        log<log_level_warning>("Raw copy {} samples, first {}", n, first);
+    }
+
     switch (cmd.cmd_type) {
     case ProcessingCommandType::RawCopy:
         memcpy(rc.dst, rc.src, rc.sz);

@@ -74,13 +74,15 @@ void BackendSession::PROC_process (uint32_t nframes) {
 
             profiling::stopwatch(
                 [this, &nframes, &processing_schedule]() {
-                    for(auto &step: processing_schedule->steps) {
+                    size_t n_steps = processing_schedule->steps.size();
+                    for(size_t i=0; i<processing_schedule->steps.size(); i++) {
+                        auto &step = processing_schedule->steps[i];
                         try {
                             if(step.nodes.size() == 1) {
-                                log<log_level_trace>("Processing node: {}", step.nodes.begin()->get()->graph_node_name());
+                                log<log_level_trace>("[{}/{}] Processing node: {}", i, n_steps, step.nodes.begin()->get()->graph_node_name());
                                 step.nodes.begin()->get()->PROC_process(nframes);
                             } else if(step.nodes.size() > 1) {
-                                log<log_level_trace>("Co-processing {} nodes, first: {}", step.nodes.size(), step.nodes.begin()->get()->graph_node_name());
+                                log<log_level_trace>("[{}/{}] Co-processing {} nodes, first: {}", i, n_steps, step.nodes.size(), step.nodes.begin()->get()->graph_node_name());
                                 step.nodes.begin()->get()->PROC_co_process(step.nodes, nframes);
                             }
                         } catch (const std::exception &exp) {
@@ -412,6 +414,23 @@ void BackendSession::recalculate_processing_schedule(bool thread_safe) {
     if(logging::should_log("Backend.ProcessGraph", log_level_trace)) {
         auto dot = graph_dot(raw_nodes);
         logging::log<"Backend.ProcessGraph", log_level_trace>(std::nullopt, std::nullopt, "DOT graph:\n{}", dot);
+        if(logging::should_log("Backend.ProcessGraph", log_level_debug)) {
+            std::vector<std::string> schedule_names;
+            for(auto &step: schedule) {
+                std::string step_name;
+                for(auto &n: step) {
+                    if(!step_name.empty()) { step_name += ", "; }
+                    step_name += n->graph_node_name();
+                }
+                schedule_names.push_back(step_name);
+            }
+            std::string schedule_str;
+            for(auto &s: schedule_names) {
+                if(!schedule_str.empty()) { schedule_str += "\n"; }
+                schedule_str += s;
+            }
+            logging::log<"Backend.ProcessGraph", log_level_debug>(std::nullopt, std::nullopt, "Processing schedule:\n{}", schedule_str);
+        }
     }
 
     auto me = shared_from_this();
