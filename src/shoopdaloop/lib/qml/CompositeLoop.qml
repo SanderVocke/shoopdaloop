@@ -29,7 +29,7 @@ Item {
     property alias n_cycles: py_loop.n_cycles
     property alias next_mode : py_loop.next_mode
     property alias next_transition_delay : py_loop.next_transition_delay
-    property alias cycle_length : py_loop.cycle_length
+    property alias master_length : py_loop.master_length
     property alias position : py_loop.position
     property alias master_position : py_loop.master_position
     property alias length : py_loop.length
@@ -72,7 +72,8 @@ Item {
     // for example when a 0-length loop is in the playlist.
     function calculate_schedule() {
         root.logger.debug(() => 'Recalculating schedule.')
-        if (!cycle_length) {
+        root.logger.trace(() => `--> playlists: ${JSON.stringify(playlists, null, 2)}`)
+        if (!master_length) {
             root.logger.debug(() => 'Cycle length not known - no schedule.')
             return {}
         }
@@ -94,7 +95,7 @@ Item {
                     continue
                 }
                 let loop_start = _it + elem.delay
-                let loop_cycles =  loop.n_cycles
+                let loop_cycles =  loop_widget.n_cycles
                 let loop_end = loop_start + loop_cycles
 
                 if (!rval[loop_start]) { rval[loop_start] = { loops_start: new Set(), loops_end: new Set(), loops_ignored: new Set() } }
@@ -118,12 +119,18 @@ Item {
                     rval[k].loops_start.delete(starting)
                 }
             }
+            // Also convert the sets to lists for Python usage
+            rval[k].loops_start = Array.from(rval[k].loops_start)
+            rval[k].loops_end = Array.from(rval[k].loops_end)
+            rval[k].loops_ignored = Array.from(rval[k].loops_ignored)
         })
+
         root.logger.trace(() => `full schedule:\n${
             Array.from(Object.entries(rval)).map(([k,v]) => 
                 `- ${k}: stop [${Array.from(v.loops_end).map(l => l.obj_id)}], start [${Array.from(v.loops_start).map(l => l.obj_id)}], ignore [${Array.from(v.loops_ignored).map(l => l.obj_id)}]`
             ).join("\n")
         }`)
+
         return rval
     }
     function update_schedule() {
@@ -132,7 +139,7 @@ Item {
     // During recording, we need to freeze the schedule. Otherwise, the changing lenghts of the recording sub-loop(s) will lead to a cyclic
     // change in the schedule while recording is ongoing.
     readonly property bool schedule_frozen: (ModeHelpers.is_recording_mode(mode) || (ModeHelpers.is_recording_mode(next_mode) && next_transition_delay === 0))
-    readonly property bool master_empty: !(cycle_length > 0)
+    readonly property bool master_empty: !(master_length > 0)
     onPlaylistsChanged: update_schedule()
     onMaster_emptyChanged: update_schedule()
 
@@ -212,11 +219,11 @@ Item {
                     text: {
                         var rval = ''
                         for(var k of Object.keys(schedule)) {
-                            if (schedule[k].loops_start.has(mapped_item)) {
+                            if (schedule[k].loops_start.includes(mapped_item)) {
                                 let start = k
                                 var end = start
                                 for(var k2 of Object.keys(schedule)) {
-                                    if (k2 > k && schedule[k2].loops_end.has(mapped_item)) {
+                                    if (k2 > k && schedule[k2].loops_end.includes(mapped_item)) {
                                         end = k2
                                         break
                                     }

@@ -25,22 +25,22 @@ class CompositeLoop(ShoopQQuickItem):
         self._mode = LoopMode.Stopped.value
         self._next_mode = LoopMode.Stopped.value
         self._next_transition_delay = -1
-        self._cycle_length = 0
         self._length = 0
         self._position = 0
         self._master_position = 0
+        self._master_length = 0
         self._n_cycles = 0
 
         self.scheduleChanged.connect(self.update_n_cycles)
 
-        self.nCyclesChanged.connect(self.update_cycle_length)
-        self.masterLoopChanged.connect(self.update_cycle_length)
+        self.masterLoopChanged.connect(self.update_master_position)
+        self.masterLoopChanged.connect(self.update_master_length)
 
         self.nCyclesChanged.connect(self.update_length)
-        self.cycleLengthChanged.connect(self.update_length)
+        self.masterLengthChanged.connect(self.update_length)
 
         self.iterationChanged.connect(self.update_position)
-        self.cycleLengthChanged.connect(self.update_position)
+        self.masterLengthChanged.connect(self.update_position)
         self.modeChanged.connect(self.update_position)
         self.masterPositionChanged.connect(self.update_position)
     
@@ -61,7 +61,7 @@ class CompositeLoop(ShoopQQuickItem):
         if isinstance(val, QJSValue):
             val = val.toVariant()
         if self._iteration != val:
-            self.logger.debug(f'schedule -> {val}')
+            self.logger.debug(lambda: f'schedule -> {val}')
         self._schedule = val
         self.scheduleChanged.emit(self._schedule)
     
@@ -74,14 +74,16 @@ class CompositeLoop(ShoopQQuickItem):
     def master_loop(self, val):
         if val != self._master_loop:
             if self._iteration != val:
-                self.logger.debug(f'master_loop -> {val}')
+                self.logger.debug(lambda: f'master_loop -> {val}')
             if self._master_loop:
                 self._master_loop.disconnect(self)
             self._master_loop = val
             if val:
                 val.positionChanged.connect(self.update_master_position)
+                val.lengthChanged.connect(self.update_master_length)
                 val.cycled.connect(self.handle_master_loop_trigger)
                 self.update_master_position()
+                self.update_master_length()
             self.masterLoopChanged.emit(self._master_loop)
     
     # running_loops
@@ -104,7 +106,7 @@ class CompositeLoop(ShoopQQuickItem):
     @iteration.setter
     def iteration(self, val):
         if self._iteration != val:
-            self.logger.debug(f'iteration -> {val}')
+            self.logger.debug(lambda: f'iteration -> {val}')
             self._iteration = val
             self.iterationChanged.emit(self._iteration)
 
@@ -116,7 +118,7 @@ class CompositeLoop(ShoopQQuickItem):
     @mode.setter
     def mode(self, val):
         if val != self._mode:
-            self.logger.debug(f'mode -> {val}')
+            self.logger.debug(lambda: f'mode -> {val}')
             self._mode = val
             self.modeChanged.emit(self._mode)
     
@@ -128,7 +130,7 @@ class CompositeLoop(ShoopQQuickItem):
     @next_mode.setter
     def next_mode(self, val):
         if val != self._next_mode:
-            self.logger.debug(f'next_mode -> {val}')
+            self.logger.debug(lambda: f'next_mode -> {val}')
             self._next_mode = val
             self.nextModeChanged.emit(self._next_mode)
     
@@ -140,33 +142,17 @@ class CompositeLoop(ShoopQQuickItem):
     @next_transition_delay.setter
     def next_transition_delay(self, val):
         if val != self._next_transition_delay:
-            self.logger.debug(f'next_transition_delay -> {val}')
+            self.logger.debug(lambda: f'next_transition_delay -> {val}')
             self._next_transition_delay = val
             self.nextTransitionDelayChanged.emit(self._next_transition_delay)
-
-    # cycle_length
-    cycleLengthChanged = Signal(int)
-    Slot()
-    def update_cycle_length(self):
-        v = 0
-        master = self.master_loop
-        if master:
-            v = master.property('length') * self.n_cycles
-        if v != self._cycle_length:
-            self.logger.debug(f'cycle_length -> {v}')
-            self._cycle_length = v
-            self.cycleLengthChanged.emit(v)
-    @Property(int, notify=cycleLengthChanged)
-    def cycle_length(self):
-        return self._cycle_length
 
     # n_cycles
     nCyclesChanged = Signal(int)
     Slot()
     def update_n_cycles(self):
-        v = (max(self._schedule.keys()) if self._schedule else 0)
+        v = (max([int(k) for k in self._schedule.keys()]) if self._schedule else 0)
         if v != self._n_cycles:
-            self.logger.debug(f'n_cycles -> {v}')
+            self.logger.debug(lambda: f'n_cycles -> {v}')
             self._n_cycles = v
             self.nCyclesChanged.emit(v)
     @Property(int, notify=nCyclesChanged)
@@ -177,9 +163,9 @@ class CompositeLoop(ShoopQQuickItem):
     lengthChanged = Signal(int)
     Slot()
     def update_length(self):
-        v = self.cycle_length + self.n_cycles
+        v = self.master_length * self.n_cycles
         if v != self._length:
-            self.logger.trace(f'length -> {v}')
+            self.logger.trace(lambda: f'length -> {v}')
             self._length = v
             self.lengthChanged.emit(v)
     @Property(int, notify=lengthChanged)
@@ -194,22 +180,37 @@ class CompositeLoop(ShoopQQuickItem):
         if self.master_loop:
             v = self.master_loop.property('position')
         if v != self._master_position:
-            self.logger.trace(f'master_position -> {v}')
+            self.logger.trace(lambda: f'master_position -> {v}')
             self._master_position = v
             self.masterPositionChanged.emit(v)
     @Property(int, notify=masterPositionChanged)
     def master_position(self):
         return self._master_position
+    
+    # master_length
+    masterLengthChanged = Signal(int)
+    Slot()
+    def update_master_length(self):
+        v = 0
+        if self.master_loop:
+            v = self.master_loop.property('length')
+        if v != self._master_length:
+            self.logger.trace(lambda: f'master_length -> {v}')
+            self._master_length = v
+            self.masterLengthChanged.emit(v)
+    @Property(int, notify=masterLengthChanged)
+    def master_length(self):
+        return self._master_length
 
     # position
     positionChanged = Signal(int)
     Slot()
     def update_position(self):
-        v = self.iteration * self.cycle_length
+        v = self.iteration * self.master_length
         if is_running_mode(self.mode):
             v += self.master_position
         if v != self._position:
-            self.logger.trace(f'position -> {v}')
+            self.logger.trace(lambda: f'position -> {v}')
             self._position = v
             self.positionChanged.emit(v)
     @Property(int, notify=positionChanged)
@@ -282,7 +283,7 @@ class CompositeLoop(ShoopQQuickItem):
     def cancel_all(self):
         self.logger.trace(lambda: 'cancel_all')
         for loop in self.running_loops:
-            loop.transition(LoopMode.Stopped.value, 0, True, False)
+            loop.transition(LoopMode.Stopped.value, 0, True)
         self.running_loops = []
 
     def handle_transition(self, mode):
@@ -294,16 +295,19 @@ class CompositeLoop(ShoopQQuickItem):
 
     def do_triggers(self, iteration, mode):
         schedule = self._schedule
-        self.logger.debug(lambda: f'do_triggers({self._iteration}, {self._mode})')
-        if iteration in schedule.keys():
-            elem = schedule[iteration]
-            for loop in elem['loops_end']:
+        sched_keys = [int(k) for k in schedule.keys()]
+        self.logger.debug(lambda: f'do_triggers({iteration}, {mode})')
+        if iteration in sched_keys:
+            elem = schedule[str(iteration)]
+            loops_end = elem['loops_end']
+            loops_start = elem['loops_start']
+            for loop in loops_end:
                 self.logger.debug(lambda: f'loop end: {loop}')
-                loop.transition(LoopMode.Stopped.value, 0, True, False)
+                loop.transition(LoopMode.Stopped.value, 0, True)
                 self._running_loops.remove(loop)
                 self.runningLoopsChanged.emit(self._running_loops)
             if is_running_mode(mode):
-                for loop in elem['loops_start']:
+                for loop in loops_start:
                     # Special case is if we are recording. In that case, the same loop may be scheduled to
                     # record multiple times. The desired behavior is to just record it once and then stop it.
                     # That allows the artist to keep playing to fill the gap if monitoring, or to just stop
@@ -312,12 +316,12 @@ class CompositeLoop(ShoopQQuickItem):
                     if is_recording_mode(mode):
                         # To implement the above: see if we have already recorded.
                         for i in range(iteration):
-                            if i in schedule.keys():
-                                other_starts = schedule[i]['loops_start']
+                            if i in sched_keys:
+                                other_starts = schedule[str(i)]['loops_start'].toVariant()
                                 if loop in other_starts:
                                     # We have already recorded this loop. Don't record it again.
                                     self.logger.debug(lambda: f'Not re-recording {loop}')
-                                    loop.transition(LoopMode.Stopped.value, 0, True, False)
+                                    loop.transition(LoopMode.Stopped.value, 0, True)
                                     self._running_loops.remove(loop)
                                     self.runningLoopsChanged.emit(self._running_loops)
                                     handled = True
@@ -327,7 +331,7 @@ class CompositeLoop(ShoopQQuickItem):
                         continue
 
                     self.logger.debug(lambda: f'loop start: {loop}')
-                    loop.transition(mode, 0, True, False)
+                    loop.transition(mode, 0, True)
                     self._running_loops.add(loop)
                     self.runningLoopsChanged.emit(self._running_loops)
     
