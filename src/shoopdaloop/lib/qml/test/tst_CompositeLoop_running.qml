@@ -223,9 +223,15 @@ Session {
                 verify_eq(c().next_mode, ShoopConstants.LoopMode.Playing)
                 verify_eq(c().next_transition_delay, 0)
 
+                verify_eq(l1().mode, ShoopConstants.LoopMode.Stopped)
+                verify_eq(l1().next_mode, ShoopConstants.LoopMode.Playing)
+                verify_eq(l1().next_transition_delay, 0)
+
                 process(100)
 
                 verify_eq(c().mode, ShoopConstants.LoopMode.Playing)
+                verify_eq(l1().mode, ShoopConstants.LoopMode.Playing)
+                verify_eq(c().maybe_loop.iteration, 0)
             },
             'test_ui_frozen': () => {
                 // Tests that when the UI thread freezes / is busy, composite loops
@@ -275,7 +281,7 @@ Session {
                 testcase.wait_updated(session.backend)
                 verify_eq(c().mode, ShoopConstants.LoopMode.Playing)
                 verify_eq(l1().mode, ShoopConstants.LoopMode.Playing)
-                verify_eq(c().iteration, 0)
+                verify_eq(c().maybe_loop.iteration, 0)
             },
         })
     }

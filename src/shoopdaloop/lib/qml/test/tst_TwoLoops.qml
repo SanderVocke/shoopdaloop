@@ -69,6 +69,40 @@ Session {
                 clear()
             },
 
+            'test_two_loops_countdown': () => {
+                clear()
+                check_backend()
+
+                session.backend.dummy_enter_controlled_mode()
+                testcase.wait_updated(session.backend)
+
+                master_loop().set_length(100)
+
+                other_loop().create_backend_loop()
+                other_loop().set_length(100)
+
+                other_loop().transition(ShoopConstants.LoopMode.Playing, 2, true)
+                master_loop().transition(ShoopConstants.LoopMode.Playing, 0, false)
+                session.backend.dummy_request_controlled_frames(50)
+
+                testcase.wait_updated(session.backend)
+                verify_eq(master_loop().mode, ShoopConstants.LoopMode.Playing)
+                verify_eq(other_loop().next_transition_delay, 2)
+
+                for(var i=0; i<6; i++) {
+                    session.backend.dummy_request_controlled_frames(50)
+                    session.backend.wait_process()
+                    testcase.wait_updated(session.backend)
+                }
+
+                testcase.wait_updated(session.backend)
+                verify_eq(master_loop().mode, ShoopConstants.LoopMode.Playing)
+                verify_eq(other_loop().mode, ShoopConstants.LoopMode.Playing)
+
+                session.backend.dummy_enter_automatic_mode()
+                testcase.wait_updated(session.backend)
+            },
+
             'test_switch_between_backend_and_composite': () => {
                 clear()
                 testcase.wait_updated(session.backend)

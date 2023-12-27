@@ -228,7 +228,7 @@ class CompositeLoop(ShoopQQuickItem):
             # We cannot record a composite loop if the lengths of the other loops are not yet set.
             return
 
-        if not is_running_mode(self.mode) and is_running_mode(self.mode):
+        if not is_running_mode(self.mode) and is_running_mode(mode):
             self.iteration = -1
         
         self.next_transition_delay = delay
@@ -245,33 +245,29 @@ class CompositeLoop(ShoopQQuickItem):
     @Slot()
     def handle_master_loop_trigger(self):
         self.logger.debug(lambda: 'handle master cycle')
-        iteration = self.iteration
-        next_transition_delay = self.next_transition_delay
-        mode = self.mode
-        n_cycles = self.n_cycles
 
-        if next_transition_delay == 0:
-            self.handle_transition(self._next_mode)
-        elif next_transition_delay > 0:
-            self.next_transition_delay = next_transition_delay - 1
-        
-        if is_running_mode(mode):
+        if self.next_transition_delay == 0:
+            self.handle_transition(self.next_mode)
+        elif self.next_transition_delay > 0:
+            self.next_transition_delay = self.next_transition_delay - 1
+            if self.next_transition_delay == 0:
+                self.do_triggers(0, self.next_mode)
+
+        if is_running_mode(self.mode):
             cycled = False
-            self.iteration = iteration + 1
-            iteration += 1
-            if (iteration >= n_cycles):
-                iteration = 0
+            self.iteration = self.iteration + 1
+            if (self.iteration >= self.n_cycles):
                 self.iteration = 0
                 cycled = True
             
-            self.do_triggers(iteration+1, mode)
-            if ((iteration+1) >= n_cycles):
-                if is_recording_mode(mode):
+            self.do_triggers(self.iteration+1, self.mode)
+            if ((self.iteration+1) >= self.n_cycles):
+                if is_recording_mode(self.mode):
                     # Recording ends next cycle
                     self.transition(LoopMode.Stopped.value, 0, True)
                 else:
                     # Will cycle around - trigger the actions for next cycle
-                    self.do_triggers(0, mode)
+                    self.do_triggers(0, self.mode)
 
             if cycled:
                 self.cycled.emit()
