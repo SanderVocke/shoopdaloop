@@ -17,7 +17,7 @@ from .ShoopPyObject import *
 from ..backend_wrappers import *
 from ..backend_wrappers import open_audio_port as backend_open_audio_port, open_midi_port as backend_open_midi_port
 from ..findChildItems import findChildItems
-from ..logging import Logger
+from .Logger import Logger
 
 # Wraps the back-end session + driver in a single object.
 class Backend(ShoopQQuickItem):
@@ -25,7 +25,7 @@ class Backend(ShoopQQuickItem):
         super(Backend, self).__init__(parent)
         self._update_interval_ms = 50
         self._timer = None
-        self._timer_thread = QThread()
+        self._timer_thread = QThread(self)
         self._timer_thread.start()
         self._initialized = False
         self._client_name_hint = None
@@ -38,7 +38,8 @@ class Backend(ShoopQQuickItem):
         self._dsp_load = 0.0
         self._actual_driver_type = None
         self.destroyed.connect(self.close)
-        self.logger = Logger('Frontend.Backend')
+        self.logger = Logger()
+        self.logger.name = "Frontend.Backend"
         self.lock = threading.Lock()
     
     update = Signal()
@@ -179,6 +180,7 @@ class Backend(ShoopQQuickItem):
 
     @Slot()
     def close(self):
+        self.logger.debug(lambda: "Closing")
         QMetaObject.invokeMethod(
             self._timer,
             'stop'

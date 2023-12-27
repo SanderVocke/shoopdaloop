@@ -4,7 +4,9 @@ import ShoopConstants
 import './testfilename.js' as TestFilename
 import '..'
 
-Item {
+ShoopTestFile {
+    id: root
+
     // UTILITIES
     component FakeLoop: Item {
         id: fakeloop
@@ -83,7 +85,7 @@ Item {
                         sequential_sched_lut.add_loop(sequential_sched_2, 1)
 
                         verify_eq(
-                            loops_to_obj_ids(sequential_sched_lut.schedule),
+                            root.loops_to_obj_ids(sequential_sched_lut.schedule),
                             {
                                 0: {
                                     'loops_start': ['sequential_sched_1'],

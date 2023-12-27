@@ -9,49 +9,51 @@ import './testfilename.js' as TestFilename
 import '..'
 
 
-Session {
-    id: session
-    anchors.fill: parent
-    initial_descriptor: GenerateSession.generate_default_session(app_metadata.version_string)
+ShoopTestFile {
+    Session {
+        id: session
+        anchors.fill: parent
+        initial_descriptor: GenerateSession.generate_default_session(app_metadata.version_string)
 
 
-    ShoopSessionTestCase {
-        id: testcase
-        name: 'SessionDescriptor_default'
-        filename : TestFilename.test_filename()
-        session: session
+        ShoopSessionTestCase {
+            id: testcase
+            name: 'SessionDescriptor_default'
+            filename : TestFilename.test_filename()
+            session: session
 
-        test_fns: ({
-            'test_session_descriptor_default': () => {
-                check_backend()
+            test_fns: ({
+                'test_session_descriptor_default': () => {
+                    check_backend()
 
-                testcase.wait_session_loaded(session)
-                var reference = session.initial_descriptor
-                // sample_rate not stored in the descriptor yet
-                reference['sample_rate'] = 48000
+                    testcase.wait_session_loaded(session)
+                    var reference = session.initial_descriptor
+                    // sample_rate not stored in the descriptor yet
+                    reference['sample_rate'] = 48000
 
-                var actual = session.actual_session_descriptor(false, '', null)
-                verify(TestDeepEqual.testDeepEqual(actual, reference, session.logger.error))
+                    var actual = session.actual_session_descriptor(false, '', null)
+                    verify(TestDeepEqual.testDeepEqual(actual, reference, session.logger.error))
 
-                var filename = file_io.generate_temporary_filename() + '.shl'
+                    var filename = file_io.generate_temporary_filename() + '.shl'
 
-                session.logger.info(() => ("Saving session to " + filename))
-                session.save_session(filename)
-                
-                testcase.wait_session_io_done()
-
-                session.logger.info(() => ("Re-loading session"))
-                session.load_session(filename)
-
-                testcase.wait_session_io_done()
-                testcase.wait_session_loaded(session)
+                    session.logger.info(() => ("Saving session to " + filename))
+                    session.save_session(filename)
                     
-                actual = session.actual_session_descriptor(false, '', null)
+                    testcase.wait_session_io_done()
 
-                file_io.delete_file(filename)
+                    session.logger.info(() => ("Re-loading session"))
+                    session.load_session(filename)
 
-                verify(TestDeepEqual.testDeepEqual(actual, reference, session.logger.error))
-            }
-        })
+                    testcase.wait_session_io_done()
+                    testcase.wait_session_loaded(session)
+                        
+                    actual = session.actual_session_descriptor(false, '', null)
+
+                    file_io.delete_file(filename)
+
+                    verify(TestDeepEqual.testDeepEqual(actual, reference, session.logger.error))
+                }
+            })
+        }
     }
 }
