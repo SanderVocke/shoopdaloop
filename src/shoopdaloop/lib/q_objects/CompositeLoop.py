@@ -1,6 +1,6 @@
 from typing import *
 
-from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, QMetaObject
+from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, QMetaObject, Qt
 from PySide6.QtQuick import QQuickItem
 from PySide6.QtQml import QJSValue
 
@@ -31,18 +31,18 @@ class CompositeLoop(ShoopQQuickItem):
         self._master_length = 0
         self._n_cycles = 0
 
-        self.scheduleChanged.connect(self.update_n_cycles)
+        self.scheduleChanged.connect(self.update_n_cycles, Qt.DirectConnection)
 
-        self.masterLoopChanged.connect(self.update_master_position)
-        self.masterLoopChanged.connect(self.update_master_length)
+        self.masterLoopChanged.connect(self.update_master_position, Qt.DirectConnection)
+        self.masterLoopChanged.connect(self.update_master_length, Qt.DirectConnection)
 
-        self.nCyclesChanged.connect(self.update_length)
-        self.masterLengthChanged.connect(self.update_length)
+        self.nCyclesChanged.connect(self.update_length, Qt.DirectConnection)
+        self.masterLengthChanged.connect(self.update_length, Qt.DirectConnection)
 
-        self.iterationChanged.connect(self.update_position)
-        self.masterLengthChanged.connect(self.update_position)
-        self.modeChanged.connect(self.update_position)
-        self.masterPositionChanged.connect(self.update_position)
+        self.iterationChanged.connect(self.update_position, Qt.DirectConnection)
+        self.masterLengthChanged.connect(self.update_position, Qt.DirectConnection)
+        self.modeChanged.connect(self.update_position, Qt.DirectConnection)
+        self.masterPositionChanged.connect(self.update_position, Qt.DirectConnection)
     
     cycled = Signal()
 
@@ -61,7 +61,7 @@ class CompositeLoop(ShoopQQuickItem):
         if isinstance(val, QJSValue):
             val = val.toVariant()
         if self._iteration != val:
-            self.logger.debug(lambda: f'schedule -> {val}')
+            self.logger.trace(lambda: f'schedule -> {val}')
         self._schedule = val
         self.scheduleChanged.emit(self._schedule)
     
@@ -79,9 +79,9 @@ class CompositeLoop(ShoopQQuickItem):
                 self._master_loop.disconnect(self)
             self._master_loop = val
             if val:
-                val.positionChanged.connect(self.update_master_position)
-                val.lengthChanged.connect(self.update_master_length)
-                val.cycled.connect(self.handle_master_loop_trigger)
+                val.positionChanged.connect(self.update_master_position, Qt.DirectConnection)
+                val.lengthChanged.connect(self.update_master_length, Qt.DirectConnection)
+                val.cycled.connect(self.handle_master_loop_trigger, Qt.DirectConnection)
                 self.update_master_position()
                 self.update_master_length()
             self.masterLoopChanged.emit(self._master_loop)
@@ -244,7 +244,7 @@ class CompositeLoop(ShoopQQuickItem):
     
     @Slot()
     def handle_master_loop_trigger(self):
-        self.logger.debug('handle master cycle')
+        self.logger.debug(lambda: 'handle master cycle')
         iteration = self.iteration
         next_transition_delay = self.next_transition_delay
         mode = self.mode

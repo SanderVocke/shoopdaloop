@@ -20,6 +20,7 @@ class DummyProcessHelper(ShoopQQuickItem):
         self._samples_per_iter = 0
         self._wait_interval = 0.0
         self._backend = None
+        self._active = False
         self.logger = Logger('Frontend.DummyProcessHelper')
 
     
@@ -76,6 +77,17 @@ class DummyProcessHelper(ShoopQQuickItem):
     def backend(self, val):
         self._backend= val
         self.backendChanged.emit(self._backend)
+    
+    # active
+    activeChanged = Signal(bool)
+    @Property(bool, notify=activeChanged)
+    def active(self):
+        return self._active
+    @active.setter
+    def active(self, v):
+        if v != self._active:
+            self._active = v
+            self.activeChanged.emit(v)
 
     #################
     ## SLOTS
@@ -83,13 +95,21 @@ class DummyProcessHelper(ShoopQQuickItem):
         
     @Slot()
     def start(self):
+        if self.active:
+            raise Exception('Cannot start dummy process helper: still running')
+        
+        self.active = True
         def fn(samples_per_iter=self._samples_per_iter, backend=self._backend, wait_start=self._wait_start, wait_interval=self._wait_interval, n_iters=self._n_iters):
             time.sleep(wait_start)
             for i in range(n_iters):
                 self.logger.debug('trigger')
+                backend.wait_process()
                 backend.dummy_request_controlled_frames(samples_per_iter)
                 if i < (n_iters-1):
                     time.sleep(wait_interval)
+            backend.wait_process()
+            self.active = False
+        
         self._thread = threading.Thread(target=fn)
         self._thread.daemon = True
 

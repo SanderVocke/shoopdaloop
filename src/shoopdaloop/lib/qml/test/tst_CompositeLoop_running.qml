@@ -7,6 +7,7 @@ import './testDeepEqual.js' as TestDeepEqual
 import ShoopConstants
 import '../../generate_session.js' as GenerateSession
 import './testfilename.js' as TestFilename
+import '../../delay.js' as Delay
 import '..'
 
 Session {
@@ -260,21 +261,18 @@ Session {
                 verify_eq(c().next_mode, ShoopConstants.LoopMode.Playing)
                 verify_eq(c().next_transition_delay, 3)
 
-                process_helper.n_iters = 9
-                process_helper.samples_per_iter = 50 // 450 total
+                process_helper.n_iters = 18
+                process_helper.samples_per_iter = 25 // 450 total
                 process_helper.wait_start = 0.02
                 process_helper.wait_interval = 0.01
                 process_helper.start()
                 // We started the process helper to process. Now, freeze the GUI
                 // while the loops continue in the background.
-                let start = new Date().getTime()
-                while(true) {
-                    let curr = new Date().getTime()
-                    if ((curr - start) >= 200) {
-                        break;
-                    }
+                while(process_helper.active) {
+                    Delay.blocking_delay(200)
                 }
 
+                testcase.wait_updated(session.backend)
                 verify_eq(c().mode, ShoopConstants.LoopMode.Playing)
                 verify_eq(l1().mode, ShoopConstants.LoopMode.Playing)
                 verify_eq(c().iteration, 0)

@@ -6,6 +6,7 @@ import QtQuick.Dialogs
 import ShoopConstants
 
 import '../qml_url_to_filename.js' as UrlToFilename
+import '../delay.js' as Delay
 
 Item {
     id: root
@@ -80,13 +81,7 @@ Item {
                         ShoopMenuItem {
                             text: "Halt UI (10s)"
                             onClicked: {
-                                let start = new Date().getTime()
-                                while(true) {
-                                    let curr = new Date().getTime()
-                                    if ((curr - start) >= 10000) {
-                                        break;
-                                    }
-                                }
+                                Delay.blocking_delay(10000)
                             }
                         }
                     }
