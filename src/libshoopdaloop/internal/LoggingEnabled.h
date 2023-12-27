@@ -43,7 +43,7 @@ public:
         }
     }
 
-    LoggingEnabled() { };
+    LoggingEnabled() {};
     virtual ~LoggingEnabled() {}
 };
 

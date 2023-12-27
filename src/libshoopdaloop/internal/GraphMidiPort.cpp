@@ -1,4 +1,5 @@
 #include "GraphMidiPort.h"
+#include "LoggingEnabled.h"
 #include "MidiBufferInterfaces.h"
 #include "MidiPort.h"
 #include "types.h"
@@ -32,6 +33,9 @@ void GraphMidiPort::PROC_passthrough(uint32_t n_frames) {
             if(auto buf = get_buf(p)) {
                 bool write_refs = buf->write_by_reference_supported();
                 auto n = from_buf->PROC_get_n_events();
+                if (n > 0) {
+                    log<log_level_trace>("MIDI passthrough ({} msgs)", n);
+                }
                 for(decltype(n) i = 0; i<n; i++) {
                     auto &msg = from_buf->PROC_get_event_reference(i);
                     if (write_refs) {

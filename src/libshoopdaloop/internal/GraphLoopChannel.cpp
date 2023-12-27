@@ -7,6 +7,7 @@
 #include "DummyMidiBufs.h"
 #include "MidiSortingBuffer.h"
 #include "MidiPort.h"
+#include "types.h"
 #include <stdexcept>
 #include <algorithm>
 #include <BackendSession.h>
@@ -24,6 +25,7 @@ std::shared_ptr<DummyWriteMidiBuf> g_dummy_midi_output_buffer = std::make_shared
 GraphLoopChannel::GraphLoopChannel(std::shared_ptr<ChannelInterface> chan,
                 std::shared_ptr<GraphLoop> loop,
                 std::shared_ptr<BackendSession> backend) :
+        ModuleLoggingEnabled<"Backend.GraphLoopChannel">(),
         channel(chan),
         loop(loop),
         backend(backend)
@@ -105,7 +107,8 @@ void GraphLoopChannel::PROC_prepare(uint32_t n_frames) {
         auto out_locked_audio = out_locked->maybe_audio_port();
         if (in_locked && in_locked_audio) {
             auto chan = dynamic_cast<LoopAudioChannel*>(channel.get());
-            chan->PROC_set_recording_buffer(in_locked_audio->PROC_get_buffer(n_frames), n_frames);
+            auto buf = in_locked_audio->PROC_get_buffer(n_frames);
+            chan->PROC_set_recording_buffer(buf, n_frames);
         } else {
             if (g_dummy_audio_input_buffer.size() < n_frames*sizeof(audio_sample_t)) {
                 g_dummy_audio_input_buffer.resize(n_frames*sizeof(audio_sample_t));

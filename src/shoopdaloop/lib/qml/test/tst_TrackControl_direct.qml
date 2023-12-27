@@ -115,6 +115,13 @@ ShoopTestFile {
                 reset_track(1)
                 session.backend.wait_process()
                 testcase.wait_updated(session.backend)
+
+                verify(audio_input_port_1.initialized)
+                verify(audio_input_port_2.initialized)
+                verify(audio_output_port_1.initialized)
+                verify(audio_output_port_2.initialized)
+                verify(midi_input_port.initialized)
+                verify(midi_output_port.initialized)
             }
 
             test_fns: ({
@@ -356,7 +363,7 @@ ShoopTestFile {
 
                 },
 
-                'test_direct_midi_monitor': () => {
+                'test_direct_midi_monitor_mute': () => {
                     check_backend()
                     reset()
                     tut_control().monitor = true

@@ -104,19 +104,23 @@ TEST_CASE("Ports - Dummy Audio In - Peak", "[DummyPorts][ports][audio]") {
     port.PROC_prepare(2);
     port.PROC_process(2);
 
-    CHECK(port.get_peak() == Catch::Approx(5.0f));
+    CHECK(port.get_input_peak() == Catch::Approx(5.0f));
+    CHECK(port.get_output_peak() == Catch::Approx(5.0f));
 
     port.PROC_prepare(1);
     port.PROC_process(1);
 
-    CHECK(port.get_peak() == Catch::Approx(5.0f));
+    CHECK(port.get_input_peak() == Catch::Approx(5.0f));
+    CHECK(port.get_output_peak() == Catch::Approx(5.0f));
 
-    port.reset_peak();
+    port.reset_input_peak();
+    port.reset_output_peak();
 
     port.PROC_prepare(3);
     port.PROC_process(3);
 
-    CHECK(port.get_peak() == Catch::Approx(2.0f));
+    CHECK(port.get_input_peak() == Catch::Approx(2.0f));
+    CHECK(port.get_output_peak() == Catch::Approx(2.0f));
 }
 
 TEST_CASE("Ports - Dummy Audio Out - Properties", "[DummyPorts][ports][audio]") {
@@ -208,7 +212,20 @@ TEST_CASE("Ports - Dummy Audio Out - Peak", "[DummyPorts][ports][audio]") {
     memcpy((void*)buf, (void*)samples.data(), 3 * sizeof(audio_sample_t));
     port.PROC_process(3);
 
-    CHECK(port.get_peak() == Catch::Approx(2.0f));
+    CHECK(port.get_input_peak() == Catch::Approx(2.0f));
+    CHECK(port.get_output_peak() == Catch::Approx(2.0f));
+
+    port.reset_output_peak();
+    port.reset_input_peak();
+    port.set_muted(true);
+
+    port.PROC_prepare(3);
+    buf = port.PROC_get_buffer(3);
+    memcpy((void*)buf, (void*)samples.data(), 3 * sizeof(audio_sample_t));
+    port.PROC_process(3);
+
+    CHECK(port.get_input_peak() == Catch::Approx(2.0f));
+    CHECK(port.get_output_peak() == Catch::Approx(0.0f));
 }
 
 TEST_CASE("Ports - Dummy Audio Out - Noop Zero", "[DummyPorts][ports][audio]") {

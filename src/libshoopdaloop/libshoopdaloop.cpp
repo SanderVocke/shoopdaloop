@@ -1144,12 +1144,13 @@ shoop_audio_port_state_info_t *get_audio_port_state(shoopdaloop_audio_port_t *po
     auto p = pp->maybe_audio_port();
   
     if (p) {
-      r->peak = p->get_peak();
+      r->input_peak = p->get_input_peak();
+      r->output_peak = p->get_output_peak();
       r->gain = p->get_gain();
       r->muted = p->get_muted();
-      r->passthrough_muted = !pp->get_passthrough_enabled();
       r->name = strdup(p->name());
-      p->reset_peak();
+      p->reset_input_peak();
+      p->reset_output_peak();
     }
     return r;
   }, new shoop_audio_port_state_info_t);
@@ -1162,15 +1163,14 @@ shoop_midi_port_state_info_t *get_midi_port_state(shoopdaloop_midi_port_t *port)
     auto p = pp->maybe_midi_port();
 
     if(p) {
-      r->n_events_triggered = p->get_n_events_processed();
-      auto maybe_tracker = p->maybe_midi_state_tracker();
-      if (maybe_tracker) {
-        r->n_notes_active = maybe_tracker->n_notes_active();
-      }
+      r->n_input_events = p->get_n_input_events();
+      r->n_output_events = p->get_n_output_events();
+      r->n_input_notes_active = p->get_n_input_notes_active();
+      r->n_output_notes_active = p->get_n_output_notes_active();
       r->muted = p->get_muted();
-      r->passthrough_muted = !pp->get_passthrough_enabled();
       r->name = strdup(p->name());
-      p->reset_n_events_processed();
+      p->reset_n_input_events();
+      p->reset_n_output_events();
     }
     return r;
   }, new shoop_midi_port_state_info_t);

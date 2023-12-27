@@ -7,8 +7,9 @@
 #include <atomic>
 #include "MidiStateTracker.h"
 #include "MidiBufferInterfaces.h"
+#include "LoggingBackend.h"
 
-class MidiPort : public virtual PortInterface {
+class MidiPort : public virtual PortInterface, private ModuleLoggingEnabled<"Backend.MidiPort"> {
     std::atomic<MidiWriteableBufferInterface *> ma_write_data_into_port_buffer;
     std::atomic<MidiReadWriteBufferInterface *> ma_processing_buffer;
     std::atomic<MidiReadableBufferInterface *> ma_read_output_data_buffer;
@@ -16,7 +17,8 @@ class MidiPort : public virtual PortInterface {
     std::atomic<MidiWriteableBufferInterface *> ma_internal_write_output_data_to_buffer;
     std::atomic<bool> ma_muted;
     std::shared_ptr<MidiStateTracker> m_maybe_midi_state;
-    std::atomic<uint32_t> n_events_processed;
+    std::atomic<uint32_t> n_input_events;
+    std::atomic<uint32_t> n_output_events;
 public:
 
     // Midi ports can have buffering or not. Multiple buffers are defined, although they
@@ -37,8 +39,14 @@ public:
     void set_muted(bool muted) override;
     bool get_muted() const override;
 
-    void reset_n_events_processed();
-    uint32_t get_n_events_processed() const;
+    void reset_n_input_events();
+    uint32_t get_n_input_events() const;
+
+    void reset_n_output_events();
+    uint32_t get_n_output_events() const;
+
+    uint32_t get_n_input_notes_active() const;
+    uint32_t get_n_output_notes_active() const;
 
     std::shared_ptr<MidiStateTracker> &maybe_midi_state_tracker();
 

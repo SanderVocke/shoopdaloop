@@ -7,7 +7,8 @@
 
 template<typename SampleT>
 class AudioPort : public virtual PortInterface {
-    std::atomic<float> ma_peak;
+    std::atomic<float> ma_input_peak;
+    std::atomic<float> ma_output_peak;
     std::atomic<float> ma_gain;
     std::atomic<bool> ma_muted;
 
@@ -15,7 +16,8 @@ public:
     AudioPort() : PortInterface(),
       ma_muted(false),
       ma_gain(1.0f),
-      ma_peak(0.0f) {}
+      ma_input_peak(0.0f),
+      ma_output_peak(0.0f) {}
     virtual ~AudioPort() {}
 
     virtual SampleT *PROC_get_buffer(uint32_t n_frames) = 0;
@@ -25,18 +27,24 @@ public:
     void PROC_process(uint32_t nframes) override {
         auto buf = PROC_get_buffer(nframes);
         auto muted = ma_muted.load();
-        
-        if (muted) {
-            memset((void*)buf, 0, nframes * sizeof(SampleT));
-        } else {
-            auto gain = ma_gain.load();
-            SampleT peak = ma_peak.load();
-            for(size_t i=0; i<nframes; i++) {
+
+        // Process input peak and buffer
+        SampleT input_peak = ma_input_peak.load();
+        auto gain = ma_gain.load();
+        for(size_t i=0; i<nframes; i++) {
+            input_peak = std::max(input_peak, std::abs(buf[i]));
+            if (muted) {
+                buf[i] = 0.0f;
+            } else {
                 buf[i] *= gain;
-                peak = std::max(peak, std::abs(buf[i]));
-            }
-            ma_peak = peak;
+            } 
         }
+        ma_input_peak = input_peak;
+        ma_output_peak = std::max(
+            ma_output_peak.load(),
+            muted ?
+                0.0f : input_peak * gain
+        );
     }
 
     void set_gain(float gain) { ma_gain = gain; }
@@ -45,6 +53,8 @@ public:
     void set_muted(bool muted) override { ma_muted = muted; }
     bool get_muted() const override { return ma_muted; }
 
-    float get_peak() const { return ma_peak.load(); }
-    void reset_peak() { ma_peak = 0.0f; }
+    float get_input_peak() const { return ma_input_peak.load(); }
+    void reset_input_peak() { ma_input_peak = 0.0f; }
+    float get_output_peak() const { return ma_output_peak.load(); }
+    void reset_output_peak() { ma_output_peak = 0.0f; }
 };

@@ -18,9 +18,23 @@ void MidiPort::set_muted(bool muted) { ma_muted = muted; }
 
 bool MidiPort::get_muted() const { return ma_muted; }
 
-void MidiPort::reset_n_events_processed() { n_events_processed = 0; }
+void MidiPort::reset_n_input_events() { n_input_events = 0; }
 
-uint32_t MidiPort::get_n_events_processed() const { return n_events_processed; }
+uint32_t MidiPort::get_n_input_events() const { return n_input_events; }
+
+void MidiPort::reset_n_output_events() { n_output_events = 0; }
+
+uint32_t MidiPort::get_n_output_events() const { return n_output_events; }
+
+uint32_t MidiPort::get_n_input_notes_active() const {
+    auto &m = m_maybe_midi_state;
+    return m ? m->n_notes_active() : 0;
+}
+
+uint32_t MidiPort::get_n_output_notes_active() const {
+    auto &m = m_maybe_midi_state;
+    return (m && !ma_muted) ? m->n_notes_active() : 0;
+}
 
 std::shared_ptr<MidiStateTracker> &MidiPort::maybe_midi_state_tracker() {
     return m_maybe_midi_state;
@@ -42,6 +56,7 @@ void MidiPort::PROC_prepare(uint32_t nframes) {
 
 void MidiPort::PROC_process(uint32_t nframes) {
     auto muted = ma_muted.load();
+    log<log_level_trace>("process");
     
     // Get buffers
     auto write_in_buf = ma_write_data_into_port_buffer.load();
@@ -52,15 +67,19 @@ void MidiPort::PROC_process(uint32_t nframes) {
     auto procbuf_inbuf = static_cast<MidiReadableBufferInterface*>(procbuf);
     auto procbuf_outbuf = static_cast<MidiWriteableBufferInterface*>(procbuf);
 
-    uint32_t n_events_processed_here = 0;
-
-    if (!muted && read_in_buf) {
-        auto n_events = read_in_buf->PROC_get_n_events();
+    auto count_in_buf = read_in_buf ? read_in_buf :
+                        procbuf;
+    uint32_t n_in_events;
+    if (count_in_buf) {
+        n_in_events = count_in_buf->PROC_get_n_events();
         // Count events
-        n_events_processed_here = n_events;
+        n_input_events += n_in_events;
+        log<log_level_trace>("# events in input buf: {}", n_in_events);
+    }
+    if (read_in_buf && !muted) {
         // Process state
         if(m_maybe_midi_state) {
-            for(uint32_t i=0; i<n_events; i++) {
+            for(uint32_t i=0; i<n_in_events; i++) {
                 auto &msg = read_in_buf->PROC_get_event_reference(i);
                 uint32_t size, time;
                 const uint8_t *data;
@@ -78,27 +97,29 @@ void MidiPort::PROC_process(uint32_t nframes) {
         // Sort the processing buffer.
         procbuf->PROC_process(nframes);
     }
-    if (!muted && write_out_buf) {
-        // We need to actively write data to the output.
-        // Take it from the processing buffer if we have one, otherwise from the input.
+    if (!muted) {
         MidiReadableBufferInterface *source =
             procbuf ? procbuf : read_in_buf;
         auto n_events = source->PROC_get_n_events();
-        n_events_processed_here = std::max(n_events_processed_here, n_events);
-        for(uint32_t i=0; i<n_events; i++) {
-            auto &msg = source->PROC_get_event_reference(i);
-            write_out_buf->PROC_write_event_reference(msg);
+        log<log_level_trace>("# output events: {}", n_events);
+        n_output_events += n_events;
+
+        if (write_out_buf) {
+            // We need to actively write data to the output.
+            // Take it from the processing buffer if we have one, otherwise from the input.
+            for(uint32_t i=0; i<n_events; i++) {
+                auto &msg = source->PROC_get_event_reference(i);
+                write_out_buf->PROC_write_event_reference(msg);
+            }
         }
     }
-
-    n_events_processed += n_events_processed_here;
 }
 
 MidiPort::MidiPort(
     bool track_notes,
     bool track_controls,
     bool track_programs
-) {
+) : ModuleLoggingEnabled<"Backend.MidiPort">() {
     if (track_notes || track_controls || track_programs) {
         m_maybe_midi_state = std::make_shared<MidiStateTracker>(
             track_notes, track_controls, track_programs

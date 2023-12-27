@@ -166,46 +166,47 @@ class LoopState:
             self.maybe_next_delay = None
 @dataclass
 class AudioPortState:
-    peak: float
+    input_peak: float
+    output_peak: float
     gain: float
     muted: bool
-    passthrough_muted: bool
     name: str
 
     def __init__(self, backend_state : 'bindings.shoop_audio_port_state_info_t' = None):
         if backend_state:
-            self.peak = backend_state.peak
+            self.input_peak = backend_state.input_peak
+            self.output_peak = backend_state.output_peak
             self.gain = backend_state.gain
             self.muted = bool(backend_state.muted)
-            self.passthrough_muted = bool(backend_state.passthrough_muted)
             self.name = str(backend_state.name)
         else:
-            self.peak = 0.0
+            self.input_peak = 0.0
+            self.output_peak = 0.0
             self.gain = 0.0
             self.muted = False
-            self.passthrough_muted = False
             self.name = '(unknown)'
 
 @dataclass
 class MidiPortState:
-    n_events_triggered: int
-    n_notes_active : int
+    n_input_events: int
+    n_input_notes_active : int
     muted: bool
-    passthrough_muted: bool
     name: str
 
     def __init__(self, backend_state : 'bindings.shoop_audio_port_state_info_t' = None):
         if backend_state:
-            self.n_events_triggered = backend_state.n_events_triggered
-            self.n_notes_active = backend_state.n_notes_active
+            self.n_input_events = backend_state.n_input_events
+            self.n_input_notes_active = backend_state.n_input_notes_active
+            self.n_output_events = backend_state.n_output_events
+            self.n_output_notes_active = backend_state.n_output_notes_active
             self.muted = bool(backend_state.muted)
-            self.passthrough_muted = bool(backend_state.passthrough_muted)
             self.name = str(backend_state.name)
         else:
-            self.n_events_triggered = 0
-            self.n_notes_active = 0
+            self.n_input_events_triggered = 0
+            self.n_input_notes_active = 0
+            self.n_output_events_triggered = 0
+            self.n_output_notes_active = 0
             self.muted = False
-            self.passthrough_muted = False
             self.name = '(unknown)'
 
 @dataclass
@@ -642,11 +643,6 @@ class BackendAudioPort:
             if self.available():
                 bindings.set_audio_port_muted(self._c_handle, (1 if muted else 0))
     
-    def set_passthrough_muted(self, muted):
-        with bindings_lock:
-            if self.available():
-                bindings.set_audio_port_passthroughMuted(self._c_handle, (1 if muted else 0))
-    
     def connect_passthrough(self, other):
         with bindings_lock:
             if self.available():
@@ -788,11 +784,6 @@ class BackendMidiPort:
         with bindings_lock:
             if self.available():
                 bindings.set_midi_port_muted(self._c_handle, (1 if muted else 0))
-    
-    def set_passthrough_muted(self, muted):
-        with bindings_lock:
-            if self.available():
-                bindings.set_midi_port_passthroughMuted(self._c_handle, (1 if muted else 0))
     
     def connect_passthrough(self, other):
         with bindings_lock:

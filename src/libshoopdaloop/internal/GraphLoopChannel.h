@@ -4,9 +4,10 @@
 #include <atomic>
 #include "shoop_globals.h"
 #include "GraphNode.h"
-
+#include "LoggingEnabled.h"
 class GraphLoopChannel : public std::enable_shared_from_this<GraphLoopChannel>,
-                         public HasTwoGraphNodes {
+                         public HasTwoGraphNodes,
+                         protected ModuleLoggingEnabled<"Backend.GraphLoopChannel"> {
 public:
     std::shared_ptr<ChannelInterface> channel;
     std::weak_ptr<GraphLoop> loop;

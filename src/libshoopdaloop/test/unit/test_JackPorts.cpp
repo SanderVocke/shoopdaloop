@@ -89,7 +89,19 @@ TEST_CASE("Ports - Jack Audio In - Peak", "[JackPorts][ports][audio]") {
     memcpy((void*) buf, (void*) samples.data(), 5 * sizeof(audio_sample_t));
     port->PROC_process(5);
 
-    CHECK(port->get_peak() == Catch::Approx(0.9f));
+    CHECK(port->get_input_peak() == Catch::Approx(0.9f));
+    CHECK(port->get_output_peak() == Catch::Approx(0.9f));
+
+    port->reset_output_peak();
+    port->reset_input_peak();
+    port->set_muted(true);
+    port->PROC_prepare(5);
+    buf = port->PROC_get_buffer(5);
+    memcpy((void*) buf, (void*) samples.data(), 5 * sizeof(audio_sample_t));
+    port->PROC_process(5);
+
+    CHECK(port->get_input_peak() == Catch::Approx(0.9f));
+    CHECK(port->get_output_peak() == Catch::Approx(0.0f));
 }
 
 TEST_CASE("Ports - Jack Audio Out - Properties", "[JackPorts][ports][audio]") {
@@ -157,7 +169,20 @@ TEST_CASE("Ports - Jack Audio Out - Peak", "[JackPorts][ports][audio]") {
     memcpy((void*) buf, (void*) samples.data(), 5 * sizeof(audio_sample_t));
     port->PROC_process(5);
 
-    CHECK(port->get_peak() == Catch::Approx(0.9f));
+    CHECK(port->get_input_peak() == Catch::Approx(0.9f));
+    CHECK(port->get_output_peak() == Catch::Approx(0.9f));
+
+    port->reset_input_peak();
+    port->reset_output_peak();
+    port->set_muted(true);
+
+    port->PROC_prepare(5);
+    buf = port->PROC_get_buffer(5);
+    memcpy((void*) buf, (void*) samples.data(), 5 * sizeof(audio_sample_t));
+    port->PROC_process(5);
+
+    CHECK(port->get_input_peak() == Catch::Approx(0.9f));
+    CHECK(port->get_output_peak() == Catch::Approx(0.0f));
 }
 
 TEST_CASE("Ports - Jack Audio Out - Noop Zero", "[JackPorts][ports][audio]") {
@@ -173,7 +198,8 @@ TEST_CASE("Ports - Jack Audio Out - Noop Zero", "[JackPorts][ports][audio]") {
     memcpy((void*) buf, (void*) samples.data(), 5 * sizeof(audio_sample_t));
     port->PROC_process(5);
 
-    CHECK(port->get_peak() == Catch::Approx(0.9f));
+    CHECK(port->get_input_peak() == Catch::Approx(0.9f));
+    CHECK(port->get_output_peak() == Catch::Approx(0.9f));
 
     std::vector<audio_sample_t> second_round_output(5);
     port->PROC_prepare(5);
@@ -258,7 +284,8 @@ TEST_CASE("Ports - Jack Midi In - Message Counter", "[JackPorts][ports][midi]") 
     port->PROC_prepare(100);
     port->PROC_process(100);
 
-    CHECK(port->get_n_events_processed() == 2);
+    CHECK(port->get_n_input_events() == 2);
+    CHECK(port->get_n_output_events() == 2);
 
     internal_port.midi_buffer.clear();
     internal_port.midi_buffer.push_back(m1);
@@ -269,15 +296,29 @@ TEST_CASE("Ports - Jack Midi In - Message Counter", "[JackPorts][ports][midi]") 
     port->PROC_prepare(100);
     port->PROC_process(100);
 
-    CHECK(port->get_n_events_processed() == 6);
+    CHECK(port->get_n_input_events() == 6);
+    CHECK(port->get_n_output_events() == 6);
 
-    port->reset_n_events_processed();
+    port->reset_n_input_events();
+    port->reset_n_output_events();
     internal_port.midi_buffer.clear();
 
     port->PROC_prepare(100);
     port->PROC_process(100);
 
-    CHECK(port->get_n_events_processed() == 0);
+    CHECK(port->get_n_input_events() == 0);
+    CHECK(port->get_n_output_events() == 0);
+
+    port->set_muted(true);
+    internal_port.midi_buffer.clear();
+    internal_port.midi_buffer.push_back(m1);
+    internal_port.midi_buffer.push_back(m2);
+
+    port->PROC_prepare(100);
+    port->PROC_process(100);
+
+    CHECK(port->get_n_input_events() == 2);
+    CHECK(port->get_n_output_events() == 0);
 }
 
 TEST_CASE("Ports - Jack Midi Out - Properties", "[JackPorts][ports][midi]") {
@@ -356,7 +397,8 @@ TEST_CASE("Ports - Jack Midi Out - Message Counter", "[JackPorts][ports][midi]")
 
     port->PROC_process(100);
 
-    CHECK(port->get_n_events_processed() == 2);
+    CHECK(port->get_n_input_events() == 2);
+    CHECK(port->get_n_output_events() == 2);
 
     port->PROC_prepare(100);
     buf = port->PROC_get_write_data_into_port_buffer(100);
@@ -367,14 +409,28 @@ TEST_CASE("Ports - Jack Midi Out - Message Counter", "[JackPorts][ports][midi]")
 
     port->PROC_process(100);
 
-    CHECK(port->get_n_events_processed() == 6);
+    CHECK(port->get_n_input_events() == 6);
+    CHECK(port->get_n_output_events() == 6);
 
-    port->reset_n_events_processed();
+    port->reset_n_input_events();
+    port->reset_n_output_events();
 
     port->PROC_prepare(100);
     port->PROC_process(100);
 
-    CHECK(port->get_n_events_processed() == 0);
+    CHECK(port->get_n_input_events() == 0);
+    CHECK(port->get_n_output_events() == 0);
+
+    port->set_muted(true);
+    port->PROC_prepare(100);
+    buf = port->PROC_get_write_data_into_port_buffer(100);
+    buf->PROC_write_event_reference(m1);
+    buf->PROC_write_event_reference(m2);
+
+    port->PROC_process(100);
+
+    CHECK(port->get_n_input_events() == 2);
+    CHECK(port->get_n_output_events() == 0);
 }
 
 TEST_CASE("Ports - Jack Midi Out - Mute", "[JackPorts][ports][midi]") {

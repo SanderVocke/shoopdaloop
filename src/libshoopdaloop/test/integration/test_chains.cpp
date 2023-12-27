@@ -7,6 +7,7 @@
 #include "ObjectPool.h"
 #include "AudioBuffer.h"
 #include "GraphPort.h"
+#include "catch2/catch_approx.hpp"
 #include "types.h"
 #include <memory>
 #include "libshoopdaloop_test_if.h"
@@ -151,11 +152,11 @@ TEST_CASE("Chains - DryWet Basic", "[Chains][audio]") {
     tst.int_driver->pause();
 
     auto result_data = tst.int_dummy_output_port->dequeue_data(4);
-    REQUIRE(result_data.size() == 4);
-    REQUIRE(tst.int_dummy_input_port->get_queue_empty() == false);
+    CHECK(result_data.size() == 4);
+    CHECK(tst.int_dummy_input_port->get_queue_empty() == false);
     auto expect_output_1 = std::vector<float>(input_data.begin(), input_data.begin() + 4);
     for (auto &v: expect_output_1) { v /= 2.0f; }
-    REQUIRE(result_data == expect_output_1);
+    CHECK(result_data == expect_output_1);
     result_data.clear();
 
     tst.int_driver->resume();
@@ -167,12 +168,12 @@ TEST_CASE("Chains - DryWet Basic", "[Chains][audio]") {
     tst.int_driver->pause();
 
     result_data = tst.int_dummy_output_port->dequeue_data(12);
-    REQUIRE(result_data.size() == 12);
-    REQUIRE(tst.int_dummy_input_port->get_queue_empty() == true);
+    CHECK(result_data.size() == 12);
+    CHECK(tst.int_dummy_input_port->get_queue_empty() == true);
     auto expect_output_2 = std::vector<float>(input_data.begin() + 4, input_data.end());
     expect_output_2.insert(expect_output_2.end(), input_data2.begin(), input_data2.end());
     for (auto &v: expect_output_2) { v /= 2.0f; }
-    REQUIRE(result_data == expect_output_2);
+    CHECK(result_data == expect_output_2);
 
     tst.int_driver->close();
 };
@@ -190,8 +191,13 @@ TEST_CASE("Chains - DryWet record basic", "[Chains][audio]") {
 
     auto expect_data = input_data;
     for (auto &v: expect_data) { v /= 2.0f; }
-    REQUIRE(tst.int_dry_audio_chan->get_data(true) == input_data);
-    REQUIRE(tst.int_wet_audio_chan->get_data(true) == expect_data);
+    CHECK(tst.int_dry_audio_chan->get_data(true) == input_data);
+    CHECK(tst.int_wet_audio_chan->get_data(true) == expect_data);
+
+    CHECK(tst.int_input_port->maybe_audio_port()->get_input_peak() == Catch::Approx(8.0f));
+    CHECK(tst.int_input_port->maybe_audio_port()->get_output_peak() == Catch::Approx(8.0f));
+    CHECK(tst.int_fx_in->maybe_audio_port()->get_input_peak() == Catch::Approx(8.0f));
+    CHECK(tst.int_fx_in->maybe_audio_port()->get_output_peak() == Catch::Approx(8.0f));
 
     tst.int_driver->close();
 };
@@ -209,9 +215,9 @@ TEST_CASE("Chains - DryWet record passthrough muted", "[Chains][audio]") {
     tst.int_driver->controlled_mode_run_request();
 
     auto result_data = tst.int_dummy_output_port->dequeue_data(8);
-    REQUIRE(tst.int_dry_audio_chan->get_data(true) == input_data);
-    REQUIRE(tst.int_wet_audio_chan->get_data(true) == zeroes(8));
-    REQUIRE(result_data == zeroes(8));
+    CHECK(tst.int_dry_audio_chan->get_data(true) == input_data);
+    CHECK(tst.int_wet_audio_chan->get_data(true) == zeroes(8));
+    CHECK(result_data == zeroes(8));
 
     tst.int_driver->close();
 };
@@ -228,8 +234,8 @@ TEST_CASE("Chains - DryWet record muted", "[Chains][audio]") {
     tst.int_dummy_output_port->request_data(8);
     tst.int_driver->controlled_mode_run_request();
 
-    REQUIRE(tst.int_dry_audio_chan->get_data(true) == zeroes(8));
-    REQUIRE(tst.int_wet_audio_chan->get_data(true) == zeroes(8));
+    CHECK(tst.int_dry_audio_chan->get_data(true) == zeroes(8));
+    CHECK(tst.int_wet_audio_chan->get_data(true) == zeroes(8));
 
     tst.int_driver->close();
 };
@@ -249,8 +255,15 @@ TEST_CASE("Chains - DryWet record gain", "[Chains][audio]") {
     tst.int_dummy_output_port->request_data(8);
     tst.int_driver->controlled_mode_run_request();
 
-    REQUIRE(tst.int_dry_audio_chan->get_data(true) == expected);
-    REQUIRE(tst.int_wet_audio_chan->get_data(true) == expected_wet);
+    CHECK(tst.int_dry_audio_chan->get_data(true) == expected);
+    CHECK(tst.int_wet_audio_chan->get_data(true) == expected_wet);
+
+    CHECK(tst.int_input_port->maybe_audio_port()->get_input_peak() == Catch::Approx(8.0f));
+    CHECK(tst.int_input_port->maybe_audio_port()->get_output_peak() == Catch::Approx(4.0f));
+    CHECK(tst.int_fx_in->maybe_audio_port()->get_input_peak() == Catch::Approx(4.0f));
+    CHECK(tst.int_fx_in->maybe_audio_port()->get_output_peak() == Catch::Approx(4.0f));
+    CHECK(tst.int_fx_out->maybe_audio_port()->get_input_peak() == Catch::Approx(2.0f));
+    CHECK(tst.int_fx_out->maybe_audio_port()->get_output_peak() == Catch::Approx(2.0f));
 
     tst.int_driver->close();
 };
@@ -272,7 +285,7 @@ TEST_CASE("Chains - DryWet playback basic", "[Chains][audio]") {
     tst.int_driver->controlled_mode_run_request();
 
     auto result_data = tst.int_dummy_output_port->dequeue_data(4);
-    REQUIRE(result_data == wet_data);
+    CHECK(result_data == wet_data);
 
     tst.int_driver->close();
 };
@@ -295,7 +308,7 @@ TEST_CASE("Chains - DryWet playback gain", "[Chains][audio]") {
     tst.int_driver->controlled_mode_run_request();
 
     auto result_data = tst.int_dummy_output_port->dequeue_data(4);
-    REQUIRE(result_data == half_wet);
+    CHECK(result_data == half_wet);
 
     tst.int_driver->close();
 };
@@ -319,7 +332,7 @@ TEST_CASE("Chains - DryWet dry playback basic", "[Chains][audio]") {
     auto result_data = tst.int_dummy_output_port->dequeue_data(4);
     auto expected = dry_data;
     for (auto &v: expected) { v /= 2.0f; }
-    REQUIRE(result_data == expected);
+    CHECK(result_data == expected);
 
     tst.int_driver->close();
 };
@@ -344,7 +357,7 @@ TEST_CASE("Chains - DryWet dry playback gain", "[Chains][audio]") {
     auto result_data = tst.int_dummy_output_port->dequeue_data(4);
     auto expected = half_dry;
     for (auto &v: expected) { v /= 2.0f; }
-    REQUIRE(result_data == expected);
+    CHECK(result_data == expected);
 
     tst.int_driver->close();
 };
@@ -369,7 +382,7 @@ TEST_CASE("Chains - DryWet dry playback input passthrough muted", "[Chains][audi
     auto result_data = tst.int_dummy_output_port->dequeue_data(4);
     auto expected = dry_data;
     for (auto &v: expected) { v /= 2.0f; }
-    REQUIRE(result_data == expected);
+    CHECK(result_data == expected);
 
     tst.int_driver->close();
 };
@@ -394,7 +407,7 @@ TEST_CASE("Chains - DryWet dry playback input muted", "[Chains][audio]") {
     auto result_data = tst.int_dummy_output_port->dequeue_data(4);
     auto expected = dry_data;
     for (auto &v: expected) { v /= 2.0f; }
-    REQUIRE(result_data == expected);
+    CHECK(result_data == expected);
 
     tst.int_driver->close();
 };

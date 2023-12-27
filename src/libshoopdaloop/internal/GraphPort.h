@@ -11,7 +11,7 @@
 
 class GraphPort : public std::enable_shared_from_this<GraphPort>,
                       public HasTwoGraphNodes,
-                      private ModuleLoggingEnabled<"Backend.GraphPort"> {
+                      protected ModuleLoggingEnabled<"Backend.GraphPort"> {
 public:
     
     std::weak_ptr<BackendSession> backend;

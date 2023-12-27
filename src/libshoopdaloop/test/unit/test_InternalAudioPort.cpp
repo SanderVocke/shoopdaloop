@@ -62,7 +62,19 @@ TEST_CASE("Ports - Internal Audio - Peak", "[InternalAudioPort][ports][audio]") 
     memcpy((void*) buf, (void*) samples.data(), 5 * sizeof(audio_sample_t));
     port.PROC_process(5);
 
-    CHECK(port.get_peak() == Catch::Approx(0.9f));
+    CHECK(port.get_input_peak() == Catch::Approx(0.9f));
+    CHECK(port.get_output_peak() == Catch::Approx(0.9f));
+
+    port.set_muted(true);
+    port.reset_input_peak();
+    port.reset_output_peak();
+    port.PROC_prepare(5);
+    buf = port.PROC_get_buffer(5);
+    memcpy((void*) buf, (void*) samples.data(), 5 * sizeof(audio_sample_t));
+    port.PROC_process(5);
+
+    CHECK(port.get_input_peak() == Catch::Approx(0.9f));
+    CHECK(port.get_output_peak() == Catch::Approx(0.0f));
 }
 
 TEST_CASE("Ports - Internal Audio - Noop Zero", "[InternalAudioPort][ports][audio]") {
@@ -76,7 +88,8 @@ TEST_CASE("Ports - Internal Audio - Noop Zero", "[InternalAudioPort][ports][audi
     memcpy((void*) buf, (void*) samples.data(), 5 * sizeof(audio_sample_t));
     port.PROC_process(5);
 
-    CHECK(port.get_peak() == Catch::Approx(0.9f));
+    CHECK(port.get_input_peak() == Catch::Approx(0.9f));
+    CHECK(port.get_output_peak() == Catch::Approx(0.9f));
 
     std::vector<audio_sample_t> second_round_output(5);
     port.PROC_prepare(5);

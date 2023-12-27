@@ -77,11 +77,6 @@ ApplicationWindow {
                 }
 
                 ItemRow {
-                    label: "passthrough muted:"
-                    Label { text: object.passthrough_muted }
-                }
-
-                ItemRow {
                     label: "direction:"
                     Label { text: object.direction }
                 }
@@ -113,14 +108,6 @@ ApplicationWindow {
                     sourceComponent: ItemRow {
                         label: "gain:"
                         Label { text: object.gain.toString() }
-                    }
-                }
-
-                Loader {
-                    active: object.object_schema.match(/midiport.[0-9]/)
-                    sourceComponent: ItemRow {
-                        label: "n notes active: "
-                        Label { text: object.n_notes_active.toString() }
                     }
                 }
 
