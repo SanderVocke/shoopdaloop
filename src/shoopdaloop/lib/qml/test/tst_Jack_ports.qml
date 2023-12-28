@@ -22,6 +22,7 @@ ShoopTestFile {
             'direction': 'input',
             'gain': 1.0,
             'muted': false,
+            'passthrough_muted': false,
             'passthrough_to': [],
             'external_port_connections': []
         })
@@ -37,6 +38,7 @@ ShoopTestFile {
             'direction': 'output',
             'gain': 1.0,
             'muted': false,
+            'passthrough_muted': false,
             'passthrough_to': [],
             'external_port_connections': []
         })
@@ -51,6 +53,7 @@ ShoopTestFile {
                 'name_parts': ['midi', '_in'],
                 'direction': 'input',
                 'muted': false,
+                'passthrough_muted': false,
                 'passthrough_to': [],
                 'external_port_connections': []
             })
@@ -65,6 +68,7 @@ ShoopTestFile {
                 'name_parts': ['midi', '_out'],
                 'direction': 'output',
                 'muted': false,
+                'passthrough_muted': false,
                 'passthrough_to': [],
                 'external_port_connections': []
             })

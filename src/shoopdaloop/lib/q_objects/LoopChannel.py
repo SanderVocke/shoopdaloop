@@ -160,8 +160,8 @@ class LoopChannel(ShoopQQuickItem):
             self.initializedChanged.connect(lambda: self.clear_data_dirty())
 
     # connected ports
-    GraphPortsChanged = Signal(list)
-    @Property(list, notify=GraphPortsChanged)
+    connectedPortsChanged = Signal(list)
+    @Property(list, notify=connectedPortsChanged)
     def connected_ports(self):
         return [p for p in self._connected_ports if p and p.isValid()]
     
@@ -212,7 +212,7 @@ class LoopChannel(ShoopQQuickItem):
             backend_port = port.get_backend_obj()
             backend_channel.connect(backend_port)
             self._connected_ports.append(port)
-            self.GraphPortsChanged.emit(self._connected_ports)
+            self.connectedPortsChanged.emit(self._connected_ports)
     
     @Slot(result='QVariant')
     def get_backend(self):
@@ -237,7 +237,7 @@ class LoopChannel(ShoopQQuickItem):
             backend_port = port.get_backend_obj()
             backend_channel.disconnect(backend_port)
             self._connected_ports.remove(port)
-            self.GraphPortsChanged.emit(self._connected_ports)
+            self.connectedPortsChanged.emit(self._connected_ports)
 
     @Slot()
     def update_impl(self, state):

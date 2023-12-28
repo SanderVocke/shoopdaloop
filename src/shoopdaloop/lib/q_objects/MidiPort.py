@@ -88,6 +88,7 @@ class MidiPort(Port):
         self.n_output_notes_active = state.n_output_notes_active
         self.name = state.name
         self.muted = state.muted
+        self.passthrough_muted = state.passthrough_muted
     
     @Slot(list)
     def dummy_queue_msgs(self, msgs):
@@ -152,3 +153,4 @@ class MidiPort(Port):
     
     def push_state(self):
         self.set_muted(self.muted)
+        self.set_passthrough_muted(self.passthrough_muted)

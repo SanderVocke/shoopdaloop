@@ -27,6 +27,7 @@ PythonAudioPort {
             'direction': descriptor.direction,
             'gain': gain,
             'muted': muted,
+            'passthrough_muted': passthrough_muted,
             'passthrough_to': descriptor.passthrough_to,
             'external_port_connections': get_connected_external_ports()
         }
@@ -63,4 +64,5 @@ PythonAudioPort {
     name_hint : name_parts.join('')
     gain : descriptor.gain
     muted : descriptor.muted
+    passthrough_muted: descriptor.passthrough_muted
 }

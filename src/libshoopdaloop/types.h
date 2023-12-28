@@ -106,6 +106,7 @@ typedef struct {
     float output_peak;
     float gain;
     unsigned muted;
+    unsigned passthrough_muted;
     const char* name;
 } shoop_audio_port_state_info_t;
 
@@ -115,6 +116,7 @@ typedef struct {
     unsigned n_output_events;
     unsigned n_output_notes_active;
     unsigned muted;
+    unsigned passthrough_muted;
     const char* name;
 } shoop_midi_port_state_info_t;
 

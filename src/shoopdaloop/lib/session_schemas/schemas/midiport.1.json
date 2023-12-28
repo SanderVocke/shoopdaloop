@@ -6,6 +6,7 @@
         "name_parts":       { "type": "array", "items": { "type": "string" } },
         "direction":        { "enum": ["input", "output"] },
         "muted":            { "type": "boolean" },
+        "passthrough_muted":{ "type": "boolean" },
         "passthrough_to":   { "type": "array", "items": { "type": "string" } },
         "external_port_connections": { "type": "array", "items": { "type": "string" } }
     },

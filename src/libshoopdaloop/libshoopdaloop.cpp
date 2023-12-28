@@ -1156,6 +1156,7 @@ shoop_audio_port_state_info_t *get_audio_port_state(shoopdaloop_audio_port_t *po
       r->output_peak = p->get_output_peak();
       r->gain = p->get_gain();
       r->muted = p->get_muted();
+      r->passthrough_muted = !pp->get_passthrough_enabled();
       r->name = strdup(p->name());
       p->reset_input_peak();
       p->reset_output_peak();
@@ -1176,6 +1177,7 @@ shoop_midi_port_state_info_t *get_midi_port_state(shoopdaloop_midi_port_t *port)
       r->n_input_notes_active = p->get_n_input_notes_active();
       r->n_output_notes_active = p->get_n_output_notes_active();
       r->muted = p->get_muted();
+      r->passthrough_muted = !pp->get_passthrough_enabled();
       r->name = strdup(p->name());
       p->reset_n_input_events();
       p->reset_n_output_events();

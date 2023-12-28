@@ -30,7 +30,7 @@ Item {
         var ports = initial_track_descriptor.ports
             .filter(p => is_in(p));
         var settings = new Set();
-        ports.forEach((p) => { settings.add(!p.muted) })
+        ports.forEach((p) => { settings.add(!p.passthrough_muted) })
         if (settings.size == 1) {
             return Array.from(settings)[0]
         }
@@ -312,26 +312,26 @@ Item {
         audio_in_ports
             .filter(p => is_dry(p.descriptor))
             .forEach((p) => {
-                p.set_muted(logic.mute_drywet_input_passthrough)
+                p.set_passthrough_muted(logic.mute_drywet_input_passthrough)
             })
         audio_in_ports
             .filter(p => is_direct(p.descriptor))
             .forEach((p) => {
-                p.set_muted(logic.mute_direct_passthrough)
+                p.set_passthrough_muted(logic.mute_direct_passthrough)
             })
         midi_in_ports
             .filter(p => is_direct(p.descriptor))
             .forEach((p) => {
-                p.set_muted(logic.mute_direct_passthrough)
+                p.set_passthrough_muted(logic.mute_direct_passthrough)
             })
         midi_in_ports
             .filter(p => is_dry(p.descriptor))
             .forEach((p) => {
-                p.set_muted(logic.mute_drywet_input_passthrough)
+                p.set_passthrough_muted(logic.mute_drywet_input_passthrough)
             })
         fx_out_ports
             .forEach((p) => {
-                p.set_muted(logic.mute_drywet_output_passthrough)
+                p.set_passthrough_muted(logic.mute_drywet_output_passthrough)
             })
     }
     function push_fx_active() {

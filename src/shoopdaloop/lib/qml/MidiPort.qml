@@ -26,6 +26,7 @@ PythonMidiPort {
             'name_parts': descriptor.name_parts,
             'direction': descriptor.direction,
             'muted': descriptor.muted,
+            'passthrough_muted': descriptor.muted,
             'passthrough_to': descriptor.passthrough_to,
             'external_port_connections': get_connected_external_ports()
         }
@@ -62,4 +63,5 @@ PythonMidiPort {
     property list<string> name_parts : descriptor.name_parts
     name_hint : name_parts.join('')
     muted: descriptor.muted
+    passthrough_muted: descriptor.passthrough_muted
 }

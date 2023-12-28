@@ -76,9 +76,9 @@ class AudioPort(Port):
         self.input_peak = state.input_peak
         self.output_peak = state.output_peak
         self.name = state.name
-
         self.gain = state.gain
         self.muted = state.muted
+        self.passthrough_muted = state.passthrough_muted
     
     @Slot(float)
     def set_gain(self, gain):
@@ -140,6 +140,7 @@ class AudioPort(Port):
 
     def push_state(self):
         self.set_muted(self.muted)
+        self.set_passthrough_muted(self.passthrough_muted)
         self.set_gain(self.gain)
         
     def maybe_initialize_impl(self, name_hint, direction, is_internal):
