@@ -1564,6 +1564,7 @@ Item {
         FileDialog {
             id: savedialog
             fileMode: FileDialog.SaveFile
+            options: FileDialog.DontUseNativeDialog
             acceptLabel: 'Save'
             nameFilters: Object.entries(file_io.get_soundfile_formats()).map((e) => {
                 var extension = e[0]
@@ -1594,6 +1595,7 @@ Item {
         FileDialog {
             id: midisavedialog
             fileMode: FileDialog.SaveFile
+            options: FileDialog.DontUseNativeDialog
             acceptLabel: 'Save'
             nameFilters: ["MIDI files (*.mid)", "Sample-accurate Shoop MIDI (*.smf)"]
             property var channel: null
@@ -1613,6 +1615,7 @@ Item {
         FileDialog {
             id: loaddialog
             fileMode: FileDialog.OpenFile
+            options: FileDialog.DontUseNativeDialog
             acceptLabel: 'Load'
             nameFilters: [
                 'Supported sound files ('
@@ -1763,6 +1766,7 @@ Item {
         FileDialog {
             id: midiloaddialog
             fileMode: FileDialog.OpenFile
+            options: FileDialog.DontUseNativeDialog
             acceptLabel: 'Load'
             nameFilters: ["Midi files (*.mid)"]
             onAccepted: {

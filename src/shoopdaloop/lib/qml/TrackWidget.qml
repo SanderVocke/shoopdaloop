@@ -13,6 +13,9 @@ Item {
     id: root
 
     width: width_adjuster.x + width_adjuster.width
+    function setWidth(width) {
+        width_adjuster.x = width - width_adjuster.width
+    }
     
     anchors {
         top: parent.top
@@ -47,6 +50,7 @@ Item {
             'schema': 'track.1',
             'id': obj_id,
             'name': name,
+            'width': Math.round(width),
             'ports': ports.map((p) => p.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to)),
             'loops': all_loops.map((l) => l.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to)),
         }
@@ -144,6 +148,9 @@ Item {
 
     Component.onCompleted: {
         loaded = false
+        if (initial_descriptor.width != undefined) {
+            setWidth(initial_descriptor.width)
+        }
         var _n_loops_loaded = 0
         // Instantiate initial loops
         root.loop_descriptors.forEach((desc, idx) => {

@@ -4,6 +4,7 @@
         "schema":       { "const": "track.1" },
         "id":           { "type": "string"  },
         "name":         { "type": "string" },
+        "width":        { "type": "integer" },
         "loops": {
             "type": "array",
             "items": {
