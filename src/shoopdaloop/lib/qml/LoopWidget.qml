@@ -12,6 +12,7 @@ import '../qml_url_to_filename.js' as UrlToFilename
 // The loop widget allows manipulating a single loop within a track.
 Item {
     id: root
+    
     property var track_widget
 
     property var initial_descriptor : null
@@ -398,7 +399,12 @@ Item {
         root.record_n(n_cycles_delay, n_cycles_record)
     }
 
-    width: childrenRect.width
+    anchors {
+        left: parent.left
+        right: parent.right
+        leftMargin: 2
+        rightMargin: 2
+    }
     height: childrenRect.height
     clip: true
 
@@ -480,6 +486,11 @@ Item {
         id: statusrect
         loop: root.maybe_loop
 
+        anchors {
+            left: parent.left
+            right: parent.right
+        }
+
         LoopDetailsWindow {
             id: detailswindow
             title: root.initial_descriptor.id + " details"
@@ -503,8 +514,11 @@ Item {
         signal propagateMousePosition(var point)
         signal propagateMouseExited()
 
-        width: loopitem.width
-        height: loopitem.height
+        anchors {
+            left: parent.left
+            right: parent.right
+        }
+        height: 26
 
         color: {
             if (loop && root.maybe_composite_loop) {
@@ -675,10 +689,7 @@ Item {
 
         Item {
             id: loopitem
-            width: 100
-            height: 26
-            x: 0
-            y: 0
+            anchors.fill: parent
 
             Item {
                 id: iconitem

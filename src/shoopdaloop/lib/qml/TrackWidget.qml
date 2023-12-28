@@ -12,6 +12,13 @@ import "../generate_session.js" as GenerateSession
 Item {
     id: root
 
+    width: width_adjuster.x + width_adjuster.width
+    
+    anchors {
+        top: parent.top
+        bottom: parent.bottom
+    }
+
     property var initial_descriptor : null
 
     readonly property PythonLogger logger : PythonLogger { name: "Frontend.Qml.TrackWidget" }
@@ -97,16 +104,18 @@ Item {
         }
     }
 
-    // Draggy rect
+    // Draggy rect for width ajustment
     Rectangle {
         id: width_adjuster
         anchors {
         }
         height: root.height
-        width: 20
-        x: 250
+        width: 10
+        x: 100
 
-        color: 'red'
+        // for debugging
+        // color: 'red'
+        color: 'transparent'
 
         MouseArea {
             anchors.fill: parent
@@ -118,9 +127,6 @@ Item {
             }
         }
     }
-
-    width: width_adjuster.x + width_adjuster.width
-    height: 300
 
     RegisterInRegistry {
         id: reg_entry
@@ -259,18 +265,29 @@ Item {
         property int x_spacing: 8
         property int y_spacing: 4
 
-        width: childrenRect.width + x_spacing
+        anchors {
+            left: parent.left
+            right: parent.right
+            top: parent.top
+        }
         height: childrenRect.height + y_spacing
 
         Item {
-            width: childrenRect.width
+            anchors {
+                left: parent.left
+                right: parent.right
+                top: parent.top
+            }
+
             height: childrenRect.height
-            x: parent.x_spacing/2
-            y: parent.y_spacing/2
 
             Column {
                 id: track_column
                 spacing: 2
+                anchors {
+                    left: parent.left
+                    right: parent.right
+                }
 
                 Item {
                     anchors {
@@ -415,7 +432,11 @@ Item {
                     spacing: 2
                     id: loops_column
                     height: childrenRect.height
-                    width: childrenRect.width
+                    
+                    anchors {
+                        left: parent.left
+                        right: parent.right
+                    }
 
                     // Note: loops injected here
                     onChildrenChanged: update_coords()
@@ -434,7 +455,14 @@ Item {
 
                 ExtendedButton {
                     tooltip: "Add a loop to track(s)."
-                    width: 100
+                    
+                    anchors {
+                        left: parent.left
+                        right: parent.right
+                        leftMargin: 6
+                        rightMargin: 6
+                    }
+
                     height: 30
                     MaterialDesignIcon {
                         size: 20
