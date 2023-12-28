@@ -1,19 +1,8 @@
 #include "GraphPort.h"
-#include "AudioPort.h"
-#include "MidiPort.h"
-#include "InternalAudioPort.h"
 #include <memory>
 #include <stdexcept>
 #include <algorithm>
-#include "MidiStateTracker.h"
-#include "MidiSortingBuffer.h"
 #include "BackendSession.h"
-#include "DummyAudioMidiDriver.h"
-#include "shoop_globals.h"
-
-#ifdef SHOOP_HAVE_LV2
-#include "InternalLV2MidiOutputPort.h"
-#endif
 
 using namespace shoop_types;
 using namespace shoop_constants;
@@ -38,7 +27,7 @@ void GraphPort::connect_passthrough(const std::shared_ptr<GraphPort> &other) {
         }
     }
     mp_passthrough_to.push_back(other);
-    get_backend().recalculate_processing_schedule();
+    get_backend().set_graph_node_changes_pending();
 }
 
 

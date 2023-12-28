@@ -12,11 +12,13 @@
 #include "AudioBuffer.h"
 #include "ObjectPool.h"
 #include "AudioMidiLoop.h"
+#include "fmt/format.h"
 #include "graph_dot.h"
 #include "shoop_globals.h"
 #include "types.h"
 #include "graph_processing_order.h"
 #include <chrono>
+#include <condition_variable>
 #include "CustomProcessingChain.h"
 
 #ifdef SHOOP_HAVE_BACKEND_JACK
@@ -31,6 +33,52 @@ using namespace logging;
 using namespace shoop_types;
 using namespace shoop_constants;
 
+struct BackendSession::RecalculateGraphThread {
+    std::thread thread;
+    std::condition_variable cv;
+    std::mutex mutex;
+    bool finish;
+    std::atomic<unsigned> m_req_id;
+    BackendSession &backend;
+
+    RecalculateGraphThread(BackendSession &backend) :
+        finish(false),
+        m_req_id(0),
+        backend(backend)
+    {
+        thread = std::thread([this]() { this->thread_fn(); });
+    }
+
+    void thread_fn() {
+        unsigned rid = 0;
+        while(true) {
+            std::unique_lock lk(mutex);
+            unsigned new_rid;
+            cv.wait(lk, [this, &rid, &new_rid]() { new_rid = m_req_id.load(); return finish || rid != new_rid; });
+            if(finish) { break; }
+            rid = new_rid;
+            lk.unlock();
+            backend.log<log_level_debug>("Recalculate graph {}", rid);
+            backend.recalculate_processing_schedule(rid);
+        }
+        backend.log<log_level_debug>("Recalculate graph thread finished");
+    }
+
+    void update_request_id(unsigned req_id) {
+        if (req_id != m_req_id) {
+            std::lock_guard lk(mutex);
+            m_req_id = req_id;
+            cv.notify_one();
+        }
+    }
+
+    ~RecalculateGraphThread() {
+        finish = true;
+        cv.notify_one();
+        thread.join();
+    }
+};
+
 BackendSession::BackendSession() :
           WithCommandQueue(),
           profiler(std::make_shared<profiling::Profiler>()),
@@ -38,7 +86,10 @@ BackendSession::BackendSession() :
           graph_profiling_item(profiler->maybe_get_profiling_item("Process.Graph")),
           cmds_profiling_item(
               profiler->maybe_get_profiling_item("Process.Commands")),
-          ma_state(State::Active)
+          ma_state(State::Active),
+          ma_graph_id(0),
+          ma_graph_request_id(0),
+          m_recalculate_graph_thread(std::make_unique<RecalculateGraphThread>(*this))
 {
     audio_buffer_pool = std::make_shared<ObjectPool<AudioBuffer<shoop_types::audio_sample_t>>>(
         n_buffers_in_pool, audio_buffer_size);
@@ -61,6 +112,7 @@ void BackendSession::PROC_process (uint32_t nframes) {
             profiler->next_iteration();
             
             // Execute queued commands
+            // (Graph changes applied here too)
             log<log_level_trace>("Process: execute commands");
             profiling::stopwatch(
                 [this]() {
@@ -68,6 +120,13 @@ void BackendSession::PROC_process (uint32_t nframes) {
                 },
                 cmds_profiling_item
             );
+
+            auto graph_id = ma_graph_id.load();
+            auto graph_request_id = ma_graph_request_id.load();
+            if (graph_id != graph_request_id) {
+                log<log_level_trace>("Notify graph recalculate thread");
+                m_recalculate_graph_thread->update_request_id(graph_request_id);
+            } 
             
             log<log_level_trace>("Process: process graph");
             auto processing_schedule = m_processing_schedule;
@@ -128,7 +187,7 @@ std::shared_ptr<GraphLoop> BackendSession::create_loop() {
     });
 
     loops.push_back(r);
-    recalculate_processing_schedule();
+    set_graph_node_changes_pending();
     return r;
 }
 
@@ -248,7 +307,7 @@ std::shared_ptr<GraphFXChain> BackendSession::create_fx_chain(shoop_fx_chain_typ
 
     fx_chains.push_back(info);
 
-    recalculate_processing_schedule();
+    set_graph_node_changes_pending();
     return info;
 }
 
@@ -268,7 +327,7 @@ std::shared_ptr<GraphAudioPort> BackendSession::add_audio_port(std::shared_ptr<s
     rval->first_graph_node()->set_processed_cb(cb);
     rval->second_graph_node()->set_processed_cb(cb);
 
-    recalculate_processing_schedule();
+    set_graph_node_changes_pending();
 
     return rval;
 }
@@ -289,7 +348,7 @@ std::shared_ptr<GraphMidiPort> BackendSession::add_midi_port(std::shared_ptr<Mid
     rval->first_graph_node()->set_processed_cb(cb);
     rval->second_graph_node()->set_processed_cb(cb);
 
-    recalculate_processing_schedule();
+    set_graph_node_changes_pending();
 
     return rval;
 }
@@ -309,7 +368,7 @@ std::shared_ptr<GraphLoopChannel> BackendSession::add_loop_channel(std::shared_p
     rval->first_graph_node()->set_processed_cb(cb);
     rval->second_graph_node()->set_processed_cb(cb);
 
-    recalculate_processing_schedule();
+    set_graph_node_changes_pending();
 
     return rval;
 }
@@ -337,7 +396,12 @@ void BackendSession::set_buffer_size(uint32_t bs) {
     });
 }
 
-void BackendSession::recalculate_processing_schedule(bool thread_safe) {
+void BackendSession::set_graph_node_changes_pending() {
+    log<log_level_debug>("Set graph node changes pending");
+    ma_graph_request_id++;
+}
+
+void BackendSession::recalculate_processing_schedule(unsigned req_id) {
     using std::chrono::high_resolution_clock;
     using std::chrono::microseconds;
     auto result = std::make_shared<ProcessingSchedule>();
@@ -429,15 +493,22 @@ void BackendSession::recalculate_processing_schedule(bool thread_safe) {
                 if(!schedule_str.empty()) { schedule_str += "\n"; }
                 schedule_str += s;
             }
-            logging::log<"Backend.ProcessGraph", log_level_debug>(std::nullopt, std::nullopt, "Processing schedule:\n{}", schedule_str);
+            auto _ptr = result.get();
+            logging::log<"Backend.ProcessGraph", log_level_debug>(std::nullopt, std::nullopt, "Processing schedule @ {}:\n{}", fmt::ptr(_ptr), schedule_str);
         }
     }
 
     auto me = shared_from_this();
-    auto finish_fn = [me, result]() {
-        me->log<log_level_trace>("Applying updated process graph");
+    auto finish_fn = [me, result, req_id]() {
+        me->log<log_level_debug>("Applying updated process graph {}", req_id);
         me->m_processing_schedule = result;
+        me->ma_graph_id = req_id;
     };
-    if (!thread_safe) { finish_fn(); }
-    else { queue_process_thread_command(finish_fn); }
+    queue_process_thread_command(finish_fn);
+}
+
+void BackendSession::wait_graph_up_to_date() {
+    while(ma_graph_id.load() != ma_graph_request_id.load()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
 }

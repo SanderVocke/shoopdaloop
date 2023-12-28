@@ -67,6 +67,11 @@ ApplicationWindow {
                 }
 
                 ItemRow {
+                    label: "initialized:"
+                    Label { text: object.initialized }
+                }
+
+                ItemRow {
                     label: "object_schema:"
                     Label { text: object.object_schema }
                 }

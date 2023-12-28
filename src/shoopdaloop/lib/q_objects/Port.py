@@ -173,9 +173,13 @@ class Port(ShoopQQuickItem):
     def set_muted(self, muted):
         if self._backend_obj:
             self._backend_obj.set_muted(muted)
+        else:
+            self.muted = muted
+            self.maybe_initialize()
     
     @Slot()
     def maybe_initialize(self):
+        self.__logger.trace(lambda: 'maybe_initialize {}'.format(self._name_hint))
         if (not self._backend_obj) and \
             (not self._ever_initialized) and \
             self._name_hint != None and \

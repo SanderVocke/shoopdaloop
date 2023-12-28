@@ -28,13 +28,13 @@ void GraphLoop::PROC_process(uint32_t n_frames) {
 void GraphLoop::delete_audio_channel_idx(uint32_t idx, bool thread_safe) {
     auto chaninfo = mp_audio_channels.at(idx);
     delete_midi_channel(chaninfo, false);
-    get_backend().recalculate_processing_schedule();
+    get_backend().set_graph_node_changes_pending();
 }
 
 void GraphLoop::delete_midi_channel_idx(uint32_t idx, bool thread_safe) {
     auto chaninfo = mp_midi_channels.at(idx);
     delete_midi_channel(chaninfo, false);
-    get_backend().recalculate_processing_schedule();
+    get_backend().set_graph_node_changes_pending();
 }
 
 void GraphLoop::delete_audio_channel(std::shared_ptr<GraphLoopChannel> chan, bool thread_safe) {
@@ -44,7 +44,7 @@ void GraphLoop::delete_audio_channel(std::shared_ptr<GraphLoopChannel> chan, boo
     }
     loop->delete_audio_channel(chan->channel, thread_safe);
     mp_audio_channels.erase(r);
-    get_backend().recalculate_processing_schedule(thread_safe);
+    get_backend().set_graph_node_changes_pending();
 }
 
 void GraphLoop::delete_midi_channel(std::shared_ptr<GraphLoopChannel> chan, bool thread_safe) {
@@ -54,7 +54,7 @@ void GraphLoop::delete_midi_channel(std::shared_ptr<GraphLoopChannel> chan, bool
     }
     loop->delete_midi_channel(chan->channel, thread_safe);
     mp_midi_channels.erase(r);
-    get_backend().recalculate_processing_schedule(thread_safe);
+    get_backend().set_graph_node_changes_pending();
 }
 
 void GraphLoop::delete_all_channels(bool thread_safe) {

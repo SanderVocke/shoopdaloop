@@ -65,7 +65,7 @@ void BasicLoop::PROC_update_poi() {
     }
 
     if(mp_next_poi) {
-        // Loop end an dhannel POIs will be re-calculated.
+        // Loop end an channel POIs will be re-calculated.
         mp_next_poi->type_flags &= ~(LoopEnd);
         mp_next_poi->type_flags &= ~(ChannelPOI);
         if (mp_next_poi->type_flags == 0) {

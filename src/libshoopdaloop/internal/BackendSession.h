@@ -2,7 +2,6 @@
 #include <memory>
 #include <vector>
 #include "LoggingEnabled.h"
-#include "CommandQueue.h"
 #include "AudioMidiDriver.h"
 #include "WithCommandQueue.h"
 #include "shoop_globals.h"
@@ -29,12 +28,17 @@ class BackendSession : public std::enable_shared_from_this<BackendSession>,
                        public ModuleLoggingEnabled<"Backend.Session"> {
 
     void PROC_process_decoupled_midi_ports(uint32_t nframes);
+    void recalculate_processing_schedule(unsigned update_id);
 
     enum class State {
         Active,
         Destroyed
     };
     std::atomic<State> ma_state;
+
+    struct RecalculateGraphThread;
+    friend class RecalculateGraphThread;
+    std::unique_ptr<RecalculateGraphThread> m_recalculate_graph_thread;
 
 public:
     // Graph nodes
@@ -53,6 +57,13 @@ public:
     std::shared_ptr<profiling::ProfilingItem> top_profiling_item;
     std::shared_ptr<profiling::ProfilingItem> graph_profiling_item;
     std::shared_ptr<profiling::ProfilingItem> cmds_profiling_item;
+
+    // For updating the graph. When node changes are pending, change
+    // the update_id. The process thread will trigger a recalculation
+    // of the graph on a dedicated thread, after which the schedule
+    // is applied and the current id is set to the new id.
+    std::atomic<unsigned> ma_graph_request_id;
+    std::atomic<unsigned> ma_graph_id;
 
     BackendSession();
     ~BackendSession();
@@ -83,5 +94,7 @@ public:
     void set_buffer_size(uint32_t bs);
 
     void destroy();
-    void recalculate_processing_schedule(bool thread_safe=true);
+
+    void set_graph_node_changes_pending();
+    void wait_graph_up_to_date();
 };

@@ -124,7 +124,9 @@ struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDryWe
         set_audio_port_muted(api_fx_out, 0);
         set_audio_port_gain(api_output_port, 1.0f);
         set_audio_channel_gain(api_dry_chan, 1.0f);
-        set_audio_channel_gain(api_wet_chan, 1.0f);        
+        set_audio_channel_gain(api_wet_chan, 1.0f);  
+
+        int_backend_session->wait_graph_up_to_date(); 
     }
 };
 

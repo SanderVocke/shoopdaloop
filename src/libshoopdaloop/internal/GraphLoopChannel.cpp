@@ -5,7 +5,6 @@
 #include "AudioChannel.h"
 #include "MidiChannel.h"
 #include "DummyMidiBufs.h"
-#include "MidiSortingBuffer.h"
 #include "MidiPort.h"
 #include "types.h"
 #include <stdexcept>
@@ -54,12 +53,12 @@ bool GraphLoopChannel::get_data_dirty() const {
 
 void GraphLoopChannel::connect_output_port(std::shared_ptr<GraphPort> port, bool thread_safe) {
     mp_output_port_mapping = port;
-    get_backend().recalculate_processing_schedule(thread_safe);
+    get_backend().set_graph_node_changes_pending();
 }
 
 void GraphLoopChannel::connect_input_port(std::shared_ptr<GraphPort> port, bool thread_safe) {
     mp_input_port_mapping = port;
-    get_backend().recalculate_processing_schedule(thread_safe);
+    get_backend().set_graph_node_changes_pending();
 }
 
 void GraphLoopChannel::disconnect_output_port(std::shared_ptr<GraphPort> port, bool thread_safe) {
@@ -70,12 +69,12 @@ void GraphLoopChannel::disconnect_output_port(std::shared_ptr<GraphPort> port, b
         }
     }
     mp_output_port_mapping.reset();
-    get_backend().recalculate_processing_schedule(thread_safe);
+    get_backend().set_graph_node_changes_pending();
 }
 
 void GraphLoopChannel::disconnect_output_ports(bool thread_safe) {
     mp_output_port_mapping.reset();
-    get_backend().recalculate_processing_schedule(thread_safe);
+    get_backend().set_graph_node_changes_pending();
 }
 
 void GraphLoopChannel::disconnect_input_port(std::shared_ptr<GraphPort> port, bool thread_safe) {
@@ -86,28 +85,26 @@ void GraphLoopChannel::disconnect_input_port(std::shared_ptr<GraphPort> port, bo
         }
     }
     mp_input_port_mapping.reset();
-    get_backend().recalculate_processing_schedule(thread_safe);
+    get_backend().set_graph_node_changes_pending();
 }
 
 void GraphLoopChannel::disconnect_input_ports(bool thread_safe) {
     mp_input_port_mapping.reset();
-    get_backend().recalculate_processing_schedule(thread_safe);
+    get_backend().set_graph_node_changes_pending();
 }
 
 void GraphLoopChannel::PROC_prepare(uint32_t n_frames) {
+    log<log_level_trace>("prepare ({} frames)", n_frames);
     auto in_locked = mp_input_port_mapping.lock();
     auto out_locked = mp_output_port_mapping.lock();
 
-    if (!in_locked || !out_locked) {
-        return;
-    }
-
     if (maybe_audio()) {
-        auto in_locked_audio = in_locked->maybe_audio_port();
-        auto out_locked_audio = out_locked->maybe_audio_port();
+        auto in_locked_audio = in_locked ? in_locked->maybe_audio_port() : nullptr;
+        auto out_locked_audio = out_locked ? out_locked->maybe_audio_port() : nullptr;
         if (in_locked && in_locked_audio) {
             auto chan = dynamic_cast<LoopAudioChannel*>(channel.get());
             auto buf = in_locked_audio->PROC_get_buffer(n_frames);
+            log<log_level_trace>("set recording buffer from input ({} samples)", n_frames);
             chan->PROC_set_recording_buffer(buf, n_frames);
         } else {
             if (g_dummy_audio_input_buffer.size() < n_frames*sizeof(audio_sample_t)) {
@@ -115,10 +112,12 @@ void GraphLoopChannel::PROC_prepare(uint32_t n_frames) {
                 memset((void*)g_dummy_audio_input_buffer.data(), 0, n_frames*sizeof(audio_sample_t));
             }
             auto chan = dynamic_cast<LoopAudioChannel*>(channel.get());
+            log<log_level_trace>("set recording buffer from fallback ({} samples)", n_frames);
             chan->PROC_set_recording_buffer(g_dummy_audio_input_buffer.data(), n_frames);
         }
         if (out_locked && out_locked_audio) {
             auto chan = dynamic_cast<LoopAudioChannel*>(channel.get());
+            log<log_level_trace>("set playback buffer from output ({} samples)", n_frames);
             chan->PROC_set_playback_buffer(out_locked_audio->PROC_get_buffer(n_frames), n_frames);
         } else {
             if (g_dummy_audio_output_buffer.size() < n_frames*sizeof(audio_sample_t)) {
@@ -126,11 +125,12 @@ void GraphLoopChannel::PROC_prepare(uint32_t n_frames) {
                 memset((void*)g_dummy_audio_output_buffer.data(), 0, n_frames*sizeof(audio_sample_t));
             }
             auto chan = dynamic_cast<LoopAudioChannel*>(channel.get());
+            log<log_level_trace>("set playback buffer from fallback ({} samples)", n_frames);
             chan->PROC_set_playback_buffer(g_dummy_audio_output_buffer.data(), n_frames);
         }
     } else if (maybe_midi()) {
-        auto in_locked_midi = in_locked->maybe_midi_port();
-        auto out_locked_midi = out_locked->maybe_midi_port();
+        auto in_locked_midi = in_locked ? in_locked->maybe_midi_port() : nullptr;
+        auto out_locked_midi = out_locked ? out_locked->maybe_midi_port() : nullptr;
         if (in_locked && in_locked_midi) {
             auto chan = dynamic_cast<LoopMidiChannel*>(channel.get());
             chan->PROC_set_recording_buffer(in_locked_midi->PROC_get_read_output_data_buffer(n_frames), n_frames);

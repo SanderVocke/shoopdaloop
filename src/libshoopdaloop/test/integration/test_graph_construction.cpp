@@ -6,6 +6,7 @@
 #include "GraphLoop.h"
 #include "GraphAudioPort.h"
 #include "DummyAudioMidiDriver.h"
+#include "GraphNode.h"
 #include "PortInterface.h"
 #include "graph_processing_order.h"
 #include "shoop_globals.h"
@@ -137,6 +138,9 @@ TEST_CASE("Graph Construction - Two Direct Loops", "[GraphConstruct]") {
     auto chan1 = std::make_shared<GraphLoopChannel>(nullptr, loop1, backend);
     auto loop2 = backend->create_loop();
     auto chan2 = std::make_shared<GraphLoopChannel>(nullptr, loop2, backend);
+    WeakGraphNodeSet loops { loop1->graph_node(), loop2->graph_node() };
+    loop1->set_get_co_process_nodes_cb([&]() { return loops; });
+    loop2->set_get_co_process_nodes_cb([&]() { return loops; });
     chan1->connect_input_port(port1, false);
     chan1->connect_output_port(port2, false);
     chan2->connect_input_port(port1, false);

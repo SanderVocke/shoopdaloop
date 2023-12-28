@@ -498,41 +498,49 @@ void delete_midi_channel_idx(shoopdaloop_loop_t *loop, unsigned idx) {
 
 void connect_audio_output(shoopdaloop_loop_audio_channel_t *channel, shoopdaloop_audio_port_t *port) {
   return api_impl<void>("connect_audio_output", [&]() {
-    internal_audio_channel(channel)->get_backend().queue_process_thread_command([=]() {
+    auto &backend = internal_audio_channel(channel)->get_backend();
+    backend.queue_process_thread_command([=]() {
         auto _port = internal_audio_port(port);
         auto _channel = internal_audio_channel(channel);
         _channel->connect_output_port(_port, false);
     });
+    backend.set_graph_node_changes_pending();
   });
 }
 
 void connect_midi_output(shoopdaloop_loop_midi_channel_t *channel, shoopdaloop_midi_port_t *port) {
   return api_impl<void>("connect_midi_output", [&]() {
-    internal_midi_channel(channel)->get_backend().queue_process_thread_command([=]() {
+    auto &backend = internal_midi_channel(channel)->get_backend();
+    backend.queue_process_thread_command([=]() {
         auto _port = internal_midi_port(port);
         auto _channel = internal_midi_channel(channel);
         _channel->connect_output_port(_port, false);
     });
+    backend.set_graph_node_changes_pending();
   });
 }
 
 void connect_audio_input(shoopdaloop_loop_audio_channel_t *channel, shoopdaloop_audio_port_t *port) {
   return api_impl<void>("connect_audio_input", [&]() {
-    internal_audio_channel(channel)->get_backend().queue_process_thread_command([=]() {
+    auto &backend = internal_audio_channel(channel)->get_backend();
+    backend.queue_process_thread_command([=]() {
         auto _port = internal_audio_port(port);
         auto _channel = internal_audio_channel(channel);
         _channel->connect_input_port(_port, false);
     });
+    backend.set_graph_node_changes_pending();
   });
 }
 
 void connect_midi_input(shoopdaloop_loop_midi_channel_t *channel, shoopdaloop_midi_port_t *port) {
   return api_impl<void>("connect_midi_input", [&]() {
-    internal_midi_channel(channel)->get_backend().queue_process_thread_command([=]() {
+    auto &backend = internal_midi_channel(channel)->get_backend();
+    backend.queue_process_thread_command([=]() {
         auto _port = internal_midi_port(port);
         auto _channel = internal_midi_channel(channel);
         _channel->connect_input_port(_port, false);
     });
+    backend.set_graph_node_changes_pending();
   });
 }
 
