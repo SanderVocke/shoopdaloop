@@ -163,6 +163,7 @@ ScrollView {
             }
             
             Mapper {
+                id: tracks_mapper
                 model: root.tracks
 
                 Item {
@@ -171,9 +172,59 @@ ScrollView {
                     property var mapped_item
                     property int index
 
-                    children: [mapped_item]
-                    width: childrenRect.width
+                        children: [mapped_item]
+                        width: childrenRect.width
                 }
+            }
+        }
+
+        // Repeater for the drag'n'drop drop areas to drop tracks in
+        Repeater {
+            id: drop_areas_repeater
+            anchors.fill: tracks_row
+            model: tracks_mapper.model.length + 1
+
+            DropArea {
+                id: drop_area
+                width: 50
+                height: tracks_row.height
+
+                property var left_track : index > 0 ? tracks_mapper.model[index-1] : null
+                property var right_track : index < tracks_mapper.model.length ? tracks_mapper.model[index] : null
+
+                onDropped: (event) => {
+                    let src_track = drag.source
+                    let src_track_idx = src_track.track_idx
+                    let tracks = root.tracks
+                    var new_tracks = []
+                    for (var i=0; i<tracks.length+1; i++) {
+                        if (i == index) {
+                            new_tracks.push(src_track)
+                        }
+                        if (i != src_track_idx && i < tracks.length) {
+                            new_tracks.push(tracks[i])
+                        }
+                    }
+                    console.log(tracks, new_tracks)
+                    root.tracks = new_tracks
+                }
+
+                x : {
+                    if (left_track) { return left_track.mapToItem(tracks_view, 0, 0).x + left_track.width + tracks_row.spacing/2 - width/2 }
+                    if (right_track) { return right_track.mapToItem(tracks_view, 0, 0).x - tracks_row.spacing/2 - width/2 }
+                    return 0
+                }
+                y : 0
+
+                Rectangle {
+                    color: 'white'
+                    opacity: 0.3
+
+                    visible : (parent.left_track || parent.right_track) && drop_area.containsDrag
+
+                    anchors.fill: parent
+                }
+
             }
         }
     }

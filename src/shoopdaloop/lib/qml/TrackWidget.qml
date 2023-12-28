@@ -108,6 +108,65 @@ Item {
         }
     }
 
+    // For notifying this track 
+
+    // Draggy rect for moving the track
+    Rectangle {
+        id: track_mover
+        anchors {
+            left: parent.left
+            right: width_adjuster.left
+            top: parent.top
+            bottom: parent.bottom
+        }
+
+        // for debugging
+        // color: 'yellow'
+        color: 'transparent'
+
+        Rectangle {
+            id: movable
+            width: track_mover.width
+            height: track_mover.height
+            parent: Overlay.overlay
+            visible: move_area.drag.active
+            color: 'blue'
+            z: 3
+
+            Drag.active: move_area.drag.active
+            Drag.hotSpot.x : width/2
+            Drag.hotSpot.y : height/2
+            Drag.source: root
+
+            x: track_mover.mapToItem(Overlay.overlay, 0, 0).x
+            y: track_mover.mapToItem(Overlay.overlay, 0, 0).y
+        }
+
+        MouseArea {
+            id: move_area
+            anchors.fill: parent
+            cursorShape: Qt.SizeAllCursor
+
+            onReleased: {
+                movable.Drag.drop()
+            }
+
+            drag {
+                target: movable
+                onActiveChanged: {
+                    if (active) {
+                        root.grabToImage((result) => {
+                            movable.Drag.imageSource = result.url
+                        })
+                        let base = track_mover.mapToItem(Overlay.overlay, 0, 0)
+                        movable.x = base.x
+                        movable.y = base.y
+                    }
+                }
+            }
+        }
+    }
+
     // Draggy rect for width ajustment
     Rectangle {
         id: width_adjuster
@@ -128,6 +187,8 @@ Item {
             drag {
                 axis: "XAxis"
                 target: width_adjuster
+                minimumX: 20
+                maximumX: 400
             }
         }
     }
