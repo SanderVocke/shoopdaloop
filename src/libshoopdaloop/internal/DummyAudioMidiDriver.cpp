@@ -128,7 +128,7 @@ DummyMidiPort::PROC_get_event_reference(uint32_t idx) {
 void DummyMidiPort::PROC_write_event_value(uint32_t size, uint32_t time,
                                            const uint8_t *data)
 {
-    if (time < n_requested_frames) {
+    if (time < n_requested_frames && !get_muted()) {
         uint32_t new_time = time + (n_original_requested_frames - n_requested_frames);
         ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug>("Write midi message value to external queue @ {} -> {}", time, new_time);
         m_written_requested_msgs.push_back(StoredMessage(new_time, size, std::vector<uint8_t>(data, data + size)));

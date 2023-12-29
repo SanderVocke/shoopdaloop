@@ -1,12 +1,17 @@
 #pragma once
+#include <sstream>
 #include <vector>
 #include <stdio.h>
 #include <functional>
 #include "LoopInterface.h"
+#include "MidiBufferInterfaces.h"
 #include "MidiPort.h"
 #include "MidiMessage.h"
 #include <cstring>
 #include "LoggingBackend.h"
+#include "types.h"
+#include "libshoopdaloop.h"
+#include <catch2/catch_test_macros.hpp>
 
 template<typename S>
 std::vector<S> create_audio_buf(uint32_t size, std::function<S(uint32_t)> elem_fn) {
@@ -79,3 +84,73 @@ public:
     bool write_by_reference_supported() const override { return false; }
     void PROC_write_event_reference(MidiSortableMessageInterface const& m) override {}
 };
+
+template<typename Message>
+inline Message create_noteOn(uint32_t time, uint8_t channel, uint8_t note, uint8_t velocity) {
+    Message rval;
+    rval.time = time;
+    rval.data = { static_cast<unsigned char>(0x90 + channel), note, velocity };
+    rval.size = rval.data.size();
+    return rval;
+}
+
+template<typename Message>
+inline Message create_noteOff(uint32_t time, uint8_t channel, uint8_t note, uint8_t velocity) {
+    Message rval;
+    rval.time = time;
+    rval.data = { static_cast<unsigned char>(0x80 + channel), note, velocity };
+    rval.size = rval.data.size();
+    return rval;
+}
+
+inline void queue_midi_msgs(shoopdaloop_midi_port_t *port, std::vector<Msg> &msgs) {
+    auto sequence = alloc_midi_sequence(msgs.size());
+    sequence->length_samples = msgs.back().time + 1;
+    for(size_t i=0; i<msgs.size(); i++) {
+        Msg & msg = msgs.at(i);
+        auto pEvent = alloc_midi_event(msg.size);
+        sequence->events[i] = pEvent;
+        auto & event = *pEvent;
+        event.time = msg.time;
+        event.size = msg.size;
+        for (auto j=0; j<msg.size && j<msg.data.size(); j++) {
+            event.data[j] = msg.data[j];
+        }
+    }
+
+    dummy_midi_port_queue_data(port, sequence);
+    destroy_midi_sequence(sequence);
+}
+
+inline std::vector<Msg> convert_api_midi_msgs(shoop_midi_sequence_t *sequence, bool destroy=true) {
+    std::vector<Msg> rval;
+    for (size_t i=0; i<sequence->n_events; i++) {
+        auto &ev = sequence->events[i];
+        Msg m;
+        m.time = ev->time;
+        m.size = ev->size;
+        for(size_t j=0; j<ev->size; j++) {
+            m.data.push_back(ev->data[j]);
+        }
+        rval.push_back(m);
+    }
+
+    if (destroy) { destroy_midi_sequence(sequence); }
+
+    return rval;
+}
+
+inline std::string stringify_msg(MidiSortableMessageInterface &m) {
+    std::ostringstream s;
+    s << "{ t=" << m.get_time() << ", s=" << m.get_size() << ", d={";
+    for (size_t i=0; i<m.get_size(); i++) {
+        if (i>0) { s << ", "; }
+        s << m.get_data()[i];
+    }
+    s << "} }";
+    return s.str();
+}
+
+inline void CHECK_MSGS_EQUAL(MidiSortableMessageInterface &a, MidiSortableMessageInterface &b) {
+    CHECK(stringify_msg(a) == stringify_msg(b));
+}
