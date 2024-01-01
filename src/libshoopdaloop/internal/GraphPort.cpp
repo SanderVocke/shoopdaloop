@@ -20,7 +20,6 @@ BackendSession &GraphPort::get_backend() {
 }
 
 void GraphPort::connect_passthrough(const std::shared_ptr<GraphPort> &other) {
-    log_trace();
     for (auto &_other : mp_passthrough_to) {
         if(auto __other = _other.lock()) {
             if (__other.get() == other.get()) { return; } // already connected

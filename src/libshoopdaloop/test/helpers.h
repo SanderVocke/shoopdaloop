@@ -103,11 +103,12 @@ inline Message create_noteOff(uint32_t time, uint8_t channel, uint8_t note, uint
     return rval;
 }
 
-inline void queue_midi_msgs(shoopdaloop_midi_port_t *port, std::vector<Msg> &msgs) {
+template<typename Message>
+inline shoop_midi_sequence_t *convert_midi_msgs_to_api(std::vector<Message> &msgs) {
     auto sequence = alloc_midi_sequence(msgs.size());
     sequence->length_samples = msgs.back().time + 1;
     for(size_t i=0; i<msgs.size(); i++) {
-        Msg & msg = msgs.at(i);
+        Message & msg = msgs.at(i);
         auto pEvent = alloc_midi_event(msg.size);
         sequence->events[i] = pEvent;
         auto & event = *pEvent;
@@ -117,7 +118,12 @@ inline void queue_midi_msgs(shoopdaloop_midi_port_t *port, std::vector<Msg> &msg
             event.data[j] = msg.data[j];
         }
     }
+    return sequence;
+}
 
+template<typename Message>
+inline void queue_midi_msgs(shoopdaloop_midi_port_t *port, std::vector<Message> &msgs) {
+    auto sequence = convert_midi_msgs_to_api(msgs);
     dummy_midi_port_queue_data(port, sequence);
     destroy_midi_sequence(sequence);
 }

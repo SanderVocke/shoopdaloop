@@ -694,7 +694,9 @@ TEST_CASE("Chains - Direct playback MIDI basic", "[Chains][midi]") {
         create_noteOn<shoop_types::_MidiMessage>(20, 2, 1, 1)
     };
 
-    tst.int_midi_chan->set_contents(msgs, 30);
+    auto sequence = convert_midi_msgs_to_api(msgs);
+    load_midi_channel_data(tst.api_midi_chan, sequence);
+    destroy_midi_sequence(sequence);
     set_loop_length(tst.api_loop, 30);
     loop_transition(tst.api_loop, LoopMode_Playing, 0, false);
 

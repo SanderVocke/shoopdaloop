@@ -21,7 +21,6 @@ BasicLoop::BasicLoop() :
         ma_maybe_next_planned_delay(-1),
         ma_already_triggered(false)
     {
-        log_trace();
     }
 
 BasicLoop::~BasicLoop() {}
@@ -42,7 +41,6 @@ inline bool is_playing_mode(shoop_loop_mode_t mode) {
 }
 
 void BasicLoop::PROC_update_trigger_eta() {
-    log_trace();
     if (is_playing_mode(ma_mode) && ma_position < ma_length) {
         mp_next_trigger = ma_length - ma_position;
     } else {
@@ -58,7 +56,6 @@ void BasicLoop::PROC_update_trigger_eta() {
 }
 
 void BasicLoop::PROC_update_poi() {
-    log_trace();
     if(is_playing_mode(ma_mode) && 
         ma_length == 0) {
         PROC_handle_transition(LoopMode_Stopped);
@@ -84,7 +81,6 @@ void BasicLoop::PROC_update_poi() {
 }
 
 void BasicLoop::PROC_handle_poi() {
-    log_trace();
     // Only handle POIs that are reached right now.
     if (!mp_next_poi || mp_next_poi.value().when != 0) {
         return;
@@ -138,11 +134,9 @@ void BasicLoop::PROC_process_channels(
     uint32_t length_before,
     uint32_t length_after
 ) {
-    log_trace();
 }
 
 void BasicLoop::PROC_process(uint32_t n_samples) {
-    log_trace();
 
     if (mp_next_poi && n_samples > mp_next_poi.value().when) {
         throw std::runtime_error("Attempted to process loop beyond its next POI.");
@@ -197,7 +191,6 @@ void BasicLoop::PROC_process(uint32_t n_samples) {
 }
 
 void BasicLoop::set_sync_source(std::shared_ptr<LoopInterface> const& src, bool thread_safe) {
-    log_trace();
 
     auto fn = [=, this]() {
         mp_sync_source = src;
@@ -219,7 +212,6 @@ std::shared_ptr<LoopInterface> BasicLoop::get_sync_source(bool thread_safe) {
 }
 
 void BasicLoop::PROC_update_planned_transition_cache() {
-    log_trace();
 
     ma_maybe_next_planned_mode = mp_planned_states.size() > 0 ?
         (shoop_loop_mode_t) mp_planned_states.front() : LOOP_MODE_INVALID;
@@ -228,7 +220,6 @@ void BasicLoop::PROC_update_planned_transition_cache() {
 }
 
 void BasicLoop::PROC_trigger(bool propagate) {
-    log_trace();
 
     if (ma_already_triggered) { return; }
     ma_already_triggered = true;
@@ -253,7 +244,6 @@ void BasicLoop::PROC_trigger(bool propagate) {
 }
 
 void BasicLoop::PROC_handle_sync() {
-    log_trace();
 
     if (mp_sync_source && mp_sync_source->PROC_is_triggering_now()) {
         PROC_trigger();
@@ -261,7 +251,6 @@ void BasicLoop::PROC_handle_sync() {
 }
 
 void BasicLoop::PROC_handle_transition(shoop_loop_mode_t new_state) {
-    log_trace();
 
     if (ma_mode != new_state) {
         log<log_level_debug>("Transition -> {}", (int)new_state);
@@ -331,7 +320,6 @@ shoop_loop_mode_t BasicLoop::get_planned_transition_state(uint32_t idx, bool thr
 }
 
 void BasicLoop::clear_planned_transitions(bool thread_safe) {
-    log_trace();
 
     auto fn = [this]() { 
         mp_planned_states.clear();
@@ -346,7 +334,6 @@ void BasicLoop::clear_planned_transitions(bool thread_safe) {
 }
 
 void BasicLoop::plan_transition(shoop_loop_mode_t mode, uint32_t n_cycles_delay, bool wait_for_sync, bool thread_safe) {
-    log_trace();
     
     auto fn = [this, mode, wait_for_sync, n_cycles_delay]() {
         bool transitioning_immediately =
@@ -387,7 +374,6 @@ uint32_t BasicLoop::get_position() const {
 }
 
 void BasicLoop::set_position(uint32_t position, bool thread_safe) {
-    log_trace();
 
     auto fn = [this, position]() {
         if (position != ma_position) {
@@ -423,7 +409,6 @@ void BasicLoop::get_first_planned_transition(shoop_loop_mode_t &maybe_mode_out, 
 }
 
 void BasicLoop::set_length(uint32_t len, bool thread_safe) {
-    log_trace();
 
     auto fn = [this, len]() {
         if (len != ma_length) {
@@ -442,7 +427,6 @@ void BasicLoop::set_length(uint32_t len, bool thread_safe) {
 }
 
 void BasicLoop::set_mode(shoop_loop_mode_t mode, bool thread_safe) {
-    log_trace();
 
     auto fn = [this, mode]() {
         PROC_handle_transition(mode);
