@@ -573,11 +573,11 @@ Item {
                     id: gain_fader
 
                     anchors {
-                        left: volume_row_button.right
+                        left: gain_row_button.right
                         right: output_balance_dial.left
                         leftMargin: -4
                         rightMargin: -4
-                        verticalCenter: volume_row_button.verticalCenter
+                        verticalCenter: gain_row_button.verticalCenter
                     }
 
                     visible: root.audio_out_ports.length > 0
