@@ -56,7 +56,7 @@ void MidiPort::PROC_prepare(uint32_t nframes) {
 
 void MidiPort::PROC_process(uint32_t nframes) {
     auto muted = ma_muted.load();
-    log<log_level_trace>("process");
+    log<log_level_trace>("process {}", nframes);
     
     // Get buffers
     auto write_in_buf = ma_write_data_into_port_buffer.load();

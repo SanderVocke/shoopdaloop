@@ -180,23 +180,35 @@ void DummyMidiPort::request_data(uint32_t n_frames) {
     n_original_requested_frames = n_frames;
 }
 
-MidiReadableBufferInterface *
-DummyMidiPort::PROC_get_read_output_data_buffer(uint32_t n_frames) {
-    current_buf_frames = n_frames;
-
-    uint32_t update_queue_by = m_update_queue_by_frames_pending;
-    if (update_queue_by > 0) {
-        // The queue was used last pass and needs to be truncated now for the current pass.
+void DummyMidiPort::PROC_prepare(uint32_t nframes) {
+    auto progress_by = n_processed_last_round.load();
+    progress_by -= std::min(n_requested_frames.load(), progress_by);
+    if (progress_by > 0) {
+    // The queue was used last pass and needs to be truncated now for the current pass.
         // (first erase msgs that will end up having a negative timestamp)
-        std::erase_if(m_queued_msgs, [&](StoredMessage const& msg) {
-            return msg.time < update_queue_by;
+        std::erase_if(m_queued_msgs, [&, this](StoredMessage const& msg) {
+            auto rval = msg.time < progress_by;
+            if (rval) {
+                this->ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_trace>("msg dropped from MIDI dummy input queue");
+            }
+            return rval;
         });
         std::for_each(m_queued_msgs.begin(), m_queued_msgs.end(), [&](StoredMessage &msg) {
-            msg.time -= update_queue_by;
+            auto new_val = msg.time - progress_by;
+            ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_trace>("msg in queue: time {} -> {}", msg.time, new_val);
+            msg.time = new_val;
         });
-        m_update_queue_by_frames_pending = 0;
     }
+    n_processed_last_round = 0;
+    current_buf_frames = nframes;
+}
 
+void DummyMidiPort::PROC_process(uint32_t nframes) {
+    n_processed_last_round = nframes;
+}
+
+MidiReadableBufferInterface *
+DummyMidiPort::PROC_get_read_output_data_buffer(uint32_t n_frames) {
     return (static_cast<MidiReadableBufferInterface *>(this));
 }
 
@@ -205,13 +217,6 @@ DummyMidiPort::PROC_get_write_data_into_port_buffer(uint32_t n_frames) {
     current_buf_frames = n_frames;
     m_buffer_data.clear();
     return (static_cast<MidiWriteableBufferInterface *>(this));
-}
-
-void DummyMidiPort::PROC_post_process(uint32_t n_frames) {
-    // Decrement timestamps of all midi messages.
-
-    n_requested_frames -= std::min(n_requested_frames.load(), n_frames);
-    m_update_queue_by_frames_pending = n_frames;
 }
 
 uint32_t DummyMidiPort::PROC_get_n_events() const {

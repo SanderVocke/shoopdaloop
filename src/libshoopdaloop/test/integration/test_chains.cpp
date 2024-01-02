@@ -280,6 +280,7 @@ struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDryWe
         connect_audio_input(api_wet_chan, api_fx_out);
         connect_audio_output(api_wet_chan, api_output_port);
         connect_midi_input(api_dry_midi_chan, api_midi_input_port);
+        connect_midi_output(api_dry_midi_chan, api_fx_midi_in);
 
         add_audio_port_passthrough(api_input_port, api_fx_in);
         add_audio_port_passthrough(api_fx_out, api_output_port);
@@ -685,8 +686,6 @@ TEST_CASE("Chains - DryWet record MIDI basic", "[Chains][midi]") {
 
 TEST_CASE("Chains - Direct playback MIDI basic", "[Chains][midi]") {
     SingleDirectLoopTestChain tst;
-
-    loop_transition(tst.api_loop, LoopMode_Recording, 0, 0);
     
     std::vector<shoop_types::_MidiMessage> msgs = {
         create_noteOn<shoop_types::_MidiMessage>(0, 1, 10, 10),
@@ -710,6 +709,36 @@ TEST_CASE("Chains - Direct playback MIDI basic", "[Chains][midi]") {
     CHECK_MSGS_EQUAL(result_data[0], msgs[0]);
     CHECK_MSGS_EQUAL(result_data[1], msgs[1]);
     CHECK_MSGS_EQUAL(result_data[2], msgs[2]);
+
+    tst.int_driver->close();
+};
+
+TEST_CASE("Chains - DryWet live playback MIDI basic", "[Chains][midi]") {
+    SingleDryWetLoopTestChain tst;
+    
+    std::vector<shoop_types::_MidiMessage> msgs = {
+        create_noteOn<shoop_types::_MidiMessage>(0, 1, 10, 10),
+        create_noteOff<shoop_types::_MidiMessage>(1, 10, 10, 20),
+        create_noteOn<shoop_types::_MidiMessage>(3, 2, 1, 1)
+    };
+
+    auto sequence = convert_midi_msgs_to_api(msgs);
+    load_midi_channel_data(tst.api_dry_midi_chan, sequence);
+    destroy_midi_sequence(sequence);
+    set_loop_length(tst.api_loop, 4);
+    loop_transition(tst.api_loop, LoopMode_PlayingDryThroughWet, 0, false);
+
+    tst.int_dummy_output_port->request_data(4);
+    tst.int_driver->controlled_mode_request_samples(4);
+    tst.int_dummy_output_port->request_data(4);
+    tst.int_driver->controlled_mode_run_request();
+
+    auto result_data = tst.int_dummy_output_port->dequeue_data(4);
+    float step = 1.0f / (float)0xFF;
+    CHECK(result_data[0] == Catch::Approx(step * 10.0f));
+    CHECK(result_data[1] == Catch::Approx(step * 20.0f));
+    CHECK(result_data[2] == Catch::Approx(0.0f));
+    CHECK(result_data[3] == Catch::Approx(step));
 
     tst.int_driver->close();
 };

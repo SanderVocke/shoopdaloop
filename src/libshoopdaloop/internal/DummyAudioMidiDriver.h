@@ -91,8 +91,9 @@ private:
 
     // Amount of frames requested for reading externally out of the port
     std::atomic<uint32_t> n_requested_frames;
+
+    std::atomic<uint32_t> n_processed_last_round = 0;
     std::atomic<uint32_t> n_original_requested_frames;
-    std::atomic<uint32_t> m_update_queue_by_frames_pending = 0;
     std::vector<StoredMessage> m_written_requested_msgs;
 
 public:
@@ -123,7 +124,6 @@ public:
     
     void clear_queues();
 
-    void PROC_post_process(uint32_t n_frames);
     // Request a certain number of frames to be stored.
     // Not allowed if previous request was not yet completed.
     void request_data(uint32_t n_frames);
@@ -138,8 +138,8 @@ public:
     bool has_implicit_input_source() const override { return true; }
     bool has_implicit_output_sink() const override { return true; }
 
-    void PROC_prepare(uint32_t nframes) override {}
-    void PROC_process(uint32_t nframes) override {}
+    void PROC_prepare(uint32_t nframes) override;
+    void PROC_process(uint32_t nframes) override;
 };
 
 struct DummyAudioMidiDriverSettings : public AudioMidiDriverSettingsInterface {

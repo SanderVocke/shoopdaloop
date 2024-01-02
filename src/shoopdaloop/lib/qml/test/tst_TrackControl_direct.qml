@@ -165,7 +165,7 @@ ShoopTestFile {
                         { 'time': 3, 'data': [0x90, 50,  50]  },
                     ]
                     let expect_out2 = [
-                        { 'time': 4, 'data': [0x90, 10,  10]  }
+                        { 'time': 0, 'data': [0x90, 10,  10]  }
                     ]
 
                     midi_input_port.dummy_clear_queues()

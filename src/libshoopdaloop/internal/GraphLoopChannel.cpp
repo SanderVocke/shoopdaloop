@@ -202,7 +202,10 @@ WeakGraphNodeSet GraphLoopChannel::graph_node_1_incoming_edges() {
         rval.insert(l->graph_node());
     }
     if (auto in_locked = mp_input_port_mapping.lock()) {
+        log<log_level_trace>("found incoming edge from port node {}", in_locked->graph_node_1_name());
         rval.insert(in_locked->second_graph_node());
+    } else {
+        log<log_level_trace>("found no incoming edge to any port node");
     }
     return rval;
 }
@@ -210,7 +213,10 @@ WeakGraphNodeSet GraphLoopChannel::graph_node_1_incoming_edges() {
 WeakGraphNodeSet GraphLoopChannel::graph_node_1_outgoing_edges() {
     WeakGraphNodeSet rval;
     if (auto out_locked = mp_output_port_mapping.lock()) {
+        log<log_level_trace>("found outgoing edge to port node {}", out_locked->graph_node_1_name());
         rval.insert(out_locked->second_graph_node());
+    } else {
+        log<log_level_trace>("found no outgoing edge to any port node");
     }
     return rval;
 }
