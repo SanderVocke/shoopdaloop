@@ -160,12 +160,10 @@ ShoopTestFile {
                         { 'time': 3, 'data': [0x90, 50,  50]  },
                         { 'time': 4, 'data': [0x90, 10,  10]  }
                     ]
-                    let expect_out1 = [
+                    let expect_out = [
                         { 'time': 0, 'data': [0x90, 100, 100] },
                         { 'time': 3, 'data': [0x90, 50,  50]  },
-                    ]
-                    let expect_out2 = [
-                        { 'time': 0, 'data': [0x90, 10,  10]  }
+                        { 'time': 4, 'data': [0x90, 10,  10]  }
                     ]
 
                     midi_input_port.dummy_clear_queues()
@@ -176,18 +174,15 @@ ShoopTestFile {
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.wait_process()
 
-                    let out = midi_output_port.dummy_dequeue_data()
-
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.wait_process()
 
-                    let out2 = midi_output_port.dummy_dequeue_data()
+                    let out = midi_output_port.dummy_dequeue_data()
 
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
 
-                    verify_eq(out, expect_out1, true)
-                    verify_eq(out2, expect_out2, true)
+                    verify_eq(out, expect_out, true)
                 },
 
                 'test_direct_audio_monitor_input_gain': () => {
@@ -384,18 +379,15 @@ ShoopTestFile {
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.wait_process()
 
-                    let out = midi_output_port.dummy_dequeue_data()
-
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.wait_process()
 
-                    let out2 = midi_output_port.dummy_dequeue_data()
+                    let out = midi_output_port.dummy_dequeue_data()
 
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
 
                     verify_eq(out, [], true)
-                    verify_eq(out2, [], true)
                 },
             })
         }

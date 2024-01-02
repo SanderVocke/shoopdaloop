@@ -128,11 +128,6 @@ DummyMidiPort::PROC_get_event_reference(uint32_t idx) {
 void DummyMidiPort::PROC_write_event_value(uint32_t size, uint32_t time,
                                            const uint8_t *data)
 {
-    if (time < n_requested_frames && !get_muted()) {
-        uint32_t new_time = time + (n_original_requested_frames - n_requested_frames);
-        ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug>("Write midi message value to external queue @ {} -> {}", time, new_time);
-        m_written_requested_msgs.push_back(StoredMessage(new_time, size, std::vector<uint8_t>(data, data + size)));
-    }
     ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug>("Write midi message value to internal buffer @ {}", time);
     m_buffer_data.push_back(StoredMessage(time, size, std::vector<uint8_t>(data, data + size)));
 }
@@ -176,11 +171,13 @@ void DummyMidiPort::request_data(uint32_t n_frames) {
     if (n_requested_frames > 0) {
         throw std::runtime_error("Previous request not yet completed");
     }
+    ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_trace>("request {} frames", n_frames);
     n_requested_frames = n_frames;
     n_original_requested_frames = n_frames;
 }
 
 void DummyMidiPort::PROC_prepare(uint32_t nframes) {
+    m_buffer_data.clear();
     auto progress_by = n_processed_last_round.load();
     progress_by -= std::min(n_requested_frames.load(), progress_by);
     if (progress_by > 0) {
@@ -204,7 +201,22 @@ void DummyMidiPort::PROC_prepare(uint32_t nframes) {
 }
 
 void DummyMidiPort::PROC_process(uint32_t nframes) {
+    if (m_direction == shoop_port_direction_t::Output) {
+        std::stable_sort(m_buffer_data.begin(), m_buffer_data.end(), [](StoredMessage const& a, StoredMessage const& b) {
+            return a.time < b.time;
+        });
+        if (!get_muted()) {
+            for (auto &msg: m_buffer_data) {
+                if (msg.time < n_requested_frames) {
+                    uint32_t new_time = msg.time + (n_original_requested_frames - n_requested_frames);
+                    ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug>("Write midi message value to external queue @ {} -> {} {} {}", msg.time, new_time, n_original_requested_frames.load(), n_requested_frames.load());
+                    m_written_requested_msgs.push_back(StoredMessage(new_time, msg.size, msg.data));
+                }
+            }
+        }
+    }
     n_processed_last_round = nframes;
+    n_requested_frames -= std::min(nframes, n_requested_frames.load());
 }
 
 MidiReadableBufferInterface *
