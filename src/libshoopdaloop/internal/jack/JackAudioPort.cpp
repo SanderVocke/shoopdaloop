@@ -1,5 +1,6 @@
 #include "JackAudioPort.h"
 #include <string>
+#include "JackPort.h"
 #include "PortInterface.h"
 #include <jack_wrappers.h>
 #include <stdexcept>
@@ -9,16 +10,25 @@
 template<typename API>
 GenericJackAudioPort<API>::GenericJackAudioPort(std::string name, shoop_port_direction_t direction,
                              jack_client_t *client, std::shared_ptr<GenericJackAllPorts<API>> all_ports_tracker)
-    : AudioPortInterface<float>(name, direction), GenericJackPort<API>(name, direction, PortType::Audio, client, all_ports_tracker) {}
+    : AudioPort<float>(), GenericJackPort<API>(name, direction, PortDataType::Audio, client, all_ports_tracker) {}
 
 template<typename API>
-float *GenericJackAudioPort<API>::PROC_get_buffer(uint32_t n_frames, bool do_zero) {
-    auto rval =
-        (jack_default_audio_sample_t *)API::port_get_buffer(m_port, n_frames);
-    if (do_zero) {
-        memset((void *)rval, 0, sizeof(jack_default_audio_sample_t) * n_frames);
+void GenericJackAudioPort<API>::PROC_prepare(uint32_t nframes) {
+    GenericJackPort<API>::PROC_prepare(nframes);
+    if (!has_implicit_input_source()) {
+        // JACK output buffers should be zero'd
+        memset((void*) m_buffer.load(), 0, sizeof(jack_default_audio_sample_t) * nframes);
     }
-    return rval;
+}
+
+template<typename API>
+float *GenericJackAudioPort<API>::PROC_get_buffer(uint32_t n_frames) {
+    return (float*) m_buffer.load();
+}
+
+template<typename API>
+void GenericJackAudioPort<API>::PROC_process(uint32_t nframes) {
+    AudioPort<jack_default_audio_sample_t>::PROC_process(nframes);
 }
 
 template class GenericJackAudioPort<JackApi>;

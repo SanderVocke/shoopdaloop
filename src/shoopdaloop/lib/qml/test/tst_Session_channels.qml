@@ -38,7 +38,7 @@ ShoopTestFile {
 
         ShoopSessionTestCase {
             id: testcase
-            name: 'Session_save_load'
+            name: 'Session_channels'
             filename : TestFilename.test_filename()
             session: session
 
@@ -58,6 +58,9 @@ ShoopTestFile {
                     let ori = session.initial_descriptor
                     // sample_rate is not there in the beginning, but will be after save+load
                     ori['sample_rate'] = 48000
+                    for(var i=0; i<ori['tracks'].length; i++) {
+                        ori['tracks'][i]['width'] = session.actual_session_descriptor()['tracks'][i]['width']
+                    }
 
                     verify_true(loop())
                     verify_true('channels' in session.initial_descriptor.tracks[0].loops[0])
@@ -76,7 +79,9 @@ ShoopTestFile {
 
                     verify_true(loop())
                     verify_eq(loop().actual_session_descriptor().channels.length, 2)
-                    verify_eq(session.actual_session_descriptor(), ori)
+
+                    var actual = session.actual_session_descriptor()
+                    verify_eq(actual, ori)
                 }
             })
         }

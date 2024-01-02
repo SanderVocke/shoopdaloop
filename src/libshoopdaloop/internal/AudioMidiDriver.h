@@ -1,9 +1,9 @@
 #pragma once
 #include <memory>
 #include "PortInterface.h"
-#include "MidiPortInterface.h"
+#include "MidiPort.h"
 #include <string>
-#include "AudioPortInterface.h"
+#include "AudioPort.h"
 #include <stdint.h>
 #include "WithCommandQueue.h"
 #include "types.h"
@@ -64,13 +64,13 @@ public:
     virtual void start(AudioMidiDriverSettingsInterface &settings) = 0;
 
     virtual
-    std::shared_ptr<AudioPortInterface<audio_sample_t>> open_audio_port(
+    std::shared_ptr<AudioPort<audio_sample_t>> open_audio_port(
         std::string name,
         shoop_port_direction_t direction
     ) = 0;
 
     virtual
-    std::shared_ptr<MidiPortInterface> open_midi_port(
+    std::shared_ptr<MidiPort> open_midi_port(
         std::string name,
         shoop_port_direction_t direction
     ) = 0;

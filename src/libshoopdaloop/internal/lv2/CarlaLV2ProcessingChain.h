@@ -5,6 +5,7 @@
 #include "ProcessProfiling.h"
 #include "ExternalUIInterface.h"
 #include "SerializeableStateInterface.h"
+#include "MidiPort.h"
 #include <string>
 #include <vector>
 #include <map>
@@ -80,7 +81,6 @@ public:
     using SharedInternalAudioPort = typename ProcessingChainInterface<TimeType, SizeType>::SharedInternalAudioPort;
     using MidiOutputPort = InternalLV2MidiOutputPort;
     using SharedMidiOutputPort = std::shared_ptr<MidiOutputPort>;
-    using MidiPort = typename ProcessingChainInterface<TimeType, SizeType>::MidiPort;
     using SharedMidiPort = typename ProcessingChainInterface<TimeType, SizeType>::SharedMidiPort;
 
 private:
@@ -141,8 +141,7 @@ public:
         LilvWorld *lilv_world,
         shoop_fx_chain_type_t type,
         uint32_t sample_rate,
-        std::string human_name,
-        std::shared_ptr<profiling::Profiler> maybe_profiler = nullptr
+        std::string human_name
     );
 
     void instantiate(uint32_t sample_rate);
@@ -160,10 +159,7 @@ public:
     std::vector<SharedMidiPort> const& input_midi_ports() const override;
     bool is_freewheeling() const override;
     void set_freewheeling(bool enabled) override;
-
-    void ensure_buffers(uint32_t size) override;
-    uint32_t buffers_size() const override;
-
+    
     virtual ~CarlaLV2ProcessingChain();
 
     void deserialize_state(std::string str) override;

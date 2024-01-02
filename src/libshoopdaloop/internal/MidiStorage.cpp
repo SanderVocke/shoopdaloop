@@ -8,6 +8,7 @@
 #include <optional>
 #include <stdio.h>
 #include <vector>
+#include <fmt/format.h>
 
 using namespace logging;
 
@@ -282,11 +283,15 @@ void MidiStorageCursor<TimeType, SizeType>::next() {
 
 template <typename TimeType, typename SizeType>
 uint32_t MidiStorageCursor<TimeType, SizeType>::find_time_forward(
-    uint32_t time, std::function<void(Elem *)> maybe_skip_msg_callback) {
+    uint32_t time, std::function<void(Elem *)> maybe_skip_msg_callback)
+{
+    log<log_level_trace>("find_time_forward (storage {}, time {})", fmt::ptr(m_storage), time);
     if (!valid()) {
+        log<log_level_trace>("find_time_forward: resetting (not valid)");
         reset();
     }
     if (!valid()) {
+        log<log_level_trace>("find_time_forward: not valid after reset (no msgs)");
         return 0;
     }
     std::optional<uint32_t> prev = m_offset;
@@ -299,24 +304,25 @@ uint32_t MidiStorageCursor<TimeType, SizeType>::find_time_forward(
         Elem *elem =
             prev.has_value() ? m_storage->unsafe_at(prev.value()) : nullptr;
         Elem *next_elem = m_storage->unsafe_at(next_offset.value());
-        if (next_elem->storage_time >= time) {
-            // Found
-            if (maybe_skip_msg_callback && elem) {
+        if (elem) {
+            // skip current element
+            log<log_level_trace>("Skip event @ {}", elem->storage_time);
+            if (maybe_skip_msg_callback) {
                 maybe_skip_msg_callback(elem);
             }
+        }
+        if (next_elem->storage_time >= time) {
+            // Found
+            log<log_level_trace>("find_time_forward to {} done, next msg @ {}", time, next_elem->storage_time);
             m_offset = next_offset;
             m_prev_offset = prev;
             return n_processed;
-        } else {
-            // Not found yet
-            if (maybe_skip_msg_callback && elem) {
-                maybe_skip_msg_callback(elem);
-            }
         }
     }
 
     // If we reached here, we reached the end. Reset to an invalid
     // cursor.
+    log<log_level_trace>("find_time_forward to {}: none found, reset", time);
     reset();
     return n_processed;
 }
@@ -355,11 +361,15 @@ void MidiStorage<TimeType, SizeType>::clear() {
 
 template <typename TimeType, typename SizeType>
 void MidiStorage<TimeType, SizeType>::truncate(TimeType time) {
+    ModuleLoggingEnabled<"Backend.MidiChannel.Storage">::log<log_level_trace>("truncate to {}", time);
     if (this->m_n_events > 0 &&
         this->unsafe_at(this->m_head_start)->storage_time > time) {
         auto cursor = create_cursor();
         if (cursor->valid()) {
+            auto prev_n_events = this->m_n_events;
             this->m_n_events = cursor->find_time_forward(time);
+            ModuleLoggingEnabled<"Backend.MidiChannel.Storage">::log<log_level_trace>("truncate: was {}, now {} msgs", prev_n_events, this->m_n_events);
+
             this->m_head = cursor->offset().value();
             this->m_head_start = cursor->prev_offset().value_or(0);
 

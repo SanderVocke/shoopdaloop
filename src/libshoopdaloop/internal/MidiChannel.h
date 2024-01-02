@@ -91,7 +91,7 @@ private:
     const Message all_sound_off_message_channel_0 = Message(0, 3, {0xB0, 120, 0});
 
 public:
-    MidiChannel(uint32_t data_size, shoop_channel_mode_t mode, std::shared_ptr<profiling::Profiler> maybe_profiler=nullptr);
+    MidiChannel(uint32_t data_size, shoop_channel_mode_t mode);
     ~MidiChannel();
 
     // NOTE: only use on process thread

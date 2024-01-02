@@ -2,18 +2,18 @@ Controlling Tracks
 --------------------
 
 
-Volume Controls
+Gain Controls
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
-**ShoopDaLoop** tracks have two volume controls:
+**ShoopDaLoop** tracks have two gain controls:
 
-* The **input volume** governs volume of the track's input ports. All incoming signals are attenuated by this volume. This means it affects both monitoring and recording.
-* The **output volume** governs volume of the track's output ports. All outgoing signals are attenuated by this volume. This means it affects both monitoring and playback.
+* The **input gain** governs gain of the track's input ports. All incoming signals are attenuated by this gain. This means it affects both monitoring and recording.
+* The **output gain** governs gain of the track's output ports. All outgoing signals are attenuated by this gain. This means it affects both monitoring and playback.
 
-Both volume controls come with:
+Both gain controls come with:
 
 * A **balance knob** if the in-/outputs are stereo for this track.
-* A **mute button** to mute the track's in-/outputs. For the input this differs from the volume fader in that it only affects monitoring, not recording.
+* A **mute button** to mute the track's in-/outputs. For the input this differs from the gain fader in that it only affects monitoring, not recording.
 
 Track Configuration
 ^^^^^^^^^^^^^^^^^^^^

@@ -3,7 +3,6 @@
 #include "ObjectPool.h"
 #include "AudioBuffer.h"
 #include "WithCommandQueue.h"
-#include "ProcessProfiling.h"
 #include "LoggingEnabled.h"
 #include <stdint.h>
 
@@ -26,7 +25,7 @@ private:
     std::atomic<int> ma_start_offset;
     std::atomic<uint32_t> ma_pre_play_samples;
     std::atomic<float> ma_output_peak;
-    std::atomic<float> ma_volume;
+    std::atomic<float> ma_gain;
     std::atomic<shoop_channel_mode_t> ma_mode;
     std::atomic<unsigned> ma_data_seq_nr;
     std::atomic<int> ma_last_played_back_sample; // -1 is none
@@ -36,7 +35,6 @@ private:
     std::atomic<uint32_t> ma_buffers_data_length;
     Buffers mp_prerecord_buffers; // For temporarily holding pre-recorded data before fully entering record mode
     std::atomic<uint32_t> mp_prerecord_buffers_data_length;
-    std::shared_ptr<profiling::ProfilingItem> mp_profiling_item;
 
     SampleT *mp_playback_target_buffer;
     uint32_t   mp_playback_target_buffer_size;
@@ -103,8 +101,7 @@ public:
     AudioChannel(
             std::shared_ptr<BufferPool> buffer_pool,
             uint32_t initial_max_buffers,
-            shoop_channel_mode_t mode,
-            std::shared_ptr<profiling::Profiler> maybe_profiler=nullptr);
+            shoop_channel_mode_t mode);
 
     virtual void set_pre_play_samples(uint32_t samples) override;
     virtual uint32_t get_pre_play_samples() const override;
@@ -186,9 +183,9 @@ public:
 
     shoop_channel_mode_t get_mode() const override;
 
-    void set_volume(float volume);
+    void set_gain(float gain);
 
-    float get_volume();
+    float get_gain();
     
     void set_start_offset(int offset) override;
 

@@ -1,5 +1,5 @@
 #pragma once
-#include "MidiPortInterface.h"
+#include "MidiPort.h"
 #include "LoggingEnabled.h"
 #include <vector>
 #include <functional>
@@ -34,7 +34,7 @@ class MidiStorageCursor;
 
 template<typename TimeType, typename SizeType>
 class MidiStorageBase : public std::enable_shared_from_this<MidiStorageBase<TimeType, SizeType>>,
-                        private ModuleLoggingEnabled<"Backend.MidiChannel.Storage"> {
+                        protected ModuleLoggingEnabled<"Backend.MidiChannel.Storage"> {
 public:
     using Elem = MidiStorageElem<TimeType, SizeType>;
     Elem dummy_elem; // Prevents incomplete template type in log_level_debug build
@@ -71,7 +71,7 @@ public:
 };
 
 template<typename TimeType, typename SizeType>
-class MidiStorageCursor {
+class MidiStorageCursor : protected ModuleLoggingEnabled<"Backend.MidiChannel.Storage.Cursor"> {
 public:
     using Storage = MidiStorageBase<TimeType, SizeType>;
     using Elem = MidiStorageElem<TimeType, SizeType>;

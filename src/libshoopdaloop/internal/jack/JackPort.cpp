@@ -8,8 +8,6 @@
 template<typename API>
 const char* GenericJackPort<API>::name() const { return m_name.c_str(); }
 
-template<typename API>
-shoop_port_direction_t GenericJackPort<API>::direction() const { return m_direction; }
 
 template<typename API>
 void GenericJackPort<API>::close() {
@@ -26,22 +24,19 @@ template<typename API>
 GenericJackPort<API>::~GenericJackPort() { close(); }
 
 template<typename API>
-PortType GenericJackPort<API>::type() const { return m_type; }
-
-template<typename API>
 GenericJackPort<API>::GenericJackPort(std::string name,
                    shoop_port_direction_t direction,
-                   PortType type,
+                   PortDataType type,
                    jack_client_t *client,
                    std::shared_ptr<GenericJackAllPorts<API>> all_ports_tracker)
     : m_client(client), m_type(type), m_direction(direction), m_all_ports_tracker(all_ports_tracker) {
 
-    log<log_level_debug>("Opening port: {}", name);
+    log<log_level_debug>("Opening JACK port: {}", name);
 
     auto p = API::port_register(
         m_client,
         name.c_str(),
-        m_type == PortType::Audio ? JACK_DEFAULT_AUDIO_TYPE : JACK_DEFAULT_MIDI_TYPE,
+        m_type == PortDataType::Audio ? JACK_DEFAULT_AUDIO_TYPE : JACK_DEFAULT_MIDI_TYPE,
         direction == shoop_port_direction_t::Input ? JackPortIsInput : JackPortIsOutput,
         0);
 
@@ -109,6 +104,11 @@ void GenericJackPort<API>::disconnect_external(std::string name) {
     } else {
         API::disconnect(m_client, API::port_name(m_port), name.c_str());
     }
+}
+
+template<typename API>
+void GenericJackPort<API>::PROC_prepare(uint32_t nframes) {
+    m_buffer = API::port_get_buffer(m_port, nframes);
 }
 
 template class GenericJackPort<JackApi>;

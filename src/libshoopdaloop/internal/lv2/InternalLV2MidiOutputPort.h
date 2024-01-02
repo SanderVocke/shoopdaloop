@@ -1,8 +1,8 @@
 #pragma once
-#include "MidiPortInterface.h"
+#include "MidiPort.h"
 #include <lv2_evbuf.h>
 
-class InternalLV2MidiOutputPort : public MidiPortInterface, public MidiWriteableBufferInterface {
+class InternalLV2MidiOutputPort : public MidiPort, public MidiWriteableBufferInterface {
     std::string m_name;
     shoop_port_direction_t m_direction;
     LV2_Evbuf *m_evbuf;
@@ -22,14 +22,12 @@ public:
         uint32_t midi_event_type_urid
     );
 
-    MidiReadableBufferInterface &PROC_get_read_buffer  (uint32_t n_frames) override;
-
-    MidiWriteableBufferInterface &PROC_get_write_buffer (uint32_t n_frames) override;
+    MidiReadableBufferInterface *PROC_get_read_output_data_buffer  (uint32_t n_frames) override;
+    MidiWriteableBufferInterface *PROC_get_write_data_into_port_buffer (uint32_t n_frames) override;
 
     const char* name() const override;
-    shoop_port_direction_t direction() const override;
     void close() override;
-    PortType type() const override;
+    PortDataType type() const override;
     void *maybe_driver_handle () const override;
 
     PortExternalConnectionStatus get_external_connection_status() const override;
@@ -44,6 +42,11 @@ public:
 
     bool write_by_reference_supported() const override;
     bool write_by_value_supported() const override;
+
+    bool has_internal_read_access() const override { return false; }
+    bool has_internal_write_access() const override { return true; }
+    bool has_implicit_input_source() const override { return false; }
+    bool has_implicit_output_sink() const override { return true; }
 
     LV2_Evbuf *internal_evbuf() const;
 

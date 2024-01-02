@@ -48,6 +48,34 @@ from .js_constants import create_js_constants
 
 import time
 
+# import PySide6.QtCore as QtCore
+
+# qt_logger = BareLogger("Frontend.Qt")
+# qt_message_handler_installed = False
+
+# def qt_msg_handler(mode, context, message):
+#     pass
+#     # fn = None
+#     # if mode == QtCore.QtInfoMsg:
+#     #     fn = qt_logger.info
+#     # elif mode == QtCore.QtWarningMsg:
+#     #     fn = qt_logger.warning
+#     # elif mode == QtCore.QtCriticalMsg:
+#     #     fn = qt_logger.error
+#     # elif mode == QtCore.QtFatalMsg:
+#     #     fn = qt_logger.error
+#     # else:
+#     #     fn = qt_logger.debug
+    
+#     #fn("%s: %s (%s:%d, %s)" % (mode, message, context.file, context.line, context.file))
+            
+def install_qt_message_handler():
+    global qt_message_handler_installed
+    global qt_logger
+    if not qt_message_handler_installed:
+        QtCore.qInstallMessageHandler(qt_msg_handler)
+        qt_message_handler_installed = True
+
 # Read version from the version.txt file (will be present when packaged)
 pkg_version = None
 with open(installation_dir() + '/version.txt', 'r') as f:
@@ -92,6 +120,8 @@ def register_shoopdaloop_qml_classes():
     register_qml_class(CompositeLoop, 'CompositeLoop')
 
     qmlRegisterSingletonType("ShoopConstants", 1, 0, "ShoopConstants", create_constants_instance)
+    
+    # install_qt_message_handler()
 
 def create_and_populate_root_context(engine, global_args, additional_items={}):
     def create_component(path):
