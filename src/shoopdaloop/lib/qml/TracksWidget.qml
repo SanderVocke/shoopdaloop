@@ -157,17 +157,22 @@ ScrollView {
             spacing: 3
             id: tracks_row
             width: childrenRect.width
+            anchors {
+                top: parent.top
+                bottom: parent.bottom
+            }
             
             Mapper {
                 model: root.tracks
 
                 Item {
+                    height: tracks_row.height
+
                     property var mapped_item
                     property int index
 
                     children: [mapped_item]
                     width: childrenRect.width
-                    height: childrenRect.height
                 }
             }
         }
@@ -195,6 +200,7 @@ ScrollView {
 
                 TrackControlWidget {
                     id: widget
+                    width: parent.width
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.horizontalCenter: parent.horizontalCenter
                     initial_track_descriptor: a_track.mapped_item.initial_descriptor

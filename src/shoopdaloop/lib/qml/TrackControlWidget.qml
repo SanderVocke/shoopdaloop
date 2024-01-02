@@ -9,7 +9,6 @@ import ShoopConstants
 // (loops within a) track.
 Item {
     id: root
-    width: childrenRect.width
     height: childrenRect.height
 
     // Input properties
@@ -352,7 +351,13 @@ Item {
 
     Column {
         spacing: 2
-        width: 100
+        
+        anchors {
+            left: parent.left
+            right: parent.right
+            leftMargin: 2
+            rightMargin: 2
+        }
 
         Item {
             height: childrenRect.height
@@ -398,7 +403,7 @@ Item {
                         width: output_peak_bar_l.visualPosition * parent.width
                         height: parent.height
                         radius: 2
-                        color: '#555555'
+                        color: '#666666'
                         x: (1.0 - output_peak_bar_l.visualPosition) * parent.width
                     }
                 }
@@ -440,7 +445,7 @@ Item {
                         width: output_peak_bar_r.visualPosition * parent.width
                         height: parent.height
                         radius: 2
-                        color: '#555555'
+                        color: '#666666'
                     }
                 }
             }
@@ -481,7 +486,7 @@ Item {
                         width: output_peak_bar_overall.visualPosition * parent.width
                         height: parent.height
                         radius: 2
-                        color: '#555555'
+                        color: '#666666'
                     }
                 }
             }
@@ -509,14 +514,25 @@ Item {
                 color: '#00FFFF'
                 visible: root.n_midi_events_out > 0
             }
-            Row {
-                spacing: -4
+
+            Item {
                 id: gain_row
+                height: childrenRect.height
+
+                anchors {
+                    left: parent.left
+                    right: parent.right
+                }
 
                 Item {
                     width: 18
-                    height: width
-                    anchors.verticalCenter: gain_fader.verticalCenter
+                    height: 18
+                    id: gain_row_button
+
+                    anchors {
+                        verticalCenter: gain_fader.verticalCenter
+                        left: gain_row.left
+                    }
 
                     visible: (root.audio_out_ports.length + root.midi_out_ports.length) > 0
 
@@ -556,9 +572,17 @@ Item {
                 AudioSlider {
                     id: gain_fader
 
+                    anchors {
+                        left: volume_row_button.right
+                        right: output_balance_dial.left
+                        leftMargin: -4
+                        rightMargin: -4
+                        verticalCenter: volume_row_button.verticalCenter
+                    }
+
                     visible: root.audio_out_ports.length > 0
-                    orientation: Qt.Horizontal
-                    width: root.out_is_stereo ? 70 : 85
+                    orientation: Qt.Horizontal                
+
                     height: 20
                     from: -30.0
                     to: 20.0
@@ -585,10 +609,13 @@ Item {
                     to:   1.0
                     value: 0.0
 
-                    width: 18
+                    width: root.out_is_stereo ? 18 : 0
                     height: 18
 
-                    anchors.verticalCenter: gain_fader.verticalCenter
+                    anchors {
+                        verticalCenter: gain_fader.verticalCenter
+                        right: gain_row.right
+                    }
 
                     property alias initial_value: root.initial_balance
                     onInitial_valueChanged: value = initial_value
@@ -657,7 +684,7 @@ Item {
                         width: input_peak_l_bar.visualPosition * parent.width
                         height: parent.height
                         radius: 2
-                        color: '#555555'
+                        color: '#666666'
                         x: parent.width - input_peak_l_bar.visualPosition * parent.width
                     }
                 }
@@ -699,7 +726,7 @@ Item {
                         width: input_peak_r_bar.visualPosition * parent.width
                         height: parent.height
                         radius: 2
-                        color: '#555555'
+                        color: '#666666'
                     }
                 }
             }
@@ -740,7 +767,7 @@ Item {
                         width: input_peak_overall_bar.visualPosition * parent.width
                         height: parent.height
                         radius: 2
-                        color: '#555555'
+                        color: '#666666'
                     }
                 }
             }
@@ -768,14 +795,25 @@ Item {
                 color: '#00FFFF'
                 visible: root.n_midi_events_in > 0
             }
-            Row {
+            Item {
                 id: monitor_row
-                spacing: -4
+                
+                height: childrenRect.height
+
+                anchors {
+                    left: parent.left
+                    right: parent.right
+                }
 
                 Item {
                     width: 18
-                    height: width
-                    anchors.verticalCenter: input_fader.verticalCenter
+                    height: 18
+                    id: monitor_row_button
+                    
+                    anchors {
+                        verticalCenter: input_fader.verticalCenter
+                        left: monitor_row.left
+                    }
 
                     visible: (root.audio_in_ports.length + root.midi_in_ports.length) > 0
 
@@ -815,10 +853,17 @@ Item {
                 AudioSlider {
                     id: input_fader
 
+                    anchors {
+                        left: monitor_row_button.right
+                        right: input_balance_dial.left
+                        leftMargin: -4
+                        rightMargin: -4
+                        verticalCenter: monitor_row_button.verticalCenter
+                    }
+
                     visible: root.audio_in_ports.length > 0
 
                     orientation: Qt.Horizontal
-                    width: root.in_is_stereo ? 70 : 85
                     height: 20
                     from: -30.0
                     to: 20.0
@@ -845,14 +890,17 @@ Item {
                     to:   1.0
                     value: 0.0
 
-                    width: 18
+                    width: root.in_is_stereo ? 18 : 0
                     height: 18
+
+                    anchors {
+                        verticalCenter: input_fader.verticalCenter
+                        right: monitor_row.right
+                    }
 
                     property real initial_value: root.initial_input_balance
                     onInitial_valueChanged: value = initial_value
                     Component.onCompleted: value = initial_value
-
-                    anchors.verticalCenter: input_fader.verticalCenter
 
                     handle.width: 4
                     handle.height: 4

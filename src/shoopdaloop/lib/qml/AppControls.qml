@@ -101,7 +101,7 @@ Item {
                     var filename = UrlToFilename.qml_url_to_filename(selectedFile.toString());
                     root.saveSession(filename)
                 }
-                
+                options: FileDialog.DontUseNativeDialog
             }
 
             FileDialog {
@@ -114,7 +114,7 @@ Item {
                     var filename = UrlToFilename.qml_url_to_filename(selectedFile.toString());
                     root.loadSession(filename)
                 }
-                
+                options: FileDialog.DontUseNativeDialog
             }
 
             ProfilingWindow {

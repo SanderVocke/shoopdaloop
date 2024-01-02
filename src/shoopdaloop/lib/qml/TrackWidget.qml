@@ -12,6 +12,16 @@ import "../generate_session.js" as GenerateSession
 Item {
     id: root
 
+    width: width_adjuster.x + width_adjuster.width
+    function setWidth(width) {
+        width_adjuster.x = width - width_adjuster.width
+    }
+    
+    anchors {
+        top: parent.top
+        bottom: parent.bottom
+    }
+
     property var initial_descriptor : null
 
     readonly property PythonLogger logger : PythonLogger { name: "Frontend.Qml.TrackWidget" }
@@ -40,6 +50,7 @@ Item {
             'schema': 'track.1',
             'id': obj_id,
             'name': name,
+            'width': Math.round(width),
             'ports': ports.map((p) => p.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to)),
             'loops': all_loops.map((l) => l.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to)),
         }
@@ -97,6 +108,30 @@ Item {
         }
     }
 
+    // Draggy rect for width ajustment
+    Rectangle {
+        id: width_adjuster
+        anchors {
+        }
+        height: root.height
+        width: 10
+        x: 100
+
+        // for debugging
+        // color: 'red'
+        color: 'transparent'
+
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.SizeHorCursor
+
+            drag {
+                axis: "XAxis"
+                target: width_adjuster
+            }
+        }
+    }
+
     RegisterInRegistry {
         id: reg_entry
         registry: registries.objects_registry
@@ -113,6 +148,9 @@ Item {
 
     Component.onCompleted: {
         loaded = false
+        if (initial_descriptor.width != undefined) {
+            setWidth(initial_descriptor.width)
+        }
         var _n_loops_loaded = 0
         // Instantiate initial loops
         root.loop_descriptors.forEach((desc, idx) => {
@@ -134,9 +172,6 @@ Item {
             n_loops_loaded = n_loops_loaded - 1;
         }
     }
-
-    width: childrenRect.width
-    height: childrenRect.height
 
     function add_row() {
         // Descriptor is automatically determined from the previous loop...
@@ -237,18 +272,29 @@ Item {
         property int x_spacing: 8
         property int y_spacing: 4
 
-        width: childrenRect.width + x_spacing
+        anchors {
+            left: parent.left
+            right: parent.right
+            top: parent.top
+        }
         height: childrenRect.height + y_spacing
 
         Item {
-            width: childrenRect.width
+            anchors {
+                left: parent.left
+                right: parent.right
+                top: parent.top
+            }
+
             height: childrenRect.height
-            x: parent.x_spacing/2
-            y: parent.y_spacing/2
 
             Column {
                 id: track_column
                 spacing: 2
+                anchors {
+                    left: parent.left
+                    right: parent.right
+                }
 
                 Item {
                     anchors {
@@ -393,7 +439,11 @@ Item {
                     spacing: 2
                     id: loops_column
                     height: childrenRect.height
-                    width: childrenRect.width
+                    
+                    anchors {
+                        left: parent.left
+                        right: parent.right
+                    }
 
                     // Note: loops injected here
                     onChildrenChanged: update_coords()
@@ -412,7 +462,14 @@ Item {
 
                 ExtendedButton {
                     tooltip: "Add a loop to track(s)."
-                    width: 100
+                    
+                    anchors {
+                        left: parent.left
+                        right: parent.right
+                        leftMargin: 6
+                        rightMargin: 6
+                    }
+
                     height: 30
                     MaterialDesignIcon {
                         size: 20

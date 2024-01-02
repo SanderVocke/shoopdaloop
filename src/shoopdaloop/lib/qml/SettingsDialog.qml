@@ -673,6 +673,7 @@ Dialog {
                     FileDialog {
                         id: userscriptdialog
                         fileMode: FileDialog.OpenFile
+                        options: FileDialog.DontUseNativeDialog
                         acceptLabel: 'Load LUA script'
                         nameFilters: ["LUA script files (*.lua)"]
                         onAccepted: {
