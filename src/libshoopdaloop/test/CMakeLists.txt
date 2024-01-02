@@ -14,7 +14,7 @@ set(TEST_RUNNER_SOURCES
 )
 
 if(BACKEND_JACK)
-    list(append TEST_RUNNER_SOURCES ${TEST_RUNNER_SOURCES} unit/test_JackPorts.cpp)
+    list(APPEND TEST_RUNNER_SOURCES ${TEST_RUNNER_SOURCES} unit/test_JackPorts.cpp)
 endif()
 
 add_executable(test_runner ${TEST_RUNNER_SOURCES})
