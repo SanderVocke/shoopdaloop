@@ -23,8 +23,8 @@ Item {
     }
 
     function tool_clicked() {
-        for (var idx=0; idx < channel_mapper.instances.length; idx++) {
-            var c = channel_mapper.instances[idx]
+        for (var idx=0; idx < channel_mapper.unsorted_instances.length; idx++) {
+            var c = channel_mapper.unsorted_instances[idx]
             var channel = c.mapped_item
             var s = c.maybe_cursor_sample_idx
             if (s) {

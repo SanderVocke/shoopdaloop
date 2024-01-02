@@ -68,7 +68,7 @@ PythonFXChain {
     }
 
     function all_ports() {
-        return [...audio_ports_mapper.instances, ...midi_ports_mapper.instances]
+        return [...audio_ports_mapper.unsorted_instances, ...midi_ports_mapper.unsorted_instances]
     }
 
     Mapper {

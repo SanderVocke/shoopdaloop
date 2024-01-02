@@ -108,6 +108,85 @@ Item {
         }
     }
 
+    // For notifying this track 
+
+    // Draggy rect for moving the track
+    Rectangle {
+        id: track_mover
+        anchors {
+            left: parent.left
+            right: width_adjuster.left
+            top: parent.top
+            bottom: parent.bottom
+        }
+
+        // for debugging
+        // color: 'yellow'
+        color: 'transparent'
+
+        Item {
+            id: movable
+            width: root.width
+            height: root.height
+            parent: Overlay.overlay
+            visible: move_area.drag.active
+            z: 3
+
+            Drag.active: move_area.drag.active
+            Drag.hotSpot.x : width/2
+            Drag.hotSpot.y : height/2
+            Drag.source: root
+
+            Rectangle {
+                anchors {
+                    top: parent.top
+                    horizontalCenter: parent.horizontalCenter
+                }
+                width: 3
+                height: parent.height
+                color: 'red'
+                opacity: 0.3
+            }
+            Rectangle {
+                anchors.fill: parent
+                color: 'white'
+                opacity: 0.5
+
+                Image {
+                    id: movable_image
+                    source: ''
+                }
+            }
+
+            function resetCoords() {
+                x = track_mover.mapToItem(Overlay.overlay, 0, 0).x
+                y = track_mover.mapToItem(Overlay.overlay, 0, 0).y
+            }
+            Component.onCompleted: resetCoords()
+            onVisibleChanged: resetCoords()
+        }
+
+        MouseArea {
+            id: move_area
+            anchors.fill: parent
+            cursorShape: Qt.SizeAllCursor
+
+            onReleased: movable.Drag.drop()
+            onPressed: movable.resetCoords()
+
+            drag {
+                target: movable
+                onActiveChanged: {
+                    if (active) {
+                        root.grabToImage((result) => {
+                            movable_image.source = result.url
+                        })
+                    }
+                }
+            }
+        }
+    }
+
     // Draggy rect for width ajustment
     Rectangle {
         id: width_adjuster
@@ -128,6 +207,8 @@ Item {
             drag {
                 axis: "XAxis"
                 target: width_adjuster
+                minimumX: 20
+                maximumX: 400
             }
         }
     }

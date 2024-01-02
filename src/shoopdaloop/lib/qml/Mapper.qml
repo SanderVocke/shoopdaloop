@@ -13,7 +13,8 @@ Item {
     property list<var> model : []
     default property Component delegate : Item {}
 
-    property list<var> instances : []
+    property list<var> unsorted_instances : []
+    property list<var> sorted_instances : []
 
     signal aboutToAdd(var model_elem, int index)
 
@@ -29,7 +30,7 @@ Item {
     }
 
     onModelChanged: {
-        var old_instances = [...instances]
+        var old_instances = [...unsorted_instances]
         var new_instances = []
 
         for (var idx=0; idx<model.length; idx++) {
@@ -42,10 +43,10 @@ Item {
             }
         }
 
-        instances = [...new_instances]
+        unsorted_instances = [...new_instances]
 
         // Now re-insert the instances as children of our parent
-        var filtered_parent_children = []
+        var non_mapper_children = []
         var new_parent_children = []
         var old_parent_children = []
         for(var idx=0; idx<root.parent.children.length; idx++) { old_parent_children.push(root.parent.children[idx]) }
@@ -54,13 +55,13 @@ Item {
             // filter to get only children that had nothing to do with this mapper
             if (old_instances.find(e => e == child) == undefined &&
                 new_instances.find(e => e == child) == undefined) {
-                filtered_parent_children.push (child);
+                non_mapper_children.push (child);
             }
         }
         // Now re-insert our instances
-        for(var cidx = 0; cidx < filtered_parent_children.length; cidx++) {
-            new_parent_children.push(filtered_parent_children[cidx])
-            if (filtered_parent_children[cidx] == this) {
+        for(var cidx = 0; cidx < non_mapper_children.length; cidx++) {
+            new_parent_children.push(non_mapper_children[cidx])
+            if (non_mapper_children[cidx] == this) {
                 for (var i of new_instances) { new_parent_children.push(i) }
             }
         }
@@ -68,7 +69,8 @@ Item {
             new_instances[idx].index = idx;
         }
 
-        root.parent.children=new_parent_children
+        root.parent.children = new_parent_children
+        sorted_instances = new_instances
 
         old_parent_children.forEach(c => {
             if (new_parent_children.find(e => e == c) == undefined) {
