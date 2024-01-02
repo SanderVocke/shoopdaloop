@@ -385,15 +385,20 @@ Item {
                     height: childrenRect.height
 
                     ShoopTextField {
+                        id: title_field
+
                         anchors {
                             top: parent.top
                             left: parent.left
                             right: menubutton.left
                             rightMargin: 3
+                            leftMargin: 2
+                            topMargin: 2
                         }
 
+                        height: 20
+
                         text: root.name
-                        font.pixelSize: 13
                         readOnly: !root.name_editable
 
                         onEditingFinished: () => {
@@ -407,8 +412,9 @@ Item {
                         tooltip: "Track options."
                         id: menubutton
                         anchors {
-                            top: parent.top
+                            verticalCenter : title_field.verticalCenter
                             right: parent.right
+                            rightMargin: 2
                         }
 
                         width: 18
