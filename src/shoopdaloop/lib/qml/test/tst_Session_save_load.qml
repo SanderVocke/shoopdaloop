@@ -19,7 +19,7 @@ ShoopTestFile {
 
         anchors.fill: parent
         initial_descriptor: {
-            let base = GenerateSession.generate_default_session(app_metadata.version_string, null, 1)
+            let base = GenerateSession.generate_default_session(app_metadata.version_string, null, true, 1)
             let direct_track = GenerateSession.generate_default_track(
                 "dt",
                 2,

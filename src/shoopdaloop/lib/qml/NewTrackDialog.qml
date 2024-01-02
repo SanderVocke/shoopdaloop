@@ -17,6 +17,11 @@ Dialog {
     width: 400
     height: 550
 
+    property bool suggest_make_first_sync : false
+    
+    onSuggest_make_first_syncChanged: make_first_sync = suggest_make_first_sync
+
+    property alias make_first_sync : make_first_sync_checkbox.checked
     property alias track_name : name_field.text
     property alias is_drywet : select_type.is_drywet
     property alias is_composite : select_type.is_composite
@@ -32,7 +37,8 @@ Dialog {
 
     function open_for_new_track() {
         var idx = root.tracks.length
-        track_name = "Track " + idx.toString()
+        suggest_make_first_sync = root.tracks.length == 0
+        track_name = "Track " + (idx+1).toString()
         open()
     }
 
@@ -53,6 +59,9 @@ Dialog {
             is_drywet && is_drywet_jack,
             (is_drywet && is_drywet_carla) ? drywet_carla_type : undefined
         )
+        if (make_first_sync) {
+            track_descriptor['loops'][0]['is_sync'] = true
+        }
         addTrackDescriptor(track_descriptor)
     }
 
@@ -66,6 +75,16 @@ Dialog {
         }
         ShoopTextField {
             id: name_field
+        }
+
+        Label {
+            text: "First loop is sync:"
+            visible: suggest_make_first_sync
+        }
+        CheckBox {
+            id: make_first_sync_checkbox
+            tristate: false
+            visible: suggest_make_first_sync
         }
 
         Label {

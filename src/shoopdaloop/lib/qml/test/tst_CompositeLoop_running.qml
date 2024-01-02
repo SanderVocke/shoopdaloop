@@ -18,6 +18,7 @@ ShoopTestFile {
         initial_descriptor: GenerateSession.generate_default_session(
             app_metadata.version_string,
             null,
+            true,
             4
             )
 
@@ -27,7 +28,7 @@ ShoopTestFile {
             filename : TestFilename.test_filename()
             session: session
 
-            // master loop
+            // sync loop
             function m() {
                 return session.tracks[0].loops[0]
             }
@@ -131,7 +132,7 @@ ShoopTestFile {
 
                     m().transition(ShoopConstants.LoopMode.Playing, 0, false)
 
-                    process(50); // master loop is playing
+                    process(50); // sync loop is playing
 
                     // trigger the composite loop
                     c().transition(ShoopConstants.LoopMode.Playing, 0, true)
@@ -218,7 +219,7 @@ ShoopTestFile {
                     verify_eq(c().next_mode, ShoopConstants.LoopMode.Playing)
                     verify_eq(c().next_transition_delay, 3)
 
-                    process(350, 7) // a bunch of master loop cycles
+                    process(350, 7) // a bunch of sync loop cycles
 
                     verify_eq(c().mode, ShoopConstants.LoopMode.Stopped)
                     verify_eq(c().next_mode, ShoopConstants.LoopMode.Playing)

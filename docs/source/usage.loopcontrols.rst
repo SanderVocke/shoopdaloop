@@ -4,7 +4,7 @@ Controlling Loops
 Synchronization On/Off
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
-Loop mode transitions in **ShoopDaLoop** happen synchronized to the master loop. However, immediate actions can also be done if needed. To do so, turn *synchronization off* when performing the action. Note that this does not affect already queued actions or playing loops - only the actions done while turned off.
+Loop mode transitions in **ShoopDaLoop** happen synchronized to the sync loop. However, immediate actions can also be done if needed. To do so, turn *synchronization off* when performing the action. Note that this does not affect already queued actions or playing loops - only the actions done while turned off.
 
 The *synchronization active* button at the top of the screen shows the current state of synchronization. A timer symbol (SYMBOL) means synchroniation on, an exclamation point (SYMBOL) means synchronization off.
 
@@ -26,11 +26,11 @@ Loops can be in the following modes:
 * **Playing Dry Through Wet**: Only available for dry+wet tracks. The loop plays back the dry recording through FX/synth being processed in real-time. This way, e.g. FX/synth settings can be changed and the result is immediatlely audible.
 * **Recording Dry Into Wet**: Only available for dry+wet tracks. The loop is playing the dry recording through the FX/synth into the wet, which is being recorded. This way, changed synth/FX settings can be baked into the wet recording such that normal (wet) playback can again be used.
 
-Using a long-press on the **record one cycle** button, you can also choose to **record N cycles** of the master loop.
+Using a long-press on the **record one cycle** button, you can also choose to **record N cycles** of the sync loop.
 
 Loops can be transitioned by hovering over them with the mouse. There are also keyboard controls (currently only documented in **keyboard.lua**). Hovering over certain buttons will open a dropdown with more options. For example, playing dry through wet appears when hovering the play button.
 
-Normally, a loop will keep recording until transitioned to another state. However, it is also possible to record for a fixed amount of master loop cycles so that recording does not need to be manually stopped.
+Normally, a loop will keep recording until transitioned to another state. However, it is also possible to record for a fixed amount of sync loop cycles so that recording does not need to be manually stopped.
 
 
 Selecting and Targeting
@@ -44,7 +44,7 @@ A single loop can be **targeted** (orange border) by double-clicking it. The beh
 Pre-recording
 ^^^^^^^^^^^^^^^
 
-Oftentimes, a catchy hook or riff will start before the "1" of the music. Or, the loop starts on 1 but you want to start it will e.g. a small fill the first time. This makes it complicated to loop sometimes, because you would need to anticipate one master loop cycle earlier than the actual looping part starts.
+Oftentimes, a catchy hook or riff will start before the "1" of the music. Or, the loop starts on 1 but you want to start it will e.g. a small fill the first time. This makes it complicated to loop sometimes, because you would need to anticipate one sync loop cycle earlier than the actual looping part starts.
 
 For this reason, loops in **ShoopDaLoop** are already **pre-recording** in the cycle before their real recordings starts. You normally won't notice this because the data for this part is stored but usually never played.
 
