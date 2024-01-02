@@ -124,19 +124,39 @@ Item {
         // color: 'yellow'
         color: 'transparent'
 
-        Rectangle {
+        Item {
             id: movable
-            width: track_mover.width
-            height: track_mover.height
+            width: root.width
+            height: root.height
             parent: Overlay.overlay
             visible: move_area.drag.active
-            color: 'blue'
             z: 3
 
             Drag.active: move_area.drag.active
             Drag.hotSpot.x : width/2
             Drag.hotSpot.y : height/2
             Drag.source: root
+
+            Rectangle {
+                anchors {
+                    top: parent.top
+                    horizontalCenter: parent.horizontalCenter
+                }
+                width: 3
+                height: parent.height
+                color: 'red'
+                opacity: 0.3
+            }
+            Rectangle {
+                anchors.fill: parent
+                color: 'white'
+                opacity: 0.5
+
+                Image {
+                    id: movable_image
+                    source: ''
+                }
+            }
 
             function resetCoords() {
                 x = track_mover.mapToItem(Overlay.overlay, 0, 0).x
@@ -159,11 +179,8 @@ Item {
                 onActiveChanged: {
                     if (active) {
                         root.grabToImage((result) => {
-                            movable.Drag.imageSource = result.url
+                            movable_image.source = result.url
                         })
-                        let base = track_mover.mapToItem(Overlay.overlay, 0, 0)
-                        movable.x = base.x
-                        movable.y = base.y
                     }
                 }
             }

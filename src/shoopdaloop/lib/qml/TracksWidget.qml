@@ -226,15 +226,6 @@ ScrollView {
                     color: 'white'
                     opacity: 0.3
 
-                    Label {
-                        anchors {
-                            top: parent.top
-                            left: parent.left
-                            right: parent.right
-                        }
-                        text: `Hello world + ${index}`
-                    }
-
                     visible : (parent.left_track || parent.right_track) && drop_area.containsDrag
 
                     anchors.fill: parent
