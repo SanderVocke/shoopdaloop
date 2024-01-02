@@ -125,6 +125,7 @@ class Port(ShoopQQuickItem):
         if self._muted != s:
             self._muted = s
             self.mutedChanged.emit(s)
+            self.maybe_initialize()
     
     # passthrough_muted
     passthroughMutedChanged = Signal(bool)
@@ -186,14 +187,21 @@ class Port(ShoopQQuickItem):
     def set_muted(self, muted):
         if self._backend_obj:
             self._backend_obj.set_muted(muted)
+        else:
+            self.muted = muted
+            self.maybe_initialize()
     
     @Slot(bool)
     def set_passthrough_muted(self, muted):
         if self._backend_obj:
             self._backend_obj.set_passthrough_muted(muted)
+        else:
+            self.passthrough_muted = muted
+            self.maybe_initialize()
     
     @Slot()
     def maybe_initialize(self):
+        self.__logger.trace(lambda: 'maybe_initialize {}'.format(self._name_hint))
         if (not self._backend_obj) and \
             (not self._ever_initialized) and \
             self._name_hint != None and \
@@ -205,7 +213,6 @@ class Port(ShoopQQuickItem):
             self._backend.initialized:
             
             self.__logger.debug(lambda: "{}: Initializing port {}".format(self, self._name_hint))
-            
             self.maybe_initialize_impl(self._name_hint, self._direction, self._is_internal)
             if self._backend_obj:
                 self._initialized = True
@@ -215,15 +222,24 @@ class Port(ShoopQQuickItem):
 
     @Slot(str)
     def connect_external_port(self, name):
-        self._backend_obj.connect_external_port(name)
+        if self._backend_obj:
+            self._backend_obj.connect_external_port(name)
+        else:
+            self.__logger.warning("Attempted to connect uninitialized port {}".format(self._name_hint))
     
     @Slot(str)
     def disconnect_external_port(self, name):
-        self._backend_obj.disconnect_external_port(name)
+        if self._backend_obj:
+            self._backend_obj.disconnect_external_port(name)
+        else:
+            self.__logger.warning("Attempted to disconnect uninitialized port {}".format(self._name_hint))
 
     @Slot(result='QVariant')
     def get_connections_state(self):
-        return (self._backend_obj.get_connections_state() if self._backend_obj else dict())
+        if self._backend_obj:
+            return (self._backend_obj.get_connections_state() if self._backend_obj else dict())
+        else:
+            return dict()
 
     @Slot(result=list)
     def get_connected_external_ports(self):

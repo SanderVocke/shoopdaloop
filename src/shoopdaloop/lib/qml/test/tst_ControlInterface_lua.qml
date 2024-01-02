@@ -194,30 +194,30 @@ ShoopTestFile {
                     verify_eq(loop_at(0,1).mode, ShoopConstants.LoopMode.Recording)
                 },
 
-                'test_loop_set_get_volume': () => {
+                'test_loop_set_get_gain': () => {
                     check_backend()
                     clear()
                     
-                    do_execute('shoop_control.loop_set_volume({0,0}, 1.0)')
-                    do_execute('shoop_control.loop_set_volume({1,0}, 1.0)')
-                    verify_eq_lua('shoop_control.loop_get_volume({0,0})', '{1.0}')
-                    do_execute('shoop_control.loop_set_volume({0,0}, 0.5)')
-                    verify_eq_lua('shoop_control.loop_get_volume({0,0})', '{0.5}')
-                    verify_eq_lua('shoop_control.loop_get_volume({{1,0},{0,0}})', '{1.0, 0.5}')
+                    do_execute('shoop_control.loop_set_gain({0,0}, 1.0)')
+                    do_execute('shoop_control.loop_set_gain({1,0}, 1.0)')
+                    verify_eq_lua('shoop_control.loop_get_gain({0,0})', '{1.0}')
+                    do_execute('shoop_control.loop_set_gain({0,0}, 0.5)')
+                    verify_eq_lua('shoop_control.loop_get_gain({0,0})', '{0.5}')
+                    verify_eq_lua('shoop_control.loop_get_gain({{1,0},{0,0}})', '{1.0, 0.5}')
                 },
 
-                'test_loop_set_get_volume_fader': () => {
+                'test_loop_set_get_gain_fader': () => {
                     check_backend()
                     clear()
                     
-                    do_execute('shoop_control.loop_set_volume_fader({0,0}, 1.0)')
-                    verify_eq_lua('shoop_control.loop_get_volume_fader({0,0})', '{1.0}')
-                    do_execute('shoop_control.loop_set_volume_fader({0,0}, 0.5)')
-                    verify_eq_lua('shoop_control.loop_get_volume_fader({0,0})', '{0.5}')
-                    do_execute('shoop_control.loop_set_volume_fader({0,0}, 2.0)')
-                    verify_eq_lua('shoop_control.loop_get_volume_fader({0,0})', '{1.0}')
-                    do_execute('shoop_control.loop_set_volume_fader({0,0}, -1.0)')
-                    verify_eq_lua('shoop_control.loop_get_volume_fader({0,0})', '{0.0}')
+                    do_execute('shoop_control.loop_set_gain_fader({0,0}, 1.0)')
+                    verify_eq_lua('shoop_control.loop_get_gain_fader({0,0})', '{1.0}')
+                    do_execute('shoop_control.loop_set_gain_fader({0,0}, 0.5)')
+                    verify_eq_lua('shoop_control.loop_get_gain_fader({0,0})', '{0.5}')
+                    do_execute('shoop_control.loop_set_gain_fader({0,0}, 2.0)')
+                    verify_eq_lua('shoop_control.loop_get_gain_fader({0,0})', '{1.0}')
+                    do_execute('shoop_control.loop_set_gain_fader({0,0}, -1.0)')
+                    verify_eq_lua('shoop_control.loop_get_gain_fader({0,0})', '{0.0}')
                 },
 
                 'test_loop_set_get_balance': () => {
@@ -353,56 +353,56 @@ ShoopTestFile {
                     verify_eq_lua('shoop_control.loop_get_length({1,1})', '{100}')
                 },
 
-                'test_track_set_get_volume': () => {
+                'test_track_set_get_gain': () => {
                     check_backend()
                     clear()
                     
-                    do_execute('shoop_control.track_set_volume(0, 1.0)')
-                    do_execute('shoop_control.track_set_volume(1, 1.0)')
-                    verify_eq_lua('shoop_control.track_get_volume(0)', '{1.0}')
-                    do_execute('shoop_control.track_set_volume(0, 0.5)')
-                    verify_eq_lua('shoop_control.track_get_volume(0)', '{0.5}')
-                    verify_eq_lua('shoop_control.track_get_volume({1,0})', '{1.0, 0.5}')
+                    do_execute('shoop_control.track_set_gain(0, 1.0)')
+                    do_execute('shoop_control.track_set_gain(1, 1.0)')
+                    verify_eq_lua('shoop_control.track_get_gain(0)', '{1.0}')
+                    do_execute('shoop_control.track_set_gain(0, 0.5)')
+                    verify_eq_lua('shoop_control.track_get_gain(0)', '{0.5}')
+                    verify_eq_lua('shoop_control.track_get_gain({1,0})', '{1.0, 0.5}')
                 },
 
-                'test_track_set_get_volume_fader': () => {
+                'test_track_set_get_gain_fader': () => {
                     check_backend()
                     clear()
                     
-                    do_execute('shoop_control.track_set_volume_fader(0, 1.0)')
-                    verify_eq_lua('shoop_control.track_get_volume_fader(0)', '{1.0}')
-                    do_execute('shoop_control.track_set_volume_fader(0, 0.5)')
-                    verify_eq_lua('shoop_control.track_get_volume_fader(0)', '{0.5}')
-                    do_execute('shoop_control.track_set_volume_fader(0, 2.0)')
-                    verify_eq_lua('shoop_control.track_get_volume_fader(0)', '{1.0}')
-                    do_execute('shoop_control.track_set_volume_fader(0, -1.0)')
-                    verify_eq_lua('shoop_control.track_get_volume_fader(0)', '{0.0}')
+                    do_execute('shoop_control.track_set_gain_fader(0, 1.0)')
+                    verify_eq_lua('shoop_control.track_get_gain_fader(0)', '{1.0}')
+                    do_execute('shoop_control.track_set_gain_fader(0, 0.5)')
+                    verify_eq_lua('shoop_control.track_get_gain_fader(0)', '{0.5}')
+                    do_execute('shoop_control.track_set_gain_fader(0, 2.0)')
+                    verify_eq_lua('shoop_control.track_get_gain_fader(0)', '{1.0}')
+                    do_execute('shoop_control.track_set_gain_fader(0, -1.0)')
+                    verify_eq_lua('shoop_control.track_get_gain_fader(0)', '{0.0}')
                 },
 
-                'test_track_set_get_input_volume': () => {
+                'test_track_set_get_input_gain': () => {
                     check_backend()
                     clear()
                     
-                    do_execute('shoop_control.track_set_input_volume(0, 1.0)')
-                    do_execute('shoop_control.track_set_input_volume(1, 1.0)')
-                    verify_eq_lua('shoop_control.track_get_input_volume(0)', '{1.0}')
-                    do_execute('shoop_control.track_set_input_volume(0, 0.5)')
-                    verify_eq_lua('shoop_control.track_get_input_volume(0)', '{0.5}')
-                    verify_eq_lua('shoop_control.track_get_input_volume({1,0})', '{1.0, 0.5}')
+                    do_execute('shoop_control.track_set_input_gain(0, 1.0)')
+                    do_execute('shoop_control.track_set_input_gain(1, 1.0)')
+                    verify_eq_lua('shoop_control.track_get_input_gain(0)', '{1.0}')
+                    do_execute('shoop_control.track_set_input_gain(0, 0.5)')
+                    verify_eq_lua('shoop_control.track_get_input_gain(0)', '{0.5}')
+                    verify_eq_lua('shoop_control.track_get_input_gain({1,0})', '{1.0, 0.5}')
                 },
 
-                'test_track_set_get_input_volume_fader': () => {
+                'test_track_set_get_input_gain_fader': () => {
                     check_backend()
                     clear()
                     
-                    do_execute('shoop_control.track_set_input_volume_fader(0, 1.0)')
-                    verify_eq_lua('shoop_control.track_get_input_volume_fader(0)', '{1.0}')
-                    do_execute('shoop_control.track_set_input_volume_fader(0, 0.5)')
-                    verify_eq_lua('shoop_control.track_get_input_volume_fader(0)', '{0.5}')
-                    do_execute('shoop_control.track_set_input_volume_fader(0, 2.0)')
-                    verify_eq_lua('shoop_control.track_get_input_volume_fader(0)', '{1.0}')
-                    do_execute('shoop_control.track_set_input_volume_fader(0, -1.0)')
-                    verify_eq_lua('shoop_control.track_get_input_volume_fader(0)', '{0.0}')
+                    do_execute('shoop_control.track_set_input_gain_fader(0, 1.0)')
+                    verify_eq_lua('shoop_control.track_get_input_gain_fader(0)', '{1.0}')
+                    do_execute('shoop_control.track_set_input_gain_fader(0, 0.5)')
+                    verify_eq_lua('shoop_control.track_get_input_gain_fader(0)', '{0.5}')
+                    do_execute('shoop_control.track_set_input_gain_fader(0, 2.0)')
+                    verify_eq_lua('shoop_control.track_get_input_gain_fader(0)', '{1.0}')
+                    do_execute('shoop_control.track_set_input_gain_fader(0, -1.0)')
+                    verify_eq_lua('shoop_control.track_get_input_gain_fader(0)', '{0.0}')
                 },
 
                 'test_track_set_get_muted': () => {

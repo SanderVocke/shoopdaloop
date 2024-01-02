@@ -44,9 +44,6 @@ public:
     bool is_active() const override;
     void set_active(bool active) override;
 
-    void ensure_buffers(uint32_t size) override;
-    uint32_t buffers_size() const override;
-
     void stop() override;
 };
 

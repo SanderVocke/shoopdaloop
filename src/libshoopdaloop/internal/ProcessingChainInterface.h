@@ -2,10 +2,10 @@
 #include <optional>
 #include <memory>
 #include <stdio.h>
-#include "MidiPortInterface.h"
+#include "MidiPort.h"
 #include <string>
 #include <map>
-#include "AudioPortInterface.h"
+#include "AudioPort.h"
 #include "InternalAudioPort.h"
 #include <functional>
 
@@ -14,7 +14,6 @@ class ProcessingChainInterface {
 public:
     using _InternalAudioPort = InternalAudioPort<float>;
     using SharedInternalAudioPort = std::shared_ptr<InternalAudioPort<float>>;
-    using MidiPort = MidiPortInterface;
     using SharedMidiPort = std::shared_ptr<MidiPort>;
 
     ProcessingChainInterface() {}
@@ -33,9 +32,6 @@ public:
 
     virtual bool is_freewheeling() const = 0;
     virtual void set_freewheeling(bool enabled) = 0;
-
-    virtual void ensure_buffers(uint32_t size) = 0;
-    virtual uint32_t buffers_size() const = 0;
 
     virtual void process(uint32_t frames) = 0;
 

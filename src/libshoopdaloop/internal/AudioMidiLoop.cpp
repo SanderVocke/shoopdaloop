@@ -4,19 +4,16 @@
 #include <memory>
 #include <vector>
 
-AudioMidiLoop::AudioMidiLoop(
-    std::shared_ptr<profiling::Profiler> maybe_profiler)
-    : BasicLoop(), maybe_profiler(maybe_profiler) {}
+AudioMidiLoop::AudioMidiLoop()
+    : BasicLoop() {}
 
 template <typename SampleT>
 std::shared_ptr<AudioChannel<SampleT>> AudioMidiLoop::add_audio_channel(
     std::shared_ptr<ObjectPool<AudioBuffer<SampleT>>> const &buffer_pool,
     uint32_t initial_max_buffers, shoop_channel_mode_t mode, bool thread_safe)
 {
-    log_trace();
-
     auto channel = std::make_shared<AudioChannel<SampleT>>(
-        buffer_pool, initial_max_buffers, mode, maybe_profiler);
+        buffer_pool, initial_max_buffers, mode);
     auto fn = [this, channel]() { mp_audio_channels.push_back(channel); };
     if (thread_safe) {
         exec_process_thread_command(fn);
@@ -31,10 +28,8 @@ std::shared_ptr<MidiChannel<TimeType, SizeType>>
 AudioMidiLoop::add_midi_channel(uint32_t data_size, shoop_channel_mode_t mode,
                                 bool thread_safe)
 {
-    log_trace();
-
     auto channel = std::make_shared<MidiChannel<TimeType, SizeType>>(
-        data_size, mode, maybe_profiler);
+        data_size, mode);
     auto fn = [this, &channel]() { mp_midi_channels.push_back(channel); };
     if (thread_safe) {
         exec_process_thread_command(fn);
@@ -108,7 +103,6 @@ uint32_t AudioMidiLoop::n_midi_channels(bool thread_safe) {
 
 void AudioMidiLoop::delete_audio_channel(std::shared_ptr<ChannelInterface> chan,
                                          bool thread_safe) {
-    log_trace();
     auto fn = [=, this]() {
         std::erase_if(mp_audio_channels,
                       [&](auto const &e) { return e.get() == chan.get(); });
@@ -122,7 +116,6 @@ void AudioMidiLoop::delete_audio_channel(std::shared_ptr<ChannelInterface> chan,
 
 void AudioMidiLoop::delete_midi_channel(std::shared_ptr<ChannelInterface> chan,
                                         bool thread_safe) {
-    log_trace();
     auto fn = [=, this]() {
         std::erase_if(mp_midi_channels,
                       [&](auto const &e) { return e.get() == chan.get(); });
@@ -140,7 +133,6 @@ void AudioMidiLoop::PROC_process_channels(
     std::optional<uint32_t> maybe_next_mode_eta, uint32_t n_samples,
     uint32_t pos_before, uint32_t pos_after, uint32_t length_before,
     uint32_t length_after) {
-    log_trace();
     BasicLoop::PROC_process_channels(mode, maybe_next_mode,
                                      maybe_next_mode_delay_cycles,
                                      maybe_next_mode_eta, n_samples, pos_before,
@@ -159,7 +151,6 @@ void AudioMidiLoop::PROC_process_channels(
 }
 
 void AudioMidiLoop::PROC_update_poi() {
-    log_trace();
     BasicLoop::PROC_update_poi(); // sets mp_next_poi, mp_next_trigger
 
     auto merge = [this](std::optional<uint32_t> other) {
@@ -182,7 +173,6 @@ void AudioMidiLoop::PROC_update_poi() {
 }
 
 void AudioMidiLoop::PROC_handle_poi() {
-    log_trace();
     BasicLoop::PROC_handle_poi();
 
     for (auto &channel : mp_audio_channels) {

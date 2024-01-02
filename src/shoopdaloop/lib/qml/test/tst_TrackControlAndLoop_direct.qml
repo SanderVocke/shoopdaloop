@@ -105,8 +105,8 @@ ShoopTestFile {
                 let c = session.get_track_control_widget(track_idx)
                 c.input_balance = 0.0
                 c.output_balance = 0.0
-                c.volume_dB = 0.0
-                c.input_volume_dB = 0.0
+                c.gain_dB = 0.0
+                c.input_gain_dB = 0.0
                 c.monitor = false
                 c.mute = false
             }

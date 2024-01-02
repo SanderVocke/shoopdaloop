@@ -15,13 +15,13 @@ Item {
     property var initial_track_descriptor : null
 
     // UI-controlled properties
-    property alias volume_dB: volume_fader.value
-    property alias input_volume_dB: input_fader.value
-    property alias volume_dB_min: volume_fader.from
-    property alias input_volume_dB_min: input_fader.from
+    property alias gain_dB: gain_fader.value
+    property alias input_gain_dB: input_fader.value
+    property alias gain_dB_min: gain_fader.from
+    property alias input_gain_dB_min: input_fader.from
     property alias input_balance: input_balance_dial.value
     property alias output_balance: output_balance_dial.value
-    property real volume_fader_position: volume_fader.position
+    property real gain_fader_position: gain_fader.position
     property real input_fader_position: input_fader.position
 
     property bool monitor : {
@@ -52,28 +52,28 @@ Item {
     readonly property PythonLogger logger : PythonLogger { name: "Frontend.Qml.TrackControlWidget" }
     readonly property bool in_is_stereo: audio_in_ports.length == 2
     readonly property bool out_is_stereo: audio_out_ports.length == 2
-    readonly property var initial_output_volume_and_balance: {
+    readonly property var initial_output_gain_and_balance: {
         var ports = initial_track_descriptor.ports
             .filter(p => is_out(p));
         ports.sort((a,b) => a.id.localeCompare(b.id))
-        return volume_and_balance_from_volumes(
-            ports.map(p => ('volume' in p) ? p.volume : undefined)
+        return gain_and_balance_from_gains(
+            ports.map(p => ('gain' in p) ? p.gain : undefined)
             .filter(p => p != undefined)
         );
     }
-    readonly property var initial_input_volume_and_balance: {
+    readonly property var initial_input_gain_and_balance: {
         var ports = initial_track_descriptor.ports
             .filter(p => is_in(p));
         ports.sort((a,b) => a.id.localeCompare(b.id))
-        return volume_and_balance_from_volumes(
-            ports.map(p => ('volume' in p) ? p.volume : undefined)
+        return gain_and_balance_from_gains(
+            ports.map(p => ('gain' in p) ? p.gain : undefined)
             .filter(p => p != undefined)
         );
     }
-    property real initial_volume: initial_output_volume_and_balance["volume"]
-    property real initial_balance: initial_output_volume_and_balance["balance"]
-    property real initial_input_volume: initial_input_volume_and_balance["volume"]
-    property real initial_input_balance: initial_input_volume_and_balance["balance"]
+    property real initial_gain: initial_output_gain_and_balance["gain"]
+    property real initial_balance: initial_output_gain_and_balance["balance"]
+    property real initial_input_gain: initial_input_gain_and_balance["gain"]
+    property real initial_input_balance: initial_input_gain_and_balance["balance"]
     readonly property bool has_fx_chain : initial_track_descriptor && 'fx_chain' in initial_track_descriptor
     readonly property alias ports : lookup_ports.objects
     readonly property alias loops : lookup_loops.objects
@@ -96,10 +96,10 @@ Item {
     }
     readonly property var midi_in_ports : ports.filter((p) => p && is_midi(p.descriptor) && is_in(p.descriptor))
     readonly property var midi_out_ports : ports.filter((p) => p && is_midi(p.descriptor) && is_out(p.descriptor))
-    readonly property var out_balance_volume_factor_l: balance_volume_factor_l(output_balance)
-    readonly property var in_balance_volume_factor_l: balance_volume_factor_l(input_balance)
-    readonly property var out_balance_volume_factor_r: balance_volume_factor_r(output_balance)
-    readonly property var in_balance_volume_factor_r: balance_volume_factor_r(input_balance)
+    readonly property var out_balance_gain_factor_l: balance_gain_factor_l(output_balance)
+    readonly property var in_balance_gain_factor_l: balance_gain_factor_l(input_balance)
+    readonly property var out_balance_gain_factor_r: balance_gain_factor_r(output_balance)
+    readonly property var in_balance_gain_factor_r: balance_gain_factor_r(input_balance)
     readonly property var unique_loop_modes : {
         let modes = root.loops.map(l => l.mode)
         return Array.from(new Set(modes))
@@ -114,34 +114,34 @@ Item {
     readonly property var control_logic : logic
 
     // Controlled properties
-    property real initial_volume_dB: 0.0
-    property real initial_input_volume_dB: 0.0
+    property real initial_gain_dB: 0.0
+    property real initial_input_gain_dB: 0.0
     property int n_midi_notes_active_in : 0
     property int n_midi_notes_active_out : 0
     property int n_midi_events_in : 0
     property int n_midi_events_out : 0
 
     // Handlers
-    onInitial_volumeChanged: {
+    onInitial_gainChanged: {
         // Will lead to updating the faders
-        convert_volume.linear = initial_volume
-        initial_volume_dB = convert_volume.dB
+        convert_gain.linear = initial_gain
+        initial_gain_dB = convert_gain.dB
     }
-    onInitial_input_volumeChanged: {
+    onInitial_input_gainChanged: {
         // Will lead to updating the faders
-        convert_volume.linear = initial_input_volume
-        initial_input_volume_dB = convert_volume.dB
+        convert_gain.linear = initial_input_gain
+        initial_input_gain_dB = convert_gain.dB
     }
     onMidi_in_portsChanged: {
-        midi_in_ports.forEach((m) => m.nNotesActiveChanged.connect(update_midi))
-        midi_out_ports.forEach((m) => m.nNotesActiveChanged.connect(update_midi))
-        midi_in_ports.forEach((m) => m.nEventsTriggeredChanged.connect(update_midi))
-        midi_out_ports.forEach((m) => m.nEventsTriggeredChanged.connect(update_midi))
+        midi_in_ports.forEach((m) => m.nInputNotesActiveChanged.connect(update_midi))
+        midi_out_ports.forEach((m) => m.nOutputNotesActiveChanged.connect(update_midi))
+        midi_in_ports.forEach((m) => m.nInputEventsChanged.connect(update_midi))
+        midi_out_ports.forEach((m) => m.nOutputEventsChanged.connect(update_midi))
     }
-    onVolume_dBChanged: push_out_volumes()
-    onInput_volume_dBChanged: push_in_volumes()
-    onOutput_balanceChanged: push_out_volumes()
-    onInput_balanceChanged: push_in_volumes()
+    onGain_dBChanged: push_out_gains()
+    onInput_gain_dBChanged: push_in_gains()
+    onOutput_balanceChanged: push_out_gains()
+    onInput_balanceChanged: push_in_gains()
     Connections {
         target: logic
         function onForce_monitoring_offChanged() {
@@ -198,10 +198,10 @@ Item {
         key: initial_track_descriptor && 'fx_chain' in initial_track_descriptor ? initial_track_descriptor.fx_chain.id : null
     }
     LinearDbConversion {
-        id: convert_volume
+        id: convert_gain
     }
     LinearDbConversion {
-        id: convert_input_volume
+        id: convert_input_gain
     }
 
     // Methods
@@ -213,11 +213,11 @@ Item {
     function is_wet(p)    { return p && p.id.match(/.*_wet_.*/); }
     function is_direct(p) { return p && p.id.match(/.*_direct_.*/); }
     function aggregate_midi_notes(ports) {
-        var notes_per_port = ports.map((p) => p.n_notes_active)
+        var notes_per_port = ports.map((p) => p.n_input_notes_active)
         return Math.max(notes_per_port)
     }
     function aggregate_midi_events(ports) {
-        var events_per_port = ports.map((p) => p.n_events_triggered)
+        var events_per_port = ports.map((p) => p.n_input_events)
         return Math.max(events_per_port)
     }
     function update_midi() {
@@ -236,72 +236,72 @@ Item {
         return null;
     }
     function set_gain(gain) {
-        volume_dB = Math.min(Math.max(volume_fader.gainToDb(gain), volume_fader.from), volume_fader.to)
+        gain_dB = Math.min(Math.max(gain_fader.gainToDb(gain), gain_fader.from), gain_fader.to)
     }
-    function set_volume_fader(value) {
-        volume_fader.value = volume_fader.valueAt(value)
+    function set_gain_fader(value) {
+        gain_fader.value = gain_fader.valueAt(value)
     }
     function set_input_gain(gain) {
-        input_volume_dB = Math.min(Math.max(input_fader.gainToDb(gain), input_fader.from), input_fader.to)
+        input_gain_dB = Math.min(Math.max(input_fader.gainToDb(gain), input_fader.from), input_fader.to)
     }
-    function set_input_volume_fader(value) {
+    function set_input_gain_fader(value) {
         input_fader.value = input_fader.valueAt(value)
     }
-    function convert_volume_to_linear(volume) {
-        convert_volume.dB = volume
-        return convert_volume.linear
+    function convert_gain_to_linear(gain) {
+        convert_gain.dB = gain
+        return convert_gain.linear
     }
-    function push_volume(volume, target, gain_factor = 1.0) {
-        convert_volume.dB = volume
-        var v = convert_volume.linear * gain_factor
+    function push_gain(gain, target, gain_factor = 1.0) {
+        convert_gain.dB = gain
+        var v = convert_gain.linear * gain_factor
         logger.trace(() => ("Pushing gain " + v + " to " + target.obj_id))
-        if (target && target.volume != v) { target.set_volume(v) }
+        if (target && target.gain != v) { target.set_gain(v) }
     }
     function toggle_muted() { mute = !mute }
     function toggle_monitor() { monitor = !monitor }
-    function balance_volume_factor_l(balance) {
+    function balance_gain_factor_l(balance) {
         return (balance > 0.0) ? 1.0 - balance : 1.0
     }
-    function balance_volume_factor_r(balance) {
+    function balance_gain_factor_r(balance) {
         return (balance < 0.0) ? 1.0 + balance : 1.0
     }
-    function volume_and_balance_from_volumes(volumes) {
-        let overall_volume = volumes.length > 0 ? Math.min(...volumes) : 1.0
-        if (volumes.length == 2) {
+    function gain_and_balance_from_gains(gains) {
+        let overall_gain = gains.length > 0 ? Math.min(...gains) : 1.0
+        if (gains.length == 2) {
             // Stereo handling
-            let vol = Math.max(...volumes)
-            let weak_factor = Math.min(...volumes) / vol
-            let weak_is_left = volumes[0] < volumes[1]
+            let vol = Math.max(...gains)
+            let weak_factor = Math.min(...gains) / vol
+            let weak_is_left = gains[0] < gains[1]
             let balance = weak_is_left ? -(1.0 - weak_factor) : (1.0 - weak_factor)
             return {
-                "volume": vol,
+                "gain": vol,
                 "balance": balance
             }
         }
         else {
             return {
-                "volume": overall_volume,
+                "gain": overall_gain,
                 "balance": 0.0
             }
         }
     }
     property var last_pushed_in_gain: null
     property var last_pushed_gain: null
-    function push_in_volumes() {
+    function push_in_gains() {
         audio_in_ports.forEach((p, idx) => {
-            if (idx == 0 && in_is_stereo) { push_volume(input_volume_dB, p, in_balance_volume_factor_l) }
-            else if (idx == 1 && in_is_stereo) { push_volume(input_volume_dB, p, in_balance_volume_factor_r) }
-            else { push_volume(input_volume_dB, p) }
+            if (idx == 0 && in_is_stereo) { push_gain(input_gain_dB, p, in_balance_gain_factor_l) }
+            else if (idx == 1 && in_is_stereo) { push_gain(input_gain_dB, p, in_balance_gain_factor_r) }
+            else { push_gain(input_gain_dB, p) }
         })
-        last_pushed_in_gain = convert_volume_to_linear(input_volume_dB)
+        last_pushed_in_gain = convert_gain_to_linear(input_gain_dB)
     }
-    function push_out_volumes() {
+    function push_out_gains() {
         audio_out_ports.forEach((p, idx) => {
-            if (idx == 0 && out_is_stereo) { push_volume(volume_dB, p, out_balance_volume_factor_l) }
-            else if (idx == 1 && out_is_stereo) { push_volume(volume_dB, p, out_balance_volume_factor_r) }
-            else { push_volume(volume_dB, p) }
+            if (idx == 0 && out_is_stereo) { push_gain(gain_dB, p, out_balance_gain_factor_l) }
+            else if (idx == 1 && out_is_stereo) { push_gain(gain_dB, p, out_balance_gain_factor_r) }
+            else { push_gain(gain_dB, p) }
         })
-        last_pushed_gain = convert_volume_to_linear(volume_dB)
+        last_pushed_gain = convert_gain_to_linear(gain_dB)
     }
     function push_mute() {
         audio_out_ports.forEach((p) => p.set_muted(mute))
@@ -339,8 +339,8 @@ Item {
     Component.onCompleted: {
         push_monitor()
         push_mute()
-        push_out_volumes()
-        push_in_volumes()
+        push_out_gains()
+        push_in_gains()
         push_fx_active()
     }
 
@@ -374,7 +374,7 @@ Item {
                 anchors {
                     left: parent.left
                     right: parent.horizontalCenter
-                    verticalCenter: volume_row.verticalCenter
+                    verticalCenter: gain_row.verticalCenter
                 }
 
                 // Note: dB
@@ -385,7 +385,7 @@ Item {
                     id: output_peak_meter_l
                     max_dt: 0.1
 
-                    input: root.audio_out_ports.length > 0 ? root.audio_out_ports[0].peak : 0.0
+                    input: root.audio_out_ports.length > 0 ? root.audio_out_ports[0].input_peak : 0.0
                 }
 
                 background: Rectangle {
@@ -416,7 +416,7 @@ Item {
                 anchors {
                     left: parent.horizontalCenter
                     right: parent.right
-                    verticalCenter: volume_row.verticalCenter
+                    verticalCenter: gain_row.verticalCenter
                 }
 
                 // Note: dB
@@ -427,7 +427,7 @@ Item {
                     id: output_peak_meter_r
                     max_dt: 0.1
 
-                    input: root.audio_out_ports.length > 1 ? root.audio_out_ports[1].peak : 0.0
+                    input: root.audio_out_ports.length > 1 ? root.audio_out_ports[1].input_peak : 0.0
                 }
 
                 background: Rectangle {
@@ -468,7 +468,7 @@ Item {
                     id: output_peak_meter_overall
                     max_dt: 0.1
 
-                    input: root.audio_out_ports.length > 0 ? Math.max(...root.audio_out_ports.map(p => p.peak)) : 0.0
+                    input: root.audio_out_ports.length > 0 ? Math.max(...root.audio_out_ports.map(p => p.input_peak)) : 0.0
                 }
 
                 background: Rectangle {
@@ -514,9 +514,9 @@ Item {
                 color: '#00FFFF'
                 visible: root.n_midi_events_out > 0
             }
-            Item {
-                id: volume_row
 
+            Item {
+                id: gain_row
                 height: childrenRect.height
 
                 anchors {
@@ -527,23 +527,23 @@ Item {
                 Item {
                     width: 18
                     height: 18
-                    id: volume_row_button
+                    id: gain_row_button
 
                     anchors {
-                        verticalCenter: volume_fader.verticalCenter
-                        left: volume_row.left
+                        verticalCenter: gain_fader.verticalCenter
+                        left: gain_row.left
                     }
 
                     visible: (root.audio_out_ports.length + root.midi_out_ports.length) > 0
 
                     Rectangle {
                         anchors.fill: parent
-                        visible: volume_mouse_area.containsMouse
+                        visible: gain_mouse_area.containsMouse
                         color: '#555555'
                         radius: width/2
                     }
                     MouseArea {
-                        id: volume_mouse_area
+                        id: gain_mouse_area
                         anchors.fill: parent
                         acceptedButtons: Qt.LeftButton
                         hoverEnabled: true
@@ -570,7 +570,7 @@ Item {
                     }
                 }
                 AudioSlider {
-                    id: volume_fader
+                    id: gain_fader
 
                     anchors {
                         left: volume_row_button.right
@@ -581,7 +581,6 @@ Item {
                     }
 
                     visible: root.audio_out_ports.length > 0
-
                     orientation: Qt.Horizontal                
 
                     height: 20
@@ -594,11 +593,11 @@ Item {
 
                     Material.accent: root.mute ? 'grey' : root.Material.accent
 
-                    property alias initial_value_dB: root.initial_volume_dB
+                    property alias initial_value_dB: root.initial_gain_dB
                     onInitial_value_dBChanged: value = initial_value_dB
                     Component.onCompleted: value = initial_value_dB
 
-                    tooltip: 'Track volume. Double-click to reset.'
+                    tooltip: 'Track gain. Double-click to reset.'
                     value_tooltip_postfix: " dB"
                     show_value_tooltip: true
                 }
@@ -614,8 +613,8 @@ Item {
                     height: 18
 
                     anchors {
-                        verticalCenter: volume_fader.verticalCenter
-                        right: volume_row.right
+                        verticalCenter: gain_fader.verticalCenter
+                        right: gain_row.right
                     }
 
                     property alias initial_value: root.initial_balance
@@ -667,7 +666,7 @@ Item {
                     id: input_peak_meter_l
                     max_dt: 0.1
 
-                    input: root.audio_in_ports.length > 0 ? root.audio_in_ports[0].peak : 0.0
+                    input: root.audio_in_ports.length > 0 ? root.audio_in_ports[0].input_peak : 0.0
                 }
 
                 background: Rectangle {
@@ -709,7 +708,7 @@ Item {
                     id: input_peak_meter_r
                     max_dt: 0.1
 
-                    input: root.audio_in_ports.length > 1 ? root.audio_in_ports[1].peak : 0.0
+                    input: root.audio_in_ports.length > 1 ? root.audio_in_ports[1].input_peak : 0.0
                 }
 
                 background: Rectangle {
@@ -750,7 +749,7 @@ Item {
                     id: input_peak_meter_overall
                     max_dt: 0.1
 
-                    input: root.audio_in_ports.length > 0 ? Math.max(...root.audio_in_ports.map(p => p.peak)) : 0.0
+                    input: root.audio_in_ports.length > 0 ? Math.max(...root.audio_in_ports.map(p => p.input_peak)) : 0.0
                 }
 
                 background: Rectangle {
@@ -875,11 +874,11 @@ Item {
 
                     Material.accent: root.monitor ? root.Material.accent : 'grey'
 
-                    property real initial_value_dB: root.initial_input_volume_dB
+                    property real initial_value_dB: root.initial_input_gain_dB
                     onInitial_value_dBChanged: value = initial_value_dB
                     Component.onCompleted: value = initial_value_dB
 
-                    tooltip: 'Track input volume. Double-click to reset.'
+                    tooltip: 'Track input gain. Double-click to reset.'
                     show_value_tooltip: true
                     value_tooltip_postfix: " dB"
                 }

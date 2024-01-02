@@ -67,6 +67,11 @@ ApplicationWindow {
                 }
 
                 ItemRow {
+                    label: "initialized:"
+                    Label { text: object.initialized }
+                }
+
+                ItemRow {
                     label: "object_schema:"
                     Label { text: object.object_schema }
                 }
@@ -74,11 +79,6 @@ ApplicationWindow {
                 ItemRow {
                     label: "muted:"
                     Label { text: object.muted }
-                }
-
-                ItemRow {
-                    label: "passthrough muted:"
-                    Label { text: object.passthrough_muted }
                 }
 
                 ItemRow {
@@ -111,16 +111,8 @@ ApplicationWindow {
                 Loader {
                     active: object.object_schema.match(/audioport.[0-9]/)
                     sourceComponent: ItemRow {
-                        label: "volume:"
-                        Label { text: object.volume.toString() }
-                    }
-                }
-
-                Loader {
-                    active: object.object_schema.match(/midiport.[0-9]/)
-                    sourceComponent: ItemRow {
-                        label: "n notes active: "
-                        Label { text: object.n_notes_active.toString() }
+                        label: "gain:"
+                        Label { text: object.gain.toString() }
                     }
                 }
 
@@ -235,8 +227,8 @@ ApplicationWindow {
                 Loader {
                     active: object.descriptor.type == "audio"
                     sourceComponent: ItemRow {
-                        label: "volume:"
-                        Label { text: object.volume.toString() }
+                        label: "gain:"
+                        Label { text: object.gain.toString() }
                     }
                 }
 

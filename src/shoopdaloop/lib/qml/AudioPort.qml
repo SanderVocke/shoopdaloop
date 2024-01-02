@@ -25,7 +25,7 @@ PythonAudioPort {
             'id': descriptor.id,
             'name_parts': descriptor.name_parts,
             'direction': descriptor.direction,
-            'volume': volume,
+            'gain': gain,
             'muted': muted,
             'passthrough_muted': passthrough_muted,
             'passthrough_to': descriptor.passthrough_to,
@@ -62,7 +62,7 @@ PythonAudioPort {
     }
     property list<string> name_parts : descriptor.name_parts
     name_hint : name_parts.join('')
-    volume : descriptor.volume
+    gain : descriptor.gain
     muted : descriptor.muted
     passthrough_muted: descriptor.passthrough_muted
 }

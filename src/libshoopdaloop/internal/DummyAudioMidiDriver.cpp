@@ -1,6 +1,7 @@
 #include "AudioMidiDriver.h"
 #include "PortInterface.h"
 #include "WithCommandQueue.h"
+#include "fmt/format.h"
 #include "types.h"
 #include <chrono>
 #include <cstdint>
@@ -17,14 +18,10 @@ const std::map<DummyAudioMidiDriverMode, const char*> mode_names = {
 DummyPort::DummyPort(
     std::string name,
     shoop_port_direction_t direction,
-    PortType type
-) : m_name(name), m_direction(direction), m_type(type) {}
+    PortDataType type
+) : m_name(name), m_direction(direction) {}
 
 const char* DummyPort::name() const { return m_name.c_str(); }
-
-shoop_port_direction_t DummyPort::direction() const { return m_direction; }
-
-PortType DummyPort::type() const { return m_type; }
 
 void DummyPort::close() {}
 
@@ -39,36 +36,14 @@ void *DummyPort::maybe_driver_handle() const {
 }
 
 DummyAudioPort::DummyAudioPort(std::string name, shoop_port_direction_t direction)
-    : AudioPortInterface<audio_sample_t>(name, direction), m_name(name),
-      DummyPort(name, direction, PortType::Audio),
+    : AudioPort<audio_sample_t>(), m_name(name),
+      DummyPort(name, direction, PortDataType::Audio),
       m_direction(direction),
       m_queued_data(128) { }
 
-float *DummyAudioPort::PROC_get_buffer(uint32_t n_frames, bool do_zero) {
+float *DummyAudioPort::PROC_get_buffer(uint32_t n_frames) {
     m_buffer_data.resize(std::max(m_buffer_data.size(), (size_t)n_frames));
     auto rval = m_buffer_data.data();
-    uint32_t filled = 0;
-    while (!m_queued_data.empty() && filled < n_frames) {
-        auto &front = m_queued_data.front();
-        uint32_t to_copy = std::min((size_t)(n_frames - filled), front.size());
-        uint32_t total_copyable = m_queued_data.front().size();
-        log<log_level_debug>("Dequeueing {} of {} samples", to_copy, total_copyable);
-        memcpy((void *)(rval + filled), (void *)front.data(),
-               sizeof(audio_sample_t) * to_copy);
-        filled += to_copy;
-        front.erase(front.begin(), front.begin() + to_copy);
-        if (front.size() == 0) {
-            m_queued_data.pop();
-            bool another = !m_queued_data.empty();
-            log<log_level_debug>("Pop queue item. Another: {}", another);
-        }
-    }
-    memset((void *)(rval+filled), 0, sizeof(audio_sample_t) * (n_frames - filled));
-
-    if (do_zero) {
-        memset((void *)rval, 0, sizeof(audio_sample_t) * n_frames);
-    }
-
     return rval;
 }
 
@@ -85,13 +60,37 @@ bool DummyAudioPort::get_queue_empty() {
 
 DummyAudioPort::~DummyAudioPort() { DummyPort::close(); }
 
-void DummyAudioPort::PROC_post_process(float* buf, uint32_t n_frames) {
+void DummyAudioPort::PROC_process(uint32_t n_frames) {
+    AudioPort<audio_sample_t>::PROC_process(n_frames);
+    
+    auto buf = PROC_get_buffer(n_frames);
     uint32_t to_store = std::min(n_frames, m_n_requested_samples.load());
     if (to_store > 0) {
         log<log_level_debug>("Buffering {} samples ({} total)", to_store, m_retained_samples.size() + to_store);
         m_retained_samples.insert(m_retained_samples.end(), buf, buf+to_store);
         m_n_requested_samples -= to_store;
     }
+}
+
+void DummyAudioPort::PROC_prepare(uint32_t n_frames) {
+    auto buf = PROC_get_buffer(n_frames);
+    uint32_t filled = 0;
+    while (!m_queued_data.empty() && filled < n_frames) {
+        auto &front = m_queued_data.front();
+        uint32_t to_copy = std::min((size_t)(n_frames - filled), front.size());
+        uint32_t total_copyable = m_queued_data.front().size();
+        log<log_level_debug>("Dequeueing {} of {} samples", to_copy, total_copyable);
+        memcpy((void *)(buf + filled), (void *)front.data(),
+               sizeof(audio_sample_t) * to_copy);
+        filled += to_copy;
+        front.erase(front.begin(), front.begin() + to_copy);
+        if (front.size() == 0) {
+            m_queued_data.pop();
+            bool another = !m_queued_data.empty();
+            log<log_level_debug>("Pop queue item. Another: {}", another);
+        }
+    }
+    memset((void *)(buf+filled), 0, sizeof(audio_sample_t) * (n_frames - filled));
 }
 
 void DummyAudioPort::request_data(uint32_t n_frames) {
@@ -113,12 +112,12 @@ DummyMidiPort::PROC_get_event_reference(uint32_t idx) {
         if (!m_queued_msgs.empty()) {
             auto &m =  m_queued_msgs.at(idx);
             uint32_t time = m.get_time();
-            log<log_level_debug>("Read queued midi message @ {}", time);
+            ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug>("Read queued midi message @ {}", time);
             return m;
         } else {
             auto &m =  m_buffer_data.at(idx);
             uint32_t time = m.get_time();
-            log<log_level_debug>("Read buffer midi message @ {}", time);
+            ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug>("Read buffer midi message @ {}", time);
             return m;
         }
     } catch (std::out_of_range &e) {
@@ -129,12 +128,7 @@ DummyMidiPort::PROC_get_event_reference(uint32_t idx) {
 void DummyMidiPort::PROC_write_event_value(uint32_t size, uint32_t time,
                                            const uint8_t *data)
 {
-    if (time < n_requested_frames) {
-        uint32_t new_time = time + (n_original_requested_frames - n_requested_frames);
-        log<log_level_debug>("Write midi message value to external queue @ {} -> {}", time, new_time);
-        m_written_requested_msgs.push_back(StoredMessage(new_time, size, std::vector<uint8_t>(data, data + size)));
-    }
-    log<log_level_debug>("Write midi message value to internal buffer @ {}", time);
+    ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug>("Write midi message value to internal buffer @ {}", time);
     m_buffer_data.push_back(StoredMessage(time, size, std::vector<uint8_t>(data, data + size)));
 }
 
@@ -142,7 +136,7 @@ void DummyMidiPort::PROC_write_event_reference(
     MidiSortableMessageInterface const &m)
 {
     uint32_t t = m.get_time();
-    log<log_level_debug>("Write midi message reference @ {}", t);
+    ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug>("Write midi message reference @ {}", t);
     PROC_write_event_value(m.get_size(), m.get_time(), m.get_data());    
 }
 
@@ -151,7 +145,7 @@ bool DummyMidiPort::write_by_reference_supported() const { return true; }
 bool DummyMidiPort::write_by_value_supported() const { return true; }
 
 DummyMidiPort::DummyMidiPort(std::string name, shoop_port_direction_t direction)
-    : MidiPortInterface(name, direction), DummyPort(name, direction, PortType::Midi){
+    : MidiPort(false, false, false), DummyPort(name, direction, PortDataType::Midi){
 }
 
 void DummyMidiPort::clear_queues() {
@@ -162,7 +156,7 @@ void DummyMidiPort::clear_queues() {
 }
 
 void DummyMidiPort::queue_msg(uint32_t size, uint32_t time, uint8_t const *data) {
-    log<log_level_debug>("Queueing midi message @ {}", time);
+    ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug>("Queueing midi message @ {}", time);
     m_queued_msgs.push_back(StoredMessage(time, size, std::vector<uint8_t>(data, data + size)));
     std::stable_sort(m_queued_msgs.begin(), m_queued_msgs.end(), [](StoredMessage const& a, StoredMessage const& b) {
         return a.time < b.time;
@@ -177,42 +171,64 @@ void DummyMidiPort::request_data(uint32_t n_frames) {
     if (n_requested_frames > 0) {
         throw std::runtime_error("Previous request not yet completed");
     }
+    ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_trace>("request {} frames", n_frames);
     n_requested_frames = n_frames;
     n_original_requested_frames = n_frames;
 }
 
-MidiReadableBufferInterface &
-DummyMidiPort::PROC_get_read_buffer(uint32_t n_frames) {
-    current_buf_frames = n_frames;
-
-    uint32_t update_queue_by = m_update_queue_by_frames_pending;
-    if (update_queue_by > 0) {
-        // The queue was used last pass and needs to be truncated now for the current pass.
+void DummyMidiPort::PROC_prepare(uint32_t nframes) {
+    m_buffer_data.clear();
+    auto progress_by = n_processed_last_round.load();
+    progress_by -= std::min(n_requested_frames.load(), progress_by);
+    if (progress_by > 0) {
+    // The queue was used last pass and needs to be truncated now for the current pass.
         // (first erase msgs that will end up having a negative timestamp)
-        std::erase_if(m_queued_msgs, [&](StoredMessage const& msg) {
-            return msg.time < update_queue_by;
+        std::erase_if(m_queued_msgs, [&, this](StoredMessage const& msg) {
+            auto rval = msg.time < progress_by;
+            if (rval) {
+                this->ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_trace>("msg dropped from MIDI dummy input queue");
+            }
+            return rval;
         });
         std::for_each(m_queued_msgs.begin(), m_queued_msgs.end(), [&](StoredMessage &msg) {
-            msg.time -= update_queue_by;
+            auto new_val = msg.time - progress_by;
+            ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_trace>("msg in queue: time {} -> {}", msg.time, new_val);
+            msg.time = new_val;
         });
-        m_update_queue_by_frames_pending = 0;
     }
-
-    return *(static_cast<MidiReadableBufferInterface *>(this));
+    n_processed_last_round = 0;
+    current_buf_frames = nframes;
 }
 
-MidiWriteableBufferInterface &
-DummyMidiPort::PROC_get_write_buffer(uint32_t n_frames) {
+void DummyMidiPort::PROC_process(uint32_t nframes) {
+    if (m_direction == shoop_port_direction_t::Output) {
+        std::stable_sort(m_buffer_data.begin(), m_buffer_data.end(), [](StoredMessage const& a, StoredMessage const& b) {
+            return a.time < b.time;
+        });
+        if (!get_muted()) {
+            for (auto &msg: m_buffer_data) {
+                if (msg.time < n_requested_frames) {
+                    uint32_t new_time = msg.time + (n_original_requested_frames - n_requested_frames);
+                    ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug>("Write midi message value to external queue @ {} -> {} {} {}", msg.time, new_time, n_original_requested_frames.load(), n_requested_frames.load());
+                    m_written_requested_msgs.push_back(StoredMessage(new_time, msg.size, msg.data));
+                }
+            }
+        }
+    }
+    n_processed_last_round = nframes;
+    n_requested_frames -= std::min(nframes, n_requested_frames.load());
+}
+
+MidiReadableBufferInterface *
+DummyMidiPort::PROC_get_read_output_data_buffer(uint32_t n_frames) {
+    return (static_cast<MidiReadableBufferInterface *>(this));
+}
+
+MidiWriteableBufferInterface *
+DummyMidiPort::PROC_get_write_data_into_port_buffer(uint32_t n_frames) {
     current_buf_frames = n_frames;
     m_buffer_data.clear();
-    return *(static_cast<MidiWriteableBufferInterface *>(this));
-}
-
-void DummyMidiPort::PROC_post_process(uint32_t n_frames) {
-    // Decrement timestamps of all midi messages.
-
-    n_requested_frames -= std::min(n_requested_frames.load(), n_frames);
-    m_update_queue_by_frames_pending = n_frames;
+    return (static_cast<MidiWriteableBufferInterface *>(this));
 }
 
 uint32_t DummyMidiPort::PROC_get_n_events() const {
@@ -228,6 +244,18 @@ uint32_t DummyMidiPort::PROC_get_n_events() const {
         return r;
     }
     return m_buffer_data.size();
+}
+
+bool DummyMidiPort::read_by_reference_supported() const { return true; }
+
+void DummyMidiPort::PROC_get_event_value(uint32_t idx,
+                                         uint32_t &size_out,
+                                         uint32_t &time_out,
+                                         const uint8_t *&data_out) {
+    auto &msg = PROC_get_event_reference(idx);
+    size_out = msg.get_size();
+    time_out = msg.get_time();
+    data_out = msg.get_data();
 }
 
 std::vector<DummyMidiPort::StoredMessage> DummyMidiPort::get_written_requested_msgs() {
@@ -347,7 +375,7 @@ DummyAudioMidiDriver<Time, Size>::~DummyAudioMidiDriver() {
 }
 
 template <typename Time, typename Size>
-std::shared_ptr<AudioPortInterface<audio_sample_t>>
+std::shared_ptr<AudioPort<audio_sample_t>>
 DummyAudioMidiDriver<Time, Size>::open_audio_port(std::string name,
                                               shoop_port_direction_t direction) {
     log<log_level_debug>("DummyAudioMidiDriver : add audio port");
@@ -357,7 +385,7 @@ DummyAudioMidiDriver<Time, Size>::open_audio_port(std::string name,
 }
 
 template <typename Time, typename Size>
-std::shared_ptr<MidiPortInterface>
+std::shared_ptr<MidiPort>
 DummyAudioMidiDriver<Time, Size>::open_midi_port(std::string name,
                                              shoop_port_direction_t direction) {
     log<log_level_debug>("DummyAudioMidiDriver: add midi port");

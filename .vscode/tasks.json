@@ -2,6 +2,16 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "Build (cmake --build on already configured directory)",
+      "type": "shell",
+      "command": "cd ${workspaceFolder}/build/cp* ; cmake --build .",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": "$gcc"
+    },
+    {
       "label": "Build (Pip editable system install)",
       "type": "shell",
       "command": "cmake -E env PIP_BREAK_SYSTEM_PACKAGES=1 python -m pip install -e ${workspaceFolder} --no-deps -v",

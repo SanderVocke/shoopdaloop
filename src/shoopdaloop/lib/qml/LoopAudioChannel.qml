@@ -29,7 +29,7 @@ PythonLoopAudioChannel {
             'data_length': data_length,
             'start_offset': start_offset,
             'n_preplay_samples': n_preplay_samples,
-            'volume': volume,
+            'gain': gain,
             'connected_port_ids': initialized ? connected_ports.map((c) => c.obj_id) : descriptor.connected_port_ids
         }
         if (recording_started_at) { rval['recording_started_at'] = recording_started_at }
@@ -66,10 +66,10 @@ PythonLoopAudioChannel {
     }
 
     readonly property int initial_mode : Conversions.parse_channel_mode(descriptor.mode)
-    readonly property real initial_volume : ('volume' in descriptor) ? descriptor.volume : 1.0
+    readonly property real initial_gain : ('gain' in descriptor) ? descriptor.gain : 1.0
 
     onInitial_modeChanged: set_mode(initial_mode)
-    onInitial_volumeChanged: set_volume(initial_volume)
+    onInitial_gainChanged: set_gain(initial_gain)
     ports: lookup_connected_ports.objects
     property var recording_fx_chain_state_id: ('recording_fx_chain_state_id' in descriptor) ? descriptor.recording_fx_chain_state_id : null
     recording_started_at: 'recording_started_at' in descriptor ? descriptor.recording_started_at : null
@@ -95,7 +95,7 @@ PythonLoopAudioChannel {
     Component.onCompleted: {
         root.logger.debug(() => `Created with ${JSON.stringify(descriptor)}`)
         set_mode(initial_mode)
-        set_volume(initial_volume)
+        set_gain(initial_gain)
         initialize()
     }
     function qml_close() {

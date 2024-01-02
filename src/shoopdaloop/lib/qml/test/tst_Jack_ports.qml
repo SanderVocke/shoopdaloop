@@ -14,34 +14,34 @@ ShoopTestFile {
         backend_type: ShoopConstants.AudioDriverType.JackTest
         driver_setting_overrides: ({})
 
-        AudioPort {
-            descriptor: ({
-                'schema': 'audioport.1',
-                'id': 'audio_in',
-                'name_parts': ['audio', '_in'],
-                'direction': 'input',
-                'volume': 1.0,
-                'muted': false,
-                'passthrough_muted': false,
-                'passthrough_to': [],
-                'external_port_connections': []
-            })
+    AudioPort {
+        descriptor: ({
+            'schema': 'audioport.1',
+            'id': 'audio_in',
+            'name_parts': ['audio', '_in'],
+            'direction': 'input',
+            'gain': 1.0,
+            'muted': false,
+            'passthrough_muted': false,
+            'passthrough_to': [],
+            'external_port_connections': []
+        })
 
-            is_internal: false
-            id: audio_in
-        }
-        AudioPort {
-            descriptor: ({
-                'schema': 'audioport.1',
-                'id': 'audio_out',
-                'name_parts': ['audio', '_out'],
-                'direction': 'output',
-                'volume': 1.0,
-                'muted': false,
-                'passthrough_muted': false,
-                'passthrough_to': [],
-                'external_port_connections': []
-            })
+        is_internal: false
+        id: audio_in
+    }
+    AudioPort {
+        descriptor: ({
+            'schema': 'audioport.1',
+            'id': 'audio_out',
+            'name_parts': ['audio', '_out'],
+            'direction': 'output',
+            'gain': 1.0,
+            'muted': false,
+            'passthrough_muted': false,
+            'passthrough_to': [],
+            'external_port_connections': []
+        })
 
             is_internal: false
             id: audio_out

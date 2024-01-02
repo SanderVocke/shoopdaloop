@@ -10,5 +10,5 @@
         "passthrough_to":   { "type": "array", "items": { "type": "string" } },
         "external_port_connections": { "type": "array", "items": { "type": "string" } }
     },
-    "required": ["schema", "id", "name_parts", "muted", "passthrough_muted", "direction", "passthrough_to", "external_port_connections"]
+    "required": ["schema", "id", "name_parts", "muted", "direction", "passthrough_to", "external_port_connections"]
 }

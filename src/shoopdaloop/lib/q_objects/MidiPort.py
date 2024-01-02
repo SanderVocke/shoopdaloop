@@ -19,34 +19,58 @@ from ..findChildItems import findChildItems
 class MidiPort(Port):
     def __init__(self, parent=None):
         super(MidiPort, self).__init__(parent)
-        self._n_events_triggered = 0
-        self._n_notes_active = 0
+        self._n_input_events = 0
+        self._n_input_notes_active = 0
+        self._n_output_events = 0
+        self._n_output_notes_active = 0
 
     ######################
     # PROPERTIES
     ######################
 
-    # Number of events triggered since last update
-    nEventsTriggeredChanged = Signal(int)
-    @Property(int, notify=nEventsTriggeredChanged)
-    def n_events_triggered(self):
-        return self._n_events_triggered
-    @n_events_triggered.setter
-    def n_events_triggered(self, s):
-        if self._n_events_triggered != s:
-            self._n_events_triggered = s
-            self.nEventsTriggeredChanged.emit(s)
+    # Number of events triggered since last update (input)
+    nInputEventsChanged = Signal(int)
+    @Property(int, notify=nInputEventsChanged)
+    def n_input_events(self):
+        return self._n_input_events
+    @n_input_events.setter
+    def n_input_events(self, s):
+        if self._n_input_events != s:
+            self._n_input_events = s
+            self.nInputEventsChanged.emit(s)
     
-    # Number of notes currently being played
-    nNotesActiveChanged = Signal(int)
-    @Property(int, notify=nNotesActiveChanged)
-    def n_notes_active(self):
-        return self._n_notes_active
-    @n_notes_active.setter
-    def n_notes_active(self, s):
-        if self._n_notes_active != s:
-            self._n_notes_active = s
-            self.nNotesActiveChanged.emit(s)
+    # Number of notes currently being played (input)
+    nInputNotesActiveChanged = Signal(int)
+    @Property(int, notify=nInputNotesActiveChanged)
+    def n_input_notes_active(self):
+        return self._n_input_notes_active
+    @n_input_notes_active.setter
+    def n_input_notes_active(self, s):
+        if self._n_input_notes_active != s:
+            self._n_input_notes_active = s
+            self.nInputNotesActiveChanged.emit(s)
+    
+    # Number of events triggered since last update (output)
+    nOutputEventsChanged = Signal(int)
+    @Property(int, notify=nOutputEventsChanged)
+    def n_output_events(self):
+        return self._n_output_events
+    @n_output_events.setter
+    def n_output_events(self, s):
+        if self._n_output_events != s:
+            self._n_output_events = s
+            self.nOutputEventsChanged.emit(s)
+    
+    # Number of notes currently being played (output)
+    nOutputNotesActiveChanged = Signal(int)
+    @Property(int, notify=nOutputNotesActiveChanged)
+    def n_output_notes_active(self):
+        return self._n_output_notes_active
+    @n_output_notes_active.setter
+    def n_output_notes_active(self, s):
+        if self._n_output_notes_active != s:
+            self._n_output_notes_active = s
+            self.nOutputNotesActiveChanged.emit(s)
     
     ###########
     ## SLOTS
@@ -58,8 +82,10 @@ class MidiPort(Port):
         if not self.initialized:
             return
         state = self._backend_obj.get_state()
-        self.n_events_triggered = state.n_events_triggered
-        self.n_notes_active = state.n_notes_active
+        self.n_input_events = state.n_input_events
+        self.n_input_notes_active = state.n_input_notes_active
+        self.n_output_events = state.n_output_events
+        self.n_output_notes_active = state.n_output_notes_active
         self.name = state.name
         self.muted = state.muted
         self.passthrough_muted = state.passthrough_muted

@@ -1,11 +1,10 @@
 #pragma once
-#include "AudioPortInterface.h"
+#include "AudioPort.h"
 #include <vector>
 
 template<typename SampleT>
-class InternalAudioPort : public AudioPortInterface<SampleT> {
+class InternalAudioPort : public AudioPort<SampleT> {
     std::string m_name;
-    shoop_port_direction_t m_direction;
     std::vector<SampleT> m_buffer;
 
 public:
@@ -14,26 +13,27 @@ public:
     // ShoopDaLoop.
     InternalAudioPort(
         std::string name,
-        shoop_port_direction_t direction,
         uint32_t n_frames
     );
     
-    SampleT *PROC_get_buffer(uint32_t n_frames, bool do_zero=false) override;
+    SampleT *PROC_get_buffer(uint32_t n_frames) override;
 
     const char* name() const override;
-    shoop_port_direction_t direction() const override;
-    void reallocate_buffer(uint32_t n_frames);
-    uint32_t buffer_size() const;
     void close() override;
-    PortType type() const override;
-    void zero();
+    PortDataType type() const override;
     void* maybe_driver_handle() const override;
 
     PortExternalConnectionStatus get_external_connection_status() const override;
     void connect_external(std::string name) override;
     void disconnect_external(std::string name) override;
 
-    void PROC_change_buffer_size(uint32_t buffer_size) override;
+    bool has_internal_read_access() const override { return true; }
+    bool has_internal_write_access() const override { return true; }
+    bool has_implicit_input_source() const override { return false; }
+    bool has_implicit_output_sink() const override { return false; }
+
+    void PROC_prepare(uint32_t nframes) override;
+    void PROC_process(uint32_t nframes) override;
 };
 
 extern template class InternalAudioPort<float>;

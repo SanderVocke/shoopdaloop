@@ -1,6 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
 #include "ObjectPool.h"
-#include <memory>
 
 using namespace std::chrono_literals;
 

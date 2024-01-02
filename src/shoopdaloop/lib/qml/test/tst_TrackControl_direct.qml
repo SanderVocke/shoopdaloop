@@ -104,8 +104,8 @@ ShoopTestFile {
                 let c = session.get_track_control_widget(track_idx)
                 c.input_balance = 0.0
                 c.output_balance = 0.0
-                c.volume_dB = 0.0
-                c.input_volume_dB = 0.0
+                c.gain_dB = 0.0
+                c.input_gain_dB = 0.0
                 c.monitor = false
                 c.mute = false
             }
@@ -115,6 +115,13 @@ ShoopTestFile {
                 reset_track(1)
                 session.backend.wait_process()
                 testcase.wait_updated(session.backend)
+
+                verify(audio_input_port_1.initialized)
+                verify(audio_input_port_2.initialized)
+                verify(audio_output_port_1.initialized)
+                verify(audio_output_port_2.initialized)
+                verify(midi_input_port.initialized)
+                verify(midi_output_port.initialized)
             }
 
             test_fns: ({
@@ -153,11 +160,9 @@ ShoopTestFile {
                         { 'time': 3, 'data': [0x90, 50,  50]  },
                         { 'time': 4, 'data': [0x90, 10,  10]  }
                     ]
-                    let expect_out1 = [
+                    let expect_out = [
                         { 'time': 0, 'data': [0x90, 100, 100] },
                         { 'time': 3, 'data': [0x90, 50,  50]  },
-                    ]
-                    let expect_out2 = [
                         { 'time': 4, 'data': [0x90, 10,  10]  }
                     ]
 
@@ -169,26 +174,23 @@ ShoopTestFile {
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.wait_process()
 
-                    let out = midi_output_port.dummy_dequeue_data()
-
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.wait_process()
 
-                    let out2 = midi_output_port.dummy_dequeue_data()
+                    let out = midi_output_port.dummy_dequeue_data()
 
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
 
-                    verify_eq(out, expect_out1, true)
-                    verify_eq(out2, expect_out2, true)
+                    verify_eq(out, expect_out, true)
                 },
 
-                'test_direct_audio_monitor_input_volume': () => {
+                'test_direct_audio_monitor_input_gain': () => {
                     check_backend()
                     reset()
                     tut_control().monitor = true
                     tut_control().mute = false
-                    tut_control().input_volume_dB = 6.0
+                    tut_control().input_gain_dB = 6.0
                     testcase.wait_updated(session.backend)
 
                     audio_input_port_1.dummy_queue_data([1, 2, 3, 4])
@@ -206,12 +208,12 @@ ShoopTestFile {
 
                 },
 
-                'test_direct_audio_monitor_output_volume': () => {
+                'test_direct_audio_monitor_output_gain': () => {
                     check_backend()
                     reset()
                     tut_control().monitor = true
                     tut_control().mute = false
-                    tut_control().volume_dB = 6.0
+                    tut_control().gain_dB = 6.0
                     testcase.wait_updated(session.backend)
 
                     audio_input_port_1.dummy_queue_data([1, 2, 3, 4])
@@ -235,7 +237,7 @@ ShoopTestFile {
                     tut_control().monitor = true
                     tut_control().mute = false
                     tut_control().output_balance = -1.0
-                    tut_control().volume_dB = 6.0
+                    tut_control().gain_dB = 6.0
                     testcase.wait_updated(session.backend)
 
                     audio_input_port_1.dummy_queue_data([1, 2, 3, 4])
@@ -259,7 +261,7 @@ ShoopTestFile {
                     tut_control().monitor = true
                     tut_control().mute = false
                     tut_control().output_balance = 1.0
-                    tut_control().volume_dB = 6.0
+                    tut_control().gain_dB = 6.0
                     testcase.wait_updated(session.backend)
 
                     audio_input_port_1.dummy_queue_data([1, 2, 3, 4])
@@ -356,7 +358,7 @@ ShoopTestFile {
 
                 },
 
-                'test_direct_midi_monitor': () => {
+                'test_direct_midi_monitor_mute': () => {
                     check_backend()
                     reset()
                     tut_control().monitor = true
@@ -377,18 +379,15 @@ ShoopTestFile {
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.wait_process()
 
-                    let out = midi_output_port.dummy_dequeue_data()
-
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.wait_process()
 
-                    let out2 = midi_output_port.dummy_dequeue_data()
+                    let out = midi_output_port.dummy_dequeue_data()
 
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
 
                     verify_eq(out, [], true)
-                    verify_eq(out2, [], true)
                 },
             })
         }

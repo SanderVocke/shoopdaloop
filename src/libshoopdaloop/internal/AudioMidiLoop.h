@@ -9,11 +9,9 @@
 class AudioMidiLoop : public BasicLoop {
     std::vector<std::shared_ptr<ChannelInterface>> mp_audio_channels;
     std::vector<std::shared_ptr<ChannelInterface>> mp_midi_channels;
-    std::shared_ptr<profiling::Profiler> maybe_profiler;
 
   public:
-    AudioMidiLoop(
-        std::shared_ptr<profiling::Profiler> maybe_profiler = nullptr);
+    AudioMidiLoop();
 
     template <typename SampleT>
     std::shared_ptr<AudioChannel<SampleT>>

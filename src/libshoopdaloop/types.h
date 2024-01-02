@@ -102,16 +102,19 @@ typedef struct {
 } shoop_loop_state_info_t;
 
 typedef struct {
-    float peak;
-    float volume;
+    float input_peak;
+    float output_peak;
+    float gain;
     unsigned muted;
     unsigned passthrough_muted;
     const char* name;
 } shoop_audio_port_state_info_t;
 
 typedef struct {
-    unsigned n_events_triggered;
-    unsigned n_notes_active;
+    unsigned n_input_events;
+    unsigned n_input_notes_active;
+    unsigned n_output_events;
+    unsigned n_output_notes_active;
     unsigned muted;
     unsigned passthrough_muted;
     const char* name;
@@ -152,7 +155,7 @@ typedef enum { Input, Output } shoop_port_direction_t;
 
 typedef struct {
     shoop_channel_mode_t mode;
-    float volume;
+    float gain;
     float output_peak;
     unsigned length;
     int start_offset;

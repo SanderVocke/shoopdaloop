@@ -21,35 +21,47 @@ from ..logging import Logger
 class AudioPort(Port):
     def __init__(self, parent=None):
         super(AudioPort, self).__init__(parent)
-        self._peak = 0.0
-        self._volume = 1.0
+        self._input_peak = 0.0
+        self._output_peak = 0.0
+        self._gain = 1.0
         self.logger = Logger("Frontend.AudioPort")
 
     ######################
     # PROPERTIES
     ######################
 
-    # peak
-    peakChanged = Signal(float)
-    @Property(float, notify=peakChanged)
-    def peak(self):
-        return self._peak
-    @peak.setter
-    def peak(self, s):
-        if self._peak != s:
-            self._peak = s
-            self.peakChanged.emit(s)
+    # input_peak
+    inputPeakChanged = Signal(float)
+    @Property(float, notify=inputPeakChanged)
+    def input_peak(self):
+        return self._input_peak
+    @input_peak.setter
+    def input_peak(self, s):
+        if self._input_peak != s:
+            self._input_peak = s
+            self.inputPeakChanged.emit(s)
     
-    # volume
-    volumeChanged = Signal(float)
-    @Property(float, notify=volumeChanged)
-    def volume(self):
-        return self._volume
-    @volume.setter
-    def volume(self, s):
-        if self._volume != s:
-            self._volume = s
-            self.volumeChanged.emit(s)
+    # output_peak
+    outputPeakChanged = Signal(float)
+    @Property(float, notify=outputPeakChanged)
+    def output_peak(self):
+        return self._output_peak
+    @output_peak.setter
+    def output_peak(self, s):
+        if self._output_peak != s:
+            self._output_peak = s
+            self.outputPeakChanged.emit(s)
+    
+    # gain
+    gainChanged = Signal(float)
+    @Property(float, notify=gainChanged)
+    def gain(self):
+        return self._gain
+    @gain.setter
+    def gain(self, s):
+        if self._gain != s:
+            self._gain = s
+            self.gainChanged.emit(s)
     
     ###########
     ## SLOTS
@@ -61,17 +73,17 @@ class AudioPort(Port):
         if not self.initialized:
             return
         state = self._backend_obj.get_state()
-        self.peak = state.peak
+        self.input_peak = state.input_peak
+        self.output_peak = state.output_peak
         self.name = state.name
-
-        self.volume = state.volume
+        self.gain = state.gain
         self.muted = state.muted
         self.passthrough_muted = state.passthrough_muted
     
     @Slot(float)
-    def set_volume(self, volume):
+    def set_gain(self, gain):
         if self._backend_obj:
-            self._backend_obj.set_volume(volume)
+            self._backend_obj.set_gain(gain)
     
     @Slot(list)
     def dummy_queue_data(self, data):
@@ -129,7 +141,7 @@ class AudioPort(Port):
     def push_state(self):
         self.set_muted(self.muted)
         self.set_passthrough_muted(self.passthrough_muted)
-        self.set_volume(self.volume)
+        self.set_gain(self.gain)
         
     def maybe_initialize_impl(self, name_hint, direction, is_internal):
         if is_internal:

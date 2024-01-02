@@ -20,19 +20,16 @@ template <typename SampleT>
 AudioChannel<SampleT>::Buffers::Buffers(std::shared_ptr<BufferPool> pool,
                                         uint32_t initial_max_buffers)
     : pool(pool), buffers_size(pool->object_size()) {
-    log_trace();
     buffers.reserve(initial_max_buffers);
     reset();
 }
 
 template <typename SampleT> void AudioChannel<SampleT>::Buffers::reset() {
-    log_trace();
     buffers.clear();
     buffers.push_back(get_new_buffer());
 }
 
 template <typename SampleT> AudioChannel<SampleT>::Buffers::Buffers() {
-    log_trace();
 }
 
 template <typename SampleT>
@@ -48,8 +45,6 @@ SampleT &AudioChannel<SampleT>::Buffers::at(uint32_t offset) const {
 template <typename SampleT>
 bool AudioChannel<SampleT>::Buffers::ensure_available(uint32_t offset,
                                                       bool use_pool) {
-    log_trace();
-
     uint32_t idx = offset / buffers_size;
     bool changed = false;
     while (buffers.size() <= idx) {
@@ -66,14 +61,12 @@ bool AudioChannel<SampleT>::Buffers::ensure_available(uint32_t offset,
 template <typename SampleT>
 typename AudioChannel<SampleT>::Buffer
 AudioChannel<SampleT>::Buffers::create_new_buffer() const {
-    log_trace();
     return std::make_shared<BufferObj>(buffers_size);
 }
 
 template <typename SampleT>
 typename AudioChannel<SampleT>::Buffer
 AudioChannel<SampleT>::Buffers::get_new_buffer() const {
-    log_trace();
     if (!pool) {
         throw_error<std::runtime_error>("No pool for buffers allocation");
     }
@@ -113,22 +106,17 @@ void AudioChannel<SampleT>::throw_if_commands_queued() const {
 template <typename SampleT>
 AudioChannel<SampleT>::AudioChannel(
     std::shared_ptr<BufferPool> buffer_pool, uint32_t initial_max_buffers,
-    shoop_channel_mode_t mode, std::shared_ptr<profiling::Profiler> maybe_profiler)
+    shoop_channel_mode_t mode)
     : WithCommandQueue(50), ma_buffer_pool(buffer_pool),
       ma_buffers_data_length(0), mp_prerecord_buffers_data_length(0),
       ma_buffer_size(buffer_pool->object_size()),
       mp_recording_source_buffer(nullptr), mp_playback_target_buffer(nullptr),
       mp_playback_target_buffer_size(0), mp_recording_source_buffer_size(0),
-      ma_output_peak(0), ma_mode(mode), ma_volume(1.0f), ma_start_offset(0),
+      ma_output_peak(0), ma_mode(mode), ma_gain(1.0f), ma_start_offset(0),
       ma_data_seq_nr(0), ma_pre_play_samples(0),
       mp_buffers(buffer_pool, initial_max_buffers),
       mp_prerecord_buffers(buffer_pool, initial_max_buffers),
       mp_prev_process_flags(0), ma_last_played_back_sample(-1) {
-    log_trace();
-    if (maybe_profiler) {
-        mp_profiling_item = maybe_profiler->maybe_get_profiling_item(
-            "Process.Loops.AudioChannels");
-    }
 }
 
 template <typename SampleT>
@@ -144,8 +132,6 @@ uint32_t AudioChannel<SampleT>::get_pre_play_samples() const {
 template <typename SampleT>
 AudioChannel<SampleT> &
 AudioChannel<SampleT>::operator=(AudioChannel<SampleT> const &other) {
-    log_trace();
-
     mp_proc_queue.reset();
     if (other.ma_buffer_size != ma_buffer_size) {
         throw_error<std::runtime_error>(
@@ -163,7 +149,7 @@ AudioChannel<SampleT>::operator=(AudioChannel<SampleT> const &other) {
     mp_recording_source_buffer = other.mp_recording_source_buffer;
     mp_recording_source_buffer_size = other.mp_recording_source_buffer_size;
     ma_mode = other.ma_mode.load();
-    ma_volume = other.ma_volume.load();
+    ma_gain = other.ma_gain.load();
     ma_pre_play_samples = other.ma_pre_play_samples.load();
     mp_prev_process_flags = other.mp_prev_process_flags;
     data_changed();
@@ -176,7 +162,6 @@ AudioChannel<SampleT>::AudioChannel() : ma_buffer_size(1) {}
 template <typename SampleT> AudioChannel<SampleT>::~AudioChannel() {}
 
 template <typename SampleT> void AudioChannel<SampleT>::data_changed() {
-    log_trace();
     ma_data_seq_nr++;
 }
 
@@ -186,87 +171,92 @@ void AudioChannel<SampleT>::PROC_process(
     std::optional<uint32_t> maybe_next_mode_delay_cycles,
     std::optional<uint32_t> maybe_next_mode_eta, uint32_t n_samples,
     uint32_t pos_before, uint32_t pos_after, uint32_t length_before,
-    uint32_t length_after) {
-    profiling::stopwatch(
-        [&, this]() {
-            log_trace();
+    uint32_t length_after)
+{
+    log<log_level_trace>("process");
 
-            // Execute any commands queued from other threads.
-            PROC_handle_command_queue();
+    // Execute any commands queued from other threads.
+    PROC_handle_command_queue();
 
-            auto process_params = get_channel_process_params(
-                mode, maybe_next_mode, maybe_next_mode_delay_cycles,
-                maybe_next_mode_eta, pos_before, ma_start_offset, ma_mode);
-            auto const &process_flags = process_params.process_flags;
+    auto process_params = get_channel_process_params(
+        mode, maybe_next_mode, maybe_next_mode_delay_cycles,
+        maybe_next_mode_eta, pos_before, ma_start_offset, ma_mode);
+    auto const &process_flags = process_params.process_flags;
 
-            if (!(process_flags & ChannelPreRecord) &&
-                (mp_prev_process_flags & ChannelPreRecord)) {
-                // Ending pre-record. If transitioning to recording,
-                // make our pre-recorded buffers into our main buffers.
-                // Otherwise, just discard them.
-                if (process_flags & ChannelRecord) {
-                    log<log_level_debug>(
-                        "Pre-record end -> carry over to record");
-                    mp_buffers = mp_prerecord_buffers;
-                    ma_buffers_data_length = ma_start_offset =
-                        mp_prerecord_buffers_data_length.load();
-                } else {
-                    log<log_level_debug>("Pre-record end -> discard");
-                }
-                mp_prerecord_buffers.reset();
-                mp_prerecord_buffers_data_length = 0;
-            }
+    if (!(process_flags & ChannelPreRecord) &&
+        (mp_prev_process_flags & ChannelPreRecord)) {
+        // Ending pre-record. If transitioning to recording,
+        // make our pre-recorded buffers into our main buffers.
+        // Otherwise, just discard them.
+        if (process_flags & ChannelRecord) {
+            log<log_level_debug>(
+                "Pre-record end -> carry over to record");
+            mp_buffers = mp_prerecord_buffers;
+            ma_buffers_data_length = ma_start_offset =
+                mp_prerecord_buffers_data_length.load();
+        } else {
+            log<log_level_debug>("Pre-record end -> discard");
+        }
+        mp_prerecord_buffers.reset();
+        mp_prerecord_buffers_data_length = 0;
+    }
 
-            if (process_flags & ChannelPlayback) {
-                ma_last_played_back_sample = process_params.position;
-                PROC_process_playback(
-                    process_params.position, length_before, n_samples, false,
-                    mp_playback_target_buffer, mp_playback_target_buffer_size);
-            } else {
-                ma_last_played_back_sample = -1;
-            }
-            if (process_flags & ChannelRecord) {
-                PROC_process_record(n_samples,
-                                    ((int)length_before + ma_start_offset),
-                                    mp_buffers, ma_buffers_data_length,
-                                    mp_recording_source_buffer,
-                                    mp_recording_source_buffer_size);
-            }
-            if (process_flags & ChannelReplace) {
-                PROC_process_replace(process_params.position, length_before,
-                                     n_samples, mp_recording_source_buffer,
-                                     mp_recording_source_buffer_size);
-            }
-            if (process_flags & ChannelPreRecord) {
-                if (!(mp_prev_process_flags & ChannelPreRecord)) {
-                    log<log_level_debug>("Pre-record start");
-                }
-                PROC_process_record(n_samples, mp_prerecord_buffers_data_length,
-                                    mp_prerecord_buffers,
-                                    mp_prerecord_buffers_data_length,
-                                    mp_recording_source_buffer,
-                                    mp_recording_source_buffer_size);
-            }
+    if (process_flags & ChannelPlayback) {
+        ma_last_played_back_sample = process_params.position;
+        PROC_process_playback(
+            process_params.position, length_before, n_samples, false,
+            mp_playback_target_buffer, mp_playback_target_buffer_size);
+    } else {
+        ma_last_played_back_sample = -1;
+    }
+    if (process_flags & ChannelRecord) {
+        PROC_process_record(n_samples,
+                            ((int)length_before + ma_start_offset),
+                            mp_buffers, ma_buffers_data_length,
+                            mp_recording_source_buffer,
+                            mp_recording_source_buffer_size);
+    }
+    if (process_flags & ChannelReplace) {
+        PROC_process_replace(process_params.position, length_before,
+                                n_samples, mp_recording_source_buffer,
+                                mp_recording_source_buffer_size);
+    }
+    if (process_flags & ChannelPreRecord) {
+        if (!(mp_prev_process_flags & ChannelPreRecord)) {
+            log<log_level_debug>("Pre-record start");
+        }
+        PROC_process_record(n_samples, mp_prerecord_buffers_data_length,
+                            mp_prerecord_buffers,
+                            mp_prerecord_buffers_data_length,
+                            mp_recording_source_buffer,
+                            mp_recording_source_buffer_size);
+    }
 
-            mp_prev_process_flags = process_flags;
+    mp_prev_process_flags = process_flags;
 
-            // Update recording/playback buffers.
-            if (mp_recording_source_buffer) {
-                mp_recording_source_buffer += n_samples;
-                mp_recording_source_buffer_size -= n_samples;
-            }
-            if (mp_playback_target_buffer) {
-                mp_playback_target_buffer += n_samples;
-                mp_playback_target_buffer_size -= n_samples;
-            }
-        },
-        mp_profiling_item);
+    // Update recording/playback buffers.
+    if (mp_recording_source_buffer) {
+        mp_recording_source_buffer += n_samples;
+        mp_recording_source_buffer_size -= n_samples;
+    }
+    if (mp_playback_target_buffer) {
+        mp_playback_target_buffer += n_samples;
+        mp_playback_target_buffer_size -= n_samples;
+    }
 }
 
 template <typename SampleT>
 void AudioChannel<SampleT>::PROC_exec_cmd(ProcessingCommand cmd) {
+    unsigned ctype = (unsigned)cmd.cmd_type;
+    log<log_level_trace>("exec cmd: {}", ctype);
     auto const &rc = cmd.details.raw_copy_details;
     auto const &ac = cmd.details.additive_copy_details;
+
+    if (cmd.cmd_type == ProcessingCommandType::RawCopy) {
+        auto n = rc.sz / sizeof(SampleT);
+        auto first = (n > 0) ? ((SampleT*)rc.src)[0] : 0.0f;
+    }
+
     switch (cmd.cmd_type) {
     case ProcessingCommandType::RawCopy:
         memcpy(rc.dst, rc.src, rc.sz);
@@ -288,6 +278,7 @@ void AudioChannel<SampleT>::PROC_exec_cmd(ProcessingCommand cmd) {
 
 template <typename SampleT>
 void AudioChannel<SampleT>::PROC_queue_memcpy(void *dst, void *src, uint32_t sz) {
+    log<log_level_trace>("queue memcpy");
     ProcessingCommand cmd;
     cmd.cmd_type = ProcessingCommandType::RawCopy;
     cmd.details.raw_copy_details = {.src = src, .dst = dst, .sz = sz};
@@ -298,6 +289,7 @@ template <typename SampleT>
 void AudioChannel<SampleT>::PROC_queue_additivecpy(SampleT *dst, SampleT *src,
                                                    uint32_t n_elems, float mult,
                                                    bool update_absmax) {
+    log<log_level_trace>("queue addcpy");
     ProcessingCommand cmd;
     cmd.cmd_type = ProcessingCommandType::AdditiveCopy;
     cmd.details.additive_copy_details = {.src = src,
@@ -310,22 +302,18 @@ void AudioChannel<SampleT>::PROC_queue_additivecpy(SampleT *dst, SampleT *src,
 
 template <typename SampleT>
 void AudioChannel<SampleT>::PROC_finalize_process() {
-    profiling::stopwatch(
-        [&, this]() {
-            log_trace();
+    log<log_level_trace>("finalize");
 
-            ProcessingCommand cmd;
-            while (mp_proc_queue.pop(cmd)) {
-                PROC_exec_cmd(cmd);
-            }
-        },
-        mp_profiling_item);
+    ProcessingCommand cmd;
+    while (mp_proc_queue.pop(cmd)) {
+        PROC_exec_cmd(cmd);
+    }
 }
 
 template <typename SampleT>
 void AudioChannel<SampleT>::load_data(SampleT *samples, uint32_t len,
                                       bool thread_safe) {
-    log_trace();
+    log<log_level_trace>("load data ({} samples)", len);
 
     // Convert to internal storage layout
     auto buffers =
@@ -387,7 +375,7 @@ void AudioChannel<SampleT>::PROC_process_record(
     &buffers_data_length,
     SampleT *record_buffer,
     uint32_t record_buffer_size) {
-    log_trace();
+    log<log_level_trace>("process record");
 
     if (record_buffer_size < n_samples) {
         throw_error<std::runtime_error>(
@@ -431,7 +419,7 @@ void AudioChannel<SampleT>::PROC_process_replace(uint32_t data_position, uint32_
                                                  uint32_t n_samples,
                                                  SampleT *record_buffer,
                                                  uint32_t record_buffer_size) {
-    log_trace();
+    log<log_level_trace>("process replace");
 
     if (record_buffer_size < n_samples) {
         throw_error<std::runtime_error>(
@@ -488,7 +476,7 @@ template <typename SampleT> uint32_t AudioChannel<SampleT>::get_length() const {
 
 template <typename SampleT>
 void AudioChannel<SampleT>::PROC_set_length(uint32_t length) {
-    log_trace();
+    log<log_level_trace>("set length -> {}", length);
     ma_buffers_data_length = length;
     data_changed();
 }
@@ -504,7 +492,7 @@ void AudioChannel<SampleT>::PROC_process_playback(int data_position,
                                                   uint32_t n_samples, bool muted,
                                                   SampleT *playback_buffer,
                                                   uint32_t playback_buffer_size) {
-    log_trace();
+    log<log_level_trace>("process playback");
 
     if (playback_buffer_size < n_samples) {
         throw_error<std::runtime_error>(
@@ -533,7 +521,7 @@ void AudioChannel<SampleT>::PROC_process_playback(int data_position,
         auto rest = n_samples - n;
 
         if (!muted) {
-            PROC_queue_additivecpy(to, from, n, ma_volume, true);
+            PROC_queue_additivecpy(to, from, n, ma_gain, true);
         }
 
         // If we didn't play back all yet, go to next buffer and continue
@@ -578,7 +566,7 @@ void AudioChannel<SampleT>::PROC_handle_poi(shoop_loop_mode_t mode, uint32_t len
 template <typename SampleT>
 void AudioChannel<SampleT>::PROC_set_playback_buffer(SampleT *buffer,
                                                      uint32_t size) {
-    log_trace();
+    log<log_level_trace>("set playback buf ({} samples)", size);
 
     throw_if_commands_queued();
     mp_playback_target_buffer = buffer;
@@ -588,7 +576,7 @@ void AudioChannel<SampleT>::PROC_set_playback_buffer(SampleT *buffer,
 template <typename SampleT>
 void AudioChannel<SampleT>::PROC_set_recording_buffer(SampleT *buffer,
                                                       uint32_t size) {
-    log_trace();
+    log<log_level_trace>("set rec buf ({} samples)", size);
 
     throw_if_commands_queued();
     mp_recording_source_buffer = buffer;
@@ -597,7 +585,7 @@ void AudioChannel<SampleT>::PROC_set_recording_buffer(SampleT *buffer,
 
 template <typename SampleT>
 void AudioChannel<SampleT>::PROC_clear(uint32_t length) {
-    log_trace();
+    log<log_level_trace>("clear");
 
     throw_if_commands_queued();
     mp_buffers.ensure_available(length);
@@ -626,12 +614,12 @@ shoop_channel_mode_t AudioChannel<SampleT>::get_mode() const {
 }
 
 template <typename SampleT>
-void AudioChannel<SampleT>::set_volume(float volume) {
-    ma_volume = volume;
+void AudioChannel<SampleT>::set_gain(float gain) {
+    ma_gain = gain;
 }
 
-template <typename SampleT> float AudioChannel<SampleT>::get_volume() {
-    return ma_volume;
+template <typename SampleT> float AudioChannel<SampleT>::get_gain() {
+    return ma_gain;
 }
 
 template <typename SampleT>

@@ -1,9 +1,10 @@
 #pragma once
 #include <vector>
 #include <stdint.h>
-#include "MidiPortInterface.h"
+#include "MidiPort.h"
 #include <cstring>
 #include <stdexcept>
+#include "MidiBufferInterfaces.h"
 
 template<typename TimeType, typename SizeType>
 struct MidiMessage : public MidiSortableMessageInterface {
@@ -18,8 +19,8 @@ struct MidiMessage : public MidiSortableMessageInterface {
     uint32_t get_size() const override;
     const uint8_t* get_data() const override;
     void     get(uint32_t &size_out,
-                         uint32_t &time_out,
-                         const uint8_t* &data_out) const override;
+                 uint32_t &time_out,
+                 const uint8_t* &data_out) const override;
 };
 
 template<typename TimeType, typename SizeType, unsigned MaxDataSize>

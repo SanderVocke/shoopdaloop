@@ -21,8 +21,8 @@ class LoopAudioChannel(LoopChannel):
     def __init__(self, parent=None):
         super(LoopAudioChannel, self).__init__(parent)
         self._output_peak = 0.0
-        self._volume = 1.0
-        self._initial_volume_pushed = False
+        self._gain = 1.0
+        self._initial_gain_pushed = False
         self.logger = Logger("Frontend.AudioChannel")
     
     def maybe_initialize(self):
@@ -30,7 +30,7 @@ class LoopAudioChannel(LoopChannel):
             self._backend_obj = self._loop.add_audio_channel(self.mode)
             self.logger.debug(lambda: "Initialized back-end channel")
             self.initializedChanged.emit(True)
-            self.set_volume(self._volume)
+            self.set_gain(self._gain)
     
     ######################
     # PROPERTIES
@@ -42,11 +42,11 @@ class LoopAudioChannel(LoopChannel):
     def output_peak(self):
         return self._output_peak
     
-    # volume
-    volumeChanged = Signal(float)
-    @Property(float, notify=volumeChanged)
-    def volume(self):
-        return self._volume
+    # gain
+    gainChanged = Signal(float)
+    @Property(float, notify=gainChanged)
+    def gain(self):
+        return self._gain
     
     ######################
     # SLOTS
@@ -67,12 +67,12 @@ class LoopAudioChannel(LoopChannel):
         return self._backend_obj.get_data()
     
     @Slot(float)
-    def set_volume(self, volume):
+    def set_gain(self, gain):
         if self._backend_obj:
-            self._backend_obj.set_volume(volume)
+            self._backend_obj.set_gain(gain)
         else:
-            self._volume = volume
-            self.volumeChanged.emit(volume)
+            self._gain = gain
+            self.gainChanged.emit(gain)
     
     @Slot()
     def update_impl(self, state):
@@ -80,6 +80,6 @@ class LoopAudioChannel(LoopChannel):
             self._output_peak = state.output_peak
             self.outputPeakChanged.emit(self._output_peak)
         else:
-            if state.volume != self._volume:
-                self._volume = state.volume
-                self.volumeChanged.emit(self._volume)
+            if state.gain != self._gain:
+                self._gain = state.gain
+                self.gainChanged.emit(self._gain)

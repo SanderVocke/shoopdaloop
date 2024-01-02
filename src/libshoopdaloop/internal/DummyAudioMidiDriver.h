@@ -1,7 +1,7 @@
 #pragma once
 #include "AudioMidiDriver.h"
-#include "MidiPortInterface.h"
-#include "AudioPortInterface.h"
+#include "MidiPort.h"
+#include "AudioPort.h"
 #include "PortInterface.h"
 #include "LoggingEnabled.h"
 #include "WithCommandQueue.h"
@@ -20,18 +20,15 @@ class DummyPort : public virtual PortInterface {
 protected:
     std::string m_name;
     shoop_port_direction_t m_direction;
-    PortType m_type;
 
 public:
     DummyPort(
         std::string name,
         shoop_port_direction_t direction,
-        PortType type
+        PortDataType type
     );
 
     const char* name() const override;
-    shoop_port_direction_t direction() const override;
-    PortType type() const override;
     void close() override;
     void *maybe_driver_handle() const override;
 
@@ -40,7 +37,7 @@ public:
     void disconnect_external(std::string name) override;
 };
 
-class DummyAudioPort : public virtual AudioPortInterface<audio_sample_t>,
+class DummyAudioPort : public virtual AudioPort<audio_sample_t>,
                        public DummyPort,
                        private ModuleLoggingEnabled<"Backend.DummyAudioPort"> {
 
@@ -56,7 +53,7 @@ public:
         std::string name,
         shoop_port_direction_t direction);
     
-    audio_sample_t *PROC_get_buffer(uint32_t n_frames, bool do_zero=false) override;
+    audio_sample_t *PROC_get_buffer(uint32_t n_frames) override;
     ~DummyAudioPort() override;
 
     // For input ports, queue up data to be read from the port.
@@ -65,12 +62,19 @@ public:
 
     // For output ports, ensure the postprocess function is called
     // and samples can be requested/dequeued.
-    void PROC_post_process(audio_sample_t* buf, uint32_t n_frames);
     void request_data(uint32_t n_frames);
     std::vector<audio_sample_t> dequeue_data(uint32_t n);
+
+    bool has_internal_read_access() const override { return m_direction == Input; }
+    bool has_internal_write_access() const override { return m_direction == Output; }
+    bool has_implicit_input_source() const override { return m_direction == Input; }
+    bool has_implicit_output_sink() const override { return m_direction == Output; }
+    
+    void PROC_prepare(uint32_t nframes) override;
+    void PROC_process(uint32_t nframes) override;
 };
 
-class DummyMidiPort : public virtual MidiPortInterface,
+class DummyMidiPort : public virtual MidiPort,
                       public DummyPort,
                       public MidiReadableBufferInterface,
                       public MidiWriteableBufferInterface,
@@ -87,34 +91,39 @@ private:
 
     // Amount of frames requested for reading externally out of the port
     std::atomic<uint32_t> n_requested_frames;
+
+    std::atomic<uint32_t> n_processed_last_round = 0;
     std::atomic<uint32_t> n_original_requested_frames;
-    std::atomic<uint32_t> m_update_queue_by_frames_pending = 0;
     std::vector<StoredMessage> m_written_requested_msgs;
 
 public:
     uint32_t PROC_get_n_events() const override;
     virtual MidiSortableMessageInterface &PROC_get_event_reference(uint32_t idx) override;
+    virtual void PROC_get_event_value(uint32_t idx,
+                              uint32_t &size_out,
+                              uint32_t &time_out,
+                              const uint8_t* &data_out) override;
     void PROC_write_event_value(uint32_t size,
                                 uint32_t time,
                                 const uint8_t* data) override;
     void PROC_write_event_reference(MidiSortableMessageInterface const& m) override;
     bool write_by_reference_supported() const override;
     bool write_by_value_supported() const override;
+    bool read_by_reference_supported() const override;
+
+    MidiWriteableBufferInterface *PROC_get_write_data_into_port_buffer(uint32_t n_frames) override;
+    MidiReadableBufferInterface *PROC_get_read_output_data_buffer(uint32_t n_frames) override;
 
     DummyMidiPort(
         std::string name,
         shoop_port_direction_t direction
     );
 
-    MidiReadableBufferInterface &PROC_get_read_buffer (uint32_t n_frames) override;
-    MidiWriteableBufferInterface &PROC_get_write_buffer (uint32_t n_frames) override;
-
     void queue_msg(uint32_t size, uint32_t time, const uint8_t* data);
     bool get_queue_empty();
     
     void clear_queues();
 
-    void PROC_post_process(uint32_t n_frames);
     // Request a certain number of frames to be stored.
     // Not allowed if previous request was not yet completed.
     void request_data(uint32_t n_frames);
@@ -123,6 +132,14 @@ public:
     std::vector<StoredMessage> get_written_requested_msgs();
 
     ~DummyMidiPort() override;
+
+    bool has_internal_read_access() const override { return true; }
+    bool has_internal_write_access() const override { return true; }
+    bool has_implicit_input_source() const override { return true; }
+    bool has_implicit_output_sink() const override { return true; }
+
+    void PROC_prepare(uint32_t nframes) override;
+    void PROC_process(uint32_t nframes) override;
 };
 
 struct DummyAudioMidiDriverSettings : public AudioMidiDriverSettingsInterface {
@@ -160,12 +177,12 @@ public:
 
     void start(AudioMidiDriverSettingsInterface &settings) override;
 
-    std::shared_ptr<AudioPortInterface<audio_sample_t>> open_audio_port(
+    std::shared_ptr<AudioPort<audio_sample_t>> open_audio_port(
         std::string name,
         shoop_port_direction_t direction
     ) override;
 
-    std::shared_ptr<MidiPortInterface> open_midi_port(
+    std::shared_ptr<MidiPort> open_midi_port(
         std::string name,
         shoop_port_direction_t direction
     ) override;
