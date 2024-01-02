@@ -138,8 +138,12 @@ Item {
             Drag.hotSpot.y : height/2
             Drag.source: root
 
-            x: track_mover.mapToItem(Overlay.overlay, 0, 0).x
-            y: track_mover.mapToItem(Overlay.overlay, 0, 0).y
+            function resetCoords() {
+                x = track_mover.mapToItem(Overlay.overlay, 0, 0).x
+                y = track_mover.mapToItem(Overlay.overlay, 0, 0).y
+            }
+            Component.onCompleted: resetCoords()
+            onVisibleChanged: resetCoords()
         }
 
         MouseArea {
@@ -147,9 +151,8 @@ Item {
             anchors.fill: parent
             cursorShape: Qt.SizeAllCursor
 
-            onReleased: {
-                movable.Drag.drop()
-            }
+            onReleased: movable.Drag.drop()
+            onPressed: movable.resetCoords()
 
             drag {
                 target: movable

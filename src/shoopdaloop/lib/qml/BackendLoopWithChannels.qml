@@ -56,6 +56,6 @@ Loop {
         }
     }
 
-    property alias audio_channels : audio_channels_mapper.instances
-    property alias midi_channels: midi_channels_mapper.instances
+    property alias audio_channels : audio_channels_mapper.unsorted_instances
+    property alias midi_channels: midi_channels_mapper.unsorted_instances
 }

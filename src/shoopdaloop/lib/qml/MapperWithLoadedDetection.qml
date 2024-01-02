@@ -5,9 +5,9 @@ import QtQuick.Controls.Material 6.3
 Mapper {
     id: root
     property bool loaded : {
-        if (instances.length == model.length) {
-            for (var i = 0; i < instances.length; i++) {
-                if (!instances[i].loaded) { return false }
+        if (unsorted_instances.length == model.length) {
+            for (var i = 0; i < unsorted_instances.length; i++) {
+                if (!unsorted_instances[i].loaded) { return false }
             }
             return true
         }

@@ -172,8 +172,8 @@ ScrollView {
                     property var mapped_item
                     property int index
 
-                        children: [mapped_item]
-                        width: childrenRect.width
+                    children: [mapped_item]
+                    width: childrenRect.width
                 }
             }
         }
@@ -189,9 +189,10 @@ ScrollView {
                 width: 50
                 height: tracks_row.height
 
-                property var left_track : index > 0 ? tracks_mapper.model[index-1] : null
-                property var right_track : index < tracks_mapper.model.length ? tracks_mapper.model[index] : null
+                property var left_track : index > 0 ? tracks_mapper.sorted_instances[index-1] : null
+                property var right_track : index < tracks_mapper.sorted_instances.length ? tracks_mapper.sorted_instances[index] : null
 
+                
                 onDropped: (event) => {
                     let src_track = drag.source
                     let src_track_idx = src_track.track_idx
@@ -205,13 +206,18 @@ ScrollView {
                             new_tracks.push(tracks[i])
                         }
                     }
-                    console.log(tracks, new_tracks)
                     root.tracks = new_tracks
                 }
 
                 x : {
-                    if (left_track) { return left_track.mapToItem(tracks_view, 0, 0).x + left_track.width + tracks_row.spacing/2 - width/2 }
-                    if (right_track) { return right_track.mapToItem(tracks_view, 0, 0).x - tracks_row.spacing/2 - width/2 }
+                    if (left_track) {
+                        left_track.x; // dummy dependency
+                        return left_track.mapToItem(tracks_view, 0, 0).x + left_track.width + tracks_row.spacing/2 - width/2
+                    }
+                    if (right_track) {
+                        right_track.x; // dummy dependency
+                        return right_track.mapToItem(tracks_view, 0, 0).x - tracks_row.spacing/2 - width/2
+                    }
                     return 0
                 }
                 y : 0
@@ -219,6 +225,15 @@ ScrollView {
                 Rectangle {
                     color: 'white'
                     opacity: 0.3
+
+                    Label {
+                        anchors {
+                            top: parent.top
+                            left: parent.left
+                            right: parent.right
+                        }
+                        text: `Hello world + ${index}`
+                    }
 
                     visible : (parent.left_track || parent.right_track) && drop_area.containsDrag
 
@@ -260,7 +275,7 @@ ScrollView {
         }
     }
     function get_track_control_widget(track_idx) {
-        return track_controls_mapper.instances[track_idx].widget
+        return track_controls_mapper.unsorted_instances[track_idx].widget
     }
 
     Row {
