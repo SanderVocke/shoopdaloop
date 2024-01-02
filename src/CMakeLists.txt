@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
+set(CMAKE_OSX_ARCHITECTURES "${ARCHS_STANDARD}") # Enables a universal build on MacOS where possible
 project(shoopdaloop)
 
 # Set up language settings
@@ -31,6 +32,10 @@ endif()
 option(HAVE_LV2 "Enable LV2 plugin hosting" ON)
 if(HAVE_LV2)
   add_compile_definitions(-DSHOOP_HAVE_LV2)
+endif()
+
+if (APPLE)
+  message(STATUS "MacOS architectures included: ${CMAKE_OSX_ARCHITECTURES}")
 endif()
 
 set(CTYPESGEN_COMMAND ctypesgen)

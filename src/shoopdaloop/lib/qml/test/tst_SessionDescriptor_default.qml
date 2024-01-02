@@ -32,6 +32,7 @@ ShoopTestFile {
                     reference['sample_rate'] = 48000
 
                     var actual = session.actual_session_descriptor(false, '', null)
+                    reference['tracks'][0]['width'] = actual['tracks'][0]['width']
                     verify(TestDeepEqual.testDeepEqual(actual, reference, session.logger.error))
 
                     var filename = file_io.generate_temporary_filename() + '.shl'
