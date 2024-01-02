@@ -100,7 +100,8 @@ std::vector<std::set<GraphNode*>> graph_processing_order(std::set<GraphNode *> n
             return a < b;
         };
         auto reduce_set = [&](std::set<GraphNode*>& s) {
-            auto result = (*s.begin())->graph_node_name();
+            auto &node = *(*s.begin());
+            auto result = node.graph_node_name();
             for(auto &g: s) {
                 if (compare_names(g->graph_node_name(), result)) {
                     result = g->graph_node_name();
