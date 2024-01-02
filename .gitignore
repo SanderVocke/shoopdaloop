@@ -12,3 +12,5 @@ shoopdaloop.egg-info
 dist
 .py-build-cmake_cache
 .pytest_cache
+py-build-cmake.local.toml
+py-build-cmake.cross.toml

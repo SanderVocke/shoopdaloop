@@ -119,6 +119,9 @@ jobs:
       uses: ./.github/actions/prepare_build
       with:
         variant: ${{ matrix.kind.prepare }}
+    - name: Set overrides
+      shell: bash
+      run: cp ${{ matrix.kind.overrides }} py-build-cmake.local.toml
     - name: Build wheel
       id: buildwheel
       uses: ./.github/actions/build_wheel
