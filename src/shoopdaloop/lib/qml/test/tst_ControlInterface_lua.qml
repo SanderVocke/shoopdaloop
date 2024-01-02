@@ -266,6 +266,16 @@ ShoopTestFile {
                     verify_eq_lua('shoop_control.loop_get_which_selected()', '{{0,0}, {0,1}}')
                 },
 
+                'test_loop_toggle_selected': () => {
+                    check_backend()
+                    clear()
+                    
+                    do_execute('shoop_control.loop_toggle_selected({0,0})')
+                    verify_eq_lua('shoop_control.loop_get_which_selected()', '{{0,0}}')
+                    do_execute('shoop_control.loop_toggle_selected({0,0})')
+                    verify_eq_lua('shoop_control.loop_get_which_selected()', '{}')
+                },
+
                 'test_loop_target': () => {
                     check_backend()
                     clear()
@@ -277,6 +287,18 @@ ShoopTestFile {
                     do_execute('shoop_control.loop_target({})')
                     verify_eq_lua('shoop_control.loop_get_which_targeted()', 'nil')
                     do_execute('shoop_control.loop_target(nil)')
+                    verify_eq_lua('shoop_control.loop_get_which_targeted()', 'nil')
+                },
+
+                'test_loop_toggle_targeted': () => {
+                    check_backend()
+                    clear()
+                    
+                    do_execute('shoop_control.loop_toggle_targeted({0,0})')
+                    verify_eq_lua('shoop_control.loop_get_which_targeted()', '{0,0}')
+                    do_execute('shoop_control.loop_toggle_targeted({0,1})')
+                    verify_eq_lua('shoop_control.loop_get_which_targeted()', '{0,1}')
+                    do_execute('shoop_control.loop_toggle_targeted({0,1})')
                     verify_eq_lua('shoop_control.loop_get_which_targeted()', 'nil')
                 },
 
