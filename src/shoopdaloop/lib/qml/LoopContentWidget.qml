@@ -233,7 +233,7 @@ Item {
                     property var mapped_item
                     property int index
 
-                    height: 100
+                    height: 50
                     width: root.width
 
                     channel: mapped_item

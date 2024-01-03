@@ -11,7 +11,7 @@ LuaControlInterface {
 
     property PythonLogger logger : PythonLogger { name: "Frontend.Qml.SessionControlInterface" }
 
-    property list<var> selected_loop_idxs : session.selected_loops ? session.selected_loops.map((l) => [l.track_idx, l.idx_in_track]) : []
+    property list<var> selected_loop_idxs : session.selected_loops ? Array.from(session.selected_loops).map((l) => [l.track_idx, l.idx_in_track]) : []
     property var targeted_loop_idx: session.targeted_loop ? [session.targeted_loop.track_idx, session.targeted_loop.idx_in_track] : null
 
     function select_loops(loop_selector) {

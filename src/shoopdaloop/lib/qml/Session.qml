@@ -9,8 +9,9 @@ import ShoopDaLoop.PythonControlInterface
 import "../generate_session.js" as GenerateSession
 import ShoopConstants
 
-Item {
+Rectangle {
     id: root
+    color: Material.background
     objectName: 'session'
 
     readonly property PythonLogger logger : PythonLogger { name: "Frontend.Qml.Session" }
@@ -264,13 +265,8 @@ Item {
         }
     }
 
-    RegistryLookup {
-        id: selected_loops_lookup
-        registry: registries.state_registry
-        key: 'selected_loop_ids'
-    }
-    property alias selected_loop_ids : selected_loops_lookup.object
-    property list<var> selected_loops : selected_loop_ids ? Array.from(selected_loop_ids).map((id) => registries.objects_registry.get(id)) : []
+    SelectedLoops { id: selected_loops_lookup }
+    property alias selected_loops: selected_loops_lookup.loops
 
     RegistryLookup {
         id: targeted_loop_lookup
@@ -409,13 +405,46 @@ Item {
             anchors {
                 top: app_controls.bottom
                 left: parent.left
-                bottom: parent.bottom
+                bottom: details_area.top
                 right: logo_menu_area.left
                 bottomMargin: 4
                 leftMargin: 4
             }
 
             initial_track_descriptors: root.initial_descriptor.tracks
+        }
+
+        ResizeableItem {
+            id: details_area
+
+            height: 200
+            max_height: root.height - 50
+
+            top_drag_enabled: true
+            top_drag_area_y_offset: detailspane.pane_y_offset
+
+            anchors {
+                bottom: parent.bottom
+                left: parent.left
+                right: logo_menu_area.left
+            }
+
+            DetailsPane {
+                id: detailspane
+                temporary_items : Array.from(root.selected_loops).map(l => ({
+                    'title': l.name,
+                    'item': l,
+                    'autoselect': true
+                }))
+
+                RegisterInRegistry {
+                    registry: registries.state_registry
+                    key: 'main_details_pane'
+                    object: detailspane
+                }
+
+                anchors.fill: parent
+            }
         }
 
         Item {
