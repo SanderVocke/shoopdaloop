@@ -13,6 +13,8 @@ Item {
 
     property PythonLogger logger : default_logger
 
+    height: childrenRect.height
+
     enum Tool {
         None,
         SetStartOffsetAll,
@@ -194,10 +196,11 @@ Item {
     Item {
         anchors {
             top: toolbar_2.bottom
-            bottom: parent.bottom
             left: parent.left
             right: parent.right
         }
+
+        height: childrenRect.height
 
         Item {
             id: channels_combine_range

@@ -73,36 +73,50 @@ Item {
             bottom: parent.bottom
         }
 
-        StackLayout {
-            id: stack
+        ScrollView {
             anchors.fill: parent
-            currentIndex: details_tabbar.currentIndex + 1 // +1 because of Mapper taking the first spot
+            ScrollBar.vertical.policy: ScrollBar.AsNeeded
+            ScrollBar.horizontal.policy: ScrollBar.AsNeeded
 
-            Mapper {
-                model : root.items
+            StackLayout {
+                id: stack
+                width: parent.width
+                currentIndex: details_tabbar.currentIndex + 1 // +1 because of Mapper taking the first spot
 
-                Item {
-                    id: details_item
-                    property var mapped_item
-                    property int index
+                Mapper {
+                    model : root.items
 
-                    width: stack.width
-                    height: stack.height
+                    Item {
+                        id: details_item
+                        property var mapped_item
+                        property int index
 
-                    Loader {
-                        anchors.fill: parent
-                        anchors.margins: 5
-                        property var maybe_loop_with_backend :
-                            (details_item.mapped_item.item && details_item.mapped_item.item instanceof LoopWidget && details_item.mapped_item.item.maybe_backend_loop) ?
-                            details_item.mapped_item.item : null
-                        
-                        active: maybe_loop_with_backend != null
-                        sourceComponent: Component {
-                            id: loop_content_widget
-                            LoopContentWidget {
-                                loop: parent.maybe_loop_with_backend
-                                sync_loop: parent.maybe_loop_with_backend.sync_loop
-                                anchors.fill: parent
+                        width: stack.width
+                        height: childrenRect.height
+
+                        Loader {
+                            anchors {
+                                left: parent.left
+                                right: parent.right
+                                leftMargin: 5
+                                rightMargin: 5
+                            }
+                            height: childrenRect.height
+                            property var maybe_loop_with_backend :
+                                (details_item.mapped_item.item && details_item.mapped_item.item instanceof LoopWidget && details_item.mapped_item.item.maybe_backend_loop) ?
+                                details_item.mapped_item.item : null
+                            
+                            onHeightChanged: console.log('loader', height)
+
+                            active: maybe_loop_with_backend != null
+                            sourceComponent: Component {
+                                id: loop_content_widget
+                                LoopContentWidget {
+                                    loop: parent.maybe_loop_with_backend
+                                    sync_loop: parent.maybe_loop_with_backend.sync_loop
+                                    width: parent.width
+                                    onHeightChanged: console.log('widget', height)
+                                }
                             }
                         }
                     }
