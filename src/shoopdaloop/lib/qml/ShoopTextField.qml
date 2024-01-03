@@ -5,13 +5,13 @@ import QtQuick.Controls.Material 6.3
 TextField {
     id: root
     font.pixelSize: 12
-    leftInset: 0
-    rightInset: 0
-    bottomInset: 0
-    topInset: 0
+    leftInset: 2
+    rightInset: 2
+    bottomInset: 2
+    topInset: 2
 
-    leftPadding: 3
-    rightPadding: 3
+    leftPadding: 8
+    rightPadding: 6
     bottomPadding: -1
     topPadding: -1
 

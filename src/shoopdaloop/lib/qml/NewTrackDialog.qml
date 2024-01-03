@@ -5,23 +5,21 @@ import QtQuick.Controls.Material 6.3
 import "../generate_session.js" as GenerateSession
 
 // Dialog for adding a new track
-Dialog {
-    id: newtrackdialog
+ShoopDialog {
+    id: root
     standardButtons: Dialog.Ok | Dialog.Cancel
     parent: Overlay.overlay
     x: (parent.width - width) / 2
     y: (parent.height - height) / 2
     modal: true
-    title: 'Add track'
+    title: tracks.length == 0 ? 'Initial track' : 'Add track'
 
     width: 400
-    height: 550
+    height: childrenRect.height
 
-    property bool suggest_make_first_sync : false
-    
-    onSuggest_make_first_syncChanged: make_first_sync = suggest_make_first_sync
-
-    property alias make_first_sync : make_first_sync_checkbox.checked
+    property var tracks : []
+    property var get_max_loop_slots : () => 8
+    property bool make_first_sync : root.tracks.length == 0
     property alias track_name : name_field.text
     property alias is_drywet : select_type.is_drywet
     property alias is_composite : select_type.is_composite
@@ -37,7 +35,6 @@ Dialog {
 
     function open_for_new_track() {
         var idx = root.tracks.length
-        suggest_make_first_sync = root.tracks.length == 0
         track_name = "Track " + (idx+1).toString()
         open()
     }
@@ -47,7 +44,7 @@ Dialog {
     onAccepted: {
         var track_descriptor = GenerateSession.generate_default_track(
             track_name,
-            Math.max(8, root.max_slots()),
+            Math.max(8, root.get_max_loop_slots()),
             port_name_base,
             false,
             port_name_base,
@@ -71,20 +68,21 @@ Dialog {
         columnSpacing: 10
 
         Label {
+            text: "(first loop will be sync loop)"
+            visible: make_first_sync
+        }
+        Rectangle {
+            visible: make_first_sync
+            width: 10
+            height: 10
+            color: 'transparent'
+        }
+
+        Label {
             text: "Name:"
         }
         ShoopTextField {
             id: name_field
-        }
-
-        Label {
-            text: "First loop is sync:"
-            visible: suggest_make_first_sync
-        }
-        CheckBox {
-            id: make_first_sync_checkbox
-            tristate: false
-            visible: suggest_make_first_sync
         }
 
         Label {

@@ -136,6 +136,11 @@ ScrollView {
         })
         n_loaded = _n_loaded
         loaded = Qt.binding(() => { return n_loaded >= tracks.length })
+
+        // If we start with 0 tracks, open the new track dialog.
+        if (root.tracks.length == 0) {
+            newtrackdialog.open_for_new_track()
+        }
     }
 
     Component.onCompleted: initialize()
@@ -320,6 +325,8 @@ ScrollView {
     // Dialog for adding a new track
     NewTrackDialog {
         id: newtrackdialog
+        tracks: root.tracks
+        get_max_loop_slots: () => root.max_slots()
         onAddTrackDescriptor: (desc) => {
             root.add_track({
                 initial_descriptor: desc
