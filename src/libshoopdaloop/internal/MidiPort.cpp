@@ -100,16 +100,18 @@ void MidiPort::PROC_process(uint32_t nframes) {
     if (!muted) {
         MidiReadableBufferInterface *source =
             procbuf ? procbuf : read_in_buf;
-        auto n_events = source->PROC_get_n_events();
-        log<log_level_trace>("# output events: {}", n_events);
-        n_output_events += n_events;
+        if (source) {
+            auto n_events = source->PROC_get_n_events();
+            log<log_level_trace>("# output events: {}", n_events);
+            n_output_events += n_events;
 
-        if (write_out_buf) {
-            // We need to actively write data to the output.
-            // Take it from the processing buffer if we have one, otherwise from the input.
-            for(uint32_t i=0; i<n_events; i++) {
-                auto &msg = source->PROC_get_event_reference(i);
-                write_out_buf->PROC_write_event_reference(msg);
+            if (write_out_buf) {
+                // We need to actively write data to the output.
+                // Take it from the processing buffer if we have one, otherwise from the input.
+                for(uint32_t i=0; i<n_events; i++) {
+                    auto &msg = source->PROC_get_event_reference(i);
+                    write_out_buf->PROC_write_event_reference(msg);
+                }
             }
         }
     }

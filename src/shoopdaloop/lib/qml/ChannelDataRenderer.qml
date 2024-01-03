@@ -199,6 +199,16 @@ Item {
                 id: fetcher
                 channel: root.channel
             }
+
+            Label {
+                anchors {
+                    left: parent.left
+                    top: parent.top
+                }
+                font.pixelSize: 12
+                color: Material.foreground
+                text: root.channel.obj_id
+            }
         }
     }
 }

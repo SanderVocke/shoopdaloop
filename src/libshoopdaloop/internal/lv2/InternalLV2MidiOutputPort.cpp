@@ -17,8 +17,7 @@ InternalLV2MidiOutputPort::InternalLV2MidiOutputPort(
 
 MidiReadableBufferInterface *
 InternalLV2MidiOutputPort::PROC_get_read_output_data_buffer(uint32_t n_frames) {
-    throw std::runtime_error(
-        "Internal LV2 MIDI output port does not support reading.");
+    return nullptr;
 }
 
 MidiWriteableBufferInterface *
