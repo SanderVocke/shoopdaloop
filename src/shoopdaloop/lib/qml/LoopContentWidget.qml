@@ -13,6 +13,8 @@ Item {
 
     property PythonLogger logger : default_logger
 
+    height: childrenRect.height
+
     enum Tool {
         None,
         SetStartOffsetAll,
@@ -194,10 +196,11 @@ Item {
     Item {
         anchors {
             top: toolbar_2.bottom
-            bottom: parent.bottom
             left: parent.left
             right: parent.right
         }
+
+        height: childrenRect.height
 
         Item {
             id: channels_combine_range
@@ -226,88 +229,95 @@ Item {
 
                 property var maybe_cursor_display_x: null
 
-                ChannelDataRenderer {
+                ResizeableItem {
+                    height: 50
+                    width: root.width
                     visible: root.visible
-                    fetch_active: root.visible
 
                     property var mapped_item
                     property int index
 
-                    height: 100
-                    width: root.width
+                    max_height: 500
+                    top_drag_enabled: true
 
-                    channel: mapped_item
-
-                    samples_per_pixel: 1.0
-                    Component.onCompleted: samples_per_pixel = zoom_slider.samples_per_pixel
-
-                    Connections {
-                        target: zoom_slider
-                        function onZoomed(spp, off) {
-                            samples_per_pixel = spp;
-                            channels_column.samples_offset = off
-                        }
-                    }
-
-                    property int first_pixel_sample: (channel ? channel.start_offset : 0) + channels_combine_range.data_start
-
-                    samples_offset: channels_column.samples_offset
-                    onPan: (amount) => { channels_column.samples_offset += amount }
-
-                    loop_length: root.loop ? root.loop.length : 0
-
-                    property var maybe_cursor_display_x: {
-                        var r = hover_ma.containsMouse ? hover_ma.mouseX : channel_mapper.maybe_cursor_display_x
-
-                        if (r != undefined && r != null && snap_switch.checked) {
-                            // Snap to grid
-                            r = snap_visual_to_grid(r)                     
-                        }
-
-                        return r
-                    }
-
-                    property var maybe_cursor_sample_idx: maybe_cursor_display_x ?
-                        samples_offset + maybe_cursor_display_x * samples_per_pixel :
-                        null
-                    
-                    property bool enable_grid_lines: minor_grid_divider.currentValue != undefined && root.sync_loop && root.sync_loop.length >= 4800
-                    major_grid_lines_interval: enable_grid_lines ? root.sync_loop.length : -1
-                    minor_grid_lines_interval: enable_grid_lines && minor_grid_divider.currentValue > 1 ?
-                                                major_grid_lines_interval / minor_grid_divider.currentValue : -1
-
-                    Rectangle {
-                        width: 1
-                        height: parent.height
-                        color: 'white'
-                        x : parent.maybe_cursor_display_x
-                        visible: parent.maybe_cursor_display_x != null
-
-                        Label {
-                            anchors {
-                                left: parent.left
-                                top: parent.top
-                                margins: 3
-                            }
-                            text: tool_combo.currentText
-                        }
-                    }
-
-                    MouseArea {
-                        id: hover_ma
-                        enabled: tool_combo.currentValue != LoopContentWidget.Tool.None
+                    ChannelDataRenderer {
+                        id: renderer
+                        fetch_active: root.visible
                         anchors.fill: parent
-                        hoverEnabled: enabled
-                        cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
 
-                        onMouseXChanged: if(containsMouse &&
-                                            tool_combo.is_for_all_channels) {
-                            channel_mapper.maybe_cursor_display_x = mouseX
+                        channel: mapped_item
+
+                        samples_per_pixel: 1.0
+                        Component.onCompleted: samples_per_pixel = zoom_slider.samples_per_pixel
+
+                        Connections {
+                            target: zoom_slider
+                            function onZoomed(spp, off) {
+                                renderer.samples_per_pixel = spp;
+                                channels_column.samples_offset = off
+                            }
                         }
-                        onContainsMouseChanged: if (!containsMouse) { channel_mapper.maybe_cursor_display_x = null; }
 
-                        onClicked: {
-                            root.tool_clicked()
+                        property int first_pixel_sample: (channel ? channel.start_offset : 0) + channels_combine_range.data_start
+
+                        samples_offset: channels_column.samples_offset
+                        onPan: (amount) => { channels_column.samples_offset += amount }
+
+                        loop_length: root.loop ? root.loop.length : 0
+
+                        property var maybe_cursor_display_x: {
+                            var r = hover_ma.containsMouse ? hover_ma.mouseX : channel_mapper.maybe_cursor_display_x
+
+                            if (r != undefined && r != null && snap_switch.checked) {
+                                // Snap to grid
+                                r = snap_visual_to_grid(r)                     
+                            }
+
+                            return r
+                        }
+
+                        property var maybe_cursor_sample_idx: maybe_cursor_display_x ?
+                            samples_offset + maybe_cursor_display_x * samples_per_pixel :
+                            null
+                        
+                        property bool enable_grid_lines: minor_grid_divider.currentValue != undefined && root.sync_loop && root.sync_loop.length >= 4800
+                        major_grid_lines_interval: enable_grid_lines ? root.sync_loop.length : -1
+                        minor_grid_lines_interval: enable_grid_lines && minor_grid_divider.currentValue > 1 ?
+                                                    major_grid_lines_interval / minor_grid_divider.currentValue : -1
+
+                        Rectangle {
+                            width: 1
+                            height: parent.height
+                            color: 'white'
+                            x : parent.maybe_cursor_display_x
+                            visible: parent.maybe_cursor_display_x != null
+
+                            Label {
+                                anchors {
+                                    left: parent.left
+                                    top: parent.top
+                                    margins: 3
+                                }
+                                text: tool_combo.currentText
+                            }
+                        }
+
+                        MouseArea {
+                            id: hover_ma
+                            enabled: tool_combo.currentValue != LoopContentWidget.Tool.None
+                            anchors.fill: parent
+                            hoverEnabled: enabled
+                            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+
+                            onMouseXChanged: if(containsMouse &&
+                                                tool_combo.is_for_all_channels) {
+                                channel_mapper.maybe_cursor_display_x = mouseX
+                            }
+                            onContainsMouseChanged: if (!containsMouse) { channel_mapper.maybe_cursor_display_x = null; }
+
+                            onClicked: {
+                                root.tool_clicked()
+                            }
                         }
                     }
                 }

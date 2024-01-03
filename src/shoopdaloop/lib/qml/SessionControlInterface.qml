@@ -11,7 +11,7 @@ LuaControlInterface {
 
     property PythonLogger logger : PythonLogger { name: "Frontend.Qml.SessionControlInterface" }
 
-    property list<var> selected_loop_idxs : session.selected_loops ? session.selected_loops.map((l) => [l.track_idx, l.idx_in_track]) : []
+    property list<var> selected_loop_idxs : session.selected_loops ? Array.from(session.selected_loops).map((l) => [l.track_idx, l.idx_in_track]) : []
     property var targeted_loop_idx: session.targeted_loop ? [session.targeted_loop.track_idx, session.targeted_loop.idx_in_track] : null
 
     function select_loops(loop_selector) {
@@ -165,8 +165,8 @@ LuaControlInterface {
     function loop_select_override(loop_selector, deselect_others) {
         var selection = new Set(select_loops(loop_selector).map((l) => l ? l.obj_id : null))
         selection.delete(null)
-        if (!deselect_others && session.selected_loop_ids) {
-            session.selected_loop_ids.forEach((id) => { selection.add(id) })
+        if (!deselect_others && session.selected_loops) {
+            session.selected_loops.forEach((l) => { selection.add(l.obj_id) })
         }
         registries.state_registry.replace('selected_loop_ids', selection)
     }

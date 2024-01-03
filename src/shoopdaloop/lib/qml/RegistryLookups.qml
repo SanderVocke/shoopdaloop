@@ -31,6 +31,7 @@ Item {
 
     Component.onCompleted: update()
     onRegistryChanged: update()
+    onKeysChanged: update()
     Connections {
         target: registry
         function onItemAdded(key, item) { if (keys.includes(key)) { update() } }

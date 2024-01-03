@@ -12,7 +12,7 @@ Item {
     property var channel : null
 
     property bool is_audio : root.channel && root.channel.descriptor.type == "audio"
-    property bool is_midie : root.channel && root.channel.descriptor.type == "midi"
+    property bool is_midi : root.channel && root.channel.descriptor.type == "midi"
 
     PythonRenderAudioWaveform {
         input_data: is_audio ? root.input_data : null

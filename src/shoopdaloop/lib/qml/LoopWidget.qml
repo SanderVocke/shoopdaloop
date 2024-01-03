@@ -16,7 +16,6 @@ Item {
     property var track_widget
 
     property var initial_descriptor : null
-    property var details_window : detailswindow
 
     property int track_idx : -1
     property int idx_in_track : -1
@@ -127,9 +126,16 @@ Item {
     property alias targeted_loop : targeted_loop_lookup.object
     property bool targeted : targeted_loop == root
 
+    RegistryLookup {
+        id: main_details_pane_lookup
+        registry: registries.state_registry
+        key: 'main_details_pane'
+    }
+    property alias main_details_pane : main_details_pane_lookup.object
+
     property var single_selected_composite_loop: {
-        if (selected_loop_ids && selected_loop_ids.size == 1) {
-            let selected_loop = registries.objects_registry.get(selected_loop_ids.values().next().value)
+        if (selected_loops && selected_loops.size == 1) {
+            let selected_loop = Array.from(selected_loops)[0]
             if (selected_loop.maybe_composite_loop) {
                 return selected_loop
             }
@@ -141,13 +147,9 @@ Item {
         single_selected_composite_loop.maybe_composite_loop.all_loops) ? single_selected_composite_loop.maybe_composite_loop.all_loops : new Set()
     property bool is_in_selected_composite_loop : loops_in_single_selected_composite_loop.has(root)
 
-    RegistryLookup {
-        id: selected_loops_lookup
-        registry: registries.state_registry
-        key: 'selected_loop_ids'
-    }
-    property alias selected_loop_ids : selected_loops_lookup.object
-    property bool selected : selected_loop_ids ? selected_loop_ids.has(obj_id) : false
+    SelectedLoops { id: selected_loops_lookup }
+    property alias selected_loops : selected_loops_lookup.loops
+    property bool selected : selected_loops.has(this)
 
     RegisterInRegistry {
         id: obj_reg_entry
@@ -234,11 +236,11 @@ Item {
     }
     function transition(mode, delay, wait_for_sync, include_selected=true) {
         // Do the transition for this loop and all selected loops, if any
-        var selected_ids = include_selected ? new Set(registries.state_registry.maybe_get('selected_loop_ids', new Set())) : new Set()
+        var selected_all = include_selected ? selected_loops : new Set()
         
-        if (selected_ids.has (root.obj_id)) {
+        if (selected_all.has (root)) {
             // If we are part of the selection, transition them all as a group.
-            var objects = Array.from(selected_ids).map(id => registries.objects_registry.maybe_get(id, undefined)).filter(v => v != undefined)
+            var objects = Array.from(selected_all)
             transition_loops(objects, mode, delay, wait_for_sync)
         } else {
             // If we are not part of the selection, transition ourselves only.
@@ -247,21 +249,19 @@ Item {
     }
     function play_solo_in_track() {
         // Gather all selected loops
-        var _selected_ids = new Set(registries.state_registry.maybe_get('selected_loop_ids', new Set()))
-        _selected_ids.add(obj_id)
+        var selected_all = include_selected ? selected_loops : new Set()
+        selected_all.add(root)
         // Gather all other loops that are in the same track(s)
-        var _selected_loops = []
-        _selected_ids.forEach(id => _selected_loops.push(registries.objects_registry.get(id)))
         var _all_track_loops = []
-        _selected_loops.forEach(loop => {
+        selected_all.forEach(loop => {
             for(var i=0; i<loop.track_widget.loops.length; i++) {
                 _all_track_loops.push(loop.track_widget.loops[i])
             }
         })
-        var _other_loops = _all_track_loops.filter(l => !_selected_loops.includes(l))
+        var _other_loops = _all_track_loops.filter(l => !selected_all.has(l))
         // Do the transitions
         transition_loops(_other_loops, ShoopConstants.LoopMode.Stopped, use_delay, root.sync_active)
-        transition_loops(_selected_loops, ShoopConstants.LoopMode.Playing, use_delay, root.sync_active)
+        transition_loops(selected_all, ShoopConstants.LoopMode.Playing, use_delay, root.sync_active)
     }
     function clear(length=0, emit=true) {
         if(maybe_loop) {
@@ -491,13 +491,6 @@ Item {
             right: parent.right
         }
 
-        LoopDetailsWindow {
-            id: detailswindow
-            title: root.initial_descriptor.id + " details"
-            loop_widget: root
-            sync_loop_widget: root.sync_loop
-        }
-
         ContextMenu {
             id: contextmenu
         }
@@ -722,8 +715,8 @@ Item {
                     onClicked: (event) => {
                             if (event.button === Qt.LeftButton) { 
                                 if (key_modifiers.alt_pressed) {
-                                    if (root.selected_loop_ids.size == 1) {
-                                        let selected = registries.objects_registry.get(root.selected_loop_ids.values().next().value)
+                                    if (root.selected_loops.size == 1) {
+                                        let selected = selected_loops[0]
                                         if (selected != root) {
                                             selected.create_composite_loop()
                                             if (selected.maybe_composite_loop) {
@@ -1431,8 +1424,8 @@ Item {
             }
             MenuSeparator {}
             ShoopMenuItem {
-                text: "Details"
-                onClicked: () => { detailswindow.visible = true }
+               text: "Details"
+               onClicked: () => { if(root.main_details_pane) { root.main_details_pane.add_user_item(root.name, root) } }
             }
             ShoopMenuItem {
                text: "Click loop..."
