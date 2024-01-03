@@ -50,7 +50,6 @@ public:
     virtual void            clear_planned_transitions(bool thread_safe = true) = 0;
     virtual void            plan_transition(shoop_loop_mode_t mode, uint32_t n_cycles_delay = 0, bool wait_for_sync = true, bool thread_safe = true) = 0;
 
-
     // Getters and setters.
     virtual uint32_t       get_position() const = 0;
     virtual uint32_t       get_length() const = 0;

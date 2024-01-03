@@ -14,9 +14,9 @@ ShoopTestFile {
 
         anchors.fill: parent
         initial_descriptor: {
-            var master_track = GenerateSession.generate_default_track("Master", 2, 'master', true, 'master_loop', 0, 0, 2, false, false, false, undefined)
+            var sync_track = GenerateSession.generate_default_track("Sync", 2, 'sync', true, 'sync_loop', 0, 0, 2, false, false, false, undefined)
             var extra_track = GenerateSession.generate_default_track("Other", 2, 'other', false, 'other_loop', 0, 0, 2, false, false, false, undefined)
-            return GenerateSession.generate_session(app_metadata.version_string, null, [master_track, extra_track], [], [],
+            return GenerateSession.generate_session(app_metadata.version_string, null, [sync_track, extra_track], [], [],
             [], [])
         }
 

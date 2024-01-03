@@ -5,18 +5,21 @@ import QtQuick.Controls.Material 6.3
 import "../generate_session.js" as GenerateSession
 
 // Dialog for adding a new track
-Dialog {
-    id: newtrackdialog
+ShoopDialog {
+    id: root
     standardButtons: Dialog.Ok | Dialog.Cancel
     parent: Overlay.overlay
     x: (parent.width - width) / 2
     y: (parent.height - height) / 2
     modal: true
-    title: 'Add track'
+    title: tracks.length == 0 ? 'Initial track' : 'Add track'
 
     width: 400
-    height: 550
+    height: childrenRect.height
 
+    property var tracks : []
+    property var get_max_loop_slots : () => 8
+    property bool make_first_sync : root.tracks.length == 0
     property alias track_name : name_field.text
     property alias is_drywet : select_type.is_drywet
     property alias is_composite : select_type.is_composite
@@ -32,7 +35,7 @@ Dialog {
 
     function open_for_new_track() {
         var idx = root.tracks.length
-        track_name = "Track " + idx.toString()
+        track_name = "Track " + (idx+1).toString()
         open()
     }
 
@@ -41,7 +44,7 @@ Dialog {
     onAccepted: {
         var track_descriptor = GenerateSession.generate_default_track(
             track_name,
-            Math.max(8, root.max_slots()),
+            Math.max(8, root.get_max_loop_slots()),
             port_name_base,
             false,
             port_name_base,
@@ -53,6 +56,9 @@ Dialog {
             is_drywet && is_drywet_jack,
             (is_drywet && is_drywet_carla) ? drywet_carla_type : undefined
         )
+        if (make_first_sync) {
+            track_descriptor['loops'][0]['is_sync'] = true
+        }
         addTrackDescriptor(track_descriptor)
     }
 
@@ -60,6 +66,17 @@ Dialog {
         columns: 2
         verticalItemAlignment: Grid.AlignVCenter
         columnSpacing: 10
+
+        Label {
+            text: "(first loop will be sync loop)"
+            visible: make_first_sync
+        }
+        Rectangle {
+            visible: make_first_sync
+            width: 10
+            height: 10
+            color: 'transparent'
+        }
 
         Label {
             text: "Name:"

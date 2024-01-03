@@ -72,7 +72,7 @@ Item {
             'id': obj_id,
             'name': name,
             'length': maybe_loop ? maybe_loop.length : 0,
-            'is_master': is_master
+            'is_sync': is_sync
         }
 
         if (maybe_backend_loop) {
@@ -109,13 +109,13 @@ Item {
     property bool loaded : false
 
     RegistryLookup {
-        id: master_loop_lookup
+        id: sync_loop_lookup
         registry: registries.state_registry
-        key: 'master_loop'
+        key: 'sync_loop'
     }
-    property alias master_loop : master_loop_lookup.object
+    property alias sync_loop : sync_loop_lookup.object
 
-    readonly property int cycle_length: master_loop ? master_loop.length : 0
+    readonly property int cycle_length: sync_loop ? sync_loop.length : 0
     readonly property int n_cycles: cycle_length ? Math.ceil(length / cycle_length) : 0
 
     RegistryLookup {
@@ -159,15 +159,15 @@ Item {
     }
 
     RegisterInRegistry {
-        id: master_reg_entry
-        enabled: initial_descriptor.is_master
+        id: sync_reg_entry
+        enabled: initial_descriptor.is_sync
         registry: registries.state_registry
-        key: 'master_loop'
+        key: 'sync_loop'
         object: root
     }
 
     function init() {
-        if (is_master) { create_backend_loop() }
+        if (is_sync) { create_backend_loop() }
         if ('composition' in initial_descriptor) {
             root.logger.debug(() => (`${obj_id} has composition, creating composite loop.`))
             create_composite_loop(initial_descriptor.composition)
@@ -181,20 +181,20 @@ Item {
     property var additional_context_menu_options : null // dict of option name -> functor
 
     onIs_loadedChanged: if(is_loaded) { root.logger.debug(() => ("Loaded back-end loop.")) }
-    onIs_masterChanged: if(is_master) { create_backend_loop() }
+    onIs_syncChanged: if(is_sync) { create_backend_loop() }
 
     // Internally controlled
     property var maybe_loop : null
     readonly property var maybe_backend_loop : (maybe_loop && maybe_loop instanceof Loop) ? maybe_loop : null
     readonly property var maybe_composite_loop : (maybe_loop && maybe_loop instanceof CompositeLoop) ? maybe_loop : null
     readonly property bool is_loaded : maybe_loop
-    readonly property bool is_master: master_loop && master_loop == this
+    readonly property bool is_sync: sync_loop && sync_loop == this
     readonly property var delay_for_targeted : {
         // This property is used for synchronizing to the targeted loop.
         // If:
         // - A targeted loop is active, and
         // - The targeted loop is doing playback
-        // then this property will hold the amount of master loop cycles
+        // then this property will hold the amount of sync loop cycles
         // to delay in order to transition in sync with the targeted loop.
         // Otherwise, it will be 0.
         if (targeted_loop) {
@@ -204,7 +204,7 @@ Item {
             }
             var to_end = undefined
             if (ModeHelpers.is_mode_with_predictable_end(targeted_loop.mode)) {
-                to_end = Math.floor((targeted_loop.length - targeted_loop.position) / master_loop.length)
+                to_end = Math.floor((targeted_loop.length - targeted_loop.position) / sync_loop.length)
             }
             if (to_transition == undefined && to_end == undefined) { return undefined }
             else if (to_transition != undefined && to_end != undefined) { return Math.min(to_transition, to_end) }
@@ -215,10 +215,10 @@ Item {
     }
     readonly property int use_delay : delay_for_targeted != undefined ? delay_for_targeted : 0
 
-    property int n_multiples_of_master_length: (master_loop && maybe_loop) ?
-        Math.ceil(maybe_loop.length / master_loop.length) : 1
-    property int current_cycle: (master_loop && maybe_loop) ?
-        Math.floor(maybe_loop.position / master_loop.length) : 0
+    property int n_multiples_of_sync_length: (sync_loop && maybe_loop) ?
+        Math.ceil(maybe_loop.length / sync_loop.length) : 1
+    property int current_cycle: (sync_loop && maybe_loop) ?
+        Math.floor(maybe_loop.position / sync_loop.length) : 0
 
     // Signals
     signal cycled
@@ -276,7 +276,7 @@ Item {
     }
     function qml_close() {
         obj_reg_entry.close()
-        master_reg_entry.close()
+        sync_reg_entry.close()
         if (maybe_loop) {
             maybe_loop.qml_close()
             maybe_loop.destroy(30)
@@ -391,9 +391,9 @@ Item {
         // TODO: code is duplicated in app shared state for MIDI source
         var n_cycles_delay = 0
         var n_cycles_record = 1
-        n_cycles_record = Math.ceil(root.targeted_loop.length / root.master_loop.length)
+        n_cycles_record = Math.ceil(root.targeted_loop.length / root.sync_loop.length)
         if (ModeHelpers.is_playing_mode(root.targeted_loop.mode)) {
-            var current_cycle = Math.floor(root.targeted_loop.position / root.master_loop.length)
+            var current_cycle = Math.floor(root.targeted_loop.position / root.sync_loop.length)
             n_cycles_delay = Math.max(0, n_cycles_record - current_cycle - 1)
         }
         root.record_n(n_cycles_delay, n_cycles_record)
@@ -427,7 +427,7 @@ Item {
             } else {
                 maybe_loop = backend_loop_factory.createObject(root, {
                     'initial_descriptor': root.initial_descriptor,
-                    'sync_source': (!is_master && root.master_loop && root.master_loop.maybe_backend_loop) ? root.master_loop.maybe_backend_loop : null,
+                    'sync_source': (!is_sync && root.sync_loop && root.sync_loop.maybe_backend_loop) ? root.sync_loop.maybe_backend_loop : null,
                 })
                 maybe_loop.onCycled.connect(root.cycled)
             }
@@ -442,14 +442,14 @@ Item {
         'playlists': []
     }) {
         if (maybe_backend_loop) {
-            if (!is_master && maybe_backend_loop.is_all_empty()) {
+            if (!is_sync && maybe_backend_loop.is_all_empty()) {
                 // Empty backend loop can be converted to composite loop.
                 maybe_loop.qml_close()
                 maybe_loop.destroy(30)
                 maybe_loop.parent = null
                 maybe_loop = null
             } else {
-                root.logger.error("Non-empty or master loop cannot be converted to composite")
+                root.logger.error("Non-empty or sync loop cannot be converted to composite")
                 return
             }
         }
@@ -677,7 +677,7 @@ Item {
                 topMargin: 2
             }
 
-            visible: root.is_master
+            visible: root.is_sync
         }
 
         Item {
@@ -908,7 +908,7 @@ Item {
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
                     ToolTip.visible: hovered
-                    ToolTip.text: "Trigger/stop recording. For master loop, starts immediately. For others, start/stop synced to next master loop cycle."
+                    ToolTip.text: "Trigger/stop recording. For sync loop, starts immediately. For others, start/stop synced to next sync loop cycle."
 
                     Connections {
                         target: statusrect
@@ -978,7 +978,7 @@ Item {
                                     ToolTip.delay: 1000
                                     ToolTip.timeout: 5000
                                     ToolTip.visible: hovered
-                                    ToolTip.text: "Trigger fixed-length recording (usual) or 'record with' (if a target loop is set). 'Record with' will record for one full iteration synced with the target loop. Otherwise, fixed length (number shown) is the amount of master loop cycles to record. Press and hold this button to change this number."
+                                    ToolTip.text: "Trigger fixed-length recording (usual) or 'record with' (if a target loop is set). 'Record with' will record for one full iteration synced with the target loop. Otherwise, fixed length (number shown) is the amount of sync loop cycles to record. Press and hold this button to change this number."
 
                                     // TODO: editable text box instead of fixed options
                                     Menu {
@@ -1028,11 +1028,11 @@ Item {
                                         text: root.delay_for_targeted != undefined ? ">" : ""
                                     }
                                     onClicked: {
-                                        var n = root.n_multiples_of_master_length
+                                        var n = root.n_multiples_of_sync_length
                                         var delay = 
                                             root.delay_for_targeted != undefined ? 
                                                 root.use_delay : // delay to other
-                                                root.n_multiples_of_master_length - root.current_cycle - 1 // delay to self
+                                                root.n_multiples_of_sync_length - root.current_cycle - 1 // delay to self
                                         var prev_mode = statusrect.loop.mode
                                         root.transition(ShoopConstants.LoopMode.RecordingDryIntoWet, delay, true)
                                         statusrect.loop.transition(prev_mode, delay + n, true)
@@ -1464,10 +1464,10 @@ Item {
                 }
             }
             ShoopMenuItem {
-                text: "Push Length To Master"
-                shown: !root.is_master
+                text: "Push Length To Sync"
+                shown: !root.is_sync
                 onClicked: {
-                    if (master_loop) { master_loop.set_length(root.length) }
+                    if (sync_loop) { sync_loop.set_length(root.length) }
                 }
             }
             ShoopMenuItem {

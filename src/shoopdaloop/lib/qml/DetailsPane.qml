@@ -101,7 +101,7 @@ Item {
                             id: loop_content_widget
                             LoopContentWidget {
                                 loop: parent.maybe_loop_with_backend
-                                master_loop: parent.maybe_loop_with_backend.master_loop
+                                sync_loop: parent.maybe_loop_with_backend.sync_loop
                                 anchors.fill: parent
                             }
                         }

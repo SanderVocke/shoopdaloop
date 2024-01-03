@@ -396,7 +396,7 @@ Item {
                             topMargin: 2
                         }
 
-                        height: 20
+                        height: 26
 
                         text: root.name
                         readOnly: !root.name_editable

@@ -4,11 +4,16 @@ import QtQuick.Controls.Material 6.3
 
 ComboBox {
     id: root
-    font.pixelSize: 13
+    font.pixelSize: 12
     leftInset: 2
     rightInset: 2
     bottomInset: 2
     topInset: 2
+
+    leftPadding: -4
+    rightPadding: -4
+    bottomPadding: -1
+    topPadding: -1
 
     background: Rectangle {
         implicitWidth: 120
