@@ -133,6 +133,30 @@ Item {
 
             onClicked: zoom_slider.value = Math.min(zoom_slider.value - toolbar.zoom_step_amount, zoom_slider.from)
         }
+
+        ToolbarButton {
+            anchors {
+                verticalCenter: parent.verticalCenter
+            }
+            material_design_icon: 'magnify'
+            size: toolbar.tool_buttons_size
+
+            Label {
+                x: 7
+                y: 4
+                text: "A"
+                color: Material.foreground
+                font.pixelSize: 8
+            }
+
+            onClicked: {
+                let show_n_samples = channels_combine_range.data_length
+                let margin_factor = 1.2
+                let margin_samples = show_n_samples * (margin_factor - 1.0)
+                zoom_slider.samples_per_pixel = show_n_samples * margin_factor / channels_column.width
+                channels_column.samples_offset = -channels_combine_range.data_start - margin_samples / 2
+            }
+        }
         
         ToolSeparator {
             anchors.top: parent.top
