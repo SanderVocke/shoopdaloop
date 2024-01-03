@@ -39,13 +39,13 @@ function generate_loop_channel(id, mode, type, data_length, start_offset, n_prep
     };
 }
 
-function generate_loop(id, name, length, is_master, channels) {
+function generate_loop(id, name, length, is_sync, channels) {
     return {
         'id': id,
         'name': name,
         'schema': 'loop.1',
         'length': length,
-        'is_master': is_master,
+        'is_sync': is_sync,
         'channels': channels
     }
 }
@@ -145,7 +145,7 @@ function generate_default_track(
     name,
     n_loops,
     id,
-    first_loop_is_master,
+    first_loop_is_sync,
     port_name_base,
     n_audio_dry = 0,
     n_audio_wet = 0,
@@ -326,7 +326,7 @@ function generate_default_track(
                 id + '_loop_' + ii + "_audio_wet_" + (idx+1).toString(), 'wet', 'audio', 0, 0, 0, 1.0, ports_to_connect
             ))
         })
-        var loop = generate_loop(id+'_loop_'+ii, "(" + (i+1).toString() + ")", 0, (first_loop_is_master && i==0) ? true : false, channels);
+        var loop = generate_loop(id+'_loop_'+ii, "(" + (i+1).toString() + ")", 0, (first_loop_is_sync && i==0) ? true : false, channels);
         loops.push(loop);
     }
     var all_ports = [];
@@ -338,10 +338,14 @@ function generate_default_track(
     return track;
 }
 
-function generate_default_session(app_version, sample_rate=null, n_loops_in_master_track=1, n_audio_channels_in_master_track=1) {
-    var master_track = generate_default_track("Master", n_loops_in_master_track, 'master', true, 'master_loop', 0, 0, n_audio_channels_in_master_track, false, false, false, undefined)
-    master_track.loops[0].name = "master"
-    var session = generate_session(app_version, sample_rate, [master_track], [], [],
+function generate_default_session(app_version, sample_rate=null, add_sync_track=true, n_loops_in_sync_track=1, n_audio_channels_in_sync_track=1) {
+    var initial_tracks = []
+    if (add_sync_track) {
+        var sync_track = generate_default_track("Sync", n_loops_in_sync_track, 'sync', true, 'sync_loop', 0, 0, n_audio_channels_in_sync_track, false, false, false, undefined)
+        sync_track.loops[0].name = "sync"
+        initial_tracks.push(sync_track)
+    }
+    var session = generate_session(app_version, sample_rate, initial_tracks, [], [],
         [], []);
 
     return session;    
@@ -354,8 +358,8 @@ function convert_session_descriptor_sample_rate(descriptor, from, to) {
     rval['tracks'].forEach(t => {
         t.loops.forEach(l => {
             // Note: using ceil for length and data length fields ensures that channels/loops which are exactly
-            // N x (master loop length) will never be rounded to be more than N x (master loop length) after all
-            // conversions (assuming N > 1). Otherwise, loops may wait an entire extra master loop cycle because
+            // N x (sync loop length) will never be rounded to be more than N x (sync loop length) after all
+            // conversions (assuming N > 1). Otherwise, loops may wait an entire extra sync loop cycle because
             // they are 1 sample longer.
             l.length = Math.ceil(convert * l.length)
             l.channels.forEach(c => {

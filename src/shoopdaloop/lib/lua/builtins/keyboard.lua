@@ -34,7 +34,7 @@
 -- -  0-9 keys:   Record the selected loop(s) for N cycles.
 --
 -- Note that for the loop-transitioning keys in the list above, whether the loop
--- transitions instantly or in sync with the master loop depends on the global
+-- transitions instantly or in sync with the sync loop depends on the global
 -- "synchronization active" state. This can be toggled in the UI or momentarily
 -- toggled by holding the Ctrl button.
 

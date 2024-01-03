@@ -3,7 +3,7 @@ import QtQuick 6.3
 Item {
     // The main registry stores various important internal states.
     // Examples of stuff stored in here:
-    // - selected / targeted / master loops
+    // - selected / targeted / sync loops
     // - sub-registries, such as for cached FX chain states.
     property Registry state_registry: StateRegistry {
         verbose: false

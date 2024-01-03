@@ -9,7 +9,7 @@ import '../mode_helpers.js' as ModeHelpers
 Item {
     id: root
     property var loop
-    property var master_loop
+    property var sync_loop
 
     property PythonLogger logger : default_logger
 
@@ -134,13 +134,13 @@ Item {
 
             model: [
                 { value: undefined, text: "None" },
-                { value: 1, text: "Master" },
-                { value: 2, text: "Master / 2" },
-                { value: 3, text: "Master / 3" },
-                { value: 4, text: "Master / 4" },
-                { value: 6, text: "Master / 6" },
-                { value: 8, text: "Master / 8" },
-                { value: 16, text: "Master / 16" },
+                { value: 1, text: "Sync" },
+                { value: 2, text: "Sync / 2" },
+                { value: 3, text: "Sync / 3" },
+                { value: 4, text: "Sync / 4" },
+                { value: 6, text: "Sync / 6" },
+                { value: 8, text: "Sync / 8" },
+                { value: 16, text: "Sync / 16" },
             ]
         }
 
@@ -271,8 +271,8 @@ Item {
                         samples_offset + maybe_cursor_display_x * samples_per_pixel :
                         null
                     
-                    property bool enable_grid_lines: minor_grid_divider.currentValue != undefined && root.master_loop && root.master_loop.length >= 4800
-                    major_grid_lines_interval: enable_grid_lines ? root.master_loop.length : -1
+                    property bool enable_grid_lines: minor_grid_divider.currentValue != undefined && root.sync_loop && root.sync_loop.length >= 4800
+                    major_grid_lines_interval: enable_grid_lines ? root.sync_loop.length : -1
                     minor_grid_lines_interval: enable_grid_lines && minor_grid_divider.currentValue > 1 ?
                                                 major_grid_lines_interval / minor_grid_divider.currentValue : -1
 

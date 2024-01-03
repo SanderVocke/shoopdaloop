@@ -26,13 +26,13 @@ ShoopTestFile {
         }
     }
 
-    component FakeMasterLoop: FakeLoop {
-        id: fakemaster
+    component FakeSyncLoop: FakeLoop {
+        id: fakesync
 
         RegisterInRegistry {
-            object: fakemaster
+            object: fakesync
             registry: registries.state_registry
-            key: 'master_loop'
+            key: 'sync_loop'
         }
     }
 
@@ -57,8 +57,8 @@ ShoopTestFile {
 
     // Sequential loop scheduling
     Item {
-        FakeMasterLoop {
-            id: sequential_sched_master_loop
+        FakeSyncLoop {
+            id: sequential_sched_sync_loop
         }
         FakeLoop {
             id: sequential_sched_1
@@ -77,7 +77,7 @@ ShoopTestFile {
             ShoopTestCase {
                 name: 'CompositeLoop_sequential_sched'
                 filename: TestFilename.test_filename()
-                when: sequential_sched_lut.master_length
+                when: sequential_sched_lut.sync_length
 
                 test_fns: ({
                     'test_sequential_schedule': () => {
