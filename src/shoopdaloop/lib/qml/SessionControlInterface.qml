@@ -165,8 +165,8 @@ LuaControlInterface {
     function loop_select_override(loop_selector, deselect_others) {
         var selection = new Set(select_loops(loop_selector).map((l) => l ? l.obj_id : null))
         selection.delete(null)
-        if (!deselect_others && session.selected_loop_ids) {
-            session.selected_loop_ids.forEach((id) => { selection.add(id) })
+        if (!deselect_others && session.selected_loops) {
+            session.selected_loops.forEach((l) => { selection.add(l.obj_id) })
         }
         registries.state_registry.replace('selected_loop_ids', selection)
     }
