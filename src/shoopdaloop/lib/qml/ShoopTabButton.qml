@@ -18,7 +18,7 @@ Button {
 
     signal close()
 
-    width: label.width + (root.closeable ? 24 : 10)
+    width: label.width + (root.closeable ? 24 : 16)
     height: 30
 
     contentItem : Item {

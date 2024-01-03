@@ -105,8 +105,6 @@ Item {
                             property var maybe_loop_with_backend :
                                 (details_item.mapped_item.item && details_item.mapped_item.item instanceof LoopWidget && details_item.mapped_item.item.maybe_backend_loop) ?
                                 details_item.mapped_item.item : null
-                            
-                            onHeightChanged: console.log('loader', height)
 
                             active: maybe_loop_with_backend != null
                             sourceComponent: Component {
@@ -115,7 +113,6 @@ Item {
                                     loop: parent.maybe_loop_with_backend
                                     sync_loop: parent.maybe_loop_with_backend.sync_loop
                                     width: parent.width
-                                    onHeightChanged: console.log('widget', height)
                                 }
                             }
                         }

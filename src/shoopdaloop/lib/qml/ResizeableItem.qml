@@ -5,9 +5,9 @@ import QtQuick.Controls.Material 6.3
 Item {
     id: root
 
-    property real max_height: parent.height
+    property real max_height: parent ? parent.height : 500
     property real min_height: 50
-    property real max_width: parent.width
+    property real max_width: parent ? parent.width: 500
     property real min_width: 50
     property real drag_area_thickness: 10
 
