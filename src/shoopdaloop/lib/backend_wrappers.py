@@ -32,6 +32,12 @@ sys.path.append(dynlibs_dir())
 bindings_lock = threading.RLock()
 bindings = importlib.import_module('libshoopdaloop_bindings')
 
+intmax = 2**31-1
+intmin = -intmax - 1
+def to_int(val):
+    v = int(val)
+    return max(min(v, intmax), intmin)
+
 class PortDirection(Enum):
     Input = bindings.Input
     Output = bindings.Output
@@ -97,11 +103,11 @@ class LoopAudioChannelState:
             self.output_peak = backend_state.output_peak
             self.gain = backend_state.gain
             self.mode = ChannelMode(backend_state.mode)
-            self.length = backend_state.length
-            self.start_offset = backend_state.start_offset
+            self.length = to_int(backend_state.length)
+            self.start_offset = to_int(backend_state.start_offset)
             self.data_dirty = bool(backend_state.data_dirty)
-            self.played_back_sample = (backend_state.played_back_sample if backend_state.played_back_sample >= 0 else None)
-            self.n_preplay_samples = backend_state.n_preplay_samples
+            self.played_back_sample = (to_int(backend_state.played_back_sample) if backend_state.played_back_sample >= 0 else None)
+            self.n_preplay_samples = to_int(backend_state.n_preplay_samples)
         else:
             self.output_peak = 0.0
             self.gain = 0.0
@@ -125,14 +131,14 @@ class LoopMidiChannelState:
 
     def __init__(self, backend_state : 'bindings.loop_midi_channel_state_t' = None):
         if backend_state:
-            self.n_events_triggered = backend_state.n_events_triggered
-            self.n_notes_active = backend_state.n_notes_active
+            self.n_events_triggered = to_int(backend_state.n_events_triggered)
+            self.n_notes_active = to_int(backend_state.n_notes_active)
             self.mode = ChannelMode(backend_state.mode)
-            self.length = backend_state.length
-            self.start_offset = backend_state.start_offset
+            self.length = to_int(backend_state.length)
+            self.start_offset = to_int(backend_state.start_offset)
             self.data_dirty = bool(backend_state.data_dirty)
-            self.played_back_sample = (backend_state.played_back_sample if backend_state.played_back_sample >= 0 else None)
-            self.n_preplay_samples = backend_state.n_preplay_samples
+            self.played_back_sample = (to_int(backend_state.played_back_sample) if backend_state.played_back_sample >= 0 else None)
+            self.n_preplay_samples = to_int(backend_state.n_preplay_samples)
         else:
             self.n_events_triggered = 0
             self.n_notes_active = 0
@@ -153,8 +159,8 @@ class LoopState:
 
     def __init__(self, backend_loop_state : 'bindings.loop_state_t' = None):
         if backend_loop_state:
-            self.length = backend_loop_state.length
-            self.position = backend_loop_state.position
+            self.length = to_int(backend_loop_state.length)
+            self.position = to_int(backend_loop_state.position)
             self.mode = backend_loop_state.mode
             self.maybe_next_mode =  (None if backend_loop_state.maybe_next_mode == bindings.LOOP_MODE_INVALID else backend_loop_state.maybe_next_mode)
             self.maybe_next_delay = (None if backend_loop_state.maybe_next_mode == bindings.LOOP_MODE_INVALID else backend_loop_state.maybe_next_mode_delay)
@@ -199,10 +205,10 @@ class MidiPortState:
 
     def __init__(self, backend_state : 'bindings.shoop_audio_port_state_info_t' = None):
         if backend_state:
-            self.n_input_events = backend_state.n_input_events
-            self.n_input_notes_active = backend_state.n_input_notes_active
-            self.n_output_events = backend_state.n_output_events
-            self.n_output_notes_active = backend_state.n_output_notes_active
+            self.n_input_events = to_int(backend_state.n_input_events)
+            self.n_input_notes_active = to_int(backend_state.n_input_notes_active)
+            self.n_output_events = to_int(backend_state.n_output_events)
+            self.n_output_notes_active = to_int(backend_state.n_output_notes_active)
             self.muted = bool(backend_state.muted)
             self.passthrough_muted = bool(backend_state.passthrough_muted)
             self.name = str(backend_state.name)
@@ -222,8 +228,8 @@ class MidiEvent:
     data: List[int]
     
     def __init__(self, backend_event : 'bindings.shoop_midi_event_t'):
-        self.time = backend_event.time
-        self.size = backend_event.size
+        self.time = to_int(backend_event.time)
+        self.size = to_int(backend_event.size)
         self.data = [int(backend_event.data[i]) for i in range(backend_event.size)]
 
 @dataclass
@@ -260,6 +266,7 @@ class ProfilingReport:
     
     def __init__(self):
         self.items = []
+
 @dataclass
 class AudioDriverState:
     dsp_load : float
@@ -272,11 +279,11 @@ class AudioDriverState:
     
     def __init__(self, backend_obj : 'bindings.shoop_audio_driver_state_t'):
         self.dsp_load = float(backend_obj.dsp_load_percent)
-        self.xruns = int(backend_obj.xruns_since_last)
+        self.xruns = to_int(backend_obj.xruns_since_last)
         self.maybe_driver_handle = backend_obj.maybe_driver_handle
         self.maybe_instance_name = str(backend_obj.maybe_instance_name)
-        self.sample_rate = int(backend_obj.sample_rate)
-        self.buffer_size = int(backend_obj.buffer_size)
+        self.sample_rate = to_int(backend_obj.sample_rate)
+        self.buffer_size = to_int(backend_obj.buffer_size)
         self.active = bool(backend_obj.active)
 
 @dataclass
