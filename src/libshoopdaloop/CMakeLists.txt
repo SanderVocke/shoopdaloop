@@ -63,6 +63,8 @@ add_custom_target(
 
 set(EXTERNAL_DEPS_PREFIX ${CMAKE_CURRENT_BINARY_DIR}/external_deps)
 
+add_subdirectory(crashhandling)
+
 # Backend lib
 file(GLOB INTERNAL_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/internal/*.cpp)
 if (HAVE_LV2)

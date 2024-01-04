@@ -84,6 +84,27 @@ Item {
                                 Delay.blocking_delay(10000)
                             }
                         }
+
+                        ShoopMenuItem {
+                            text: "Test throw back-end exception"
+                            onClicked: {
+                                os_utils.test_exception()
+                            }
+                        }
+
+                        ShoopMenuItem {
+                            text: "Text back-end segfault"
+                            onClicked: {
+                                os_utils.test_segfault()
+                            }
+                        }
+
+                        ShoopMenuItem {
+                            text: "Text back-end abort"
+                            onClicked: {
+                                os_utils.test_abort()
+                            }
+                        }
                     }
                     onObjectAdded: (index, object) => mainmenu.insertMenu(mainmenu.contentData.length, object)
                     onObjectRemoved: (index, object) => mainmenu.removeItem(object)

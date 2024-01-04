@@ -153,7 +153,7 @@ def create_and_populate_root_context(engine, global_args, additional_items={}):
         'settings_io': SettingsIO(parent=engine),
         'registries': registries,
         'screen_grabber': TestScreenGrabber(weak_engine=weakref.ref(engine), parent=engine),
-        'os_utils': OSUtils(parent=engine),
+        'os_utils': OSUtils(parent=engine)
     }
 
     for key, item in additional_items.items():

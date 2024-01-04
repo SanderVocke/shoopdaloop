@@ -12,6 +12,9 @@ from shoopdaloop.lib.q_objects.Application import Application
 from shoopdaloop.lib.logging import *
 from shoopdaloop.lib.backend_wrappers import *
 
+from shoopdaloop.lib.crash_handling import *
+init_crash_handling()
+
 def main():
     logger = Logger("Frontend.Main")    
     try:
