@@ -10,17 +10,20 @@ ShoopTestFile {
         id: backend
         update_interval_ms: 30
         client_name_hint: 'shoop'
-        backend_type: ShoopConstants.AudioDriverType.JackTest
+        backend_type: backend_type_is_supported(ShoopConstants.AudioDriverType.JackTest) ?
+                      ShoopConstants.AudioDriverType.JackTest : ShoopConstants.AudioDriverType.Dummy
         driver_setting_overrides: ({})
 
         ShoopTestCase {
             name: 'JackBackend'
             filename : TestFilename.test_filename()
+            when: backend.initialized || backend.backend_type == null
 
             test_fns: ({
                 'test_backend_jack': () => {
                     if(!backend.backend_type_is_supported(ShoopConstants.AudioDriverType.JackTest)) {
                         skip("Backend was built without Jack support")
+                        backend.close()
                         return
                     }
 

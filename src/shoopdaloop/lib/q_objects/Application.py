@@ -114,7 +114,7 @@ class Application(ShoopQGuiApplication):
                     self.logger.debug(f"deleteLater on {obj}")
                     obj.deleteLater()
             self.engine.deleteLater()
-            self.wait(10)
+            self.wait(100)
             self.engine = None
             self.wait(10)
     
@@ -260,6 +260,7 @@ class Application(ShoopQGuiApplication):
         end = time.time() + ms * 0.001
         while time.time() < end:
             self.processEvents()
+            self.sendPostedEvents()
 
     @Slot()
     def do_quit(self):

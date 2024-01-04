@@ -9,8 +9,8 @@ set(CMAKE_CXX_EXTENSIONS NO)
 set(CMAKE_EXPORT_COMPILE_COMMANDS YES)
 set(CMAKE_VISIBILITY_INLINES_HIDDEN 1)
 
-
-set(PYTHON_CMD python)
+find_package(PythonInterp 3 REQUIRED)
+set(PYTHON_CMD ${Python3_EXECUTABLE})
 set(GLOB_CMD ${PYTHON_CMD} "${CMAKE_SOURCE_DIR}/../scripts/do_glob.py")
 set(RUN_WITH_ENV_CMD ${PYTHON_CMD} "${CMAKE_SOURCE_DIR}/../scripts/run_with_env_from_files.py")
 
