@@ -242,6 +242,13 @@ PythonTestCase {
         wait_once()
     }
 
+    function wait_controlled_mode(backend) {
+        wait_updated(backend)
+        while(backend.last_processed != 0) {
+            wait_updated(backend)
+        }
+    }
+
     property var current_testcase: {
         'name': 'none',
         'checks': 0,
