@@ -49,6 +49,7 @@ ShoopTestFile {
             testcase_init_fn: () =>  {
                 run_case("initTestCase" , () => {
                     session.backend.dummy_enter_controlled_mode()
+                    testcase.wait_controlled_mode(session.backend)
                 })
             }
 

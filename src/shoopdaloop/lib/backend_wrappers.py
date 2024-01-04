@@ -276,6 +276,7 @@ class AudioDriverState:
     sample_rate : int
     buffer_size : int
     active : bool
+    last_processed : int
     
     def __init__(self, backend_obj : 'bindings.shoop_audio_driver_state_t'):
         self.dsp_load = float(backend_obj.dsp_load_percent)
@@ -285,6 +286,7 @@ class AudioDriverState:
         self.sample_rate = to_int(backend_obj.sample_rate)
         self.buffer_size = to_int(backend_obj.buffer_size)
         self.active = bool(backend_obj.active)
+        self.last_processed = to_int(backend_obj.last_processed)
 
 @dataclass
 class JackAudioDriverSettings:
