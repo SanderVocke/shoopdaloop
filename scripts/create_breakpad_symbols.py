@@ -2,7 +2,6 @@
 import sys
 import tempfile
 import subprocess
-import locale
 import os
 
 dumpsym=sys.argv[1]
@@ -12,12 +11,12 @@ symbolsdir=sys.argv[3]
 def main():
     print("Creating breakpad symbols in {} for {}".format(symbolsdir, binary))
     
-    procresult = subprocess.run([dumpsym, binary], capture_output=True, encoding=locale.getencoding())
-    print(procresult.stderr, file=sys.stderr)
+    procresult = subprocess.run([dumpsym, binary], capture_output=True)
+    print(procresult.stderr.decode('utf8'), file=sys.stderr)
     if procresult.returncode != 0:
         return procresult.returncode
     
-    symbols = procresult.stdout
+    symbols = procresult.stdout.decode('utf8')
     first_line = symbols.split('\n')[0].strip()
     words = first_line.split(' ')
 
