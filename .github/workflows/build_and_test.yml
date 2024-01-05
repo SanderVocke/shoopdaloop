@@ -291,7 +291,7 @@ jobs:
       if: ${{ matrix.kind.asan }}
       shell: bash
       run: |
-        ${{ matrix.kind.python }} install wheel
+        ${{ matrix.kind.pip }} install wheel
         mkdir unzip_whl
         ${{ matrix.kind.python }} -m wheel unpack ~/wheel/*.whl -d unzip_whl
         cp ~/unzip_whl/libasan.so* /usr/lib/x86_64-linux-gnu/libasan_shoop.so
