@@ -1,6 +1,5 @@
 from shoopdaloop.lib.directories import installed_dir
 import platform
-import locale
 import subprocess
 import sys
 
@@ -13,7 +12,7 @@ def format_crash_dump(dmp_filename):
     if platform.system() == 'Windows':
         stackwalk += '.exe'
     
-    procresult = subprocess.run([stackwalk, dmp_filename, symbols_dir], capture_output=True, encoding=locale.getencoding())
+    procresult = subprocess.run([stackwalk, dmp_filename, symbols_dir], capture_output=True, encoding='utf8')
     return {
         'exitcode': procresult.returncode,
         'stderr': procresult.stderr,
