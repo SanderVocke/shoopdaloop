@@ -294,7 +294,7 @@ jobs:
         ${{ matrix.kind.pip }} install wheel
         mkdir unzip_whl
         ${{ matrix.kind.python }} -m wheel unpack ~/wheel/*.whl -d unzip_whl
-        cp ~/unzip_whl/shoopdaloop*/libasan.so* /usr/lib/x86_64-linux-gnu/libasan_shoop.so
+        cp ~/unzip_whl/shoopdaloop*/shoopdaloop/libasan.so* /usr/lib/x86_64-linux-gnu/libasan_shoop.so
     - name: Install wheel
       id: install
       shell: bash
