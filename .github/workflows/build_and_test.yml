@@ -376,12 +376,20 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v3
-    - name: Install tools
+    - name: Install tools part 1
       shell: bash
       run: |
         pacman --noconfirm -Syy
-        pacman --noconfirm -S --needed git base-devel && git clone https://aur.archlinux.org/yay.git && cd yay && makepkg -si
-        yay -S minidump-stackwalk
+        pacman --noconfirm -S --needed git base-devel && git clone https://aur.archlinux.org/minidump-stackwalk.git
+    - name: Makepkg Build
+      id: makepkg
+      uses: edlanglois/pkgbuild-action@v1
+      with:
+        pkgdir: minidump-stackwalk
+    - name: Install tools part 2
+      shell: bash
+      run: |
+        pacman -U ${{ steps.makepkg.outputs.pkgfile0 }}
     - name: Download artifacts
       uses: actions/download-artifact@v4
       with:
