@@ -18,7 +18,7 @@ runs:
       echo "export PATH=\"\$PATH:$(find /opt/_internal -name "cpython-3.8.*")/bin\"" >> $HOME/.bashrc
 
       # Official packages needed
-      dnf -y install ninja-build libsndfile libsamplerate libasan8 gcc-toolset-12-libasan-devel.x86_64 perl-Time-HiRes perl-Capture-Tiny perl-Module-Load-Conditional perl-DateTime perl-JSON perl-JSON-XS alsa-lib-devel
+      dnf -y install ninja-build libsndfile libsamplerate libasan8 gcc-toolset-12-libasan-devel.x86_64 perl-Time-HiRes perl-Capture-Tiny perl-Module-Load-Conditional perl-DateTime perl-JSON perl-JSON-XS alsa-lib-devel zlib-devel
   - name: Install boost
     id: install_boost
     uses: ./.github/actions/install_boost_headers
