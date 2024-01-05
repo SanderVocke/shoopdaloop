@@ -27,16 +27,8 @@ def main():
         parser.add_argument('-e', '--developer', action='store_true', help='Enable developer functionality.')
         parser.add_argument('--test-grab-screens', type=str, help='For debugging: will open several windows, grab and save screenshots of them, store them in the given folder (will create if not existing) and then exit.')
         parser.add_argument('--quit-when-loaded', action='store_true', help='For debugging: quit immediately when fully loaded.')
-        parser.add_argument('--format-crash-dump', type=str, help='Print all known info about a crash dump and exit.')
         parser.add_argument('session_filename', type=str, default=None, nargs='?', help='(optional) Load a session from a file upon startup.')
         args = parser.parse_args()
-
-        if (args.format_crash_dump):
-            from shoopdaloop.lib.format_crash_dump import format_crash_dump
-            result = format_crash_dump(args.format_crash_dump)
-            print(result['stderr'], file=sys.stderr)
-            print(result['stdout'])
-            exit(result['exitcode'])
         
         from shoopdaloop.lib.q_objects.Application import Application
         from shoopdaloop.lib.crash_handling import init_crash_handling

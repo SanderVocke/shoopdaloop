@@ -145,6 +145,7 @@ jobs:
       with:
         variant: ${{ matrix.kind.prepare }}
         wheel: ${{ steps.buildwheel.outputs.wheel_filename }}
+        build_dir: ${{ steps.buildwheel.outputs.build_dir }}
     - name: Find wheel
       shell: bash
       id: find
@@ -156,7 +157,12 @@ jobs:
       with:
         name: ${{ matrix.kind.name }}_wheel
         path: ${{ steps.find.outputs.name }}
-        variant_name: 
+    - name: Upload debug info (${{ inputs.variant_name }})
+      if: ${{ !env.ACT }}
+      uses: actions/upload-artifact@v3
+      with:
+        name: debuginfo_${{ matrix.kind.name }}
+        path: debuginfo
     # - name: TMate failure session
     #   if: ${{ failure() }}
     #   uses: SanderVocke/action-tmate@master

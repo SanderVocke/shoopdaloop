@@ -19,9 +19,6 @@ runs:
     if: ${{ !env.ACT }}
     shell: bash
     run: |
-      for f in $(ls ${{ inputs.dumps_dir }}/*.dmp); do
-        ${{ inputs.python }} -m shoopdaloop --format-crash-dump $f 2>&1 > $f.stackwalk
-      done
       if [ $(ls ${{ inputs.dumps_dir}} | wc -l) -gt 0 ]; then
         echo "upload=true" | tee -a $GITHUB_OUTPUT
       fi

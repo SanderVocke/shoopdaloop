@@ -55,15 +55,6 @@ set(BREAKPAD_SYMBOLS_DIR ${BREAKPAD_SYMBOLS_DIR} PARENT_SCOPE)
 set(BREAKPAD_BUILD_DIR ${BREAKPAD_BUILD_DIR} PARENT_SCOPE)
 set(BREAKPAD_DUMP_SYMS ${BREAKPAD_DUMP_SYMS} PARENT_SCOPE)
 
-install(FILES ${BREAKPAD_DUMP_SYMS} ${BREAKPAD_MINIDUMP_STACKWALK}
-        EXCLUDE_FROM_ALL
-        COMPONENT package_install
-        DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME}/crash_handling)
-install(DIRECTORY ${BREAKPAD_SYMBOLS_DIR}
-      EXCLUDE_FROM_ALL
-      COMPONENT package_install
-      DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME}/crash_handling)
-
 # use this function on any target you want to generate symbols for.
 function(create_breakpad_symbols_dump TARGET)
   add_custom_command(TARGET ${TARGET} POST_BUILD
