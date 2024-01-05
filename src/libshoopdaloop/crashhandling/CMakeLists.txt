@@ -9,6 +9,9 @@ target_link_libraries(shoop_crashhandling PRIVATE ${BREAKPAD_CLIENT_LIB} ${BREAK
 add_dependencies(shoop_crashhandling breakpad_proj)
 create_breakpad_symbols_dump(shoop_crashhandling)
 
+add_executable(test_segfault test_segfault.cpp)
+target_link_libraries(test_segfault PRIVATE shoop_crashhandling)
+
 if(APPLE)
   target_link_libraries(shoop_crashhandling PRIVATE
   "-framework Foundation"
