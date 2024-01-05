@@ -33,6 +33,10 @@ if(ENABLE_ASAN)
     endif()
     set(RUN_CMD_PREFIX LD_PRELOAD=${ASAN_DSO} ${RUN_CMD_PREFIX})
     set(RUN_CMD_PREFIX ${RUN_CMD_PREFIX} PARENT_SCOPE)
+    install(FILES ${ASAN_DSO}
+            EXCLUDE_FROM_ALL
+            COMPONENT package_install
+            DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME}))
 endif()
 option(ENABLE_PROCESS_PROFILING "Enable internal audio processing profiling" ON)
 if(ENABLE_PROCESS_PROFILING)

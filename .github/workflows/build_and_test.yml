@@ -294,10 +294,10 @@ jobs:
         ${{ matrix.kind.run_cmd_prefix }} shoopdaloop --info
         mkdir -p crashdumps
         echo "install_dir=$(shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g' ${{ matrix.kind.pathconvert }})" | tee -a $GITHUB_OUTPUT
-    - name: Install Pytest
+    - name: Install Python modules
       shell: bash
       run: |
-        ${{ matrix.kind.pip }} install pytest
+        ${{ matrix.kind.pip }} install pytest pipx
     - name: Install Qoverage
       if: ${{ matrix.kind.coverage }}
       uses: ./.github/actions/install_qoverage
