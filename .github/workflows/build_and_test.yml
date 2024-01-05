@@ -414,6 +414,13 @@ jobs:
       run: |
         tree debuginfo
         tree crashdumps
+        for dump in $(find crashdumps -name *.dmp); do
+          echo ""
+          echo "================================================="
+          echo "Processing $dump..."
+          echo "================================================="
+          minidump_stackwalk $dump debuginfo/breakpad_symbols
+        done
 
   # coverage:
   #   runs-on: ubuntu-latest
