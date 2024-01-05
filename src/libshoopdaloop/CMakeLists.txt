@@ -31,8 +31,9 @@ if(ENABLE_ASAN)
         message("Found that libasan.so is a linker script pointing to ${ASAN_DSO}.")
       endif()
     endif()
-    set(RUN_CMD_PREFIX LD_PRELOAD=${ASAN_DSO} ${RUN_CMD_PREFIX})
-    set(RUN_CMD_PREFIX ${RUN_CMD_PREFIX} PARENT_SCOPE)
+    #set(RUN_CMD_PREFIX LD_PRELOAD=${ASAN_DSO} ${RUN_CMD_PREFIX})
+    #set(RUN_CMD_PREFIX ${RUN_CMD_PREFIX} PARENT_SCOPE)
+    link_libraries(${ASAN_DSO})
     install(FILES ${ASAN_DSO}
             EXCLUDE_FROM_ALL
             COMPONENT package_install
