@@ -119,6 +119,9 @@ jobs:
       uses: ./.github/actions/prepare_build
       with:
         variant: ${{ matrix.kind.prepare }}
+    - name: Set overrides
+      shell: bash
+      run: echo "${{ matrix.kind.overrides }}" > py-build-cmake.local.toml
     - name: Build wheel
       id: buildwheel
       uses: ./.github/actions/build_wheel
@@ -126,7 +129,6 @@ jobs:
         variant_name: ${{ matrix.kind.name }}
         python: ${{ matrix.kind.python}}
         prepend_build_cmd: ${{ steps.prepare.outputs.prepend_build_cmd }}
-        pypa_build_extra_args: -C--local=<(echo ${{ matrix.kind.overrides}}) # using a heredoc to pass options
         windows: ${{ matrix.kind.prepare == 'windows' && 'true' || 'false' }}
         rename_wheel_sed: ${{ matrix.kind.rename_wheel_sed }}
     - name: Post-build steps
