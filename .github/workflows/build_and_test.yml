@@ -380,7 +380,7 @@ jobs:
       shell: bash
       run: |
         pacman --noconfirm -Syy
-        pacman --noconfirm -S --needed git base-devel && git clone https://aur.archlinux.org/minidump-stackwalk.git
+        pacman --noconfirm -S --needed git base-devel tree && git clone https://aur.archlinux.org/minidump-stackwalk.git
     - name: Makepkg Build
       id: makepkg
       uses: edlanglois/pkgbuild-action@v1
@@ -389,7 +389,7 @@ jobs:
     - name: Install tools part 2
       shell: bash
       run: |
-        pacman -U ${{ steps.makepkg.outputs.pkgfile0 }}
+        pacman --noconfirm -U ${{ steps.makepkg.outputs.pkgfile0 }}
     - name: Download artifacts
       uses: actions/download-artifact@v4
       with:
@@ -409,6 +409,11 @@ jobs:
         path: debuginfo
         pattern: debuginfo_*
         merge-multiple: true
+    - name: ./.github/actions/test_backend
+      shell: bash
+      run: |
+        tree debuginfo
+        tree crashdumps
 
   # coverage:
   #   runs-on: ubuntu-latest
