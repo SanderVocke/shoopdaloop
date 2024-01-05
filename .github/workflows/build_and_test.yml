@@ -191,6 +191,23 @@ jobs:
             wheel: linux_release_wheel
             testrunner: test_runner
             qpa_platform: vnc
+          - name: asan_ubuntu_latest
+            python: python3
+            pip: python3 -m pip
+            container: sandervocke/shoopdaloop_run_base_ubuntu_latest:latest
+            os: ubuntu-latest
+            wheel: linux_asan_wheel
+            testrunner: test_runner
+            qpa_platform: vnc
+          - name: coverage_ubuntu_latest
+            python: python3
+            pip: python3 -m pip
+            container: sandervocke/shoopdaloop_run_base_ubuntu_latest:latest
+            os: ubuntu-latest
+            wheel: linux_coverage_wheel
+            testrunner: test_runner
+            qpa_platform: vnc
+            coverage: true
           - name: release_macos11
             python: python3
             pip: python3 -m pip
@@ -266,6 +283,14 @@ jobs:
       shell: bash
       run: |
         ${{ matrix.kind.pip }} install pytest
+    - name: Install Qoverage
+      if: ${{ matrix.kind.coverage }}
+      uses: ./.github/actions/install_qoverage
+    - name: Qoverage - Instrument QML files
+      if: ${{ matrix.kind.coverage }}
+      uses: ./.github/actions/qoverage_instrument
+      with:
+        package_path: ${{ steps.build.outputs.install_dir }}
     - name: Test back-end
       if: ${{ success() || failure() }}
       uses: ./.github/actions/test_backend
@@ -326,49 +351,6 @@ jobs:
     # - name: TMate failure session
     #   if: ${{ failure() }}
     #   uses: SanderVocke/action-tmate@master
-        
-  # asan:
-  #   runs-on: ubuntu-latest
-  #   container:
-  #     image: quay.io/pypa/manylinux_2_28_x86_64:latest
-  #     options: --user root --workdir /
-  #   steps:
-  #   - name: Checkout
-  #     uses: actions/checkout@v3
-  #     with:
-  #       submodules: recursive
-  #   - name: Prepare manylinux environment
-  #     uses: ./.github/actions/prepare_build_manylinux_2_28
-  #   - name: Build, install and upload
-  #     id: build
-  #     uses: ./.github/actions/build_wheel
-  #     with:
-  #       variant_name: asan
-  #       wheel_artifact_name: asan_wheel
-  #       pypa_build_extra_args: -C--local=pyproject.toml.debug_asan_overrides
-  #       pip_install_extra_args: --break-system-packages
-  #       whl_suffix: asan
-  #       install: true
-  #   - name: Test back-end
-  #     uses: ./.github/actions/test_backend
-  #     with:
-  #       variant_name: asan
-  #       # note: build step generates run_cmd_prefix output
-  #       # for usage with shared ASAN library.
-  #       run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
-  #       test_runner_dir: ${{ steps.build.outputs.install_dir }}
-  #   - name: Test Python
-  #     uses: ./.github/actions/test_python
-  #     with:
-  #       variant_name: asan
-  #       run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
-  #       root_path: ${{ steps.build.outputs.install_dir }}
-  #   - name: Test QML
-  #     uses: ./.github/actions/test_qml
-  #     with:
-  #       variant_name: asan
-  #       run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }} LD_LIBRARY_PATH="/usr/local/lib"
-  #       root_path: ${{ steps.build.outputs.install_dir }}
   
   # coverage:
   #   runs-on: ubuntu-latest
