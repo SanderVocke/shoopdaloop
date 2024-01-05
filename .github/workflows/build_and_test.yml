@@ -285,6 +285,7 @@ jobs:
       run: |
         SHOOP_LOG=debug ${{ matrix.kind.pip }} install --force-reinstall ~/wheel/*.whl
         shoopdaloop --info
+        mkdir -p crashdumps
         echo "install_dir=$(shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g' ${{ matrix.kind.pathconvert }})" | tee -a $GITHUB_OUTPUT
     - name: Install Pytest
       shell: bash
@@ -306,7 +307,7 @@ jobs:
         variant_name: release
         # note: build step generates run_cmd_prefix output
         # for usage with shared ASAN library.
-        run_cmd_prefix: ${{ steps.build.outputs.run_cmd_prefix }}
+        run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps ${{ steps.build.outputs.run_cmd_prefix }}
         test_runner: ${{ steps.install.outputs.install_dir }}/${{ matrix.kind.testrunner }}
     - name: Test Python
       if: ${{ success() || failure() }}
