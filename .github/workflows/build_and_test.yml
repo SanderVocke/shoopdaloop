@@ -212,7 +212,8 @@ jobs:
             wheel: linux_asan_wheel
             testrunner: test_runner
             qpa_platform: vnc
-            run_cmd_prefix: "LD_PRELOAD=libasan.so ASAN_OPTIONS=detect_leaks=0"
+            run_cmd_prefix: "LD_PRELOAD=libasan_shoop.so ASAN_OPTIONS=detect_leaks=0"
+            asan: true
           - name: coverage_ubuntu_latest
             python: python3
             pip: python3 -m pip
@@ -286,6 +287,13 @@ jobs:
       with:
         name: ${{ matrix.kind.wheel }}
         path: ~/wheel
+    - name: Pre-install ASAN shared lib
+      if: ${{ matrix.kind.asan }}
+      shell: bash
+      run: |
+        mkdir unzip_whl
+        unzip ~/wheel/*.whl -d unzip_whl
+        cp ~/unzip_whl/libasan.so* /usr/lib/x86_64-linux-gnu/libasan_shoop.so
     - name: Install wheel
       id: install
       shell: bash
