@@ -14,10 +14,22 @@ runs:
   using: "composite"
   steps:
 
+  - name: Process dumps (${{ inputs.variant }})
+    id: process
+    if: ${{ !env.ACT }}
+    shell: bash
+    run: |
+      for f in ${{ inputs.dumps_dir }}/*.dmp; do
+        ${{ inputs.python }} -m shoopdaloop --format-crash-dump $f 2>&1 > $f.stackwalk
+      done
+      if [ $(ls ${{ inputs.dumps_dir}} | wc -l) -gt 0 ]; then
+        echo "upload=true" | tee -a $GITHUB_OUTPUT
+      fi
+
   - name: Upload dumps (${{ inputs.variant }})
-      if: ${{ !env.ACT }}
-      uses: actions/upload-artifact@v3
-      with:
-        name: ${{ matrix.kind.name }}_crash_dumps
-        path: ${{ inputs.dumps_dir }}
+    if: ${{ !env.ACT && steps.process.outputs.upload }}
+    uses: actions/upload-artifact@v3
+    with:
+      name: ${{ matrix.kind.name }}_crash_dumps
+      path: ${{ inputs.dumps_dir }}
 
