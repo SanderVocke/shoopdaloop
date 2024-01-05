@@ -212,6 +212,7 @@ jobs:
             wheel: linux_asan_wheel
             testrunner: test_runner
             qpa_platform: vnc
+            run_cmd_prefix: "LD_PRELOAD=libasan.so ASAN_OPTIONS=detect_leaks=0"
           - name: coverage_ubuntu_latest
             python: python3
             pip: python3 -m pip
@@ -289,8 +290,8 @@ jobs:
       id: install
       shell: bash
       run: |
-        SHOOP_LOG=debug ${{ matrix.kind.pip }} install --force-reinstall ~/wheel/*.whl
-        shoopdaloop --info
+        SHOOP_LOG=debug ${{ matrix.kind.run_cmd_prefix }} ${{ matrix.kind.pip }} install --force-reinstall ~/wheel/*.whl
+        ${{ matrix.kind.run_cmd_prefix }} shoopdaloop --info
         mkdir -p crashdumps
         echo "install_dir=$(shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g' ${{ matrix.kind.pathconvert }})" | tee -a $GITHUB_OUTPUT
     - name: Install Pytest
@@ -300,11 +301,13 @@ jobs:
     - name: Install Qoverage
       if: ${{ matrix.kind.coverage }}
       uses: ./.github/actions/install_qoverage
+      with:
+        python: ${{ matrix.kind.python }}
     - name: Qoverage - Instrument QML files
       if: ${{ matrix.kind.coverage }}
       uses: ./.github/actions/qoverage_instrument
       with:
-        package_path: ${{ steps.build.outputs.install_dir }}
+        package_path: ${{ steps.install.outputs.install_dir }}
     - name: Test back-end
       if: ${{ success() || failure() }}
       uses: ./.github/actions/test_backend
@@ -313,7 +316,7 @@ jobs:
         variant_name: release
         # note: build step generates run_cmd_prefix output
         # for usage with shared ASAN library.
-        run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps ${{ steps.build.outputs.run_cmd_prefix }}
+        run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps ${{ matrix.kind.run_cmd_prefix }}
         test_runner: ${{ steps.install.outputs.install_dir }}/${{ matrix.kind.testrunner }}
     - name: Test Python
       if: ${{ success() || failure() }}
@@ -321,7 +324,7 @@ jobs:
       timeout-minutes: 5
       with:
         variant_name: release
-        run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps ${{ steps.build.outputs.run_cmd_prefix }}
+        run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps ${{ matrix.kind.run_cmd_prefix }}
         root_path: ${{ steps.install.outputs.install_dir }}
         pytest_command: ${{ matrix.kind.python }} -m pytest
     - name: Test QML
@@ -330,7 +333,7 @@ jobs:
       timeout-minutes: 20
       with:
         variant_name: release
-        run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps ${{ steps.build.outputs.run_cmd_prefix }}
+        run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps ${{ matrix.kind.run_cmd_prefix }}
         root_path: ${{ steps.install.outputs.install_dir }}
         python_command: ${{ matrix.kind.python }}
         qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
@@ -351,7 +354,7 @@ jobs:
       timeout-minutes: 15
       with:
         variant_name: release
-        run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps ${{ steps.build.outputs.run_cmd_prefix }}
+        run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps ${{ matrix.kind.run_cmd_prefix }}
         root_path: ${{ steps.install.outputs.install_dir }}
         python: ${{ matrix.kind.python }}
         qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
@@ -410,7 +413,8 @@ jobs:
       shell: bash
       run: |
         pacman --noconfirm -U ${{ steps.makepkg.outputs.pkgfile0 }}
-    - name: ./.github/actions/test_backend
+    - name: Process dumps
+      if: ${{ steps.count.outputs.crashdumps != 0 }}
       shell: bash
       run: |
         tree debuginfo

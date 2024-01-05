@@ -43,6 +43,6 @@ runs:
       popd
 
       # Additional Python packages
-      python3 -m pip install coverage pytest
+      python3 -m pip install coverage pytest pipx
 
       touch _manylinux_prepared
