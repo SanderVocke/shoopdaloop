@@ -12,10 +12,10 @@ ShoopDialog {
     x: (parent.width - width) / 2
     y: (parent.height - height) / 2
     modal: true
-    title: tracks.length == 0 ? 'Initial track' : 'Add track'
+    title: tracks.length == 0 ? 'Welcome' : 'Add track'
 
     width: 400
-    height: childrenRect.height
+    height: grid.implicitHeight + 160
 
     property var tracks : []
     property var get_max_loop_slots : () => 8
@@ -63,12 +63,13 @@ ShoopDialog {
     }
 
     Grid {
+        id: grid
         columns: 2
         verticalItemAlignment: Grid.AlignVCenter
         columnSpacing: 10
 
         Label {
-            text: "(first loop will be sync loop)"
+            text: "Choose the settings for your initial track.\nIts first loop will be the global sync loop."
             visible: make_first_sync
         }
         Rectangle {

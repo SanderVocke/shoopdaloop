@@ -383,12 +383,12 @@ jobs:
       uses: actions/download-artifact@v4
       with:
         path: crashdumps
-        pattern: crashdumps_*
+        #pattern: crashdumps_*
     - name: Count crash dumps
       id: count
       shell: bash
       run: |
-        echo "crashdumps=$(ls crashdumps | wc -l)" | tee -a $GITHUB_OUTPUT
+        echo "crashdumps=$(ls "crashdumps/crashdumps_*"" | wc -l)" | tee -a $GITHUB_OUTPUT
     - name: Download debug information
       uses: actions/download-artifact@v4
       if: ${{ steps.count.outputs.crashdumps != 0 }}
