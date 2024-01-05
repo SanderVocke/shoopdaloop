@@ -8,16 +8,10 @@ import glob
 import ctypes
 import platform
 
-from shoopdaloop.lib.q_objects.Application import Application
-from shoopdaloop.lib.logging import *
-from shoopdaloop.lib.backend_wrappers import *
-
-from shoopdaloop.lib.crash_handling import *
-init_crash_handling()
-
 def main():
     logger = Logger("Frontend.Main")    
     try:
+        from shoopdaloop.lib.backend_wrappers import AudioDriverType
         mains = [ os.path.basename(p).replace('.qml','') for p in glob.glob('{}/lib/qml/applications/*.qml'.format(installation_dir())) ]
 
         parser = argparse.ArgumentParser(
@@ -32,8 +26,20 @@ def main():
         parser.add_argument('-e', '--developer', action='store_true', help='Enable developer functionality.')
         parser.add_argument('--test-grab-screens', type=str, help='For debugging: will open several windows, grab and save screenshots of them, store them in the given folder (will create if not existing) and then exit.')
         parser.add_argument('--quit-when-loaded', action='store_true', help='For debugging: quit immediately when fully loaded.')
+        parser.add_argument('--format-crash-dump', type=str, help='Print all known info about a crash dump and exit.')
         parser.add_argument('session_filename', type=str, default=None, nargs='?', help='(optional) Load a session from a file upon startup.')
         args = parser.parse_args()
+
+        if (args.format_crash_dump):
+            from shoopdaloop.lib.format_crash_dump import format_crash_dump
+            result = format_crash_dump(args.format_crash_dump)
+            print(result['stderr'], file=sys.stderr)
+            print(result['stdout'])
+            exit(result['exitcode'])
+        
+        from shoopdaloop.lib.q_objects.Application import Application
+        from shoopdaloop.lib.crash_handling import init_crash_handling
+        init_crash_handling()
 
         backends_map = {b.name.lower(): b for b in AudioDriverType}
         args.backend = backends_map[args.backend]

@@ -1,0 +1,23 @@
+name: QML Tests
+description: Integration tests at the QML level
+
+inputs:
+  python:
+    type: string
+    default: python3
+  dumps_dir:
+    type: string
+  variant:
+    type: string
+
+runs:
+  using: "composite"
+  steps:
+
+  - name: Upload dumps (${{ inputs.variant }})
+      if: ${{ !env.ACT }}
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ matrix.kind.name }}_crash_dumps
+        path: ${{ inputs.dumps_dir }}
+

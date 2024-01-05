@@ -13,6 +13,7 @@ CrashedCallback g_crashed_callback = nullptr;
 #if __APPLE__
 static bool dumpCallback(const char* dump_dir, const char* minidump_id, void* context, bool succeeded) {
     std::cout << "ShoopDaLoop crashed. Breakpad crash dump saved @ " << dump_dir << "/" << minidump_id << ".dmp." << std::endl;
+    std::cout << "To analyze partially, execute shoopdaloop --format-crash-dump on this .dmp file.";
     std::string _dd(dump_dir), _did(minidump_id);
     std::string filename = _dd + "/" + _did + ".dmp";
     if (g_crashed_callback) {
@@ -23,6 +24,7 @@ static bool dumpCallback(const char* dump_dir, const char* minidump_id, void* co
 #elif defined(_WIN32)
 static bool dumpCallback(const wchar_t* dump_dir, const wchar_t* minidump_id, void* context, EXCEPTION_POINTERS* exinfo, MDRawAssertionInfo *assertion, bool succeeded) {
     std::wcout << "ShoopDaLoop crashed. Breakpad crash dump saved @ " << dump_dir << "/" << minidump_id << ".dmp." << std::endl;
+    std::cout << "To analyze partially, execute shoopdaloop --format-crash-dump on this .dmp file.";
     std::wstring _dd(dump_dir), _did(minidump_id);
     std::wstring wfilename = _dd + L"/" + _did + L".dmp";
     std::string filename = std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(wfilename);
@@ -35,6 +37,7 @@ static bool dumpCallback(const wchar_t* dump_dir, const wchar_t* minidump_id, vo
 static bool dumpCallback(const google_breakpad::MinidumpDescriptor& descriptor,
 void* context, bool succeeded) {
     std::cout << "ShoopDaLoop crashed. Breakpad crash dump saved @ " << descriptor.path() << "." << std::endl;
+    std::cout << "To analyze partially, execute shoopdaloop --format-crash-dump on this .dmp file.";
     if (g_crashed_callback) {
         g_crashed_callback(descriptor.path());
     }
@@ -44,7 +47,7 @@ void* context, bool succeeded) {
 
 extern "C" {
 
-void shoop_init_crashhandling(const char* dump_dir, CrashedCallback cb) {
+void shoop_init_crashhandling_with_cb(const char* dump_dir, CrashedCallback cb) {
     g_crashed_callback = cb;
 #if __APPLE__
     g_exception_handler = std::make_unique<google_breakpad::ExceptionHandler>(dump_dir, nullptr, dumpCallback, nullptr, true, nullptr);
@@ -55,6 +58,10 @@ void shoop_init_crashhandling(const char* dump_dir, CrashedCallback cb) {
     google_breakpad::MinidumpDescriptor descriptor(dump_dir);
     g_exception_handler = std::make_unique<google_breakpad::ExceptionHandler>(descriptor, nullptr, dumpCallback, nullptr, true, -1);
 #endif
+}
+
+void shoop_init_crashhandling(const char* dump_dir) {
+    shoop_init_crashhandling_with_cb(dump_dir, (CrashedCallback)nullptr);
 }
 
 void shoop_test_crash_segfault() {

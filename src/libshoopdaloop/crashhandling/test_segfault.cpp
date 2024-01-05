@@ -9,6 +9,6 @@ void callback(const char* dumped_file) {
 int main() {
     auto dir = std::filesystem::temp_directory_path().string();
     std::cout << "Setting up with dir = " << dir << std::endl;
-    shoop_init_crashhandling(dir.c_str(), callback);
+    shoop_init_crashhandling_with_cb(dir.c_str(), callback);
     shoop_test_crash_segfault();
 }

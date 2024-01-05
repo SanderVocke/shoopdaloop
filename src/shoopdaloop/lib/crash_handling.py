@@ -1,17 +1,15 @@
 import tempfile
 import faulthandler
 import ctypes
-
-def crash_dumped_cb(path):
-    print("Hello world: {}".format(path))
-c_crash_dumped_cb = None
+import os
 
 def init_crash_handling():
-    td = tempfile.gettempdir()
+    td = os.environ.get("SHOOP_CRASH_DUMP_DIR")
+    if not td:
+        td = tempfile.gettempdir()
     try:
         import shoop_crashhandling
-        c_crash_dumped_cb = shoop_crashhandling.CrashedCallback(crash_dumped_cb)
-        shoop_crashhandling.shoop_init_crashhandling(td, c_crash_dumped_cb)
+        shoop_crashhandling.shoop_init_crashhandling(td)
     except Exception as e:
         from .logging import Logger
         logger = Logger('Frontend.CrashHandling')
