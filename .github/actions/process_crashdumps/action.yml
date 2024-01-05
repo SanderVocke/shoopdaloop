@@ -30,6 +30,6 @@ runs:
     if: ${{ !env.ACT && steps.process.outputs.upload }}
     uses: actions/upload-artifact@v3
     with:
-      name: ${{ matrix.kind.name }}_crash_dumps
+      name: crashinfo_${{ matrix.kind.name }}
       path: ${{ inputs.dumps_dir }}
 
