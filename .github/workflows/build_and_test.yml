@@ -27,7 +27,7 @@ jobs:
             pip: python3 -m pip
             container_image: quay.io/pypa/manylinux_2_28_x86_64:latest
             prepare: 'manylinux_2_28'
-            overrides: 'cmake.build_type = "Release"'
+            build_type: 'Release'
             rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
           - name: linux_debug
             os: ubuntu-latest
@@ -35,7 +35,7 @@ jobs:
             pip: python3 -m pip
             container_image: quay.io/pypa/manylinux_2_28_x86_64:latest
             prepare: 'manylinux_2_28'
-            overrides: 'cmake.build_type = "Debug"'
+            build_type: 'Debug'
             rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
           - name: linux_barebones
             os: ubuntu-latest
@@ -43,7 +43,8 @@ jobs:
             pip: python3 -m pip
             container_image: quay.io/pypa/manylinux_2_28_x86_64:latest
             prepare: 'manylinux_2_28'
-            overrides: 'cmake.options = { "BACKEND_JACK" = "Off", "HAVE_LV2" = "Off" }'
+            build_type: 'Release'
+            cmake_opts: '"BACKEND_JACK" = "Off", "HAVE_LV2" = "Off"'
             rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
           - name: linux_asan
             os: ubuntu-latest
@@ -51,7 +52,8 @@ jobs:
             pip: python3 -m pip
             container_image: quay.io/pypa/manylinux_2_28_x86_64:latest
             prepare: 'manylinux_2_28'
-            overrides: 'cmake.build_type = "Debug", cmake.options = { "ENABLE_ASAN" = "On" }'
+            build_type: 'Debug'
+            cmake_opts: '"ENABLE_ASAN" = "On"'
             rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
           - name: linux_coverage
             os: ubuntu-latest
@@ -59,7 +61,8 @@ jobs:
             pip: python3 -m pip
             container_image: quay.io/pypa/manylinux_2_28_x86_64:latest
             prepare: 'manylinux_2_28'
-            overrides: 'cmake.build_type = "Debug", cmake.options = { "ENABLE_COVERAGE" = "On" }'
+            build_type: 'Debug'
+            cmake_opts: '"ENABLE_COVERAGE" = "On"'
             rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
           - name: windows_release
             os: windows-2022
@@ -67,7 +70,7 @@ jobs:
             pip: python.exe -m pip
             container_image: null
             prepare: 'windows'
-            overrides: 'cmake.build_type = "Release"'
+            build_type: 'Release'
             rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
           - name: windows_barebones
             os: windows-2022
@@ -75,7 +78,8 @@ jobs:
             pip: python.exe -m pip
             container_image: null
             prepare: 'windows'
-            overrides: 'cmake.options = { "BACKEND_JACK" = "Off", "HAVE_LV2" = "Off" }'
+            build_type: 'Release'
+            cmake_opts: '"BACKEND_JACK" = "Off", "HAVE_LV2" = "Off"'
             rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
           - name: windows_debug
             os: windows-2022
@@ -83,7 +87,7 @@ jobs:
             pip: python.exe -m pip
             container_image: null
             prepare: 'windows'
-            overrides: 'cmake.build_type = "Debug"'
+            build_type: 'Debug'
             rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
           - name: macos_release
             os: macos-11
@@ -91,7 +95,8 @@ jobs:
             pip: python3.8 -m pip
             container_image: null
             prepare: 'macos'
-            overrides: 'cmake.options = { "BACKEND_JACK" = "Off", "HAVE_LV2" = "Off" }'
+            build_type: 'Release'
+            cmake_opts: '"BACKEND_JACK" = "Off", "HAVE_LV2" = "Off"'
             # Note: for some reason, an incorrect MacOS identifier is generated (macos_11 instead of macos_11_0).
             # Also remove the double dot if any.
             rename_wheel_sed: "'s/(.*-macosx_[1-9]+_)(x86_64|arm64|universal2)[\\.]*whl/\\10_\\2.whl/g'"
@@ -101,7 +106,8 @@ jobs:
             pip: python3.8 -m pip
             container_image: null
             prepare: 'macos'
-            overrides: 'cmake.options = { "BACKEND_JACK" = "Off", "HAVE_LV2" = "Off" }'
+            build_type: 'Debug'
+            cmake_opts: '"BACKEND_JACK" = "Off", "HAVE_LV2" = "Off"'
             # Note: for some reason, an incorrect MacOS identifier is generated (macos_11 instead of macos_11_0).
             # Also remove the double dot if any.
             rename_wheel_sed: "'s/(.*-macosx_[1-9]+_)(x86_64|arm64|universal2)[\\.]*whl/\\10_\\2.whl/g'"
@@ -121,7 +127,9 @@ jobs:
         variant: ${{ matrix.kind.prepare }}
     - name: Set overrides
       shell: bash
-      run: echo '${{ matrix.kind.overrides }}' > py-build-cmake.local.toml
+      run: |
+        echo 'cmake.build_type = "${{ matrix.kind.build_type }}"' > py-build-cmake.local.toml
+        echo 'cmake.options = { ${{ matrix.kind.cmake_opts }} }' >> py-build-cmake.local.toml
     - name: Build wheel
       id: buildwheel
       uses: ./.github/actions/build_wheel
