@@ -9,6 +9,7 @@ import ctypes
 import platform
 
 def main():
+    from shoopdaloop.lib.logging import Logger
     logger = Logger("Frontend.Main")    
     try:
         from shoopdaloop.lib.backend_wrappers import AudioDriverType
