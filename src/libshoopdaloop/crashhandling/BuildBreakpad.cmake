@@ -54,6 +54,7 @@ file(MAKE_DIRECTORY ${BREAKPAD_SYMBOLS_DIR})
 set(BREAKPAD_SYMBOLS_DIR ${BREAKPAD_SYMBOLS_DIR} PARENT_SCOPE)
 set(BREAKPAD_BUILD_DIR ${BREAKPAD_BUILD_DIR} PARENT_SCOPE)
 
+# use this function on any target you want to generate symbols for.
 function(create_breakpad_symbols_dump TARGET)
   add_custom_command(TARGET ${TARGET} POST_BUILD
     COMMAND ${BREAKPAD_BUILD_DIR}/dump_syms $<TARGET_FILE:${TARGET}> > ${BREAKPAD_SYMBOLS_DIR}/${TARGET}.sym

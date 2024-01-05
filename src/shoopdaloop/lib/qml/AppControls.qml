@@ -93,14 +93,14 @@ Item {
                         }
 
                         ShoopMenuItem {
-                            text: "Text back-end segfault"
+                            text: "Test back-end segfault"
                             onClicked: {
                                 os_utils.test_segfault()
                             }
                         }
 
                         ShoopMenuItem {
-                            text: "Text back-end abort"
+                            text: "Test back-end abort"
                             onClicked: {
                                 os_utils.test_abort()
                             }

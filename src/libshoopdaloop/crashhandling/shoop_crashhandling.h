@@ -10,7 +10,9 @@
 extern "C" {
 #endif
 
-SHOOP_EXPORT void shoop_init_crashhandling(const char* dump_dir);
+typedef void (*CrashedCallback)(const char *dumped_filename);
+
+SHOOP_EXPORT void shoop_init_crashhandling(const char* dump_dir, CrashedCallback cb);
 SHOOP_EXPORT void shoop_test_crash_segfault();
 SHOOP_EXPORT void shoop_test_crash_exception();
 SHOOP_EXPORT void shoop_test_crash_abort();
