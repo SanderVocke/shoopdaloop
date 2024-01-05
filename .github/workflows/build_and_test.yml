@@ -294,7 +294,7 @@ jobs:
         ${{ matrix.kind.pip }} install wheel
         mkdir unzip_whl
         ${{ matrix.kind.python }} -m wheel unpack ~/wheel/*.whl -d unzip_whl
-        cp ~/unzip_whl/shoopdaloop*/shoopdaloop/libasan.so* /usr/lib/x86_64-linux-gnu/libasan_shoop.so
+        cp $(find unzip_whl -name "libasan.so*") /usr/lib/x86_64-linux-gnu/libasan_shoop.so
     - name: Install wheel
       id: install
       shell: bash
@@ -374,9 +374,9 @@ jobs:
         dumps_dir: crashdumps
         python: ${{ matrix.kind.python }}
         variant: ${{ matrix.kind.name }}
-    - name: TMate failure session
-      if: ${{ failure() && matrix.kind.asan }}
-      uses: SanderVocke/action-tmate@master
+    # - name: TMate failure session
+    #   if: ${{ failure() }}
+    #   uses: SanderVocke/action-tmate@master
 
   collect_crashes:
     runs-on: ubuntu-latest
