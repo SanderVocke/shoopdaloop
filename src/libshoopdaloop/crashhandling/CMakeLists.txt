@@ -4,8 +4,10 @@ include (${CMAKE_CURRENT_SOURCE_DIR}/BuildBreakpad.cmake)
 add_library(shoop_crashhandling SHARED shoop_crashhandling.cpp)
 set_property(TARGET shoop_crashhandling PROPERTY POSITION_INDEPENDENT_CODE ON)
 target_include_directories(shoop_crashhandling INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
-target_include_directories(shoop_crashhandling PRIVATE ${BREAKPAD_CLIENT_INCLUDE_DIR} ${BREAKPAD_TOPLEVEL_INCLUDE_DIR})
+target_include_directories(shoop_crashhandling PRIVATE ${BREAKPAD_CLIENT_INCLUDE_DIR} ${BREAKPAD_TOPLEVEL_INCLUDE_DIR} ${BREAKPAD_BUILD_DIR})
 target_link_libraries(shoop_crashhandling PRIVATE ${BREAKPAD_CLIENT_LIB} ${BREAKPAD_COMMON_LIB})
+add_dependencies(shoop_crashhandling breakpad_proj)
+create_breakpad_symbols_dump(shoop_crashhandling)
 
 if(APPLE)
   target_link_libraries(shoop_crashhandling PRIVATE

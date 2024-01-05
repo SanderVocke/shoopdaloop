@@ -117,6 +117,7 @@ endif()
 file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/empty.cpp "#include \"libshoopdaloop.h\"")
 add_library(shoopdaloop SHARED ${CMAKE_CURRENT_BINARY_DIR}/empty.cpp)
 target_link_libraries(shoopdaloop PRIVATE "$<LINK_LIBRARY:WHOLE_ARCHIVE,shoopdaloop_internals>")
+create_breakpad_symbols_dump(shoopdaloop)
 
 if(UNIX)
   set_target_properties(shoopdaloop PROPERTIES
