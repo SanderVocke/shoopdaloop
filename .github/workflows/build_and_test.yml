@@ -380,7 +380,9 @@ jobs:
 
   collect_crashes:
     runs-on: ubuntu-latest
-    needs: test
+    needs:
+      - build
+      - test
     if: ${{ always() }}
     container:
       image: archlinux:latest
