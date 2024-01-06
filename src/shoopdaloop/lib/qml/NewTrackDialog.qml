@@ -15,7 +15,6 @@ ShoopDialog {
     title: tracks.length == 0 ? 'Initial track' : 'Add track'
 
     width: 400
-    height: childrenRect.height
 
     property var tracks : []
     property var get_max_loop_slots : () => 8
@@ -63,6 +62,7 @@ ShoopDialog {
     }
 
     Grid {
+        id: options_grid
         columns: 2
         verticalItemAlignment: Grid.AlignVCenter
         columnSpacing: 10

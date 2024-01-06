@@ -27,8 +27,8 @@ Item {
     function tool_clicked() {
         for (var idx=0; idx < channel_mapper.unsorted_instances.length; idx++) {
             var c = channel_mapper.unsorted_instances[idx]
-            var channel = c.mapped_item
-            var s = c.maybe_cursor_sample_idx
+            var channel = c.channel
+            var s = c.render.maybe_cursor_sample_idx
             if (s) {
                 switch (tool_combo.currentValue) {
                     case LoopContentWidget.Tool.None:
@@ -56,58 +56,124 @@ Item {
     }
 
     Row {
-        id: toolbar_1
+        id: toolbar
+        property int tool_buttons_size: 24
+
         anchors {
             top: parent.top
             left: parent.left
         }
         height: 40
-        spacing: 5
+        spacing: 2
 
-        Label {
-            anchors.verticalCenter: zoom_slider.verticalCenter
-            text: "Zoom:"
-        }
-
-        Slider {
-            id: zoom_slider
-            width: 150
-            value: 8.0
-            from: 16.0
-            to: 0.0
-
-            property real prev_samples_per_pixel: 0.0
-            property real samples_per_pixel: Math.pow(2.0, value)
-            Component.onCompleted: prev_samples_per_pixel = samples_per_pixel
-
-            onSamples_per_pixelChanged: {
-                let prev_n_samples = channels_column.width * prev_samples_per_pixel
-                let new_n_samples = channels_column.width * samples_per_pixel
-                let diff = new_n_samples - prev_n_samples
-                let new_offset = channels_column.samples_offset - diff / 2
-                prev_samples_per_pixel = samples_per_pixel
-
-                zoomed(samples_per_pixel, new_offset)
-            }
-
-            signal zoomed (real new_samples_per_pixel, real new_offset)
-
+        ToolbarButton {
             anchors {
                 verticalCenter: parent.verticalCenter
             }
+            material_design_icon: 'magnify'
+            size: toolbar.tool_buttons_size
+
+            onClicked: zoom_popup.open()
+            toggle_visual_active: zoom_popup.visible
+
+            Popup {
+                id: zoom_popup
+                leftInset: 20
+                rightInset: 50
+                topInset: 20
+                bottomInset: 20
+
+                Slider {
+                    id: zoom_slider
+                    width: 160
+                    value: 8.0
+                    from: 16.0
+                    to: 0.0
+
+                    property real prev_samples_per_pixel: 0.0
+                    property real samples_per_pixel: Math.pow(2.0, value)
+                    Component.onCompleted: prev_samples_per_pixel = samples_per_pixel
+
+                    onSamples_per_pixelChanged: {
+                        let prev_n_samples = channels_column.width * prev_samples_per_pixel
+                        let new_n_samples = channels_column.width * samples_per_pixel
+                        let diff = new_n_samples - prev_n_samples
+                        let new_offset = channels_column.samples_offset - diff / 2
+                        prev_samples_per_pixel = samples_per_pixel
+
+                        zoomed(samples_per_pixel, new_offset)
+                    }
+
+                    signal zoomed (real new_samples_per_pixel, real new_offset)
+
+                    anchors {
+                        verticalCenter: parent.verticalCenter
+                    }
+                }
+            }
+        }
+
+        property real zoom_step_amount : 0.05 * (zoom_slider.to - zoom_slider.from)
+        ToolbarButton {
+            anchors {
+                verticalCenter: parent.verticalCenter
+            }
+            material_design_icon: 'magnify-plus-outline'
+            size: toolbar.tool_buttons_size
+
+            onClicked: zoom_slider.value = Math.max(zoom_slider.value + toolbar.zoom_step_amount, zoom_slider.to)
+        }
+
+        ToolbarButton {
+            anchors {
+                verticalCenter: parent.verticalCenter
+            }
+            material_design_icon: 'magnify-minus-outline'
+            size: toolbar.tool_buttons_size
+
+            onClicked: zoom_slider.value = Math.min(zoom_slider.value - toolbar.zoom_step_amount, zoom_slider.from)
+        }
+
+        ToolbarButton {
+            anchors {
+                verticalCenter: parent.verticalCenter
+            }
+            material_design_icon: 'magnify'
+            size: toolbar.tool_buttons_size
+
+            Label {
+                x: 7
+                y: 4
+                text: "A"
+                color: Material.foreground
+                font.pixelSize: 8
+            }
+
+            onClicked: {
+                let show_n_samples = channels_combine_range.data_length
+                let margin_factor = 1.2
+                let margin_samples = show_n_samples * (margin_factor - 1.0)
+                zoom_slider.samples_per_pixel = show_n_samples * margin_factor / channels_column.width
+                channels_column.samples_offset = -channels_combine_range.data_start - margin_samples / 2
+            }
+        }
+        
+        ToolSeparator {
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
         }
 
         Label {
-            anchors.verticalCenter: zoom_slider.verticalCenter
+            anchors.verticalCenter: toolbar.verticalCenter
             text: "Tool:"
         }
 
         ShoopComboBox {
             id: tool_combo
-            anchors.verticalCenter: zoom_slider.verticalCenter
+            anchors.verticalCenter: toolbar.verticalCenter
             textRole: "text"
             valueRole: "value"
-            width: 160
+            width: 150
 
             model: [
                 { value: LoopContentWidget.Tool.None, text: "none", all: false },
@@ -121,81 +187,55 @@ Item {
             property bool is_for_all_channels: model[currentIndex].all
         }
 
+        ToolSeparator {
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+        }
+
         Label {
-            anchors.verticalCenter: zoom_slider.verticalCenter
+            anchors.verticalCenter: toolbar.verticalCenter
             text: "Grid:"
         }
 
         ShoopComboBox {
             id: minor_grid_divider
-            anchors.verticalCenter: zoom_slider.verticalCenter
+            anchors.verticalCenter: toolbar.verticalCenter
             textRole: "text"
             valueRole: "value"
             currentIndex : 6
-            width: 120
+            width: 60
 
             model: [
                 { value: undefined, text: "None" },
-                { value: 1, text: "Sync" },
-                { value: 2, text: "Sync / 2" },
-                { value: 3, text: "Sync / 3" },
-                { value: 4, text: "Sync / 4" },
-                { value: 6, text: "Sync / 6" },
-                { value: 8, text: "Sync / 8" },
-                { value: 16, text: "Sync / 16" },
+                { value: 1, text: "1/1" },
+                { value: 2, text: "1/2" },
+                { value: 3, text: "1/3" },
+                { value: 4, text: "1/4" },
+                { value: 6, text: "1/6" },
+                { value: 8, text: "1/8" },
+                { value: 16, text: "1/16" },
             ]
         }
 
-        Switch {
+        ToolbarButton {
             id: snap_switch
-            text: "Snap to grid:"
-        }
-    }
-
-    Row {
-        id: toolbar_2
-        anchors {
-            top: toolbar_1.bottom
-            left: parent.left
-        }
-        height: 40
-        spacing: toolbar_1.spacing
-
-        Label {
-            text: "length:"
-            anchors.verticalCenter: length_field.verticalCenter
-        }
-
-        ShoopTextField {
-            id: length_field
-            validator: IntValidator {}
-            text: root.loop.length.toString()
-            onEditingFinished: {
-                root.loop.set_length(parseInt(text))
-                text = Qt.binding(() => root.loop.length.toString())
+            text: "snap"
+            anchors {
+                verticalCenter: parent.verticalCenter
             }
+            height: toolbar.tool_buttons_size
+            togglable: true
         }
-        
-        ExtendedButton {
-            tooltip: "Additional options."
-            height: 35
-            width: 30
-            onClicked: { root.logger.error(() => ("Unimplemented")) }
 
-            anchors.verticalCenter: length_field.verticalCenter
-
-            MaterialDesignIcon {
-                size: Math.min(parent.width, parent.height) - 10
-                anchors.centerIn: parent
-                name: 'dots-vertical'
-                color: Material.foreground
-            }
+        ToolSeparator {
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
         }
     }
 
     Item {
         anchors {
-            top: toolbar_2.bottom
+            top: toolbar.bottom
             left: parent.left
             right: parent.right
         }
@@ -238,14 +278,18 @@ Item {
                     property int index
 
                     max_height: 500
-                    top_drag_enabled: true
+                    min_height: 20
+                    bottom_drag_enabled: true
+                    
+                    property var render: renderer
+                    property var channel: mapped_item
 
                     ChannelDataRenderer {
                         id: renderer
                         fetch_active: root.visible
                         anchors.fill: parent
 
-                        channel: mapped_item
+                        channel: parent.channel
 
                         samples_per_pixel: 1.0
                         Component.onCompleted: samples_per_pixel = zoom_slider.samples_per_pixel
