@@ -431,14 +431,31 @@ Rectangle {
         ResizeableItem {
             id: details_area
 
-            height: 200
+            visible: bottom_bar.details_active
+
+            property real active_height: 200
+            height: bottom_bar.details_active ? active_height : 0 // Initial value
+
+            Connections {
+                target: bottom_bar
+                function onDetails_activeChanged() {
+                    if (bottom_bar.details_active) {
+                        height = details_area.active_height
+                    } else {
+                        if (height > 0) {
+                            active_height = height
+                        }
+                        height = 0
+                    }
+                }
+            }
             max_height: root.height - 50
 
             top_drag_enabled: true
             top_drag_area_y_offset: detailspane.pane_y_offset
 
             anchors {
-                bottom: parent.bottom
+                bottom: bottom_bar.top
                 left: parent.left
                 right: logo_menu_area.left
             }
@@ -446,7 +463,7 @@ Rectangle {
             DetailsPane {
                 id: detailspane
                 temporary_items : Array.from(root.selected_loops).map(l => ({
-                    'title': l.name,
+                    'title': l.name + ' (selected)',
                     'item': l,
                     'autoselect': true
                 }))
@@ -458,6 +475,26 @@ Rectangle {
                 }
 
                 anchors.fill: parent
+            }
+        }
+
+        Item {
+            id: bottom_bar
+
+            property alias details_active: details_toggle.checked
+            height: details_toggle.height
+
+            anchors {
+                left: parent.left
+                right: logo_menu_area.left
+                bottom: parent.bottom
+            }
+
+            ToolbarButton {
+                id: details_toggle
+                text: 'details'
+                togglable: true
+                height: 26
             }
         }
 

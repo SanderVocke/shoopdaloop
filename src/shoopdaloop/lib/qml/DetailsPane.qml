@@ -25,6 +25,9 @@ Item {
         temporary_items.forEach(t => {
             rval.push({'title': t.title, 'item': t.item, 'autoselect': t.autoselect, 'closeable': false})
         })
+        if (rval.length == 0) {
+            rval.push({'title': '...', 'item': 'empty-placeholder', 'autoselect': true, 'closeable': false})
+        }
         return rval
     }
 
@@ -48,9 +51,7 @@ Item {
             right: parent.right
         }
         Mapper {
-            model : root.items && root.items.length > 0 ?
-                root.items :
-                [{'title': '', 'item': undefined, 'autoselect': false, 'closeable': false}]
+            model : root.items
             
             ShoopTabButton {
                 property var mapped_item
@@ -94,6 +95,41 @@ Item {
                         width: stack.width
                         height: childrenRect.height
 
+                        property var maybe_loop : details_item.mapped_item.item && details_item.mapped_item.item instanceof LoopWidget
+                        property var maybe_loop_with_backend :
+                            (maybe_loop && details_item.mapped_item.item.maybe_backend_loop) ?
+                            details_item.mapped_item.item : null
+                        
+                        Loader {
+                            anchors {
+                                left: parent.left
+                                right: parent.right
+                                leftMargin: 5
+                                rightMargin: 5
+                            }
+                            active: details_item.mapped_item.item == 'empty-placeholder'
+                            sourceComponent: Component {
+                                Label {
+                                    text: 'Make a selection to show additional details here.'
+                                }
+                            }
+                        }
+
+                        Loader {
+                            anchors {
+                                left: parent.left
+                                right: parent.right
+                                leftMargin: 5
+                                rightMargin: 5
+                            }
+                            active: parent.maybe_loop && !parent.maybe_loop_with_backend
+                            sourceComponent: Component {
+                                Label {
+                                    text: 'Details will be shown once the loop is recording.'
+                                }
+                            }
+                        }
+
                         Loader {
                             anchors {
                                 left: parent.left
@@ -102,11 +138,8 @@ Item {
                                 rightMargin: 5
                             }
                             height: childrenRect.height
-                            property var maybe_loop_with_backend :
-                                (details_item.mapped_item.item && details_item.mapped_item.item instanceof LoopWidget && details_item.mapped_item.item.maybe_backend_loop) ?
-                                details_item.mapped_item.item : null
 
-                            active: maybe_loop_with_backend != null
+                            active: parent.maybe_loop_with_backend != null
                             sourceComponent: Component {
                                 id: loop_content_widget
                                 LoopContentWidget {
