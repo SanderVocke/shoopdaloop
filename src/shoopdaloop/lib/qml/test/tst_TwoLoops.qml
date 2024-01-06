@@ -75,7 +75,7 @@ ShoopTestFile {
                     check_backend()
 
                     session.backend.dummy_enter_controlled_mode()
-                    testcase.wait_updated(session.backend)
+                    testcase.wait_controlled_mode(session.backend)
 
                     sync_loop().set_length(100)
 

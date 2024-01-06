@@ -109,6 +109,7 @@ ShoopTestFile {
 
             testcase_init_fn: () =>  {
                 session.backend.dummy_enter_controlled_mode()
+                testcase.wait_controlled_mode(session.backend)
                 verify_true(input_port_1)
                 verify_true(input_port_2)
                 verify_true(output_port_1)

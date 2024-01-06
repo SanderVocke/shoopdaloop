@@ -198,7 +198,6 @@ jobs:
             wheel: macos_release_wheel
             testrunner: test_runner
             qpa_platform: offscreen
-            skip_qml: true
           - name: release_macos12
             python: python3
             pip: python3 -m pip
@@ -207,7 +206,6 @@ jobs:
             wheel: macos_release_wheel
             testrunner: test_runner
             qpa_platform: offscreen
-            skip_qml: true
           - name: release_macos13
             python: python3
             pip: python3 -m pip
@@ -216,7 +214,6 @@ jobs:
             wheel: macos_release_wheel
             testrunner: test_runner
             qpa_platform: offscreen
-            skip_qml: true
           - name: debug_macos13
             python: python3
             pip: python3 -m pip
@@ -225,7 +222,6 @@ jobs:
             wheel: macos_debug_wheel
             testrunner: test_runner
             qpa_platform: offscreen
-            skip_qml: true
           - name: release_windows
             python: python.exe
             pip: python.exe -m pip

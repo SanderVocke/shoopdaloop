@@ -132,6 +132,7 @@ typedef struct {
     unsigned sample_rate;
     unsigned buffer_size;
     unsigned active;
+    unsigned last_processed; // Amount of frames processed in most recent process iteration (normally equal to buffer_size)
 } shoop_audio_driver_state_t;
 
 typedef struct {

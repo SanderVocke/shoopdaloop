@@ -50,6 +50,20 @@ Rectangle {
             if (global_args.test_grab_screens) {
                 test_grab_screens_and_quit(global_args.test_grab_screens)
             }
+            if (global_args.quit_when_loaded) {
+                autoquit_timer.start()
+            }
+        }
+    }
+
+    Timer {
+        id: autoquit_timer
+        interval: 100
+        repeat: false
+        running: false
+        onTriggered: {
+            root.logger.info(() => "Auto-quitting as per request.")
+            Qt.callLater(Qt.quit)
         }
     }
 

@@ -94,7 +94,7 @@ ShoopTestFile {
 
             testcase_init_fn: () =>  {
                 session.backend.dummy_enter_controlled_mode()
-                testcase.wait_updated(session.backend)
+                testcase.wait_controlled_mode(session.backend)
             }
 
             test_fns: ({

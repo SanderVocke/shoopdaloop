@@ -28,6 +28,7 @@ def main():
         parser.add_argument('-b', '--backend', type=str, default='jack', help='Choose an audio backend to use. Available backends (default = jack): {}'.format(', '.join([b.name.lower() for b in AudioDriverType])))
         parser.add_argument('-e', '--developer', action='store_true', help='Enable developer functionality.')
         parser.add_argument('--test-grab-screens', type=str, help='For debugging: will open several windows, grab and save screenshots of them, store them in the given folder (will create if not existing) and then exit.')
+        parser.add_argument('--quit-when-loaded', action='store_true', help='For debugging: quit immediately when fully loaded.')
         parser.add_argument('session_filename', type=str, default=None, nargs='?', help='(optional) Load a session from a file upon startup.')
         args = parser.parse_args()
 
@@ -52,7 +53,8 @@ def main():
             'backend_type': args.backend.value,
             'load_session_on_startup': args.session_filename,
             'test_grab_screens': args.test_grab_screens,
-            'developer': args.developer
+            'developer': args.developer,
+            'quit_when_loaded': args.quit_when_loaded
         }
     
         app = Application(
