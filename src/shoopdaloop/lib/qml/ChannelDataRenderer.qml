@@ -51,7 +51,7 @@ Item {
             id: background_rect
             width: root.width
             height: root.height
-            color: 'black'
+            color: Material.background
             border.color: 'grey'
             border.width: 1
 
