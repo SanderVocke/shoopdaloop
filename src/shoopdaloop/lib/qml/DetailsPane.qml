@@ -139,12 +139,12 @@ Item {
                             }
                             height: childrenRect.height
 
-                            active: parent.maybe_loop_with_backend != null
+                            active: details_item.maybe_loop_with_backend != null
                             sourceComponent: Component {
                                 id: loop_content_widget
                                 LoopContentWidget {
-                                    loop: parent.maybe_loop_with_backend
-                                    sync_loop: parent.maybe_loop_with_backend.sync_loop
+                                    loop: details_item.maybe_loop_with_backend
+                                    sync_loop: details_item.maybe_loop_with_backend.sync_loop
                                     width: parent.width
                                 }
                             }
