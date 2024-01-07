@@ -1,6 +1,7 @@
 add_library(shoop_accelerate SHARED shoop_accelerate.cpp)
 set_property(TARGET shoop_accelerate PROPERTY POSITION_INDEPENDENT_CODE ON)
 target_include_directories(shoop_accelerate INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
+create_breakpad_symbols_dump(shoop_accelerate)
 
 # Generate C bindings
 add_custom_command(

@@ -8,13 +8,11 @@ import glob
 import ctypes
 import platform
 
-from shoopdaloop.lib.q_objects.Application import Application
-from shoopdaloop.lib.logging import *
-from shoopdaloop.lib.backend_wrappers import *
-
 def main():
+    from shoopdaloop.lib.logging import Logger
     logger = Logger("Frontend.Main")    
     try:
+        from shoopdaloop.lib.backend_wrappers import AudioDriverType
         mains = [ os.path.basename(p).replace('.qml','') for p in glob.glob('{}/lib/qml/applications/*.qml'.format(installation_dir())) ]
 
         parser = argparse.ArgumentParser(
@@ -31,6 +29,10 @@ def main():
         parser.add_argument('--quit-when-loaded', action='store_true', help='For debugging: quit immediately when fully loaded.')
         parser.add_argument('session_filename', type=str, default=None, nargs='?', help='(optional) Load a session from a file upon startup.')
         args = parser.parse_args()
+        
+        from shoopdaloop.lib.q_objects.Application import Application
+        from shoopdaloop.lib.crash_handling import init_crash_handling
+        init_crash_handling()
 
         backends_map = {b.name.lower(): b for b in AudioDriverType}
         args.backend = backends_map[args.backend]
