@@ -12,7 +12,7 @@ ShoopDialog {
     x: (parent.width - width) / 2
     y: (parent.height - height) / 2
     modal: true
-    title: tracks.length == 0 ? 'Welcome' : 'Add track'
+    title: 'Add track'
 
     width: 400
     height: grid.implicitHeight + 160

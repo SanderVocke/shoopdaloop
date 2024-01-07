@@ -129,11 +129,6 @@ ScrollView {
         })
         n_loaded = _n_loaded
         loaded = Qt.binding(() => { return n_loaded >= tracks.length })
-
-        // If we start with 0 tracks, open the new track dialog.
-        if (root.tracks.length == 0) {
-            newtrackdialog.open_for_new_track()
-        }
     }
 
     Component.onCompleted: initialize()

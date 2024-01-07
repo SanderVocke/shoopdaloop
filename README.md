@@ -18,7 +18,7 @@ For currently open known issues, check the GitHub Issues page.
 
 # Screenshot
 
-![Screenshot](https://github.com/SanderVocke/shoopdaloop/assets/11209121/27632906-c158-41fe-af48-867ec5eecd42)
+![Screenshot](docs/source/resources/screenshot.png)
 
 # In a nutshell
 
