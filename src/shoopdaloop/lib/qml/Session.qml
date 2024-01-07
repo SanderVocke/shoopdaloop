@@ -413,6 +413,19 @@ Rectangle {
             onSaveSession: (filename) => root.save_session(filename)
         }
 
+        Item {
+            id: welcome_text
+            visible: root.initial_descriptor.tracks.length == 0
+            anchors.centerIn: parent
+
+            width: childrenRect.width
+            height: childrenRect.height
+
+            Label {
+                text: 'To get started, add a track using the (+) at the top left.'
+            }
+        }
+
         TracksWidget {
             id: tracks_widget
 
