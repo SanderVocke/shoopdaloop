@@ -165,7 +165,7 @@ class Backend(ShoopQQuickItem):
             return
         driver_state = self._backend_driver_obj.get_state()
         self.dsp_load = driver_state.dsp_load
-        self.xruns = max(2**31-1, self.xruns + driver_state.xruns)
+        self.xruns = min(2**31-1, self.xruns + driver_state.xruns)
         self.actual_backend_type = self._driver_type.value
         self.last_processed = driver_state.last_processed
         

@@ -9,6 +9,9 @@ inputs:
   wheel:
     required: true
     type: string
+  build_dir:
+    required: true
+    type: string
 
 runs:
   using: "composite"
@@ -28,3 +31,8 @@ runs:
     uses: ./.github/actions/post_build_windows
     with:
       wheel: ${{ inputs.wheel }}
+  - name: Store debug info
+    shell: bash
+    run: |
+      mkdir -p debuginfo
+      cp -r ${{ inputs.build_dir }}/breakpad_symbols debuginfo/breakpad_symbols

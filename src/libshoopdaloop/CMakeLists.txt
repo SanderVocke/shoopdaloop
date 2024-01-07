@@ -33,6 +33,11 @@ if(ENABLE_ASAN)
     endif()
     set(RUN_CMD_PREFIX LD_PRELOAD=${ASAN_DSO} ${RUN_CMD_PREFIX})
     set(RUN_CMD_PREFIX ${RUN_CMD_PREFIX} PARENT_SCOPE)
+    get_filename_component(ASAN_DSO_REALPATH ${ASAN_DSO} REALPATH)
+    install(FILES ${ASAN_DSO_REALPATH}
+            EXCLUDE_FROM_ALL
+            COMPONENT package_install
+            DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME})
 endif()
 option(ENABLE_PROCESS_PROFILING "Enable internal audio processing profiling" ON)
 if(ENABLE_PROCESS_PROFILING)
@@ -62,6 +67,8 @@ add_custom_target(
 )
 
 set(EXTERNAL_DEPS_PREFIX ${CMAKE_CURRENT_BINARY_DIR}/external_deps)
+
+add_subdirectory(crashhandling)
 
 # Backend lib
 file(GLOB INTERNAL_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/internal/*.cpp)
@@ -115,6 +122,7 @@ endif()
 file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/empty.cpp "#include \"libshoopdaloop.h\"")
 add_library(shoopdaloop SHARED ${CMAKE_CURRENT_BINARY_DIR}/empty.cpp)
 target_link_libraries(shoopdaloop PRIVATE "$<LINK_LIBRARY:WHOLE_ARCHIVE,shoopdaloop_internals>")
+create_breakpad_symbols_dump(shoopdaloop)
 
 if(UNIX)
   set_target_properties(shoopdaloop PROPERTIES
