@@ -415,7 +415,7 @@ Rectangle {
 
         Item {
             id: welcome_text
-            visible: root.initial_descriptor.tracks.length == 0
+            visible: tracks_widget.tracks.length == 0
             anchors.centerIn: parent
 
             width: childrenRect.width

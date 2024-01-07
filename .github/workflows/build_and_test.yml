@@ -374,9 +374,9 @@ jobs:
         dumps_dir: crashdumps
         python: ${{ matrix.kind.python }}
         variant: ${{ matrix.kind.name }}
-    - name: TMate failure session
-      if: ${{ failure() && matrix.kind.asan }}
-      uses: SanderVocke/action-tmate@master
+    # - name: TMate failure session
+    #   if: ${{ failure() && matrix.kind.asan }}
+    #   uses: SanderVocke/action-tmate@master
 
   collect_crashes:
     runs-on: ubuntu-latest
