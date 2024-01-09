@@ -218,7 +218,7 @@ template <typename TimeType, typename SizeType>
 CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
     LilvWorld *lilv_world, shoop_fx_chain_type_t type, uint32_t sample_rate,
     std::string human_name)
-    : m_internal_buffers_size(0), m_human_name(human_name),
+    : m_internal_buffers_size(carla_constants::max_buffer_size), m_human_name(human_name),
       m_unique_name(human_name + "_" + random_string(6)) {
 
     // URIs for the Carla plugins we want to support.
@@ -524,9 +524,9 @@ void CarlaLV2ProcessingChain<TimeType, SizeType>::process(uint32_t frames) {
         }
 
         if (frames > m_internal_buffers_size) {
-            throw std::runtime_error(
-                "Carla processing chain: requesting to process more "
-                "than buffer size.");
+            throw_error<std::runtime_error>(
+                "Carla processing chain: requesting to process more than buffer size ({} vs. {}).",
+                frames, m_internal_buffers_size);
         }
         lilv_instance_activate(m_instance);
         lilv_instance_run(m_instance, process);
