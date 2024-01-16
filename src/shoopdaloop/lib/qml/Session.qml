@@ -152,6 +152,7 @@ Rectangle {
     property alias main_tracks: tracks_widget.tracks
     property alias sync_track: sync_loop_loader.track_widget
     property bool loaded : tracks_widget.loaded && sync_loop_loader.loaded
+    function get_tracks_widget() { return tracks_widget }
 
     property var main_track_descriptors: {
         let groups = root.initial_descriptor.track_groups;
@@ -358,6 +359,18 @@ Rectangle {
             registry: registries.state_registry
             key: 'midi_control_configuration'
             id: lookup_midi_configuration
+        }
+    }
+
+    Loader {
+        active: global_args.monkey_tester
+
+        sourceComponent: MonkeyTester {
+            session: root
+            Component.onCompleted: { 
+                console.log("starting");
+                start()
+            }
         }
     }
 

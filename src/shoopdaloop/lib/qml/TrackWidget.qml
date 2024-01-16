@@ -257,7 +257,7 @@ Item {
         }
     }
 
-    function add_row() {
+    function add_default_loop() {
         // Descriptor is automatically determined from the previous loop...
         var prev_loop = root.loops[root.loops.length - 1]
         var prev_desc = prev_loop.initial_descriptor
@@ -283,7 +283,10 @@ Item {
         root.add_loop({
             initial_descriptor: loop_descriptor
         });
+    }
 
+    function add_row() {
+        add_default_loop();
         rowAdded()
     }
 

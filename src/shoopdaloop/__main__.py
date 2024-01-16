@@ -27,6 +27,7 @@ def main():
         parser.add_argument('-e', '--developer', action='store_true', help='Enable developer functionality.')
         parser.add_argument('--test-grab-screens', type=str, help='For debugging: will open several windows, grab and save screenshots of them, store them in the given folder (will create if not existing) and then exit.')
         parser.add_argument('--quit-when-loaded', action='store_true', help='For debugging: quit immediately when fully loaded.')
+        parser.add_argument('--monkey-tester', action='store_true', help='Start the monkey tester, which will randomly, rapidly perform actions on the session.')
         parser.add_argument('session_filename', type=str, default=None, nargs='?', help='(optional) Load a session from a file upon startup.')
         args = parser.parse_args()
         
@@ -56,7 +57,8 @@ def main():
             'load_session_on_startup': args.session_filename,
             'test_grab_screens': args.test_grab_screens,
             'developer': args.developer,
-            'quit_when_loaded': args.quit_when_loaded
+            'quit_when_loaded': args.quit_when_loaded,
+            'monkey_tester': bool(args.monkey_tester)
         }
     
         app = Application(
