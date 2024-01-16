@@ -80,11 +80,11 @@ function generate_scripts(scripts, active_script_id) {
     }
 }
 
-function generate_session(app_version, sample_rate, tracks, ports, scripts, fx_chain_states) {
+function generate_session(app_version, sample_rate, track_groups, ports, scripts, fx_chain_states) {
     var rval = {
         'schema': 'session.1',
         'app_version': app_version,
-        'tracks': tracks,
+        'track_groups': track_groups,
         'ports': ports,
         'scripts': scripts,
         'fx_chain_states': fx_chain_states
@@ -338,15 +338,29 @@ function generate_default_track(
     return track;
 }
 
-function generate_default_session(app_version, sample_rate=null, add_sync_track=true, n_loops_in_sync_track=1, n_audio_channels_in_sync_track=1) {
-    var initial_tracks = []
+function generate_default_session(app_version, sample_rate=null, add_sync_track=true, n_loops_in_sync_track=1, n_audio_channels_in_sync_track=1, initial_tracks=[]) {
+    var sync_tracks = {
+        'name': 'sync',
+        'tracks': []
+    }
+    var main_tracks = {
+        'name': 'main',
+        'tracks': initial_tracks
+    }
     if (add_sync_track) {
         var sync_track = generate_default_track("Sync", n_loops_in_sync_track, 'sync', true, 'sync_loop', 0, 0, n_audio_channels_in_sync_track, false, false, false, undefined)
-        sync_track.loops[0].name = "sync"
-        initial_tracks.push(sync_track)
+        sync_track.loops[0].name = "sync loop"
+        sync_tracks.tracks.push(sync_track)
     }
-    var session = generate_session(app_version, sample_rate, initial_tracks, [], [],
-        [], []);
+    var session = generate_session(
+        app_version,
+        sample_rate,
+        [ sync_tracks, main_tracks ],
+        [],
+        [],
+        [],
+        []
+    );
 
     return session;    
 }
@@ -355,17 +369,19 @@ function convert_session_descriptor_sample_rate(descriptor, from, to) {
     var rval = descriptor
     let convert = to / from
     rval['sample_rate'] = to
-    rval['tracks'].forEach(t => {
-        t.loops.forEach(l => {
-            // Note: using ceil for length and data length fields ensures that channels/loops which are exactly
-            // N x (sync loop length) will never be rounded to be more than N x (sync loop length) after all
-            // conversions (assuming N > 1). Otherwise, loops may wait an entire extra sync loop cycle because
-            // they are 1 sample longer.
-            l.length = Math.ceil(convert * l.length)
-            l.channels.forEach(c => {
-                c.data_length = Math.ceil(convert * c.data_length)
-                c.start_offset = Math.round(convert * c.start_offset)
-                c.n_preplay_samples = Math.round(convert * c.n_preplay_samples)
+    rval['track_groups'].forEach(g => {
+        g['tracks'].forEach(t => {
+            t.loops.forEach(l => {
+                // Note: using ceil for length and data length fields ensures that channels/loops which are exactly
+                // N x (sync loop length) will never be rounded to be more than N x (sync loop length) after all
+                // conversions (assuming N > 1). Otherwise, loops may wait an entire extra sync loop cycle because
+                // they are 1 sample longer.
+                l.length = Math.ceil(convert * l.length)
+                l.channels.forEach(c => {
+                    c.data_length = Math.ceil(convert * c.data_length)
+                    c.start_offset = Math.round(convert * c.start_offset)
+                    c.n_preplay_samples = Math.round(convert * c.n_preplay_samples)
+                })
             })
         })
     })

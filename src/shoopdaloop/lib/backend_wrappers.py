@@ -199,6 +199,8 @@ class AudioPortState:
 class MidiPortState:
     n_input_events: int
     n_input_notes_active : int
+    n_output_events: int
+    n_output_notes_active: int
     muted: bool
     passthrough_muted: bool
     name: str
@@ -213,9 +215,9 @@ class MidiPortState:
             self.passthrough_muted = bool(backend_state.passthrough_muted)
             self.name = str(backend_state.name)
         else:
-            self.n_input_events_triggered = 0
+            self.n_input_events = 0
             self.n_input_notes_active = 0
-            self.n_output_events_triggered = 0
+            self.n_output_events = 0
             self.n_output_notes_active = 0
             self.muted = False
             self.passthrough_muted = False

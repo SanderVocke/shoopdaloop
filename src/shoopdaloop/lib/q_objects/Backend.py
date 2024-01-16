@@ -184,6 +184,11 @@ class Backend(ShoopQQuickItem):
     
     @Slot(result=int)
     def get_sample_rate(self):
+        if not self._backend_driver_obj:
+            self.logger.warning("Attempting to get sample rate before back-end initialized.")
+            import traceback
+            traceback.print_stack()
+            return 1
         return self._backend_driver_obj.get_sample_rate()
     
     @Slot(result=int)

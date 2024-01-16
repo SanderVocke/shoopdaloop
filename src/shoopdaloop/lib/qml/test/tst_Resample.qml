@@ -14,7 +14,6 @@ ShoopTestFile {
 
         anchors.fill: parent
         initial_descriptor: {
-            let base = GenerateSession.generate_default_session(app_metadata.version_string, null, true, 1)
             let direct_track = GenerateSession.generate_default_track(
                 "dt",
                 1,
@@ -29,8 +28,7 @@ ShoopTestFile {
                 false,
                 undefined
                 )
-            base.tracks.push(direct_track)
-            return base
+            return GenerateSession.generate_default_session(app_metadata.version_string, null, true, 1, 1, [direct_track])
         }
 
         ShoopSessionTestCase {
@@ -39,10 +37,10 @@ ShoopTestFile {
             filename : TestFilename.test_filename()
             session: session
 
-            function loop() { return session.tracks[0].loops[0] }
+            function loop() { return session.sync_track.loops[0] }
             function channel() { return loop().get_audio_channels()[0] }
 
-            function loop2() { return session.tracks[1].loops[0] }
+            function loop2() { return session.main_tracks[0].loops[0] }
             function loop2_channels() {
                 if (!loop2()) return []
                 var r = loop2().get_audio_channels()

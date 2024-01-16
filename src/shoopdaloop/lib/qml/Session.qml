@@ -93,10 +93,21 @@ Rectangle {
     property bool settings_io_enabled: false
 
     function actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) {
+        let track_groups = [
+            {
+                'name': 'sync',
+                'tracks': [ root.sync_track.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) ]
+            },
+            {
+                'name': 'main',
+                'tracks': tracks_widget.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to)
+            }
+        ]
+        
         return GenerateSession.generate_session(
             app_metadata.version_string,
             session_backend.get_sample_rate(),
-            tracks_widget.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to),
+            track_groups,
             [],
             [],
             registries.fx_chain_states_registry.all_values()
@@ -138,8 +149,38 @@ Rectangle {
     }
 
     // For (test) access
-    property alias tracks: tracks_widget.tracks
-    property bool loaded : tracks_widget.loaded
+    property alias main_tracks: tracks_widget.tracks
+    property alias sync_track: sync_loop_loader.track_widget
+    property bool loaded : tracks_widget.loaded && sync_loop_loader.loaded
+
+    property var main_track_descriptors: {
+        let groups = root.initial_descriptor.track_groups;
+        for (var i=0; i<groups.length; i++) {
+            if (groups[i].name == 'main') { return groups[i].tracks; }
+        }
+        return []
+    }
+    property var sync_loop_track_descriptor: {
+        let groups = root.initial_descriptor.track_groups;
+        for (var i=0; i<groups.length; i++) {
+            if (groups[i].name == 'sync') {
+                let _t = groups[i].tracks
+                if (_t.length != 1) {
+                    root.logger.error(`Found ${_t.length} tracks in sync group instead of 1.`)
+                }
+                if (_t.length > 0) {
+                    let _l = _t[0].loops
+                    if (_l.length != 1) {
+                        root.logger.error(`Found ${_l.length} loops in sync track instead of 1.`)
+                    }
+                    if (_l.length > 0) {
+                        return _t[0]
+                    }
+                }
+            }
+        }
+        return null
+    }
 
     TasksFactory { id: tasks_factory }
 
@@ -178,10 +219,6 @@ Rectangle {
 
     function queue_load_tasks(data_files_directory, from_sample_rate, to_sample_rate, add_tasks_to) {
         tracks_widget.queue_load_tasks(data_files_directory, from_sample_rate, to_sample_rate, add_tasks_to)
-    }
-
-    function get_track_control_widget(idx) {
-        return tracks_widget.get_track_control_widget(idx)
     }
 
     Dialog {
@@ -234,7 +271,12 @@ Rectangle {
                 return;
             }
 
-            schema_validator.validate_schema(descriptor, validator.schema)
+            try {
+                schema_validator.validate_schema(descriptor, validator.schema)
+            } catch(err) {
+                console.log("Failed session schema validation for loaded session descriptor:\n",
+                            "\nobject:\n", JSON.stringify(descriptor, 0, 2), "\nerror:\n", err.message)
+            }
             
             if (our_sample_rate != incoming_sample_rate) {
                 descriptor = GenerateSession.convert_session_descriptor_sample_rate(descriptor, incoming_sample_rate, our_sample_rate)
@@ -415,14 +457,22 @@ Rectangle {
 
         Item {
             id: welcome_text
-            visible: tracks_widget.tracks.length == 0
+            visible: root.main_tracks.length == 0
             anchors.centerIn: parent
 
             width: childrenRect.width
             height: childrenRect.height
 
             Label {
-                text: 'To get started, add a track using the (+) at the top left.'
+                text: {
+                    var rval = 'To get started:'
+                    rval += '\n\n- Set up content for the sync loop by:'
+                    rval += '\n  - Recording mono content into it, or'
+                    rval += '\n  - Loading audio (right-click on loop -> "Load Audio..."), or'
+                    rval += '\n  - Generating a click loop (right-click on loop -> "Click Loop...").'
+                    rval += '\n\n- Add a track by using the (+) at the top left.'
+                    return rval
+                }
             }
         }
 
@@ -438,7 +488,7 @@ Rectangle {
                 leftMargin: 4
             }
 
-            initial_track_descriptors: root.initial_descriptor.tracks
+            initial_track_descriptors: root.main_track_descriptors
         }
 
         ResizeableItem {
@@ -508,6 +558,87 @@ Rectangle {
                 text: 'details'
                 togglable: true
                 height: 26
+            }
+        }
+
+        Component.onCompleted: root.logger.error("TODO: uninstall signal handlers on first occurrence of 'exiting due to signal'")
+
+        Rectangle {
+            id: sync_loop_area
+            color: "#555555"
+            height: 120
+
+            anchors {
+                right: parent.right
+                left: logo_menu_area.left
+                bottom: logo_menu_area.top
+                leftMargin: 10
+                rightMargin: 10
+            }
+
+            Loader {
+                active: false
+                id: sync_loop_loader
+                height: sync_loop_area.height
+
+                anchors {
+                    left: parent.left
+                    right: parent.right
+                }
+
+                property bool loaded: false
+
+                function initialize() {
+                    active = false
+                    loaded = false
+                    active = Qt.binding(() => root.sync_loop_track_descriptor != null)
+                }
+
+                Component.onCompleted: { initialize() }
+                function reload() { initialize() }
+
+                property var track_widget: item ?
+                    item.track_widget : undefined
+
+                sourceComponent: Item {
+
+                    property alias track_widget: sync_loop_widget
+                    property alias track_control_widget: sync_loop_control_widget
+
+                    anchors {
+                        fill: sync_loop_loader
+                        leftMargin: 8
+                        rightMargin: 8
+                    }
+
+                    TrackWidget {
+                        id: sync_loop_widget
+
+                        anchors {
+                            left: parent.left
+                            right: parent.right
+                            top: parent.top
+                        }
+                        
+                        initial_descriptor: root.sync_loop_track_descriptor
+                        onLoadedChanged: sync_loop_loader.loaded = loaded
+                        name_editable: false
+                        sync_loop_layout: true
+                    }
+
+                    TrackControlWidget {
+                        id: sync_loop_control_widget
+                        
+                        anchors {
+                            left: parent.left
+                            right: parent.right
+                            bottom: parent.bottom
+                            bottomMargin: 15
+                        }
+
+                        initial_track_descriptor: root.sync_loop_track_descriptor
+                    }
+                }
             }
         }
 

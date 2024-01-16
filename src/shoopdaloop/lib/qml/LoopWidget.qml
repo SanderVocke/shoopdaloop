@@ -13,7 +13,8 @@ import '../qml_url_to_filename.js' as UrlToFilename
 Item {
     id: root
     
-    property var track_widget
+    property var all_loops_in_track
+    property var maybe_fx_chain
 
     property var initial_descriptor : null
 
@@ -167,8 +168,10 @@ Item {
     }
 
     function init() {
-        if (is_sync) { create_backend_loop() }
-        if ('composition' in initial_descriptor) {
+        if (is_sync) { 
+            root.logger.debug("Initializing back-end for sync loop")
+            create_backend_loop()
+        } else if (initial_descriptor && 'composition' in initial_descriptor) {
             root.logger.debug(() => (`${obj_id} has composition, creating composite loop.`))
             create_composite_loop(initial_descriptor.composition)
         } 
@@ -254,8 +257,8 @@ Item {
         // Gather all other loops that are in the same track(s)
         var _all_track_loops = []
         selected_all.forEach(loop => {
-            for(var i=0; i<loop.track_widget.loops.length; i++) {
-                _all_track_loops.push(loop.track_widget.loops[i])
+            for(var i=0; i<loop.all_loops_in_track.length; i++) {
+                _all_track_loops.push(loop.all_loops_in_track[i])
             }
         })
         var _other_loops = _all_track_loops.filter(l => !selected_all.has(l))
@@ -416,7 +419,9 @@ Item {
     
     Component {
         id: backend_loop_factory
-        BackendLoopWithChannels {}
+        BackendLoopWithChannels {
+            track_widget: root.track_widget
+        }
     }
     function create_backend_loop() {
         if (!maybe_loop) {
@@ -713,28 +718,28 @@ Item {
                             if (!key_modifiers.alt_pressed && event.button === Qt.LeftButton) { root.target() }
                         }
                     onClicked: (event) => {
-                            if (event.button === Qt.LeftButton) { 
-                                if (key_modifiers.alt_pressed) {
-                                    if (root.selected_loops.size == 1) {
-                                        let selected = selected_loops[0]
-                                        if (selected != root) {
-                                            selected.create_composite_loop()
-                                            if (selected.maybe_composite_loop) {
-                                                // Add the selected loop to the currently selected composite loop.
-                                                // If ctrl pressed, as a new parallel timeline; otherwise at the end of the default timeline.
-                                                if (key_modifiers.control_pressed) {
-                                                    selected.maybe_composite_loop.add_loop(root, 0, selected.maybe_composite_loop.playlists.length)
-                                                } else {
-                                                    selected.maybe_composite_loop.add_loop(root, 0)
-                                                }
+                        if (event.button === Qt.LeftButton) { 
+                            if (key_modifiers.alt_pressed) {
+                                if (root.selected_loops.size == 1) {
+                                    let selected = Array.from(root.selected_loops)[0]
+                                    if (selected != root) {
+                                        selected.create_composite_loop()
+                                        if (selected.maybe_composite_loop) {
+                                            // Add the selected loop to the currently selected composite loop.
+                                            // If ctrl pressed, as a new parallel timeline; otherwise at the end of the default timeline.
+                                            if (key_modifiers.control_pressed) {
+                                                selected.maybe_composite_loop.add_loop(root, 0, selected.maybe_composite_loop.playlists.length)
+                                            } else {
+                                                selected.maybe_composite_loop.add_loop(root, 0)
                                             }
                                         }
                                     }
-                                } else if (root.targeted) { root.untarget(); root.deselect() }
-                                else { root.toggle_selected(!key_modifiers.control_pressed) }
-                            }
-                            else if (event.button === Qt.RightButton) { contextmenu.popup() }
+                                }
+                            } else if (root.targeted) { root.untarget(); root.deselect() }
+                            else { root.toggle_selected(!key_modifiers.control_pressed) }
                         }
+                        else if (event.button === Qt.RightButton) { contextmenu.popup() }
+                    }
                 }
                 LoopStateIcon {
                     id: loopnextstateicon
@@ -1480,7 +1485,7 @@ Item {
                 id: restore_fx_state_button
 
                 property var cached_fx_state: {
-                    if (!root.track_widget || !root.track_widget.maybe_fx_chain) { return undefined; }
+                    if (!root.maybe_fx_chain) { return undefined; }
                     var channel_states = root.channels
                         .filter(c => c.recording_fx_chain_state_id != undefined)
                         .map(c => c.recording_fx_chain_state_id);
@@ -1491,7 +1496,7 @@ Item {
 
                 text: "Restore FX State"
                 shown: cached_fx_state ? true : false
-                onClicked: root.track_widget.maybe_fx_chain.restore_state(cached_fx_state.internal_state)
+                onClicked: root.maybe_fx_chain.restore_state(cached_fx_state.internal_state)
             }
         }
 

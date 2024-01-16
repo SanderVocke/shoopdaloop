@@ -15,12 +15,20 @@ ShoopTestFile {
         id: session
 
         anchors.fill: parent
-        initial_descriptor: GenerateSession.generate_default_session(
-            app_metadata.version_string,
-            null,
-            true,
-            4
+        initial_descriptor: {
+            let track = GenerateSession.generate_default_track(
+                'track1',
+                3,
+                'track1',
+                false,
+                'track1'
             )
+            return GenerateSession.generate_default_session(
+                app_metadata.version_string,
+                null,
+                true, 1, 1, [track]
+            )
+        }
 
         ShoopSessionTestCase {
             id: testcase
@@ -30,22 +38,22 @@ ShoopTestFile {
 
             // sync loop
             function m() {
-                return session.tracks[0].loops[0]
+                return session.sync_track.loops[0]
             }
 
             // generic loop 1
             function l1() {
-                return session.tracks[0].loops[1]
+                return session.main_tracks[0].loops[0]
             }
 
             // generic loop 2
             function l2() {
-                return session.tracks[0].loops[2]
+                return session.main_tracks[0].loops[1]
             }
 
             // composite loop
             function c() {
-                return session.tracks[0].loops[3]
+                return session.main_tracks[0].loops[2]
             }
 
             function clear() {

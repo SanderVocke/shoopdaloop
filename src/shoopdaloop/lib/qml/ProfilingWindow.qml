@@ -25,7 +25,7 @@ ApplicationWindow {
             var _data = {}
 
             var bufsize = root.backend.get_buffer_size()
-            var samplerate = root.backend.get_sample_rate()
+            var samplerate = root.backend && root.backend.initialized ? root.backend.get_sample_rate() : 1
             cycle_us = bufsize / samplerate * 1000000.0
 
             Object.entries(profiling_data).forEach((p) => {
@@ -58,7 +58,7 @@ ApplicationWindow {
     function update() {
         var data = root.backend.get_profiling_report()
         var bufsize = root.backend.get_buffer_size()
-        var samplerate = root.backend.get_sample_rate()
+        var samplerate = root.backend && root.backend.initialized ? root.backend.get_sample_rate() : 1
         cycle_us = bufsize / samplerate * 1000000.0
 
         root.profiling_data = data

@@ -23,7 +23,6 @@ Item {
     }
 
     property var initial_descriptor : null
-
     readonly property PythonLogger logger : PythonLogger { name: "Frontend.Qml.TrackWidget" }
 
     property int track_idx: -1
@@ -33,6 +32,10 @@ Item {
     property bool loaded : audio_ports_repeater.loaded && midi_ports_repeater.loaded && loops.loaded
     property int n_loops_loaded : 0
 
+    // The sync loop has its own special track widget,
+    // which is mostly the same but more limited.
+    property bool sync_loop_layout: false
+
     signal rowAdded()
     signal requestDelete()
 
@@ -40,6 +43,7 @@ Item {
     SchemaCheck {
         descriptor: root.initial_descriptor
         schema: root.object_schema
+        object_description: `track ${track_idx}`
     }
 
     property var maybe_fx_chain: fx_chain_loader.active && fx_chain_loader.status == Loader.Ready ? fx_chain_loader.item : undefined
@@ -74,12 +78,12 @@ Item {
     readonly property int num_slots : loops.length
     property string name: initial_descriptor.name
     property int max_slots
-    readonly property bool name_editable: true
+    property bool name_editable: true
     readonly property string port_name_prefix: ''
     readonly property var audio_port_descriptors : initial_descriptor.ports.filter(p => p.schema == 'audioport.1')
     readonly property var midi_port_descriptors : initial_descriptor.ports.filter(p => p.schema == 'midiport.1')
     readonly property var fx_chain_descriptor : 'fx_chain' in initial_descriptor ? initial_descriptor.fx_chain : undefined
-    readonly property var loop_descriptors : initial_descriptor.loops
+    readonly property var loop_descriptors : initial_descriptor ? initial_descriptor.loops : []
 
     readonly property var loop_factory : Qt.createComponent("LoopWidget.qml")
     property alias loops : loops_column.children
@@ -107,8 +111,6 @@ Item {
 
         }
     }
-
-    // For notifying this track 
 
     // Draggy rect for moving the track
     Rectangle {
@@ -229,7 +231,7 @@ Item {
 
     Component.onCompleted: {
         loaded = false
-        if (initial_descriptor.width != undefined) {
+        if (initial_descriptor && initial_descriptor.width != undefined) {
             setWidth(initial_descriptor.width)
         }
         var _n_loops_loaded = 0
@@ -237,8 +239,9 @@ Item {
         root.loop_descriptors.forEach((desc, idx) => {
             var loop = root.add_loop({
                 initial_descriptor: desc,
-                track_widget: root,
-                track_idx: Qt.binding( () => { return root.track_idx } )
+                track_idx: Qt.binding( () => root.track_idx ),
+                all_loops_in_track: Qt.binding( () => root.loops ),
+                maybe_fx_chain: Qt.binding( () => root.maybe_fx_chain )
             });
             if (loop.loaded) { _n_loops_loaded += 1 }
         })
@@ -386,6 +389,7 @@ Item {
 
                     ShoopTextField {
                         id: title_field
+                        visible: root.name_editable
 
                         anchors {
                             top: parent.top
@@ -399,13 +403,21 @@ Item {
                         height: 26
 
                         text: root.name
-                        readOnly: !root.name_editable
-
                         onEditingFinished: () => {
                                             focus = false
                                             release_focus_notifier.notify()
                                             root.name = text
                                         }
+                    }
+                    Item {
+                        visible: !root.name_editable
+                        anchors.fill: title_field
+
+                        Label {
+                            text: root.name
+                            font.pixelSize: 12
+                            anchors.centerIn: parent
+                        }
                     }
         
                     ExtendedButton {
@@ -437,12 +449,13 @@ Item {
 
                             ShoopMenuItem {
                                 text: "Delete Track"
+                                shown: !root.sync_loop_layout
                                 onClicked: { root.requestDelete() }
                             }
 
                             ShoopMenuItem {
                                 text: "Snapshot FX State"
-                                enabled: root.maybe_fx_chain != undefined
+                                shown: root.maybe_fx_chain != undefined
                                 onClicked: {
                                     var snapshot = root.maybe_fx_chain.actual_session_descriptor()
                                     delete snapshot.ports
@@ -463,10 +476,10 @@ Item {
                             }
 
                             Menu {
-                                height: 30
                                 id: restore_submenu
+                                height: 30
                                 title: "Restore FX State"
-                                enabled: root.maybe_fx_chain != undefined && fx_states.length > 0
+                                enabled: !root.sync_loop_layout && root.maybe_fx_chain != undefined && fx_states.length > 0
 
                                 RegistrySelects {
                                     registry: registries.fx_chain_states_registry
@@ -522,6 +535,13 @@ Item {
                     
                 }
 
+                Item {
+                    // To subtract open space in the sync
+                    // loop layout
+                    width: 1
+                    height: root.sync_loop_layout ? -24 : 0
+                }
+
                 Column {
                     spacing: 2
                     id: loops_column
@@ -549,6 +569,7 @@ Item {
 
                 ExtendedButton {
                     tooltip: "Add a loop to track(s)."
+                    visible: !root.sync_loop_layout
                     
                     anchors {
                         left: parent.left

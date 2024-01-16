@@ -17,6 +17,8 @@ PythonLoop {
     // Gives a nice full progress bar when recording
     readonly property int display_position: mode == ShoopConstants.LoopMode.Recording ? length : position
 
+    property var track_widget: null
+
     // TODO: kind of a bad place to put this.
     // When the loop starts recording, ensure all channels have their
     // "recording started at" updated and also our FX chain state is
@@ -29,7 +31,7 @@ PythonLoop {
             channels.forEach(c => {
                 if (ModeHelpers.is_recording_mode_for(mode, c.mode)) {
                     c.recording_started_at = now
-                    if (c.mode == ShoopConstants.ChannelMode.Wet && track_widget.maybe_fx_chain) {
+                    if (c.mode == ShoopConstants.ChannelMode.Wet && track_widget && track_widget.maybe_fx_chain) {
                         if (!fx_chain_desc_id) {
                             fx_chain_desc_id = registries.fx_chain_states_registry.generate_id('fx_chain_state')
                             var fx_chain_desc = track_widget.maybe_fx_chain.actual_session_descriptor()

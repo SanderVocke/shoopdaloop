@@ -19,7 +19,6 @@ ShoopDialog {
 
     property var tracks : []
     property var get_max_loop_slots : () => 8
-    property bool make_first_sync : root.tracks.length == 0
     property alias track_name : name_field.text
     property alias is_drywet : select_type.is_drywet
     property alias is_composite : select_type.is_composite
@@ -56,9 +55,6 @@ ShoopDialog {
             is_drywet && is_drywet_jack,
             (is_drywet && is_drywet_carla) ? drywet_carla_type : undefined
         )
-        if (make_first_sync) {
-            track_descriptor['loops'][0]['is_sync'] = true
-        }
         addTrackDescriptor(track_descriptor)
     }
 
@@ -69,11 +65,9 @@ ShoopDialog {
         columnSpacing: 10
 
         Label {
-            text: "Choose the settings for your initial track.\nIts first loop will be the global sync loop."
-            visible: make_first_sync
+            text: "Choose the settings for your track."
         }
         Rectangle {
-            visible: make_first_sync
             width: 10
             height: 10
             color: 'transparent'

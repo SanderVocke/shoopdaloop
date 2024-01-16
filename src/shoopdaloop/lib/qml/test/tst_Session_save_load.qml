@@ -19,7 +19,6 @@ ShoopTestFile {
 
         anchors.fill: parent
         initial_descriptor: {
-            let base = GenerateSession.generate_default_session(app_metadata.version_string, null, true, 1)
             let direct_track = GenerateSession.generate_default_track(
                 "dt",
                 2,
@@ -71,11 +70,9 @@ ShoopTestFile {
             drywet_track.loops[1]['composition'] = {
                 'playlists': []
             }
-            base.tracks.push(direct_track)
-            base.tracks.push(drywet_track)
-            base.tracks.push(midi_track)
-            testcase.logger.debug(() => ("session descriptor: " + JSON.stringify(base, null, 2)))
-            return base
+            let desc = GenerateSession.generate_default_session(app_metadata.version_string, null, true, 1, 1, [direct_track, drywet_track, midi_track])
+            testcase.logger.debug(() => ("session descriptor: " + JSON.stringify(desc, null, 2)))
+            return desc
         }
 
         ShoopSessionTestCase {
@@ -85,9 +82,9 @@ ShoopTestFile {
             session: session
             additional_when_condition: other_session && other_session.loaded
 
-            function dt(s=session) { return s.tracks[1] }
-            function dwt(s=session) { return s.tracks[2] }
-            function mt(s=session) { return s.tracks[3] }
+            function dt(s=session) { return s.main_tracks[0] }
+            function dwt(s=session) { return s.main_tracks[1] }
+            function mt(s=session) { return s.main_tracks[2] }
             function dt_loop(s=session) { return dt(s) ? dt(s).loops[0] : null }
             function dwt_loop(s=session) { return dwt(s) ? dwt(s).loops[0] : null }
             function mt_loop(s=session) { return mt(s) ? mt(s).loops[0] : null }
@@ -340,5 +337,6 @@ ShoopTestFile {
         driver_setting_overrides: {
             "sample_rate": 32000
         }
+        initial_descriptor: GenerateSession.generate_default_session(app_metadata.version_string, null, true, 1, 1, [])
     }
 }
