@@ -373,7 +373,7 @@ void CarlaLV2ProcessingChain<TimeType, SizeType>::instantiate(
     }
 
     // Instantiate asynchronously.
-    std::thread instantiate_thread([this, sample_rate]() {
+    std::thread instantiate_thread([this, sample_rate, buffer_size]() {
         // Set up required features.
         // Options feature with buffer size
         LV2_Options_Option options[] = {

@@ -3,6 +3,7 @@
 #include "MidiPort.h"
 #include "MidiSortingReadWritePort.h"
 #include <stdexcept>
+#include <iostream>
 
 template<typename API>
 GenericJackMidiInputPort<API>::JackMidiReadBuffer::JackMidiReadBuffer() : m_jack_buffer(nullptr) {}
@@ -15,7 +16,8 @@ bool GenericJackMidiInputPort<API>::JackMidiReadBuffer::read_by_reference_suppor
 template<typename API>
 uint32_t GenericJackMidiInputPort<API>::JackMidiReadBuffer::PROC_get_n_events() const {
     if (!m_jack_buffer) { return 0; }
-    return API::midi_get_event_count(m_jack_buffer);
+    auto rval = API::midi_get_event_count(m_jack_buffer);
+    return rval;
 }
 
 template<typename API>
