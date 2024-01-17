@@ -357,7 +357,7 @@ Item {
         // - gain not supported on MIDI
         // - Send should always have the original recorded gain of the dry signal.
         // Also, gain + balance together make up the channel gains in stereo mode.
-        if (root.is_stereo) {
+        if (root.is_stereo && root.maybe_backend_loop) {
             var lr = get_stereo_audio_output_channels()
             var gains = Stereo.individual_gains(gain, last_pushed_stereo_balance)
             lr[0].set_gain(gains[0])
@@ -370,7 +370,7 @@ Item {
     }
 
     function push_stereo_balance(balance) {
-        if (root.is_stereo) {
+        if (root.is_stereo && root.maybe_backend_loop) {
             var lr = get_stereo_audio_output_channels()
             var gains = Stereo.individual_gains(last_pushed_gain, balance)
             lr[0].set_gain(gains[0])
@@ -423,6 +423,7 @@ Item {
             track_widget: root.track_widget
         }
     }
+
     function create_backend_loop() {
         if (!maybe_loop) {
             if (backend_loop_factory.status == Component.Error) {

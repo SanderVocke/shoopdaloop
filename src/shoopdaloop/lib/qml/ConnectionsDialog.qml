@@ -7,8 +7,11 @@ import ShoopDaLoop.PythonLogger
 Dialog {
     property var audio_in_ports: []
     property var audio_out_ports: []
+    property var audio_send_ports: []
+    property var audio_return_ports: []
     property var midi_in_ports: []
     property var midi_out_ports: []
+    property var midi_send_ports: []
 
     readonly property PythonLogger logger : PythonLogger { name:"Frontend.ConnectionsDialog" }
 
@@ -20,21 +23,25 @@ Dialog {
     height: Overlay.overlay ? Overlay.overlay.height - 50 : 500
     anchors.centerIn: Overlay.overlay
 
+    property var contents: ({
+        'Audio in': root.audio_in_ports,
+        'Audio out': root.audio_out_ports,
+        'Audio send': root.audio_send_ports,
+        'Audio return': root.audio_return_ports,
+        'Midi in': root.midi_in_ports,
+        'Midi out': root.midi_out_ports,
+        'Midi send': root.midi_send_ports
+    })
+
     TabBar {
         id: bar
         width: parent.width
         height: 50
-        TabButton {
-            text: 'Audio in'
-        }
-        TabButton {
-            text: 'Audio out'
-        }
-        TabButton {
-            text: 'Midi in'
-        }
-        TabButton {
-            text: 'Midi out'
+        Repeater {
+            model: Object.keys(root.contents).filter(k => root.contents[k].length > 0)
+            TabButton {
+                text: modelData
+            }
         }
     }
 
@@ -45,21 +52,12 @@ Dialog {
         anchors.left: parent.left
         anchors.right: parent.right
         currentIndex: bar.currentIndex
-        PortsConnections {
-            id: audio_in_view
-            ports: root.audio_in_ports
-        }
-        PortsConnections {
-            id: audio_out_view
-            ports: root.audio_out_ports
-        }
-        PortsConnections {
-            id: midi_in_view
-            ports: root.midi_in_ports
-        }
-        PortsConnections {
-            id: midi_out_view
-            ports: root.midi_out_ports
+
+        Repeater {
+            model: Object.values(root.contents).filter(v => v.length > 0)
+            PortsConnections {
+                ports: modelData
+            }
         }
     }
 
