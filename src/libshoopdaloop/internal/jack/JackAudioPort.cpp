@@ -15,6 +15,12 @@ GenericJackAudioPort<API>::GenericJackAudioPort(std::string name, shoop_port_dir
 template<typename API>
 void GenericJackAudioPort<API>::PROC_prepare(uint32_t nframes) {
     GenericJackPort<API>::PROC_prepare(nframes);
+    auto buf = m_buffer.load();
+    if (!buf) {
+        // If JACK fails to give us a buffer, provide an internall fallback.
+        m_fallback_buffer.resize(std::max(nframes, (uint32_t) m_fallback_buffer.size()));
+        m_buffer = (void*)m_fallback_buffer.data();
+    }
     if (!has_implicit_input_source()) {
         // JACK output buffers should be zero'd
         memset((void*) m_buffer.load(), 0, sizeof(jack_default_audio_sample_t) * nframes);

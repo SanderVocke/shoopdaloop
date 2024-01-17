@@ -14,6 +14,7 @@ bool GenericJackMidiInputPort<API>::JackMidiReadBuffer::read_by_reference_suppor
 
 template<typename API>
 uint32_t GenericJackMidiInputPort<API>::JackMidiReadBuffer::PROC_get_n_events() const {
+    if (!m_jack_buffer) { return 0; }
     return API::midi_get_event_count(m_jack_buffer);
 }
 
@@ -57,6 +58,7 @@ template<typename API>
 void GenericJackMidiOutputPort<API>::JackMidiWriteBuffer::PROC_write_event_value(uint32_t size,
                             uint32_t time,
                             const uint8_t* data) {
+    if(!m_jack_buffer) { return; }
     API::midi_event_write(m_jack_buffer, time, data, size);
 }
 

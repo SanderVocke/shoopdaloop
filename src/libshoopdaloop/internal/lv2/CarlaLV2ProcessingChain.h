@@ -94,7 +94,7 @@ private:
     std::vector<const LilvPort*> m_audio_in_lilv_ports, m_audio_out_lilv_ports, m_midi_in_lilv_ports, m_midi_out_lilv_ports;
     std::vector<uint32_t> m_audio_in_port_indices, m_audio_out_port_indices, m_midi_in_port_indices, m_midi_out_port_indices;
     uint32_t m_internal_buffers_size;
-    LV2_URID m_midi_event_type, m_atom_chunk_type, m_atom_sequence_type, m_atom_int_type, m_maxbufferuint32_type, m_minbufferuint32_type;
+    LV2_URID m_midi_event_type, m_atom_chunk_type, m_atom_sequence_type, m_atom_int_type, m_maxbufferuint32_type, m_minbufferuint32_type, m_nominalbufferuint32_type;
     LV2_External_UI_Host m_ui_host;
     LV2_State_Interface *m_state_iface;
     const LilvUI *m_ui;
@@ -141,10 +141,11 @@ public:
         LilvWorld *lilv_world,
         shoop_fx_chain_type_t type,
         uint32_t sample_rate,
+        uint32_t buffer_size,
         std::string human_name
     );
 
-    void instantiate(uint32_t sample_rate);
+    void instantiate(uint32_t sample_rate, uint32_t buffer_size);
     bool visible() const override;
     void show() override;
     void hide() override;

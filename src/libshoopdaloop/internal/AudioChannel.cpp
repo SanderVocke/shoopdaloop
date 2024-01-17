@@ -253,6 +253,9 @@ void AudioChannel<SampleT>::PROC_exec_cmd(ProcessingCommand cmd) {
     auto const &ac = cmd.details.additive_copy_details;
 
     if (cmd.cmd_type == ProcessingCommandType::RawCopy) {
+        if (!rc.src || !rc.dst) {
+            throw_error<std::runtime_error>("Null pointer in raw copy");
+        }
         auto n = rc.sz / sizeof(SampleT);
         auto first = (n > 0) ? ((SampleT*)rc.src)[0] : 0.0f;
     }

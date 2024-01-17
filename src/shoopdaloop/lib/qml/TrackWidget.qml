@@ -18,8 +18,8 @@ Item {
     }
     
     anchors {
-        top: parent.top
-        bottom: parent.bottom
+        top: parent ? parent.top : undefined
+        bottom: parent ? parent.bottom : undefined
     }
 
     property var initial_descriptor : null

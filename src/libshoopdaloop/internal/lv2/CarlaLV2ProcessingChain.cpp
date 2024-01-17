@@ -216,7 +216,7 @@ void CarlaLV2ProcessingChain<TimeType, SizeType>::maybe_cleanup_ui() {
 
 template <typename TimeType, typename SizeType>
 CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
-    LilvWorld *lilv_world, shoop_fx_chain_type_t type, uint32_t sample_rate,
+    LilvWorld *lilv_world, shoop_fx_chain_type_t type, uint32_t sample_rate, uint32_t buffer_size,
     std::string human_name)
     : m_internal_buffers_size(carla_constants::max_buffer_size), m_human_name(human_name),
       m_unique_name(human_name + "_" + random_string(6)) {
@@ -250,6 +250,7 @@ CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
     m_atom_int_type = map_urid(LV2_ATOM__Int);
     m_maxbufferuint32_type = map_urid(LV2_BUF_SIZE__maxBlockLength);
     m_minbufferuint32_type = map_urid(LV2_BUF_SIZE__minBlockLength);
+    m_nominalbufferuint32_type = map_urid(LV2_BUF_SIZE__nominalBlockLength);
 
     // Set up the plugin ports
     {
@@ -361,12 +362,12 @@ CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
     }
 
     // Start instantiation of the plugin.
-    instantiate(sample_rate);
+    instantiate(sample_rate, buffer_size);
 }
 
 template <typename TimeType, typename SizeType>
 void CarlaLV2ProcessingChain<TimeType, SizeType>::instantiate(
-    uint32_t sample_rate) {
+    uint32_t sample_rate, uint32_t buffer_size) {
     if (m_instance) {
         throw std::runtime_error("Cannot re-instantiate Carla chain");
     }
@@ -378,6 +379,7 @@ void CarlaLV2ProcessingChain<TimeType, SizeType>::instantiate(
         LV2_Options_Option options[] = {
             {LV2_OPTIONS_INSTANCE, 0, m_maxbufferuint32_type, sizeof(decltype(carla_constants::max_buffer_size)), m_atom_int_type, &carla_constants::max_buffer_size },
             {LV2_OPTIONS_INSTANCE, 0, m_minbufferuint32_type, sizeof(decltype(carla_constants::min_buffer_size)), m_atom_int_type, &carla_constants::min_buffer_size },
+            {LV2_OPTIONS_INSTANCE, 0, m_nominalbufferuint32_type, sizeof(decltype(buffer_size)), m_atom_int_type, &buffer_size},
             {LV2_OPTIONS_INSTANCE, 0, 0, 0, 0, nullptr}
         };
         LV2_Feature options_feature{.URI = LV2_OPTIONS__options, .data = options};
