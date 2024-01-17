@@ -94,7 +94,7 @@ void MidiPort::PROC_process(uint32_t nframes) {
         }
     }
     if (!muted && procbuf) {
-        // Sort the processing buffer.
+        // Sort/process the processing buffer.
         procbuf->PROC_process(nframes);
     }
     if (!muted) {

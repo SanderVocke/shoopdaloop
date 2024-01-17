@@ -45,5 +45,7 @@ public:
 
     MidiReadableBufferInterface *PROC_get_read_output_data_buffer (uint32_t nframes) override;
     MidiReadWriteBufferInterface *PROC_get_processing_buffer (uint32_t nframes) override { return nullptr; }
+
     void PROC_process(uint32_t nframes) override;
+    void PROC_prepare(uint32_t nframes) override;
 };
