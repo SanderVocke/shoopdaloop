@@ -78,12 +78,11 @@ void GenericJackMidiInputPort<API>::PROC_prepare(uint32_t nframes) {
     // sets m_port
     GenericJackMidiPort<API>::PROC_prepare(nframes);
     m_read_buffer.m_jack_buffer = m_buffer;
-    MidiPort::PROC_prepare(nframes);
+    MidiBufferingInputPort::PROC_prepare(nframes);
 }
 
 template<typename API>
 void GenericJackMidiInputPort<API>::PROC_process(uint32_t nframes) {
-    MidiPort::PROC_process(nframes);
     MidiBufferingInputPort::PROC_process(nframes);
 }
 
