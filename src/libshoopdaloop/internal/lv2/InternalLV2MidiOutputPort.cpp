@@ -44,7 +44,6 @@ void InternalLV2MidiOutputPort::disconnect_external(std::string name) {}
 void InternalLV2MidiOutputPort::PROC_write_event_value(uint32_t size,
                                                        uint32_t time,
                                                        const uint8_t *data) {
-    std::cout << m_iter.offset << std::endl;
     bool result = lv2_evbuf_write(&m_iter, time, 0, m_midi_event_type_urid,
                                   size, (void *)data);
     if (!result) {
