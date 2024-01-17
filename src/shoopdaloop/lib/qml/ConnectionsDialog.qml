@@ -152,8 +152,12 @@ Dialog {
 
             ScrollBar.vertical.policy: ScrollBar.AsNeeded
             ScrollBar.horizontal.policy: ScrollBar.AsNeeded
+
+            contentHeight: colly.height
     
             Column {
+                id: colly
+                
                 // Row per external port
                 Mapper {
                     id: external_ports_mapper
