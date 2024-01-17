@@ -22,10 +22,14 @@ InternalLV2MidiOutputPort::PROC_get_read_output_data_buffer(uint32_t n_frames) {
     return nullptr;
 }
 
-MidiWriteableBufferInterface *
-InternalLV2MidiOutputPort::PROC_get_write_data_into_port_buffer(uint32_t n_frames) {
+void InternalLV2MidiOutputPort::PROC_prepare(uint32_t n_frames) {
     lv2_evbuf_reset(m_evbuf, true);
     m_iter = lv2_evbuf_begin(m_evbuf);
+    MidiPort::PROC_prepare(n_frames);
+}
+
+MidiWriteableBufferInterface *
+InternalLV2MidiOutputPort::PROC_get_write_data_into_port_buffer(uint32_t n_frames) {
     return (static_cast<MidiWriteableBufferInterface *>(this));
 }
 
