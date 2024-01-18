@@ -1,7 +1,6 @@
 import QtQuick 6.3
 import QtQuick.Controls 6.3
 import QtQuick.Controls.Material 6.3
-import QtQuick.Dialogs
 
 import ShoopConstants
 
@@ -111,7 +110,7 @@ Item {
                 }
             }
 
-            FileDialog {
+            ShoopFileDialog {
                 id: savesessiondialog
                 fileMode: FileDialog.SaveFile
                 acceptLabel: 'Save'
@@ -119,23 +118,21 @@ Item {
                 defaultSuffix: 'shl'
                 onAccepted: {
                     close()
-                    var filename = UrlToFilename.qml_url_to_filename(selectedFile.toString());
+                    var filename = UrlToFilename.qml_url_to_filename(file.toString());
                     root.saveSession(filename)
                 }
-                options: FileDialog.DontUseNativeDialog
             }
 
-            FileDialog {
+            ShoopFileDialog {
                 id: loadsessiondialog
                 fileMode: FileDialog.OpenFile
                 acceptLabel: 'Load'
                 nameFilters: ["ShoopDaLoop session files (*.shl)", "All files (*)"]
                 onAccepted: {
                     close()
-                    var filename = UrlToFilename.qml_url_to_filename(selectedFile.toString());
+                    var filename = UrlToFilename.qml_url_to_filename(file.toString());
                     root.loadSession(filename)
                 }
-                options: FileDialog.DontUseNativeDialog
             }
 
             ProfilingWindow {

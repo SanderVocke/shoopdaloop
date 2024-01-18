@@ -35,10 +35,15 @@ LuaControlInterface {
                     })
                 } else if (loop_selector.length == 2) {
                     // form [x, y]
-                    let maybe_track = session.main_tracks[loop_selector[0]]
-                    rval = maybe_track ?
-                        [ session.main_tracks[loop_selector[0]].loops[loop_selector[1]] ] :
-                        []
+                    if (loop_selector[0] == -1) {
+                        // special case, sync track
+                        rval = session.sync_track.loops[loop_selector[1]] ? [session.sync_track.loops[loop_selector[1]]] : []
+                    } else {
+                        let maybe_track = session.main_tracks[loop_selector[0]]
+                        rval = maybe_track ?
+                            [ session.main_tracks[loop_selector[0]].loops[loop_selector[1]] ] :
+                            []
+                    }
                 } else {
                     logger.warning(() => (`Invalid loop selector: ${JSON.stringify(loop_selector)}`))        
                     rval = []

@@ -3,9 +3,9 @@ import os
 import signal
 import time
 
-from PySide6.QtQml import QQmlApplicationEngine, QJSValue
-from PySide6.QtGui import QGuiApplication, QIcon
+from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtCore import QTimer, QObject, Q_ARG, QMetaObject, Qt, QEvent, Slot, QtMsgType, Signal
+from PySide6.QtGui import QIcon
 from PySide6.QtQml import QQmlDebuggingEnabler
 from PySide6.QtQuick import QQuickWindow
 
@@ -18,16 +18,10 @@ if have_nsm:
 from ..qml_helpers import *
 from ..backend_wrappers import terminate_all_backends
 
-from .SchemaValidator import SchemaValidator
-from .FileIO import FileIO
-from .ClickTrackGenerator import ClickTrackGenerator
-from .KeyModifiers import KeyModifiers
-from .ApplicationMetadata import ApplicationMetadata
-
 from ..logging import *
 from ..directories import *
 
-class Application(ShoopQGuiApplication):
+class Application(ShoopQApplication):
     exit_handler_called = Signal()
 
     def __init__(self,

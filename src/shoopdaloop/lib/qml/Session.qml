@@ -216,6 +216,7 @@ Rectangle {
         ])
         registries.objects_registry.clear()
         tracks_widget.reload()
+        sync_loop_loader.reload()
     }
 
     function queue_load_tasks(data_files_directory, from_sample_rate, to_sample_rate, add_tasks_to) {
@@ -602,6 +603,9 @@ Rectangle {
                 property bool loaded: false
 
                 function initialize() {
+                    if (track_widget) {
+                        track_widget.qml_close()
+                    }
                     active = false
                     loaded = false
                     active = Qt.binding(() => root.sync_loop_track_descriptor != null)

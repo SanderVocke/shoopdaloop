@@ -67,6 +67,11 @@ local handle_direction_key = function(key, modifiers)
     local loops = shoop_control.loop_get_which_selected()
     if #loops == 0 then
         shoop_control.loop_select({0, 0}, true)
+        if #shoop_control.loop_get_which_selected() == 0 then
+            --  Probably there is no track 0 yet.
+            shoop_control.loop_select({-1, 0}, true)
+            return
+        end
         return
     end
 

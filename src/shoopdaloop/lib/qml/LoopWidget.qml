@@ -1560,10 +1560,9 @@ Item {
             }
         }
 
-        FileDialog {
+        ShoopFileDialog {
             id: savedialog
             fileMode: FileDialog.SaveFile
-            options: FileDialog.DontUseNativeDialog
             acceptLabel: 'Save'
             nameFilters: Object.entries(file_io.get_soundfile_formats()).map((e) => {
                 var extension = e[0]
@@ -1579,7 +1578,7 @@ Item {
                 close()
                 registries.state_registry.save_action_started()
                 try {
-                    var filename = UrlToFilename.qml_url_to_filename(selectedFile.toString());
+                    var filename = UrlToFilename.qml_url_to_filename(file.toString());
                     var samplerate = root.maybe_backend_loop.backend.get_sample_rate()
                     var task = file_io.save_channels_to_soundfile_async(filename, samplerate, channels)
                     task.when_finished(() => registries.state_registry.save_action_finished())
@@ -1591,10 +1590,9 @@ Item {
             
         }
 
-        FileDialog {
+        ShoopFileDialog {
             id: midisavedialog
             fileMode: FileDialog.SaveFile
-            options: FileDialog.DontUseNativeDialog
             acceptLabel: 'Save'
             nameFilters: ["MIDI files (*.mid)", "Sample-accurate Shoop MIDI (*.smf)"]
             property var channel: null
@@ -1604,17 +1602,16 @@ Item {
                     return;
                 }
                 close()
-                var filename = UrlToFilename.qml_url_to_filename(selectedFile.toString());
+                var filename = UrlToFilename.qml_url_to_filename(file.toString());
                 var samplerate = root.maybe_backend_loop.backend.get_sample_rate()
                 file_io.save_channel_to_midi_async(filename, samplerate, channel)
             }
             
         }
 
-        FileDialog {
+        ShoopFileDialog {
             id: loaddialog
             fileMode: FileDialog.OpenFile
-            options: FileDialog.DontUseNativeDialog
             acceptLabel: 'Load'
             nameFilters: [
                 'Supported sound files ('
@@ -1622,7 +1619,7 @@ Item {
                 + ')'
             ]
             onAccepted: {
-                loadoptionsdialog.filename = UrlToFilename.qml_url_to_filename(selectedFile.toString());
+                loadoptionsdialog.filename = UrlToFilename.qml_url_to_filename(file.toString());
                 close()
                 root.create_backend_loop()
                 loadoptionsdialog.update()
@@ -1762,15 +1759,14 @@ Item {
             }
         }
 
-        FileDialog {
+        ShoopFileDialog {
             id: midiloaddialog
             fileMode: FileDialog.OpenFile
-            options: FileDialog.DontUseNativeDialog
             acceptLabel: 'Load'
             nameFilters: ["Midi files (*.mid)"]
             onAccepted: {
                 close()
-                midiloadoptionsdialog.filename = UrlToFilename.qml_url_to_filename(selectedFile.toString());
+                midiloadoptionsdialog.filename = UrlToFilename.qml_url_to_filename(file.toString());
                 midiloadoptionsdialog.open()
             }
         }
