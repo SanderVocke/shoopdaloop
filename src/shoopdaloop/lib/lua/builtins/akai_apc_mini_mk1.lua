@@ -66,7 +66,8 @@ end
 
 -- Convert a CC to the corresponding fader track
 local cc_to_fader_track = function(cc)
-    if cc >= 64 or cc < 48 then return nil end
+    if cc > 56 or cc < 48 then return nil end
+    if cc == 56 then return -1 end -- sync track
     return cc - 48
 end
 

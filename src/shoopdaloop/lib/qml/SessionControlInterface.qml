@@ -72,7 +72,17 @@ LuaControlInterface {
             if (track_selector.length == 0) { rval = [] }
             else {
                 // Form [track_idx1, track_idx2, ...]
-                rval = track_selector.map((idx) => session.main_tracks[idx]).filter(t => t != null && t != undefined)
+                rval = track_selector.map(
+                    (idx) => {
+                        if(idx >= 0) {
+                            return session.main_tracks[idx]
+                        } else if (idx == -1) {
+                            return session.sync_track
+                        } else {
+                            return null
+                        }
+                    }
+                ).filter(t => t != null && t != undefined)
             }
         } else if (Number.isInteger(track_selector)) {
             if (session.main_tracks.length > track_selector) {
