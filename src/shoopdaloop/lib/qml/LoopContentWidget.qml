@@ -83,7 +83,7 @@ Item {
                 topInset: 20
                 bottomInset: 20
 
-                Slider {
+                ShoopSlider {
                     id: zoom_slider
                     width: 160
                     value: 8.0

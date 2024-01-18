@@ -218,12 +218,12 @@ Item {
                     color: Material.foreground
                     text: {
                         var rval = ''
-                        for(var k of Object.keys(schedule)) {
-                            if (schedule[k].loops_start.includes(mapped_item)) {
+                        for(var k of Array.from(Object.keys(schedule))) {
+                            if (schedule[k].loops_start.includes(mapped_item.maybe_loop)) {
                                 let start = k
                                 var end = start
                                 for(var k2 of Object.keys(schedule)) {
-                                    if (k2 > k && schedule[k2].loops_end.includes(mapped_item)) {
+                                    if (k2 > k && schedule[k2].loops_end.includes(mapped_item.maybe_loop)) {
                                         end = k2
                                         break
                                     }

@@ -475,6 +475,7 @@ Item {
                                     id: snapshot_fx_state_dialog
                                     property var data
                                     title: "Choose a name"
+                                    width: 300
                                     onAcceptedInput: name => {
                                         var id = registries.fx_chain_states_registry.generate_id("fx_chain_state")
                                         data.title = name
@@ -485,7 +486,6 @@ Item {
 
                             Menu {
                                 id: restore_submenu
-                                height: 30
                                 title: "Restore FX State"
                                 enabled: !root.sync_loop_layout && root.maybe_fx_chain != undefined && fx_states.length > 0
 
@@ -505,7 +505,7 @@ Item {
                                     ShoopMenuItem {
                                         property var mapped_item: restore_submenu.fx_states[index]
                                         text: mapped_item.title
-                                        enabled: root.fx_chain_descriptor && (mapped_item.type == root.fx_chain_descriptor.type)
+                                        shown: root.fx_chain_descriptor != undefined && (mapped_item.type == root.fx_chain_descriptor.type)
                                         onClicked: root.maybe_fx_chain.restore_state(mapped_item.internal_state)
                                     }
                                 }

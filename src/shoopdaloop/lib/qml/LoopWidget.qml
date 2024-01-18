@@ -420,7 +420,7 @@ Item {
     Component {
         id: backend_loop_factory
         BackendLoopWithChannels {
-            track_widget: root.track_widget
+            maybe_fx_chain: root.maybe_fx_chain
         }
     }
 

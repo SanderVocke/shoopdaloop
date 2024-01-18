@@ -149,9 +149,9 @@ Dialog {
             anchors.right: parent.right
 
             ScrollBar.vertical.policy: ScrollBar.AsNeeded
-            ScrollBar.horizontal.policy: ScrollBar.AsNeeded
+            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
-            contentHeight: colly.height
+            contentHeight: colly.height + 100
     
             Column {
                 id: colly
