@@ -48,6 +48,9 @@ class MidiControlPort(ShoopQQuickItem):
         self.rescan_parents()
         if not self._backend:
             self.parentChanged.connect(self.rescan_parents)
+        
+        self.msgReceived.connect(lambda msg: self.logger.debug(lambda: "Received: {}".format(msg)))
+        self.connected.connect(lambda: self.logger.debug(lambda: "{}: connected".format(self._name_hint)))
     
     ######################
     ## SIGNALS
@@ -171,6 +174,7 @@ class MidiControlPort(ShoopQQuickItem):
     def send_msg(self, msg):
         # NOTE: not for direct use from Lua.
         # Sends the given bytes as a MIDI message.
+        self.logger.debug(lambda: "Sending: {}".format(msg))
         if self._direction == PortDirection.Output.value and self._backend_obj:
             self._backend_obj.send_midi(msg)
     
@@ -204,7 +208,7 @@ class MidiControlPort(ShoopQQuickItem):
             r = self._backend_obj.maybe_next_message()
             if not r:
                 break
-            self.logger.trace(lambda: "Received: {}".format(r.data))
+            self.logger.debug(lambda: "Received: {}".format(r.data))
             self.handle_msg(r.data)
     
     @Slot()

@@ -113,9 +113,9 @@ void BackendSession::PROC_process (uint32_t nframes) {
             
             // Execute queued commands
             // (Graph changes applied here too)
-            log<log_level_trace>("Process: execute commands");
+            log<log_level_trace>("Process: execute commands and MIDI control");
             profiling::stopwatch(
-                [this]() {
+                [this, nframes]() {
                     PROC_handle_command_queue();
                 },
                 cmds_profiling_item

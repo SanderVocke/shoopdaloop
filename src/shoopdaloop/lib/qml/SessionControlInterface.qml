@@ -24,18 +24,20 @@ LuaControlInterface {
                 if (Array.isArray(loop_selector[0])) {
                     // form [[x, y], [x, y], ...]
                     rval = loop_selector.map((coords) => {
-                        if (coords[0] >= 0 && coords[0] < tracks_widget.tracks.length &&
-                            coords[1] >= 0 && coords[1] < tracks_widget.tracks[coords[0]].loops.length) {
-                            return tracks_widget.tracks[coords[0]].loops[coords[1]];
+                        if (coords[0] >= 0 && coords[0] < session.main_tracks.length &&
+                            coords[1] >= 0 && coords[1] < session.main_tracks[coords[0]].loops.length) {
+                            return session.main_tracks[coords[0]].loops[coords[1]];
+                        } else if (coords[0] == -1 && coords[1] < session.sync_track.loops.length) {
+                            return session.sync_track.loops[coords[1]]
                         } else {        
                             return null
                         }
                     })
                 } else if (loop_selector.length == 2) {
                     // form [x, y]
-                    let maybe_track = tracks_widget.tracks[loop_selector[0]]
+                    let maybe_track = session.main_tracks[loop_selector[0]]
                     rval = maybe_track ?
-                        [ tracks_widget.tracks[loop_selector[0]].loops[loop_selector[1]] ] :
+                        [ session.main_tracks[loop_selector[0]].loops[loop_selector[1]] ] :
                         []
                 } else {
                     logger.warning(() => (`Invalid loop selector: ${JSON.stringify(loop_selector)}`))        
@@ -44,8 +46,8 @@ LuaControlInterface {
             }
         } else {
             // Form callback:  (loop) => true/false
-            for(var t=0; t<tracks_widget.tracks.length; t++) {
-                let track = tracks_widget.tracks[t]
+            for(var t=0; t<session.main_tracks.length; t++) {
+                let track = session.main_tracks[t]
                 for(var l=0; l<track.loops.length; l++) {
                     let loop = track.loops[l]
                     if(loop_selector(loop)) { rval.push(loop) }
@@ -70,15 +72,15 @@ LuaControlInterface {
             if (track_selector.length == 0) { rval = [] }
             else {
                 // Form [track_idx1, track_idx2, ...]
-                rval = track_selector.map((idx) => tracks_widget.tracks[idx]).filter(t => t != null && t != undefined)
+                rval = track_selector.map((idx) => session.main_tracks[idx]).filter(t => t != null && t != undefined)
             }
         } else if (Number.isInteger(track_selector)) {
-            if (tracks_widget.tracks.length > track_selector) {
-                return [tracks_widget.tracks[track_selector]]
+            if (session.main_tracks.length > track_selector) {
+                return [session.main_tracks[track_selector]]
             } else { return [] }
         } else {
             // Form [track_select_fn]
-            rval = tracks_widget.tracks.filter((t) => track_selector(t))
+            rval = session.main_tracks.filter((t) => track_selector(t))
         }
         logger.debug(() => (`Selected ${rval.length} target track(s).`))
         return rval
@@ -265,7 +267,11 @@ LuaControlInterface {
                         }
                     })
                     port.msgReceived.connect((msg, cb=rule.msg_cb, p=port) => {
-                        p.lua_engine.call(cb, [Midi.parse_msg(msg), null], false) 
+                        if (p.lua_engine) {
+                            p.lua_engine.call(cb, [Midi.parse_msg(msg), null], false)
+                        } else {
+                            root.logger.error('No LUA engine specified for input MIDI control port')
+                        }
                     })
                     midi_control_ports[i] = port
                     midi_control_portsChanged()
@@ -292,20 +298,29 @@ LuaControlInterface {
                         "name_hint": "auto_control_" + rule.id,
                         "autoconnect_regexes": [ rule.regex ],
                         "direction": ShoopConstants.PortDirection.Output,
-                        "parent": root
+                        "parent": root,
+                        "lua_engine": rule.engine
                     });
-                    port.initializedChanged.connect((initialized, cb=rule.opened_cb, p=port) => {
-                        if (initialized) {
+
+                    let onInit = (cb=rule.opened_cb, p=port) => {
+                        if (p.lua_engine) {
+                            root.logger.debug('Port initialized, calling opened callback.')
                             let send_fn = p.get_py_send_fn()
-                            p.lua_engine.call(cb, [send_fn], null, true) }
-                    })
+                            p.lua_engine.call(cb, [send_fn], true)
+                        } else {
+                            root.logger.error('No LUA engine specified for output MIDI control port')
+                        }
+                    }
+                    if(port.initialized) { onInit() }
+                    else {
+                        port.initializedChanged.connect((initialized, oninit=onInit) => oninit())
+                    }
                     port.connected.connect((cb=rule.connected_cb, p=port) => {
                         if (p.lua_engine) {
-                            p.lua_engine.call(cb, [], null, false)
+                            root.logger.debug('Port connected, calling connected callback.')
+                            p.lua_engine.call(cb, [], false)
                         } else {
-                            p.onLua_engineChanged.connect((p=p, cb=cb) => {
-                                p.lua_engine.call(cb, [], null, false)
-                            })
+                            root.logger.error('No LUA engine specified for output MIDI control port')
                         }
                     })
                     port.detectedExternalAutoconnectPartnerWhileClosed.connect((p=port) => {

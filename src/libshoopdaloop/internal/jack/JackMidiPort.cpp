@@ -100,6 +100,7 @@ template<typename API>
 void GenericJackMidiOutputPort<API>::PROC_prepare(uint32_t nframes) {
     GenericJackMidiPort<API>::PROC_prepare(nframes);
     m_write_buffer.m_jack_buffer = m_buffer;
+    API::midi_clear_buffer(m_buffer.load());
     MidiSortingReadWritePort::PROC_prepare(nframes);
 }
 

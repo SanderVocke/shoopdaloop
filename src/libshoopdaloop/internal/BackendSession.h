@@ -26,8 +26,6 @@ class BackendSession : public std::enable_shared_from_this<BackendSession>,
                        public HasAudioProcessingFunction,
                        public WithCommandQueue,
                        public ModuleLoggingEnabled<"Backend.Session"> {
-
-    void PROC_process_decoupled_midi_ports(uint32_t nframes);
     void recalculate_processing_schedule(unsigned update_id);
 
     enum class State {

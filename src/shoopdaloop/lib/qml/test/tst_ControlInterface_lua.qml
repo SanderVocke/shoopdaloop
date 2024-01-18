@@ -48,6 +48,7 @@ ShoopTestFile {
             when: lua_engine.ready && registries.state_registry && loop_at(0,0) && loop_at(0,1) && loop_at(1,0) && loop_at(1,1)
 
             function loop_at(track, idx) {
+                if (track == -1) { return session.sync_track.loops[idx] }
                 if (session.main_tracks.length > track && session.main_tracks[track].loops.length > idx) {
                     return session.main_tracks[track].loops[idx]
                 }
@@ -433,6 +434,36 @@ ShoopTestFile {
                     verify_eq_lua('shoop_control.track_get_input_muted(0)', '{false}')
                     verify_eq_lua('shoop_control.track_get_input_muted({1,0})', '{true, false}')
                 },
+
+                'test_loop_event_callback_mode': () => {
+                    check_backend()
+                    clear()
+
+                    do_execute(`
+                        most_recent_event = nil
+                        most_recent_loop = nil
+                        local function callback(loop, event)
+                            most_recent_loop = loop
+                            most_recent_event = event
+                        end
+                        shoop_control.register_loop_event_cb(callback)
+                    `)
+
+                    loop_at(0,0).transition(ShoopConstants.LoopMode.Recording, 0, false)
+                    testcase.wait_updated(session.backend)
+                    verify_eq_lua('most_recent_event.mode', 'shoop_control.constants.LoopMode_Recording')
+                    verify_eq_lua('most_recent_loop', '{0,0}')
+
+                    loop_at(0,0).transition(ShoopConstants.LoopMode.Stopped, 0, false)
+                    testcase.wait_updated(session.backend)
+                    verify_eq_lua('most_recent_event.mode', 'shoop_control.constants.LoopMode_Stopped')
+                    verify_eq_lua('most_recent_loop', '{0,0}')
+
+                    loop_at(-1,0).set_length(100)
+                    testcase.wait_updated(session.backend)
+                    verify_eq_lua('most_recent_event.length', '100')
+                    verify_eq_lua('most_recent_loop', '{-1,0}')
+                }
             })
         }
     }
