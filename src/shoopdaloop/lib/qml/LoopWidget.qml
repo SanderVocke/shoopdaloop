@@ -443,7 +443,9 @@ Item {
 
     Component {
         id: composite_loop_factory
-        CompositeLoop {}
+        CompositeLoop {
+            loop_widget: root
+        }
     }
     function create_composite_loop(composition={
         'playlists': []
@@ -470,8 +472,7 @@ Item {
         } else {
             maybe_loop = composite_loop_factory.createObject(root, {
                 initial_composition_descriptor: composition,
-                obj_id: root.obj_id,
-                widget: root
+                obj_id: root.obj_id
             })
             maybe_loop.onCycled.connect(root.cycled)
         }

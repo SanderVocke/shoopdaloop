@@ -15,7 +15,7 @@ Item {
 
     property var initial_composition_descriptor: null
     property string obj_id : 'unknown'
-    property var widget : null
+    property var loop_widget : null
 
     readonly property bool initialized: true
 
@@ -197,10 +197,10 @@ Item {
             onVisibleChanged: update_coords()
             parent: Overlay.overlay
 
-            visible: root.widget ? root.widget.selected : false
+            visible: root.loop_widget ? root.loop_widget.selected : false
 
-            width: root.widget ? root.widget.width : 1
-            height: root.widget ? root.widget.height : 1
+            width: root.loop_widget ? root.loop_widget.width : 1
+            height: root.loop_widget ? root.loop_widget.height : 1
             Rectangle {
                 anchors.right: parent.right
                 anchors.rightMargin: -8
