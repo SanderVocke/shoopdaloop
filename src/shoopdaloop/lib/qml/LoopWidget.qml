@@ -421,6 +421,7 @@ Item {
         id: backend_loop_factory
         BackendLoopWithChannels {
             maybe_fx_chain: root.maybe_fx_chain
+            loop_widget: root
         }
     }
 
