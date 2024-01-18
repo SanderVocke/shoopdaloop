@@ -2,7 +2,7 @@ import QtQuick 6.3
 import QtQuick.Controls 6.3
 import QtQuick.Controls.Material 6.3
 
-Slider {
+ShoopSlider {
     id: root
     property real reset_value: 0.0
     TapHandler {

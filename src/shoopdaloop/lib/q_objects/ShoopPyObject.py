@@ -1,6 +1,7 @@
 from PySide6.QtQuick import QQuickItem, QQuickPaintedItem
 from PySide6.QtCore import QObject
 from PySide6.QtGui import QGuiApplication
+from PySide6.QtWidgets import QApplication
 
 from shiboken6 import Shiboken
 
@@ -43,3 +44,4 @@ ShoopQQuickItem = create_shoop_py_object_class(QQuickItem)
 ShoopQObject = create_shoop_py_object_class(QObject)
 ShoopQGuiApplication = create_shoop_py_object_class(QGuiApplication)
 ShoopQQuickPaintedItem = create_shoop_py_object_class(QQuickPaintedItem)
+ShoopQApplication = create_shoop_py_object_class(QApplication)

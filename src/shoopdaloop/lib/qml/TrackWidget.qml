@@ -328,14 +328,19 @@ Item {
     function is_midi(p)  { return p.schema.match(/midiport\.[0-9]+/)  }
     function is_in(p)    { return p.direction == "input" && p.id.match(/.*_(?:in|direct)(?:_[0-9]*)?$/); }
     function is_out(p)   { return p.direction == "output" && p.id.match(/.*_(?:out|direct)(?:_[0-9]*)?$/); }
+    function is_send(p)  { return p.direction == "output" && p.id.match(/.*_(?:send)(?:_[0-9]*)?$/); }
+    function is_return(p)  { return p.direction == "input" && p.id.match(/.*_(?:return)(?:_[0-9]*)?$/); }
     readonly property var audio_ports : ports.filter(p => p && is_audio(p.descriptor))
     readonly property var midi_ports : ports.filter(p => p && is_midi(p.descriptor))
     readonly property var input_ports : ports.filter(p => p && is_in(p.descriptor))
     readonly property var output_ports : ports.filter(p => p && is_out(p.descriptor))
     readonly property var audio_in_ports : audio_ports.filter(p => p && is_in(p.descriptor))
     readonly property var audio_out_ports : audio_ports.filter(p => p && is_out(p.descriptor))
+    readonly property var audio_send_ports : audio_ports.filter(p => p && is_send(p.descriptor))
+    readonly property var audio_return_ports : audio_ports.filter(p => p && is_return(p.descriptor))
     readonly property var midi_in_ports : midi_ports.filter(p => p && is_in(p.descriptor))
     readonly property var midi_out_ports : midi_ports.filter(p => p && is_out(p.descriptor))
+    readonly property var midi_send_ports : midi_ports.filter(p => p && is_send(p.descriptor))
 
     Loader {
         id: fx_chain_loader
@@ -470,6 +475,7 @@ Item {
                                     id: snapshot_fx_state_dialog
                                     property var data
                                     title: "Choose a name"
+                                    width: 300
                                     onAcceptedInput: name => {
                                         var id = registries.fx_chain_states_registry.generate_id("fx_chain_state")
                                         data.title = name
@@ -480,7 +486,6 @@ Item {
 
                             Menu {
                                 id: restore_submenu
-                                height: 30
                                 title: "Restore FX State"
                                 enabled: !root.sync_loop_layout && root.maybe_fx_chain != undefined && fx_states.length > 0
 
@@ -500,7 +505,7 @@ Item {
                                     ShoopMenuItem {
                                         property var mapped_item: restore_submenu.fx_states[index]
                                         text: mapped_item.title
-                                        enabled: root.fx_chain_descriptor && (mapped_item.type == root.fx_chain_descriptor.type)
+                                        shown: root.fx_chain_descriptor != undefined && (mapped_item.type == root.fx_chain_descriptor.type)
                                         onClicked: root.maybe_fx_chain.restore_state(mapped_item.internal_state)
                                     }
                                 }
@@ -601,8 +606,11 @@ Item {
 
         audio_in_ports : root.audio_in_ports
         audio_out_ports : root.audio_out_ports
+        audio_send_ports: root.audio_send_ports
+        audio_return_ports: root.audio_return_ports
         midi_in_ports : root.midi_in_ports
         midi_out_ports : root.midi_out_ports
+        midi_send_ports: root.midi_send_ports
     }
 
 }

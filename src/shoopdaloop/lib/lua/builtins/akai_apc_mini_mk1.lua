@@ -8,6 +8,9 @@
 -- - Faders will control the track output gains.
 -- - Clicking a grid button will perform the default loop action
 --   (see generic ShoopDaLoop documentation) for that loop.
+-- - The sync loop is mapped to the unmarked button above "Shift".
+--   Since it does not support multiple LED colors, it just becomes
+--   green if playing or recording, and off otherwise.
 
 print_debug("Init akai_apc_mini_mk1.lua")
 
@@ -25,9 +28,6 @@ local LED_red_blink = 4
 local LED_yellow = 5
 local LED_yellow_blink = 6
 
--- Track whether we sent our complete state to the device yet
-local pushed_all = nil
-
 -- Track state of the "Fader Ctrl" buttons
 local fader_settings = {'gain', 'pan', 'send', 'device'}
 local fader_setting = fader_settings[1]
@@ -37,6 +37,7 @@ local send_fn = nil
 
 -- Convert a MIDI note to the corresponding loop location on the grid
 local note_to_loop_coords = function(note)
+    if note == 88 then return {-1,0} end -- Special case for sync loop button
     if note >= 64 or note < 0 then return nil end
     local x = note % 8
     local y = 7 - note // 8
@@ -47,6 +48,14 @@ end
 local led_message = function(coords, color)
     local x = coords[1]
     local y = coords[2]
+
+    if x == -1 and y == 0 then
+        if color == LED_yellow then
+            color = LED_off
+        end
+        return {0x90, 88, color}
+    end
+
     local note = (7-y)*8 + x
     return {0x90, note, color}
 end
@@ -57,7 +66,8 @@ end
 
 -- Convert a CC to the corresponding fader track
 local cc_to_fader_track = function(cc)
-    if cc >= 64 or cc < 48 then return nil end
+    if cc > 56 or cc < 48 then return nil end
+    if cc == 56 then return -1 end -- sync track
     return cc - 48
 end
 
@@ -149,6 +159,13 @@ local push_all_loop_colors = function()
             set_led(coords, color)
         end
     end
+    -- Sync loop
+    local sync_coords = {-1, 0}
+    local sync_color = get_loop_color(sync_coords)
+    if sync_color == nil then
+        sync_color = LED_off
+    end
+    set_led(sync_coords, sync_color)
 end
 
 -- Push all our known state to the device lights
@@ -156,18 +173,17 @@ local push_all_state = function()
     if send_fn == nil then return end
     push_fader_setting()
     push_all_loop_colors()
-    pushed_all = true
 end
 
 -- Handle our output port being opened
 local on_output_port_opened = function(_send_fn)
     send_fn = _send_fn
-    if not pushed_all then push_all_state() end
+    push_all_state()
 end
 
 -- Handle our output port being connected
 local on_output_port_connected = function()
-    if not pushed_all then push_all_state() end
+    push_all_state()
 end
 
 -- Handle loop events

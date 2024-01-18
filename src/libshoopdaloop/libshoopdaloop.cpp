@@ -323,6 +323,7 @@ shoop_audio_driver_state_t *get_audio_driver_state(shoop_audio_driver_t *driver)
     rval->sample_rate = d->get_sample_rate();
     rval->dsp_load_percent = d->get_dsp_load();
     rval->xruns_since_last = d->get_xruns();
+    d->reset_xruns();
     rval->active = d->get_active();
     rval->last_processed = d->get_last_processed();
     return rval;

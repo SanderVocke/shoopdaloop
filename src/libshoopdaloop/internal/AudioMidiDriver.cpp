@@ -34,6 +34,7 @@ std::set<HasAudioProcessingFunction*> AudioMidiDriver::processors() const {
 
 void AudioMidiDriver::PROC_process(uint32_t nframes) {
     PROC_handle_command_queue();
+    PROC_process_decoupled_midi_ports(nframes);
     auto lock = m_processors;
     for(auto &p : *lock) {
         p->PROC_process(nframes);
@@ -54,6 +55,13 @@ void AudioMidiDriver::unregister_decoupled_midi_port(std::shared_ptr<shoop_types
     exec_process_thread_command([this, port]() {
         m_decoupled_midi_ports.erase(port);
     });
+}
+
+void AudioMidiDriver::PROC_process_decoupled_midi_ports(uint32_t nframes) {
+    auto lock = m_decoupled_midi_ports;
+    for(auto &p : lock) {
+        p->PROC_process(nframes);
+    }
 }
 
 uint32_t AudioMidiDriver::get_sample_rate() {

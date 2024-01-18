@@ -49,6 +49,7 @@ global_args = {
     'backend_type': AudioDriverType.Dummy.value,
     'load_session_on_startup': None,
     'test_grab_screens': None,
+    'monkey_tester': False
 }
 
 test_files = glob.glob(scripts_dir() + '/**/tst_*.qml', recursive=True)
