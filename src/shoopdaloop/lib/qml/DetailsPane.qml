@@ -1,6 +1,7 @@
 import QtQuick 6.3
 import QtQuick.Controls 6.3
 import QtQuick.Controls.Material 6.3
+import QtWayland.Compositor
 
 Item {
     id: root
@@ -16,6 +17,20 @@ Item {
     // - user items are open until the user closes them.
     property var temporary_items : []
     property var user_items: []
+    property var builtin_itmes: carla_window_items
+
+    RegistryLookup {
+        id: lookup_carla_wayland_wrapper
+        registry: registries.state_registry
+        key: 'carla_wayland_wrapper'
+    }
+    property alias carla_wayland_wrapper : lookup_carla_wayland_wrapper.object
+
+    property var carla_window_items: carla_wayland_wrapper.shellSurfaces.map(s => ({
+        'title': s.title ? s.title : 'Untitled Wayland Window',
+        'item': s,
+        'autoselect': false
+    }))
 
     property var items : {
         var rval = []
@@ -24,6 +39,9 @@ Item {
         })
         temporary_items.forEach(t => {
             rval.push({'title': t.title, 'item': t.item, 'autoselect': t.autoselect, 'closeable': false})
+        })
+        builtin_itmes.forEach(b => {
+            rval.push({'title': b.title, 'item': b.item, 'autoselect': b.autoselect, 'closeable': false})
         })
         if (rval.length == 0) {
             rval.push({'title': '...', 'item': 'empty-placeholder', 'autoselect': true, 'closeable': false})
@@ -146,6 +164,29 @@ Item {
                                     loop: details_item.maybe_loop_with_backend
                                     sync_loop: details_item.maybe_loop_with_backend.sync_loop
                                     width: parent.width
+                                }
+                            }
+                        }
+
+                        Loader {
+                            anchors {
+                                left: parent.left
+                                right: parent.right
+                                leftMargin: 5
+                                rightMargin: 5
+                            }
+                            height: contentrect.height
+
+                            active: (details_item.mapped_item.item instanceof WlShellSurface) ||
+                                    (details_item.mapped_item.item instanceof IviSurface) ||
+                                    (details_item.mapped_item.item instanceof XdgSurface)
+                            
+                            sourceComponent: Component {
+                                ShellSurfaceItem {
+                                    width: contentrect.width
+                                    height: contentrect.height
+                                    shellSurface: details_item.mapped_item.item
+                                    onSurfaceDestroyed: root.carla_wayland_wrapper.removeShellSurface(shellSurface)
                                 }
                             }
                         }

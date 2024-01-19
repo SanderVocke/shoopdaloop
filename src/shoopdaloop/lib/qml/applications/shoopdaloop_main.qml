@@ -16,6 +16,14 @@ ApplicationWindow {
 
     Material.theme: Material.Dark
 
+    CarlaWaylandWrapper {
+        RegisterInRegistry {
+            registry: registries.state_registry
+            key: 'carla_wayland_wrapper'
+            object: parent
+        }
+    }
+
     Session {
         anchors.fill: parent
         initial_descriptor: GenerateSession.generate_default_session(app_metadata.version_string, null, true)

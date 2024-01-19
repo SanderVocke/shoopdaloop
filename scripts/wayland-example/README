@@ -1,0 +1,9 @@
+if running inside X, run the compositor with:
+
+QT_XCB_GL_INTEGRATION=xcb_egl QT_WAYLAND_CLIENT_BUFFER_INTEGRATION=wayland-egl
+
+and always run Carla with:
+
+QT_QPA_PLATFORM=wayland
+
+and play with WAYLAND_DISPLAY to have a temporary location for the socket.
