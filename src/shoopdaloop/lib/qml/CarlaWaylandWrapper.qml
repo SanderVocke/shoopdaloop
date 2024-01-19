@@ -53,11 +53,11 @@ Item {
                     onIviSurfaceCreated: (iviSurface) => shellSurfaces.append({shellSurface: iviSurface});
                 }
 
-                ListModel { id: shellSurfaces }
+                property var shellSurfaces: []
 
                 WaylandOutput {
                     sizeFollowsWindow: true
-                    window: Window.window
+                    window: { console.log(compositor_loader.Window.window); return compositor_loader.Window.window }
                 }
             }
         }

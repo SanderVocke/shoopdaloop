@@ -26,11 +26,11 @@ Item {
     }
     property alias carla_wayland_wrapper : lookup_carla_wayland_wrapper.object
 
-    property var carla_window_items: carla_wayland_wrapper.shellSurfaces.map(s => ({
+    property var carla_window_items: carla_wayland_wrapper && carla_wayland_wrapper.shellSurfaces ? carla_wayland_wrapper.shellSurfaces.map(s => ({
         'title': s.title ? s.title : 'Untitled Wayland Window',
         'item': s,
         'autoselect': false
-    }))
+    })) : []
 
     property var items : {
         var rval = []
