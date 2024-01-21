@@ -2,6 +2,7 @@ import QtQuick 6.3
 import QtQuick.Controls 6.3
 import QtQuick.Controls.Material 6.3
 import QtWayland.Compositor
+import ShoopDaLoop.PythonLogger
 
 Item {
     id: root
@@ -9,6 +10,8 @@ Item {
     property real max_height: 1000
     property real min_height: 50
     property alias pane_y_offset : details_tabbar.height
+
+    readonly property PythonLogger logger : PythonLogger { name: "Frontend.Qml.DetailsPane" }
 
     // The details for items are structured as:
     // [ { 'title': str, 'item': item, 'autoselect': bool  } ]
@@ -117,6 +120,10 @@ Item {
                         property var maybe_loop_with_backend :
                             (maybe_loop && details_item.mapped_item.item.maybe_backend_loop) ?
                             details_item.mapped_item.item : null
+
+                        onMapped_itemChanged: {
+                            root.logger.debug(`Mapped item changed to ${mapped_item.item}`)
+                        }
                         
                         Loader {
                             anchors {
@@ -187,6 +194,10 @@ Item {
                                     height: contentrect.height
                                     shellSurface: details_item.mapped_item.item
                                     onSurfaceDestroyed: root.carla_wayland_wrapper.removeShellSurface(shellSurface)
+
+                                    Component.onCompleted: {
+                                        root.logger.debug(`Accepted Wayland surface. Size: ${width}x${height}.`)
+                                    }
                                 }
                             }
                         }

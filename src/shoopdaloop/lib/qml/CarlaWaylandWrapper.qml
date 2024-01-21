@@ -5,61 +5,54 @@ import QtWayland.Compositor.XdgShell
 import QtWayland.Compositor.WlShell
 import QtWayland.Compositor.IviApplication
 
+import ShoopDaLoop.PythonLogger
+
 Item {
     id: root
     
-    property var shellSurfaces: compositor_loader.item ? compositor_loader.item.shellSurfaces : []
+    property alias shellSurfaces: compositor.shellSurfaces
     
     property string socketName: 'shoop-wayland-display-' + Math.random().toString(36).slice(2, 7)
 
-    Component.onCompleted: {
-        if (true) { //(qpa_platform == 'xcb') {
-            console.log('FIX QPA PLATFORM CHECK')
-            // On X11, we need to set some env vars before starting our compositor.
-            env_helper.set_env('QT_XCB_GL_INTEGRATION', 'xcb_egl')
-            env_helper.set_env('QT_WAYLAND_CLIENT_BUFFER_INTEGRATION', 'wayland-egl')
-        }
+    property PythonLogger logger: PythonLogger { name: 'Frontend.Qml.CarlaWaylandWrapper' }
 
+    Component.onCompleted: {
         // We are already displaying, but our child processes will need to
         // find the socket and know it should run on Wayland.
-        env_helper.set_env('QT_QPA_PLATFORM', 'wayland')
+        root.logger.debug(`Wayland server for embedding subprocesses @ ${socketName}, setting QT_QPA_PLATFORM and WAYLAND_DISPLAY`)
+        env_helper.set_env('QT_QPA_PLATFORM', 'wayland-egl')
         env_helper.set_env('WAYLAND_DISPLAY', socketName)
-
-        // Start the compositor.
-        compositor_loader.active = true
     }
 
     function removeShellSurface(surface) {
-        if (compositor_loader.item) {
-            compositor_loader.item.shellSurfaces.remove(surface)
-        }
+        compositor.shellSurfaces.remove(surface)
     }
 
-    Loader {
-        id: compositor_loader
-        active: false
+    WaylandCompositor {
+        id: compositor
+        socketName: root.socketName
 
-        sourceComponent: Component {
-            WaylandCompositor {
-                id: compositor
-                socketName: root.socketName
-                WlShell {
-                    onWlShellSurfaceCreated: (shellSurface) => shellSurfaces.append({shellSurface: shellSurface});
-                }
-                XdgShell {
-                    onToplevelCreated: (toplevel, xdgSurface) => shellSurfaces.append({shellSurface: xdgSurface});
-                }
-                IviApplication {
-                    onIviSurfaceCreated: (iviSurface) => shellSurfaces.append({shellSurface: iviSurface});
-                }
+        function add_surface(surface) {
+            root.logger.debug(`Surface created for client ${surface.surface.client.processId}`)
+            shellSurfaces.push(surface)
+            shellSurfacesChanged()
+        }
 
-                property var shellSurfaces: []
+        WlShell {
+            onWlShellSurfaceCreated: (shellSurface) => compositor.add_surface(shellSurface)
+        }
+        XdgShell {
+            onToplevelCreated: (toplevel, xdgSurface) => compositor.add_surface(xdgSurface)
+        }
+        IviApplication {
+            onIviSurfaceCreated: (iviSurface) =>  compositor.add_surface(iviSurface)
+        }
 
-                WaylandOutput {
-                    sizeFollowsWindow: true
-                    window: { console.log(compositor_loader.Window.window); return compositor_loader.Window.window }
-                }
-            }
+        property var shellSurfaces: []
+
+        WaylandOutput {
+            sizeFollowsWindow: true
+            window: root.Window.window
         }
     }
 }

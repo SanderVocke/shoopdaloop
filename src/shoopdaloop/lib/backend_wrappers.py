@@ -891,6 +891,7 @@ class BackendFXChain:
     def set_visible(self, visible):
         with bindings_lock:
             if self.available():
+                print(f"WAYLAND_DISPLAY {os.environ['WAYLAND_DISPLAY']}")
                 bindings.fx_chain_set_ui_visible(self._c_handle, int(visible))
     
     def set_active(self, active):
