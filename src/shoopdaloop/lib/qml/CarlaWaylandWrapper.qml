@@ -20,12 +20,16 @@ Item {
         // We are already displaying, but our child processes will need to
         // find the socket and know it should run on Wayland.
         root.logger.debug(`Wayland server for embedding subprocesses @ ${socketName}, setting QT_QPA_PLATFORM and WAYLAND_DISPLAY`)
-        env_helper.set_env('QT_QPA_PLATFORM', 'wayland-egl')
+        env_helper.set_env('QT_QPA_PLATFORM', 'wayland')
+        env_helper.set_env('XDG_SESSION_TYPE', 'wayland')
+        env_helper.set_env('GDK_BACKEND', 'wayland')
         env_helper.set_env('WAYLAND_DISPLAY', socketName)
     }
 
     function removeShellSurface(surface) {
-        compositor.shellSurfaces.remove(surface)
+        compositor.shellSurfaces = compositor.shellSurfaces.filter(s => s != surface)
+        root.logger.debug(`Surface destroyed for client ${surface.surface.client.processId}`)
+        shellSurfacesChanged()
     }
 
     WaylandCompositor {
@@ -51,7 +55,7 @@ Item {
         property var shellSurfaces: []
 
         WaylandOutput {
-            sizeFollowsWindow: true
+            sizeFollowsWindow: false
             window: root.Window.window
         }
     }

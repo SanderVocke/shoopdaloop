@@ -73,7 +73,7 @@ public:
 
 template<typename TimeType, typename SizeType>
 class CarlaLV2ProcessingChain : public ProcessingChainInterface<TimeType, SizeType>,
-                                public ModuleLoggingEnabled<"Backend.CarlaLV2">,
+                                public ModuleLoggingEnabled<"Backend.CarlaLV2ProcessingChain">,
                                 public ExternalUIInterface,
                                 public SerializeableStateInterface {
 public:
@@ -90,7 +90,7 @@ private:
     LV2_External_UI_Widget * m_ui_widget = nullptr;
     std::recursive_mutex m_ui_mutex;
     std::thread m_ui_thread;
-    bool m_visible = false;
+    std::atomic<bool> m_visible = false;
     std::vector<const LilvPort*> m_audio_in_lilv_ports, m_audio_out_lilv_ports, m_midi_in_lilv_ports, m_midi_out_lilv_ports;
     std::vector<uint32_t> m_audio_in_port_indices, m_audio_out_port_indices, m_midi_in_port_indices, m_midi_out_port_indices;
     uint32_t m_internal_buffers_size;

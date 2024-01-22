@@ -176,6 +176,8 @@ Item {
                         }
 
                         Loader {
+                            id: surface_loader
+
                             anchors {
                                 left: parent.left
                                 right: parent.right
@@ -193,9 +195,25 @@ Item {
                                     width: contentrect.width
                                     height: contentrect.height
                                     shellSurface: details_item.mapped_item.item
-                                    onSurfaceDestroyed: root.carla_wayland_wrapper.removeShellSurface(shellSurface)
+                                    onSurfaceDestroyed: {
+                                        surface_loader.active = false
+                                        root.carla_wayland_wrapper.removeShellSurface(shellSurface)
+                                    }
+                                    autoCreatePopupItems: true
+
+                                    function update_size() {
+                                        if (shellSurface instanceof WlShellSurface) {
+                                            shellSurface.sendConfigure(Qt.size(width, height), 0)
+                                        } else if (shellSurface instanceof XdgSurface) {
+                                            shellSurface.toplevel.sendConfigure(Qt.size(width, height), [])
+                                        }
+                                    }
+
+                                    onWidthChanged: update_size()
+                                    onHeightChanged: update_size()
 
                                     Component.onCompleted: {
+                                        update_size()
                                         root.logger.debug(`Accepted Wayland surface. Size: ${width}x${height}.`)
                                     }
                                 }

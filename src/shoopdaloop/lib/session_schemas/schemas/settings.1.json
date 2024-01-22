@@ -5,6 +5,13 @@
         "configuration": {
             "type": "object",
             "properties": {
+                "general_settings": {
+                    "type": "object",
+                    "properties": {
+                        "schema": { "const": "general_settings.1", "$comment": "see general_settings.1 schema" }
+                    },
+                    "required": ["schema"]
+                },
                 "midi_settings": {
                     "type": "object",
                     "properties": {
@@ -20,9 +27,7 @@
                     "required": ["schema"]
                 }
             },
-            "required": [
-                "midi_settings", "script_settings"
-            ]
+            "required": []
         }
     },
     "required": ["schema", "configuration"]

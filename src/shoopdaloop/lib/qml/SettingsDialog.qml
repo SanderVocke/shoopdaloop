@@ -34,6 +34,9 @@ Dialog {
             anchors.top: parent.top
 
             TabButton {
+                text: 'General'
+            }
+            TabButton {
                 text: 'MIDI Control'
             }
             TabButton {
@@ -48,6 +51,9 @@ Dialog {
             anchors.bottom: parent.bottom
             currentIndex: bar.currentIndex
 
+            GeneralSettingsUi {
+                id: general_settings_being_edited
+            }
             MIDISettingsUi {
                 id: midi_settings_being_edited
             }
@@ -86,6 +92,10 @@ Dialog {
         Component.onCompleted: load()
 
         contents: ({
+            'general_settings': {
+                'schema': 'general_settings.1',
+                'configuration': general_settings.default_contents()
+            },
             'midi_settings': {
                 'schema': 'midi_settings.1',
                 'configuration': midi_settings.default_contents()
@@ -95,6 +105,20 @@ Dialog {
                 'configuration': script_settings.default_contents()
             }
         })
+    }
+
+    Settings {
+        id: general_settings
+        name: 'GeneralSettings'
+        schema_name: 'general_settings'
+        current_version: 1
+
+        contents: all_settings.contents.general_settings ?
+            all_settings.contents.general_settings.configuration : default_contents()
+
+        function default_contents() { return ({
+            'embed_carla': false
+        }) }
     }
 
     Settings {
@@ -113,6 +137,39 @@ Dialog {
                 'configuration': []
             }
         }) }
+    }
+
+    component GeneralSettingsUi : Item {
+        id: general_settings_ui
+
+        property bool embed_carla: general_settings.contents && general_settings.contents.embed_carla != null ? general_settings.contents.embed_carla : false
+        onEmbed_carlaChanged: general_settings.contents.embed_carla = embed_carla
+
+        RegisterInRegistry {
+            registry: registries.state_registry
+            key: 'general_settings'
+            object: general_settings_ui
+        }
+
+        Column {
+
+            anchors {
+                topMargin: 10
+                horizontalCenter: parent.horizontalCenter
+            }
+
+            Row {
+                CheckBox {
+                    id: embed_carla_checkbox
+                    checked: general_settings_ui.embed_carla
+                    onCheckedChanged: general_settings_ui.embed_carla = checked
+                }
+                Label {
+                    anchors.verticalCenter: embed_carla_checkbox.verticalCenter
+                    text: "Embed Carla FX windows in the details pane (experimental)"
+                }
+            }
+        }
     }
 
     component MIDISettingsUi : Item {

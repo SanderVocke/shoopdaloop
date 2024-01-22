@@ -16,11 +16,23 @@ ApplicationWindow {
 
     Material.theme: Material.Dark
 
-    CarlaWaylandWrapper {
-        RegisterInRegistry {
+    Loader {
+        RegistryLookup {
+            id: lookup_general_settings
             registry: registries.state_registry
-            key: 'carla_wayland_wrapper'
-            object: parent
+            key: 'general_settings'
+        }
+        property alias general_settings: lookup_general_settings.object
+        active: general_settings && general_settings.embed_carla
+
+        sourceComponent: Component{
+            CarlaWaylandWrapper {
+                RegisterInRegistry {
+                    registry: registries.state_registry
+                    key: 'carla_wayland_wrapper'
+                    object: parent
+                }
+            }
         }
     }
 

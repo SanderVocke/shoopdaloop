@@ -457,6 +457,7 @@ void CarlaLV2ProcessingChain<TimeType, SizeType>::show() {
             m_ui_thread.join();
         }
         m_ui_thread = std::thread([this]() {
+            static bool shown = false;
             while (true) {
                 auto t = std::chrono::high_resolution_clock::now();
                 {
@@ -464,6 +465,18 @@ void CarlaLV2ProcessingChain<TimeType, SizeType>::show() {
                     if (!m_ui_widget) {
                         break;
                     }
+                    bool should_show = m_visible.load();
+                    if (should_show != shown) {
+                        if (should_show) {
+                            log<log_level_debug>("Showing Carla UI");
+                            m_ui_widget->show(m_ui_widget);
+                        } else {
+                            log<log_level_debug>("Hiding Carla UI");
+                            m_ui_widget->hide(m_ui_widget);
+                        }
+                        shown = should_show;
+                    }
+                    log<log_level_debug>("Running Carla UI");
                     m_ui_widget->run(m_ui_widget);
                 }
                 while (t < std::chrono::high_resolution_clock::now()) {
@@ -473,16 +486,13 @@ void CarlaLV2ProcessingChain<TimeType, SizeType>::show() {
             }
         });
     }
-    m_ui_widget->show(m_ui_widget);
+    log<log_level_debug>("Queue show Carla UI");
     m_visible = true;
 }
 
 template <typename TimeType, typename SizeType>
 void CarlaLV2ProcessingChain<TimeType, SizeType>::hide() {
-    std::cout << "Hide!\n";
-    if (m_ui_widget) {
-        m_ui_widget->hide(m_ui_widget);
-    }
+    log<log_level_debug>("Queue hide Carla UI");
     m_visible = false;
 }
 
