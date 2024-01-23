@@ -153,13 +153,13 @@ jobs:
         echo "name=$(ls final_wheel/*.whl)" | tee -a $GITHUB_OUTPUT
     - name: Upload wheel (${{ inputs.variant_name }})
       if: ${{ !env.ACT }}
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
-        name: ${{ matrix.kind.name }}_wheel
+        name: wheel_${{ matrix.kind.name }}
         path: ${{ steps.find.outputs.name }}
     - name: Upload debug info (${{ inputs.variant_name }})
       if: ${{ !env.ACT }}
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: debuginfo_${{ matrix.kind.name }}
         path: debuginfo
@@ -393,8 +393,7 @@ jobs:
     - name: Download artifacts
       uses: actions/download-artifact@v4
       with:
-        path: crashdumps
-        #pattern: crashdumps_*
+        pattern: crashdumps_*
     - name: Count crash dumps
       id: count
       shell: bash
