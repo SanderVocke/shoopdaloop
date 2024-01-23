@@ -142,7 +142,7 @@ Profiler::Profiler() {
 Profiler::~Profiler() {
     std::lock_guard<std::recursive_mutex> g(pvt->m_registry_access);
 
-    pvt->m_registry = nullptr;
+    pvt->m_registry.clear();
 }
 
 }
