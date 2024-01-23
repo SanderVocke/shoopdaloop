@@ -394,6 +394,7 @@ jobs:
       uses: actions/download-artifact@v4
       with:
         pattern: crashdumps_*
+        path: crashdumps
     - name: Count crash dumps
       id: count
       shell: bash
@@ -427,6 +428,7 @@ jobs:
       if: ${{ steps.count.outputs.crashdumps != 0 }}
       shell: bash
       run: |
+        mkdir results
         tree debuginfo
         tree crashdumps
         for dump in $(find crashdumps -name "*.dmp"); do
@@ -434,7 +436,9 @@ jobs:
           echo "================================================="
           echo "Processing $dump..."
           echo "================================================="
-          minidump_stackwalk $dump debuginfo/breakpad_symbols
+          filename=$(basename $dump)
+          cp $dump results/$filename
+          minidump_stackwalk $dump debuginfo/breakpad_symbols | tee results/$filename.stackwalk
         done
 
   # coverage:
