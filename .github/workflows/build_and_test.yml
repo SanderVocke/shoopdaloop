@@ -177,7 +177,7 @@ jobs:
             pip: python3 -m pip
             container: sandervocke/shoopdaloop_run_base_debian_stable:latest
             os: ubuntu-latest
-            wheel: linux_release_wheel
+            wheel: wheel_linux_release
             testrunner: test_runner
             qpa_platform: vnc
           - name: barebones_debian_stable
@@ -185,7 +185,7 @@ jobs:
             pip: python3 -m pip
             container: sandervocke/shoopdaloop_run_base_debian_stable:latest
             os: ubuntu-latest
-            wheel: linux_barebones_wheel
+            wheel: wheel_linux_barebones
             testrunner: test_runner
             qpa_platform: vnc
           - name: release_ubuntu_latest
@@ -193,7 +193,7 @@ jobs:
             pip: python3 -m pip
             container: sandervocke/shoopdaloop_run_base_ubuntu_latest:latest
             os: ubuntu-latest
-            wheel: linux_release_wheel
+            wheel: wheel_linux_release
             testrunner: test_runner
             qpa_platform: vnc
           - name: release_arch
@@ -201,7 +201,7 @@ jobs:
             pip: python -m pip
             container: sandervocke/shoopdaloop_run_base_arch:latest
             os: ubuntu-latest
-            wheel: linux_release_wheel
+            wheel: wheel_linux_release
             testrunner: test_runner
             qpa_platform: vnc
           - name: asan_ubuntu_latest
@@ -209,7 +209,7 @@ jobs:
             pip: python3 -m pip
             container: sandervocke/shoopdaloop_run_base_ubuntu_latest:latest
             os: ubuntu-latest
-            wheel: linux_asan_wheel
+            wheel: wheel_linux_asan
             testrunner: test_runner
             qpa_platform: vnc
             run_cmd_prefix: "LD_PRELOAD=libasan_shoop.so ASAN_OPTIONS=detect_leaks=0"
@@ -219,7 +219,7 @@ jobs:
             pip: python3 -m pip
             container: sandervocke/shoopdaloop_run_base_ubuntu_latest:latest
             os: ubuntu-latest
-            wheel: linux_coverage_wheel
+            wheel: wheel_linux_coverage
             testrunner: test_runner
             qpa_platform: vnc
             coverage: true
@@ -228,7 +228,7 @@ jobs:
             pip: python3 -m pip
             container: null
             os: macos-11
-            wheel: macos_release_wheel
+            wheel: wheel_macos_release
             testrunner: test_runner
             qpa_platform: offscreen
           - name: release_macos12
@@ -236,7 +236,7 @@ jobs:
             pip: python3 -m pip
             container: null
             os: macos-12
-            wheel: macos_release_wheel
+            wheel: wheel_macos_release
             testrunner: test_runner
             qpa_platform: offscreen
           - name: release_macos13
@@ -244,7 +244,7 @@ jobs:
             pip: python3 -m pip
             container: null
             os: macos-13
-            wheel: macos_release_wheel
+            wheel: wheel_macos_release
             testrunner: test_runner
             qpa_platform: offscreen
           - name: debug_macos13
@@ -252,7 +252,7 @@ jobs:
             pip: python3 -m pip
             container: null
             os: macos-13
-            wheel: macos_debug_wheel
+            wheel: wheel_macos_debug
             testrunner: test_runner
             qpa_platform: offscreen
           - name: release_windows
@@ -260,7 +260,7 @@ jobs:
             pip: python.exe -m pip
             container: null
             os: windows-2022
-            wheel: windows_release_wheel
+            wheel: wheel_windows_release
             testrunner: test_runner.exe
             qpa_platform: offscreen
             pathconvert: "| cygpath -u -f -"
@@ -269,7 +269,7 @@ jobs:
             pip: python.exe -m pip
             container: null
             os: windows-2022
-            wheel: windows_debug_wheel
+            wheel: wheel_windows_debug
             testrunner: test_runner.exe
             qpa_platform: offscreen
             pathconvert: "| cygpath -u -f -"
