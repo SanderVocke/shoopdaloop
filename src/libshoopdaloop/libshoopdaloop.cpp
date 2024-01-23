@@ -1784,3 +1784,9 @@ void start_jack_driver(shoop_audio_driver_t *driver, shoop_jack_audio_driver_set
 #endif
   });
 }
+
+shoop_multichannel_audio_t resample_audio(shoop_multichannel_audio_t in, unsigned new_n_frames) {
+  return api_impl<shoop_multichannel_audio_t>("resample_audio", [&]() {
+    return in;
+  }, shoop_multichannel_audio_t{});
+}

@@ -305,7 +305,7 @@ class FileIO(QThread):
                 self.logger.debug(lambda: "Resampling {} from {} to {}".format(filename, file_sample_rate, target_sample_rate))
                 self.logger.trace(lambda: "Data shape before resample: {}".format(data.shape))
                 ratio = target_sample_rate / file_sample_rate
-                resampled = samplerate.resample(data, ratio, 'sinc_fastest')
+                #resampled = samplerate.resample(data, ratio, 'sinc_fastest')
                 self.logger.trace(lambda: "Data shape after resample: {}".format(resampled.shape))
 
             if len(channels_to_loop_channels) > len(resampled):

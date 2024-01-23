@@ -14,7 +14,6 @@ requires-python = ">=3.8"
 
 dependencies = [
   "soundfile",
-  "samplerate",
   "mido",
   "jsonschema",
   "numpy",

@@ -86,6 +86,9 @@ if (BACKEND_JACK)
   include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal/jack)
 endif()
 
+# build libzita-resampler
+include(${CMAKE_CURRENT_SOURCE_DIR}/BuildZitaResampler.cmake)
+
 # Includes
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
@@ -101,8 +104,13 @@ target_include_directories(shoopdaloop_internals
                         ${CMAKE_SOURCE_DIR}/../third_party/base64/include
                         ${CMAKE_CURRENT_BINARY_DIR}
                         ${Boost_INCLUDE_DIR}
+                        ${ZITA_INCLUDE_DIR}
                         )
-target_link_libraries(shoopdaloop_internals PRIVATE Threads::Threads fmt::fmt)
+target_link_libraries(shoopdaloop_internals PRIVATE
+  Threads::Threads
+  fmt::fmt
+  ${ZITA_LIB}
+  )
 if (UNIX)
     target_link_libraries(shoopdaloop_internals PUBLIC dl)
 endif()
