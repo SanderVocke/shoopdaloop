@@ -50,7 +50,9 @@ Rectangle {
             if (global_args.test_grab_screens) {
                 test_grab_screens_and_quit(global_args.test_grab_screens)
             }
-            if (global_args.quit_when_loaded) {
+            if (global_args.quit_after >= 0.0) {
+                root.logger.info(() => `Auto-quit scheduled for ${global_args.quit_after} seconds.`)
+                autoquit_timer.interval = global_args.quit_after * 1000.0
                 autoquit_timer.start()
             }
         }
