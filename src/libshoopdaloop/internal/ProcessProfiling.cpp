@@ -144,3 +144,5 @@ Profiler::~Profiler() {
 
     pvt->m_registry = nullptr;
 }
+
+}
