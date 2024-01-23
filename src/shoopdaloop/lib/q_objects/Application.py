@@ -147,9 +147,13 @@ class Application(ShoopQApplication):
     
     # Ensure that we forward any terminating signals to our child
     # processes
-    def exit_signal_handler(self, sig, frame):
-        self.logger.debug(lambda: 'Got signal {}.'.format(sig))    
-        self.logger.info(lambda: 'Exiting due to signal.')
+    def exit_signal_handler(self, sig, frame): 
+        self.logger.info(lambda: f'Exiting due to signal {sig}.')
+        if sig == signal.SIGTERM or ('SIGQUIT' in dir(signal) and sig == signal.SIGQUIT):
+            # on these more "severe" signals, unregister our signal handler.
+            # that way when the same signal comes again, the OS can terminate the process
+            # more strictly.
+            signal.signal(sig, signal.SIG_DFL)
         self.exit_handler()
     
     def exit_handler(self):

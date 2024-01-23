@@ -575,8 +575,6 @@ Rectangle {
             }
         }
 
-        Component.onCompleted: root.logger.error("TODO: uninstall signal handlers on first occurrence of 'exiting due to signal'")
-
         Rectangle {
             id: sync_loop_area
             color: "#555555"
