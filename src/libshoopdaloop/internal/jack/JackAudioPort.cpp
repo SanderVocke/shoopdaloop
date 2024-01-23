@@ -31,8 +31,8 @@ template<typename API>
 float *GenericJackAudioPort<API>::PROC_get_buffer(uint32_t n_frames) {
     auto rval = (float*) m_buffer.load();
     if (!rval) {
-        if(m_fallback_buffer.size() < std::max(n_frames, 1)) {
-            m_fallback_buffer.resize(std::max(n_frames, 1));
+        if(m_fallback_buffer.size() < std::max(n_frames, (uint32_t)1)) {
+            m_fallback_buffer.resize(std::max(n_frames, (uint32_t)1));
         }
         rval = m_fallback_buffer.data();
     }

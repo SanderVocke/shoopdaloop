@@ -13,7 +13,7 @@ InternalAudioPort<SampleT>::InternalAudioPort(std::string name,
 template <typename SampleT>
 SampleT *InternalAudioPort<SampleT>::PROC_get_buffer(uint32_t n_frames) {
     if (n_frames > m_buffer.size() || m_buffer.size() == 0) {
-        m_buffer.resize(std::max(n_frames, 1));
+        m_buffer.resize(std::max(n_frames, (uint32_t)1));
     }
     return m_buffer.data();
 }
