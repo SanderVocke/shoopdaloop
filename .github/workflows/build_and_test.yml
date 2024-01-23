@@ -440,7 +440,7 @@ jobs:
           echo "================================================="
           filename=$(basename $dump)
           cp $dump results/$filename
-          minidump_stackwalk $dump debuginfo/breakpad_symbols | tee results/$filename.stackwalk
+          minidump-stackwalk $dump debuginfo/breakpad_symbols | tee results/$filename.stackwalk
         done
 
   # coverage:
