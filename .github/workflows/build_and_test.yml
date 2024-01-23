@@ -399,8 +399,7 @@ jobs:
       id: count
       shell: bash
       run: |
-        ls
-        ls crashdumps*
+        mkdir -p crashdumps
         echo "crashdumps=$(ls crashdumps/crashdumps_* | wc -l)" | tee -a $GITHUB_OUTPUT
     - name: Download debug information
       uses: actions/download-artifact@v4
