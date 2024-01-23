@@ -61,6 +61,8 @@ struct ProfilerPrivate {
 void Profiler::next_iteration() {
     if (!g_ProfilingEnabled) { return; }
 
+    std::lock_guard<std::recursive_mutex> g(pvt->m_registry_access);
+
     for (auto &item : pvt->m_registry) {
         if (auto l = item.second.lock()) {
             l->next_iteration();
@@ -137,6 +139,8 @@ Profiler::Profiler() {
     pvt = std::make_unique<ProfilerPrivate>();
 }
 
-Profiler::~Profiler() {}
+Profiler::~Profiler() {
+    std::lock_guard<std::recursive_mutex> g(pvt->m_registry_access);
 
+    pvt->m_registry = nullptr;
 }
