@@ -440,6 +440,8 @@ jobs:
           cp $dump results/$filename
           minidump_stackwalk $dump debuginfo/breakpad_symbols | tee results/$filename.stackwalk
         done
+    - name: TMate failure session
+      uses: SanderVocke/action-tmate@master
 
   # coverage:
   #   runs-on: ubuntu-latest
