@@ -42,7 +42,10 @@ DummyAudioPort::DummyAudioPort(std::string name, shoop_port_direction_t directio
       m_queued_data(128) { }
 
 float *DummyAudioPort::PROC_get_buffer(uint32_t n_frames) {
-    m_buffer_data.resize(std::max(m_buffer_data.size(), (size_t)n_frames));
+    size_t new_size = std::max({m_buffer_data.size(), (size_t)n_frames, (size_t)1});
+    if (new_size > m_buffer_data.size()) {
+        m_buffer_data.resize(new_size);
+    }
     auto rval = m_buffer_data.data();
     return rval;
 }
