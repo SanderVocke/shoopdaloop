@@ -6,7 +6,6 @@ import time
 from threading import Thread
 import soundfile as sf
 import numpy as np
-import samplerate
 import mido
 import math
 import glob
