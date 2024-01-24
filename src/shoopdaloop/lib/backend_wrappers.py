@@ -1148,21 +1148,21 @@ def open_midi_port(backend_session, audio_driver, name_hint : str, direction : i
     raise Exception("Failed to open MIDI port: backend session or audio driver not active")
 
 def resample_audio(audio, target_n_frames):
-    n_channels = audio.shape[0]
-    n_frames = audio.shape[1]
+    n_channels = audio.shape[1] # inner
+    n_frames = audio.shape[0] # outer
     if not n_channels or not n_frames:
         return audio
     
     data_in = bindings.alloc_multichannel_audio(n_channels, n_frames)
     for chan in range(n_channels):
         for frame in range(n_frames):
-            data_in[0].data[n_frames*chan + frame] = audio[chan, frame]
+            data_in[0].data[frame*n_channels + chan] = audio[chan, frame]
     
     backend_result = bindings.resample_audio(data_in, target_n_frames)
     result = numpy.zeros_like(audio, shape=[n_channels, target_n_frames])
     for chan in range(n_channels):
         for frame in range(target_n_frames):
-            result[chan, frame] = backend_result[0].data[target_n_frames*chan + frame]
+            result[chan, frame] = backend_result[0].data[n_channels*frame + chan]
     bindings.destroy_multichannel_audio(backend_result)
     bindings.destroy_multichannel_audio(data_in)
     return result

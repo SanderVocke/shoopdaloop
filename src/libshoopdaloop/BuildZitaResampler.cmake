@@ -22,13 +22,7 @@ set(ZITA_CMAKE_ARGS
   -DCMAKE_POSITION_INDEPENDENT_CODE=ON
 )
 
-if(WIN32)
-  # Prevent redefinition when using pthread-win32
-  set(ZITA_CMAKE_ARGS ${ZITA_CMAKE_ARGS} -DCMAKE_CXX_FLAGS=-DHAVE_STRUCT_TIMESPEC)
-endif()
-
 ExternalProject_Add(zita_proj
-  CMAKE_ARGS ${ZITA_CMAKE_ARGS}
   BUILD_COMMAND cmake --build <BINARY_DIR> ${CMAKE_BUILD_TARGET_ARGS}
   INSTALL_COMMAND ""
   SOURCE_DIR ${ZITA_SOURCE_DIR}
@@ -36,5 +30,16 @@ ExternalProject_Add(zita_proj
   BUILD_BYPRODUCTS ${ZITA_OUTPUTS}
 )
 
-set(ZITA_LIB ${ZITA_LIB} PARENT_SCOPE)
-set(ZITA_INCLUDE_DIR ${ZITA_TOPLEVEL_INCLUDE_DIR} PARENT_SCOPE)
+add_library(zita INTERFACE)
+target_link_libraries(zita INTERFACE ${ZITA_LIB})
+target_include_directories(zita INTERFACE ${ZITA_TOPLEVEL_INCLUDE_DIR})
+
+if(WIN32)
+  find_library(PTHREAD_WIN32_LIB
+               pthreadVC2.lib
+               REQUIRED
+               PATH_SUFFIXES lib/x64)
+  message(STATUS "lib ${PTHREAD_WIN32_LIB}")
+  target_link_libraries(zita INTERFACE ${PTHREAD_WIN32_LIB})
+  target_compile_definitions(zita INTERFACE -DPTW32_STATIC_LIB)
+endif()

@@ -104,12 +104,11 @@ target_include_directories(shoopdaloop_internals
                         ${CMAKE_SOURCE_DIR}/../third_party/base64/include
                         ${CMAKE_CURRENT_BINARY_DIR}
                         ${Boost_INCLUDE_DIR}
-                        ${ZITA_INCLUDE_DIR}
                         )
 target_link_libraries(shoopdaloop_internals PRIVATE
   Threads::Threads
   fmt::fmt
-  ${ZITA_LIB}
+  zita
   )
 if (UNIX)
     target_link_libraries(shoopdaloop_internals PUBLIC dl)
