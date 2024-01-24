@@ -9,7 +9,6 @@ wget
 curl
 fontconfig
 libxkbcommon
-libsamplerate
 libsndfile
 jack2
 mesa
