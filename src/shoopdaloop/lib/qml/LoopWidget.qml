@@ -1397,13 +1397,6 @@ Item {
         Menu {
             id: menu
             title: 'Record'
-            property int n_audio_channels: 0
-            property int n_midi_channels: 0
-
-            onAboutToShow: {
-                n_audio_channels = root.audio_channels.length
-                n_midi_channels = root.midi_channels.length
-            }
 
             ShoopMenuItem {
                 height: 50
@@ -1440,16 +1433,16 @@ Item {
             ShoopMenuItem {
                 text: "Save audio..."
                 onClicked: presavedialog.open()
-                shown: menu.n_audio_channels > 0
+                shown: root.has_audio
             }
             ShoopMenuItem {
                 text: "Load audio..."
                 onClicked: loaddialog.open()
-                shown: menu.n_audio_channels > 0
+                shown: root.has_audio
             }
             ShoopMenuItem {
                 text: "Load MIDI..."
-                shown: menu.n_midi_channels > 0
+                shown: root.has_midi
                 onClicked: {
                     var chans = root.midi_channels
                     if (chans.length == 0) { throw new Error("No MIDI channels to load"); }
@@ -1460,7 +1453,7 @@ Item {
             }
             ShoopMenuItem {
                 text: "Save MIDI..."
-                shown: menu.n_midi_channels > 0
+                shown: root.has_midi
                 onClicked: {
                     var chans = root.midi_channels
                     if (chans.length == 0) { throw new Error("No MIDI channels to save"); }

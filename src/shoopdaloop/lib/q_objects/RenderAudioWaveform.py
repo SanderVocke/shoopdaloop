@@ -9,6 +9,9 @@ from ..logging import Logger
 import ctypes
 import math
 
+from shoopdaloop.lib.init_dynlibs import init_dynlibs
+init_dynlibs()
+
 logger = Logger("Frontend.RenderAudioWaveform")
 
 class Pyramid:

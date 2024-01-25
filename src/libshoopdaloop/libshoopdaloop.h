@@ -152,11 +152,13 @@ SHOOP_EXPORT void destroy_string(const char* s);
 SHOOP_EXPORT void destroy_port_connections_state(shoop_port_connections_state_t *d);
 SHOOP_EXPORT void destroy_logger(shoopdaloop_logger_t *logger);
 SHOOP_EXPORT void destroy_audio_driver_state(shoop_audio_driver_state_t *state);
+SHOOP_EXPORT void destroy_multichannel_audio(shoop_multichannel_audio_t *audio);
 
 // Helpers for allocating data objects
 SHOOP_EXPORT shoop_midi_event_t *alloc_midi_event(unsigned data_bytes);
 SHOOP_EXPORT shoop_midi_sequence_t *alloc_midi_sequence(unsigned n_events);
 SHOOP_EXPORT shoop_audio_channel_data_t *alloc_audio_channel_data(unsigned n_samples);
+SHOOP_EXPORT shoop_multichannel_audio_t *alloc_multichannel_audio(unsigned n_channels, unsigned n_frames);
 
 // Logging
 SHOOP_EXPORT void initialize_logging();
@@ -180,6 +182,9 @@ SHOOP_EXPORT void dummy_midi_port_queue_data(shoopdaloop_midi_port_t *port, shoo
 SHOOP_EXPORT shoop_midi_sequence_t *dummy_midi_port_dequeue_data(shoopdaloop_midi_port_t *port);
 SHOOP_EXPORT void dummy_midi_port_request_data(shoopdaloop_midi_port_t* port, unsigned n_frames);
 SHOOP_EXPORT void dummy_midi_port_clear_queues(shoopdaloop_midi_port_t* port);
+
+// Resampling
+SHOOP_EXPORT shoop_multichannel_audio_t *resample_audio(shoop_multichannel_audio_t *in, unsigned new_n_frames);
 
 #ifdef __cplusplus
 }

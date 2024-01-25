@@ -13,7 +13,6 @@ libdbus-1-3
 libxkbcommon0
 libgl1-mesa-dev
 jackd2
-libsamplerate0
 libsndfile1
 libportaudio2
 

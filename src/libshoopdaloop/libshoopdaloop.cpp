@@ -40,6 +40,7 @@
 #include "GraphLoop.h"
 #include "DummyAudioMidiDriver.h"
 #include "AudioMidiDrivers.h"
+#include "Resample.h"
 
 #include "libshoopdaloop_test_if.h"
 
@@ -1783,4 +1784,28 @@ void start_jack_driver(shoop_audio_driver_t *driver, shoop_jack_audio_driver_set
     throw std::runtime_error("Jack backend not available.");
 #endif
   });
+}
+
+shoop_multichannel_audio_t *resample_audio(shoop_multichannel_audio_t *in, unsigned new_n_frames) {
+  return api_impl<shoop_multichannel_audio_t*>("resample_audio", [&]() {
+    float* result = resample_multi(in->data, in->n_channels, in->n_frames, new_n_frames);
+    auto rval = new shoop_multichannel_audio_t;
+    rval->data = result;
+    rval->n_channels = in->n_channels;
+    rval->n_frames = new_n_frames;
+    return rval;
+  }, new shoop_multichannel_audio_t);
+}
+
+shoop_multichannel_audio_t *alloc_multichannel_audio(unsigned n_channels, unsigned n_frames) {
+  auto rval = new shoop_multichannel_audio_t;
+  rval->n_channels = n_channels;
+  rval->n_frames = n_frames;
+  rval->data = (shoop_types::audio_sample_t*) malloc(sizeof(shoop_types::audio_sample_t) * n_channels * n_frames);
+  return rval;
+}
+
+void destroy_multichannel_audio(shoop_multichannel_audio_t *audio) {
+  free(audio->data);
+  delete audio;
 }

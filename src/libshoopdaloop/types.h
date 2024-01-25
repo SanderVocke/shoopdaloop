@@ -216,6 +216,12 @@ typedef struct {
     shoop_port_maybe_connection_t *ports;
 } shoop_port_connections_state_t;
 
+typedef struct {
+    unsigned n_channels;
+    unsigned n_frames;
+    audio_sample_t *data; // Channels are not interleaved
+} shoop_multichannel_audio_t;
+
 #ifdef __cplusplus
 }
 #endif
