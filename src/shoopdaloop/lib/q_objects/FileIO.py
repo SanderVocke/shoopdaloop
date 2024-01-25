@@ -306,7 +306,7 @@ class FileIO(QThread):
                 self.logger.trace(lambda: "Data shape before resample: {}".format(data.shape))
                 target_n_frames = maybe_target_data_length
                 if target_n_frames is None:
-                    target_n_frames = target_sample_rate / file_sample_rate * resampled.shape[1]
+                    target_n_frames = int(target_sample_rate / file_sample_rate * resampled.shape[0])
                 resampled = backend_wrappers.resample_audio(data, target_n_frames)
                 self.logger.trace(lambda: "Data shape after resample: {}".format(resampled.shape))
 

@@ -2,6 +2,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <algorithm>
+#include <cstdint>
 
 #ifdef _WIN32
 #define HAVE_STRUCT_TIMESPEC
