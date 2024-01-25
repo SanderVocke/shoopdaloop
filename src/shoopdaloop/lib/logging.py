@@ -1,3 +1,6 @@
+from shoopdaloop.lib.init_dynlibs import init_dynlibs
+init_dynlibs()
+
 from shoopdaloop.libshoopdaloop_bindings import destroy_logger, get_logger, shoopdaloop_log, shoopdaloop_should_log
 from shoopdaloop.libshoopdaloop_bindings import log_level_trace, log_level_debug, log_level_info, log_level_warning, log_level_error
 

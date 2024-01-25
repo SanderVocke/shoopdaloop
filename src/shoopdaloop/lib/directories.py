@@ -13,15 +13,14 @@ try:
 except:
     # If we could not find version.txt, we are probably in an editable install
     # where it is not generated. We need to find the installation directory,
-    # which is not directly possible but we can try the site folder.
-    from shoopdaloop.lib.logging import Logger
-    
+    # which is not directly possible but we can try the site folder.    
     import shoopdaloop
     try_dir = os.path.dirname(shoopdaloop.__file__)
     if os.path.exists(os.path.join(try_dir, 'version.txt')):
         installed_dir = try_dir
 
 if not installed_dir:
+    from shoopdaloop.lib.logging import Logger
     logger = Logger("Frontend.DetectInstallation")
     logger.error("Unable to find version.txt in source or installation dir.")
     raise Exception("Unable to find version.txt in source or installation dir.")

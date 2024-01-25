@@ -3,6 +3,9 @@ import faulthandler
 import ctypes
 import os
 
+from shoopdaloop.lib.init_dynlibs import init_dynlibs
+init_dynlibs()
+
 def init_crash_handling():
     td = os.environ.get("SHOOP_CRASH_DUMP_DIR")
     if not td:

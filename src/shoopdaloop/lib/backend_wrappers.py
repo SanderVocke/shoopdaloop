@@ -16,6 +16,9 @@ import ctypes
 import traceback
 import numpy
 
+from shoopdaloop.lib.init_dynlibs import init_dynlibs
+init_dynlibs()
+
 all_active_backends = set()
 all_active_drivers = set()
 
