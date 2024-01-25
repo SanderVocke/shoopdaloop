@@ -86,6 +86,9 @@ if (BACKEND_JACK)
   include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal/jack)
 endif()
 
+# build libzita-resampler
+include(${CMAKE_CURRENT_SOURCE_DIR}/BuildZitaResampler.cmake)
+
 # Includes
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
@@ -102,7 +105,11 @@ target_include_directories(shoopdaloop_internals
                         ${CMAKE_CURRENT_BINARY_DIR}
                         ${Boost_INCLUDE_DIR}
                         )
-target_link_libraries(shoopdaloop_internals PRIVATE Threads::Threads fmt::fmt)
+target_link_libraries(shoopdaloop_internals PRIVATE
+  Threads::Threads
+  fmt::fmt
+  zita
+  )
 if (UNIX)
     target_link_libraries(shoopdaloop_internals PUBLIC dl)
 endif()
@@ -153,13 +160,12 @@ else()
   target_compile_definitions(shoopdaloop_internals PUBLIC -DCOMPILE_LOG_LEVEL=${OVERRIDE_COMPILE_LOG_LEVEL})
 endif()
 
-
 # Generate libshoopdaloop Python bindings into source dir
 set(GENERATED_BINDINGS_PY ${CMAKE_CURRENT_BINARY_DIR}/libshoopdaloop_bindings.py)
 add_custom_command(
   OUTPUT ${GENERATED_BINDINGS_PY}
   COMMAND ${RUN_CMD_PREFIX} ${CMAKE_COMMAND} -E env ASAN_OPTIONS=detect_leaks=0 ${CTYPESGEN_COMMAND} --no-macro-warnings -lshoopdaloop ${CMAKE_CURRENT_SOURCE_DIR}/libshoopdaloop.h ${CMAKE_CURRENT_SOURCE_DIR}/types.h -o ${GENERATED_BINDINGS_PY}
-  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/libshoopdaloop.h ${CMAKE_CURRENT_SOURCE_DIR}/libshoopdaloop.cpp
+  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/libshoopdaloop.h ${CMAKE_CURRENT_SOURCE_DIR}/libshoopdaloop.cpp shoopdaloop
   COMMENT "Generating C bindings for libshoopdaloop."
   )
 add_custom_target(
