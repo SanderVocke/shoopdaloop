@@ -68,6 +68,7 @@ Item {
     }
 
     function qml_close() {
+        root.logger.debug(`QML close ${root.name}`)
         reg_entry.close()
         ports.forEach(p => p.qml_close())
         for(var i=0; i<loops.length; i++) {

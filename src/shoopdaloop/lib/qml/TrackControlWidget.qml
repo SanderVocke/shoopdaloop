@@ -190,12 +190,12 @@ Item {
     RegistryLookups {
         id: lookup_fx_ports
         registry: registries.objects_registry
-        keys: initial_track_descriptor && 'fx_chain' in initial_track_descriptor ? initial_track_descriptor.fx_chain.ports.map((p) => p.id) : []
+        keys: (initial_track_descriptor && initial_track_descriptor.fx_chain) ? initial_track_descriptor.fx_chain.ports.map((p) => p.id) : []
     }
     RegistryLookup {
         id: lookup_fx_chain
         registry: registries.objects_registry
-        key: initial_track_descriptor && 'fx_chain' in initial_track_descriptor ? initial_track_descriptor.fx_chain.id : null
+        key: (initial_track_descriptor && initial_track_descriptor.fx_chain) ? initial_track_descriptor.fx_chain.id : null
     }
     LinearDbConversion {
         id: convert_gain
@@ -334,7 +334,9 @@ Item {
             })
     }
     function push_fx_active() {
-        if (root.maybe_fx_chain) root.maybe_fx_chain.set_active(logic.enable_fx)
+        if (root.maybe_fx_chain) {
+            root.maybe_fx_chain.set_active(logic.enable_fx)
+        }
     }
     Component.onCompleted: {
         push_monitor()
