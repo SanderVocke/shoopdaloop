@@ -61,12 +61,16 @@ ShoopTestFile {
                     var filename = file_io.generate_temporary_filename() + '.wav'
                     file_io.save_data_to_soundfile(filename, 24000, [data])
 
+                    testcase.wait_updated(session.backend)
                     testcase.wait_condition(() => registries.state_registry.n_saving_actions_active == 0)
+                    testcase.wait_updated(session.backend)
 
                     file_io.load_soundfile_to_channels_async(filename, 48000, null,
                         [[channel()]], null, null, null)
 
+                    testcase.wait_updated(session.backend)
                     testcase.wait_condition(() => registries.state_registry.n_loading_actions_active == 0)
+                    testcase.wait_updated(session.backend)
 
                     let loaded = channel().get_data()
                     verify_eq(loaded.length, 12000)
@@ -83,12 +87,16 @@ ShoopTestFile {
                     var filename = file_io.generate_temporary_filename() + '.wav'
                     file_io.save_data_to_soundfile(filename, 24000, [data])
 
+                    testcase.wait_updated(session.backend)
                     testcase.wait_condition(() => registries.state_registry.n_saving_actions_active == 0)
+                    testcase.wait_updated(session.backend)
 
                     file_io.load_soundfile_to_channels_async(filename, 48000, 13000,
                         [[channel()]], null, null, null)
 
+                    testcase.wait_updated(session.backend)
                     testcase.wait_condition(() => registries.state_registry.n_loading_actions_active == 0)
+                    testcase.wait_updated(session.backend)
 
                     let loaded = channel().get_data()
                     verify_eq(loaded.length, 13000)
@@ -107,13 +115,17 @@ ShoopTestFile {
                     var filename = file_io.generate_temporary_filename() + '.wav'
                     file_io.save_data_to_soundfile(filename, 24000, _data)
 
+                    testcase.wait_updated(session.backend)
                     testcase.wait_condition(() => registries.state_registry.n_saving_actions_active == 0)
+                    testcase.wait_updated(session.backend)
 
                     verify_eq(loop2_channels().length, 2)
                     file_io.load_soundfile_to_channels_async(filename, 48000, 13000,
                         [[loop2_channels()[0]], [loop2_channels()[1]]], null, null, null)
 
+                    testcase.wait_updated(session.backend)
                     testcase.wait_condition(() => registries.state_registry.n_loading_actions_active == 0)
+                    testcase.wait_updated(session.backend)
 
                     let datas = loop2_channels().map(m => m.get_data())
                     verify_eq(datas[0].length, 13000)
