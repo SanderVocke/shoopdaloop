@@ -1,8 +1,11 @@
 #include "Resample.h"
+#include "LoggingBackend.h"
+
 #include <cstdlib>
 #include <cstring>
 #include <algorithm>
 #include <cstdint>
+#include <optional>
 
 #ifdef _WIN32
 #define HAVE_STRUCT_TIMESPEC
@@ -35,7 +38,11 @@ float* resample_multi(float* in, unsigned n_channels_inner, unsigned n_frames_ou
     resampler.out_data = 0;
     while (resampler.inp_count > 0) { resampler.process(); }
 
-    // TODO check the counts
+    unsigned dist = resampler.inpdist();
+    if(dist != 0) {
+        // Should never happen - program error
+        logging::log<"Backend.Resample", log_level_error>(std::nullopt, std::nullopt, "Resampler input distance is not zero: {}", dist); 
+    }
 
     // Final pass
     resampler.out_count = target_n_frames;

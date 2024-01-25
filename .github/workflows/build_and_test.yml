@@ -429,18 +429,22 @@ jobs:
       if: ${{ steps.count.outputs.crashdumps != 0 }}
       shell: bash
       run: |
-        mkdir results
         tree debuginfo
         tree crashdumps
+        cp -r debuginfo crashdumps/debuginfo
         for dump in $(find crashdumps -name "*.dmp"); do
           echo ""
           echo "================================================="
           echo "Processing $dump..."
           echo "================================================="
-          filename=$(basename $dump)
-          cp $dump results/$filename
-          minidump-stackwalk $dump debuginfo/breakpad_symbols | tee results/$filename.stackwalk
+          minidump-stackwalk $dump debuginfo/breakpad_symbols | tee $dump.stackwalk
         done
+    - name: Upload crash dumps
+      if: ${{ steps.count.outputs.crashdumps != 0 }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: crashdumps_summary
+        path: crashdumps
 
   # coverage:
   #   runs-on: ubuntu-latest
