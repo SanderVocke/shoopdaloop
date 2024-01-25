@@ -9,5 +9,4 @@ def init_dynlibs():
         import win32api
 
         d = directories.installation_dir()
-        print(f"SET DLL DIR {d}")
         win32api.SetDllDirectory(d)
