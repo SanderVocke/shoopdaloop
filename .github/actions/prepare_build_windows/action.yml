@@ -27,6 +27,11 @@ runs:
     run: |
       curl -L https://github.com/SanderVocke/shoopdaloop/releases/download/build-assets-1/jack2-win64-v1.9.22-assets.zip --output jack2-win64-v1.9.22-assets.zip
       unzip jack2-win64-v1.9.22-assets.zip -d jack
+  - name: Install pthread-win32
+    shell: pwsh
+    run: |
+      curl -L https://github.com/SanderVocke/shoopdaloop/releases/download/build-assets-1/pthreads-w32-2-9-1-release.zip --output pthreads-w32-2-9-1-release.zip
+      unzip pthreads-w32-2-9-1-release.zip -d pthreads-w32
 
   - name: Path conversion
     id: pathconvert
@@ -34,6 +39,7 @@ runs:
     run: |
       echo "boost_include_dir=$(cygpath -w ${{ steps.install_boost.outputs.include_dir }})" | tee -a $GITHUB_OUTPUT
       echo "jack_dir=$(cygpath -w $(pwd)/jack)" | tee -a $GITHUB_OUTPUT
+      echo "pthreads_dir=$(cygpath -w $(pwd)/pthreads-w32/Pre-built.2)" | tee -a $GITHUB_OUTPUT
   - name: Set up Clang
     uses: egor-tensin/setup-clang@v1
     with:
@@ -44,4 +50,4 @@ runs:
     run: |
       python -m pip install build virtualenv pytest meson
       choco install -y ninja
-      echo "set \"CMAKE_INCLUDE_PATH=${{ steps.pathconvert.outputs.boost_include_dir }}\" && set \"CMAKE_PREFIX_PATH=${{ steps.pathconvert.outputs.jack_dir }}\" &&" > prepend_build_cmd.txt
+      echo "set \"CMAKE_INCLUDE_PATH=${{ steps.pathconvert.outputs.boost_include_dir }}\" && set \"C_INCLUDE_PATH=${{ steps.pathconvert.outputs.pthreads_dir }}/include\" && set \"CPLUS_INCLUDE_PATH=${{ steps.pathconvert.outputs.pthreads_dir }}/include\" && set \"CMAKE_PREFIX_PATH=${{ steps.pathconvert.outputs.jack_dir }};${{ steps.pathconvert.outputs.pthreads_dir }}\" &&" > prepend_build_cmd.txt

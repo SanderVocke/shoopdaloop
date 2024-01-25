@@ -25,7 +25,7 @@ runs:
 
   - name: Upload dumps (${{ inputs.variant }})
     if: ${{ !env.ACT && steps.process.outputs.upload }}
-    uses: actions/upload-artifact@v3
+    uses: actions/upload-artifact@v4
     with:
       name: crashdumps_${{ matrix.kind.name }}
       path: ${{ inputs.dumps_dir }}

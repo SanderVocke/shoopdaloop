@@ -25,6 +25,6 @@ runs:
   - name: run app (${{ inputs.variant_name }})
     shell: bash
     run: |
-        ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0 QT_QPA_PLATFORM=${{ inputs.qt_qpa_platform }} ${{ inputs.run_cmd_prefix }} ${{ inputs.python }} ${{ inputs.root_path }}/scripts/repeat_run_app.py --iterations=5 --wait-ms-before-close=15000 --wait-ms-before-kill=20000 --expect-stay-open=0 ${{ inputs.python }} -m shoopdaloop --quit-when-loaded -b dummy
+        ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0 QT_QPA_PLATFORM=${{ inputs.qt_qpa_platform }} ${{ inputs.run_cmd_prefix }} ${{ inputs.python }} ${{ inputs.root_path }}/scripts/repeat_run_app.py --iterations=5 --wait-ms-before-close=15000 --wait-ms-before-kill=20000 --expect-stay-open=0 ${{ inputs.python }} -m shoopdaloop --quit-after=5 -b dummy --monkey-tester
 
 

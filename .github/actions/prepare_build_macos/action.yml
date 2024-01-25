@@ -13,7 +13,7 @@ runs:
       fi
 
       # Install packages
-      brew install ninja libsndfile libsamplerate libtool automake autoconf cmake
+      brew install ninja libsndfile libtool automake autoconf cmake
       brew install jack liblo coreutils
       brew install python@3.8
 

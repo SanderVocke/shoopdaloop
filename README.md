@@ -6,7 +6,9 @@
 
 # ShoopDaLoop
 
-ShoopDaLoop is a live looping application for Linux with a few DAW-like features. [Documentation](https://sandervocke.github.io/shoopdaloop/) lives here.
+ShoopDaLoop is a live looping application for Linux with a few DAW-like features. It offers clips/loops in a grid-style layout, with functionality aimed specifically at real-time looping, including free-form "jamming" and pre-scripted looping sessions.
+
+[Documentation](https://sandervocke.github.io/shoopdaloop/) lives here.
 
 > :warning: **There is no release yet. This is in pre-alpha. All there is to see on this repo is a preview of things to come.**
 
@@ -20,9 +22,9 @@ For currently open known issues, check the GitHub Issues page.
 
 ![Screenshot](docs/source/resources/screenshot.png)
 
-# In a nutshell
+# Comparison table
 
-To summarize why ShoopDaLoop exists and what the goals and plans are, a short comparison table with similar software gives a good picture. Of course, the devil is in the details: the other listed software is great and in many ways different and better. The aim here is not to take away from them in any way.
+To summarize why ShoopDaLoop exists and what the goals and plans are, a short comparison table with similar open-source software gives a good picture. Of course, the devil is in the details: the other listed software is great and in many ways different and better. The aim here is not to take away from them in any way.
 
 |                             | ShoopDaLoop               | SooperLooper     | Luppp                  | Ardour                   |
 |-----------------------------|---------------------------|------------------|------------------------|--------------------------|

@@ -498,13 +498,15 @@ void BackendSession::recalculate_processing_schedule(unsigned req_id) {
         }
     }
 
-    auto me = shared_from_this();
-    auto finish_fn = [me, result, req_id]() {
-        me->log<log_level_debug>("Applying updated process graph {}", req_id);
-        me->m_processing_schedule = result;
-        me->ma_graph_id = req_id;
-    };
-    queue_process_thread_command(finish_fn);
+    auto maybe_me = weak_from_this();
+    if(auto me = maybe_me.lock()) {
+        auto finish_fn = [me, result, req_id]() {
+            me->log<log_level_debug>("Applying updated process graph {}", req_id);
+            me->m_processing_schedule = result;
+            me->ma_graph_id = req_id;
+        };
+        queue_process_thread_command(finish_fn);
+    }
 }
 
 void BackendSession::wait_graph_up_to_date() {
