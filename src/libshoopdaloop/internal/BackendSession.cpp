@@ -40,11 +40,12 @@ struct BackendSession::RecalculateGraphThread {
     bool finish;
     std::atomic<unsigned> m_req_id;
     std::weak_ptr<BackendSession> backend;
+    BackendSession *tmp_backend;
 
-    RecalculateGraphThread(BackendSession &backend) :
+    RecalculateGraphThread(BackendSession &_backend) :
         finish(false),
         m_req_id(0),
-        backend(backend.weak_from_this())
+        tmp_backend(&_backend)
     {
         thread = std::thread([this]() { this->thread_fn(); });
     }
@@ -61,16 +62,23 @@ struct BackendSession::RecalculateGraphThread {
             if (auto sh_backend = backend.lock()) {
                 sh_backend->log<log_level_debug>("Recalculate graph {}", rid);
                 sh_backend->recalculate_processing_schedule(rid);
+            } else {
+                logging::log<"Backend.Session", log_level_debug>(std::nullopt, std::nullopt,
+                "Backend session not available");
             }
         }
     }
 
     void update_request_id(unsigned req_id) {
+        if (tmp_backend) {
+            backend = tmp_backend->weak_from_this();
+            tmp_backend = nullptr;
+        }
         if (req_id != m_req_id) {
             std::lock_guard lk(mutex);
             m_req_id = req_id;
-            cv.notify_one();
         }
+        cv.notify_one();
     }
 
     ~RecalculateGraphThread() {
