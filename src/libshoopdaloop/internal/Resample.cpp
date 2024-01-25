@@ -55,11 +55,12 @@ float* resample_multi(float* in, unsigned n_channels_inner, unsigned n_frames_ou
     }
     
     // If any output samples were not filled, just copy the most recent sample
-    for(size_t i=0; i<resampler.out_count; i++) {
-        auto *target = rval + (n_channels_inner * target_n_frames - 1 - i);
-        auto *source = rval + (n_channels_inner * target_n_frames - 1 - resampler.out_count);
+    for(size_t i=0; i<std::min(target_n_frames, resampler.out_count); i++) {
+        auto *last = rval + (n_channels_inner * target_n_frames) - n_channels_inner;
+        auto *last_valid = last - resampler.out_count*n_channels_inner;
+        auto *target = last - i*n_channels_inner;
         for (size_t c=0; c<n_channels_inner; c++) {
-            target[c] = source[c];
+            target[c] = last_valid[c];
         }
     }
 

@@ -213,6 +213,7 @@ Rectangle {
     }
 
     function reload() {
+        root.logger.debug(() => ("Reloading session"))
         registries.state_registry.clear([
             'sync_active'
         ])
@@ -287,7 +288,6 @@ Rectangle {
             }
 
             root.initial_descriptor = descriptor
-            root.logger.debug(() => ("Reloading session"))
             reload()
             registries.state_registry.load_action_started()
 
@@ -601,6 +601,7 @@ Rectangle {
                 }
 
                 property bool loaded: false
+                property var initial_descriptor : null
 
                 function initialize() {
                     if (track_widget) {
@@ -608,7 +609,8 @@ Rectangle {
                     }
                     active = false
                     loaded = false
-                    active = Qt.binding(() => root.sync_loop_track_descriptor != null)
+                    initial_descriptor = root.sync_loop_track_descriptor
+                    active = Qt.binding(() => initial_descriptor != null)
                 }
 
                 Component.onCompleted: { initialize() }
@@ -636,8 +638,9 @@ Rectangle {
                             right: parent.right
                             top: parent.top
                         }
+
+                        initial_descriptor: sync_loop_loader.initial_descriptor
                         
-                        initial_descriptor: root.sync_loop_track_descriptor
                         onLoadedChanged: sync_loop_loader.loaded = loaded
                         name_editable: false
                         sync_loop_layout: true

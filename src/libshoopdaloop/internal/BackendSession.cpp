@@ -39,12 +39,13 @@ struct BackendSession::RecalculateGraphThread {
     std::mutex mutex;
     bool finish;
     std::atomic<unsigned> m_req_id;
-    BackendSession &backend;
+    std::weak_ptr<BackendSession> backend;
+    BackendSession *tmp_backend;
 
-    RecalculateGraphThread(BackendSession &backend) :
+    RecalculateGraphThread(BackendSession &_backend) :
         finish(false),
         m_req_id(0),
-        backend(backend)
+        tmp_backend(&_backend)
     {
         thread = std::thread([this]() { this->thread_fn(); });
     }
@@ -58,18 +59,26 @@ struct BackendSession::RecalculateGraphThread {
             if(finish) { break; }
             rid = new_rid;
             lk.unlock();
-            backend.log<log_level_debug>("Recalculate graph {}", rid);
-            backend.recalculate_processing_schedule(rid);
+            if (auto sh_backend = backend.lock()) {
+                sh_backend->log<log_level_debug>("Recalculate graph {}", rid);
+                sh_backend->recalculate_processing_schedule(rid);
+            } else {
+                logging::log<"Backend.Session", log_level_debug>(std::nullopt, std::nullopt,
+                "Backend session not available");
+            }
         }
-        backend.log<log_level_debug>("Recalculate graph thread finished");
     }
 
     void update_request_id(unsigned req_id) {
+        if (tmp_backend) {
+            backend = tmp_backend->weak_from_this();
+            tmp_backend = nullptr;
+        }
         if (req_id != m_req_id) {
             std::lock_guard lk(mutex);
             m_req_id = req_id;
-            cv.notify_one();
         }
+        cv.notify_one();
     }
 
     ~RecalculateGraphThread() {
@@ -458,7 +467,7 @@ void BackendSession::recalculate_processing_schedule(unsigned req_id) {
 
     // Make raw pointers
     std::set<GraphNode*> raw_nodes;
-    for(auto &n: nodes) { raw_nodes.insert(n.get()); }
+    for(auto &n: nodes) { if (n) { raw_nodes.insert(n.get()); } }
 
     // Schedule
     std::vector<std::set<GraphNode*>> schedule = graph_processing_order(raw_nodes);
