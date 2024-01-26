@@ -498,7 +498,7 @@ Rectangle {
             anchors {
                 top: app_controls.bottom
                 left: parent.left
-                bottom: details_area.top
+                bottom: details_area.visible ? details_area.top : bottom_bar.top
                 right: logo_menu_area.left
                 bottomMargin: 4
                 leftMargin: 4
@@ -522,7 +522,7 @@ Rectangle {
                         height = details_area.active_height
                     } else {
                         if (height > 0) {
-                            active_height = height
+                            details_area.active_height = height
                         }
                         height = 0
                     }
