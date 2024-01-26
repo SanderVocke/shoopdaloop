@@ -44,7 +44,7 @@ if(WIN32)
                REQUIRED
                PATH_SUFFIXES dll/x64)
   # Install it into our package
-  install(FILES ${PTHEAD_WIN32_DLL}
+  install(FILES ${PTHREAD_WIN32_DLL}
     EXCLUDE_FROM_ALL
     COMPONENT package_install
     DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME})
