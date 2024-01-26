@@ -224,6 +224,10 @@ Rectangle {
 
     function queue_load_tasks(data_files_directory, from_sample_rate, to_sample_rate, add_tasks_to) {
         tracks_widget.queue_load_tasks(data_files_directory, from_sample_rate, to_sample_rate, add_tasks_to)
+        if (sync_loop_loader.track_widget) {
+            root.logger.debug(() => (`Queue load tasks for sync track`))
+            sync_loop_loader.track_widget.queue_load_tasks(data_files_directory, from_sample_rate, to_sample_rate, add_tasks_to)
+        }
     }
 
     Dialog {
