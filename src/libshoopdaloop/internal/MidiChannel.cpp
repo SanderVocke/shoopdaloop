@@ -154,7 +154,7 @@ MidiChannel<TimeType, SizeType>::PROC_set_length_impl(Storage &storage, std::ato
 template <typename TimeType, typename SizeType>
 void
 MidiChannel<TimeType, SizeType>::PROC_set_length(uint32_t length) {
-    log<log_level_trace>("set length: {}", length);
+    log<log_level_debug_trace>("set length: {}", length);
     PROC_set_length_impl(*mp_storage, ma_data_length, length);
 }
 
@@ -313,7 +313,7 @@ MidiChannel<TimeType, SizeType>::PROC_process_record(Storage &storage,
                          std::atomic<uint32_t> &storage_data_length,
                          TrackedState &track_start_state, uint32_t record_from,
                          uint32_t n_samples) {
-    log<log_level_trace>("record {} frames", n_samples);
+    log<log_level_debug_trace>("record {} frames", n_samples);
 
     if (!mp_recording_source_buffer.has_value()) {
         throw_error<std::runtime_error>("Recording without source buffer");
@@ -448,7 +448,7 @@ MidiChannel<TimeType, SizeType>::PROC_process_playback(uint32_t our_pos, uint32_
     }
     auto _pos = (int)our_pos;
 
-    log<log_level_trace>("playback {} frames, start {}, {} msgs total", n_samples, buf.first.n_frames_processed, mp_storage->n_events());
+    log<log_level_debug_trace>("playback {} frames, start {}, {} msgs total", n_samples, buf.first.n_frames_processed, mp_storage->n_events());
 
     // Playback any events.
     uint32_t end = buf.first.n_frames_processed + n_samples;
@@ -473,7 +473,7 @@ MidiChannel<TimeType, SizeType>::PROC_process_playback(uint32_t our_pos, uint32_
         }
         if ((int)event->storage_time >= valid_from) {
             if (muted) {
-                log<log_level_trace>("playback: skip msg @ {} (muted)", event->storage_time);
+                log<log_level_debug_trace>("playback: skip msg @ {} (muted)", event->storage_time);
             } else {
                 // See if we need to restore any cached MIDI channel state by
                 // sending additional messages.
@@ -494,7 +494,7 @@ MidiChannel<TimeType, SizeType>::PROC_process_playback(uint32_t our_pos, uint32_
                     mp_pre_playback_state.set_valid(false);
                 }
 
-                log<log_level_trace>("playback: play msg @ {}", event->storage_time);
+                log<log_level_debug_trace>("playback: play msg @ {}", event->storage_time);
                 event->proc_time = proc_time;
                 PROC_send_message_ref(*buf.second, *event);
                 ma_n_events_triggered++;
@@ -507,9 +507,9 @@ MidiChannel<TimeType, SizeType>::PROC_process_playback(uint32_t our_pos, uint32_
         mp_playback_cursor->next();
     }
     if (mp_playback_cursor->valid()) {
-        log<log_level_trace>("playback: done. first upcoming msg is @ {}", mp_playback_cursor->get()->storage_time);
+        log<log_level_debug_trace>("playback: done. first upcoming msg is @ {}", mp_playback_cursor->get()->storage_time);
     } else {
-        log<log_level_trace>("playback: done, reached end.");
+        log<log_level_debug_trace>("playback: done, reached end.");
     }
 }
 
@@ -595,7 +595,7 @@ MidiChannel<TimeType, SizeType>::set_contents(std::vector<Message> contents, uin
     log<log_level_debug>("Loading data ({} messages in storage {}).", s->n_events(), fmt::ptr(s.get()));
 
     auto fn = [this, s, length_samples]() {
-        log<log_level_trace>("Applying loaded data (storage @ {}).", fmt::ptr(s.get()));
+        log<log_level_debug_trace>("Applying loaded data (storage @ {}).", fmt::ptr(s.get()));
         mp_storage = s;
         mp_playback_cursor = mp_storage->create_cursor();
         PROC_set_length(length_samples);

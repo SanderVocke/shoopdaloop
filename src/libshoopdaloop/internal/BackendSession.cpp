@@ -114,7 +114,7 @@ shoop_backend_session_state_info_t BackendSession::get_state() {
 
 //TODO delete destroyed ports
 void BackendSession::PROC_process (uint32_t nframes) {
-    log<log_level_trace>("Process {}: start", nframes);
+    log<log_level_debug_trace>("Process {}: start", nframes);
     profiling::stopwatch(
         [this, &nframes]() {
             
@@ -122,7 +122,7 @@ void BackendSession::PROC_process (uint32_t nframes) {
             
             // Execute queued commands
             // (Graph changes applied here too)
-            log<log_level_trace>("Process: execute commands and MIDI control");
+            log<log_level_debug_trace>("Process: execute commands and MIDI control");
             profiling::stopwatch(
                 [this, nframes]() {
                     PROC_handle_command_queue();
@@ -133,11 +133,11 @@ void BackendSession::PROC_process (uint32_t nframes) {
             auto graph_id = ma_graph_id.load();
             auto graph_request_id = ma_graph_request_id.load();
             if (graph_id != graph_request_id) {
-                log<log_level_trace>("Notify graph recalculate thread");
+                log<log_level_debug_trace>("Notify graph recalculate thread");
                 m_recalculate_graph_thread->update_request_id(graph_request_id);
             } 
             
-            log<log_level_trace>("Process: process graph");
+            log<log_level_debug_trace>("Process: process graph");
             auto processing_schedule = m_processing_schedule;
 
             profiling::stopwatch(
@@ -147,10 +147,10 @@ void BackendSession::PROC_process (uint32_t nframes) {
                         auto &step = processing_schedule->steps[i];
                         try {
                             if(step.nodes.size() == 1) {
-                                log<log_level_trace>("[{}/{}] Processing node: {}", i, n_steps, step.nodes.begin()->get()->graph_node_name());
+                                log<log_level_debug_trace>("[{}/{}] Processing node: {}", i, n_steps, step.nodes.begin()->get()->graph_node_name());
                                 step.nodes.begin()->get()->PROC_process(nframes);
                             } else if(step.nodes.size() > 1) {
-                                log<log_level_trace>("[{}/{}] Co-processing {} nodes, first: {}", i, n_steps, step.nodes.size(), step.nodes.begin()->get()->graph_node_name());
+                                log<log_level_debug_trace>("[{}/{}] Co-processing {} nodes, first: {}", i, n_steps, step.nodes.size(), step.nodes.begin()->get()->graph_node_name());
                                 step.nodes.begin()->get()->PROC_co_process(step.nodes, nframes);
                             }
                         } catch (const std::exception &exp) {
@@ -484,9 +484,9 @@ void BackendSession::recalculate_processing_schedule(unsigned req_id) {
     float us = duration_cast<microseconds>(end - start).count();
     logging::log<"Backend.ProcessGraph", log_level_debug>(std::nullopt, std::nullopt, "Calculation took {} us", us);
 
-    if(logging::should_log("Backend.ProcessGraph", log_level_trace)) {
+    if(logging::should_log("Backend.ProcessGraph", log_level_debug_trace)) {
         auto dot = graph_dot(raw_nodes);
-        logging::log<"Backend.ProcessGraph", log_level_trace>(std::nullopt, std::nullopt, "DOT graph:\n{}", dot);
+        logging::log<"Backend.ProcessGraph", log_level_debug_trace>(std::nullopt, std::nullopt, "DOT graph:\n{}", dot);
         if(logging::should_log("Backend.ProcessGraph", log_level_debug)) {
             std::vector<std::string> schedule_names;
             for(auto &step: schedule) {

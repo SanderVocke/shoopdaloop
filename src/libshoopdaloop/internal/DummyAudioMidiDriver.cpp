@@ -174,7 +174,7 @@ void DummyMidiPort::request_data(uint32_t n_frames) {
     if (n_requested_frames > 0) {
         throw std::runtime_error("Previous request not yet completed");
     }
-    ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_trace>("request {} frames", n_frames);
+    ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug_trace>("request {} frames", n_frames);
     n_requested_frames = n_frames;
     n_original_requested_frames = n_frames;
 }
@@ -189,13 +189,13 @@ void DummyMidiPort::PROC_prepare(uint32_t nframes) {
         std::erase_if(m_queued_msgs, [&, this](StoredMessage const& msg) {
             auto rval = msg.time < progress_by;
             if (rval) {
-                this->ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_trace>("msg dropped from MIDI dummy input queue");
+                this->ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug_trace>("msg dropped from MIDI dummy input queue");
             }
             return rval;
         });
         std::for_each(m_queued_msgs.begin(), m_queued_msgs.end(), [&](StoredMessage &msg) {
             auto new_val = msg.time - progress_by;
-            ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_trace>("msg in queue: time {} -> {}", msg.time, new_val);
+            ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug_trace>("msg in queue: time {} -> {}", msg.time, new_val);
             msg.time = new_val;
         });
     }
@@ -345,7 +345,7 @@ void DummyAudioMidiDriver<Time, Size>::start(
                 uint32_t to_process = mode == DummyAudioMidiDriverMode::Controlled ?
                     std::min(samples_to_process, AudioMidiDriver::get_buffer_size()) :
                     AudioMidiDriver::get_buffer_size();
-                log<log_level_trace>("Process {}", to_process);
+                log<log_level_debug_trace>("Process {}", to_process);
                 AudioMidiDriver::PROC_process(to_process);
                 if (mode == DummyAudioMidiDriverMode::Controlled) {
                     m_controlled_mode_samples_to_process -= to_process;

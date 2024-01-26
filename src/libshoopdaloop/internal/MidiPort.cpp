@@ -56,7 +56,7 @@ void MidiPort::PROC_prepare(uint32_t nframes) {
 
 void MidiPort::PROC_process(uint32_t nframes) {
     auto muted = ma_muted.load();
-    log<log_level_trace>("process {}", nframes);
+    log<log_level_debug_trace>("process {}", nframes);
     
     // Get buffers
     auto write_in_buf = ma_write_data_into_port_buffer.load();
@@ -74,7 +74,7 @@ void MidiPort::PROC_process(uint32_t nframes) {
         n_in_events = count_in_buf->PROC_get_n_events();
         // Count events
         n_input_events += n_in_events;
-        log<log_level_trace>("# events in input buf: {}", n_in_events);
+        log<log_level_debug_trace>("# events in input buf: {}", n_in_events);
     }
     if (read_in_buf && !muted) {
         // Process state
@@ -102,7 +102,7 @@ void MidiPort::PROC_process(uint32_t nframes) {
             procbuf ? procbuf : read_in_buf;
         if (source) {
             auto n_events = source->PROC_get_n_events();
-            log<log_level_trace>("# output events: {}", n_events);
+            log<log_level_debug_trace>("# output events: {}", n_events);
             n_output_events += n_events;
 
             if (write_out_buf) {

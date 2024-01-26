@@ -30,7 +30,7 @@ void GraphAudioPort::PROC_passthrough(uint32_t n_frames) {
     if (m_passthrough_enabled) {
         for (auto &p : mp_passthrough_to) {
             if (n_frames > 0) {
-                log<log_level_trace>("process audio passthrough ({} samples)", n_frames);
+                log<log_level_debug_trace>("process audio passthrough ({} samples)", n_frames);
             }
             if(auto buf = get_buf(p)) {
                 for (size_t i=0; i<n_frames; i++) {
