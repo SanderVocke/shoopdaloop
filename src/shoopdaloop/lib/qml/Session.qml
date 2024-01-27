@@ -224,6 +224,10 @@ Rectangle {
 
     function queue_load_tasks(data_files_directory, from_sample_rate, to_sample_rate, add_tasks_to) {
         tracks_widget.queue_load_tasks(data_files_directory, from_sample_rate, to_sample_rate, add_tasks_to)
+        if (sync_loop_loader.track_widget) {
+            root.logger.debug(() => (`Queue load tasks for sync track`))
+            sync_loop_loader.track_widget.queue_load_tasks(data_files_directory, from_sample_rate, to_sample_rate, add_tasks_to)
+        }
     }
 
     Dialog {
@@ -498,7 +502,7 @@ Rectangle {
             anchors {
                 top: app_controls.bottom
                 left: parent.left
-                bottom: details_area.top
+                bottom: details_area.visible ? details_area.top : bottom_bar.top
                 right: logo_menu_area.left
                 bottomMargin: 4
                 leftMargin: 4
@@ -522,7 +526,7 @@ Rectangle {
                         height = details_area.active_height
                     } else {
                         if (height > 0) {
-                            active_height = height
+                            details_area.active_height = height
                         }
                         height = 0
                     }

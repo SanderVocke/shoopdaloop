@@ -25,7 +25,8 @@ typedef enum {
 } shoop_loop_mode_t;
 
 typedef enum {
-    log_level_trace,
+    log_level_debug_trace,  // Will not be printed in release build
+    log_level_always_trace, // Same look as trace, but will be printed in release build
     log_level_debug,
     log_level_info,
     log_level_warning,

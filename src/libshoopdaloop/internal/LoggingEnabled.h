@@ -38,8 +38,17 @@ public:
                    const char* fl = BOOST_CURRENT_LOCATION.file_name(),
                    uint32_t ln = BOOST_CURRENT_LOCATION.line()) const
     {
-        if (log_level_trace >= LevelFilter) {
-            log<log_level_trace>("{}:{} - {}", fl, ln, fn);
+        if (log_level_debug_trace >= LevelFilter) {
+            log<log_level_debug_trace>("{}:{} - {}", fl, ln, fn);
+        }
+    }
+
+    void log_always_trace(const char* fn = BOOST_CURRENT_LOCATION.function_name(),
+                   const char* fl = BOOST_CURRENT_LOCATION.file_name(),
+                   uint32_t ln = BOOST_CURRENT_LOCATION.line()) const
+    {
+        if (log_level_always_trace >= LevelFilter) {
+            log<log_level_always_trace>("{}:{} - {}", fl, ln, fn);
         }
     }
 
