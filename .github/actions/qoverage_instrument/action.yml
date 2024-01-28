@@ -12,4 +12,4 @@ runs:
   - name: run
     shell: bash
     run: |
-      qoverage instrument --glob "${{ inputs.package_path }}/lib/qml/*.qml" --in-place --store-intermediates --verbose
+      ~/.local/bin/qoverage instrument --glob "${{ inputs.package_path }}/lib/qml/*.qml" --in-place --store-intermediates --verbose
