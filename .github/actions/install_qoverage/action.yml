@@ -13,3 +13,4 @@ runs:
     shell: bash
     run: |
       ${{ inputs.python }} -m pipx install --force qoverage
+      ${{ inputs.python }} -m pipx ensurepath
