@@ -1,0 +1,16 @@
+name: Ubuntu TMate test session
+
+on: workflow_dispatch
+
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  tmate:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+    - name: Setup tmate session
+      uses: SanderVocke/action-tmate@master
