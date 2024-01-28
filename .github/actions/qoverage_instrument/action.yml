@@ -10,10 +10,11 @@ runs:
   using: "composite"
   steps:
   - name: run
+    id: run
     shell: bash
     run: |
       ~/.local/bin/qoverage instrument --glob "${{ inputs.package_path }}/lib/qml/*.qml" --in-place --store-intermediates --verbose
-      echo "upload_sources_path=${{ inputs.package_path }}/lib" >> $GITHUB_OUTPUT
+      echo "upload_sources_path=${{ inputs.package_path }}/lib" | tee -a $GITHUB_OUTPUT
   
   - name: Upload instrumented sources
     uses: actions/upload-artifact@v4
