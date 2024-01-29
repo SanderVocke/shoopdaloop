@@ -39,7 +39,7 @@ runs:
     run: |
       echo "boost_include_dir=$(cygpath -w ${{ steps.install_boost.outputs.include_dir }})" | tee -a $GITHUB_OUTPUT
       echo "jack_dir=$(cygpath -w $(pwd)/jack)" | tee -a $GITHUB_OUTPUT
-      echo "pthreads_dir=$(cygpath -w $(pwd)/pthreads4w)" | tee -a $GITHUB_OUTPUT
+      echo "pthreads_dir=$(cygpath -w $(pwd)/pthreads4w/pthreads4w)" | tee -a $GITHUB_OUTPUT
   - name: Set up Clang
     uses: egor-tensin/setup-clang@v1
     with:
