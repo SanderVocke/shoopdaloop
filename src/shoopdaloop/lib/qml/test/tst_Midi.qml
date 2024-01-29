@@ -191,7 +191,55 @@ ShoopTestFile {
                     verify_eq(chan.get_data(), input, true)
                     verify_eq(out, expect_output, true)
                 }
-            })
+            }),
+
+            'test_input_port_note_tracking': () => {
+                check_backend()
+                reset()
+                tut_control().monitor = false
+                tut_control().mute = false
+
+                midi_input_port.dummy_queue_msgs([
+                    {'time': 0, 'data': Midi.create_noteOn(0, 100, 100) },
+                    {'time': 1, 'data': Midi.create_noteOn(0, 50,  50)  },
+                    {'time': 2, 'data': Midi.create_noteOff(0, 100, 90) },
+                    {'time': 3, 'data': Midi.create_noteOff(0, 50,  40) }
+                ])
+
+                verify_eq(midi_input_port.n_input_notes_active, 0)
+                verify_eq(midi_input_port.n_input_events, 0)
+                
+                session.backend.dummy_request_controlled_frames(1)
+                session.backend.wait_process()
+                testcase.wait_updated(session.backend)
+
+                verify_eq(midi_input_port.n_input_notes_active, 1)
+                verify_eq(midi_input_port.n_input_events, 1)
+
+                session.backend.dummy_request_controlled_frames(1)
+                session.backend.wait_process()
+                testcase.wait_updated(session.backend)
+
+                verify_eq(midi_input_port.n_input_notes_active, 2)
+                verify_eq(midi_input_port.n_input_events, 2)
+
+                session.backend.dummy_request_controlled_frames(1)
+                session.backend.wait_process()
+                testcase.wait_updated(session.backend)
+
+                verify_eq(midi_input_port.n_input_notes_active, 1)
+                verify_eq(midi_input_port.n_input_events, 3)
+
+                session.backend.dummy_request_controlled_frames(1)
+                session.backend.wait_process()
+                testcase.wait_updated(session.backend)
+
+                verify_eq(midi_input_port.n_input_notes_active, 0)
+                verify_eq(midi_input_port.n_input_events, 4)
+
+                midi_input_port.dummy_clear_queues()
+                midi_output_port.dummy_clear_queues()
+            },
         }
     }
 }
