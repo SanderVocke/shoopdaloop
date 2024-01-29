@@ -448,7 +448,7 @@ MidiChannel<TimeType, SizeType>::PROC_process_playback(uint32_t our_pos, uint32_
     }
     auto _pos = (int)our_pos;
 
-    log<log_level_debug_trace>("playback {} frames, start {}, {} msgs total, pos {}", n_samples, buf.first.n_frames_processed, mp_storage->n_events(), _pos);
+    log<log_level_debug_trace>("playback {} frames, start {}, {} msgs total", n_samples, buf.first.n_frames_processed, mp_storage->n_events());
 
     // Playback any events.
     uint32_t end = buf.first.n_frames_processed + n_samples;
