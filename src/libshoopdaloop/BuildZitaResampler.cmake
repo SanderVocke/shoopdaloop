@@ -33,16 +33,14 @@ target_include_directories(zita INTERFACE ${ZITA_TOPLEVEL_INCLUDE_DIR})
 if(WIN32)
   # Link to the dll stub
   find_library(PTHREAD_WIN32_LIB
-               pthreadVC2.lib
-               REQUIRED
-               PATH_SUFFIXES lib/x64)
+               pthreadVC3.lib
+               REQUIRED)
   target_link_libraries(zita INTERFACE ${PTHREAD_WIN32_LIB})
 
   # Find the DLL
   find_file(PTHREAD_WIN32_DLL
-               pthreadVC2.dll
-               REQUIRED
-               PATH_SUFFIXES dll/x64)
+               pthreadVC3.dll
+               REQUIRED)
   # Install it into our package
   install(FILES ${PTHREAD_WIN32_DLL}
     EXCLUDE_FROM_ALL
