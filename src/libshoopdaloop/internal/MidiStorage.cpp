@@ -244,8 +244,10 @@ void MidiStorageCursor<TimeType, SizeType>::overwrite(uint32_t offset,
 template <typename TimeType, typename SizeType>
 void MidiStorageCursor<TimeType, SizeType>::reset() {
     if (m_storage->m_n_events == 0) {
+        log<log_level_debug_trace>("reset: no events, invalidating");
         invalidate();
     } else {
+        log<log_level_debug_trace>("reset: resetting to tail");
         m_offset = m_storage->m_tail;
         m_prev_offset = std::nullopt;
     }
@@ -285,7 +287,8 @@ template <typename TimeType, typename SizeType>
 uint32_t MidiStorageCursor<TimeType, SizeType>::find_time_forward(
     uint32_t time, std::function<void(Elem *)> maybe_skip_msg_callback)
 {
-    log<log_level_debug_trace>("find_time_forward (storage {}, time {})", fmt::ptr(m_storage), time);
+    auto print_offset = m_offset.has_value() ? (int)m_offset.value() : (int)-1;
+    log<log_level_debug_trace>("find_time_forward (storage {}, cursor {}, target time {})", fmt::ptr(m_storage), print_offset, time);
     if (!valid()) {
         log<log_level_debug_trace>("find_time_forward: resetting (not valid)");
         reset();
@@ -362,14 +365,12 @@ void MidiStorage<TimeType, SizeType>::clear() {
 template <typename TimeType, typename SizeType>
 void MidiStorage<TimeType, SizeType>::truncate(TimeType time) {
     ModuleLoggingEnabled<"Backend.MidiChannel.Storage">::log<log_level_debug_trace>("truncate to {}", time);
+    auto prev_n_events = this->m_n_events;
     if (this->m_n_events > 0 &&
         this->unsafe_at(this->m_head_start)->storage_time > time) {
         auto cursor = create_cursor();
         if (cursor->valid()) {
-            auto prev_n_events = this->m_n_events;
             this->m_n_events = cursor->find_time_forward(time);
-            ModuleLoggingEnabled<"Backend.MidiChannel.Storage">::log<log_level_debug_trace>("truncate: was {}, now {} msgs", prev_n_events, this->m_n_events);
-
             this->m_head = cursor->offset().value();
             this->m_head_start = cursor->prev_offset().value_or(0);
 
@@ -384,6 +385,7 @@ void MidiStorage<TimeType, SizeType>::truncate(TimeType time) {
             }
         }
     }
+    ModuleLoggingEnabled<"Backend.MidiChannel.Storage">::log<log_level_debug_trace>("truncate: was {}, now {} msgs", prev_n_events, this->m_n_events);
 }
 
 template <typename TimeType, typename SizeType>

@@ -782,20 +782,8 @@ Item {
                 }
                 width: 8
                 radius: 2
-                color: '#00BBFF'
-                visible: root.n_midi_notes_active_in > 0
-            }
-            Rectangle {
-                id: input_midi_evts_indicator
-                anchors {
-                    right: input_peak_r_bar.right
-                    top: input_peak_r_bar.top
-                    bottom: input_peak_r_bar.bottom
-                }
-                width: 8
-                radius: 2
                 color: '#00FFFF'
-                visible: root.n_midi_events_in > 0
+                visible: root.n_midi_notes_active_in > 0 || root.n_midi_events_in > 0
             }
             Item {
                 id: monitor_row

@@ -148,7 +148,7 @@ bool DummyMidiPort::write_by_reference_supported() const { return true; }
 bool DummyMidiPort::write_by_value_supported() const { return true; }
 
 DummyMidiPort::DummyMidiPort(std::string name, shoop_port_direction_t direction)
-    : MidiPort(false, false, false), DummyPort(name, direction, PortDataType::Midi){
+    : MidiPort(true, false, false), DummyPort(name, direction, PortDataType::Midi){
 }
 
 void DummyMidiPort::clear_queues() {
@@ -184,7 +184,7 @@ void DummyMidiPort::PROC_prepare(uint32_t nframes) {
     auto progress_by = n_processed_last_round.load();
     progress_by -= std::min(n_requested_frames.load(), progress_by);
     if (progress_by > 0) {
-    // The queue was used last pass and needs to be truncated now for the current pass.
+        // The queue was used last pass and needs to be truncated now for the current pass.
         // (first erase msgs that will end up having a negative timestamp)
         std::erase_if(m_queued_msgs, [&, this](StoredMessage const& msg) {
             auto rval = msg.time < progress_by;
@@ -220,6 +220,7 @@ void DummyMidiPort::PROC_process(uint32_t nframes) {
     }
     n_processed_last_round = nframes;
     n_requested_frames -= std::min(nframes, n_requested_frames.load());
+    MidiPort::PROC_process(nframes);
 }
 
 MidiReadableBufferInterface *
