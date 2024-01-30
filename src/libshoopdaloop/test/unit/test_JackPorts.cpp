@@ -4,6 +4,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <jack/midiport.h>
 #include <memory>
+#include "helpers.h"
 
 std::unique_ptr<JackTestAudioMidiDriver> open_test_driver() {
     JackTestApi::internal_reset_api();
@@ -321,6 +322,50 @@ TEST_CASE("Ports - Jack Midi In - Message Counter", "[JackPorts][ports][midi]") 
     CHECK(port->get_n_output_events() == 0);
 }
 
+TEST_CASE("Ports - Jack Midi In - Note Tracker", "[JackPorts][ports][midi]") {
+    auto driver = open_test_driver();
+    auto port = driver->open_midi_port("test", Input);
+    auto &internal_port = JackTestApi::internal_port_data((jack_port_t*)port->maybe_driver_handle());
+    using Msg = MidiMessage<uint32_t, uint32_t>;
+
+    auto n1_on = create_noteOn<Msg>(0, 0, 100, 127);
+    auto n2_on = create_noteOn<Msg>(0, 0, 110, 127);
+    auto n1_off = create_noteOff<Msg>(0, 0, 100, 127);
+    auto n2_off = create_noteOff<Msg>(0, 0, 110, 127);
+
+    CHECK(port->get_n_input_notes_active() == 0);
+
+    internal_port.midi_buffer = {n1_on};
+    port->PROC_prepare(1);
+    port->PROC_process(1);
+    CHECK(port->get_n_input_notes_active() == 1);
+
+    internal_port.midi_buffer = {n2_on};
+    port->PROC_prepare(1);
+    port->PROC_process(1);
+    CHECK(port->get_n_input_notes_active() == 2);
+
+    internal_port.midi_buffer = {n1_on}; // duplicate
+    port->PROC_prepare(1);
+    port->PROC_process(1);
+    CHECK(port->get_n_input_notes_active() == 2);
+
+    internal_port.midi_buffer = {n1_off};
+    port->PROC_prepare(1);
+    port->PROC_process(1);
+    CHECK(port->get_n_input_notes_active() == 1);
+
+    internal_port.midi_buffer = {n1_off}; // duplicate
+    port->PROC_prepare(1);
+    port->PROC_process(1);
+    CHECK(port->get_n_input_notes_active() == 1);
+
+    internal_port.midi_buffer = {n2_off};
+    port->PROC_prepare(1);
+    port->PROC_process(1);
+    CHECK(port->get_n_input_notes_active() == 0);
+}
+
 TEST_CASE("Ports - Jack Midi Out - Properties", "[JackPorts][ports][midi]") {
     auto driver = open_test_driver();
     auto port = driver->open_midi_port("test", Output);
@@ -431,6 +476,54 @@ TEST_CASE("Ports - Jack Midi Out - Message Counter", "[JackPorts][ports][midi]")
 
     CHECK(port->get_n_input_events() == 2);
     CHECK(port->get_n_output_events() == 0);
+}
+
+TEST_CASE("Ports - Jack Midi Out - Note Tracker", "[JackPorts][ports][midi]") {
+    auto driver = open_test_driver();
+    auto port = driver->open_midi_port("test", Output);
+    auto &internal_port = JackTestApi::internal_port_data((jack_port_t*)port->maybe_driver_handle());
+
+    auto n1_on = create_noteOn<Msg>(0, 0, 100, 127);
+    auto n2_on = create_noteOn<Msg>(0, 0, 110, 127);
+    auto n1_off = create_noteOff<Msg>(0, 0, 100, 127);
+    auto n2_off = create_noteOff<Msg>(0, 0, 110, 127);
+
+    CHECK(port->get_n_output_notes_active() == 0);
+
+    port->PROC_prepare(1);
+    auto buf = port->PROC_get_write_data_into_port_buffer(1);
+    buf->PROC_write_event_reference(n1_on);
+    port->PROC_process(1);
+
+    CHECK(port->get_n_output_notes_active() == 1);
+
+    port->PROC_prepare(1);
+    buf = port->PROC_get_write_data_into_port_buffer(1);
+    buf->PROC_write_event_reference(n1_on); // duplicate
+    port->PROC_process(1);
+
+    CHECK(port->get_n_output_notes_active() == 1);
+
+    port->PROC_prepare(1);
+    buf = port->PROC_get_write_data_into_port_buffer(1);
+    buf->PROC_write_event_reference(n2_on);
+    port->PROC_process(1);
+
+    CHECK(port->get_n_output_notes_active() == 2);
+
+    port->PROC_prepare(1);
+    buf = port->PROC_get_write_data_into_port_buffer(1);
+    buf->PROC_write_event_reference(n1_off);
+    port->PROC_process(1);
+
+    CHECK(port->get_n_output_notes_active() == 1);
+
+    port->PROC_prepare(1);
+    buf = port->PROC_get_write_data_into_port_buffer(1);
+    buf->PROC_write_event_reference(n2_off);
+    port->PROC_process(1);
+
+    CHECK(port->get_n_output_notes_active() == 0);
 }
 
 TEST_CASE("Ports - Jack Midi Out - Mute", "[JackPorts][ports][midi]") {

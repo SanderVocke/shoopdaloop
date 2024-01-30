@@ -1241,19 +1241,9 @@ Item {
         }
 
         Rectangle {
-            visible: root.maybe_loop ? root.maybe_loop.display_midi_notes_active > 0 : false
-            anchors {
-                right: parent.right
-                top: parent.top
-                bottom: parent.bottom
-            }
-            width: 8
-
-            color: '#00BBFF'
-        }
-
-        Rectangle {
-            visible: root.maybe_loop ? root.maybe_loop.display_midi_events_triggered > 0 : false
+            visible: root.maybe_loop ?
+                (root.maybe_loop.display_midi_events_triggered > 0 || root.maybe_loop.display_midi_notes_active > 0) :
+                false
             anchors {
                 right: parent.right
                 top: parent.top
