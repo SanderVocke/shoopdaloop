@@ -10,13 +10,13 @@ Item {
     property real input: 0.0
     property real input_db: Math.max(bottom_db, 20.0 * Math.log(input) / Math.log(10.0))
     
-    property real value
+    property real value: bottom_db
 
     Behavior on input_db {
         NumberAnimation {
             properties: "value"
             target: root
-            duration: input_db > value ? 0 : 1000
+            duration: input_db > value ? 0 : 4000
             to: input_db > value ? input_db : bottom_db
         }
     }
