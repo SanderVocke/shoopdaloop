@@ -1638,6 +1638,7 @@ Item {
                 n_file_channels = props['channels']
                 file_sample_rate = props['samplerate']
             }
+            onStandardButtonsChanged: update()
 
             function update() {
                 var chans = root.audio_channels
@@ -1649,7 +1650,9 @@ Item {
                 if (dry_load_checkbox.checked) { to_load = to_load.concat(dry_audio_channels) }
                 if (wet_load_checkbox.checked) { to_load = to_load.concat(wet_audio_channels) }
                 channels_to_load = to_load
-                footer.standardButton(Dialog.Open).enabled = channels_to_load.length > 0;
+                if(footer.standardButton(Dialog.Open)) {
+                    footer.standardButton(Dialog.Open).enabled = channels_to_load.length > 0;
+                }
             }
 
             // TODO: there has to be a better way

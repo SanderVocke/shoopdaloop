@@ -21,7 +21,5 @@ Item {
         }
     }
 
-    onInput_dbChanged: console.log(input_db, value)
-
     onInputChanged: update()
 }
