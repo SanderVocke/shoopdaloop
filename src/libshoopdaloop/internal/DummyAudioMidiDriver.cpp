@@ -42,7 +42,10 @@ DummyAudioPort::DummyAudioPort(std::string name, shoop_port_direction_t directio
       m_queued_data(128) { }
 
 float *DummyAudioPort::PROC_get_buffer(uint32_t n_frames) {
-    m_buffer_data.resize(std::max(m_buffer_data.size(), (size_t)n_frames));
+    size_t new_size = std::max({m_buffer_data.size(), (size_t)n_frames, (size_t)1});
+    if (new_size > m_buffer_data.size()) {
+        m_buffer_data.resize(new_size);
+    }
     auto rval = m_buffer_data.data();
     return rval;
 }
@@ -145,7 +148,7 @@ bool DummyMidiPort::write_by_reference_supported() const { return true; }
 bool DummyMidiPort::write_by_value_supported() const { return true; }
 
 DummyMidiPort::DummyMidiPort(std::string name, shoop_port_direction_t direction)
-    : MidiPort(false, false, false), DummyPort(name, direction, PortDataType::Midi){
+    : MidiPort(true, false, false), DummyPort(name, direction, PortDataType::Midi){
 }
 
 void DummyMidiPort::clear_queues() {
@@ -171,7 +174,7 @@ void DummyMidiPort::request_data(uint32_t n_frames) {
     if (n_requested_frames > 0) {
         throw std::runtime_error("Previous request not yet completed");
     }
-    ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_trace>("request {} frames", n_frames);
+    ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug_trace>("request {} frames", n_frames);
     n_requested_frames = n_frames;
     n_original_requested_frames = n_frames;
 }
@@ -181,18 +184,18 @@ void DummyMidiPort::PROC_prepare(uint32_t nframes) {
     auto progress_by = n_processed_last_round.load();
     progress_by -= std::min(n_requested_frames.load(), progress_by);
     if (progress_by > 0) {
-    // The queue was used last pass and needs to be truncated now for the current pass.
+        // The queue was used last pass and needs to be truncated now for the current pass.
         // (first erase msgs that will end up having a negative timestamp)
         std::erase_if(m_queued_msgs, [&, this](StoredMessage const& msg) {
             auto rval = msg.time < progress_by;
             if (rval) {
-                this->ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_trace>("msg dropped from MIDI dummy input queue");
+                this->ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug_trace>("msg dropped from MIDI dummy input queue");
             }
             return rval;
         });
         std::for_each(m_queued_msgs.begin(), m_queued_msgs.end(), [&](StoredMessage &msg) {
             auto new_val = msg.time - progress_by;
-            ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_trace>("msg in queue: time {} -> {}", msg.time, new_val);
+            ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug_trace>("msg in queue: time {} -> {}", msg.time, new_val);
             msg.time = new_val;
         });
     }
@@ -217,6 +220,7 @@ void DummyMidiPort::PROC_process(uint32_t nframes) {
     }
     n_processed_last_round = nframes;
     n_requested_frames -= std::min(nframes, n_requested_frames.load());
+    MidiPort::PROC_process(nframes);
 }
 
 MidiReadableBufferInterface *
@@ -342,7 +346,7 @@ void DummyAudioMidiDriver<Time, Size>::start(
                 uint32_t to_process = mode == DummyAudioMidiDriverMode::Controlled ?
                     std::min(samples_to_process, AudioMidiDriver::get_buffer_size()) :
                     AudioMidiDriver::get_buffer_size();
-                log<log_level_trace>("Process {}", to_process);
+                log<log_level_debug_trace>("Process {}", to_process);
                 AudioMidiDriver::PROC_process(to_process);
                 if (mode == DummyAudioMidiDriverMode::Controlled) {
                     m_controlled_mode_samples_to_process -= to_process;

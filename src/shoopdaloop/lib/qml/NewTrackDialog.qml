@@ -222,7 +222,7 @@ ShoopDialog {
             { value: 'custom', text: "Custom" }
         ]
         currentIndex: 2
-        property bool show_custom : { currentValue == 'custom' }
+        property bool show_custom : currentValue == 'custom'
         signal changeNChannels(int n)
         function update() {
             switch(currentValue) {

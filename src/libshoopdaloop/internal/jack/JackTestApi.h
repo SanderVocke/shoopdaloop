@@ -92,39 +92,39 @@ public:
     static void internal_reset_api();
 
     static void* port_get_buffer(jack_port_t* port, jack_nframes_t nframes) {
-        logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "UNIMPL port_get_buffer");
+        logging::log<"Backend.JackTestApi", log_level_debug_trace>(std::nullopt, std::nullopt, "UNIMPL port_get_buffer");
         auto rval = Port::from_ptr(port).get_buffer(nframes);
         jacktestapi_globals::buffers_to_ports[rval] = port;
         return rval;
     };
 
     static void port_get_latency_range(auto ...args) {
-        logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "UNIMPL port_get_latency_range");
+        logging::log<"Backend.JackTestApi", log_level_debug_trace>(std::nullopt, std::nullopt, "UNIMPL port_get_latency_range");
         return;
     };
 
     static jack_nframes_t port_get_latency(auto ...args) {
-        logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "UNIMPL port_get_latency");
+        logging::log<"Backend.JackTestApi", log_level_debug_trace>(std::nullopt, std::nullopt, "UNIMPL port_get_latency");
         return 0;
     };
 
     static int set_process_callback(auto ...args) {
-        logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "UNIMPL set_process_callback");
+        logging::log<"Backend.JackTestApi", log_level_debug_trace>(std::nullopt, std::nullopt, "UNIMPL set_process_callback");
         return 0;
     };
 
     static int set_xrun_callback(auto ...args) {
-        logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "UNIMPL set_xrun_callback");
+        logging::log<"Backend.JackTestApi", log_level_debug_trace>(std::nullopt, std::nullopt, "UNIMPL set_xrun_callback");
         return 0;
     };
     
     static int set_port_connect_callback(auto ...args) {
-        logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "UNIMPL set_port_connect_callback");
+        logging::log<"Backend.JackTestApi", log_level_debug_trace>(std::nullopt, std::nullopt, "UNIMPL set_port_connect_callback");
         return 0;
     };
 
     static int set_port_rename_callback(auto ...args) {
-        logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "UNIMPL set_port_rename_callback");
+        logging::log<"Backend.JackTestApi", log_level_debug_trace>(std::nullopt, std::nullopt, "UNIMPL set_port_rename_callback");
         return 0;
     };
 
@@ -161,24 +161,24 @@ public:
     static int port_unregister(auto ...args) { return 0; };
 
     static int activate(auto ...args) {
-        logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "UNIMPL activate");
+        logging::log<"Backend.JackTestApi", log_level_debug_trace>(std::nullopt, std::nullopt, "UNIMPL activate");
         return 0;
     };
 
     static int client_close(auto ...args) { return 0; };
 
     static jack_nframes_t get_sample_rate(auto ...args) {
-        logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "UNIMPL get_sample_rate");
+        logging::log<"Backend.JackTestApi", log_level_debug_trace>(std::nullopt, std::nullopt, "UNIMPL get_sample_rate");
         return 48000;
     }
 
     static jack_nframes_t get_buffer_size(auto ...args) {
-        logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "UNIMPL get_buffer_size");
+        logging::log<"Backend.JackTestApi", log_level_debug_trace>(std::nullopt, std::nullopt, "UNIMPL get_buffer_size");
         return 2048;
     }
     
     static float cpu_load(auto ...args) {
-        logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "UNIMPL cpu_load");
+        logging::log<"Backend.JackTestApi", log_level_debug_trace>(std::nullopt, std::nullopt, "UNIMPL cpu_load");
         return 0.0f;
     }
 

@@ -50,8 +50,8 @@ public:
 
     std::shared_ptr<MidiStateTracker> &maybe_midi_state_tracker();
 
-    void PROC_prepare(uint32_t nframes) override;
-    void PROC_process(uint32_t nframes) override;
+    virtual void PROC_prepare(uint32_t nframes) override;
+    virtual void PROC_process(uint32_t nframes) override;
 
     MidiPort(
         bool track_notes,

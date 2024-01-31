@@ -31,7 +31,7 @@ target_include_directories(test_runner
                         ${CMAKE_CURRENT_SOURCE_DIR}/..
                         ${CMAKE_SOURCE_DIR}/../third_party/ut/include
                         )
-target_compile_definitions(test_runner PUBLIC -DCOMPILE_LOG_LEVEL=LOG_LEVEL_TRACE)
+target_compile_definitions(test_runner PUBLIC -DCOMPILE_LOG_LEVEL=LOG_LEVEL_DEBUG_TRACE)
 target_compile_definitions(test_runner PUBLIC -DBOOST_UT_DISABLE_MODULE)
 install(TARGETS test_runner
         EXCLUDE_FROM_ALL

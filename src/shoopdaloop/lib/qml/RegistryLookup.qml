@@ -10,7 +10,7 @@ Item {
     property PythonLogger logger: PythonLogger { name: "Frontend.Qml.RegistryLookup" }
 
     function update() {
-        object = (registry && registry.has(key)) ?
+        object = (registry && key.length > 0 && registry.has(key)) ?
             registry.get(key) : null;
         logger.debug(() => `Registry lookup w/ parent ${parent} @ ${registry}:${key}: yielded ${object}`)
     }

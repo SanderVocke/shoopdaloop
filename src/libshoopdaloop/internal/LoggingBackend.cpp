@@ -17,7 +17,8 @@ std::map<std::string, std::unique_ptr<shoop_log_level_t>>* g_module_log_levels =
 std::atomic<bool> g_log_initialized = false;
 
 const std::map<std::string, shoop_log_level_t> level_names = {
-    {"trace", log_level_trace},
+    {"trace", log_level_debug_trace}, // Means that always_trace will be accepted as well
+    {"always_trace", log_level_always_trace},
     {"debug", log_level_debug},
     {"info",  log_level_info},
     {"warning", log_level_warning},

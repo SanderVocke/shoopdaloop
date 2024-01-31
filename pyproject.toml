@@ -14,7 +14,6 @@ requires-python = ">=3.8"
 
 dependencies = [
   "soundfile",
-  "samplerate",
   "mido",
   "jsonschema",
   "numpy",
@@ -22,7 +21,8 @@ dependencies = [
   "pyside6-essentials~=6.6.0",
   "lupa",
   "appdirs",
-  "sounddevice"
+  "sounddevice",
+  "pywin32 ; platform_system == \"Windows\"",
 ]
 
 keywords = ['music', 'midi', 'jack', 'looping']

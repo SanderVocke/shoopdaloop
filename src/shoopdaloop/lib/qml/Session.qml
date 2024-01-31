@@ -50,7 +50,9 @@ Rectangle {
             if (global_args.test_grab_screens) {
                 test_grab_screens_and_quit(global_args.test_grab_screens)
             }
-            if (global_args.quit_when_loaded) {
+            if (global_args.quit_after >= 0.0) {
+                root.logger.info(() => `Auto-quit scheduled for ${global_args.quit_after} seconds.`)
+                autoquit_timer.interval = global_args.quit_after * 1000.0
                 autoquit_timer.start()
             }
         }
@@ -211,6 +213,7 @@ Rectangle {
     }
 
     function reload() {
+        root.logger.debug(() => ("Reloading session"))
         registries.state_registry.clear([
             'sync_active'
         ])
@@ -221,6 +224,10 @@ Rectangle {
 
     function queue_load_tasks(data_files_directory, from_sample_rate, to_sample_rate, add_tasks_to) {
         tracks_widget.queue_load_tasks(data_files_directory, from_sample_rate, to_sample_rate, add_tasks_to)
+        if (sync_loop_loader.track_widget) {
+            root.logger.debug(() => (`Queue load tasks for sync track`))
+            sync_loop_loader.track_widget.queue_load_tasks(data_files_directory, from_sample_rate, to_sample_rate, add_tasks_to)
+        }
     }
 
     Dialog {
@@ -285,7 +292,6 @@ Rectangle {
             }
 
             root.initial_descriptor = descriptor
-            root.logger.debug(() => ("Reloading session"))
             reload()
             registries.state_registry.load_action_started()
 
@@ -368,8 +374,7 @@ Rectangle {
 
         sourceComponent: MonkeyTester {
             session: root
-            Component.onCompleted: { 
-                console.log("starting");
+            Component.onCompleted: {
                 start()
             }
         }
@@ -496,7 +501,7 @@ Rectangle {
             anchors {
                 top: app_controls.bottom
                 left: parent.left
-                bottom: details_area.top
+                bottom: details_area.visible ? details_area.top : bottom_bar.top
                 right: logo_menu_area.left
                 bottomMargin: 4
                 leftMargin: 4
@@ -520,7 +525,7 @@ Rectangle {
                         height = details_area.active_height
                     } else {
                         if (height > 0) {
-                            active_height = height
+                            details_area.active_height = height
                         }
                         height = 0
                     }
@@ -578,8 +583,6 @@ Rectangle {
             }
         }
 
-        Component.onCompleted: root.logger.error("TODO: uninstall signal handlers on first occurrence of 'exiting due to signal'")
-
         Rectangle {
             id: sync_loop_area
             color: "#555555"
@@ -604,6 +607,7 @@ Rectangle {
                 }
 
                 property bool loaded: false
+                property var initial_descriptor : null
 
                 function initialize() {
                     if (track_widget) {
@@ -611,7 +615,8 @@ Rectangle {
                     }
                     active = false
                     loaded = false
-                    active = Qt.binding(() => root.sync_loop_track_descriptor != null)
+                    initial_descriptor = root.sync_loop_track_descriptor
+                    active = Qt.binding(() => initial_descriptor != null)
                 }
 
                 Component.onCompleted: { initialize() }
@@ -639,8 +644,9 @@ Rectangle {
                             right: parent.right
                             top: parent.top
                         }
+
+                        initial_descriptor: sync_loop_loader.initial_descriptor
                         
-                        initial_descriptor: root.sync_loop_track_descriptor
                         onLoadedChanged: sync_loop_loader.loaded = loaded
                         name_editable: false
                         sync_loop_layout: true
