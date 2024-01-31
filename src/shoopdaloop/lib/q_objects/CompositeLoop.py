@@ -17,7 +17,7 @@ from ..logging import Logger
 class CompositeLoop(ShoopQQuickItem):
     def __init__(self, parent=None):
         super(CompositeLoop, self).__init__(parent)
-        self._schedule = None
+        self._schedule = {}
         self.logger = Logger('Frontend.CompositeLoop')
         self._sync_loop = None
         self._running_loops = set()

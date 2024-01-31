@@ -35,11 +35,11 @@ Item {
     property alias length : py_loop.length
     PythonCompositeLoop {
         id: py_loop
-        schedule: root.calculate_schedule()
         iteration: 0
         sync_loop: (root.sync_loop && root.sync_loop.maybe_loop) ? root.sync_loop.maybe_loop : null
 
         onCycled: root.cycled()
+        Component.onCompleted: root.recalculate_schedule()
     }
 
     // The sequence is stored as a set of "playlists". Each playlist represents a parallel
@@ -47,6 +47,12 @@ Item {
     // used to insert blank spots in-between sequential loops.
     property var playlists: (initial_composition_descriptor && initial_composition_descriptor.playlists) ?
         initial_composition_descriptor.playlists : []
+
+    // When the schedule is calculated, an enriched playlists copy is also calculated.
+    // This is equal to the input playlists, just with each entry having its final
+    // scheduling information included:
+    // { delay: int, loop_id: str, start_iteration: int, end_iteration: int, loop: Loop }
+    property var scheduled_playlists: []
 
     readonly property PythonLogger logger: PythonLogger {
         name: "Frontend.Qml.CompositeLoop"
@@ -70,16 +76,17 @@ Item {
     // loops_end lists the loops that should be stopped in this iteration.
     // loops_ignored lists loops that are not really scheduled but stored to still keep traceability -
     // for example when a 0-length loop is in the playlist.
-    function calculate_schedule() {
+    function recalculate_schedule() {
         root.logger.debug(() => 'Recalculating schedule.')
         root.logger.trace(() => `--> playlists: ${JSON.stringify(playlists, null, 2)}`)
         if (!sync_length) {
             root.logger.debug(() => 'Cycle length not known - no schedule.')
             return {}
         }
-        var rval = {}
+
+        var _scheduled_playlists = playlists
         for (var pidx=0; pidx < playlists.length; pidx++) {
-            let playlist = playlists[pidx]
+            let playlist = _scheduled_playlists[pidx]
             var _it
             _it = 0
             for (var i=0; i<playlist.length; i++) {
@@ -98,43 +105,62 @@ Item {
                 let loop_cycles =  loop_widget.n_cycles
                 let loop_end = loop_start + loop_cycles
 
-                if (!rval[loop_start]) { rval[loop_start] = { loops_start: new Set(), loops_end: new Set(), loops_ignored: new Set() } }
-                if (!rval[loop_end]) { rval[loop_end] = { loops_start: new Set(), loops_end: new Set(), loops_ignored: new Set() } }
-
-                if (loop_cycles > 0) {
-                    rval[loop_start].loops_start.add(loop)
-                    rval[loop_end].loops_end.add(loop)
-                } else {
-                    rval[loop_start].loops_ignored.add(loop)
-                }
+                elem['start_iteration'] = loop_start
+                elem['end_iteration'] = loop_end
+                elem['loop'] = loop
 
                 _it += elem.delay + loop_cycles
             }
         }
+        // Store the annotated playlists
+        scheduled_playlists = _scheduled_playlists
+
+        // Calculate the schedule
+        var _schedule = {}
+        for(var i=0; i<_scheduled_playlists.length; i++) {
+            for(var j=0; j<_scheduled_playlists[i].length; j++) {
+                let elem = _scheduled_playlists[i][j]
+                let loop_start = elem['start_iteration']
+                let loop_end = elem['end_iteration']
+                let loop_cycles = loop_end - loop_start
+                let loop = elem['loop']
+
+                if (!_schedule[loop_start]) { _schedule[loop_start] = { loops_start: new Set(), loops_end: new Set(), loops_ignored: new Set() } }
+                if (!_schedule[loop_end]) { _schedule[loop_end] = { loops_start: new Set(), loops_end: new Set(), loops_ignored: new Set() } }
+
+                if (loop_cycles > 0) {
+                    _schedule[loop_start].loops_start.add(loop)
+                    _schedule[loop_end].loops_end.add(loop)
+                } else {
+                    _schedule[loop_start].loops_ignored.add(loop)
+                }
+            }
+        }
+
         // For any loops that repeatedly play, just remove intermediate start and end entries.
-        Object.keys(rval).map(k => {
-            for (var starting of rval[k].loops_start) {
-                if (rval[k].loops_end.has(starting)) {
-                    rval[k].loops_end.delete(starting)
-                    rval[k].loops_start.delete(starting)
+        Object.keys(_schedule).map(k => {
+            for (var starting of _schedule[k].loops_start) {
+                if (_schedule[k].loops_end.has(starting)) {
+                    _schedule[k].loops_end.delete(starting)
+                    _schedule[k].loops_start.delete(starting)
                 }
             }
             // Also convert the sets to lists for Python usage
-            rval[k].loops_start = Array.from(rval[k].loops_start)
-            rval[k].loops_end = Array.from(rval[k].loops_end)
-            rval[k].loops_ignored = Array.from(rval[k].loops_ignored)
+            _schedule[k].loops_start = Array.from(_schedule[k].loops_start)
+            _schedule[k].loops_end = Array.from(_schedule[k].loops_end)
+            _schedule[k].loops_ignored = Array.from(_schedule[k].loops_ignored)
         })
 
         root.logger.trace(() => `full schedule:\n${
-            Array.from(Object.entries(rval)).map(([k,v]) => 
+            Array.from(Object.entries(_schedule)).map(([k,v]) => 
                 `- ${k}: stop [${Array.from(v.loops_end).map(l => l.obj_id)}], start [${Array.from(v.loops_start).map(l => l.obj_id)}], ignore [${Array.from(v.loops_ignored).map(l => l.obj_id)}]`
             ).join("\n")
         }`)
 
-        return rval
+        schedule = _schedule
     }
     function update_schedule() {
-        if (!schedule_frozen) { schedule = calculate_schedule() }
+        if (!schedule_frozen) { recalculate_schedule() }
     }
     // During recording, we need to freeze the schedule. Otherwise, the changing lenghts of the recording sub-loop(s) will lead to a cyclic
     // change in the schedule while recording is ongoing.
