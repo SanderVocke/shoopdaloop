@@ -20,6 +20,7 @@ Item {
 
     property int track_idx : -1
     property int idx_in_track : -1
+    property string track_obj_id : ''
 
     onTrack_idxChanged: print_coords()
     onIdx_in_trackChanged: print_coords()
@@ -403,8 +404,8 @@ Item {
     }
 
     anchors {
-        left: parent.left
-        right: parent.right
+        left: parent ? parent.left : undefined
+        right: parent ? parent.right : undefined
         leftMargin: 2
         rightMargin: 2
     }
@@ -660,17 +661,6 @@ Item {
             }
         }
 
-        MouseArea {
-            id: area
-            x: 0
-            y: 0
-            anchors.fill: parent
-            hoverEnabled: true
-            propagateComposedEvents: true
-            onPositionChanged: (mouse) => { statusrect.propagateMousePosition(mapToGlobal(mouse.x, mouse.y)) }
-            onExited: statusrect.propagateMouseExited()
-        }
-
         MaterialDesignIcon {
             size: 10
             name: 'star'
@@ -778,6 +768,76 @@ Item {
                 anchors.right: parent.right
                 anchors.rightMargin: 6
                 visible: !buttongrid.visible
+            }
+
+            // Draggy rect for moving the track
+            Rectangle {
+                id: mover
+                anchors.fill: parent
+
+                // for debugging
+                // color: 'yellow'
+                color: 'transparent'
+
+                Item {
+                    id: movable
+                    width: mover.width
+                    height: mover.height
+                    parent: Overlay.overlay
+                    visible: area.drag.active
+                    z: 3
+
+                    Drag.active: area.drag.active
+                    Drag.hotSpot.x : width/2
+                    Drag.hotSpot.y : height/2
+                    Drag.source: root
+                    Drag.keys: ['LoopWidget_track_' + root.track_obj_id]
+
+                    Rectangle {
+                        anchors.fill: parent
+                        color: 'white'
+                        opacity: 0.5
+
+                        Image {
+                            id: movable_image
+                            source: ''
+                        }
+                    }
+
+                    function resetCoords() {
+                        x = mover.mapToItem(Overlay.overlay, 0, 0).x
+                        y = mover.mapToItem(Overlay.overlay, 0, 0).y
+                    }
+                    Component.onCompleted: resetCoords()
+                    onVisibleChanged: resetCoords()
+                }
+            }
+
+            MouseArea {
+                id: area
+                x: 0
+                y: 0
+                anchors.fill: parent
+                hoverEnabled: true
+                propagateComposedEvents: true
+                onPositionChanged: (mouse) => { statusrect.propagateMousePosition(mapToGlobal(mouse.x, mouse.y)) }
+                onExited: statusrect.propagateMouseExited()
+
+                cursorShape: Qt.PointingHandCursor
+
+                drag {
+                    target: movable
+                    onActiveChanged: {
+                        if (active) {
+                            root.grabToImage((result) => {
+                                movable_image.source = result.url
+                            })
+                        }
+                    }
+                }
+
+                onReleased: movable.Drag.drop()
+                onPressed: movable.resetCoords()
             }
 
             Grid {

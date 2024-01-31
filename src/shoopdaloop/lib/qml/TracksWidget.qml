@@ -171,7 +171,8 @@ ScrollView {
             }
         }
 
-        // Repeater for the drag'n'drop drop areas to drop tracks in
+        // Repeater for the drag'n'drop drop areas to drop tracks in.
+        // These drop areas are in-between the tracks and can be used to reorder them.
         Repeater {
             id: drop_areas_repeater
             anchors.fill: tracks_row
@@ -181,11 +182,11 @@ ScrollView {
                 id: drop_area
                 width: 50
                 height: tracks_row.height
+                keys: ['TrackWidget']
 
                 property var left_track : index > 0 ? tracks_mapper.sorted_instances[index-1] : null
                 property var right_track : index < tracks_mapper.sorted_instances.length ? tracks_mapper.sorted_instances[index] : null
 
-                
                 onDropped: (event) => {
                     let src_track = drag.source
                     let src_track_idx = src_track.track_idx

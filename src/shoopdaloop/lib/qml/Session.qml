@@ -374,8 +374,7 @@ Rectangle {
 
         sourceComponent: MonkeyTester {
             session: root
-            Component.onCompleted: { 
-                console.log("starting");
+            Component.onCompleted: {
                 start()
             }
         }
