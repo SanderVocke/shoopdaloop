@@ -50,5 +50,7 @@ public:
 
     LV2_Evbuf *internal_evbuf() const;
 
+    void PROC_prepare(uint32_t n_frames) override;
+
     ~InternalLV2MidiOutputPort();
 };

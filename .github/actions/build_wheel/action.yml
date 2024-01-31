@@ -37,9 +37,9 @@ outputs:
     description: "If the package was installed, this holds the installation folder"
     value: ${{ steps.install.outputs.install_dir }}
   build_dir:
-    value: ${{ steps.build.outputs.build_dir }}
+    value: ${{ steps.find_wheel.outputs.build_dir }}
   source_dir:
-    value: ${{ steps.build.outputs.source_dir }}
+    value: ${{ steps.find_wheel.outputs.source_dir }}
   wheel_filename:
     value: ${{ steps.find.outputs.name }}
 

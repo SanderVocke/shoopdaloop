@@ -5,7 +5,7 @@
         "id":           { "type": "string"  },
         "name":         { "type": "string"  },
         "length":       { "type": "integer" },
-        "is_master":    { "type": "boolean" },
+        "is_sync":    { "type": "boolean" },
         "channels": {
             "type": "array",
             "items": {
@@ -35,5 +35,5 @@
             "required": ["playlists"]
         }
     },
-    "required": ["schema", "id", "name", "length", "is_master"]
+    "required": ["schema", "id", "name", "length", "is_sync"]
 }

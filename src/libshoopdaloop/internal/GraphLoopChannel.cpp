@@ -94,7 +94,7 @@ void GraphLoopChannel::disconnect_input_ports(bool thread_safe) {
 }
 
 void GraphLoopChannel::PROC_prepare(uint32_t n_frames) {
-    log<log_level_trace>("prepare ({} frames)", n_frames);
+    log<log_level_debug_trace>("prepare ({} frames)", n_frames);
     auto in_locked = mp_input_port_mapping.lock();
     auto out_locked = mp_output_port_mapping.lock();
 
@@ -104,7 +104,7 @@ void GraphLoopChannel::PROC_prepare(uint32_t n_frames) {
         if (in_locked && in_locked_audio) {
             auto chan = dynamic_cast<LoopAudioChannel*>(channel.get());
             auto buf = in_locked_audio->PROC_get_buffer(n_frames);
-            log<log_level_trace>("set recording buffer from input ({} samples)", n_frames);
+            log<log_level_debug_trace>("set recording buffer from input ({} samples)", n_frames);
             chan->PROC_set_recording_buffer(buf, n_frames);
         } else {
             if (g_dummy_audio_input_buffer.size() < n_frames*sizeof(audio_sample_t)) {
@@ -112,12 +112,12 @@ void GraphLoopChannel::PROC_prepare(uint32_t n_frames) {
                 memset((void*)g_dummy_audio_input_buffer.data(), 0, n_frames*sizeof(audio_sample_t));
             }
             auto chan = dynamic_cast<LoopAudioChannel*>(channel.get());
-            log<log_level_trace>("set recording buffer from fallback ({} samples)", n_frames);
+            log<log_level_debug_trace>("set recording buffer from fallback ({} samples)", n_frames);
             chan->PROC_set_recording_buffer(g_dummy_audio_input_buffer.data(), n_frames);
         }
         if (out_locked && out_locked_audio) {
             auto chan = dynamic_cast<LoopAudioChannel*>(channel.get());
-            log<log_level_trace>("set playback buffer from output ({} samples)", n_frames);
+            log<log_level_debug_trace>("set playback buffer from output ({} samples)", n_frames);
             chan->PROC_set_playback_buffer(out_locked_audio->PROC_get_buffer(n_frames), n_frames);
         } else {
             if (g_dummy_audio_output_buffer.size() < n_frames*sizeof(audio_sample_t)) {
@@ -125,7 +125,7 @@ void GraphLoopChannel::PROC_prepare(uint32_t n_frames) {
                 memset((void*)g_dummy_audio_output_buffer.data(), 0, n_frames*sizeof(audio_sample_t));
             }
             auto chan = dynamic_cast<LoopAudioChannel*>(channel.get());
-            log<log_level_trace>("set playback buffer from fallback ({} samples)", n_frames);
+            log<log_level_debug_trace>("set playback buffer from fallback ({} samples)", n_frames);
             chan->PROC_set_playback_buffer(g_dummy_audio_output_buffer.data(), n_frames);
         }
     } else if (maybe_midi()) {
@@ -202,10 +202,10 @@ WeakGraphNodeSet GraphLoopChannel::graph_node_1_incoming_edges() {
         rval.insert(l->graph_node());
     }
     if (auto in_locked = mp_input_port_mapping.lock()) {
-        log<log_level_trace>("found incoming edge from port node {}", in_locked->graph_node_1_name());
+        log<log_level_debug_trace>("found incoming edge from port node {}", in_locked->graph_node_1_name());
         rval.insert(in_locked->second_graph_node());
     } else {
-        log<log_level_trace>("found no incoming edge to any port node");
+        log<log_level_debug_trace>("found no incoming edge to any port node");
     }
     return rval;
 }
@@ -213,10 +213,10 @@ WeakGraphNodeSet GraphLoopChannel::graph_node_1_incoming_edges() {
 WeakGraphNodeSet GraphLoopChannel::graph_node_1_outgoing_edges() {
     WeakGraphNodeSet rval;
     if (auto out_locked = mp_output_port_mapping.lock()) {
-        log<log_level_trace>("found outgoing edge to port node {}", out_locked->graph_node_1_name());
+        log<log_level_debug_trace>("found outgoing edge to port node {}", out_locked->graph_node_1_name());
         rval.insert(out_locked->second_graph_node());
     } else {
-        log<log_level_trace>("found no outgoing edge to any port node");
+        log<log_level_debug_trace>("found no outgoing edge to any port node");
     }
     return rval;
 }

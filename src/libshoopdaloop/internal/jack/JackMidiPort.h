@@ -89,7 +89,7 @@ public:
         jack_client_t *client,
         std::shared_ptr<GenericJackAllPorts<API>> all_ports_tracker
     ) : GenericJackMidiPort<API>(name, Output, client, all_ports_tracker),
-        MidiSortingReadWritePort(false, false, false),
+        MidiSortingReadWritePort(true, false, false),
         m_write_buffer(JackMidiWriteBuffer{}) {}
 
     MidiReadableBufferInterface *PROC_internal_read_input_data_buffer (uint32_t nframes) override { return nullptr; }

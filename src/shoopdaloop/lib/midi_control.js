@@ -13,7 +13,7 @@ function loops_input(_default='selection') {
 
 function delay_input(_default='0') {
     return {
-      'description': 'Delay by # of master loop cycles',
+      'description': 'Delay by # of sync loop cycles',
       'default': _default,
     }
 }

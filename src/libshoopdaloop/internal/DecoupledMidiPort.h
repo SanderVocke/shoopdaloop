@@ -1,4 +1,5 @@
 #pragma once
+#include "LoggingEnabled.h"
 #include "MidiPort.h"
 #include <memory>
 #include <vector>
@@ -18,7 +19,8 @@ struct DecoupledMidiMessage {
 // Incoming messages are stored into the queue and outgoing ones taken form a queue.
 // This way, port messaging can be easily handled outside of the processing thread.
 template<typename TimeType, typename SizeType>
-class DecoupledMidiPort : public std::enable_shared_from_this<DecoupledMidiPort<TimeType, SizeType>> {
+class DecoupledMidiPort : public std::enable_shared_from_this<DecoupledMidiPort<TimeType, SizeType>>,
+                          private ModuleLoggingEnabled<"Backend.DecoupledMidiPort"> {
     using Message = DecoupledMidiMessage;
     using Queue = boost::lockfree::spsc_queue<Message>;
 
@@ -42,6 +44,8 @@ public:
 
     std::optional<Message> pop_incoming();
     void push_outgoing (Message m);
+
+    std::shared_ptr<MidiPort> const& get_port();
 };
 
 extern template class DecoupledMidiPort<uint32_t, uint16_t>;

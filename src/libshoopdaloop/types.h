@@ -25,7 +25,8 @@ typedef enum {
 } shoop_loop_mode_t;
 
 typedef enum {
-    log_level_trace,
+    log_level_debug_trace,  // Will not be printed in release build
+    log_level_always_trace, // Same look as trace, but will be printed in release build
     log_level_debug,
     log_level_info,
     log_level_warning,
@@ -132,6 +133,7 @@ typedef struct {
     unsigned sample_rate;
     unsigned buffer_size;
     unsigned active;
+    unsigned last_processed; // Amount of frames processed in most recent process iteration (normally equal to buffer_size)
 } shoop_audio_driver_state_t;
 
 typedef struct {
@@ -214,6 +216,12 @@ typedef struct {
     unsigned n_ports;
     shoop_port_maybe_connection_t *ports;
 } shoop_port_connections_state_t;
+
+typedef struct {
+    unsigned n_channels;
+    unsigned n_frames;
+    audio_sample_t *data; // Channels are not interleaved
+} shoop_multichannel_audio_t;
 
 #ifdef __cplusplus
 }

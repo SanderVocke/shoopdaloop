@@ -29,15 +29,15 @@ Item {
     property alias n_cycles: py_loop.n_cycles
     property alias next_mode : py_loop.next_mode
     property alias next_transition_delay : py_loop.next_transition_delay
-    property alias master_length : py_loop.master_length
+    property alias sync_length : py_loop.sync_length
     property alias position : py_loop.position
-    property alias master_position : py_loop.master_position
+    property alias sync_position : py_loop.sync_position
     property alias length : py_loop.length
     PythonCompositeLoop {
         id: py_loop
         schedule: root.calculate_schedule()
         iteration: 0
-        master_loop: (root.master_loop && root.master_loop.maybe_loop) ? root.master_loop.maybe_loop : null
+        sync_loop: (root.sync_loop && root.sync_loop.maybe_loop) ? root.sync_loop.maybe_loop : null
 
         onCycled: root.cycled()
     }
@@ -73,7 +73,7 @@ Item {
     function calculate_schedule() {
         root.logger.debug(() => 'Recalculating schedule.')
         root.logger.trace(() => `--> playlists: ${JSON.stringify(playlists, null, 2)}`)
-        if (!master_length) {
+        if (!sync_length) {
             root.logger.debug(() => 'Cycle length not known - no schedule.')
             return {}
         }
@@ -139,9 +139,9 @@ Item {
     // During recording, we need to freeze the schedule. Otherwise, the changing lenghts of the recording sub-loop(s) will lead to a cyclic
     // change in the schedule while recording is ongoing.
     readonly property bool schedule_frozen: (ModeHelpers.is_recording_mode(mode) || (ModeHelpers.is_recording_mode(next_mode) && next_transition_delay === 0))
-    readonly property bool master_empty: !(master_length > 0)
+    readonly property bool sync_empty: !(sync_length > 0)
     onPlaylistsChanged: update_schedule()
-    onMaster_emptyChanged: update_schedule()
+    onSync_emptyChanged: update_schedule()
 
     // Calculated properties
     readonly property int display_position : position
@@ -218,12 +218,12 @@ Item {
                     color: Material.foreground
                     text: {
                         var rval = ''
-                        for(var k of Object.keys(schedule)) {
-                            if (schedule[k].loops_start.includes(mapped_item)) {
+                        for(var k of Array.from(Object.keys(schedule))) {
+                            if (schedule[k].loops_start.includes(mapped_item.maybe_loop)) {
                                 let start = k
                                 var end = start
                                 for(var k2 of Object.keys(schedule)) {
-                                    if (k2 > k && schedule[k2].loops_end.includes(mapped_item)) {
+                                    if (k2 > k && schedule[k2].loops_end.includes(mapped_item.maybe_loop)) {
                                         end = k2
                                         break
                                     }
@@ -240,11 +240,11 @@ Item {
     }
 
     RegistryLookup {
-        id: master_loop_lookup
+        id: sync_loop_lookup
         registry: registries.state_registry
-        key: 'master_loop'
+        key: 'sync_loop'
     }
-    property alias master_loop : master_loop_lookup.object
+    property alias sync_loop : sync_loop_lookup.object
 
     function transition(mode, delay, wait_for_sync) {
         py_loop.transition(mode, delay, wait_for_sync)

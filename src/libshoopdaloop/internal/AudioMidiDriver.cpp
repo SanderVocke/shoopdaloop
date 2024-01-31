@@ -34,10 +34,12 @@ std::set<HasAudioProcessingFunction*> AudioMidiDriver::processors() const {
 
 void AudioMidiDriver::PROC_process(uint32_t nframes) {
     PROC_handle_command_queue();
+    PROC_process_decoupled_midi_ports(nframes);
     auto lock = m_processors;
     for(auto &p : *lock) {
         p->PROC_process(nframes);
     }
+    set_last_processed(nframes);
 }
 
 uint32_t AudioMidiDriver::get_xruns() const {
@@ -53,6 +55,13 @@ void AudioMidiDriver::unregister_decoupled_midi_port(std::shared_ptr<shoop_types
     exec_process_thread_command([this, port]() {
         m_decoupled_midi_ports.erase(port);
     });
+}
+
+void AudioMidiDriver::PROC_process_decoupled_midi_ports(uint32_t nframes) {
+    auto lock = m_decoupled_midi_ports;
+    for(auto &p : lock) {
+        p->PROC_process(nframes);
+    }
 }
 
 uint32_t AudioMidiDriver::get_sample_rate() {
@@ -93,6 +102,10 @@ void AudioMidiDriver::set_active(bool active) {
     m_active = active;
 }
 
+void AudioMidiDriver::set_last_processed(uint32_t nframes) {
+    m_last_processed = nframes;
+}
+
 const char* AudioMidiDriver::get_client_name() const {
     return m_client_name;
 }
@@ -107,6 +120,10 @@ void* AudioMidiDriver::get_maybe_client_handle() const {
 
 bool AudioMidiDriver::get_active() const {
     return m_active;
+}
+
+uint32_t AudioMidiDriver::get_last_processed() const {
+    return m_last_processed;
 }
 
 void AudioMidiDriver::wait_process() {

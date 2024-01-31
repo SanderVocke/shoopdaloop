@@ -4,13 +4,23 @@
         "schema":       { "const": "session.1" },
         "app_version":  { "const": "0.1.0" },
         "sample_rate":  { "type": "integer" },
-        "tracks": {
+        "track_groups": {
             "type": "array",
             "items": {
                 "type": "object",
-                "schema": { "const": "track.1", "$comment": "see track.1 schema" }
-            },
-            "required": ["schema"]
+                "properties": {
+                    "name": { "type": "string" },
+                    "tracks": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "schema": { "const": "track.1", "$comment": "see track.1 schema" },
+                            "required": ["schema"]
+                        }
+                    }
+                },
+                "required": ["name", "tracks"]
+            }
         },
         "ports": {
             "type": "array",
@@ -33,5 +43,5 @@
             }
         }
     },
-    "required": ["schema", "tracks", "ports", "fx_chain_states"]
+    "required": ["schema", "track_groups", "ports", "fx_chain_states"]
 }

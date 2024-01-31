@@ -14,6 +14,8 @@ PythonLoop {
     }
     onObj_idChanged: set_logging_instance_identifier(obj_id)
 
+    property var maybe_fx_chain: null
+
     // Gives a nice full progress bar when recording
     readonly property int display_position: mode == ShoopConstants.LoopMode.Recording ? length : position
 
@@ -29,10 +31,11 @@ PythonLoop {
             channels.forEach(c => {
                 if (ModeHelpers.is_recording_mode_for(mode, c.mode)) {
                     c.recording_started_at = now
-                    if (c.mode == ShoopConstants.ChannelMode.Wet && track_widget.maybe_fx_chain) {
+                    if (c.mode == ShoopConstants.ChannelMode.Wet && maybe_fx_chain) {
                         if (!fx_chain_desc_id) {
+                            root.logger.debug(`Caching FX chain state for wet channel ${c.obj_id}`)
                             fx_chain_desc_id = registries.fx_chain_states_registry.generate_id('fx_chain_state')
-                            var fx_chain_desc = track_widget.maybe_fx_chain.actual_session_descriptor()
+                            var fx_chain_desc = maybe_fx_chain.actual_session_descriptor()
                             delete fx_chain_desc.ports // Port descriptions not needed for state caching, this is track-dependent
                             fx_chain_desc.title = ""   // No title indicates elsewhere that this is not a snapshot that the user can directly see in the list.
                             fx_chain_desc.id = fx_chain_desc_id

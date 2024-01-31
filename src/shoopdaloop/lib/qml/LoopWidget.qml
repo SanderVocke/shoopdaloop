@@ -13,10 +13,10 @@ import '../qml_url_to_filename.js' as UrlToFilename
 Item {
     id: root
     
-    property var track_widget
+    property var all_loops_in_track
+    property var maybe_fx_chain
 
     property var initial_descriptor : null
-    property var details_window : detailswindow
 
     property int track_idx : -1
     property int idx_in_track : -1
@@ -73,7 +73,7 @@ Item {
             'id': obj_id,
             'name': name,
             'length': maybe_loop ? maybe_loop.length : 0,
-            'is_master': is_master
+            'is_sync': is_sync
         }
 
         if (maybe_backend_loop) {
@@ -110,13 +110,13 @@ Item {
     property bool loaded : false
 
     RegistryLookup {
-        id: master_loop_lookup
+        id: sync_loop_lookup
         registry: registries.state_registry
-        key: 'master_loop'
+        key: 'sync_loop'
     }
-    property alias master_loop : master_loop_lookup.object
+    property alias sync_loop : sync_loop_lookup.object
 
-    readonly property int cycle_length: master_loop ? master_loop.length : 0
+    readonly property int cycle_length: sync_loop ? sync_loop.length : 0
     readonly property int n_cycles: cycle_length ? Math.ceil(length / cycle_length) : 0
 
     RegistryLookup {
@@ -127,9 +127,16 @@ Item {
     property alias targeted_loop : targeted_loop_lookup.object
     property bool targeted : targeted_loop == root
 
+    RegistryLookup {
+        id: main_details_pane_lookup
+        registry: registries.state_registry
+        key: 'main_details_pane'
+    }
+    property alias main_details_pane : main_details_pane_lookup.object
+
     property var single_selected_composite_loop: {
-        if (selected_loop_ids && selected_loop_ids.size == 1) {
-            let selected_loop = registries.objects_registry.get(selected_loop_ids.values().next().value)
+        if (selected_loops && selected_loops.size == 1) {
+            let selected_loop = Array.from(selected_loops)[0]
             if (selected_loop.maybe_composite_loop) {
                 return selected_loop
             }
@@ -141,13 +148,9 @@ Item {
         single_selected_composite_loop.maybe_composite_loop.all_loops) ? single_selected_composite_loop.maybe_composite_loop.all_loops : new Set()
     property bool is_in_selected_composite_loop : loops_in_single_selected_composite_loop.has(root)
 
-    RegistryLookup {
-        id: selected_loops_lookup
-        registry: registries.state_registry
-        key: 'selected_loop_ids'
-    }
-    property alias selected_loop_ids : selected_loops_lookup.object
-    property bool selected : selected_loop_ids ? selected_loop_ids.has(obj_id) : false
+    SelectedLoops { id: selected_loops_lookup }
+    property alias selected_loops : selected_loops_lookup.loops
+    property bool selected : selected_loops.has(this)
 
     RegisterInRegistry {
         id: obj_reg_entry
@@ -157,16 +160,18 @@ Item {
     }
 
     RegisterInRegistry {
-        id: master_reg_entry
-        enabled: initial_descriptor.is_master
+        id: sync_reg_entry
+        enabled: initial_descriptor.is_sync
         registry: registries.state_registry
-        key: 'master_loop'
+        key: 'sync_loop'
         object: root
     }
 
     function init() {
-        if (is_master) { create_backend_loop() }
-        if ('composition' in initial_descriptor) {
+        if (is_sync) { 
+            root.logger.debug("Initializing back-end for sync loop")
+            create_backend_loop()
+        } else if (initial_descriptor && 'composition' in initial_descriptor) {
             root.logger.debug(() => (`${obj_id} has composition, creating composite loop.`))
             create_composite_loop(initial_descriptor.composition)
         } 
@@ -179,20 +184,20 @@ Item {
     property var additional_context_menu_options : null // dict of option name -> functor
 
     onIs_loadedChanged: if(is_loaded) { root.logger.debug(() => ("Loaded back-end loop.")) }
-    onIs_masterChanged: if(is_master) { create_backend_loop() }
+    onIs_syncChanged: if(is_sync) { create_backend_loop() }
 
     // Internally controlled
     property var maybe_loop : null
     readonly property var maybe_backend_loop : (maybe_loop && maybe_loop instanceof Loop) ? maybe_loop : null
     readonly property var maybe_composite_loop : (maybe_loop && maybe_loop instanceof CompositeLoop) ? maybe_loop : null
     readonly property bool is_loaded : maybe_loop
-    readonly property bool is_master: master_loop && master_loop == this
+    readonly property bool is_sync: sync_loop && sync_loop == this
     readonly property var delay_for_targeted : {
         // This property is used for synchronizing to the targeted loop.
         // If:
         // - A targeted loop is active, and
         // - The targeted loop is doing playback
-        // then this property will hold the amount of master loop cycles
+        // then this property will hold the amount of sync loop cycles
         // to delay in order to transition in sync with the targeted loop.
         // Otherwise, it will be 0.
         if (targeted_loop) {
@@ -202,7 +207,7 @@ Item {
             }
             var to_end = undefined
             if (ModeHelpers.is_mode_with_predictable_end(targeted_loop.mode)) {
-                to_end = Math.floor((targeted_loop.length - targeted_loop.position) / master_loop.length)
+                to_end = Math.floor((targeted_loop.length - targeted_loop.position) / sync_loop.length)
             }
             if (to_transition == undefined && to_end == undefined) { return undefined }
             else if (to_transition != undefined && to_end != undefined) { return Math.min(to_transition, to_end) }
@@ -213,10 +218,10 @@ Item {
     }
     readonly property int use_delay : delay_for_targeted != undefined ? delay_for_targeted : 0
 
-    property int n_multiples_of_master_length: (master_loop && maybe_loop) ?
-        Math.ceil(maybe_loop.length / master_loop.length) : 1
-    property int current_cycle: (master_loop && maybe_loop) ?
-        Math.floor(maybe_loop.position / master_loop.length) : 0
+    property int n_multiples_of_sync_length: (sync_loop && maybe_loop) ?
+        Math.ceil(maybe_loop.length / sync_loop.length) : 1
+    property int current_cycle: (sync_loop && maybe_loop) ?
+        Math.floor(maybe_loop.position / sync_loop.length) : 0
 
     // Signals
     signal cycled
@@ -234,11 +239,11 @@ Item {
     }
     function transition(mode, delay, wait_for_sync, include_selected=true) {
         // Do the transition for this loop and all selected loops, if any
-        var selected_ids = include_selected ? new Set(registries.state_registry.maybe_get('selected_loop_ids', new Set())) : new Set()
+        var selected_all = include_selected ? selected_loops : new Set()
         
-        if (selected_ids.has (root.obj_id)) {
+        if (selected_all.has (root)) {
             // If we are part of the selection, transition them all as a group.
-            var objects = Array.from(selected_ids).map(id => registries.objects_registry.maybe_get(id, undefined)).filter(v => v != undefined)
+            var objects = Array.from(selected_all)
             transition_loops(objects, mode, delay, wait_for_sync)
         } else {
             // If we are not part of the selection, transition ourselves only.
@@ -247,21 +252,19 @@ Item {
     }
     function play_solo_in_track() {
         // Gather all selected loops
-        var _selected_ids = new Set(registries.state_registry.maybe_get('selected_loop_ids', new Set()))
-        _selected_ids.add(obj_id)
+        var selected_all = include_selected ? selected_loops : new Set()
+        selected_all.add(root)
         // Gather all other loops that are in the same track(s)
-        var _selected_loops = []
-        _selected_ids.forEach(id => _selected_loops.push(registries.objects_registry.get(id)))
         var _all_track_loops = []
-        _selected_loops.forEach(loop => {
-            for(var i=0; i<loop.track_widget.loops.length; i++) {
-                _all_track_loops.push(loop.track_widget.loops[i])
+        selected_all.forEach(loop => {
+            for(var i=0; i<loop.all_loops_in_track.length; i++) {
+                _all_track_loops.push(loop.all_loops_in_track[i])
             }
         })
-        var _other_loops = _all_track_loops.filter(l => !_selected_loops.includes(l))
+        var _other_loops = _all_track_loops.filter(l => !selected_all.has(l))
         // Do the transitions
         transition_loops(_other_loops, ShoopConstants.LoopMode.Stopped, use_delay, root.sync_active)
-        transition_loops(_selected_loops, ShoopConstants.LoopMode.Playing, use_delay, root.sync_active)
+        transition_loops(selected_all, ShoopConstants.LoopMode.Playing, use_delay, root.sync_active)
     }
     function clear(length=0, emit=true) {
         if(maybe_loop) {
@@ -276,7 +279,7 @@ Item {
     }
     function qml_close() {
         obj_reg_entry.close()
-        master_reg_entry.close()
+        sync_reg_entry.close()
         if (maybe_loop) {
             maybe_loop.qml_close()
             maybe_loop.destroy(30)
@@ -354,7 +357,7 @@ Item {
         // - gain not supported on MIDI
         // - Send should always have the original recorded gain of the dry signal.
         // Also, gain + balance together make up the channel gains in stereo mode.
-        if (root.is_stereo) {
+        if (root.is_stereo && root.maybe_backend_loop) {
             var lr = get_stereo_audio_output_channels()
             var gains = Stereo.individual_gains(gain, last_pushed_stereo_balance)
             lr[0].set_gain(gains[0])
@@ -367,7 +370,7 @@ Item {
     }
 
     function push_stereo_balance(balance) {
-        if (root.is_stereo) {
+        if (root.is_stereo && root.maybe_backend_loop) {
             var lr = get_stereo_audio_output_channels()
             var gains = Stereo.individual_gains(last_pushed_gain, balance)
             lr[0].set_gain(gains[0])
@@ -391,9 +394,9 @@ Item {
         // TODO: code is duplicated in app shared state for MIDI source
         var n_cycles_delay = 0
         var n_cycles_record = 1
-        n_cycles_record = Math.ceil(root.targeted_loop.length / root.master_loop.length)
+        n_cycles_record = Math.ceil(root.targeted_loop.length / root.sync_loop.length)
         if (ModeHelpers.is_playing_mode(root.targeted_loop.mode)) {
-            var current_cycle = Math.floor(root.targeted_loop.position / root.master_loop.length)
+            var current_cycle = Math.floor(root.targeted_loop.position / root.sync_loop.length)
             n_cycles_delay = Math.max(0, n_cycles_record - current_cycle - 1)
         }
         root.record_n(n_cycles_delay, n_cycles_record)
@@ -416,8 +419,11 @@ Item {
     
     Component {
         id: backend_loop_factory
-        BackendLoopWithChannels {}
+        BackendLoopWithChannels {
+            maybe_fx_chain: root.maybe_fx_chain
+        }
     }
+
     function create_backend_loop() {
         if (!maybe_loop) {
             if (backend_loop_factory.status == Component.Error) {
@@ -427,7 +433,7 @@ Item {
             } else {
                 maybe_loop = backend_loop_factory.createObject(root, {
                     'initial_descriptor': root.initial_descriptor,
-                    'sync_source': (!is_master && root.master_loop && root.master_loop.maybe_backend_loop) ? root.master_loop.maybe_backend_loop : null,
+                    'sync_source': (!is_sync && root.sync_loop && root.sync_loop.maybe_backend_loop) ? root.sync_loop.maybe_backend_loop : null,
                 })
                 maybe_loop.onCycled.connect(root.cycled)
             }
@@ -442,14 +448,14 @@ Item {
         'playlists': []
     }) {
         if (maybe_backend_loop) {
-            if (!is_master && maybe_backend_loop.is_all_empty()) {
+            if (!is_sync && maybe_backend_loop.is_all_empty()) {
                 // Empty backend loop can be converted to composite loop.
                 maybe_loop.qml_close()
                 maybe_loop.destroy(30)
                 maybe_loop.parent = null
                 maybe_loop = null
             } else {
-                root.logger.error("Non-empty or master loop cannot be converted to composite")
+                root.logger.error("Non-empty or sync loop cannot be converted to composite")
                 return
             }
         }
@@ -489,13 +495,6 @@ Item {
         anchors {
             left: parent.left
             right: parent.right
-        }
-
-        LoopDetailsWindow {
-            id: detailswindow
-            title: root.initial_descriptor.id + " details"
-            loop_widget: root
-            master_loop_widget: root.master_loop
         }
 
         ContextMenu {
@@ -684,7 +683,7 @@ Item {
                 topMargin: 2
             }
 
-            visible: root.is_master
+            visible: root.is_sync
         }
 
         Item {
@@ -720,28 +719,28 @@ Item {
                             if (!key_modifiers.alt_pressed && event.button === Qt.LeftButton) { root.target() }
                         }
                     onClicked: (event) => {
-                            if (event.button === Qt.LeftButton) { 
-                                if (key_modifiers.alt_pressed) {
-                                    if (root.selected_loop_ids.size == 1) {
-                                        let selected = registries.objects_registry.get(root.selected_loop_ids.values().next().value)
-                                        if (selected != root) {
-                                            selected.create_composite_loop()
-                                            if (selected.maybe_composite_loop) {
-                                                // Add the selected loop to the currently selected composite loop.
-                                                // If ctrl pressed, as a new parallel timeline; otherwise at the end of the default timeline.
-                                                if (key_modifiers.control_pressed) {
-                                                    selected.maybe_composite_loop.add_loop(root, 0, selected.maybe_composite_loop.playlists.length)
-                                                } else {
-                                                    selected.maybe_composite_loop.add_loop(root, 0)
-                                                }
+                        if (event.button === Qt.LeftButton) { 
+                            if (key_modifiers.alt_pressed) {
+                                if (root.selected_loops.size == 1) {
+                                    let selected = Array.from(root.selected_loops)[0]
+                                    if (selected != root) {
+                                        selected.create_composite_loop()
+                                        if (selected.maybe_composite_loop) {
+                                            // Add the selected loop to the currently selected composite loop.
+                                            // If ctrl pressed, as a new parallel timeline; otherwise at the end of the default timeline.
+                                            if (key_modifiers.control_pressed) {
+                                                selected.maybe_composite_loop.add_loop(root, 0, selected.maybe_composite_loop.playlists.length)
+                                            } else {
+                                                selected.maybe_composite_loop.add_loop(root, 0)
                                             }
                                         }
                                     }
-                                } else if (root.targeted) { root.untarget(); root.deselect() }
-                                else { root.toggle_selected(!key_modifiers.control_pressed) }
-                            }
-                            else if (event.button === Qt.RightButton) { contextmenu.popup() }
+                                }
+                            } else if (root.targeted) { root.untarget(); root.deselect() }
+                            else { root.toggle_selected(!key_modifiers.control_pressed) }
                         }
+                        else if (event.button === Qt.RightButton) { contextmenu.popup() }
+                    }
                 }
                 LoopStateIcon {
                     id: loopnextstateicon
@@ -915,7 +914,7 @@ Item {
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
                     ToolTip.visible: hovered
-                    ToolTip.text: "Trigger/stop recording. For master loop, starts immediately. For others, start/stop synced to next master loop cycle."
+                    ToolTip.text: "Trigger/stop recording. For sync loop, starts immediately. For others, start/stop synced to next sync loop cycle."
 
                     Connections {
                         target: statusrect
@@ -985,7 +984,7 @@ Item {
                                     ToolTip.delay: 1000
                                     ToolTip.timeout: 5000
                                     ToolTip.visible: hovered
-                                    ToolTip.text: "Trigger fixed-length recording (usual) or 'record with' (if a target loop is set). 'Record with' will record for one full iteration synced with the target loop. Otherwise, fixed length (number shown) is the amount of master loop cycles to record. Press and hold this button to change this number."
+                                    ToolTip.text: "Trigger fixed-length recording (usual) or 'record with' (if a target loop is set). 'Record with' will record for one full iteration synced with the target loop. Otherwise, fixed length (number shown) is the amount of sync loop cycles to record. Press and hold this button to change this number."
 
                                     // TODO: editable text box instead of fixed options
                                     Menu {
@@ -1035,11 +1034,11 @@ Item {
                                         text: root.delay_for_targeted != undefined ? ">" : ""
                                     }
                                     onClicked: {
-                                        var n = root.n_multiples_of_master_length
+                                        var n = root.n_multiples_of_sync_length
                                         var delay = 
                                             root.delay_for_targeted != undefined ? 
                                                 root.use_delay : // delay to other
-                                                root.n_multiples_of_master_length - root.current_cycle - 1 // delay to self
+                                                root.n_multiples_of_sync_length - root.current_cycle - 1 // delay to self
                                         var prev_mode = statusrect.loop.mode
                                         root.transition(ShoopConstants.LoopMode.RecordingDryIntoWet, delay, true)
                                         statusrect.loop.transition(prev_mode, delay + n, true)
@@ -1242,19 +1241,9 @@ Item {
         }
 
         Rectangle {
-            visible: root.maybe_loop ? root.maybe_loop.display_midi_notes_active > 0 : false
-            anchors {
-                right: parent.right
-                top: parent.top
-                bottom: parent.bottom
-            }
-            width: 8
-
-            color: '#00BBFF'
-        }
-
-        Rectangle {
-            visible: root.maybe_loop ? root.maybe_loop.display_midi_events_triggered > 0 : false
+            visible: root.maybe_loop ?
+                (root.maybe_loop.display_midi_events_triggered > 0 || root.maybe_loop.display_midi_notes_active > 0) :
+                false
             anchors {
                 right: parent.right
                 top: parent.top
@@ -1398,13 +1387,6 @@ Item {
         Menu {
             id: menu
             title: 'Record'
-            property int n_audio_channels: 0
-            property int n_midi_channels: 0
-
-            onAboutToShow: {
-                n_audio_channels = root.audio_channels.length
-                n_midi_channels = root.midi_channels.length
-            }
 
             ShoopMenuItem {
                 height: 50
@@ -1431,8 +1413,8 @@ Item {
             }
             MenuSeparator {}
             ShoopMenuItem {
-                text: "Details"
-                onClicked: () => { detailswindow.visible = true }
+               text: "Details"
+               onClicked: () => { if(root.main_details_pane) { root.main_details_pane.add_user_item(root.name, root) } }
             }
             ShoopMenuItem {
                text: "Click loop..."
@@ -1441,16 +1423,16 @@ Item {
             ShoopMenuItem {
                 text: "Save audio..."
                 onClicked: presavedialog.open()
-                shown: menu.n_audio_channels > 0
+                shown: root.has_audio
             }
             ShoopMenuItem {
                 text: "Load audio..."
                 onClicked: loaddialog.open()
-                shown: menu.n_audio_channels > 0
+                shown: root.has_audio
             }
             ShoopMenuItem {
                 text: "Load MIDI..."
-                shown: menu.n_midi_channels > 0
+                shown: root.has_midi
                 onClicked: {
                     var chans = root.midi_channels
                     if (chans.length == 0) { throw new Error("No MIDI channels to load"); }
@@ -1461,7 +1443,7 @@ Item {
             }
             ShoopMenuItem {
                 text: "Save MIDI..."
-                shown: menu.n_midi_channels > 0
+                shown: root.has_midi
                 onClicked: {
                     var chans = root.midi_channels
                     if (chans.length == 0) { throw new Error("No MIDI channels to save"); }
@@ -1471,10 +1453,10 @@ Item {
                 }
             }
             ShoopMenuItem {
-                text: "Push Length To Master"
-                shown: !root.is_master
+                text: "Push Length To Sync"
+                shown: !root.is_sync
                 onClicked: {
-                    if (master_loop) { master_loop.set_length(root.length) }
+                    if (sync_loop) { sync_loop.set_length(root.length) }
                 }
             }
             ShoopMenuItem {
@@ -1487,7 +1469,7 @@ Item {
                 id: restore_fx_state_button
 
                 property var cached_fx_state: {
-                    if (!root.track_widget || !root.track_widget.maybe_fx_chain) { return undefined; }
+                    if (!root.maybe_fx_chain) { return undefined; }
                     var channel_states = root.channels
                         .filter(c => c.recording_fx_chain_state_id != undefined)
                         .map(c => c.recording_fx_chain_state_id);
@@ -1498,7 +1480,7 @@ Item {
 
                 text: "Restore FX State"
                 shown: cached_fx_state ? true : false
-                onClicked: root.track_widget.maybe_fx_chain.restore_state(cached_fx_state.internal_state)
+                onClicked: root.maybe_fx_chain.restore_state(cached_fx_state.internal_state)
             }
         }
 
@@ -1561,10 +1543,9 @@ Item {
             }
         }
 
-        FileDialog {
+        ShoopFileDialog {
             id: savedialog
             fileMode: FileDialog.SaveFile
-            options: FileDialog.DontUseNativeDialog
             acceptLabel: 'Save'
             nameFilters: Object.entries(file_io.get_soundfile_formats()).map((e) => {
                 var extension = e[0]
@@ -1580,7 +1561,7 @@ Item {
                 close()
                 registries.state_registry.save_action_started()
                 try {
-                    var filename = UrlToFilename.qml_url_to_filename(selectedFile.toString());
+                    var filename = UrlToFilename.qml_url_to_filename(file.toString());
                     var samplerate = root.maybe_backend_loop.backend.get_sample_rate()
                     var task = file_io.save_channels_to_soundfile_async(filename, samplerate, channels)
                     task.when_finished(() => registries.state_registry.save_action_finished())
@@ -1592,10 +1573,9 @@ Item {
             
         }
 
-        FileDialog {
+        ShoopFileDialog {
             id: midisavedialog
             fileMode: FileDialog.SaveFile
-            options: FileDialog.DontUseNativeDialog
             acceptLabel: 'Save'
             nameFilters: ["MIDI files (*.mid)", "Sample-accurate Shoop MIDI (*.smf)"]
             property var channel: null
@@ -1605,17 +1585,16 @@ Item {
                     return;
                 }
                 close()
-                var filename = UrlToFilename.qml_url_to_filename(selectedFile.toString());
+                var filename = UrlToFilename.qml_url_to_filename(file.toString());
                 var samplerate = root.maybe_backend_loop.backend.get_sample_rate()
                 file_io.save_channel_to_midi_async(filename, samplerate, channel)
             }
             
         }
 
-        FileDialog {
+        ShoopFileDialog {
             id: loaddialog
             fileMode: FileDialog.OpenFile
-            options: FileDialog.DontUseNativeDialog
             acceptLabel: 'Load'
             nameFilters: [
                 'Supported sound files ('
@@ -1623,7 +1602,7 @@ Item {
                 + ')'
             ]
             onAccepted: {
-                loadoptionsdialog.filename = UrlToFilename.qml_url_to_filename(selectedFile.toString());
+                loadoptionsdialog.filename = UrlToFilename.qml_url_to_filename(file.toString());
                 close()
                 root.create_backend_loop()
                 loadoptionsdialog.update()
@@ -1659,6 +1638,7 @@ Item {
                 n_file_channels = props['channels']
                 file_sample_rate = props['samplerate']
             }
+            onStandardButtonsChanged: update()
 
             function update() {
                 var chans = root.audio_channels
@@ -1670,7 +1650,9 @@ Item {
                 if (dry_load_checkbox.checked) { to_load = to_load.concat(dry_audio_channels) }
                 if (wet_load_checkbox.checked) { to_load = to_load.concat(wet_audio_channels) }
                 channels_to_load = to_load
-                footer.standardButton(Dialog.Open).enabled = channels_to_load.length > 0;
+                if(footer.standardButton(Dialog.Open)) {
+                    footer.standardButton(Dialog.Open).enabled = channels_to_load.length > 0;
+                }
             }
 
             // TODO: there has to be a better way
@@ -1763,15 +1745,14 @@ Item {
             }
         }
 
-        FileDialog {
+        ShoopFileDialog {
             id: midiloaddialog
             fileMode: FileDialog.OpenFile
-            options: FileDialog.DontUseNativeDialog
             acceptLabel: 'Load'
             nameFilters: ["Midi files (*.mid)"]
             onAccepted: {
                 close()
-                midiloadoptionsdialog.filename = UrlToFilename.qml_url_to_filename(selectedFile.toString());
+                midiloadoptionsdialog.filename = UrlToFilename.qml_url_to_filename(file.toString());
                 midiloadoptionsdialog.open()
             }
         }

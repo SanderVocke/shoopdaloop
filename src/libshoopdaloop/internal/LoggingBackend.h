@@ -17,14 +17,15 @@
   #pragma diag_suppress 304
 #endif
 
-#define LOG_LEVEL_TRACE log_level_trace;
+#define LOG_LEVEL_DEBUG_TRACE log_level_debug_trace;
+#define LOG_LEVEL_ALWAYS_TRACE log_level_always_trace;
 #define LOG_LEVEL_DEBUG log_level_debug;
 #define LOG_LEVEL_INFO log_level_info;
 #define LOG_LEVEL_WARNING log_level_warning;
 #define LOG_LEVEL_ERROR log_level_error;
 
 #ifndef COMPILE_LOG_LEVEL
-#define COMPILE_LOG_LEVEL log_level_debug
+#define COMPILE_LOG_LEVEL log_level_always_trace
 #else
 
 // #define HELPER(x) #x
@@ -52,7 +53,7 @@ extern std::atomic<bool> g_log_initialized;
 // Configure using a configure string.
 // String format example:
 //
-// log_level_info,MidiChannel=log_level_trace
+// log_level_info,MidiChannel=log_level_debug_trace
 //
 // The string should be a comma-separated set of arguments.
 // Per argument:
@@ -60,7 +61,7 @@ extern std::atomic<bool> g_log_initialized;
 // - if there is a =, overrides the logging level for a particular module.
 //
 // Logging levels:
-// log_level_trace, log_level_debug, log_level_info, log_level_warning, log_level_error
+// log_level_debug_trace, log_level_debug, log_level_info, log_level_warning, log_level_error
 //
 // Modules are registered by the code doing the logging, but the Logging
 // module has log_level_debug statements by the logging framework itself. For example:
@@ -74,7 +75,8 @@ void parse_conf_from_env();
 namespace internal {
 
 constexpr std::array<const char*, log_level_error+1> level_indicators = {
-    "[log_trace] ",
+    "[log_trace] ", // debug trace
+    "[log_trace] ", // always trace
     "[\033[36mdebug\033[0m] ", // cyan
     "[\033[32minfo\033[0m] ",  // green
     "[\033[33mwarning\033[0m] ",  // yellow

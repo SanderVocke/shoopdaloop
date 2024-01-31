@@ -39,12 +39,13 @@ struct BackendSession::RecalculateGraphThread {
     std::mutex mutex;
     bool finish;
     std::atomic<unsigned> m_req_id;
-    BackendSession &backend;
+    std::weak_ptr<BackendSession> backend;
+    BackendSession *tmp_backend;
 
-    RecalculateGraphThread(BackendSession &backend) :
+    RecalculateGraphThread(BackendSession &_backend) :
         finish(false),
         m_req_id(0),
-        backend(backend)
+        tmp_backend(&_backend)
     {
         thread = std::thread([this]() { this->thread_fn(); });
     }
@@ -58,18 +59,26 @@ struct BackendSession::RecalculateGraphThread {
             if(finish) { break; }
             rid = new_rid;
             lk.unlock();
-            backend.log<log_level_debug>("Recalculate graph {}", rid);
-            backend.recalculate_processing_schedule(rid);
+            if (auto sh_backend = backend.lock()) {
+                sh_backend->log<log_level_debug>("Recalculate graph {}", rid);
+                sh_backend->recalculate_processing_schedule(rid);
+            } else {
+                logging::log<"Backend.Session", log_level_debug>(std::nullopt, std::nullopt,
+                "Backend session not available");
+            }
         }
-        backend.log<log_level_debug>("Recalculate graph thread finished");
     }
 
     void update_request_id(unsigned req_id) {
+        if (tmp_backend) {
+            backend = tmp_backend->weak_from_this();
+            tmp_backend = nullptr;
+        }
         if (req_id != m_req_id) {
             std::lock_guard lk(mutex);
             m_req_id = req_id;
-            cv.notify_one();
         }
+        cv.notify_one();
     }
 
     ~RecalculateGraphThread() {
@@ -105,7 +114,7 @@ shoop_backend_session_state_info_t BackendSession::get_state() {
 
 //TODO delete destroyed ports
 void BackendSession::PROC_process (uint32_t nframes) {
-    log<log_level_trace>("Process {}: start", nframes);
+    log<log_level_debug_trace>("Process {}: start", nframes);
     profiling::stopwatch(
         [this, &nframes]() {
             
@@ -113,9 +122,9 @@ void BackendSession::PROC_process (uint32_t nframes) {
             
             // Execute queued commands
             // (Graph changes applied here too)
-            log<log_level_trace>("Process: execute commands");
+            log<log_level_debug_trace>("Process: execute commands and MIDI control");
             profiling::stopwatch(
-                [this]() {
+                [this, nframes]() {
                     PROC_handle_command_queue();
                 },
                 cmds_profiling_item
@@ -124,11 +133,11 @@ void BackendSession::PROC_process (uint32_t nframes) {
             auto graph_id = ma_graph_id.load();
             auto graph_request_id = ma_graph_request_id.load();
             if (graph_id != graph_request_id) {
-                log<log_level_trace>("Notify graph recalculate thread");
+                log<log_level_debug_trace>("Notify graph recalculate thread");
                 m_recalculate_graph_thread->update_request_id(graph_request_id);
             } 
             
-            log<log_level_trace>("Process: process graph");
+            log<log_level_debug_trace>("Process: process graph");
             auto processing_schedule = m_processing_schedule;
 
             profiling::stopwatch(
@@ -138,10 +147,10 @@ void BackendSession::PROC_process (uint32_t nframes) {
                         auto &step = processing_schedule->steps[i];
                         try {
                             if(step.nodes.size() == 1) {
-                                log<log_level_trace>("[{}/{}] Processing node: {}", i, n_steps, step.nodes.begin()->get()->graph_node_name());
+                                log<log_level_debug_trace>("[{}/{}] Processing node: {}", i, n_steps, step.nodes.begin()->get()->graph_node_name());
                                 step.nodes.begin()->get()->PROC_process(nframes);
                             } else if(step.nodes.size() > 1) {
-                                log<log_level_trace>("[{}/{}] Co-processing {} nodes, first: {}", i, n_steps, step.nodes.size(), step.nodes.begin()->get()->graph_node_name());
+                                log<log_level_debug_trace>("[{}/{}] Co-processing {} nodes, first: {}", i, n_steps, step.nodes.size(), step.nodes.begin()->get()->graph_node_name());
                                 step.nodes.begin()->get()->PROC_co_process(step.nodes, nframes);
                             }
                         } catch (const std::exception &exp) {
@@ -177,11 +186,9 @@ std::shared_ptr<GraphLoop> BackendSession::create_loop() {
     auto r = std::make_shared<GraphLoop>(shared_from_this(), loop);
 
     // Setup profiling
-    auto top_item = top_profiling_item;
     auto loops_item = profiler->maybe_get_profiling_item("Process.Graph.Loops");
     auto loops_control_item = profiler->maybe_get_profiling_item("Process.Graph.Loops.Control");
-    r->graph_node()->set_processed_cb([top_item, loops_item, loops_control_item](uint32_t us) {
-        top_item->log_time(us);
+    r->graph_node()->set_processed_cb([loops_item, loops_control_item](uint32_t us) {
         loops_item->log_time(us);
         loops_control_item->log_time(us);
     });
@@ -203,7 +210,7 @@ std::shared_ptr<GraphFXChain> BackendSession::create_fx_chain(shoop_fx_chain_typ
         case Carla_Patchbay_16x:
             try {
                 chain = lv2.create_carla_chain<Time, Size>(
-                    type, m_sample_rate, std::string(title)
+                    type, m_sample_rate, m_buffer_size, std::string(title)
                 );
             } catch (const std::exception &exp) {
                 throw_error<std::runtime_error>("Failed to create a Carla LV2 instance: " + std::string(exp.what()));
@@ -259,47 +266,39 @@ std::shared_ptr<GraphFXChain> BackendSession::create_fx_chain(shoop_fx_chain_typ
     auto info = std::make_shared<GraphFXChain>(chain, shared_from_this());
 
     // Setup profiling
-    auto top_item = top_profiling_item;
     auto fx_item = profiler->maybe_get_profiling_item("Process.Graph.FX");
     auto ports_item = profiler->maybe_get_profiling_item("Process.Graph.Ports");
     auto audio_ports_item = profiler->maybe_get_profiling_item("Process.Graph.Ports.Audio");
     auto midi_ports_item = profiler->maybe_get_profiling_item("Process.Graph.Ports.Midi");
-    info->graph_node()->set_processed_cb([top_item, fx_item](uint32_t us) {
-        top_item->log_time(us);
+    info->graph_node()->set_processed_cb([fx_item](uint32_t us) {
         fx_item->log_time(us);
     });
     for (auto &p : info->audio_input_ports()) {
-        p->first_graph_node()->set_processed_cb([top_item, ports_item, audio_ports_item](uint32_t us) {
-            top_item->log_time(us);
+        p->first_graph_node()->set_processed_cb([ports_item, audio_ports_item](uint32_t us) {
             ports_item->log_time(us);
             audio_ports_item->log_time(us);
         });
-        p->second_graph_node()->set_processed_cb([top_item, ports_item, audio_ports_item](uint32_t us) {
-            top_item->log_time(us);
+        p->second_graph_node()->set_processed_cb([ports_item, audio_ports_item](uint32_t us) {
             ports_item->log_time(us);
             audio_ports_item->log_time(us);
         });
     }
     for (auto &p : info->audio_output_ports()) {
-        p->first_graph_node()->set_processed_cb([top_item, ports_item, audio_ports_item](uint32_t us) {
-            top_item->log_time(us);
+        p->first_graph_node()->set_processed_cb([ ports_item, audio_ports_item](uint32_t us) {
             ports_item->log_time(us);
             audio_ports_item->log_time(us);
         });
-        p->second_graph_node()->set_processed_cb([top_item, ports_item, audio_ports_item](uint32_t us) {
-            top_item->log_time(us);
+        p->second_graph_node()->set_processed_cb([ports_item, audio_ports_item](uint32_t us) {
             ports_item->log_time(us);
             audio_ports_item->log_time(us);
         });
     }
     for (auto &p : info->midi_input_ports()) {
-        p->first_graph_node()->set_processed_cb([top_item, ports_item, midi_ports_item](uint32_t us) {
-            top_item->log_time(us);
+        p->first_graph_node()->set_processed_cb([ports_item, midi_ports_item](uint32_t us) {
             ports_item->log_time(us);
             midi_ports_item->log_time(us);
         });
-        p->second_graph_node()->set_processed_cb([top_item, ports_item, midi_ports_item](uint32_t us) {
-            top_item->log_time(us);
+        p->second_graph_node()->set_processed_cb([ports_item, midi_ports_item](uint32_t us) {
             ports_item->log_time(us);
             midi_ports_item->log_time(us);
         });
@@ -316,11 +315,9 @@ std::shared_ptr<GraphAudioPort> BackendSession::add_audio_port(std::shared_ptr<s
     ports.push_back(rval);
 
     // Setup profiling
-    auto top_item = top_profiling_item;
     auto ports_item = profiler->maybe_get_profiling_item("Process.Graph.Ports");
     auto audio_ports_item = profiler->maybe_get_profiling_item("Process.Graph.Ports.Audio");
-    auto cb = [top_item, ports_item, audio_ports_item](uint32_t us) {
-        top_item->log_time(us);
+    auto cb = [ports_item, audio_ports_item](uint32_t us) {
         ports_item->log_time(us);
         audio_ports_item->log_time(us);
     };
@@ -337,11 +334,9 @@ std::shared_ptr<GraphMidiPort> BackendSession::add_midi_port(std::shared_ptr<Mid
     ports.push_back(rval);
 
     // Setup profiling
-    auto top_item = top_profiling_item;
     auto ports_item = profiler->maybe_get_profiling_item("Process.Graph.Ports");
     auto midi_ports_item = profiler->maybe_get_profiling_item("Process.Graph.Ports.Midi");
-    auto cb = [top_item, ports_item, midi_ports_item](uint32_t us) {
-        top_item->log_time(us);
+    auto cb = [ports_item, midi_ports_item](uint32_t us) {
         ports_item->log_time(us);
         midi_ports_item->log_time(us);
     };
@@ -357,11 +352,9 @@ std::shared_ptr<GraphLoopChannel> BackendSession::add_loop_channel(std::shared_p
     auto rval = std::make_shared<GraphLoopChannel>(channel, loop, shared_from_this());
 
     // Setup profiling
-    auto top_item = top_profiling_item;
     auto loops_item = profiler->maybe_get_profiling_item("Process.Graph.Loops");
     auto loop_channels_item = profiler->maybe_get_profiling_item("Process.Graph.Loops.Channels");
-    auto cb = [top_item, loops_item, loop_channels_item](uint32_t us) {
-        top_item->log_time(us);
+    auto cb = [loops_item, loop_channels_item](uint32_t us) {
         loops_item->log_time(us);
         loop_channels_item->log_time(us);
     };
@@ -458,7 +451,7 @@ void BackendSession::recalculate_processing_schedule(unsigned req_id) {
 
     // Make raw pointers
     std::set<GraphNode*> raw_nodes;
-    for(auto &n: nodes) { raw_nodes.insert(n.get()); }
+    for(auto &n: nodes) { if (n) { raw_nodes.insert(n.get()); } }
 
     // Schedule
     std::vector<std::set<GraphNode*>> schedule = graph_processing_order(raw_nodes);
@@ -475,9 +468,9 @@ void BackendSession::recalculate_processing_schedule(unsigned req_id) {
     float us = duration_cast<microseconds>(end - start).count();
     logging::log<"Backend.ProcessGraph", log_level_debug>(std::nullopt, std::nullopt, "Calculation took {} us", us);
 
-    if(logging::should_log("Backend.ProcessGraph", log_level_trace)) {
+    if(logging::should_log("Backend.ProcessGraph", log_level_debug_trace)) {
         auto dot = graph_dot(raw_nodes);
-        logging::log<"Backend.ProcessGraph", log_level_trace>(std::nullopt, std::nullopt, "DOT graph:\n{}", dot);
+        logging::log<"Backend.ProcessGraph", log_level_debug_trace>(std::nullopt, std::nullopt, "DOT graph:\n{}", dot);
         if(logging::should_log("Backend.ProcessGraph", log_level_debug)) {
             std::vector<std::string> schedule_names;
             for(auto &step: schedule) {
@@ -498,13 +491,15 @@ void BackendSession::recalculate_processing_schedule(unsigned req_id) {
         }
     }
 
-    auto me = shared_from_this();
-    auto finish_fn = [me, result, req_id]() {
-        me->log<log_level_debug>("Applying updated process graph {}", req_id);
-        me->m_processing_schedule = result;
-        me->ma_graph_id = req_id;
-    };
-    queue_process_thread_command(finish_fn);
+    auto maybe_me = weak_from_this();
+    if(auto me = maybe_me.lock()) {
+        auto finish_fn = [me, result, req_id]() {
+            me->log<log_level_debug>("Applying updated process graph {}", req_id);
+            me->m_processing_schedule = result;
+            me->ma_graph_id = req_id;
+        };
+        queue_process_thread_command(finish_fn);
+    }
 }
 
 void BackendSession::wait_graph_up_to_date() {

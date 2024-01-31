@@ -15,11 +15,20 @@ ShoopTestFile {
         id: session
 
         anchors.fill: parent
-        initial_descriptor: GenerateSession.generate_default_session(
-            app_metadata.version_string,
-            null,
-            4
+        initial_descriptor: {
+            let track = GenerateSession.generate_default_track(
+                'track1',
+                3,
+                'track1',
+                false,
+                'track1'
             )
+            return GenerateSession.generate_default_session(
+                app_metadata.version_string,
+                null,
+                true, 1, 1, [track]
+            )
+        }
 
         ShoopSessionTestCase {
             id: testcase
@@ -27,24 +36,24 @@ ShoopTestFile {
             filename : TestFilename.test_filename()
             session: session
 
-            // master loop
+            // sync loop
             function m() {
-                return session.tracks[0].loops[0]
+                return session.sync_track.loops[0]
             }
 
             // generic loop 1
             function l1() {
-                return session.tracks[0].loops[1]
+                return session.main_tracks[0].loops[0]
             }
 
             // generic loop 2
             function l2() {
-                return session.tracks[0].loops[2]
+                return session.main_tracks[0].loops[1]
             }
 
             // composite loop
             function c() {
-                return session.tracks[0].loops[3]
+                return session.main_tracks[0].loops[2]
             }
 
             function clear() {
@@ -93,7 +102,7 @@ ShoopTestFile {
 
             testcase_init_fn: () =>  {
                 session.backend.dummy_enter_controlled_mode()
-                testcase.wait_updated(session.backend)
+                testcase.wait_controlled_mode(session.backend)
             }
 
             test_fns: ({
@@ -131,7 +140,7 @@ ShoopTestFile {
 
                     m().transition(ShoopConstants.LoopMode.Playing, 0, false)
 
-                    process(50); // master loop is playing
+                    process(50); // sync loop is playing
 
                     // trigger the composite loop
                     c().transition(ShoopConstants.LoopMode.Playing, 0, true)
@@ -218,7 +227,7 @@ ShoopTestFile {
                     verify_eq(c().next_mode, ShoopConstants.LoopMode.Playing)
                     verify_eq(c().next_transition_delay, 3)
 
-                    process(350, 7) // a bunch of master loop cycles
+                    process(350, 7) // a bunch of sync loop cycles
 
                     verify_eq(c().mode, ShoopConstants.LoopMode.Stopped)
                     verify_eq(c().next_mode, ShoopConstants.LoopMode.Playing)

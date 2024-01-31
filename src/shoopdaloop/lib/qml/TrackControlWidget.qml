@@ -190,12 +190,12 @@ Item {
     RegistryLookups {
         id: lookup_fx_ports
         registry: registries.objects_registry
-        keys: initial_track_descriptor && 'fx_chain' in initial_track_descriptor ? initial_track_descriptor.fx_chain.ports.map((p) => p.id) : []
+        keys: (initial_track_descriptor && initial_track_descriptor.fx_chain) ? initial_track_descriptor.fx_chain.ports.map((p) => p.id) : []
     }
     RegistryLookup {
         id: lookup_fx_chain
         registry: registries.objects_registry
-        key: initial_track_descriptor && 'fx_chain' in initial_track_descriptor ? initial_track_descriptor.fx_chain.id : null
+        key: (initial_track_descriptor && initial_track_descriptor.fx_chain) ? initial_track_descriptor.fx_chain.id : null
     }
     LinearDbConversion {
         id: convert_gain
@@ -334,7 +334,9 @@ Item {
             })
     }
     function push_fx_active() {
-        if (root.maybe_fx_chain) root.maybe_fx_chain.set_active(logic.enable_fx)
+        if (root.maybe_fx_chain) {
+            root.maybe_fx_chain.set_active(logic.enable_fx)
+        }
     }
     Component.onCompleted: {
         push_monitor()
@@ -780,20 +782,8 @@ Item {
                 }
                 width: 8
                 radius: 2
-                color: '#00BBFF'
-                visible: root.n_midi_notes_active_in > 0
-            }
-            Rectangle {
-                id: input_midi_evts_indicator
-                anchors {
-                    right: input_peak_r_bar.right
-                    top: input_peak_r_bar.top
-                    bottom: input_peak_r_bar.bottom
-                }
-                width: 8
-                radius: 2
                 color: '#00FFFF'
-                visible: root.n_midi_events_in > 0
+                visible: root.n_midi_notes_active_in > 0 || root.n_midi_events_in > 0
             }
             Item {
                 id: monitor_row

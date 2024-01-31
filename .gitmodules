@@ -43,3 +43,9 @@
 [submodule "src/third_party/Catch2"]
 	path = src/third_party/Catch2
 	url = https://github.com/catchorg/Catch2.git
+[submodule "third_party/breakpad"]
+	path = third_party/breakpad
+	url = https://github.com/snxd/breakpad.git
+[submodule "third_party/zita-resampler"]
+	path = third_party/zita-resampler
+	url = https://github.com/SanderVocke/zita-resampler.git

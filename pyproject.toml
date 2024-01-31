@@ -14,7 +14,6 @@ requires-python = ">=3.8"
 
 dependencies = [
   "soundfile",
-  "samplerate",
   "mido",
   "jsonschema",
   "numpy",
@@ -22,7 +21,8 @@ dependencies = [
   "pyside6-essentials~=6.6.0",
   "lupa",
   "appdirs",
-  "sounddevice"
+  "sounddevice",
+  "pywin32 ; platform_system == \"Windows\"",
 ]
 
 keywords = ['music', 'midi', 'jack', 'looping']
@@ -80,7 +80,7 @@ directory = "src"
 
 [tool.py-build-cmake.cmake]
 minimum_version = "3.22"
-build_type = "Release"
+build_type = "RelWithDebInfo"
 source_path = "src"
 build_args = ["-j4"]
 args = ["--log-level=verbose"]

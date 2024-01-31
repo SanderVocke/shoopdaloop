@@ -1,7 +1,7 @@
 #include "DecoupledMidiPort.h"
 #include "AudioMidiDriver.h"
 #include "PortInterface.h"
-#include "LoggingBackend.h"
+#include "types.h"
 #include <optional>
 #include <cstring>
 #include <iostream>
@@ -15,10 +15,20 @@ DecoupledMidiPort<TimeType, SizeType>::DecoupledMidiPort(
     : port(port), ma_queue(queue_size), direction(direction), maybe_driver(driver) {};
 
 template <typename TimeType, typename SizeType>
+std::shared_ptr<MidiPort> const& DecoupledMidiPort<TimeType, SizeType>::get_port() {
+    return port;
+}
+
+template <typename TimeType, typename SizeType>
 void DecoupledMidiPort<TimeType, SizeType>::PROC_process(uint32_t n_frames) {
     if (direction == shoop_port_direction_t::Input) {
+        port->PROC_prepare(n_frames);
+        port->PROC_process(n_frames);
         auto buf = port->PROC_get_read_output_data_buffer(n_frames);
         auto n = buf->PROC_get_n_events();
+        if (n>0) {
+            log<log_level_debug>("Got {} MIDI events", n);
+        }
         for (uint32_t idx = 0; idx < n; idx++) {
             Message m;
             const uint8_t *data;
@@ -30,11 +40,13 @@ void DecoupledMidiPort<TimeType, SizeType>::PROC_process(uint32_t n_frames) {
             ma_queue.push(m);
         }
     } else {
+        port->PROC_prepare(n_frames);
         auto buf = port->PROC_get_write_data_into_port_buffer(n_frames);
         Message m;
         while (ma_queue.pop(m)) {
             buf->PROC_write_event_value(m.data.size(), 0, m.data.data());
         }
+        port->PROC_process(n_frames);
     }
 }
 

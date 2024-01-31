@@ -41,6 +41,7 @@ class Backend(ShoopQQuickItem):
         self.logger = Logger()
         self.logger.name = "Frontend.Backend"
         self.lock = threading.Lock()
+        self._last_processed = 1
     
     update = Signal()
     updated = Signal()
@@ -108,6 +109,16 @@ class Backend(ShoopQQuickItem):
             self._xruns = n
             self.xrunsChanged.emit(n)
     
+    lastProcessedChanged = Signal(int)
+    @Property(int, notify=lastProcessedChanged)
+    def last_processed(self):
+        return self._last_processed
+    @last_processed.setter
+    def last_processed(self, n):
+        if self._last_processed != n:
+            self._last_processed = n
+            self.lastProcessedChanged.emit(n)
+    
     dspLoadChanged = Signal(float)
     @Property(float, notify=dspLoadChanged)
     def dsp_load(self):
@@ -154,8 +165,9 @@ class Backend(ShoopQQuickItem):
             return
         driver_state = self._backend_driver_obj.get_state()
         self.dsp_load = driver_state.dsp_load
-        self.xruns += driver_state.xruns
+        self.xruns = min(2**31-1, self.xruns + driver_state.xruns)
         self.actual_backend_type = self._driver_type.value
+        self.last_processed = driver_state.last_processed
         
         toRemove = []
         with self.lock:
@@ -172,6 +184,11 @@ class Backend(ShoopQQuickItem):
     
     @Slot(result=int)
     def get_sample_rate(self):
+        if not self._backend_driver_obj:
+            self.logger.warning("Attempting to get sample rate before back-end initialized.")
+            import traceback
+            traceback.print_stack()
+            return 1
         return self._backend_driver_obj.get_sample_rate()
     
     @Slot(result=int)

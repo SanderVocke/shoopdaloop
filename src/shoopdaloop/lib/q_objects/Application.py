@@ -3,9 +3,9 @@ import os
 import signal
 import time
 
-from PySide6.QtQml import QQmlApplicationEngine, QJSValue
-from PySide6.QtGui import QGuiApplication, QIcon
+from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtCore import QTimer, QObject, Q_ARG, QMetaObject, Qt, QEvent, Slot, QtMsgType, Signal
+from PySide6.QtGui import QIcon
 from PySide6.QtQml import QQmlDebuggingEnabler
 from PySide6.QtQuick import QQuickWindow
 
@@ -18,16 +18,10 @@ if have_nsm:
 from ..qml_helpers import *
 from ..backend_wrappers import terminate_all_backends
 
-from .SchemaValidator import SchemaValidator
-from .FileIO import FileIO
-from .ClickTrackGenerator import ClickTrackGenerator
-from .KeyModifiers import KeyModifiers
-from .ApplicationMetadata import ApplicationMetadata
-
 from ..logging import *
 from ..directories import *
 
-class Application(ShoopQGuiApplication):
+class Application(ShoopQApplication):
     exit_handler_called = Signal()
 
     def __init__(self,
@@ -114,7 +108,7 @@ class Application(ShoopQGuiApplication):
                     self.logger.debug(f"deleteLater on {obj}")
                     obj.deleteLater()
             self.engine.deleteLater()
-            self.wait(10)
+            self.wait(100)
             self.engine = None
             self.wait(10)
     
@@ -153,9 +147,13 @@ class Application(ShoopQGuiApplication):
     
     # Ensure that we forward any terminating signals to our child
     # processes
-    def exit_signal_handler(self, sig, frame):
-        self.logger.debug(lambda: 'Got signal {}.'.format(sig))    
-        self.logger.info(lambda: 'Exiting due to signal.')
+    def exit_signal_handler(self, sig, frame): 
+        self.logger.info(lambda: f'Exiting due to signal {sig}.')
+        if sig == signal.SIGTERM or ('SIGQUIT' in dir(signal) and sig == signal.SIGQUIT):
+            # on these more "severe" signals, unregister our signal handler.
+            # that way when the same signal comes again, the OS can terminate the process
+            # more strictly.
+            signal.signal(sig, signal.SIG_DFL)
         self.exit_handler()
     
     def exit_handler(self):
@@ -260,6 +258,7 @@ class Application(ShoopQGuiApplication):
         end = time.time() + ms * 0.001
         while time.time() < end:
             self.processEvents()
+            self.sendPostedEvents()
 
     @Slot()
     def do_quit(self):

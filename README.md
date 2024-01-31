@@ -6,7 +6,9 @@
 
 # ShoopDaLoop
 
-ShoopDaLoop is a live looping application for Linux with a few DAW-like features. [Documentation](https://sandervocke.github.io/shoopdaloop/) lives here.
+ShoopDaLoop is a live looping application for Linux with a few DAW-like features. It offers clips/loops in a grid-style layout, with functionality aimed specifically at real-time looping, including free-form "jamming" and pre-scripted looping sessions.
+
+[Documentation](https://sandervocke.github.io/shoopdaloop/) lives here.
 
 > :warning: **There is no release yet. This is in pre-alpha. All there is to see on this repo is a preview of things to come.**
 
@@ -18,11 +20,11 @@ For currently open known issues, check the GitHub Issues page.
 
 # Screenshot
 
-![Screenshot](https://github.com/SanderVocke/shoopdaloop/assets/11209121/27632906-c158-41fe-af48-867ec5eecd42)
+![Screenshot](docs/source/resources/screenshot.png)
 
-# In a nutshell
+# Comparison table
 
-To summarize why ShoopDaLoop exists and what the goals and plans are, a short comparison table with similar software gives a good picture. Of course, the devil is in the details: the other listed software is great and in many ways different and better. The aim here is not to take away from them in any way.
+To summarize why ShoopDaLoop exists and what the goals and plans are, a short comparison table with similar open-source software gives a good picture. Of course, the devil is in the details: the other listed software is great and in many ways different and better. The aim here is not to take away from them in any way.
 
 |                             | ShoopDaLoop               | SooperLooper     | Luppp                  | Ardour                   |
 |-----------------------------|---------------------------|------------------|------------------------|--------------------------|
@@ -39,7 +41,7 @@ To summarize why ShoopDaLoop exists and what the goals and plans are, a short co
 | NSM Session Management      | ✅                        | ✅               | ✅                      | ✅                      |
 | Overdubbing                 | ❌ (planned)              | ✅               | ✅                      | ?                      |
 | Plugin scripts              | ✅ <sup>(3)</sup>         | ❌               | ❌                      | ✅                     |
-| Transport/tempo system      | None (sync on master loop) | None             | JACK transport / MIDI beats | ? |
+| Transport/tempo system      | None (trigger on sync loop) | None             | JACK transport / MIDI beats | ? |
 
 (1): ShoopDaLoop has built-in support to host Carla through LV2, relying on Carla as a proxy to support other plugin types such as VST(3). <br>
 (2): Focus is on Linux for now until it is reasonably feature-complete. Windows and Mac builds already available, but not useful yet due to lacking audio and plugin support.<br>
@@ -60,7 +62,7 @@ As seen in the comparison table, ShoopDaLoop is closest to Luppp in what it offe
 - **Tracks**: loops are organized into tracks, which share inputs/outputs and effects/synthesis.
 - **MIDI and audio**: can both be looped, including alongside each other in the same loop.
 - **FX/synthesis**: can be inserted into a loop via external JACK connections or by using plugins. The same loop can simultaneously record "dry" and "wet", akin to [Luppp](http://openavproductions.com/luppp/), to save precious CPU during playback.
-- **Synchronization**: every loop is synced to the "master loop", which typically holds a beat, click-track or just fixed-length silence. Loops may also be a multiple of the master loop length.
+- **Synchronization**: every loop is synced to the "sync loop", which typically holds a beat, click-track or just fixed-length silence. Loops may also be a multiple of the sync loop length.
 - **Click tracks**: can be generated via a dialog in the app.
 - **NSM**: Non/New Session Manager support (experimental).
 - **Hackable**: Users can run their own Lua scripts to control the application in new ways.

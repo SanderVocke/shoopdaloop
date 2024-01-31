@@ -11,7 +11,8 @@ ShoopTestFile {
         id: backend
         update_interval_ms: 30
         client_name_hint: 'shoop'
-        backend_type: ShoopConstants.AudioDriverType.JackTest
+        backend_type: backend_type_is_supported(ShoopConstants.AudioDriverType.JackTest) ?
+                      ShoopConstants.AudioDriverType.JackTest : ShoopConstants.AudioDriverType.Dummy
         driver_setting_overrides: ({})
 
     AudioPort {
@@ -82,7 +83,6 @@ ShoopTestFile {
             filename : TestFilename.test_filename()
 
             property bool skip_no_jack : !backend.backend_type_is_supported(ShoopConstants.AudioDriverType.JackTest)
-
             when: skip_no_jack || (audio_in.initialized && audio_out.initialized && midi_in.initialized && midi_out.initialized)
 
             test_fns: ({

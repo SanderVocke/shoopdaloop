@@ -2,6 +2,7 @@
 #include <lv2/atom/forge.h>
 #include <string>
 #include "PortInterface.h"
+#include "lv2_evbuf.h"
 #include <stdexcept>
 #include <cstring>
 #include <iostream>
@@ -13,18 +14,22 @@ InternalLV2MidiOutputPort::InternalLV2MidiOutputPort(
     uint32_t midi_event_type_urid)
     : MidiPort(false, false, false), m_name(name), m_direction(direction),
       m_evbuf(lv2_evbuf_new(capacity, atom_chunk_urid, atom_sequence_urid)),
-      m_midi_event_type_urid(midi_event_type_urid) {}
+      m_midi_event_type_urid(midi_event_type_urid)
+{}
 
 MidiReadableBufferInterface *
 InternalLV2MidiOutputPort::PROC_get_read_output_data_buffer(uint32_t n_frames) {
-    throw std::runtime_error(
-        "Internal LV2 MIDI output port does not support reading.");
+    return nullptr;
+}
+
+void InternalLV2MidiOutputPort::PROC_prepare(uint32_t n_frames) {
+    lv2_evbuf_reset(m_evbuf, true);
+    m_iter = lv2_evbuf_begin(m_evbuf);
+    MidiPort::PROC_prepare(n_frames);
 }
 
 MidiWriteableBufferInterface *
 InternalLV2MidiOutputPort::PROC_get_write_data_into_port_buffer(uint32_t n_frames) {
-    lv2_evbuf_reset(m_evbuf, true);
-    m_iter = lv2_evbuf_begin(m_evbuf);
     return (static_cast<MidiWriteableBufferInterface *>(this));
 }
 

@@ -35,7 +35,7 @@
 -- -  0-9 keys:   Record the selected loop(s) for N cycles.
 --
 -- Note that for the loop-transitioning keys in the list above, whether the loop
--- transitions instantly or in sync with the master loop depends on the global
+-- transitions instantly or in sync with the sync loop depends on the global
 -- "synchronization active" state. This can be toggled in the UI or momentarily
 -- toggled by holding the Ctrl button.
 
@@ -68,6 +68,11 @@ local handle_direction_key = function(key, modifiers)
     local loops = shoop_control.loop_get_which_selected()
     if #loops == 0 then
         shoop_control.loop_select({0, 0}, true)
+        if #shoop_control.loop_get_which_selected() == 0 then
+            --  Probably there is no track 0 yet.
+            shoop_control.loop_select({-1, 0}, true)
+            return
+        end
         return
     end
 

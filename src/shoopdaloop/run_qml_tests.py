@@ -16,6 +16,9 @@ from xml.dom import minidom
 script_dir = os.path.dirname(__file__)
 sys.path.append(script_dir + '/..')
 
+from shoopdaloop.lib.crash_handling import *
+init_crash_handling()
+
 from shoopdaloop.libshoopdaloop_bindings import set_global_logging_level, log_level_error
 from shoopdaloop.lib.qml_helpers import *
 from shoopdaloop.lib.q_objects.SchemaValidator import SchemaValidator
@@ -46,6 +49,7 @@ global_args = {
     'backend_type': AudioDriverType.Dummy.value,
     'load_session_on_startup': None,
     'test_grab_screens': None,
+    'monkey_tester': False
 }
 
 test_files = glob.glob(scripts_dir() + '/**/tst_*.qml', recursive=True)

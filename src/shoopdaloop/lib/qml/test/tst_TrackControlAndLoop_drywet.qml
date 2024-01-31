@@ -14,7 +14,6 @@ ShoopTestFile {
 
         anchors.fill: parent
         initial_descriptor: {
-            let base = GenerateSession.generate_default_session(app_metadata.version_string, null, 1)
             let track = GenerateSession.generate_default_track(
                 "tut",
                 1,
@@ -29,7 +28,7 @@ ShoopTestFile {
                 false,
                 "test2x2x1"
                 )
-            base.tracks.push(track)
+            let base = GenerateSession.generate_default_session(app_metadata.version_string, null, true, 1, 1, [track])
             testcase.logger.debug(() => ("session descriptor: " + JSON.stringify(base, null, 2)))
             return base
         }
@@ -40,8 +39,8 @@ ShoopTestFile {
             filename : TestFilename.test_filename()
             session: session
 
-            property var tut : session.tracks[1]
-            property var lut : session.tracks[1].loops[0] // LoopWidget
+            property var tut : session.main_tracks[0]
+            property var lut : session.main_tracks[0].loops[0] // LoopWidget
 
             function wet_channels() {
                 if (!lut) return []
@@ -62,7 +61,7 @@ ShoopTestFile {
             }
             
             function tut_control() {
-                return session.get_track_control_widget(1)
+                return tut.control_widget
             }
 
             RegistryLookup {
@@ -109,6 +108,7 @@ ShoopTestFile {
 
             testcase_init_fn: () =>  {
                 session.backend.dummy_enter_controlled_mode()
+                testcase.wait_controlled_mode(session.backend)
                 verify_true(input_port_1)
                 verify_true(input_port_2)
                 verify_true(output_port_1)
@@ -122,9 +122,9 @@ ShoopTestFile {
                 reset()
             }
 
-            function reset_track(track_idx) {
-                let t = session.tracks[track_idx]
-                let c = session.get_track_control_widget(track_idx)
+            function reset_track(track) {
+                let t = track
+                let c = t.control_widget
                 c.input_balance = 0.0
                 c.output_balance = 0.0
                 c.gain_dB = 0.0
@@ -140,8 +140,8 @@ ShoopTestFile {
             }
 
             function reset() {
-                reset_track(0)
-                reset_track(1)
+                reset_track(session.sync_track)
+                reset_track(session.main_tracks[0])
                 reset_loop(lut)
                 session.backend.wait_process()
             }
@@ -541,8 +541,6 @@ ShoopTestFile {
                     session.backend.wait_process()
                     testcase.wait_updated(session.backend)
 
-                    let l = session.get_track_control_widget(1).control_logic
-
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
                     let dry1 = dry_channels()[0].get_data()
@@ -750,8 +748,6 @@ ShoopTestFile {
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.wait_process()
                     testcase.wait_updated(session.backend)
-
-                    let l = session.get_track_control_widget(1).control_logic
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)

@@ -8,6 +8,7 @@ from PySide6.QtQml import QJSValue
 from .ShoopPyObject import *
 
 from ..logging import *
+from ..crash_handling import test_exception, test_segfault, test_abort
 
 # Wraps a back-end port.
 class OSUtils(ShoopQObject):
@@ -21,3 +22,15 @@ class OSUtils(ShoopQObject):
     @Slot(str, result='QVariant')
     def get_env(self, varname):
         return os.environ.get(varname, None)
+    
+    @Slot()
+    def test_segfault(self):
+        test_segfault()
+    
+    @Slot()
+    def test_exception(self):
+        test_exception()
+    
+    @Slot()
+    def test_abort(self):
+        test_abort()

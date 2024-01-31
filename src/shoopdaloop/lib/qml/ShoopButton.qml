@@ -4,4 +4,5 @@ import QtQuick.Controls.Material 6.3
 
 Button {
     implicitHeight: 40
+    focusPolicy: Qt.NoFocus
 }

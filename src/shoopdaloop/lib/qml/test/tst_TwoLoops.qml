@@ -13,7 +13,17 @@ ShoopTestFile {
         id: session
 
         anchors.fill: parent
-        initial_descriptor: GenerateSession.generate_default_session(app_metadata.version_string, null, 2)
+        initial_descriptor: {
+            let track = GenerateSession.generate_default_track(
+                "tut",
+                1,
+                "tut",
+                false,
+                "tut"
+            )
+            let _session = GenerateSession.generate_default_session(app_metadata.version_string, null, true, 1, 1, [track])
+            return _session
+        }
 
         ShoopSessionTestCase {
             id: testcase
@@ -21,19 +31,19 @@ ShoopTestFile {
             filename : TestFilename.test_filename()
             session: session
 
-            function master_loop() {
-                return session.tracks[0].loops[0]
+            function sync_loop() {
+                return session.sync_track.loops[0]
             }
 
             function other_loop() {
-                return session.tracks[0].loops[1]
+                return session.main_tracks[0].loops[0]
             }
 
             function clear() {
-                master_loop().clear()
+                sync_loop().clear()
                 other_loop().clear()
                 testcase.wait_updated(session.backend)
-                verify_loop_cleared(master_loop())
+                verify_loop_cleared(sync_loop())
                 verify_loop_cleared(other_loop())
             }
 
@@ -43,28 +53,28 @@ ShoopTestFile {
                     clear()
                 },
 
-                'test_two_loops_master_record': () => {
+                'test_two_loops_sync_record': () => {
                     check_backend()
                     clear()
                     testcase.wait_updated(session.backend)
 
-                    master_loop().transition(ShoopConstants.LoopMode.Recording, 0, true)
+                    sync_loop().transition(ShoopConstants.LoopMode.Recording, 0, true)
                     testcase.wait_updated(session.backend)
-                    verify_eq(master_loop().mode, ShoopConstants.LoopMode.Recording)
-                    verify_gt(master_loop().length, 0)
+                    verify_eq(sync_loop().mode, ShoopConstants.LoopMode.Recording)
+                    verify_gt(sync_loop().length, 0)
                     verify_loop_cleared(other_loop())
 
                     clear()
                 },
 
-                'test_two_loops_master_playback': () => {
+                'test_two_loops_sync_playback': () => {
                     check_backend()
 
-                    master_loop().set_length(48000)
-                    master_loop().transition(ShoopConstants.LoopMode.Playing, 0, true)
+                    sync_loop().set_length(48000)
+                    sync_loop().transition(ShoopConstants.LoopMode.Playing, 0, true)
                     testcase.wait_updated(session.backend)
-                    verify_eq(master_loop().mode, ShoopConstants.LoopMode.Playing)
-                    verify_eq(master_loop().length, 48000)
+                    verify_eq(sync_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(sync_loop().length, 48000)
                     verify_loop_cleared(other_loop())
 
                     clear()
@@ -75,19 +85,19 @@ ShoopTestFile {
                     check_backend()
 
                     session.backend.dummy_enter_controlled_mode()
-                    testcase.wait_updated(session.backend)
+                    testcase.wait_controlled_mode(session.backend)
 
-                    master_loop().set_length(100)
+                    sync_loop().set_length(100)
 
                     other_loop().create_backend_loop()
                     other_loop().set_length(100)
 
                     other_loop().transition(ShoopConstants.LoopMode.Playing, 2, true)
-                    master_loop().transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    sync_loop().transition(ShoopConstants.LoopMode.Playing, 0, false)
                     session.backend.dummy_request_controlled_frames(50)
 
                     testcase.wait_updated(session.backend)
-                    verify_eq(master_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(sync_loop().mode, ShoopConstants.LoopMode.Playing)
                     verify_eq(other_loop().next_transition_delay, 2)
 
                     for(var i=0; i<6; i++) {
@@ -97,7 +107,7 @@ ShoopTestFile {
                     }
 
                     testcase.wait_updated(session.backend)
-                    verify_eq(master_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(sync_loop().mode, ShoopConstants.LoopMode.Playing)
                     verify_eq(other_loop().mode, ShoopConstants.LoopMode.Playing)
 
                     session.backend.dummy_enter_automatic_mode()
@@ -107,7 +117,7 @@ ShoopTestFile {
                 'test_switch_between_backend_and_composite': () => {
                     clear()
                     testcase.wait_updated(session.backend)
-                    verify_true(master_loop().maybe_backend_loop)
+                    verify_true(sync_loop().maybe_backend_loop)
                     other_loop().create_backend_loop()
                     verify_true(other_loop().maybe_backend_loop)
 
@@ -120,14 +130,14 @@ ShoopTestFile {
                     verify_true('channels' in other_loop().actual_session_descriptor())
                     verify_true(other_loop().actual_session_descriptor().channels.every((channel) => channel.data_length == 0))
 
-                    // master is never composite
-                    master_loop().clear()
+                    // sync is never composite
+                    sync_loop().clear()
                     testcase.wait_updated(session.backend)
-                    verify_true(master_loop().maybe_backend_loop)
-                    verify_throw(() => master_loop.create_composite_loop())
-                    verify_true(!master_loop().maybe_composite_loop)
-                    verify_true(!('composition' in master_loop().actual_session_descriptor()))
-                    verify_true('channels' in master_loop().actual_session_descriptor())
+                    verify_true(sync_loop().maybe_backend_loop)
+                    verify_throw(() => sync_loop.create_composite_loop())
+                    verify_true(!sync_loop().maybe_composite_loop)
+                    verify_true(!('composition' in sync_loop().actual_session_descriptor()))
+                    verify_true('channels' in sync_loop().actual_session_descriptor())
 
                     other_loop().clear()
                     testcase.wait_updated(session.backend)

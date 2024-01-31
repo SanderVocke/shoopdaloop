@@ -41,7 +41,7 @@ void throw_if_dylib_error() {
 }
 
 void* get_dylib_fn(_dylib_handle handle, const char* symbol_name) {
-    logging::log<"Backend.LoadDynamicLibrary", log_level_trace>(std::nullopt, std::nullopt, "Loading symbol {}", symbol_name);
+    logging::log<"Backend.LoadDynamicLibrary", log_level_debug_trace>(std::nullopt, std::nullopt, "Loading symbol {}", symbol_name);
 #ifdef _WIN32
     return (void*) GetProcAddress (handle, symbol_name);
 #else

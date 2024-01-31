@@ -18,7 +18,7 @@ Item {
     property bool filter_missing: true
 
     function update() {
-        var available = keys.map((key) => (registry && registry.has(key)))
+        var available = keys.map((key) => (registry && key.length > 0 && registry.has(key)))
         objects_exact = keys.map((key, idx) => {
             return available[idx] ? registry.get(key) : null;
         })
@@ -31,6 +31,7 @@ Item {
 
     Component.onCompleted: update()
     onRegistryChanged: update()
+    onKeysChanged: update()
     Connections {
         target: registry
         function onItemAdded(key, item) { if (keys.includes(key)) { update() } }

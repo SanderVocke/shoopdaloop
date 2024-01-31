@@ -5,8 +5,8 @@ import QtQuick.Controls.Material 6.3
 import "../generate_session.js" as GenerateSession
 
 // Dialog for adding a new track
-Dialog {
-    id: newtrackdialog
+ShoopDialog {
+    id: root
     standardButtons: Dialog.Ok | Dialog.Cancel
     parent: Overlay.overlay
     x: (parent.width - width) / 2
@@ -15,8 +15,10 @@ Dialog {
     title: 'Add track'
 
     width: 400
-    height: 550
+    height: grid.implicitHeight + 160
 
+    property var tracks : []
+    property var get_max_loop_slots : () => 8
     property alias track_name : name_field.text
     property alias is_drywet : select_type.is_drywet
     property alias is_composite : select_type.is_composite
@@ -32,7 +34,7 @@ Dialog {
 
     function open_for_new_track() {
         var idx = root.tracks.length
-        track_name = "Track " + idx.toString()
+        track_name = "Track " + (idx+1).toString()
         open()
     }
 
@@ -41,7 +43,7 @@ Dialog {
     onAccepted: {
         var track_descriptor = GenerateSession.generate_default_track(
             track_name,
-            Math.max(8, root.max_slots()),
+            Math.max(8, root.get_max_loop_slots()),
             port_name_base,
             false,
             port_name_base,
@@ -57,9 +59,19 @@ Dialog {
     }
 
     Grid {
+        id: grid
         columns: 2
         verticalItemAlignment: Grid.AlignVCenter
         columnSpacing: 10
+
+        Label {
+            text: "Choose the settings for your track."
+        }
+        Rectangle {
+            width: 10
+            height: 10
+            color: 'transparent'
+        }
 
         Label {
             text: "Name:"
@@ -210,7 +222,7 @@ Dialog {
             { value: 'custom', text: "Custom" }
         ]
         currentIndex: 2
-        property bool show_custom : { currentValue == 'custom' }
+        property bool show_custom : currentValue == 'custom'
         signal changeNChannels(int n)
         function update() {
             switch(currentValue) {

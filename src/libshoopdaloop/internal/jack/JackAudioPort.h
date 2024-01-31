@@ -11,6 +11,8 @@ template<typename API>
 class GenericJackAudioPort : public virtual AudioPort<jack_default_audio_sample_t>, public virtual GenericJackPort<API> {
     using GenericJackPort<API>::m_port;
     using GenericJackPort<API>::m_buffer;
+
+    std::vector<jack_default_audio_sample_t> m_fallback_buffer;
 public:
     GenericJackAudioPort(
         std::string name,

@@ -10,7 +10,7 @@ MidiBufferingInputPort::PROC_get_event_reference(uint32_t idx) {
     return m_temp_midi_storage[idx];
 }
 
-MidiBufferingInputPort::MidiBufferingInputPort(uint32_t reserve_size) : MidiPort(false, false, false) {
+MidiBufferingInputPort::MidiBufferingInputPort(uint32_t reserve_size) : MidiPort(true, false, false) {
     m_temp_midi_storage.reserve(reserve_size);
 }
 
@@ -30,6 +30,12 @@ void MidiBufferingInputPort::PROC_get_event_value(uint32_t idx,
     data_out = msg.get_data();
 }
 
+void MidiBufferingInputPort::PROC_prepare(uint32_t nframes) {
+    // Clear the internal buffer
+    m_temp_midi_storage.clear();
+
+    MidiPort::PROC_prepare(nframes);
+}
 
 void MidiBufferingInputPort::PROC_process(uint32_t nframes) {
     // Copy data from the wrapped input to our buffer.
@@ -48,4 +54,6 @@ void MidiBufferingInputPort::PROC_process(uint32_t nframes) {
             }
         }
     }
+
+    MidiPort::PROC_process(nframes);
 }

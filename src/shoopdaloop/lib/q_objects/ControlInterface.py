@@ -83,6 +83,7 @@ class ControlInterface(ControlHandler):
     
     @Slot(list, 'QVariant')
     def loop_event(self, coords, event):
+        self.logger.debug(lambda: "Loop event: {} ({})".format(coords, event.toVariant()))
         if isinstance(event, QJSValue):
             event = event.toVariant()
         if isinstance(coords, QJSValue):
@@ -189,7 +190,7 @@ class ControlInterface(ControlHandler):
 
     # @shoop_lua_fn_docstring.start
     # type loop_callback
-    # Loop event callback type. The callback takes arguments (coords, event), where coords is [x, y] coordinates of the event, and event is a table containing fields 'mode' (mode), 'selected' (bool), 'targeted' (bool) and 'length' (int).
+    # Loop event callback type. The callback takes arguments (coords, event), where coords is [x, y] coordinates of the event, and event is a table containing fields 'mode' (mode), 'selected' (bool), 'targeted' (bool) and 'length' (int). Coordinates map to the loop grid. Only the sync loop has a special location [-1,0].
     # @shoop_lua_fn_docstring.end
 
     @Slot(list, 'QVariant')

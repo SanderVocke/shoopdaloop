@@ -37,7 +37,7 @@ jobs:
           sphinx-build docs/source _build
       
       - name: Store HTML as artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: html
           path: _build/

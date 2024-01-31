@@ -51,7 +51,7 @@ Item {
             id: background_rect
             width: root.width
             height: root.height
-            color: 'black'
+            color: Material.background
             border.color: 'grey'
             border.width: 1
 
@@ -143,6 +143,46 @@ Item {
                 }
             }
         }
+
+        Rectangle {
+            id: loop_window_rect
+            color: 'blue'
+            width: (root.n_samples - root.start_offset) / render.samples_per_bin
+            height: render.height
+            opacity: 0.3
+            x: (root.start_offset - render.samples_offset) / render.samples_per_bin
+            y: 0
+        }
+
+        Rectangle {
+            id: preplay_window_rect
+            color: 'yellow'
+            width: root.n_preplay_samples / render.samples_per_bin
+            height: render.height
+            opacity: 0.3
+            x: (root.start_offset - render.samples_offset - root.n_preplay_samples) / render.samples_per_bin
+            y: 0
+        }
+
+        Rectangle {
+            id: unplayed_data_before_rect
+            color: 'grey'
+            width: (root.start_offset - root.n_preplay_samples) / render.samples_per_bin
+            height: render.height
+            opacity: 0.4
+            x: -render.samples_offset / render.samples_per_bin
+            y: 0
+        }
+
+        Rectangle {
+            id: playback_cursor_rect
+            visible: root.played_back_sample != null && root.played_back_sample != undefined
+            color: 'green'
+            width: 2
+            height: render.height
+            x: ((root.played_back_sample || 0) - render.samples_offset) / render.samples_per_bin
+            y: 0
+        }
         
         RenderChannelData {
             id: render
@@ -160,44 +200,14 @@ Item {
                 channel: root.channel
             }
 
-            Rectangle {
-                id: loop_window_rect
-                color: 'blue'
-                width: (root.n_samples - root.start_offset) / render.samples_per_bin
-                height: render.height
-                opacity: 0.3
-                x: (root.start_offset - render.samples_offset) / render.samples_per_bin
-                y: 0
-            }
-
-            Rectangle {
-                id: preplay_window_rect
-                color: 'yellow'
-                width: root.n_preplay_samples / render.samples_per_bin
-                height: render.height
-                opacity: 0.3
-                x: (root.start_offset - render.samples_offset - root.n_preplay_samples) / render.samples_per_bin
-                y: 0
-            }
-
-            Rectangle {
-                id: unplayed_data_before_rect
-                color: 'darkblue'
-                width: (root.start_offset - root.n_preplay_samples) / render.samples_per_bin
-                height: render.height
-                opacity: 0.3
-                x: -render.samples_offset / render.samples_per_bin
-                y: 0
-            }
-
-            Rectangle {
-                id: playback_cursor_rect
-                visible: root.played_back_sample != null && root.played_back_sample != undefined
-                color: 'green'
-                width: 2
-                height: render.height
-                x: ((root.played_back_sample || 0) - render.samples_offset) / render.samples_per_bin
-                y: 0
+            Label {
+                anchors {
+                    left: parent.left
+                    top: parent.top
+                }
+                font.pixelSize: 12
+                color: Material.foreground
+                text: root.channel.obj_id
             }
         }
     }

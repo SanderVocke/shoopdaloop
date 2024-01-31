@@ -670,15 +670,14 @@ Dialog {
                     text: 'Add user script'
                     onClicked: userscriptdialog.open()
 
-                    FileDialog {
+                    ShoopFileDialog {
                         id: userscriptdialog
                         fileMode: FileDialog.OpenFile
-                        options: FileDialog.DontUseNativeDialog
                         acceptLabel: 'Load LUA script'
                         nameFilters: ["LUA script files (*.lua)"]
                         onAccepted: {
                             close()
-                            var filename = UrlToFilename.qml_url_to_filename(selectedFile.toString());
+                            var filename = UrlToFilename.qml_url_to_filename(file.toString());
                             script_ui.add_script(filename)
                         }
                     }

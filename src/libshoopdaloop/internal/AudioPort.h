@@ -4,6 +4,7 @@
 #include "PortInterface.h"
 #include <atomic>
 #include <cstring>
+#include <stdexcept>
 
 template<typename SampleT>
 class AudioPort : public virtual PortInterface {
@@ -27,6 +28,10 @@ public:
     void PROC_process(uint32_t nframes) override {
         auto buf = PROC_get_buffer(nframes);
         auto muted = ma_muted.load();
+        
+        if (!buf) {
+            throw std::runtime_error("PROC_get_buffer returned nullptr");
+        }
 
         // Process input peak and buffer
         SampleT input_peak = ma_input_peak.load();

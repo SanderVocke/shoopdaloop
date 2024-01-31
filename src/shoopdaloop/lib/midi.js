@@ -11,6 +11,10 @@ function create_noteOn(channel, note, velocity) {
   return [NoteOn + channel, note, velocity]
 }
 
+function create_noteOff(channel, note, velocity) {
+  return [NoteOff + channel, note, velocity]
+}
+
 function maybe_note(msg) {
   if ([NoteOn, NoteOff].includes(msg[0] & 0xF0)) {
     return msg[1]

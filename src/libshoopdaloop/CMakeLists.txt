@@ -33,6 +33,11 @@ if(ENABLE_ASAN)
     endif()
     set(RUN_CMD_PREFIX LD_PRELOAD=${ASAN_DSO} ${RUN_CMD_PREFIX})
     set(RUN_CMD_PREFIX ${RUN_CMD_PREFIX} PARENT_SCOPE)
+    get_filename_component(ASAN_DSO_REALPATH ${ASAN_DSO} REALPATH)
+    install(FILES ${ASAN_DSO_REALPATH}
+            EXCLUDE_FROM_ALL
+            COMPONENT package_install
+            DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME})
 endif()
 option(ENABLE_PROCESS_PROFILING "Enable internal audio processing profiling" ON)
 if(ENABLE_PROCESS_PROFILING)
@@ -63,6 +68,8 @@ add_custom_target(
 
 set(EXTERNAL_DEPS_PREFIX ${CMAKE_CURRENT_BINARY_DIR}/external_deps)
 
+add_subdirectory(crashhandling)
+
 # Backend lib
 file(GLOB INTERNAL_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/internal/*.cpp)
 if (HAVE_LV2)
@@ -78,6 +85,9 @@ if (BACKEND_JACK)
   list(APPEND INTERNAL_SOURCES ${JACK_SOURCES})
   include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal/jack)
 endif()
+
+# build libzita-resampler
+include(${CMAKE_CURRENT_SOURCE_DIR}/BuildZitaResampler.cmake)
 
 # Includes
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal)
@@ -95,7 +105,11 @@ target_include_directories(shoopdaloop_internals
                         ${CMAKE_CURRENT_BINARY_DIR}
                         ${Boost_INCLUDE_DIR}
                         )
-target_link_libraries(shoopdaloop_internals PRIVATE Threads::Threads fmt::fmt)
+target_link_libraries(shoopdaloop_internals PRIVATE
+  Threads::Threads
+  fmt::fmt
+  zita
+  )
 if (UNIX)
     target_link_libraries(shoopdaloop_internals PUBLIC dl)
 endif()
@@ -115,6 +129,7 @@ endif()
 file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/empty.cpp "#include \"libshoopdaloop.h\"")
 add_library(shoopdaloop SHARED ${CMAKE_CURRENT_BINARY_DIR}/empty.cpp)
 target_link_libraries(shoopdaloop PRIVATE "$<LINK_LIBRARY:WHOLE_ARCHIVE,shoopdaloop_internals>")
+create_breakpad_symbols_dump(shoopdaloop)
 
 if(UNIX)
   set_target_properties(shoopdaloop PROPERTIES
@@ -134,24 +149,23 @@ install(TARGETS shoopdaloop
 
 if (OVERRIDE_COMPILE_LOG_LEVEL STREQUAL "")
   if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-    message("Building in debug mode. Using compile time log level: LOG_LEVEL_TRACE")
-    target_compile_definitions(shoopdaloop_internals PUBLIC -DCOMPILE_LOG_LEVEL=LOG_LEVEL_TRACE)
+    message("Building in debug mode. Using compile time log level for back-end: LOG_LEVEL_DEBUG_TRACE")
+    target_compile_definitions(shoopdaloop_internals PUBLIC -DCOMPILE_LOG_LEVEL=LOG_LEVEL_DEBUG_TRACE)
   else()
-    message("Building in non-debug mode. Disabling trace messages. Using compile time log level: LOG_LEVEL_DEBUG")
-    target_compile_definitions(shoopdaloop_internals PUBLIC -DCOMPILE_LOG_LEVEL=LOG_LEVEL_DEBUG)
+    message("Building in non-debug mode. Disabling trace messages. Using compile time log level for back-end: LOG_LEVEL_ALWAYS_TRACE")
+    target_compile_definitions(shoopdaloop_internals PUBLIC -DCOMPILE_LOG_LEVEL=LOG_LEVEL_ALWAYS_TRACE)
   endif()
 else()
-  message(WARNING "Using overridden compile time log level: ${OVERRIDE_COMPILE_LOG_LEVEL}")
+  message(WARNING "Using overridden compile time log level for back-end: ${OVERRIDE_COMPILE_LOG_LEVEL}")
   target_compile_definitions(shoopdaloop_internals PUBLIC -DCOMPILE_LOG_LEVEL=${OVERRIDE_COMPILE_LOG_LEVEL})
 endif()
-
 
 # Generate libshoopdaloop Python bindings into source dir
 set(GENERATED_BINDINGS_PY ${CMAKE_CURRENT_BINARY_DIR}/libshoopdaloop_bindings.py)
 add_custom_command(
   OUTPUT ${GENERATED_BINDINGS_PY}
   COMMAND ${RUN_CMD_PREFIX} ${CMAKE_COMMAND} -E env ASAN_OPTIONS=detect_leaks=0 ${CTYPESGEN_COMMAND} --no-macro-warnings -lshoopdaloop ${CMAKE_CURRENT_SOURCE_DIR}/libshoopdaloop.h ${CMAKE_CURRENT_SOURCE_DIR}/types.h -o ${GENERATED_BINDINGS_PY}
-  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/libshoopdaloop.h ${CMAKE_CURRENT_SOURCE_DIR}/libshoopdaloop.cpp
+  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/libshoopdaloop.h ${CMAKE_CURRENT_SOURCE_DIR}/libshoopdaloop.cpp shoopdaloop
   COMMENT "Generating C bindings for libshoopdaloop."
   )
 add_custom_target(

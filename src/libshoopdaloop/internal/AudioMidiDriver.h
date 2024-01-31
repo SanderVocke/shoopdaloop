@@ -31,13 +31,14 @@ public:
 class AudioMidiDriver : public WithCommandQueue,
                         private std::enable_shared_from_this<AudioMidiDriver> {
     std::shared_ptr<std::set<HasAudioProcessingFunction*>> m_processors;
-    std::atomic<uint32_t> m_xruns;
-    std::atomic<uint32_t> m_sample_rate;
-    std::atomic<uint32_t> m_buffer_size;
+    std::atomic<uint32_t> m_xruns = 0;
+    std::atomic<uint32_t> m_sample_rate = 0;
+    std::atomic<uint32_t> m_buffer_size = 0;
     std::atomic<float> m_dsp_load;
     std::atomic<void*> m_maybe_client_handle;
     std::atomic<const char*> m_client_name;
-    std::atomic<bool> m_active;
+    std::atomic<bool> m_active = false;
+    std::atomic<uint32_t> m_last_processed = 1;
     std::set<std::shared_ptr<shoop_types::_DecoupledMidiPort>> m_decoupled_midi_ports;
 
 protected:
@@ -49,6 +50,7 @@ protected:
     void set_maybe_client_handle(void* handle);
     void set_client_name(const char* name);
     void set_active(bool active);
+    void set_last_processed(uint32_t nframes);
 
     virtual void maybe_update_sample_rate() {};
     virtual void maybe_update_buffer_size() {};
@@ -79,7 +81,8 @@ public:
         std::string name,
         shoop_port_direction_t direction
     );
-    
+
+    void PROC_process_decoupled_midi_ports(uint32_t nframes);    
     void unregister_decoupled_midi_port(std::shared_ptr<shoop_types::_DecoupledMidiPort> port);
 
     virtual void close() = 0;
@@ -92,6 +95,7 @@ public:
     const char* get_client_name() const;
     void* get_maybe_client_handle() const;
     bool get_active() const;
+    uint32_t get_last_processed() const;
 
     void wait_process();
 

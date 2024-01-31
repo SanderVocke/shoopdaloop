@@ -9,7 +9,7 @@ ApplicationWindow {
     property var loop_widget
     property var maybe_backend_loop : loop_widget.maybe_backend_loop
     property var maybe_composite_loop : loop_widget.maybe_composite_loop
-    property var master_loop_widget
+    property var sync_loop_widget
 
     property PythonLogger logger : PythonLogger { name: 'Frontend.Qml.LoopDetailsWindow' }
     
@@ -31,7 +31,7 @@ ApplicationWindow {
                 id: waveform
                 anchors.margins: 5
                 loop: root.loop_widget
-                master_loop: root.master_loop_widget
+                sync_loop: root.sync_loop_widget
                 logger: root.logger
             }
         }

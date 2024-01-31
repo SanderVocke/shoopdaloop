@@ -9,8 +9,9 @@ import ShoopDaLoop.PythonControlInterface
 import "../generate_session.js" as GenerateSession
 import ShoopConstants
 
-Item {
+Rectangle {
     id: root
+    color: Material.background
     objectName: 'session'
 
     readonly property PythonLogger logger : PythonLogger { name: "Frontend.Qml.Session" }
@@ -49,6 +50,22 @@ Item {
             if (global_args.test_grab_screens) {
                 test_grab_screens_and_quit(global_args.test_grab_screens)
             }
+            if (global_args.quit_after >= 0.0) {
+                root.logger.info(() => `Auto-quit scheduled for ${global_args.quit_after} seconds.`)
+                autoquit_timer.interval = global_args.quit_after * 1000.0
+                autoquit_timer.start()
+            }
+        }
+    }
+
+    Timer {
+        id: autoquit_timer
+        interval: 100
+        repeat: false
+        running: false
+        onTriggered: {
+            root.logger.info(() => "Auto-quitting as per request.")
+            Qt.callLater(Qt.quit)
         }
     }
 
@@ -78,10 +95,21 @@ Item {
     property bool settings_io_enabled: false
 
     function actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) {
+        let track_groups = [
+            {
+                'name': 'sync',
+                'tracks': [ root.sync_track.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) ]
+            },
+            {
+                'name': 'main',
+                'tracks': tracks_widget.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to)
+            }
+        ]
+        
         return GenerateSession.generate_session(
             app_metadata.version_string,
             session_backend.get_sample_rate(),
-            tracks_widget.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to),
+            track_groups,
             [],
             [],
             registries.fx_chain_states_registry.all_values()
@@ -123,8 +151,39 @@ Item {
     }
 
     // For (test) access
-    property alias tracks: tracks_widget.tracks
-    property bool loaded : tracks_widget.loaded
+    property alias main_tracks: tracks_widget.tracks
+    property alias sync_track: sync_loop_loader.track_widget
+    property bool loaded : tracks_widget.loaded && sync_loop_loader.loaded
+    function get_tracks_widget() { return tracks_widget }
+
+    property var main_track_descriptors: {
+        let groups = root.initial_descriptor.track_groups;
+        for (var i=0; i<groups.length; i++) {
+            if (groups[i].name == 'main') { return groups[i].tracks; }
+        }
+        return []
+    }
+    property var sync_loop_track_descriptor: {
+        let groups = root.initial_descriptor.track_groups;
+        for (var i=0; i<groups.length; i++) {
+            if (groups[i].name == 'sync') {
+                let _t = groups[i].tracks
+                if (_t.length != 1) {
+                    root.logger.error(`Found ${_t.length} tracks in sync group instead of 1.`)
+                }
+                if (_t.length > 0) {
+                    let _l = _t[0].loops
+                    if (_l.length != 1) {
+                        root.logger.error(`Found ${_l.length} loops in sync track instead of 1.`)
+                    }
+                    if (_l.length > 0) {
+                        return _t[0]
+                    }
+                }
+            }
+        }
+        return null
+    }
 
     TasksFactory { id: tasks_factory }
 
@@ -154,19 +213,21 @@ Item {
     }
 
     function reload() {
+        root.logger.debug(() => ("Reloading session"))
         registries.state_registry.clear([
             'sync_active'
         ])
         registries.objects_registry.clear()
         tracks_widget.reload()
+        sync_loop_loader.reload()
     }
 
     function queue_load_tasks(data_files_directory, from_sample_rate, to_sample_rate, add_tasks_to) {
         tracks_widget.queue_load_tasks(data_files_directory, from_sample_rate, to_sample_rate, add_tasks_to)
-    }
-
-    function get_track_control_widget(idx) {
-        return tracks_widget.get_track_control_widget(idx)
+        if (sync_loop_loader.track_widget) {
+            root.logger.debug(() => (`Queue load tasks for sync track`))
+            sync_loop_loader.track_widget.queue_load_tasks(data_files_directory, from_sample_rate, to_sample_rate, add_tasks_to)
+        }
     }
 
     Dialog {
@@ -219,14 +280,18 @@ Item {
                 return;
             }
 
-            schema_validator.validate_schema(descriptor, validator.schema)
+            try {
+                schema_validator.validate_schema(descriptor, validator.schema)
+            } catch(err) {
+                console.log("Failed session schema validation for loaded session descriptor:\n",
+                            "\nobject:\n", JSON.stringify(descriptor, 0, 2), "\nerror:\n", err.message)
+            }
             
             if (our_sample_rate != incoming_sample_rate) {
                 descriptor = GenerateSession.convert_session_descriptor_sample_rate(descriptor, incoming_sample_rate, our_sample_rate)
             }
 
             root.initial_descriptor = descriptor
-            root.logger.debug(() => ("Reloading session"))
             reload()
             registries.state_registry.load_action_started()
 
@@ -264,13 +329,8 @@ Item {
         }
     }
 
-    RegistryLookup {
-        id: selected_loops_lookup
-        registry: registries.state_registry
-        key: 'selected_loop_ids'
-    }
-    property alias selected_loop_ids : selected_loops_lookup.object
-    property list<var> selected_loops : selected_loop_ids ? Array.from(selected_loop_ids).map((id) => registries.objects_registry.get(id)) : []
+    SelectedLoops { id: selected_loops_lookup }
+    property alias selected_loops: selected_loops_lookup.loops
 
     RegistryLookup {
         id: targeted_loop_lookup
@@ -306,6 +366,18 @@ Item {
             registry: registries.state_registry
             key: 'midi_control_configuration'
             id: lookup_midi_configuration
+        }
+    }
+
+    Loader {
+        active: global_args.monkey_tester
+
+        sourceComponent: MonkeyTester {
+            session: root
+            Component.onCompleted: { 
+                console.log("starting");
+                start()
+            }
         }
     }
 
@@ -403,19 +475,195 @@ Item {
             onSaveSession: (filename) => root.save_session(filename)
         }
 
+        Item {
+            id: welcome_text
+            visible: root.main_tracks.length == 0
+            anchors.centerIn: parent
+
+            width: childrenRect.width
+            height: childrenRect.height
+
+            Label {
+                text: {
+                    var rval = 'To get started:'
+                    rval += '\n\n- Set up content for the sync loop by:'
+                    rval += '\n  - Recording mono content into it, or'
+                    rval += '\n  - Loading audio (right-click on loop -> "Load Audio..."), or'
+                    rval += '\n  - Generating a click loop (right-click on loop -> "Click Loop...").'
+                    rval += '\n\n- Add a track by using the (+) at the top left.'
+                    return rval
+                }
+            }
+        }
+
         TracksWidget {
             id: tracks_widget
 
             anchors {
                 top: app_controls.bottom
                 left: parent.left
-                bottom: parent.bottom
+                bottom: details_area.visible ? details_area.top : bottom_bar.top
                 right: logo_menu_area.left
                 bottomMargin: 4
                 leftMargin: 4
             }
 
-            initial_track_descriptors: root.initial_descriptor.tracks
+            initial_track_descriptors: root.main_track_descriptors
+        }
+
+        ResizeableItem {
+            id: details_area
+
+            visible: bottom_bar.details_active
+
+            property real active_height: 200
+            height: bottom_bar.details_active ? active_height : 0 // Initial value
+
+            Connections {
+                target: bottom_bar
+                function onDetails_activeChanged() {
+                    if (bottom_bar.details_active) {
+                        height = details_area.active_height
+                    } else {
+                        if (height > 0) {
+                            details_area.active_height = height
+                        }
+                        height = 0
+                    }
+                }
+            }
+            max_height: root.height - 50
+
+            top_drag_enabled: true
+            top_drag_area_y_offset: detailspane.pane_y_offset
+
+            anchors {
+                bottom: bottom_bar.top
+                left: parent.left
+                right: logo_menu_area.left
+            }
+
+            DetailsPane {
+                id: detailspane
+                temporary_items : Array.from(root.selected_loops).map(l => ({
+                    'title': l.name + ' (selected)',
+                    'item': l,
+                    'autoselect': true
+                }))
+
+                RegisterInRegistry {
+                    registry: registries.state_registry
+                    key: 'main_details_pane'
+                    object: detailspane
+                }
+
+                anchors.fill: parent
+            }
+        }
+
+        Item {
+            id: bottom_bar
+
+            property alias details_active: details_toggle.checked
+            height: details_toggle.height
+
+            anchors {
+                left: parent.left
+                right: logo_menu_area.left
+                bottom: parent.bottom
+            }
+
+            ToolbarButton {
+                id: details_toggle
+                text: 'details'
+                togglable: true
+                height: 26
+            }
+        }
+
+        Rectangle {
+            id: sync_loop_area
+            color: "#555555"
+            height: 120
+
+            anchors {
+                right: parent.right
+                left: logo_menu_area.left
+                bottom: logo_menu_area.top
+                leftMargin: 10
+                rightMargin: 10
+            }
+
+            Loader {
+                active: false
+                id: sync_loop_loader
+                height: sync_loop_area.height
+
+                anchors {
+                    left: parent.left
+                    right: parent.right
+                }
+
+                property bool loaded: false
+                property var initial_descriptor : null
+
+                function initialize() {
+                    if (track_widget) {
+                        track_widget.qml_close()
+                    }
+                    active = false
+                    loaded = false
+                    initial_descriptor = root.sync_loop_track_descriptor
+                    active = Qt.binding(() => initial_descriptor != null)
+                }
+
+                Component.onCompleted: { initialize() }
+                function reload() { initialize() }
+
+                property var track_widget: item ?
+                    item.track_widget : undefined
+
+                sourceComponent: Item {
+
+                    property alias track_widget: sync_loop_widget
+                    property alias track_control_widget: sync_loop_control_widget
+
+                    anchors {
+                        fill: sync_loop_loader
+                        leftMargin: 8
+                        rightMargin: 8
+                    }
+
+                    TrackWidget {
+                        id: sync_loop_widget
+
+                        anchors {
+                            left: parent.left
+                            right: parent.right
+                            top: parent.top
+                        }
+
+                        initial_descriptor: sync_loop_loader.initial_descriptor
+                        
+                        onLoadedChanged: sync_loop_loader.loaded = loaded
+                        name_editable: false
+                        sync_loop_layout: true
+                    }
+
+                    TrackControlWidget {
+                        id: sync_loop_control_widget
+                        
+                        anchors {
+                            left: parent.left
+                            right: parent.right
+                            bottom: parent.bottom
+                            bottomMargin: 15
+                        }
+
+                        initial_track_descriptor: root.sync_loop_track_descriptor
+                    }
+                }
+            }
         }
 
         Item {

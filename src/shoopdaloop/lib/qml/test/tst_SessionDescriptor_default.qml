@@ -13,7 +13,7 @@ ShoopTestFile {
     Session {
         id: session
         anchors.fill: parent
-        initial_descriptor: GenerateSession.generate_default_session(app_metadata.version_string)
+        initial_descriptor: GenerateSession.generate_default_session(app_metadata.version_string, null, true)
 
 
         ShoopSessionTestCase {
@@ -32,7 +32,7 @@ ShoopTestFile {
                     reference['sample_rate'] = 48000
 
                     var actual = session.actual_session_descriptor(false, '', null)
-                    reference['tracks'][0]['width'] = actual['tracks'][0]['width']
+                    reference['track_groups'][0]['tracks'][0]['width'] = actual['track_groups'][0]['tracks'][0]['width']
                     verify(TestDeepEqual.testDeepEqual(actual, reference, session.logger.error))
 
                     var filename = file_io.generate_temporary_filename() + '.shl'

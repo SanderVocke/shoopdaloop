@@ -16,7 +16,6 @@ ShoopTestFile {
 
         anchors.fill: parent
         initial_descriptor: {
-            let base = GenerateSession.generate_default_session(app_metadata.version_string, null, 1)
             let direct_track = GenerateSession.generate_default_track(
                 "dt",
                 1,
@@ -31,9 +30,9 @@ ShoopTestFile {
                 false,
                 undefined
                 )
-            base.tracks.push(direct_track)
-            testcase.logger.debug(() => ("session descriptor: " + JSON.stringify(base, null, 2)))
-            return base
+            let desc = GenerateSession.generate_default_session(app_metadata.version_string, null, true, 1, 1, [direct_track])
+            testcase.logger.debug(() => ("session descriptor: " + JSON.stringify(desc, null, 2)))
+            return desc
         }
 
         ShoopSessionTestCase {
@@ -42,13 +41,14 @@ ShoopTestFile {
             filename : TestFilename.test_filename()
             session: session
 
-            function track() { return session.tracks[1] }
+            function track() { return session.main_tracks[0] }
 
             function loop() { return track().loops[0] }
 
             testcase_init_fn: () =>  {
                 run_case("initTestCase" , () => {
                     session.backend.dummy_enter_controlled_mode()
+                    testcase.wait_controlled_mode(session.backend)
                 })
             }
 
@@ -58,12 +58,18 @@ ShoopTestFile {
                     let ori = session.initial_descriptor
                     // sample_rate is not there in the beginning, but will be after save+load
                     ori['sample_rate'] = 48000
-                    for(var i=0; i<ori['tracks'].length; i++) {
-                        ori['tracks'][i]['width'] = session.actual_session_descriptor()['tracks'][i]['width']
+                    let _actual = session.actual_session_descriptor()
+                    for(var g=0; g<ori['track_groups'].length; g++) {
+                        let group = ori['track_groups'][g]
+                        let tracks = group.tracks
+                        for(var t=0; t<tracks.length; t++) {
+                            ori['track_groups'][g]['tracks'][t]['width'] =
+                              _actual['track_groups'][g]['tracks'][t]['width']
+                        }
                     }
 
                     verify_true(loop())
-                    verify_true('channels' in session.initial_descriptor.tracks[0].loops[0])
+                    verify_true('channels' in session.initial_descriptor['track_groups'][0]['tracks'][0]['loops'][0])
                     verify_true('channels' in loop().actual_session_descriptor())
                     verify_eq(loop().actual_session_descriptor().channels.length, 2)
                     testcase.wait_updated(session.backend)

@@ -173,7 +173,7 @@ void AudioChannel<SampleT>::PROC_process(
     uint32_t pos_before, uint32_t pos_after, uint32_t length_before,
     uint32_t length_after)
 {
-    log<log_level_trace>("process");
+    log<log_level_debug_trace>("process");
 
     // Execute any commands queued from other threads.
     PROC_handle_command_queue();
@@ -248,11 +248,14 @@ void AudioChannel<SampleT>::PROC_process(
 template <typename SampleT>
 void AudioChannel<SampleT>::PROC_exec_cmd(ProcessingCommand cmd) {
     unsigned ctype = (unsigned)cmd.cmd_type;
-    log<log_level_trace>("exec cmd: {}", ctype);
+    log<log_level_debug_trace>("exec cmd: {}", ctype);
     auto const &rc = cmd.details.raw_copy_details;
     auto const &ac = cmd.details.additive_copy_details;
 
     if (cmd.cmd_type == ProcessingCommandType::RawCopy) {
+        if (!rc.src || !rc.dst) {
+            throw_error<std::runtime_error>("Null pointer in raw copy");
+        }
         auto n = rc.sz / sizeof(SampleT);
         auto first = (n > 0) ? ((SampleT*)rc.src)[0] : 0.0f;
     }
@@ -278,7 +281,7 @@ void AudioChannel<SampleT>::PROC_exec_cmd(ProcessingCommand cmd) {
 
 template <typename SampleT>
 void AudioChannel<SampleT>::PROC_queue_memcpy(void *dst, void *src, uint32_t sz) {
-    log<log_level_trace>("queue memcpy");
+    log<log_level_debug_trace>("queue memcpy");
     ProcessingCommand cmd;
     cmd.cmd_type = ProcessingCommandType::RawCopy;
     cmd.details.raw_copy_details = {.src = src, .dst = dst, .sz = sz};
@@ -289,7 +292,7 @@ template <typename SampleT>
 void AudioChannel<SampleT>::PROC_queue_additivecpy(SampleT *dst, SampleT *src,
                                                    uint32_t n_elems, float mult,
                                                    bool update_absmax) {
-    log<log_level_trace>("queue addcpy");
+    log<log_level_debug_trace>("queue addcpy");
     ProcessingCommand cmd;
     cmd.cmd_type = ProcessingCommandType::AdditiveCopy;
     cmd.details.additive_copy_details = {.src = src,
@@ -302,7 +305,7 @@ void AudioChannel<SampleT>::PROC_queue_additivecpy(SampleT *dst, SampleT *src,
 
 template <typename SampleT>
 void AudioChannel<SampleT>::PROC_finalize_process() {
-    log<log_level_trace>("finalize");
+    log<log_level_debug_trace>("finalize");
 
     ProcessingCommand cmd;
     while (mp_proc_queue.pop(cmd)) {
@@ -313,7 +316,7 @@ void AudioChannel<SampleT>::PROC_finalize_process() {
 template <typename SampleT>
 void AudioChannel<SampleT>::load_data(SampleT *samples, uint32_t len,
                                       bool thread_safe) {
-    log<log_level_trace>("load data ({} samples)", len);
+    log<log_level_debug_trace>("load data ({} samples)", len);
 
     // Convert to internal storage layout
     auto buffers =
@@ -375,7 +378,7 @@ void AudioChannel<SampleT>::PROC_process_record(
     &buffers_data_length,
     SampleT *record_buffer,
     uint32_t record_buffer_size) {
-    log<log_level_trace>("process record");
+    log<log_level_debug_trace>("process record");
 
     if (record_buffer_size < n_samples) {
         throw_error<std::runtime_error>(
@@ -419,7 +422,7 @@ void AudioChannel<SampleT>::PROC_process_replace(uint32_t data_position, uint32_
                                                  uint32_t n_samples,
                                                  SampleT *record_buffer,
                                                  uint32_t record_buffer_size) {
-    log<log_level_trace>("process replace");
+    log<log_level_debug_trace>("process replace");
 
     if (record_buffer_size < n_samples) {
         throw_error<std::runtime_error>(
@@ -476,7 +479,7 @@ template <typename SampleT> uint32_t AudioChannel<SampleT>::get_length() const {
 
 template <typename SampleT>
 void AudioChannel<SampleT>::PROC_set_length(uint32_t length) {
-    log<log_level_trace>("set length -> {}", length);
+    log<log_level_debug_trace>("set length -> {}", length);
     ma_buffers_data_length = length;
     data_changed();
 }
@@ -492,7 +495,7 @@ void AudioChannel<SampleT>::PROC_process_playback(int data_position,
                                                   uint32_t n_samples, bool muted,
                                                   SampleT *playback_buffer,
                                                   uint32_t playback_buffer_size) {
-    log<log_level_trace>("process playback");
+    log<log_level_debug_trace>("process playback");
 
     if (playback_buffer_size < n_samples) {
         throw_error<std::runtime_error>(
@@ -566,7 +569,7 @@ void AudioChannel<SampleT>::PROC_handle_poi(shoop_loop_mode_t mode, uint32_t len
 template <typename SampleT>
 void AudioChannel<SampleT>::PROC_set_playback_buffer(SampleT *buffer,
                                                      uint32_t size) {
-    log<log_level_trace>("set playback buf ({} samples)", size);
+    log<log_level_debug_trace>("set playback buf ({} samples)", size);
 
     throw_if_commands_queued();
     mp_playback_target_buffer = buffer;
@@ -576,7 +579,7 @@ void AudioChannel<SampleT>::PROC_set_playback_buffer(SampleT *buffer,
 template <typename SampleT>
 void AudioChannel<SampleT>::PROC_set_recording_buffer(SampleT *buffer,
                                                       uint32_t size) {
-    log<log_level_trace>("set rec buf ({} samples)", size);
+    log<log_level_debug_trace>("set rec buf ({} samples)", size);
 
     throw_if_commands_queued();
     mp_recording_source_buffer = buffer;
@@ -585,7 +588,7 @@ void AudioChannel<SampleT>::PROC_set_recording_buffer(SampleT *buffer,
 
 template <typename SampleT>
 void AudioChannel<SampleT>::PROC_clear(uint32_t length) {
-    log<log_level_trace>("clear");
+    log<log_level_debug_trace>("clear");
 
     throw_if_commands_queued();
     mp_buffers.ensure_available(length);

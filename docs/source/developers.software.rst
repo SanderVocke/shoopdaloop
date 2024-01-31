@@ -44,7 +44,7 @@ The **front-end + Python extensions** handle:
 
 * The user interface
 * Session saving/loading
-* Advanced loop synchronization (scheduling loop transitions over multiple master loop cycles)
+* Advanced loop synchronization (scheduling loop transitions over multiple sync loop cycles)
 * MIDI handling for MIDI controllers (non-cycle-accurate)
 
 The **LUA scripts** are meant for parts that may need to be added/modified by individual users, such as:
