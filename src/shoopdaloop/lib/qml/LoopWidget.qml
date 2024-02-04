@@ -793,7 +793,7 @@ Item {
                     Drag.hotSpot.x : width/2
                     Drag.hotSpot.y : height/2
                     Drag.source: root
-                    Drag.keys: ['LoopWidget_track_' + root.track_obj_id]
+                    Drag.keys: ['LoopWidget', 'LoopWidget_track_' + root.track_obj_id]
 
                     Rectangle {
                         anchors.fill: parent

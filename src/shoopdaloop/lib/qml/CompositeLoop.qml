@@ -84,7 +84,7 @@ Item {
             return {}
         }
 
-        var _scheduled_playlists = playlists
+        var _scheduled_playlists = JSON.parse(JSON.stringify(playlists))
         for (var pidx=0; pidx < playlists.length; pidx++) {
             let playlist = _scheduled_playlists[pidx]
             var _it
@@ -96,18 +96,13 @@ Item {
                     root.logger.warning("Could not find " + elem.loop_id) 
                     continue
                 }
-                let loop = loop_widget.maybe_loop
-                if (!loop) {
-                    root.logger.warning(`Loop ${elem.loop_id} is not instantiated, skipping`)
-                    continue
-                }
                 let loop_start = _it + elem.delay
                 let loop_cycles =  loop_widget.n_cycles
                 let loop_end = loop_start + loop_cycles
 
                 elem['start_iteration'] = loop_start
                 elem['end_iteration'] = loop_end
-                elem['loop'] = loop
+                elem['loop_widget'] = loop_widget
 
                 _it += elem.delay + loop_cycles
             }
@@ -123,7 +118,13 @@ Item {
                 let loop_start = elem['start_iteration']
                 let loop_end = elem['end_iteration']
                 let loop_cycles = loop_end - loop_start
-                let loop = elem['loop']
+                let loop_widget = elem['loop_widget']
+
+                let loop = loop_widget.maybe_loop
+                if (!loop) {
+                    root.logger.warning(`Loop ${elem.loop_id} is not instantiated, skipping`)
+                    continue
+                }
 
                 if (!_schedule[loop_start]) { _schedule[loop_start] = { loops_start: new Set(), loops_end: new Set(), loops_ignored: new Set() } }
                 if (!_schedule[loop_end]) { _schedule[loop_end] = { loops_start: new Set(), loops_end: new Set(), loops_ignored: new Set() } }
