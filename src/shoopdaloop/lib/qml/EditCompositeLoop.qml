@@ -417,7 +417,7 @@ Item {
                                         visible: loop_rect.mapped_item.outgoing_edge != null
                                         height: loop_rect.height / 2
                                         width: height
-                                        color: 'white'
+                                        color: 'blue'
                                         side: 'right'
 
                                         anchors {
@@ -431,7 +431,7 @@ Item {
                                         visible: loop_rect.mapped_item.incoming_edge != null
                                         height: loop_rect.height / 2
                                         width: height
-                                        color: 'white'
+                                        color: 'blue'
                                         side: 'left'
 
                                         anchors {
@@ -489,7 +489,7 @@ Item {
     component LinkIndicator : Item {
         id: indicator
 
-        property var color : 'purple'
+        property color color : 'purple'
         property string side : 'left' // or 'right'
 
         readonly property bool flip : side == 'right'
@@ -506,7 +506,8 @@ Item {
             ShapePath {
                 startX: 0
                 startY: 0
-                //fillColor: indicator.color
+                fillColor: indicator.color
+                strokeWidth: -1
 
                 PathArc {
                     x: 0
