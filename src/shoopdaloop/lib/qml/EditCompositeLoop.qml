@@ -118,9 +118,14 @@ Item {
                 let swimlanes = swimlanes_per_track[track_idx]
 
                 // Check the existing swimlanes first
-                for(var k=0; k<swimlanes.length; k++) {
-                    if (is_free(track_idx, k, elem.start_iteration, elem.end_iteration)) {
-                        swimlane = k
+                var check_swimlanes = (new Array(swimlanes.length).fill(0)).map((v, idx) => idx) // in ascending order
+                if (elem.incoming_edge && elem.incoming_edge.loop_widget.track_idx == elem.loop_widget.track_idx) {
+                    // If there is a preceding element in the same track, prefer to go in the same swimlane
+                    check_swimlanes.splice(0, 0, elem.incoming_edge.swimlane)
+                }
+                for(var k=0; k<check_swimlanes.length; k++) {
+                    if (is_free(track_idx, check_swimlanes[k], elem.start_iteration, elem.end_iteration)) {
+                        swimlane = check_swimlanes[k]
                         break;
                     }
                 }
@@ -351,6 +356,7 @@ Item {
                         id: swimlanes
                         model: track_root.n_swimlanes
 
+                        // background rectangle for the entire swimlane.
                         Rectangle {
                             id: swimlane
                             border.color: 'black'
@@ -364,7 +370,9 @@ Item {
                             Mapper {
                                 model : track_root.track_playlist_elems.filter(l => l.swimlane == index)
 
+                                // Rectangle representing a loop on the schedule.
                                 Rectangle {
+                                    id: loop_rect
                                     property var mapped_item
                                     property int index
 
@@ -399,6 +407,33 @@ Item {
                                             anchors.centerIn: parent
                                             name: 'delete'
                                             color: Material.foreground
+                                        }
+                                    }
+
+                                    // If this loop is preceding another in the playlist, show that
+                                    // by a "link icon" to the next one.
+                                    Rectangle {
+                                        visible: loop_rect.mapped_item.outgoing_edge != null
+                                        height: loop_rect.height / 2
+                                        width: height
+                                        color: 'white'
+
+                                        anchors {
+                                            right: parent.right
+                                            verticalCenter: parent.verticalCenter
+                                        }
+                                    }
+
+                                    // Some for incoming connections
+                                    Rectangle {
+                                        visible: loop_rect.mapped_item.incoming_edge != null
+                                        height: loop_rect.height / 2
+                                        width: height
+                                        color: 'white'
+
+                                        anchors {
+                                            left: parent.left
+                                            verticalCenter: parent.verticalCenter
                                         }
                                     }
 
@@ -442,6 +477,30 @@ Item {
                 visible: parseInt(x) != 0
 
                 x: (composite_loop.position * root.cycle_width) / root.cycle_length
+            }
+        }
+    }
+
+    // Indicator shown on the sides of scheduled loop elements
+    // to show they are linked to other loops sequentially.
+    component LinkIndicator : Item {
+        id: indicator
+
+        property var color : 'purple'
+        property string side : 'left' // or 'right'
+
+        readonly property bool flip : side == 'right'
+
+        Shape {
+            anchors.fill: parent
+            transform : parent.flip ? Scale { xScale: -1 } : undefined
+
+            ShapePath {
+                startX: 0
+                startY: 0
+                PathLine { x: indicator.width; y: indicator.height/2 }
+                PathLine { x: 0; y: indicator.height }
+                PathLine { x: 0; y: 0 }
             }
         }
     }
