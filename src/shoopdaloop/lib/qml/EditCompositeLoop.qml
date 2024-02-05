@@ -1,6 +1,7 @@
 import QtQuick 6.3
 import QtQuick.Controls 6.3
 import QtQuick.Controls.Material 6.3
+import QtQuick.Shapes 6.3
 
 Item {
     id: root
@@ -412,11 +413,12 @@ Item {
 
                                     // If this loop is preceding another in the playlist, show that
                                     // by a "link icon" to the next one.
-                                    Rectangle {
+                                    LinkIndicator {
                                         visible: loop_rect.mapped_item.outgoing_edge != null
                                         height: loop_rect.height / 2
                                         width: height
                                         color: 'white'
+                                        side: 'right'
 
                                         anchors {
                                             right: parent.right
@@ -425,11 +427,12 @@ Item {
                                     }
 
                                     // Some for incoming connections
-                                    Rectangle {
+                                    LinkIndicator {
                                         visible: loop_rect.mapped_item.incoming_edge != null
                                         height: loop_rect.height / 2
                                         width: height
                                         color: 'white'
+                                        side: 'left'
 
                                         anchors {
                                             left: parent.left
@@ -493,13 +496,25 @@ Item {
 
         Shape {
             anchors.fill: parent
-            transform : parent.flip ? Scale { xScale: -1 } : undefined
+
+            // flip transform
+            transform : Scale {
+                xScale:   indicator.flip ? -1 : 1
+                origin.x: indicator.flip ? width/2 : 0 
+            }
 
             ShapePath {
                 startX: 0
                 startY: 0
-                PathLine { x: indicator.width; y: indicator.height/2 }
-                PathLine { x: 0; y: indicator.height }
+                //fillColor: indicator.color
+
+                PathArc {
+                    x: 0
+                    y: parent.height / 2
+                    radiusX: parent.height / 4
+                    radiusY: parent.height / 4
+                    useLargeArc: true
+                }
                 PathLine { x: 0; y: 0 }
             }
         }
