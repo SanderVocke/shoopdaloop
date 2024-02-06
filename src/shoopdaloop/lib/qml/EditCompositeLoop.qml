@@ -427,27 +427,23 @@ Item {
                     end_iteration: info.ori_elem.end_iteration,
                     delay: info.ori_elem.delay,
                     swimlane: info.swimlane,
-                    incoming_edge: info.incoming_edge,
-                    outgoing_edge: info.outgoing_edge,
+                    incoming_edge: j > 0 ? playlist[playlist.length-1] : null, // PlaylistElement previously created
+                    outgoing_edge: null, // fill in later
                     incoming_edge_color: info.incoming_edge_color,
                     outgoing_edge_color: info.outgoing_edge_color,
-                    maybe_forced_n_cycles: info.ori_elem.forced_n_cycles,
-                    info: info
+                    maybe_forced_n_cycles: info.ori_elem.forced_n_cycles
                 }))
             }
             rval.push(playlist)
         }
         return rval
     }
-    // To prevent binding loops, we resolve the edges to other PlaylistElements
+    // To prevent binding loops, we resolve some of the edges to other PlaylistElements
     // after initial creation.
     onPlaylist_elemsChanged: {
         playlist_elems.forEach(p => p.forEach(e => {
-            if (e.incoming_edge && !(e.incoming_edge instanceof PlaylistElement)) {
-                e.incoming_edge = p.filter(a => a.info == e.incoming_edge)[0]
-            }
-            if (e.outgoing_edge && !(e.outgoing_edge instanceof PlaylistElement)) {
-                e.outgoing_edge = p.filter(a => a.info == e.outgoing_edge)[0]
+            if (e.incoming_edge) {
+                e.incoming_edge.outgoing_edge = e
             }
         }))
     }

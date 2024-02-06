@@ -1473,6 +1473,11 @@ Item {
                onClicked: () => clicktrackdialog.open()
             }
             ShoopMenuItem {
+                text: "Create Composite"
+                shown: !root.maybe_loop
+                onClicked: root.create_composite_loop()
+            }
+            ShoopMenuItem {
                 text: "Save audio..."
                 onClicked: presavedialog.open()
                 shown: root.has_audio
