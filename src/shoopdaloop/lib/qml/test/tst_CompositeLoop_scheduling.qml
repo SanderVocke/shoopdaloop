@@ -81,8 +81,8 @@ ShoopTestFile {
 
                 test_fns: ({
                     'test_sequential_schedule': () => {
-                        sequential_sched_lut.add_loop(sequential_sched_1, 0)
-                        sequential_sched_lut.add_loop(sequential_sched_2, 1)
+                        sequential_sched_lut.add_loop(sequential_sched_1, 0, undefined)
+                        sequential_sched_lut.add_loop(sequential_sched_2, 1, undefined)
 
                         verify_eq(
                             root.loops_to_obj_ids(sequential_sched_lut.schedule),

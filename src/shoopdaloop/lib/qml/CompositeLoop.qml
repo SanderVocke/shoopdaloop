@@ -43,8 +43,10 @@ Item {
     }
 
     // The sequence is stored as a set of "playlists". Each playlist represents a parallel
-    // timeline, stored as a list of { delay: int, loop_id: str }, where the delay can be
+    // timeline, stored as a list of { delay: int, loop_id: str, n_cycles: int | undefined }, where the delay can be
     // used to insert blank spots in-between sequential loops.
+    // the n_cycles can be set to force how long the loop is activated in the schedule. If undefined, it will
+    // just be determined from the current loop length or assumed to be 1 for empty loops.
     property var playlists: (initial_composition_descriptor && initial_composition_descriptor.playlists) ?
         initial_composition_descriptor.playlists : []
 
@@ -61,12 +63,12 @@ Item {
 
     signal cycled()
 
-    function add_loop(loop, delay, playlist_idx=0) {
-        root.logger.debug(`Adding loop ${loop.obj_id} to playlist ${playlist_idx} with delay ${delay}`)
+    function add_loop(loop, delay, n_cycles=undefined, playlist_idx=0) {
+        root.logger.debug(`Adding loop ${loop.obj_id} to playlist ${playlist_idx} with delay ${delay}, n_cycles override ${n_cycles}`)
         while (playlist_idx >= playlists.length) {
             playlists.push([])
         }
-        playlists[playlist_idx].push({loop_id: loop.obj_id, delay: delay})
+        playlists[playlist_idx].push({loop_id: loop.obj_id, delay: delay, n_cycles: n_cycles})
         playlistsChanged()
     }
 
@@ -79,10 +81,6 @@ Item {
     function recalculate_schedule() {
         root.logger.debug(() => 'Recalculating schedule.')
         root.logger.trace(() => `--> playlists: ${JSON.stringify(playlists, null, 2)}`)
-        if (!sync_length) {
-            root.logger.debug(() => 'Cycle length not known - no schedule.')
-            return {}
-        }
 
         var _scheduled_playlists = JSON.parse(JSON.stringify(playlists))
         for (var pidx=0; pidx < playlists.length; pidx++) {
@@ -93,16 +91,17 @@ Item {
                 let elem = playlist[i]
                 let loop_widget = registries.objects_registry.value_or(elem.loop_id, undefined)
                 if (!loop_widget) {
-                    root.logger.warning("Could not find " + elem.loop_id) 
+                    root.logger.debug("Could not find " + elem.loop_id) 
                     continue
                 }
                 let loop_start = _it + elem.delay
-                let loop_cycles =  loop_widget.n_cycles
+                let loop_cycles =  Math.max(1, elem.n_cycles ? elem.n_cycles : loop_widget.n_cycles)
                 let loop_end = loop_start + loop_cycles
 
                 elem['start_iteration'] = loop_start
                 elem['end_iteration'] = loop_end
                 elem['loop_widget'] = loop_widget
+                elem['forced_n_cycles'] = (elem.n_cycles && elem.n_cycles > 0) ? elem.n_cycles : null
 
                 _it += elem.delay + loop_cycles
             }
@@ -119,11 +118,20 @@ Item {
                 let loop_end = elem['end_iteration']
                 let loop_cycles = loop_end - loop_start
                 let loop_widget = elem['loop_widget']
-
-                let loop = loop_widget.maybe_loop
-                if (!loop) {
-                    root.logger.warning(`Loop ${elem.loop_id} is not instantiated, skipping`)
+                if (!loop_widget) {
+                    root.logger.debug(`Loop widget ${elem.loop_id} not found, skipping`)
                     continue
+                }
+
+                var loop = loop_widget.maybe_loop
+                if (!loop) {
+                    root.logger.debug(`Loop ${elem.loop_id} is not instantiated, creating a default back-end loop for it`)
+                    loop_widget.create_backend_loop()
+                    loop = loop_widget.maybe_loop
+                    if (!loop) {
+                        root.logger.warning(`Could not create a back-end loop for ${elem.loop_id}.`)
+                        continue
+                    }
                 }
 
                 if (!_schedule[loop_start]) { _schedule[loop_start] = { loops_start: new Set(), loops_end: new Set(), loops_ignored: new Set() } }
@@ -187,6 +195,12 @@ Item {
     property var all_loops: new Set(Array.from(all_loop_ids || []).map(id => registries.objects_registry.value_or(id, undefined)).filter(m => m))
     property bool all_loops_found:  all_loops.size == all_loop_ids.size
 
+    // If the registry changes and we didn't find all our loops, trigger to look again
+    Connections {
+        target: registries.objects_registry
+        function onContentsChanged() { if (!all_loops_found) { root.all_loop_idsChanged() } }
+    }
+
     function print_loops_found() { root.logger.debug(`All ${all_loop_ids.size} loops found: ${all_loops_found}`) }
     onAll_loops_foundChanged: print_loops_found()
     onAll_loop_idsChanged: print_loops_found()
@@ -205,64 +219,6 @@ Item {
             property int index
             target: mapped_item
             function onN_cyclesChanged() { update_schedule() }
-        }
-    }
-
-    // Rendering the schedule over the loops if selected
-    Mapper {
-        model: Array.from(all_loops)
-        Item {
-            property var mapped_item
-            property int index
-
-            function update_coords() {
-                let other_coords = mapped_item.mapToItem(Overlay.overlay, 0, 0)
-                x = other_coords.x
-                y = other_coords.y
-            }
-            Component.onCompleted: update_coords()
-            onVisibleChanged: update_coords()
-            parent: Overlay.overlay
-
-            visible: root.loop_widget ? root.loop_widget.selected : false
-
-            width: root.loop_widget ? root.loop_widget.width : 1
-            height: root.loop_widget ? root.loop_widget.height : 1
-            Rectangle {
-                anchors.right: parent.right
-                anchors.rightMargin: -8
-                y: -8
-                width: childrenRect.width + 6
-                height: childrenRect.height + 6
-                color: Material.background
-                border.width: 1
-                border.color: 'pink'
-                radius: 4
-
-                Label {
-                    x: 3
-                    y: 3
-                    color: Material.foreground
-                    text: {
-                        var rval = ''
-                        for(var k of Array.from(Object.keys(schedule))) {
-                            if (schedule[k].loops_start.includes(mapped_item.maybe_loop)) {
-                                let start = k
-                                var end = start
-                                for(var k2 of Object.keys(schedule)) {
-                                    if (k2 > k && schedule[k2].loops_end.includes(mapped_item.maybe_loop)) {
-                                        end = k2
-                                        break
-                                    }
-                                }
-                                if (rval != '') { rval += ', ' }
-                                rval += `${start}-${end}`
-                            }
-                        }
-                        return rval
-                    }
-                }
-            }
         }
     }
 

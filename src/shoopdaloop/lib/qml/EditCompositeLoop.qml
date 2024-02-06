@@ -53,8 +53,11 @@ Item {
         property int start_iteration
         property int end_iteration
         property int delay
+        property var maybe_forced_n_cycles
         property var incoming_edge // refer to other PlaylistElement
         property var outgoing_edge // refer to other PlaylistElement
+        property color incoming_edge_color
+        property color outgoing_edge_color
 
         // Calculate
         property int swimlane // swimlane where the element should be rendered in
@@ -68,12 +71,28 @@ Item {
         PlaylistElement { }
     }
     
-    // Holds a structure equal to that of scheduled_playlists, but with
-    // PlaylistElements instead of plain objects.
-    // Also calculate the swimlanes along the way.
-    readonly property var playlist_elems : {
-        // Create the PlaylistElements and populate basic properties
-        var rval = []
+    // Calculate all the information we need to turn the composite loop
+    // playlist items into fully annotated PlaylistElement objects.
+    // Holds a structure equal to that of scheduled_playlists.
+    readonly property var playlist_elem_placeholders : {
+        // First some logic for picking colors for the inter-loop links.
+        let colors = [
+            '#da7454',
+	        '#8ac4ae',
+	        '#eebe60',
+	        '#f4ede0',
+	        '#7685c0'
+        ]
+        var color_idx = 0
+        function pick_color() {
+            let rval = colors[color_idx]
+            color_idx = (color_idx + 1) % colors.length
+            return rval
+        }
+
+        // Create placeholders holding the basic properties
+        // that will later become PlaylistElements
+        var placeholders = []
         let _scheduled_playlists = Array.from(scheduled_playlists.map(a => Array.from(a))) // shallow copy
         let _schedule_length = schedule_length
         for(var i=0; i<_scheduled_playlists.length; i++) {
@@ -81,22 +100,25 @@ Item {
             var prev_elem = null
             for(var j=0; j<_scheduled_playlists[i].length; j++) {
                 let ori = _scheduled_playlists[i][j]
-                let elem = playlist_element_factory.createObject(root, {
-                    loop_widget: ori.loop_widget,
-                    loop_id: ori.loop_id,
-                    start_iteration: ori.start_iteration,
-                    end_iteration: ori.end_iteration,
-                    delay: ori.delay,
-                    swimlane: -1
-                })
+                let elem = {
+                    "ori_elem": ori,
+                    "swimlane": -1,
+                    "incoming_edge": null,
+                    "outgoing_edge": null,
+                    "incoming_edge_color": 'grey',
+                    "outgoing_edge_color": 'grey'
+                }
                 if (prev_elem) {
                     prev_elem.outgoing_edge = elem
                     elem.incoming_edge = prev_elem
+                    let c = pick_color()
+                    prev_elem.outgoing_edge_color = c
+                    elem.incoming_edge_color = c
                 }
-                prev_elem = elem
                 playlist.push(elem)
+                prev_elem = playlist[playlist.length - 1]
             }
-            rval.push(playlist)
+            placeholders.push(playlist)
         }
 
         // Now calculate the swimlanes
@@ -110,22 +132,23 @@ Item {
             return true;
         }
         // Start filling the swimlanes
-        for (var i=0; i<rval.length; i++) {
-            let playlist = rval[i]
+        for (var i=0; i<placeholders.length; i++) {
+            let playlist = placeholders[i]
             for (var j=0; j<playlist.length; j++) {
                 let elem = playlist[j]
                 var swimlane = -1
-                let track_idx = elem.loop_widget.track_idx
+                let loop_widget = elem.ori_elem.loop_widget
+                let track_idx = loop_widget.track_idx
                 let swimlanes = swimlanes_per_track[track_idx]
 
                 // Check the existing swimlanes first
                 var check_swimlanes = (new Array(swimlanes.length).fill(0)).map((v, idx) => idx) // in ascending order
-                if (elem.incoming_edge && elem.incoming_edge.loop_widget.track_idx == elem.loop_widget.track_idx) {
+                if (elem.incoming_edge && elem.incoming_edge.ori_elem.loop_widget.track_idx == loop_widget.track_idx) {
                     // If there is a preceding element in the same track, prefer to go in the same swimlane
                     check_swimlanes.splice(0, 0, elem.incoming_edge.swimlane)
                 }
                 for(var k=0; k<check_swimlanes.length; k++) {
-                    if (is_free(track_idx, check_swimlanes[k], elem.start_iteration, elem.end_iteration)) {
+                    if (is_free(track_idx, check_swimlanes[k], elem.ori_elem.start_iteration, elem.ori_elem.end_iteration)) {
                         swimlane = check_swimlanes[k]
                         break;
                     }
@@ -138,7 +161,7 @@ Item {
                 }
 
                 // Mark the newly taken slots
-                for(var h=elem.start_iteration; h<elem.end_iteration; h++) {
+                for(var h=elem.ori_elem.start_iteration; h<elem.ori_elem.end_iteration; h++) {
                     swimlanes[swimlane][h] = true
                 }
 
@@ -146,6 +169,33 @@ Item {
             }
         }
 
+        // Now instantiate the actual playlist elements
+        return placeholders
+    }
+
+    // Create the PlaylistElements.
+    readonly property var playlist_elems : {
+        var rval = []
+        for(var i=0; i<playlist_elem_placeholders.length; i++) {
+            var playlist = []
+            for(var j=0; j<playlist_elem_placeholders[i].length; j++) {
+                let info = playlist_elem_placeholders[i][j]
+                playlist.push(playlist_element_factory.createObject(root, {
+                    loop_widget: info.ori_elem.loop_widget,
+                    loop_id: info.ori_elem.loop_id,
+                    start_iteration: info.ori_elem.start_iteration,
+                    end_iteration: info.ori_elem.end_iteration,
+                    delay: info.ori_elem.delay,
+                    swimlane: info.swimlane,
+                    incoming_edge: info.incoming_edge,
+                    outgoing_edge: info.outgoing_edge,
+                    incoming_edge_color: info.incoming_edge_color,
+                    outgoing_edge_color: info.outgoing_edge_color,
+                    maybe_forced_n_cycles: info.ori_elem.forced_n_cycles
+                }))
+            }
+            rval.push(playlist)
+        }
         return rval
     }
 
@@ -167,6 +217,7 @@ Item {
             return {
                 'delay': elem.delay,
                 'loop_id': elem.loop_id,
+                'n_cycles': elem.maybe_forced_n_cycles ? elem.maybe_forced_n_cycles : undefined
             }
         }
         var playlists = []
@@ -197,18 +248,30 @@ Item {
         push_playlists(new_elems_schedule)
     }
 
-    // Add an element connected after an existing one and push
-    function add_connected_elem_and_push(existing_elem, new_elem, delay) {
-        new_elem.incoming_edge = existing_elem
-        if (existing_elem.outgoing_edge) {
-            // Insert in-between in case there is already a connected item
-            new_elem.outgoing_edge = existing_elem.outgoing_edge
-            new_elem.outgoing_edge.incoming_edge = new_elem
+    // Insert an element into an existing playlist
+    function add_connected_elem_and_push(existing_elem, new_elem, put_before, delay) {
+        if (put_before) {
+            new_elem.outgoing_edge = existing_elem
+            if (existing_elem.incoming_edge) {
+                // Insert in-between in case there is already a connected item
+                new_elem.incoming_edge = existing_elem.incoming_edge
+                new_elem.incoming_edge.outgoing_edge = new_elem
+            }
+            existing_elem.incoming_edge = new_elem
+            new_elem.start_iteration = existing_elem.start_iteration
+            new_elem.end_iteration = new_elem.start_iteration + new_elem.loop_widget.n_cycles
+        } else {
+            new_elem.incoming_edge = existing_elem
+            if (existing_elem.outgoing_edge) {
+                // Insert in-between in case there is already a connected item
+                new_elem.outgoing_edge = existing_elem.outgoing_edge
+                new_elem.outgoing_edge.incoming_edge = new_elem
+            }
+            existing_elem.outgoing_edge = new_elem
+            new_elem.start_iteration = existing_elem.end_iteration + delay
+            new_elem.end_iteration = new_elem.start_iteration + new_elem.loop_widget.n_cycles
         }
-        existing_elem.outgoing_edge = new_elem
         new_elem.delay = delay
-        new_elem.start_iteration = existing_elem.end_iteration + delay
-        new_elem.end_iteration = new_elem.start_iteration + new_elem.loop_widget.n_cycles
         var new_elems_schedule = []
         for (var i=0; i<playlist_elems.length; i++) {
             let playlist = playlist_elems[i]
@@ -216,8 +279,13 @@ Item {
             for (var j=0; j<playlist.length; j++) {
                 let elem = playlist[j]
                 if (elem == existing_elem) {
-                    new_playlist.push(elem)
-                    new_playlist.push(new_elem)
+                    if (put_before) {
+                        new_playlist.push(new_elem)
+                        new_playlist.push(elem)
+                    } else {
+                        new_playlist.push(elem)
+                        new_playlist.push(new_elem)
+                    }
                 } else {
                     new_playlist.push(elem)
                 }
@@ -243,6 +311,12 @@ Item {
         }
         new_elems_schedule.push([new_elem])
         push_playlists(new_elems_schedule)
+    }
+
+    // For a particular element, force the amount of cycles to run.
+    function force_elem_n_cycles(elem, n_cycles) {
+        elem.maybe_forced_n_cycles = n_cycles
+        push_playlists(playlist_elems)
     }
 
     component Track : Item {
@@ -387,7 +461,13 @@ Item {
 
                                     Label {
                                         anchors.centerIn: parent
-                                        text: mapped_item.loop_widget.name
+                                        text: {
+                                            var rval = mapped_item.loop_widget.name
+                                            if (mapped_item.maybe_forced_n_cycles) {
+                                                rval = rval + " (!)"
+                                            }
+                                            return rval
+                                        }
                                     }
 
                                     Component.onCompleted: {
@@ -411,14 +491,82 @@ Item {
                                         }
                                     }
 
+                                    // Draggy rect for right-side width ajustment
+                                    Rectangle {
+                                        id: right_width_adjuster
+                                        anchors {
+                                            right: parent.right
+                                            top: parent.top
+                                            bottom: parent.bottom
+                                        }
+                                        width: 20
+
+                                        // for debugging
+                                        //color: 'red'
+                                        color: 'transparent'
+
+                                        Rectangle {
+                                            id: right_width_adjuster_movable
+                                            width: right_width_adjuster.width
+                                            height: right_width_adjuster.height
+                                            x: 0
+                                            y: 0
+                                            color: "transparent"
+
+                                            Drag.active: right_drag_area.drag.active
+                                            visible: Drag.active
+
+                                            // Draw a rectangle that represents the new
+                                            // loop length and positioning
+                                            Rectangle {
+                                                id: right_resize_preview
+                                                parent: swimlane
+
+                                                readonly property int dragged_cycle : {
+                                                    right_width_adjuster_movable.x; //dummy dependency
+                                                    let dragged_x = right_width_adjuster_movable.mapToItem(loop_rect, 0, 0).x
+                                                    return Math.ceil(dragged_x / root.cycle_width)
+                                                }
+
+                                                x: loop_rect.x
+                                                z: 3
+                                                height: loop_rect.height
+                                                width: Math.max(1, dragged_cycle) * root.cycle_width
+                                                color: "blue"
+                                                opacity: 0.3
+                                                visible: right_width_adjuster_movable.visible
+                                            }
+                                        }
+
+                                        MouseArea {
+                                            id: right_drag_area
+                                            anchors.fill: parent
+                                            cursorShape: Qt.SizeHorCursor
+
+                                            onReleased: {
+                                                if (drag.active) {
+                                                    let new_n = right_resize_preview.dragged_cycle
+                                                    if (new_n >= 1) {
+                                                        force_elem_n_cycles(loop_rect.mapped_item, new_n)
+                                                    }
+                                                }
+                                            }
+
+                                            drag {
+                                                axis: "XAxis"
+                                                target: right_width_adjuster_movable
+                                            }
+                                        }
+                                    }
+
                                     // If this loop is preceding another in the playlist, show that
                                     // by a "link icon" to the next one.
                                     LinkIndicator {
                                         visible: loop_rect.mapped_item.outgoing_edge != null
                                         height: loop_rect.height / 2
                                         width: height
-                                        color: 'blue'
                                         side: 'right'
+                                        color: loop_rect.mapped_item.outgoing_edge_color
 
                                         anchors {
                                             right: parent.right
@@ -426,13 +574,13 @@ Item {
                                         }
                                     }
 
-                                    // Some for incoming connections
+                                    // Same for incoming connections
                                     LinkIndicator {
                                         visible: loop_rect.mapped_item.incoming_edge != null
                                         height: loop_rect.height / 2
                                         width: height
-                                        color: 'blue'
                                         side: 'left'
+                                        color: loop_rect.mapped_item.incoming_edge_color
 
                                         anchors {
                                             left: parent.left
@@ -456,7 +604,33 @@ Item {
                                                 loop_widget: src_loop_widget,
                                                 loop_id: src_loop_widget.obj_id
                                             })
-                                            add_connected_elem_and_push(mapped_item, new_elem, 0)
+                                            add_connected_elem_and_push(mapped_item, new_elem, false, 0)
+                                        }
+
+                                        Rectangle {
+                                            anchors.fill: parent
+                                            opacity: 0.3
+                                            visible: parent.containsDrag
+                                        }
+                                    }
+
+                                    // DropArea for connecting a loop to be sequenced before this one
+                                    DropArea {
+                                        keys: ["LoopWidget"]
+                                        anchors {
+                                            left: parent.left
+                                            right: parent.horizontalCenter
+                                            top: parent.top
+                                            bottom: parent.bottom
+                                        }
+
+                                        onDropped: (event) => {
+                                            let src_loop_widget = drag.source
+                                            let new_elem = playlist_element_factory.createObject(root, {
+                                                loop_widget: src_loop_widget,
+                                                loop_id: src_loop_widget.obj_id
+                                            })
+                                            add_connected_elem_and_push(mapped_item, new_elem, true, 0)
                                         }
 
                                         Rectangle {
@@ -489,7 +663,11 @@ Item {
     component LinkIndicator : Item {
         id: indicator
 
-        property color color : 'purple'
+        // antialiasing
+        layer.samples: 8
+        layer.enabled: true
+
+        property color color : 'blue'
         property string side : 'left' // or 'right'
 
         readonly property bool flip : side == 'right'
