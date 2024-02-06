@@ -13,7 +13,7 @@ Item {
     property int x_offset: 0
 
     readonly property int cycle_length: composite_loop.sync_length
-    property int swimlane_height: 34
+    property int swimlane_height: 28
 
     property var scheduled_playlists : composite_loop.scheduled_playlists
     property int schedule_length : Math.max.apply(null, Object.keys(composite_loop.schedule))

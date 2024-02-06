@@ -73,26 +73,27 @@ LuaControlInterface {
 
     function select_tracks(track_selector) {
         var rval = []
+        console.log(track_selector)
+        function select_track(integer_selector) {
+            if(integer_selector >= 0) {
+                return session.main_tracks[integer_selector]
+            } else if (integer_selector == -1) {
+                return session.sync_track
+            } else {
+                return null
+            }
+        }
         if (Array.isArray(track_selector)) {
             if (track_selector.length == 0) { rval = [] }
             else {
                 // Form [track_idx1, track_idx2, ...]
                 rval = track_selector.map(
-                    (idx) => {
-                        if(idx >= 0) {
-                            return session.main_tracks[idx]
-                        } else if (idx == -1) {
-                            return session.sync_track
-                        } else {
-                            return null
-                        }
-                    }
+                    (idx) => select_track(idx)
                 ).filter(t => t != null && t != undefined)
+                console.log(rval)
             }
         } else if (Number.isInteger(track_selector)) {
-            if (session.main_tracks.length > track_selector) {
-                return [session.main_tracks[track_selector]]
-            } else { return [] }
+            return select_track(track_selector)
         } else {
             // Form [track_select_fn]
             rval = session.main_tracks.filter((t) => track_selector(t))
@@ -211,6 +212,7 @@ LuaControlInterface {
 
     // Track interface overrides
     function track_set_gain_override(track_selector, vol) {
+        console.log(track_selector)
         select_tracks(track_selector).forEach(t => t.control_widget.set_gain(vol))
     }
     function track_set_gain_fader_override(track_selector, vol) {

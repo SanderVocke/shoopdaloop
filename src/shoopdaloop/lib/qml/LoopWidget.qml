@@ -989,7 +989,7 @@ Item {
 
                         Rectangle {
                             width: recordN.width
-                            height: recordN.height + recordfx.height
+                            height: (recordN.visible ? recordN.height : 0) + recordfx.height
                             color: statusrect.color
 
                             MouseArea {
@@ -1012,8 +1012,13 @@ Item {
                                 SmallButtonWithCustomHover {
                                     id : recordN
                                     property int n: 1
+                                    
+                                    // This feature makes no sense for composite loops
+                                    visible: !root.maybe_composite_loop
+
                                     width: buttongrid.button_width
                                     height: buttongrid.button_height
+
                                     IconWithText {
                                         size: parent.width
                                         anchors.centerIn: parent

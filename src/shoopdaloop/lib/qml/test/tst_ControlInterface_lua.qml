@@ -110,7 +110,7 @@ ShoopTestFile {
             }
 
             function verify_eq_lua(a, b) {
-                verify(do_eval(`
+                verify_true(do_eval(`
                     return (function()
                         local stringify
                         stringify = function(e)
