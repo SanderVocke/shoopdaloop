@@ -296,6 +296,7 @@ Item {
         property var outgoing_edge // refer to other PlaylistElement
         property color incoming_edge_color
         property color outgoing_edge_color
+        property var info
 
         // Calculate
         property int swimlane // swimlane where the element should be rendered in
@@ -416,6 +417,7 @@ Item {
         var rval = []
         for(var i=0; i<playlist_elem_placeholders.length; i++) {
             var playlist = []
+            var lookup = {}
             for(var j=0; j<playlist_elem_placeholders[i].length; j++) {
                 let info = playlist_elem_placeholders[i][j]
                 playlist.push(playlist_element_factory.createObject(root, {
@@ -429,7 +431,8 @@ Item {
                     outgoing_edge: info.outgoing_edge,
                     incoming_edge_color: info.incoming_edge_color,
                     outgoing_edge_color: info.outgoing_edge_color,
-                    maybe_forced_n_cycles: info.ori_elem.forced_n_cycles
+                    maybe_forced_n_cycles: info.ori_elem.forced_n_cycles,
+                    info: info
                 }))
             }
             rval.push(playlist)
@@ -552,9 +555,42 @@ Item {
     }
 
     // For a particular element, force the amount of cycles to run.
-    function force_elem_n_cycles(elem, n_cycles) {
+    function force_elem_n_cycles_and_push(elem, n_cycles) {
         elem.maybe_forced_n_cycles = n_cycles
         push_playlists(playlist_elems)
+    }
+
+    // Unlink connected loops and push.
+    function unlink_and_push(from_elem, to_elem) {
+        // To do this we need to cut a playlist in two.
+        var new_elems_schedule = []
+        console.log(from_elem, to_elem)
+        playlist_elems.forEach(p => {
+            console.log(p)
+            if (!p.includes(from_elem) || !p.includes(to_elem)) { new_elems_schedule.push(Array.from(p)); return; }
+            console.log('a')
+            let first_playlist = []
+            let second_playlist = []
+            var found = false
+            for(var i=0; i<p.length; i++) {
+                if (found) {
+                    second_playlist.push(p[i])
+                    if (p[i] == to_elem) {
+                        to_elem.delay = to_elem.start_iteration
+                        to_elem.incoming_edge = null
+                    }
+                } else if (p[i] == from_elem) {
+                    found = true
+                    first_playlist.push(p[i])
+                    from_elem.outgoing_edge = null
+                } else {
+                    first_playlist.push(p[i])
+                }
+            }
+            new_elems_schedule.push(Array.from(first_playlist));
+            new_elems_schedule.push(Array.from(second_playlist));
+        })
+        push_playlists(new_elems_schedule)
     }
 
     component Track : Item {
@@ -674,23 +710,6 @@ Item {
                                             mapped_item.gui_item = this
                                         }
 
-                                        ExtendedButton {
-                                            tooltip: "Delete from the sequence"
-
-                                            height: 24
-                                            width: 24
-                                            onClicked: {
-                                                root.delete_elem_and_push(mapped_item)
-                                            }
-
-                                            MaterialDesignIcon {
-                                                size: Math.min(parent.width, parent.height) - 10
-                                                anchors.centerIn: parent
-                                                name: 'delete'
-                                                color: Material.foreground
-                                            }
-                                        }
-
                                         // Draggy rect for right-side width ajustment
                                         Rectangle {
                                             id: right_width_adjuster
@@ -747,7 +766,7 @@ Item {
                                                     if (drag.active) {
                                                         let new_n = right_resize_preview.dragged_cycle
                                                         if (new_n >= 1) {
-                                                            force_elem_n_cycles(loop_rect.mapped_item, new_n)
+                                                            force_elem_n_cycles_and_push(loop_rect.mapped_item, new_n)
                                                         }
                                                     }
                                                 }
@@ -845,7 +864,10 @@ Item {
                                         }
 
                                         MouseArea {
-                                            anchors.fill: parent
+                                            x: 0
+                                            y: 0
+                                            height: parent.height
+                                            width: parent.width - right_drag_area.width
                                             acceptedButtons: Qt.RightButton
                                             onClicked: loop_menu.popup()
                                         }
@@ -857,6 +879,21 @@ Item {
                                             ShoopMenuItem {
                                                 text: "Remove"
                                                 onClicked: root.delete_elem_and_push(loop_rect.mapped_item)
+                                            }
+                                            ShoopMenuItem {
+                                                text: "Unlink -->"
+                                                shown: loop_rect.mapped_item.outgoing_edge ? true : false
+                                                onClicked: root.unlink_and_push(loop_rect.mapped_item, loop_rect.mapped_item.outgoing_edge)
+                                            }
+                                            ShoopMenuItem {
+                                                text: "<-- Unlink"
+                                                shown: loop_rect.mapped_item.incoming_edge ? true : false
+                                                onClicked: root.unlink_and_push(loop_rect.mapped_item.incoming_edge, loop_rect.mapped_item)
+                                            }
+                                            ShoopMenuItem {
+                                                text: "Remove forced length"
+                                                shown: loop_rect.mapped_item.maybe_forced_n_cycles ? true : false
+                                                onClicked: root.force_elem_n_cycles_and_push(loop_rect.mapped_item, undefined)
                                             }
                                         }
                                     }
@@ -920,22 +957,6 @@ Item {
                     useLargeArc: true
                 }
                 PathLine { x: 0; y: 0 }
-            }
-        }
-
-        MouseArea {
-            anchors.fill: parent
-            acceptedButtons: Qt.RightButton
-            onClicked: link_menu.popup()
-        }
-
-        // Context menu
-        Menu {
-            id: link_menu
-
-            ShoopMenuItem {
-                text: "Unlink"
-                onClicked: root.unlink_elements(indicator.loop_elem, indicator.other_loop_elem)
             }
         }
     }
