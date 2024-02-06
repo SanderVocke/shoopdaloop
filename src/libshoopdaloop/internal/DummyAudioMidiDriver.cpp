@@ -337,10 +337,12 @@ void DummyAudioMidiDriver<Time, Size>::start(
         auto bufs_per_second = AudioMidiDriver::get_sample_rate() / AudioMidiDriver::get_buffer_size();
         auto interval = 1.0f / ((float)bufs_per_second);
         auto micros = uint32_t(interval * 1000000.0f);
+        float time_taken = 0.0f;
         while (!this->m_finish) {
-            std::this_thread::sleep_for(std::chrono::microseconds(micros));
+            std::this_thread::sleep_for(std::chrono::microseconds((uint32_t)std::ceil(std::max(0.0f, micros - time_taken))));
             PROC_handle_command_queue();
             if (!m_paused) {
+                auto start = std::chrono::high_resolution_clock::now();
                 auto mode = m_mode.load();
                 auto samples_to_process = m_controlled_mode_samples_to_process.load();
                 uint32_t to_process = mode == DummyAudioMidiDriverMode::Controlled ?
@@ -351,6 +353,8 @@ void DummyAudioMidiDriver<Time, Size>::start(
                 if (mode == DummyAudioMidiDriverMode::Controlled) {
                     m_controlled_mode_samples_to_process -= to_process;
                 }
+                auto end = std::chrono::high_resolution_clock::now();
+                time_taken = duration_cast<std::chrono::microseconds>(end - start).count();
             }
         }
         log<log_level_debug>(

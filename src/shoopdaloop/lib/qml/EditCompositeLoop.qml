@@ -9,7 +9,9 @@ Item {
     property var loop // LoopWidget
     property var composite_loop : loop.maybe_composite_loop
 
-    property int cycle_width: 130
+    property alias cycle_width: zoom_slider.value
+    property int x_offset: 0
+
     readonly property int cycle_length: composite_loop.sync_length
     property int swimlane_height: 34
 
@@ -19,27 +21,263 @@ Item {
     property var sync_track
     property var main_tracks : []
 
-    Column {
-        id: tracks_mapper
-        spacing: 1
-        width: parent.width
-        height: childrenRect.height
+    height: childrenRect.height
 
-        Track {
-            sync_track: true
-            track: root.sync_track
-            width: tracks_mapper.width
+    Row {
+        id: toolbar
+        property int tool_buttons_size: 24
+
+        anchors {
+            top: parent.top
+            left: parent.left
+        }
+        height: 40
+        spacing: 2
+
+        ToolbarButton {
+            anchors {
+                verticalCenter: parent.verticalCenter
+            }
+            material_design_icon: 'magnify'
+            size: toolbar.tool_buttons_size
+
+            onClicked: zoom_popup.open()
+            toggle_visual_active: zoom_popup.visible
+
+            Popup {
+                id: zoom_popup
+                leftInset: 20
+                rightInset: 50
+                topInset: 20
+                bottomInset: 20
+
+                ShoopSlider {
+                    id: zoom_slider
+                    width: 160
+                    value: 130
+                    from: 20
+                    to: 600
+
+                    anchors {
+                        verticalCenter: parent.verticalCenter
+                    }
+                }
+            }
         }
 
-        Mapper {
-            model : main_tracks
+        property real zoom_step_amount : 0.05 * (zoom_slider.to - zoom_slider.from)
+        ToolbarButton {
+            anchors {
+                verticalCenter: parent.verticalCenter
+            }
+            material_design_icon: 'magnify-plus-outline'
+            size: toolbar.tool_buttons_size
 
-            Track {
-                property var mapped_item
-                property int index
+            onClicked: zoom_slider.value = Math.min(zoom_slider.value + toolbar.zoom_step_amount, zoom_slider.to)
+        }
 
-                track : mapped_item
-                width: tracks_mapper.width
+        ToolbarButton {
+            anchors {
+                verticalCenter: parent.verticalCenter
+            }
+            material_design_icon: 'magnify-minus-outline'
+            size: toolbar.tool_buttons_size
+
+            onClicked: zoom_slider.value = Math.max(zoom_slider.value - toolbar.zoom_step_amount, zoom_slider.from)
+        }
+
+        ToolbarButton {
+            anchors {
+                verticalCenter: parent.verticalCenter
+            }
+            material_design_icon: 'magnify'
+            size: toolbar.tool_buttons_size
+
+            Label {
+                x: 7
+                y: 4
+                text: "A"
+                color: Material.foreground
+                font.pixelSize: 8
+            }
+
+            onClicked: {
+                root.x_offset = 0
+                root.cycle_width = tracks_column.width / root.schedule_length - 5
+            }
+        }
+    }
+
+    Rectangle {
+        id: all_content
+        anchors {
+            top: toolbar.bottom
+            left: parent.left
+            right: parent.right
+            bottom: parent.bottom
+        }
+
+        // Backgrounds of each track are rendered here, underneath our drop areas
+        Item {
+            anchors.fill: tracks_column
+            clip: true
+
+            Mapper {
+                model : {
+                    var rval = Array.from(tracks_mapper.sorted_instances)
+                    rval.push(cycle_header)
+                    return rval
+                }
+
+                Rectangle {
+                    property int index
+                    property var mapped_item
+
+                    width: mapped_item.width
+                    height: mapped_item.height
+                    y: {
+                        mapped_item.y; //dummy dependency
+                        return mapped_item.mapToItem(tracks_column, 0, 0).y
+                    }
+                    x: {
+                        mapped_item.x; //dummy dependency
+                        return mapped_item.mapToItem(tracks_column, 0, 0).x
+                    }
+
+                    color: Material.background
+                }
+            }
+        }
+
+        // Overlay drop areas to drop a loop in a cycle
+        Item {
+            anchors.fill: tracks_column
+
+            Mapper {
+                model : cycle_header.children.filter(c => !(c instanceof Repeater))
+
+                DropArea {
+                    property int index
+                    property var mapped_item
+
+                    keys: ["LoopWidget"]
+                    
+                    width: mapped_item.width
+                    y: 0
+                    height: tracks_column.height
+                    x: {
+                        mapped_item.x; //dummy dependency
+                        return mapped_item.mapToItem(tracks_column, 0, 0).x
+                    }
+
+                    onDropped: (event) => {
+                        let src_loop_widget = drag.source
+                        let new_elem = playlist_element_factory.createObject(root, {
+                            loop_widget: src_loop_widget,
+                            loop_id: src_loop_widget.obj_id,
+                            incoming_edge: null,
+                            outgoing_edge: null,
+                            delay: mapped_item.cycle
+                        })
+                        add_new_playlist_with_elem_and_push(new_elem, index)
+                    }
+
+                    Rectangle {
+                        anchors.fill: parent
+                        opacity: 0.3
+                        visible: parent.containsDrag
+                    }
+                }
+            }
+        }
+
+        Column {
+            id: tracks_column
+            spacing: 1
+            anchors {
+                left: track_labels.right
+                right: parent.right
+                top: parent.top
+            }
+            height: childrenRect.height
+
+            // Header showing the current cycle
+            Rectangle {
+                id: cycle_header
+                clip: true
+                anchors {
+                    left: parent.left
+                    right: parent.right
+                }
+                height: 16
+                color: 'transparent'
+
+                property int first_cycle_rendered : Math.floor(root.x_offset / root.cycle_width)
+                property int first_cycle_pos : first_cycle_rendered*root.cycle_width - root.x_offset
+                property int render_n_cycles : (width / root.cycle_width) + 2
+               
+                Repeater {
+                    model : parent.render_n_cycles
+
+                    Rectangle {
+                        property int cycle : cycle_header.first_cycle_rendered + index
+
+                        color: 'transparent'
+                        border.color: Material.foreground
+                        border.width: 1
+                        width: root.cycle_width
+                        x: cycle_header.first_cycle_pos + root.cycle_width * index
+                        anchors {
+                            top: parent.top
+                            bottom: parent.bottom
+                        }
+
+                        Label {
+                            anchors.centerIn: parent
+                            text: parent.cycle + 1
+                        }
+                    }
+                }
+            }
+
+            Mapper {
+                model : main_tracks
+                id: tracks_mapper
+                Track {
+                    property var mapped_item
+                    property int index
+
+                    track : mapped_item
+                    width : tracks_column.width
+                    x_offset : root.x_offset
+                }
+            }
+        }
+
+        Item {
+            id: track_labels
+            width: childrenRect.width + 6
+            height: tracks_column.height
+            y: tracks_column.y
+
+            Mapper {
+                model: main_tracks
+
+                Label {
+                    property int index
+                    property var mapped_item
+                    property var visual_track : {
+                        let r = tracks_mapper.sorted_instances.filter(i => i.mapped_item == mapped_item)
+                        if (r.length == 1) { return r[0]; }
+                        return undefined;
+                    }
+
+                    y: visual_track ? visual_track.y + visual_track.height/2 - height/2 : 0
+                    height: visual_track ? visual_track.height : undefined
+                    verticalAlignment: Text.AlignVCenter
+
+                    text: mapped_item.name
+                }
             }
         }
     }
@@ -325,335 +563,299 @@ Item {
         property var track
         readonly property int track_idx : track.track_idx
 
-        // The sync track is shown differently, and is not editable.
-        // We do use this component for it so that we can nicely render
-        // everything in an aligned way.
-        property bool sync_track
+        property int x_offset : 0
         
         height: childrenRect.height
 
         // Filter playlist elements that belong to this track.
         readonly property var track_playlist_elems :
-            sync_track ? null :
             root.flat_playlist_elems.filter(e => e.loop_widget.track_idx == track_idx)
 
         // Find the amount of swimlanes needed.
         readonly property int n_swimlanes: 
-            sync_track ? 0 :
             Math.max.apply(null, track_playlist_elems.map(l => l.swimlane)) + 1
-
-        Label {
-            id: name_label
-            anchors {
-                left: parent.left
-                top: content_rect.top
-                bottom: content_rect.bottom
-            }
-            text: track_root.sync_track ? 'Cycle' : track.name
-            horizontalAlignment: Text.AlignRight
-            verticalAlignment: Text.AlignVCenter
-            width: 80
-        }
 
         Rectangle {
             id: content_rect
+            clip: true
             anchors {
                 top: parent.top
-                left: name_label.right
+                left: parent.left
                 right: parent.right
-                leftMargin: 6
             }
             height: Math.max(childrenRect.height, root.swimlane_height)
-            color: track_root.sync_track ? 'transparent' : Material.background
+            color: 'transparent'
 
-            Loader {
-                active: track_root.sync_track
-                id: show_sync_track
+            // Handler for panning the view
+            DragHandler {
+                id: drag_handler
+                target: null
 
-                sourceComponent: Component { Repeater {
-                    model: Math.max(root.schedule_length, (content_rect.width + root.cycle_width) / root.cycle_width)
-                    height: childrenRect.height
-                    width: childrenRect.width
-                    Rectangle {
-                        color: 'transparent'
-                        width: root.cycle_width
-                        height: root.swimlane_height
-                        border.color: Material.foreground
-                        border.width: 1
-                        x: index * root.cycle_width
+                acceptedButtons: Qt.MiddleButton | Qt.RightButton
 
-                        Label {
-                            anchors.fill: parent
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                            text: index
-                        }
+                xAxis.enabled: true
+                yAxis.enabled: false
 
-                        DropArea {
-                            keys: ["LoopWidget"]
-                            anchors.fill: parent
+                property real prev_pos: 0.0
 
-                            onDropped: (event) => {
-                                let src_loop_widget = drag.source
-                                let new_elem = playlist_element_factory.createObject(root, {
-                                    loop_widget: src_loop_widget,
-                                    loop_id: src_loop_widget.obj_id,
-                                    incoming_edge: null,
-                                    outgoing_edge: null,
-                                    delay: index
-                                })
-                                add_new_playlist_with_elem_and_push(new_elem, index)
-                            }
-
-                            Rectangle {
-                                anchors.fill: parent
-                                opacity: 0.3
-                                visible: parent.containsDrag
-                            }
-                        }
-                    }
-                }}
+                onActiveChanged: {
+                    if (!active) { prev_pos = 0.0 }
+                }
+                onActiveTranslationChanged: {
+                    let val = activeTranslation.x
+                    let changed = val - prev_pos
+                    root.x_offset -= changed
+                    prev_pos = val
+                }
             }
 
-            Loader {
-                active: track_root.n_swimlanes && track_root.n_swimlanes > 0
-                id: show_track
+            Item {
+                width: parent.width
+                height: childrenRect.height
+                y: 0
+                x: -root.x_offset
 
-                sourceComponent: Component { Item {
-                    id: swimlanes_column
-                    
-                    property int spacing: 1
-                    
-                    height: childrenRect.height
-                    width: root.cycle_width * track_root.track_schedule_length
+                Loader {
+                    active: track_root.n_swimlanes && track_root.n_swimlanes > 0
+                    id: show_track
 
-                    Repeater {
-                        id: swimlanes
-                        model: track_root.n_swimlanes
+                    sourceComponent: Component { Item {
+                        id: swimlanes_column
+                        
+                        property int spacing: 1
+                        
+                        height: childrenRect.height
+                        width: root.cycle_width * track_root.track_schedule_length
 
-                        // background rectangle for the entire swimlane.
-                        Rectangle {
-                            id: swimlane
-                            border.color: 'black'
-                            border.width: 1
-                            color: 'transparent'
+                        Repeater {
+                            id: swimlanes
+                            model: track_root.n_swimlanes
 
-                            width: swimlanes_column.width
-                            height: root.swimlane_height
-                            y: index * (root.swimlane_height + swimlanes_column.spacing)
+                            // background rectangle for the entire swimlane.
+                            Rectangle {
+                                id: swimlane
+                                border.color: 'black'
+                                border.width: 1
+                                color: 'transparent'
 
-                            Mapper {
-                                model : track_root.track_playlist_elems.filter(l => l.swimlane == index)
+                                width: swimlanes_column.width
+                                height: root.swimlane_height
+                                y: index * (root.swimlane_height + swimlanes_column.spacing)
 
-                                // Rectangle representing a loop on the schedule.
-                                Rectangle {
-                                    id: loop_rect
-                                    property var mapped_item
-                                    property int index
+                                Mapper {
+                                    model : track_root.track_playlist_elems.filter(l => l.swimlane == index)
 
-                                    color: 'grey'
-                                    border.color: 'black'
-                                    border.width: 1
-
-                                    width: root.cycle_width * (mapped_item.end_iteration - mapped_item.start_iteration)
-                                    height: swimlane.height
-                                    x: root.cycle_width * mapped_item.start_iteration
-
-                                    Label {
-                                        anchors.centerIn: parent
-                                        text: {
-                                            var rval = mapped_item.loop_widget.name
-                                            if (mapped_item.maybe_forced_n_cycles) {
-                                                rval = rval + " (!)"
-                                            }
-                                            return rval
-                                        }
-                                    }
-
-                                    Component.onCompleted: {
-                                        mapped_item.gui_item = this
-                                    }
-
-                                    ExtendedButton {
-                                        tooltip: "Delete from the sequence"
-
-                                        height: 24
-                                        width: 24
-                                        onClicked: {
-                                            root.delete_elem_and_push(mapped_item)
-                                        }
-
-                                        MaterialDesignIcon {
-                                            size: Math.min(parent.width, parent.height) - 10
-                                            anchors.centerIn: parent
-                                            name: 'delete'
-                                            color: Material.foreground
-                                        }
-                                    }
-
-                                    // Draggy rect for right-side width ajustment
+                                    // Rectangle representing a loop on the schedule.
                                     Rectangle {
-                                        id: right_width_adjuster
-                                        anchors {
-                                            right: parent.right
-                                            top: parent.top
-                                            bottom: parent.bottom
-                                        }
-                                        width: 20
+                                        id: loop_rect
+                                        property var mapped_item
+                                        property int index
 
-                                        // for debugging
-                                        //color: 'red'
-                                        color: 'transparent'
+                                        color: 'grey'
+                                        border.color: 'black'
+                                        border.width: 1
 
-                                        Rectangle {
-                                            id: right_width_adjuster_movable
-                                            width: right_width_adjuster.width
-                                            height: right_width_adjuster.height
-                                            x: 0
-                                            y: 0
-                                            color: "transparent"
+                                        width: root.cycle_width * (mapped_item.end_iteration - mapped_item.start_iteration)
+                                        height: swimlane.height
+                                        x: root.cycle_width * mapped_item.start_iteration
 
-                                            Drag.active: right_drag_area.drag.active
-                                            visible: Drag.active
-
-                                            // Draw a rectangle that represents the new
-                                            // loop length and positioning
-                                            Rectangle {
-                                                id: right_resize_preview
-                                                parent: swimlane
-
-                                                readonly property int dragged_cycle : {
-                                                    right_width_adjuster_movable.x; //dummy dependency
-                                                    let dragged_x = right_width_adjuster_movable.mapToItem(loop_rect, 0, 0).x
-                                                    return Math.ceil(dragged_x / root.cycle_width)
+                                        Label {
+                                            anchors.centerIn: parent
+                                            text: {
+                                                var rval = mapped_item.loop_widget.name
+                                                if (mapped_item.maybe_forced_n_cycles) {
+                                                    rval = rval + " (!)"
                                                 }
-
-                                                x: loop_rect.x
-                                                z: 3
-                                                height: loop_rect.height
-                                                width: Math.max(1, dragged_cycle) * root.cycle_width
-                                                color: "blue"
-                                                opacity: 0.3
-                                                visible: right_width_adjuster_movable.visible
+                                                return rval
                                             }
                                         }
 
-                                        MouseArea {
-                                            id: right_drag_area
-                                            anchors.fill: parent
-                                            cursorShape: Qt.SizeHorCursor
+                                        Component.onCompleted: {
+                                            mapped_item.gui_item = this
+                                        }
 
-                                            onReleased: {
-                                                if (drag.active) {
-                                                    let new_n = right_resize_preview.dragged_cycle
-                                                    if (new_n >= 1) {
-                                                        force_elem_n_cycles(loop_rect.mapped_item, new_n)
+                                        ExtendedButton {
+                                            tooltip: "Delete from the sequence"
+
+                                            height: 24
+                                            width: 24
+                                            onClicked: {
+                                                root.delete_elem_and_push(mapped_item)
+                                            }
+
+                                            MaterialDesignIcon {
+                                                size: Math.min(parent.width, parent.height) - 10
+                                                anchors.centerIn: parent
+                                                name: 'delete'
+                                                color: Material.foreground
+                                            }
+                                        }
+
+                                        // Draggy rect for right-side width ajustment
+                                        Rectangle {
+                                            id: right_width_adjuster
+                                            anchors {
+                                                right: parent.right
+                                                top: parent.top
+                                                bottom: parent.bottom
+                                            }
+                                            width: 20
+
+                                            // for debugging
+                                            //color: 'red'
+                                            color: 'transparent'
+
+                                            Rectangle {
+                                                id: right_width_adjuster_movable
+                                                width: right_width_adjuster.width
+                                                height: right_width_adjuster.height
+                                                x: 0
+                                                y: 0
+                                                color: "transparent"
+
+                                                Drag.active: right_drag_area.drag.active
+                                                visible: Drag.active
+
+                                                // Draw a rectangle that represents the new
+                                                // loop length and positioning
+                                                Rectangle {
+                                                    id: right_resize_preview
+                                                    parent: swimlane
+
+                                                    readonly property int dragged_cycle : {
+                                                        right_width_adjuster_movable.x; //dummy dependency
+                                                        let dragged_x = right_width_adjuster_movable.mapToItem(loop_rect, 0, 0).x
+                                                        return Math.ceil(dragged_x / root.cycle_width)
+                                                    }
+
+                                                    x: loop_rect.x
+                                                    z: 3
+                                                    height: loop_rect.height
+                                                    width: Math.max(1, dragged_cycle) * root.cycle_width
+                                                    color: "blue"
+                                                    opacity: 0.3
+                                                    visible: right_width_adjuster_movable.visible
+                                                }
+                                            }
+
+                                            MouseArea {
+                                                id: right_drag_area
+                                                anchors.fill: parent
+                                                cursorShape: Qt.SizeHorCursor
+
+                                                onReleased: {
+                                                    if (drag.active) {
+                                                        let new_n = right_resize_preview.dragged_cycle
+                                                        if (new_n >= 1) {
+                                                            force_elem_n_cycles(loop_rect.mapped_item, new_n)
+                                                        }
                                                     }
                                                 }
+
+                                                drag {
+                                                    axis: "XAxis"
+                                                    target: right_width_adjuster_movable
+                                                }
+                                            }
+                                        }
+
+                                        // If this loop is preceding another in the playlist, show that
+                                        // by a "link icon" to the next one.
+                                        LinkIndicator {
+                                            visible: loop_rect.mapped_item.outgoing_edge != null
+                                            height: loop_rect.height / 2
+                                            width: height
+                                            side: 'right'
+                                            color: loop_rect.mapped_item.outgoing_edge_color
+
+                                            anchors {
+                                                right: parent.right
+                                                verticalCenter: parent.verticalCenter
+                                            }
+                                        }
+
+                                        // Same for incoming connections
+                                        LinkIndicator {
+                                            visible: loop_rect.mapped_item.incoming_edge != null
+                                            height: loop_rect.height / 2
+                                            width: height
+                                            side: 'left'
+                                            color: loop_rect.mapped_item.incoming_edge_color
+
+                                            anchors {
+                                                left: parent.left
+                                                verticalCenter: parent.verticalCenter
+                                            }
+                                        }
+
+                                        // DropArea for connecting a loop to be sequenced after this one
+                                        DropArea {
+                                            keys: ["LoopWidget"]
+                                            anchors {
+                                                right: parent.right
+                                                left: parent.horizontalCenter
+                                                top: parent.top
+                                                bottom: parent.bottom
                                             }
 
-                                            drag {
-                                                axis: "XAxis"
-                                                target: right_width_adjuster_movable
+                                            onDropped: (event) => {
+                                                let src_loop_widget = drag.source
+                                                let new_elem = playlist_element_factory.createObject(root, {
+                                                    loop_widget: src_loop_widget,
+                                                    loop_id: src_loop_widget.obj_id
+                                                })
+                                                add_connected_elem_and_push(mapped_item, new_elem, false, 0)
+                                            }
+
+                                            Rectangle {
+                                                anchors.fill: parent
+                                                opacity: 0.3
+                                                visible: parent.containsDrag
                                             }
                                         }
-                                    }
 
-                                    // If this loop is preceding another in the playlist, show that
-                                    // by a "link icon" to the next one.
-                                    LinkIndicator {
-                                        visible: loop_rect.mapped_item.outgoing_edge != null
-                                        height: loop_rect.height / 2
-                                        width: height
-                                        side: 'right'
-                                        color: loop_rect.mapped_item.outgoing_edge_color
+                                        // DropArea for connecting a loop to be sequenced before this one
+                                        DropArea {
+                                            keys: ["LoopWidget"]
+                                            anchors {
+                                                left: parent.left
+                                                right: parent.horizontalCenter
+                                                top: parent.top
+                                                bottom: parent.bottom
+                                            }
 
-                                        anchors {
-                                            right: parent.right
-                                            verticalCenter: parent.verticalCenter
-                                        }
-                                    }
+                                            onDropped: (event) => {
+                                                let src_loop_widget = drag.source
+                                                let new_elem = playlist_element_factory.createObject(root, {
+                                                    loop_widget: src_loop_widget,
+                                                    loop_id: src_loop_widget.obj_id
+                                                })
+                                                add_connected_elem_and_push(mapped_item, new_elem, true, 0)
+                                            }
 
-                                    // Same for incoming connections
-                                    LinkIndicator {
-                                        visible: loop_rect.mapped_item.incoming_edge != null
-                                        height: loop_rect.height / 2
-                                        width: height
-                                        side: 'left'
-                                        color: loop_rect.mapped_item.incoming_edge_color
-
-                                        anchors {
-                                            left: parent.left
-                                            verticalCenter: parent.verticalCenter
-                                        }
-                                    }
-
-                                    // DropArea for connecting a loop to be sequenced after this one
-                                    DropArea {
-                                        keys: ["LoopWidget"]
-                                        anchors {
-                                            right: parent.right
-                                            left: parent.horizontalCenter
-                                            top: parent.top
-                                            bottom: parent.bottom
-                                        }
-
-                                        onDropped: (event) => {
-                                            let src_loop_widget = drag.source
-                                            let new_elem = playlist_element_factory.createObject(root, {
-                                                loop_widget: src_loop_widget,
-                                                loop_id: src_loop_widget.obj_id
-                                            })
-                                            add_connected_elem_and_push(mapped_item, new_elem, false, 0)
-                                        }
-
-                                        Rectangle {
-                                            anchors.fill: parent
-                                            opacity: 0.3
-                                            visible: parent.containsDrag
-                                        }
-                                    }
-
-                                    // DropArea for connecting a loop to be sequenced before this one
-                                    DropArea {
-                                        keys: ["LoopWidget"]
-                                        anchors {
-                                            left: parent.left
-                                            right: parent.horizontalCenter
-                                            top: parent.top
-                                            bottom: parent.bottom
-                                        }
-
-                                        onDropped: (event) => {
-                                            let src_loop_widget = drag.source
-                                            let new_elem = playlist_element_factory.createObject(root, {
-                                                loop_widget: src_loop_widget,
-                                                loop_id: src_loop_widget.obj_id
-                                            })
-                                            add_connected_elem_and_push(mapped_item, new_elem, true, 0)
-                                        }
-
-                                        Rectangle {
-                                            anchors.fill: parent
-                                            opacity: 0.3
-                                            visible: parent.containsDrag
+                                            Rectangle {
+                                                anchors.fill: parent
+                                                opacity: 0.3
+                                                visible: parent.containsDrag
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
-                    }
-                }}
+                    }}
+                }
             }
 
             Rectangle {
                 id: play_head
                 width: 3
-                height: Math.max(show_sync_track.height, show_track.height)
+                height: show_track.height
                 color: 'green'
-                visible: parseInt(x) != 0
+                visible: parseInt(at) != 0
 
-                x: (composite_loop.position * root.cycle_width) / root.cycle_length
+                readonly property int at: (composite_loop.position * root.cycle_width) / root.cycle_length
+                x: at - root.x_offset
             }
         }
     }

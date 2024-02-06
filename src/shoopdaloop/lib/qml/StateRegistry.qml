@@ -38,9 +38,22 @@ Registry {
         registry: root
         key: 'n_loading_actions_active'
     }
-
     property alias n_saving_actions_active : lookup_saving.object
     property alias n_loading_actions_active : lookup_loading.object
+
+    RegistryLookup {
+        id: lookup_sync_loop
+        registry: root
+        key: 'sync_loop'
+    }
+    property alias sync_loop : lookup_sync_loop.object
+
+    RegistryLookup {
+        id: lookup_sync_active
+        registry: root
+        key: 'sync_active'
+    }
+    readonly property bool sync_active : lookup_sync_active.object != null ? lookup_sync_active.object : false
 
     onN_saving_actions_activeChanged: my_logger.debug(() => ('N saving actions active: ' + n_saving_actions_active))
     onN_loading_actions_activeChanged: my_logger.debug(() => ('N loading actions active: ' + n_loading_actions_active))

@@ -151,7 +151,7 @@ LuaControlInterface {
         return select_loops((l) => l.track_idx == track_idx).map(((l) => [l.track_idx, l.idx_in_track]))
     }
     function loop_transition_override(loop_selector, mode, cycles_delay) {
-        select_loops(loop_selector).forEach((h) => { h.transition(mode, cycles_delay, registries.state_registry.get('sync_active'), false) } )
+        select_loops(loop_selector).forEach((h) => { h.transition(mode, cycles_delay, registries.state_registry.sync_active) } )
     }
     function loop_get_gain_override(loop_selector) {
         return select_loops(loop_selector).map(l => l.last_pushed_gain)

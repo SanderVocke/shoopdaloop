@@ -222,12 +222,7 @@ Item {
         }
     }
 
-    RegistryLookup {
-        id: sync_loop_lookup
-        registry: registries.state_registry
-        key: 'sync_loop'
-    }
-    property alias sync_loop : sync_loop_lookup.object
+    property var sync_loop : registries.state_registry.sync_loop
 
     function transition(mode, delay, wait_for_sync) {
         py_loop.transition(mode, delay, wait_for_sync)

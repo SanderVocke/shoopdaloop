@@ -38,12 +38,7 @@ Item {
         onTriggered: root.action()
     }
 
-    RegistryLookup {
-        id: sync_loop_lookup
-        registry: registries.state_registry
-        key: 'sync_loop'
-    }
-    property alias sync_loop : sync_loop_lookup.object
+    property var sync_loop : registries.state_registry.sync_loop
 
     function object_values_total(obj) {
         var r = 0.0

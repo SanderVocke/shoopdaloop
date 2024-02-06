@@ -110,12 +110,7 @@ Item {
 
     property bool loaded : false
 
-    RegistryLookup {
-        id: sync_loop_lookup
-        registry: registries.state_registry
-        key: 'sync_loop'
-    }
-    property alias sync_loop : sync_loop_lookup.object
+    property var sync_loop : registries.state_registry.sync_loop
 
     readonly property int cycle_length: sync_loop ? sync_loop.length : 0
     readonly property int n_cycles: cycle_length ? Math.ceil(length / cycle_length) : 0
@@ -435,7 +430,7 @@ Item {
             } else {
                 maybe_loop = backend_loop_factory.createObject(root, {
                     'initial_descriptor': root.initial_descriptor,
-                    'sync_source': (!is_sync && root.sync_loop && root.sync_loop.maybe_backend_loop) ? root.sync_loop.maybe_backend_loop : null,
+                    'sync_source': Qt.binding(() => (!is_sync && root.sync_loop && root.sync_loop.maybe_backend_loop) ? root.sync_loop.maybe_backend_loop : null),
                 })
                 maybe_loop.onCycled.connect(root.cycled)
             }
@@ -483,12 +478,7 @@ Item {
     property var audio_channels : (maybe_loop && maybe_loop.audio_channels) ? maybe_loop.audio_channels : []
     property var midi_channels : (maybe_loop && maybe_loop.midi_channels) ? maybe_loop.midi_channels : []
    
-    RegistryLookup {
-        id: lookup_sync_active
-        registry: registries.state_registry
-        key: 'sync_active'
-    }
-    property alias sync_active: lookup_sync_active.object
+    property bool sync_active : registries.state_registry.sync_active
 
     // UI
     StatusRect {

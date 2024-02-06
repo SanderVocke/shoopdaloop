@@ -40,6 +40,8 @@ class Loop(ShoopQQuickItem):
         self.logger = Logger(self)
         self.logger.name = "Frontend.Loop"
 
+        self.initializedChanged.connect(lambda i: self.logger.debug("initialized -> {}".format(i)))
+
         self.rescan_parents()
         if not self._backend:
             self.parentChanged.connect(self.rescan_parents)
@@ -129,6 +131,7 @@ class Loop(ShoopQQuickItem):
         if self.initialized:
             do_set()
         else:
+            self.logger.debug(lambda: 'Defer set sync source -> {}'.format(loop))
             self.initializedChanged.connect(do_set)
 
     # display_peaks : overall audio peaks of the loop
@@ -229,6 +232,8 @@ class Loop(ShoopQQuickItem):
     @Slot(int, int, bool)
     def transition(self, mode, delay, wait_for_sync):
         if self.initialized:
+            if wait_for_sync and not self.sync_source:
+                self.logger.warning(lambda: "Synchronous transition requested but no sync loop set")
             self._backend_loop.transition(LoopMode(mode), delay, wait_for_sync)
     
     @Slot(list, int, int, bool)
