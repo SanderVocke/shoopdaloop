@@ -767,6 +767,8 @@ Item {
                                             width: height
                                             side: 'right'
                                             color: loop_rect.mapped_item.outgoing_edge_color
+                                            loop_elem: loop_rect.mapped_item
+                                            other_loop_elem: loop_rect.mapped_item.outgoing_edge
 
                                             anchors {
                                                 right: parent.right
@@ -781,6 +783,8 @@ Item {
                                             width: height
                                             side: 'left'
                                             color: loop_rect.mapped_item.incoming_edge_color
+                                            loop_elem: loop_rect.mapped_item
+                                            other_loop_elem: loop_rect.mapped_item.incoming_edge
 
                                             anchors {
                                                 left: parent.left
@@ -839,6 +843,22 @@ Item {
                                                 visible: parent.containsDrag
                                             }
                                         }
+
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            acceptedButtons: Qt.RightButton
+                                            onClicked: loop_menu.popup()
+                                        }
+
+                                        // Context menu
+                                        Menu {
+                                            id: loop_menu
+
+                                            ShoopMenuItem {
+                                                text: "Remove"
+                                                onClicked: root.delete_elem_and_push(loop_rect.mapped_item)
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -872,6 +892,9 @@ Item {
         property color color : 'blue'
         property string side : 'left' // or 'right'
 
+        property var loop_elem
+        property var other_loop_elem
+
         readonly property bool flip : side == 'right'
 
         Shape {
@@ -897,6 +920,22 @@ Item {
                     useLargeArc: true
                 }
                 PathLine { x: 0; y: 0 }
+            }
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.RightButton
+            onClicked: link_menu.popup()
+        }
+
+        // Context menu
+        Menu {
+            id: link_menu
+
+            ShoopMenuItem {
+                text: "Unlink"
+                onClicked: root.unlink_elements(indicator.loop_elem, indicator.other_loop_elem)
             }
         }
     }
