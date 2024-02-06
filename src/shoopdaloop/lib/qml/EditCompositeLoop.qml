@@ -439,6 +439,18 @@ Item {
         }
         return rval
     }
+    // To prevent binding loops, we resolve the edges to other PlaylistElements
+    // after initial creation.
+    onPlaylist_elemsChanged: {
+        playlist_elems.forEach(p => p.forEach(e => {
+            if (e.incoming_edge && !(e.incoming_edge instanceof PlaylistElement)) {
+                e.incoming_edge = p.filter(a => a.info == e.incoming_edge)[0]
+            }
+            if (e.outgoing_edge && !(e.outgoing_edge instanceof PlaylistElement)) {
+                e.outgoing_edge = p.filter(a => a.info == e.outgoing_edge)[0]
+            }
+        }))
+    }
 
     // Flatten the elements-based playlists into a list of all elements.
     readonly property var flat_playlist_elems : {
