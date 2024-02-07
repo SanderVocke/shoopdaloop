@@ -55,15 +55,7 @@ Item {
         source: "../../third_party/QtMaterialDesignIcons/resources/materialdesignicons-webfont.ttf"
     }
 
-    ToolTip {
-        delay: 1000
-        visible: ma.containsMouse && root.tooltip != ""
+    ControlTooltip {
         text: root.tooltip
-    }
-    MouseArea {
-        id: ma
-        hoverEnabled: true
-        anchors.fill: parent
-        acceptedButtons: Qt.NoButton
     }
 }

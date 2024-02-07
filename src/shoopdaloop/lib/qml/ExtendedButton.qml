@@ -6,15 +6,7 @@ ShoopButton {
     id: root
     property string tooltip: ""
 
-    ToolTip {
-        delay: 1000
-        visible: ma.containsMouse && tooltip != ""
+    ControlTooltip {
         text: root.tooltip
-    }
-    MouseArea {
-        id: ma
-        hoverEnabled: true
-        anchors.fill: parent
-        acceptedButtons: Qt.NoButton
     }
 }

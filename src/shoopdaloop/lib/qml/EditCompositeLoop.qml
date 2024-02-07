@@ -106,6 +106,66 @@ Item {
                 root.cycle_width = tracks_column.width / root.schedule_length - 5
             }
         }
+
+        ToolSeparator {
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+        }
+
+        Label {
+            anchors.verticalCenter: toolbar.verticalCenter
+            text: "Kind:"
+        }
+
+        ShoopComboBox {
+            id: kind_combo
+            anchors.verticalCenter: toolbar.verticalCenter
+            width: 150
+
+            model: [
+                'Regular',
+                'Script'
+            ]
+
+            currentIndex: root.composite_loop.kind == 'regular' ? 0 : 1
+
+            onActivated: (idx) => {
+                if (model[idx] == "Regular") { root.to_regular() }
+                else if (model[idx] == "Script") { root.to_script() }
+            }
+        }
+
+        ToolbarButton {
+            anchors {
+                verticalCenter: parent.verticalCenter
+            }
+            text: '?'
+            size: toolbar.tool_buttons_size
+
+            onClicked: info_popup.open()
+
+            Popup {
+                parent: Overlay.overlay
+                x: (parent.width-width) / 2
+                y: (parent.height-height) / 2
+                modal: true
+                width: 500
+                height: 150
+                id: info_popup
+                closePolicy: Popup.CloseOnPressOutside | Popup.CloseOnEscape
+                focus: true
+                Label {
+                    anchors.fill: parent
+                    text: 'A regular composition will trigger its children with the same mode it was triggered with.\n' +
+                          'It is useful for combining loops into bigger loops.\n' +
+                          'A script composition specifies a specific mode to trigger each child with.\n' +
+                          'It can only be triggered one way. It is useful for scheduling advanced sequences of e.g.\n' +
+                          'combined recording and playback.'
+                    horizontalAlignment: Text.AlignLeft
+                    verticalAlignment: Text.AlignVCenter
+                }
+            }
+        }
     }
 
     Rectangle {
@@ -296,6 +356,7 @@ Item {
         property var outgoing_edges // refer to other PlaylistElements
         property color incoming_edges_color
         property color outgoing_edges_color
+        property var maybe_mode
         property var info
 
         // Calculate
@@ -441,7 +502,8 @@ Item {
                         outgoing_edges: [], // fill in later
                         incoming_edges_color: info.incoming_edges_color,
                         outgoing_edges_color: info.outgoing_edges_color,
-                        maybe_forced_n_cycles: info.ori_elem.forced_n_cycles
+                        maybe_forced_n_cycles: info.ori_elem.forced_n_cycles,
+                        maybe_mode: info.ori_elem.mode
                     }))
                 }
                 playlist.push(parallel_elems)
@@ -480,7 +542,8 @@ Item {
             return {
                 'delay': elem.delay,
                 'loop_id': elem.loop_id,
-                'n_cycles': elem.maybe_forced_n_cycles ? elem.maybe_forced_n_cycles : undefined
+                'n_cycles': elem.maybe_forced_n_cycles ? elem.maybe_forced_n_cycles : undefined,
+                'mode': (elem.maybe_mode !== null && elem.maybe_mode !== undefined) ? elem.maybe_mode : undefined
             }
         }
         var playlists = []
@@ -635,6 +698,22 @@ Item {
             new_elems_schedule.push(Array.from(second_playlist));
         })
         push_playlists(new_elems_schedule)
+    }
+    
+    // Convert to a regular composite schedule (no modes)
+    function to_regular() {
+        playlist_elems.forEach(p => p.forEach(pp => pp.forEach(e => e.maybe_mode = null)))
+        push_playlists(playlist_elems)
+    }
+
+    // Convert to a script composite schedule (all modes specified)
+    function to_script() {
+        playlist_elems.forEach(p => p.forEach(pp => pp.forEach(e => {
+            if (e.maybe_mode === null) {
+                e.maybe_mode = ShoopConstants.LoopMode.Playing
+            }
+        })))
+        push_playlists(playlist_elems)
     }
 
     component Track : Item {

@@ -19,6 +19,9 @@ Item {
 
     readonly property bool initialized: true
 
+    // set internally
+    property string kind : 'regular'
+
     // The Python-side object manages triggering other loops based on the
     // schedule. This needs to keep running even if the QML/GUI thread hangs.
     // In the QML side, we manage updating/calculating the schedule.
@@ -43,12 +46,23 @@ Item {
     }
 
     // The sequence is stored as a set of "playlists". Each playlist represents a parallel
-    // timeline, stored as a list of sublists of [{ delay: int, loop_id: str, n_cycles: int | undefined }], where the delay can be
-    // used to insert blank spots in-between sequential loops.
+    // timeline, stored as a list of sublists of:
+    // [
+    //    { 
+    //       delay: int,
+    //       loop_id: str,
+    //       n_cycles: int | undefined,
+    //       mode: loop mode | undefined
+    //    }
+    // ],
+    // where the delay can be used to insert blank spots in-between sequential loops.
     // the n_cycles can be set to force how long the loop is activated in the schedule. If undefined, it will
     // just be determined from the current loop length or assumed to be 1 for empty loops.
+    // if the mode is set, the loop will be triggered with that mode always.
     property var playlists: (initial_composition_descriptor && initial_composition_descriptor.playlists) ?
         initial_composition_descriptor.playlists : []
+
+    
 
     // When the schedule is calculated, an enriched playlists copy is also calculated.
     // This is equal to the input playlists, just with each entry having its final
@@ -73,14 +87,15 @@ Item {
     }
 
     // Transform the playlists into a more useful format:
-    // a dict of { iteration: { loops_start: [...], loops_end: [...], loops_ignored: [...] } }
+    // a dict of { iteration: { loops_start: [...], loops_end: [...], loops_ignored: [...], loop_modes: {...} } }
     // loops_start lists the loops that should be triggered in this iteration.
     // loops_end lists the loops that should be stopped in this iteration.
     // loops_ignored lists loops that are not really scheduled but stored to still keep traceability -
     // for example when a 0-length loop is in the playlist.
+    // For script composite loops, the loop_modes dict holds the explicit mode to use per loop in the iteration.
     function recalculate_schedule() {
         root.logger.debug(() => 'Recalculating schedule.')
-        root.logger.trace(() => `--> playlists: ${JSON.stringify(playlists, null, 2)}`)
+        root.logger.trace(() => `--> playlists to schedule: ${JSON.stringify(playlists, null, 2)}`)
 
         var _scheduled_playlists = JSON.parse(JSON.stringify(playlists))
         for (var pidx=0; pidx < playlists.length; pidx++) {
@@ -105,6 +120,7 @@ Item {
                     elem['end_iteration'] = loop_end
                     elem['loop_widget'] = loop_widget
                     elem['forced_n_cycles'] = (elem.n_cycles && elem.n_cycles > 0) ? elem.n_cycles : null
+                    if (elem['mode'] === undefined) { elem['mode'] = null }
 
                     let duration = elem.delay + loop_cycles
                     total_duration = Math.max(total_duration, duration)
@@ -125,6 +141,7 @@ Item {
                     let loop_end = elem['end_iteration']
                     let loop_cycles = loop_end - loop_start
                     let loop_widget = elem['loop_widget']
+                    let mode = elem['mode']
                     if (!loop_widget) {
                         root.logger.debug(`Loop widget ${elem.loop_id} not found, skipping`)
                         continue
@@ -141,14 +158,16 @@ Item {
                         }
                     }
 
-                    if (!_schedule[loop_start]) { _schedule[loop_start] = { loops_start: new Set(), loops_end: new Set(), loops_ignored: new Set() } }
-                    if (!_schedule[loop_end]) { _schedule[loop_end] = { loops_start: new Set(), loops_end: new Set(), loops_ignored: new Set() } }
+                    if (!_schedule[loop_start]) { _schedule[loop_start] = { loops_start: new Set(), loops_end: new Set(), loops_ignored: new Set(), loop_modes: {} } }
+                    if (!_schedule[loop_end]) { _schedule[loop_end] = { loops_start: new Set(), loops_end: new Set(), loops_ignored: new Set(), loop_modes: {} } }
 
                     if (loop_cycles > 0) {
                         _schedule[loop_start].loops_start.add(loop)
+                        _schedule[loop_start].loop_modes[loop] = mode
                         _schedule[loop_end].loops_end.add(loop)
                     } else {
                         _schedule[loop_start].loops_ignored.add(loop)
+                        _schedule[loop_start].loop_modes[loop] = mode
                     }
                 }
             }
@@ -170,11 +189,38 @@ Item {
 
         root.logger.trace(() => `full schedule:\n${
             Array.from(Object.entries(_schedule)).map(([k,v]) => 
-                `- ${k}: stop [${Array.from(v.loops_end).map(l => l.obj_id)}], start [${Array.from(v.loops_start).map(l => l.obj_id)}], ignore [${Array.from(v.loops_ignored).map(l => l.obj_id)}]`
+                `- ${k}: stop [${Array.from(v.loops_end).map(l => l.obj_id)}], start [${Array.from(v.loops_start).map(l => l.obj_id + ` @ mode ${v.loop_modes[l]}`)}], ignore [${Array.from(v.loops_ignored).map(l => l.obj_id)}]`
             ).join("\n")
         }`)
 
         schedule = _schedule
+    }
+    function ensure_script_or_regular() {
+        // We either want all modes specified or none (script or regular composite loop, resp.)
+        // If some modes are specified and others aren't, we should fix that.
+        var found_mode = null
+        var modes_count = 0
+        var all_count = 0
+        playlists.forEach(p => p.forEach(pp => pp.forEach(e => {
+            all_count += 1
+            if(e.mode !== null && e.mode !== undefined) {
+                found_mode = e.mode
+                modes_count += 1
+            }
+        })))
+        root.kind = (found_mode === null) ? 'regular' : 'script'
+        if (found_mode !== null && modes_count < all_count) {
+            let new_playlists = playlists.map(p => p.map(pp => pp.map(e => {
+                var rval =  Object.create(e)
+                let keys = Object.keys(e)
+                for(var i=0; i<keys.length; i++) {
+                    rval[keys[i]] = e[keys[i]]
+                }
+                rval.mode = found_mode
+                return rval
+            })))
+            playlists = new_playlists
+        }
     }
     function update_schedule() {
         if (!schedule_frozen) { recalculate_schedule() }
@@ -183,7 +229,11 @@ Item {
     // change in the schedule while recording is ongoing.
     readonly property bool schedule_frozen: (ModeHelpers.is_recording_mode(mode) || (ModeHelpers.is_recording_mode(next_mode) && next_transition_delay === 0))
     readonly property bool sync_empty: !(sync_length > 0)
-    onPlaylistsChanged: update_schedule()
+    onPlaylistsChanged: {
+        root.logger.trace(() => `playlists -> ${JSON.stringify(playlists, null, 2)}`)
+        ensure_script_or_regular();
+        update_schedule()
+    }
     onSync_emptyChanged: update_schedule()
 
     // Calculated properties

@@ -513,8 +513,10 @@ Item {
         height: 26
 
         color: {
-            if (loop && root.maybe_composite_loop) {
+            if (loop && root.maybe_composite_loop && root.maybe_composite_loop.kind == 'regular') {
                 return 'pink'
+            } else if (loop && root.maybe_composite_loop && root.maybe_composite_loop.kind == 'script') {
+                return '#77AA77'
             } else if (loop && loop.length > 0) {
                 return '#000044'
             }
@@ -528,8 +530,10 @@ Item {
                 return "orange";
             } else if (root.selected) {
                 return 'yellow';
-            } else if (root.is_in_selected_composite_loop) {
+            } else if (root.is_in_selected_composite_loop && root.single_selected_composite_loop.maybe_composite_loop.kind == 'regular') {
                 return 'pink';
+            } else if (root.is_in_selected_composite_loop && root.single_selected_composite_loop.maybe_composite_loop.kind == 'script') {
+                return '#77AA77'
             }
 
             if (!statusrect.loop || statusrect.loop.length == 0) {
@@ -692,6 +696,8 @@ Item {
                     show_timer_instead: parent.show_next_mode
                     visible: !parent.show_next_mode || (parent.show_next_mode && statusrect.loop.next_transition_delay == 0)
                     connected: true
+                    is_regular_composite: root.maybe_composite_loop ? root.maybe_composite_loop.kind == 'regular' : false
+                    is_script_composite: root.maybe_composite_loop ? root.maybe_composite_loop.kind == 'script' : false
                     size: iconitem.height
                     y: 0
                     anchors.horizontalCenter: iconitem.horizontalCenter
@@ -729,6 +735,8 @@ Item {
                     mode: parent.show_next_mode ?
                         statusrect.loop.next_mode : ShoopConstants.LoopMode.Unknown
                     show_timer_instead: false
+                    is_regular_composite: false
+                    is_script_composite: false
                     connected: true
                     size: iconitem.height * 0.65
                     y: 0
@@ -1317,6 +1325,8 @@ Item {
         property int mode
         property bool connected
         property bool show_timer_instead
+        property bool is_regular_composite
+        property bool is_script_composite
         property bool empty
         property bool muted
         property int size
@@ -1340,6 +1350,12 @@ Item {
                     return 'timer-sand'
                 }
                 if(lsicon.empty) {
+                    if(lsicon.is_regular_composite) {
+                        return 'view-list'
+                    }
+                    if(lsicon.is_script_composite) {
+                        return 'playlist-edit'
+                    }
                     return 'border-none-variant'
                 }
 
@@ -1373,6 +1389,9 @@ Item {
                 case ShoopConstants.LoopMode.PlayingDryThroughWet:
                     return 'orange'
                 default:
+                    if(lsicon.is_regular_composite || lsicon.is_script_composite) {
+                        return Material.background
+                    }
                     return 'grey'
                 }
             }
