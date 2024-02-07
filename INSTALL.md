@@ -44,3 +44,7 @@ pip install -e . --no-build-isolation
 ```
 
 This will install into `./.py-build-cmake-cache/editable` with symlinks to the Python and QML source files in this repo. It will also install a link into the system such that `shoopdaloop` can be run system-wide. Note that the installation command should be repeated if anything changes which affects the CMake build (C / C++ files, package metadata version/description).
+
+### Changing CMake build settings
+
+Build settings are controlled by `pyproject.toml`, including CMake build settings. To change some settings locally, an override file can be used to change only those settings needed. It should be stored alongside `pyproject.toml` and its filename should be `py-build-cmake.local.toml`.
