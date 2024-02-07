@@ -385,7 +385,6 @@ Item {
                     let elem = parallel_elems[h]
                     var swimlane = -1
                     let loop_widget = elem.ori_elem.loop_widget
-                    console.log(Object.keys(elem.ori_elem))
                     let track_idx = loop_widget.track_idx
                     let swimlanes = swimlanes_per_track[track_idx]
 
@@ -490,7 +489,7 @@ Item {
             for(var j=0; j<elems_playlists[i].length; j++) {
                 let parallel_elems = []
                 for(var h=0; h<elems_playlists[i][j].length; h++) {
-                    parallel_elems.push(item_from_elem(elems_playlists[i][j]))
+                    parallel_elems.push(item_from_elem(elems_playlists[i][j][h]))
                 }
                 playlist.push(parallel_elems)
             }
@@ -579,7 +578,6 @@ Item {
     }
 
     // Create a new playlist with a single element in it.
-    // FIXME
     function add_new_playlist_with_elem_and_push(new_elem, delay) {
         new_elem.start_iteration = delay
         new_elem.end_iteration = new_elem.start_iteration + new_elem.loop_widget.n_cycles
@@ -588,12 +586,16 @@ Item {
             let playlist = playlist_elems[i]
             let new_playlist = []
             for (var j=0; j<playlist.length; j++) {
-                let elem = playlist[j]
-                new_playlist.push(elem)
+                let parallel_elems = []
+                for (var h=0; h<parallel_elems.length; h++) {
+                    let elem = playlist[j][h]
+                    parallel_elems.push(elem)
+                }
+                new_playlist.push(parallel_elems)
             }
             new_elems_schedule.push(new_playlist)
         }
-        new_elems_schedule.push([new_elem])
+        new_elems_schedule.push([[new_elem]])
         push_playlists(new_elems_schedule)
     }
 
@@ -604,26 +606,27 @@ Item {
     }
 
     // Unlink connected loops and push.
-    // FIXME
     function unlink_and_push(from_elem, to_elem) {
         // To do this we need to cut a playlist in two.
         var new_elems_schedule = []
         playlist_elems.forEach(p => {
-            if (!p.includes(from_elem) || !p.includes(to_elem)) { new_elems_schedule.push(Array.from(p)); return; }
+            if (!p.find(pp => pp.includes(from_elem)) || !p.find(pp => pp.includes(to_elem))) { new_elems_schedule.push(Array.from(p)); return; }
             let first_playlist = []
             let second_playlist = []
             var found = false
             for(var i=0; i<p.length; i++) {
                 if (found) {
                     second_playlist.push(p[i])
-                    if (p[i] == to_elem) {
-                        to_elem.delay = to_elem.start_iteration
-                        to_elem.incoming_edges = null
+                    if (p[i].includes(to_elem)) {
+                        p[i].forEach(pp => {
+                            pp.delay = pp.start_iteration
+                            pp.incoming_edges = []
+                        })
                     }
-                } else if (p[i] == from_elem) {
+                } else if (p[i].includes(from_elem)) {
                     found = true
                     first_playlist.push(p[i])
-                    from_elem.outgoing_edges = null
+                    p[i].forEach(pp => { pp.outgoing_edges = [] })
                 } else {
                     first_playlist.push(p[i])
                 }
@@ -927,13 +930,13 @@ Item {
                                             }
                                             ShoopMenuItem {
                                                 text: "Unlink -->"
-                                                shown: loop_rect.mapped_item.outgoing_edges ? true : false
-                                                onClicked: root.unlink_and_push(loop_rect.mapped_item, loop_rect.mapped_item.outgoing_edges)
+                                                shown: loop_rect.mapped_item.outgoing_edges.length > 0 ? true : false
+                                                onClicked: root.unlink_and_push(loop_rect.mapped_item, loop_rect.mapped_item.outgoing_edges[0])
                                             }
                                             ShoopMenuItem {
                                                 text: "<-- Unlink"
-                                                shown: loop_rect.mapped_item.incoming_edges ? true : false
-                                                onClicked: root.unlink_and_push(loop_rect.mapped_item.incoming_edges, loop_rect.mapped_item)
+                                                shown: loop_rect.mapped_item.incoming_edges.length > 0 ? true : false
+                                                onClicked: root.unlink_and_push(loop_rect.mapped_item.incoming_edges[0], loop_rect.mapped_item)
                                             }
                                             ShoopMenuItem {
                                                 text: "Remove forced length"
