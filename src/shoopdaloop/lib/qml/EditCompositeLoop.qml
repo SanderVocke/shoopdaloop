@@ -407,8 +407,8 @@ Item {
                     }
 
                     // Mark the newly taken slots
-                    for(var h=elem.ori_elem.start_iteration; h<elem.ori_elem.end_iteration; h++) {
-                        swimlanes[swimlane][h] = true
+                    for(var k=elem.ori_elem.start_iteration; k<elem.ori_elem.end_iteration; k++) {
+                        swimlanes[swimlane][k] = true
                     }
 
                     elem.swimlane = swimlane
@@ -731,9 +731,22 @@ Item {
                                         property var mapped_item
                                         property int index
 
-                                        color: 'grey'
-                                        border.color: 'black'
-                                        border.width: 1
+                                        color: {
+                                            switch(mapped_item.loop_widget.mode) {
+                                            case ShoopConstants.LoopMode.Playing:
+                                                return '#004400';
+                                            case ShoopConstants.LoopMode.PlayingDryThroughWet:
+                                                return '#333300';
+                                            case ShoopConstants.LoopMode.Recording:
+                                                return '#660000';
+                                            case ShoopConstants.LoopMode.RecordingDryIntoWet:
+                                                return '#663300';
+                                            default:
+                                                return '#000044';
+                                            }
+                                        }
+                                        border.color: 'grey'
+                                        border.width: 2
 
                                         width: root.cycle_width * (mapped_item.end_iteration - mapped_item.start_iteration)
                                         height: swimlane.height
@@ -741,13 +754,7 @@ Item {
 
                                         Label {
                                             anchors.centerIn: parent
-                                            text: {
-                                                var rval = mapped_item.loop_widget.name
-                                                if (mapped_item.maybe_forced_n_cycles) {
-                                                    rval = rval + " (!)"
-                                                }
-                                                return rval
-                                            }
+                                            text: mapped_item.loop_widget.name
                                         }
 
                                         Component.onCompleted: {
@@ -822,10 +829,23 @@ Item {
                                             }
                                         }
 
+                                        MaterialDesignIcon {
+                                            size: 20
+                                            anchors {
+                                                verticalCenter: parent.verticalCenter
+                                                right: right_side_link_indicator.left
+                                            }
+                                            name: 'alert-box'
+                                            color: Material.foreground
+                                            visible: mapped_item.maybe_forced_n_cycles ? true : false
+                                            tooltip: "This element has a forced length. The composite loop will run this length regardless of the actual loop's length."
+                                        }
+
                                         // If this loop is preceding another in the playlist, show that
                                         // by a "link icon" to the next one.
                                         LinkIndicator {
-                                            visible: loop_rect.mapped_item.outgoing_edges != null
+                                            id: right_side_link_indicator
+                                            visible: loop_rect.mapped_item.outgoing_edges.length > 0
                                             height: loop_rect.height / 2
                                             width: height
                                             side: 'right'
@@ -841,7 +861,7 @@ Item {
 
                                         // Same for incoming connections
                                         LinkIndicator {
-                                            visible: loop_rect.mapped_item.incoming_edges != null
+                                            visible: loop_rect.mapped_item.incoming_edges.length > 0
                                             height: loop_rect.height / 2
                                             width: height
                                             side: 'left'
