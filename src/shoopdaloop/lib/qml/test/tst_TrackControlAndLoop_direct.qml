@@ -189,8 +189,8 @@ ShoopTestFile {
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
 
-                    verify_eq(out, expect_out, true)
-                    verify_eq(chan_data, expect_loop, true)
+                    verify_eq(out, expect_out, null, true)
+                    verify_eq(chan_data, expect_loop, null, true)
                 },
 
                 'test_audio_direct_record_monitor': () => {
@@ -257,8 +257,8 @@ ShoopTestFile {
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
 
-                    verify_eq(out, expect_out, true)
-                    verify_eq(chan_data, expect_loop, true)
+                    verify_eq(out, expect_out, null, true)
+                    verify_eq(chan_data, expect_loop, null, true)
                 },
 
                 'test_audio_direct_play_no_monitor': () => {
@@ -329,8 +329,8 @@ ShoopTestFile {
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
 
-                    verify_eq(out, expect_out, true)
-                    verify_eq(chan_data, loop, true)
+                    verify_eq(out, expect_out, null, true)
+                    verify_eq(chan_data, loop, null, true)
                 },
 
                 'test_audio_direct_play_monitor': () => {
@@ -406,8 +406,8 @@ ShoopTestFile {
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
 
-                    verify_eq(out, expect_out, true)
-                    verify_eq(chan_data, loop, true)
+                    verify_eq(out, expect_out, null, true)
+                    verify_eq(chan_data, loop, null, true)
                 },
             })
         }

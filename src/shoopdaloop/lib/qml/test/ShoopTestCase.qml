@@ -123,7 +123,7 @@ PythonTestCase {
         verify(result, failstring)
     }
 
-    function verify_eq(a, b, stringify=null) {
+    function verify_eq(a, b, msg=null, stringify=null) {
         var result;
 
         if (stringify === null) {
@@ -135,6 +135,9 @@ PythonTestCase {
             failstring = `verify_eq failed (a = ${JSON.stringify(a, null, 2)}, b = ${JSON.stringify(b, null, 2)})`
         } else {
             failstring = `verify_eq failed (a = ${a}, b = ${b})`
+        }
+        if(msg) {
+            failstring = failstring + " - " + msg
         }
 
         function compare(a, b) {

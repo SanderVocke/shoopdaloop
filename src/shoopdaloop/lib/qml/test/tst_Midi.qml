@@ -134,7 +134,7 @@ ShoopTestFile {
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
 
-                    verify_eq(out, input, true)
+                    verify_eq(out, input, null, true)
                 },
 
                 'test_midi_direct_prerecord_then_play': () => {
@@ -188,8 +188,8 @@ ShoopTestFile {
                         { 'time': 2, 'data': [0x90, 10,  10]  }  // from input[2]
                     ]
 
-                    verify_eq(chan.get_data(), input, true)
-                    verify_eq(out, expect_output, true)
+                    verify_eq(chan.get_data(), input, null, true)
+                    verify_eq(out, expect_output, null, true)
                 }
             })
         }

@@ -241,7 +241,7 @@ ShoopTestFile {
                     verify_approx(wet2, expect_wet)
                     verify_approx(out1, expect_out)
                     verify_approx(out2, expect_out)
-                    verify_eq(midi, expect_loop, true)
+                    verify_eq(midi, expect_loop, null, true)
                 },
 
                 'test_drywet_audio_record_monitor': () => {
@@ -329,7 +329,7 @@ ShoopTestFile {
                     verify_approx(wet2, expect_wet)
                     verify_approx(out1, expect_out)
                     verify_approx(out2, expect_out)
-                    verify_eq(midi, expect_loop, true)
+                    verify_eq(midi, expect_loop, null, true)
                 },
 
                 'test_drywet_audio_play_no_monitor': () => {
@@ -420,7 +420,7 @@ ShoopTestFile {
                     verify_eq(dry2, [80, 70, 60, 50])
                     verify_eq(wet1, [5, 6, 7, 8])
                     verify_eq(wet2, [8, 7, 6, 5])
-                    verify_eq(midi, midichan, true)
+                    verify_eq(midi, midichan, null, true)
                 },
 
                 'test_drywet_audio_play_monitor': () => {
@@ -517,7 +517,7 @@ ShoopTestFile {
                     verify_eq(dry2, [80, 70, 60, 50])
                     verify_eq(wet1, [5, 6, 7, 8])
                     verify_eq(wet2, [8, 7, 6, 5])
-                    verify_eq(midi, midichan, true)
+                    verify_eq(midi, midichan, null, true)
                 },
 
                 'test_drywet_audio_playdry_no_monitor': () => {
@@ -725,7 +725,7 @@ ShoopTestFile {
                     verify_eq(dry2, [80, 70, 60, 50])
                     verify_eq(wet1, [5, 6, 7, 8])
                     verify_eq(wet2, [8, 7, 6, 5])
-                    verify_eq(midi, midichan, true)
+                    verify_eq(midi, midichan, null, true)
                 },
 
                 'test_drywet_audio_rerecord_no_monitor': () => {
@@ -829,7 +829,7 @@ ShoopTestFile {
                     verify_eq(dry2, [80, 70, 60, 50])
                     verify_approx(wet1, elems_add(synthed_chan, [50, 60, 70, 80]))
                     verify_approx(wet2, elems_add(synthed_chan, [80, 70, 60, 50]))
-                    verify_eq(midi, midichan, true)
+                    verify_eq(midi, midichan, null, true)
                 },
 
                 'test_drywet_audio_rerecord_monitor': () => {
@@ -934,7 +934,7 @@ ShoopTestFile {
                     verify_eq(dry2, [80, 70, 60, 50])
                     verify_approx(wet1, elems_add(synthed_both, [50, 60, 70, 80]))
                     verify_approx(wet2, elems_add(synthed_both, [80, 70, 60, 50]))
-                    verify_eq(midi, midichan, true)
+                    verify_eq(midi, midichan, null, true)
                 },
             })
         }

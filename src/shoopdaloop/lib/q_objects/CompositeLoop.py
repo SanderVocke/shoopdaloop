@@ -263,8 +263,8 @@ class CompositeLoop(ShoopQQuickItem):
             self.do_triggers(self.iteration+1, self.mode)
             if ((self.iteration+1) >= self.n_cycles):
                 if is_recording_mode(self.mode):
-                    # Recording ends next cycle
-                    self.transition(LoopMode.Stopped.value, 0, True)
+                    # Recording ends next cycle, transition to playing
+                    self.transition(LoopMode.Playing.value, 0, True)
                 else:
                     # Will cycle around - trigger the actions for next cycle
                     self.do_triggers(0, self.mode)
