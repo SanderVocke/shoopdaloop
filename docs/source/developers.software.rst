@@ -65,6 +65,8 @@ A source package cannot be built - only a wheel directly. Please refer to the bu
 For a build on the same system where ShoopDaLoop is to be used, the building is pretty much a "straightforward" py-build-cmake build.
 
 For the official release wheels though, the setup is more complicated because we need to be binary-compatible with the Qt libraries that ship with PySide. Documentation for this will be added in the future, when the still pending improvements to this build flow are finished.
+
+
 Debugging
 ^^^^^^^^^^
 
@@ -73,6 +75,7 @@ There are several tools at your disposal for debugging:
 * The **logging framework** is available at all levels in the software stack. It allows for logging at different levels, and filtering on levels or components where the message originated from. Note that in a release build, the **debug** and **trace** levels are removed from C++ during compilation, so less logging is available.
 * The built-in **profiler** allows checking which parts take up the most time in the audio process loop. It can be accessed from the user interface.
 * The built-in **debug inspector** can inspect back-end objects' states from the user interface.
+* ShoopDaLoop can be run with the `-d PORT` flag to connect a QML debug client or profiler (such as those offered from QtCreator).
 
 
 Testing
