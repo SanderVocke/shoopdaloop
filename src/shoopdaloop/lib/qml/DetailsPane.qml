@@ -17,6 +17,9 @@ Item {
     property var temporary_items : []
     property var user_items: []
 
+    property var sync_track
+    property var main_tracks : []
+
     property var items : {
         var rval = []
         user_items.forEach(u => {
@@ -99,6 +102,10 @@ Item {
                         property var maybe_loop_with_backend :
                             (maybe_loop && details_item.mapped_item.item.maybe_backend_loop) ?
                             details_item.mapped_item.item : null
+
+                        property var maybe_loop_with_composite :
+                            (maybe_loop && details_item.mapped_item.item.maybe_composite_loop) ?
+                            details_item.mapped_item.item : null
                         
                         Loader {
                             anchors {
@@ -122,7 +129,7 @@ Item {
                                 leftMargin: 5
                                 rightMargin: 5
                             }
-                            active: parent.maybe_loop && !parent.maybe_loop_with_backend
+                            active: parent.maybe_loop && !parent.maybe_loop_with_backend && !parent.maybe_loop_with_composite
                             sourceComponent: Component {
                                 Label {
                                     text: 'Details will be shown once the loop is recording.'
@@ -146,6 +153,29 @@ Item {
                                     loop: details_item.maybe_loop_with_backend
                                     sync_loop: details_item.maybe_loop_with_backend.sync_loop
                                     width: parent.width
+                                }
+                            }
+                        }
+
+                        Loader {
+                            anchors {
+                                left: parent.left
+                                right: parent.right
+                                leftMargin: 5
+                                rightMargin: 5
+                                top: parent.top
+                                topMargin: 5
+                            }
+                            height: childrenRect.height
+
+                            active: details_item.maybe_loop_with_composite != null
+                            sourceComponent: Component {
+                                EditCompositeLoop {
+                                    loop: details_item.maybe_loop_with_composite
+                                    width: parent.width
+
+                                    sync_track : root.sync_track
+                                    main_tracks : root.main_tracks
                                 }
                             }
                         }

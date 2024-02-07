@@ -557,6 +557,9 @@ Rectangle {
                 }
 
                 anchors.fill: parent
+
+                sync_track: root.sync_track
+                main_tracks: root.main_tracks
             }
         }
 
@@ -647,6 +650,7 @@ Rectangle {
                         onLoadedChanged: sync_loop_loader.loaded = loaded
                         name_editable: false
                         sync_loop_layout: true
+                        track_idx : -1
                     }
 
                     TrackControlWidget {

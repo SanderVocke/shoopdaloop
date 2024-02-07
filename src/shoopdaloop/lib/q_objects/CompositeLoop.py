@@ -17,7 +17,7 @@ from ..logging import Logger
 class CompositeLoop(ShoopQQuickItem):
     def __init__(self, parent=None):
         super(CompositeLoop, self).__init__(parent)
-        self._schedule = None
+        self._schedule = {}
         self.logger = Logger('Frontend.CompositeLoop')
         self._sync_loop = None
         self._running_loops = set()
@@ -313,7 +313,9 @@ class CompositeLoop(ShoopQQuickItem):
                         # To implement the above: see if we have already recorded.
                         for i in range(iteration):
                             if i in sched_keys:
-                                other_starts = schedule[str(i)]['loops_start'].toVariant()
+                                other_starts = schedule[str(i)]['loops_start']
+                                if isinstance(other_starts, QJSValue):
+                                    other_starts = other_starts.toVariant()
                                 if loop in other_starts:
                                     # We have already recorded this loop. Don't record it again.
                                     self.logger.debug(lambda: f'Not re-recording {loop}')

@@ -110,12 +110,7 @@ Item {
 
     property bool loaded : false
 
-    RegistryLookup {
-        id: sync_loop_lookup
-        registry: registries.state_registry
-        key: 'sync_loop'
-    }
-    property alias sync_loop : sync_loop_lookup.object
+    property var sync_loop : registries.state_registry.sync_loop
 
     readonly property int cycle_length: sync_loop ? sync_loop.length : 0
     readonly property int n_cycles: cycle_length ? Math.ceil(length / cycle_length) : 0
@@ -422,6 +417,7 @@ Item {
         id: backend_loop_factory
         BackendLoopWithChannels {
             maybe_fx_chain: root.maybe_fx_chain
+            loop_widget: root
         }
     }
 
@@ -434,7 +430,7 @@ Item {
             } else {
                 maybe_loop = backend_loop_factory.createObject(root, {
                     'initial_descriptor': root.initial_descriptor,
-                    'sync_source': (!is_sync && root.sync_loop && root.sync_loop.maybe_backend_loop) ? root.sync_loop.maybe_backend_loop : null,
+                    'sync_source': Qt.binding(() => (!is_sync && root.sync_loop && root.sync_loop.maybe_backend_loop) ? root.sync_loop.maybe_backend_loop : null),
                 })
                 maybe_loop.onCycled.connect(root.cycled)
             }
@@ -443,7 +439,9 @@ Item {
 
     Component {
         id: composite_loop_factory
-        CompositeLoop {}
+        CompositeLoop {
+            loop_widget: root
+        }
     }
     function create_composite_loop(composition={
         'playlists': []
@@ -470,8 +468,7 @@ Item {
         } else {
             maybe_loop = composite_loop_factory.createObject(root, {
                 initial_composition_descriptor: composition,
-                obj_id: root.obj_id,
-                widget: root
+                obj_id: root.obj_id
             })
             maybe_loop.onCycled.connect(root.cycled)
         }
@@ -481,12 +478,7 @@ Item {
     property var audio_channels : (maybe_loop && maybe_loop.audio_channels) ? maybe_loop.audio_channels : []
     property var midi_channels : (maybe_loop && maybe_loop.midi_channels) ? maybe_loop.midi_channels : []
    
-    RegistryLookup {
-        id: lookup_sync_active
-        registry: registries.state_registry
-        key: 'sync_active'
-    }
-    property alias sync_active: lookup_sync_active.object
+    property bool sync_active : registries.state_registry.sync_active
 
     // UI
     StatusRect {
@@ -719,9 +711,9 @@ Item {
                                             // Add the selected loop to the currently selected composite loop.
                                             // If ctrl pressed, as a new parallel timeline; otherwise at the end of the default timeline.
                                             if (key_modifiers.control_pressed) {
-                                                selected.maybe_composite_loop.add_loop(root, 0, selected.maybe_composite_loop.playlists.length)
+                                                selected.maybe_composite_loop.add_loop(root, 0, undefined, selected.maybe_composite_loop.playlists.length)
                                             } else {
-                                                selected.maybe_composite_loop.add_loop(root, 0)
+                                                selected.maybe_composite_loop.add_loop(root, 0, undefined)
                                             }
                                         }
                                     }
@@ -791,7 +783,7 @@ Item {
                     Drag.hotSpot.x : width/2
                     Drag.hotSpot.y : height/2
                     Drag.source: root
-                    Drag.keys: ['LoopWidget_track_' + root.track_obj_id]
+                    Drag.keys: ['LoopWidget', 'LoopWidget_track_' + root.track_obj_id]
 
                     Rectangle {
                         anchors.fill: parent
@@ -997,7 +989,7 @@ Item {
 
                         Rectangle {
                             width: recordN.width
-                            height: recordN.height + recordfx.height
+                            height: (recordN.visible ? recordN.height : 0) + recordfx.height
                             color: statusrect.color
 
                             MouseArea {
@@ -1020,8 +1012,13 @@ Item {
                                 SmallButtonWithCustomHover {
                                     id : recordN
                                     property int n: 1
+                                    
+                                    // This feature makes no sense for composite loops
+                                    visible: !root.maybe_composite_loop
+
                                     width: buttongrid.button_width
                                     height: buttongrid.button_height
+
                                     IconWithText {
                                         size: parent.width
                                         anchors.centerIn: parent
@@ -1479,6 +1476,11 @@ Item {
             ShoopMenuItem {
                text: "Click loop..."
                onClicked: () => clicktrackdialog.open()
+            }
+            ShoopMenuItem {
+                text: "Create Composite"
+                shown: !root.maybe_loop
+                onClicked: root.create_composite_loop()
             }
             ShoopMenuItem {
                 text: "Save audio..."

@@ -5,6 +5,7 @@ import ShoopDaLoop.PythonTestCase
 
 import ShoopConstants
 import './testDeepEqual.js' as TestDeepEqual
+import '..'
 
 PythonTestCase {
     id: root
@@ -20,7 +21,7 @@ PythonTestCase {
 
     property bool when: true
     property bool _internal_triggered: false
-    onWhenChanged: update_trigger()
+    onWhenChanged: update_next_cycle.trigger()
 
     function update_trigger() {
         if (when && !_internal_triggered) {
@@ -41,7 +42,12 @@ PythonTestCase {
     }
 
     property var test_fns: ({})
-    property var testcase_init_fn: () => {}
+    property var testcase_init_fn: () => { root.wait(50) }
+
+    ExecuteNextCycle {
+        id: update_next_cycle
+        onExecute: { root.update_trigger() }
+    }
 
     Component.onCompleted: {
         logger.info(() => ("Testcase " + name + ` created (${Object.keys(test_fns).length} tests).`))
@@ -52,7 +58,7 @@ PythonTestCase {
         }
 
         shoop_test_runner.register_testcase(root)
-        update_trigger()
+        update_next_cycle.trigger()
     }
     Component.onDestruction: logger.info(() => ("Testcase " + name + " destroyed."))
 

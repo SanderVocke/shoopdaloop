@@ -15,7 +15,7 @@ Item {
 
     property var initial_composition_descriptor: null
     property string obj_id : 'unknown'
-    property var widget : null
+    property var loop_widget : null
 
     readonly property bool initialized: true
 
@@ -35,18 +35,26 @@ Item {
     property alias length : py_loop.length
     PythonCompositeLoop {
         id: py_loop
-        schedule: root.calculate_schedule()
         iteration: 0
         sync_loop: (root.sync_loop && root.sync_loop.maybe_loop) ? root.sync_loop.maybe_loop : null
 
         onCycled: root.cycled()
+        Component.onCompleted: root.recalculate_schedule()
     }
 
     // The sequence is stored as a set of "playlists". Each playlist represents a parallel
-    // timeline, stored as a list of { delay: int, loop_id: str }, where the delay can be
+    // timeline, stored as a list of { delay: int, loop_id: str, n_cycles: int | undefined }, where the delay can be
     // used to insert blank spots in-between sequential loops.
+    // the n_cycles can be set to force how long the loop is activated in the schedule. If undefined, it will
+    // just be determined from the current loop length or assumed to be 1 for empty loops.
     property var playlists: (initial_composition_descriptor && initial_composition_descriptor.playlists) ?
         initial_composition_descriptor.playlists : []
+
+    // When the schedule is calculated, an enriched playlists copy is also calculated.
+    // This is equal to the input playlists, just with each entry having its final
+    // scheduling information included:
+    // { delay: int, loop_id: str, start_iteration: int, end_iteration: int, loop: Loop }
+    property var scheduled_playlists: []
 
     readonly property PythonLogger logger: PythonLogger {
         name: "Frontend.Qml.CompositeLoop"
@@ -55,12 +63,12 @@ Item {
 
     signal cycled()
 
-    function add_loop(loop, delay, playlist_idx=0) {
-        root.logger.debug(`Adding loop ${loop.obj_id} to playlist ${playlist_idx} with delay ${delay}`)
+    function add_loop(loop, delay, n_cycles=undefined, playlist_idx=0) {
+        root.logger.debug(`Adding loop ${loop.obj_id} to playlist ${playlist_idx} with delay ${delay}, n_cycles override ${n_cycles}`)
         while (playlist_idx >= playlists.length) {
             playlists.push([])
         }
-        playlists[playlist_idx].push({loop_id: loop.obj_id, delay: delay})
+        playlists[playlist_idx].push({loop_id: loop.obj_id, delay: delay, n_cycles: n_cycles})
         playlistsChanged()
     }
 
@@ -70,71 +78,98 @@ Item {
     // loops_end lists the loops that should be stopped in this iteration.
     // loops_ignored lists loops that are not really scheduled but stored to still keep traceability -
     // for example when a 0-length loop is in the playlist.
-    function calculate_schedule() {
+    function recalculate_schedule() {
         root.logger.debug(() => 'Recalculating schedule.')
         root.logger.trace(() => `--> playlists: ${JSON.stringify(playlists, null, 2)}`)
-        if (!sync_length) {
-            root.logger.debug(() => 'Cycle length not known - no schedule.')
-            return {}
-        }
-        var rval = {}
+
+        var _scheduled_playlists = JSON.parse(JSON.stringify(playlists))
         for (var pidx=0; pidx < playlists.length; pidx++) {
-            let playlist = playlists[pidx]
+            let playlist = _scheduled_playlists[pidx]
             var _it
             _it = 0
             for (var i=0; i<playlist.length; i++) {
                 let elem = playlist[i]
                 let loop_widget = registries.objects_registry.value_or(elem.loop_id, undefined)
                 if (!loop_widget) {
-                    root.logger.warning("Could not find " + elem.loop_id) 
-                    continue
-                }
-                let loop = loop_widget.maybe_loop
-                if (!loop) {
-                    root.logger.warning(`Loop ${elem.loop_id} is not instantiated, skipping`)
+                    root.logger.debug("Could not find " + elem.loop_id) 
                     continue
                 }
                 let loop_start = _it + elem.delay
-                let loop_cycles =  loop_widget.n_cycles
+                let loop_cycles =  Math.max(1, elem.n_cycles ? elem.n_cycles : loop_widget.n_cycles)
                 let loop_end = loop_start + loop_cycles
 
-                if (!rval[loop_start]) { rval[loop_start] = { loops_start: new Set(), loops_end: new Set(), loops_ignored: new Set() } }
-                if (!rval[loop_end]) { rval[loop_end] = { loops_start: new Set(), loops_end: new Set(), loops_ignored: new Set() } }
-
-                if (loop_cycles > 0) {
-                    rval[loop_start].loops_start.add(loop)
-                    rval[loop_end].loops_end.add(loop)
-                } else {
-                    rval[loop_start].loops_ignored.add(loop)
-                }
+                elem['start_iteration'] = loop_start
+                elem['end_iteration'] = loop_end
+                elem['loop_widget'] = loop_widget
+                elem['forced_n_cycles'] = (elem.n_cycles && elem.n_cycles > 0) ? elem.n_cycles : null
 
                 _it += elem.delay + loop_cycles
             }
         }
+        // Store the annotated playlists
+        scheduled_playlists = _scheduled_playlists
+
+        // Calculate the schedule
+        var _schedule = {}
+        for(var i=0; i<_scheduled_playlists.length; i++) {
+            for(var j=0; j<_scheduled_playlists[i].length; j++) {
+                let elem = _scheduled_playlists[i][j]
+                let loop_start = elem['start_iteration']
+                let loop_end = elem['end_iteration']
+                let loop_cycles = loop_end - loop_start
+                let loop_widget = elem['loop_widget']
+                if (!loop_widget) {
+                    root.logger.debug(`Loop widget ${elem.loop_id} not found, skipping`)
+                    continue
+                }
+
+                var loop = loop_widget.maybe_loop
+                if (!loop) {
+                    root.logger.debug(`Loop ${elem.loop_id} is not instantiated, creating a default back-end loop for it`)
+                    loop_widget.create_backend_loop()
+                    loop = loop_widget.maybe_loop
+                    if (!loop) {
+                        root.logger.warning(`Could not create a back-end loop for ${elem.loop_id}.`)
+                        continue
+                    }
+                }
+
+                if (!_schedule[loop_start]) { _schedule[loop_start] = { loops_start: new Set(), loops_end: new Set(), loops_ignored: new Set() } }
+                if (!_schedule[loop_end]) { _schedule[loop_end] = { loops_start: new Set(), loops_end: new Set(), loops_ignored: new Set() } }
+
+                if (loop_cycles > 0) {
+                    _schedule[loop_start].loops_start.add(loop)
+                    _schedule[loop_end].loops_end.add(loop)
+                } else {
+                    _schedule[loop_start].loops_ignored.add(loop)
+                }
+            }
+        }
+
         // For any loops that repeatedly play, just remove intermediate start and end entries.
-        Object.keys(rval).map(k => {
-            for (var starting of rval[k].loops_start) {
-                if (rval[k].loops_end.has(starting)) {
-                    rval[k].loops_end.delete(starting)
-                    rval[k].loops_start.delete(starting)
+        Object.keys(_schedule).map(k => {
+            for (var starting of _schedule[k].loops_start) {
+                if (_schedule[k].loops_end.has(starting)) {
+                    _schedule[k].loops_end.delete(starting)
+                    _schedule[k].loops_start.delete(starting)
                 }
             }
             // Also convert the sets to lists for Python usage
-            rval[k].loops_start = Array.from(rval[k].loops_start)
-            rval[k].loops_end = Array.from(rval[k].loops_end)
-            rval[k].loops_ignored = Array.from(rval[k].loops_ignored)
+            _schedule[k].loops_start = Array.from(_schedule[k].loops_start)
+            _schedule[k].loops_end = Array.from(_schedule[k].loops_end)
+            _schedule[k].loops_ignored = Array.from(_schedule[k].loops_ignored)
         })
 
         root.logger.trace(() => `full schedule:\n${
-            Array.from(Object.entries(rval)).map(([k,v]) => 
+            Array.from(Object.entries(_schedule)).map(([k,v]) => 
                 `- ${k}: stop [${Array.from(v.loops_end).map(l => l.obj_id)}], start [${Array.from(v.loops_start).map(l => l.obj_id)}], ignore [${Array.from(v.loops_ignored).map(l => l.obj_id)}]`
             ).join("\n")
         }`)
 
-        return rval
+        schedule = _schedule
     }
     function update_schedule() {
-        if (!schedule_frozen) { schedule = calculate_schedule() }
+        if (!schedule_frozen) { recalculate_schedule() }
     }
     // During recording, we need to freeze the schedule. Otherwise, the changing lenghts of the recording sub-loop(s) will lead to a cyclic
     // change in the schedule while recording is ongoing.
@@ -160,6 +195,12 @@ Item {
     property var all_loops: new Set(Array.from(all_loop_ids || []).map(id => registries.objects_registry.value_or(id, undefined)).filter(m => m))
     property bool all_loops_found:  all_loops.size == all_loop_ids.size
 
+    // If the registry changes and we didn't find all our loops, trigger to look again
+    Connections {
+        target: registries.objects_registry
+        function onContentsChanged() { if (!all_loops_found) { root.all_loop_idsChanged() } }
+    }
+
     function print_loops_found() { root.logger.debug(`All ${all_loop_ids.size} loops found: ${all_loops_found}`) }
     onAll_loops_foundChanged: print_loops_found()
     onAll_loop_idsChanged: print_loops_found()
@@ -168,6 +209,7 @@ Item {
     Connections {
         target: all_loops_found ? null : registries.objects_registry
         function onItemAdded(id, val) { if (all_loop_ids.has(id)) { playlistsChanged() } }
+        function onItemModified(id, val) { if (all_loop_ids.has(id)) { playlistsChanged() } }
     }
 
     // If we did find all our loops, listen to length changes to update the schedule
@@ -181,70 +223,7 @@ Item {
         }
     }
 
-    // Rendering the schedule over the loops if selected
-    Mapper {
-        model: Array.from(all_loops)
-        Item {
-            property var mapped_item
-            property int index
-
-            function update_coords() {
-                let other_coords = mapped_item.mapToItem(Overlay.overlay, 0, 0)
-                x = other_coords.x
-                y = other_coords.y
-            }
-            Component.onCompleted: update_coords()
-            onVisibleChanged: update_coords()
-            parent: Overlay.overlay
-
-            visible: root.widget ? root.widget.selected : false
-
-            width: root.widget ? root.widget.width : 1
-            height: root.widget ? root.widget.height : 1
-            Rectangle {
-                anchors.right: parent.right
-                anchors.rightMargin: -8
-                y: -8
-                width: childrenRect.width + 6
-                height: childrenRect.height + 6
-                color: Material.background
-                border.width: 1
-                border.color: 'pink'
-                radius: 4
-
-                Label {
-                    x: 3
-                    y: 3
-                    color: Material.foreground
-                    text: {
-                        var rval = ''
-                        for(var k of Array.from(Object.keys(schedule))) {
-                            if (schedule[k].loops_start.includes(mapped_item.maybe_loop)) {
-                                let start = k
-                                var end = start
-                                for(var k2 of Object.keys(schedule)) {
-                                    if (k2 > k && schedule[k2].loops_end.includes(mapped_item.maybe_loop)) {
-                                        end = k2
-                                        break
-                                    }
-                                }
-                                if (rval != '') { rval += ', ' }
-                                rval += `${start}-${end}`
-                            }
-                        }
-                        return rval
-                    }
-                }
-            }
-        }
-    }
-
-    RegistryLookup {
-        id: sync_loop_lookup
-        registry: registries.state_registry
-        key: 'sync_loop'
-    }
-    property alias sync_loop : sync_loop_lookup.object
+    property var sync_loop : registries.state_registry.sync_loop
 
     function transition(mode, delay, wait_for_sync) {
         py_loop.transition(mode, delay, wait_for_sync)

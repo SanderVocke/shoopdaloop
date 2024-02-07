@@ -195,8 +195,6 @@ Item {
     // Draggy rect for width ajustment
     Rectangle {
         id: width_adjuster
-        anchors {
-        }
         height: root.height
         width: 10
         x: 100
