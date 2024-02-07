@@ -43,7 +43,7 @@ Item {
     }
 
     // The sequence is stored as a set of "playlists". Each playlist represents a parallel
-    // timeline, stored as a list of { delay: int, loop_id: str, n_cycles: int | undefined }, where the delay can be
+    // timeline, stored as a list of sublists of [{ delay: int, loop_id: str, n_cycles: int | undefined }], where the delay can be
     // used to insert blank spots in-between sequential loops.
     // the n_cycles can be set to force how long the loop is activated in the schedule. If undefined, it will
     // just be determined from the current loop length or assumed to be 1 for empty loops.
@@ -68,7 +68,7 @@ Item {
         while (playlist_idx >= playlists.length) {
             playlists.push([])
         }
-        playlists[playlist_idx].push({loop_id: loop.obj_id, delay: delay, n_cycles: n_cycles})
+        playlists[playlist_idx].push([{loop_id: loop.obj_id, delay: delay, n_cycles: n_cycles}])
         playlistsChanged()
     }
 
@@ -88,22 +88,28 @@ Item {
             var _it
             _it = 0
             for (var i=0; i<playlist.length; i++) {
-                let elem = playlist[i]
-                let loop_widget = registries.objects_registry.value_or(elem.loop_id, undefined)
-                if (!loop_widget) {
-                    root.logger.debug("Could not find " + elem.loop_id) 
-                    continue
+                let elems = playlist[i]
+                var total_duration = 0
+                for (var h=0; h<elems.length; h++) {
+                    let elem = elems[h]
+                    let loop_widget = registries.objects_registry.value_or(elem.loop_id, undefined)
+                    if (!loop_widget) {
+                        root.logger.debug("Could not find " + elem.loop_id) 
+                        continue
+                    }
+                    let loop_start = _it + elem.delay
+                    let loop_cycles =  Math.max(1, elem.n_cycles ? elem.n_cycles : loop_widget.n_cycles)
+                    let loop_end = loop_start + loop_cycles
+
+                    elem['start_iteration'] = loop_start
+                    elem['end_iteration'] = loop_end
+                    elem['loop_widget'] = loop_widget
+                    elem['forced_n_cycles'] = (elem.n_cycles && elem.n_cycles > 0) ? elem.n_cycles : null
+
+                    let duration = elem.delay + loop_cycles
+                    total_duration = Math.max(total_duration, duration)
                 }
-                let loop_start = _it + elem.delay
-                let loop_cycles =  Math.max(1, elem.n_cycles ? elem.n_cycles : loop_widget.n_cycles)
-                let loop_end = loop_start + loop_cycles
-
-                elem['start_iteration'] = loop_start
-                elem['end_iteration'] = loop_end
-                elem['loop_widget'] = loop_widget
-                elem['forced_n_cycles'] = (elem.n_cycles && elem.n_cycles > 0) ? elem.n_cycles : null
-
-                _it += elem.delay + loop_cycles
+                _it += total_duration
             }
         }
         // Store the annotated playlists
@@ -113,35 +119,37 @@ Item {
         var _schedule = {}
         for(var i=0; i<_scheduled_playlists.length; i++) {
             for(var j=0; j<_scheduled_playlists[i].length; j++) {
-                let elem = _scheduled_playlists[i][j]
-                let loop_start = elem['start_iteration']
-                let loop_end = elem['end_iteration']
-                let loop_cycles = loop_end - loop_start
-                let loop_widget = elem['loop_widget']
-                if (!loop_widget) {
-                    root.logger.debug(`Loop widget ${elem.loop_id} not found, skipping`)
-                    continue
-                }
-
-                var loop = loop_widget.maybe_loop
-                if (!loop) {
-                    root.logger.debug(`Loop ${elem.loop_id} is not instantiated, creating a default back-end loop for it`)
-                    loop_widget.create_backend_loop()
-                    loop = loop_widget.maybe_loop
-                    if (!loop) {
-                        root.logger.warning(`Could not create a back-end loop for ${elem.loop_id}.`)
+                for(var h=0; h<_scheduled_playlists[i][j].length; h++) {
+                    let elem = _scheduled_playlists[i][j][h]
+                    let loop_start = elem['start_iteration']
+                    let loop_end = elem['end_iteration']
+                    let loop_cycles = loop_end - loop_start
+                    let loop_widget = elem['loop_widget']
+                    if (!loop_widget) {
+                        root.logger.debug(`Loop widget ${elem.loop_id} not found, skipping`)
                         continue
                     }
-                }
 
-                if (!_schedule[loop_start]) { _schedule[loop_start] = { loops_start: new Set(), loops_end: new Set(), loops_ignored: new Set() } }
-                if (!_schedule[loop_end]) { _schedule[loop_end] = { loops_start: new Set(), loops_end: new Set(), loops_ignored: new Set() } }
+                    var loop = loop_widget.maybe_loop
+                    if (!loop) {
+                        root.logger.debug(`Loop ${elem.loop_id} is not instantiated, creating a default back-end loop for it`)
+                        loop_widget.create_backend_loop()
+                        loop = loop_widget.maybe_loop
+                        if (!loop) {
+                            root.logger.warning(`Could not create a back-end loop for ${elem.loop_id}.`)
+                            continue
+                        }
+                    }
 
-                if (loop_cycles > 0) {
-                    _schedule[loop_start].loops_start.add(loop)
-                    _schedule[loop_end].loops_end.add(loop)
-                } else {
-                    _schedule[loop_start].loops_ignored.add(loop)
+                    if (!_schedule[loop_start]) { _schedule[loop_start] = { loops_start: new Set(), loops_end: new Set(), loops_ignored: new Set() } }
+                    if (!_schedule[loop_end]) { _schedule[loop_end] = { loops_start: new Set(), loops_end: new Set(), loops_ignored: new Set() } }
+
+                    if (loop_cycles > 0) {
+                        _schedule[loop_start].loops_start.add(loop)
+                        _schedule[loop_end].loops_end.add(loop)
+                    } else {
+                        _schedule[loop_start].loops_ignored.add(loop)
+                    }
                 }
             }
         }
@@ -187,7 +195,9 @@ Item {
         var r = new Set()
         for(var i = 0; i < playlists.length; i++) {
             for (var j = 0; j < playlists[i].length; j++) {
-                r.add(playlists[i][j].loop_id)
+                for (var h = 0; h < playlists[i][j].length; h++) {
+                    r.add(playlists[i][j][h].loop_id)
+                }
             }
         }
         return r

@@ -175,8 +175,8 @@ Item {
                         let new_elem = playlist_element_factory.createObject(root, {
                             loop_widget: src_loop_widget,
                             loop_id: src_loop_widget.obj_id,
-                            incoming_edge: null,
-                            outgoing_edge: null,
+                            incoming_edges: null,
+                            outgoing_edges: null,
                             delay: mapped_item.cycle
                         })
                         add_new_playlist_with_elem_and_push(new_elem, index)
@@ -292,10 +292,10 @@ Item {
         property int end_iteration
         property int delay
         property var maybe_forced_n_cycles
-        property var incoming_edge // refer to other PlaylistElement
-        property var outgoing_edge // refer to other PlaylistElement
-        property color incoming_edge_color
-        property color outgoing_edge_color
+        property var incoming_edges // refer to other PlaylistElements
+        property var outgoing_edges // refer to other PlaylistElements
+        property color incoming_edges_color
+        property color outgoing_edges_color
         property var info
 
         // Calculate
@@ -336,26 +336,32 @@ Item {
         let _schedule_length = schedule_length
         for(var i=0; i<_scheduled_playlists.length; i++) {
             var playlist = []
-            var prev_elem = null
+            var prev_elems = []
             for(var j=0; j<_scheduled_playlists[i].length; j++) {
-                let ori = _scheduled_playlists[i][j]
-                let elem = {
-                    "ori_elem": ori,
-                    "swimlane": -1,
-                    "incoming_edge": null,
-                    "outgoing_edge": null,
-                    "incoming_edge_color": 'grey',
-                    "outgoing_edge_color": 'grey'
+                let parallel_elems = []
+                for(var h=0; h<_scheduled_playlists[i][j].length; h++) {
+                    let ori = _scheduled_playlists[i][j][h]
+                    let elem = {
+                        "ori_elem": ori,
+                        "swimlane": -1,
+                        "incoming_edges": [],
+                        "outgoing_edges": [],
+                        "incoming_edges_color": 'grey',
+                        "outgoing_edges_color": 'grey'
+                    }
+                    parallel_elems.push(elem)
                 }
-                if (prev_elem) {
-                    prev_elem.outgoing_edge = elem
-                    elem.incoming_edge = prev_elem
+                if (prev_elems.length > 0) {
                     let c = pick_color()
-                    prev_elem.outgoing_edge_color = c
-                    elem.incoming_edge_color = c
+                    prev_elems.forEach(p => parallel_elems.forEach(pp => {
+                        p.outgoing_edges.push(pp)
+                        pp.incoming_edges.push(p)
+                        p.outgoing_edges_color = c
+                        pp.incoming_edges_color = c
+                    }))
                 }
-                playlist.push(elem)
-                prev_elem = playlist[playlist.length - 1]
+                playlist.push(parallel_elems)
+                prev_elems = playlist[playlist.length - 1]
             }
             placeholders.push(playlist)
         }
@@ -374,37 +380,39 @@ Item {
         for (var i=0; i<placeholders.length; i++) {
             let playlist = placeholders[i]
             for (var j=0; j<playlist.length; j++) {
-                let elem = playlist[j]
-                var swimlane = -1
-                let loop_widget = elem.ori_elem.loop_widget
-                let track_idx = loop_widget.track_idx
-                let swimlanes = swimlanes_per_track[track_idx]
+                let parallel_elems = playlist[j]
+                for (var h=0; h<parallel_elems.length; h++) {
+                    let elem = parallel_elems[h]
+                    var swimlane = -1
+                    let loop_widget = elem.ori_elem.loop_widget
+                    let track_idx = loop_widget.track_idx
+                    let swimlanes = swimlanes_per_track[track_idx]
 
-                // Check the existing swimlanes first
-                var check_swimlanes = (new Array(swimlanes.length).fill(0)).map((v, idx) => idx) // in ascending order
-                if (elem.incoming_edge && elem.incoming_edge.ori_elem.loop_widget.track_idx == loop_widget.track_idx) {
-                    // If there is a preceding element in the same track, prefer to go in the same swimlane
-                    check_swimlanes.splice(0, 0, elem.incoming_edge.swimlane)
-                }
-                for(var k=0; k<check_swimlanes.length; k++) {
-                    if (is_free(track_idx, check_swimlanes[k], elem.ori_elem.start_iteration, elem.ori_elem.end_iteration)) {
-                        swimlane = check_swimlanes[k]
-                        break;
+                    // Check the existing swimlanes first
+                    var check_swimlanes = (new Array(swimlanes.length).fill(0)).map((v, idx) => idx) // in ascending order
+                    // If there are preceding elements in the same track(s), prefer to go in those swimlanes.
+                    let preceding_swimlanes = elem.incoming_edges.filter(e => e.ori_elem.loop_widget.track_idx == loop_widget.track_idx).map(e => e.swimlane)
+                    check_swimlanes = preceding_swimlanes.concat(check_swimlanes)
+                    for(var k=0; k<check_swimlanes.length; k++) {
+                        if (is_free(track_idx, check_swimlanes[k], elem.ori_elem.start_iteration, elem.ori_elem.end_iteration)) {
+                            swimlane = check_swimlanes[k]
+                            break;
+                        }
                     }
-                }
-                // Create new swimlane if needed
-                if (swimlane == -1) {
-                    // new swimlane needed
-                    swimlanes.push(create_swimlane_slot_status())
-                    swimlane = swimlanes.length - 1
-                }
+                    // Create new swimlane if needed
+                    if (swimlane == -1) {
+                        // new swimlane needed
+                        swimlanes.push(create_swimlane_slot_status())
+                        swimlane = swimlanes.length - 1
+                    }
 
-                // Mark the newly taken slots
-                for(var h=elem.ori_elem.start_iteration; h<elem.ori_elem.end_iteration; h++) {
-                    swimlanes[swimlane][h] = true
-                }
+                    // Mark the newly taken slots
+                    for(var k=elem.ori_elem.start_iteration; k<elem.ori_elem.end_iteration; k++) {
+                        swimlanes[swimlane][k] = true
+                    }
 
-                elem.swimlane = swimlane
+                    elem.swimlane = swimlane
+                }
             }
         }
 
@@ -419,20 +427,24 @@ Item {
             var playlist = []
             var lookup = {}
             for(var j=0; j<playlist_elem_placeholders[i].length; j++) {
-                let info = playlist_elem_placeholders[i][j]
-                playlist.push(playlist_element_factory.createObject(root, {
-                    loop_widget: info.ori_elem.loop_widget,
-                    loop_id: info.ori_elem.loop_id,
-                    start_iteration: info.ori_elem.start_iteration,
-                    end_iteration: info.ori_elem.end_iteration,
-                    delay: info.ori_elem.delay,
-                    swimlane: info.swimlane,
-                    incoming_edge: j > 0 ? playlist[playlist.length-1] : null, // PlaylistElement previously created
-                    outgoing_edge: null, // fill in later
-                    incoming_edge_color: info.incoming_edge_color,
-                    outgoing_edge_color: info.outgoing_edge_color,
-                    maybe_forced_n_cycles: info.ori_elem.forced_n_cycles
-                }))
+                var parallel_elems = []
+                for(var h=0; h<playlist_elem_placeholders[i][j].length; h++) {
+                    let info = playlist_elem_placeholders[i][j][h]
+                    parallel_elems.push(playlist_element_factory.createObject(root, {
+                        loop_widget: info.ori_elem.loop_widget,
+                        loop_id: info.ori_elem.loop_id,
+                        start_iteration: info.ori_elem.start_iteration,
+                        end_iteration: info.ori_elem.end_iteration,
+                        delay: info.ori_elem.delay,
+                        swimlane: info.swimlane,
+                        incoming_edges: j > 0 ? playlist[playlist.length-1] : [], // PlaylistElement previously created
+                        outgoing_edges: [], // fill in later
+                        incoming_edges_color: info.incoming_edges_color,
+                        outgoing_edges_color: info.outgoing_edges_color,
+                        maybe_forced_n_cycles: info.ori_elem.forced_n_cycles
+                    }))
+                }
+                playlist.push(parallel_elems)
             }
             rval.push(playlist)
         }
@@ -441,11 +453,11 @@ Item {
     // To prevent binding loops, we resolve some of the edges to other PlaylistElements
     // after initial creation.
     onPlaylist_elemsChanged: {
-        playlist_elems.forEach(p => p.forEach(e => {
-            if (e.incoming_edge) {
-                e.incoming_edge.outgoing_edge = e
-            }
-        }))
+        playlist_elems.forEach(p => p.forEach(pp => pp.forEach(e => {
+            e.incoming_edges.forEach(i => {
+                i.outgoing_edges.push(e)
+            })
+        })))
     }
 
     // Flatten the elements-based playlists into a list of all elements.
@@ -453,7 +465,9 @@ Item {
         var rval = []
         for(var i=0; i<playlist_elems.length; i++) {
             for(var j=0; j<playlist_elems[i].length; j++) {
-                rval.push(playlist_elems[i][j])
+                for(var h=0; h<playlist_elems[i][j].length; h++) {
+                    rval.push(playlist_elems[i][j][h])
+                }
             }
         }
         return rval
@@ -473,7 +487,11 @@ Item {
         for(var i=0; i<elems_playlists.length; i++) {
             let playlist = []
             for(var j=0; j<elems_playlists[i].length; j++) {
-                playlist.push(item_from_elem(elems_playlists[i][j]))
+                let parallel_elems = []
+                for(var h=0; h<elems_playlists[i][j].length; h++) {
+                    parallel_elems.push(item_from_elem(elems_playlists[i][j][h]))
+                }
+                playlist.push(parallel_elems)
             }
             playlists.push(playlist)
         }
@@ -482,62 +500,77 @@ Item {
 
     // Delete PlaylistElement from the schedule and push
     function delete_elem_and_push(elem) {
-        // Delete the element from the schedule
-        let prev = elem.incoming_edge
-        let next = elem.outgoing_edge
-        if (prev && next) {
-            prev.outgoing_edge = next
-            next.incoming_edge = prev
-        } else if (prev) {
-            prev.outgoing_edge = null
-        } else if (next) {
-            next.incoming_edge = null
-        }
-        let new_elems_schedule = playlist_elems.map(p => p.filter(e => e != elem))
+        playlist_elems.forEach(p => {
+            p.forEach(pp => {
+                if (pp.includes(elem)) {
+                    pp.splice(pp.findIndex(e => e == elem), 1)
+                }
+            })
+        })
+        let new_elems_schedule = playlist_elems.map(p => p.filter(e => e.length > 0)) // delete empty sections
         push_playlists(new_elems_schedule)
     }
 
     // Insert an element into an existing playlist
     function add_connected_elem_and_push(existing_elem, new_elem, put_before, delay) {
+        // First, we have to find the existing element to access the set of parallel elements
+        // containing it.
+        let new_playlist_elems = playlist_elems.map(p => p.map(pp => pp.map(e => e)))
+        var existing_parallel_elems = null
+        var existing_playlist = null
+        new_playlist_elems.forEach(p => p.forEach(pp => { if(pp.includes(existing_elem)) { existing_parallel_elems = pp; existing_playlist = p } }))
+
+        if(!existing_parallel_elems || !existing_playlist) {
+            root.logger.warning(() => "Could not find playlist entry point for new element, ignoring")
+            return;
+        }
+
+        // Now find the parallel set where our new element should be added.
+        // If none exists (we are at the beginning/end of the playlist), create one.
+        var new_parallel_elems = null
         if (put_before) {
-            new_elem.outgoing_edge = existing_elem
-            if (existing_elem.incoming_edge) {
-                // Insert in-between in case there is already a connected item
-                new_elem.incoming_edge = existing_elem.incoming_edge
-                new_elem.incoming_edge.outgoing_edge = new_elem
+            var prev_elems = null
+            if (existing_elem.incoming_edges.length > 0) {
+                let edge = existing_elem.incoming_edges[0]
+                new_playlist_elems.forEach(p => p.forEach(pp => { if(pp.includes(edge)) { prev_elems = pp } }))
             }
-            existing_elem.incoming_edge = new_elem
-            new_elem.start_iteration = existing_elem.start_iteration
-            new_elem.end_iteration = new_elem.start_iteration + new_elem.loop_widget.n_cycles
+            if (prev_elems === null) {
+                existing_playlist.splice(0, 0, [])
+                prev_elems = existing_playlist[0]
+            }
+            prev_elems.push(new_elem)
+            existing_parallel_elems.forEach(e => {
+                new_elem.outgoing_edges.push(e)
+                e.incoming_edges.push(new_elem)
+            })
         } else {
-            new_elem.incoming_edge = existing_elem
-            if (existing_elem.outgoing_edge) {
-                // Insert in-between in case there is already a connected item
-                new_elem.outgoing_edge = existing_elem.outgoing_edge
-                new_elem.outgoing_edge.incoming_edge = new_elem
+            var next_elems = null
+            if (existing_elem.outgoing_edges.length > 0) {
+                let edge = existing_elem.outgoing_edges[0]
+                new_playlist_elems.forEach(p => p.forEach(pp => { if(pp.includes(edge)) { next_elems = pp } }))
             }
-            existing_elem.outgoing_edge = new_elem
-            new_elem.start_iteration = existing_elem.end_iteration + delay
-            new_elem.end_iteration = new_elem.start_iteration + new_elem.loop_widget.n_cycles
+            if (next_elems === null) {
+                existing_playlist.push([])
+                next_elems = existing_playlist[existing_playlist.length - 1]
+            }
+            next_elems.push(new_elem)
+            existing_parallel_elems.forEach(e => {
+                new_elem.incoming_edges.push(e)
+                e.outgoing_edges.push(new_elem)
+            })
         }
         new_elem.delay = delay
         var new_elems_schedule = []
-        for (var i=0; i<playlist_elems.length; i++) {
-            let playlist = playlist_elems[i]
+        for (var i=0; i<new_playlist_elems.length; i++) {
+            let playlist = new_playlist_elems[i]
             let new_playlist = []
             for (var j=0; j<playlist.length; j++) {
-                let elem = playlist[j]
-                if (elem == existing_elem) {
-                    if (put_before) {
-                        new_playlist.push(new_elem)
-                        new_playlist.push(elem)
-                    } else {
-                        new_playlist.push(elem)
-                        new_playlist.push(new_elem)
-                    }
-                } else {
-                    new_playlist.push(elem)
+                let parallel_elems = []
+                for(var h=0; h<playlist[j].length; h++) {
+                    let elem = playlist[j][h]
+                    parallel_elems.push(elem)
                 }
+                new_playlist.push(parallel_elems)
             }
             new_elems_schedule.push(new_playlist)
         }
@@ -553,12 +586,16 @@ Item {
             let playlist = playlist_elems[i]
             let new_playlist = []
             for (var j=0; j<playlist.length; j++) {
-                let elem = playlist[j]
-                new_playlist.push(elem)
+                let parallel_elems = []
+                for (var h=0; h<parallel_elems.length; h++) {
+                    let elem = playlist[j][h]
+                    parallel_elems.push(elem)
+                }
+                new_playlist.push(parallel_elems)
             }
             new_elems_schedule.push(new_playlist)
         }
-        new_elems_schedule.push([new_elem])
+        new_elems_schedule.push([[new_elem]])
         push_playlists(new_elems_schedule)
     }
 
@@ -573,21 +610,23 @@ Item {
         // To do this we need to cut a playlist in two.
         var new_elems_schedule = []
         playlist_elems.forEach(p => {
-            if (!p.includes(from_elem) || !p.includes(to_elem)) { new_elems_schedule.push(Array.from(p)); return; }
+            if (!p.find(pp => pp.includes(from_elem)) || !p.find(pp => pp.includes(to_elem))) { new_elems_schedule.push(Array.from(p)); return; }
             let first_playlist = []
             let second_playlist = []
             var found = false
             for(var i=0; i<p.length; i++) {
                 if (found) {
                     second_playlist.push(p[i])
-                    if (p[i] == to_elem) {
-                        to_elem.delay = to_elem.start_iteration
-                        to_elem.incoming_edge = null
+                    if (p[i].includes(to_elem)) {
+                        p[i].forEach(pp => {
+                            pp.delay = pp.start_iteration
+                            pp.incoming_edges = []
+                        })
                     }
-                } else if (p[i] == from_elem) {
+                } else if (p[i].includes(from_elem)) {
                     found = true
                     first_playlist.push(p[i])
-                    from_elem.outgoing_edge = null
+                    p[i].forEach(pp => { pp.outgoing_edges = [] })
                 } else {
                     first_playlist.push(p[i])
                 }
@@ -692,9 +731,22 @@ Item {
                                         property var mapped_item
                                         property int index
 
-                                        color: 'grey'
-                                        border.color: 'black'
-                                        border.width: 1
+                                        color: {
+                                            switch(mapped_item.loop_widget.mode) {
+                                            case ShoopConstants.LoopMode.Playing:
+                                                return '#004400';
+                                            case ShoopConstants.LoopMode.PlayingDryThroughWet:
+                                                return '#333300';
+                                            case ShoopConstants.LoopMode.Recording:
+                                                return '#660000';
+                                            case ShoopConstants.LoopMode.RecordingDryIntoWet:
+                                                return '#663300';
+                                            default:
+                                                return '#000044';
+                                            }
+                                        }
+                                        border.color: 'grey'
+                                        border.width: 2
 
                                         width: root.cycle_width * (mapped_item.end_iteration - mapped_item.start_iteration)
                                         height: swimlane.height
@@ -702,13 +754,7 @@ Item {
 
                                         Label {
                                             anchors.centerIn: parent
-                                            text: {
-                                                var rval = mapped_item.loop_widget.name
-                                                if (mapped_item.maybe_forced_n_cycles) {
-                                                    rval = rval + " (!)"
-                                                }
-                                                return rval
-                                            }
+                                            text: mapped_item.loop_widget.name
                                         }
 
                                         Component.onCompleted: {
@@ -783,16 +829,29 @@ Item {
                                             }
                                         }
 
+                                        MaterialDesignIcon {
+                                            size: 20
+                                            anchors {
+                                                verticalCenter: parent.verticalCenter
+                                                right: right_side_link_indicator.left
+                                            }
+                                            name: 'alert-box'
+                                            color: Material.foreground
+                                            visible: mapped_item.maybe_forced_n_cycles ? true : false
+                                            tooltip: "This element has a forced length. The composite loop will run this length regardless of the actual loop's length."
+                                        }
+
                                         // If this loop is preceding another in the playlist, show that
                                         // by a "link icon" to the next one.
                                         LinkIndicator {
-                                            visible: loop_rect.mapped_item.outgoing_edge != null
+                                            id: right_side_link_indicator
+                                            visible: loop_rect.mapped_item.outgoing_edges.length > 0
                                             height: loop_rect.height / 2
                                             width: height
                                             side: 'right'
-                                            color: loop_rect.mapped_item.outgoing_edge_color
+                                            color: loop_rect.mapped_item.outgoing_edges_color
                                             loop_elem: loop_rect.mapped_item
-                                            other_loop_elem: loop_rect.mapped_item.outgoing_edge
+                                            other_loop_elem: loop_rect.mapped_item.outgoing_edges
 
                                             anchors {
                                                 right: parent.right
@@ -802,13 +861,13 @@ Item {
 
                                         // Same for incoming connections
                                         LinkIndicator {
-                                            visible: loop_rect.mapped_item.incoming_edge != null
+                                            visible: loop_rect.mapped_item.incoming_edges.length > 0
                                             height: loop_rect.height / 2
                                             width: height
                                             side: 'left'
-                                            color: loop_rect.mapped_item.incoming_edge_color
+                                            color: loop_rect.mapped_item.incoming_edges_color
                                             loop_elem: loop_rect.mapped_item
-                                            other_loop_elem: loop_rect.mapped_item.incoming_edge
+                                            other_loop_elem: loop_rect.mapped_item.incoming_edges
 
                                             anchors {
                                                 left: parent.left
@@ -830,7 +889,9 @@ Item {
                                                 let src_loop_widget = drag.source
                                                 let new_elem = playlist_element_factory.createObject(root, {
                                                     loop_widget: src_loop_widget,
-                                                    loop_id: src_loop_widget.obj_id
+                                                    loop_id: src_loop_widget.obj_id,
+                                                    incoming_edges: [],
+                                                    outgoing_edges: []
                                                 })
                                                 add_connected_elem_and_push(mapped_item, new_elem, false, 0)
                                             }
@@ -856,7 +917,9 @@ Item {
                                                 let src_loop_widget = drag.source
                                                 let new_elem = playlist_element_factory.createObject(root, {
                                                     loop_widget: src_loop_widget,
-                                                    loop_id: src_loop_widget.obj_id
+                                                    loop_id: src_loop_widget.obj_id,
+                                                    incoming_edges: [],
+                                                    outgoing_edges: []
                                                 })
                                                 add_connected_elem_and_push(mapped_item, new_elem, true, 0)
                                             }
@@ -887,13 +950,13 @@ Item {
                                             }
                                             ShoopMenuItem {
                                                 text: "Unlink -->"
-                                                shown: loop_rect.mapped_item.outgoing_edge ? true : false
-                                                onClicked: root.unlink_and_push(loop_rect.mapped_item, loop_rect.mapped_item.outgoing_edge)
+                                                shown: loop_rect.mapped_item.outgoing_edges.length > 0 ? true : false
+                                                onClicked: root.unlink_and_push(loop_rect.mapped_item, loop_rect.mapped_item.outgoing_edges[0])
                                             }
                                             ShoopMenuItem {
                                                 text: "<-- Unlink"
-                                                shown: loop_rect.mapped_item.incoming_edge ? true : false
-                                                onClicked: root.unlink_and_push(loop_rect.mapped_item.incoming_edge, loop_rect.mapped_item)
+                                                shown: loop_rect.mapped_item.incoming_edges.length > 0 ? true : false
+                                                onClicked: root.unlink_and_push(loop_rect.mapped_item.incoming_edges[0], loop_rect.mapped_item)
                                             }
                                             ShoopMenuItem {
                                                 text: "Remove forced length"

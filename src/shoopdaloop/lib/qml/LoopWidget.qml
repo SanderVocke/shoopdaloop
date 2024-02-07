@@ -1285,11 +1285,11 @@ Item {
                 switch(loopprogressrect.loop.mode) {
                 case ShoopConstants.LoopMode.Playing:
                     return '#004400';
-                case ShoopConstants.LoopMode.PlayingLiveFX:
+                case ShoopConstants.LoopMode.PlayingDryThroughWet:
                     return '#333300';
                 case ShoopConstants.LoopMode.Recording:
                     return '#660000';
-                case ShoopConstants.LoopMode.RecordingFX:
+                case ShoopConstants.LoopMode.RecordingDryIntoWet:
                     return '#663300';
                 default:
                     return default_color;
@@ -1479,7 +1479,7 @@ Item {
             }
             ShoopMenuItem {
                 text: "Create Composite"
-                shown: !root.maybe_loop
+                shown: !root.maybe_composite_loop && !root.is_sync
                 onClicked: root.create_composite_loop()
             }
             ShoopMenuItem {

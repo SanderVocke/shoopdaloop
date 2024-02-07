@@ -138,8 +138,8 @@ ShoopTestFile {
                     c().create_composite_loop({
                         'playlists': [
                             [ // playlist
-                                { 'loop_id': l1().obj_id, 'delay': 0 },
-                                { 'loop_id': l2().obj_id, 'delay': 1 },
+                                [{ 'loop_id': l1().obj_id, 'delay': 0 }],
+                                [{ 'loop_id': l2().obj_id, 'delay': 1 }],
                             ]
                         ]
                     })
@@ -209,6 +209,8 @@ ShoopTestFile {
                                 ShoopConstants.LoopMode.Playing,
                                 50, 50, 0, 50)
                 },
+
+
                 'test_play_after_record': () => {
                     check_backend()
                     clear()
@@ -220,8 +222,8 @@ ShoopTestFile {
                     c().create_composite_loop({
                         'playlists': [
                             [ // playlist
-                                { 'loop_id': l1().obj_id, 'delay': 0, 'n_cycles': 2 },
-                                { 'loop_id': l2().obj_id, 'delay': 1 },
+                                [{ 'loop_id': l1().obj_id, 'delay': 0, 'n_cycles': 2 }],
+                                [{ 'loop_id': l2().obj_id, 'delay': 1 }],
                             ]
                         ]
                     })
@@ -288,6 +290,86 @@ ShoopTestFile {
                                 50, 50, 0, 50,
                                 100, 200, 100, 400)
                 },
+
+                'test_parallel_playlist': () => {
+                    check_backend()
+                    clear()
+
+                    l1().create_backend_loop()
+                    l2().create_backend_loop()
+                    m().create_backend_loop()
+
+                    testcase.wait_updated(session.backend)
+
+                    m().set_length(100)
+                    l1().set_length(200)
+                    l2().set_length(100)
+
+                    c().create_composite_loop({
+                        'playlists': [
+                            [ // playlist
+                                [{ 'loop_id': l1().obj_id, 'delay': 0, 'n_cycles': 1 }],
+                                [{ 'loop_id': l1().obj_id, 'delay': 1, 'n_cycles': 2 },
+                                 { 'loop_id': l2().obj_id, 'delay': 2, 'n_cycles': 1 }],
+                            ]
+                        ]
+                    })
+
+                    testcase.wait_updated(session.backend)
+
+                    verify_states(ShoopConstants.LoopMode.Stopped,
+                                ShoopConstants.LoopMode.Stopped,
+                                ShoopConstants.LoopMode.Stopped,
+                                ShoopConstants.LoopMode.Stopped,
+                                0, 0, 0, 0)
+
+                    m().transition(ShoopConstants.LoopMode.Playing, 0, false)
+
+                    process(50); // sync loop is playing
+
+                    // trigger the composite loop
+                    c().transition(ShoopConstants.LoopMode.Playing, 0, true)
+                    testcase.wait_updated(session.backend)
+                    verify_eq(l1().next_mode, ShoopConstants.LoopMode.Playing)
+
+                    process(100) // middle of 1st step (1st loop plays)
+
+                    verify_states(ShoopConstants.LoopMode.Playing,
+                                ShoopConstants.LoopMode.Playing,
+                                ShoopConstants.LoopMode.Stopped,
+                                ShoopConstants.LoopMode.Playing,
+                                50, 50, 0, 50,
+                                100, 200, 100, 400)
+
+                    process(100) // middle of 2nd step (pause)
+
+                    verify_states(ShoopConstants.LoopMode.Playing,
+                                ShoopConstants.LoopMode.Stopped,
+                                ShoopConstants.LoopMode.Stopped,
+                                ShoopConstants.LoopMode.Playing,
+                                50, 0, 0, 150,
+                                100, 200, 100, 400)
+                    
+                    process(100) // middle of 3rd step (1st loop plays from the top)
+
+                    verify_states(ShoopConstants.LoopMode.Playing,
+                                ShoopConstants.LoopMode.Playing,
+                                ShoopConstants.LoopMode.Stopped,
+                                ShoopConstants.LoopMode.Playing,
+                                50, 50, 0, 250,
+                                100, 200, 100, 400)
+                    
+                    process(100) // middle of 4th step (1st loop continues playing, 2nd loop starts playing)
+
+                    verify_states(ShoopConstants.LoopMode.Playing,
+                                ShoopConstants.LoopMode.Playing,
+                                ShoopConstants.LoopMode.Playing,
+                                ShoopConstants.LoopMode.Playing,
+                                50, 150, 50, 350,
+                                100, 200, 100, 400)
+                    
+                },
+
                 'test_countdown': () => {
                     check_backend()
                     clear()
@@ -305,8 +387,8 @@ ShoopTestFile {
                     c().create_composite_loop({
                         'playlists': [
                             [ // playlist
-                                { 'loop_id': l1().obj_id, 'delay': 0 },
-                                { 'loop_id': l2().obj_id, 'delay': 1 },
+                                [{ 'loop_id': l1().obj_id, 'delay': 0 }],
+                                [{ 'loop_id': l2().obj_id, 'delay': 1 }],
                             ]
                         ]
                     })
@@ -336,6 +418,8 @@ ShoopTestFile {
                     verify_eq(l1().mode, ShoopConstants.LoopMode.Playing)
                     verify_eq(c().maybe_loop.iteration, 0)
                 },
+
+
                 'test_ui_frozen': () => {
                     // Tests that when the UI thread freezes / is busy, composite loops
                     // still do their thing in the background.
@@ -355,8 +439,8 @@ ShoopTestFile {
                     c().create_composite_loop({
                         'playlists': [
                             [ // playlist
-                                { 'loop_id': l1().obj_id, 'delay': 0 },
-                                { 'loop_id': l2().obj_id, 'delay': 1 },
+                                [{ 'loop_id': l1().obj_id, 'delay': 0 }],
+                                [{ 'loop_id': l2().obj_id, 'delay': 1 }],
                             ]
                         ]
                     })
