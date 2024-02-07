@@ -138,8 +138,8 @@ ShoopTestFile {
                     c().create_composite_loop({
                         'playlists': [
                             [ // playlist
-                                { 'loop_id': l1().obj_id, 'delay': 0 },
-                                { 'loop_id': l2().obj_id, 'delay': 1 },
+                                [{ 'loop_id': l1().obj_id, 'delay': 0 }],
+                                [{ 'loop_id': l2().obj_id, 'delay': 1 }],
                             ]
                         ]
                     })
@@ -220,8 +220,8 @@ ShoopTestFile {
                     c().create_composite_loop({
                         'playlists': [
                             [ // playlist
-                                { 'loop_id': l1().obj_id, 'delay': 0, 'n_cycles': 2 },
-                                { 'loop_id': l2().obj_id, 'delay': 1 },
+                                [{ 'loop_id': l1().obj_id, 'delay': 0, 'n_cycles': 2 }],
+                                [{ 'loop_id': l2().obj_id, 'delay': 1 }],
                             ]
                         ]
                     })
@@ -305,8 +305,8 @@ ShoopTestFile {
                     c().create_composite_loop({
                         'playlists': [
                             [ // playlist
-                                { 'loop_id': l1().obj_id, 'delay': 0 },
-                                { 'loop_id': l2().obj_id, 'delay': 1 },
+                                [{ 'loop_id': l1().obj_id, 'delay': 0 }],
+                                [{ 'loop_id': l2().obj_id, 'delay': 1 }],
                             ]
                         ]
                     })
@@ -355,8 +355,8 @@ ShoopTestFile {
                     c().create_composite_loop({
                         'playlists': [
                             [ // playlist
-                                { 'loop_id': l1().obj_id, 'delay': 0 },
-                                { 'loop_id': l2().obj_id, 'delay': 1 },
+                                [{ 'loop_id': l1().obj_id, 'delay': 0 }],
+                                [{ 'loop_id': l2().obj_id, 'delay': 1 }],
                             ]
                         ]
                     })
