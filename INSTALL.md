@@ -47,4 +47,4 @@ This will install into `./.py-build-cmake-cache/editable` with symlinks to the P
 
 ### Changing CMake build settings
 
-Build settings are controlled by `pyproject.toml`, including CMake build settings. To change some settings locally, an override file can be used to change only those settings needed. It should be stored alongside `pyproject.toml` and its filename should be `py-build-cmake.local.toml`.
+Build settings are controlled by `pyproject.toml`, including CMake build settings. To change some settings locally, an override file can be used to change only those settings needed. It should be stored alongside `pyproject.toml` and its filename should be `py-build-cmake.local.toml`. Some examples are stored in the `overrides` folder and can be copied directly, e.g. to do a debug or asan build.
