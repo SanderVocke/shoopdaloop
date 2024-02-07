@@ -385,6 +385,7 @@ Item {
                     let elem = parallel_elems[h]
                     var swimlane = -1
                     let loop_widget = elem.ori_elem.loop_widget
+                    console.log(Object.keys(elem.ori_elem))
                     let track_idx = loop_widget.track_idx
                     let swimlanes = swimlanes_per_track[track_idx]
 
@@ -512,47 +513,65 @@ Item {
     }
 
     // Insert an element into an existing playlist
-    // FIXME
     function add_connected_elem_and_push(existing_elem, new_elem, put_before, delay) {
+        // First, we have to find the existing element to access the set of parallel elements
+        // containing it.
+        let new_playlist_elems = playlist_elems.map(p => p.map(pp => pp.map(e => e)))
+        var existing_parallel_elems = null
+        var existing_playlist = null
+        new_playlist_elems.forEach(p => p.forEach(pp => { if(pp.includes(existing_elem)) { existing_parallel_elems = pp; existing_playlist = p } }))
+
+        if(!existing_parallel_elems || !existing_playlist) {
+            root.logger.warning(() => "Could not find playlist entry point for new element, ignoring")
+            return;
+        }
+
+        // Now find the parallel set where our new element should be added.
+        // If none exists (we are at the beginning/end of the playlist), create one.
+        var new_parallel_elems = null
         if (put_before) {
-            new_elem.outgoing_edges = existing_elem
-            if (existing_elem.incoming_edges) {
-                // Insert in-between in case there is already a connected item
-                new_elem.incoming_edges = existing_elem.incoming_edges
-                new_elem.incoming_edges.outgoing_edges = new_elem
+            var prev_elems = null
+            if (existing_elem.incoming_edges.length > 0) {
+                let edge = existing_elem.incoming_edges[0]
+                new_playlist_elems.forEach(p => p.forEach(pp => { if(pp.includes(edge)) { prev_elems = pp } }))
             }
-            existing_elem.incoming_edges = new_elem
-            new_elem.start_iteration = existing_elem.start_iteration
-            new_elem.end_iteration = new_elem.start_iteration + new_elem.loop_widget.n_cycles
+            if (prev_elems === null) {
+                existing_playlist.splice(0, 0, [])
+                prev_elems = existing_playlist[0]
+            }
+            prev_elems.push(new_elem)
+            existing_parallel_elems.forEach(e => {
+                new_elem.outgoing_edges.push(e)
+                e.incoming_edges.push(new_elem)
+            })
         } else {
-            new_elem.incoming_edges = existing_elem
-            if (existing_elem.outgoing_edges) {
-                // Insert in-between in case there is already a connected item
-                new_elem.outgoing_edges = existing_elem.outgoing_edges
-                new_elem.outgoing_edges.incoming_edges = new_elem
+            var next_elems = null
+            if (existing_elem.outgoing_edges.length > 0) {
+                let edge = existing_elem.outgoing_edges[0]
+                new_playlist_elems.forEach(p => p.forEach(pp => { if(pp.includes(edge)) { next_elems = pp } }))
             }
-            existing_elem.outgoing_edges = new_elem
-            new_elem.start_iteration = existing_elem.end_iteration + delay
-            new_elem.end_iteration = new_elem.start_iteration + new_elem.loop_widget.n_cycles
+            if (next_elems === null) {
+                existing_playlist.push([])
+                next_elems = existing_playlist[existing_playlist.length - 1]
+            }
+            next_elems.push(new_elem)
+            existing_parallel_elems.forEach(e => {
+                new_elem.incoming_edges.push(e)
+                e.outgoing_edges.push(new_elem)
+            })
         }
         new_elem.delay = delay
         var new_elems_schedule = []
-        for (var i=0; i<playlist_elems.length; i++) {
-            let playlist = playlist_elems[i]
+        for (var i=0; i<new_playlist_elems.length; i++) {
+            let playlist = new_playlist_elems[i]
             let new_playlist = []
             for (var j=0; j<playlist.length; j++) {
-                let elem = playlist[j]
-                if (elem == existing_elem) {
-                    if (put_before) {
-                        new_playlist.push(new_elem)
-                        new_playlist.push(elem)
-                    } else {
-                        new_playlist.push(elem)
-                        new_playlist.push(new_elem)
-                    }
-                } else {
-                    new_playlist.push(elem)
+                let parallel_elems = []
+                for(var h=0; h<playlist[j].length; h++) {
+                    let elem = playlist[j][h]
+                    parallel_elems.push(elem)
                 }
+                new_playlist.push(parallel_elems)
             }
             new_elems_schedule.push(new_playlist)
         }
@@ -847,7 +866,9 @@ Item {
                                                 let src_loop_widget = drag.source
                                                 let new_elem = playlist_element_factory.createObject(root, {
                                                     loop_widget: src_loop_widget,
-                                                    loop_id: src_loop_widget.obj_id
+                                                    loop_id: src_loop_widget.obj_id,
+                                                    incoming_edges: [],
+                                                    outgoing_edges: []
                                                 })
                                                 add_connected_elem_and_push(mapped_item, new_elem, false, 0)
                                             }
@@ -873,7 +894,9 @@ Item {
                                                 let src_loop_widget = drag.source
                                                 let new_elem = playlist_element_factory.createObject(root, {
                                                     loop_widget: src_loop_widget,
-                                                    loop_id: src_loop_widget.obj_id
+                                                    loop_id: src_loop_widget.obj_id,
+                                                    incoming_edges: [],
+                                                    outgoing_edges: []
                                                 })
                                                 add_connected_elem_and_push(mapped_item, new_elem, true, 0)
                                             }
