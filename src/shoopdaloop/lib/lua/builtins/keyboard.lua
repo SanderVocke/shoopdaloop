@@ -27,7 +27,8 @@
 --                currently selected/recording track while playing back currently
 --                recording loops.
 -- -  T key:      Target the selected loop. If more than one loop is selected, one
---                of the selected loops is arbitrarily chosen.
+--                of the selected loops is arbitrarily chosen. If already the target,
+--                loop is untargeted.
 -- -  U key:      Untarget all loops.
 -- -  W key:      Record the selected loop(s) in sync with the targeted loop(s).
 -- -  C key:      Clear the selected loop(s).
@@ -128,7 +129,7 @@ local handle_keyboard = function(event_type, key, modifiers)
         elseif key == shoop_control.constants.Key_O then
             shoop_helpers.record_into_first_empty(true)
         elseif key == shoop_control.constants.Key_T then
-            shoop_control.loop_target(shoop_control.loop_get_which_selected())
+            shoop_control.loop_toggle_targeted(shoop_control.loop_get_which_selected())
         elseif key == shoop_control.constants.Key_U then
             shoop_control.loop_untarget_all()
         elseif key == shoop_control.constants.Key_W then

@@ -148,6 +148,8 @@ class ControlHandler(ShoopQQuickItem):
         [ 'loop_record_with_targeted', lua_loop_selector ],
         [ 'loop_select', lua_loop_selector, lua_bool ],
         [ 'loop_target', lua_loop_selector ],
+        [ 'loop_toggle_selected', lua_loop_selector ],
+        [ 'loop_toggle_targeted', lua_loop_selector ],
         [ 'loop_clear', lua_loop_selector ],
         [ 'track_get_gain', lua_track_selector ],
         [ 'track_set_gain', lua_track_selector, lua_float ],
@@ -449,11 +451,34 @@ class ControlHandler(ShoopQQuickItem):
 
     @Slot(list, 'QVariant')
     @allow_qml_override
+    def loop_toggle_selected(self, args, lua_engine):
+        """
+        @shoop_lua_fn_docstring.start
+        shoop_control.loop_toggle_selected(loop_selector)
+        Toggle selection on the specified loops.
+        @shoop_lua_fn_docstring.end
+        """
+        pass
+
+    @Slot(list, 'QVariant')
+    @allow_qml_override
     def loop_target(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
         shoop_control.loop_target(loop_selector)
         Target the specified loop. If the selector specifies more than one loop, a single loop in the set is chosen arbitrarily.
+        If nil or no loop is passed, the targeted loop is cleared.
+        @shoop_lua_fn_docstring.end
+        """
+        pass
+
+    @Slot(list, 'QVariant')
+    @allow_qml_override
+    def loop_toggle_targeted(self, args, lua_engine):
+        """
+        @shoop_lua_fn_docstring.start
+        shoop_control.loop_toggle_targeted(loop_selector)
+        Target the specified loop or untarget it if already targeted. If the selector specifies more than one loop, a single loop in the set is chosen arbitrarily.
         If nil or no loop is passed, the targeted loop is cleared.
         @shoop_lua_fn_docstring.end
         """

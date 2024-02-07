@@ -202,10 +202,10 @@ LuaControlInterface {
         registries.state_registry.replace('targeted_loop', null)
     }
     function loop_toggle_selected_override(loop_selector) {
-        select_loops(loop_selector).forEach((h) => { h.loop_toggle_selected(loop_selector) } )
+        select_loops(loop_selector).forEach((h) => { h.toggle_selected() } )
     }
     function loop_toggle_targeted_override(loop_selector) {
-        select_loops(loop_selector).forEach((h) => { h.loop_toggle_targeted(loop_selector) } )
+        select_loops(loop_selector).forEach((h) => { h.toggle_targeted() } )
     }
 
     // Track interface overrides
