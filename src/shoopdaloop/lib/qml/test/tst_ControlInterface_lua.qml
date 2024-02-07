@@ -135,6 +135,25 @@ ShoopTestFile {
                 `))
             }
 
+            testcase_init_fn: () => {
+                // Give the tracks time to initialize.
+                function done() {
+                    if (!session.main_tracks[0].control_widget) { return false; }
+                    if (!session.main_tracks[1].control_widget) { return false; }
+                    return true
+                }
+                let start = (new Date()).getTime()
+                let timeout = 5000
+                while(!done() && (new Date()).getTime() - start < timeout) {
+                    testcase.wait(100)
+                    check_backend()
+                    clear()
+                }
+                if (!done()) {
+                    throw new Error("Track control widgets did not initialize")
+                }
+            }
+
             test_fns: ({
 
                 'test_loop_count': () => {

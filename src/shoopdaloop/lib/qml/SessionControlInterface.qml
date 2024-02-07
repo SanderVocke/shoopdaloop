@@ -73,7 +73,6 @@ LuaControlInterface {
 
     function select_tracks(track_selector) {
         var rval = []
-        console.log(track_selector)
         function select_track(integer_selector) {
             if(integer_selector >= 0) {
                 return session.main_tracks[integer_selector]
@@ -90,7 +89,6 @@ LuaControlInterface {
                 rval = track_selector.map(
                     (idx) => select_track(idx)
                 ).filter(t => t != null && t != undefined)
-                console.log(rval)
             }
         } else if (Number.isInteger(track_selector)) {
             return select_track(track_selector)
@@ -212,7 +210,6 @@ LuaControlInterface {
 
     // Track interface overrides
     function track_set_gain_override(track_selector, vol) {
-        console.log(track_selector)
         select_tracks(track_selector).forEach(t => t.control_widget.set_gain(vol))
     }
     function track_set_gain_fader_override(track_selector, vol) {

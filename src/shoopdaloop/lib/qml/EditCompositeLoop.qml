@@ -572,11 +572,8 @@ Item {
     function unlink_and_push(from_elem, to_elem) {
         // To do this we need to cut a playlist in two.
         var new_elems_schedule = []
-        console.log(from_elem, to_elem)
         playlist_elems.forEach(p => {
-            console.log(p)
             if (!p.includes(from_elem) || !p.includes(to_elem)) { new_elems_schedule.push(Array.from(p)); return; }
-            console.log('a')
             let first_playlist = []
             let second_playlist = []
             var found = false

@@ -138,10 +138,13 @@ class FXChain(ShoopQQuickItem):
         self._active = state.active
 
         if prev_ready != self._ready:
+            self.logger.debug(lambda: f'ready -> {self._ready}')
             self.readyChanged.emit(self._ready)
         if prev_ui_visible != self._ui_visible:
+            self.logger.debug(lambda: f'ui_visible -> {self._ui_visible}')
             self.uiVisibleChanged.emit(self._ui_visible)
         if prev_active != self._active:
+            self.logger.debug(lambda: f'active -> {self._active}')
             self.activeChanged.emit(self._active)
     
     @Slot()

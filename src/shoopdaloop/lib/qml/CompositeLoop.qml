@@ -209,6 +209,7 @@ Item {
     Connections {
         target: all_loops_found ? null : registries.objects_registry
         function onItemAdded(id, val) { if (all_loop_ids.has(id)) { playlistsChanged() } }
+        function onItemModified(id, val) { if (all_loop_ids.has(id)) { playlistsChanged() } }
     }
 
     // If we did find all our loops, listen to length changes to update the schedule
