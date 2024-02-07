@@ -182,7 +182,7 @@ ShoopTestFile {
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
 
-                    verify_eq(out, expect_out, true)
+                    verify_eq(out, expect_out, null, true)
                 },
 
                 'test_direct_audio_monitor_input_gain': () => {
@@ -332,8 +332,8 @@ ShoopTestFile {
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
 
-                    verify_eq(out, [], true)
-                    verify_eq(out2, [], true)
+                    verify_eq(out, [], null, true)
+                    verify_eq(out2, [], null, true)
                 },
 
                 'test_direct_audio_monitor_mute': () => {
@@ -387,7 +387,7 @@ ShoopTestFile {
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
 
-                    verify_eq(out, [], true)
+                    verify_eq(out, [], null, true)
                 },
             })
         }

@@ -69,17 +69,31 @@ ShoopTestFile {
             }
 
             function verify_states(
-                m_mode, l1_mode, l2_mode, c_mode,
-                m_pos,  l1_pos,  l2_pos,  c_pos
+                m_mode=undefined,
+                l1_mode=undefined,
+                l2_mode=undefined,
+                c_mode=undefined,
+                m_pos=undefined,
+                l1_pos=undefined,
+                l2_pos=undefined,
+                c_pos=undefined,
+                m_length=undefined,
+                l1_length=undefined,
+                l2_length=undefined,
+                c_length=undefined
             ) {
-                verify_eq(m().mode, m_mode)
-                verify_eq(l1().mode, l1_mode)
-                verify_eq(l2().mode, l2_mode)
-                verify_eq(c().mode, c_mode)
-                verify_eq(m().position, m_pos)
-                verify_eq(l1().position, l1_pos)
-                verify_eq(l2().position, l2_pos)
-                verify_eq(c().position, c_pos)
+                if(m_mode !== undefined) { verify_eq(m().mode, m_mode, 'sync loop mode') }
+                if(l1_mode !== undefined) { verify_eq(l1().mode, l1_mode, 'loop 1 mode') }
+                if(l2_mode !== undefined) { verify_eq(l2().mode, l2_mode, 'loop 2 mode') }
+                if(c_mode !== undefined) { verify_eq(c().mode, c_mode, 'composite loop mode') }
+                if(m_pos !== undefined) { verify_eq(m().position, m_pos, 'sync loop pos') }
+                if(l1_pos !== undefined) { verify_eq(l1().position, l1_pos, 'loop 1 pos') }
+                if(l2_pos !== undefined) { verify_eq(l2().position, l2_pos, 'loop 2 pos') }
+                if(c_pos !== undefined) { verify_eq(c().position, c_pos, 'composite loop pos') }
+                if(m_length !== undefined) { verify_eq(m().length, m_length, 'sync loop length') }
+                if(l1_length !== undefined) { verify_eq(l1().length, l1_length, 'loop 1 length') }
+                if(l2_length !== undefined) { verify_eq(l2().length, l2_length, 'loop 2 length') }
+                if(c_length !== undefined) { verify_eq(c().length, c_length, 'composite loop length') }
             }
 
             function process(amount, steps=2) {
@@ -194,6 +208,85 @@ ShoopTestFile {
                                 ShoopConstants.LoopMode.Stopped,
                                 ShoopConstants.LoopMode.Playing,
                                 50, 50, 0, 50)
+                },
+                'test_play_after_record': () => {
+                    check_backend()
+                    clear()
+
+                    m().set_length(100)
+
+                    testcase.wait_updated(session.backend)
+
+                    c().create_composite_loop({
+                        'playlists': [
+                            [ // playlist
+                                { 'loop_id': l1().obj_id, 'delay': 0, 'n_cycles': 2 },
+                                { 'loop_id': l2().obj_id, 'delay': 1 },
+                            ]
+                        ]
+                    })
+
+                    testcase.wait_updated(session.backend)
+
+                    verify_states(ShoopConstants.LoopMode.Stopped,
+                                ShoopConstants.LoopMode.Stopped,
+                                ShoopConstants.LoopMode.Stopped,
+                                ShoopConstants.LoopMode.Stopped,
+                                0, 0, 0, 0)
+
+                    m().transition(ShoopConstants.LoopMode.Playing, 0, false)
+
+                    process(50); // sync loop is playing
+
+                    // trigger the composite loop
+                    c().transition(ShoopConstants.LoopMode.Recording, 0, true)
+                    testcase.wait_updated(session.backend)
+                    verify_eq(l1().next_mode, ShoopConstants.LoopMode.Recording)
+
+                    process(100) // middle of 1st step
+
+                    verify_states(ShoopConstants.LoopMode.Playing, // sync
+                                ShoopConstants.LoopMode.Recording, // l1
+                                ShoopConstants.LoopMode.Stopped,   // l2
+                                ShoopConstants.LoopMode.Recording, // c
+                                50, 0, 0, 50,
+                                100, 50, 0, 400)
+
+                    process(100) // middle of 2nd step
+
+                    verify_states(ShoopConstants.LoopMode.Playing, // sync
+                                ShoopConstants.LoopMode.Recording, // l1
+                                ShoopConstants.LoopMode.Stopped,   // l2
+                                ShoopConstants.LoopMode.Recording, // c
+                                50, 0, 0, 150,
+                                100, 150, 0, 400)
+                    
+                    process(100) // middle of 3rd step (delay)
+
+                    verify_states(ShoopConstants.LoopMode.Playing, // sync
+                                ShoopConstants.LoopMode.Stopped,   // l1
+                                ShoopConstants.LoopMode.Stopped,   // l2
+                                ShoopConstants.LoopMode.Recording, // c
+                                50, 0, 0, 250,
+                                100, 200, 0, 400)
+                    
+                    process(100) // middle of 4th step (record 2nd loop)
+
+                    verify_states(ShoopConstants.LoopMode.Playing, // sync
+                                ShoopConstants.LoopMode.Stopped,   // l1
+                                ShoopConstants.LoopMode.Recording,   // l2
+                                ShoopConstants.LoopMode.Recording, // c
+                                50, 0, 0, 350,
+                                100, 200, 50, 400)
+
+                    process(100) // middle of 5th step (whole thing starts playing after finish recording)
+
+                    verify_states(ShoopConstants.LoopMode.Playing, // sync
+                                ShoopConstants.LoopMode.Playing,   // l1
+                                ShoopConstants.LoopMode.Stopped,   // l2
+                                ShoopConstants.LoopMode.Playing, // c
+                                50, 50, 0, 50,
+                                100, 200, 100, 400)
                 },
                 'test_countdown': () => {
                     check_backend()
