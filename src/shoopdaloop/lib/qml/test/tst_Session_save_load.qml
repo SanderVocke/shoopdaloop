@@ -63,8 +63,8 @@ ShoopTestFile {
                 )
             direct_track.loops[1]['composition'] = {
                 'playlists': [
-                    [ {"delay": 0, "loop_id": "dt_loop_0"}, {"delay": 1, "loop_id": "dwt_loop_0"} ],
-                    [ {"delay": 3, "loop_id": "dwt_loop_1"} ]
+                    [ [{"delay": 0, "loop_id": "dt_loop_0"}], [{"delay": 1, "loop_id": "dwt_loop_0"}] ],
+                    [ [{"delay": 3, "loop_id": "dwt_loop_1"}] ]
                 ]
             }
             drywet_track.loops[1]['composition'] = {

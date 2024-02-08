@@ -45,7 +45,7 @@ ShoopTestFile {
                 rval[key][k] = []
                 if (k in schedule[key]) {
                     if (k == 'loops_start') {
-                        schedule[key][k].forEach(v => { console.log(v); rval[key][k].push([v[0].obj_id, v[1]]) })
+                        schedule[key][k].forEach(v => rval[key][k].push([v[0].obj_id, v[1]]))
                     } else {
                         schedule[key][k].forEach(v => rval[key][k].push(v.obj_id))
                     }
