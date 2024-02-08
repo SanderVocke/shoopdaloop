@@ -25,7 +25,7 @@ Item {
     // The Python-side object manages triggering other loops based on the
     // schedule. This needs to keep running even if the QML/GUI thread hangs.
     // In the QML side, we manage updating/calculating the schedule.
-    property alias schedule: py_loop.schedule
+    property var schedule: {}
     property alias iteration: py_loop.iteration
     property alias running_loops: py_loop.running_loops
     property alias mode: py_loop.mode
@@ -40,6 +40,7 @@ Item {
         id: py_loop
         iteration: 0
         sync_loop: (root.sync_loop && root.sync_loop.maybe_loop) ? root.sync_loop.maybe_loop : null
+        schedule: root.schedule
 
         onCycled: root.cycled()
         Component.onCompleted: root.recalculate_schedule()
