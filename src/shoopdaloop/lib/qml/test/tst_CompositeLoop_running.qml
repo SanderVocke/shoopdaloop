@@ -370,6 +370,88 @@ ShoopTestFile {
                     
                 },
 
+                'test_script': () => {
+                    check_backend()
+                    clear()
+
+                    m().set_length(100)
+
+                    testcase.wait_updated(session.backend)
+
+                    c().create_composite_loop({
+                        'playlists': [
+                            [ // playlist
+                                [{ 'loop_id': l1().obj_id, 'delay': 0, 'n_cycles': 1, 'mode': ShoopConstants.LoopMode.Recording }],
+                                [{ 'loop_id': l2().obj_id, 'delay': 0, 'n_cycles': 1, 'mode': ShoopConstants.LoopMode.Recording }],
+                                [{ 'loop_id': l1().obj_id, 'delay': 0, 'n_cycles': 1, 'mode': ShoopConstants.LoopMode.Playing }],
+                                [{ 'loop_id': l2().obj_id, 'delay': 0, 'n_cycles': 1, 'mode': ShoopConstants.LoopMode.Playing }],
+                            ]
+                        ]
+                    })
+
+                    testcase.wait_updated(session.backend)
+
+                    verify_states(ShoopConstants.LoopMode.Stopped,
+                                ShoopConstants.LoopMode.Stopped,
+                                ShoopConstants.LoopMode.Stopped,
+                                ShoopConstants.LoopMode.Stopped,
+                                0, 0, 0, 0)
+
+                    m().transition(ShoopConstants.LoopMode.Playing, 0, false)
+
+                    process(50); // sync loop is playing
+
+                    // trigger the composite loop
+                    c().transition(ShoopConstants.LoopMode.Playing, 0, true)
+                    testcase.wait_updated(session.backend)
+                    verify_eq(l1().next_mode, ShoopConstants.LoopMode.Recording)
+
+                    process(100) // middle of 1st step (record l1)
+
+                    verify_states(ShoopConstants.LoopMode.Playing, // sync
+                                ShoopConstants.LoopMode.Recording, // l1
+                                ShoopConstants.LoopMode.Stopped,   // l2
+                                ShoopConstants.LoopMode.Playing,   // c
+                                50, 0, 0, 50,
+                                100, 50, 0, 400)
+
+                    process(100) // middle of 2nd step (record l2)
+
+                    verify_states(ShoopConstants.LoopMode.Playing, // sync
+                                ShoopConstants.LoopMode.Stopped,   // l1
+                                ShoopConstants.LoopMode.Recording, // l2
+                                ShoopConstants.LoopMode.Playing,   // c
+                                50, 0, 0, 150,
+                                100, 100, 50, 400)
+                    
+                    process(100) // middle of 3rd step (play l1)
+
+                    verify_states(ShoopConstants.LoopMode.Playing, // sync
+                                ShoopConstants.LoopMode.Playing,   // l1
+                                ShoopConstants.LoopMode.Stopped,   // l2
+                                ShoopConstants.LoopMode.Playing,   // c
+                                50, 50, 0, 250,
+                                100, 100, 100, 400)
+                    
+                    process(100) // middle of 4th step (play l2)
+
+                    verify_states(ShoopConstants.LoopMode.Playing, // sync
+                                ShoopConstants.LoopMode.Stopped,   // l1
+                                ShoopConstants.LoopMode.Playing,   // l2
+                                ShoopConstants.LoopMode.Playing,   // c
+                                50, 0, 50, 350,
+                                100, 100, 100, 400)
+
+                    process(100) // middle of 5th step (script ended)
+
+                    verify_states(ShoopConstants.LoopMode.Playing, // sync
+                                ShoopConstants.LoopMode.Stopped,   // l1
+                                ShoopConstants.LoopMode.Stopped,   // l2
+                                ShoopConstants.LoopMode.Stopped, // c
+                                50, 0, 0, 0,
+                                100, 100, 100, 400)
+                },
+
                 'test_countdown': () => {
                     check_backend()
                     clear()

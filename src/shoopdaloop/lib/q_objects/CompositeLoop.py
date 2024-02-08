@@ -30,6 +30,7 @@ class CompositeLoop(ShoopQQuickItem):
         self._sync_position = 0
         self._sync_length = 0
         self._n_cycles = 0
+        self._kind = 'regular'
 
         self.scheduleChanged.connect(self.update_n_cycles, Qt.DirectConnection)
 
@@ -60,8 +61,7 @@ class CompositeLoop(ShoopQQuickItem):
     def schedule(self, val):
         if isinstance(val, QJSValue):
             val = val.toVariant()
-        if self._iteration != val:
-            self.logger.trace(lambda: f'schedule -> {val}')
+        self.logger.trace(lambda: f'schedule -> {val}')
         self._schedule = val
         self.scheduleChanged.emit(self._schedule)
     
@@ -171,6 +171,18 @@ class CompositeLoop(ShoopQQuickItem):
     @Property(int, notify=lengthChanged)
     def length(self):
         return self._length
+
+    # kind
+    kindChanged = Signal(str)
+    @Property(str, notify=kindChanged)
+    def kind(self):
+        return self._kind
+    @kind.setter
+    def kind(self, val):
+        if val != self._kind:
+            self.logger.debug(lambda: f'kind -> {val}')
+            self._kind = val
+            self.kindChanged.emit(self._kind)
     
     # sync_position
     syncPositionChanged = Signal(int)
@@ -262,10 +274,16 @@ class CompositeLoop(ShoopQQuickItem):
             
             self.do_triggers(self.iteration+1, self.mode)
             if ((self.iteration+1) >= self.n_cycles):
-                if is_recording_mode(self.mode):
+                self.logger.debug(lambda: 'preparing cycle end')
+                if self.kind == 'script':
+                    self.logger.debug(lambda: 'ending script')
+                    self.transition(LoopMode.Stopped.value, 0, True)
+                elif is_recording_mode(self.mode):
+                    self.logger.debug(lambda: 'cycle: recording to playing')
                     # Recording ends next cycle, transition to playing
                     self.transition(LoopMode.Playing.value, 0, True)
                 else:
+                    self.logger.debug(lambda: 'cycling')
                     # Will cycle around - trigger the actions for next cycle
                     self.do_triggers(0, self.mode)
 
@@ -283,6 +301,7 @@ class CompositeLoop(ShoopQQuickItem):
         self.running_loops = []
 
     def handle_transition(self, mode):
+        self.logger.debug(lambda: f'handle_transition({mode})')
         self.next_transition_delay = -1
         if mode != self.mode:
             self.mode = mode
@@ -300,39 +319,43 @@ class CompositeLoop(ShoopQQuickItem):
             for loop in loops_end:
                 self.logger.debug(lambda: f'loop end: {loop}')
                 loop.transition(LoopMode.Stopped.value, 0, True)
-                self._running_loops.remove(loop)
+                if loop in self._running_loops:
+                    self._running_loops.remove(loop)
                 self.runningLoopsChanged.emit(self._running_loops)
             if is_running_mode(mode):
-                for loop in loops_start:
-                    # Special case is if we are recording. In that case, the same loop may be scheduled to
-                    # record multiple times. The desired behavior is to just record it once and then stop it.
-                    # That allows the artist to keep playing to fill the gap if monitoring, or to just stop
-                    # playing if not monitoring, and in both cases the resulting recording is the first iteration.
-                    handled = False
-                    if is_recording_mode(mode):
-                        # To implement the above: see if we have already recorded.
-                        for i in range(iteration):
-                            if i in sched_keys:
-                                other_starts = schedule[str(i)]['loops_start']
-                                if isinstance(other_starts, QJSValue):
-                                    other_starts = other_starts.toVariant()
-                                if loop in other_starts:
-                                    # We have already recorded this loop. Don't record it again.
-                                    self.logger.debug(lambda: f'Not re-recording {loop}')
-                                    loop.transition(LoopMode.Stopped.value, 0, True)
-                                    self._running_loops.remove(loop)
-                                    self.runningLoopsChanged.emit(self._running_loops)
-                                    handled = True
-                                    break
+                for entry in loops_start:
+                    loop = entry[0]
+                    loop_mode = entry[1]
+                    
+                    if loop_mode == None:
+                        # Automatic mode based on our own mode
+                        loop_mode = mode
+                        # Special case is if we are recording. In that case, the same loop may be scheduled to
+                        # record multiple times. The desired behavior is to just record it once and then stop it.
+                        # That allows the artist to keep playing to fill the gap if monitoring, or to just stop
+                        # playing if not monitoring, and in both cases the resulting recording is the first iteration.
+                        handled = False
+                        if is_recording_mode(mode):
+                            # To implement the above: see if we have already recorded.
+                            for i in range(iteration):
+                                if i in sched_keys:
+                                    other_starts = schedule[str(i)]['loops_start']
+                                    if isinstance(other_starts, QJSValue):
+                                        other_starts = other_starts.toVariant()
+                                    if loop in other_starts:
+                                        # We have already recorded this loop. Don't record it again.
+                                        self.logger.debug(lambda: f'Not re-recording {loop}')
+                                        loop.transition(LoopMode.Stopped.value, 0, True)
+                                        self._running_loops.remove(loop)
+                                        self.runningLoopsChanged.emit(self._running_loops)
+                                        handled = True
+                                        break
 
-                    if handled:
-                        continue
+                        if handled:
+                            continue
 
                     self.logger.debug(lambda: f'loop start: {loop}')
-                    loop.transition(mode, 0, True)
+                    loop.transition(loop_mode, 0, True)
                     self._running_loops.add(loop)
                     self.runningLoopsChanged.emit(self._running_loops)
     
-    
-
-

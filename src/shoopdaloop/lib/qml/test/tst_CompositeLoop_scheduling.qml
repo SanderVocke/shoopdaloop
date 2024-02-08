@@ -44,7 +44,11 @@ ShoopTestFile {
             keys.forEach((k) => {
                 rval[key][k] = []
                 if (k in schedule[key]) {
-                    schedule[key][k].forEach(v => rval[key][k].push(v.obj_id))
+                    if (k == 'loops_start') {
+                        schedule[key][k].forEach(v => rval[key][k].push([v[0].obj_id, v[1]]))
+                    } else {
+                        schedule[key][k].forEach(v => rval[key][k].push(v.obj_id))
+                    }
                 }
             })
         }
@@ -88,7 +92,7 @@ ShoopTestFile {
                             root.loops_to_obj_ids(sequential_sched_lut.schedule),
                             {
                                 0: {
-                                    'loops_start': ['sequential_sched_1'],
+                                    'loops_start': [['sequential_sched_1', null]],
                                     'loops_end': [],
                                     'loops_ignored': []
                                 },
@@ -98,7 +102,7 @@ ShoopTestFile {
                                     'loops_ignored': []
                                 },
                                 3: {
-                                    'loops_start': ['sequential_sched_2'],
+                                    'loops_start': [['sequential_sched_2', null]],
                                     'loops_end': [],
                                     'loops_ignored': []
                                 },
