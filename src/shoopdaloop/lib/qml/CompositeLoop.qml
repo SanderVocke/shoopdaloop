@@ -20,7 +20,7 @@ Item {
     readonly property bool initialized: true
 
     // set internally
-    property string kind : 'regular'
+    property alias kind : py_loop.kind
 
     // The Python-side object manages triggering other loops based on the
     // schedule. This needs to keep running even if the QML/GUI thread hangs.
@@ -87,12 +87,11 @@ Item {
     }
 
     // Transform the playlists into a more useful format:
-    // a dict of { iteration: { loops_start: [...], loops_end: [...], loops_ignored: [...], loop_modes: {...} } }
-    // loops_start lists the loops that should be triggered in this iteration.
-    // loops_end lists the loops that should be stopped in this iteration.
+    // a dict of { iteration: { loops_start: [...], loops_end: [...], loops_ignored: [...] } }
+    // loops_start lists the loops that should be triggered in this iteration. Each entry is a [loop, mode].
+    // loops_end lists the loops that should be stopped in this iteration. Each entry is a loop.
     // loops_ignored lists loops that are not really scheduled but stored to still keep traceability -
     // for example when a 0-length loop is in the playlist.
-    // For script composite loops, the loop_modes dict holds the explicit mode to use per loop in the iteration.
     function recalculate_schedule() {
         root.logger.debug(() => 'Recalculating schedule.')
         root.logger.trace(() => `--> playlists to schedule: ${JSON.stringify(playlists, null, 2)}`)
@@ -187,9 +186,19 @@ Item {
             _schedule[k].loops_ignored = Array.from(_schedule[k].loops_ignored)
         })
 
+        // Transform the schedule: move modes into loop_starts.
+        for (var k in _schedule) {
+            let v = _schedule[k]
+            let modes = v.loop_modes
+            let starts = v.loops_start
+            delete v.loop_modes
+            delete v.loops_start
+            v.loops_start = starts.map(l => [l, modes[l]])
+        }
+
         root.logger.trace(() => `full schedule:\n${
             Array.from(Object.entries(_schedule)).map(([k,v]) => 
-                `- ${k}: stop [${Array.from(v.loops_end).map(l => l.obj_id)}], start [${Array.from(v.loops_start).map(l => l.obj_id + ` @ mode ${v.loop_modes[l]}`)}], ignore [${Array.from(v.loops_ignored).map(l => l.obj_id)}]`
+                `- ${k}: stop [${Array.from(v.loops_end).map(l => l.obj_id)}], start [${Array.from(v.loops_start).map(l => l[0].obj_id + ` @ mode ${l[1]}`)}], ignore [${Array.from(v.loops_ignored).map(l => l.obj_id)}]`
             ).join("\n")
         }`)
 

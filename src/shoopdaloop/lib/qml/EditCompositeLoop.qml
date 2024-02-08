@@ -699,6 +699,11 @@ Item {
         })
         push_playlists(new_elems_schedule)
     }
+
+    function change_mode_and_push(elem, mode) {
+        elem.maybe_mode = mode
+        push_playlists(playlist_elems)
+    }
     
     // Convert to a regular composite schedule (no modes)
     function to_regular() {
@@ -920,6 +925,67 @@ Item {
                                             tooltip: "This element has a forced length. The composite loop will run this length regardless of the actual loop's length."
                                         }
 
+                                        ToolbarButton {
+                                            id: mode_button
+                                            visible: root.composite_loop.kind == 'script'
+                                            anchors {
+                                                left: left_side_link_indicator.right
+                                                verticalCenter: parent.verticalCenter
+                                            }
+
+                                            size: 20
+
+                                            readonly property var model: [
+                                                { mode: ShoopConstants.LoopMode.Playing, icon: 'play', color: 'green' },
+                                                { mode: ShoopConstants.LoopMode.Recording, icon: 'record', color: 'red' },
+                                                { mode: ShoopConstants.LoopMode.PlayingDryThroughWet, icon: 'play', color: 'orange' },
+                                                { mode: ShoopConstants.LoopMode.RecordingDryIntoWet, icon: 'record', color: 'orange' }
+                                            ]
+                                            property var cur_idx: {
+                                                let m = loop_rect.mapped_item.maybe_mode
+                                                let idx = model.findIndex(e => e.mode == m)
+                                                return idx < 0 ? null : idx
+                                            }
+                                            readonly property var maybe_mode: (cur_idx === null) ? null : model[cur_idx].mode
+
+                                            onMaybe_modeChanged: {
+                                                if (maybe_mode !== null && maybe_mode !== loop_rect.mapped_item.maybe_mode) {
+                                                    root.change_mode_and_push(loop_rect.mapped_item, maybe_mode)
+                                                }
+                                            }
+
+                                            MaterialDesignIcon {
+                                                anchors.centerIn: parent
+                                                size: 20
+                                                name: (parent.cur_idx === null || parent.cur_idx === undefined) ? 'play' : parent.model[parent.cur_idx].icon
+                                                color: (parent.cur_idx === null || parent.cur_idx === undefined) ? 'grey' : parent.model[parent.cur_idx].color
+                                            }
+
+                                            onClicked: mode_menu.popup()
+
+                                            Menu {
+                                                id: mode_menu
+                                                
+                                                Repeater {
+                                                    model: mode_button.model
+
+                                                    ShoopMenuItem {
+                                                        height: 20
+                                                        width: 30
+                                                        onClicked: {
+                                                            mode_button.cur_idx = index
+                                                        }
+
+                                                        MaterialDesignIcon {
+                                                            size: 20
+                                                            name: mode_button.model[index].icon
+                                                            color: mode_button.model[index].color
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+
                                         // If this loop is preceding another in the playlist, show that
                                         // by a "link icon" to the next one.
                                         LinkIndicator {
@@ -940,6 +1006,7 @@ Item {
 
                                         // Same for incoming connections
                                         LinkIndicator {
+                                            id: left_side_link_indicator
                                             visible: loop_rect.mapped_item.incoming_edges.length > 0
                                             height: loop_rect.height / 2
                                             width: height

@@ -305,6 +305,11 @@ class Loop(ShoopQQuickItem):
     def get_backend_loop(self):
         return self._backend_loop
     
+    @Slot(result="QVariant")
+    def py_loop(self):
+        print(self)
+        return self
+    
     def maybe_initialize(self):
         if self._backend and self._backend.initialized and not self._backend_loop:
             self._backend_loop = self._backend.get_backend_session_obj().create_loop()
