@@ -237,6 +237,10 @@ Item {
             }
         })))
         root.kind = (found_mode === null) ? 'regular' : 'script'
+        if (root.kind == 'regular') {
+            // Regular composite loops don't have sections
+            sections = []
+        }
         if (found_mode !== null && modes_count < all_count) {
             let new_playlists = playlists.map(p => p.map(pp => pp.map(e => {
                 var rval =  Object.create(e)

@@ -130,8 +130,26 @@ Item {
             currentIndex: root.composite_loop.kind == 'regular' ? 0 : 1
 
             onActivated: (idx) => {
-                if (model[idx] == "Regular") { root.to_regular() }
+                if (model[idx] == "Regular") { confirm_to_regular_dialog.open() }
                 else if (model[idx] == "Script") { root.to_script() }
+            }
+
+            Dialog {
+                id: confirm_to_regular_dialog
+                title: "Warning"
+                standardButtons: Dialog.Yes | Dialog.Cancel
+                onAccepted: root.to_regular()
+                onRejected: kind_combo.currentIndex = 1
+                modal: true
+
+                parent: Overlay.overlay
+                x: (parent.width-width) / 2
+                y: (parent.height-height) / 2
+
+                Text {
+                    text: "Converting from script to regular will discard all modes and sections."
+                    color: Material.foreground
+                }
             }
         }
 
