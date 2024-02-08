@@ -30,7 +30,6 @@ Item {
     property int size: 24
     property string name
     property color color
-    property string tooltip : ""
 
     width: size
     height: size
@@ -53,17 +52,5 @@ Item {
     FontLoader {
         id: materialFont
         source: "../../third_party/QtMaterialDesignIcons/resources/materialdesignicons-webfont.ttf"
-    }
-
-    ToolTip {
-        delay: 1000
-        visible: ma.containsMouse && root.tooltip != ""
-        text: root.tooltip
-    }
-    MouseArea {
-        id: ma
-        hoverEnabled: true
-        anchors.fill: parent
-        acceptedButtons: Qt.NoButton
     }
 }
