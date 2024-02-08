@@ -188,6 +188,7 @@ Item {
     readonly property var maybe_composite_loop : (maybe_loop && maybe_loop instanceof CompositeLoop) ? maybe_loop : null
     readonly property bool is_loaded : maybe_loop
     readonly property bool is_sync: sync_loop && sync_loop == this
+    readonly property bool is_script: maybe_composite_loop && maybe_composite_loop.kind == 'script'
     readonly property var delay_for_targeted : {
         // This property is used for synchronizing to the targeted loop.
         // If:
@@ -858,7 +859,7 @@ Item {
                         size: parent.width
                         anchors.centerIn: parent
                         name: 'play'
-                        color: 'green'
+                        color: root.is_script ? 'white' : 'green'
                         text_color: Material.foreground
                         text: root.delay_for_targeted != undefined ? ">" : ""
                     }
@@ -878,7 +879,7 @@ Item {
 
                     Popup {
                         background: Item{}
-                        visible: play.hovered || ma.containsMouse
+                        visible: !root.is_script && (play.hovered || ma.containsMouse)
                         leftInset: 0
                         rightInset: 0
                         topInset: 0
@@ -893,6 +894,7 @@ Item {
                             width: playlivefx.width
                             height: playsolointrack.height + playlivefx.height
                             color: statusrect.color
+                            clip: true
 
                             MouseArea {
                                 id: ma
@@ -960,6 +962,7 @@ Item {
                     id : record
                     width: buttongrid.button_width
                     height: buttongrid.button_height
+                    visible: !root.is_script
                     IconWithText {
                         size: parent.width
                         anchors.centerIn: parent
@@ -984,7 +987,7 @@ Item {
 
                     Popup {
                         background: Item{}
-                        visible: record.hovered || ma_.containsMouse
+                        visible: !root.is_script && (record.hovered || ma_.containsMouse)
                         leftInset: 0
                         rightInset: 0
                         topInset: 0
@@ -1350,12 +1353,6 @@ Item {
                     return 'timer-sand'
                 }
                 if(lsicon.empty) {
-                    if(lsicon.is_regular_composite) {
-                        return 'view-list'
-                    }
-                    if(lsicon.is_script_composite) {
-                        return 'playlist-edit'
-                    }
                     return 'border-none-variant'
                 }
 
@@ -1367,6 +1364,12 @@ Item {
                 case ShoopConstants.LoopMode.RecordingDryIntoWet:
                     return 'record-rec'
                 case ShoopConstants.LoopMode.Stopped:
+                    if(lsicon.is_regular_composite) {
+                        return 'view-list'
+                    }
+                    if(lsicon.is_script_composite) {
+                        return 'playlist-edit'
+                    }
                     return 'stop'
                 default:
                     return 'help-circle'
@@ -1382,6 +1385,9 @@ Item {
                 }
                 switch(lsicon.mode) {
                 case ShoopConstants.LoopMode.Playing:
+                    if (lsicon.is_script_composite) {
+                        return Material.foreground
+                    }
                     return '#00AA00'
                 case ShoopConstants.LoopMode.Recording:
                     return 'red'
