@@ -253,8 +253,8 @@ Item {
                         let new_elem = playlist_element_factory.createObject(root, {
                             loop_widget: src_loop_widget,
                             loop_id: src_loop_widget.obj_id,
-                            incoming_edges: null,
-                            outgoing_edges: null,
+                            incoming_edges: [],
+                            outgoing_edges: [],
                             delay: mapped_item.cycle
                         })
                         add_new_playlist_with_elem_and_push(new_elem, index)
@@ -593,89 +593,103 @@ Item {
     }
 
     // Insert an element into an existing playlist
-    function add_connected_elem_and_push(existing_elem, new_elem, put_before, delay) {
-        // First, we have to find the existing element to access the set of parallel elements
-        // containing it.
-        let new_playlist_elems = playlist_elems.map(p => p.map(pp => pp.map(e => e)))
-        var existing_parallel_elems = null
-        var existing_playlist = null
-        new_playlist_elems.forEach(p => p.forEach(pp => { if(pp.includes(existing_elem)) { existing_parallel_elems = pp; existing_playlist = p } }))
+    function add_connected_elems_and_push(existing_elem, new_elems, put_before, delay) {
+        function add_connected_elem(input_playlist, existing_elem, new_elem, put_before, delay) {
+            // First, we have to find the existing element to access the set of parallel elements
+            // containing it.
+            let new_playlist_elems = input_playlist.map(p => p.map(pp => pp.map(e => e)))
+            var existing_parallel_elems = null
+            var existing_playlist = null
+            new_playlist_elems.forEach(p => p.forEach(pp => { if(pp.includes(existing_elem)) { existing_parallel_elems = pp; existing_playlist = p } }))
 
-        if(!existing_parallel_elems || !existing_playlist) {
-            root.logger.warning(() => "Could not find playlist entry point for new element, ignoring")
-            return;
-        }
+            if(!existing_parallel_elems || !existing_playlist) {
+                root.logger.warning(() => "Could not find playlist entry point for new element, ignoring")
+                return;
+            }
 
-        // Now find the parallel set where our new element should be added.
-        // If none exists (we are at the beginning/end of the playlist), create one.
-        var new_parallel_elems = null
-        if (put_before) {
-            var prev_elems = null
-            if (existing_elem.incoming_edges.length > 0) {
-                let edge = existing_elem.incoming_edges[0]
-                new_playlist_elems.forEach(p => p.forEach(pp => { if(pp.includes(edge)) { prev_elems = pp } }))
-            }
-            if (prev_elems === null) {
-                existing_playlist.splice(0, 0, [])
-                prev_elems = existing_playlist[0]
-            }
-            prev_elems.push(new_elem)
-            existing_parallel_elems.forEach(e => {
-                new_elem.outgoing_edges.push(e)
-                e.incoming_edges.push(new_elem)
-            })
-        } else {
-            var next_elems = null
-            if (existing_elem.outgoing_edges.length > 0) {
-                let edge = existing_elem.outgoing_edges[0]
-                new_playlist_elems.forEach(p => p.forEach(pp => { if(pp.includes(edge)) { next_elems = pp } }))
-            }
-            if (next_elems === null) {
-                existing_playlist.push([])
-                next_elems = existing_playlist[existing_playlist.length - 1]
-            }
-            next_elems.push(new_elem)
-            existing_parallel_elems.forEach(e => {
-                new_elem.incoming_edges.push(e)
-                e.outgoing_edges.push(new_elem)
-            })
-        }
-        new_elem.delay = delay
-        var new_elems_schedule = []
-        for (var i=0; i<new_playlist_elems.length; i++) {
-            let playlist = new_playlist_elems[i]
-            let new_playlist = []
-            for (var j=0; j<playlist.length; j++) {
-                let parallel_elems = []
-                for(var h=0; h<playlist[j].length; h++) {
-                    let elem = playlist[j][h]
-                    parallel_elems.push(elem)
+            // Now find the parallel set where our new element should be added.
+            // If none exists (we are at the beginning/end of the playlist), create one.
+            var new_parallel_elems = null
+            if (put_before) {
+                var prev_elems = null
+                if (existing_elem.incoming_edges.length > 0) {
+                    let edge = existing_elem.incoming_edges[0]
+                    new_playlist_elems.forEach(p => p.forEach(pp => { if(pp.includes(edge)) { prev_elems = pp } }))
                 }
-                new_playlist.push(parallel_elems)
+                if (prev_elems === null) {
+                    existing_playlist.splice(0, 0, [])
+                    prev_elems = existing_playlist[0]
+                }
+                prev_elems.push(new_elem)
+                existing_parallel_elems.forEach(e => {
+                    new_elem.outgoing_edges.push(e)
+                    e.incoming_edges.push(new_elem)
+                })
+            } else {
+                var next_elems = null
+                if (existing_elem.outgoing_edges.length > 0) {
+                    let edge = existing_elem.outgoing_edges[0]
+                    new_playlist_elems.forEach(p => p.forEach(pp => { if(pp.includes(edge)) { next_elems = pp } }))
+                }
+                if (next_elems === null) {
+                    existing_playlist.push([])
+                    next_elems = existing_playlist[existing_playlist.length - 1]
+                }
+                next_elems.push(new_elem)
+                existing_parallel_elems.forEach(e => {
+                    new_elem.incoming_edges.push(e)
+                    e.outgoing_edges.push(new_elem)
+                })
             }
-            new_elems_schedule.push(new_playlist)
+            new_elem.delay = delay
+            var new_elems_schedule = []
+            for (var i=0; i<new_playlist_elems.length; i++) {
+                let playlist = new_playlist_elems[i]
+                let new_playlist = []
+                for (var j=0; j<playlist.length; j++) {
+                    let parallel_elems = []
+                    for(var h=0; h<playlist[j].length; h++) {
+                        let elem = playlist[j][h]
+                        parallel_elems.push(elem)
+                    }
+                    new_playlist.push(parallel_elems)
+                }
+                new_elems_schedule.push(new_playlist)
+            }
+            return new_elems_schedule
         }
-        push_playlists(new_elems_schedule)
+
+        var under_construction = playlist_elems
+        if (put_before) {
+            for(var i=0; i<new_elems.length; i++) {
+                under_construction = add_connected_elem(under_construction, existing_elem, new_elems[i], put_before, delay)
+            }
+        } else {
+            var add_after = existing_elem
+            for(var i=new_elems.length-1; i>=0; i--) {
+                under_construction = add_connected_elem(under_construction, add_after, new_elems[i], put_before, delay)
+                add_after = new_elems[i]
+            }
+        }
+
+        push_playlists(under_construction)
+    }
+
+    // Duplicate an element N times sequentially and push
+    function duplicate_elem_and_push(elem, n_copies) {
+        let copies = []
+        for (var i=0; i<n_copies; i++) {
+            let copy = copy_elem(elem)
+            copies.push(copy)
+        }
+        add_connected_elems_and_push(elem, copies, false, 0)
     }
 
     // Create a new playlist with a single element in it.
     function add_new_playlist_with_elem_and_push(new_elem, delay) {
         new_elem.start_iteration = delay
         new_elem.end_iteration = new_elem.start_iteration + new_elem.loop_widget.n_cycles
-        var new_elems_schedule = []
-        for (var i=0; i<playlist_elems.length; i++) {
-            let playlist = playlist_elems[i]
-            let new_playlist = []
-            for (var j=0; j<playlist.length; j++) {
-                let parallel_elems = []
-                for (var h=0; h<parallel_elems.length; h++) {
-                    let elem = playlist[j][h]
-                    parallel_elems.push(elem)
-                }
-                new_playlist.push(parallel_elems)
-            }
-            new_elems_schedule.push(new_playlist)
-        }
+        var new_elems_schedule = Array.from(playlist_elems)
         new_elems_schedule.push([[new_elem]])
         push_playlists(new_elems_schedule)
     }
@@ -737,6 +751,24 @@ Item {
             }
         })))
         push_playlists(playlist_elems)
+    }
+
+    function copy_elem(elem) {
+        let rval = playlist_element_factory.createObject(root, {
+            loop_widget: elem.loop_widget,
+            loop_id: elem.loop_id,
+            start_iteration: elem.start_iteration,
+            end_iteration: elem.end_iteration,
+            delay: elem.delay,
+            swimlane: elem.swimlane,
+            incoming_edges: elem.incoming_edges,
+            outgoing_edges: elem.outgoing_edges,
+            incoming_edges_color: elem.incoming_edges_color,
+            outgoing_edges_color: elem.outgoing_edges_color,
+            maybe_forced_n_cycles: elem.maybe_forced_n_cycles,
+            maybe_mode: elem.maybe_mode
+        })
+        return rval
     }
 
     component Track : Item {
@@ -863,7 +895,7 @@ Item {
                                             mapped_item.gui_item = this
                                         }
 
-                                        // Draggy rect for right-side width ajustment
+                                        // Draggy rect for right-side width ajustment or duplication
                                         Rectangle {
                                             id: right_width_adjuster
                                             anchors {
@@ -913,13 +945,23 @@ Item {
                                             MouseArea {
                                                 id: right_drag_area
                                                 anchors.fill: parent
-                                                cursorShape: Qt.SizeHorCursor
+                                                cursorShape: key_modifiers.control_pressed ? Qt.DragCopyCursor : Qt.SizeHorCursor
 
                                                 onReleased: {
                                                     if (drag.active) {
                                                         let new_n = right_resize_preview.dragged_cycle
                                                         if (new_n >= 1) {
-                                                            force_elem_n_cycles_and_push(loop_rect.mapped_item, new_n)
+                                                            if (key_modifiers.control_pressed) {
+                                                                // Duplicate loop
+                                                                let length = mapped_item.end_iteration - mapped_item.start_iteration
+                                                                let n_copies = Math.ceil((new_n - length) / length)
+                                                                if (n_copies > 0) {
+                                                                    duplicate_elem_and_push(mapped_item, n_copies)
+                                                                }
+                                                            } else {
+                                                                // Resize loop
+                                                                force_elem_n_cycles_and_push(loop_rect.mapped_item, new_n)
+                                                            }
                                                         }
                                                     }
                                                 }
@@ -1056,7 +1098,7 @@ Item {
                                                     incoming_edges: [],
                                                     outgoing_edges: []
                                                 })
-                                                add_connected_elem_and_push(mapped_item, new_elem, false, 0)
+                                                add_connected_elems_and_push(mapped_item, [new_elem], false, 0)
                                             }
 
                                             Rectangle {
@@ -1084,7 +1126,7 @@ Item {
                                                     incoming_edges: [],
                                                     outgoing_edges: []
                                                 })
-                                                add_connected_elem_and_push(mapped_item, new_elem, true, 0)
+                                                add_connected_elems_and_push(mapped_item, [new_elem], true, 0)
                                             }
 
                                             Rectangle {
