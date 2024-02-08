@@ -922,7 +922,6 @@ Item {
                                             name: 'alert-box'
                                             color: Material.foreground
                                             visible: mapped_item.maybe_forced_n_cycles ? true : false
-                                            tooltip: "This element has a forced length. The composite loop will run this length regardless of the actual loop's length."
                                         }
 
                                         ToolbarButton {
