@@ -63,7 +63,16 @@ Item {
     property var playlists: (initial_composition_descriptor && initial_composition_descriptor.playlists) ?
         initial_composition_descriptor.playlists : []
 
-    
+    // For script composite loops, we can also have defined sections.
+    // Format:
+    // [
+    //    { start_iter: int, end_iter: int, name: str, block: bool }
+    // ]
+    // - start_iter and end_iter define the span of the section.
+    // - name is the display name of the section.
+    // - block determines whether the end of the section will block further execution
+    //   of the script until explicitly resumed.
+    property var sections: []
 
     // When the schedule is calculated, an enriched playlists copy is also calculated.
     // This is equal to the input playlists, just with each entry having its final
