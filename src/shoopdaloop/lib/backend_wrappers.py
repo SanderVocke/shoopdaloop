@@ -512,7 +512,7 @@ class BackendLoopMidiChannel:
     
     def set_n_preplay_samples(self, n):
         if self.available():
-            bindings.set_audio_channel_n_preplay_samples(self.shoop_c_handle, n)
+            bindings.set_midi_channel_n_preplay_samples(self.shoop_c_handle, n)
     
     def destroy(self):
         if self.available():
