@@ -648,8 +648,12 @@ shoop_midi_sequence_t *get_midi_channel_data (shoopdaloop_loop_midi_channel_t  *
 void load_audio_channel_data  (shoopdaloop_loop_audio_channel_t *channel, shoop_audio_channel_data_t *data) {
   return api_impl<void>("load_audio_channel_data", [&]() {
     auto &chan = *internal_audio_channel(channel);
+    std::cout << "API call load_data to channel on thread " << std::this_thread::get_id() << std::endl;
     evaluate_before_or_after_process<void>(
-        [&chan, &data]() { chan.maybe_audio()->load_data(data->data, data->n_samples); },
+        [&chan, &data]() {
+          std::cout << "call process load_data to channel on thread " << std::this_thread::get_id() << std::endl;
+          chan.maybe_audio()->load_data(data->data, data->n_samples);
+        },
         chan.maybe_audio(),
         *chan.backend.lock());
   });
@@ -1191,6 +1195,7 @@ shoop_midi_port_state_info_t *get_midi_port_state(shoopdaloop_midi_port_t *port)
 
 shoop_loop_state_info_t *get_loop_state(shoopdaloop_loop_t *loop) {
   return api_impl<shoop_loop_state_info_t*, log_level_debug_trace, log_level_warning>("get_loop_state", [&]() {
+    std::cout << "API call get_loop_state on thread " << std::this_thread::get_id() << std::endl;
     auto r = new shoop_loop_state_info_t;
     auto _loop = internal_loop(loop);
     r->mode = _loop->loop->get_mode();
