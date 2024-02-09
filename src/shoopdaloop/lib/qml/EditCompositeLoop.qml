@@ -204,6 +204,7 @@ Item {
                 model : {
                     var rval = Array.from(tracks_mapper.sorted_instances)
                     rval.push(cycle_header)
+                    rval.push(sections_track)
                     return rval
                 }
 
@@ -318,6 +319,48 @@ Item {
                 }
             }
 
+            // Sections editor for script loops
+            Track {
+                id: sections_track
+                track : null
+                is_section_track : true
+                visible : root.composite_loop.kind == 'script'
+                width: tracks_column.width
+                x_offset: root.x_offset
+
+                // Overlay clickable area per cycle which can be used to create new sections
+                Mapper {
+                    model : cycle_header.children.filter(c => !(c instanceof Repeater))
+
+                    Rectangle {
+                        property var mapped_item
+                        property int index
+
+                        width: mapped_item.width
+
+                        x: {
+                            mapped_item.x; // dummy dependency
+                            return mapped_item.mapToItem(parent, 0, 0).x
+                        }
+
+                        anchors {
+                            top: parent.top
+                            bottom: parent.bottom
+                        }
+
+                        color: section_create_area.containsMouse ? 'white' : 'transparent'
+                        opacity: 0.3
+
+                        MouseArea {
+                            id: section_create_area
+                            anchors.fill: parent
+                            hoverEnabled: true
+                        }
+                    }
+                }
+            }
+
+            // Track editors to drop loops in
             Mapper {
                 model : main_tracks
                 id: tracks_mapper
@@ -339,12 +382,13 @@ Item {
             y: tracks_column.y
 
             Mapper {
-                model: main_tracks
+                model: root.composite_loop.kind == 'script' ? ['sections'].concat(main_tracks) : main_tracks
 
                 Label {
                     property int index
                     property var mapped_item
                     property var visual_track : {
+                        if (mapped_item == 'sections') { return sections_track }
                         let r = tracks_mapper.sorted_instances.filter(i => i.mapped_item == mapped_item)
                         if (r.length == 1) { return r[0]; }
                         return undefined;
@@ -354,7 +398,7 @@ Item {
                     height: visual_track ? visual_track.height : undefined
                     verticalAlignment: Text.AlignVCenter
 
-                    text: mapped_item.name
+                    text: mapped_item == 'sections' ? 'Sections' : mapped_item.name
                 }
             }
         }
@@ -376,6 +420,9 @@ Item {
         property color outgoing_edges_color
         property var maybe_mode
         property var info
+
+        // For section items, which are not loops but mark sections in a script
+        property var maybe_section_name // if set, elem is a section instead of a loop
 
         // Calculate
         property int swimlane // swimlane where the element should be rendered in
@@ -521,7 +568,8 @@ Item {
                         incoming_edges_color: info.incoming_edges_color,
                         outgoing_edges_color: info.outgoing_edges_color,
                         maybe_forced_n_cycles: info.ori_elem.forced_n_cycles,
-                        maybe_mode: info.ori_elem.mode
+                        maybe_mode: info.ori_elem.mode,
+                        maybe_section_name: null
                     }))
                 }
                 playlist.push(parallel_elems)
@@ -766,7 +814,8 @@ Item {
             incoming_edges_color: elem.incoming_edges_color,
             outgoing_edges_color: elem.outgoing_edges_color,
             maybe_forced_n_cycles: elem.maybe_forced_n_cycles,
-            maybe_mode: elem.maybe_mode
+            maybe_mode: elem.maybe_mode,
+            maybe_section_name: elem.maybe_section_name
         })
         return rval
     }
@@ -774,20 +823,26 @@ Item {
     component Track : Item {
         id: track_root
 
-        property var track
-        readonly property int track_idx : track.track_idx
+        property var track : null
+        property bool is_section_track : false // Use instead of a track, track can be used to edit sections
+        readonly property int track_idx : is_section_track ? 0 : track.track_idx
 
         property int x_offset : 0
         
         height: childrenRect.height
 
+        clip: true
+
         // Filter playlist elements that belong to this track.
         readonly property var track_playlist_elems :
-            root.flat_playlist_elems.filter(e => e.loop_widget.track_idx == track_idx)
+            track ?
+                root.flat_playlist_elems.filter(e => e.loop_widget.track_idx == track_idx) :
+                []
 
         // Find the amount of swimlanes needed.
         readonly property int n_swimlanes: 
-            Math.max.apply(null, track_playlist_elems.map(l => l.swimlane)) + 1
+            is_section_track ? 1 :
+                Math.max.apply(null, track_playlist_elems.map(l => l.swimlane)) + 1
 
         Rectangle {
             id: content_rect
@@ -839,7 +894,7 @@ Item {
                         property int spacing: 1
                         
                         height: childrenRect.height
-                        width: root.cycle_width * track_root.track_schedule_length
+                        width: content_rect.width
 
                         Repeater {
                             id: swimlanes
@@ -848,14 +903,13 @@ Item {
                             // background rectangle for the entire swimlane.
                             Rectangle {
                                 id: swimlane
-                                border.color: 'black'
-                                border.width: 1
                                 color: 'transparent'
 
                                 width: swimlanes_column.width
                                 height: root.swimlane_height
                                 y: index * (root.swimlane_height + swimlanes_column.spacing)
 
+                                // Maps the loops to draw
                                 Mapper {
                                     model : track_root.track_playlist_elems.filter(l => l.swimlane == index)
 
@@ -895,7 +949,10 @@ Item {
                                             mapped_item.gui_item = this
                                         }
 
-                                        // Draggy rect for right-side width ajustment or duplication
+                                        // Draggy rect for right-side width ajustment or duplication.
+                                        // For changing width it is just on the right-hand side of the screen.
+                                        // When Control is pressed, the drag area covers the whole loop and is
+                                        // used to duplicate it.
                                         Rectangle {
                                             id: right_width_adjuster
                                             anchors {
@@ -903,7 +960,7 @@ Item {
                                                 top: parent.top
                                                 bottom: parent.bottom
                                             }
-                                            width: 20
+                                            width: key_modifiers.control_pressed ? parent.width : 20
 
                                             // for debugging
                                             //color: 'red'
