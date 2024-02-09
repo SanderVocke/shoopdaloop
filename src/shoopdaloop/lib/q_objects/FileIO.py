@@ -285,7 +285,6 @@ class FileIO(QThread):
         maybe_update_loop_to_datalength
     ):
         self.startLoadingFile.emit()
-        self.logger.info(lambda: 'start load')
         try:
             if maybe_target_data_length:
                 maybe_target_data_length = int(maybe_target_data_length)
@@ -294,9 +293,7 @@ class FileIO(QThread):
             if maybe_set_n_preplay_samples:
                 maybe_set_n_preplay_samples = int(maybe_set_n_preplay_samples)
 
-            self.logger.info(lambda: 'read')
             data, file_sample_rate = sf.read(filename, dtype='float32')
-            self.logger.info(lambda: 'finish read')
             if data.ndim == 1:
                 # Mono
                 data = np.expand_dims(data, axis=1)
@@ -318,16 +315,12 @@ class FileIO(QThread):
                 return
 
             # We work with separate channel arrays
-            self.logger.info(lambda: 'swap')
             resampled = np.swapaxes(resampled, 0, 1)
-            self.logger.info(lambda: 'end swap')
 
             for idx, data_channel in enumerate(resampled):
                 channels = channels_to_loop_channels[idx]
                 for channel in channels:
-                    self.logger.info(lambda: 'load channel')
                     channel.load_data(data_channel)
-                    self.logger.info(lambda: 'end load channel')
                     channel.update() # dbg
                     if maybe_set_start_offset != None:
                         channel.set_start_offset(maybe_set_start_offset)

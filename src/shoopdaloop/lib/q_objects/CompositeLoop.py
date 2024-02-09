@@ -12,7 +12,6 @@ from ..q_objects.Backend import Backend
 from ..findFirstParent import findFirstParent
 from ..findChildItems import findChildItems
 from ..logging import Logger
-import threading
 
 # Wraps a back-end FX chain.
 class CompositeLoop(ShoopQQuickItem):
@@ -45,8 +44,6 @@ class CompositeLoop(ShoopQQuickItem):
         self.syncLengthChanged.connect(self.update_position, Qt.DirectConnection)
         self.modeChanged.connect(self.update_position, Qt.DirectConnection)
         self.syncPositionChanged.connect(self.update_position, Qt.DirectConnection)
-
-        self.logger.debug(lambda: f'UI thread: {threading.get_ident()}')
     
     cycled = Signal()
 
@@ -259,7 +256,7 @@ class CompositeLoop(ShoopQQuickItem):
     
     @Slot()
     def handle_sync_loop_trigger(self):
-        self.logger.debug(lambda: f'handle sync cycle (thread {threading.get_ident()})')
+        self.logger.debug(lambda: 'handle sync cycle')
 
         if self.next_transition_delay == 0:
             self.handle_transition(self.next_mode)

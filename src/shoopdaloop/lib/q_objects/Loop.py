@@ -17,7 +17,6 @@ from ..q_objects.Backend import Backend
 from ..findFirstParent import findFirstParent
 from ..findChildItems import findChildItems
 from .Logger import Logger
-import threading
 
 # Wraps a back-end loop.
 class Loop(ShoopQQuickItem):
@@ -46,8 +45,6 @@ class Loop(ShoopQQuickItem):
         self.rescan_parents()
         if not self._backend:
             self.parentChanged.connect(self.rescan_parents)
-        
-        self.logger.debug(lambda: f'UI thread: {threading.get_ident()}')
 
     ######################
     # PROPERTIES
@@ -181,7 +178,7 @@ class Loop(ShoopQQuickItem):
             self.logger.trace(lambda: 'update: not initialized')
             return
         
-        self.logger.trace(lambda: f'update on thread {threading.get_ident()}')
+        self.logger.trace(lambda: 'update')
         for channel in self.get_audio_channels():
             channel.update()
         for channel in self.get_midi_channels():

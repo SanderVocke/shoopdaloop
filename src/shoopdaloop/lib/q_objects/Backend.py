@@ -7,7 +7,7 @@ import sys
 import weakref
 import traceback
 import json
-from threading import Lock, get_ident
+from threading import Lock
 
 from PySide6.QtCore import Qt, Signal, Property, Slot, QTimer, QThread, QMetaObject, Q_ARG, QEvent
 from PySide6.QtQml import QJSValue
@@ -160,7 +160,7 @@ class Backend(ShoopQQuickItem):
 
     @Slot()
     def doUpdate(self):
-        self.logger.warning(lambda: f'update on thread {get_ident()}')
+        self.logger.trace(lambda: 'update')
         if not self.initialized:
             return
         driver_state = self._backend_driver_obj.get_state()
