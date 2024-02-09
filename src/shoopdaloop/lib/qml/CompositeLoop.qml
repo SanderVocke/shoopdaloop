@@ -63,7 +63,17 @@ Item {
     property var playlists: (initial_composition_descriptor && initial_composition_descriptor.playlists) ?
         initial_composition_descriptor.playlists : []
 
-    
+    // For script composite loops, we can also have defined sections.
+    // Format:
+    // [
+    //    { start_iter: int, end_iter: int, name: str, block: bool }
+    // ]
+    // - start_iter and end_iter define the span of the section.
+    // - name is the display name of the section.
+    // - block determines whether the end of the section will block further execution
+    //   of the script until explicitly resumed.
+    property var sections: (initial_composition_descriptor && initial_composition_descriptor.sections) ?
+        initial_composition_descriptor.sections : []
 
     // When the schedule is calculated, an enriched playlists copy is also calculated.
     // This is equal to the input playlists, just with each entry having its final
@@ -87,8 +97,16 @@ Item {
         playlistsChanged()
     }
 
+    function add_section(start_iter, n_iters, name) {
+        root.logger.debug(`Adding section ${name} from ${start_iter} to ${start_iter + n_iters}`)
+        sections.push({start_iter: start_iter, end_iter: start_iter + n_iters, name: name, block: true})
+        sectionsChanged()
+    }
+
     // Transform the playlists into a more useful format:
-    // a dict of { iteration: { loops_start: [...], loops_end: [...], loops_ignored: [...] } }
+    // { triggers: triggers, sections: sections }
+    // where sections is equal to the sections property, and triggers is a dict of:
+    //   { iteration: { loops_start: [...], loops_end: [...], loops_ignored: [...] } }
     // loops_start lists the loops that should be triggered in this iteration. Each entry is a [loop, mode].
     // loops_end lists the loops that should be stopped in this iteration. Each entry is a loop.
     // loops_ignored lists loops that are not really scheduled but stored to still keep traceability -
@@ -197,13 +215,19 @@ Item {
             v.loops_start = starts.map(l => [l, modes[l]])
         }
 
+        let __schedule = {
+            'triggers': _schedule,
+            'sections': sections
+        }
+
         root.logger.trace(() => `full schedule:\n${
-            Array.from(Object.entries(_schedule)).map(([k,v]) => 
+            Array.from(Object.entries(__schedule.triggers)).map(([k,v]) => 
                 `- ${k}: stop [${Array.from(v.loops_end).map(l => l.obj_id)}], start [${Array.from(v.loops_start).map(l => l[0].obj_id + ` @ mode ${l[1]}`)}], ignore [${Array.from(v.loops_ignored).map(l => l.obj_id)}]`
             ).join("\n")
         }`)
+        root.logger.trace(() => `sections: ${JSON.stringify(__schedule.sections, null, 2)}`)
 
-        schedule = _schedule
+        schedule = __schedule
     }
     function ensure_script_or_regular() {
         // We either want all modes specified or none (script or regular composite loop, resp.)
@@ -219,6 +243,10 @@ Item {
             }
         })))
         root.kind = (found_mode === null) ? 'regular' : 'script'
+        if (root.kind == 'regular') {
+            // Regular composite loops don't have sections
+            sections = []
+        }
         if (found_mode !== null && modes_count < all_count) {
             let new_playlists = playlists.map(p => p.map(pp => pp.map(e => {
                 var rval =  Object.create(e)
@@ -301,7 +329,8 @@ Item {
 
     function actual_composition_descriptor() {
         return {
-            'playlists': playlists
+            'playlists': playlists,
+            'sections': sections
         }
     }
 

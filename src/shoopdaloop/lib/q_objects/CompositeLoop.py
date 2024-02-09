@@ -150,7 +150,8 @@ class CompositeLoop(ShoopQQuickItem):
     nCyclesChanged = Signal(int)
     Slot()
     def update_n_cycles(self):
-        v = (max([int(k) for k in self._schedule.keys()]) if self._schedule else 0)
+        v = (max([int(k) for k in self._schedule['triggers'].keys()]) if
+                (self._schedule and 'triggers' in self._schedule and len(self._schedule['triggers'].keys()) > 0) else 0)
         if v != self._n_cycles:
             self.logger.debug(lambda: f'n_cycles -> {v}')
             self._n_cycles = v
@@ -310,10 +311,11 @@ class CompositeLoop(ShoopQQuickItem):
 
     def do_triggers(self, iteration, mode):
         schedule = self._schedule
-        sched_keys = [int(k) for k in schedule.keys()]
+        triggers = schedule['triggers']
+        sched_keys = [int(k) for k in triggers.keys()]
         self.logger.debug(lambda: f'do_triggers({iteration}, {mode})')
         if iteration in sched_keys:
-            elem = schedule[str(iteration)]
+            elem = triggers[str(iteration)]
             loops_end = elem['loops_end']
             loops_start = elem['loops_start']
             for loop in loops_end:
@@ -339,7 +341,7 @@ class CompositeLoop(ShoopQQuickItem):
                             # To implement the above: see if we have already recorded.
                             for i in range(iteration):
                                 if i in sched_keys:
-                                    other_starts = schedule[str(i)]['loops_start']
+                                    other_starts = triggers[str(i)]['loops_start']
                                     if isinstance(other_starts, QJSValue):
                                         other_starts = other_starts.toVariant()
                                     if loop in other_starts:

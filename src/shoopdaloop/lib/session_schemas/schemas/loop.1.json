@@ -35,6 +35,19 @@
                             }
                         }
                     }
+                },
+                "sections": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "start_iter": { "type": "integer" },
+                            "end_iter": { "type": "integer" },
+                            "name": { "type": "string" },
+                            "block": { "type": "boolean" }
+                        },
+                        "required": ["delay", "loop_id"]
+                    }
                 }
             },
             "required": ["playlists"]

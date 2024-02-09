@@ -3,6 +3,8 @@ import QtQuick.Controls 6.3
 import QtQuick.Controls.Material 6.3
 import QtQuick.Shapes 6.3
 
+import 'test/testDeepEqual.js' as TestDeepEqual
+
 Item {
     id: root
     
@@ -14,6 +16,7 @@ Item {
 
     readonly property int cycle_length: composite_loop.sync_length
     property int swimlane_height: 28
+    property int section_track_height: 22
 
     property var scheduled_playlists : composite_loop.scheduled_playlists
     property int schedule_length : Math.max.apply(null, Object.keys(composite_loop.schedule))
@@ -22,6 +25,20 @@ Item {
     property var main_tracks : []
 
     height: childrenRect.height
+
+    // Make a map of cycle numbers to section
+    property var sections_per_cycle: {
+        var rval = {}
+        for(var i=0; i<composite_loop.sections.length; i++) {
+            let section = composite_loop.sections[i]
+            let start = section.start_iter
+            let end = section.end_iter
+            for(var j=start; j<end; j++) {
+                rval[j] = section
+            }
+        }
+        return rval
+    }
 
     Row {
         id: toolbar
@@ -204,6 +221,7 @@ Item {
                 model : {
                     var rval = Array.from(tracks_mapper.sorted_instances)
                     rval.push(cycle_header)
+                    rval.push(sections_track)
                     return rval
                 }
 
@@ -318,6 +336,104 @@ Item {
                 }
             }
 
+            // Sections editor for script loops
+            Track {
+                id: sections_track
+                track : null
+                is_section_track : true
+                visible : root.composite_loop.kind == 'script'
+                width: tracks_column.width
+                x_offset: root.x_offset
+
+                // Overlay clickable area per cycle which can be used to create new sections
+                Mapper {
+                    model : cycle_header.children.filter(c => !(c instanceof Repeater))
+
+                    Rectangle {
+                        id: section_create_rect
+                        property var mapped_item
+                        property int index
+
+                        property int cycle: mapped_item.cycle
+                        visible: root.sections_per_cycle[cycle] === undefined
+
+                        width: mapped_item.width
+
+                        x: {
+                            mapped_item.x; // dummy dependency
+                            return mapped_item.mapToItem(parent, 0, 0).x
+                        }
+
+                        anchors {
+                            top: parent ? parent.top : undefined
+                            bottom: parent ? parent.bottom : undefined
+                        }
+
+                        color: section_create_area.containsMouse && !section_create_area.pressed ? 'white' : 'transparent'
+                        opacity: 0.4
+
+                        Rectangle {
+                            id: section_create_movable
+                            width: section_create_rect.width
+                            height: section_create_rect.height
+                            x: 0
+                            y: 0
+                            color: "transparent"
+
+                            Drag.active: section_create_area.drag.active
+                            visible: Drag.active || section_create_area.pressed
+
+                            // Draw a rectangle that represents the new
+                            // section length and positioning
+                            Rectangle {
+                                id: section_create_preview
+                                parent: section_create_rect
+
+                                readonly property int dragged_width : {
+                                    let dragged_x = Math.max(1, section_create_movable.x);
+                                    return Math.ceil(dragged_x / root.cycle_width)
+                                }
+
+                                x: 0
+                                z: 3
+                                height: section_create_movable.height
+                                width: Math.max(1, dragged_width) * root.cycle_width
+                                color: "green"
+                                visible: section_create_movable.visible
+                            }
+                        }
+
+                        MouseArea {
+                            id: section_create_area
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+
+                            onReleased: {
+                                if (drag.active) {
+                                    let n_cycles = section_create_preview.dragged_width
+                                    let start_cycle = section_create_rect.mapped_item.cycle
+                                    for(var i=start_cycle; i<start_cycle+n_cycles; i++) {
+                                        if (root.sections_per_cycle[i] !== undefined) {
+                                            // Slot already occupied - no overlapping sections allowed
+                                            return;
+                                        }
+                                    }
+                                    root.create_section(start_cycle, n_cycles, 'New Section')
+                                }
+                                section_create_movable.x = 0
+                            }
+
+                            drag {
+                                axis: "XAxis"
+                                target: section_create_movable
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Track editors to drop loops in
             Mapper {
                 model : main_tracks
                 id: tracks_mapper
@@ -339,12 +455,13 @@ Item {
             y: tracks_column.y
 
             Mapper {
-                model: main_tracks
+                model: root.composite_loop.kind == 'script' ? ['sections'].concat(main_tracks) : main_tracks
 
                 Label {
                     property int index
                     property var mapped_item
                     property var visual_track : {
+                        if (mapped_item == 'sections') { return sections_track }
                         let r = tracks_mapper.sorted_instances.filter(i => i.mapped_item == mapped_item)
                         if (r.length == 1) { return r[0]; }
                         return undefined;
@@ -354,7 +471,7 @@ Item {
                     height: visual_track ? visual_track.height : undefined
                     verticalAlignment: Text.AlignVCenter
 
-                    text: mapped_item.name
+                    text: mapped_item == 'sections' ? 'Sections' : mapped_item.name
                 }
             }
         }
@@ -376,6 +493,9 @@ Item {
         property color outgoing_edges_color
         property var maybe_mode
         property var info
+
+        // For section items, which are not loops but mark sections in a script
+        property var maybe_section_name // if set, elem is a section instead of a loop
 
         // Calculate
         property int swimlane // swimlane where the element should be rendered in
@@ -521,7 +641,8 @@ Item {
                         incoming_edges_color: info.incoming_edges_color,
                         outgoing_edges_color: info.outgoing_edges_color,
                         maybe_forced_n_cycles: info.ori_elem.forced_n_cycles,
-                        maybe_mode: info.ori_elem.mode
+                        maybe_mode: info.ori_elem.mode,
+                        maybe_section_name: null
                     }))
                 }
                 playlist.push(parallel_elems)
@@ -592,71 +713,91 @@ Item {
         push_playlists(new_elems_schedule)
     }
 
+    // Create a new section and push.
+    function create_section(start_cycle, n_cycles, name) {
+        root.composite_loop.add_section(start_cycle, n_cycles, name)
+    }
+
+    // Delete a section and push.
+    function delete_section(section) {
+        root.composite_loop.sections = root.composite_loop.sections.filter(s => !TestDeepEqual.testDeepEqual(s, section, (msg) => {}))
+    }
+
+    // Rename a section and push.
+    function rename_section(section, name) {
+        root.composite_loop.sections = root.composite_loop.sections.map(s => {
+            if (TestDeepEqual.testDeepEqual(s, section, (msg) => {})) {
+                s.name = name
+            }
+            return s
+        })
+    }
+
     // Insert an element into an existing playlist
     function add_connected_elems_and_push(existing_elem, new_elems, put_before, delay) {
         function add_connected_elem(input_playlist, existing_elem, new_elem, put_before, delay) {
-        // First, we have to find the existing element to access the set of parallel elements
-        // containing it.
-        let new_playlist_elems = input_playlist.map(p => p.map(pp => pp.map(e => e)))
-        var existing_parallel_elems = null
-        var existing_playlist = null
-        new_playlist_elems.forEach(p => p.forEach(pp => { if(pp.includes(existing_elem)) { existing_parallel_elems = pp; existing_playlist = p } }))
+            // First, we have to find the existing element to access the set of parallel elements
+            // containing it.
+            let new_playlist_elems = input_playlist.map(p => p.map(pp => pp.map(e => e)))
+            var existing_parallel_elems = null
+            var existing_playlist = null
+            new_playlist_elems.forEach(p => p.forEach(pp => { if(pp.includes(existing_elem)) { existing_parallel_elems = pp; existing_playlist = p } }))
 
-        if(!existing_parallel_elems || !existing_playlist) {
-            root.logger.warning(() => "Could not find playlist entry point for new element, ignoring")
-            return;
-        }
+            if(!existing_parallel_elems || !existing_playlist) {
+                root.logger.warning(() => "Could not find playlist entry point for new element, ignoring")
+                return;
+            }
 
-        // Now find the parallel set where our new element should be added.
-        // If none exists (we are at the beginning/end of the playlist), create one.
-        var new_parallel_elems = null
-        if (put_before) {
-            var prev_elems = null
-            if (existing_elem.incoming_edges.length > 0) {
-                let edge = existing_elem.incoming_edges[0]
-                new_playlist_elems.forEach(p => p.forEach(pp => { if(pp.includes(edge)) { prev_elems = pp } }))
-            }
-            if (prev_elems === null) {
-                existing_playlist.splice(0, 0, [])
-                prev_elems = existing_playlist[0]
-            }
-            prev_elems.push(new_elem)
-            existing_parallel_elems.forEach(e => {
-                new_elem.outgoing_edges.push(e)
-                e.incoming_edges.push(new_elem)
-            })
-        } else {
-            var next_elems = null
-            if (existing_elem.outgoing_edges.length > 0) {
-                let edge = existing_elem.outgoing_edges[0]
-                new_playlist_elems.forEach(p => p.forEach(pp => { if(pp.includes(edge)) { next_elems = pp } }))
-            }
-            if (next_elems === null) {
-                existing_playlist.push([])
-                next_elems = existing_playlist[existing_playlist.length - 1]
-            }
-            next_elems.push(new_elem)
-            existing_parallel_elems.forEach(e => {
-                new_elem.incoming_edges.push(e)
-                e.outgoing_edges.push(new_elem)
-            })
-        }
-        new_elem.delay = delay
-        var new_elems_schedule = []
-        for (var i=0; i<new_playlist_elems.length; i++) {
-            let playlist = new_playlist_elems[i]
-            let new_playlist = []
-            for (var j=0; j<playlist.length; j++) {
-                let parallel_elems = []
-                for(var h=0; h<playlist[j].length; h++) {
-                    let elem = playlist[j][h]
-                    parallel_elems.push(elem)
+            // Now find the parallel set where our new element should be added.
+            // If none exists (we are at the beginning/end of the playlist), create one.
+            var new_parallel_elems = null
+            if (put_before) {
+                var prev_elems = null
+                if (existing_elem.incoming_edges.length > 0) {
+                    let edge = existing_elem.incoming_edges[0]
+                    new_playlist_elems.forEach(p => p.forEach(pp => { if(pp.includes(edge)) { prev_elems = pp } }))
                 }
-                new_playlist.push(parallel_elems)
+                if (prev_elems === null) {
+                    existing_playlist.splice(0, 0, [])
+                    prev_elems = existing_playlist[0]
+                }
+                prev_elems.push(new_elem)
+                existing_parallel_elems.forEach(e => {
+                    new_elem.outgoing_edges.push(e)
+                    e.incoming_edges.push(new_elem)
+                })
+            } else {
+                var next_elems = null
+                if (existing_elem.outgoing_edges.length > 0) {
+                    let edge = existing_elem.outgoing_edges[0]
+                    new_playlist_elems.forEach(p => p.forEach(pp => { if(pp.includes(edge)) { next_elems = pp } }))
+                }
+                if (next_elems === null) {
+                    existing_playlist.push([])
+                    next_elems = existing_playlist[existing_playlist.length - 1]
+                }
+                next_elems.push(new_elem)
+                existing_parallel_elems.forEach(e => {
+                    new_elem.incoming_edges.push(e)
+                    e.outgoing_edges.push(new_elem)
+                })
             }
-            new_elems_schedule.push(new_playlist)
-        }
-        return new_elems_schedule
+            new_elem.delay = delay
+            var new_elems_schedule = []
+            for (var i=0; i<new_playlist_elems.length; i++) {
+                let playlist = new_playlist_elems[i]
+                let new_playlist = []
+                for (var j=0; j<playlist.length; j++) {
+                    let parallel_elems = []
+                    for(var h=0; h<playlist[j].length; h++) {
+                        let elem = playlist[j][h]
+                        parallel_elems.push(elem)
+                    }
+                    new_playlist.push(parallel_elems)
+                }
+                new_elems_schedule.push(new_playlist)
+            }
+            return new_elems_schedule
         }
 
         var under_construction = playlist_elems
@@ -766,7 +907,8 @@ Item {
             incoming_edges_color: elem.incoming_edges_color,
             outgoing_edges_color: elem.outgoing_edges_color,
             maybe_forced_n_cycles: elem.maybe_forced_n_cycles,
-            maybe_mode: elem.maybe_mode
+            maybe_mode: elem.maybe_mode,
+            maybe_section_name: elem.maybe_section_name
         })
         return rval
     }
@@ -774,8 +916,11 @@ Item {
     component Track : Item {
         id: track_root
 
-        property var track
-        readonly property int track_idx : track.track_idx
+        property var track : null
+        property bool is_section_track : false // Use instead of a track, track can be used to edit sections
+        readonly property int track_idx : is_section_track ? 0 : track.track_idx
+
+        property int row_height : is_section_track ? root.section_track_height : root.swimlane_height
 
         property int x_offset : 0
         
@@ -785,11 +930,14 @@ Item {
 
         // Filter playlist elements that belong to this track.
         readonly property var track_playlist_elems :
-            root.flat_playlist_elems.filter(e => e.loop_widget.track_idx == track_idx)
+            track ?
+                root.flat_playlist_elems.filter(e => e.loop_widget.track_idx == track_idx) :
+                []
 
         // Find the amount of swimlanes needed.
         readonly property int n_swimlanes: 
-            Math.max.apply(null, track_playlist_elems.map(l => l.swimlane)) + 1
+            is_section_track ? 1 :
+                Math.max.apply(null, track_playlist_elems.map(l => l.swimlane)) + 1
 
         Rectangle {
             id: content_rect
@@ -799,7 +947,7 @@ Item {
                 left: parent ? parent.left : undefined
                 right: parent ? parent.right : undefined
             }
-            height: Math.max(childrenRect.height, root.swimlane_height)
+            height: Math.max(childrenRect.height, track_root.row_height)
             color: 'transparent'
 
             // Handler for panning the view
@@ -850,12 +998,80 @@ Item {
                             // background rectangle for the entire swimlane.
                             Rectangle {
                                 id: swimlane
-                                                                color: 'transparent'
+                                color: 'transparent'
 
                                 width: swimlanes_column.width
-                                height: root.swimlane_height
+                                height: track_root.row_height
                                 y: index * (root.swimlane_height + swimlanes_column.spacing)
 
+                                // Maps the sections to draw
+                                Mapper {
+                                    model: track_root.is_section_track ? root.composite_loop.sections : []
+
+                                    // Rectangle representing a section.
+                                    Rectangle {
+                                        id: section_rect
+                                        property var mapped_item
+                                        property int index
+                                        property int n_cycles: mapped_item.end_iter - mapped_item.start_iter
+
+                                        color: '#440044'
+                                        border.color: 'grey'
+                                        border.width: 1
+
+                                        width: root.cycle_width * n_cycles
+                                        height: swimlane.height
+                                        x: root.cycle_width * mapped_item.start_iter
+
+                                        Label {
+                                            anchors.centerIn: parent
+                                            color: Material.foreground
+                                            text: mapped_item.name
+                                        }
+
+                                        MouseArea {
+                                            acceptedButtons: Qt.RightButton
+                                            onClicked: section_menu.open()
+                                            anchors.fill: parent
+                                        }
+
+                                        // Context menu
+                                        Menu {
+                                            id: section_menu
+
+                                            ShoopMenuItem {
+                                                height: 50
+                                                Row {
+                                                    anchors.fill: parent
+                                                    spacing: 5
+                                                    anchors.leftMargin: 10
+                                                    Text {
+                                                        text: "Name:"
+                                                        color: Material.foreground
+                                                        anchors.verticalCenter: name_field.verticalCenter
+                                                    }
+                                                    ShoopTextField {
+                                                        id: name_field
+                                                        text: section_rect.mapped_item.name
+                                                        font.pixelSize: 12
+                                                        onEditingFinished: {
+                                                            root.rename_section(section_rect.mapped_item, text)
+                                                            focus = false
+                                                            release_focus_notifier.notify()
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            MenuSeparator {}
+                                            ShoopMenuItem {
+                                                text: "Remove"
+                                                onClicked: root.delete_section(section_rect.mapped_item)
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Maps the loops to draw
                                 Mapper {
                                     model : track_root.track_playlist_elems.filter(l => l.swimlane == index)
 
