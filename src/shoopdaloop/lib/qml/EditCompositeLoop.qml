@@ -375,6 +375,7 @@ Item {
     // playlist items into fully annotated PlaylistElement objects.
     // Holds a structure equal to that of scheduled_playlists.
     readonly property var playlist_elem_placeholders : {
+        var starttime = (new Date()).getTime()
         // First some logic for picking colors for the inter-loop links.
         let colors = [
             '#da7454',
@@ -427,6 +428,9 @@ Item {
             placeholders.push(playlist)
         }
 
+        var placeholderstime = (new Date()).getTime()
+        console.log("edit: placeholders in", placeholderstime - starttime)
+
         // Now calculate the swimlanes
         let create_swimlane_slot_status = () => new Array(_schedule_length).fill(false)
         // Start with one swimlane per track
@@ -477,12 +481,17 @@ Item {
             }
         }
 
-        // Now instantiate the actual playlist elements
+        var swimlanestime = (new Date()).getTime()
+        console.log("edit: swimlanes in", swimlanestime - placeholderstime)
+
         return placeholders
     }
 
     // Create the PlaylistElements.
     readonly property var playlist_elems : {
+
+        var starttime = (new Date()).getTime()
+
         var rval = []
         for(var i=0; i<playlist_elem_placeholders.length; i++) {
             var playlist = []
@@ -510,20 +519,26 @@ Item {
             }
             rval.push(playlist)
         }
+        var endtime = (new Date()).getTime()
+        console.log("edit: create objects in", endtime - starttime)
         return rval
     }
     // To prevent binding loops, we resolve some of the edges to other PlaylistElements
     // after initial creation.
     onPlaylist_elemsChanged: {
+        var starttime = (new Date()).getTime()
         playlist_elems.forEach(p => p.forEach(pp => pp.forEach(e => {
             e.incoming_edges.forEach(i => {
                 i.outgoing_edges.push(e)
             })
         })))
+        var endtime = (new Date()).getTime()
+        console.log("edit: update edges in", endtime - starttime)
     }
 
     // Flatten the elements-based playlists into a list of all elements.
     readonly property var flat_playlist_elems : {
+        var starttime = (new Date()).getTime()
         var rval = []
         for(var i=0; i<playlist_elems.length; i++) {
             for(var j=0; j<playlist_elems[i].length; j++) {
@@ -532,6 +547,8 @@ Item {
                 }
             }
         }
+        var endtime = (new Date()).getTime()
+        console.log("edit: flatten in", endtime - starttime)
         return rval
     }
 

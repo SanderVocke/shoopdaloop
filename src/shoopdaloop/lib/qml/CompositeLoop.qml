@@ -97,6 +97,8 @@ Item {
         root.logger.debug(() => 'Recalculating schedule.')
         root.logger.trace(() => `--> playlists to schedule: ${JSON.stringify(playlists, null, 2)}`)
 
+        let start = (new Date()).getTime()
+
         var _scheduled_playlists = JSON.parse(JSON.stringify(playlists))
         for (var pidx=0; pidx < playlists.length; pidx++) {
             let playlist = _scheduled_playlists[pidx]
@@ -128,8 +130,15 @@ Item {
                 _it += total_duration
             }
         }
+
+        var annotatedtime = (new Date()).getTime()
+        console.log("Annotate playlists in", (annotatedtime - start))
+
         // Store the annotated playlists
         scheduled_playlists = _scheduled_playlists
+
+        var annotated_update_time = (new Date()).getTime()
+        console.log("Update scheduled playlists in", (annotated_update_time - annotatedtime))
 
         // Calculate the schedule
         var _schedule = {}
@@ -173,6 +182,9 @@ Item {
             }
         }
 
+        var scheduledtime = (new Date()).getTime()
+        console.log("Caluclated playlist in", (scheduledtime - annotated_update_time))
+
         // For any loops that repeatedly play, just remove intermediate start and end entries.
         Object.keys(_schedule).map(k => {
             for (var starting of _schedule[k].loops_start) {
@@ -187,6 +199,9 @@ Item {
             _schedule[k].loops_ignored = Array.from(_schedule[k].loops_ignored)
         })
 
+        var cleanedtime = (new Date()).getTime()
+        console.log("Cleaned in", (cleanedtime - scheduledtime))
+
         // Transform the schedule: move modes into loop_starts.
         for (var k in _schedule) {
             let v = _schedule[k]
@@ -197,6 +212,9 @@ Item {
             v.loops_start = starts.map(l => [l, modes[l]])
         }
 
+        var transformed = (new Date()).getTime()
+        console.log("transformed in", (transformed - cleanedtime))
+
         root.logger.trace(() => `full schedule:\n${
             Array.from(Object.entries(_schedule)).map(([k,v]) => 
                 `- ${k}: stop [${Array.from(v.loops_end).map(l => l.obj_id)}], start [${Array.from(v.loops_start).map(l => l[0].obj_id + ` @ mode ${l[1]}`)}], ignore [${Array.from(v.loops_ignored).map(l => l.obj_id)}]`
@@ -204,6 +222,9 @@ Item {
         }`)
 
         schedule = _schedule
+
+        var storedtime = (new Date()).getTime()
+        console.log("stored in", (storedtime - cleanedtime))
     }
     function ensure_script_or_regular() {
         // We either want all modes specified or none (script or regular composite loop, resp.)
