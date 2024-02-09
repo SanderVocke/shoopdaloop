@@ -229,9 +229,14 @@ class MidiEvent:
     data: List[int]
     
     def __init__(self, backend_event : 'bindings.shoop_midi_event_t'):
-        self.time = to_int(backend_event.time)
-        self.size = to_int(backend_event.size)
-        self.data = [int(backend_event.data[i]) for i in range(backend_event.size)]
+        if backend_event:
+            self.time = to_int(backend_event.time)
+            self.size = to_int(backend_event.size)
+            self.data = [int(backend_event.data[i]) for i in range(backend_event.size)]
+        else:
+            self.time = 0
+            self.size = 0
+            self.data = []
 
 @dataclass
 class BackendSessionState:
@@ -252,18 +257,28 @@ class ProfilingReportItem:
     average : float
 
     def __init__(self, backend_obj : 'bindings.shoop_profiling_report_item_t'):
-        self.key = str(backend_obj.key)
-        self.n_samples = float(backend_obj.n_samples)
-        self.worst = float(backend_obj.worst)
-        self.most_recent = float(backend_obj.most_recent)
-        self.average = float(backend_obj.average)
+        if backend_obj:
+            self.key = str(backend_obj.key)
+            self.n_samples = float(backend_obj.n_samples)
+            self.worst = float(backend_obj.worst)
+            self.most_recent = float(backend_obj.most_recent)
+            self.average = float(backend_obj.average)
+        else:
+            self.key = 'unknown'
+            self.n_samples = 0.0
+            self.worst = 0.0
+            self.most_recent = 0.0
+            self.average = 0.0
 
 @dataclass
 class ProfilingReport:
     items : List[ProfilingReportItem]
 
     def __init__(self, backend_obj : 'bindings.shoop_profiling_report_t'):
-        self.items = [ProfilingReportItem(backend_obj.items[i]) for i in range(backend_obj.n_items)] if backend_obj else []
+        if backend_obj:
+            self.items = [ProfilingReportItem(backend_obj.items[i]) for i in range(backend_obj.n_items)] if backend_obj else []
+        else:
+            self.items = []
 
 @dataclass
 class AudioDriverState:
@@ -277,14 +292,24 @@ class AudioDriverState:
     last_processed : int
     
     def __init__(self, backend_obj : 'bindings.shoop_audio_driver_state_t'):
-        self.dsp_load = float(backend_obj.dsp_load_percent)
-        self.xruns = to_int(backend_obj.xruns_since_last)
-        self.maybe_driver_handle = backend_obj.maybe_driver_handle
-        self.maybe_instance_name = str(backend_obj.maybe_instance_name)
-        self.sample_rate = to_int(backend_obj.sample_rate)
-        self.buffer_size = to_int(backend_obj.buffer_size)
-        self.active = bool(backend_obj.active)
-        self.last_processed = to_int(backend_obj.last_processed)
+        if backend_obj:
+            self.dsp_load = float(backend_obj.dsp_load_percent)
+            self.xruns = to_int(backend_obj.xruns_since_last)
+            self.maybe_driver_handle = backend_obj.maybe_driver_handle
+            self.maybe_instance_name = str(backend_obj.maybe_instance_name)
+            self.sample_rate = to_int(backend_obj.sample_rate)
+            self.buffer_size = to_int(backend_obj.buffer_size)
+            self.active = bool(backend_obj.active)
+            self.last_processed = to_int(backend_obj.last_processed)
+        else:
+            self.dsp_load = 0.0
+            self.xruns = 0
+            self.maybe_driver_handle = None
+            self.maybe_instance_name = 'unknown'
+            self.sample_rate = 48000
+            self.buffer_size = 1024
+            self.active = False
+            self.last_processed = 1
 
 @dataclass
 class JackAudioDriverSettings:
@@ -309,18 +334,28 @@ class DummyAudioDriverSettings:
         rval.sample_rate = self.sample_rate
         rval.buffer_size = self.buffer_size
         return rval
-        
+
+def deref_ptr(backend_ptr):
+    if not backend_ptr:
+        return None
+    return backend_ptr[0]
         
 def parse_connections_state(backend_state : 'bindings.port_connections_state_info_t'):
+    if not backend_state:
+        return dict()
     rval = dict()
     for i in range(backend_state.n_ports):
         rval[str(backend_state.ports[i].name)] = bool(backend_state.ports[i].connected)
     return rval
 
 def backend_midi_message_to_dict(backend_msg: 'bindings.shoop_midi_event_t'):
-    r = dict()
-    r['time'] = backend_msg.time
-    r['data'] = [int(backend_msg.data[i]) for i in range(backend_msg.size)]
+    r = {
+        'time': 0,
+        'data': []
+    }
+    if backend_msg:
+        r['time'] = backend_msg.time
+        r['data'] = [int(backend_msg.data[i]) for i in range(backend_msg.size)]
     return r
 
 def midi_message_dict_to_backend(msg):
@@ -357,6 +392,8 @@ class BackendLoopAudioChannel:
     def load_data(self, data):
         if self.available():
             backend_data = bindings.alloc_audio_channel_data(len(data))
+            if not backend_data:
+                return
             for i in range(len(data)):
                 backend_data[0].data[i] = data[i]
             bindings.load_audio_channel_data(self.shoop_c_handle, backend_data)
@@ -365,16 +402,18 @@ class BackendLoopAudioChannel:
     def get_data(self) -> List[float]:
         if self.available():
             r = bindings.get_audio_channel_data(self.shoop_c_handle)
-            data = [float(r[0].data[i]) for i in range(r[0].n_samples)]
-            bindings.destroy_audio_channel_data(r)
-            return data
+            if r:
+                data = [float(r[0].data[i]) for i in range(r[0].n_samples)]
+                bindings.destroy_audio_channel_data(r)
+                return data
         return []
     
     def get_state(self):
         if self.available():
             state = bindings.get_audio_channel_state(self.shoop_c_handle)
-            rval = LoopAudioChannelState(state[0])
-            bindings.destroy_audio_channel_state_info(state)
+            rval = LoopAudioChannelState(deref_ptr(state))
+            if state:
+                bindings.destroy_audio_channel_state_info(state)
             return rval
         return LoopAudioChannelState()
     
@@ -424,19 +463,21 @@ class BackendLoopMidiChannel:
     def get_data(self):
         if self.available():
             r = bindings.get_midi_channel_data(self.shoop_c_handle)
-            msgs = [backend_midi_message_to_dict(r[0].events[i][0]) for i in range(r[0].n_events)]
-            bindings.destroy_midi_sequence(r)
-            return msgs
+            if r:
+                msgs = [backend_midi_message_to_dict(r[0].events[i][0]) for i in range(r[0].n_events)]
+                bindings.destroy_midi_sequence(r)
+                return msgs
         return []
     
     def load_data(self, msgs):
         if self.available():
             d = bindings.alloc_midi_sequence(len(msgs))
-            d[0].length_samples = msgs[len(msgs)-1]['time'] + 1
-            for idx, m in enumerate(msgs):
-                d[0].events[idx] = midi_message_dict_to_backend(m)
-            bindings.load_midi_channel_data(self.shoop_c_handle, d)
-            bindings.destroy_midi_sequence(d)
+            if d:
+                d[0].length_samples = msgs[len(msgs)-1]['time'] + 1
+                for idx, m in enumerate(msgs):
+                    d[0].events[idx] = midi_message_dict_to_backend(m)
+                bindings.load_midi_channel_data(self.shoop_c_handle, d)
+                bindings.destroy_midi_sequence(d)
     
     def connect(self, port : 'BackendMidiPort'):
         if self.available():
@@ -455,8 +496,9 @@ class BackendLoopMidiChannel:
     def get_state(self):
         if self.available():
             state = bindings.get_midi_channel_state(self.shoop_c_handle)
-            rval = LoopMidiChannelState(state[0])
-            bindings.destroy_midi_channel_state_info(state)
+            rval = LoopMidiChannelState(deref_ptr(state))
+            if state:
+                bindings.destroy_midi_channel_state_info(state)
             return rval
         return LoopMidiChannelState()
     
@@ -523,6 +565,8 @@ class BackendLoop:
     # Static version for multiple loops
     def transition_multiple(loops, to_state : Type['LoopMode'],
                    cycles_delay : int, wait_for_sync : bool):
+        if len(loops) == 0:
+            return
         backend = loops[0]._backend
         if backend and backend.active():
             HandleType = POINTER(bindings.shoopdaloop_loop_t)
@@ -539,8 +583,9 @@ class BackendLoop:
     def get_state(self):
         if self.available():
             state = bindings.get_loop_state(self.shoop_c_handle)
-            rval = LoopState(state[0])
-            bindings.destroy_loop_state_info(state)
+            rval = LoopState(deref_ptr(state))
+            if state:
+                bindings.destroy_loop_state_info(state)
             return rval
         return LoopState()
     
@@ -601,9 +646,10 @@ class BackendAudioPort:
     def get_state(self):
         if self.available():
             state = bindings.get_audio_port_state(self._c_handle)
-            rval = AudioPortState(state[0])
+            rval = AudioPortState(deref_ptr(state))
             self._name = rval.name
-            bindings.destroy_audio_port_state_info(state)
+            if state:
+                bindings.destroy_audio_port_state_info(state)
             return rval
         else:
             return AudioPortState()
@@ -647,8 +693,9 @@ class BackendAudioPort:
     def get_connections_state(self):
         if self.available():
             state = bindings.get_audio_port_connections_state(self._c_handle)
-            rval = parse_connections_state(state[0])
-            bindings.destroy_port_connections_state(state)
+            rval = parse_connections_state(deref_ptr(state))
+            if state:
+                bindings.destroy_port_connections_state(state)
             return rval
         else:
             return dict()
@@ -680,7 +727,10 @@ class BackendDecoupledMidiPort:
     def maybe_next_message(self):
         if self.available():
             r = bindings.maybe_next_message(self._c_handle)
-            return (MidiEvent(r[0]) if r else None)
+            if r:
+                rval = MidiEvent(r[0])
+                bindings.destroy_midi_event(r)
+                return rval
         return None
     
     def name(self):
@@ -733,9 +783,10 @@ class BackendMidiPort:
     def get_state(self):
         if self.available():
             state = bindings.get_midi_port_state(self._c_handle)
-            rval = MidiPortState(state[0])
+            rval = MidiPortState(deref_ptr(state))
             self._name = rval.name
-            bindings.destroy_midi_port_state_info(state)
+            if state:
+                bindings.destroy_midi_port_state_info(state)
             return rval
         return MidiPortState()
     
@@ -762,6 +813,8 @@ class BackendMidiPort:
     def dummy_queue_msgs(self, msgs):
         if self.available():
             d = bindings.alloc_midi_sequence(len(msgs))
+            if not d:
+                return
             d[0].length_samples = msgs[len(msgs)-1]['time'] + 1
             for idx, m in enumerate(msgs):
                 d[0].events[idx] = midi_message_dict_to_backend(m)
@@ -771,9 +824,10 @@ class BackendMidiPort:
     def dummy_dequeue_data(self):
         if self.available():
             r = bindings.dummy_midi_port_dequeue_data(self._c_handle)
-            msgs = [backend_midi_message_to_dict(r[0].events[i][0]) for i in range(r[0].n_events)]
-            bindings.destroy_midi_sequence(r)
-            return msgs
+            if r:
+                msgs = [backend_midi_message_to_dict(r[0].events[i][0]) for i in range(r[0].n_events)]
+                bindings.destroy_midi_sequence(r)
+                return msgs
         return []
     
     def dummy_request_data(self, n_frames):
@@ -783,8 +837,9 @@ class BackendMidiPort:
     def get_connections_state(self):
         if self.available():
             state = bindings.get_midi_port_connections_state(self._c_handle)
-            rval = parse_connections_state(state[0])
-            bindings.destroy_port_connections_state(state)
+            rval = parse_connections_state(deref_ptr(state))
+            if state:
+                bindings.destroy_port_connections_state(state)
             return rval
         return dict()
 
@@ -827,8 +882,9 @@ class BackendFXChain:
     def get_state(self):
         if self.available():
             state = bindings.get_fx_chain_state(self._c_handle)
-            rval = FXChainState(state[0])
-            bindings.destroy_fx_chain_state(state)
+            rval = FXChainState(deref_ptr(state))
+            if state:
+                bindings.destroy_fx_chain_state(state)
             return rval
         return FXChainState()
     
@@ -859,8 +915,9 @@ class BackendSession:
     def get_state(self):
         if self.active():
             state = bindings.get_backend_session_state(self._c_handle)
-            rval = BackendSessionState(state[0])
-            bindings.destroy_backend_state_info(state)
+            rval = BackendSessionState(deref_ptr(state))
+            if state:
+                bindings.destroy_backend_state_info(state)
             return rval
         return BackendSessionState()
 
@@ -896,8 +953,9 @@ class BackendSession:
     def get_profiling_report(self):
         if self.active():
             state = bindings.get_profiling_report(self._c_handle)
-            rval = ProfilingReport(state[0])
-            bindings.destroy_profiling_report(state)
+            rval = ProfilingReport(deref_ptr(state))
+            if state:
+                bindings.destroy_profiling_report(state)
             return rval
         return ProfilingReport()
         
@@ -941,12 +999,13 @@ class AudioDriver:
 
     def get_state(self):
         state = bindings.get_audio_driver_state(self._c_handle)
-        rval = AudioDriverState(state[0])
-        self._active = rval.active
-        self._dsp_load = rval.dsp_load
-        self._xruns = rval.xruns
-        self._client_name = rval.maybe_instance_name
-        bindings.destroy_audio_driver_state(state)
+        rval = AudioDriverState(deref_ptr(state))
+        if state:
+            self._active = rval.active
+            self._dsp_load = rval.dsp_load
+            self._xruns = rval.xruns
+            self._client_name = rval.maybe_instance_name
+            bindings.destroy_audio_driver_state(state)
         return rval
 
     def open_decoupled_midi_port(self, name_hint : str, direction : int) -> 'BackendDecoupledMidiPort':
@@ -1045,11 +1104,15 @@ def resample_audio(audio, target_n_frames):
         return audio
     
     data_in = bindings.alloc_multichannel_audio(n_channels, n_frames)
+    if not data_in:
+        raise Exception('Could not allocate multichannel audio')
     for chan in range(n_channels):
         for frame in range(n_frames):
             data_in[0].data[frame*n_channels + chan] = audio[frame, chan]
     
     backend_result = bindings.resample_audio(data_in, target_n_frames)
+    if not backend_result:
+        raise Exception('Could not resample audio')
     result = numpy.zeros_like(audio, shape=[target_n_frames, n_channels])
     for chan in range(n_channels):
         for frame in range(target_n_frames):

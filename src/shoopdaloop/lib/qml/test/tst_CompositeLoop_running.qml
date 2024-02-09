@@ -114,7 +114,6 @@ ShoopTestFile {
                 process_helper.wait_start = 0.02
                 process_helper.samples_per_iter = session.backend.get_sample_rate() * process_helper.wait_interval
                 process_helper.n_iters = n_frames / process_helper.samples_per_iter
-                console.log(process_helper.samples_per_iter, n_frames, process_helper.n_iters)
                 process_helper.start()
             }
 
