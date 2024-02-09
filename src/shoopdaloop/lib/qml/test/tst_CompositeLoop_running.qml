@@ -109,9 +109,24 @@ ShoopTestFile {
                 }
             }
 
+            function start_process_async(n_frames) {
+                process_helper.wait_interval = 0.01
+                process_helper.wait_start = 0.02
+                process_helper.samples_per_iter = session.backend.get_sample_rate() * process_helper.wait_interval
+                process_helper.n_iters = n_frames / process_helper.samples_per_iter
+                process_helper.start()
+            }
+
             PythonDummyProcessHelper {
                 id: process_helper
                 backend: session.backend
+
+                function wait() {
+                    while(active) {
+                        Delay.blocking_delay(100)
+                    }
+                }
+                property real total_duration : wait_start + n_iters * wait_interval
             }
 
             testcase_init_fn: () =>  {
@@ -508,15 +523,15 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    m().set_length(100)
+                    m().set_length(12000) // 1/4s
                     l1().create_backend_loop()
                     l2().create_backend_loop()
                     m().create_backend_loop()
 
                     testcase.wait_updated(session.backend)
 
-                    l1().set_length(200)
-                    l2().set_length(300)
+                    l1().set_length(12000) // 1/4s
+                    l2().set_length(12000)
 
                     c().create_composite_loop({
                         'playlists': [
@@ -527,30 +542,27 @@ ShoopTestFile {
                         ]
                     })
 
-                    c().transition(ShoopConstants.LoopMode.Playing, 3, true)
+                    c().transition(ShoopConstants.LoopMode.Playing, 0, true)
                     m().transition(ShoopConstants.LoopMode.Playing, 0, false)
 
                     testcase.wait_updated(session.backend)
 
                     verify_eq(c().mode, ShoopConstants.LoopMode.Stopped)
                     verify_eq(c().next_mode, ShoopConstants.LoopMode.Playing)
-                    verify_eq(c().next_transition_delay, 3)
+                    verify_eq(c().next_transition_delay, 0)
 
-                    process_helper.n_iters = 18
-                    process_helper.samples_per_iter = 25 // 450 total
-                    process_helper.wait_start = 0.02
-                    process_helper.wait_interval = 0.01
-                    process_helper.start()
+                    start_process_async(42000)
                     // We started the process helper to process. Now, freeze the GUI
                     // while the loops continue in the background.
-                    while(process_helper.active) {
-                        Delay.blocking_delay(200)
-                    }
+                    let d = 1000 * process_helper.total_duration * 2 // * 2 for overrun
+                    Delay.blocking_delay(d)
+                    process_helper.wait()
 
                     testcase.wait_updated(session.backend)
                     verify_eq(c().mode, ShoopConstants.LoopMode.Playing)
-                    verify_eq(l1().mode, ShoopConstants.LoopMode.Playing)
-                    verify_eq(c().maybe_loop.iteration, 0)
+                    verify_eq(l1().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(l2().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(c().maybe_loop.iteration, 2)
                 },
             })
         }
