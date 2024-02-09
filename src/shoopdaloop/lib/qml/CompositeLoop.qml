@@ -97,6 +97,12 @@ Item {
         playlistsChanged()
     }
 
+    function add_section(start_iter, n_iters, name) {
+        root.logger.debug(`Adding section ${name} from ${start_iter} to ${start_iter + n_iters}`)
+        sections.push({start_iter: start_iter, end_iter: start_iter + n_iters, name: name, block: true})
+        sectionsChanged()
+    }
+
     // Transform the playlists into a more useful format:
     // { triggers: triggers, sections: sections }
     // where sections is equal to the sections property, and triggers is a dict of:
