@@ -196,7 +196,7 @@ Item {
         }
 
         ExtendedButton {
-            tooltip: "Clear multiple loops."
+            tooltip: "Clear multiple loops (opens a menu)."
             id: clear_multiple_button
             height: 40
             width: 30
