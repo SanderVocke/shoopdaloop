@@ -34,9 +34,9 @@ class AudioMidiDriver : public WithCommandQueue,
     std::atomic<uint32_t> m_xruns = 0;
     std::atomic<uint32_t> m_sample_rate = 0;
     std::atomic<uint32_t> m_buffer_size = 0;
-    std::atomic<float> m_dsp_load;
-    std::atomic<void*> m_maybe_client_handle;
-    std::atomic<const char*> m_client_name;
+    std::atomic<float> m_dsp_load = 0.0f;
+    std::atomic<void*> m_maybe_client_handle = nullptr;
+    std::atomic<const char*> m_client_name = nullptr;
     std::atomic<bool> m_active = false;
     std::atomic<uint32_t> m_last_processed = 1;
     std::set<std::shared_ptr<shoop_types::_DecoupledMidiPort>> m_decoupled_midi_ports;

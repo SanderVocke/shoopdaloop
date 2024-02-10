@@ -9,12 +9,12 @@ class GraphLoopChannel : public std::enable_shared_from_this<GraphLoopChannel>,
                          public HasTwoGraphNodes,
                          protected ModuleLoggingEnabled<"Backend.GraphLoopChannel"> {
 public:
-    std::shared_ptr<ChannelInterface> channel;
+    std::shared_ptr<ChannelInterface> channel = nullptr;
     std::weak_ptr<GraphLoop> loop;
     std::weak_ptr<GraphPort> mp_input_port_mapping;
     std::weak_ptr<BackendSession> backend;
     std::weak_ptr<GraphPort> mp_output_port_mapping;
-    std::atomic<unsigned> ma_data_sequence_nr;
+    std::atomic<unsigned> ma_data_sequence_nr = 0;
 
     GraphLoopChannel(std::shared_ptr<ChannelInterface> chan,
                 std::shared_ptr<GraphLoop> loop,

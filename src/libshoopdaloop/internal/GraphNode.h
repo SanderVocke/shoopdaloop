@@ -13,7 +13,7 @@ using SharedGraphNodeSet = std::set<std::shared_ptr<GraphNode>>;
 using WeakGraphNodeSet = std::set<std::weak_ptr<GraphNode>, std::owner_less<std::weak_ptr<GraphNode>>>;
 
 class GraphNode : public std::enable_shared_from_this<GraphNode> {
-    std::function<void(uint32_t)> m_processed_cb; // arg is process time in us
+    std::function<void(uint32_t)> m_processed_cb = nullptr; // arg is process time in us
 public:
     GraphNode() {};
 
@@ -68,7 +68,7 @@ public:
 template<typename Parent>
 class NodeWithParent : public GraphNode {
     protected:
-    Parent *m_parent;
+    Parent *m_parent = nullptr;
     NodeWithParent(Parent *parent) : m_parent(parent) {};
 
     public:
@@ -115,7 +115,7 @@ class HasGraphNode : public HasGraphNodesInterface {
             m_parent->graph_node_co_process(nodes, nframes);
         }
     };
-    std::shared_ptr<Node> m_node;
+    std::shared_ptr<Node> m_node = nullptr;
 
     public:
     HasGraphNode() : m_node(std::make_shared<Node>(this)) {};
@@ -176,8 +176,8 @@ class HasTwoGraphNodes : public HasGraphNodesInterface {
             m_parent->graph_node_1_co_process(nodes, nframes);
         }
     };
-    std::shared_ptr<FirstNode> m_firstnode;
-    std::shared_ptr<SecondNode> m_secondnode;
+    std::shared_ptr<FirstNode> m_firstnode = nullptr;
+    std::shared_ptr<SecondNode> m_secondnode = nullptr;
 
     public:
     HasTwoGraphNodes() :

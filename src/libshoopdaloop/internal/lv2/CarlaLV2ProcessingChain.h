@@ -29,7 +29,7 @@
 class LV2StateString {
     // map of key => (type, value)
     std::map<std::string, std::pair<std::string, std::vector<uint8_t>>> data;
-    void * chain;
+    void * chain = nullptr;
     LV2_URID (*map_urid)(LV2_URID_Map_Handle handle, const char* uri);
     const char* (*unmap_urid)(LV2_URID_Unmap_Handle handle, LV2_URID urid);
 
@@ -84,7 +84,7 @@ public:
     using SharedMidiPort = typename ProcessingChainInterface<TimeType, SizeType>::SharedMidiPort;
 
 private:
-    const LilvPlugin * m_plugin = nullptr;
+    const LilvPlugin * m_plugin;
     LilvInstance * m_instance = nullptr;
     LV2UI_Handle m_ui_handle = nullptr;
     LV2_External_UI_Widget * m_ui_widget = nullptr;
@@ -93,17 +93,17 @@ private:
     bool m_visible = false;
     std::vector<const LilvPort*> m_audio_in_lilv_ports, m_audio_out_lilv_ports, m_midi_in_lilv_ports, m_midi_out_lilv_ports;
     std::vector<uint32_t> m_audio_in_port_indices, m_audio_out_port_indices, m_midi_in_port_indices, m_midi_out_port_indices;
-    uint32_t m_internal_buffers_size;
+    uint32_t m_internal_buffers_size = 0;
     LV2_URID m_midi_event_type, m_atom_chunk_type, m_atom_sequence_type, m_atom_int_type, m_maxbufferuint32_type, m_minbufferuint32_type, m_nominalbufferuint32_type;
     LV2_External_UI_Host m_ui_host;
     LV2_State_Interface *m_state_iface;
-    const LilvUI *m_ui;
-    std::string m_plugin_uri;
+    const LilvUI *m_ui = nullptr;
+    std::string m_plugin_uri = "";
     const uint32_t mc_midi_buf_capacities = 8192;
     LV2_URID_Map m_map_handle;
     LV2_URID_Unmap m_unmap_handle;
-    std::string m_human_name;
-    std::string m_unique_name;
+    std::string m_human_name = "";
+    std::string m_unique_name = "";
     std::atomic<bool> m_active = false;
     std::atomic<bool> m_state_restore_active = false;
     std::shared_ptr<profiling::ProfilingItem> m_maybe_profiling_item = nullptr;

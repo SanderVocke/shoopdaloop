@@ -12,8 +12,8 @@
 struct JackAudioMidiDriverSettings : public AudioMidiDriverSettingsInterface {
     JackAudioMidiDriverSettings() {}
 
-    std::string client_name_hint;
-    std::optional<std::string> maybe_server_name_hint;
+    std::string client_name_hint = "";
+    std::optional<std::string> maybe_server_name_hint = std::nullopt;
 };
 
 template<typename API>
@@ -23,7 +23,7 @@ class GenericJackAudioMidiDriver :
 {
 private:
     std::map<std::string, std::shared_ptr<PortInterface>> m_ports;
-    std::shared_ptr<GenericJackAllPorts<API>> m_all_ports_tracker;
+    std::shared_ptr<GenericJackAllPorts<API>> m_all_ports_tracker = nullptr;
     std::atomic<bool> m_started = false;
 
     static int PROC_process_cb_static (uint32_t nframes,

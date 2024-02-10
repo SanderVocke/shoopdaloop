@@ -2,7 +2,7 @@
 #include "GraphPort.h"
 
 class GraphAudioPort : public GraphPort {
-    const std::shared_ptr<shoop_types::_AudioPort> port;
+    const std::shared_ptr<shoop_types::_AudioPort> port = nullptr;
 public:
     GraphAudioPort (std::shared_ptr<shoop_types::_AudioPort> const& port,
                         std::shared_ptr<BackendSession> const& backend);

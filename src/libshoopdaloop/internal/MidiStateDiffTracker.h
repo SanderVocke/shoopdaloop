@@ -25,7 +25,7 @@ class MidiStateDiffTracker : public MidiStateTracker::Subscriber, public std::en
 
     static const uint32_t default_diffs_size = 256;
 
-    SharedTracker m_a, m_b;
+    SharedTracker m_a = nullptr, m_b = nullptr;
     DiffSet m_diffs;
 
     void note_changed(MidiStateTracker *tracker, uint8_t channel, uint8_t note, std::optional<uint8_t> maybe_velocity) override;

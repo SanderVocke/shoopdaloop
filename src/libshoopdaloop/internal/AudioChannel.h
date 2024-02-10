@@ -22,26 +22,26 @@ private:
     // Members which may be accessed from any thread (ma prefix)
     std::shared_ptr<BufferPool> ma_buffer_pool;
     const uint32_t ma_buffer_size;
-    std::atomic<int> ma_start_offset;
-    std::atomic<uint32_t> ma_pre_play_samples;
-    std::atomic<float> ma_output_peak;
-    std::atomic<float> ma_gain;
-    std::atomic<shoop_channel_mode_t> ma_mode;
-    std::atomic<unsigned> ma_data_seq_nr;
-    std::atomic<int> ma_last_played_back_sample; // -1 is none
+    std::atomic<int> ma_start_offset = 0;
+    std::atomic<uint32_t> ma_pre_play_samples = 0;
+    std::atomic<float> ma_output_peak = 0.0f;
+    std::atomic<float> ma_gain = 1.0f;
+    std::atomic<shoop_channel_mode_t> ma_mode = ChannelMode_Direct;
+    std::atomic<unsigned> ma_data_seq_nr = 0;
+    std::atomic<int> ma_last_played_back_sample = -1; // -1 is none
 
     // Members which may be accessed from the process thread only (mp prefix)
     Buffers mp_buffers; // Buffers holding main audio data
-    std::atomic<uint32_t> ma_buffers_data_length;
+    std::atomic<uint32_t> ma_buffers_data_length = 0;
     Buffers mp_prerecord_buffers; // For temporarily holding pre-recorded data before fully entering record mode
-    std::atomic<uint32_t> mp_prerecord_buffers_data_length;
+    std::atomic<uint32_t> mp_prerecord_buffers_data_length = 0;
 
-    SampleT *mp_playback_target_buffer;
-    uint32_t   mp_playback_target_buffer_size;
-    SampleT *mp_recording_source_buffer;
-    uint32_t   mp_recording_source_buffer_size;
+    SampleT *mp_playback_target_buffer = nullptr;
+    uint32_t   mp_playback_target_buffer_size = 0;
+    SampleT *mp_recording_source_buffer = nullptr;
+    uint32_t   mp_recording_source_buffer_size = 0;
 
-    unsigned mp_prev_process_flags;
+    unsigned mp_prev_process_flags = 0;
 
     enum class ProcessingCommandType {
         RawCopy,
@@ -64,9 +64,9 @@ private:
 
     struct Buffers : private ModuleLoggingEnabled<"Backend.AudioChannel.Buffers"> {
 
-        uint32_t buffers_size;
+        uint32_t buffers_size = 0;
         std::vector<Buffer> buffers;
-        std::shared_ptr<BufferPool> pool;
+        std::shared_ptr<BufferPool> pool = nullptr;
 
         Buffers();
         Buffers(std::shared_ptr<BufferPool> pool, uint32_t initial_max_buffers);

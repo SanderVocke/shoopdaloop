@@ -14,11 +14,11 @@ class GenericJackPort :
     protected ModuleLoggingEnabled<"Backend.JackPort">
 {
 protected:
-    jack_port_t* m_port;
-    std::atomic<void*> m_buffer;
-    jack_client_t* m_client;
-    std::string m_name;
-    shoop_port_direction_t m_direction;
+    jack_port_t* m_port = nullptr;
+    std::atomic<void*> m_buffer = nullptr;
+    jack_client_t* m_client = nullptr;
+    std::string m_name = "";
+    shoop_port_direction_t m_direction = Input;
     PortDataType m_type;
     std::shared_ptr<GenericJackAllPorts<API>> m_all_ports_tracker;
 

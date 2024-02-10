@@ -13,8 +13,8 @@ typedef enum {
 } channel_process_flags_t;
 
 struct channel_process_params {
-    unsigned process_flags;
-    int position;
+    unsigned process_flags = 0;
+    int position = 0;
 };
 
 unsigned loop_mode_to_channel_process_flags(
