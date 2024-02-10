@@ -151,7 +151,7 @@ Item {
             height: 40
             width: 30
             onClicked: {
-                var loops = registries.objects_registry.select_values(o => o instanceof LoopWidget)
+                var loops = registries.objects_registry.select_values(o => o instanceof LoopWidget && o.mode !== ShoopConstants.LoopMode.Stopped)
                 loops[0].transition_loops(loops, ShoopConstants.LoopMode.Stopped, 0, root.sync_active)
             }
 

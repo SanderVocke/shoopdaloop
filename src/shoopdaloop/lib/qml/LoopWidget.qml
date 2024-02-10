@@ -249,7 +249,7 @@ Item {
     }
     function play_solo_in_track() {
         // Gather all selected loops
-        var selected_all = include_selected ? selected_loops : new Set()
+        var selected_all = selected_loops
         selected_all.add(root)
         // Gather all other loops that are in the same track(s)
         var _all_track_loops = []
@@ -261,7 +261,7 @@ Item {
         var _other_loops = _all_track_loops.filter(l => !selected_all.has(l))
         // Do the transitions
         transition_loops(_other_loops, ShoopConstants.LoopMode.Stopped, use_delay, root.sync_active)
-        transition_loops(selected_all, ShoopConstants.LoopMode.Playing, use_delay, root.sync_active)
+        transition_loops(Array.from(selected_all), ShoopConstants.LoopMode.Playing, use_delay, root.sync_active)
     }
     function clear(length=0, emit=true) {
         if(maybe_loop) {
