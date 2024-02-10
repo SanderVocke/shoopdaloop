@@ -194,6 +194,98 @@ Item {
                 color: Material.foreground
             }
         }
+
+        ExtendedButton {
+            tooltip: "Clear multiple loops."
+            id: clear_multiple_button
+            height: 40
+            width: 30
+
+            onClicked: {
+                clear_multiple_menu.open()
+            }
+
+            MaterialDesignIcon {
+                size: Math.min(parent.width, parent.height) - 10
+                anchors.centerIn: parent
+                name: 'delete'
+                color: Material.foreground
+            }
+
+            Menu {
+                id: clear_multiple_menu
+
+                ShoopMenuItem {
+                    text: "Clear recordings"
+                    onClicked: {
+                        confirm_clear_dialog.text = 'Clear ALL loop recordings?'
+                        confirm_clear_dialog.action = () => {
+                            var loops = registries.objects_registry.select_values(o => o instanceof LoopWidget && o.maybe_backend_loop)
+                            loops.forEach(l => l.clear())
+                        }
+                        confirm_clear_dialog.open()
+                    }
+                }
+                ShoopMenuItem {
+                    text: "Clear recordings except sync"
+                    onClicked: {
+                        confirm_clear_dialog.text = 'Clear ALL loop recordings except sync?'
+                        confirm_clear_dialog.action = () => {
+                            var loops = registries.objects_registry.select_values(o => o instanceof LoopWidget && o.maybe_backend_loop && !o.is_sync)
+                            loops.forEach(l => l.clear())
+                        }
+                        confirm_clear_dialog.open()
+                    }
+                }
+                ShoopMenuItem {
+                    text: "Clear all"
+                    onClicked: {
+                        confirm_clear_dialog.text = 'Clear ALL loops?'
+                        confirm_clear_dialog.action = () => {
+                            var loops = registries.objects_registry.select_values(o => o instanceof LoopWidget)
+                            loops.forEach(l => l.clear())
+                        }
+                        confirm_clear_dialog.open()
+                    }
+                }
+                ShoopMenuItem {
+                    text: "Clear all except sync"
+                    onClicked: {
+                        confirm_clear_dialog.text = 'Clear ALL loops except sync?'
+                        confirm_clear_dialog.action = () => {
+                            var loops = registries.objects_registry.select_values(o => o instanceof LoopWidget && !o.is_sync)
+                            loops.forEach(l => l.clear())
+                        }
+                        confirm_clear_dialog.open()
+                    }
+                }
+            }
+
+            Dialog {
+                id: confirm_clear_dialog
+                standardButtons: StandardButton.Yes | StandardButton.Cancel
+
+                implicitWidth: 300
+
+                property var action: () => {}
+                property alias text: clear_label.text
+
+                parent: Overlay.overlay
+                modal: true
+                x: (parent.width - width) / 2
+                y: (parent.height - height) / 2
+
+                onAccepted: action()
+
+                title: "Confirm clear"
+
+                Label {
+                    id: clear_label
+                    anchors.centerIn: parent
+                    text: 'hello world'
+                }
+            }
+        }
     }
 
     RegistryLookup {
