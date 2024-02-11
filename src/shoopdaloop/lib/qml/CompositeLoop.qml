@@ -39,7 +39,9 @@ Item {
     PythonCompositeLoop {
         id: py_loop
         iteration: 0
-        sync_loop: (root.sync_loop && root.sync_loop.maybe_loop) ? root.sync_loop.maybe_loop : null
+        // TODO; root.sync_loop.length is a dummy dependency. For some reason, property update
+        // to Python doesn't happen otherwise if instrumented using Qoverage.
+        sync_loop: (root.sync_loop && root.sync_loop.maybe_loop && root.sync_loop.length) ? root.sync_loop.maybe_loop : null
         schedule: root.schedule
 
         onCycled: root.cycled()
