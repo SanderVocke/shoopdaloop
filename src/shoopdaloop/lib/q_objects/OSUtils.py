@@ -3,7 +3,6 @@ import sys
 import os
 
 from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
-from PySide6.QtQml import QJSValue
 
 from .ShoopPyObject import *
 

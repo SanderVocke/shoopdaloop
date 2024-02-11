@@ -10,7 +10,6 @@ import json
 from threading import Lock
 
 from PySide6.QtCore import Qt, Signal, Property, Slot, QTimer, QThread, QMetaObject, Q_ARG, QEvent
-from PySide6.QtQml import QJSValue
 
 from .ShoopPyObject import *
 
@@ -18,6 +17,8 @@ from ..backend_wrappers import *
 from ..backend_wrappers import open_audio_port as backend_open_audio_port, open_midi_port as backend_open_midi_port
 from ..findChildItems import findChildItems
 from .Logger import Logger
+
+from ..resolve_qjsvalue import resolve_jsvalue_if_any
 
 # Wraps the back-end session + driver in a single object.
 class Backend(ShoopQQuickItem):
@@ -135,8 +136,7 @@ class Backend(ShoopQQuickItem):
         return self._driver_setting_overrides
     @driver_setting_overrides.setter
     def driver_setting_overrides(self, n):
-        if isinstance(n, QJSValue):
-            n = n.toVariant()
+        n = resolve_jsvalue_if_any(n)
         if n != self._driver_setting_overrides:
             if self._initialized:
                 self.logger.throw_error("Back-end driver settings cannot be changed once driver is started.")

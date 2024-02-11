@@ -9,6 +9,7 @@ from PySide6.QtCore import QObject, Signal, Property, Slot, Qt
 from enum import Enum
 
 from ..types import *
+from ..resolve_qjsvalue import resolve_jsvalue_if_any
 
 class ControlInterface(ControlHandler):
     """
@@ -84,10 +85,8 @@ class ControlInterface(ControlHandler):
     @Slot(list, 'QVariant')
     def loop_event(self, coords, event):
         self.logger.debug(lambda: "Loop event: {} ({})".format(coords, event.toVariant()))
-        if isinstance(event, QJSValue):
-            event = event.toVariant()
-        if isinstance(coords, QJSValue):
-            coords = coords.toVariant()
+        event = resolve_jsvalue_if_any(event)
+        coords = resolve_jsvalue_if_any(coords)
         for cb in self._loop_callbacks:
             cb[0](coords, event)
             

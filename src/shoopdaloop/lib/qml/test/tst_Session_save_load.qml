@@ -248,6 +248,7 @@ ShoopTestFile {
                     verify_eq(dwt_wet_loop_channels()[1].get_data(), [])
 
                     session.load_session(filename)
+                    testcase.wait_session_io_done()
                     testcase.wait_session_loaded(session)
                     testcase.wait_updated(session.backend)
 
@@ -306,6 +307,7 @@ ShoopTestFile {
 
                     // Load into the other session, which has 3/4 the sample rate of this one
                     other_session.load_session(filename, true)
+                    testcase.wait_session_io_done()
                     testcase.wait_session_loaded(other_session)
                     testcase.wait_updated(other_session.backend)
 

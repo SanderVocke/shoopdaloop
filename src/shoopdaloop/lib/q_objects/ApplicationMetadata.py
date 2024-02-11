@@ -1,5 +1,4 @@
 from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, QEvent, Qt
-from PySide6.QtQml import QJSValue
 
 from .ShoopPyObject import *
 class ApplicationMetadata(ShoopQObject):

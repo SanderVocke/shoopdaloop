@@ -12,6 +12,7 @@ from ..q_objects.Backend import Backend
 from ..findFirstParent import findFirstParent
 from ..findChildItems import findChildItems
 from ..logging import Logger
+from ..resolve_qjsvalue import resolve_jsvalue_if_any
 
 # Wraps a back-end FX chain.
 class CompositeLoop(ShoopQQuickItem):
@@ -59,8 +60,7 @@ class CompositeLoop(ShoopQQuickItem):
         return self._schedule
     @schedule.setter
     def schedule(self, val):
-        if isinstance(val, QJSValue):
-            val = val.toVariant()
+        val = resolve_jsvalue_if_any(val)
         self.logger.trace(lambda: f'schedule -> {val}')
         self._schedule = val
         self.scheduleChanged.emit(self._schedule)
@@ -93,8 +93,7 @@ class CompositeLoop(ShoopQQuickItem):
         return list(self._running_loops)
     @running_loops.setter
     def running_loops(self, val):
-        if isinstance(val, QJSValue):
-            val = val.toVariant()
+        val = resolve_jsvalue_if_any(val)
         self._running_loops = set(val)
         self.runningLoopsChanged.emit(self._running_loops)
 
@@ -339,9 +338,7 @@ class CompositeLoop(ShoopQQuickItem):
                             # To implement the above: see if we have already recorded.
                             for i in range(iteration):
                                 if i in sched_keys:
-                                    other_starts = schedule[str(i)]['loops_start']
-                                    if isinstance(other_starts, QJSValue):
-                                        other_starts = other_starts.toVariant()
+                                    other_starts = resolve_jsvalue_if_any(schedule[str(i)]['loops_start'])
                                     if loop in other_starts:
                                         # We have already recorded this loop. Don't record it again.
                                         self.logger.debug(lambda: f'Not re-recording {loop}')

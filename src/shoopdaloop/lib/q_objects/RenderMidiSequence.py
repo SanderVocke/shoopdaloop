@@ -1,10 +1,10 @@
 from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, QRect, Qt
 from PySide6.QtGui import QPen, QPainter
-from PySide6.QtQml import QJSValue
 
 from .ShoopPyObject import *
 
 from ..logging import Logger
+from ..resolve_qjsvalue import resolve_jsvalue_if_any
 from ..midi_helpers import msgs_to_notes
 import copy
 
@@ -30,8 +30,7 @@ class RenderMidiSequence(ShoopQQuickPaintedItem):
     @messages.setter
     def messages(self, v):
         logger.trace(lambda: "messages changed")
-        if isinstance(v, QJSValue):
-            v = v.toVariant()
+        v = resolve_jsvalue_if_any(v)
         logger.trace(lambda: "messages changed (have {})".format(len(v)))
         self._messages = (v if v else [])
         self.messagesChanged.emit(self._messages)

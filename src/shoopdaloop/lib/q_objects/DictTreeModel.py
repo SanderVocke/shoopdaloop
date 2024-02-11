@@ -3,6 +3,8 @@ from PySide6.QtQml import QJSValue
 import re
 from .ShoopPyObject import *
 
+from ..resolve_qjsvalue import resolve_jsvalue_if_any
+
 # A tree model which can be used with e.g. QML TreeView.
 # The model is read-only and low-performance (not meant for large datasets).
 # At construction, pass the data as a regular Python dict of dicts.
@@ -100,7 +102,6 @@ class DictTreeModelFactory(ShoopQObject):
     
     @Slot('QVariant', str, list, list, result='QVariant')
     def create(self, data, tree_separator, column_roles, column_headers):
-        if isinstance(data, QJSValue):
-            data = data.toVariant()
+        data = resolve_jsvalue_if_any(data)
         rval = DictTreeModel(data, tree_separator, column_roles, column_headers, parent=self)
         return rval

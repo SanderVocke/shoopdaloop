@@ -1,5 +1,4 @@
 from PySide6.QtCore import QObject, Signal, Property, Slot, QSettings
-from PySide6.QtQml import QJSValue
 from .ShoopPyObject import *
 
 import appdirs
@@ -7,6 +6,7 @@ import json
 import os
 
 from ..logging import *
+from ..resolve_qjsvalue import resolve_jsvalue_if_any
 
 class SettingsIO(ShoopQObject):
     def __init__(self, parent=None):
@@ -17,8 +17,7 @@ class SettingsIO(ShoopQObject):
         
     @Slot('QVariant', 'QVariant')
     def save_settings(self, settings, override_filename=None):
-        if isinstance(settings, QJSValue):
-            settings = settings.toVariant()
+        settings = resolve_jsvalue_if_any(settings)
         file = self.filename if override_filename is None else override_filename
         self.logger.info(lambda: "Saving settings to {}".format(file))
         if not os.path.exists(self.dir):

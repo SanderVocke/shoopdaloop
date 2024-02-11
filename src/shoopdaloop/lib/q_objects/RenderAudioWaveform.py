@@ -1,11 +1,11 @@
 from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, QLine
 from PySide6.QtQuick import QQuickItem, QQuickPaintedItem
 from PySide6.QtGui import QPen, QPainter
-from PySide6.QtQml import QJSValue
 
 from .ShoopPyObject import *
 
 from ..logging import Logger
+from ..resolve_qjsvalue import resolve_jsvalue_if_any
 import ctypes
 import math
 
@@ -71,8 +71,7 @@ class RenderAudioWaveform(ShoopQQuickPaintedItem):
         return self._input_data
     @input_data.setter
     def input_data(self, v):
-        if isinstance(v, QJSValue):
-            v = v.toVariant()
+        v = resolve_jsvalue_if_any(v)
         self._input_data = v
         self.inputDataChanged.emit(self._input_data)
 

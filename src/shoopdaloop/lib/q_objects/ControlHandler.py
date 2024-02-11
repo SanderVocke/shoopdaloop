@@ -10,6 +10,7 @@ from .ShoopPyObject import *
 from ..logging import Logger
 from ..lua_qobject_interface import lua_passthrough, qt_typename, lua_int, lua_bool, lua_str, lua_float, lua_callable
 from ..backend_wrappers import LoopMode
+from ..resolve_qjsvalue import resolve_jsvalue_if_any
 
 def as_loop_selector(lua_val):
     def iscoords(l):
@@ -106,9 +107,7 @@ class ControlHandler(ShoopQQuickItem):
         self.introspect()
     
     def to_py_val(self, val):
-        if isinstance(val, QJSValue):
-            return val.toVariant()
-        return val
+        return resolve_jsvalue_if_any(val)
     
     def clear_call_cache(self):
         self.logger.debug(lambda: 'Clearing call cache.')
@@ -210,8 +209,7 @@ class ControlHandler(ShoopQQuickItem):
                     Q_RETURN_ARG(return_typename),
                     *[Q_ARG('QVariant', arg) for arg in args]
                 )
-                if isinstance(rval, QJSValue):
-                    rval = rval.toVariant()
+                rval = resolve_jsvalue_if_any(rval)
                 self.logger.debug(lambda: "Result of calling {} QML method {}: {}".format(return_typename, name, str(rval)))
                 return rval
             self._methods[str(method.name(), 'ascii')] = {

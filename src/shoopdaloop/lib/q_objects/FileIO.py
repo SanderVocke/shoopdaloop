@@ -19,6 +19,7 @@ from .Tasks import Tasks
 
 from shoopdaloop.lib.logging import Logger
 from shoopdaloop.lib.smf import generate_smf, parse_smf
+from shoopdaloop.lib.resolve_qjsvalue import resolve_jsvalue_if_any
 import shoopdaloop.lib.backend_wrappers as backend_wrappers
 
 def call_callable(callable, *args):
@@ -224,8 +225,7 @@ class FileIO(QThread):
                         'data': [int(byte) for byte in msg_bytes]
                     })
             
-            if isinstance(channels, QJSValue):
-                channels = channels.toVariant()
+            channels = resolve_jsvalue_if_any(channels, [])
             for channel in channels:
                 channel.load_data(backend_msgs)            
                 if maybe_set_start_offset != None:
