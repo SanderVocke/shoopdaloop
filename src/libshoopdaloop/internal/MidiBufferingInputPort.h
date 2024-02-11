@@ -11,9 +11,9 @@ class MidiBufferingInputPort : public MidiPort,
                                protected MidiReadableBufferInterface {
 protected:
     struct ReadMessage : public MidiSortableMessageInterface {
-        uint32_t time;
-	    uint32_t size;
-	    void *buffer;
+        uint32_t time = 0;
+	    uint32_t size = 0;
+	    void *buffer = nullptr;
 
         ReadMessage(uint32_t t, uint32_t s, void* b) :
             time(t), size(s), buffer(b) {}

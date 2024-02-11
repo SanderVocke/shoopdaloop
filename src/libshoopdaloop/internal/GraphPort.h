@@ -16,7 +16,7 @@ public:
     
     std::weak_ptr<BackendSession> backend;
     std::vector<std::weak_ptr<GraphPort>> mp_passthrough_to;
-    std::atomic<bool> m_passthrough_enabled;
+    std::atomic<bool> m_passthrough_enabled = false;
 
     GraphPort (std::shared_ptr<BackendSession> const& backend);
 

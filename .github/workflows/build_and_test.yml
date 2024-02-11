@@ -99,11 +99,20 @@ jobs:
             container_image: null
             prepare: 'macos'
             build_type: 'Release'
-            cmake_opts: '"BACKEND_JACK" = "Off", "HAVE_LV2" = "Off"'
             # Note: for some reason, an incorrect MacOS identifier is generated (macos_11 instead of macos_11_0).
             # Also remove the double dot if any.
             rename_wheel_sed: "'s/(.*-macosx_[1-9]+_)(x86_64|arm64|universal2)[\\.]*whl/\\10_\\2.whl/g'"
           - name: macos_debug
+            os: macos-11
+            python: python3.8
+            pip: python3.8 -m pip
+            container_image: null
+            prepare: 'macos'
+            build_type: 'Debug'
+            # Note: for some reason, an incorrect MacOS identifier is generated (macos_11 instead of macos_11_0).
+            # Also remove the double dot if any.
+            rename_wheel_sed: "'s/(.*-macosx_[1-9]+_)(x86_64|arm64|universal2)[\\.]*whl/\\10_\\2.whl/g'"
+          - name: macos_barebones
             os: macos-11
             python: python3.8
             pip: python3.8 -m pip

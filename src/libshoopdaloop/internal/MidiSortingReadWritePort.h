@@ -8,7 +8,7 @@
 // A MIDI buffer that can written to and read from. It sorts messages
 // during the process step.
 class MidiSortingReadWritePort : public MidiPort {
-    std::shared_ptr<MidiSortingBuffer> m_sorting_buffer;
+    std::shared_ptr<MidiSortingBuffer> m_sorting_buffer = nullptr;
 public:
     MidiSortingReadWritePort(
         bool track_notes, bool track_controls, bool track_programs

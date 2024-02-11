@@ -14,12 +14,12 @@ template<typename Object>
 class ObjectPool : public ModuleLoggingEnabled<"Backend.ObjectPool"> {
     boost::lockfree::queue<Object*> m_queue;
     const unsigned m_target_n_objects;
-    unsigned m_objects_size;
-    std::atomic<unsigned> m_actual_n_objects;
-    std::atomic<bool> m_finish;
+    unsigned m_objects_size = 0;
+    std::atomic<unsigned> m_actual_n_objects = 0;
+    std::atomic<bool> m_finish = false;
     std::thread m_replenish_thread;
-    std::atomic<bool> m_replenish;
-    std::atomic<bool> m_none_available;
+    std::atomic<bool> m_replenish = false;
+    std::atomic<bool> m_none_available = false;
     std::mutex m_mutex;
     std::condition_variable m_cv;
 

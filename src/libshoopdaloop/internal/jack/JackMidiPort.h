@@ -69,7 +69,7 @@ class GenericJackMidiOutputPort :
 
     class JackMidiWriteBuffer : public MidiWriteableBufferInterface {
     public:
-        void* m_jack_buffer;
+        void* m_jack_buffer = nullptr;
 
         JackMidiWriteBuffer();
         

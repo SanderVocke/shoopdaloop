@@ -28,4 +28,4 @@ runs:
     shell: bash
     run: |
       touch _macos_prepared
-      echo "CMAKE_INCLUDE_PATH=${{ github.workspace }}/includes" > prepend_build_cmd.txt
+      echo "CMAKE_INCLUDE_PATH=${{ github.workspace }}/includes LDFLAGS=-L/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/lib CFLAGS=-I/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include CPPFLAGS=-I/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include" > prepend_build_cmd.txt

@@ -8,10 +8,10 @@
 
 template<typename SampleT>
 class AudioPort : public virtual PortInterface {
-    std::atomic<float> ma_input_peak;
-    std::atomic<float> ma_output_peak;
-    std::atomic<float> ma_gain;
-    std::atomic<bool> ma_muted;
+    std::atomic<float> ma_input_peak = 0.0f;
+    std::atomic<float> ma_output_peak = 0.0f;
+    std::atomic<float> ma_gain = 1.0f;
+    std::atomic<bool> ma_muted = false;
 
 public:
     AudioPort() : PortInterface(),

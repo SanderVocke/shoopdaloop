@@ -12,12 +12,12 @@ class GraphLoop : public std::enable_shared_from_this<GraphLoop>,
                       public HasGraphNode {
 public:
 
-    const std::shared_ptr<AudioMidiLoop> loop;
+    const std::shared_ptr<AudioMidiLoop> loop = nullptr;
     WeakGraphNodeSet m_other_loops;
     std::vector<std::shared_ptr<GraphLoopChannel>> mp_audio_channels;
     std::vector<std::shared_ptr<GraphLoopChannel>>  mp_midi_channels;
     std::weak_ptr<BackendSession> backend;
-    std::function<WeakGraphNodeSet()> m_get_co_process_nodes;
+    std::function<WeakGraphNodeSet()> m_get_co_process_nodes = nullptr;
 
     GraphLoop(std::shared_ptr<BackendSession> backend,
              std::shared_ptr<AudioMidiLoop> loop) :

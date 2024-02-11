@@ -4,7 +4,7 @@
 #include "LoggingEnabled.h"
 
 class LV2 : private ModuleLoggingEnabled<"Backend.LV2"> {
-    LilvWorld *m_world;
+    LilvWorld *m_world = nullptr;
 
   public:
     LV2();

@@ -17,8 +17,8 @@ public:
         std::vector<SharedMidiPort> &)>;
 
 private:
-    std::atomic<bool> m_active;
-    std::atomic<bool> m_freewheeling;
+    std::atomic<bool> m_active = false;
+    std::atomic<bool> m_freewheeling = false;
 
     std::vector<SharedInternalAudioPort> m_input_audio_ports;
     std::vector<SharedInternalAudioPort> m_output_audio_ports;

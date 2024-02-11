@@ -36,12 +36,12 @@ public:
         jack_port_t *as_ptr() { return reinterpret_cast<jack_port_t*>(this); }
         static Port &from_ptr(jack_port_t *ptr) { return *reinterpret_cast<Port*>(ptr); }
 
-        std::string name;
-        Type type;
-        Direction direction;
+        std::string name = "";
+        Type type = Type::Audio;
+        Direction direction = Direction::Input;
         std::set<std::string> connections;
         Client &client;
-        bool valid;
+        bool valid = false;
         std::vector<float> audio_buffer;
         std::vector<MidiMessage<uint32_t, uint32_t>> midi_buffer;
 
@@ -65,9 +65,9 @@ public:
         jack_client_t *as_ptr() { return reinterpret_cast<jack_client_t*>(this); }
         static Client &from_ptr(jack_client_t *ptr) { return *reinterpret_cast<Client*>(ptr); }
 
-        std::string name;
-        bool active;
-        bool valid;
+        std::string name = "";
+        bool active = false;
+        bool valid = false;
         std::map<std::string, Port> ports;
 
         Client(std::string name) : name(name), active(false), valid(true) {}
