@@ -40,11 +40,11 @@ public:
 };
 
 struct ProfilingReportItem {
-    std::string key;
-    float n_samples;
-    float avg;
-    float worst;
-    float most_recent;
+    std::string key = "";
+    float n_samples = 0.0f;
+    float avg = 0.0f;
+    float worst = 0.0f;
+    float most_recent = 0.0f;
 };
 
 using ProfilingReport = std::vector<ProfilingReportItem>;

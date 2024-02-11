@@ -2,7 +2,7 @@
 #include "GraphPort.h"
 
 class GraphMidiPort : public GraphPort {
-    const std::shared_ptr<MidiPort> port;
+    const std::shared_ptr<MidiPort> port = nullptr;
 public:
     GraphMidiPort (std::shared_ptr<MidiPort> const& port,
                    std::shared_ptr<BackendSession> const& backend);

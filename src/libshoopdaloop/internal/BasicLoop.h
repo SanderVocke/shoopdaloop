@@ -32,21 +32,21 @@ public:
     };
 
 protected:
-    std::optional<PointOfInterest> mp_next_poi;
-    std::optional<uint32_t> mp_next_trigger;
-    std::shared_ptr<LoopInterface> mp_sync_source;
+    std::optional<PointOfInterest> mp_next_poi = std::nullopt;
+    std::optional<uint32_t> mp_next_trigger = std::nullopt;
+    std::shared_ptr<LoopInterface> mp_sync_source = nullptr;
     std::deque<shoop_loop_mode_t> mp_planned_states;
     std::deque<int> mp_planned_state_countdowns;
 
-    std::atomic<shoop_loop_mode_t> ma_mode;
-    std::atomic<bool> ma_triggering_now;
-    std::atomic<bool> ma_already_triggered;
-    std::atomic<uint32_t> ma_length;
-    std::atomic<uint32_t> ma_position;
+    std::atomic<shoop_loop_mode_t> ma_mode = LoopMode_Stopped;
+    std::atomic<bool> ma_triggering_now = false;
+    std::atomic<bool> ma_already_triggered = false;
+    std::atomic<uint32_t> ma_length = 0;
+    std::atomic<uint32_t> ma_position = 0;
     
     // Cached state for easy lock-free reading.
-    std::atomic<shoop_loop_mode_t> ma_maybe_next_planned_mode;
-    std::atomic<int> ma_maybe_next_planned_delay;
+    std::atomic<shoop_loop_mode_t> ma_maybe_next_planned_mode =  LoopMode_Stopped;
+    std::atomic<int> ma_maybe_next_planned_delay = -1;
 
 public:
 

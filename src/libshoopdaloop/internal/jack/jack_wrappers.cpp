@@ -359,6 +359,8 @@ int initialize_jack_wrappers(int verbose) {
   char *error;
 #ifdef _WIN32
   handle = load_dylib("libjack64.dll");
+#elif __APPLE__
+  handle = load_dylib("libjack.dylib");
 #else
   handle = load_dylib("libjack.so");
 #endif

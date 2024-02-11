@@ -21,10 +21,10 @@ public:
 private:
 
     struct ExternalBufState {
-        uint32_t n_events_total;
-        uint32_t n_frames_total;
-        uint32_t n_events_processed;
-        uint32_t n_frames_processed;
+        uint32_t n_events_total = 0;
+        uint32_t n_frames_total = 0;
+        uint32_t n_events_processed = 0;
+        uint32_t n_frames_processed = 0;
 
         ExternalBufState();
         
@@ -38,8 +38,8 @@ private:
     // MIDI out of the channel.
     struct TrackedState {
         bool m_valid = false;
-        std::shared_ptr<MidiStateTracker> state;
-        std::shared_ptr<MidiStateDiffTracker> diff;
+        std::shared_ptr<MidiStateTracker> state = nullptr;
+        std::shared_ptr<MidiStateDiffTracker> diff = nullptr;
 
         TrackedState(bool notes=false, bool controls=false, bool programs=false);
         TrackedState& operator= (TrackedState const& other);
@@ -52,18 +52,18 @@ private:
     };
 
     // Process thread access only (mp*)
-    std::optional<std::pair<ExternalBufState, MidiWriteableBufferInterface*>> mp_playback_target_buffer;
-    std::optional<std::pair<ExternalBufState, MidiReadableBufferInterface*>> mp_recording_source_buffer;
-    std::shared_ptr<Storage>       mp_storage;
-    std::shared_ptr<Storage>       mp_prerecord_storage;
-    std::shared_ptr<StorageCursor> mp_playback_cursor;
-    std::shared_ptr<profiling::ProfilingItem> mp_profiling_item;
+    std::optional<std::pair<ExternalBufState, MidiWriteableBufferInterface*>> mp_playback_target_buffer = std::nullopt;
+    std::optional<std::pair<ExternalBufState, MidiReadableBufferInterface*>> mp_recording_source_buffer = std::nullopt;
+    std::shared_ptr<Storage>       mp_storage = nullptr;
+    std::shared_ptr<Storage>       mp_prerecord_storage = nullptr;
+    std::shared_ptr<StorageCursor> mp_playback_cursor = nullptr;
+    std::shared_ptr<profiling::ProfilingItem> mp_profiling_item = nullptr;
 
     // Track the MIDI state on the channel's output.
-    std::shared_ptr<MidiStateTracker> mp_output_midi_state;
+    std::shared_ptr<MidiStateTracker> mp_output_midi_state = nullptr;
 
     // Track the MIDI state on the channel's input.
-    std::shared_ptr<MidiStateTracker> mp_input_midi_state;
+    std::shared_ptr<MidiStateTracker> mp_input_midi_state = nullptr;
 
     // We need to track what the MIDI state was at multiple interesting points
     // in order to restore that state quickly.
@@ -75,18 +75,18 @@ private:
     // keeping track of the state.
     TrackedState mp_pre_playback_state;
 
-    uint32_t mp_prev_pos_after;
-    unsigned mp_prev_process_flags;
+    uint32_t mp_prev_pos_after = 0;
+    unsigned mp_prev_process_flags = 0;
 
     // Any thread access
-    std::atomic<shoop_channel_mode_t> ma_mode;
-    std::atomic<uint32_t> ma_data_length; // Length in samples
-    std::atomic<uint32_t> ma_prerecord_data_length;
-    std::atomic<int> ma_start_offset;
-    std::atomic<uint32_t> ma_n_events_triggered;
-    std::atomic<unsigned> ma_data_seq_nr;
-    std::atomic<uint32_t> ma_pre_play_samples;
-    std::atomic<int> ma_last_played_back_sample;
+    std::atomic<shoop_channel_mode_t> ma_mode = ChannelMode_Direct;
+    std::atomic<uint32_t> ma_data_length = 0; // Length in samples
+    std::atomic<uint32_t> ma_prerecord_data_length = 0;
+    std::atomic<int> ma_start_offset = 0;
+    std::atomic<uint32_t> ma_n_events_triggered = 0;
+    std::atomic<unsigned> ma_data_seq_nr = 0;
+    std::atomic<uint32_t> ma_pre_play_samples = 0;
+    std::atomic<int> ma_last_played_back_sample = 0;
 
     const Message all_sound_off_message_channel_0 = Message(0, 3, {0xB0, 120, 0});
 

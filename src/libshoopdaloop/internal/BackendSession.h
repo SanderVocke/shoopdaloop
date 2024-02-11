@@ -32,7 +32,7 @@ class BackendSession : public std::enable_shared_from_this<BackendSession>,
         Active,
         Destroyed
     };
-    std::atomic<State> ma_state;
+    std::atomic<State> ma_state = State::Active;
 
     struct RecalculateGraphThread;
     friend class RecalculateGraphThread;
@@ -44,24 +44,24 @@ public:
     std::vector<std::shared_ptr<GraphPort>> ports;
     std::vector<std::shared_ptr<GraphFXChain>> fx_chains;
     // Infrastructure
-    std::shared_ptr<AudioBufferPool> audio_buffer_pool;
+    std::shared_ptr<AudioBufferPool> audio_buffer_pool = nullptr;
 
     // Metadata
-    std::atomic<uint32_t> m_sample_rate;
-    std::atomic<uint32_t> m_buffer_size;
+    std::atomic<uint32_t> m_sample_rate = 1;
+    std::atomic<uint32_t> m_buffer_size = 0;
 
     // Profiling
-    std::shared_ptr<profiling::Profiler> profiler;
-    std::shared_ptr<profiling::ProfilingItem> top_profiling_item;
-    std::shared_ptr<profiling::ProfilingItem> graph_profiling_item;
-    std::shared_ptr<profiling::ProfilingItem> cmds_profiling_item;
+    std::shared_ptr<profiling::Profiler> profiler = nullptr;
+    std::shared_ptr<profiling::ProfilingItem> top_profiling_item = nullptr;
+    std::shared_ptr<profiling::ProfilingItem> graph_profiling_item = nullptr;
+    std::shared_ptr<profiling::ProfilingItem> cmds_profiling_item = nullptr;
 
     // For updating the graph. When node changes are pending, change
     // the update_id. The process thread will trigger a recalculation
     // of the graph on a dedicated thread, after which the schedule
     // is applied and the current id is set to the new id.
-    std::atomic<unsigned> ma_graph_request_id;
-    std::atomic<unsigned> ma_graph_id;
+    std::atomic<unsigned> ma_graph_request_id = 0;
+    std::atomic<unsigned> ma_graph_id = 0;
 
     BackendSession();
     ~BackendSession();

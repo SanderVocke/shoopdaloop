@@ -21,8 +21,8 @@ public:
     };
 
 private:
-    std::atomic<int> m_n_notes_active;
-    std::vector<std::optional<uint8_t>> m_notes_active_velocities;        // Track Note On / Note Off (16*128)
+    std::atomic<int> m_n_notes_active = 0;
+    std::vector<std::optional<uint8_t>> m_notes_active_velocities; // Track Note On / Note Off (16*128)
     std::vector<uint8_t> m_controls;                       // Track CC values          (128*128)
     std::vector<uint8_t> m_programs;                       // Track Program values     (16)
     std::vector<uint16_t> m_pitch_wheel;                    // 16 channels

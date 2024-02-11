@@ -14,8 +14,8 @@ class CommandQueue : private boost::lockfree::spsc_queue<std::function<void()>>,
 
     const uint32_t ma_timeout_ms;
     const uint32_t ma_poll_interval_us;
-    std::atomic<bool> ma_passthrough_all;
-    std::atomic<uint64_t> ma_last_processed; // Milliseconds since epoch
+    std::atomic<bool> ma_passthrough_all = false;
+    std::atomic<uint64_t> ma_last_processed = 0; // Milliseconds since epoch
 
     uint64_t millis_since_epoch();
 

@@ -4,7 +4,7 @@
 
 template<typename SampleT>
 class InternalAudioPort : public AudioPort<SampleT> {
-    std::string m_name;
+    std::string m_name = "";
     std::vector<SampleT> m_buffer;
 
 public:

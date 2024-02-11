@@ -18,8 +18,8 @@
 
 class DummyPort : public virtual PortInterface {
 protected:
-    std::string m_name;
-    shoop_port_direction_t m_direction;
+    std::string m_name = "";
+    shoop_port_direction_t m_direction = Input;
 
 public:
     DummyPort(
@@ -41,10 +41,10 @@ class DummyAudioPort : public virtual AudioPort<audio_sample_t>,
                        public DummyPort,
                        private ModuleLoggingEnabled<"Backend.DummyAudioPort"> {
 
-    std::string m_name;
-    shoop_port_direction_t m_direction;
+    std::string m_name = "";
+    shoop_port_direction_t m_direction = Input;
     boost::lockfree::spsc_queue<std::vector<audio_sample_t>> m_queued_data;
-    std::atomic<uint32_t> m_n_requested_samples;
+    std::atomic<uint32_t> m_n_requested_samples = 0;
     std::vector<audio_sample_t> m_retained_samples;
     std::vector<audio_sample_t> m_buffer_data;
 
@@ -86,14 +86,14 @@ private:
 
     // Queued messages as external input to the port
     std::vector<StoredMessage> m_queued_msgs;
-    std::atomic<uint32_t> current_buf_frames;
+    std::atomic<uint32_t> current_buf_frames = 0;
     std::vector<StoredMessage> m_buffer_data;
 
     // Amount of frames requested for reading externally out of the port
-    std::atomic<uint32_t> n_requested_frames;
+    std::atomic<uint32_t> n_requested_frames = 0;
 
     std::atomic<uint32_t> n_processed_last_round = 0;
-    std::atomic<uint32_t> n_original_requested_frames;
+    std::atomic<uint32_t> n_original_requested_frames = 0;
     std::vector<StoredMessage> m_written_requested_msgs;
 
 public:
@@ -158,17 +158,19 @@ enum class DummyAudioMidiDriverMode {
 template<typename Time, typename Size>
 class DummyAudioMidiDriver : public AudioMidiDriver,
                              private ModuleLoggingEnabled<"Backend.DummyAudioMidiDriver"> {
-    std::atomic<bool> m_finish;
-    std::atomic<DummyAudioMidiDriverMode> m_mode;
-    std::atomic<uint32_t> m_controlled_mode_samples_to_process;
-    std::atomic<bool> m_paused;
+    std::atomic<bool> m_finish = false;
+    std::atomic<DummyAudioMidiDriverMode> m_mode = DummyAudioMidiDriverMode::Automatic;
+    std::atomic<uint32_t> m_controlled_mode_samples_to_process = 0;
+    std::atomic<bool> m_paused = false;
     std::thread m_proc_thread;
     std::set<std::shared_ptr<DummyAudioPort>> m_audio_ports;
     std::set<std::shared_ptr<DummyMidiPort>> m_midi_ports;
-    std::string m_client_name_str;
+    std::string m_client_name_str = "";
 
-    std::function<void(std::string, shoop_port_direction_t)> m_audio_port_opened_cb, m_midi_port_opened_cb;
-    std::function<void(std::string)> m_audio_port_closed_cb, m_midi_port_closed_cb;
+    std::function<void(std::string, shoop_port_direction_t)> m_audio_port_opened_cb = nullptr;
+    std::function<void(std::string, shoop_port_direction_t)> m_midi_port_opened_cb = nullptr;
+    std::function<void(std::string)> m_audio_port_closed_cb = nullptr;
+    std::function<void(std::string)> m_midi_port_closed_cb = nullptr;
 
 public:
 

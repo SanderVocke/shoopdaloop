@@ -12,9 +12,9 @@
 // access to the data "member".
 template<typename TimeType, typename SizeType>
 struct MidiStorageElem : public MidiSortableMessageInterface {
-    TimeType storage_time; // Overall time in the loop storage
-    TimeType proc_time;    // time w.r.t. some reference point (position in this process iteration)
-    SizeType size;
+    TimeType storage_time = 0; // Overall time in the loop storage
+    TimeType proc_time = 0;    // time w.r.t. some reference point (position in this process iteration)
+    SizeType size = 0;
 
     static uint32_t total_size_of(uint32_t size);
 
@@ -42,10 +42,10 @@ public:
 
 protected:
     std::vector<uint8_t> m_data;
-    uint32_t m_tail;
-    uint32_t m_head;
-    uint32_t m_head_start;
-    uint32_t m_n_events;
+    uint32_t m_tail = 0;
+    uint32_t m_head = 0;
+    uint32_t m_head_start = 0;
+    uint32_t m_n_events = 0;
     static constexpr uint32_t n_starting_cursors = 10;
 
     bool valid_elem_at(uint32_t offset) const;
@@ -78,9 +78,9 @@ public:
     Elem dummy_elem; // Prevents incomplete template type in log_level_debug build
 
 private:
-    std::optional<uint32_t> m_offset;
-    std::optional<uint32_t> m_prev_offset;
-    std::shared_ptr<const Storage> m_storage;
+    std::optional<uint32_t> m_offset = std::nullopt;
+    std::optional<uint32_t> m_prev_offset = std::nullopt;
+    std::shared_ptr<const Storage> m_storage = nullptr;
 
 public:
     MidiStorageCursor(std::shared_ptr<const Storage> _storage);
