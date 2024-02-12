@@ -1,5 +1,5 @@
 from PySide6.QtQuick import QQuickItem, QQuickPaintedItem
-from PySide6.QtCore import QObject, Property, Signal, Slot, QThread
+from PySide6.QtCore import QObject, Property, Signal, Slot, QThread, SignalInstance
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QApplication
 
@@ -10,6 +10,7 @@ from ..logging import Logger
 from threading import Lock
 import functools
 import traceback
+from typing import *
 
 ids_lock = Lock()
 next_obj_id = 1

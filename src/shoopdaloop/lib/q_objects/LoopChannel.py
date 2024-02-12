@@ -265,7 +265,8 @@ class LoopChannel(ShoopQQuickItem):
         
         self.updateOnOtherThreadSubclassImpl(state)
         
-        self.update.emit()
+        if self:
+            self.update.emit()
     
     @ShoopSlot()
     def updateOnGuiThread(self):

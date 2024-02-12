@@ -215,7 +215,8 @@ class Backend(ShoopQQuickItem):
                 if _obj and hasattr(_obj, 'updateOnOtherThread'):
                     _obj.updateOnOtherThread()
         
-        self.update.emit()
+        if self:
+            self.update.emit()
     
     @ShoopSlot(result=int)
     def get_sample_rate(self):

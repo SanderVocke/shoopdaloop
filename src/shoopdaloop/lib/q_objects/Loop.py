@@ -213,7 +213,8 @@ class Loop(ShoopQQuickItem):
         
         self._n_updates_pending += 1
 
-        self.update.emit()
+        if self:
+            self.update.emit()
     
     # Update on GUI thread.
     @ShoopSlot()

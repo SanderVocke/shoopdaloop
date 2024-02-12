@@ -87,7 +87,8 @@ class AudioPort(Port):
         self._new_passthrough_muted = state.passthrough_muted
         self._n_updates_pending += 1
 
-        self.update.emit()
+        if self:
+            self.update.emit()
     
     # Update the GUI thread.
     @ShoopSlot()
