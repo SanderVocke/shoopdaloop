@@ -18,11 +18,10 @@ from ..logging import *
 
 # Wraps a back-end loop audio channel.
 class LoopAudioChannel(LoopChannel):
-
     def __init__(self, parent=None):
         super(LoopAudioChannel, self).__init__(parent)
-        self._output_peak = 0.0
-        self._gain = 1.0
+        self._output_peak = self._new_output_peak = 0.0
+        self._gain = self._new_gain = 1.0
         self._initial_gain_pushed = False
         self.logger = Logger("Frontend.AudioChannel")
     
@@ -75,12 +74,18 @@ class LoopAudioChannel(LoopChannel):
             self._gain = gain
             self.gainChanged.emit(gain)
     
-    @ShoopSlot()
-    def update_impl(self, state):
-        if state.output_peak != self._output_peak:
-            self._output_peak = state.output_peak
+    def updateOnOtherThreadSubclassImpl(self, state):
+        if state.output_peak != self._new_output_peak:
+            self._new_output_peak = state.output_peak
+        else:
+            if state.gain != self._new_gain:
+                self._new_gain = state.gain
+    
+    def updateOnGuiThreadSubclassImpl(self):
+        if self._output_peak != self._new_output_peak:
+            self._output_peak = self._new_output_peak
             self.outputPeakChanged.emit(self._output_peak)
         else:
-            if state.gain != self._gain:
-                self._gain = state.gain
+            if self._gain != self._new_gain:
+                self._gain = self._new_gain
                 self.gainChanged.emit(self._gain)

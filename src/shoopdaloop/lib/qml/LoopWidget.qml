@@ -1714,7 +1714,7 @@ Item {
             readonly property int n_channels : channels_to_load.length
             property int n_file_channels : 0
             property int file_sample_rate : 0
-            property int backend_sample_rate : root.maybe_backend_loop ? root.maybe_backend_loop.backend.get_sample_rate() : 0
+            property int backend_sample_rate : root.maybe_backend_loop && root.maybe_backend_loop.backend ? root.maybe_backend_loop.backend.get_sample_rate() : 0
             property bool will_resample : file_sample_rate != backend_sample_rate
 
             width: 300

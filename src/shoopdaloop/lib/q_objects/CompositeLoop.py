@@ -33,13 +33,10 @@ class CompositeLoop(ShoopQQuickItem):
         self._kind = 'regular'
 
         self.scheduleChanged.connect(self.update_n_cycles, Qt.DirectConnection)
-
         self.syncLoopChanged.connect(self.update_sync_position, Qt.DirectConnection)
         self.syncLoopChanged.connect(self.update_sync_length, Qt.DirectConnection)
-
         self.nCyclesChanged.connect(self.update_length, Qt.DirectConnection)
         self.syncLengthChanged.connect(self.update_length, Qt.DirectConnection)
-
         self.iterationChanged.connect(self.update_position, Qt.DirectConnection)
         self.syncLengthChanged.connect(self.update_position, Qt.DirectConnection)
         self.modeChanged.connect(self.update_position, Qt.DirectConnection)

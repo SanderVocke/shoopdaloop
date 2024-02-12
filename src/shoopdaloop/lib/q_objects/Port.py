@@ -9,7 +9,7 @@ import sys
 
 from .ShoopPyObject import *
 
-from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
+from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, Qt
 from PySide6.QtQuick import QQuickItem
 
 from .Backend import Backend
@@ -28,9 +28,9 @@ class Port(ShoopQQuickItem):
         self._backend = None
         self._passthrough_to = []
         self._passthrough_connected_to = []
-        self._name = ''
-        self._muted = None
-        self._passthrough_muted = None
+        self._name = self._new_name = ''
+        self._muted = self._new_muted = None
+        self._passthrough_muted = self._new_passthrough_muted = None
         self._is_internal = None
         self._ever_initialized = False
         self.__logger = Logger("Frontend.Port")
@@ -156,9 +156,14 @@ class Port(ShoopQQuickItem):
     ## SLOTS
     ###########
 
-    # Update mode from the back-end.
+    # Update from the back-end.
+    @ShoopSlot(thread_protected = False)
+    def updateOnOtherThread(self):
+        raise Exception('Unimplemented in base class')
+    
+    # Update GUI thread.
     @ShoopSlot()
-    def update(self):
+    def updateOnGuiThread(self):
         raise Exception('Unimplemented in base class')
     
     # Get the wrapped back-end object.

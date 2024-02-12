@@ -18,7 +18,7 @@ class Logger(ShoopQObject):
 
     # name
     nameChanged = ShoopSignal(str)
-    @ShoopProperty(str, notify=nameChanged)
+    @ShoopProperty(str, notify=nameChanged, thread_protected=False)
     def name(self):
         return self.logger.name()
     @name.setter
@@ -28,7 +28,7 @@ class Logger(ShoopQObject):
     
     # instanceIdentifier (for clarity in debugging)
     instanceIdentifierChanged = ShoopSignal(str)
-    @ShoopProperty(str, notify=instanceIdentifierChanged)
+    @ShoopProperty(str, notify=instanceIdentifierChanged, thread_protected=False)
     def instanceIdentifier(self):
         return self._id
     @instanceIdentifier.setter
@@ -42,28 +42,27 @@ class Logger(ShoopQObject):
     ## SLOTS
     ###########
 
-    @ShoopSlot('QVariant')
+    @ShoopSlot('QVariant', thread_protected=False)
     def trace(self, msg):
         self.logger.trace(msg, _id=self._id_to_print)
     
-    @ShoopSlot('QVariant')
+    @ShoopSlot('QVariant', thread_protected=False)
     def debug(self, msg):
         self.logger.debug(msg, _id=self._id_to_print)
     
-    @ShoopSlot('QVariant')
+    @ShoopSlot('QVariant', thread_protected=False)
     def info(self, msg):
         self.logger.info(msg, _id=self._id_to_print)
     
-    @ShoopSlot('QVariant')
+    @ShoopSlot('QVariant', thread_protected=False)
     def warning(self, msg):
         self.logger.warning(msg, _id=self._id_to_print)
     
-    @ShoopSlot('QVariant')
+    @ShoopSlot('QVariant', thread_protected=False)
     def error(self, msg):
         self.logger.error(msg, _id=self._id_to_print)
     
-    @ShoopSlot('QVariant')
+    @ShoopSlot('QVariant', thread_protected=False)
     def throw_error(self, msg):
         self.logger.error(msg, _id=self._id_to_print)
         raise Exception(msg)
-    

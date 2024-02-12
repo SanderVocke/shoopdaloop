@@ -6,7 +6,7 @@ import json
 from typing import *
 import sys
 
-from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
+from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, Qt
 from PySide6.QtQuick import QQuickItem
 
 from .ShoopPyObject import *
@@ -21,10 +21,15 @@ from ..logging import Logger
 class AudioPort(Port):
     def __init__(self, parent=None):
         super(AudioPort, self).__init__(parent)
-        self._input_peak = 0.0
-        self._output_peak = 0.0
-        self._gain = 1.0
+        self._input_peak = self._new_input_peak = 0.0
+        self._output_peak = self._new_output_peak = 0.0
+        self._gain = self._new_gain = 1.0
         self.logger = Logger("Frontend.AudioPort")
+        self._n_updates_pending = 0
+
+        self.update.connect(self.updateOnGuiThread, Qt.QueuedConnection)
+
+    update = ShoopSignal()
 
     ######################
     # PROPERTIES
@@ -67,18 +72,38 @@ class AudioPort(Port):
     ## SLOTS
     ###########
 
-    # Update mode from the back-end.
-    @ShoopSlot()
-    def update(self):
-        if not self.initialized:
+    # Update from the back-end.
+    @ShoopSlot(thread_protected = False)
+    def updateOnOtherThread(self):
+        self.logger.trace(lambda: f'update on back-end thread (initialized {self._initialized})')
+        if not self._initialized:
             return
         state = self._backend_obj.get_state()
-        self.input_peak = state.input_peak
-        self.output_peak = state.output_peak
-        self.name = state.name
-        self.gain = state.gain
-        self.muted = state.muted
-        self.passthrough_muted = state.passthrough_muted
+        self._new_input_peak = state.input_peak
+        self._new_output_peak = state.output_peak
+        self._new_name = state.name
+        self._new_gain = state.gain
+        self._new_muted = state.muted
+        self._new_passthrough_muted = state.passthrough_muted
+        self._n_updates_pending += 1
+
+        self.update.emit()
+    
+    # Update the GUI thread.
+    @ShoopSlot()
+    def updateOnGuiThread(self):
+        self.logger.trace(lambda: f'update on GUI thread (# {self._n_updates_pending}, initialized {self._initialized})')
+        if not self._initialized:
+            return
+        if self._n_updates_pending == 0:
+            return
+        self.input_peak = self._new_input_peak
+        self.output_peak = self._new_output_peak
+        self.name = self._new_name
+        self.gain = self._new_gain
+        self.muted = self._new_muted
+        self.passthrough_muted = self._new_passthrough_muted
+        self._n_updates_pending = 0
     
     @ShoopSlot(float)
     def set_gain(self, gain):

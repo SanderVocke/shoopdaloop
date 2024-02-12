@@ -6,7 +6,7 @@ import json
 from typing import *
 import sys
 
-from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
+from PySide6.QtCore import Qt, QObject, Signal, Property, Slot, QTimer
 from PySide6.QtQuick import QQuickItem
 
 from .Port import Port
@@ -15,15 +15,20 @@ from .ShoopPyObject import *
 from ..backend_wrappers import PortDirection
 from ..findFirstParent import findFirstParent
 from ..findChildItems import findChildItems
+from ..logging import Logger
 
 # Wraps a back-end port.
 class MidiPort(Port):
     def __init__(self, parent=None):
         super(MidiPort, self).__init__(parent)
-        self._n_input_events = 0
-        self._n_input_notes_active = 0
-        self._n_output_events = 0
-        self._n_output_notes_active = 0
+        self._n_input_events = self._new_n_input_events =0
+        self._n_input_notes_active = self._new_n_input_notes_active = 0
+        self._n_output_events = self._new_n_output_events =0
+        self._n_output_notes_active = self._new_n_output_notes_active =0
+        self._n_updates_pending = 0
+        self.logger = Logger('Frontend.MidiPort')
+
+    update = ShoopSignal()
 
     ######################
     # PROPERTIES
@@ -78,18 +83,38 @@ class MidiPort(Port):
     ###########
 
     # Update mode from the back-end.
-    @ShoopSlot()
-    def update(self):
-        if not self.initialized:
+    @ShoopSlot(thread_protected = False)
+    def updateOnOtherThread(self):
+        self.logger.trace(lambda: f'update on back-end thread (initialized {self._initialized})')
+        if not self._initialized:
             return
         state = self._backend_obj.get_state()
-        self.n_input_events = state.n_input_events
-        self.n_input_notes_active = state.n_input_notes_active
-        self.n_output_events = state.n_output_events
-        self.n_output_notes_active = state.n_output_notes_active
-        self.name = state.name
-        self.muted = state.muted
-        self.passthrough_muted = state.passthrough_muted
+        self._new_n_input_events = state.n_input_events
+        self._new_n_input_notes_active = state.n_input_notes_active
+        self._new_n_output_events = state.n_output_events
+        self._new_n_output_notes_active = state.n_output_notes_active
+        self._new_name = state.name
+        self._new_muted = state.muted
+        self._new_passthrough_muted = state.passthrough_muted
+        self._n_updates_pending += 1
+
+        self.update.emit()
+    
+    @ShoopSlot()
+    def updateOnGuiThread(self):
+        self.logger.trace(lambda: f'update on GUI thread (# {self._n_updates_pending}, initialized {self._initialized})')
+        if not self._initialized:
+            return
+        if self._n_updates_pending == 0:
+            return
+        self.n_input_events = self._new_n_input_events
+        self.n_input_notes_active = self._new_n_input_notes_active
+        self.n_output_events = self._new_n_output_events
+        self.n_output_notes_active = self._new_n_output_notes_active
+        self.name = self._new_name
+        self.muted = self._new_muted
+        self.passthrough_muted = self._new_passthrough_muted
+        self._n_updates_pending = 0
     
     @ShoopSlot(list)
     def dummy_queue_msgs(self, msgs):

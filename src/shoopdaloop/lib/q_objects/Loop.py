@@ -8,7 +8,7 @@ import sys
 
 from .ShoopPyObject import *
 
-from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
+from PySide6.QtCore import Qt, QObject, Signal, Property, Slot, QTimer
 from PySide6.QtQuick import QQuickItem
 
 from ..backend_wrappers import *
@@ -25,26 +25,34 @@ class Loop(ShoopQQuickItem):
 
     def __init__(self, parent=None):
         super(Loop, self).__init__(parent)
-        self._position = 0
-        self._mode = LoopMode.Unknown.value
-        self._next_mode = LoopMode.Unknown.value
-        self._next_transition_delay = -1
-        self._length = 0
-        self._sync_source = None
+        self._position = self._new_position = 0
+        self._mode = self._new_mode = LoopMode.Unknown.value
+        self._next_mode = self._new_next_mode = LoopMode.Unknown.value
+        self._next_transition_delay = self._new_next_transition_delay = -1
+        self._length = self._new_length = 0
+        self._sync_source = self._new_sync_source = None
         self._initialized = False
         self._backend = None
         self._backend_loop = None
-        self._display_peaks = []
-        self._display_midi_notes_active = 0
-        self._display_midi_events_triggered = 0
+        self._display_peaks = self._new_display_peaks = []
+        self._display_midi_notes_active = self._new_display_midi_notes_active = 0
+        self._display_midi_events_triggered = self._new_display_midi_events_triggered = 0
         self.logger = Logger(self)
         self.logger.name = "Frontend.Loop"
+        self._n_updates_pending = 0
 
         self.initializedChanged.connect(lambda i: self.logger.debug("initialized -> {}".format(i)))
 
+        def rescan_on_parent_changed():
+            if not self._backend:
+                self.rescan_parents()
+        self.parentChanged.connect(lambda: rescan_on_parent_changed())
         self.rescan_parents()
-        if not self._backend:
-            self.parentChanged.connect(self.rescan_parents)
+        
+        
+        self.update.connect(self.updateOnGuiThread, Qt.QueuedConnection)
+
+    update = ShoopSignal()
 
     ######################
     # PROPERTIES
@@ -59,7 +67,7 @@ class Loop(ShoopQQuickItem):
     def backend(self, l):
         if l and l != self._backend:
             if self._backend or self._backend_loop:
-                self.logger.throw_error('May not change backend of existing port')
+                self.logger.throw_error('May not change backend of existing loop')
             self._backend = l
             self.logger.trace(lambda: 'Set backend -> {}'.format(l))
             self.maybe_initialize()
@@ -161,28 +169,66 @@ class Loop(ShoopQQuickItem):
     def set_logging_instance_identifier(self, id):
         self.logger.instanceIdentifier = id
 
-    @ShoopSlot(result=list)
-    def get_audio_channels(self):
+    def get_audio_channels_impl(self):
         from .LoopAudioChannel import LoopAudioChannel
         return findChildItems(self, lambda c: isinstance(c, LoopAudioChannel))
     
-    @ShoopSlot(result=list)
-    def get_midi_channels(self):
+    def get_midi_channels_impl(self):
         from .LoopMidiChannel import LoopMidiChannel
         return findChildItems(self, lambda c: isinstance(c, LoopMidiChannel))
 
-    # Update mode from the back-end.
-    @ShoopSlot()
-    def update(self):
-        if not self.initialized:
-            self.logger.trace(lambda: 'update: not initialized')
+
+    @ShoopSlot(result=list)
+    def get_audio_channels(self):
+        return self.get_audio_channels_impl()
+    
+    @ShoopSlot(result=list)
+    def get_midi_channels(self):
+        return self.get_midi_channels_impl()
+
+    # Update on back-end thread.
+    @ShoopSlot(thread_protected = False)
+    def updateOnOtherThread(self):
+        self.logger.trace(lambda: f'update on GUI thread (# {self._n_updates_pending}, initialized {self._initialized})')
+        if not self._initialized:
             return
         
-        self.logger.trace(lambda: 'update')
-        for channel in self.get_audio_channels():
-            channel.update()
-        for channel in self.get_midi_channels():
-            channel.update()
+        audio_chans = self.get_audio_channels_impl()
+        midi_chans = self.get_midi_channels_impl()
+        
+        for channel in audio_chans:
+            channel.updateOnOtherThread()
+        for channel in midi_chans:
+            channel.updateOnOtherThread()
+
+        state = self._backend_loop.get_state()
+        self._new_mode = state.mode
+        self._new_length = state.length
+        self._new_position = state.position
+        self._new_next_mode = (state.maybe_next_mode if state.maybe_next_mode != None else state.mode)
+        self._new_next_transition_delay = (state.maybe_next_delay if state.maybe_next_delay != None else -1)
+        self._new_display_peaks = [c._output_peak for c in [a for a in audio_chans if a._mode in [ChannelMode.Direct.value, ChannelMode.Wet.value]]]
+        self._new_display_midi_notes_active = (sum([c._n_notes_active for c in midi_chans]) if len(midi_chans) > 0 else 0)
+        self._new_display_midi_events_triggered = (sum([c._n_events_triggered for c in midi_chans]) if len(midi_chans) > 0 else 0)
+        
+        self._n_updates_pending += 1
+
+        self.update.emit()
+    
+    # Update on GUI thread.
+    @ShoopSlot()
+    def updateOnGuiThread(self):
+        self.logger.trace(lambda: f'update on GUI thread (# {self._n_updates_pending}, initialized {self._initialized})')
+        if not self._initialized:
+            return
+        
+        audio_chans = self.get_audio_channels_impl()
+        midi_chans = self.get_midi_channels_impl()
+        
+        for channel in audio_chans:
+            channel.updateOnOtherThread()
+        for channel in midi_chans:
+            channel.updateOnOtherThread()
 
         prev_position = self._position
         prev_mode = self._mode
@@ -193,15 +239,14 @@ class Loop(ShoopQQuickItem):
         prev_display_midi_notes_active = self._display_midi_notes_active
         prev_display_midi_events_triggered = self._display_midi_events_triggered
 
-        state = self._backend_loop.get_state()
-        self._mode = state.mode
-        self._length = state.length
-        self._position = state.position
-        self._next_mode = (state.maybe_next_mode if state.maybe_next_mode != None else state.mode)
-        self._next_transition_delay = (state.maybe_next_delay if state.maybe_next_delay != None else -1)
-        self._display_peaks = [c.output_peak for c in [a for a in self.get_audio_channels() if a.mode in [ChannelMode.Direct.value, ChannelMode.Wet.value]]]
-        self._display_midi_notes_active = (sum([c.n_notes_active for c in self.get_midi_channels()]) if len(self.get_midi_channels()) > 0 else 0)
-        self._display_midi_events_triggered = (sum([c.n_events_triggered for c in self.get_midi_channels()]) if len(self.get_midi_channels()) > 0 else 0)
+        self._mode = self._new_mode
+        self._length = self._new_length
+        self._position = self._new_position
+        self._next_mode = self._new_next_mode
+        self._next_transition_delay = self._new_next_transition_delay
+        self._display_peaks = self._new_display_peaks
+        self._display_midi_notes_active = self._new_display_midi_notes_active
+        self._display_midi_events_triggered = self._new_display_midi_events_triggered
 
         if prev_mode != self._mode:
             self.logger.debug(lambda: 'mode -> {}'.format(LoopMode(self._mode)))
@@ -312,10 +357,12 @@ class Loop(ShoopQQuickItem):
     
     def maybe_initialize(self):
         if self._backend and self._backend.initialized and not self._backend_loop:
+            self.logger.debug(lambda: 'Found backend, initializing')
             self._backend_loop = self._backend.get_backend_session_obj().create_loop()
             if self._backend_loop:
-                self.logger.debug(lambda: 'Found backend, initializing')
                 self._initialized = True
                 self.update()
                 self._backend.registerBackendObject(self)
                 self.initializedChanged.emit(True)
+            else:
+                self.logger.warning(lambda: 'Failed to create loop')

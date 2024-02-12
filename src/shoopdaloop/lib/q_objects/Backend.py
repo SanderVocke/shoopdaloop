@@ -34,14 +34,17 @@ class Backend(ShoopQQuickItem):
         self._backend_driver_obj = None
         self._backend_child_objects = set()
         self._driver_setting_overrides = None
-        self._xruns = 0
-        self._dsp_load = 0.0
-        self._actual_driver_type = None
+        self._xruns = self._new_xruns = 0
+        self._dsp_load = self._new_dsp_load = 0.0
+        self._actual_driver_type = self._new_actual_driver_type = None
         self.destroyed.connect(self.close)
         self.logger = Logger()
         self.logger.name = "Frontend.Backend"
         self.lock = threading.Lock()
-        self._last_processed = 1
+        self._last_processed = self._new_last_processed = 1
+        self._n_updates_pending = 0
+
+        self.update.connect(self.updateOnGuiThread, Qt.QueuedConnection)
     
     update = ShoopSignal()
     updated = ShoopSignal()
@@ -159,16 +162,21 @@ class Backend(ShoopQQuickItem):
             self._backend_child_objects.remove(weakref.ref(obj))
 
     @ShoopSlot()
-    def doUpdate(self):
-        self.logger.trace(lambda: 'update')
-        if not self.initialized:
+    def updateOnGuiThread(self):
+        self.logger.trace(lambda: f'update on GUI thread (# {self._n_updates_pending}, initialized {self._initialized})')
+        if self._n_updates_pending == 0:
             return
-        driver_state = self._backend_driver_obj.get_state()
-        self.dsp_load = driver_state.dsp_load
-        self.xruns = min(2**31-1, self.xruns + driver_state.xruns)
-        self.actual_backend_type = self._driver_type.value
-        self.last_processed = driver_state.last_processed
-        
+        if not self._initialized:
+            return
+
+        # Calling the setters will force emitting a changed signal
+        # if necessary
+        self.xruns = self._new_xruns
+        self.dsp_load = self._new_dsp_load
+        self.actual_backend_type = self._new_actual_backend_type
+        self.last_processed = self._new_last_processed
+
+        # Update other objects
         toRemove = []
         with self.lock:
             for obj in self._backend_child_objects:
@@ -176,11 +184,38 @@ class Backend(ShoopQQuickItem):
                 if not _obj:
                     toRemove.append(obj)
                 else:
-                    _obj.update()
+                    _obj.updateOnGuiThread()
             for r in toRemove:
                 self._backend_child_objects.remove(r)
-        self.update.emit()
+
+        self._n_updates_pending = 0
         self.updated.emit()
+
+    # Update data from the back-end. This function does not run in the GUI thread.
+    @ShoopSlot(thread_protected=False)
+    def updateOnOtherThread(self):
+        self.logger.trace(lambda: f'update on back-end thread (initialized {self._initialized})')
+        if not self._initialized:
+            return
+        driver_state = self._backend_driver_obj.get_state()
+        
+        # Set the Python state directly and queue an update on the GUI thread
+        self._new_dsp_load = driver_state.dsp_load
+        self._new_xruns = min(2**31-1, self._xruns + driver_state.xruns)
+        self._new_actual_backend_type = self._driver_type.value
+        self._new_last_processed = driver_state.last_processed
+        self._n_updates_pending += 1
+        
+        # Some objects have an update function which can run outside of the
+        # GUI thread, allowing them to continue working if the GUI thread
+        # hangs. Trigger those updates here.
+        with self.lock:
+            for obj in self._backend_child_objects:
+                _obj = obj()
+                if _obj and hasattr(_obj, 'updateOnOtherThread'):
+                    _obj.updateOnOtherThread()
+        
+        self.update.emit()
     
     @ShoopSlot(result=int)
     def get_sample_rate(self):
@@ -338,7 +373,7 @@ class Backend(ShoopQQuickItem):
             self._timer = QTimer()
             self._timer.setSingleShot(False)
             self._timer.moveToThread(self._timer_thread)
-            self._timer.timeout.connect(self.doUpdate, Qt.DirectConnection)
+            self._timer.timeout.connect(self.updateOnOtherThread, Qt.DirectConnection)
         QMetaObject.invokeMethod(
             self._timer,
             'start',
